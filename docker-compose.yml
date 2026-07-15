@@ -1,0 +1,64 @@
+services:
+  mysql:
+    image: mysql:8.0.35
+    container_name: ${COMPOSE_PROJECT_NAME}-mysql
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    ports:
+      - "${MYSQL_PORT}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: src/EduTwin.API/Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME}-api
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__Default=${ConnectionStrings__Default}
+      - Jwt__SigningKey=${Jwt__SigningKey}
+      - Jwt__Issuer=${Jwt__Issuer}
+      - Jwt__Audience=${Jwt__Audience}
+      - Gemini__ApiKey=${Gemini__ApiKey}
+      - Gemini__Model=${Gemini__Model}
+      - HealthChecks__MySqlHost=${HealthChecks__MySqlHost}
+      - HealthChecks__MySqlPort=${HealthChecks__MySqlPort}
+    ports:
+      - "${API_PORT}:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./web/edutwin-web
+      dockerfile: Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME}-web
+    ports:
+      - "${WEB_PORT}:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  adminer:
+    image: adminer:4.8.1
+    container_name: ${COMPOSE_PROJECT_NAME}-adminer
+    ports:
+      - "${ADMINER_PORT}:8080"
+    depends_on:
+      - mysql
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
