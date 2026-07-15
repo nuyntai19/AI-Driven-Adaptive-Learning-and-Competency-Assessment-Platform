@@ -1,0 +1,32 @@
+# === IDE / Editor ===
+.vs/
+.vscode/.history/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# === .NET Build ===
+**/bin/
+**/obj/
+TestResults/
+coverage/
+*.log
+
+# === Node / Frontend ===
+**/node_modules/
+**/dist/
+
+# === Environment ===
+.env
+.env.*
+!.env.example
+
+# === AI Agent workspaces ===
+.agents/
+.codex/
+
+# === OS ===
+Thumbs.db
+Desktop.ini
+.DS_Store
