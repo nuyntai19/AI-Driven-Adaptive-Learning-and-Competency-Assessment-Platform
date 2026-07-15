@@ -1,5 +1,8 @@
 using EduTwin.DAL.IdentityAndTenancy;
 using EduTwin.DAL.Organization;
+using EduTwin.DAL.KnowledgeGraph;
+using EduTwin.DAL.CurriculumAndQuestions;
+using EduTwin.DAL.Assignments;
 using Microsoft.EntityFrameworkCore;
 using System.Reflection;
 
@@ -19,6 +22,24 @@ public class EduTwinDbContext : DbContext
     public DbSet<Subject> Subjects => Set<Subject>();
     public DbSet<Class> Classes => Set<Class>();
     public DbSet<ClassStudent> ClassStudents => Set<ClassStudent>();
+
+    // KnowledgeGraph
+    public DbSet<KnowledgeNode> KnowledgeNodes => Set<KnowledgeNode>();
+    public DbSet<KnowledgeEdge> KnowledgeEdges => Set<KnowledgeEdge>();
+
+    // CurriculumAndQuestions
+    public DbSet<Curriculum> Curriculums => Set<Curriculum>();
+    public DbSet<CurriculumClass> CurriculumClasses => Set<CurriculumClass>();
+    public DbSet<CurriculumNode> CurriculumNodes => Set<CurriculumNode>();
+    public DbSet<Question> Questions => Set<Question>();
+    public DbSet<QuestionOption> QuestionOptions => Set<QuestionOption>();
+    public DbSet<QuestionKnowledgeNode> QuestionKnowledgeNodes => Set<QuestionKnowledgeNode>();
+
+    // Assignments
+    public DbSet<Assignment> Assignments => Set<Assignment>();
+    public DbSet<AssignmentQuestion> AssignmentQuestions => Set<AssignmentQuestion>();
+    public DbSet<AssignmentTarget> AssignmentTargets => Set<AssignmentTarget>();
+    public DbSet<StudentAssignmentProgress> StudentAssignmentProgresses => Set<StudentAssignmentProgress>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

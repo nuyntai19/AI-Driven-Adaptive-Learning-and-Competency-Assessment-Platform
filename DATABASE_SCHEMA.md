@@ -35,6 +35,20 @@ Schema được chia thành đúng năm module logic:
 - Foreign key: fk_{child}_{parent}_{purpose}.
 - Check constraint: ck_{table}_{rule}.
 
+- MySQL physical identifier không được dài quá 64 ký tự.
+- Tên canonical theo ix_/ux_/fk_/ck_/pk_ vẫn là mặc định.
+- Khi canonical name vượt 64 ký tự, chỉ được dùng alias đã được ghi rõ trong specification hoặc Change Proposal được Codex phê duyệt.
+- Alias phải deterministic, dễ hiểu và không thay đổi columns/semantics.
+- Không dùng hash hoặc tên viết tắt mơ hồ.
+
+Các mapping được duyệt (CP-P04-001):
+1. Canonical: ux_knowledge_edges_center_id_source_node_id_target_node_id_relation_type
+   Physical alias: ux_knowledge_edges_center_id_source_id_target_id_relation_type
+2. Canonical: ix_questions_center_id_subject_id_primary_topic_node_id_status_difficulty
+   Physical alias: ix_questions_center_id_subject_id_topic_id_status_difficulty
+3. Canonical: ux_student_assignment_progress_center_id_assignment_id_student_id
+   Physical alias: ux_student_assignment_progress_center_assignment_id_student_id
+
 ### 2.2. Kiểu dữ liệu chuẩn
 
 | Khái niệm | MySQL type | Ghi chú |
