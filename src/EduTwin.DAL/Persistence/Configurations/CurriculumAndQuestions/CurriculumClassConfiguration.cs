@@ -12,7 +12,7 @@ public class CurriculumClassConfiguration : IEntityTypeConfiguration<CurriculumC
 
         // Primary Key
         builder.HasKey(cc => new { cc.CenterId, cc.CurriculumId, cc.ClassId }).HasName("pk_curriculum_classes");
-        
+
         // Properties
         builder.Property(cc => cc.CenterId)
             .HasColumnName("center_id")

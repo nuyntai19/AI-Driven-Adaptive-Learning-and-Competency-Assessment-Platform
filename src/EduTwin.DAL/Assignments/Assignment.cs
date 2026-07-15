@@ -11,7 +11,7 @@ public class Assignment : IMutableTenantAggregate
     public Guid CenterId { get; set; }
     public Guid ClassId { get; set; }
     public Guid CreatedByTeacherId { get; set; }
-    
+
     public string Title { get; set; } = null!;
     public string? Instructions { get; set; }
     public DateTime? DueAt { get; set; }

@@ -9,7 +9,7 @@ public class CurriculumNode : ITenantJoinEntity
     public Guid CenterId { get; set; }
     public Guid CurriculumId { get; set; }
     public ulong NodeId { get; set; }
-    
+
     public uint OrderIndex { get; set; }
     public DateTime CreatedAt { get; set; }
 

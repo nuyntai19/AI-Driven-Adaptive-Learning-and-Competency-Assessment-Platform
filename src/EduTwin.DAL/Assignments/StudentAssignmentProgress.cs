@@ -11,11 +11,11 @@ public class StudentAssignmentProgress : IMutableTenantAggregate
     public Guid CenterId { get; set; }
     public Guid AssignmentId { get; set; }
     public Guid StudentId { get; set; }
-    
+
     public ProgressStatus Status { get; set; }
     public uint CompletedQuestionCount { get; set; }
     public uint TotalQuestionCount { get; set; }
-    
+
     public DateTime? StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
 

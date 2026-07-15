@@ -13,13 +13,13 @@ public class KnowledgeEdgeConfiguration : IEntityTypeConfiguration<KnowledgeEdge
 
         // Primary Key
         builder.HasKey(e => e.EdgeId).HasName("pk_knowledge_edges");
-        
+
         // Properties
         builder.Property(e => e.EdgeId)
             .HasColumnName("edge_id")
             .HasColumnType("bigint unsigned")
             .ValueGeneratedOnAdd();
-            
+
         builder.Property(e => e.CenterId)
             .HasColumnName("center_id")
             .HasColumnType("varchar(36)")
@@ -80,7 +80,7 @@ public class KnowledgeEdgeConfiguration : IEntityTypeConfiguration<KnowledgeEdge
             .HasDatabaseName("ix_knowledge_edges_center_id_subject_id");
 
         // Constraints
-        builder.ToTable(t => 
+        builder.ToTable(t =>
         {
             t.HasCheckConstraint("ck_knowledge_edges_self_loop", "source_node_id <> target_node_id");
             t.HasCheckConstraint("ck_knowledge_edges_weight", "weight BETWEEN 0 AND 1");

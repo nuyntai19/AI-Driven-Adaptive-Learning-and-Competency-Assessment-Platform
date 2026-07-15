@@ -8,7 +8,7 @@ public class QuestionOption : IMutableTenantAggregate
     public ulong OptionId { get; set; }
     public Guid CenterId { get; set; }
     public ulong QuestionId { get; set; }
-    
+
     public string OptionLabel { get; set; } = null!;
     public string OptionText { get; set; } = null!;
     public bool IsCorrect { get; set; }

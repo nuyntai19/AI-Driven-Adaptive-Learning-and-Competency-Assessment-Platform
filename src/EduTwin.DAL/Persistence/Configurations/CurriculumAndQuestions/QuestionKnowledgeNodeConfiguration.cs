@@ -13,7 +13,7 @@ public class QuestionKnowledgeNodeConfiguration : IEntityTypeConfiguration<Quest
         // Primary Key
         builder.HasKey(qkn => new { qkn.CenterId, qkn.QuestionId, qkn.NodeId, qkn.MappingRole })
             .HasName("pk_question_knowledge_nodes");
-        
+
         // Properties
         builder.Property(qkn => qkn.CenterId)
             .HasColumnName("center_id")
@@ -43,7 +43,7 @@ public class QuestionKnowledgeNodeConfiguration : IEntityTypeConfiguration<Quest
             .HasDatabaseName("ix_question_knowledge_nodes_center_id_node_id");
 
         // Constraints
-        builder.ToTable(t => 
+        builder.ToTable(t =>
         {
             t.HasCheckConstraint("ck_question_knowledge_nodes_mapping_role", "mapping_role IN ('Primary', 'Secondary', 'Prerequisite')");
         });

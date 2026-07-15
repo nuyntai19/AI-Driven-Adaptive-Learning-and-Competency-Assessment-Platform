@@ -13,7 +13,7 @@ public class Question : IMutableTenantAggregate
     public Guid SubjectId { get; set; }
     public ulong PrimaryTopicNodeId { get; set; }
     public Guid CreatedByTeacherId { get; set; }
-    
+
     public QuestionType QuestionType { get; set; }
     public byte Difficulty { get; set; }
     public string QuestionText { get; set; } = null!;
@@ -21,7 +21,7 @@ public class Question : IMutableTenantAggregate
     public string Solution { get; set; } = null!;
     public string? ExpectedReasoning { get; set; }
     public GradingCriteria GradingCriteria { get; set; } = new();
-    
+
     public decimal MaxScore { get; set; }
     public uint EstimatedTimeSeconds { get; set; }
     public bool ReasoningRequired { get; set; }

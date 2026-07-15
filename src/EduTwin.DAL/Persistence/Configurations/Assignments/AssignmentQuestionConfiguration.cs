@@ -13,7 +13,7 @@ public class AssignmentQuestionConfiguration : IEntityTypeConfiguration<Assignme
         // Primary Key
         builder.HasKey(aq => new { aq.CenterId, aq.AssignmentId, aq.QuestionId })
             .HasName("pk_assignment_questions");
-        
+
         // Properties
         builder.Property(aq => aq.CenterId)
             .HasColumnName("center_id")
@@ -50,7 +50,7 @@ public class AssignmentQuestionConfiguration : IEntityTypeConfiguration<Assignme
             .HasDatabaseName("ix_assignment_questions_center_id_question_id");
 
         // Constraints
-        builder.ToTable(t => 
+        builder.ToTable(t =>
         {
             t.HasCheckConstraint("ck_assignment_questions_points", "points > 0");
         });

@@ -12,13 +12,13 @@ public class QuestionOptionConfiguration : IEntityTypeConfiguration<QuestionOpti
 
         // Primary Key
         builder.HasKey(o => o.OptionId).HasName("pk_question_options");
-        
+
         // Properties
         builder.Property(o => o.OptionId)
             .HasColumnName("option_id")
             .HasColumnType("bigint unsigned")
             .ValueGeneratedNever();
-            
+
         builder.Property(o => o.CenterId)
             .HasColumnName("center_id")
             .HasColumnType("varchar(36)")

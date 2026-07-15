@@ -13,7 +13,7 @@ public class CurriculumConfiguration : IEntityTypeConfiguration<Curriculum>
 
         // Primary Key
         builder.HasKey(c => c.CurriculumId).HasName("pk_curriculums");
-        
+
         // Alternate Key
         builder.HasAlternateKey(c => new { c.CenterId, c.CurriculumId })
             .HasName("ux_curriculums_center_id_curriculum_id");
@@ -22,7 +22,7 @@ public class CurriculumConfiguration : IEntityTypeConfiguration<Curriculum>
         builder.Property(c => c.CurriculumId)
             .HasColumnName("curriculum_id")
             .HasColumnType("varchar(36)");
-            
+
         builder.Property(c => c.CenterId)
             .HasColumnName("center_id")
             .HasColumnType("varchar(36)")
@@ -75,7 +75,7 @@ public class CurriculumConfiguration : IEntityTypeConfiguration<Curriculum>
             .HasDatabaseName("ix_curriculums_center_id_subject_id_review_status");
 
         // Constraints
-        builder.ToTable(t => 
+        builder.ToTable(t =>
         {
             t.HasCheckConstraint("ck_curriculums_review_status", "review_status IN ('Draft', 'Published', 'Archived')");
         });

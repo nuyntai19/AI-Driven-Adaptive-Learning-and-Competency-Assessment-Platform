@@ -15,7 +15,7 @@ public class QuestionConfiguration : IEntityTypeConfiguration<Question>
 
         // Primary Key
         builder.HasKey(q => q.QuestionId).HasName("pk_questions");
-        
+
         // Alternate Key
         builder.HasAlternateKey(q => new { q.CenterId, q.QuestionId })
             .HasName("ux_questions_center_id_question_id");
@@ -25,7 +25,7 @@ public class QuestionConfiguration : IEntityTypeConfiguration<Question>
             .HasColumnName("question_id")
             .HasColumnType("bigint unsigned")
             .ValueGeneratedOnAdd();
-            
+
         builder.Property(q => q.CenterId)
             .HasColumnName("center_id")
             .HasColumnType("varchar(36)")
@@ -75,7 +75,7 @@ public class QuestionConfiguration : IEntityTypeConfiguration<Question>
             .HasColumnType("longtext");
 
         var jsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
-        
+
         builder.Property(q => q.GradingCriteria)
             .HasColumnName("grading_criteria")
             .HasColumnType("json")
@@ -134,9 +134,9 @@ public class QuestionConfiguration : IEntityTypeConfiguration<Question>
         // Explicit FK Indexes
         builder.HasIndex(q => new { q.CenterId, q.PrimaryTopicNodeId })
             .HasDatabaseName("ix_questions_center_id_primary_topic_node_id");
-            
+
         // Constraints
-        builder.ToTable(t => 
+        builder.ToTable(t =>
         {
             t.HasCheckConstraint("ck_questions_question_type", "question_type IN ('MultipleChoice', 'ShortAnswer', 'Essay')");
             t.HasCheckConstraint("ck_questions_difficulty", "difficulty BETWEEN 1 AND 5");

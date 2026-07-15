@@ -13,7 +13,7 @@ public class KnowledgeNodeConfiguration : IEntityTypeConfiguration<KnowledgeNode
 
         // Primary Key
         builder.HasKey(n => n.NodeId).HasName("pk_knowledge_nodes");
-        
+
         // Alternate Key
         builder.HasAlternateKey(n => new { n.CenterId, n.NodeId })
             .HasName("ux_knowledge_nodes_center_id_node_id");
@@ -23,7 +23,7 @@ public class KnowledgeNodeConfiguration : IEntityTypeConfiguration<KnowledgeNode
             .HasColumnName("node_id")
             .HasColumnType("bigint unsigned")
             .ValueGeneratedOnAdd();
-            
+
         builder.Property(n => n.CenterId)
             .HasColumnName("center_id")
             .HasColumnType("varchar(36)")
@@ -93,13 +93,13 @@ public class KnowledgeNodeConfiguration : IEntityTypeConfiguration<KnowledgeNode
 
         builder.HasIndex(n => new { n.CenterId, n.SubjectId, n.NodeType, n.OrderIndex })
             .HasDatabaseName("ix_knowledge_nodes_center_id_subject_id_node_type_order_index");
-            
+
         // Explicit index for self FK
         builder.HasIndex(n => new { n.CenterId, n.ParentNodeId })
             .HasDatabaseName("ix_knowledge_nodes_center_id_parent_node_id");
 
         // Constraints
-        builder.ToTable(t => 
+        builder.ToTable(t =>
         {
             t.HasCheckConstraint("ck_knowledge_nodes_node_type", "node_type IN ('Subject', 'Chapter', 'Topic', 'Skill', 'Concept')");
             t.HasCheckConstraint("ck_knowledge_nodes_exam_importance", "exam_importance BETWEEN 0 AND 100");

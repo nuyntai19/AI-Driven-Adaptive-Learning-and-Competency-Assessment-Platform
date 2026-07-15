@@ -12,7 +12,7 @@ public class StudentAssignmentProgressConfiguration : IEntityTypeConfiguration<S
 
         // Primary Key
         builder.HasKey(p => p.ProgressId).HasName("pk_student_assignment_progress");
-        
+
         // Unique Index
         builder.HasIndex(p => new { p.CenterId, p.AssignmentId, p.StudentId })
             .IsUnique()
@@ -23,7 +23,7 @@ public class StudentAssignmentProgressConfiguration : IEntityTypeConfiguration<S
             .HasColumnName("progress_id")
             .HasColumnType("bigint unsigned")
             .ValueGeneratedNever();
-            
+
         builder.Property(p => p.CenterId)
             .HasColumnName("center_id")
             .HasColumnType("varchar(36)")
@@ -77,7 +77,7 @@ public class StudentAssignmentProgressConfiguration : IEntityTypeConfiguration<S
             .HasDatabaseName("ix_student_assignment_progress_center_id_student_id_status");
 
         // Constraints
-        builder.ToTable(t => 
+        builder.ToTable(t =>
         {
             t.HasCheckConstraint("ck_student_assignment_progress_counts", "completed_question_count <= total_question_count");
             t.HasCheckConstraint("ck_student_assignment_progress_status", "status IN ('NotStarted', 'InProgress', 'Completed', 'Overdue')");

@@ -10,7 +10,7 @@ public class QuestionKnowledgeNode : ITenantJoinEntity
     public Guid CenterId { get; set; }
     public ulong QuestionId { get; set; }
     public ulong NodeId { get; set; }
-    
+
     public MappingRole MappingRole { get; set; }
     public DateTime CreatedAt { get; set; }
 

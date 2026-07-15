@@ -12,7 +12,7 @@ public class AssignmentConfiguration : IEntityTypeConfiguration<Assignment>
 
         // Primary Key
         builder.HasKey(a => a.AssignmentId).HasName("pk_assignments");
-        
+
         // Alternate Key
         builder.HasAlternateKey(a => new { a.CenterId, a.AssignmentId })
             .HasName("ux_assignments_center_id_assignment_id");
@@ -21,7 +21,7 @@ public class AssignmentConfiguration : IEntityTypeConfiguration<Assignment>
         builder.Property(a => a.AssignmentId)
             .HasColumnName("assignment_id")
             .HasColumnType("varchar(36)");
-            
+
         builder.Property(a => a.CenterId)
             .HasColumnName("center_id")
             .HasColumnType("varchar(36)")
@@ -79,7 +79,7 @@ public class AssignmentConfiguration : IEntityTypeConfiguration<Assignment>
             .HasDatabaseName("ix_assignments_center_id_created_by_teacher_id");
 
         // Constraints
-        builder.ToTable(t => 
+        builder.ToTable(t =>
         {
             t.HasCheckConstraint("ck_assignments_status", "status IN ('Draft', 'Published', 'Closed', 'Archived')");
         });

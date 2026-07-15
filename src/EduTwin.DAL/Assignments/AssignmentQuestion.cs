@@ -9,7 +9,7 @@ public class AssignmentQuestion : ITenantJoinEntity
     public Guid CenterId { get; set; }
     public Guid AssignmentId { get; set; }
     public ulong QuestionId { get; set; }
-    
+
     public uint OrderIndex { get; set; }
     public decimal Points { get; set; }
 

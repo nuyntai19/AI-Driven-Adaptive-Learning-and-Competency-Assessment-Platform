@@ -9,7 +9,7 @@ public class CurriculumClass : ITenantJoinEntity
     public Guid CenterId { get; set; }
     public Guid CurriculumId { get; set; }
     public Guid ClassId { get; set; }
-    
+
     public DateTime AssignedAt { get; set; }
     public Guid AssignedBy { get; set; }
 

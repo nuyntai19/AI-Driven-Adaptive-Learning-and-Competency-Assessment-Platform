@@ -10,7 +10,7 @@ public class AssignmentTarget : ITenantJoinEntity
     public Guid CenterId { get; set; }
     public Guid AssignmentId { get; set; }
     public Guid StudentId { get; set; }
-    
+
     public TargetSource TargetSource { get; set; }
 
     public DateTime CreatedAt { get; set; }

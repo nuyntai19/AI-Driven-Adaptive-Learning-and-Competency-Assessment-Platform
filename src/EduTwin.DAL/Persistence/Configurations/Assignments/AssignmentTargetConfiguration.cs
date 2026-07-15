@@ -13,7 +13,7 @@ public class AssignmentTargetConfiguration : IEntityTypeConfiguration<Assignment
         // Primary Key
         builder.HasKey(at => new { at.CenterId, at.AssignmentId, at.StudentId })
             .HasName("pk_assignment_targets");
-        
+
         // Properties
         builder.Property(at => at.CenterId)
             .HasColumnName("center_id")
@@ -48,7 +48,7 @@ public class AssignmentTargetConfiguration : IEntityTypeConfiguration<Assignment
             .HasDatabaseName("ix_assignment_targets_center_id_student_id");
 
         // Constraints
-        builder.ToTable(t => 
+        builder.ToTable(t =>
         {
             t.HasCheckConstraint("ck_assignment_targets_target_source", "target_source IN ('WholeClass', 'SelectedStudents', 'GapGroup')");
         });
