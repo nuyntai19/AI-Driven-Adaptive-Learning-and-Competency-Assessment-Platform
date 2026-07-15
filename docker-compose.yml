@@ -1,3 +1,8 @@
+# Migration Instructions:
+# 1. Export/load ConnectionStrings__Default from local .env to your terminal session.
+# 2. Run: dotnet tool restore
+# 3. Create migration: dotnet ef migrations add <Name> -p src/EduTwin.DAL -s src/EduTwin.DAL -o Persistence/Migrations
+# 4. Apply migration: dotnet ef database update -p src/EduTwin.DAL -s src/EduTwin.DAL
 services:
   mysql:
     image: mysql:8.0.35
