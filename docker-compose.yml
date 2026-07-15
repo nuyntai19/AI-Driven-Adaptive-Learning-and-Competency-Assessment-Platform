@@ -25,6 +25,7 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - ASPNETCORE_URLS=http://+:8080
+      - Logging__LogLevel__Default=${Logging__LogLevel__Default:-Information}
       - ConnectionStrings__Default=${ConnectionStrings__Default}
       - Jwt__SigningKey=${Jwt__SigningKey}
       - Jwt__Issuer=${Jwt__Issuer}

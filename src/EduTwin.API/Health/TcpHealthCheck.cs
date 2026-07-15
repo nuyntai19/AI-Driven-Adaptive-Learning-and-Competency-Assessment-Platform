@@ -16,23 +16,29 @@ public class TcpHealthCheck : IHealthCheck
 
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(2000);
+
         try
         {
             using var tcpClient = new TcpClient();
-            var connectTask = tcpClient.ConnectAsync(_host, _port);
-            var delayTask = Task.Delay(2000, cancellationToken);
+            await tcpClient.ConnectAsync(_host, _port, cts.Token);
             
-            var completedTask = await Task.WhenAny(connectTask, delayTask);
-            
-            if (completedTask == connectTask && tcpClient.Connected)
-            {
-                return HealthCheckResult.Healthy();
-            }
-            
-            return HealthCheckResult.Unhealthy("TCP connection failed or timed out.");
+            return HealthCheckResult.Healthy();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Propagate if the caller actively cancelled
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            // Internal timeout reached
+            return HealthCheckResult.Unhealthy("TCP connection timed out after 2 seconds.");
         }
         catch (Exception ex)
         {
+            // Socket or network failures
             return HealthCheckResult.Unhealthy(ex.Message);
         }
     }
