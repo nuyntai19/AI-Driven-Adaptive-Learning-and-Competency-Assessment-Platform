@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using EduTwin.DAL.Recommendations;
 
@@ -20,6 +20,9 @@ public class LearningPathConfiguration : IEntityTypeConfiguration<LearningPath>
 
         builder.HasIndex(l => new { l.CenterId, l.SubjectId })
             .HasDatabaseName("ix_learning_paths_center_id_subject_id");
+
+        builder.HasIndex(l => new { l.CenterId, l.GeneratedFromAttemptId })
+            .HasDatabaseName("ix_learning_paths_center_id_generated_from_attempt_id");
 
         builder.Property(l => l.LearningPathId).HasColumnName("learning_path_id").HasColumnType("varchar(36)").IsRequired();
         builder.Property(l => l.StudentId).HasColumnName("student_id").HasColumnType("varchar(36)").IsRequired();
@@ -71,5 +74,12 @@ public class LearningPathConfiguration : IEntityTypeConfiguration<LearningPath>
             .HasPrincipalKey(s => new { s.CenterId, s.SubjectId })
             .OnDelete(DeleteBehavior.Restrict)
             .HasConstraintName("fk_learning_paths_subjects_subject");
+
+        builder.HasOne(l => l.GeneratedFromAttempt)
+            .WithMany()
+            .HasForeignKey(l => new { l.CenterId, l.GeneratedFromAttemptId })
+            .HasPrincipalKey(a => new { a.CenterId, a.AttemptId })
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_learning_paths_attempts_generated_from_attempt");
     }
 }

@@ -1,7 +1,8 @@
-﻿using System;
+using System;
 using System.Text.Json;
 using EduTwin.DAL.Persistence.Models;
 using EduTwin.DAL.Organization;
+using EduTwin.DAL.AssessmentAndReasoning;
 using EduTwin.DAL.KnowledgeGraph;
 using EduTwin.Contracts.DigitalTwin;
 
@@ -31,4 +32,6 @@ public class TwinUpdateHistory : ITenantAppendOnlyEntity
     public Student Student { get; set; } = null!;
     public Subject Subject { get; set; } = null!;
     public KnowledgeNode TopicNode { get; set; } = null!;
+    public Attempt? Attempt { get; set; }
+    public ReasoningAnalysis? Analysis { get; set; }
 }

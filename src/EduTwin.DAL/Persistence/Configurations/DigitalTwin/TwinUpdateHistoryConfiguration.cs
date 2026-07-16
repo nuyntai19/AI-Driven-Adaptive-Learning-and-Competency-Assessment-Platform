@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using EduTwin.DAL.DigitalTwin;
@@ -24,6 +24,9 @@ public class TwinUpdateHistoryConfiguration : IEntityTypeConfiguration<TwinUpdat
 
         builder.HasIndex(h => new { h.CenterId, h.SubjectId })
             .HasDatabaseName("ix_twin_update_history_center_id_subject_id");
+
+        builder.HasIndex(h => new { h.CenterId, h.AnalysisId })
+            .HasDatabaseName("ix_twin_update_history_center_id_analysis_id");
 
         builder.Property(h => h.HistoryId).HasColumnName("history_id").HasColumnType("bigint unsigned").ValueGeneratedOnAdd();
         builder.Property(h => h.StudentId).HasColumnName("student_id").HasColumnType("varchar(36)").IsRequired();
@@ -84,5 +87,19 @@ public class TwinUpdateHistoryConfiguration : IEntityTypeConfiguration<TwinUpdat
             .HasPrincipalKey(n => new { n.CenterId, n.NodeId })
             .OnDelete(DeleteBehavior.Restrict)
             .HasConstraintName("fk_twin_update_history_knowledge_nodes_topic_node");
+
+        builder.HasOne(h => h.Attempt)
+            .WithMany()
+            .HasForeignKey(h => new { h.CenterId, h.AttemptId })
+            .HasPrincipalKey(a => new { a.CenterId, a.AttemptId })
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_twin_update_history_attempts_attempt");
+
+        builder.HasOne(h => h.Analysis)
+            .WithMany()
+            .HasForeignKey(h => new { h.CenterId, h.AnalysisId })
+            .HasPrincipalKey(ra => new { ra.CenterId, ra.AnalysisId })
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_twin_update_history_reasoning_analyses_analysis");
     }
 }

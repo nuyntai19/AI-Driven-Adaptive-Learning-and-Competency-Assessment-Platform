@@ -1,7 +1,8 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using EduTwin.DAL.Persistence.Models;
 using EduTwin.DAL.Organization;
+using EduTwin.DAL.AssessmentAndReasoning;
 using EduTwin.Contracts.Recommendations;
 
 namespace EduTwin.DAL.Recommendations;
@@ -30,4 +31,5 @@ public class LearningPath : IMutableTenantAggregate
     public Student Student { get; set; } = null!;
     public Subject Subject { get; set; } = null!;
     public ICollection<LearningPathItem> Items { get; set; } = new List<LearningPathItem>();
+    public Attempt? GeneratedFromAttempt { get; set; }
 }

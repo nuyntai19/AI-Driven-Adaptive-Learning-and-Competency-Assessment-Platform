@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using EduTwin.DAL.Recommendations;
@@ -24,6 +24,9 @@ public class RecommendationConfiguration : IEntityTypeConfiguration<Recommendati
 
         builder.HasIndex(r => new { r.CenterId, r.QuestionId })
             .HasDatabaseName("ix_recommendations_center_id_question_id");
+
+        builder.HasIndex(r => new { r.CenterId, r.SourceAttemptId })
+            .HasDatabaseName("ix_recommendations_center_id_source_attempt_id");
 
         builder.Property(r => r.RecommendationId).HasColumnName("recommendation_id").HasColumnType("bigint unsigned").ValueGeneratedNever();
         builder.Property(r => r.StudentId).HasColumnName("student_id").HasColumnType("varchar(36)").IsRequired();
@@ -102,5 +105,12 @@ public class RecommendationConfiguration : IEntityTypeConfiguration<Recommendati
             .HasPrincipalKey(q => new { q.CenterId, q.QuestionId })
             .OnDelete(DeleteBehavior.Restrict)
             .HasConstraintName("fk_recommendations_questions_question");
+
+        builder.HasOne(r => r.SourceAttempt)
+            .WithMany()
+            .HasForeignKey(r => new { r.CenterId, r.SourceAttemptId })
+            .HasPrincipalKey(a => new { a.CenterId, a.AttemptId })
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_recommendations_attempts_source_attempt");
     }
 }

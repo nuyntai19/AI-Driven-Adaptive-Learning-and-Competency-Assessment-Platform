@@ -1,6 +1,7 @@
-﻿using System;
+using System;
 using EduTwin.DAL.Persistence.Models;
 using EduTwin.DAL.Organization;
+using EduTwin.DAL.AssessmentAndReasoning;
 using EduTwin.DAL.KnowledgeGraph;
 
 namespace EduTwin.DAL.DigitalTwin;
@@ -30,4 +31,5 @@ public class KnowledgeTwin : IMutableTenantAggregate
     public Student Student { get; set; } = null!;
     public Subject Subject { get; set; } = null!;
     public KnowledgeNode TopicNode { get; set; } = null!;
+    public Attempt? LastAttempt { get; set; }
 }

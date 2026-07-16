@@ -5,6 +5,7 @@ using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.Assignments;
 using EduTwin.DAL.DigitalTwin;
 using EduTwin.DAL.Recommendations;
+using EduTwin.DAL.AssessmentAndReasoning;
 using Microsoft.EntityFrameworkCore;
 using System.Reflection;
 
@@ -54,6 +55,11 @@ public class EduTwinDbContext : DbContext
     public DbSet<LearningPath> LearningPaths => Set<LearningPath>();
     public DbSet<LearningPathItem> LearningPathItems => Set<LearningPathItem>();
     public DbSet<Recommendation> Recommendations => Set<Recommendation>();
+
+    // Assessment and Reasoning
+    public DbSet<Attempt> Attempts => Set<Attempt>();
+    public DbSet<ReasoningAnalysis> ReasoningAnalyses => Set<ReasoningAnalysis>();
+    public DbSet<AIAnalysisJob> AIAnalysisJobs => Set<AIAnalysisJob>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

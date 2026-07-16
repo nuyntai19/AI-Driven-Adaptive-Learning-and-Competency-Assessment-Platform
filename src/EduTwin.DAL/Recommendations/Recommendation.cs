@@ -1,7 +1,8 @@
-﻿using System;
+using System;
 using System.Text.Json;
 using EduTwin.DAL.Persistence.Models;
 using EduTwin.DAL.Organization;
+using EduTwin.DAL.AssessmentAndReasoning;
 using EduTwin.DAL.KnowledgeGraph;
 using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.Contracts.Recommendations;
@@ -39,4 +40,5 @@ public class Recommendation : IMutableTenantAggregate
     public Subject Subject { get; set; } = null!;
     public KnowledgeNode TopicNode { get; set; } = null!;
     public Question? Question { get; set; }
+    public Attempt? SourceAttempt { get; set; }
 }

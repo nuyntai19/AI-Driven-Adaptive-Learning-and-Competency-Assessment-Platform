@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using EduTwin.DAL.DigitalTwin;
 
@@ -21,6 +21,9 @@ public class KnowledgeTwinConfiguration : IEntityTypeConfiguration<KnowledgeTwin
 
         builder.HasIndex(t => new { t.CenterId, t.TopicNodeId })
             .HasDatabaseName("ix_knowledge_twins_center_id_topic_node_id");
+
+        builder.HasIndex(t => new { t.CenterId, t.LastAttemptId })
+            .HasDatabaseName("ix_knowledge_twins_center_id_last_attempt_id");
 
         builder.Property(t => t.KnowledgeTwinId).HasColumnName("knowledge_twin_id").HasColumnType("bigint unsigned").ValueGeneratedNever();
         builder.Property(t => t.StudentId).HasColumnName("student_id").HasColumnType("varchar(36)").IsRequired();
@@ -68,5 +71,12 @@ public class KnowledgeTwinConfiguration : IEntityTypeConfiguration<KnowledgeTwin
             .HasPrincipalKey(n => new { n.CenterId, n.NodeId })
             .OnDelete(DeleteBehavior.Restrict)
             .HasConstraintName("fk_knowledge_twins_knowledge_nodes_topic_node");
+
+        builder.HasOne(t => t.LastAttempt)
+            .WithMany()
+            .HasForeignKey(t => new { t.CenterId, t.LastAttemptId })
+            .HasPrincipalKey(a => new { a.CenterId, a.AttemptId })
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_knowledge_twins_attempts_last_attempt");
     }
 }
