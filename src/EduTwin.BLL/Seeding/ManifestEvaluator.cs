@@ -37,7 +37,7 @@ public class SeedExecutionPlan
 
         bool seedA = statusA == TenantSeedStatus.Missing;
         bool seedB = statusB == TenantSeedStatus.Missing;
-        
+
         int hashes = 0;
         if (seedA) hashes += 8;
         if (seedB) hashes += 8;
@@ -113,7 +113,7 @@ public class ManifestEvaluator : IManifestEvaluator
     private async Task<bool> CheckGlobalCollisionsAsync(SeedDataContainer expected, Guid centerId)
     {
         if (await _dbContext.Centers.AnyAsync(c => c.CenterCode == expected.Center.CenterCode && c.CenterId != centerId)) return true;
-        
+
         foreach (var u in expected.Users)
             if (await _dbContext.Users.AnyAsync(x => x.UserId == u.UserId && x.CenterId != centerId)) return true;
 
@@ -134,10 +134,10 @@ public class ManifestEvaluator : IManifestEvaluator
 
         foreach (var e in expected.Edges)
             if (await _dbContext.KnowledgeEdges.AnyAsync(x => x.EdgeId == e.EdgeId && x.CenterId != centerId)) return true;
-        
+
         foreach (var o in expected.QuestionOptions)
             if (await _dbContext.QuestionOptions.AnyAsync(x => x.OptionId == o.OptionId && x.CenterId != centerId)) return true;
-        
+
         foreach (var g in expected.Goals)
             if (await _dbContext.StudentSubjectGoals.AnyAsync(x => x.GoalId == g.GoalId && x.CenterId != centerId)) return true;
 

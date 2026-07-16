@@ -229,13 +229,13 @@ public class EduTwinRuntimeSeederTests
     {
         var db = CreateMockContext(includeThirdTenant: true);
         var evaluator = new ManifestEvaluator(db);
-        
+
         var thirdCenterExists = await db.Set<Center>().AnyAsync(c => c.CenterCode == "C_TENANT");
         Assert.True(thirdCenterExists); // Confirming third tenant is in the mock data
 
         var statusA = await evaluator.EvaluateTenantAsync(true);
         var statusB = await evaluator.EvaluateTenantAsync(false);
-        
+
         Assert.Equal(TenantSeedStatus.Missing, statusA);
         Assert.Equal(TenantSeedStatus.Missing, statusB);
     }
@@ -311,7 +311,7 @@ public class EduTwinRuntimeSeederTests
     {
         var factory = new EduTwinSeedFactory(true);
         var data = factory.CreateData();
-        
+
         // Setup a database where another center has taken Center A's code
         var db = CreateMockContext();
         var anotherCenter = new Center { CenterId = Guid.NewGuid(), CenterCode = data.Center.CenterCode, CenterName = "Imposter", Timezone = "UTC" };
@@ -342,7 +342,7 @@ public class EduTwinRuntimeSeederTests
     {
         var factoryA = new EduTwinSeedFactory(true);
         var dataA = factoryA.CreateData();
-        
+
         var db = CreateMockContext();
         var mockContext = Mock.Get(db);
         var edge = dataA.Edges[0];
@@ -360,7 +360,7 @@ public class EduTwinRuntimeSeederTests
     {
         var factoryA = new EduTwinSeedFactory(true);
         var dataA = factoryA.CreateData();
-        
+
         var db = CreateMockContext();
         var mockContext = Mock.Get(db);
         var option = dataA.QuestionOptions[0];
@@ -377,7 +377,7 @@ public class EduTwinRuntimeSeederTests
     {
         var factoryA = new EduTwinSeedFactory(true);
         var dataA = factoryA.CreateData();
-        
+
         var db = CreateMockContext();
         var mockContext = Mock.Get(db);
         var goal = dataA.Goals[0];
@@ -394,7 +394,7 @@ public class EduTwinRuntimeSeederTests
     {
         var factoryA = new EduTwinSeedFactory(true);
         var dataA = factoryA.CreateData();
-        
+
         var db = CreateMockContext();
         var mockContext = Mock.Get(db);
         // DB has no Center, but has a Subject belonging to Center A
@@ -411,7 +411,7 @@ public class EduTwinRuntimeSeederTests
     {
         var factoryA = new EduTwinSeedFactory(true);
         var dataA = factoryA.CreateData();
-        
+
         var db = CreateMockContext();
         var mockContext = Mock.Get(db);
         // DB has no Center, but has a Goal belonging to Center A
@@ -493,14 +493,14 @@ public class EduTwinRuntimeSeederTests
         var mockEvaluator = new Mock<IManifestEvaluator>();
         mockEvaluator.Setup(e => e.EvaluateTenantAsync(true)).ReturnsAsync(TenantSeedStatus.Conflict);
         mockEvaluator.Setup(e => e.EvaluateTenantAsync(false)).ReturnsAsync(TenantSeedStatus.Missing);
-        
+
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { { "Seed:CenterManagerPassword", "VerySecurePassword123" } }).Build();
         var logger = new Mock<ILogger<EduTwinRuntimeSeeder>>();
-        
+
         var seeder = new EduTwinRuntimeSeeder(db, logger.Object, config, mockHasher.Object, mockEvaluator.Object);
-        
+
         await Assert.ThrowsAsync<InvalidOperationException>(() => seeder.SeedAsync());
-        
+
         mockHasher.Verify(h => h.HashPassword(It.IsAny<User>(), It.IsAny<string>()), Times.Never);
     }
 
@@ -511,14 +511,14 @@ public class EduTwinRuntimeSeederTests
         var mockHasher = new Mock<Microsoft.AspNetCore.Identity.IPasswordHasher<User>>();
         var mockEvaluator = new Mock<IManifestEvaluator>();
         mockEvaluator.Setup(e => e.EvaluateTenantAsync(It.IsAny<bool>())).ReturnsAsync(TenantSeedStatus.Complete);
-        
+
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { { "Seed:CenterManagerPassword", "VerySecurePassword123" } }).Build();
         var logger = new Mock<ILogger<EduTwinRuntimeSeeder>>();
-        
+
         var seeder = new EduTwinRuntimeSeeder(db, logger.Object, config, mockHasher.Object, mockEvaluator.Object);
-        
+
         await seeder.SeedAsync();
-        
+
         mockHasher.Verify(h => h.HashPassword(It.IsAny<User>(), It.IsAny<string>()), Times.Never);
     }
 }
