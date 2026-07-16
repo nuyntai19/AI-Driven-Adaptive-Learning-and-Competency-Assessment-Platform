@@ -28,7 +28,7 @@ services:
       dockerfile: src/EduTwin.API/Dockerfile
     container_name: ${COMPOSE_PROJECT_NAME}-api
     environment:
-      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Development}
       - ASPNETCORE_URLS=http://+:8080
       - Logging__LogLevel__Default=${Logging__LogLevel__Default:-Information}
       - ConnectionStrings__Default=${ConnectionStrings__Default}
@@ -39,6 +39,8 @@ services:
       - Gemini__Model=${Gemini__Model}
       - HealthChecks__MySqlHost=${HealthChecks__MySqlHost}
       - HealthChecks__MySqlPort=${HealthChecks__MySqlPort}
+      - Seed__Enabled=${Seed__Enabled:-true}
+      - Seed__CenterManagerPassword=${Seed__CenterManagerPassword}
     ports:
       - "${API_PORT}:8080"
     depends_on:

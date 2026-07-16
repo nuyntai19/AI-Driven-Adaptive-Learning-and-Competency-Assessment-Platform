@@ -14,4 +14,8 @@
     <ProjectReference Include="..\EduTwin.Contracts\EduTwin.Contracts.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Identity.Core" Version="10.0.7" />
+  </ItemGroup>
+
 </Project>

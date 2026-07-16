@@ -1,4 +1,5 @@
 using EduTwin.API.Health;
+using EduTwin.BLL.Seeding;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -16,7 +17,15 @@ builder.Services.AddHealthChecks()
         tags: null
     ));
 
+builder.Services.AddEduTwinBll(builder.Configuration);
+
 var app = builder.Build();
+
+// --- Initialization ---
+bool isDev = app.Environment.IsDevelopment() || 
+             app.Configuration["ASPNETCORE_ENVIRONMENT"] == "Development" ||
+             app.Configuration["DOTNET_ENVIRONMENT"] == "Development";
+await app.Services.ApplyMigrationsAndSeedAsync(app.Configuration, isDev);
 
 // --- Middleware Pipeline ---
 app.MapControllers();
