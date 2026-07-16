@@ -49,6 +49,12 @@ Các mapping được duyệt (CP-P04-001):
 3. Canonical: ux_student_assignment_progress_center_id_assignment_id_student_id
    Physical alias: ux_student_assignment_progress_center_assignment_id_student_id
 
+Các mapping được duyệt (CP-P05-001):
+1. Canonical: ix_twin_update_history_center_id_student_id_subject_id_created_at
+   Physical alias: ix_twin_update_history_center_student_subject_created_at
+2. Canonical: ix_recommendations_center_id_student_id_subject_id_status_generated_at
+   Physical alias: ix_recommendations_center_student_subject_status_generated_at
+
 ### 2.2. Kiểu dữ liệu chuẩn
 
 | Khái niệm | MySQL type | Ghi chú |

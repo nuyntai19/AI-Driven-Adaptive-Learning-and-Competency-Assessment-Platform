@@ -3,6 +3,8 @@ using EduTwin.DAL.Organization;
 using EduTwin.DAL.KnowledgeGraph;
 using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.Assignments;
+using EduTwin.DAL.DigitalTwin;
+using EduTwin.DAL.Recommendations;
 using Microsoft.EntityFrameworkCore;
 using System.Reflection;
 
@@ -40,6 +42,18 @@ public class EduTwinDbContext : DbContext
     public DbSet<AssignmentQuestion> AssignmentQuestions => Set<AssignmentQuestion>();
     public DbSet<AssignmentTarget> AssignmentTargets => Set<AssignmentTarget>();
     public DbSet<StudentAssignmentProgress> StudentAssignmentProgresses => Set<StudentAssignmentProgress>();
+
+    // DigitalTwin
+    public DbSet<StudentSubjectGoal> StudentSubjectGoals => Set<StudentSubjectGoal>();
+    public DbSet<StudentTwin> StudentTwins => Set<StudentTwin>();
+    public DbSet<KnowledgeTwin> KnowledgeTwins => Set<KnowledgeTwin>();
+    public DbSet<BehaviorTwin> BehaviorTwins => Set<BehaviorTwin>();
+    public DbSet<TwinUpdateHistory> TwinUpdateHistories => Set<TwinUpdateHistory>();
+
+    // Recommendations
+    public DbSet<LearningPath> LearningPaths => Set<LearningPath>();
+    public DbSet<LearningPathItem> LearningPathItems => Set<LearningPathItem>();
+    public DbSet<Recommendation> Recommendations => Set<Recommendation>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
