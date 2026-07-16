@@ -3,6 +3,7 @@ using System;
 using EduTwin.DAL.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,403 +11,16 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EduTwin.DAL.Persistence.Migrations
 {
     [DbContext(typeof(EduTwinDbContext))]
-    partial class EduTwinDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260716055819_AddDigitalTwinPersonalization")]
+    partial class AddDigitalTwinPersonalization
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
                 .HasAnnotation("ProductVersion", "10.0.7")
                 .HasAnnotation("Relational:MaxIdentifierLength", 64);
-
-            modelBuilder.Entity("EduTwin.DAL.AssessmentAndReasoning.AIAnalysisJob", b =>
-                {
-                    b.Property<ulong>("AnalysisJobId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint unsigned")
-                        .HasColumnName("analysis_job_id");
-
-                    b.Property<ulong>("AttemptId")
-                        .HasColumnType("bigint unsigned")
-                        .HasColumnName("attempt_id");
-
-                    b.Property<DateTime>("AvailableAt")
-                        .HasColumnType("datetime(6)")
-                        .HasColumnName("available_at");
-
-                    b.Property<string>("CenterId")
-                        .IsRequired()
-                        .HasColumnType("varchar(36)")
-                        .HasColumnName("center_id");
-
-                    b.Property<DateTime?>("CompletedAt")
-                        .HasColumnType("datetime(6)")
-                        .HasColumnName("completed_at");
-
-                    b.Property<string>("CorrelationId")
-                        .IsRequired()
-                        .HasColumnType("varchar(64)")
-                        .HasColumnName("correlation_id");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("CreatedBy")
-                        .HasColumnType("varchar(36)")
-                        .HasColumnName("created_by");
-
-                    b.Property<string>("LastErrorCode")
-                        .HasColumnType("varchar(100)")
-                        .HasColumnName("last_error_code");
-
-                    b.Property<string>("LastErrorMessage")
-                        .HasColumnType("varchar(1000)")
-                        .HasColumnName("last_error_message");
-
-                    b.Property<string>("LeaseOwner")
-                        .HasColumnType("varchar(100)")
-                        .HasColumnName("lease_owner");
-
-                    b.Property<DateTime?>("LeaseUntil")
-                        .HasColumnType("datetime(6)")
-                        .HasColumnName("lease_until");
-
-                    b.Property<byte>("RetryCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("tinyint unsigned")
-                        .HasDefaultValue((byte)0)
-                        .HasColumnName("retry_count");
-
-                    b.Property<ulong>("RowVersion")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint unsigned")
-                        .HasDefaultValue(1ul)
-                        .HasColumnName("row_version");
-
-                    b.Property<DateTime?>("StartedAt")
-                        .HasColumnType("datetime(6)")
-                        .HasColumnName("started_at");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("varchar(32)")
-                        .HasColumnName("status");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime(6)")
-                        .HasColumnName("updated_at");
-
-                    b.HasKey("AnalysisJobId")
-                        .HasName("pk_ai_analysis_jobs");
-
-                    b.HasIndex("CenterId", "AttemptId")
-                        .IsUnique()
-                        .HasDatabaseName("ux_ai_analysis_jobs_center_id_attempt_id");
-
-                    b.HasIndex("CenterId", "Status", "CreatedAt")
-                        .HasDatabaseName("ix_ai_analysis_jobs_center_id_status_created_at");
-
-                    b.HasIndex("Status", "AvailableAt", "LeaseUntil")
-                        .HasDatabaseName("ix_ai_analysis_jobs_status_available_at_lease_until");
-
-                    b.ToTable("ai_analysis_jobs", null, t =>
-                        {
-                            t.HasCheckConstraint("ck_ai_analysis_jobs_retry_count", "`retry_count` BETWEEN 0 AND 1");
-
-                            t.HasCheckConstraint("ck_ai_analysis_jobs_status", "`status` IN ('Pending', 'Processing', 'Completed', 'FallbackCompleted', 'FailedTerminal')");
-                        });
-                });
-
-            modelBuilder.Entity("EduTwin.DAL.AssessmentAndReasoning.Attempt", b =>
-                {
-                    b.Property<ulong>("AttemptId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint unsigned")
-                        .HasColumnName("attempt_id");
-
-                    b.Property<uint>("AnswerChanges")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int unsigned")
-                        .HasDefaultValue(0u)
-                        .HasColumnName("answer_changes");
-
-                    b.Property<string>("AssignmentId")
-                        .HasColumnType("varchar(36)")
-                        .HasColumnName("assignment_id");
-
-                    b.Property<decimal?>("AwardedScore")
-                        .HasColumnType("decimal(5,2)")
-                        .HasColumnName("awarded_score");
-
-                    b.Property<string>("CenterId")
-                        .IsRequired()
-                        .HasColumnType("varchar(36)")
-                        .HasColumnName("center_id");
-
-                    b.Property<string>("ClientSubmissionId")
-                        .IsRequired()
-                        .HasColumnType("varchar(36)")
-                        .HasColumnName("client_submission_id");
-
-                    b.Property<decimal>("Confidence")
-                        .HasColumnType("decimal(5,2)")
-                        .HasColumnName("confidence");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("CreatedBy")
-                        .HasColumnType("varchar(36)")
-                        .HasColumnName("created_by");
-
-                    b.Property<string>("FinalAnswer")
-                        .IsRequired()
-                        .HasColumnType("longtext")
-                        .HasColumnName("final_answer");
-
-                    b.Property<bool?>("IsCorrect")
-                        .HasColumnType("tinyint(1)")
-                        .HasColumnName("is_correct");
-
-                    b.Property<ulong>("QuestionId")
-                        .HasColumnType("bigint unsigned")
-                        .HasColumnName("question_id");
-
-                    b.Property<string>("ReasoningLanguage")
-                        .IsRequired()
-                        .HasColumnType("varchar(8)")
-                        .HasColumnName("reasoning_language");
-
-                    b.Property<string>("ReasoningText")
-                        .HasColumnType("longtext")
-                        .HasColumnName("reasoning_text");
-
-                    b.Property<ulong>("RowVersion")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint unsigned")
-                        .HasDefaultValue(1ul)
-                        .HasColumnName("row_version");
-
-                    b.Property<bool>("Skipped")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("tinyint(1)")
-                        .HasDefaultValue(false)
-                        .HasColumnName("skipped");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("varchar(32)")
-                        .HasColumnName("status");
-
-                    b.Property<string>("StudentId")
-                        .IsRequired()
-                        .HasColumnType("varchar(36)")
-                        .HasColumnName("student_id");
-
-                    b.Property<uint>("TimeSpentSeconds")
-                        .HasColumnType("int unsigned")
-                        .HasColumnName("time_spent_seconds");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime(6)")
-                        .HasColumnName("updated_at");
-
-                    b.HasKey("AttemptId")
-                        .HasName("pk_attempts");
-
-                    b.HasAlternateKey("CenterId", "AttemptId")
-                        .HasName("ux_attempts_center_id_attempt_id");
-
-                    b.HasIndex("CenterId", "QuestionId")
-                        .HasDatabaseName("ix_attempts_center_id_question_id");
-
-                    b.HasIndex("CenterId", "AssignmentId", "StudentId")
-                        .HasDatabaseName("ix_attempts_center_id_assignment_id_student_id");
-
-                    b.HasIndex("CenterId", "Status", "CreatedAt")
-                        .HasDatabaseName("ix_attempts_center_id_status_created_at");
-
-                    b.HasIndex("CenterId", "StudentId", "ClientSubmissionId")
-                        .IsUnique()
-                        .HasDatabaseName("ux_attempts_center_id_student_id_client_submission_id");
-
-                    b.HasIndex("CenterId", "StudentId", "QuestionId", "CreatedAt")
-                        .HasDatabaseName("ix_attempts_center_id_student_id_question_id_created_at");
-
-                    b.ToTable("attempts", null, t =>
-                        {
-                            t.HasCheckConstraint("ck_attempts_confidence", "`confidence` BETWEEN 0 AND 100");
-
-                            t.HasCheckConstraint("ck_attempts_reasoning_language", "`reasoning_language` IN ('vi', 'en')");
-
-                            t.HasCheckConstraint("ck_attempts_status", "`status` IN ('PendingAnalysis', 'Processing', 'Completed', 'NeedsTeacherReview')");
-
-                            t.HasCheckConstraint("ck_attempts_time_spent_seconds", "`time_spent_seconds` >= 0");
-                        });
-                });
-
-            modelBuilder.Entity("EduTwin.DAL.AssessmentAndReasoning.ReasoningAnalysis", b =>
-                {
-                    b.Property<ulong>("AnalysisId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint unsigned")
-                        .HasColumnName("analysis_id");
-
-                    b.Property<decimal?>("AnalysisConfidence")
-                        .HasColumnType("decimal(5,2)")
-                        .HasColumnName("analysis_confidence");
-
-                    b.Property<ulong>("AttemptId")
-                        .HasColumnType("bigint unsigned")
-                        .HasColumnName("attempt_id");
-
-                    b.Property<string>("CenterId")
-                        .IsRequired()
-                        .HasColumnType("varchar(36)")
-                        .HasColumnName("center_id");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("CreatedBy")
-                        .HasColumnType("varchar(36)")
-                        .HasColumnName("created_by");
-
-                    b.Property<string>("ErrorType")
-                        .IsRequired()
-                        .HasColumnType("varchar(32)")
-                        .HasColumnName("error_type");
-
-                    b.Property<string>("Feedback")
-                        .IsRequired()
-                        .HasColumnType("longtext")
-                        .HasColumnName("feedback");
-
-                    b.Property<bool>("IsFallback")
-                        .HasColumnType("tinyint(1)")
-                        .HasColumnName("is_fallback");
-
-                    b.Property<string>("MethodDetected")
-                        .HasColumnType("varchar(500)")
-                        .HasColumnName("method_detected");
-
-                    b.Property<string>("Misconception")
-                        .HasColumnType("varchar(1000)")
-                        .HasColumnName("misconception");
-
-                    b.Property<string>("MissingSteps")
-                        .IsRequired()
-                        .HasColumnType("json")
-                        .HasColumnName("missing_steps");
-
-                    b.Property<string>("ModelName")
-                        .HasColumnType("varchar(100)")
-                        .HasColumnName("model_name");
-
-                    b.Property<bool>("NeedsTeacherReview")
-                        .HasColumnType("tinyint(1)")
-                        .HasColumnName("needs_teacher_review");
-
-                    b.Property<DateTime?>("OverriddenAt")
-                        .HasColumnType("datetime(6)")
-                        .HasColumnName("overridden_at");
-
-                    b.Property<string>("OverriddenByTeacherId")
-                        .HasColumnType("varchar(36)")
-                        .HasColumnName("overridden_by_teacher_id");
-
-                    b.Property<string>("OverrideErrorType")
-                        .HasColumnType("varchar(32)")
-                        .HasColumnName("override_error_type");
-
-                    b.Property<string>("OverrideFeedback")
-                        .HasColumnType("longtext")
-                        .HasColumnName("override_feedback");
-
-                    b.Property<bool?>("OverrideIsCorrect")
-                        .HasColumnType("tinyint(1)")
-                        .HasColumnName("override_is_correct");
-
-                    b.Property<string>("OverrideReason")
-                        .HasColumnType("varchar(1000)")
-                        .HasColumnName("override_reason");
-
-                    b.Property<decimal?>("OverrideReasoningQuality")
-                        .HasColumnType("decimal(5,2)")
-                        .HasColumnName("override_reasoning_quality");
-
-                    b.Property<uint>("OverrideVersion")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int unsigned")
-                        .HasDefaultValue(0u)
-                        .HasColumnName("override_version");
-
-                    b.Property<string>("Provider")
-                        .IsRequired()
-                        .HasColumnType("varchar(32)")
-                        .HasColumnName("provider");
-
-                    b.Property<decimal?>("ReasoningQuality")
-                        .HasColumnType("decimal(5,2)")
-                        .HasColumnName("reasoning_quality");
-
-                    b.Property<string>("RootCauseNodeIds")
-                        .IsRequired()
-                        .HasColumnType("json")
-                        .HasColumnName("root_cause_node_ids");
-
-                    b.Property<ulong>("RowVersion")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint unsigned")
-                        .HasDefaultValue(1ul)
-                        .HasColumnName("row_version");
-
-                    b.Property<string>("SchemaVersion")
-                        .IsRequired()
-                        .HasColumnType("varchar(20)")
-                        .HasColumnName("schema_version");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime(6)")
-                        .HasColumnName("updated_at");
-
-                    b.HasKey("AnalysisId")
-                        .HasName("pk_reasoning_analyses");
-
-                    b.HasAlternateKey("CenterId", "AnalysisId")
-                        .HasName("ux_reasoning_analyses_center_id_analysis_id");
-
-                    b.HasIndex("CenterId", "AttemptId")
-                        .IsUnique()
-                        .HasDatabaseName("ux_reasoning_analyses_center_id_attempt_id");
-
-                    b.HasIndex("CenterId", "OverriddenByTeacherId")
-                        .HasDatabaseName("ix_reasoning_analyses_center_id_overridden_by_teacher_id");
-
-                    b.HasIndex("CenterId", "NeedsTeacherReview", "CreatedAt")
-                        .HasDatabaseName("ix_reasoning_analyses_center_id_needs_teacher_review_created_at");
-
-                    b.ToTable("reasoning_analyses", null, t =>
-                        {
-                            t.HasCheckConstraint("ck_reasoning_analyses_analysis_confidence", "`analysis_confidence` IS NULL OR `analysis_confidence` BETWEEN 0 AND 100");
-
-                            t.HasCheckConstraint("ck_reasoning_analyses_error_type", "`error_type` IN ('None', 'Knowledge', 'Skill', 'Reasoning', 'Behavior', 'Presentation', 'Unknown')");
-
-                            t.HasCheckConstraint("ck_reasoning_analyses_override_error_type", "`override_error_type` IS NULL OR `override_error_type` IN ('None', 'Knowledge', 'Skill', 'Reasoning', 'Behavior', 'Presentation', 'Unknown')");
-
-                            t.HasCheckConstraint("ck_reasoning_analyses_override_reasoning_quality", "`override_reasoning_quality` IS NULL OR `override_reasoning_quality` BETWEEN 0 AND 100");
-
-                            t.HasCheckConstraint("ck_reasoning_analyses_provider", "`provider` IN ('Gemini', 'RuleBased')");
-
-                            t.HasCheckConstraint("ck_reasoning_analyses_reasoning_quality", "`reasoning_quality` IS NULL OR `reasoning_quality` BETWEEN 0 AND 100");
-                        });
-                });
 
             modelBuilder.Entity("EduTwin.DAL.Assignments.Assignment", b =>
                 {
@@ -1326,9 +940,6 @@ namespace EduTwin.DAL.Persistence.Migrations
                     b.HasKey("KnowledgeTwinId")
                         .HasName("pk_knowledge_twins");
 
-                    b.HasIndex("CenterId", "LastAttemptId")
-                        .HasDatabaseName("ix_knowledge_twins_center_id_last_attempt_id");
-
                     b.HasIndex("CenterId", "TopicNodeId")
                         .HasDatabaseName("ix_knowledge_twins_center_id_topic_node_id");
 
@@ -1602,9 +1213,6 @@ namespace EduTwin.DAL.Persistence.Migrations
 
                     b.HasKey("HistoryId")
                         .HasName("pk_twin_update_history");
-
-                    b.HasIndex("CenterId", "AnalysisId")
-                        .HasDatabaseName("ix_twin_update_history_center_id_analysis_id");
 
                     b.HasIndex("CenterId", "AttemptId")
                         .HasDatabaseName("ix_twin_update_history_center_id_attempt_id");
@@ -2550,9 +2158,6 @@ namespace EduTwin.DAL.Persistence.Migrations
                     b.HasAlternateKey("CenterId", "LearningPathId")
                         .HasName("ux_learning_paths_center_id_learning_path_id");
 
-                    b.HasIndex("CenterId", "GeneratedFromAttemptId")
-                        .HasDatabaseName("ix_learning_paths_center_id_generated_from_attempt_id");
-
                     b.HasIndex("CenterId", "SubjectId")
                         .HasDatabaseName("ix_learning_paths_center_id_subject_id");
 
@@ -2784,9 +2389,6 @@ namespace EduTwin.DAL.Persistence.Migrations
                     b.HasIndex("CenterId", "QuestionId")
                         .HasDatabaseName("ix_recommendations_center_id_question_id");
 
-                    b.HasIndex("CenterId", "SourceAttemptId")
-                        .HasDatabaseName("ix_recommendations_center_id_source_attempt_id");
-
                     b.HasIndex("CenterId", "SubjectId")
                         .HasDatabaseName("ix_recommendations_center_id_subject_id");
 
@@ -2804,73 +2406,6 @@ namespace EduTwin.DAL.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_recommendations_status", "`status` IN ('Active', 'Accepted', 'Dismissed', 'Superseded')");
                         });
-                });
-
-            modelBuilder.Entity("EduTwin.DAL.AssessmentAndReasoning.AIAnalysisJob", b =>
-                {
-                    b.HasOne("EduTwin.DAL.AssessmentAndReasoning.Attempt", "Attempt")
-                        .WithMany()
-                        .HasForeignKey("CenterId", "AttemptId")
-                        .HasPrincipalKey("CenterId", "AttemptId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_ai_analysis_jobs_attempts_attempt");
-
-                    b.Navigation("Attempt");
-                });
-
-            modelBuilder.Entity("EduTwin.DAL.AssessmentAndReasoning.Attempt", b =>
-                {
-                    b.HasOne("EduTwin.DAL.Assignments.Assignment", "Assignment")
-                        .WithMany()
-                        .HasForeignKey("CenterId", "AssignmentId")
-                        .HasPrincipalKey("CenterId", "AssignmentId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_attempts_assignments_assignment");
-
-                    b.HasOne("EduTwin.DAL.CurriculumAndQuestions.Question", "Question")
-                        .WithMany()
-                        .HasForeignKey("CenterId", "QuestionId")
-                        .HasPrincipalKey("CenterId", "QuestionId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_attempts_questions_question");
-
-                    b.HasOne("EduTwin.DAL.Organization.Student", "Student")
-                        .WithMany()
-                        .HasForeignKey("CenterId", "StudentId")
-                        .HasPrincipalKey("CenterId", "StudentId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_attempts_students_student");
-
-                    b.Navigation("Assignment");
-
-                    b.Navigation("Question");
-
-                    b.Navigation("Student");
-                });
-
-            modelBuilder.Entity("EduTwin.DAL.AssessmentAndReasoning.ReasoningAnalysis", b =>
-                {
-                    b.HasOne("EduTwin.DAL.AssessmentAndReasoning.Attempt", "Attempt")
-                        .WithMany()
-                        .HasForeignKey("CenterId", "AttemptId")
-                        .HasPrincipalKey("CenterId", "AttemptId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_reasoning_analyses_attempts_attempt");
-
-                    b.HasOne("EduTwin.DAL.Organization.Teacher", "OverriddenByTeacher")
-                        .WithMany()
-                        .HasForeignKey("CenterId", "OverriddenByTeacherId")
-                        .HasPrincipalKey("CenterId", "TeacherId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_reasoning_analyses_teachers_overridden_by_teacher");
-
-                    b.Navigation("Attempt");
-
-                    b.Navigation("OverriddenByTeacher");
                 });
 
             modelBuilder.Entity("EduTwin.DAL.Assignments.Assignment", b =>
@@ -3128,13 +2663,6 @@ namespace EduTwin.DAL.Persistence.Migrations
 
             modelBuilder.Entity("EduTwin.DAL.DigitalTwin.KnowledgeTwin", b =>
                 {
-                    b.HasOne("EduTwin.DAL.AssessmentAndReasoning.Attempt", "LastAttempt")
-                        .WithMany()
-                        .HasForeignKey("CenterId", "LastAttemptId")
-                        .HasPrincipalKey("CenterId", "AttemptId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_knowledge_twins_attempts_last_attempt");
-
                     b.HasOne("EduTwin.DAL.Organization.Student", "Student")
                         .WithMany()
                         .HasForeignKey("CenterId", "StudentId")
@@ -3158,8 +2686,6 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_knowledge_twins_knowledge_nodes_topic_node");
-
-                    b.Navigation("LastAttempt");
 
                     b.Navigation("Student");
 
@@ -3206,20 +2732,6 @@ namespace EduTwin.DAL.Persistence.Migrations
 
             modelBuilder.Entity("EduTwin.DAL.DigitalTwin.TwinUpdateHistory", b =>
                 {
-                    b.HasOne("EduTwin.DAL.AssessmentAndReasoning.ReasoningAnalysis", "Analysis")
-                        .WithMany()
-                        .HasForeignKey("CenterId", "AnalysisId")
-                        .HasPrincipalKey("CenterId", "AnalysisId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_twin_update_history_reasoning_analyses_analysis");
-
-                    b.HasOne("EduTwin.DAL.AssessmentAndReasoning.Attempt", "Attempt")
-                        .WithMany()
-                        .HasForeignKey("CenterId", "AttemptId")
-                        .HasPrincipalKey("CenterId", "AttemptId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_twin_update_history_attempts_attempt");
-
                     b.HasOne("EduTwin.DAL.Organization.Student", "Student")
                         .WithMany()
                         .HasForeignKey("CenterId", "StudentId")
@@ -3243,10 +2755,6 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_twin_update_history_knowledge_nodes_topic_node");
-
-                    b.Navigation("Analysis");
-
-                    b.Navigation("Attempt");
 
                     b.Navigation("Student");
 
@@ -3430,13 +2938,6 @@ namespace EduTwin.DAL.Persistence.Migrations
 
             modelBuilder.Entity("EduTwin.DAL.Recommendations.LearningPath", b =>
                 {
-                    b.HasOne("EduTwin.DAL.AssessmentAndReasoning.Attempt", "GeneratedFromAttempt")
-                        .WithMany()
-                        .HasForeignKey("CenterId", "GeneratedFromAttemptId")
-                        .HasPrincipalKey("CenterId", "AttemptId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_learning_paths_attempts_generated_from_attempt");
-
                     b.HasOne("EduTwin.DAL.Organization.Student", "Student")
                         .WithMany()
                         .HasForeignKey("CenterId", "StudentId")
@@ -3452,8 +2953,6 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_learning_paths_subjects_subject");
-
-                    b.Navigation("GeneratedFromAttempt");
 
                     b.Navigation("Student");
 
@@ -3501,13 +3000,6 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_recommendations_questions_question");
 
-                    b.HasOne("EduTwin.DAL.AssessmentAndReasoning.Attempt", "SourceAttempt")
-                        .WithMany()
-                        .HasForeignKey("CenterId", "SourceAttemptId")
-                        .HasPrincipalKey("CenterId", "AttemptId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_recommendations_attempts_source_attempt");
-
                     b.HasOne("EduTwin.DAL.Organization.Student", "Student")
                         .WithMany()
                         .HasForeignKey("CenterId", "StudentId")
@@ -3533,8 +3025,6 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasConstraintName("fk_recommendations_knowledge_nodes_topic_node");
 
                     b.Navigation("Question");
-
-                    b.Navigation("SourceAttempt");
 
                     b.Navigation("Student");
 

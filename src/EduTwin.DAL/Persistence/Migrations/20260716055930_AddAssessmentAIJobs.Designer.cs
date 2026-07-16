@@ -3,6 +3,7 @@ using System;
 using EduTwin.DAL.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EduTwin.DAL.Persistence.Migrations
 {
     [DbContext(typeof(EduTwinDbContext))]
-    partial class EduTwinDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260716055930_AddAssessmentAIJobs")]
+    partial class AddAssessmentAIJobs
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
