@@ -30,7 +30,7 @@ public class KnowledgeGraphValidator
                 graph[edge.SourceNodeId] = new List<ulong>();
             if (!graph.ContainsKey(edge.TargetNodeId))
                 graph[edge.TargetNodeId] = new List<ulong>();
-                
+
             graph[edge.SourceNodeId].Add(edge.TargetNodeId);
         }
 

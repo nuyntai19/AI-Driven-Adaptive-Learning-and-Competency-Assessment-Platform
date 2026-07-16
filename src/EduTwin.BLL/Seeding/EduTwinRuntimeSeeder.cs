@@ -18,19 +18,23 @@ public class EduTwinRuntimeSeeder
     private readonly EduTwinDbContext _dbContext;
     private readonly ILogger<EduTwinRuntimeSeeder> _logger;
     private readonly IConfiguration _config;
-    private readonly PasswordHasher<User> _passwordHasher;
+    private readonly IPasswordHasher<User> _passwordHasher;
     private readonly KnowledgeGraphValidator _dagValidator;
+    private readonly IManifestEvaluator _evaluator;
 
     public EduTwinRuntimeSeeder(
         EduTwinDbContext dbContext,
         ILogger<EduTwinRuntimeSeeder> logger,
-        IConfiguration config)
+        IConfiguration config,
+        IPasswordHasher<User> passwordHasher,
+        IManifestEvaluator evaluator)
     {
         _dbContext = dbContext;
         _logger = logger;
         _config = config;
-        _passwordHasher = new PasswordHasher<User>();
+        _passwordHasher = passwordHasher;
         _dagValidator = new KnowledgeGraphValidator();
+        _evaluator = evaluator;
     }
 
     public async Task SeedAsync()
@@ -41,81 +45,116 @@ public class EduTwinRuntimeSeeder
             throw new InvalidOperationException("Secure Seed:CenterManagerPassword is required and must be at least 12 characters.");
         }
 
-        await SeedCenterAsync(true, password);
-        _dbContext.ChangeTracker.Clear();
-        await SeedCenterAsync(false, password);
-    }
+        var statusA = await _evaluator.EvaluateTenantAsync(true);
+        var statusB = await _evaluator.EvaluateTenantAsync(false);
 
-    private async Task SeedCenterAsync(bool isCenterA, string password)
-    {
-        var factory = new EduTwinSeedFactory(isCenterA);
-        
-        // Use a dummy user to hash the password for this specific run
-        var passwordHash = _passwordHasher.HashPassword(new User(), password);
-        var data = factory.CreateData(passwordHash);
+        var plan = SeedExecutionPlan.Create(statusA, statusB);
 
-        var centerId = data.Center.CenterId;
-        var centerCode = data.Center.CenterCode;
-
-        // Idempotency Check
-        var existingCenter = await _dbContext.Centers.FirstOrDefaultAsync(c => c.CenterId == centerId);
-        var existingCodeCenter = await _dbContext.Centers.FirstOrDefaultAsync(c => c.CenterCode == centerCode);
-
-        if (existingCodeCenter != null && existingCodeCenter.CenterId != centerId)
+        if (plan.HasConflict)
         {
-            throw new InvalidOperationException($"CenterCode {centerCode} exists with a different CenterId.");
+            _logger.LogError("Tenant conflict detected. A={StatusA}, B={StatusB}. Cannot proceed with seeding.", statusA, statusB);
+            throw new InvalidOperationException($"Tenant conflict detected. A={statusA}, B={statusB}. Cannot proceed with seeding.");
         }
 
-        if (existingCenter != null)
+        if (plan.IsNoOp)
         {
-            // Validate deterministic sentinel counts
-            var userCount = await _dbContext.Users.CountAsync(u => u.CenterId == centerId);
-            if (userCount < 8)
-            {
-                throw new InvalidOperationException($"Tenant {centerCode} is partially seeded or conflicting.");
-            }
-            
-            _logger.LogInformation("Tenant {CenterCode} already exists. Skipping seed.", centerCode);
+            _logger.LogInformation("Database is already fully seeded according to manifest. Skipping seed.");
             return;
         }
 
-        // Validate DAG before saving
-        _dagValidator.ValidateDag(data.Edges);
+        var factoryA = new EduTwinSeedFactory(true);
+        var dataA = plan.ShouldSeedA ? factoryA.CreateData() : null;
 
-        using var transaction = await _dbContext.Database.BeginTransactionAsync();
+        var factoryB = new EduTwinSeedFactory(false);
+        var dataB = plan.ShouldSeedB ? factoryB.CreateData() : null;
+
+        // R14: Cross-tenant isolation assertions (if both are generated)
+        if (dataA != null && dataB != null)
+        {
+            ValidateTenantIsolation(dataA, dataB);
+        }
+
+        // Apply password hashes (R08 & R18)
+        var applicator = new SeedPasswordApplicator(_passwordHasher);
+        applicator.ApplyHashes(plan, dataA, dataB, password);
+
+        // Validate DAGs (R10)
+        if (dataA != null) _dagValidator.ValidateDag(dataA.Edges);
+        if (dataB != null) _dagValidator.ValidateDag(dataB.Edges);
+
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync();
         try
         {
-            _dbContext.Centers.Add(data.Center);
-            _dbContext.Users.AddRange(data.Users);
-            _dbContext.Teachers.AddRange(data.Teachers);
-            _dbContext.Students.AddRange(data.Students);
-            _dbContext.Subjects.AddRange(data.Subjects);
-            _dbContext.Classes.AddRange(data.Classes);
-            _dbContext.ClassStudents.AddRange(data.ClassStudents);
-            
-            _dbContext.KnowledgeNodes.AddRange(data.Topics);
-            _dbContext.KnowledgeEdges.AddRange(data.Edges);
-            
-            _dbContext.Curriculums.AddRange(data.Curriculums);
-            _dbContext.CurriculumClasses.AddRange(data.CurriculumClasses);
-            _dbContext.CurriculumNodes.AddRange(data.CurriculumNodes);
-            
-            _dbContext.Questions.AddRange(data.Questions);
-            _dbContext.QuestionOptions.AddRange(data.QuestionOptions);
-            _dbContext.QuestionKnowledgeNodes.AddRange(data.QuestionNodes);
-            
-            _dbContext.StudentSubjectGoals.AddRange(data.Goals);
+            if (dataA != null) InsertData(dataA);
+            if (dataB != null) InsertData(dataB);
 
             await _dbContext.SaveChangesAsync();
             await transaction.CommitAsync();
 
-            _logger.LogInformation("Tenant {CenterCode} seeded successfully.", centerCode);
+            _logger.LogInformation("Seeding applied successfully. Tenant A: {StatusA}, Tenant B: {StatusB}, Hashes: {Hashes}", statusA, statusB, plan.ExpectedUsersToHash);
         }
         catch (Exception ex)
         {
             await transaction.RollbackAsync();
-            _logger.LogError(ex, "Error seeding Tenant {CenterCode}.", centerCode);
+            _logger.LogError(ex, "Error seeding database. Transaction rolled back completely.");
             throw;
+        }
+    }
+
+    private void ValidateTenantIsolation(SeedDataContainer dataA, SeedDataContainer dataB)
+    {
+        if (dataA.Users.Any(ua => dataB.Users.Any(ub => ub.UserId == ua.UserId)))
+            throw new InvalidOperationException("Cross-tenant leak detected: Shared User ID.");
+
+        if (dataA.Students.Any(sa => dataB.ClassStudents.Any(csb => csb.StudentId == sa.StudentId)))
+            throw new InvalidOperationException("Cross-tenant leak detected: Student A in Class B.");
+
+        if (dataA.Topics.Any(ta => dataB.Edges.Any(eb => eb.SourceNodeId == ta.NodeId || eb.TargetNodeId == ta.NodeId)))
+            throw new InvalidOperationException("Cross-tenant leak detected: Topic A used in Edge B.");
+    }
+
+    private void InsertData(SeedDataContainer data)
+    {
+        _dbContext.Centers.Add(data.Center);
+        _dbContext.Users.AddRange(data.Users);
+        _dbContext.Teachers.AddRange(data.Teachers);
+        _dbContext.Students.AddRange(data.Students);
+        _dbContext.Subjects.AddRange(data.Subjects);
+        _dbContext.Classes.AddRange(data.Classes);
+        _dbContext.ClassStudents.AddRange(data.ClassStudents);
+
+        _dbContext.KnowledgeNodes.AddRange(data.Topics);
+        _dbContext.KnowledgeEdges.AddRange(data.Edges);
+
+        _dbContext.Curriculums.AddRange(data.Curriculums);
+        _dbContext.CurriculumClasses.AddRange(data.CurriculumClasses);
+        _dbContext.CurriculumNodes.AddRange(data.CurriculumNodes);
+
+        _dbContext.Questions.AddRange(data.Questions);
+        _dbContext.QuestionOptions.AddRange(data.QuestionOptions);
+        _dbContext.QuestionKnowledgeNodes.AddRange(data.QuestionNodes);
+
+        _dbContext.StudentSubjectGoals.AddRange(data.Goals);
+    }
+}
+
+public class SeedPasswordApplicator
+{
+    private readonly IPasswordHasher<User> _passwordHasher;
+    public SeedPasswordApplicator(IPasswordHasher<User> passwordHasher) => _passwordHasher = passwordHasher;
+
+    public void ApplyHashes(SeedExecutionPlan plan, SeedDataContainer? dataA, SeedDataContainer? dataB, string password)
+    {
+        if (plan.HasConflict || plan.IsNoOp) return;
+        if (plan.ShouldSeedA && dataA != null) ApplyPasswordHashes(dataA, password);
+        if (plan.ShouldSeedB && dataB != null) ApplyPasswordHashes(dataB, password);
+    }
+
+    private void ApplyPasswordHashes(SeedDataContainer data, string password)
+    {
+        foreach (var user in data.Users)
+        {
+            user.PasswordHash = _passwordHasher.HashPassword(user, password);
         }
     }
 }

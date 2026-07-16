@@ -27,15 +27,17 @@ public static class DeterministicSeedIds
     public const ulong CenterBGoalIdBase = 20000;
 
     // Subjects
-    public static readonly Guid SubjectMathId = new("30000000-0000-0000-0000-000000000003");
-    public static readonly Guid SubjectEnglishId = new("40000000-0000-0000-0000-000000000004");
-    
+    public static readonly Guid CenterAMathSubjectId = new("30000000-0000-0000-0000-000000000003");
+    public static readonly Guid CenterAEnglishSubjectId = new("40000000-0000-0000-0000-000000000004");
+    public static readonly Guid CenterBMathSubjectId = new("30000000-0000-0000-0000-000000000009");
+    public static readonly Guid CenterBEnglishSubjectId = new("40000000-0000-0000-0000-000000000009");
+
     // Classes
     public static readonly Guid CenterAMathClassId = new("50000000-0000-0000-0000-000000000005");
     public static readonly Guid CenterAEnglishClassId = new("60000000-0000-0000-0000-000000000006");
     public static readonly Guid CenterBMathClassId = new("70000000-0000-0000-0000-000000000007");
     public static readonly Guid CenterBEnglishClassId = new("80000000-0000-0000-0000-000000000008");
-    
+
     // Curriculums
     public static readonly Guid CenterAMathCurriculumId = new("90000000-0000-0000-0000-000000000009");
     public static readonly Guid CenterAEnglishCurriculumId = new("a0000000-0000-0000-0000-00000000000a");

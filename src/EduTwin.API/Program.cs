@@ -1,3 +1,4 @@
+using System;
 using EduTwin.API.Health;
 using EduTwin.BLL.Seeding;
 
@@ -22,9 +23,16 @@ builder.Services.AddEduTwinBll(builder.Configuration);
 var app = builder.Build();
 
 // --- Initialization ---
-bool isDev = app.Environment.IsDevelopment() || 
-             app.Configuration["ASPNETCORE_ENVIRONMENT"] == "Development" ||
-             app.Configuration["DOTNET_ENVIRONMENT"] == "Development";
+bool isDev = app.Environment.IsDevelopment();
+
+bool seedEnabled = app.Configuration.GetValue<bool>("Seed:Enabled");
+
+if (seedEnabled && !isDev)
+{
+    // R11: Strict startup guard
+    throw new InvalidOperationException("CRITICAL SECURITY ERROR: Seeding is enabled in a non-Development environment! Shutting down to protect data.");
+}
+
 await app.Services.ApplyMigrationsAndSeedAsync(app.Configuration, isDev);
 
 // --- Middleware Pipeline ---
