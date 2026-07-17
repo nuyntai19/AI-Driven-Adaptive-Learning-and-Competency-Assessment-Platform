@@ -5,6 +5,11 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using EduTwin.DAL.Persistence;
 using EduTwin.DAL.Seeding;
+using EduTwin.DAL.Organization;
+using EduTwin.DAL.IdentityAndTenancy;
+using EduTwin.DAL.KnowledgeGraph;
+using EduTwin.DAL.CurriculumAndQuestions;
+using EduTwin.DAL.DigitalTwin;
 
 namespace EduTwin.BLL.Seeding;
 
@@ -65,7 +70,14 @@ public class ManifestEvaluator : IManifestEvaluator
         _dbContext = dbContext;
     }
 
+    // Development-only deterministic seed infrastructure must inspect all tenants and soft-deleted rows.
+    private IQueryable<T> GetUnfiltered<T>() where T : class
+    {
+        return _dbContext.Set<T>().IgnoreQueryFilters();
+    }
+
     public async Task<TenantSeedStatus> EvaluateTenantAsync(bool isCenterA)
+
     {
         var factory = new EduTwinSeedFactory(isCenterA);
         var expected = factory.CreateData();
@@ -77,11 +89,11 @@ public class ManifestEvaluator : IManifestEvaluator
         }
 
         // Check if any center row exists for this ID, regardless of IsDeleted status
-        var centerExists = await _dbContext.Centers.AnyAsync(c => c.CenterId == centerId);
+        var centerExists = await GetUnfiltered<Center>().AnyAsync(c => c.CenterId == centerId);
         if (centerExists)
         {
             // Center is physically in the DB, check if it's soft-deleted
-            var isSoftDeleted = await _dbContext.Centers.AnyAsync(c => c.CenterId == centerId && c.IsDeleted);
+            var isSoftDeleted = await GetUnfiltered<Center>().AnyAsync(c => c.CenterId == centerId && c.IsDeleted);
             if (isSoftDeleted) return TenantSeedStatus.Conflict;
         }
         else
@@ -112,67 +124,69 @@ public class ManifestEvaluator : IManifestEvaluator
 
     private async Task<bool> CheckGlobalCollisionsAsync(SeedDataContainer expected, Guid centerId)
     {
-        if (await _dbContext.Centers.AnyAsync(c => c.CenterCode == expected.Center.CenterCode && c.CenterId != centerId)) return true;
+        if (await GetUnfiltered<Center>().AnyAsync(c => c.CenterCode == expected.Center.CenterCode && c.CenterId != centerId)) return true;
 
         foreach (var u in expected.Users)
-            if (await _dbContext.Users.AnyAsync(x => x.UserId == u.UserId && x.CenterId != centerId)) return true;
+            if (await GetUnfiltered<User>().AnyAsync(x => x.UserId == u.UserId && x.CenterId != centerId)) return true;
 
         foreach (var s in expected.Subjects)
-            if (await _dbContext.Subjects.AnyAsync(x => x.SubjectId == s.SubjectId && x.CenterId != centerId)) return true;
+            if (await GetUnfiltered<Subject>().AnyAsync(x => x.SubjectId == s.SubjectId && x.CenterId != centerId)) return true;
 
         foreach (var c in expected.Classes)
-            if (await _dbContext.Classes.AnyAsync(x => x.ClassId == c.ClassId && x.CenterId != centerId)) return true;
+            if (await GetUnfiltered<Class>().AnyAsync(x => x.ClassId == c.ClassId && x.CenterId != centerId)) return true;
 
         foreach (var c in expected.Curriculums)
-            if (await _dbContext.Curriculums.AnyAsync(x => x.CurriculumId == c.CurriculumId && x.CenterId != centerId)) return true;
+            if (await GetUnfiltered<Curriculum>().AnyAsync(x => x.CurriculumId == c.CurriculumId && x.CenterId != centerId)) return true;
 
         foreach (var n in expected.Topics)
-            if (await _dbContext.KnowledgeNodes.AnyAsync(x => x.NodeId == n.NodeId && x.CenterId != centerId)) return true;
+            if (await GetUnfiltered<KnowledgeNode>().AnyAsync(x => x.NodeId == n.NodeId && x.CenterId != centerId)) return true;
 
         foreach (var q in expected.Questions)
-            if (await _dbContext.Questions.AnyAsync(x => x.QuestionId == q.QuestionId && x.CenterId != centerId)) return true;
+            if (await GetUnfiltered<Question>().AnyAsync(x => x.QuestionId == q.QuestionId && x.CenterId != centerId)) return true;
 
         foreach (var e in expected.Edges)
-            if (await _dbContext.KnowledgeEdges.AnyAsync(x => x.EdgeId == e.EdgeId && x.CenterId != centerId)) return true;
+            if (await GetUnfiltered<KnowledgeEdge>().AnyAsync(x => x.EdgeId == e.EdgeId && x.CenterId != centerId)) return true;
 
         foreach (var o in expected.QuestionOptions)
-            if (await _dbContext.QuestionOptions.AnyAsync(x => x.OptionId == o.OptionId && x.CenterId != centerId)) return true;
+            if (await GetUnfiltered<QuestionOption>().AnyAsync(x => x.OptionId == o.OptionId && x.CenterId != centerId)) return true;
 
         foreach (var g in expected.Goals)
-            if (await _dbContext.StudentSubjectGoals.AnyAsync(x => x.GoalId == g.GoalId && x.CenterId != centerId)) return true;
+            if (await GetUnfiltered<StudentSubjectGoal>().AnyAsync(x => x.GoalId == g.GoalId && x.CenterId != centerId)) return true;
 
         return false;
     }
 
+
     private async Task<bool> HasOrphanDataAsync(Guid centerId)
     {
-        return await _dbContext.Users.AnyAsync(u => u.CenterId == centerId)
-            || await _dbContext.Teachers.AnyAsync(t => t.CenterId == centerId)
-            || await _dbContext.Students.AnyAsync(s => s.CenterId == centerId)
-            || await _dbContext.Subjects.AnyAsync(s => s.CenterId == centerId)
-            || await _dbContext.Classes.AnyAsync(c => c.CenterId == centerId)
-            || await _dbContext.ClassStudents.AnyAsync(cs => cs.CenterId == centerId)
-            || await _dbContext.KnowledgeNodes.AnyAsync(n => n.CenterId == centerId)
-            || await _dbContext.KnowledgeEdges.AnyAsync(e => e.CenterId == centerId)
-            || await _dbContext.Curriculums.AnyAsync(c => c.CenterId == centerId)
-            || await _dbContext.CurriculumClasses.AnyAsync(cc => cc.CenterId == centerId)
-            || await _dbContext.CurriculumNodes.AnyAsync(cn => cn.CenterId == centerId)
-            || await _dbContext.Questions.AnyAsync(q => q.CenterId == centerId)
-            || await _dbContext.QuestionOptions.AnyAsync(qo => qo.CenterId == centerId)
-            || await _dbContext.QuestionKnowledgeNodes.AnyAsync(qkn => qkn.CenterId == centerId)
-            || await _dbContext.StudentSubjectGoals.AnyAsync(g => g.CenterId == centerId);
+        return await GetUnfiltered<User>().AnyAsync(u => u.CenterId == centerId)
+            || await GetUnfiltered<Teacher>().AnyAsync(t => t.CenterId == centerId)
+            || await GetUnfiltered<Student>().AnyAsync(s => s.CenterId == centerId)
+            || await GetUnfiltered<Subject>().AnyAsync(s => s.CenterId == centerId)
+            || await GetUnfiltered<Class>().AnyAsync(c => c.CenterId == centerId)
+            || await GetUnfiltered<ClassStudent>().AnyAsync(cs => cs.CenterId == centerId)
+            || await GetUnfiltered<KnowledgeNode>().AnyAsync(n => n.CenterId == centerId)
+            || await GetUnfiltered<KnowledgeEdge>().AnyAsync(e => e.CenterId == centerId)
+            || await GetUnfiltered<Curriculum>().AnyAsync(c => c.CenterId == centerId)
+            || await GetUnfiltered<CurriculumClass>().AnyAsync(cc => cc.CenterId == centerId)
+            || await GetUnfiltered<CurriculumNode>().AnyAsync(cn => cn.CenterId == centerId)
+            || await GetUnfiltered<Question>().AnyAsync(q => q.CenterId == centerId)
+            || await GetUnfiltered<QuestionOption>().AnyAsync(qo => qo.CenterId == centerId)
+            || await GetUnfiltered<QuestionKnowledgeNode>().AnyAsync(qkn => qkn.CenterId == centerId)
+            || await GetUnfiltered<StudentSubjectGoal>().AnyAsync(g => g.CenterId == centerId);
     }
+
 
     private async Task<bool> IsMatchCenterAsync(SeedDataContainer expected, Guid centerId)
     {
-        var c = await _dbContext.Centers.FirstOrDefaultAsync(c => c.CenterId == centerId && !c.IsDeleted && c.Status == EduTwin.Contracts.Organization.CenterStatus.Active);
+        var c = await GetUnfiltered<Center>().FirstOrDefaultAsync(c => c.CenterId == centerId && !c.IsDeleted && c.Status == EduTwin.Contracts.Organization.CenterStatus.Active);
         return c != null && c.CenterCode == expected.Center.CenterCode;
     }
 
     private async Task<bool> IsMatchUsersAsync(SeedDataContainer expected, Guid centerId)
     {
         var expectedSet = expected.Users.Select(u => (u.UserId, u.Username, u.RoleName)).ToHashSet();
-        var actualList = await _dbContext.Users.Where(u => u.CenterId == centerId && !u.IsDeleted && u.Status == EduTwin.Contracts.IdentityAndTenancy.UserStatus.Active)
+        var actualList = await GetUnfiltered<User>().Where(u => u.CenterId == centerId && !u.IsDeleted && u.Status == EduTwin.Contracts.IdentityAndTenancy.UserStatus.Active)
             .Select(u => new { u.UserId, u.Username, u.RoleName }).ToListAsync();
         var actualSet = actualList.Select(u => (u.UserId, u.Username, u.RoleName)).ToHashSet();
         return expectedSet.SetEquals(actualSet);
@@ -181,13 +195,13 @@ public class ManifestEvaluator : IManifestEvaluator
     private async Task<bool> IsMatchTeachersAsync(SeedDataContainer expected, Guid centerId)
     {
         var expectedSet = expected.Teachers.Select(t => t.TeacherId).ToHashSet();
-        var actualList = await _dbContext.Teachers.Where(t => t.CenterId == centerId && !t.IsDeleted).Select(t => t.TeacherId).ToListAsync();
+        var actualList = await GetUnfiltered<Teacher>().Where(t => t.CenterId == centerId && !t.IsDeleted).Select(t => t.TeacherId).ToListAsync();
         return expectedSet.SetEquals(actualList);
     }
 
     private async Task<bool> IsMatchStudentsAsync(SeedDataContainer expected, Guid centerId)
     {
-        var activeStudentsQuery = _dbContext.Students.Where(s => s.CenterId == centerId && !s.IsDeleted);
+        var activeStudentsQuery = GetUnfiltered<Student>().Where(s => s.CenterId == centerId && !s.IsDeleted);
         var activeCount = await activeStudentsQuery.CountAsync();
 
         if (activeCount != expected.Students.Count)
@@ -215,7 +229,7 @@ public class ManifestEvaluator : IManifestEvaluator
     private async Task<bool> IsMatchSubjectsAsync(SeedDataContainer expected, Guid centerId)
     {
         var expectedSet = expected.Subjects.Select(s => (s.SubjectId, s.SubjectCode)).ToHashSet();
-        var actualList = await _dbContext.Subjects.Where(s => s.CenterId == centerId && !s.IsDeleted && s.IsActive).Select(s => new { s.SubjectId, s.SubjectCode }).ToListAsync();
+        var actualList = await GetUnfiltered<Subject>().Where(s => s.CenterId == centerId && !s.IsDeleted && s.IsActive).Select(s => new { s.SubjectId, s.SubjectCode }).ToListAsync();
         var actualSet = actualList.Select(s => (s.SubjectId, s.SubjectCode)).ToHashSet();
         return expectedSet.SetEquals(actualSet);
     }
@@ -223,7 +237,7 @@ public class ManifestEvaluator : IManifestEvaluator
     private async Task<bool> IsMatchClassesAsync(SeedDataContainer expected, Guid centerId)
     {
         var expectedSet = expected.Classes.Select(c => (c.ClassId, c.TeacherId, c.SubjectId, c.AcademicYear)).ToHashSet();
-        var actualList = await _dbContext.Classes.Where(c => c.CenterId == centerId && !c.IsDeleted && c.Status == EduTwin.Contracts.Organization.ClassStatus.Active).Select(c => new { c.ClassId, c.TeacherId, c.SubjectId, c.AcademicYear }).ToListAsync();
+        var actualList = await GetUnfiltered<Class>().Where(c => c.CenterId == centerId && !c.IsDeleted && c.Status == EduTwin.Contracts.Organization.ClassStatus.Active).Select(c => new { c.ClassId, c.TeacherId, c.SubjectId, c.AcademicYear }).ToListAsync();
         var actualSet = actualList.Select(c => (c.ClassId, c.TeacherId, c.SubjectId, c.AcademicYear)).ToHashSet();
         return expectedSet.SetEquals(actualSet);
     }
@@ -231,7 +245,7 @@ public class ManifestEvaluator : IManifestEvaluator
     private async Task<bool> IsMatchClassStudentsAsync(SeedDataContainer expected, Guid centerId)
     {
         var expectedSet = expected.ClassStudents.Select(cs => (cs.ClassId, cs.StudentId, cs.Status)).ToHashSet();
-        var actualList = await _dbContext.ClassStudents.Where(cs => cs.CenterId == centerId).Select(cs => new { cs.ClassId, cs.StudentId, cs.Status }).ToListAsync();
+        var actualList = await GetUnfiltered<ClassStudent>().Where(cs => cs.CenterId == centerId).Select(cs => new { cs.ClassId, cs.StudentId, cs.Status }).ToListAsync();
         var actualSet = actualList.Select(cs => (cs.ClassId, cs.StudentId, cs.Status)).ToHashSet();
         return expectedSet.SetEquals(actualSet);
     }
@@ -239,7 +253,7 @@ public class ManifestEvaluator : IManifestEvaluator
     private async Task<bool> IsMatchTopicsAsync(SeedDataContainer expected, Guid centerId)
     {
         var expectedSet = expected.Topics.Select(t => (t.NodeId, t.SubjectId, t.NodeCode, t.NodeType, t.OrderIndex, t.ExamImportance, t.EstimatedLearningMinutes)).ToHashSet();
-        var actualList = await _dbContext.KnowledgeNodes.Where(n => n.CenterId == centerId && !n.IsDeleted && n.IsActive && n.NodeType == EduTwin.Contracts.KnowledgeGraph.NodeType.Topic)
+        var actualList = await GetUnfiltered<KnowledgeNode>().Where(n => n.CenterId == centerId && !n.IsDeleted && n.IsActive && n.NodeType == EduTwin.Contracts.KnowledgeGraph.NodeType.Topic)
             .Select(n => new { n.NodeId, n.SubjectId, n.NodeCode, n.NodeType, n.OrderIndex, n.ExamImportance, n.EstimatedLearningMinutes }).ToListAsync();
         var actualSet = actualList.Select(n => (n.NodeId, n.SubjectId, n.NodeCode, n.NodeType, n.OrderIndex, n.ExamImportance, n.EstimatedLearningMinutes)).ToHashSet();
         return expectedSet.SetEquals(actualSet);
@@ -248,7 +262,7 @@ public class ManifestEvaluator : IManifestEvaluator
     private async Task<bool> IsMatchEdgesAsync(SeedDataContainer expected, Guid centerId)
     {
         var expectedSet = expected.Edges.Select(e => (e.EdgeId, e.SubjectId, e.SourceNodeId, e.TargetNodeId, e.RelationType, e.Weight)).ToHashSet();
-        var actualList = await _dbContext.KnowledgeEdges.Where(e => e.CenterId == centerId && !e.IsDeleted)
+        var actualList = await GetUnfiltered<KnowledgeEdge>().Where(e => e.CenterId == centerId && !e.IsDeleted)
             .Select(e => new { e.EdgeId, e.SubjectId, e.SourceNodeId, e.TargetNodeId, e.RelationType, e.Weight }).ToListAsync();
         var actualSet = actualList.Select(e => (e.EdgeId, e.SubjectId, e.SourceNodeId, e.TargetNodeId, e.RelationType, e.Weight)).ToHashSet();
         return expectedSet.SetEquals(actualSet);
@@ -257,7 +271,7 @@ public class ManifestEvaluator : IManifestEvaluator
     private async Task<bool> IsMatchCurriculumsAsync(SeedDataContainer expected, Guid centerId)
     {
         var expectedSet = expected.Curriculums.Select(c => (c.CurriculumId, c.TeacherId, c.SubjectId)).ToHashSet();
-        var actualList = await _dbContext.Curriculums.Where(c => c.CenterId == centerId && !c.IsDeleted && c.ReviewStatus == EduTwin.Contracts.CurriculumAndQuestions.ReviewStatus.Published)
+        var actualList = await GetUnfiltered<Curriculum>().Where(c => c.CenterId == centerId && !c.IsDeleted && c.ReviewStatus == EduTwin.Contracts.CurriculumAndQuestions.ReviewStatus.Published)
             .Select(c => new { c.CurriculumId, c.TeacherId, c.SubjectId }).ToListAsync();
         var actualSet = actualList.Select(c => (c.CurriculumId, c.TeacherId, c.SubjectId)).ToHashSet();
         return expectedSet.SetEquals(actualSet);
@@ -266,7 +280,7 @@ public class ManifestEvaluator : IManifestEvaluator
     private async Task<bool> IsMatchCurriculumClassesAsync(SeedDataContainer expected, Guid centerId)
     {
         var expectedSet = expected.CurriculumClasses.Select(cc => (cc.CurriculumId, cc.ClassId, cc.AssignedBy)).ToHashSet();
-        var actualList = await _dbContext.CurriculumClasses.Where(cc => cc.CenterId == centerId).Select(cc => new { cc.CurriculumId, cc.ClassId, cc.AssignedBy }).ToListAsync();
+        var actualList = await GetUnfiltered<CurriculumClass>().Where(cc => cc.CenterId == centerId).Select(cc => new { cc.CurriculumId, cc.ClassId, cc.AssignedBy }).ToListAsync();
         var actualSet = actualList.Select(cc => (cc.CurriculumId, cc.ClassId, cc.AssignedBy)).ToHashSet();
         return expectedSet.SetEquals(actualSet);
     }
@@ -274,7 +288,7 @@ public class ManifestEvaluator : IManifestEvaluator
     private async Task<bool> IsMatchCurriculumNodesAsync(SeedDataContainer expected, Guid centerId)
     {
         var expectedSet = expected.CurriculumNodes.Select(cn => (cn.CurriculumId, cn.NodeId, cn.OrderIndex)).ToHashSet();
-        var actualList = await _dbContext.CurriculumNodes.Where(cn => cn.CenterId == centerId).Select(cn => new { cn.CurriculumId, cn.NodeId, cn.OrderIndex }).ToListAsync();
+        var actualList = await GetUnfiltered<CurriculumNode>().Where(cn => cn.CenterId == centerId).Select(cn => new { cn.CurriculumId, cn.NodeId, cn.OrderIndex }).ToListAsync();
         var actualSet = actualList.Select(cn => (cn.CurriculumId, cn.NodeId, cn.OrderIndex)).ToHashSet();
         return expectedSet.SetEquals(actualSet);
     }
@@ -282,7 +296,7 @@ public class ManifestEvaluator : IManifestEvaluator
     private async Task<bool> IsMatchQuestionsAsync(SeedDataContainer expected, Guid centerId)
     {
         var expectedSet = expected.Questions.Select(q => (q.QuestionId, q.SubjectId, q.PrimaryTopicNodeId, q.CreatedByTeacherId, q.QuestionType, q.Difficulty, q.LanguageCode)).ToHashSet();
-        var actualList = await _dbContext.Questions.Where(q => q.CenterId == centerId && !q.IsDeleted && q.Status == EduTwin.Contracts.CurriculumAndQuestions.QuestionStatus.Active)
+        var actualList = await GetUnfiltered<Question>().Where(q => q.CenterId == centerId && !q.IsDeleted && q.Status == EduTwin.Contracts.CurriculumAndQuestions.QuestionStatus.Active)
             .Select(q => new { q.QuestionId, q.SubjectId, q.PrimaryTopicNodeId, q.CreatedByTeacherId, q.QuestionType, q.Difficulty, q.LanguageCode }).ToListAsync();
         var actualSet = actualList.Select(q => (q.QuestionId, q.SubjectId, q.PrimaryTopicNodeId, q.CreatedByTeacherId, q.QuestionType, q.Difficulty, q.LanguageCode)).ToHashSet();
         return expectedSet.SetEquals(actualSet);
@@ -291,7 +305,7 @@ public class ManifestEvaluator : IManifestEvaluator
     private async Task<bool> IsMatchQuestionNodesAsync(SeedDataContainer expected, Guid centerId)
     {
         var expectedSet = expected.QuestionNodes.Select(qn => (qn.QuestionId, qn.NodeId, qn.MappingRole)).ToHashSet();
-        var actualList = await _dbContext.QuestionKnowledgeNodes.Where(qn => qn.CenterId == centerId).Select(qn => new { qn.QuestionId, qn.NodeId, qn.MappingRole }).ToListAsync();
+        var actualList = await GetUnfiltered<QuestionKnowledgeNode>().Where(qn => qn.CenterId == centerId).Select(qn => new { qn.QuestionId, qn.NodeId, qn.MappingRole }).ToListAsync();
         var actualSet = actualList.Select(qn => (qn.QuestionId, qn.NodeId, qn.MappingRole)).ToHashSet();
         return expectedSet.SetEquals(actualSet);
     }
@@ -299,7 +313,7 @@ public class ManifestEvaluator : IManifestEvaluator
     private async Task<bool> IsMatchQuestionOptionsAsync(SeedDataContainer expected, Guid centerId)
     {
         var expectedSet = expected.QuestionOptions.Select(o => (o.OptionId, o.QuestionId, o.OptionLabel, o.IsCorrect, o.OrderIndex)).ToHashSet();
-        var actualList = await _dbContext.QuestionOptions.Where(o => o.CenterId == centerId && !o.IsDeleted)
+        var actualList = await GetUnfiltered<QuestionOption>().Where(o => o.CenterId == centerId && !o.IsDeleted)
             .Select(o => new { o.OptionId, o.QuestionId, o.OptionLabel, o.IsCorrect, o.OrderIndex }).ToListAsync();
         var actualSet = actualList.Select(o => (o.OptionId, o.QuestionId, o.OptionLabel, o.IsCorrect, o.OrderIndex)).ToHashSet();
         return expectedSet.SetEquals(actualSet);
@@ -308,9 +322,10 @@ public class ManifestEvaluator : IManifestEvaluator
     private async Task<bool> IsMatchGoalsAsync(SeedDataContainer expected, Guid centerId)
     {
         var expectedSet = expected.Goals.Select(g => (g.GoalId, g.StudentId, g.SubjectId, g.TargetScore, g.RemainingDays, g.CurrentPredictedScore, g.RiskScore)).ToHashSet();
-        var actualList = await _dbContext.StudentSubjectGoals.Where(g => g.CenterId == centerId && !g.IsDeleted)
+        var actualList = await GetUnfiltered<StudentSubjectGoal>().Where(g => g.CenterId == centerId && !g.IsDeleted)
             .Select(g => new { g.GoalId, g.StudentId, g.SubjectId, g.TargetScore, g.RemainingDays, g.CurrentPredictedScore, g.RiskScore }).ToListAsync();
         var actualSet = actualList.Select(g => (g.GoalId, g.StudentId, g.SubjectId, g.TargetScore, g.RemainingDays, g.CurrentPredictedScore, g.RiskScore)).ToHashSet();
         return expectedSet.SetEquals(actualSet);
     }
+
 }

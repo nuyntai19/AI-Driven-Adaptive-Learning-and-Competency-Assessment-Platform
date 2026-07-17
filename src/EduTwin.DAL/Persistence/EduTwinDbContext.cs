@@ -9,13 +9,28 @@ using EduTwin.DAL.AssessmentAndReasoning;
 using Microsoft.EntityFrameworkCore;
 using System.Reflection;
 
+using EduTwin.DAL.Persistence.Tenancy;
+using EduTwin.DAL.Persistence.Models;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
 namespace EduTwin.DAL.Persistence;
 
 public class EduTwinDbContext : DbContext
 {
+    private readonly ITenantIdAccessor? _tenantIdAccessor;
+
     public EduTwinDbContext(DbContextOptions<EduTwinDbContext> options) : base(options)
     {
     }
+
+    public EduTwinDbContext(DbContextOptions<EduTwinDbContext> options, ITenantIdAccessor tenantIdAccessor) : base(options)
+    {
+        _tenantIdAccessor = tenantIdAccessor;
+    }
+
+    // Fail-closed tenant property: If unresolved, use Guid.Empty so queries return 0 rows.
+    public Guid CurrentTenantId => _tenantIdAccessor?.CenterId ?? Guid.Empty;
+
 
     public DbSet<Center> Centers => Set<Center>();
     public DbSet<User> Users => Set<User>();
@@ -67,6 +82,37 @@ public class EduTwinDbContext : DbContext
         
         // Apply all configurations defined in the current assembly (DAL)
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+
+        // Apply Global Query Filters
+        foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+        {
+            var type = entityType.ClrType;
+
+            if (typeof(IMutableTenantAggregate).IsAssignableFrom(type))
+            {
+                var method = typeof(EduTwinDbContext)
+                    .GetMethod(nameof(ConfigureMutableTenantAggregateFilter), BindingFlags.NonPublic | BindingFlags.Instance)?
+                    .MakeGenericMethod(type);
+                method?.Invoke(this, new object[] { modelBuilder });
+            }
+            else if (typeof(ITenantAppendOnlyEntity).IsAssignableFrom(type) || typeof(ITenantJoinEntity).IsAssignableFrom(type))
+            {
+                var method = typeof(EduTwinDbContext)
+                    .GetMethod(nameof(ConfigureTenantOnlyFilter), BindingFlags.NonPublic | BindingFlags.Instance)?
+                    .MakeGenericMethod(type);
+                method?.Invoke(this, new object[] { modelBuilder });
+            }
+        }
+    }
+
+    private void ConfigureMutableTenantAggregateFilter<T>(ModelBuilder modelBuilder) where T : class, IMutableTenantAggregate
+    {
+        modelBuilder.Entity<T>().HasQueryFilter(e => e.CenterId == CurrentTenantId && !e.IsDeleted);
+    }
+
+    private void ConfigureTenantOnlyFilter<T>(ModelBuilder modelBuilder) where T : class, ITenantOwnedEntity
+    {
+        modelBuilder.Entity<T>().HasQueryFilter(e => e.CenterId == CurrentTenantId);
     }
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)

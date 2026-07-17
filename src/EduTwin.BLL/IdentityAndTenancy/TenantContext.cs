@@ -1,9 +1,10 @@
 using System;
 using System.Collections.Generic;
+using EduTwin.DAL.Persistence.Tenancy;
 
 namespace EduTwin.BLL.IdentityAndTenancy;
 
-public class TenantContext : ITenantContext, ITenantContextInitializer, IBackgroundTenantScopeFactory
+public class TenantContext : ITenantContext, ITenantContextInitializer, IBackgroundTenantScopeFactory, ITenantIdAccessor
 {
     private class TenantState
     {

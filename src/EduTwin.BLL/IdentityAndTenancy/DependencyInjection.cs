@@ -10,6 +10,7 @@ public static class DependencyInjection
         services.AddScoped<ITenantContext>(sp => sp.GetRequiredService<TenantContext>());
         services.AddScoped<ITenantContextInitializer>(sp => sp.GetRequiredService<TenantContext>());
         services.AddScoped<IBackgroundTenantScopeFactory>(sp => sp.GetRequiredService<TenantContext>());
+        services.AddScoped<EduTwin.DAL.Persistence.Tenancy.ITenantIdAccessor>(sp => sp.GetRequiredService<TenantContext>());
 
         services.AddScoped<IClaimsResolver, ClaimsResolver>();
         services.AddScoped<ICenterResolver, CenterResolver>();
