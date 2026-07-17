@@ -187,10 +187,29 @@ public class ManifestEvaluator : IManifestEvaluator
 
     private async Task<bool> IsMatchStudentsAsync(SeedDataContainer expected, Guid centerId)
     {
-        var expectedSet = expected.Students.Select(s => (s.StudentId, s.FullName, s.GradeLevel, s.DateOfBirth)).ToHashSet();
-        var actualList = await _dbContext.Students.Where(s => s.CenterId == centerId && !s.IsDeleted).ToListAsync();
-        var actualSet = actualList.Select(s => (s.StudentId, s.FullName, s.GradeLevel, s.DateOfBirth)).ToHashSet();
-        return expectedSet.SetEquals(actualSet);
+        var activeStudentsQuery = _dbContext.Students.Where(s => s.CenterId == centerId && !s.IsDeleted);
+        var activeCount = await activeStudentsQuery.CountAsync();
+
+        if (activeCount != expected.Students.Count)
+        {
+            return false;
+        }
+
+        foreach (var expectedStudent in expected.Students)
+        {
+            var exists = await activeStudentsQuery.AnyAsync(s =>
+                s.StudentId == expectedStudent.StudentId &&
+                s.FullName == expectedStudent.FullName &&
+                s.GradeLevel == expectedStudent.GradeLevel &&
+                s.DateOfBirth == expectedStudent.DateOfBirth);
+
+            if (!exists)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private async Task<bool> IsMatchSubjectsAsync(SeedDataContainer expected, Guid centerId)
