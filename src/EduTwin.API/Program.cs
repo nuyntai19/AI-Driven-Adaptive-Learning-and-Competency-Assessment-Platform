@@ -1,6 +1,7 @@
 using System;
 using EduTwin.API.Health;
 using EduTwin.BLL.Seeding;
+using EduTwin.BLL.IdentityAndTenancy;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,6 +20,7 @@ builder.Services.AddHealthChecks()
     ));
 
 builder.Services.AddEduTwinBll(builder.Configuration);
+builder.Services.AddIdentityAndTenancy();
 
 var app = builder.Build();
 
@@ -36,6 +38,8 @@ if (seedEnabled && !isDev)
 await app.Services.ApplyMigrationsAndSeedAsync(app.Configuration, isDev);
 
 // --- Middleware Pipeline ---
+// P06-T03: UseAuthentication -> TenantContextMiddleware -> UseAuthorization
+
 app.MapControllers();
 
 app.Run();
