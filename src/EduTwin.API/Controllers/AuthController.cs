@@ -16,12 +16,21 @@ namespace EduTwin.API.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly ILoginUseCase _loginUseCase;
+    private readonly IRefreshUseCase _refreshUseCase;
+    private readonly ILogoutUseCase _logoutUseCase;
     private readonly TimeProvider _timeProvider;
     private readonly IWebHostEnvironment _env;
 
-    public AuthController(ILoginUseCase loginUseCase, TimeProvider timeProvider, IWebHostEnvironment env)
+    public AuthController(
+        ILoginUseCase loginUseCase,
+        IRefreshUseCase refreshUseCase,
+        ILogoutUseCase logoutUseCase,
+        TimeProvider timeProvider,
+        IWebHostEnvironment env)
     {
         _loginUseCase = loginUseCase;
+        _refreshUseCase = refreshUseCase;
+        _logoutUseCase = logoutUseCase;
         _timeProvider = timeProvider;
         _env = env;
     }
@@ -65,26 +74,7 @@ public class AuthController : ControllerBase
             throw new InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
         }
 
-        // Set refresh cookie
-        var cookieOptions = new CookieOptions
-        {
-            HttpOnly = true,
-            SameSite = SameSiteMode.Lax,
-            Path = "/api/v1/auth",
-            Secure = true,
-            Expires = result.RefreshTokenExpiresAt
-        };
-
-        if (_env.EnvironmentName == "Development")
-        {
-            cookieOptions.Secure = false;
-        }
-        else
-        {
-            cookieOptions.Secure = true;
-        }
-
-        Response.Cookies.Append("edutwin_refresh", result.RawRefreshToken!, cookieOptions);
+        AppendRefreshCookie(result.RawRefreshToken!, result.RefreshTokenExpiresAt);
 
         var response = new LoginResponse
         {
@@ -97,5 +87,103 @@ public class AuthController : ControllerBase
         };
 
         return Ok(response);
+    }
+
+    [HttpPost("refresh")]
+    [AllowAnonymous]
+    public async Task<IActionResult> Refresh(CancellationToken cancellationToken)
+    {
+        var rawToken = Request.Cookies["edutwin_refresh"];
+        var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString();
+
+        var result = await _refreshUseCase.ExecuteAsync(rawToken, clientIp, cancellationToken);
+
+        if (!result.IsSuccess)
+        {
+            if (result.ErrorCode == ErrorCodes.AuthRefreshInvalid)
+            {
+                return Problem(
+                    type: "https://edutwin.local/problems/auth-refresh-invalid",
+                    title: "Phiên đăng nhập không hợp lệ hoặc đã hết hạn",
+                    statusCode: StatusCodes.Status401Unauthorized,
+                    detail: "Phiên đăng nhập không hợp lệ, vui lòng đăng nhập lại.",
+                    instance: HttpContext.Request.Path,
+                    extensions: new System.Collections.Generic.Dictionary<string, object?>
+                    {
+                        { "errorCode", ErrorCodes.AuthRefreshInvalid }
+                    });
+            }
+            if (result.ErrorCode == ErrorCodes.AuthUserDisabled)
+            {
+                return Problem(
+                    type: "https://edutwin.local/problems/auth-user-disabled",
+                    title: "Tài khoản không khả dụng",
+                    statusCode: StatusCodes.Status403Forbidden,
+                    detail: "Tài khoản hoặc trung tâm hiện không khả dụng.",
+                    instance: HttpContext.Request.Path,
+                    extensions: new System.Collections.Generic.Dictionary<string, object?>
+                    {
+                        { "errorCode", ErrorCodes.AuthUserDisabled }
+                    });
+            }
+            throw new InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
+        }
+
+        AppendRefreshCookie(result.RawRefreshToken!, result.RefreshTokenExpiresAt);
+
+        var response = new LoginResponse
+        {
+            Data = result.Data!,
+            Meta = new MetaDto
+            {
+                TraceId = HttpContext.TraceIdentifier,
+                Timestamp = _timeProvider.GetUtcNow().UtcDateTime
+            }
+        };
+
+        return Ok(response);
+    }
+
+    [HttpPost("logout")]
+    [AllowAnonymous]
+    public async Task<IActionResult> Logout(CancellationToken cancellationToken)
+    {
+        var rawToken = Request.Cookies["edutwin_refresh"];
+        var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString();
+
+        if (!string.IsNullOrEmpty(rawToken))
+        {
+            await _logoutUseCase.ExecuteAsync(rawToken, clientIp, cancellationToken);
+        }
+
+        DeleteRefreshCookie();
+
+        return NoContent();
+    }
+
+    private CookieOptions CreateRefreshCookieOptions(DateTimeOffset? expires = null)
+    {
+        var options = new CookieOptions
+        {
+            HttpOnly = true,
+            SameSite = SameSiteMode.Lax,
+            Path = "/api/v1/auth",
+            Secure = _env.EnvironmentName != "Development"
+        };
+        if (expires.HasValue)
+        {
+            options.Expires = expires.Value;
+        }
+        return options;
+    }
+
+    private void AppendRefreshCookie(string token, DateTime? expires)
+    {
+        Response.Cookies.Append("edutwin_refresh", token, CreateRefreshCookieOptions(expires));
+    }
+
+    private void DeleteRefreshCookie()
+    {
+        Response.Cookies.Delete("edutwin_refresh", CreateRefreshCookieOptions());
     }
 }
