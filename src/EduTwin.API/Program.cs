@@ -8,6 +8,7 @@ using Microsoft.IdentityModel.Tokens;
 using EduTwin.API.Health;
 using EduTwin.BLL.Seeding;
 using EduTwin.BLL.IdentityAndTenancy;
+using EduTwin.BLL.Organization;
 using EduTwin.API.Security;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -112,6 +113,7 @@ builder.Services.AddHealthChecks()
 
 builder.Services.AddEduTwinBll(builder.Configuration);
 builder.Services.AddIdentityAndTenancy();
+builder.Services.AddOrganization();
 
 // We also need TimeProvider
 builder.Services.AddSingleton(TimeProvider.System);
