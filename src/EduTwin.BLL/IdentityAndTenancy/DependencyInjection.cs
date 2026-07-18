@@ -22,6 +22,10 @@ public static class DependencyInjection
         services.AddScoped<IRefreshUseCase, RefreshUseCase>();
         services.AddScoped<ILogoutUseCase, LogoutUseCase>();
 
+        services.AddScoped<OrganizationOwnershipGuard>();
+        services.AddScoped<ITeacherOwnershipGuard>(sp => sp.GetRequiredService<OrganizationOwnershipGuard>());
+        services.AddScoped<IClassOwnershipGuard>(sp => sp.GetRequiredService<OrganizationOwnershipGuard>());
+        services.AddScoped<IStudentOwnershipGuard>(sp => sp.GetRequiredService<OrganizationOwnershipGuard>());
         return services;
     }
 }
