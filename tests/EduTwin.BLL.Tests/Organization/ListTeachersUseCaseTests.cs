@@ -418,7 +418,7 @@ public class ListTeachersUseCaseTests : IDisposable
     {
         var search = new string('A', 200) + " ";
         var result = await _sut.ExecuteAsync(new TeacherListQuery { Search = search });
-        
+
         Assert.False(result.IsSuccess);
         Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
     }
