@@ -1,13 +1,31 @@
+import { Routes, Route, Navigate } from "react-router-dom";
+import { AuthBootstrap } from "./auth/AuthBootstrap";
+import { ProtectedRoute } from "./routes/ProtectedRoute";
+import { LoginPage } from "./pages/LoginPage";
+import { AuthenticatedHomePage } from "./pages/AuthenticatedHomePage";
+import { useAuthStore } from "./stores/authStore";
+
+const FallbackRoute = () => {
+  const sessionStatus = useAuthStore((state) => state.sessionStatus);
+  if (sessionStatus === "authenticated") {
+    return <Navigate to="/" replace />;
+  }
+  return <Navigate to="/dang-nhap" replace />;
+};
+
 function App() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold text-indigo-600">EduTwin</h1>
-        <p className="mt-2 text-slate-500">
-          Nền tảng học tập thông minh — Phase 1 Bootstrap
-        </p>
-      </div>
-    </div>
+    <AuthBootstrap>
+      <Routes>
+        <Route path="/dang-nhap" element={<LoginPage />} />
+
+        <Route element={<ProtectedRoute />}>
+          <Route path="/" element={<AuthenticatedHomePage />} />
+        </Route>
+
+        <Route path="*" element={<FallbackRoute />} />
+      </Routes>
+    </AuthBootstrap>
   );
 }
 
