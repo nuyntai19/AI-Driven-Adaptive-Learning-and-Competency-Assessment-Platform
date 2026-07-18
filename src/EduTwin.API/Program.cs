@@ -90,9 +90,15 @@ builder.Services.AddAuthentication(options =>
             ClockSkew = TimeSpan.FromSeconds(30)
         };
     });
-
-builder.Services.AddAuthorization();
-
+builder.Services.AddAuthorization(options =>
+{
+    var policies = EduTwin.BLL.IdentityAndTenancy.AuthorizationPolicies.GetPolicyRoles();
+    foreach (var kvp in policies)
+    {
+        var roleNames = System.Linq.Enumerable.Select(kvp.Value, r => r.ToString()).ToArray();
+        options.AddPolicy(kvp.Key, policy => policy.RequireClaim("role", roleNames));
+    }
+});
 builder.Services.AddHealthChecks()
     .Add(new Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckRegistration(
         "mysql",

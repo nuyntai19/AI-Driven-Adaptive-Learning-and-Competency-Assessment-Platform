@@ -40,8 +40,13 @@ public class ClaimsResolver : IClaimsResolver
         if (!Guid.TryParse(subClaim, out var userId) || userId == Guid.Empty)
             throw new UnauthorizedAccessException("Missing or invalid sub claim.");
 
-        if (string.IsNullOrWhiteSpace(roleClaim))
+        if (string.IsNullOrWhiteSpace(roleClaim) ||
+            (roleClaim != nameof(EduTwin.Contracts.IdentityAndTenancy.UserRole.Student) &&
+             roleClaim != nameof(EduTwin.Contracts.IdentityAndTenancy.UserRole.Teacher) &&
+             roleClaim != nameof(EduTwin.Contracts.IdentityAndTenancy.UserRole.CenterManager)))
+        {
             throw new UnauthorizedAccessException("Missing or invalid role claim.");
+        }
 
         if (!int.TryParse(authVersionClaim, out var authVersion) || authVersion < 1)
             throw new UnauthorizedAccessException("Missing or invalid auth_version claim.");
