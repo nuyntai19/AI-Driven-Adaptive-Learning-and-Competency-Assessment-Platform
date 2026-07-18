@@ -57,7 +57,9 @@ public class LoginUseCaseTests : IDisposable
         _mockTokenGenerator.Setup(g => g.GenerateToken(It.IsAny<User>(), It.IsAny<Guid>()))
             .Returns("mock-jwt-token");
 
-        _sut = new LoginUseCase(_dbContext, _mockScopeFactory.Object, _mockHasher.Object, _mockTokenGenerator.Object, _timeProvider);
+        var codec = new RefreshTokenCodec();
+
+        _sut = new LoginUseCase(_dbContext, _mockScopeFactory.Object, _mockHasher.Object, _mockTokenGenerator.Object, _timeProvider, codec);
     }
 
     public void Dispose()

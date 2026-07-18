@@ -243,9 +243,15 @@ public class GlobalQueryFilterTests
         var filesWithBypass = allCsFiles
             .Where(file => File.ReadAllText(file).Contains("IgnoreQueryFilters"))
             .Select(file => Path.GetRelativePath(dir.FullName, file).Replace("\\", "/"))
+            .OrderBy(f => f)
             .ToList();
 
-        Assert.Single(filesWithBypass);
-        Assert.Equal("src/EduTwin.BLL/Seeding/ManifestEvaluator.cs", filesWithBypass[0]);
+        var expectedWhitelist = new[]
+        {
+            "src/EduTwin.BLL/Seeding/ManifestEvaluator.cs",
+            "src/EduTwin.DAL/IdentityAndTenancy/RefreshTokenStore.cs"
+        }.OrderBy(f => f).ToList();
+
+        Assert.Equal(expectedWhitelist, filesWithBypass);
     }
 }

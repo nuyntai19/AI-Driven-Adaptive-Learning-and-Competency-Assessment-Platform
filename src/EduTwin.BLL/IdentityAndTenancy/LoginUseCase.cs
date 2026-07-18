@@ -19,19 +19,22 @@ public class LoginUseCase : ILoginUseCase
     private readonly IPasswordHasher<User> _passwordHasher;
     private readonly IJwtTokenGenerator _jwtTokenGenerator;
     private readonly TimeProvider _timeProvider;
+    private readonly IRefreshTokenCodec _refreshTokenCodec;
 
     public LoginUseCase(
         EduTwinDbContext dbContext,
         IBackgroundTenantScopeFactory scopeFactory,
         IPasswordHasher<User> passwordHasher,
         IJwtTokenGenerator jwtTokenGenerator,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        IRefreshTokenCodec refreshTokenCodec)
     {
         _dbContext = dbContext;
         _scopeFactory = scopeFactory;
         _passwordHasher = passwordHasher;
         _jwtTokenGenerator = jwtTokenGenerator;
         _timeProvider = timeProvider;
+        _refreshTokenCodec = refreshTokenCodec;
     }
 
     public async Task<LoginResult> ExecuteAsync(LoginRequest request, string? clientIp, CancellationToken cancellationToken = default)
@@ -74,8 +77,8 @@ public class LoginUseCase : ILoginUseCase
         }
 
         // 6. Generate Refresh Token
-        var rawRefreshToken = GenerateRawRefreshToken();
-        var refreshTokenHash = HashToken(rawRefreshToken);
+        var rawRefreshToken = _refreshTokenCodec.GenerateRawToken();
+        var refreshTokenHash = _refreshTokenCodec.HashToken(rawRefreshToken);
         var now = _timeProvider.GetUtcNow().UtcDateTime;
 
         var refreshToken = new RefreshToken
@@ -127,18 +130,5 @@ public class LoginUseCase : ILoginUseCase
             RawRefreshToken = rawRefreshToken,
             RefreshTokenExpiresAt = refreshToken.ExpiresAt
         };
-    }
-
-    private static string GenerateRawRefreshToken()
-    {
-        var bytes = RandomNumberGenerator.GetBytes(64);
-        return Convert.ToBase64String(bytes).Replace("+", "-").Replace("/", "_").TrimEnd('=');
-    }
-
-    private static string HashToken(string rawToken)
-    {
-        var bytes = System.Text.Encoding.UTF8.GetBytes(rawToken);
-        var hash = SHA256.HashData(bytes);
-        return Convert.ToHexString(hash).ToLowerInvariant();
     }
 }
