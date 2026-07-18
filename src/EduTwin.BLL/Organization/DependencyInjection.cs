@@ -7,6 +7,7 @@ public static class DependencyInjection
     public static IServiceCollection AddOrganization(this IServiceCollection services)
     {
         services.AddScoped<IGetCenterProfileUseCase, GetCenterProfileUseCase>();
+        services.AddScoped<IUpdateCenterProfileUseCase, UpdateCenterProfileUseCase>();
         return services;
     }
 }
