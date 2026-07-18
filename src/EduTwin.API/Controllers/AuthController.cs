@@ -18,6 +18,7 @@ public class AuthController : ControllerBase
     private readonly ILoginUseCase _loginUseCase;
     private readonly IRefreshUseCase _refreshUseCase;
     private readonly ILogoutUseCase _logoutUseCase;
+    private readonly IGetCurrentUserUseCase _getCurrentUserUseCase;
     private readonly TimeProvider _timeProvider;
     private readonly IWebHostEnvironment _env;
 
@@ -25,12 +26,14 @@ public class AuthController : ControllerBase
         ILoginUseCase loginUseCase,
         IRefreshUseCase refreshUseCase,
         ILogoutUseCase logoutUseCase,
+        IGetCurrentUserUseCase getCurrentUserUseCase,
         TimeProvider timeProvider,
         IWebHostEnvironment env)
     {
         _loginUseCase = loginUseCase;
         _refreshUseCase = refreshUseCase;
         _logoutUseCase = logoutUseCase;
+        _getCurrentUserUseCase = getCurrentUserUseCase;
         _timeProvider = timeProvider;
         _env = env;
     }
@@ -159,6 +162,56 @@ public class AuthController : ControllerBase
         DeleteRefreshCookie();
 
         return NoContent();
+    }
+
+    [HttpGet("me")]
+    [Authorize]
+    public async Task<IActionResult> GetCurrentUser(CancellationToken cancellationToken)
+    {
+        var result = await _getCurrentUserUseCase.ExecuteAsync(cancellationToken);
+
+        if (!result.IsSuccess)
+        {
+            if (result.ErrorCode == ErrorCodes.ResourceNotFound)
+            {
+                return Problem(
+                    type: "https://edutwin.local/problems/resource-not-found",
+                    title: "Không tìm thấy dữ liệu",
+                    statusCode: StatusCodes.Status404NotFound,
+                    detail: "Không tìm thấy người dùng hiện tại.",
+                    instance: HttpContext.Request.Path,
+                    extensions: new System.Collections.Generic.Dictionary<string, object?>
+                    {
+                        { "errorCode", ErrorCodes.ResourceNotFound }
+                    });
+            }
+            if (result.ErrorCode == ErrorCodes.AuthUserDisabled)
+            {
+                return Problem(
+                    type: "https://edutwin.local/problems/auth-user-disabled",
+                    title: "Tài khoản không khả dụng",
+                    statusCode: StatusCodes.Status403Forbidden,
+                    detail: "Tài khoản hoặc trung tâm hiện không khả dụng.",
+                    instance: HttpContext.Request.Path,
+                    extensions: new System.Collections.Generic.Dictionary<string, object?>
+                    {
+                        { "errorCode", ErrorCodes.AuthUserDisabled }
+                    });
+            }
+            throw new InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
+        }
+
+        var response = new CurrentUserResponse
+        {
+            Data = result.Data!,
+            Meta = new MetaDto
+            {
+                TraceId = HttpContext.TraceIdentifier,
+                Timestamp = _timeProvider.GetUtcNow().UtcDateTime
+            }
+        };
+
+        return Ok(response);
     }
 
     private CookieOptions CreateRefreshCookieOptions(DateTimeOffset? expires = null)

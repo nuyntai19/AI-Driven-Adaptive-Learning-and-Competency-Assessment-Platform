@@ -21,6 +21,7 @@ public static class DependencyInjection
         services.AddScoped<IRefreshTokenStore, RefreshTokenStore>();
         services.AddScoped<IRefreshUseCase, RefreshUseCase>();
         services.AddScoped<ILogoutUseCase, LogoutUseCase>();
+        services.AddScoped<IGetCurrentUserUseCase, GetCurrentUserUseCase>();
 
         services.AddScoped<OrganizationOwnershipGuard>();
         services.AddScoped<ITeacherOwnershipGuard>(sp => sp.GetRequiredService<OrganizationOwnershipGuard>());
