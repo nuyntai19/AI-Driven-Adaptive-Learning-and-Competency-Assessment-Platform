@@ -15,6 +15,8 @@ public static class DependencyInjection
         services.AddScoped<IClaimsResolver, ClaimsResolver>();
         services.AddScoped<ICenterResolver, CenterResolver>();
 
+        services.AddScoped<ILoginUseCase, LoginUseCase>();
+
         return services;
     }
 }
