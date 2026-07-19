@@ -115,6 +115,111 @@ public class GetStudentUseCaseTests
         await context.SaveChangesAsync();
     }
 
+    private async Task<Class> SeedClassAsync(
+        EduTwinDbContext context,
+        Guid studentId,
+        Guid? classId = null,
+        Guid? centerId = null,
+        Guid? teacherId = null,
+        Guid? subjectId = null,
+        string className = "C1",
+        ClassStatus classStatus = ClassStatus.Active,
+        ClassStudentStatus membershipStatus = ClassStudentStatus.Active,
+        bool isSubjectDeleted = false,
+        bool isTeacherDeleted = false,
+        bool isTeacherUserDeleted = false)
+    {
+        var targetCenterId = centerId ?? _centerId;
+        var targetClassId = classId ?? Guid.NewGuid();
+        var targetTeacherId = teacherId ?? Guid.NewGuid();
+        var targetSubjectId = subjectId ?? Guid.NewGuid();
+
+        if (!await context.Subjects.AnyAsync(s => s.SubjectId == targetSubjectId))
+        {
+            context.Subjects.Add(new Subject
+            {
+                SubjectId = targetSubjectId,
+                CenterId = targetCenterId,
+                SubjectCode = $"SUB_{targetSubjectId.ToString()[..8]}",
+                SubjectName = $"Subject {targetSubjectId.ToString()[..4]}",
+                IsActive = true,
+                CreatedAt = _fixedTime,
+                UpdatedAt = _fixedTime,
+                IsDeleted = isSubjectDeleted
+            });
+        }
+
+        if (!await context.Users.AnyAsync(u => u.UserId == targetTeacherId))
+        {
+            context.Users.Add(new User
+            {
+                UserId = targetTeacherId,
+                CenterId = targetCenterId,
+                Username = $"teacher_{targetTeacherId}",
+                DisplayName = $"Teacher {targetTeacherId.ToString()[..4]}",
+                PasswordHash = "hash",
+                RoleName = UserRole.Teacher,
+                Status = UserStatus.Active,
+                CreatedAt = _fixedTime,
+                UpdatedAt = _fixedTime,
+                IsDeleted = isTeacherUserDeleted
+            });
+        }
+
+        if (!await context.Teachers.AnyAsync(t => t.TeacherId == targetTeacherId))
+        {
+            context.Teachers.Add(new Teacher
+            {
+                TeacherId = targetTeacherId,
+                CenterId = targetCenterId,
+                CreatedAt = _fixedTime,
+                UpdatedAt = _fixedTime,
+                IsDeleted = isTeacherDeleted
+            });
+        }
+
+        var classEntity = new Class
+        {
+            ClassId = targetClassId,
+            CenterId = targetCenterId,
+            ClassName = className,
+            AcademicYear = "2023",
+            TeacherId = targetTeacherId,
+            SubjectId = targetSubjectId,
+            Status = classStatus,
+            CreatedAt = _fixedTime,
+            UpdatedAt = _fixedTime,
+            RowVersion = 1
+        };
+        context.Classes.Add(classEntity);
+
+        if (membershipStatus == ClassStudentStatus.Active)
+        {
+            context.ClassStudents.Add(new ClassStudent
+            {
+                ClassId = targetClassId,
+                StudentId = studentId,
+                CenterId = targetCenterId,
+                Status = ClassStudentStatus.Active,
+                JoinedAt = _fixedTime
+            });
+        }
+        else if (membershipStatus == ClassStudentStatus.Removed)
+        {
+            context.ClassStudents.Add(new ClassStudent
+            {
+                ClassId = targetClassId,
+                StudentId = studentId,
+                CenterId = targetCenterId,
+                Status = ClassStudentStatus.Removed,
+                JoinedAt = _fixedTime
+            });
+        }
+
+        await context.SaveChangesAsync();
+        return classEntity;
+    }
+
     [Fact]
     public async Task CenterManager_SameTenant_ReturnsStudentDetail()
     {
@@ -372,30 +477,7 @@ public class GetStudentUseCaseTests
         var studentId = Guid.NewGuid();
         await SeedDataAsync(dbContext, studentId);
 
-        var classId = Guid.NewGuid();
-        dbContext.Classes.Add(new Class
-        {
-            ClassId = classId,
-            CenterId = _centerId,
-            ClassName = "Class 1",
-            AcademicYear = "2023",
-            TeacherId = Guid.NewGuid(),
-            SubjectId = Guid.NewGuid(),
-            Status = ClassStatus.Active,
-            CreatedAt = _fixedTime,
-            UpdatedAt = _fixedTime,
-            RowVersion = 1
-        });
-
-        dbContext.ClassStudents.Add(new ClassStudent
-        {
-            ClassId = classId,
-            StudentId = studentId,
-            CenterId = _centerId,
-            Status = ClassStudentStatus.Removed,
-            JoinedAt = _fixedTime
-        });
-        await dbContext.SaveChangesAsync();
+        await SeedClassAsync(dbContext, studentId, membershipStatus: ClassStudentStatus.Removed);
 
         var sut = new GetStudentUseCase(dbContext, _mockTenantContext.Object, _mockOwnershipGuard.Object);
         var result = await sut.ExecuteAsync(studentId);
@@ -412,30 +494,7 @@ public class GetStudentUseCaseTests
         var studentId = Guid.NewGuid();
         await SeedDataAsync(dbContext, studentId);
 
-        var classId = Guid.NewGuid();
-        dbContext.Classes.Add(new Class
-        {
-            ClassId = classId,
-            CenterId = _centerId,
-            ClassName = "Class 1",
-            AcademicYear = "2023",
-            TeacherId = Guid.NewGuid(),
-            SubjectId = Guid.NewGuid(),
-            Status = ClassStatus.Archived,
-            CreatedAt = _fixedTime,
-            UpdatedAt = _fixedTime,
-            RowVersion = 1
-        });
-
-        dbContext.ClassStudents.Add(new ClassStudent
-        {
-            ClassId = classId,
-            StudentId = studentId,
-            CenterId = _centerId,
-            Status = ClassStudentStatus.Active,
-            JoinedAt = _fixedTime
-        });
-        await dbContext.SaveChangesAsync();
+        await SeedClassAsync(dbContext, studentId, classStatus: ClassStatus.Archived);
 
         var sut = new GetStudentUseCase(dbContext, _mockTenantContext.Object, _mockOwnershipGuard.Object);
         var result = await sut.ExecuteAsync(studentId);
@@ -453,38 +512,10 @@ public class GetStudentUseCaseTests
         await SeedDataAsync(dbContext, studentId);
 
         var ownedClassId = Guid.NewGuid();
-        dbContext.Classes.Add(new Class
-        {
-            ClassId = ownedClassId,
-            CenterId = _centerId,
-            ClassName = "Owned",
-            AcademicYear = "2023",
-            TeacherId = _userId, // Owned by this teacher
-            SubjectId = Guid.NewGuid(),
-            Status = ClassStatus.Active,
-            CreatedAt = _fixedTime,
-            UpdatedAt = _fixedTime,
-            RowVersion = 1
-        });
-        dbContext.ClassStudents.Add(new ClassStudent { ClassId = ownedClassId, StudentId = studentId, CenterId = _centerId, Status = ClassStudentStatus.Active, JoinedAt = _fixedTime });
+        await SeedClassAsync(dbContext, studentId, classId: ownedClassId, teacherId: _userId, className: "Owned");
 
         var otherClassId = Guid.NewGuid();
-        dbContext.Classes.Add(new Class
-        {
-            ClassId = otherClassId,
-            CenterId = _centerId,
-            ClassName = "Other",
-            AcademicYear = "2023",
-            TeacherId = Guid.NewGuid(), // Other teacher
-            SubjectId = Guid.NewGuid(),
-            Status = ClassStatus.Active,
-            CreatedAt = _fixedTime,
-            UpdatedAt = _fixedTime,
-            RowVersion = 1
-        });
-        dbContext.ClassStudents.Add(new ClassStudent { ClassId = otherClassId, StudentId = studentId, CenterId = _centerId, Status = ClassStudentStatus.Active, JoinedAt = _fixedTime });
-
-        await dbContext.SaveChangesAsync();
+        await SeedClassAsync(dbContext, studentId, classId: otherClassId, className: "Other");
 
         _mockTenantContext.Setup(c => c.Role).Returns(nameof(UserRole.Teacher));
 
@@ -505,21 +536,8 @@ public class GetStudentUseCaseTests
         var studentId = Guid.NewGuid();
         await SeedDataAsync(dbContext, studentId);
 
-        var c1 = Guid.NewGuid();
-        dbContext.Classes.Add(new Class
-        {
-            ClassId = c1, CenterId = _centerId, ClassName = "C1", AcademicYear = "2023", TeacherId = Guid.NewGuid(), SubjectId = Guid.NewGuid(), Status = ClassStatus.Active, CreatedAt = _fixedTime, UpdatedAt = _fixedTime, RowVersion = 1
-        });
-        dbContext.ClassStudents.Add(new ClassStudent { ClassId = c1, StudentId = studentId, CenterId = _centerId, Status = ClassStudentStatus.Active, JoinedAt = _fixedTime });
-
-        var c2 = Guid.NewGuid();
-        dbContext.Classes.Add(new Class
-        {
-            ClassId = c2, CenterId = _centerId, ClassName = "C2", AcademicYear = "2023", TeacherId = Guid.NewGuid(), SubjectId = Guid.NewGuid(), Status = ClassStatus.Active, CreatedAt = _fixedTime, UpdatedAt = _fixedTime, RowVersion = 1
-        });
-        dbContext.ClassStudents.Add(new ClassStudent { ClassId = c2, StudentId = studentId, CenterId = _centerId, Status = ClassStudentStatus.Active, JoinedAt = _fixedTime });
-
-        await dbContext.SaveChangesAsync();
+        await SeedClassAsync(dbContext, studentId, className: "C1");
+        await SeedClassAsync(dbContext, studentId, className: "C2");
 
         var sut = new GetStudentUseCase(dbContext, _mockTenantContext.Object, _mockOwnershipGuard.Object);
         var result = await sut.ExecuteAsync(studentId);
@@ -537,13 +555,7 @@ public class GetStudentUseCaseTests
         var studentId = _userId;
         await SeedDataAsync(dbContext, studentId);
 
-        var c1 = Guid.NewGuid();
-        dbContext.Classes.Add(new Class
-        {
-            ClassId = c1, CenterId = _centerId, ClassName = "C1", AcademicYear = "2023", TeacherId = Guid.NewGuid(), SubjectId = Guid.NewGuid(), Status = ClassStatus.Active, CreatedAt = _fixedTime, UpdatedAt = _fixedTime, RowVersion = 1
-        });
-        dbContext.ClassStudents.Add(new ClassStudent { ClassId = c1, StudentId = studentId, CenterId = _centerId, Status = ClassStudentStatus.Active, JoinedAt = _fixedTime });
-        await dbContext.SaveChangesAsync();
+        await SeedClassAsync(dbContext, studentId, className: "C1");
 
         _mockTenantContext.Setup(c => c.Role).Returns(nameof(UserRole.Student));
 
@@ -564,14 +576,10 @@ public class GetStudentUseCaseTests
         await SeedDataAsync(dbContext, studentId);
 
         var ownedClassId = Guid.NewGuid();
-        dbContext.Classes.Add(new Class { ClassId = ownedClassId, CenterId = _centerId, ClassName = "Owned", AcademicYear = "2023", TeacherId = _userId, SubjectId = Guid.NewGuid(), Status = ClassStatus.Active, CreatedAt = _fixedTime, UpdatedAt = _fixedTime, RowVersion = 1 });
-        dbContext.ClassStudents.Add(new ClassStudent { ClassId = ownedClassId, StudentId = studentId, CenterId = _centerId, Status = ClassStudentStatus.Active, JoinedAt = _fixedTime });
+        await SeedClassAsync(dbContext, studentId, classId: ownedClassId, teacherId: _userId, className: "Owned");
 
         var otherClassId = Guid.NewGuid();
-        dbContext.Classes.Add(new Class { ClassId = otherClassId, CenterId = _centerId, ClassName = "Other", AcademicYear = "2023", TeacherId = Guid.NewGuid(), SubjectId = Guid.NewGuid(), Status = ClassStatus.Active, CreatedAt = _fixedTime, UpdatedAt = _fixedTime, RowVersion = 1 });
-        dbContext.ClassStudents.Add(new ClassStudent { ClassId = otherClassId, StudentId = studentId, CenterId = _centerId, Status = ClassStudentStatus.Active, JoinedAt = _fixedTime });
-
-        await dbContext.SaveChangesAsync();
+        await SeedClassAsync(dbContext, studentId, classId: otherClassId, className: "Other");
 
         _mockTenantContext.Setup(c => c.Role).Returns(nameof(UserRole.Teacher));
 
@@ -590,15 +598,10 @@ public class GetStudentUseCaseTests
         var studentId = Guid.NewGuid();
         await SeedDataAsync(dbContext, studentId);
 
-        var classId = Guid.NewGuid();
-        dbContext.Classes.Add(new Class { ClassId = classId, CenterId = _centerId, ClassName = "C1", AcademicYear = "2023", TeacherId = Guid.NewGuid(), SubjectId = Guid.NewGuid(), Status = ClassStatus.Active, CreatedAt = _fixedTime, UpdatedAt = _fixedTime, RowVersion = 1 });
-        
-        // Active student
-        dbContext.ClassStudents.Add(new ClassStudent { ClassId = classId, StudentId = studentId, CenterId = _centerId, Status = ClassStudentStatus.Active, JoinedAt = _fixedTime });
-        
-        // Removed student
-        dbContext.ClassStudents.Add(new ClassStudent { ClassId = classId, StudentId = Guid.NewGuid(), CenterId = _centerId, Status = ClassStudentStatus.Removed, JoinedAt = _fixedTime });
+        var classEntity = await SeedClassAsync(dbContext, studentId, className: "C1");
 
+        // Removed student
+        dbContext.ClassStudents.Add(new ClassStudent { ClassId = classEntity.ClassId, StudentId = Guid.NewGuid(), CenterId = _centerId, Status = ClassStudentStatus.Removed, JoinedAt = _fixedTime });
         await dbContext.SaveChangesAsync();
 
         var sut = new GetStudentUseCase(dbContext, _mockTenantContext.Object, _mockOwnershipGuard.Object);
@@ -616,15 +619,18 @@ public class GetStudentUseCaseTests
         var studentId = Guid.NewGuid();
         await SeedDataAsync(dbContext, studentId);
 
+        var subjectId = Guid.NewGuid();
+        dbContext.Subjects.Add(new Subject { SubjectId = subjectId, CenterId = _centerId, SubjectCode = "SA", SubjectName = "SA", IsActive = true, CreatedAt = _fixedTime, UpdatedAt = _fixedTime });
+
         dbContext.StudentSubjectGoals.Add(new StudentSubjectGoal
         {
             GoalId = 1,
             CenterId = _centerId,
             StudentId = studentId,
-            SubjectId = Guid.NewGuid(),
-            TargetScore = 80,
+            SubjectId = subjectId,
+            TargetScore = 8.0m,
             RemainingDays = 10,
-            CurrentPredictedScore = 75,
+            CurrentPredictedScore = 7.5m,
             RiskScore = 5,
             RowVersion = 1,
             CreatedAt = _fixedTime,
@@ -645,26 +651,44 @@ public class GetStudentUseCaseTests
     public async Task SoftDeletedAndCrossTenantGoals_AreExcluded()
     {
         var dbName = Guid.NewGuid().ToString();
-        var dbContext = CreateContext(dbName);
-        var studentId = Guid.NewGuid();
-        await SeedDataAsync(dbContext, studentId);
+        var dbContextA = CreateContext(dbName);
+        var studentIdA = Guid.NewGuid();
+        await SeedDataAsync(dbContextA, studentIdA);
 
-        // Soft deleted
-        dbContext.StudentSubjectGoals.Add(new StudentSubjectGoal
+        var subjectIdA = Guid.NewGuid();
+        dbContextA.Subjects.Add(new Subject { SubjectId = subjectIdA, CenterId = _centerId, SubjectCode = "SA2", SubjectName = "SA2", IsActive = true, CreatedAt = _fixedTime, UpdatedAt = _fixedTime });
+
+        // Soft deleted goal for A
+        dbContextA.StudentSubjectGoals.Add(new StudentSubjectGoal
         {
-            GoalId = 1, CenterId = _centerId, StudentId = studentId, SubjectId = Guid.NewGuid(), IsDeleted = true, CreatedAt = _fixedTime, UpdatedAt = _fixedTime, RowVersion = 1
+            GoalId = 1, CenterId = _centerId, StudentId = studentIdA, SubjectId = subjectIdA, TargetScore = 8.0m, IsDeleted = true, CreatedAt = _fixedTime, UpdatedAt = _fixedTime, RowVersion = 1
+        });
+        await dbContextA.SaveChangesAsync();
+
+        var centerIdB = Guid.NewGuid();
+        var dbContextB = CreateContext(dbName, centerIdB);
+        // Create Center B, Student B, Subject B
+        dbContextB.Centers.Add(new Center { CenterId = centerIdB, CenterName = "Center B", CenterCode = "CB", Timezone = "UTC", Status = CenterStatus.Active, CreatedAt = _fixedTime, UpdatedAt = _fixedTime });
+        var studentIdB = Guid.NewGuid();
+        dbContextB.Users.Add(new User { UserId = studentIdB, CenterId = centerIdB, Username = "sb", PasswordHash = "hash", DisplayName = "sb", RoleName = UserRole.Student, Status = UserStatus.Active, CreatedAt = _fixedTime, UpdatedAt = _fixedTime });
+        dbContextB.Students.Add(new Student { StudentId = studentIdB, CenterId = centerIdB, FullName = "sb", GradeLevel = 10, CreatedAt = _fixedTime, UpdatedAt = _fixedTime, RowVersion = 1 });
+        var subjectIdB = Guid.NewGuid();
+        dbContextB.Subjects.Add(new Subject { SubjectId = subjectIdB, CenterId = centerIdB, SubjectCode = "SB", SubjectName = "SB", IsActive = true, CreatedAt = _fixedTime, UpdatedAt = _fixedTime });
+
+        // Active Goal for B
+        dbContextB.StudentSubjectGoals.Add(new StudentSubjectGoal
+        {
+            GoalId = 2, CenterId = centerIdB, StudentId = studentIdB, SubjectId = subjectIdB, TargetScore = 9.0m, CreatedAt = _fixedTime, UpdatedAt = _fixedTime, RowVersion = 1
         });
 
-        // Other student
-        dbContext.StudentSubjectGoals.Add(new StudentSubjectGoal
-        {
-            GoalId = 2, CenterId = _centerId, StudentId = Guid.NewGuid(), SubjectId = Guid.NewGuid(), CreatedAt = _fixedTime, UpdatedAt = _fixedTime, RowVersion = 1
-        });
+        await dbContextB.SaveChangesAsync();
 
-        await dbContext.SaveChangesAsync();
+        // Assert directly before calling use case
+        var bGoalExists = await dbContextB.StudentSubjectGoals.AnyAsync(g => g.GoalId == 2);
+        Assert.True(bGoalExists);
 
-        var sut = new GetStudentUseCase(dbContext, _mockTenantContext.Object, _mockOwnershipGuard.Object);
-        var result = await sut.ExecuteAsync(studentId);
+        var sut = new GetStudentUseCase(dbContextA, _mockTenantContext.Object, _mockOwnershipGuard.Object);
+        var result = await sut.ExecuteAsync(studentIdA);
 
         Assert.True(result.IsSuccess);
         Assert.Empty(result.Data!.SubjectGoals);
@@ -681,10 +705,7 @@ public class GetStudentUseCaseTests
         var classId = Guid.NewGuid();
         var subjectId = Guid.NewGuid();
         var teacherId = Guid.NewGuid();
-        dbContext.Classes.Add(new Class { ClassId = classId, CenterId = _centerId, ClassName = "C1", AcademicYear = "2023", TeacherId = teacherId, SubjectId = subjectId, Status = ClassStatus.Active, CreatedAt = _fixedTime, UpdatedAt = _fixedTime, RowVersion = 1 });
-        dbContext.ClassStudents.Add(new ClassStudent { ClassId = classId, StudentId = studentId, CenterId = _centerId, Status = ClassStudentStatus.Active, JoinedAt = _fixedTime });
-        
-        await dbContext.SaveChangesAsync();
+        await SeedClassAsync(dbContext, studentId, classId: classId, teacherId: teacherId, subjectId: subjectId, className: "C1");
 
         var sut = new GetStudentUseCase(dbContext, _mockTenantContext.Object, _mockOwnershipGuard.Object);
         var result = await sut.ExecuteAsync(studentId);
@@ -694,6 +715,67 @@ public class GetStudentUseCaseTests
         Assert.Equal(classId.ToString("D"), c.ClassId);
         Assert.Equal(subjectId.ToString("D"), c.Subject.SubjectId);
         Assert.Equal(teacherId.ToString("D"), c.Teacher.TeacherId);
+    }
+
+    [Fact]
+    public async Task ClassProjection_ReturnsSeededSubjectAndTeacherNames()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var dbContext = CreateContext(dbName);
+        var studentId = Guid.NewGuid();
+        await SeedDataAsync(dbContext, studentId);
+
+        var classId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+        var teacherId = Guid.NewGuid();
+        await SeedClassAsync(dbContext, studentId, classId: classId, teacherId: teacherId, subjectId: subjectId, className: "C1");
+
+        var sut = new GetStudentUseCase(dbContext, _mockTenantContext.Object, _mockOwnershipGuard.Object);
+        var result = await sut.ExecuteAsync(studentId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Data!.Classes);
+        var c = result.Data.Classes[0];
+        Assert.False(string.IsNullOrEmpty(c.Subject.SubjectName));
+        Assert.False(string.IsNullOrEmpty(c.Teacher.DisplayName));
+        Assert.Equal($"Subject {subjectId.ToString()[..4]}", c.Subject.SubjectName);
+        Assert.Equal($"Teacher {teacherId.ToString()[..4]}", c.Teacher.DisplayName);
+    }
+
+    [Fact]
+    public async Task ClassWithSoftDeletedSubject_IsExcluded()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var dbContext = CreateContext(dbName);
+        var studentId = Guid.NewGuid();
+        await SeedDataAsync(dbContext, studentId);
+
+        await SeedClassAsync(dbContext, studentId, isSubjectDeleted: true);
+
+        var sut = new GetStudentUseCase(dbContext, _mockTenantContext.Object, _mockOwnershipGuard.Object);
+        var result = await sut.ExecuteAsync(studentId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(result.Data!.Classes);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task ClassWithSoftDeletedTeacherOrUser_IsExcluded(bool isTeacherDeleted, bool isUserDeleted)
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var dbContext = CreateContext(dbName);
+        var studentId = Guid.NewGuid();
+        await SeedDataAsync(dbContext, studentId);
+
+        await SeedClassAsync(dbContext, studentId, isTeacherDeleted: isTeacherDeleted, isTeacherUserDeleted: isUserDeleted);
+
+        var sut = new GetStudentUseCase(dbContext, _mockTenantContext.Object, _mockOwnershipGuard.Object);
+        var result = await sut.ExecuteAsync(studentId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(result.Data!.Classes);
     }
 
     [Fact]

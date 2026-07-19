@@ -79,86 +79,63 @@ public class GetStudentUseCase : IGetStudentUseCase
         if (studentEntity == null)
             return GetStudentResult.Failure(ErrorCodes.ResourceNotFound);
 
-        var classStudents = await _dbContext.ClassStudents.AsNoTracking()
-            .Where(cs => cs.CenterId == centerId && cs.StudentId == studentId && cs.Status == ClassStudentStatus.Active)
-            .ToListAsync(cancellationToken);
-
-        var classIds = classStudents.Select(cs => cs.ClassId).Distinct().ToList();
-        
-        var classes = new List<Class>();
-        if (classIds.Any())
-        {
-            classes = await _dbContext.Classes.AsNoTracking()
-                .Where(c => c.CenterId == centerId && !c.IsDeleted && c.Status == ClassStatus.Active && classIds.Contains(c.ClassId))
-                .ToListAsync(cancellationToken);
-        }
+        var classesQuery = _dbContext.ClassStudents.AsNoTracking()
+            .Where(cs => cs.CenterId == centerId &&
+                         cs.StudentId == studentId &&
+                         cs.Status == ClassStudentStatus.Active &&
+                         cs.Class != null &&
+                         cs.Class.CenterId == centerId &&
+                         !cs.Class.IsDeleted &&
+                         cs.Class.Status == ClassStatus.Active &&
+                         cs.Class.Subject != null &&
+                         cs.Class.Subject.CenterId == centerId &&
+                         !cs.Class.Subject.IsDeleted &&
+                         cs.Class.Teacher != null &&
+                         cs.Class.Teacher.CenterId == centerId &&
+                         !cs.Class.Teacher.IsDeleted &&
+                         cs.Class.Teacher.User != null &&
+                         cs.Class.Teacher.User.CenterId == centerId &&
+                         !cs.Class.Teacher.User.IsDeleted &&
+                         cs.Class.Teacher.User.RoleName == UserRole.Teacher);
 
         if (isTeacher)
         {
-            classes = classes.Where(c => c.TeacherId == userId).ToList();
+            classesQuery = classesQuery.Where(cs => cs.Class!.TeacherId == userId);
         }
 
-        var validClassIds = classes.Select(c => c.ClassId).ToList();
-        
-        var studentCounts = new Dictionary<Guid, int>();
-        if (validClassIds.Any())
-        {
-            studentCounts = await _dbContext.ClassStudents.AsNoTracking()
-                .Where(cs => cs.CenterId == centerId && cs.Status == ClassStudentStatus.Active && validClassIds.Contains(cs.ClassId))
-                .GroupBy(cs => cs.ClassId)
-                .Select(g => new { ClassId = g.Key, Count = g.Count() })
-                .ToDictionaryAsync(x => x.ClassId, x => x.Count, cancellationToken);
-        }
-        
-        var subjectIds = classes.Select(c => c.SubjectId).Distinct().ToList();
-        var teacherIds = classes.Select(c => c.TeacherId).Distinct().ToList();
-        
-        // We use string mapping if not found, since tests might not seed subjects/teachers
-        var subjectDict = new Dictionary<Guid, string>();
-        if (subjectIds.Any())
-        {
-            var subjects = await _dbContext.Subjects.AsNoTracking()
-                .Where(s => subjectIds.Contains(s.SubjectId))
-                .Select(s => new { s.SubjectId, s.SubjectName })
-                .ToListAsync(cancellationToken);
-            foreach(var s in subjects) subjectDict[s.SubjectId] = s.SubjectName;
-        }
-        
-        var teacherDict = new Dictionary<Guid, string>();
-        if (teacherIds.Any())
-        {
-            var teachers = await _dbContext.Teachers.AsNoTracking()
-                .Include(t => t.User)
-                .Where(t => teacherIds.Contains(t.TeacherId))
-                .Select(t => new { t.TeacherId, t.User!.DisplayName })
-                .ToListAsync(cancellationToken);
-            foreach(var t in teachers) teacherDict[t.TeacherId] = t.DisplayName;
-        }
-
-        var classDtos = classes
-            .OrderBy(c => c.ClassName)
-            .ThenBy(c => c.ClassId)
-            .Select(c => new ClassDto
+        var classDtos = await classesQuery
+            .Select(cs => new
             {
-                ClassId = c.ClassId.ToString("D"),
-                ClassName = c.ClassName,
-                AcademicYear = c.AcademicYear,
-                Status = c.Status.ToString(),
-                RowVersion = c.RowVersion.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                Class = cs.Class!,
+                SubjectName = cs.Class!.Subject!.SubjectName,
+                DisplayName = cs.Class!.Teacher!.User!.DisplayName,
+                StudentCount = _dbContext.ClassStudents.Count(innerCs =>
+                    innerCs.CenterId == centerId &&
+                    innerCs.ClassId == cs.ClassId &&
+                    innerCs.Status == ClassStudentStatus.Active)
+            })
+            .OrderBy(x => x.Class.ClassName)
+            .ThenBy(x => x.Class.ClassId)
+            .Select(x => new ClassDto
+            {
+                ClassId = x.Class.ClassId.ToString("D"),
+                ClassName = x.Class.ClassName,
+                AcademicYear = x.Class.AcademicYear,
+                Status = x.Class.Status.ToString(),
+                RowVersion = x.Class.RowVersion.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 Subject = new ClassSubjectDto
                 {
-                    SubjectId = c.SubjectId.ToString("D"),
-                    SubjectName = subjectDict.TryGetValue(c.SubjectId, out var sName) ? sName : string.Empty
+                    SubjectId = x.Class.SubjectId.ToString("D"),
+                    SubjectName = x.SubjectName
                 },
                 Teacher = new ClassTeacherDto
                 {
-                    TeacherId = c.TeacherId.ToString("D"),
-                    DisplayName = teacherDict.TryGetValue(c.TeacherId, out var tName) ? tName : string.Empty
+                    TeacherId = x.Class.TeacherId.ToString("D"),
+                    DisplayName = x.DisplayName
                 },
-                StudentCount = studentCounts.TryGetValue(c.ClassId, out var count) ? count : 0
-            }).ToList();
-
-
+                StudentCount = x.StudentCount
+            })
+            .ToListAsync(cancellationToken);
 
         var goals = await _dbContext.StudentSubjectGoals.AsNoTracking()
             .Where(g =>
