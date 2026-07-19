@@ -18,15 +18,18 @@ public class TeachersController : ControllerBase
 {
     private readonly IListTeachersUseCase _listTeachersUseCase;
     private readonly IGetTeacherUseCase _getTeacherUseCase;
+    private readonly ICreateTeacherUseCase _createTeacherUseCase;
     private readonly TimeProvider _timeProvider;
 
     public TeachersController(
         IListTeachersUseCase listTeachersUseCase,
         IGetTeacherUseCase getTeacherUseCase,
+        ICreateTeacherUseCase createTeacherUseCase,
         TimeProvider timeProvider)
     {
         _listTeachersUseCase = listTeachersUseCase;
         _getTeacherUseCase = getTeacherUseCase;
+        _createTeacherUseCase = createTeacherUseCase;
         _timeProvider = timeProvider;
     }
 
@@ -132,6 +135,74 @@ public class TeachersController : ControllerBase
                 {
                     ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
                     ["errorCode"] = ErrorCodes.ResourceNotFound
+                }
+            });
+        }
+
+        throw new InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
+    }
+
+    [HttpPost]
+    [Authorize(Policy = AuthorizationPolicies.CenterManagerOnly)]
+    public async Task<IActionResult> CreateTeacher([FromBody] CreateTeacherRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _createTeacherUseCase.ExecuteAsync(request, cancellationToken);
+
+        if (result.IsSuccess)
+        {
+            return CreatedAtAction(
+                nameof(GetTeacher),
+                new { teacherId = result.Data!.TeacherId },
+                result.Data);
+        }
+
+        if (result.ErrorCode == ErrorCodes.ValidationFailed)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.1",
+                Title = "Dữ liệu không hợp lệ",
+                Status = 400,
+                Detail = "Dữ liệu giáo viên cung cấp không hợp lệ.",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    ["errorCode"] = ErrorCodes.ValidationFailed
+                }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ResourceNotFound)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.4",
+                Title = "Không tìm thấy dữ liệu",
+                Status = 404,
+                Detail = "Trung tâm quản lý không tồn tại hoặc đã bị khóa.",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    ["errorCode"] = ErrorCodes.ResourceNotFound
+                }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.DuplicateResource)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.8",
+                Title = "Dữ liệu đã tồn tại",
+                Status = 409,
+                Detail = "Tên đăng nhập đã tồn tại trong trung tâm. Vui lòng chọn tên khác.",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    ["errorCode"] = ErrorCodes.DuplicateResource
                 }
             });
         }
