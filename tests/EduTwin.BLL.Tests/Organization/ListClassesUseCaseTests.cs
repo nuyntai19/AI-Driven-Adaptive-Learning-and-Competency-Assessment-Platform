@@ -373,7 +373,7 @@ public class ListClassesUseCaseTests
     }
 
     [Fact]
-    public async Task T11_CancellationToken_PassedToCountAsync()
+    public async Task CanceledToken_CancelsExecution()
     {
         var dbName = Guid.NewGuid().ToString();
         var context = CreateContext(dbName);
@@ -384,7 +384,181 @@ public class ListClassesUseCaseTests
 
         var sut = new ListClassesUseCase(context, _mockTenantContext.Object, _mockLogger.Object);
 
-        await Assert.ThrowsAsync<OperationCanceledException>(async () => 
+        await Assert.ThrowsAsync<OperationCanceledException>(async () =>
             await sut.ExecuteAsync(new ClassListQuery(), cts.Token));
+    }
+    [Fact]
+    public async Task CenterManager_SubjectIdFilter()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var context = CreateContext(dbName);
+        var s1 = Guid.NewGuid();
+        var s2 = Guid.NewGuid();
+        var c1 = Guid.NewGuid();
+        var c2 = Guid.NewGuid();
+
+        await SeedDataAsync(context, c1, subjectId: s1);
+        await SeedDataAsync(context, c2, subjectId: s2);
+
+        var sut = new ListClassesUseCase(context, _mockTenantContext.Object, _mockLogger.Object);
+        var result = await sut.ExecuteAsync(new ClassListQuery { SubjectId = s1 });
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Data!);
+        Assert.Equal(c1.ToString("D").ToLowerInvariant(), result.Data![0].ClassId);
+    }
+
+    [Fact]
+    public async Task CenterManager_StatusFilter()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var context = CreateContext(dbName);
+        var c1 = Guid.NewGuid();
+        var c2 = Guid.NewGuid();
+
+        await SeedDataAsync(context, c1, classStatus: ClassStatus.Active);
+        await SeedDataAsync(context, c2, classStatus: ClassStatus.Archived);
+
+        var sut = new ListClassesUseCase(context, _mockTenantContext.Object, _mockLogger.Object);
+        var result = await sut.ExecuteAsync(new ClassListQuery { Status = ClassStatus.Archived });
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Data!);
+        Assert.Equal(c2.ToString("D").ToLowerInvariant(), result.Data![0].ClassId);
+    }
+
+    [Fact]
+    public async Task SubjectIdEmpty_ValidationFailed()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var context = CreateContext(dbName);
+
+        var sut = new ListClassesUseCase(context, _mockTenantContext.Object, _mockLogger.Object);
+        var result = await sut.ExecuteAsync(new ClassListQuery { SubjectId = Guid.Empty });
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task Teacher_QueryTeacherIdCannotExpandOwnership()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var context = CreateContext(dbName);
+        var c1 = Guid.NewGuid(); // own class
+        var c2 = Guid.NewGuid(); // other teacher's class
+        var t2 = Guid.NewGuid(); // other teacher
+
+        await SeedDataAsync(context, c1, teacherId: _userId);
+        await SeedDataAsync(context, c2, teacherId: t2);
+
+        _mockTenantContext.Setup(c => c.Role).Returns(nameof(UserRole.Teacher));
+
+        var sut = new ListClassesUseCase(context, _mockTenantContext.Object, _mockLogger.Object);
+        // Teacher tries to query another teacher's classes
+        var result = await sut.ExecuteAsync(new ClassListQuery { TeacherId = t2 });
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(result.Data!); // Should be empty because Teacher scope restricts to _userId
+    }
+
+    [Fact]
+    public async Task EmptyResult_TotalPagesIsZero()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var context = CreateContext(dbName);
+        await SeedDataAsync(context, Guid.NewGuid()); // Seed to ensure center exists
+
+        var sut = new ListClassesUseCase(context, _mockTenantContext.Object, _mockLogger.Object);
+        var result = await sut.ExecuteAsync(new ClassListQuery { SubjectId = Guid.NewGuid(), Page = 1, PageSize = 10 });
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(result.Data!);
+        Assert.Equal(0, result.TotalPages);
+    }
+
+    [Fact]
+    public async Task Projection_MapsSubjectTeacherStatusAndCanonicalIds()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var context = CreateContext(dbName);
+        var c1 = Guid.NewGuid();
+        var t1 = Guid.NewGuid();
+        var s1 = Guid.NewGuid();
+
+        await SeedDataAsync(context, c1, teacherId: t1, subjectId: s1, classStatus: ClassStatus.Active);
+
+        var sut = new ListClassesUseCase(context, _mockTenantContext.Object, _mockLogger.Object);
+        var result = await sut.ExecuteAsync(new ClassListQuery());
+
+        Assert.True(result.IsSuccess);
+        var item = Assert.Single(result.Data!);
+
+        Assert.Equal(c1.ToString("D").ToLowerInvariant(), item.ClassId);
+        Assert.Equal(s1.ToString("D").ToLowerInvariant(), item.Subject.SubjectId);
+        Assert.Equal("Math", item.Subject.SubjectName);
+        Assert.Equal(t1.ToString("D").ToLowerInvariant(), item.Teacher.TeacherId);
+        Assert.Equal("Teacher Name", item.Teacher.DisplayName);
+        Assert.Equal("Active", item.Status);
+    }
+
+    [Fact]
+    public async Task Projection_RowVersionUsesInvariantCulture()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var context = CreateContext(dbName);
+        var c1 = Guid.NewGuid();
+
+        await SeedDataAsync(context, c1);
+
+        var originalCulture = System.Threading.Thread.CurrentThread.CurrentCulture;
+        try
+        {
+            System.Threading.Thread.CurrentThread.CurrentCulture = new System.Globalization.CultureInfo("fr-FR");
+
+            var sut = new ListClassesUseCase(context, _mockTenantContext.Object, _mockLogger.Object);
+            var result = await sut.ExecuteAsync(new ClassListQuery());
+
+            Assert.True(result.IsSuccess);
+            Assert.Equal("1", result.Data![0].RowVersion);
+        }
+        finally
+        {
+            System.Threading.Thread.CurrentThread.CurrentCulture = originalCulture;
+        }
+    }
+
+    [Fact]
+    public async Task ReadQuery_DoesNotTrackEntities()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var context = CreateContext(dbName);
+        var c1 = Guid.NewGuid();
+        await SeedDataAsync(context, c1);
+        context.ChangeTracker.Clear();
+
+        var sut = new ListClassesUseCase(context, _mockTenantContext.Object, _mockLogger.Object);
+        var result = await sut.ExecuteAsync(new ClassListQuery());
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(context.ChangeTracker.Entries());
+    }
+
+    [Fact]
+    public async Task ActiveStudentCount_ExcludesInactiveMembership()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var context = CreateContext(dbName);
+        var c1 = Guid.NewGuid();
+        await SeedDataAsync(context, c1);
+
+        await SeedClassStudentAsync(context, c1, ClassStudentStatus.Active);
+        await SeedClassStudentAsync(context, c1, ClassStudentStatus.Removed);
+
+        var sut = new ListClassesUseCase(context, _mockTenantContext.Object, _mockLogger.Object);
+        var result = await sut.ExecuteAsync(new ClassListQuery());
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, result.Data![0].StudentCount);
     }
 }

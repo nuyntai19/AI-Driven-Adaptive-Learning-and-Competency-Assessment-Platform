@@ -1,3 +1,4 @@
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using EduTwin.BLL.IdentityAndTenancy;
@@ -15,10 +16,12 @@ namespace EduTwin.API.Controllers;
 public class ClassesController : ControllerBase
 {
     private readonly IListClassesUseCase _listClassesUseCase;
+    private readonly TimeProvider _timeProvider;
 
-    public ClassesController(IListClassesUseCase listClassesUseCase)
+    public ClassesController(IListClassesUseCase listClassesUseCase, TimeProvider timeProvider)
     {
         _listClassesUseCase = listClassesUseCase;
+        _timeProvider = timeProvider;
     }
 
     [HttpGet]
@@ -37,7 +40,9 @@ public class ClassesController : ControllerBase
                     Page = query.Page,
                     PageSize = query.PageSize,
                     TotalPages = result.TotalPages,
-                    TotalItems = result.TotalItems
+                    TotalItems = result.TotalItems,
+                    TraceId = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    Timestamp = _timeProvider.GetUtcNow().UtcDateTime
                 }
             };
             return Ok(response);

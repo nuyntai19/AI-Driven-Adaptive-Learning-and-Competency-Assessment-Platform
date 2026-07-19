@@ -77,7 +77,8 @@ public class ListClassesUseCase : IListClassesUseCase
         {
             dbQuery = dbQuery.Where(c => c.TeacherId == _tenantContext.UserId.Value);
         }
-        else if (query.TeacherId.HasValue)
+
+        if (query.TeacherId.HasValue)
         {
             dbQuery = dbQuery.Where(c => c.TeacherId == query.TeacherId.Value);
         }
@@ -93,8 +94,7 @@ public class ListClassesUseCase : IListClassesUseCase
         }
 
         var totalItems = await dbQuery.CountAsync(cancellationToken);
-        var totalPages = (int)Math.Ceiling(totalItems / (double)query.PageSize);
-        if (totalPages == 0) totalPages = 1;
+        var totalPages = totalItems == 0 ? 0 : (int)Math.Ceiling(totalItems / (double)query.PageSize);
 
         var items = await dbQuery
             .OrderByDescending(c => c.CreatedAt)
@@ -103,20 +103,20 @@ public class ListClassesUseCase : IListClassesUseCase
             .Take(query.PageSize)
             .Select(c => new ClassDto
             {
-                ClassId = c.ClassId.ToString(),
+                ClassId = c.ClassId.ToString("D").ToLowerInvariant(),
                 ClassName = c.ClassName,
                 AcademicYear = c.AcademicYear,
                 Subject = new ClassSubjectDto
                 {
-                    SubjectId = c.SubjectId.ToString(),
+                    SubjectId = c.SubjectId.ToString("D").ToLowerInvariant(),
                     SubjectName = c.Subject.SubjectName
                 },
                 Teacher = new ClassTeacherDto
                 {
-                    TeacherId = c.TeacherId.ToString(),
+                    TeacherId = c.TeacherId.ToString("D").ToLowerInvariant(),
                     DisplayName = c.Teacher.User.DisplayName
                 },
-                StudentCount = c.ClassStudents.Count(cs => cs.Status == ClassStudentStatus.Active),
+                StudentCount = c.ClassStudents.Count(cs => cs.CenterId == centerId && cs.Status == ClassStudentStatus.Active),
                 Status = c.Status.ToString(),
                 RowVersion = c.RowVersion.ToString(CultureInfo.InvariantCulture)
             })

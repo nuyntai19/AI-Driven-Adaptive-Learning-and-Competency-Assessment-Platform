@@ -29,4 +29,10 @@
     <ProjectReference Include="..\..\src\EduTwin.BLL\EduTwin.BLL.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\EduTwin.API\EduTwin.API.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
 </Project>
