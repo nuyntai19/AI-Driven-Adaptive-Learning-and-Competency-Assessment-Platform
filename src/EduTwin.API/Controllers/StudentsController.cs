@@ -17,11 +17,16 @@ namespace EduTwin.API.Controllers;
 public class StudentsController : ControllerBase
 {
     private readonly IListStudentsUseCase _listStudentsUseCase;
+    private readonly IGetStudentUseCase _getStudentUseCase;
     private readonly TimeProvider _timeProvider;
 
-    public StudentsController(IListStudentsUseCase listStudentsUseCase, TimeProvider timeProvider)
+    public StudentsController(
+        IListStudentsUseCase listStudentsUseCase,
+        IGetStudentUseCase getStudentUseCase,
+        TimeProvider timeProvider)
     {
         _listStudentsUseCase = listStudentsUseCase;
+        _getStudentUseCase = getStudentUseCase;
         _timeProvider = timeProvider;
     }
 
@@ -60,6 +65,55 @@ public class StudentsController : ControllerBase
                 Instance = HttpContext.Request.Path,
                 Extensions = { ["traceId"] = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier, ["errorCode"] = result.ErrorCode }
             });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ResourceNotFound)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.5",
+                Status = StatusCodes.Status404NotFound,
+                Title = "Không tìm thấy dữ liệu.",
+                Detail = "Không tìm thấy học viên hoặc dữ liệu không khả dụng.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier, ["errorCode"] = result.ErrorCode }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ForbiddenResource)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.4",
+                Status = StatusCodes.Status403Forbidden,
+                Title = "Bạn không có quyền truy cập.",
+                Detail = "Tài khoản của bạn không được phép thực hiện hành động này.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier, ["errorCode"] = result.ErrorCode }
+            });
+        }
+
+        throw new InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
+    }
+
+    [HttpGet("{studentId}")]
+    [Authorize]
+    public async Task<IActionResult> GetStudent(Guid studentId, CancellationToken cancellationToken)
+    {
+        var result = await _getStudentUseCase.ExecuteAsync(studentId, cancellationToken);
+
+        if (result.IsSuccess)
+        {
+            var response = new StudentDetailResponse
+            {
+                Data = result.Data!,
+                Meta = new MetaDto
+                {
+                    TraceId = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    Timestamp = _timeProvider.GetUtcNow().UtcDateTime
+                }
+            };
+            return Ok(response);
         }
 
         if (result.ErrorCode == ErrorCodes.ResourceNotFound)
