@@ -9,6 +9,7 @@ public static class DependencyInjection
         services.AddScoped<IGetCenterProfileUseCase, GetCenterProfileUseCase>();
         services.AddScoped<IUpdateCenterProfileUseCase, UpdateCenterProfileUseCase>();
         services.AddScoped<IListTeachersUseCase, ListTeachersUseCase>();
+        services.AddScoped<IGetTeacherUseCase, GetTeacherUseCase>();
         return services;
     }
 }
