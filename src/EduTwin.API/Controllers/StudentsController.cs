@@ -228,7 +228,7 @@ public class StudentsController : ControllerBase
 
     [HttpPatch("{studentId}")]
     [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
-    public async Task<IActionResult> UpdateStudent(Guid studentId, [FromBody] UpdateStudentRequest request)
+    public async Task<IActionResult> UpdateStudent(Guid studentId, [FromBody] UpdateStudentRequest request, CancellationToken cancellationToken)
     {
         if (request == null)
         {
@@ -243,7 +243,7 @@ public class StudentsController : ControllerBase
             });
         }
 
-        var result = await _updateStudentUseCase.ExecuteAsync(studentId, request);
+        var result = await _updateStudentUseCase.ExecuteAsync(studentId, request, cancellationToken);
 
         if (result.IsSuccess)
         {

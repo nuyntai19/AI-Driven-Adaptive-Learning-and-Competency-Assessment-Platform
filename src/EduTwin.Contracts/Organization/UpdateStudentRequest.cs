@@ -34,7 +34,7 @@ public class UpdateStudentRequest : IValidatableObject
             yield return new ValidationResult("Họ tên không được để trống.", new[] { nameof(FullName) });
         }
 
-        if (string.IsNullOrEmpty(RowVersion) || !Regex.IsMatch(RowVersion, "^[0-9]+$"))
+        if (string.IsNullOrEmpty(RowVersion) || !Regex.IsMatch(RowVersion, "^[1-9][0-9]*$"))
         {
             yield return new ValidationResult("RowVersion không hợp lệ.", new[] { nameof(RowVersion) });
         }

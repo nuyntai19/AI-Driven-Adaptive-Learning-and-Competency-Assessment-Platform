@@ -5,5 +5,5 @@ namespace EduTwin.BLL.Organization;
 
 public interface IUpdateStudentUseCase
 {
-    Task<UpdateStudentResult> ExecuteAsync(System.Guid studentId, UpdateStudentRequest request);
+    Task<UpdateStudentResult> ExecuteAsync(System.Guid studentId, UpdateStudentRequest request, System.Threading.CancellationToken cancellationToken = default);
 }

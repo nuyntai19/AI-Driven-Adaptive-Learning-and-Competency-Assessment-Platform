@@ -181,18 +181,18 @@ public class UpdateStudentRequestValidationTests
     {
         var json = "{\"FullName\": \"Name\", \"GradeLevel\": 10, \"Status\": \"Active\", \"RowVersion\": \"1\"}";
         var options = new JsonSerializerOptions();
-        options.Converters.Add(new JsonStringEnumConverter());
+        options.Converters.Add(new JsonStringEnumConverter(null, false));
         var request = JsonSerializer.Deserialize<UpdateStudentRequest>(json, options);
         Assert.NotNull(request);
         Assert.Equal(UserStatus.Active, request.Status);
     }
 
-    [Fact(Skip = "System.Text.Json by default parses numbers as enums")]
+    [Fact]
     public void JsonSerializer_NumericStatus_FailsDeserialization()
     {
         var json = "{\"FullName\": \"Name\", \"GradeLevel\": 10, \"Status\": 0, \"RowVersion\": \"1\"}";
         var options = new JsonSerializerOptions();
-        options.Converters.Add(new JsonStringEnumConverter());
+        options.Converters.Add(new JsonStringEnumConverter(null, false));
         Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<UpdateStudentRequest>(json, options));
     }
 
@@ -201,7 +201,7 @@ public class UpdateStudentRequestValidationTests
     {
         var json = "{\"FullName\": \"Name\", \"GradeLevel\": 10, \"Status\": \"UnknownStatus\", \"RowVersion\": \"1\"}";
         var options = new JsonSerializerOptions();
-        options.Converters.Add(new JsonStringEnumConverter());
+        options.Converters.Add(new JsonStringEnumConverter(null, false));
         Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<UpdateStudentRequest>(json, options));
     }
 }

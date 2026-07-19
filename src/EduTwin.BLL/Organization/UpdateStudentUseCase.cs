@@ -38,7 +38,7 @@ public class UpdateStudentUseCase : IUpdateStudentUseCase
         _logger = logger;
     }
 
-    public async Task<UpdateStudentResult> ExecuteAsync(Guid studentId, UpdateStudentRequest request)
+    public async Task<UpdateStudentResult> ExecuteAsync(Guid studentId, UpdateStudentRequest request, CancellationToken cancellationToken = default)
     {
         if (studentId == Guid.Empty)
         {
@@ -55,14 +55,13 @@ public class UpdateStudentUseCase : IUpdateStudentUseCase
             return UpdateStudentResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
-        if (!Enum.TryParse<UserRole>(_tenantContext.Role, false, out var roleEnum) ||
-            (roleEnum != UserRole.Teacher && roleEnum != UserRole.CenterManager))
+        if (_tenantContext.Role != nameof(UserRole.Teacher) && _tenantContext.Role != nameof(UserRole.CenterManager))
         {
             return UpdateStudentResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
         var centerExists = await _dbContext.Centers
-            .AnyAsync(c => c.CenterId == _tenantContext.CenterId && c.Status == CenterStatus.Active);
+            .AnyAsync(c => c.CenterId == _tenantContext.CenterId && c.Status == CenterStatus.Active, cancellationToken);
 
         if (!centerExists)
         {
@@ -76,7 +75,7 @@ public class UpdateStudentUseCase : IUpdateStudentUseCase
             return UpdateStudentResult.Failure(ErrorCodes.ValidationFailed);
         }
 
-        var ownershipDecision = await _ownershipGuard.CheckStudentAccessAsync(studentId, default);
+        var ownershipDecision = await _ownershipGuard.CheckStudentAccessAsync(studentId, cancellationToken);
         switch (ownershipDecision)
         {
             case OwnershipDecision.Allowed:
@@ -97,14 +96,14 @@ public class UpdateStudentUseCase : IUpdateStudentUseCase
                 s.User != null &&
                 s.User.CenterId == _tenantContext.CenterId.Value &&
                 !s.User.IsDeleted &&
-                s.User.RoleName == UserRole.Student);
+                s.User.RoleName == UserRole.Student, cancellationToken);
 
         if (student == null)
         {
             return UpdateStudentResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
-        if (!ulong.TryParse(request.RowVersion, NumberStyles.None, CultureInfo.InvariantCulture, out var parsedRowVersion))
+        if (!ulong.TryParse(request.RowVersion, NumberStyles.None, CultureInfo.InvariantCulture, out var parsedRowVersion) || parsedRowVersion == 0)
         {
             return UpdateStudentResult.Failure(ErrorCodes.ValidationFailed);
         }
@@ -131,7 +130,7 @@ public class UpdateStudentUseCase : IUpdateStudentUseCase
 
         try
         {
-            await _dbContext.SaveChangesAsync();
+            await _dbContext.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateConcurrencyException ex)
         {
@@ -149,12 +148,12 @@ public class UpdateStudentUseCase : IUpdateStudentUseCase
                 cs.Class.Status == ClassStatus.Active &&
                 !cs.Class.IsDeleted);
 
-        if (roleEnum == UserRole.Teacher)
+        if (_tenantContext.Role == nameof(UserRole.Teacher))
         {
             classCountQuery = classCountQuery.Where(cs => cs.Class.TeacherId == _tenantContext.UserId.Value);
         }
 
-        var activeClassCount = await classCountQuery.CountAsync();
+        var activeClassCount = await classCountQuery.CountAsync(cancellationToken);
 
         var dto = new StudentDto
         {

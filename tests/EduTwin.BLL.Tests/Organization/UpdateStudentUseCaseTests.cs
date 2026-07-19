@@ -431,9 +431,12 @@ public class UpdateStudentUseCaseTests
         var dbName = Guid.NewGuid().ToString();
         var context = CreateContext(dbName);
         await SeedCenterAsync(context, _centerId);
-        var student = await SeedStudentAsync(context, _centerId, rowVersion: 2);
+        var student = await SeedStudentAsync(context, _centerId);
 
-        var request = CreateValidRequest("0");
+        student.FullName = "Modified";
+        await context.SaveChangesAsync();
+
+        var request = CreateValidRequest("1");
         var sut = new UpdateStudentUseCase(context, _mockTenantContext.Object, _mockOwnershipGuard.Object, _mockTimeProvider.Object, _mockLogger.Object);
         var result = await sut.ExecuteAsync(student.StudentId, request);
 
@@ -758,31 +761,64 @@ public class UpdateStudentUseCaseTests
         }
     }
 
-    private class RowVersionIncrementInterceptor : SaveChangesInterceptor
+    [Theory]
+    [InlineData("0")]
+    [InlineData("1")]
+    [InlineData("2")]
+    [InlineData("teacher")]
+    [InlineData("centermanager")]
+    [InlineData("Admin")]
+    [InlineData("  ")]
+    [InlineData(null)]
+    public async Task T05b_InvalidRole_ReturnsResourceNotFound(string? role)
     {
-        public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
-        {
-            IncrementRowVersions(eventData.Context);
-            return base.SavingChanges(eventData, result);
-        }
+        var dbName = Guid.NewGuid().ToString();
+        var context = CreateContext(dbName);
+        await SeedCenterAsync(context, _centerId);
+        var student = await SeedStudentAsync(context, _centerId);
 
-        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
-        {
-            IncrementRowVersions(eventData.Context);
-            return base.SavingChangesAsync(eventData, result, cancellationToken);
-        }
+        _mockTenantContext.Setup(t => t.Role).Returns(role);
 
-        private void IncrementRowVersions(DbContext? context)
-        {
-            if (context == null) return;
-            var entries = context.ChangeTracker.Entries().Where(e => e.State == EntityState.Modified);
-            foreach (var entry in entries)
-            {
-                if (entry.Entity is EduTwin.DAL.Persistence.Models.IMutableTenantAggregate aggregate)
-                {
-                    aggregate.RowVersion++;
-                }
-            }
-        }
+        var request = CreateValidRequest();
+        var sut = new UpdateStudentUseCase(context, _mockTenantContext.Object, _mockOwnershipGuard.Object, _mockTimeProvider.Object, _mockLogger.Object);
+        var result = await sut.ExecuteAsync(student.StudentId, request);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task T17_RowVersionZero_ReturnsValidationFailed()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var context = CreateContext(dbName);
+        await SeedCenterAsync(context, _centerId);
+        var student = await SeedStudentAsync(context, _centerId);
+
+        var request = CreateValidRequest("0");
+        var sut = new UpdateStudentUseCase(context, _mockTenantContext.Object, _mockOwnershipGuard.Object, _mockTimeProvider.Object, _mockLogger.Object);
+        var result = await sut.ExecuteAsync(student.StudentId, request);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task T30_CancellationToken_PassedToOwnershipGuard()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var context = CreateContext(dbName);
+        await SeedCenterAsync(context, _centerId);
+        var student = await SeedStudentAsync(context, _centerId);
+
+        var cts = new CancellationTokenSource();
+        var token = cts.Token;
+
+        var request = CreateValidRequest();
+        var sut = new UpdateStudentUseCase(context, _mockTenantContext.Object, _mockOwnershipGuard.Object, _mockTimeProvider.Object, _mockLogger.Object);
+
+        await sut.ExecuteAsync(student.StudentId, request, token);
+
+        _mockOwnershipGuard.Verify(g => g.CheckStudentAccessAsync(student.StudentId, token), Times.Once);
     }
 }
