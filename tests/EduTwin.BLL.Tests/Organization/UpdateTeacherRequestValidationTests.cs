@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.Contracts.Organization;
+using System.Text.Json;
 using Xunit;
 
 namespace EduTwin.BLL.Tests.Organization;
@@ -15,6 +16,12 @@ public class UpdateTeacherRequestValidationTests
         Validator.TryValidateObject(model, validationContext, validationResults, true);
         return validationResults;
     }
+
+    private readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter(allowIntegerValues: false) },
+        PropertyNameCaseInsensitive = true
+    };
 
     [Fact]
     public void ValidRequest_PassesValidation()
@@ -83,6 +90,48 @@ public class UpdateTeacherRequestValidationTests
         };
         var results = ValidateModel(request);
         Assert.Contains(results, r => r.MemberNames.Contains(nameof(UpdateTeacherRequest.Status)));
+    }
+
+    [Fact]
+    public void MissingStatus_FailsValidation()
+    {
+        var json = """{"displayName": "Valid", "rowVersion": "1"}""";
+        var request = JsonSerializer.Deserialize<UpdateTeacherRequest>(json, _jsonOptions)!;
+        var results = ValidateModel(request);
+        Assert.Contains(results, r => r.MemberNames.Contains(nameof(UpdateTeacherRequest.Status)));
+    }
+
+    [Fact]
+    public void NullStatus_FailsValidation()
+    {
+        var json = """{"displayName": "Valid", "status": null, "rowVersion": "1"}""";
+        var request = JsonSerializer.Deserialize<UpdateTeacherRequest>(json, _jsonOptions)!;
+        var results = ValidateModel(request);
+        Assert.Contains(results, r => r.MemberNames.Contains(nameof(UpdateTeacherRequest.Status)));
+    }
+
+    [Fact]
+    public void StringStatusActive_DeserializesAndValidates()
+    {
+        var json = """{"displayName": "Valid", "status": "Active", "rowVersion": "1"}""";
+        var request = JsonSerializer.Deserialize<UpdateTeacherRequest>(json, _jsonOptions)!;
+        var results = ValidateModel(request);
+        Assert.Empty(results);
+        Assert.Equal(UserStatus.Active, request.Status);
+    }
+
+    [Fact]
+    public void NumericStatus_IsRejectedByJsonConfiguration()
+    {
+        var json = """{"displayName": "Valid", "status": 0, "rowVersion": "1"}""";
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<UpdateTeacherRequest>(json, _jsonOptions));
+    }
+
+    [Fact]
+    public void UnknownStringStatus_IsRejected()
+    {
+        var json = """{"displayName": "Valid", "status": "InvalidStatus", "rowVersion": "1"}""";
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<UpdateTeacherRequest>(json, _jsonOptions));
     }
 
     [Theory]

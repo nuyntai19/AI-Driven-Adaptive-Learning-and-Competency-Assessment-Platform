@@ -25,7 +25,7 @@ public class UpdateTeacherRequest
 
     [Required(ErrorMessage = "Trạng thái tài khoản là bắt buộc.")]
     [EnumDataType(typeof(UserStatus), ErrorMessage = "Trạng thái không hợp lệ.")]
-    public UserStatus Status { get; set; }
+    public UserStatus? Status { get; set; }
 
     [Required(ErrorMessage = "Phiên bản dữ liệu (RowVersion) là bắt buộc.")]
     public string RowVersion { get; set; } = string.Empty;

@@ -67,7 +67,8 @@ public class UpdateTeacherUseCase : IUpdateTeacherUseCase
 
         if (string.IsNullOrWhiteSpace(displayName) || displayName.Length > 200 ||
             (department != null && department.Length > 150) ||
-            !Enum.IsDefined(typeof(UserStatus), request.Status))
+            !request.Status.HasValue ||
+            !Enum.IsDefined(typeof(UserStatus), request.Status.Value))
         {
             return UpdateTeacherResult.Failure(ErrorCodes.ValidationFailed);
         }
@@ -101,7 +102,7 @@ public class UpdateTeacherUseCase : IUpdateTeacherUseCase
         var managerId = _tenantContext.UserId;
 
         teacher.User!.DisplayName = displayName;
-        teacher.User.Status = request.Status;
+        teacher.User.Status = request.Status.Value;
         teacher.User.UpdatedAt = now;
         teacher.User.UpdatedBy = managerId;
 

@@ -231,6 +231,36 @@ public class UpdateTeacherUseCaseTests
     }
 
     [Fact]
+    public async Task UseCase_NullStatus_ValidationFailedAndNoPersistence()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (dbContext, _) = CreateContext(dbName);
+        var teacherId = Guid.NewGuid();
+        await SeedDataAsync(dbContext, teacherId, rowVersion: 10);
+
+        var seededTeacher = await dbContext.Teachers.FirstAsync(t => t.TeacherId == teacherId);
+        var actualRowVersion = seededTeacher.RowVersion;
+        dbContext.ChangeTracker.Clear();
+
+        var sut = new UpdateTeacherUseCase(dbContext, _mockTenantContext.Object, TimeProvider.System);
+        var request = new UpdateTeacherRequest
+        {
+            DisplayName = "Valid",
+            Status = null,
+            RowVersion = actualRowVersion.ToString()
+        };
+
+        var result = await sut.ExecuteAsync(teacherId, request);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+
+        var teacher = await dbContext.Teachers.AsNoTracking().Include(t => t.User).FirstAsync(t => t.TeacherId == teacherId);
+        Assert.Equal(UserStatus.Active, teacher.User!.Status); // Not modified
+        Assert.Equal("Old Name", teacher.User.DisplayName); // Not modified
+    }
+
+    [Fact]
     public async Task UpdateTeacher_StaleRowVersion_ConcurrencyConflictAndNoPersistence()
     {
         var dbName = Guid.NewGuid().ToString();
