@@ -10,4 +10,5 @@ public static class ErrorCodes
     public const string ConcurrencyConflict = "CONCURRENCY_CONFLICT";
     public const string ForbiddenResource = "FORBIDDEN_RESOURCE";
     public const string DuplicateResource = "DUPLICATE_RESOURCE";
+    public const string InvalidStateTransition = "INVALID_STATE_TRANSITION";
 }

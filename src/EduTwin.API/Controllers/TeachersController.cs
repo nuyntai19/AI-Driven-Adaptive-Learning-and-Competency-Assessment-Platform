@@ -20,6 +20,7 @@ public class TeachersController : ControllerBase
     private readonly IGetTeacherUseCase _getTeacherUseCase;
     private readonly ICreateTeacherUseCase _createTeacherUseCase;
     private readonly IUpdateTeacherUseCase _updateTeacherUseCase;
+    private readonly IDeleteTeacherUseCase _deleteTeacherUseCase;
     private readonly TimeProvider _timeProvider;
 
     public TeachersController(
@@ -27,12 +28,14 @@ public class TeachersController : ControllerBase
         IGetTeacherUseCase getTeacherUseCase,
         ICreateTeacherUseCase createTeacherUseCase,
         IUpdateTeacherUseCase updateTeacherUseCase,
+        IDeleteTeacherUseCase deleteTeacherUseCase,
         TimeProvider timeProvider)
     {
         _listTeachersUseCase = listTeachersUseCase;
         _getTeacherUseCase = getTeacherUseCase;
         _createTeacherUseCase = createTeacherUseCase;
         _updateTeacherUseCase = updateTeacherUseCase;
+        _deleteTeacherUseCase = deleteTeacherUseCase;
         _timeProvider = timeProvider;
     }
 
@@ -254,6 +257,71 @@ public class TeachersController : ControllerBase
                 {
                     ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
                     ["errorCode"] = ErrorCodes.ResourceNotFound
+                }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ConcurrencyConflict)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.8",
+                Title = "Dữ liệu bị lỗi đồng bộ",
+                Status = 409,
+                Detail = "Dữ liệu đã bị thay đổi bởi một phiên làm việc khác. Vui lòng tải lại và thử lại.",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    ["errorCode"] = ErrorCodes.ConcurrencyConflict
+                }
+            });
+        }
+
+        throw new InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
+    }
+
+    [HttpDelete("{teacherId:guid}")]
+    [Authorize(Policy = AuthorizationPolicies.CenterManagerOnly)]
+    public async Task<IActionResult> DeleteTeacher([FromRoute] Guid teacherId, CancellationToken cancellationToken)
+    {
+        var result = await _deleteTeacherUseCase.ExecuteAsync(teacherId, cancellationToken);
+
+        if (result.IsSuccess)
+        {
+            return NoContent();
+        }
+
+        if (result.ErrorCode == ErrorCodes.ResourceNotFound)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.4",
+                Title = "Không tìm thấy dữ liệu",
+                Status = 404,
+                Detail = "Giáo viên không tồn tại hoặc không thuộc quyền quản lý của bạn.",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    ["errorCode"] = ErrorCodes.ResourceNotFound
+                }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.InvalidStateTransition)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.8",
+                Title = "Không thể xóa giáo viên",
+                Status = 409,
+                Detail = "Giáo viên vẫn còn lớp học đang hoạt động. Vui lòng chuyển giao hoặc đóng lớp học trước khi xóa.",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    ["errorCode"] = ErrorCodes.InvalidStateTransition
                 }
             });
         }
