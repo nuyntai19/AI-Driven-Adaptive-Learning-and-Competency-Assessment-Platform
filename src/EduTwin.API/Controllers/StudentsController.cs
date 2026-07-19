@@ -156,7 +156,7 @@ public class StudentsController : ControllerBase
 
         if (result.IsSuccess)
         {
-            var response = new StudentDetailResponse
+            var response = new StudentResponse
             {
                 Data = result.Data!,
                 Meta = new MetaDto

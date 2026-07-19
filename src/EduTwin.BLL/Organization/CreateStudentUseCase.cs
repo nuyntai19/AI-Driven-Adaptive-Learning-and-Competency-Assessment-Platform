@@ -22,17 +22,20 @@ public class CreateStudentUseCase : ICreateStudentUseCase
     private readonly EduTwinDbContext _dbContext;
     private readonly ITenantContext _tenantContext;
     private readonly IPasswordHasher<User> _passwordHasher;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<CreateStudentUseCase> _logger;
 
     public CreateStudentUseCase(
         EduTwinDbContext dbContext,
         ITenantContext tenantContext,
         IPasswordHasher<User> passwordHasher,
+        TimeProvider timeProvider,
         ILogger<CreateStudentUseCase> logger)
     {
         _dbContext = dbContext;
         _tenantContext = tenantContext;
         _passwordHasher = passwordHasher;
+        _timeProvider = timeProvider;
         _logger = logger;
     }
 
@@ -41,27 +44,27 @@ public class CreateStudentUseCase : ICreateStudentUseCase
         // 1. Validate request manually
         if (string.IsNullOrWhiteSpace(request.Username) || request.Username.Length > 100)
             return CreateStudentResult.Failure(ErrorCodes.ValidationFailed);
-        
-        if (string.IsNullOrEmpty(request.TemporaryPassword) || request.TemporaryPassword.Length < 12 || request.TemporaryPassword.Length > 200)
+
+        if (string.IsNullOrWhiteSpace(request.TemporaryPassword) || request.TemporaryPassword.Length < 12 || request.TemporaryPassword.Length > 200)
             return CreateStudentResult.Failure(ErrorCodes.ValidationFailed);
-            
+
         if (string.IsNullOrWhiteSpace(request.FullName) || request.FullName.Length > 200)
             return CreateStudentResult.Failure(ErrorCodes.ValidationFailed);
-            
+
         if (request.GradeLevel is < 10 or > 12)
             return CreateStudentResult.Failure(ErrorCodes.ValidationFailed);
-            
+
         if (request.ClassIds == null || request.ClassIds.Any(id => id == Guid.Empty) || request.ClassIds.Distinct().Count() != request.ClassIds.Count)
             return CreateStudentResult.Failure(ErrorCodes.ValidationFailed);
 
-        // 2. Validate tenant and role
+        // 2. Validate tenant and role - fail closed
         if (!_tenantContext.IsResolved ||
             !_tenantContext.CenterId.HasValue || _tenantContext.CenterId.Value == Guid.Empty ||
             !_tenantContext.UserId.HasValue || _tenantContext.UserId.Value == Guid.Empty ||
             (!string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal) &&
              !string.Equals(_tenantContext.Role, nameof(UserRole.CenterManager), StringComparison.Ordinal)))
         {
-            return CreateStudentResult.Failure(ErrorCodes.ForbiddenResource); // Typically fail closed
+            return CreateStudentResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
         var centerId = _tenantContext.CenterId.Value;
@@ -72,7 +75,7 @@ public class CreateStudentUseCase : ICreateStudentUseCase
             .FirstOrDefaultAsync(c => c.CenterId == centerId, cancellationToken);
 
         if (center == null || center.IsDeleted || center.Status != CenterStatus.Active)
-            return CreateStudentResult.Failure(ErrorCodes.ForbiddenResource);
+            return CreateStudentResult.Failure(ErrorCodes.ResourceNotFound);
 
         // 3. Validate Classes
         List<Class> classes = new();
@@ -89,13 +92,13 @@ public class CreateStudentUseCase : ICreateStudentUseCase
                 return CreateStudentResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
-        // 4. Check duplicate username in Center
+        // 4. Pre-check duplicate username in Center
         var isDuplicate = await _dbContext.Users.AnyAsync(u => u.CenterId == centerId && u.Username == request.Username, cancellationToken);
         if (isDuplicate)
             return CreateStudentResult.Failure(ErrorCodes.DuplicateResource);
 
         // 5. Create entities in transaction
-        var now = DateTime.UtcNow;
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
         var studentId = Guid.NewGuid();
 
         var user = new User
@@ -106,14 +109,14 @@ public class CreateStudentUseCase : ICreateStudentUseCase
             RoleName = UserRole.Student,
             Status = UserStatus.Active,
             AuthVersion = 1,
-            DisplayName = request.FullName, // Display name can match FullName for now, or just leave it
+            DisplayName = request.FullName,
             CreatedAt = now,
             UpdatedAt = now,
             CreatedBy = actorId,
             UpdatedBy = actorId
         };
-        
-        // Hash password (receives raw, without trimming)
+
+        // Hash password
         user.PasswordHash = _passwordHasher.HashPassword(user, request.TemporaryPassword);
 
         var student = new Student
@@ -163,48 +166,34 @@ public class CreateStudentUseCase : ICreateStudentUseCase
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         }
-        catch (DbUpdateException ex) when (ex.InnerException != null && (ex.InnerException.Message.Contains("IX_") || ex.InnerException.Message.Contains("duplicate") || ex.InnerException.Message.Contains("unique")))
+        catch (DbUpdateException)
         {
             await transaction.RollbackAsync(cancellationToken);
-            
-            // Check if it's the username constraint
+            _dbContext.ChangeTracker.Clear();
+
+            // Re-check for duplicate username
             var stillDuplicate = await _dbContext.Users.AnyAsync(u => u.CenterId == centerId && u.Username == request.Username, cancellationToken);
             if (stillDuplicate)
                 return CreateStudentResult.Failure(ErrorCodes.DuplicateResource);
 
             throw; // Unrelated DB update error
         }
-        catch (Exception ex)
+        catch
         {
             await transaction.RollbackAsync(cancellationToken);
-            _logger.LogError(ex, "Failed to create student for center {CenterId}", centerId);
             throw;
         }
 
         // Build Response
-        var classDtos = classes.Select(c => new ClassDto
+        var studentDto = new StudentDto
         {
-            ClassId = c.ClassId.ToString("D"),
-            ClassName = c.ClassName,
-            AcademicYear = c.AcademicYear,
-            Status = c.Status.ToString(),
-            RowVersion = c.RowVersion.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            Subject = new ClassSubjectDto { SubjectId = c.SubjectId.ToString("D"), SubjectName = string.Empty },
-            Teacher = new ClassTeacherDto { TeacherId = c.TeacherId.ToString("D"), DisplayName = string.Empty },
-            StudentCount = 0
-        }).ToList();
-
-        var studentDto = new StudentDetailDto
-        {
-            StudentId = studentId.ToString("D"),
+            StudentId = studentId,
             Username = user.Username,
             FullName = student.FullName,
             GradeLevel = student.GradeLevel,
             Status = user.Status.ToString(),
-            ActiveClassCount = classDtos.Count,
-            RowVersion = student.RowVersion.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            Classes = classDtos,
-            SubjectGoals = new List<StudentSubjectGoalDto>()
+            ActiveClassCount = classes.Count,
+            RowVersion = student.RowVersion.ToString(System.Globalization.CultureInfo.InvariantCulture)
         };
 
         return CreateStudentResult.Success(studentDto);
