@@ -17,6 +17,7 @@ public class ClassesControllerTests
 {
     private readonly Mock<IListClassesUseCase> _mockListClassesUseCase;
     private readonly Mock<IGetClassUseCase> _mockGetClassUseCase;
+    private readonly Mock<ICreateClassUseCase> _mockCreateClassUseCase;
     private readonly Mock<TimeProvider> _mockTimeProvider;
     private readonly ClassesController _controller;
 
@@ -24,12 +25,17 @@ public class ClassesControllerTests
     {
         _mockListClassesUseCase = new Mock<IListClassesUseCase>();
         _mockGetClassUseCase = new Mock<IGetClassUseCase>();
+        _mockCreateClassUseCase = new Mock<ICreateClassUseCase>();
         _mockTimeProvider = new Mock<TimeProvider>();
 
         var utcNow = new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero);
         _mockTimeProvider.Setup(t => t.GetUtcNow()).Returns(utcNow);
 
-        _controller = new ClassesController(_mockListClassesUseCase.Object, _mockGetClassUseCase.Object, _mockTimeProvider.Object)
+        _controller = new ClassesController(
+            _mockListClassesUseCase.Object,
+            _mockGetClassUseCase.Object,
+            _mockCreateClassUseCase.Object,
+            _mockTimeProvider.Object)
         {
             ControllerContext = new ControllerContext
             {
@@ -198,5 +204,114 @@ public class ClassesControllerTests
 
         _mockGetClassUseCase.Verify(u => u.ExecuteAsync(classId, cts.Token), Times.Once);
         Assert.IsType<NotFoundObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task CreateClass_Controller_Success_Returns201Created()
+    {
+        var request = new CreateClassRequest { ClassName = "Class 1", AcademicYear = "2026", SubjectId = Guid.NewGuid(), TeacherId = Guid.NewGuid() };
+        var cancellationToken = new CancellationToken();
+        var data = new ClassDto
+        {
+            ClassId = "class-1",
+            ClassName = "Class 1",
+            AcademicYear = "2026",
+            Subject = new ClassSubjectDto { SubjectId = "sub-1", SubjectName = "Math" },
+            Teacher = new ClassTeacherDto { TeacherId = "teach-1", DisplayName = "John" },
+            Status = "Active",
+            RowVersion = "1",
+            StudentCount = 0
+        };
+
+        _mockCreateClassUseCase
+            .Setup(u => u.ExecuteAsync(request, cancellationToken))
+            .ReturnsAsync(CreateClassResult.Success(data));
+
+        var result = await _controller.CreateClass(request, cancellationToken);
+
+        var createdResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status201Created, createdResult.StatusCode);
+
+        var responseType = createdResult.Value!.GetType();
+        var returnedData = responseType.GetProperty("Data")!.GetValue(createdResult.Value) as ClassDto;
+        Assert.NotNull(returnedData);
+        Assert.Equal(data.ClassId, returnedData.ClassId);
+
+        var meta = responseType.GetProperty("Meta")!.GetValue(createdResult.Value) as EduTwin.Contracts.IdentityAndTenancy.MetaDto;
+        Assert.NotNull(meta);
+        Assert.Equal("test-trace-id", meta.TraceId);
+        Assert.Equal(new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc), meta.Timestamp);
+    }
+
+    [Fact]
+    public async Task CreateClass_Controller_ValidationFailed_ReturnsBadRequest()
+    {
+        var request = new CreateClassRequest();
+        _mockCreateClassUseCase
+            .Setup(u => u.ExecuteAsync(request, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateClassResult.Failure(ErrorCodes.ValidationFailed));
+
+        var result = await _controller.CreateClass(request, CancellationToken.None);
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        var problem = Assert.IsType<ProblemDetails>(badRequest.Value);
+        Assert.Equal(StatusCodes.Status400BadRequest, problem.Status);
+    }
+
+    [Fact]
+    public async Task CreateClass_Controller_NotFound_ReturnsNotFound()
+    {
+        var request = new CreateClassRequest();
+        _mockCreateClassUseCase
+            .Setup(u => u.ExecuteAsync(request, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateClassResult.Failure(ErrorCodes.ResourceNotFound));
+
+        var result = await _controller.CreateClass(request, CancellationToken.None);
+
+        var notFound = Assert.IsType<NotFoundObjectResult>(result);
+        var problem = Assert.IsType<ProblemDetails>(notFound.Value);
+        Assert.Equal(StatusCodes.Status404NotFound, problem.Status);
+    }
+
+    [Fact]
+    public async Task CreateClass_Controller_Duplicate_ReturnsConflict()
+    {
+        var request = new CreateClassRequest();
+        _mockCreateClassUseCase
+            .Setup(u => u.ExecuteAsync(request, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateClassResult.Failure(ErrorCodes.DuplicateResource));
+
+        var result = await _controller.CreateClass(request, CancellationToken.None);
+
+        var conflict = Assert.IsType<ConflictObjectResult>(result);
+        var problem = Assert.IsType<ProblemDetails>(conflict.Value);
+        Assert.Equal(StatusCodes.Status409Conflict, problem.Status);
+    }
+
+    [Fact]
+    public async Task CreateClass_Controller_UnexpectedErrorCode_Throws()
+    {
+        var request = new CreateClassRequest();
+        _mockCreateClassUseCase
+            .Setup(u => u.ExecuteAsync(request, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateClassResult.Failure("UNKNOWN"));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _controller.CreateClass(request, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task CreateClass_Controller_PassesCancellationToken()
+    {
+        var request = new CreateClassRequest();
+        var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        _mockCreateClassUseCase
+            .Setup(u => u.ExecuteAsync(request, cts.Token))
+            .ReturnsAsync(CreateClassResult.Failure(ErrorCodes.ValidationFailed));
+
+        await _controller.CreateClass(request, cts.Token);
+
+        _mockCreateClassUseCase.Verify(u => u.ExecuteAsync(request, cts.Token), Times.Once);
     }
 }

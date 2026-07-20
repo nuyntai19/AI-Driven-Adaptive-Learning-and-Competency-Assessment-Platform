@@ -19,6 +19,7 @@ public static class DependencyInjection
         services.AddScoped<IUpdateStudentUseCase, UpdateStudentUseCase>();
         services.AddScoped<IListClassesUseCase, ListClassesUseCase>();
         services.AddScoped<IGetClassUseCase, GetClassUseCase>();
+        services.AddScoped<ICreateClassUseCase, CreateClassUseCase>();
         return services;
     }
 }
