@@ -281,4 +281,74 @@ public class ClassesController : ControllerBase
 
         throw new System.InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
     }
+
+    [HttpPost("{classId:guid}/students")]
+    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> AddStudents(
+        [FromRoute] Guid classId,
+        [FromBody] AddStudentsToClassRequest request,
+        [FromServices] IAddStudentsToClassUseCase useCase,
+        CancellationToken cancellationToken)
+    {
+        var result = await useCase.ExecuteAsync(classId, request, cancellationToken);
+
+        if (result.IsSuccess)
+        {
+            var response = new
+            {
+                Data = result.Data!,
+                Meta = new EduTwin.Contracts.IdentityAndTenancy.MetaDto
+                {
+                    TraceId = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    Timestamp = _timeProvider.GetUtcNow().UtcDateTime
+                }
+            };
+            return Ok(response);
+        }
+
+        if (result.ErrorCode == ErrorCodes.ValidationFailed)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.1",
+                Status = StatusCodes.Status400BadRequest,
+                Title = "Dữ liệu đầu vào không hợp lệ.",
+                Detail = "Vui lòng kiểm tra lại thông tin cung cấp.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier, ["errorCode"] = result.ErrorCode }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ForbiddenResource)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.4",
+                Status = StatusCodes.Status403Forbidden,
+                Title = "Không có quyền truy cập.",
+                Detail = "Bạn không có quyền thêm học viên vào lớp học này.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier, ["errorCode"] = result.ErrorCode }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ResourceNotFound)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.5",
+                Status = StatusCodes.Status404NotFound,
+                Title = "Không tìm thấy dữ liệu.",
+                Detail = "Tài nguyên bạn yêu cầu không tồn tại hoặc đã bị xóa.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier, ["errorCode"] = result.ErrorCode }
+            });
+        }
+
+        throw new System.InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
+    }
 }

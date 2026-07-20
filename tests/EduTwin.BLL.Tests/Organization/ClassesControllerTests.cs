@@ -448,4 +448,128 @@ public class ClassesControllerTests
 
         _mockUpdateClassUseCase.Verify(u => u.ExecuteAsync(classId, request, cts.Token), Times.Once);
     }
+
+    [Fact]
+    public async Task AddStudents_Controller_Success_Returns200OK()
+    {
+        var classId = Guid.NewGuid();
+        var request = new AddStudentsToClassRequest { StudentIds = new[] { Guid.NewGuid() } };
+        var cancellationToken = new CancellationToken();
+
+        var mockUseCase = new Mock<IAddStudentsToClassUseCase>();
+        var dto = new AddStudentsToClassDto { ClassId = classId.ToString(), AddedCount = 1, AlreadyMemberCount = 0 };
+        mockUseCase.Setup(u => u.ExecuteAsync(classId, request, cancellationToken))
+            .ReturnsAsync(AddStudentsToClassResult.Success(dto));
+
+        var result = await _controller.AddStudents(classId, request, mockUseCase.Object, cancellationToken);
+        var objectResult = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(StatusCodes.Status200OK, objectResult.StatusCode);
+
+        var responseType = objectResult.Value!.GetType();
+
+        var returnedData =
+            responseType.GetProperty("Data")!.GetValue(objectResult.Value)
+            as AddStudentsToClassDto;
+
+        Assert.NotNull(returnedData);
+        Assert.Equal(dto.ClassId, returnedData.ClassId);
+        Assert.Equal(dto.AddedCount, returnedData.AddedCount);
+        Assert.Equal(dto.AlreadyMemberCount, returnedData.AlreadyMemberCount);
+
+        var meta =
+            responseType.GetProperty("Meta")!.GetValue(objectResult.Value)
+            as EduTwin.Contracts.IdentityAndTenancy.MetaDto;
+
+        Assert.NotNull(meta);
+        Assert.Equal("test-trace-id", meta.TraceId);
+        Assert.Equal(
+            new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            meta.Timestamp);
+    }
+    [Fact]
+    public async Task AddStudents_Controller_ValidationFailed_ReturnsBadRequest()
+    {
+        var classId = Guid.NewGuid();
+        var request = new AddStudentsToClassRequest { StudentIds = new[] { Guid.NewGuid() } };
+
+        var mockUseCase = new Mock<IAddStudentsToClassUseCase>();
+        mockUseCase.Setup(u => u.ExecuteAsync(classId, request, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(AddStudentsToClassResult.Failure(ErrorCodes.ValidationFailed));
+
+        var result = await _controller.AddStudents(classId, request, mockUseCase.Object, CancellationToken.None);
+        var objectResult = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task AddStudents_Controller_Forbidden_Returns403()
+    {
+        var classId = Guid.NewGuid();
+        var request = new AddStudentsToClassRequest { StudentIds = new[] { Guid.NewGuid() } };
+
+        var mockUseCase = new Mock<IAddStudentsToClassUseCase>();
+        mockUseCase.Setup(u => u.ExecuteAsync(classId, request, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(AddStudentsToClassResult.Failure(ErrorCodes.ForbiddenResource));
+
+        var result = await _controller.AddStudents(classId, request, mockUseCase.Object, CancellationToken.None);
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task AddStudents_Controller_NotFound_Returns404()
+    {
+        var classId = Guid.NewGuid();
+        var request = new AddStudentsToClassRequest { StudentIds = new[] { Guid.NewGuid() } };
+
+        var mockUseCase = new Mock<IAddStudentsToClassUseCase>();
+        mockUseCase.Setup(u => u.ExecuteAsync(classId, request, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(AddStudentsToClassResult.Failure(ErrorCodes.ResourceNotFound));
+
+        var result = await _controller.AddStudents(classId, request, mockUseCase.Object, CancellationToken.None);
+        Assert.IsType<NotFoundObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task AddStudents_Controller_UnexpectedError_Throws()
+    {
+        var classId = Guid.NewGuid();
+        var request = new AddStudentsToClassRequest { StudentIds = new[] { Guid.NewGuid() } };
+
+        var mockUseCase = new Mock<IAddStudentsToClassUseCase>();
+        mockUseCase.Setup(u => u.ExecuteAsync(classId, request, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(AddStudentsToClassResult.Failure("UNKNOWN"));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _controller.AddStudents(classId, request, mockUseCase.Object, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task AddStudents_Controller_PassesExactCancellationToken()
+    {
+        var classId = Guid.NewGuid();
+        var request = new AddStudentsToClassRequest
+        {
+            StudentIds = new[] { Guid.NewGuid() }
+        };
+
+        using var cts = new CancellationTokenSource();
+        var exactToken = cts.Token;
+
+        var mockUseCase = new Mock<IAddStudentsToClassUseCase>();
+        mockUseCase
+            .Setup(u => u.ExecuteAsync(classId, request, exactToken))
+            .ReturnsAsync(
+                AddStudentsToClassResult.Failure(
+                    ErrorCodes.ResourceNotFound));
+
+        await _controller.AddStudents(
+            classId,
+            request,
+            mockUseCase.Object,
+            exactToken);
+
+        mockUseCase.Verify(
+            u => u.ExecuteAsync(classId, request, exactToken),
+            Times.Once);
+    }
 }
