@@ -40,7 +40,9 @@ public class UpsertStudentSubjectGoalUseCase : IUpsertStudentSubjectGoalUseCase
         if (studentId == Guid.Empty || subjectId == Guid.Empty)
             return UpsertStudentSubjectGoalResult.NotFound();
 
-        if (_tenantContext.UserId == null || _tenantContext.CenterId == null)
+        if (!_tenantContext.IsResolved ||
+            _tenantContext.UserId == null || _tenantContext.UserId == Guid.Empty ||
+            _tenantContext.CenterId == null || _tenantContext.CenterId == Guid.Empty)
             return UpsertStudentSubjectGoalResult.NotFound();
 
         if (string.IsNullOrWhiteSpace(_tenantContext.Role))
@@ -59,7 +61,9 @@ public class UpsertStudentSubjectGoalUseCase : IUpsertStudentSubjectGoalUseCase
         if (!centerExists)
             return UpsertStudentSubjectGoalResult.NotFound();
 
-        if (request.TargetScore < 0m || request.TargetScore > 10m || decimal.Round(request.TargetScore, 2) != request.TargetScore)
+        int[] bits = decimal.GetBits(request.TargetScore);
+        int scale = (bits[3] >> 16) & 31;
+        if (request.TargetScore < 0m || request.TargetScore > 10m || scale > 2)
             return UpsertStudentSubjectGoalResult.ValidationFailed();
 
         if (request.RemainingDays < 0 || request.RemainingDays > 3650)
@@ -78,8 +82,16 @@ public class UpsertStudentSubjectGoalUseCase : IUpsertStudentSubjectGoalUseCase
         }
 
         var decision = await _ownershipGuard.CheckStudentAccessAsync(studentId, cancellationToken);
-        if (decision == OwnershipDecision.NotFound) return UpsertStudentSubjectGoalResult.NotFound();
-        if (decision == OwnershipDecision.Forbidden) return UpsertStudentSubjectGoalResult.Forbidden();
+        switch (decision)
+        {
+            case OwnershipDecision.Allowed:
+                break;
+            case OwnershipDecision.Forbidden:
+                return UpsertStudentSubjectGoalResult.Forbidden();
+            case OwnershipDecision.NotFound:
+            default:
+                return UpsertStudentSubjectGoalResult.NotFound();
+        }
 
         var studentValid = await _dbContext.Students
             .Include(s => s.User)
@@ -96,33 +108,102 @@ public class UpsertStudentSubjectGoalUseCase : IUpsertStudentSubjectGoalUseCase
         var goal = await _dbContext.StudentSubjectGoals
             .FirstOrDefaultAsync(g => g.CenterId == centerId && g.StudentId == studentId && g.SubjectId == subjectId, cancellationToken);
 
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
+
         if (goal == null)
         {
             if (parsedRowVersion != null)
                 return UpsertStudentSubjectGoalResult.ValidationFailed();
 
-            var goalId = _goalIdGenerator.GenerateId();
             var risk = StudentSubjectGoalRiskCalculator.CalculateRisk(request.TargetScore, 0m, request.RemainingDays);
 
-            goal = new StudentSubjectGoal
-            {
-                GoalId = goalId,
-                CenterId = centerId,
-                StudentId = studentId,
-                SubjectId = subjectId,
-                TargetScore = request.TargetScore,
-                RemainingDays = (uint)request.RemainingDays,
-                CurrentPredictedScore = 0m,
-                RiskScore = risk,
-                CreatedAt = _timeProvider.GetUtcNow().UtcDateTime,
-                CreatedBy = userId,
-                UpdatedAt = _timeProvider.GetUtcNow().UtcDateTime,
-                UpdatedBy = userId,
-                IsDeleted = false,
-                RowVersion = 1
-            };
+            int attempts = 0;
+            const int MaxAttempts = 3;
+            bool success = false;
 
-            _dbContext.StudentSubjectGoals.Add(goal);
+            while (attempts < MaxAttempts)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                attempts++;
+                ulong goalId = _goalIdGenerator.GenerateId();
+                if (goalId == 0)
+                {
+                    continue;
+                }
+
+                goal = new StudentSubjectGoal
+                {
+                    GoalId = goalId,
+                    CenterId = centerId,
+                    StudentId = studentId,
+                    SubjectId = subjectId,
+                    TargetScore = request.TargetScore,
+                    RemainingDays = (uint)request.RemainingDays,
+                    CurrentPredictedScore = 0m,
+                    RiskScore = risk,
+                    CreatedAt = now,
+                    CreatedBy = userId,
+                    UpdatedAt = now,
+                    UpdatedBy = userId,
+                    IsDeleted = false,
+                    RowVersion = 1
+                };
+
+                _dbContext.StudentSubjectGoals.Add(goal);
+
+                try
+                {
+                    await _dbContext.SaveChangesAsync(cancellationToken);
+                    success = true;
+                    break;
+                }
+                catch (DbUpdateException ex)
+                {
+                    _dbContext.Entry(goal).State = EntityState.Detached;
+
+                    Exception? currentEx = ex;
+                    bool isCompositeConstraint = false;
+                    bool isPrimaryKeyCollision = false;
+
+                    while (currentEx != null)
+                    {
+                        var msg = currentEx.Message ?? "";
+                        if (msg.Contains("ux_student_subject_goals_center_id_student_id_subject_id", StringComparison.OrdinalIgnoreCase))
+                        {
+                            isCompositeConstraint = true;
+                            break;
+                        }
+                        bool hasGenericPrimary = msg.Contains("for key 'PRIMARY'", StringComparison.OrdinalIgnoreCase);
+                        bool hasTableName = msg.Contains("student_subject_goals", StringComparison.OrdinalIgnoreCase);
+                        bool isStudentSubjectGoalPrimary = msg.Contains("student_subject_goals.PRIMARY", StringComparison.OrdinalIgnoreCase) || msg.Contains("`student_subject_goals`.`PRIMARY`", StringComparison.OrdinalIgnoreCase);
+
+                        if (msg.Contains("pk_student_subject_goals", StringComparison.OrdinalIgnoreCase) ||
+                            msg.Contains("PK_StudentSubjectGoals", StringComparison.OrdinalIgnoreCase) ||
+                            isStudentSubjectGoalPrimary ||
+                            (hasGenericPrimary && hasTableName))
+                        {
+                            isPrimaryKeyCollision = true;
+                        }
+                        currentEx = currentEx.InnerException;
+                    }
+
+                    if (isCompositeConstraint)
+                        return UpsertStudentSubjectGoalResult.Conflict();
+
+                    if (isPrimaryKeyCollision)
+                    {
+                        continue;
+                    }
+
+                    throw;
+                }
+            }
+
+            if (!success)
+            {
+                throw new InvalidOperationException("Failed to generate a valid unique GoalId.");
+            }
         }
         else
         {
@@ -139,34 +220,44 @@ public class UpsertStudentSubjectGoalUseCase : IUpsertStudentSubjectGoalUseCase
             goal.TargetScore = request.TargetScore;
             goal.RemainingDays = (uint)request.RemainingDays;
             goal.RiskScore = risk;
-            goal.UpdatedAt = _timeProvider.GetUtcNow().UtcDateTime;
+            goal.UpdatedAt = now;
             goal.UpdatedBy = userId;
             goal.RowVersion++;
-        }
 
-        try
-        {
-            await _dbContext.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            _dbContext.ChangeTracker.Clear();
-            return UpsertStudentSubjectGoalResult.Conflict();
-        }
-        catch (DbUpdateException ex)
-        {
-            _dbContext.ChangeTracker.Clear();
-            var innerMessage = ex.InnerException?.Message ?? "";
-            if (innerMessage.Contains("ux_student_subject_goals_center_id_student_id_subject_id", StringComparison.OrdinalIgnoreCase))
+            try
             {
+                await _dbContext.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                _dbContext.ChangeTracker.Clear();
                 return UpsertStudentSubjectGoalResult.Conflict();
             }
-            throw;
+            catch (DbUpdateException ex)
+            {
+                _dbContext.ChangeTracker.Clear();
+                Exception? currentEx = ex;
+                bool isCompositeConstraint = false;
+                while (currentEx != null)
+                {
+                    if (currentEx.Message.Contains("ux_student_subject_goals_center_id_student_id_subject_id", StringComparison.OrdinalIgnoreCase))
+                    {
+                        isCompositeConstraint = true;
+                        break;
+                    }
+                    currentEx = currentEx.InnerException;
+                }
+
+                if (isCompositeConstraint)
+                    return UpsertStudentSubjectGoalResult.Conflict();
+
+                throw;
+            }
         }
 
         var dto = new StudentSubjectGoalDto
         {
-            GoalId = goal.GoalId.ToString(CultureInfo.InvariantCulture),
+            GoalId = goal!.GoalId.ToString(CultureInfo.InvariantCulture),
             StudentId = goal.StudentId.ToString(),
             SubjectId = goal.SubjectId.ToString(),
             TargetScore = goal.TargetScore,
