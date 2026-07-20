@@ -18,17 +18,20 @@ public class ClassesController : ControllerBase
     private readonly IListClassesUseCase _listClassesUseCase;
     private readonly IGetClassUseCase _getClassUseCase;
     private readonly ICreateClassUseCase _createClassUseCase;
+    private readonly IUpdateClassUseCase _updateClassUseCase;
     private readonly TimeProvider _timeProvider;
 
     public ClassesController(
         IListClassesUseCase listClassesUseCase,
         IGetClassUseCase getClassUseCase,
         ICreateClassUseCase createClassUseCase,
+        IUpdateClassUseCase updateClassUseCase,
         TimeProvider timeProvider)
     {
         _listClassesUseCase = listClassesUseCase;
         _getClassUseCase = getClassUseCase;
         _createClassUseCase = createClassUseCase;
+        _updateClassUseCase = updateClassUseCase;
         _timeProvider = timeProvider;
     }
 
@@ -192,6 +195,85 @@ public class ClassesController : ControllerBase
                 Status = StatusCodes.Status409Conflict,
                 Title = "Dữ liệu đã tồn tại.",
                 Detail = "Lớp học với tên và năm học này đã tồn tại trong trung tâm.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier, ["errorCode"] = result.ErrorCode }
+            });
+        }
+
+        throw new System.InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
+    }
+
+    [HttpPatch("{classId:guid}")]
+    [Authorize(Policy = AuthorizationPolicies.CenterManagerOnly)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> UpdateClass([FromRoute] Guid classId, [FromBody] UpdateClassRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _updateClassUseCase.ExecuteAsync(classId, request, cancellationToken);
+
+        if (result.IsSuccess)
+        {
+            var response = new
+            {
+                Data = result.Data!,
+                Meta = new EduTwin.Contracts.IdentityAndTenancy.MetaDto
+                {
+                    TraceId = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    Timestamp = _timeProvider.GetUtcNow().UtcDateTime
+                }
+            };
+            return Ok(response);
+        }
+
+        if (result.ErrorCode == ErrorCodes.ValidationFailed)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.1",
+                Status = StatusCodes.Status400BadRequest,
+                Title = "Dữ liệu đầu vào không hợp lệ.",
+                Detail = "Vui lòng kiểm tra lại thông tin cung cấp.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier, ["errorCode"] = result.ErrorCode }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ResourceNotFound)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.5",
+                Status = StatusCodes.Status404NotFound,
+                Title = "Không tìm thấy dữ liệu.",
+                Detail = "Tài nguyên bạn yêu cầu không tồn tại hoặc đã bị xóa.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier, ["errorCode"] = result.ErrorCode }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.DuplicateResource)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.10",
+                Status = StatusCodes.Status409Conflict,
+                Title = "Dữ liệu đã tồn tại.",
+                Detail = "Lớp học với tên và năm học này đã tồn tại trong trung tâm.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier, ["errorCode"] = result.ErrorCode }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ConcurrencyConflict)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.10",
+                Status = StatusCodes.Status409Conflict,
+                Title = "Lỗi đồng bộ dữ liệu.",
+                Detail = "Dữ liệu đã bị thay đổi bởi người khác, vui lòng tải lại trang và thử lại.",
                 Instance = HttpContext.Request.Path,
                 Extensions = { ["traceId"] = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier, ["errorCode"] = result.ErrorCode }
             });

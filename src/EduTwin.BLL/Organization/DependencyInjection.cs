@@ -20,6 +20,7 @@ public static class DependencyInjection
         services.AddScoped<IListClassesUseCase, ListClassesUseCase>();
         services.AddScoped<IGetClassUseCase, GetClassUseCase>();
         services.AddScoped<ICreateClassUseCase, CreateClassUseCase>();
+        services.AddScoped<IUpdateClassUseCase, UpdateClassUseCase>();
         return services;
     }
 }
