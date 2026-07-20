@@ -351,4 +351,65 @@ public class ClassesController : ControllerBase
 
         throw new System.InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
     }
+
+    [HttpDelete("{classId:guid}/students/{studentId:guid}")]
+    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> RemoveStudent(
+        [FromRoute] Guid classId,
+        [FromRoute] Guid studentId,
+        [FromServices] IRemoveStudentFromClassUseCase useCase,
+        CancellationToken cancellationToken)
+    {
+        var result = await useCase.ExecuteAsync(classId, studentId, cancellationToken);
+
+        if (result.IsSuccess)
+        {
+            return NoContent();
+        }
+
+        if (result.ErrorCode == ErrorCodes.ForbiddenResource)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.4",
+                Status = StatusCodes.Status403Forbidden,
+                Title = "Không có quyền truy cập.",
+                Detail = "Bạn không có quyền xóa học viên khỏi lớp học này.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier, ["errorCode"] = result.ErrorCode }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ResourceNotFound)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.5",
+                Status = StatusCodes.Status404NotFound,
+                Title = "Không tìm thấy dữ liệu.",
+                Detail = "Tài nguyên bạn yêu cầu không tồn tại hoặc đã bị xóa.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier, ["errorCode"] = result.ErrorCode }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ConcurrencyConflict)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.10",
+                Status = StatusCodes.Status409Conflict,
+                Title = "Lỗi đồng bộ dữ liệu.",
+                Detail = "Dữ liệu đã bị thay đổi bởi người khác, vui lòng tải lại trang và thử lại.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier, ["errorCode"] = result.ErrorCode }
+            });
+        }
+
+        throw new System.InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
+    }
 }

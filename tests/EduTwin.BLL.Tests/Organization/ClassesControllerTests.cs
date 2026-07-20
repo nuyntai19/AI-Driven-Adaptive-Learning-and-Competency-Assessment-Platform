@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using EduTwin.API.Controllers;
 using EduTwin.BLL.Organization;
+using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.Common;
 using EduTwin.Contracts.Organization;
 using Microsoft.AspNetCore.Http;
@@ -571,5 +573,184 @@ public class ClassesControllerTests
         mockUseCase.Verify(
             u => u.ExecuteAsync(classId, request, exactToken),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task RemoveStudent_Controller_Success_Returns204NoContent()
+    {
+        var classId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
+        var cancellationToken = new CancellationToken();
+
+        var mockUseCase = new Mock<IRemoveStudentFromClassUseCase>();
+        mockUseCase.Setup(u => u.ExecuteAsync(classId, studentId, cancellationToken))
+            .ReturnsAsync(RemoveStudentFromClassResult.Success());
+
+        var result = await _controller.RemoveStudent(classId, studentId, mockUseCase.Object, cancellationToken);
+        var noContentResult = Assert.IsType<NoContentResult>(result);
+        Assert.Equal(StatusCodes.Status204NoContent, noContentResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task RemoveStudent_Controller_Forbidden_Returns403()
+    {
+        var classId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
+
+        var mockUseCase = new Mock<IRemoveStudentFromClassUseCase>();
+        mockUseCase.Setup(u => u.ExecuteAsync(classId, studentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(RemoveStudentFromClassResult.Failure(ErrorCodes.ForbiddenResource));
+
+        var result = await _controller.RemoveStudent(classId, studentId, mockUseCase.Object, CancellationToken.None);
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.True(problemDetails.Extensions.ContainsKey("traceId"));
+        Assert.Equal(ErrorCodes.ForbiddenResource, problemDetails.Extensions["errorCode"]?.ToString());
+    }
+
+    [Fact]
+    public async Task RemoveStudent_Controller_NotFound_Returns404()
+    {
+        var classId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
+
+        var mockUseCase = new Mock<IRemoveStudentFromClassUseCase>();
+        mockUseCase.Setup(u => u.ExecuteAsync(classId, studentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(RemoveStudentFromClassResult.Failure(ErrorCodes.ResourceNotFound));
+
+        var result = await _controller.RemoveStudent(classId, studentId, mockUseCase.Object, CancellationToken.None);
+        var objectResult = Assert.IsType<NotFoundObjectResult>(result);
+        Assert.Equal(StatusCodes.Status404NotFound, objectResult.StatusCode);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.True(problemDetails.Extensions.ContainsKey("traceId"));
+        Assert.Equal(ErrorCodes.ResourceNotFound, problemDetails.Extensions["errorCode"]?.ToString());
+    }
+
+    [Fact]
+    public async Task RemoveStudent_Controller_ConcurrencyConflict_Returns409()
+    {
+        var classId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
+
+        var mockUseCase = new Mock<IRemoveStudentFromClassUseCase>();
+        mockUseCase.Setup(u => u.ExecuteAsync(classId, studentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(RemoveStudentFromClassResult.Failure(ErrorCodes.ConcurrencyConflict));
+
+        var result = await _controller.RemoveStudent(classId, studentId, mockUseCase.Object, CancellationToken.None);
+        var objectResult = Assert.IsType<ConflictObjectResult>(result);
+        Assert.Equal(StatusCodes.Status409Conflict, objectResult.StatusCode);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.True(problemDetails.Extensions.ContainsKey("traceId"));
+        Assert.Equal(ErrorCodes.ConcurrencyConflict, problemDetails.Extensions["errorCode"]?.ToString());
+    }
+
+    [Fact]
+    public async Task RemoveStudent_Controller_UnexpectedError_Throws()
+    {
+        var classId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
+
+        var mockUseCase = new Mock<IRemoveStudentFromClassUseCase>();
+        mockUseCase.Setup(u => u.ExecuteAsync(classId, studentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(RemoveStudentFromClassResult.Failure("UNKNOWN"));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _controller.RemoveStudent(classId, studentId, mockUseCase.Object, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task RemoveStudent_Controller_PassesExactCancellationToken()
+    {
+        var classId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
+
+        using var cts = new CancellationTokenSource();
+        var exactToken = cts.Token;
+
+        var mockUseCase = new Mock<IRemoveStudentFromClassUseCase>();
+        mockUseCase
+            .Setup(u => u.ExecuteAsync(classId, studentId, exactToken))
+            .ReturnsAsync(
+                RemoveStudentFromClassResult.Failure(
+                    ErrorCodes.ResourceNotFound));
+
+        await _controller.RemoveStudent(
+            classId,
+            studentId,
+            mockUseCase.Object,
+            exactToken);
+
+        mockUseCase.Verify(
+            u => u.ExecuteAsync(classId, studentId, exactToken),
+            Times.Once);
+    }
+
+    [Fact]
+    public void RemoveStudent_Controller_HasExactDeleteRoute()
+    {
+        var methodInfo = typeof(ClassesController).GetMethod(nameof(ClassesController.RemoveStudent));
+        Assert.NotNull(methodInfo);
+
+        var httpDeleteAttr = methodInfo.GetCustomAttributes(typeof(Microsoft.AspNetCore.Mvc.HttpDeleteAttribute), false)
+            .Cast<Microsoft.AspNetCore.Mvc.HttpDeleteAttribute>()
+            .FirstOrDefault();
+
+        Assert.NotNull(httpDeleteAttr);
+        Assert.Equal("{classId:guid}/students/{studentId:guid}", httpDeleteAttr.Template);
+    }
+
+    [Fact]
+    public void RemoveStudent_Controller_UsesTeacherOrCenterManagerPolicy()
+    {
+        var methodInfo = typeof(ClassesController).GetMethod(nameof(ClassesController.RemoveStudent));
+        Assert.NotNull(methodInfo);
+
+        var authorizeAttr = methodInfo.GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), false)
+            .Cast<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>()
+            .FirstOrDefault();
+
+        Assert.NotNull(authorizeAttr);
+        Assert.Equal(AuthorizationPolicies.TeacherOrCenterManager, authorizeAttr.Policy);
+    }
+
+    [Fact]
+    public void AddStudents_Controller_HasProducesResponseType400()
+    {
+        var methodInfo = typeof(ClassesController).GetMethod(nameof(ClassesController.AddStudents));
+        Assert.NotNull(methodInfo);
+
+        var attrs = methodInfo.GetCustomAttributes(typeof(ProducesResponseTypeAttribute), false)
+            .Cast<ProducesResponseTypeAttribute>()
+            .ToList();
+
+        Assert.Contains(attrs, a => a.StatusCode == StatusCodes.Status400BadRequest);
+    }
+
+    [Fact]
+    public void RemoveStudent_Controller_HasExact204_403_404_409_ResponseTypes()
+    {
+        var methodInfo = typeof(ClassesController).GetMethod(nameof(ClassesController.RemoveStudent));
+        Assert.NotNull(methodInfo);
+
+        var statusCodes = methodInfo.GetCustomAttributes(typeof(ProducesResponseTypeAttribute), false)
+            .Cast<ProducesResponseTypeAttribute>()
+            .Select(a => a.StatusCode)
+            .OrderBy(s => s)
+            .ToList();
+
+        Assert.Equal(new[] { 204, 403, 404, 409 }, statusCodes);
+    }
+
+    [Fact]
+    public void RemoveStudent_Controller_DoesNotHaveProducesResponseType400()
+    {
+        var methodInfo = typeof(ClassesController).GetMethod(nameof(ClassesController.RemoveStudent));
+        Assert.NotNull(methodInfo);
+
+        var attrs = methodInfo.GetCustomAttributes(typeof(ProducesResponseTypeAttribute), false)
+            .Cast<ProducesResponseTypeAttribute>()
+            .ToList();
+
+        Assert.DoesNotContain(attrs, a => a.StatusCode == StatusCodes.Status400BadRequest);
     }
 }
