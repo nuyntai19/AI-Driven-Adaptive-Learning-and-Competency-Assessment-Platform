@@ -1,4 +1,4 @@
-import type { UserStatus } from "./auth";
+import type { Meta, UserStatus } from "./auth";
 
 export interface TeacherDto {
   teacherId: string;
@@ -96,4 +96,17 @@ export interface StudentListParams {
 export interface StudentListResponse {
   data: StudentDto[];
   meta: PagedMeta;
+}
+
+export interface StudentResponse {
+  data: StudentDto;
+  meta: Meta;
+}
+
+export interface CreateStudentRequest {
+  username: string;
+  temporaryPassword: string;
+  fullName: string;
+  gradeLevel: number;
+  classIds: string[];
 }

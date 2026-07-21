@@ -1,11 +1,19 @@
 import React, { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import { isAxiosError } from "axios";
 import { organizationApi } from "../api/organizationApi";
-import type { UserStatus } from "../types/auth";
-import type { StudentListParams } from "../types/organization";
+import type { ProblemDetails, UserStatus } from "../types/auth";
+import type { StudentListParams, CreateStudentRequest } from "../types/organization";
+
+class CreateStudentMutationError extends Error {
+  constructor(public readonly errorCode?: string) {
+    super("CREATE_STUDENT_FAILED");
+  }
+}
 
 export const StudentListPage: React.FC = () => {
+  const queryClient = useQueryClient();
   const [page, setPage] = useState<number>(1);
   const pageSize = 20;
 
@@ -18,6 +26,17 @@ export const StudentListPage: React.FC = () => {
   const [searchInput, setSearchInput] = useState<string>("");
   const [statusInput, setStatusInput] = useState<UserStatus | "">("");
   const [gradeLevelInput, setGradeLevelInput] = useState<number | "">("");
+
+  // Create form states
+  const [isCreating, setIsCreating] = useState(false);
+  const [createUsername, setCreateUsername] = useState("");
+  const [temporaryPassword, setTemporaryPassword] = useState("");
+  const [createFullName, setCreateFullName] = useState("");
+  const [createGradeLevel, setCreateGradeLevel] = useState<10 | 11 | 12>(10);
+  const [createClassIds, setCreateClassIds] = useState<string[]>([]);
+
+  const [successMessage, setSuccessMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
 
   const queryParams: StudentListParams = {
     page,
@@ -32,12 +51,113 @@ export const StudentListPage: React.FC = () => {
     queryFn: () => organizationApi.listStudents(queryParams),
   });
 
+  const { data: classesData, isLoading: classesLoading, isError: classesError } = useQuery({
+    queryKey: ["classes", "student-create-options", 1, 100, "Active"],
+    queryFn: () => organizationApi.listClasses({ page: 1, pageSize: 100, status: "Active" }),
+    enabled: isCreating,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (request: CreateStudentRequest) => {
+      try {
+        return await organizationApi.createStudent(request);
+      } catch (error) {
+        const errorCode = isAxiosError<ProblemDetails>(error)
+          ? error.response?.data?.errorCode
+          : undefined;
+
+        throw new CreateStudentMutationError(errorCode);
+      } finally {
+        request.temporaryPassword = "";
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["students"] });
+      resetCreateForm();
+      setIsCreating(false);
+      setSuccessMessage("Đã tạo học sinh thành công.");
+      setTimeout(() => setSuccessMessage(""), 5000);
+    },
+    onError: (error) => {
+      if (error instanceof CreateStudentMutationError && error.errorCode) {
+        switch (error.errorCode) {
+          case "DUPLICATE_RESOURCE":
+            setErrorMessage("Tên đăng nhập đã tồn tại trong trung tâm.");
+            break;
+          case "VALIDATION_FAILED":
+            setErrorMessage("Dữ liệu học sinh không hợp lệ.");
+            break;
+          case "RESOURCE_NOT_FOUND":
+            setErrorMessage("Một hoặc nhiều lớp học không tồn tại hoặc không khả dụng.");
+            break;
+          case "FORBIDDEN_RESOURCE":
+            setErrorMessage("Bạn không có quyền thêm học sinh vào một hoặc nhiều lớp đã chọn.");
+            break;
+          default:
+            setErrorMessage("Không thể tạo học sinh. Vui lòng thử lại.");
+        }
+      } else {
+        setErrorMessage("Không thể tạo học sinh. Vui lòng thử lại.");
+      }
+    }
+  });
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setSearch(searchInput);
     setStatus(statusInput);
     setGradeLevel(gradeLevelInput);
     setPage(1);
+  };
+
+  const resetCreateForm = () => {
+    setCreateUsername("");
+    setTemporaryPassword("");
+    setCreateFullName("");
+    setCreateGradeLevel(10);
+    setCreateClassIds([]);
+    setErrorMessage("");
+  };
+
+  const handleCancelCreate = () => {
+    resetCreateForm();
+    setIsCreating(false);
+  };
+
+  const handleCreateSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage("");
+    setSuccessMessage("");
+
+    const normalizedUsername = createUsername.trim();
+    const normalizedFullName = createFullName.trim();
+
+    const validClassIds = createClassIds.map(id => id.trim()).filter(id => id !== "");
+    const uniqueClassIds = Array.from(new Set(validClassIds));
+
+    if (
+      normalizedUsername === "" || normalizedUsername.length > 100 ||
+      temporaryPassword.length < 12 || temporaryPassword.length > 200 ||
+      normalizedFullName === "" || normalizedFullName.length > 200 ||
+      ![10, 11, 12].includes(createGradeLevel)
+    ) {
+      setErrorMessage("Thông tin học sinh không hợp lệ. Vui lòng kiểm tra lại các trường bắt buộc.");
+      return;
+    }
+
+    createMutation.mutate({
+      username: normalizedUsername,
+      temporaryPassword,
+      fullName: normalizedFullName,
+      gradeLevel: createGradeLevel,
+      classIds: uniqueClassIds
+    });
+  };
+
+  const toggleClassSelection = (classId: string) => {
+    setCreateClassIds(prev =>
+      prev.includes(classId) ? prev.filter(id => id !== classId) : [...prev, classId]
+    );
   };
 
   const statusLabels: Record<string, string> = {
@@ -55,7 +175,14 @@ export const StudentListPage: React.FC = () => {
               Danh sách học sinh
             </h1>
           </div>
-          <div>
+          <div className="flex gap-4">
+            <button
+              type="button"
+              onClick={() => setIsCreating(true)}
+              className="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+            >
+              Thêm học sinh
+            </button>
             <Link
               to="/"
               className="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
@@ -64,6 +191,146 @@ export const StudentListPage: React.FC = () => {
             </Link>
           </div>
         </div>
+
+        {successMessage && (
+          <div className="mb-6 rounded-md bg-green-50 p-4" role="status">
+            <p className="text-sm font-medium text-green-800">{successMessage}</p>
+          </div>
+        )}
+
+        {isCreating && (
+          <div className="mb-8 rounded-lg bg-white shadow p-6">
+            <h2 className="text-lg font-medium leading-6 text-gray-900 mb-4">Thêm học sinh mới</h2>
+
+            {errorMessage && (
+              <div className="mb-4 rounded-md bg-red-50 p-4" role="alert">
+                <p className="text-sm font-medium text-red-800">{errorMessage}</p>
+              </div>
+            )}
+
+            <form onSubmit={handleCreateSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="createUsername" className="block text-sm font-medium leading-6 text-gray-900">Tên đăng nhập <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    id="createUsername"
+                    value={createUsername}
+                    onChange={(e) => setCreateUsername(e.target.value)}
+                    required
+                    maxLength={100}
+                    disabled={createMutation.isPending}
+                    className="mt-2 block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 disabled:opacity-50"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="temporaryPassword" className="block text-sm font-medium leading-6 text-gray-900">Mật khẩu tạm thời <span className="text-red-500">*</span></label>
+                  <input
+                    type="password"
+                    id="temporaryPassword"
+                    autoComplete="new-password"
+                    value={temporaryPassword}
+                    onChange={(e) => setTemporaryPassword(e.target.value)}
+                    required
+                    minLength={12}
+                    maxLength={200}
+                    disabled={createMutation.isPending}
+                    className="mt-2 block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 disabled:opacity-50"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="createFullName" className="block text-sm font-medium leading-6 text-gray-900">Họ tên <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    id="createFullName"
+                    value={createFullName}
+                    onChange={(e) => setCreateFullName(e.target.value)}
+                    required
+                    maxLength={200}
+                    disabled={createMutation.isPending}
+                    className="mt-2 block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 disabled:opacity-50"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="createGradeLevel" className="block text-sm font-medium leading-6 text-gray-900">Khối <span className="text-red-500">*</span></label>
+                  <select
+                    id="createGradeLevel"
+                    value={createGradeLevel}
+                    onChange={(e) => setCreateGradeLevel(parseInt(e.target.value, 10) as 10 | 11 | 12)}
+                    required
+                    disabled={createMutation.isPending}
+                    className="mt-2 block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 disabled:opacity-50"
+                  >
+                    <option value={10}>10</option>
+                    <option value={11}>11</option>
+                    <option value={12}>12</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <label className="block text-sm font-medium leading-6 text-gray-900 mb-2">Danh sách lớp học (Không bắt buộc)</label>
+
+                {classesLoading ? (
+                  <div className="text-sm text-gray-500 py-2">Đang tải danh sách lớp...</div>
+                ) : classesError ? (
+                  <div className="text-sm text-red-600 py-2">Không thể tải danh sách lớp học.</div>
+                ) : classesData?.data.length === 0 ? (
+                  <div className="text-sm text-gray-500 py-2">Không có lớp học nào khả dụng.</div>
+                ) : (
+                  <>
+                    {classesData?.meta && classesData.meta.totalPages > 1 && (
+                      <div className="mb-3 rounded-md bg-yellow-50 p-3 text-sm text-yellow-800">
+                        Chỉ 100 lớp đầu tiên đang được hiển thị.
+                      </div>
+                    )}
+                    <div className="max-h-48 overflow-y-auto rounded-md border border-gray-300 bg-white p-3">
+                      <div className="space-y-2">
+                        {classesData?.data.map((cls) => (
+                          <div key={cls.classId} className="flex items-center">
+                            <input
+                              id={`class-${cls.classId}`}
+                              name={`class-${cls.classId}`}
+                              type="checkbox"
+                              checked={createClassIds.includes(cls.classId)}
+                              onChange={() => toggleClassSelection(cls.classId)}
+                              disabled={createMutation.isPending}
+                              className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 disabled:opacity-50"
+                            />
+                            <label htmlFor={`class-${cls.classId}`} className="ml-3 text-sm leading-6 text-gray-900">
+                              <span className="font-medium">{cls.className}</span> - {cls.subject.subjectName} ({cls.academicYear})
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={handleCancelCreate}
+                  disabled={createMutation.isPending}
+                  className="rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={createMutation.isPending}
+                  className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50"
+                >
+                  {createMutation.isPending ? "Đang xử lý..." : "Lưu"}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
 
         <div className="mb-8 overflow-hidden rounded-lg bg-white shadow">
           <div className="p-6">

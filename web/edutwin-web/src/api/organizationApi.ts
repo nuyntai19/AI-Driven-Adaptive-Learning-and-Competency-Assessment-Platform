@@ -1,5 +1,5 @@
 import { httpClient } from "./httpClient";
-import type { TeacherListParams, TeacherListResponse, ClassListParams, ClassListResponse, CreateTeacherRequest, TeacherDto, StudentListParams, StudentListResponse } from "../types/organization";
+import type { TeacherListParams, TeacherListResponse, ClassListParams, ClassListResponse, CreateTeacherRequest, TeacherDto, StudentListParams, StudentListResponse, CreateStudentRequest, StudentDto, StudentResponse } from "../types/organization";
 
 export const organizationApi = {
   listTeachers: async (params: TeacherListParams): Promise<TeacherListResponse> => {
@@ -76,5 +76,18 @@ export const organizationApi = {
       params: queryParams,
     });
     return response.data;
+  },
+
+  createStudent: async (request: CreateStudentRequest): Promise<StudentDto> => {
+    const payload = {
+      username: request.username.trim(),
+      temporaryPassword: request.temporaryPassword,
+      fullName: request.fullName.trim(),
+      gradeLevel: request.gradeLevel,
+      classIds: Array.from(new Set(request.classIds)),
+    };
+
+    const response = await httpClient.post<StudentResponse>("/students", payload);
+    return response.data.data;
   },
 };
