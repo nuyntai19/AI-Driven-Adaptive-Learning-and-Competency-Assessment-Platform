@@ -73,3 +73,27 @@ export interface ClassListParams {
   subjectId?: string;
   status?: ClassStatus;
 }
+
+export interface StudentDto {
+  studentId: string;
+  username: string;
+  fullName: string;
+  gradeLevel: number;
+  status: UserStatus;
+  activeClassCount: number;
+  rowVersion: string;
+}
+
+export interface StudentListParams {
+  page: number;
+  pageSize: number;
+  search?: string;
+  status?: UserStatus;
+  gradeLevel?: number;
+  classId?: string;
+}
+
+export interface StudentListResponse {
+  data: StudentDto[];
+  meta: PagedMeta;
+}

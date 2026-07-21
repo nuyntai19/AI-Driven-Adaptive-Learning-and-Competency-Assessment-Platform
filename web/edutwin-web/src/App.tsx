@@ -5,6 +5,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { AuthenticatedHomePage } from "./pages/AuthenticatedHomePage";
 import { TeacherListPage } from "./pages/TeacherListPage";
 import { ClassListPage } from "./pages/ClassListPage";
+import { StudentListPage } from "./pages/StudentListPage";
 import { RoleRoute } from "./routes/RoleRoute";
 import { useAuthStore } from "./stores/authStore";
 
@@ -31,6 +32,7 @@ function App() {
 
           <Route element={<RoleRoute allowedRoles={["CenterManager", "Teacher"]} />}>
             <Route path="/quan-ly/lop-hoc" element={<ClassListPage />} />
+            <Route path="/quan-ly/hoc-sinh" element={<StudentListPage />} />
           </Route>
         </Route>
 
