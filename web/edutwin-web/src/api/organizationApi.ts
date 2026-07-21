@@ -1,5 +1,5 @@
 import { httpClient } from "./httpClient";
-import type { TeacherListParams, TeacherListResponse } from "../types/organization";
+import type { TeacherListParams, TeacherListResponse, ClassListParams, ClassListResponse } from "../types/organization";
 
 export const organizationApi = {
   listTeachers: async (params: TeacherListParams): Promise<TeacherListResponse> => {
@@ -19,6 +19,32 @@ export const organizationApi = {
     }
 
     const response = await httpClient.get<TeacherListResponse>("/teachers", {
+      params: queryParams,
+    });
+    return response.data;
+  },
+
+  listClasses: async (params: ClassListParams): Promise<ClassListResponse> => {
+    const queryParams: Record<string, string | number> = {
+      page: params.page,
+      pageSize: params.pageSize,
+    };
+
+    const teacherId = params.teacherId?.trim();
+    if (teacherId) {
+      queryParams.teacherId = teacherId;
+    }
+
+    const subjectId = params.subjectId?.trim();
+    if (subjectId) {
+      queryParams.subjectId = subjectId;
+    }
+
+    if (params.status) {
+      queryParams.status = params.status;
+    }
+
+    const response = await httpClient.get<ClassListResponse>("/classes", {
       params: queryParams,
     });
     return response.data;

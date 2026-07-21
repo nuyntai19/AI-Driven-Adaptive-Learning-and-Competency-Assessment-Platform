@@ -30,3 +30,39 @@ export interface TeacherListParams {
   search?: string;
   status?: UserStatus;
 }
+
+export type ClassStatus = "Active" | "Archived";
+
+export interface ClassSubjectDto {
+  subjectId: string;
+  subjectName: string;
+}
+
+export interface ClassTeacherDto {
+  teacherId: string;
+  displayName: string;
+}
+
+export interface ClassDto {
+  classId: string;
+  className: string;
+  academicYear: string;
+  subject: ClassSubjectDto;
+  teacher: ClassTeacherDto;
+  studentCount: number;
+  status: ClassStatus;
+  rowVersion: string;
+}
+
+export interface ClassListResponse {
+  data: ClassDto[];
+  meta: PagedMeta;
+}
+
+export interface ClassListParams {
+  page: number;
+  pageSize: number;
+  teacherId?: string;
+  subjectId?: string;
+  status?: ClassStatus;
+}
