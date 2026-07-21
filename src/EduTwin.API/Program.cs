@@ -10,6 +10,7 @@ using EduTwin.BLL.Seeding;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.BLL.Organization;
 using EduTwin.BLL.DigitalTwin;
+using EduTwin.BLL.KnowledgeGraph;
 using EduTwin.API.Security;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -120,6 +121,7 @@ builder.Services.AddEduTwinBll(builder.Configuration);
 builder.Services.AddIdentityAndTenancy();
 builder.Services.AddOrganization();
 builder.Services.AddDigitalTwin();
+builder.Services.AddKnowledgeGraph();
 
 // We also need TimeProvider
 builder.Services.AddSingleton(TimeProvider.System);
