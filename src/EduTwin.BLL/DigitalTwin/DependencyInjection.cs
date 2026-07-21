@@ -8,6 +8,7 @@ public static class DependencyInjection
     {
         services.AddScoped<IGoalIdGenerator, CryptographicGoalIdGenerator>();
         services.AddScoped<IUpsertStudentSubjectGoalUseCase, UpsertStudentSubjectGoalUseCase>();
+        services.AddScoped<IListStudentSubjectGoalsUseCase, ListStudentSubjectGoalsUseCase>();
         return services;
     }
 }

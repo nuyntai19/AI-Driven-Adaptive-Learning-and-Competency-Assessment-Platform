@@ -19,6 +19,7 @@ namespace EduTwin.BLL.Tests.DigitalTwin;
 public class StudentSubjectGoalsControllerTests
 {
     private readonly Mock<IUpsertStudentSubjectGoalUseCase> _mockUseCase;
+    private readonly Mock<IListStudentSubjectGoalsUseCase> _mockListGoals;
     private readonly Mock<IListStudentsUseCase> _mockList;
     private readonly Mock<IGetStudentUseCase> _mockGet;
     private readonly Mock<ICreateStudentUseCase> _mockCreate;
@@ -32,6 +33,7 @@ public class StudentSubjectGoalsControllerTests
     public StudentSubjectGoalsControllerTests()
     {
         _mockUseCase = new Mock<IUpsertStudentSubjectGoalUseCase>();
+        _mockListGoals = new Mock<IListStudentSubjectGoalsUseCase>();
         _mockList = new Mock<IListStudentsUseCase>();
         _mockGet = new Mock<IGetStudentUseCase>();
         _mockCreate = new Mock<ICreateStudentUseCase>();
@@ -56,6 +58,7 @@ public class StudentSubjectGoalsControllerTests
             _mockCreate.Object,
             _mockUpdate.Object,
             _mockUseCase.Object,
+            _mockListGoals.Object,
             _mockTimeProvider.Object)
         {
             ControllerContext = new ControllerContext
@@ -273,6 +276,126 @@ public class StudentSubjectGoalsControllerTests
     }
 
     [Fact]
+    public async Task ListStudentSubjectGoals_Success_ReturnsOkWithExactCollection()
+    {
+        var studentId = Guid.NewGuid();
+        var cts = new CancellationTokenSource();
+        var collection = new System.Collections.Generic.List<StudentSubjectGoalDto>
+        {
+            new StudentSubjectGoalDto { GoalId = "1", StudentId = studentId.ToString(), SubjectId = Guid.NewGuid().ToString(), TargetScore = 8.5m, RemainingDays = 30, CurrentPredictedScore = 8.0m, RiskScore = 0.5m, RowVersion = "1" },
+            new StudentSubjectGoalDto { GoalId = "2", StudentId = studentId.ToString(), SubjectId = Guid.NewGuid().ToString(), TargetScore = 7.5m, RemainingDays = 20, CurrentPredictedScore = 7.0m, RiskScore = 0.4m, RowVersion = "2" }
+        };
+
+        _mockListGoals.Setup(u => u.ExecuteAsync(studentId, cts.Token)).ReturnsAsync(ListStudentSubjectGoalsResult.Success(collection));
+
+        var result = await _controller.ListStudentSubjectGoals(studentId, cts.Token);
+
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var response = Assert.IsType<StudentSubjectGoalListResponse>(okResult.Value);
+
+        Assert.Same(collection, response.Data);
+        Assert.NotNull(response.Meta);
+        Assert.Equal(_testTraceId, response.Meta.TraceId);
+        Assert.Equal(_fixedUtcNow.UtcDateTime, response.Meta.Timestamp);
+
+        _mockListGoals.Verify(u => u.ExecuteAsync(studentId, cts.Token), Times.Once);
+    }
+
+    [Fact]
+    public async Task ListStudentSubjectGoals_EmptyCollection_ReturnsOk()
+    {
+        var studentId = Guid.NewGuid();
+        var cts = new CancellationTokenSource();
+        var collection = new System.Collections.Generic.List<StudentSubjectGoalDto>();
+
+        _mockListGoals.Setup(u => u.ExecuteAsync(studentId, cts.Token)).ReturnsAsync(ListStudentSubjectGoalsResult.Success(collection));
+
+        var result = await _controller.ListStudentSubjectGoals(studentId, cts.Token);
+
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var response = Assert.IsType<StudentSubjectGoalListResponse>(okResult.Value);
+
+        Assert.NotNull(response.Data);
+        Assert.Empty(response.Data);
+        Assert.Equal(StatusCodes.Status200OK, okResult.StatusCode);
+
+        _mockListGoals.Verify(u => u.ExecuteAsync(studentId, cts.Token), Times.Once);
+    }
+
+    [Fact]
+    public async Task ListStudentSubjectGoals_ResourceNotFound_ReturnsNotFound()
+    {
+        var studentId = Guid.NewGuid();
+        var cts = new CancellationTokenSource();
+
+        _mockListGoals.Setup(u => u.ExecuteAsync(studentId, cts.Token)).ReturnsAsync(ListStudentSubjectGoalsResult.Failure("RESOURCE_NOT_FOUND"));
+
+        var result = await _controller.ListStudentSubjectGoals(studentId, cts.Token);
+
+        var notFoundResult = Assert.IsType<NotFoundObjectResult>(result);
+        Assert.Equal(StatusCodes.Status404NotFound, notFoundResult.StatusCode);
+
+        var problemDetails = Assert.IsType<ProblemDetails>(notFoundResult.Value);
+        Assert.Equal("https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.5", problemDetails.Type);
+        Assert.Equal(StatusCodes.Status404NotFound, problemDetails.Status);
+        Assert.False(string.IsNullOrWhiteSpace(problemDetails.Title));
+        Assert.False(string.IsNullOrWhiteSpace(problemDetails.Detail));
+        Assert.Equal(_testPath, problemDetails.Instance);
+        Assert.Equal("RESOURCE_NOT_FOUND", problemDetails.Extensions["errorCode"]);
+        Assert.Equal(_testTraceId, problemDetails.Extensions["traceId"]);
+    }
+
+    [Fact]
+    public async Task ListStudentSubjectGoals_Forbidden_ReturnsForbidden()
+    {
+        var studentId = Guid.NewGuid();
+        var cts = new CancellationTokenSource();
+
+        _mockListGoals.Setup(u => u.ExecuteAsync(studentId, cts.Token)).ReturnsAsync(ListStudentSubjectGoalsResult.Failure("FORBIDDEN_RESOURCE"));
+
+        var result = await _controller.ListStudentSubjectGoals(studentId, cts.Token);
+
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);
+
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal("https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.4", problemDetails.Type);
+        Assert.Equal(StatusCodes.Status403Forbidden, problemDetails.Status);
+        Assert.False(string.IsNullOrWhiteSpace(problemDetails.Title));
+        Assert.False(string.IsNullOrWhiteSpace(problemDetails.Detail));
+        Assert.Equal(_testPath, problemDetails.Instance);
+        Assert.Equal("FORBIDDEN_RESOURCE", problemDetails.Extensions["errorCode"]);
+        Assert.Equal(_testTraceId, problemDetails.Extensions["traceId"]);
+    }
+
+    [Fact]
+    public async Task ListStudentSubjectGoals_UnknownErrorCode_Throws()
+    {
+        var studentId = Guid.NewGuid();
+        var cts = new CancellationTokenSource();
+
+        _mockListGoals.Setup(u => u.ExecuteAsync(studentId, cts.Token)).ReturnsAsync(ListStudentSubjectGoalsResult.Failure("UNKNOWN_ERROR"));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _controller.ListStudentSubjectGoals(studentId, cts.Token));
+        _mockListGoals.Verify(u => u.ExecuteAsync(studentId, cts.Token), Times.Once);
+    }
+
+    [Fact]
+    public void ListStudentSubjectGoals_HasRequiredAttributes()
+    {
+        var method = typeof(StudentsController).GetMethod(nameof(StudentsController.ListStudentSubjectGoals));
+
+        Assert.NotNull(method);
+
+        var httpGetAttrs = method.GetCustomAttributes(typeof(Microsoft.AspNetCore.Mvc.HttpGetAttribute), false).Cast<Microsoft.AspNetCore.Mvc.HttpGetAttribute>().ToList();
+        Assert.Single(httpGetAttrs);
+        Assert.Equal("{studentId}/goals", httpGetAttrs[0].Template);
+
+        var authorizeAttrs = method.GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), false).Cast<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>().ToList();
+        Assert.Single(authorizeAttrs);
+        Assert.Null(authorizeAttrs[0].Policy);
+    }
+    [Fact]
     public void DependencyInjection_AddDigitalTwin_RegistersExpectedDescriptors()
     {
         var services = new ServiceCollection();
@@ -287,6 +410,11 @@ public class StudentSubjectGoalsControllerTests
         Assert.NotNull(useCaseDescriptor);
         Assert.Equal(typeof(UpsertStudentSubjectGoalUseCase), useCaseDescriptor.ImplementationType);
         Assert.Equal(ServiceLifetime.Scoped, useCaseDescriptor.Lifetime);
+
+        var listUseCaseDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(IListStudentSubjectGoalsUseCase));
+        Assert.NotNull(listUseCaseDescriptor);
+        Assert.Equal(typeof(ListStudentSubjectGoalsUseCase), listUseCaseDescriptor.ImplementationType);
+        Assert.Equal(ServiceLifetime.Scoped, listUseCaseDescriptor.Lifetime);
     }
 
     [Fact]

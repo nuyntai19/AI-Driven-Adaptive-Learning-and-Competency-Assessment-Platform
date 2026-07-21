@@ -22,6 +22,7 @@ public class StudentsController : ControllerBase
     private readonly ICreateStudentUseCase _createStudentUseCase;
     private readonly IUpdateStudentUseCase _updateStudentUseCase;
     private readonly IUpsertStudentSubjectGoalUseCase _upsertStudentSubjectGoalUseCase;
+    private readonly IListStudentSubjectGoalsUseCase _listStudentSubjectGoalsUseCase;
     private readonly TimeProvider _timeProvider;
 
     public StudentsController(
@@ -30,6 +31,7 @@ public class StudentsController : ControllerBase
         ICreateStudentUseCase createStudentUseCase,
         IUpdateStudentUseCase updateStudentUseCase,
         IUpsertStudentSubjectGoalUseCase upsertStudentSubjectGoalUseCase,
+        IListStudentSubjectGoalsUseCase listStudentSubjectGoalsUseCase,
         TimeProvider timeProvider)
     {
         _listStudentsUseCase = listStudentsUseCase;
@@ -37,6 +39,7 @@ public class StudentsController : ControllerBase
         _createStudentUseCase = createStudentUseCase;
         _updateStudentUseCase = updateStudentUseCase;
         _upsertStudentSubjectGoalUseCase = upsertStudentSubjectGoalUseCase;
+        _listStudentSubjectGoalsUseCase = listStudentSubjectGoalsUseCase;
         _timeProvider = timeProvider;
     }
 
@@ -398,6 +401,55 @@ public class StudentsController : ControllerBase
                 Status = StatusCodes.Status409Conflict,
                 Title = "Dữ liệu đã bị thay đổi.",
                 Detail = "Thông tin đã được cập nhật bởi một người khác. Vui lòng thử lại.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier, ["errorCode"] = result.ErrorCode }
+            });
+        }
+
+        throw new InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
+    }
+
+    [HttpGet("{studentId}/goals")]
+    [Authorize]
+    public async Task<IActionResult> ListStudentSubjectGoals(Guid studentId, CancellationToken cancellationToken)
+    {
+        var result = await _listStudentSubjectGoalsUseCase.ExecuteAsync(studentId, cancellationToken);
+
+        if (result.IsSuccess)
+        {
+            var response = new StudentSubjectGoalListResponse
+            {
+                Data = result.Data!,
+                Meta = new MetaDto
+                {
+                    TraceId = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    Timestamp = _timeProvider.GetUtcNow().UtcDateTime
+                }
+            };
+            return Ok(response);
+        }
+
+        if (result.ErrorCode == ErrorCodes.ResourceNotFound)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.5",
+                Status = StatusCodes.Status404NotFound,
+                Title = "Không tìm thấy dữ liệu.",
+                Detail = "Không tìm thấy học viên hoặc dữ liệu không khả dụng.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier, ["errorCode"] = result.ErrorCode }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ForbiddenResource)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.4",
+                Status = StatusCodes.Status403Forbidden,
+                Title = "Bạn không có quyền truy cập.",
+                Detail = "Tài khoản của bạn không được phép thực hiện hành động này.",
                 Instance = HttpContext.Request.Path,
                 Extensions = { ["traceId"] = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier, ["errorCode"] = result.ErrorCode }
             });
