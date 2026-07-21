@@ -3,6 +3,8 @@ import { AuthBootstrap } from "./auth/AuthBootstrap";
 import { ProtectedRoute } from "./routes/ProtectedRoute";
 import { LoginPage } from "./pages/LoginPage";
 import { AuthenticatedHomePage } from "./pages/AuthenticatedHomePage";
+import { TeacherListPage } from "./pages/TeacherListPage";
+import { RoleRoute } from "./routes/RoleRoute";
 import { useAuthStore } from "./stores/authStore";
 
 const FallbackRoute = () => {
@@ -21,6 +23,10 @@ function App() {
 
         <Route element={<ProtectedRoute />}>
           <Route path="/" element={<AuthenticatedHomePage />} />
+
+          <Route element={<RoleRoute allowedRoles={["CenterManager"]} />}>
+            <Route path="/quan-ly/giao-vien" element={<TeacherListPage />} />
+          </Route>
         </Route>
 
         <Route path="*" element={<FallbackRoute />} />

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { logout } from "../auth/authApi";
 import { useAuthStore } from "../stores/authStore";
@@ -74,6 +74,17 @@ export const AuthenticatedHomePage = () => {
               Dashboard nghiệp vụ sẽ được triển khai ở phase tiếp theo.
             </p>
           </div>
+
+          {user.role === "CenterManager" && (
+            <div className="mt-6">
+              <Link
+                to="/quan-ly/giao-vien"
+                className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+              >
+                Quản lý giáo viên
+              </Link>
+            </div>
+          )}
         </div>
       </div>
     </div>
