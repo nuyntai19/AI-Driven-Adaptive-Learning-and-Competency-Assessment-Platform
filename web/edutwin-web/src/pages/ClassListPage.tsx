@@ -1,16 +1,32 @@
 import React, { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import { isAxiosError } from "axios";
 import { organizationApi } from "../api/organizationApi";
 import type { ClassListParams, ClassStatus } from "../types/organization";
+import type { ProblemDetails } from "../types/auth";
+import { useAuthStore } from "../stores/authStore";
 
 export const ClassListPage: React.FC = () => {
+  const queryClient = useQueryClient();
+  const { user } = useAuthStore();
+  const isCenterManager = user?.role === "CenterManager";
+
   const [page, setPage] = useState<number>(1);
   const pageSize = 10;
   const [status, setStatus] = useState<ClassStatus | "">("");
 
   // Input state for status form
   const [statusInput, setStatusInput] = useState<ClassStatus | "">("");
+
+  // Create form state
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [className, setClassName] = useState("");
+  const [academicYear, setAcademicYear] = useState("");
+  const [subjectId, setSubjectId] = useState("");
+  const [teacherId, setTeacherId] = useState("");
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createSuccess, setCreateSuccess] = useState<string | null>(null);
 
   const queryParams: ClassListParams = {
     page,
@@ -22,6 +38,149 @@ export const ClassListPage: React.FC = () => {
     queryKey: ["classes", queryParams.page, queryParams.pageSize, queryParams.status],
     queryFn: () => organizationApi.listClasses(queryParams),
   });
+
+  const shouldFetchOptions = isCenterManager && isCreateModalOpen;
+
+  const {
+    data: subjectsData,
+    isLoading: isLoadingSubjects,
+    isFetching: isFetchingSubjects,
+    isError: isErrorSubjects,
+  } = useQuery({
+    queryKey: ["subjects", "active"],
+    queryFn: () => organizationApi.listSubjects(true),
+    enabled: shouldFetchOptions,
+  });
+
+  const {
+    data: teachersData,
+    isLoading: isLoadingTeachers,
+    isFetching: isFetchingTeachers,
+    isError: isErrorTeachers,
+  } = useQuery({
+    queryKey: ["teachers", "active"],
+    queryFn: () => organizationApi.listTeachers({ page: 1, pageSize: 100, status: "Active" }),
+    enabled: shouldFetchOptions,
+  });
+
+  const createClassMutation = useMutation({
+    mutationFn: organizationApi.createClass,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["classes"] });
+      setCreateSuccess("Tạo lớp học thành công!");
+      resetForm();
+      setIsCreateModalOpen(false);
+      setTimeout(() => setCreateSuccess(null), 3000);
+    },
+    onError: (error: unknown) => {
+      const errorCode = isAxiosError<ProblemDetails>(error)
+        ? error.response?.data?.errorCode
+        : undefined;
+
+      if (errorCode === "DUPLICATE_RESOURCE") {
+        setCreateError("Tên lớp và năm học này đã tồn tại trong trung tâm.");
+      } else if (errorCode === "VALIDATION_FAILED") {
+        setCreateError("Thông tin lớp học không hợp lệ.");
+      } else if (errorCode === "RESOURCE_NOT_FOUND") {
+        setCreateError("Giáo viên hoặc môn học đã chọn không tồn tại hoặc không còn khả dụng.");
+      } else {
+        setCreateError("Không thể tạo lớp học. Vui lòng thử lại.");
+      }
+    },
+  });
+
+  const resetForm = () => {
+    setClassName("");
+    setAcademicYear("");
+    setSubjectId("");
+    setTeacherId("");
+    setCreateError(null);
+  };
+
+  const handleCancelCreate = () => {
+    resetForm();
+    setIsCreateModalOpen(false);
+  };
+
+  const normalizedClassName = className.trim();
+  const normalizedAcademicYear = academicYear.trim();
+  const normalizedSubjectId = subjectId.trim();
+  const normalizedTeacherId = teacherId.trim();
+
+  const isFormValid =
+    isCenterManager &&
+    isCreateModalOpen &&
+    normalizedClassName.length > 0 &&
+    normalizedClassName.length <= 150 &&
+    normalizedAcademicYear.length > 0 &&
+    normalizedAcademicYear.length <= 20 &&
+    normalizedSubjectId.length > 0 &&
+    normalizedTeacherId.length > 0 &&
+    !isLoadingSubjects &&
+    !isFetchingSubjects &&
+    !isErrorSubjects &&
+    !isLoadingTeachers &&
+    !isFetchingTeachers &&
+    !isErrorTeachers &&
+    (subjectsData?.data?.length ?? 0) > 0 &&
+    (teachersData?.data?.length ?? 0) > 0 &&
+    !createClassMutation.isPending;
+
+  const isSubmitDisabled = !isFormValid;
+
+  const handleCreateSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreateError(null);
+
+    const normClassName = className.trim();
+    const normAcademicYear = academicYear.trim();
+    const normSubjectId = subjectId.trim();
+    const normTeacherId = teacherId.trim();
+
+    const isValid =
+      isCenterManager &&
+      isCreateModalOpen &&
+      normClassName.length > 0 &&
+      normClassName.length <= 150 &&
+      normAcademicYear.length > 0 &&
+      normAcademicYear.length <= 20 &&
+      normSubjectId.length > 0 &&
+      normTeacherId.length > 0 &&
+      !isLoadingSubjects &&
+      !isFetchingSubjects &&
+      !isErrorSubjects &&
+      !isLoadingTeachers &&
+      !isFetchingTeachers &&
+      !isErrorTeachers &&
+      (subjectsData?.data?.length ?? 0) > 0 &&
+      (teachersData?.data?.length ?? 0) > 0 &&
+      !createClassMutation.isPending;
+
+    if (!isValid) {
+      if (
+        isLoadingSubjects ||
+        isFetchingSubjects ||
+        isErrorSubjects ||
+        isLoadingTeachers ||
+        isFetchingTeachers ||
+        isErrorTeachers ||
+        (subjectsData?.data?.length ?? 0) === 0 ||
+        (teachersData?.data?.length ?? 0) === 0
+      ) {
+        setCreateError("Danh sách giáo viên hoặc môn học chưa sẵn sàng. Vui lòng thử lại.");
+      } else {
+        setCreateError("Thông tin lớp học không hợp lệ.");
+      }
+      return;
+    }
+
+    createClassMutation.mutate({
+      className: normClassName,
+      academicYear: normAcademicYear,
+      subjectId: normSubjectId,
+      teacherId: normTeacherId,
+    });
+  };
 
   const handleFilter = (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,15 +202,34 @@ export const ClassListPage: React.FC = () => {
               Danh sách Lớp học
             </h1>
           </div>
-          <div>
+          <div className="flex flex-wrap gap-2">
             <Link
               to="/"
               className="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
             >
               Về trang chủ
             </Link>
+            {isCenterManager && (
+              <button
+                type="button"
+                onClick={() => setIsCreateModalOpen(true)}
+                className="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+              >
+                Thêm lớp học
+              </button>
+            )}
           </div>
         </div>
+
+        {createSuccess && (
+          <div className="mb-6 rounded-md bg-green-50 p-4" role="status">
+            <div className="flex">
+              <div className="ml-3">
+                <p className="text-sm font-medium text-green-800">{createSuccess}</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="mb-8 overflow-hidden rounded-lg bg-white shadow">
           <div className="p-6">
@@ -90,7 +268,7 @@ export const ClassListPage: React.FC = () => {
         </div>
 
         {isError && (
-          <div className="mb-6 rounded-md bg-red-50 p-4">
+          <div className="mb-6 rounded-md bg-red-50 p-4" role="alert">
             <div className="flex">
               <div className="ml-3">
                 <h3 className="text-sm font-medium text-red-800">Đã xảy ra lỗi</h3>
@@ -230,6 +408,136 @@ export const ClassListPage: React.FC = () => {
           )}
         </div>
       </div>
+
+      {isCreateModalOpen && isCenterManager && (
+        <div className="fixed inset-0 z-10 overflow-y-auto">
+          <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={createClassMutation.isPending ? undefined : handleCancelCreate}></div>
+
+            <div className="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6">
+              <div>
+                <h3 className="text-lg font-semibold leading-6 text-gray-900 mb-5">Thêm lớp học</h3>
+
+                {createError && (
+                  <div className="mb-4 rounded-md bg-red-50 p-4" role="alert">
+                    <p className="text-sm font-medium text-red-800">{createError}</p>
+                  </div>
+                )}
+
+                <form onSubmit={handleCreateSubmit} className="space-y-4">
+                  <div>
+                    <label htmlFor="className" className="block text-sm font-medium leading-6 text-gray-900">
+                      Tên lớp <span className="text-red-500">*</span>
+                    </label>
+                    <div className="mt-2">
+                      <input
+                        type="text"
+                        id="className"
+                        required
+                        maxLength={150}
+                        value={className}
+                        onChange={(e) => setClassName(e.target.value)}
+                        disabled={createClassMutation.isPending}
+                        className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 disabled:opacity-50 disabled:bg-gray-100"
+                        placeholder="VD: Toán 12A"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label htmlFor="academicYear" className="block text-sm font-medium leading-6 text-gray-900">
+                      Năm học <span className="text-red-500">*</span>
+                    </label>
+                    <div className="mt-2">
+                      <input
+                        type="text"
+                        id="academicYear"
+                        required
+                        maxLength={20}
+                        value={academicYear}
+                        onChange={(e) => setAcademicYear(e.target.value)}
+                        disabled={createClassMutation.isPending}
+                        className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 disabled:opacity-50 disabled:bg-gray-100"
+                        placeholder="VD: 2026-2027"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label htmlFor="subjectId" className="block text-sm font-medium leading-6 text-gray-900">
+                      Môn học <span className="text-red-500">*</span>
+                    </label>
+                    <div className="mt-2">
+                      <select
+                        id="subjectId"
+                        required
+                        value={subjectId}
+                        onChange={(e) => setSubjectId(e.target.value)}
+                        disabled={createClassMutation.isPending || isLoadingSubjects || isFetchingSubjects || isErrorSubjects}
+                        className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 disabled:opacity-50 disabled:bg-gray-100"
+                      >
+                        <option value="">Chọn môn học</option>
+                        {(isLoadingSubjects || isFetchingSubjects) && <option value="" disabled>Đang tải môn học...</option>}
+                        {isErrorSubjects && !isLoadingSubjects && !isFetchingSubjects && <option value="" disabled>Lỗi tải môn học</option>}
+                        {(!isLoadingSubjects && !isFetchingSubjects && !isErrorSubjects && (subjectsData?.data?.length ?? 0) === 0) && <option value="" disabled>Không có môn học hoạt động</option>}
+                        {subjectsData?.data?.map((sub) => (
+                          <option key={sub.subjectId} value={sub.subjectId}>
+                            {sub.subjectCode} - {sub.subjectName}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label htmlFor="teacherId" className="block text-sm font-medium leading-6 text-gray-900">
+                      Giáo viên <span className="text-red-500">*</span>
+                    </label>
+                    <div className="mt-2">
+                      <select
+                        id="teacherId"
+                        required
+                        value={teacherId}
+                        onChange={(e) => setTeacherId(e.target.value)}
+                        disabled={createClassMutation.isPending || isLoadingTeachers || isFetchingTeachers || isErrorTeachers}
+                        className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 disabled:opacity-50 disabled:bg-gray-100"
+                      >
+                        <option value="">Chọn giáo viên</option>
+                        {(isLoadingTeachers || isFetchingTeachers) && <option value="" disabled>Đang tải giáo viên...</option>}
+                        {isErrorTeachers && !isLoadingTeachers && !isFetchingTeachers && <option value="" disabled>Lỗi tải giáo viên</option>}
+                        {(!isLoadingTeachers && !isFetchingTeachers && !isErrorTeachers && (teachersData?.data?.length ?? 0) === 0) && <option value="" disabled>Không có giáo viên hoạt động</option>}
+                        {teachersData?.data?.map((teacher) => (
+                          <option key={teacher.teacherId} value={teacher.teacherId}>
+                            {teacher.displayName} ({teacher.username})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 sm:mt-6 sm:grid sm:grid-flow-row-dense sm:grid-cols-2 sm:gap-3">
+                    <button
+                      type="submit"
+                      disabled={isSubmitDisabled}
+                      className="inline-flex w-full justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 sm:col-start-2 disabled:bg-indigo-400 disabled:cursor-not-allowed"
+                    >
+                      {createClassMutation.isPending ? "Đang tạo..." : "Lưu lớp học"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCancelCreate}
+                      disabled={createClassMutation.isPending}
+                      className="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:col-start-1 sm:mt-0 disabled:opacity-50"
+                    >
+                      Hủy
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

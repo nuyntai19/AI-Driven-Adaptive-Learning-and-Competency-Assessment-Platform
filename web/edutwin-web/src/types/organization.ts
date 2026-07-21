@@ -38,6 +38,20 @@ export interface TeacherListParams {
   status?: UserStatus;
 }
 
+export interface SubjectDto {
+  subjectId: string;
+  subjectCode: string;
+  subjectName: string;
+  description: string | null;
+  isActive: boolean;
+  rowVersion: string;
+}
+
+export interface SubjectListResponse {
+  data: SubjectDto[];
+  meta: Meta;
+}
+
 export type ClassStatus = "Active" | "Archived";
 
 export interface ClassSubjectDto {
@@ -72,6 +86,18 @@ export interface ClassListParams {
   teacherId?: string;
   subjectId?: string;
   status?: ClassStatus;
+}
+
+export interface CreateClassRequest {
+  className: string;
+  academicYear: string;
+  subjectId: string;
+  teacherId: string;
+}
+
+export interface ClassResponse {
+  data: ClassDto;
+  meta: Meta;
 }
 
 export interface StudentDto {
