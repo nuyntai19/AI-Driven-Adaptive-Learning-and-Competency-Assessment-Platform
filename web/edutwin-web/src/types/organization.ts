@@ -10,6 +10,13 @@ export interface TeacherDto {
   rowVersion: string;
 }
 
+export interface CreateTeacherRequest {
+  username: string;
+  temporaryPassword: string;
+  displayName: string;
+  department?: string;
+}
+
 export interface PagedMeta {
   page: number;
   pageSize: number;

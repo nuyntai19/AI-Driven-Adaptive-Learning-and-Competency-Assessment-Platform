@@ -1,11 +1,19 @@
 import React, { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import { isAxiosError } from "axios";
 import { organizationApi } from "../api/organizationApi";
-import type { UserStatus } from "../types/auth";
-import type { TeacherListParams } from "../types/organization";
+import type { ProblemDetails, UserStatus } from "../types/auth";
+import type { TeacherListParams, CreateTeacherRequest } from "../types/organization";
+
+class CreateTeacherMutationError extends Error {
+  constructor(public readonly errorCode?: string) {
+    super("CREATE_TEACHER_FAILED");
+  }
+}
 
 export const TeacherListPage: React.FC = () => {
+  const queryClient = useQueryClient();
   const [page, setPage] = useState<number>(1);
   const pageSize = 20;
   const [search, setSearch] = useState<string>("");
@@ -15,6 +23,16 @@ export const TeacherListPage: React.FC = () => {
   const [searchInput, setSearchInput] = useState<string>("");
   const [statusInput, setStatusInput] = useState<UserStatus | "">("");
 
+  // Create form states
+  const [isCreating, setIsCreating] = useState(false);
+  const [username, setUsername] = useState("");
+  const [temporaryPassword, setTemporaryPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [department, setDepartment] = useState("");
+
+  const [successMessage, setSuccessMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+
   const queryParams: TeacherListParams = {
     page,
     pageSize,
@@ -22,9 +40,51 @@ export const TeacherListPage: React.FC = () => {
     status: status !== "" ? status : undefined,
   };
 
-  const { data, isLoading, isFetching, isError } = useQuery({
+  const { data, isLoading, isFetching, isError: isListError } = useQuery({
     queryKey: ["teachers", queryParams.page, queryParams.pageSize, queryParams.search, queryParams.status],
     queryFn: () => organizationApi.listTeachers(queryParams),
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (request: CreateTeacherRequest) => {
+      try {
+        return await organizationApi.createTeacher(request);
+      } catch (error) {
+        const errorCode = isAxiosError<ProblemDetails>(error)
+          ? error.response?.data?.errorCode
+          : undefined;
+
+        throw new CreateTeacherMutationError(errorCode);
+      } finally {
+        request.temporaryPassword = "";
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["teachers"] });
+      resetCreateForm();
+      setIsCreating(false);
+      setSuccessMessage("Đã tạo giáo viên thành công.");
+      setTimeout(() => setSuccessMessage(""), 5000);
+    },
+    onError: (error) => {
+      if (error instanceof CreateTeacherMutationError && error.errorCode) {
+        switch (error.errorCode) {
+          case "DUPLICATE_RESOURCE":
+            setErrorMessage("Tên đăng nhập đã tồn tại trong trung tâm.");
+            break;
+          case "VALIDATION_FAILED":
+            setErrorMessage("Thông tin giáo viên không hợp lệ.");
+            break;
+          case "RESOURCE_NOT_FOUND":
+            setErrorMessage("Trung tâm hiện không khả dụng.");
+            break;
+          default:
+            setErrorMessage("Không thể tạo giáo viên. Vui lòng thử lại.");
+        }
+      } else {
+        setErrorMessage("Không thể tạo giáo viên. Vui lòng thử lại.");
+      }
+    }
   });
 
   const handleSearch = (e: React.FormEvent) => {
@@ -32,6 +92,46 @@ export const TeacherListPage: React.FC = () => {
     setSearch(searchInput);
     setStatus(statusInput);
     setPage(1);
+  };
+
+  const resetCreateForm = () => {
+    setUsername("");
+    setTemporaryPassword("");
+    setDisplayName("");
+    setDepartment("");
+    setErrorMessage("");
+  };
+
+  const handleCancelCreate = () => {
+    resetCreateForm();
+    setIsCreating(false);
+  };
+
+  const handleCreateSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage("");
+    setSuccessMessage("");
+
+    const normalizedUsername = username.trim();
+    const normalizedDisplayName = displayName.trim();
+    const normalizedDepartment = department.trim();
+
+    if (
+      normalizedUsername === "" || normalizedUsername.length > 100 ||
+      temporaryPassword.length < 12 || temporaryPassword.length > 200 ||
+      normalizedDisplayName === "" || normalizedDisplayName.length > 200 ||
+      (normalizedDepartment && normalizedDepartment.length > 150)
+    ) {
+      setErrorMessage("Thông tin giáo viên không hợp lệ. Vui lòng kiểm tra lại các trường bắt buộc.");
+      return;
+    }
+
+    createMutation.mutate({
+      username: normalizedUsername,
+      temporaryPassword,
+      displayName: normalizedDisplayName,
+      department: normalizedDepartment
+    });
   };
 
   const statusLabels: Record<string, string> = {
@@ -49,7 +149,14 @@ export const TeacherListPage: React.FC = () => {
               Quản lý Giáo viên
             </h1>
           </div>
-          <div>
+          <div className="flex gap-4">
+            <button
+              type="button"
+              onClick={() => setIsCreating(true)}
+              className="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+            >
+              Thêm giáo viên
+            </button>
             <Link
               to="/"
               className="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
@@ -58,6 +165,103 @@ export const TeacherListPage: React.FC = () => {
             </Link>
           </div>
         </div>
+
+        {successMessage && (
+          <div className="mb-6 rounded-md bg-green-50 p-4" role="status">
+            <p className="text-sm font-medium text-green-800">{successMessage}</p>
+          </div>
+        )}
+
+        {isCreating && (
+          <div className="mb-8 rounded-lg bg-white shadow p-6">
+            <h2 className="text-lg font-medium leading-6 text-gray-900 mb-4">Thêm giáo viên mới</h2>
+
+            {errorMessage && (
+              <div className="mb-4 rounded-md bg-red-50 p-4" role="alert">
+                <p className="text-sm font-medium text-red-800">{errorMessage}</p>
+              </div>
+            )}
+
+            <form onSubmit={handleCreateSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="username" className="block text-sm font-medium leading-6 text-gray-900">Tên đăng nhập <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    id="username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    required
+                    maxLength={100}
+                    disabled={createMutation.isPending}
+                    className="mt-2 block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 disabled:opacity-50"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="temporaryPassword" className="block text-sm font-medium leading-6 text-gray-900">Mật khẩu tạm thời <span className="text-red-500">*</span></label>
+                  <input
+                    type="password"
+                    id="temporaryPassword"
+                    autoComplete="new-password"
+                    value={temporaryPassword}
+                    onChange={(e) => setTemporaryPassword(e.target.value)}
+                    required
+                    minLength={12}
+                    maxLength={200}
+                    disabled={createMutation.isPending}
+                    className="mt-2 block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 disabled:opacity-50"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="displayName" className="block text-sm font-medium leading-6 text-gray-900">Họ tên <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    id="displayName"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    required
+                    maxLength={200}
+                    disabled={createMutation.isPending}
+                    className="mt-2 block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 disabled:opacity-50"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="department" className="block text-sm font-medium leading-6 text-gray-900">Bộ phận</label>
+                  <input
+                    type="text"
+                    id="department"
+                    value={department}
+                    onChange={(e) => setDepartment(e.target.value)}
+                    maxLength={150}
+                    disabled={createMutation.isPending}
+                    className="mt-2 block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 disabled:opacity-50"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={handleCancelCreate}
+                  disabled={createMutation.isPending}
+                  className="rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={createMutation.isPending}
+                  className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50"
+                >
+                  {createMutation.isPending ? "Đang xử lý..." : "Lưu"}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
 
         <div className="mb-8 overflow-hidden rounded-lg bg-white shadow">
           <div className="p-6">
@@ -112,7 +316,7 @@ export const TeacherListPage: React.FC = () => {
           </div>
         </div>
 
-        {isError && (
+        {isListError && (
           <div className="mb-6 rounded-md bg-red-50 p-4">
             <div className="flex">
               <div className="ml-3">
@@ -202,6 +406,7 @@ export const TeacherListPage: React.FC = () => {
                 <div>
                   <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Phân trang">
                     <button
+                      type="button"
                       onClick={() => setPage((p) => Math.max(1, p - 1))}
                       disabled={page === 1 || isFetching}
                       className="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -212,6 +417,7 @@ export const TeacherListPage: React.FC = () => {
                       </svg>
                     </button>
                     <button
+                      type="button"
                       onClick={() => setPage((p) => Math.min(data.meta.totalPages, p + 1))}
                       disabled={page === data.meta.totalPages || isFetching}
                       className="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -226,6 +432,7 @@ export const TeacherListPage: React.FC = () => {
               </div>
               <div className="flex flex-1 justify-between sm:hidden">
                 <button
+                  type="button"
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page === 1 || isFetching}
                   className="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
@@ -233,6 +440,7 @@ export const TeacherListPage: React.FC = () => {
                   Trước
                 </button>
                 <button
+                  type="button"
                   onClick={() => setPage((p) => Math.min(data.meta.totalPages, p + 1))}
                   disabled={page === data.meta.totalPages || isFetching}
                   className="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
