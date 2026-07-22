@@ -539,23 +539,23 @@ public class UpdateKnowledgeNodeUseCaseTests
 
         _dbContext.Centers.Add(new Center { CenterId = centerId, CenterCode = "C01", CenterName = "C", Timezone = "UTC", Status = EduTwin.Contracts.Organization.CenterStatus.Active, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         _dbContext.Subjects.Add(new Subject { SubjectId = subjectId, CenterId = centerId, SubjectCode = "S01", SubjectName = "S", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
-        
-        var originalNode = new KnowledgeNode 
-        { 
-            NodeId = 1, 
-            CenterId = centerId, 
-            SubjectId = subjectId, 
+
+        var originalNode = new KnowledgeNode
+        {
+            NodeId = 1,
+            CenterId = centerId,
+            SubjectId = subjectId,
             ParentNodeId = null,
-            RowVersion = 1, 
-            NodeType = NodeType.Topic, 
-            NodeCode = "T01", 
-            NodeName = "OldName", 
-            Description = "OldDesc", 
-            OrderIndex = 1, 
-            ExamImportance = 10, 
-            EstimatedLearningMinutes = 10, 
-            IsActive = false, 
-            CreatedAt = origCreatedAt, 
+            RowVersion = 1,
+            NodeType = NodeType.Topic,
+            NodeCode = "T01",
+            NodeName = "OldName",
+            Description = "OldDesc",
+            OrderIndex = 1,
+            ExamImportance = 10,
+            EstimatedLearningMinutes = 10,
+            IsActive = false,
+            CreatedAt = origCreatedAt,
             CreatedBy = origCreatedBy,
             UpdatedAt = origUpdatedAt,
             UpdatedBy = origUpdatedBy
@@ -587,12 +587,12 @@ public class UpdateKnowledgeNodeUseCaseTests
         var request = GetValidRequest();
         request.ParentNodeId = "1";
         var result = await _sut.ExecuteAsync("1", request);
-        
+
         Assert.False(result.IsSuccess);
         Assert.Equal(ErrorCodes.DagCycleDetected, result.ErrorCode);
 
         var nodeInDb = await _dbContext.KnowledgeNodes.FirstAsync();
-        
+
         // 2. Assert tracked entity against scalar snapshots
         Assert.Equal(snapParentNodeId, nodeInDb.ParentNodeId);
         Assert.Equal(snapNodeName, nodeInDb.NodeName);
@@ -645,7 +645,7 @@ public class UpdateKnowledgeNodeUseCaseTests
 
         var cts = new CancellationTokenSource();
         var expectedToken = cts.Token;
-        
+
         var options = new DbContextOptionsBuilder<EduTwinDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
         var localTenantAccessorMock = new Mock<EduTwin.DAL.Persistence.Tenancy.ITenantIdAccessor>();
         localTenantAccessorMock.Setup(x => x.CenterId).Returns(centerId);
@@ -660,9 +660,9 @@ public class UpdateKnowledgeNodeUseCaseTests
 
         var captureSut = new UpdateKnowledgeNodeUseCase(captureDb, _tenantMock.Object, _timeProviderMock.Object, _cycleDetectorMock.Object);
         var request = GetValidRequest();
-        
+
         var result = await captureSut.ExecuteAsync("1", request, expectedToken);
-        
+
         Assert.True(result.IsSuccess);
         Assert.True(captureDb.CapturedToken.HasValue);
         Assert.Equal(expectedToken, captureDb.CapturedToken.Value);
