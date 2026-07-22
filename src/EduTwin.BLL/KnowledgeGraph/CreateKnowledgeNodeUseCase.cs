@@ -48,7 +48,7 @@ public class CreateKnowledgeNodeUseCase : ICreateKnowledgeNodeUseCase
 
         if (request.NodeCode == null || request.NodeCode.Length > 64)
             return CreateKnowledgeNodeResult.Failure(ErrorCodes.ValidationFailed);
-        
+
         var trimmedCode = request.NodeCode.Trim();
         if (string.IsNullOrEmpty(trimmedCode))
             return CreateKnowledgeNodeResult.Failure(ErrorCodes.ValidationFailed);
@@ -60,7 +60,7 @@ public class CreateKnowledgeNodeUseCase : ICreateKnowledgeNodeUseCase
         if (string.IsNullOrEmpty(trimmedName))
             return CreateKnowledgeNodeResult.Failure(ErrorCodes.ValidationFailed);
 
-        if (request.NodeType == null || 
+        if (request.NodeType == null ||
             !Enum.TryParse<NodeType>(request.NodeType, ignoreCase: false, out var parsedType) ||
             !Enum.IsDefined(typeof(NodeType), parsedType) ||
             !string.Equals(request.NodeType, parsedType.ToString(), StringComparison.Ordinal))
@@ -78,7 +78,7 @@ public class CreateKnowledgeNodeUseCase : ICreateKnowledgeNodeUseCase
             parsedParentNodeId = pId;
         }
 
-        if (request.ExamImportance.HasValue && (request.ExamImportance.Value < 0 || request.ExamImportance.Value > 100))
+        if (!request.ExamImportance.HasValue || request.ExamImportance.Value < 0 || request.ExamImportance.Value > 100)
             return CreateKnowledgeNodeResult.Failure(ErrorCodes.ValidationFailed);
 
         if (request.EstimatedLearningMinutes == 0)
@@ -109,10 +109,17 @@ public class CreateKnowledgeNodeUseCase : ICreateKnowledgeNodeUseCase
             var parent = await _dbContext.KnowledgeNodes
                 .AsNoTracking()
                 .FirstOrDefaultAsync(n => n.NodeId == parsedParentNodeId.Value && n.CenterId == _tenantContext.CenterId && n.SubjectId == request.SubjectId && !n.IsDeleted, cancellationToken);
-            
+
             if (parent == null)
                 return CreateKnowledgeNodeResult.Failure(ErrorCodes.ResourceNotFound);
         }
+
+        var isDuplicate = await _dbContext.KnowledgeNodes
+            .AsNoTracking()
+            .AnyAsync(n => n.CenterId == _tenantContext.CenterId && n.SubjectId == request.SubjectId && n.NodeCode == trimmedCode, cancellationToken);
+
+        if (isDuplicate)
+            return CreateKnowledgeNodeResult.Failure(ErrorCodes.DuplicateResource);
 
         var now = _timeProvider.GetUtcNow().UtcDateTime;
 
@@ -126,7 +133,7 @@ public class CreateKnowledgeNodeUseCase : ICreateKnowledgeNodeUseCase
             NodeName = trimmedName,
             Description = trimmedDesc,
             OrderIndex = request.OrderIndex,
-            ExamImportance = request.ExamImportance ?? 0m,
+            ExamImportance = request.ExamImportance.Value,
             EstimatedLearningMinutes = request.EstimatedLearningMinutes,
             IsActive = request.IsActive.Value,
             IsDeleted = false,
@@ -146,19 +153,19 @@ public class CreateKnowledgeNodeUseCase : ICreateKnowledgeNodeUseCase
         catch (DbUpdateException ex)
         {
             _dbContext.ChangeTracker.Clear();
-            var isDuplicate = false;
+            var isDuplicateRaceCondition = false;
             var currentException = (Exception)ex;
             while (currentException != null)
             {
                 if (currentException.Message.Contains("ux_knowledge_nodes_center_id_subject_id_node_code", StringComparison.OrdinalIgnoreCase))
                 {
-                    isDuplicate = true;
+                    isDuplicateRaceCondition = true;
                     break;
                 }
                 currentException = currentException.InnerException!;
             }
 
-            if (isDuplicate)
+            if (isDuplicateRaceCondition)
                 return CreateKnowledgeNodeResult.Failure(ErrorCodes.DuplicateResource);
 
             throw;

@@ -119,7 +119,7 @@ public class CreateKnowledgeNodeRequestValidationTests
         var centerId = Guid.NewGuid();
         var subjectId = Guid.NewGuid();
         _tenantMock.SetupGet(x => x.CenterId).Returns(centerId);
-        
+
         _dbContext.Centers.Add(new EduTwin.DAL.Organization.Center { CenterId = centerId, CenterCode = "C01", CenterName = "C", Timezone = "UTC", Status = EduTwin.Contracts.Organization.CenterStatus.Active, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         _dbContext.Subjects.Add(new EduTwin.DAL.Organization.Subject { SubjectId = subjectId, CenterId = centerId, SubjectCode = "S01", SubjectName = "S01", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         await _dbContext.SaveChangesAsync();
@@ -158,7 +158,7 @@ public class CreateKnowledgeNodeRequestValidationTests
         var centerId = Guid.NewGuid();
         var subjectId = Guid.NewGuid();
         _tenantMock.SetupGet(x => x.CenterId).Returns(centerId);
-        
+
         _dbContext.Centers.Add(new EduTwin.DAL.Organization.Center { CenterId = centerId, CenterCode = "C01", CenterName = "C", Timezone = "UTC", Status = EduTwin.Contracts.Organization.CenterStatus.Active, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         _dbContext.Subjects.Add(new EduTwin.DAL.Organization.Subject { SubjectId = subjectId, CenterId = centerId, SubjectCode = "S01", SubjectName = "S01", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         await _dbContext.SaveChangesAsync();
@@ -195,9 +195,63 @@ public class CreateKnowledgeNodeRequestValidationTests
         Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
     }
 
+    [Fact]
+    public async Task MissingExamImportance_ReturnsValidationFailed()
+    {
+        var request = GetValidRequest();
+        request.ExamImportance = null;
+
+        var result = await _sut.ExecuteAsync(request);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task ZeroExamImportance_IsAccepted()
+    {
+        var centerId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+        _tenantMock.SetupGet(x => x.CenterId).Returns(centerId);
+
+        _dbContext.Centers.Add(new EduTwin.DAL.Organization.Center { CenterId = centerId, CenterCode = "C01", CenterName = "C", Timezone = "UTC", Status = EduTwin.Contracts.Organization.CenterStatus.Active, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        _dbContext.Subjects.Add(new EduTwin.DAL.Organization.Subject { SubjectId = subjectId, CenterId = centerId, SubjectCode = "S01", SubjectName = "S01", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        await _dbContext.SaveChangesAsync();
+
+        var request = GetValidRequest();
+        request.SubjectId = subjectId;
+        request.ExamImportance = 0m;
+
+        var result = await _sut.ExecuteAsync(request);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task HundredExamImportance_IsAccepted()
+    {
+        var centerId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+        _tenantMock.SetupGet(x => x.CenterId).Returns(centerId);
+
+        _dbContext.Centers.Add(new EduTwin.DAL.Organization.Center { CenterId = centerId, CenterCode = "C01", CenterName = "C", Timezone = "UTC", Status = EduTwin.Contracts.Organization.CenterStatus.Active, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        _dbContext.Subjects.Add(new EduTwin.DAL.Organization.Subject { SubjectId = subjectId, CenterId = centerId, SubjectCode = "S01", SubjectName = "S01", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        await _dbContext.SaveChangesAsync();
+
+        var request = GetValidRequest();
+        request.SubjectId = subjectId;
+        request.ExamImportance = 100m;
+
+        var result = await _sut.ExecuteAsync(request);
+
+        Assert.True(result.IsSuccess);
+    }
+
     [Theory]
     [InlineData(-0.1)]
+    [InlineData(-10)]
     [InlineData(100.1)]
+    [InlineData(101)]
     public async Task ExamImportance_OutOfRange_ReturnsValidationFailed(double importance)
     {
         var request = GetValidRequest();

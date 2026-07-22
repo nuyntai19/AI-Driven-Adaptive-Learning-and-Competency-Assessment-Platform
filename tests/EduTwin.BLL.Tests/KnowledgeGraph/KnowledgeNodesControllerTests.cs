@@ -148,7 +148,6 @@ public class KnowledgeNodesControllerTests
 
         Assert.Equal(token, passedToken);
     }
-
     // ── CreateKnowledgeNode tests ──
 
     [Fact]
@@ -258,7 +257,6 @@ public class KnowledgeNodesControllerTests
 
         Assert.Equal(token, passedToken);
     }
-
     // ── Controller metadata reflection tests ──
 
     [Fact]
@@ -332,10 +330,10 @@ public class KnowledgeNodesControllerTests
             .GetMethod(nameof(KnowledgeNodesController.CreateKnowledgeNode));
 
         Assert.NotNull(method);
-        
+
         var authorizeAttrs = method!.GetCustomAttributes<AuthorizeAttribute>().ToList();
         Assert.Single(authorizeAttrs);
-        
+
         var attr = authorizeAttrs[0];
         Assert.Equal(EduTwin.BLL.IdentityAndTenancy.AuthorizationPolicies.TeacherOrCenterManager, attr.Policy);
     }
