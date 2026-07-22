@@ -12,6 +12,7 @@ public static class DependencyInjection
         services.AddScoped<IUpdateSubjectUseCase, UpdateSubjectUseCase>();
         services.AddScoped<IDeleteSubjectUseCase, DeleteSubjectUseCase>();
         services.AddScoped<IListKnowledgeNodesUseCase, ListKnowledgeNodesUseCase>();
+        services.AddScoped<ICreateKnowledgeNodeUseCase, CreateKnowledgeNodeUseCase>();
         return services;
     }
 }

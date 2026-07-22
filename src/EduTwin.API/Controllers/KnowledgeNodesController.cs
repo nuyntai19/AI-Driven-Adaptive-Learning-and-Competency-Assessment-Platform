@@ -17,11 +17,16 @@ namespace EduTwin.API.Controllers;
 public class KnowledgeNodesController : ControllerBase
 {
     private readonly IListKnowledgeNodesUseCase _listKnowledgeNodesUseCase;
+    private readonly ICreateKnowledgeNodeUseCase _createKnowledgeNodeUseCase;
     private readonly TimeProvider _timeProvider;
 
-    public KnowledgeNodesController(IListKnowledgeNodesUseCase listKnowledgeNodesUseCase, TimeProvider timeProvider)
+    public KnowledgeNodesController(
+        IListKnowledgeNodesUseCase listKnowledgeNodesUseCase,
+        ICreateKnowledgeNodeUseCase createKnowledgeNodeUseCase,
+        TimeProvider timeProvider)
     {
         _listKnowledgeNodesUseCase = listKnowledgeNodesUseCase;
+        _createKnowledgeNodeUseCase = createKnowledgeNodeUseCase;
         _timeProvider = timeProvider;
     }
 
@@ -77,6 +82,84 @@ public class KnowledgeNodesController : ControllerBase
                 {
                     ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
                     ["errorCode"] = ErrorCodes.ResourceNotFound
+                }
+            });
+        }
+
+        throw new InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
+    }
+
+    [HttpPost]
+    [Authorize(Policy = EduTwin.BLL.IdentityAndTenancy.AuthorizationPolicies.TeacherOrCenterManager)]
+    [ProducesResponseType(typeof(KnowledgeNodeResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> CreateKnowledgeNode([FromBody] CreateKnowledgeNodeRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _createKnowledgeNodeUseCase.ExecuteAsync(request, cancellationToken);
+
+        if (result.IsSuccess)
+        {
+            var response = new KnowledgeNodeResponse
+            {
+                Data = result.Data!,
+                Meta = new EduTwin.Contracts.IdentityAndTenancy.MetaDto
+                {
+                    TraceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    Timestamp = _timeProvider.GetUtcNow().UtcDateTime
+                }
+            };
+            return Created(string.Empty, response);
+        }
+
+        if (result.ErrorCode == ErrorCodes.ValidationFailed)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.1",
+                Title = "Dữ liệu không hợp lệ",
+                Status = 400,
+                Detail = "Dữ liệu gửi lên không đúng định dạng hoặc thiếu thông tin.",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    ["errorCode"] = ErrorCodes.ValidationFailed
+                }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ResourceNotFound)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.4",
+                Title = "Không tìm thấy dữ liệu",
+                Status = 404,
+                Detail = "Dữ liệu liên quan không tồn tại hoặc bạn không có quyền truy cập.",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    ["errorCode"] = ErrorCodes.ResourceNotFound
+                }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.DuplicateResource)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.8",
+                Title = "Trùng lặp dữ liệu",
+                Status = 409,
+                Detail = "Mã node đã tồn tại trong môn học.",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    ["errorCode"] = ErrorCodes.DuplicateResource
                 }
             });
         }
