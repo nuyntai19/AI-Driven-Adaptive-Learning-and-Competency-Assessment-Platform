@@ -18,13 +18,21 @@ public class SubjectsControllerTests
 {
     private readonly Mock<IListSubjectsUseCase> _listUseCaseMock;
     private readonly Mock<ICreateSubjectUseCase> _createUseCaseMock;
+    private readonly Mock<IGetSubjectUseCase> _getUseCaseMock;
+    private readonly Mock<TimeProvider> _timeProviderMock;
     private readonly SubjectsController _controller;
 
     public SubjectsControllerTests()
     {
         _listUseCaseMock = new Mock<IListSubjectsUseCase>();
         _createUseCaseMock = new Mock<ICreateSubjectUseCase>();
-        _controller = new SubjectsController(_listUseCaseMock.Object, _createUseCaseMock.Object, TimeProvider.System)
+        _getUseCaseMock = new Mock<IGetSubjectUseCase>();
+        _timeProviderMock = new Mock<TimeProvider>();
+
+        var utcNow = new DateTimeOffset(2026, 7, 22, 10, 0, 0, TimeSpan.Zero);
+        _timeProviderMock.Setup(x => x.GetUtcNow()).Returns(utcNow);
+
+        _controller = new SubjectsController(_listUseCaseMock.Object, _createUseCaseMock.Object, _getUseCaseMock.Object, _timeProviderMock.Object)
         {
             ControllerContext = new ControllerContext
             {
@@ -257,5 +265,130 @@ public class SubjectsControllerTests
 
         Assert.NotNull(attr);
         Assert.Equal(AuthorizationPolicies.TeacherOrCenterManager, attr.Policy);
+    }
+
+    [Fact]
+    public async Task GetSubject_Success_Returns200AndSubjectDto()
+    {
+        var subjectId = Guid.NewGuid();
+        var data = new SubjectDto { SubjectCode = "A" };
+
+        _getUseCaseMock.Setup(x => x.ExecuteAsync(subjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(GetSubjectResult.Success(data));
+
+        var result = await _controller.GetSubject(subjectId, CancellationToken.None);
+
+        var objectResult = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(StatusCodes.Status200OK, objectResult.StatusCode);
+
+        var subjectResponse = Assert.IsType<SubjectResponse>(objectResult.Value);
+        Assert.NotNull(subjectResponse.Data);
+        Assert.Equal("A", subjectResponse.Data.SubjectCode);
+    }
+
+    [Fact]
+    public async Task GetSubject_Success_MetaContainsTraceIdAndTimestamp()
+    {
+        var subjectId = Guid.NewGuid();
+        var data = new SubjectDto { SubjectCode = "A" };
+
+        _getUseCaseMock.Setup(x => x.ExecuteAsync(subjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(GetSubjectResult.Success(data));
+
+        var result = await _controller.GetSubject(subjectId, CancellationToken.None);
+
+        var objectResult = Assert.IsType<OkObjectResult>(result);
+        var subjectResponse = Assert.IsType<SubjectResponse>(objectResult.Value);
+        var metaProp = subjectResponse.Meta;
+
+        Assert.NotNull(metaProp);
+        Assert.Equal("test-trace-id", metaProp.TraceId);
+        Assert.Equal(new DateTimeOffset(2026, 7, 22, 10, 0, 0, TimeSpan.Zero).UtcDateTime, metaProp.Timestamp);
+    }
+
+    [Fact]
+    public async Task GetSubject_RequestAndToken_PassedToUseCase()
+    {
+        var subjectId = Guid.NewGuid();
+        using var cts = new CancellationTokenSource();
+        var data = new SubjectDto { SubjectCode = "A" };
+
+        _getUseCaseMock.Setup(x => x.ExecuteAsync(subjectId, cts.Token))
+            .ReturnsAsync(GetSubjectResult.Success(data));
+
+        await _controller.GetSubject(subjectId, cts.Token);
+
+        _getUseCaseMock.Verify(x => x.ExecuteAsync(subjectId, cts.Token), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetSubject_ResourceNotFound_Returns404ProblemDetails()
+    {
+        var subjectId = Guid.NewGuid();
+        _getUseCaseMock.Setup(x => x.ExecuteAsync(subjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(GetSubjectResult.Failure(ErrorCodes.ResourceNotFound));
+
+        var result = await _controller.GetSubject(subjectId, CancellationToken.None);
+
+        var notFoundResult = Assert.IsType<NotFoundObjectResult>(result);
+        var problemDetails = Assert.IsType<ProblemDetails>(notFoundResult.Value);
+        Assert.Equal(404, problemDetails.Status);
+        Assert.Equal(ErrorCodes.ResourceNotFound, problemDetails.Extensions["errorCode"]);
+        Assert.Equal("test-trace-id", problemDetails.Extensions["traceId"]);
+        Assert.Equal("Không tìm thấy dữ liệu", problemDetails.Title);
+        Assert.Equal("Dữ liệu không tồn tại hoặc bạn không có quyền truy cập.", problemDetails.Detail);
+    }
+
+    [Fact]
+    public void GetSubject_Route_IsCorrect()
+    {
+        var method = typeof(SubjectsController).GetMethod("GetSubject");
+        var routeAttr = method?.GetCustomAttributes(typeof(Microsoft.AspNetCore.Mvc.HttpGetAttribute), true)
+            .FirstOrDefault() as Microsoft.AspNetCore.Mvc.HttpGetAttribute;
+
+        Assert.NotNull(routeAttr);
+        Assert.Equal("{subjectId:guid}", routeAttr.Template);
+    }
+
+    [Fact]
+    public void GetSubject_ProducesResponseType_IsCorrect()
+    {
+        var method = typeof(SubjectsController).GetMethod("GetSubject");
+        var producesAttrs = method?.GetCustomAttributes(typeof(Microsoft.AspNetCore.Mvc.ProducesResponseTypeAttribute), true)
+            .Cast<Microsoft.AspNetCore.Mvc.ProducesResponseTypeAttribute>();
+
+        Assert.NotNull(producesAttrs);
+        var successAttr = producesAttrs.FirstOrDefault(a => a.StatusCode == 200);
+        Assert.NotNull(successAttr);
+        Assert.Equal(typeof(SubjectResponse), successAttr.Type);
+    }
+
+    [Fact]
+    public void GetSubject_Endpoint_IsProtectedByAuthenticatedUser()
+    {
+        var controllerAttr = typeof(SubjectsController).GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), true);
+        Assert.NotEmpty(controllerAttr); // Controller has [Authorize]
+
+        var method = typeof(SubjectsController).GetMethod("GetSubject");
+
+        var allowAnon = method?.GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute), true);
+        Assert.Empty(allowAnon ?? Array.Empty<object>());
+
+        var methodAuthorize = method?.GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), true);
+        Assert.Empty(methodAuthorize ?? Array.Empty<object>()); // No specific policy override on GetSubject
+    }
+
+    [Fact]
+    public async Task GetSubject_UnexpectedError_ThrowsInvalidOperationException()
+    {
+        var subjectId = Guid.NewGuid();
+        _getUseCaseMock.Setup(x => x.ExecuteAsync(subjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(GetSubjectResult.Failure("UNKNOWN_ERROR"));
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _controller.GetSubject(subjectId, CancellationToken.None)
+        );
+
+        Assert.Equal("Unexpected error code: UNKNOWN_ERROR", ex.Message);
     }
 }

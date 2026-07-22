@@ -19,12 +19,14 @@ public class SubjectsController : ControllerBase
 {
     private readonly IListSubjectsUseCase _listSubjectsUseCase;
     private readonly ICreateSubjectUseCase _createSubjectUseCase;
+    private readonly IGetSubjectUseCase _getSubjectUseCase;
     private readonly TimeProvider _timeProvider;
 
-    public SubjectsController(IListSubjectsUseCase listSubjectsUseCase, ICreateSubjectUseCase createSubjectUseCase, TimeProvider timeProvider)
+    public SubjectsController(IListSubjectsUseCase listSubjectsUseCase, ICreateSubjectUseCase createSubjectUseCase, IGetSubjectUseCase getSubjectUseCase, TimeProvider timeProvider)
     {
         _listSubjectsUseCase = listSubjectsUseCase;
         _createSubjectUseCase = createSubjectUseCase;
+        _getSubjectUseCase = getSubjectUseCase;
         _timeProvider = timeProvider;
     }
 
@@ -128,6 +130,47 @@ public class SubjectsController : ControllerBase
             problem.Status = 409;
             problem.Detail = "Môn học này đã tồn tại trong trung tâm.";
             return Conflict(problem);
+        }
+
+        throw new InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
+    }
+
+    [HttpGet("{subjectId:guid}")]
+    [ProducesResponseType(typeof(SubjectResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetSubject(Guid subjectId, CancellationToken cancellationToken)
+    {
+        var result = await _getSubjectUseCase.ExecuteAsync(subjectId, cancellationToken);
+
+        if (result.IsSuccess)
+        {
+            var response = new SubjectResponse
+            {
+                Data = result.Data!,
+                Meta = new EduTwin.Contracts.IdentityAndTenancy.MetaDto
+                {
+                    TraceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    Timestamp = _timeProvider.GetUtcNow().UtcDateTime
+                }
+            };
+            return Ok(response);
+        }
+
+        if (result.ErrorCode == ErrorCodes.ResourceNotFound)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.4",
+                Title = "Không tìm thấy dữ liệu",
+                Status = 404,
+                Detail = "Dữ liệu không tồn tại hoặc bạn không có quyền truy cập.",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    ["errorCode"] = ErrorCodes.ResourceNotFound
+                }
+            });
         }
 
         throw new InvalidOperationException($"Unexpected error code: {result.ErrorCode}");

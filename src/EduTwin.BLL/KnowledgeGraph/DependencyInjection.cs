@@ -8,6 +8,7 @@ public static class DependencyInjection
     {
         services.AddScoped<IListSubjectsUseCase, ListSubjectsUseCase>();
         services.AddScoped<ICreateSubjectUseCase, CreateSubjectUseCase>();
+        services.AddScoped<IGetSubjectUseCase, GetSubjectUseCase>();
         return services;
     }
 }
