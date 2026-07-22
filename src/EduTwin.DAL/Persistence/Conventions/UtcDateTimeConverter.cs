@@ -14,6 +14,6 @@ public class UtcDateTimeConverter : ValueConverter<DateTime, DateTime>
     {
         if (v.Kind == DateTimeKind.Utc) return v;
         if (v.Kind == DateTimeKind.Local) return v.ToUniversalTime();
-        return DateTime.SpecifyKind(v, DateTimeKind.Utc);
+        throw new InvalidOperationException("DateTimeKind.Unspecified is not allowed. Must be UTC or Local.");
     }
 }

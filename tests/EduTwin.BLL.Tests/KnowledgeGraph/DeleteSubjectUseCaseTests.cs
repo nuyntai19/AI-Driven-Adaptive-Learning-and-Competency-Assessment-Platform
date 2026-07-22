@@ -28,49 +28,11 @@ public class MockEduTwinDbContextDelete : EduTwinDbContext
     {
     }
 
-    protected override void ConfigureConventions(Microsoft.EntityFrameworkCore.ModelConfigurationBuilder configurationBuilder)
-    {
-        configurationBuilder.Properties<Guid>().HaveConversion<EduTwin.DAL.Persistence.Conventions.LowercaseGuidConverter>();
-        configurationBuilder.Properties<Guid?>().HaveConversion<EduTwin.DAL.Persistence.Conventions.LowercaseGuidConverter>();
-    }
-
     public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         if (SaveChangesAsyncCallback != null)
         {
             return SaveChangesAsyncCallback(cancellationToken);
-        }
-
-        foreach (var entry in ChangeTracker.Entries())
-        {
-            foreach (var prop in entry.Properties)
-            {
-                if (prop.Metadata.ClrType == typeof(DateTime))
-                {
-                    var val = (DateTime)prop.CurrentValue!;
-                    if (val.Kind != DateTimeKind.Utc)
-                        prop.CurrentValue = DateTime.SpecifyKind(val, DateTimeKind.Utc);
-                        
-                    if (entry.State != EntityState.Added)
-                    {
-                        var orig = (DateTime)prop.OriginalValue!;
-                        if (orig.Kind != DateTimeKind.Utc)
-                            prop.OriginalValue = DateTime.SpecifyKind(orig, DateTimeKind.Utc);
-                    }
-                }
-                else if (prop.Metadata.ClrType == typeof(DateTime?))
-                {
-                    var val = (DateTime?)prop.CurrentValue;
-                    if (val == null)
-                    {
-                        prop.CurrentValue = DateTime.UtcNow; // FORCE non-null to bypass InMemory bug
-                    }
-                    else if (val.Value.Kind != DateTimeKind.Utc)
-                    {
-                        prop.CurrentValue = DateTime.SpecifyKind(val.Value, DateTimeKind.Utc);
-                    }
-                }
-            }
         }
 
         return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
@@ -172,6 +134,10 @@ public class DeleteSubjectUseCaseTests
     [InlineData(nameof(UserRole.Student))]
     [InlineData("Admin")]
     [InlineData("centermanager")]
+    [InlineData("   ")]
+    [InlineData("0")]
+    [InlineData("1")]
+    [InlineData("2")]
     [InlineData("")]
     [InlineData(null)]
     public async Task Delete_InvalidRole_ReturnsResourceNotFound(string? role)
@@ -293,6 +259,7 @@ public class DeleteSubjectUseCaseTests
             CenterName = "Test",
             Timezone = "UTC",
             IsDeleted = true,
+            DeletedAt = DateTime.UtcNow,
             Status = EduTwin.Contracts.Organization.CenterStatus.Active,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
@@ -333,7 +300,7 @@ public class DeleteSubjectUseCaseTests
         var centerId = Guid.NewGuid();
         var subjectId = Guid.NewGuid();
         await SetupActiveCenter(centerId);
-        _dbContext.Subjects.Add(new Subject { SubjectId = subjectId, CenterId = centerId, SubjectCode = "S1", SubjectName = "Test", IsDeleted = true, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        _dbContext.Subjects.Add(new Subject { SubjectId = subjectId, CenterId = centerId, SubjectCode = "S1", SubjectName = "Test", IsDeleted = true, DeletedAt = DateTime.UtcNow, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         await _dbContext.SaveChangesAsync();
 
         _tenantMock.SetupGet(x => x.IsResolved).Returns(true);
