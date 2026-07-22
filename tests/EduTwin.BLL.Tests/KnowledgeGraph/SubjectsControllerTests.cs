@@ -20,6 +20,7 @@ public class SubjectsControllerTests
     private readonly Mock<ICreateSubjectUseCase> _createUseCaseMock;
     private readonly Mock<IGetSubjectUseCase> _getUseCaseMock;
     private readonly Mock<IUpdateSubjectUseCase> _updateUseCaseMock;
+    private readonly Mock<IDeleteSubjectUseCase> _deleteSubjectUseCaseMock;
     private readonly Mock<TimeProvider> _timeProviderMock;
     private readonly SubjectsController _controller;
 
@@ -29,12 +30,13 @@ public class SubjectsControllerTests
         _createUseCaseMock = new Mock<ICreateSubjectUseCase>();
         _getUseCaseMock = new Mock<IGetSubjectUseCase>();
         _updateUseCaseMock = new Mock<IUpdateSubjectUseCase>();
+        _deleteSubjectUseCaseMock = new Mock<IDeleteSubjectUseCase>();
         _timeProviderMock = new Mock<TimeProvider>();
 
         var utcNow = new DateTimeOffset(2026, 7, 22, 10, 0, 0, TimeSpan.Zero);
         _timeProviderMock.Setup(x => x.GetUtcNow()).Returns(utcNow);
 
-        _controller = new SubjectsController(_listUseCaseMock.Object, _createUseCaseMock.Object, _getUseCaseMock.Object, _updateUseCaseMock.Object, _timeProviderMock.Object)
+        _controller = new SubjectsController(_listUseCaseMock.Object, _createUseCaseMock.Object, _getUseCaseMock.Object, _updateUseCaseMock.Object, _deleteSubjectUseCaseMock.Object, _timeProviderMock.Object)
         {
             ControllerContext = new ControllerContext
             {
@@ -559,5 +561,113 @@ public class SubjectsControllerTests
         );
 
         Assert.Equal("Unexpected error code: UNKNOWN_ERROR", ex.Message);
+    }
+    [Fact]
+    public async Task DeleteSubject_Success_Returns204NoContent()
+    {
+        var subjectId = Guid.NewGuid();
+        _deleteSubjectUseCaseMock.Setup(x => x.ExecuteAsync(subjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(DeleteSubjectResult.Success());
+
+        var result = await _controller.DeleteSubject(subjectId, CancellationToken.None);
+
+        Assert.IsType<NoContentResult>(result);
+    }
+
+    [Fact]
+    public async Task DeleteSubject_RequestAndToken_PassedToUseCase()
+    {
+        var subjectId = Guid.NewGuid();
+        using var cts = new CancellationTokenSource();
+        _deleteSubjectUseCaseMock.Setup(x => x.ExecuteAsync(subjectId, cts.Token))
+            .ReturnsAsync(DeleteSubjectResult.Success());
+
+        await _controller.DeleteSubject(subjectId, cts.Token);
+
+        _deleteSubjectUseCaseMock.Verify(x => x.ExecuteAsync(subjectId, cts.Token), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeleteSubject_ResourceNotFound_Returns404ProblemDetails()
+    {
+        var subjectId = Guid.NewGuid();
+        _deleteSubjectUseCaseMock.Setup(x => x.ExecuteAsync(subjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(DeleteSubjectResult.Failure(ErrorCodes.ResourceNotFound));
+
+        var result = await _controller.DeleteSubject(subjectId, CancellationToken.None);
+
+        var notFoundResult = Assert.IsType<NotFoundObjectResult>(result);
+        var problemDetails = Assert.IsType<ProblemDetails>(notFoundResult.Value);
+        Assert.Equal(404, problemDetails.Status);
+        Assert.Equal(ErrorCodes.ResourceNotFound, problemDetails.Extensions["errorCode"]);
+        Assert.Equal("test-trace-id", problemDetails.Extensions["traceId"]);
+    }
+
+    [Fact]
+    public async Task DeleteSubject_InvalidStateTransition_Returns409ProblemDetails()
+    {
+        var subjectId = Guid.NewGuid();
+        _deleteSubjectUseCaseMock.Setup(x => x.ExecuteAsync(subjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(DeleteSubjectResult.Failure(ErrorCodes.InvalidStateTransition));
+
+        var result = await _controller.DeleteSubject(subjectId, CancellationToken.None);
+
+        var conflictResult = Assert.IsType<ConflictObjectResult>(result);
+        var problemDetails = Assert.IsType<ProblemDetails>(conflictResult.Value);
+        Assert.Equal(409, problemDetails.Status);
+        Assert.Equal(ErrorCodes.InvalidStateTransition, problemDetails.Extensions["errorCode"]);
+        Assert.Equal("test-trace-id", problemDetails.Extensions["traceId"]);
+    }
+
+    [Fact]
+    public async Task DeleteSubject_ConcurrencyConflict_Returns409ProblemDetails()
+    {
+        var subjectId = Guid.NewGuid();
+        _deleteSubjectUseCaseMock.Setup(x => x.ExecuteAsync(subjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(DeleteSubjectResult.Failure(ErrorCodes.ConcurrencyConflict));
+
+        var result = await _controller.DeleteSubject(subjectId, CancellationToken.None);
+
+        var conflictResult = Assert.IsType<ConflictObjectResult>(result);
+        var problemDetails = Assert.IsType<ProblemDetails>(conflictResult.Value);
+        Assert.Equal(409, problemDetails.Status);
+        Assert.Equal(ErrorCodes.ConcurrencyConflict, problemDetails.Extensions["errorCode"]);
+        Assert.Equal("test-trace-id", problemDetails.Extensions["traceId"]);
+    }
+
+    [Fact]
+    public async Task DeleteSubject_UnexpectedError_ThrowsInvalidOperationException()
+    {
+        var subjectId = Guid.NewGuid();
+        _deleteSubjectUseCaseMock.Setup(x => x.ExecuteAsync(subjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(DeleteSubjectResult.Failure("UNKNOWN_ERROR"));
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _controller.DeleteSubject(subjectId, CancellationToken.None)
+        );
+
+        Assert.Equal("Unexpected error code: UNKNOWN_ERROR", ex.Message);
+    }
+
+    [Fact]
+    public void DeleteSubject_Route_IsCorrect()
+    {
+        var method = typeof(SubjectsController).GetMethod("DeleteSubject");
+        var routeAttr = method?.GetCustomAttributes(typeof(Microsoft.AspNetCore.Mvc.HttpDeleteAttribute), true)
+            .FirstOrDefault() as Microsoft.AspNetCore.Mvc.HttpDeleteAttribute;
+
+        Assert.NotNull(routeAttr);
+        Assert.Equal("{subjectId:guid}", routeAttr.Template);
+    }
+
+    [Fact]
+    public void DeleteSubject_Endpoint_IsProtectedByCenterManagerOnlyPolicy()
+    {
+        var method = typeof(SubjectsController).GetMethod("DeleteSubject");
+        var attributes = method?.GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), true);
+        var attr = attributes?.FirstOrDefault() as Microsoft.AspNetCore.Authorization.AuthorizeAttribute;
+
+        Assert.NotNull(attr);
+        Assert.Equal(AuthorizationPolicies.CenterManagerOnly, attr.Policy);
     }
 }

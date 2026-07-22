@@ -21,14 +21,16 @@ public class SubjectsController : ControllerBase
     private readonly ICreateSubjectUseCase _createSubjectUseCase;
     private readonly IGetSubjectUseCase _getSubjectUseCase;
     private readonly IUpdateSubjectUseCase _updateSubjectUseCase;
+    private readonly IDeleteSubjectUseCase _deleteSubjectUseCase;
     private readonly TimeProvider _timeProvider;
 
-    public SubjectsController(IListSubjectsUseCase listSubjectsUseCase, ICreateSubjectUseCase createSubjectUseCase, IGetSubjectUseCase getSubjectUseCase, IUpdateSubjectUseCase updateSubjectUseCase, TimeProvider timeProvider)
+    public SubjectsController(IListSubjectsUseCase listSubjectsUseCase, ICreateSubjectUseCase createSubjectUseCase, IGetSubjectUseCase getSubjectUseCase, IUpdateSubjectUseCase updateSubjectUseCase, IDeleteSubjectUseCase deleteSubjectUseCase, TimeProvider timeProvider)
     {
         _listSubjectsUseCase = listSubjectsUseCase;
         _createSubjectUseCase = createSubjectUseCase;
         _getSubjectUseCase = getSubjectUseCase;
         _updateSubjectUseCase = updateSubjectUseCase;
+        _deleteSubjectUseCase = deleteSubjectUseCase;
         _timeProvider = timeProvider;
     }
 
@@ -249,6 +251,74 @@ public class SubjectsController : ControllerBase
                 {
                     ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
                     ["errorCode"] = ErrorCodes.DuplicateResource
+                }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ConcurrencyConflict)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.8",
+                Title = "Xung đột dữ liệu",
+                Status = 409,
+                Detail = "Dữ liệu đã bị thay đổi bởi người dùng khác. Vui lòng làm mới trang và thử lại.",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    ["errorCode"] = ErrorCodes.ConcurrencyConflict
+                }
+            });
+        }
+
+        throw new InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
+    }
+
+    [HttpDelete("{subjectId:guid}")]
+    [Authorize(Policy = AuthorizationPolicies.CenterManagerOnly)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> DeleteSubject(Guid subjectId, CancellationToken cancellationToken)
+    {
+        var result = await _deleteSubjectUseCase.ExecuteAsync(subjectId, cancellationToken);
+
+        if (result.IsSuccess)
+        {
+            return NoContent();
+        }
+
+        if (result.ErrorCode == ErrorCodes.ResourceNotFound)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.4",
+                Title = "Không tìm thấy dữ liệu",
+                Status = 404,
+                Detail = "Dữ liệu không tồn tại hoặc bạn không có quyền truy cập.",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    ["errorCode"] = ErrorCodes.ResourceNotFound
+                }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.InvalidStateTransition)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.8",
+                Title = "Không thể xóa dữ liệu",
+                Status = 409,
+                Detail = "Không thể xóa môn học này do đang có dữ liệu liên kết (lớp học, giáo trình, mục tiêu học tập, hoặc dữ liệu phân tích).",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    ["errorCode"] = ErrorCodes.InvalidStateTransition
                 }
             });
         }
