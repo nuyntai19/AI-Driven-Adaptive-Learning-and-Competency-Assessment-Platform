@@ -13,6 +13,8 @@ public static class DependencyInjection
         services.AddScoped<IDeleteSubjectUseCase, DeleteSubjectUseCase>();
         services.AddScoped<IListKnowledgeNodesUseCase, ListKnowledgeNodesUseCase>();
         services.AddScoped<ICreateKnowledgeNodeUseCase, CreateKnowledgeNodeUseCase>();
+        services.AddScoped<IUpdateKnowledgeNodeUseCase, UpdateKnowledgeNodeUseCase>();
+        services.AddSingleton<IKnowledgeNodeHierarchyCycleDetector, KnowledgeNodeHierarchyCycleDetector>();
         return services;
     }
 }
