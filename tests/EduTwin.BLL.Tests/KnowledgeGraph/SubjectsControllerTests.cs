@@ -19,6 +19,7 @@ public class SubjectsControllerTests
     private readonly Mock<IListSubjectsUseCase> _listUseCaseMock;
     private readonly Mock<ICreateSubjectUseCase> _createUseCaseMock;
     private readonly Mock<IGetSubjectUseCase> _getUseCaseMock;
+    private readonly Mock<IUpdateSubjectUseCase> _updateUseCaseMock;
     private readonly Mock<TimeProvider> _timeProviderMock;
     private readonly SubjectsController _controller;
 
@@ -27,12 +28,13 @@ public class SubjectsControllerTests
         _listUseCaseMock = new Mock<IListSubjectsUseCase>();
         _createUseCaseMock = new Mock<ICreateSubjectUseCase>();
         _getUseCaseMock = new Mock<IGetSubjectUseCase>();
+        _updateUseCaseMock = new Mock<IUpdateSubjectUseCase>();
         _timeProviderMock = new Mock<TimeProvider>();
 
         var utcNow = new DateTimeOffset(2026, 7, 22, 10, 0, 0, TimeSpan.Zero);
         _timeProviderMock.Setup(x => x.GetUtcNow()).Returns(utcNow);
 
-        _controller = new SubjectsController(_listUseCaseMock.Object, _createUseCaseMock.Object, _getUseCaseMock.Object, _timeProviderMock.Object)
+        _controller = new SubjectsController(_listUseCaseMock.Object, _createUseCaseMock.Object, _getUseCaseMock.Object, _updateUseCaseMock.Object, _timeProviderMock.Object)
         {
             ControllerContext = new ControllerContext
             {
@@ -376,6 +378,173 @@ public class SubjectsControllerTests
 
         var methodAuthorize = method?.GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), true);
         Assert.Empty(methodAuthorize ?? Array.Empty<object>()); // No specific policy override on GetSubject
+    }
+
+    [Fact]
+    public async Task UpdateSubject_Success_Returns200AndSubjectResponse()
+    {
+        var subjectId = Guid.NewGuid();
+        var request = new UpdateSubjectRequest { SubjectCode = "A", SubjectName = "B", IsActive = true, RowVersion = "1" };
+        var data = new SubjectDto { SubjectCode = "A" };
+
+        _updateUseCaseMock.Setup(x => x.ExecuteAsync(subjectId, request, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(UpdateSubjectResult.Success(data));
+
+        var result = await _controller.UpdateSubject(subjectId, request, CancellationToken.None);
+
+        var objectResult = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(StatusCodes.Status200OK, objectResult.StatusCode);
+
+        var subjectResponse = Assert.IsType<SubjectResponse>(objectResult.Value);
+        Assert.NotNull(subjectResponse.Data);
+        Assert.Equal("A", subjectResponse.Data.SubjectCode);
+
+        var metaProp = subjectResponse.Meta;
+        Assert.NotNull(metaProp);
+        Assert.Equal("test-trace-id", metaProp.TraceId);
+        Assert.Equal(new DateTimeOffset(2026, 7, 22, 10, 0, 0, TimeSpan.Zero).UtcDateTime, metaProp.Timestamp);
+    }
+
+    [Fact]
+    public async Task UpdateSubject_RequestAndToken_PassedToUseCase()
+    {
+        var subjectId = Guid.NewGuid();
+        var request = new UpdateSubjectRequest { SubjectCode = "A", SubjectName = "B", IsActive = true, RowVersion = "1" };
+        using var cts = new CancellationTokenSource();
+        var data = new SubjectDto { SubjectCode = "A" };
+
+        _updateUseCaseMock.Setup(x => x.ExecuteAsync(subjectId, request, cts.Token))
+            .ReturnsAsync(UpdateSubjectResult.Success(data));
+
+        await _controller.UpdateSubject(subjectId, request, cts.Token);
+
+        _updateUseCaseMock.Verify(x => x.ExecuteAsync(subjectId, request, cts.Token), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateSubject_ValidationFailed_Returns400ProblemDetails()
+    {
+        var subjectId = Guid.NewGuid();
+        var request = new UpdateSubjectRequest { SubjectCode = "A", SubjectName = "B", IsActive = true, RowVersion = "1" };
+        _updateUseCaseMock.Setup(x => x.ExecuteAsync(subjectId, request, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(UpdateSubjectResult.Failure(ErrorCodes.ValidationFailed));
+
+        var result = await _controller.UpdateSubject(subjectId, request, CancellationToken.None);
+
+        var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+        var problemDetails = Assert.IsType<ProblemDetails>(badRequestResult.Value);
+        Assert.Equal(400, problemDetails.Status);
+        Assert.Equal(ErrorCodes.ValidationFailed, problemDetails.Extensions["errorCode"]);
+        Assert.Equal("test-trace-id", problemDetails.Extensions["traceId"]);
+        Assert.Equal("Dữ liệu không hợp lệ", problemDetails.Title);
+        Assert.Equal("Dữ liệu đầu vào không đúng định dạng hoặc thiếu thông tin bắt buộc.", problemDetails.Detail);
+    }
+
+    [Fact]
+    public async Task UpdateSubject_ResourceNotFound_Returns404ProblemDetails()
+    {
+        var subjectId = Guid.NewGuid();
+        var request = new UpdateSubjectRequest { SubjectCode = "A", SubjectName = "B", IsActive = true, RowVersion = "1" };
+        _updateUseCaseMock.Setup(x => x.ExecuteAsync(subjectId, request, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(UpdateSubjectResult.Failure(ErrorCodes.ResourceNotFound));
+
+        var result = await _controller.UpdateSubject(subjectId, request, CancellationToken.None);
+
+        var notFoundResult = Assert.IsType<NotFoundObjectResult>(result);
+        var problemDetails = Assert.IsType<ProblemDetails>(notFoundResult.Value);
+        Assert.Equal(404, problemDetails.Status);
+        Assert.Equal(ErrorCodes.ResourceNotFound, problemDetails.Extensions["errorCode"]);
+        Assert.Equal("test-trace-id", problemDetails.Extensions["traceId"]);
+        Assert.Equal("Không tìm thấy dữ liệu", problemDetails.Title);
+        Assert.Equal("Dữ liệu không tồn tại hoặc bạn không có quyền truy cập.", problemDetails.Detail);
+    }
+
+    [Fact]
+    public async Task UpdateSubject_ConcurrencyConflict_Returns409ProblemDetails()
+    {
+        var subjectId = Guid.NewGuid();
+        var request = new UpdateSubjectRequest { SubjectCode = "A", SubjectName = "B", IsActive = true, RowVersion = "1" };
+        _updateUseCaseMock.Setup(x => x.ExecuteAsync(subjectId, request, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(UpdateSubjectResult.Failure(ErrorCodes.ConcurrencyConflict));
+
+        var result = await _controller.UpdateSubject(subjectId, request, CancellationToken.None);
+
+        var conflictResult = Assert.IsType<ConflictObjectResult>(result);
+        var problemDetails = Assert.IsType<ProblemDetails>(conflictResult.Value);
+        Assert.Equal(409, problemDetails.Status);
+        Assert.Equal(ErrorCodes.ConcurrencyConflict, problemDetails.Extensions["errorCode"]);
+        Assert.Equal("test-trace-id", problemDetails.Extensions["traceId"]);
+        Assert.Equal("Xung đột dữ liệu", problemDetails.Title);
+        Assert.Equal("Dữ liệu đã bị thay đổi bởi người dùng khác. Vui lòng làm mới trang và thử lại.", problemDetails.Detail);
+    }
+
+    [Fact]
+    public async Task UpdateSubject_DuplicateResource_Returns409ProblemDetails()
+    {
+        var subjectId = Guid.NewGuid();
+        var request = new UpdateSubjectRequest { SubjectCode = "A", SubjectName = "B", IsActive = true, RowVersion = "1" };
+        _updateUseCaseMock.Setup(x => x.ExecuteAsync(subjectId, request, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(UpdateSubjectResult.Failure(ErrorCodes.DuplicateResource));
+
+        var result = await _controller.UpdateSubject(subjectId, request, CancellationToken.None);
+
+        var conflictResult = Assert.IsType<ConflictObjectResult>(result);
+        var problemDetails = Assert.IsType<ProblemDetails>(conflictResult.Value);
+        Assert.Equal(409, problemDetails.Status);
+        Assert.Equal(ErrorCodes.DuplicateResource, problemDetails.Extensions["errorCode"]);
+        Assert.Equal("test-trace-id", problemDetails.Extensions["traceId"]);
+        Assert.Equal("Dữ liệu đã tồn tại", problemDetails.Title);
+        Assert.Equal("Môn học này đã tồn tại trong trung tâm.", problemDetails.Detail);
+    }
+
+    [Fact]
+    public void UpdateSubject_Route_IsCorrect()
+    {
+        var method = typeof(SubjectsController).GetMethod("UpdateSubject");
+        var routeAttr = method?.GetCustomAttributes(typeof(Microsoft.AspNetCore.Mvc.HttpPatchAttribute), true)
+            .FirstOrDefault() as Microsoft.AspNetCore.Mvc.HttpPatchAttribute;
+
+        Assert.NotNull(routeAttr);
+        Assert.Equal("{subjectId:guid}", routeAttr.Template);
+    }
+
+    [Fact]
+    public void UpdateSubject_Endpoint_IsProtectedByTeacherOrCenterManagerPolicy()
+    {
+        var method = typeof(SubjectsController).GetMethod("UpdateSubject");
+        var attributes = method?.GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), true);
+        var attr = attributes?.FirstOrDefault() as Microsoft.AspNetCore.Authorization.AuthorizeAttribute;
+
+        Assert.NotNull(attr);
+        Assert.Equal(AuthorizationPolicies.TeacherOrCenterManager, attr.Policy);
+    }
+
+    [Fact]
+    public void UpdateSubject_ProducesResponseType_IsCorrect()
+    {
+        var method = typeof(SubjectsController).GetMethod("UpdateSubject");
+        var producesAttrs = method?.GetCustomAttributes(typeof(Microsoft.AspNetCore.Mvc.ProducesResponseTypeAttribute), true)
+            .Cast<Microsoft.AspNetCore.Mvc.ProducesResponseTypeAttribute>();
+
+        Assert.NotNull(producesAttrs);
+        var successAttr = producesAttrs.FirstOrDefault(a => a.StatusCode == 200);
+        Assert.NotNull(successAttr);
+        Assert.Equal(typeof(SubjectResponse), successAttr.Type);
+    }
+
+    [Fact]
+    public async Task UpdateSubject_UnexpectedError_ThrowsInvalidOperationException()
+    {
+        var subjectId = Guid.NewGuid();
+        var request = new UpdateSubjectRequest { SubjectCode = "A", SubjectName = "B", IsActive = true, RowVersion = "1" };
+        _updateUseCaseMock.Setup(x => x.ExecuteAsync(subjectId, request, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(UpdateSubjectResult.Failure("UNKNOWN_ERROR"));
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _controller.UpdateSubject(subjectId, request, CancellationToken.None)
+        );
+
+        Assert.Equal("Unexpected error code: UNKNOWN_ERROR", ex.Message);
     }
 
     [Fact]
