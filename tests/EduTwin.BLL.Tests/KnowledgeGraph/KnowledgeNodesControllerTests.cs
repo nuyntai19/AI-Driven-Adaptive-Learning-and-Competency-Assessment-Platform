@@ -20,6 +20,7 @@ public class KnowledgeNodesControllerTests
 {
     private readonly Mock<IListKnowledgeNodesUseCase> _listUseCaseMock;
     private readonly Mock<ICreateKnowledgeNodeUseCase> _createUseCaseMock;
+    private readonly Mock<IUpdateKnowledgeNodeUseCase> _updateUseCaseMock;
     private readonly Mock<TimeProvider> _timeProviderMock;
     private readonly KnowledgeNodesController _sut;
 
@@ -27,14 +28,16 @@ public class KnowledgeNodesControllerTests
     {
         _listUseCaseMock = new Mock<IListKnowledgeNodesUseCase>();
         _createUseCaseMock = new Mock<ICreateKnowledgeNodeUseCase>();
+        _updateUseCaseMock = new Mock<IUpdateKnowledgeNodeUseCase>();
         _timeProviderMock = new Mock<TimeProvider>();
 
         var utcNow = new DateTimeOffset(2026, 7, 22, 10, 0, 0, TimeSpan.Zero);
         _timeProviderMock.Setup(x => x.GetUtcNow()).Returns(utcNow);
 
-        _sut = new KnowledgeNodesController(_listUseCaseMock.Object, _createUseCaseMock.Object, _timeProviderMock.Object);
+        _sut = new KnowledgeNodesController(_listUseCaseMock.Object, _createUseCaseMock.Object, _updateUseCaseMock.Object, _timeProviderMock.Object);
 
         var httpContext = new DefaultHttpContext();
+        httpContext.Request.Path = "/api/v1/knowledge/nodes/1";
         httpContext.TraceIdentifier = "test-trace-id";
         _sut.ControllerContext = new ControllerContext
         {
@@ -337,4 +340,222 @@ public class KnowledgeNodesControllerTests
         var attr = authorizeAttrs[0];
         Assert.Equal(EduTwin.BLL.IdentityAndTenancy.AuthorizationPolicies.TeacherOrCenterManager, attr.Policy);
     }
+
+    // ─── UpdateKnowledgeNode tests ───
+
+    [Fact]
+    public async Task UpdateKnowledgeNode_Success_Returns200KnowledgeNodeResponse()
+    {
+        var request = new UpdateKnowledgeNodeRequest { NodeName = "Updated" };
+        var expectedData = new KnowledgeNodeDto { NodeId = "1", NodeName = "Updated" };
+
+        _updateUseCaseMock.Setup(x => x.ExecuteAsync("1", request, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(UpdateKnowledgeNodeResult.Success(expectedData));
+
+        var result = await _sut.UpdateKnowledgeNode("1", request, CancellationToken.None);
+
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var response = Assert.IsType<KnowledgeNodeResponse>(okResult.Value);
+
+        Assert.Same(expectedData, response.Data);
+    }
+
+    [Fact]
+    public async Task UpdateKnowledgeNode_Success_MetaContainsExactTraceIdAndTimestamp()
+    {
+        var request = new UpdateKnowledgeNodeRequest { NodeName = "Updated" };
+        var expectedData = new KnowledgeNodeDto { NodeId = "1", NodeName = "Updated" };
+
+        _updateUseCaseMock.Setup(x => x.ExecuteAsync("1", request, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(UpdateKnowledgeNodeResult.Success(expectedData));
+
+        var result = await _sut.UpdateKnowledgeNode("1", request, CancellationToken.None);
+
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var response = Assert.IsType<KnowledgeNodeResponse>(okResult.Value);
+
+        Assert.NotNull(response.Meta);
+        Assert.Equal("test-trace-id", response.Meta.TraceId);
+        Assert.Equal(new DateTimeOffset(2026, 7, 22, 10, 0, 0, TimeSpan.Zero).UtcDateTime, response.Meta.Timestamp);
+    }
+
+    [Fact]
+    public async Task UpdateKnowledgeNode_PassesExactRawNodeId()
+    {
+        var rawNodeId = " 1";
+        var request = new UpdateKnowledgeNodeRequest { NodeName = "Updated" };
+        var expectedData = new KnowledgeNodeDto { NodeId = "1", NodeName = "Updated" };
+
+        _updateUseCaseMock.Setup(x => x.ExecuteAsync(rawNodeId, request, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(UpdateKnowledgeNodeResult.Success(expectedData))
+            .Verifiable();
+
+        await _sut.UpdateKnowledgeNode(rawNodeId, request, CancellationToken.None);
+
+        _updateUseCaseMock.Verify(x => x.ExecuteAsync(rawNodeId, request, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateKnowledgeNode_PassesSameRequestInstance()
+    {
+        var request = new UpdateKnowledgeNodeRequest { NodeName = "Updated" };
+
+        _updateUseCaseMock.Setup(x => x.ExecuteAsync("1", request, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(UpdateKnowledgeNodeResult.Success(new KnowledgeNodeDto()))
+            .Verifiable();
+
+        await _sut.UpdateKnowledgeNode("1", request, CancellationToken.None);
+
+        _updateUseCaseMock.Verify(x => x.ExecuteAsync("1", It.Is<UpdateKnowledgeNodeRequest>(r => ReferenceEquals(r, request)), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateKnowledgeNode_PassesExactCancellationToken()
+    {
+        var request = new UpdateKnowledgeNodeRequest { NodeName = "Updated" };
+        using var cts = new CancellationTokenSource();
+        var token = cts.Token;
+
+        CancellationToken? passedToken = null;
+        _updateUseCaseMock.Setup(x => x.ExecuteAsync("1", request, It.IsAny<CancellationToken>()))
+            .Callback<string, UpdateKnowledgeNodeRequest, CancellationToken>((id, r, t) => passedToken = t)
+            .ReturnsAsync(UpdateKnowledgeNodeResult.Success(new KnowledgeNodeDto()));
+
+        await _sut.UpdateKnowledgeNode("1", request, token);
+
+        Assert.Equal(token, passedToken);
+    }
+
+    [Fact]
+    public async Task UpdateKnowledgeNode_ValidationFailed_Returns400ProblemDetails()
+    {
+        var request = new UpdateKnowledgeNodeRequest();
+
+        _updateUseCaseMock.Setup(x => x.ExecuteAsync("1", request, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(UpdateKnowledgeNodeResult.Failure(ErrorCodes.ValidationFailed));
+
+        var result = await _sut.UpdateKnowledgeNode("1", request, CancellationToken.None);
+
+        var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+        var problemDetails = Assert.IsType<ProblemDetails>(badRequestResult.Value);
+
+        Assert.Equal(400, problemDetails.Status);
+        Assert.Equal(ErrorCodes.ValidationFailed, problemDetails.Extensions["errorCode"]);
+        Assert.Equal("test-trace-id", problemDetails.Extensions["traceId"]);
+        Assert.Equal("/api/v1/knowledge/nodes/1", problemDetails.Instance);
+    }
+
+    [Fact]
+    public async Task UpdateKnowledgeNode_ResourceNotFound_Returns404ProblemDetails()
+    {
+        var request = new UpdateKnowledgeNodeRequest();
+
+        _updateUseCaseMock.Setup(x => x.ExecuteAsync("1", request, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(UpdateKnowledgeNodeResult.Failure(ErrorCodes.ResourceNotFound));
+
+        var result = await _sut.UpdateKnowledgeNode("1", request, CancellationToken.None);
+
+        var notFoundResult = Assert.IsType<NotFoundObjectResult>(result);
+        var problemDetails = Assert.IsType<ProblemDetails>(notFoundResult.Value);
+
+        Assert.Equal(404, problemDetails.Status);
+        Assert.Equal(ErrorCodes.ResourceNotFound, problemDetails.Extensions["errorCode"]);
+        Assert.Equal("test-trace-id", problemDetails.Extensions["traceId"]);
+        Assert.Equal("/api/v1/knowledge/nodes/1", problemDetails.Instance);
+    }
+
+    [Fact]
+    public async Task UpdateKnowledgeNode_ConcurrencyConflict_Returns409ProblemDetails()
+    {
+        var request = new UpdateKnowledgeNodeRequest();
+
+        _updateUseCaseMock.Setup(x => x.ExecuteAsync("1", request, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(UpdateKnowledgeNodeResult.Failure(ErrorCodes.ConcurrencyConflict));
+
+        var result = await _sut.UpdateKnowledgeNode("1", request, CancellationToken.None);
+
+        var conflictResult = Assert.IsType<ConflictObjectResult>(result);
+        var problemDetails = Assert.IsType<ProblemDetails>(conflictResult.Value);
+
+        Assert.Equal(409, problemDetails.Status);
+        Assert.Equal(ErrorCodes.ConcurrencyConflict, problemDetails.Extensions["errorCode"]);
+        Assert.Equal("test-trace-id", problemDetails.Extensions["traceId"]);
+        Assert.Equal("/api/v1/knowledge/nodes/1", problemDetails.Instance);
+    }
+
+    [Fact]
+    public async Task UpdateKnowledgeNode_DagCycleDetected_Returns409ProblemDetails()
+    {
+        var request = new UpdateKnowledgeNodeRequest();
+
+        _updateUseCaseMock.Setup(x => x.ExecuteAsync("1", request, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(UpdateKnowledgeNodeResult.Failure(ErrorCodes.DagCycleDetected));
+
+        var result = await _sut.UpdateKnowledgeNode("1", request, CancellationToken.None);
+
+        var conflictResult = Assert.IsType<ConflictObjectResult>(result);
+        var problemDetails = Assert.IsType<ProblemDetails>(conflictResult.Value);
+
+        Assert.Equal(409, problemDetails.Status);
+        Assert.Equal(ErrorCodes.DagCycleDetected, problemDetails.Extensions["errorCode"]);
+        Assert.Equal("test-trace-id", problemDetails.Extensions["traceId"]);
+        Assert.Equal("/api/v1/knowledge/nodes/1", problemDetails.Instance);
+    }
+
+    [Fact]
+    public async Task UpdateKnowledgeNode_UnexpectedErrorCode_ThrowsInvalidOperationException()
+    {
+        var request = new UpdateKnowledgeNodeRequest();
+
+        _updateUseCaseMock.Setup(x => x.ExecuteAsync("1", request, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(UpdateKnowledgeNodeResult.Failure("UNKNOWN_ERROR"));
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => _sut.UpdateKnowledgeNode("1", request, CancellationToken.None));
+
+        Assert.Contains("UNKNOWN_ERROR", ex.Message);
+    }
+
+    [Fact]
+    public void UpdateKnowledgeNode_HasHttpPatchWithExactTemplate()
+    {
+        var method = typeof(KnowledgeNodesController)
+            .GetMethod(nameof(KnowledgeNodesController.UpdateKnowledgeNode));
+
+        Assert.NotNull(method);
+        var httpAttr = method!.GetCustomAttribute<HttpPatchAttribute>();
+        Assert.NotNull(httpAttr);
+        Assert.Equal("{nodeId}", httpAttr.Template);
+    }
+
+    [Fact]
+    public void UpdateKnowledgeNode_HasTeacherOrCenterManagerPolicy()
+    {
+        var method = typeof(KnowledgeNodesController)
+            .GetMethod(nameof(KnowledgeNodesController.UpdateKnowledgeNode));
+
+        Assert.NotNull(method);
+
+        var authorizeAttrs = method!.GetCustomAttributes<AuthorizeAttribute>().ToList();
+        Assert.Single(authorizeAttrs);
+
+        var attr = authorizeAttrs[0];
+        Assert.Equal(EduTwin.BLL.IdentityAndTenancy.AuthorizationPolicies.TeacherOrCenterManager, attr.Policy);
+    }
+
+    [Fact]
+    public void UpdateKnowledgeNode_DeclaresExpectedProducesResponseTypes()
+    {
+        var method = typeof(KnowledgeNodesController)
+            .GetMethod(nameof(KnowledgeNodesController.UpdateKnowledgeNode));
+
+        Assert.NotNull(method);
+
+        var producesAttrs = method!.GetCustomAttributes<ProducesResponseTypeAttribute>().ToList();
+
+        Assert.Contains(producesAttrs, a => a.Type == typeof(KnowledgeNodeResponse) && a.StatusCode == StatusCodes.Status200OK);
+        Assert.Contains(producesAttrs, a => a.Type == typeof(ProblemDetails) && a.StatusCode == StatusCodes.Status400BadRequest);
+        Assert.Contains(producesAttrs, a => a.Type == typeof(ProblemDetails) && a.StatusCode == StatusCodes.Status404NotFound);
+        Assert.Contains(producesAttrs, a => a.Type == typeof(ProblemDetails) && a.StatusCode == StatusCodes.Status409Conflict);
+    }
+
 }
