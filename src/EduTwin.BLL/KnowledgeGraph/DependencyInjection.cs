@@ -15,7 +15,9 @@ public static class DependencyInjection
         services.AddScoped<ICreateKnowledgeNodeUseCase, CreateKnowledgeNodeUseCase>();
         services.AddScoped<IUpdateKnowledgeNodeUseCase, UpdateKnowledgeNodeUseCase>();
         services.AddScoped<IDeleteKnowledgeNodeUseCase, DeleteKnowledgeNodeUseCase>();
+        services.AddScoped<ICreateKnowledgeEdgeUseCase, CreateKnowledgeEdgeUseCase>();
         services.AddSingleton<IKnowledgeNodeHierarchyCycleDetector, KnowledgeNodeHierarchyCycleDetector>();
+        services.AddSingleton<KnowledgeGraphValidator>();
         return services;
     }
 }
