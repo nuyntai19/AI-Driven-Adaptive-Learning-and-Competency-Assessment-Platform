@@ -21,6 +21,7 @@ public class KnowledgeNodesControllerTests
     private readonly Mock<IListKnowledgeNodesUseCase> _listUseCaseMock;
     private readonly Mock<ICreateKnowledgeNodeUseCase> _createUseCaseMock;
     private readonly Mock<IUpdateKnowledgeNodeUseCase> _updateUseCaseMock;
+    private readonly Mock<IDeleteKnowledgeNodeUseCase> _deleteUseCaseMock;
     private readonly Mock<TimeProvider> _timeProviderMock;
     private readonly KnowledgeNodesController _sut;
 
@@ -29,12 +30,13 @@ public class KnowledgeNodesControllerTests
         _listUseCaseMock = new Mock<IListKnowledgeNodesUseCase>();
         _createUseCaseMock = new Mock<ICreateKnowledgeNodeUseCase>();
         _updateUseCaseMock = new Mock<IUpdateKnowledgeNodeUseCase>();
+        _deleteUseCaseMock = new Mock<IDeleteKnowledgeNodeUseCase>();
         _timeProviderMock = new Mock<TimeProvider>();
 
         var utcNow = new DateTimeOffset(2026, 7, 22, 10, 0, 0, TimeSpan.Zero);
         _timeProviderMock.Setup(x => x.GetUtcNow()).Returns(utcNow);
 
-        _sut = new KnowledgeNodesController(_listUseCaseMock.Object, _createUseCaseMock.Object, _updateUseCaseMock.Object, _timeProviderMock.Object);
+        _sut = new KnowledgeNodesController(_listUseCaseMock.Object, _createUseCaseMock.Object, _updateUseCaseMock.Object, _deleteUseCaseMock.Object, _timeProviderMock.Object);
 
         var httpContext = new DefaultHttpContext();
         httpContext.Request.Path = "/api/v1/knowledge/nodes/1";
@@ -558,4 +560,204 @@ public class KnowledgeNodesControllerTests
         Assert.Contains(producesAttrs, a => a.Type == typeof(ProblemDetails) && a.StatusCode == StatusCodes.Status409Conflict);
     }
 
+    // ─── DeleteKnowledgeNode tests ───
+
+    [Fact]
+    public async Task DeleteKnowledgeNode_Success_Returns204NoContent()
+    {
+        _deleteUseCaseMock.Setup(x => x.ExecuteAsync("1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(DeleteKnowledgeNodeResult.Success());
+
+        var result = await _sut.DeleteKnowledgeNode("1", CancellationToken.None);
+
+        Assert.IsType<NoContentResult>(result);
+    }
+
+    [Fact]
+    public async Task DeleteKnowledgeNode_PassesExactRawNodeId()
+    {
+        var rawNodeId = " 1 ";
+        _deleteUseCaseMock.Setup(x => x.ExecuteAsync(rawNodeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(DeleteKnowledgeNodeResult.Success())
+            .Verifiable();
+
+        await _sut.DeleteKnowledgeNode(rawNodeId, CancellationToken.None);
+
+        _deleteUseCaseMock.Verify(x => x.ExecuteAsync(rawNodeId, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeleteKnowledgeNode_PassesExactCancellationToken()
+    {
+        using var cts = new CancellationTokenSource();
+        var token = cts.Token;
+
+        CancellationToken? passedToken = null;
+        _deleteUseCaseMock.Setup(x => x.ExecuteAsync("1", It.IsAny<CancellationToken>()))
+            .Callback<string, CancellationToken>((id, t) => passedToken = t)
+            .ReturnsAsync(DeleteKnowledgeNodeResult.Success());
+
+        await _sut.DeleteKnowledgeNode("1", token);
+
+        Assert.Equal(token, passedToken);
+    }
+
+    [Fact]
+    public async Task DeleteKnowledgeNode_ValidationFailed_Returns400ProblemDetails()
+    {
+        _deleteUseCaseMock.Setup(x => x.ExecuteAsync("1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(DeleteKnowledgeNodeResult.Failure(ErrorCodes.ValidationFailed));
+
+        var result = await _sut.DeleteKnowledgeNode("1", CancellationToken.None);
+
+        var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+        var problemDetails = Assert.IsType<ProblemDetails>(badRequestResult.Value);
+
+        Assert.Equal(400, problemDetails.Status);
+        Assert.Equal("Mã node tri thức không hợp lệ.", problemDetails.Detail);
+        Assert.Equal("Dữ liệu không hợp lệ", problemDetails.Title);
+        Assert.Equal(ErrorCodes.ValidationFailed, problemDetails.Extensions["errorCode"]);
+        Assert.Equal("test-trace-id", problemDetails.Extensions["traceId"]);
+        Assert.Equal("/api/v1/knowledge/nodes/1", problemDetails.Instance);
+    }
+
+    [Fact]
+    public async Task DeleteKnowledgeNode_ResourceNotFound_Returns404ProblemDetails()
+    {
+        _deleteUseCaseMock.Setup(x => x.ExecuteAsync("1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(DeleteKnowledgeNodeResult.Failure(ErrorCodes.ResourceNotFound));
+
+        var result = await _sut.DeleteKnowledgeNode("1", CancellationToken.None);
+
+        var notFoundResult = Assert.IsType<NotFoundObjectResult>(result);
+        var problemDetails = Assert.IsType<ProblemDetails>(notFoundResult.Value);
+
+        Assert.Equal(404, problemDetails.Status);
+        Assert.Equal("Dữ liệu không tồn tại hoặc bạn không có quyền truy cập.", problemDetails.Detail);
+        Assert.Equal("Không tìm thấy dữ liệu", problemDetails.Title);
+        Assert.Equal(ErrorCodes.ResourceNotFound, problemDetails.Extensions["errorCode"]);
+        Assert.Equal("test-trace-id", problemDetails.Extensions["traceId"]);
+        Assert.Equal("/api/v1/knowledge/nodes/1", problemDetails.Instance);
+    }
+
+    [Fact]
+    public async Task DeleteKnowledgeNode_InvalidStateTransition_Returns409ProblemDetails()
+    {
+        _deleteUseCaseMock.Setup(x => x.ExecuteAsync("1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(DeleteKnowledgeNodeResult.Failure(ErrorCodes.InvalidStateTransition));
+
+        var result = await _sut.DeleteKnowledgeNode("1", CancellationToken.None);
+
+        var conflictResult = Assert.IsType<ConflictObjectResult>(result);
+        var problemDetails = Assert.IsType<ProblemDetails>(conflictResult.Value);
+
+        Assert.Equal(409, problemDetails.Status);
+        Assert.Equal("Không thể xóa node tri thức vì đang có dữ liệu hoặc quan hệ liên kết.", problemDetails.Detail);
+        Assert.Equal("Xung đột dữ liệu", problemDetails.Title);
+        Assert.Equal(ErrorCodes.InvalidStateTransition, problemDetails.Extensions["errorCode"]);
+        Assert.Equal("test-trace-id", problemDetails.Extensions["traceId"]);
+        Assert.Equal("/api/v1/knowledge/nodes/1", problemDetails.Instance);
+    }
+
+    [Fact]
+    public async Task DeleteKnowledgeNode_ConcurrencyConflict_Returns409ProblemDetails()
+    {
+        _deleteUseCaseMock.Setup(x => x.ExecuteAsync("1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(DeleteKnowledgeNodeResult.Failure(ErrorCodes.ConcurrencyConflict));
+
+        var result = await _sut.DeleteKnowledgeNode("1", CancellationToken.None);
+
+        var conflictResult = Assert.IsType<ConflictObjectResult>(result);
+        var problemDetails = Assert.IsType<ProblemDetails>(conflictResult.Value);
+
+        Assert.Equal(409, problemDetails.Status);
+        Assert.Equal("Dữ liệu đã bị thay đổi bởi người dùng khác. Vui lòng làm mới và thử lại.", problemDetails.Detail);
+        Assert.Equal("Xung đột dữ liệu", problemDetails.Title);
+        Assert.Equal(ErrorCodes.ConcurrencyConflict, problemDetails.Extensions["errorCode"]);
+        Assert.Equal("test-trace-id", problemDetails.Extensions["traceId"]);
+        Assert.Equal("/api/v1/knowledge/nodes/1", problemDetails.Instance);
+    }
+
+    [Fact]
+    public async Task DeleteKnowledgeNode_UnexpectedErrorCode_ThrowsInvalidOperationException()
+    {
+        _deleteUseCaseMock.Setup(x => x.ExecuteAsync("1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(DeleteKnowledgeNodeResult.Failure("UNKNOWN_ERROR"));
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => _sut.DeleteKnowledgeNode("1", CancellationToken.None));
+
+        Assert.Contains("UNKNOWN_ERROR", ex.Message);
+    }
+
+    [Fact]
+    public async Task DeleteKnowledgeNode_ProblemDetailsContainsTraceIdAndErrorCode()
+    {
+        _deleteUseCaseMock.Setup(x => x.ExecuteAsync("1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(DeleteKnowledgeNodeResult.Failure(ErrorCodes.ValidationFailed));
+
+        var result = await _sut.DeleteKnowledgeNode("1", CancellationToken.None);
+
+        var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+        var problemDetails = Assert.IsType<ProblemDetails>(badRequestResult.Value);
+
+        Assert.True(problemDetails.Extensions.ContainsKey("traceId"));
+        Assert.True(problemDetails.Extensions.ContainsKey("errorCode"));
+        Assert.Equal("test-trace-id", problemDetails.Extensions["traceId"]);
+        Assert.Equal(ErrorCodes.ValidationFailed, problemDetails.Extensions["errorCode"]);
+    }
+
+    [Fact]
+    public async Task DeleteKnowledgeNode_SuccessHasNoResponseBody()
+    {
+        _deleteUseCaseMock.Setup(x => x.ExecuteAsync("1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(DeleteKnowledgeNodeResult.Success());
+
+        var result = await _sut.DeleteKnowledgeNode("1", CancellationToken.None);
+
+        var noContentResult = Assert.IsType<NoContentResult>(result);
+        Assert.Equal(204, noContentResult.StatusCode);
+    }
+
+    [Fact]
+    public void DeleteKnowledgeNode_MetadataUsesHttpDeleteNodeIdRoute()
+    {
+        var method = typeof(KnowledgeNodesController)
+            .GetMethod(nameof(KnowledgeNodesController.DeleteKnowledgeNode));
+
+        Assert.NotNull(method);
+        var httpAttr = method!.GetCustomAttribute<HttpDeleteAttribute>();
+        Assert.NotNull(httpAttr);
+        Assert.Equal("{nodeId}", httpAttr.Template);
+    }
+
+    [Fact]
+    public void DeleteKnowledgeNode_MetadataRequiresCenterManagerOnly()
+    {
+        var method = typeof(KnowledgeNodesController)
+            .GetMethod(nameof(KnowledgeNodesController.DeleteKnowledgeNode));
+
+        Assert.NotNull(method);
+
+        var authorizeAttrs = method!.GetCustomAttributes<AuthorizeAttribute>().ToList();
+        Assert.Single(authorizeAttrs);
+
+        var attr = authorizeAttrs[0];
+        Assert.Equal(EduTwin.BLL.IdentityAndTenancy.AuthorizationPolicies.CenterManagerOnly, attr.Policy);
+    }
+
+    [Fact]
+    public void DeleteKnowledgeNode_MetadataDeclares204400404409()
+    {
+        var method = typeof(KnowledgeNodesController)
+            .GetMethod(nameof(KnowledgeNodesController.DeleteKnowledgeNode));
+
+        Assert.NotNull(method);
+
+        var producesAttrs = method!.GetCustomAttributes<ProducesResponseTypeAttribute>().ToList();
+
+        Assert.Contains(producesAttrs, a => a.Type == typeof(void) && a.StatusCode == StatusCodes.Status204NoContent);
+        Assert.Contains(producesAttrs, a => a.Type == typeof(ProblemDetails) && a.StatusCode == StatusCodes.Status400BadRequest);
+        Assert.Contains(producesAttrs, a => a.Type == typeof(ProblemDetails) && a.StatusCode == StatusCodes.Status404NotFound);
+        Assert.Contains(producesAttrs, a => a.Type == typeof(ProblemDetails) && a.StatusCode == StatusCodes.Status409Conflict);
+    }
 }

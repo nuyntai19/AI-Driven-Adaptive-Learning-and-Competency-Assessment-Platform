@@ -19,17 +19,20 @@ public class KnowledgeNodesController : ControllerBase
     private readonly IListKnowledgeNodesUseCase _listKnowledgeNodesUseCase;
     private readonly ICreateKnowledgeNodeUseCase _createKnowledgeNodeUseCase;
     private readonly IUpdateKnowledgeNodeUseCase _updateKnowledgeNodeUseCase;
+    private readonly IDeleteKnowledgeNodeUseCase _deleteKnowledgeNodeUseCase;
     private readonly TimeProvider _timeProvider;
 
     public KnowledgeNodesController(
         IListKnowledgeNodesUseCase listKnowledgeNodesUseCase,
         ICreateKnowledgeNodeUseCase createKnowledgeNodeUseCase,
         IUpdateKnowledgeNodeUseCase updateKnowledgeNodeUseCase,
+        IDeleteKnowledgeNodeUseCase deleteKnowledgeNodeUseCase,
         TimeProvider timeProvider)
     {
         _listKnowledgeNodesUseCase = listKnowledgeNodesUseCase;
         _createKnowledgeNodeUseCase = createKnowledgeNodeUseCase;
         _updateKnowledgeNodeUseCase = updateKnowledgeNodeUseCase;
+        _deleteKnowledgeNodeUseCase = deleteKnowledgeNodeUseCase;
         _timeProvider = timeProvider;
     }
 
@@ -244,6 +247,94 @@ public class KnowledgeNodesController : ControllerBase
                 {
                     ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
                     ["errorCode"] = result.ErrorCode
+                }
+            });
+        }
+
+        throw new InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
+    }
+
+    [HttpDelete("{nodeId}")]
+    [Authorize(Policy = EduTwin.BLL.IdentityAndTenancy.AuthorizationPolicies.CenterManagerOnly)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> DeleteKnowledgeNode(
+        string nodeId,
+        CancellationToken cancellationToken)
+    {
+        var result = await _deleteKnowledgeNodeUseCase.ExecuteAsync(nodeId, cancellationToken);
+
+        if (result.IsSuccess)
+        {
+            return NoContent();
+        }
+
+        if (result.ErrorCode == ErrorCodes.ValidationFailed)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.1",
+                Title = "Dữ liệu không hợp lệ",
+                Status = 400,
+                Detail = "Mã node tri thức không hợp lệ.",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    ["errorCode"] = ErrorCodes.ValidationFailed
+                }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ResourceNotFound)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.4",
+                Title = "Không tìm thấy dữ liệu",
+                Status = 404,
+                Detail = "Dữ liệu không tồn tại hoặc bạn không có quyền truy cập.",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    ["errorCode"] = ErrorCodes.ResourceNotFound
+                }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.InvalidStateTransition)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.8",
+                Title = "Xung đột dữ liệu",
+                Status = 409,
+                Detail = "Không thể xóa node tri thức vì đang có dữ liệu hoặc quan hệ liên kết.",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    ["errorCode"] = ErrorCodes.InvalidStateTransition
+                }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ConcurrencyConflict)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.8",
+                Title = "Xung đột dữ liệu",
+                Status = 409,
+                Detail = "Dữ liệu đã bị thay đổi bởi người dùng khác. Vui lòng làm mới và thử lại.",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    ["errorCode"] = ErrorCodes.ConcurrencyConflict
                 }
             });
         }
