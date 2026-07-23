@@ -20,6 +20,7 @@ public class KnowledgeEdgesControllerTests
 {
     private readonly Mock<ICreateKnowledgeEdgeUseCase> _createUseCaseMock;
     private readonly Mock<IUpdateKnowledgeEdgeUseCase> _updateUseCaseMock;
+    private readonly Mock<IDeleteKnowledgeEdgeUseCase> _deleteUseCaseMock;
     private readonly Mock<TimeProvider> _timeProviderMock;
     private readonly KnowledgeEdgesController _sut;
 
@@ -27,12 +28,13 @@ public class KnowledgeEdgesControllerTests
     {
         _createUseCaseMock = new Mock<ICreateKnowledgeEdgeUseCase>();
         _updateUseCaseMock = new Mock<IUpdateKnowledgeEdgeUseCase>();
+        _deleteUseCaseMock = new Mock<IDeleteKnowledgeEdgeUseCase>();
         _timeProviderMock = new Mock<TimeProvider>();
 
         var utcNow = new DateTimeOffset(2026, 7, 23, 10, 0, 0, TimeSpan.Zero);
         _timeProviderMock.Setup(x => x.GetUtcNow()).Returns(utcNow);
 
-        _sut = new KnowledgeEdgesController(_createUseCaseMock.Object, _updateUseCaseMock.Object, _timeProviderMock.Object);
+        _sut = new KnowledgeEdgesController(_createUseCaseMock.Object, _updateUseCaseMock.Object, _deleteUseCaseMock.Object, _timeProviderMock.Object);
 
         var httpContext = new DefaultHttpContext();
         httpContext.Request.Path = "/api/v1/knowledge/edges";
@@ -483,6 +485,156 @@ public class KnowledgeEdgesControllerTests
         var producesAttrs = method!.GetCustomAttributes<ProducesResponseTypeAttribute>().ToList();
 
         Assert.Contains(producesAttrs, a => a.Type == typeof(KnowledgeEdgeResponse) && a.StatusCode == StatusCodes.Status200OK);
+        Assert.Contains(producesAttrs, a => a.Type == typeof(ProblemDetails) && a.StatusCode == StatusCodes.Status400BadRequest);
+        Assert.Contains(producesAttrs, a => a.Type == typeof(ProblemDetails) && a.StatusCode == StatusCodes.Status404NotFound);
+        Assert.Contains(producesAttrs, a => a.Type == typeof(ProblemDetails) && a.StatusCode == StatusCodes.Status409Conflict);
+    }
+
+    [Fact]
+    public async Task DeleteKnowledgeEdge_Success_Returns204NoContent()
+    {
+        _deleteUseCaseMock.Setup(x => x.ExecuteAsync("10", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(DeleteKnowledgeEdgeResult.Success());
+
+        var result = await _sut.DeleteKnowledgeEdge("10", CancellationToken.None);
+
+        Assert.IsType<NoContentResult>(result);
+    }
+
+    [Fact]
+    public async Task DeleteKnowledgeEdge_PassesExactRawEdgeIdAndCancellationToken()
+    {
+        var rawEdgeId = " 10 ";
+        using var cts = new CancellationTokenSource();
+        var token = cts.Token;
+
+        string? capturedEdgeId = null;
+        CancellationToken capturedToken = CancellationToken.None;
+
+        _deleteUseCaseMock.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<string, CancellationToken>((id, t) =>
+            {
+                capturedEdgeId = id;
+                capturedToken = t;
+            })
+            .ReturnsAsync(DeleteKnowledgeEdgeResult.Success());
+
+        await _sut.DeleteKnowledgeEdge(rawEdgeId, token);
+
+        Assert.Equal(rawEdgeId, capturedEdgeId);
+        Assert.Equal(token, capturedToken);
+        _deleteUseCaseMock.Verify(x => x.ExecuteAsync(rawEdgeId, token), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeleteKnowledgeEdge_ValidationFailed_Returns400ProblemDetails()
+    {
+        _deleteUseCaseMock.Setup(x => x.ExecuteAsync("10", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(DeleteKnowledgeEdgeResult.Failure(ErrorCodes.ValidationFailed));
+
+        var result = await _sut.DeleteKnowledgeEdge("10", CancellationToken.None);
+
+        var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+        var problemDetails = Assert.IsType<ProblemDetails>(badRequestResult.Value);
+
+        Assert.Equal(400, problemDetails.Status);
+        Assert.Equal("https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.1", problemDetails.Type);
+        Assert.Equal("Dữ liệu không hợp lệ", problemDetails.Title);
+        Assert.Equal("Dữ liệu gửi lên không đúng định dạng hoặc thiếu thông tin.", problemDetails.Detail);
+        Assert.Equal("/api/v1/knowledge/edges", problemDetails.Instance);
+        Assert.Equal(ErrorCodes.ValidationFailed, problemDetails.Extensions["errorCode"]);
+        Assert.Equal("test-trace-id", problemDetails.Extensions["traceId"]);
+    }
+
+    [Fact]
+    public async Task DeleteKnowledgeEdge_ResourceNotFound_Returns404ProblemDetails()
+    {
+        _deleteUseCaseMock.Setup(x => x.ExecuteAsync("10", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(DeleteKnowledgeEdgeResult.Failure(ErrorCodes.ResourceNotFound));
+
+        var result = await _sut.DeleteKnowledgeEdge("10", CancellationToken.None);
+
+        var notFoundResult = Assert.IsType<NotFoundObjectResult>(result);
+        var problemDetails = Assert.IsType<ProblemDetails>(notFoundResult.Value);
+
+        Assert.Equal(404, problemDetails.Status);
+        Assert.Equal("https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.4", problemDetails.Type);
+        Assert.Equal("Không tìm thấy dữ liệu", problemDetails.Title);
+        Assert.Equal("Dữ liệu liên quan không tồn tại hoặc bạn không có quyền truy cập.", problemDetails.Detail);
+        Assert.Equal("/api/v1/knowledge/edges", problemDetails.Instance);
+        Assert.Equal(ErrorCodes.ResourceNotFound, problemDetails.Extensions["errorCode"]);
+        Assert.Equal("test-trace-id", problemDetails.Extensions["traceId"]);
+    }
+
+    [Fact]
+    public async Task DeleteKnowledgeEdge_ConcurrencyConflict_Returns409ProblemDetails()
+    {
+        _deleteUseCaseMock.Setup(x => x.ExecuteAsync("10", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(DeleteKnowledgeEdgeResult.Failure(ErrorCodes.ConcurrencyConflict));
+
+        var result = await _sut.DeleteKnowledgeEdge("10", CancellationToken.None);
+
+        var conflictResult = Assert.IsType<ConflictObjectResult>(result);
+        var problemDetails = Assert.IsType<ProblemDetails>(conflictResult.Value);
+
+        Assert.Equal(409, problemDetails.Status);
+        Assert.Equal("https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.8", problemDetails.Type);
+        Assert.Equal("Xung đột phiên bản dữ liệu", problemDetails.Title);
+        Assert.Equal("Dữ liệu đã được cập nhật bởi yêu cầu khác; tải lại trước khi thử lại.", problemDetails.Detail);
+        Assert.Equal("/api/v1/knowledge/edges", problemDetails.Instance);
+        Assert.Equal(ErrorCodes.ConcurrencyConflict, problemDetails.Extensions["errorCode"]);
+        Assert.Equal("test-trace-id", problemDetails.Extensions["traceId"]);
+    }
+
+    [Fact]
+    public async Task DeleteKnowledgeEdge_UnexpectedErrorCode_ThrowsInvalidOperationException()
+    {
+        _deleteUseCaseMock.Setup(x => x.ExecuteAsync("10", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(DeleteKnowledgeEdgeResult.Failure("UNKNOWN_ERROR"));
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => _sut.DeleteKnowledgeEdge("10", CancellationToken.None));
+
+        Assert.Contains("UNKNOWN_ERROR", ex.Message);
+    }
+
+    [Fact]
+    public void DeleteKnowledgeEdge_HasHttpDeleteWithExactTemplate()
+    {
+        var method = typeof(KnowledgeEdgesController)
+            .GetMethod(nameof(KnowledgeEdgesController.DeleteKnowledgeEdge));
+
+        Assert.NotNull(method);
+        var httpAttr = method!.GetCustomAttribute<HttpDeleteAttribute>();
+        Assert.NotNull(httpAttr);
+        Assert.Equal("{edgeId}", httpAttr!.Template);
+    }
+
+    [Fact]
+    public void DeleteKnowledgeEdge_HasTeacherOrCenterManagerPolicy()
+    {
+        var method = typeof(KnowledgeEdgesController)
+            .GetMethod(nameof(KnowledgeEdgesController.DeleteKnowledgeEdge));
+
+        Assert.NotNull(method);
+
+        var authorizeAttrs = method!.GetCustomAttributes<AuthorizeAttribute>().ToList();
+        Assert.Single(authorizeAttrs);
+
+        var attr = authorizeAttrs[0];
+        Assert.Equal(EduTwin.BLL.IdentityAndTenancy.AuthorizationPolicies.TeacherOrCenterManager, attr.Policy);
+    }
+
+    [Fact]
+    public void DeleteKnowledgeEdge_ProducesExactResponseMetadata()
+    {
+        var method = typeof(KnowledgeEdgesController)
+            .GetMethod(nameof(KnowledgeEdgesController.DeleteKnowledgeEdge));
+
+        Assert.NotNull(method);
+
+        var producesAttrs = method!.GetCustomAttributes<ProducesResponseTypeAttribute>().ToList();
+
+        Assert.Contains(producesAttrs, a => a.Type == typeof(void) && a.StatusCode == StatusCodes.Status204NoContent);
         Assert.Contains(producesAttrs, a => a.Type == typeof(ProblemDetails) && a.StatusCode == StatusCodes.Status400BadRequest);
         Assert.Contains(producesAttrs, a => a.Type == typeof(ProblemDetails) && a.StatusCode == StatusCodes.Status404NotFound);
         Assert.Contains(producesAttrs, a => a.Type == typeof(ProblemDetails) && a.StatusCode == StatusCodes.Status409Conflict);

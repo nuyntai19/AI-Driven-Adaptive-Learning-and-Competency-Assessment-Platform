@@ -19,15 +19,18 @@ public class KnowledgeEdgesController : ControllerBase
 {
     private readonly ICreateKnowledgeEdgeUseCase _createKnowledgeEdgeUseCase;
     private readonly IUpdateKnowledgeEdgeUseCase _updateKnowledgeEdgeUseCase;
+    private readonly IDeleteKnowledgeEdgeUseCase _deleteKnowledgeEdgeUseCase;
     private readonly TimeProvider _timeProvider;
 
     public KnowledgeEdgesController(
         ICreateKnowledgeEdgeUseCase createKnowledgeEdgeUseCase,
         IUpdateKnowledgeEdgeUseCase updateKnowledgeEdgeUseCase,
+        IDeleteKnowledgeEdgeUseCase deleteKnowledgeEdgeUseCase,
         TimeProvider timeProvider)
     {
         _createKnowledgeEdgeUseCase = createKnowledgeEdgeUseCase;
         _updateKnowledgeEdgeUseCase = updateKnowledgeEdgeUseCase;
+        _deleteKnowledgeEdgeUseCase = deleteKnowledgeEdgeUseCase;
         _timeProvider = timeProvider;
     }
 
@@ -153,6 +156,77 @@ public class KnowledgeEdgesController : ControllerBase
                 }
             };
             return Ok(response);
+        }
+
+        if (result.ErrorCode == ErrorCodes.ValidationFailed)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.1",
+                Title = "Dữ liệu không hợp lệ",
+                Status = 400,
+                Detail = "Dữ liệu gửi lên không đúng định dạng hoặc thiếu thông tin.",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    ["errorCode"] = ErrorCodes.ValidationFailed
+                }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ResourceNotFound)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.4",
+                Title = "Không tìm thấy dữ liệu",
+                Status = 404,
+                Detail = "Dữ liệu liên quan không tồn tại hoặc bạn không có quyền truy cập.",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    ["errorCode"] = ErrorCodes.ResourceNotFound
+                }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ConcurrencyConflict)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.8",
+                Title = "Xung đột phiên bản dữ liệu",
+                Status = 409,
+                Detail = "Dữ liệu đã được cập nhật bởi yêu cầu khác; tải lại trước khi thử lại.",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    ["errorCode"] = ErrorCodes.ConcurrencyConflict
+                }
+            });
+        }
+
+        throw new InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
+    }
+
+    [HttpDelete("{edgeId}")]
+    [Authorize(Policy = EduTwin.BLL.IdentityAndTenancy.AuthorizationPolicies.TeacherOrCenterManager)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> DeleteKnowledgeEdge(
+        [FromRoute] string edgeId,
+        CancellationToken cancellationToken)
+    {
+        var result = await _deleteKnowledgeEdgeUseCase.ExecuteAsync(edgeId, cancellationToken);
+
+        if (result.IsSuccess)
+        {
+            return NoContent();
         }
 
         if (result.ErrorCode == ErrorCodes.ValidationFailed)
