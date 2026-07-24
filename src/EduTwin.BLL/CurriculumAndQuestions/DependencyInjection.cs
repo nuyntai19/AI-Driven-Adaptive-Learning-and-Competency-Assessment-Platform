@@ -7,6 +7,7 @@ public static class DependencyInjection
     public static IServiceCollection AddCurriculumAndQuestions(this IServiceCollection services)
     {
         services.AddScoped<ICreateCurriculumUseCase, CreateCurriculumUseCase>();
+        services.AddScoped<IListCurriculumsUseCase, ListCurriculumsUseCase>();
         return services;
     }
 }
