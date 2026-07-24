@@ -449,6 +449,44 @@ public class CreateKnowledgeEdgeUseCaseTests
     }
 
     [Fact]
+    public async Task PrerequisiteOf_A_To_B_To_C_Then_C_To_A_ReturnsDagCycleDetected()
+    {
+        SetupValidTenant();
+        using var context = CreateDbContext();
+        var sut = new CreateKnowledgeEdgeUseCase(context, _tenantContextMock.Object, _timeProviderMock.Object, _validator);
+
+        var subjectId = Guid.NewGuid();
+        context.Centers.Add(new Center { CenterCode = "C1", CenterName = "C1", Timezone = "UTC", CenterId = _tenantContextMock.Object.CenterId!.Value, Status = CenterStatus.Active, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        context.Subjects.Add(new Subject { SubjectCode = "S1", SubjectName = "S1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "A", NodeName = "Node A", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 100, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "B", NodeName = "Node B", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 101, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "C", NodeName = "Node C", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 102, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+
+        // Seed A -> B (100 -> 101) and B -> C (101 -> 102)
+        context.KnowledgeEdges.Add(new KnowledgeEdge { CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, SourceNodeId = 100, TargetNodeId = 101, RelationType = EduTwin.Contracts.KnowledgeGraph.RelationType.PrerequisiteOf, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        context.KnowledgeEdges.Add(new KnowledgeEdge { CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, SourceNodeId = 101, TargetNodeId = 102, RelationType = EduTwin.Contracts.KnowledgeGraph.RelationType.PrerequisiteOf, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        await context.SaveChangesAsync();
+
+        // Attempting to create C -> A (102 -> 100) creates cycle A -> B -> C -> A
+        var request = CreateValidRequest(subjectId, 102, 100, "PrerequisiteOf");
+        var result = await sut.ExecuteAsync(request, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.DagCycleDetected, result.ErrorCode);
+
+        var persistedEdges = await context.KnowledgeEdges
+            .Where(e => !e.IsDeleted)
+            .ToListAsync();
+
+        Assert.Equal(2, persistedEdges.Count);
+        Assert.DoesNotContain(
+            persistedEdges,
+            e => e.SourceNodeId == 102 && e.TargetNodeId == 100);
+
+        Assert.Empty(context.ChangeTracker.Entries().Where(e => e.State == EntityState.Added).ToList());
+    }
+
+    [Fact]
     public async Task PartOf_Direct_Transitive_Cycle_Rejected()
     {
         SetupValidTenant();
