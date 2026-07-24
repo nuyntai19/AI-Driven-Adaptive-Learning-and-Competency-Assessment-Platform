@@ -4,6 +4,8 @@ import { Link } from "react-router-dom";
 import { organizationApi } from "../api/organizationApi";
 import { knowledgeGraphApi } from "../api/knowledgeGraphApi";
 import { useAuthStore } from "../stores/authStore";
+import { KnowledgeNodeCreatePanel } from "../components/KnowledgeNodeCreatePanel";
+import { KnowledgeEdgeCreatePanel } from "../components/KnowledgeEdgeCreatePanel";
 import type { KnowledgeNodeType, KnowledgeRelationType } from "../types/knowledgeGraph";
 
 const nodeTypeLabels: Record<KnowledgeNodeType, string> = {
@@ -24,6 +26,9 @@ const relationTypeLabels: Record<KnowledgeRelationType, string> = {
 export const KnowledgeGraphPage: React.FC = () => {
   const { user } = useAuthStore();
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>("");
+
+  const canManageGraph =
+    user?.role === "Teacher" || user?.role === "CenterManager";
 
   const {
     data: subjectsData,
@@ -60,8 +65,6 @@ export const KnowledgeGraphPage: React.FC = () => {
   }, [graphData?.nodes]);
 
   const activeSubjects = subjectsData?.data ?? [];
-  const isGraphEmpty =
-    graphData && graphData.nodes.length === 0 && graphData.edges.length === 0;
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -72,7 +75,7 @@ export const KnowledgeGraphPage: React.FC = () => {
               Đồ thị kiến thức
             </h1>
             <p className="mt-1 text-sm text-gray-500">
-              Quản lý và theo dõi cấu trúc cây/đồ thị môn học trong trung tâm.
+              Xem và theo dõi cấu trúc cây/đồ thị tri thức theo môn học.
             </p>
           </div>
           <div>
@@ -195,31 +198,26 @@ export const KnowledgeGraphPage: React.FC = () => {
               </button>
             </div>
           </div>
-        ) : isGraphEmpty ? (
-          <div className="rounded-lg bg-white p-12 text-center shadow">
-            <svg
-              className="mx-auto h-12 w-12 text-gray-400"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m6 4.5h3m-6 3h6m-9-9h15"
-              />
-            </svg>
-            <h3 className="mt-2 text-sm font-semibold text-gray-900">
-              Đồ thị trống
-            </h3>
-            <p className="mt-1 text-sm text-gray-500">
-              Môn học này chưa có nút hoặc liên kết kiến thức.
-            </p>
-          </div>
         ) : (
           <div className="space-y-8">
+            {/* Mutation Panels for Teacher and CenterManager */}
+            {canManageGraph && user?.centerId && (
+              <>
+                <KnowledgeNodeCreatePanel
+                  key={`knowledge-node-create:${user.centerId}:${selectedSubjectId}`}
+                  subjectId={selectedSubjectId}
+                  centerId={user.centerId}
+                  nodes={graphData?.nodes ?? []}
+                />
+                <KnowledgeEdgeCreatePanel
+                  key={`knowledge-edge-create:${user.centerId}:${selectedSubjectId}`}
+                  subjectId={selectedSubjectId}
+                  centerId={user.centerId}
+                  nodes={graphData?.nodes ?? []}
+                />
+              </>
+            )}
+
             {/* Background fetching badge */}
             {isFetchingGraph && (
               <div className="flex items-center justify-end">
