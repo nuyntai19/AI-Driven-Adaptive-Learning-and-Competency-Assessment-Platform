@@ -6,6 +6,7 @@ import { AuthenticatedHomePage } from "./pages/AuthenticatedHomePage";
 import { TeacherListPage } from "./pages/TeacherListPage";
 import { ClassListPage } from "./pages/ClassListPage";
 import { StudentListPage } from "./pages/StudentListPage";
+import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
 import { RoleRoute } from "./routes/RoleRoute";
 import { useAuthStore } from "./stores/authStore";
 
@@ -25,6 +26,7 @@ function App() {
 
         <Route element={<ProtectedRoute />}>
           <Route path="/" element={<AuthenticatedHomePage />} />
+          <Route path="/kien-thuc/do-thi" element={<KnowledgeGraphPage />} />
 
           <Route element={<RoleRoute allowedRoles={["CenterManager"]} />}>
             <Route path="/quan-ly/giao-vien" element={<TeacherListPage />} />
