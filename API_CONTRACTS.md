@@ -798,34 +798,196 @@ Graph response:
   "description": "Giáo trình nhập thủ công",
   "sourceFile": null,
   "reviewStatus": "Draft",
-  "classIds": [],
+  "classIds": [
+    "078a0cf5-10f7-4700-8064-380f59206f86"
+  ],
   "nodeIds": ["100", "101"],
   "rowVersion": "1"
 }
 ~~~
 
+Ghi chú DTO:
+
+- `sourceFile`: luôn `null` trong MVP.
+- `nodeIds`: mảng string ID trả về theo thứ tự `CurriculumNode.OrderIndex` tăng dần.
+- `classIds`: mảng string GUID trả về theo thứ tự deterministic (`ClassId` tăng dần).
+
 ## 45. Curriculum endpoints
 
-| Method | Path | Role | Request/Response |
-|---|---|---|---|
-| POST | /curriculums | Teacher, CenterManager | Create → 201 DTO |
-| GET | /curriculums | Teacher, CenterManager | Filter subjectId/status → collection |
-| GET | /curriculums/{id} | Teacher owner, CenterManager | DTO |
-| PATCH | /curriculums/{id} | Teacher owner, CenterManager | Update + rowVersion |
-| POST | /curriculums/{id}/publish | Teacher owner, CenterManager | rowVersion → Published |
-| PUT | /curriculums/{id}/classes | Teacher owner, CenterManager | classIds + rowVersion |
-| PUT | /curriculums/{id}/nodes | Teacher owner, CenterManager | ordered nodeIds + rowVersion |
+### 45.1. Bảng Endpoint & Phân quyền
 
-Create request:
+| Method | Path | Role | Ownership & Rules | Request / Response |
+|---|---|---|---|---|
+| POST | /curriculums | Teacher, CenterManager | Teacher: tự sở hữu (`teacherId` bắt buộc null). CenterManager: chỉ định `teacherId` hợp lệ. Student: 403 Forbidden. | CreateCurriculumRequest $\rightarrow$ 201 DTO |
+| GET | /curriculums | Teacher, CenterManager | Teacher: chỉ xem bài do mình sở hữu. CenterManager: xem toàn Center. Student: 403 Forbidden. | Query `subjectId`, `status` $\rightarrow$ 200 Collection |
+| GET | /curriculums/{id} | Teacher owner, CenterManager | Teacher: chỉ bài mình sở hữu. CenterManager: toàn Center. Non-owner/student: 404/403. | — $\rightarrow$ 200 DTO |
+| PATCH | /curriculums/{id} | Teacher owner, CenterManager | Chỉ áp dụng khi `reviewStatus` là `Draft`. Bắt buộc `title`, `rowVersion`. | UpdateCurriculumRequest $\rightarrow$ 200 DTO |
+| POST | /curriculums/{id}/publish | Teacher owner, CenterManager | Chỉ áp dụng khi `reviewStatus` là `Draft`. Bắt buộc `rowVersion`. | PublishCurriculumRequest $\rightarrow$ 200 DTO |
+| PUT | /curriculums/{id}/classes | Teacher owner, CenterManager | Chỉ áp dụng khi `reviewStatus` là `Draft`. Atomic replace. Bắt buộc `rowVersion`. | UpdateCurriculumClassesRequest $\rightarrow$ 200 DTO |
+| PUT | /curriculums/{id}/nodes | Teacher owner, CenterManager | Chỉ áp dụng khi `reviewStatus` là `Draft`. Atomic replace (1..N). Bắt buộc `rowVersion`. | UpdateCurriculumNodesRequest $\rightarrow$ 200 DTO |
+
+### 45.2. Quy tắc Chi tiết Endpoints
+
+#### 1. POST /curriculums (Tạo Curriculum)
+
+Request payload:
 
 ~~~json
 {
+  "teacherId": null,
   "subjectId": "2ed34b81-0b0d-457c-888d-6a78f50a33d2",
   "title": "Lộ trình Toán 12",
   "description": "Giáo trình nhập thủ công",
   "nodeIds": ["100", "101"]
 }
 ~~~
+
+Quy tắc xử lý:
+
+- `teacherId`: nullable string GUID trong JSON.
+  - **Caller là Teacher**:
+    - `teacherId` bắt buộc phải là `null` hoặc omitted.
+    - Server tự động gán `TeacherId = authenticated UserId`.
+    - Nếu Teacher gửi `teacherId` non-null: từ chối 400 `VALIDATION_FAILED`.
+  - **Caller là CenterManager**:
+    - `teacherId` bắt buộc phải khác null / khác chuỗi rỗng. Nếu missing, null, hoặc rỗng: trả 400 `VALIDATION_FAILED`.
+    - Teacher được chỉ định chỉ hợp lệ khi đồng thời thỏa mãn các điều kiện sau:
+      1. Teacher tồn tại trong cùng Center (`Teacher.CenterId == CenterManager.CenterId`).
+      2. `Teacher.IsDeleted == false`.
+      3. Linked User tồn tại trong cùng Center (`User.CenterId == CenterManager.CenterId`).
+      4. `User.IsDeleted == false`.
+      5. `User.RoleName == Teacher` (hoặc Role `Teacher`).
+      6. `User.Status == Active`.
+    - Nếu bất kỳ điều kiện nào không đạt (không tồn tại, cross-tenant, inactive, deleted, hoặc role không phải Teacher): trả 404 `RESOURCE_NOT_FOUND`.
+  - Tuyệt đối không tự chọn teacher đầu tiên; không gán CenterManager UserId vào TeacherId; không làm schema database nullable.
+- Khởi tạo mặc định:
+  - `reviewStatus = Draft`.
+  - `sourceFile = null`.
+  - `centerId` lấy từ authenticated tenant context.
+  - `rowVersion = 1`.
+- `subjectId`: required GUID, thuộc cùng Center, active, không deleted.
+- `title`: required, độ dài thô (raw length) từ 1 đến 250 ký tự. Không trim trước khi kiểm tra độ dài.
+- `description`: optional text.
+- `nodeIds`: mảng string bắt buộc (có thể rỗng `[]`). Các `nodeId` không duplicate, mỗi ID là ASCII unsigned integer > 0. Mỗi Node phải active, không deleted, thuộc cùng Center và trùng `SubjectId` với Curriculum. `OrderIndex` được lưu chính xác theo vị trí mảng (1..N).
+
+#### 2. GET /curriculums (Danh sách Curriculum)
+
+Query parameters:
+
+- `subjectId`: optional GUID string.
+- `status`: optional string enum (`Draft`, `Published`, `Archived`).
+
+Quy tắc non-pagination, visibility & filter:
+
+- Endpoint P09-T01 **không hỗ trợ** query parameters `page` hoặc `pageSize`.
+- Endpoint trả về toàn bộ collection đã lọc trong phạm vi ownership.
+- Response dùng envelope thành công chuẩn với mảng `data: [...]`. Phần `meta` chỉ gồm `traceId` và `timestamp` (không có pagination meta `page`, `pageSize`, `totalItems`, `totalPages`).
+- `Teacher`: chỉ nhận danh sách Curriculum có `TeacherId == authenticated UserId`.
+- `CenterManager`: nhận tất cả Curriculum chưa bị xóa (`IsDeleted == false`) trong Center.
+- `Student`: không thuộc allowed roles của endpoint, Authorization policy trả HTTP 403 Forbidden.
+- Nếu không có kết quả: trả 200 OK với mảng `data: []`.
+- Filter `status`: parse strict, case-sensitive theo enum `ReviewStatus`. Nếu không hợp lệ trả 400 `VALIDATION_FAILED`.
+- Thứ tự kết quả (Deterministic ordering): Sắp xếp theo `UpdatedAt` giảm dần (`DESC`), sau đó `CurriculumId` tăng dần (`ASC`).
+
+#### 3. GET /curriculums/{id} (Chi tiết Curriculum)
+
+- Teacher chỉ truy cập được Curriculum do mình sở hữu. CenterManager truy cập được toàn bộ trong Center. Student nhận HTTP 403 Forbidden.
+- Nếu không tồn tại, thuộc Center khác, đã bị soft-delete, hoặc Teacher không sở hữu: trả 404 `RESOURCE_NOT_FOUND` (fail-closed).
+
+#### 4. PATCH /curriculums/{id} (Cập nhật thông tin cơ bản)
+
+Request payload:
+
+~~~json
+{
+  "title": "Lộ trình Toán 12 cập nhật",
+  "description": "Nội dung cập nhật",
+  "rowVersion": "1"
+}
+~~~
+
+Quy tắc:
+
+- Chỉ cho phép khi `reviewStatus == Draft`. Nếu trạng thái là `Published` hoặc `Archived`: trả 409 `INVALID_STATE_TRANSITION`.
+- `title`: field **bắt buộc** trong `UpdateCurriculumRequest`. Nếu missing, `null`, chuỗi rỗng (`""`), hoặc chỉ chứa khoảng trắng (`"   "`): trả 400 `VALIDATION_FAILED`. Validate độ dài thô (raw length 1–250 ký tự) trên raw input trước mọi thao tác trim. Không trim để biến input vượt giới hạn thành hợp lệ.
+- `description`: optional text update. Không tự đặt giới hạn 2000 ký tự.
+- `rowVersion`: bắt buộc (áp dụng Strict rowVersion contract tại mục 45.3).
+
+#### 5. POST /curriculums/{id}/publish (Xuất bản Curriculum)
+
+Request payload:
+
+~~~json
+{
+  "rowVersion": "1"
+}
+~~~
+
+Quy tắc:
+
+- Chỉ cho phép khi `reviewStatus == Draft`.
+- Chuyển `reviewStatus` từ `Draft` $\rightarrow$ `Published`.
+- Nếu `reviewStatus` hiện tại đã là `Published` hoặc `Archived`: trả 409 `INVALID_STATE_TRANSITION`.
+- `rowVersion`: bắt buộc (áp dụng Strict rowVersion contract tại mục 45.3).
+
+#### 6. PUT /curriculums/{id}/classes (Gán danh sách Lớp học)
+
+Request payload:
+
+~~~json
+{
+  "classIds": [
+    "078a0cf5-10f7-4700-8064-380f59206f86"
+  ],
+  "rowVersion": "1"
+}
+~~~
+
+Quy tắc:
+
+- Chỉ cho phép khi `reviewStatus == Draft`. Nếu `Published` hoặc `Archived`: trả 409 `INVALID_STATE_TRANSITION`.
+- `classIds`: mảng string GUID bắt buộc, được phép rỗng `[]` để gỡ bỏ toàn bộ lớp. Không chứa duplicate.
+- Mỗi `classId` phải thuộc cùng Center, active (`Status == Active`), không deleted, và có `Class.SubjectId == Curriculum.SubjectId`. Nếu vi phạm: trả 404 `RESOURCE_NOT_FOUND`.
+- Thực hiện thay thế toàn bộ (atomic replacement).
+- `AssignedAt` lưu thời gian UTC hiện tại (`TimeProvider`).
+- `AssignedBy` lưu authenticated `UserId`.
+- `rowVersion`: bắt buộc (áp dụng Strict rowVersion contract tại mục 45.3).
+
+#### 7. PUT /curriculums/{id}/nodes (Gán danh sách Bài học/Nút kiến thức theo thứ tự)
+
+Request payload:
+
+~~~json
+{
+  "nodeIds": ["100", "101"],
+  "rowVersion": "1"
+}
+~~~
+
+Quy tắc:
+
+- Chỉ cho phép khi `reviewStatus == Draft`. Nếu `Published` hoặc `Archived`: trả 409 `INVALID_STATE_TRANSITION`.
+- `nodeIds`: mảng string bắt buộc (có thể rỗng `[]`), không duplicate. Mỗi `nodeId` là ASCII unsigned integer > 0.
+- Mỗi Node phải active, không deleted, thuộc cùng Center và trùng `SubjectId` với Curriculum. Nếu vi phạm: trả 404 `RESOURCE_NOT_FOUND`.
+- Thực hiện thay thế toàn bộ (atomic replacement). Persist `OrderIndex` chính xác theo thứ tự mảng (1..N).
+- `rowVersion`: bắt buộc (áp dụng Strict rowVersion contract tại mục 45.3).
+
+### 45.3. Quy tắc Concurrency Control & State Machine
+
+1. **State Machine**:
+   - State lifecycle: `Draft` $\rightarrow$ `Published`.
+   - Trạng thái `Published` và `Archived` là immutable trong Phase P09-T01. Mọi yêu cầu mutation (`PATCH`, `PUT /classes`, `PUT /nodes`, `POST /publish`) trên resource không ở trạng thái `Draft` phải bị từ chối với 409 `INVALID_STATE_TRANSITION`.
+   - Không có endpoint chuyển trạng thái sang `Archived` trong MVP hiện tại.
+2. **Strict Concurrency Control**:
+   - Áp dụng thống nhất cho cả bốn mutation endpoints: `PATCH /curriculums/{id}`, `POST /curriculums/{id}/publish`, `PUT /curriculums/{id}/classes`, `PUT /curriculums/{id}/nodes`.
+   - Trường `rowVersion` trong JSON payload bắt buộc phải:
+     - Là JSON string bắt buộc.
+     - Khớp chính xác định dạng ASCII digits `[0-9]+`.
+     - Parse thành unsigned integer > 0 (`ulong > 0`).
+     - Kiểm tra validation trên raw input; không trim leading/trailing whitespace.
+     - Nếu missing, `null`, empty, whitespace-only, hoặc chứa định dạng không hợp lệ như `"+1"`, `"1.0"`, `" 1"`, `"1 "` $\rightarrow$ trả 400 `VALIDATION_FAILED`.
+   - Token hợp lệ về định dạng nhưng không khớp với bản ghi CSDL hiện tại (stale rowVersion) $\rightarrow$ trả 409 `CONCURRENCY_CONFLICT`.
+   - Thao tác mutation thành công sẽ tăng `Curriculum.RowVersion` thêm chính xác 1 đơn vị.
 
 Không có upload/analyze/map AI endpoint trong MVP.
 
