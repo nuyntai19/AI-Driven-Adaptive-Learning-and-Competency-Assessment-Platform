@@ -19,13 +19,16 @@ namespace EduTwin.API.Controllers;
 public class CurriculumsController : ControllerBase
 {
     private readonly ICreateCurriculumUseCase _createCurriculumUseCase;
+    private readonly IListCurriculumsUseCase _listCurriculumsUseCase;
     private readonly TimeProvider _timeProvider;
 
     public CurriculumsController(
         ICreateCurriculumUseCase createCurriculumUseCase,
+        IListCurriculumsUseCase listCurriculumsUseCase,
         TimeProvider timeProvider)
     {
         _createCurriculumUseCase = createCurriculumUseCase;
+        _listCurriculumsUseCase = listCurriculumsUseCase;
         _timeProvider = timeProvider;
     }
 
@@ -52,6 +55,68 @@ public class CurriculumsController : ControllerBase
                 }
             };
             return Created(string.Empty, response);
+        }
+
+        if (result.ErrorCode == ErrorCodes.ValidationFailed)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.1",
+                Title = "Dữ liệu không hợp lệ",
+                Status = StatusCodes.Status400BadRequest,
+                Detail = "Dữ liệu gửi lên không đúng định dạng hoặc thiếu thông tin.",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    ["errorCode"] = ErrorCodes.ValidationFailed
+                }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ResourceNotFound)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.4",
+                Title = "Không tìm thấy dữ liệu",
+                Status = StatusCodes.Status404NotFound,
+                Detail = "Dữ liệu liên quan không tồn tại hoặc bạn không có quyền truy cập.",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    ["errorCode"] = ErrorCodes.ResourceNotFound
+                }
+            });
+        }
+
+        throw new InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
+    }
+
+    [HttpGet]
+    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [ProducesResponseType(typeof(CurriculumListResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ListCurriculums(
+        [FromQuery] CurriculumListQuery query,
+        CancellationToken cancellationToken)
+    {
+        var result = await _listCurriculumsUseCase.ExecuteAsync(query, cancellationToken);
+
+        if (result.IsSuccess)
+        {
+            var response = new CurriculumListResponse
+            {
+                Data = result.Data ?? new List<CurriculumDto>(),
+                Meta = new MetaDto
+                {
+                    TraceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    Timestamp = _timeProvider.GetUtcNow().UtcDateTime
+                }
+            };
+            return Ok(response);
         }
 
         if (result.ErrorCode == ErrorCodes.ValidationFailed)
