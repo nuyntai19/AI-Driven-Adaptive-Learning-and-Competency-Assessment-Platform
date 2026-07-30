@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { useQuestion, useCreateQuestion, useUpdateQuestion } from "../features/questions/useQuestions";
 import type { QuestionType, CreateQuestionRequest, QuestionOption } from "../types/questions";
 
 export const QuestionEditorPage = () => {
@@ -25,13 +27,13 @@ export const QuestionEditorPage = () => {
   const handleOptionChange = (index: number, field: keyof QuestionOption, value: any) => {
     const newOptions = [...(formData.options || [])] as any[];
     newOptions[index] = { ...newOptions[index], [field]: value };
-    
+
     if (field === 'isCorrect' && value === true) {
       newOptions.forEach((opt, i) => {
         if (i !== index) opt.isCorrect = false;
       });
     }
-    
+
     setFormData(prev => ({ ...prev, options: newOptions }));
   };
 
@@ -41,10 +43,10 @@ export const QuestionEditorPage = () => {
     if (currentLength >= 6) return;
 
     const newOptions = [...(formData.options || [])] as any[];
-    newOptions.push({ 
-      text: "", 
-      isCorrect: false, 
-      label: labels[currentLength] || String.fromCharCode(65 + currentLength) 
+    newOptions.push({
+      text: "",
+      isCorrect: false,
+      label: labels[currentLength] || String.fromCharCode(65 + currentLength)
     });
     setFormData(prev => ({ ...prev, options: newOptions }));
   };
@@ -53,7 +55,7 @@ export const QuestionEditorPage = () => {
     if ((formData.options?.length || 0) <= 2) return;
     const newOptions = [...(formData.options || [])] as any[];
     newOptions.splice(index, 1);
-    
+
     const labels = ["A", "B", "C", "D", "E", "F"];
     newOptions.forEach((opt, i) => {
       opt.label = labels[i] || String.fromCharCode(65 + i);
@@ -62,8 +64,58 @@ export const QuestionEditorPage = () => {
     setFormData(prev => ({ ...prev, options: newOptions }));
   };
 
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const isEditMode = !!id;
+
+  const { data: questionData } = useQuestion(id || "");
+  const createMutation = useCreateQuestion();
+  const updateMutation = useUpdateQuestion();
+
+  // Populate data when in edit mode
+  useEffect(() => {
+    if (isEditMode && questionData?.data) {
+      const q = questionData.data;
+      setFormData({
+        subjectId: q.subjectId,
+        primaryTopicNodeId: q.primaryTopicNodeId || "",
+        questionType: q.questionType,
+        difficulty: q.difficulty,
+        questionText: q.questionText,
+        maxScore: q.maxScore,
+        estimatedTimeSeconds: q.estimatedTimeSeconds,
+        reasoningRequired: q.reasoningRequired || false,
+        languageCode: q.languageCode || "vi",
+        options: q.options || [],
+        correctAnswer: q.correctAnswer,
+        solution: q.solution,
+        gradingCriteria: q.gradingCriteria
+      });
+    }
+  }, [isEditMode, questionData]);
+
   const handleSave = () => {
-    console.log("Saving...", formData);
+    if (!isEditMode) {
+      createMutation.mutate(formData, {
+        onSuccess: () => {
+          alert("Tạo câu hỏi thành công!");
+          navigate("/quan-ly/cau-hoi");
+        },
+        onError: (err: any) => {
+          alert("Lỗi: " + (err.response?.data?.detail || err.message));
+        }
+      });
+    } else {
+      updateMutation.mutate({ id: id!, data: formData as any }, {
+        onSuccess: () => {
+          alert("Cập nhật câu hỏi thành công!");
+          navigate("/quan-ly/cau-hoi");
+        },
+        onError: (err: any) => {
+          alert("Lỗi: " + (err.response?.data?.detail || err.message));
+        }
+      });
+    }
   };
 
   return (
@@ -71,10 +123,13 @@ export const QuestionEditorPage = () => {
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold text-slate-800">Soạn thảo Câu hỏi</h1>
         <div className="flex gap-3">
-          <button className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition font-medium">
+          <button
+            onClick={() => navigate("/quan-ly/cau-hoi")}
+            className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition font-medium"
+          >
             Hủy
           </button>
-          <button 
+          <button
             onClick={handleSave}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition shadow-sm font-medium"
           >
@@ -90,7 +145,7 @@ export const QuestionEditorPage = () => {
         <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="col-span-2">
             <label className="block text-sm font-medium text-slate-700 mb-2">Nội dung câu hỏi <span className="text-red-500">*</span></label>
-            <textarea 
+            <textarea
               rows={4}
               value={formData.questionText}
               onChange={e => handleInputChange("questionText", e.target.value)}
@@ -101,8 +156,8 @@ export const QuestionEditorPage = () => {
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">ID Môn học <span className="text-red-500">*</span></label>
-            <input 
-              type="text" 
+            <input
+              type="text"
               value={formData.subjectId}
               onChange={e => handleInputChange("subjectId", e.target.value)}
               className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none"
@@ -112,8 +167,8 @@ export const QuestionEditorPage = () => {
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">Topic Node ID <span className="text-red-500">*</span></label>
-            <input 
-              type="text" 
+            <input
+              type="text"
               value={formData.primaryTopicNodeId}
               onChange={e => handleInputChange("primaryTopicNodeId", e.target.value)}
               className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none"
@@ -123,7 +178,7 @@ export const QuestionEditorPage = () => {
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">Loại câu hỏi <span className="text-red-500">*</span></label>
-            <select 
+            <select
               value={formData.questionType}
               onChange={e => handleInputChange("questionType", e.target.value as QuestionType)}
               className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
@@ -136,7 +191,7 @@ export const QuestionEditorPage = () => {
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">Độ khó (1-5)</label>
-            <select 
+            <select
               value={formData.difficulty}
               onChange={e => handleInputChange("difficulty", Number(e.target.value))}
               className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
@@ -152,8 +207,8 @@ export const QuestionEditorPage = () => {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Điểm tối đa</label>
-              <input 
-                type="number" 
+              <input
+                type="number"
                 min="0" step="0.5"
                 value={formData.maxScore}
                 onChange={e => handleInputChange("maxScore", Number(e.target.value))}
@@ -162,8 +217,8 @@ export const QuestionEditorPage = () => {
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Thời gian (giây)</label>
-              <input 
-                type="number" 
+              <input
+                type="number"
                 min="10" step="10"
                 value={formData.estimatedTimeSeconds}
                 onChange={e => handleInputChange("estimatedTimeSeconds", Number(e.target.value))}
@@ -173,8 +228,8 @@ export const QuestionEditorPage = () => {
           </div>
 
           <div className="flex items-center gap-3 mt-8">
-            <input 
-              type="checkbox" 
+            <input
+              type="checkbox"
               id="reasoningRequired"
               checked={formData.reasoningRequired}
               onChange={e => handleInputChange("reasoningRequired", e.target.checked)}
@@ -202,24 +257,24 @@ export const QuestionEditorPage = () => {
                 <div key={idx} className={`flex items-start gap-4 p-4 rounded-lg border ${(option as any).isCorrect ? 'border-green-300 bg-green-50' : 'border-slate-200'}`}>
                   <div className="flex flex-col items-center gap-2 pt-2">
                     <span className="font-bold text-slate-700 w-6 text-center">{(option as any).label}</span>
-                    <input 
-                      type="radio" 
-                      name="correctOption" 
+                    <input
+                      type="radio"
+                      name="correctOption"
                       checked={(option as any).isCorrect}
                       onChange={() => handleOptionChange(idx, "isCorrect", true)}
                       className="w-5 h-5 text-green-600 focus:ring-green-500 cursor-pointer"
                     />
                   </div>
                   <div className="flex-1">
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       value={option.text}
                       onChange={e => handleOptionChange(idx, "text", e.target.value)}
                       placeholder={`Nhập đáp án ${(option as any).label}...`}
                       className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                     />
                   </div>
-                  <button 
+                  <button
                     onClick={() => removeOption(idx)}
                     disabled={(formData.options?.length || 0) <= 2}
                     className="p-2 text-slate-400 hover:text-red-500 disabled:opacity-30 disabled:hover:text-slate-400 transition"
@@ -230,9 +285,9 @@ export const QuestionEditorPage = () => {
                   </button>
                 </div>
               ))}
-              
+
               {(formData.options?.length || 0) < 6 && (
-                <button 
+                <button
                   onClick={addOption}
                   className="mt-2 flex items-center gap-2 text-blue-600 font-medium hover:text-blue-700 px-2 py-2"
                 >
@@ -248,8 +303,8 @@ export const QuestionEditorPage = () => {
           {formData.questionType === "ShortAnswer" && (
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Đáp án chuẩn (Correct Answer) <span className="text-red-500">*</span></label>
-              <input 
-                type="text" 
+              <input
+                type="text"
                 value={formData.correctAnswer || ""}
                 onChange={e => handleInputChange("correctAnswer", e.target.value)}
                 className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none"
@@ -262,7 +317,7 @@ export const QuestionEditorPage = () => {
             <div className="space-y-6">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Lời giải mẫu (Solution) <span className="text-red-500">*</span></label>
-                <textarea 
+                <textarea
                   rows={4}
                   value={formData.solution || ""}
                   onChange={e => handleInputChange("solution", e.target.value)}
@@ -273,12 +328,12 @@ export const QuestionEditorPage = () => {
 
               <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
                 <h3 className="font-semibold text-slate-800 mb-4">Tiêu chí chấm điểm (Grading Criteria)</h3>
-                
+
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm text-slate-600 mb-1">Các ý bắt buộc (Required Ideas - cách nhau bằng dấu phẩy)</label>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       value={formData.gradingCriteria?.requiredIdeas?.join(", ") || ""}
                       onChange={e => handleInputChange("gradingCriteria", {
                         ...formData.gradingCriteria,
@@ -289,11 +344,11 @@ export const QuestionEditorPage = () => {
                       placeholder="VD: Xác định điều kiện, Đổi cơ số..."
                     />
                   </div>
-                  
+
                   <div>
                     <label className="block text-sm text-slate-600 mb-1">Các lỗi thường gặp (Common Errors - cách nhau bằng dấu phẩy)</label>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       value={formData.gradingCriteria?.commonErrors?.join(", ") || ""}
                       onChange={e => handleInputChange("gradingCriteria", {
                         ...formData.gradingCriteria,
@@ -307,7 +362,7 @@ export const QuestionEditorPage = () => {
 
                   <div>
                     <label className="block text-sm text-slate-600 mb-1">Ghi chú chấm điểm (Scoring Notes)</label>
-                    <textarea 
+                    <textarea
                       rows={2}
                       value={formData.gradingCriteria?.scoringNotes || ""}
                       onChange={e => handleInputChange("gradingCriteria", {

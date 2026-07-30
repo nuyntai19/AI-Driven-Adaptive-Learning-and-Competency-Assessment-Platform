@@ -18,7 +18,10 @@ export const QuestionBankPage = () => {
     <div className="p-6 max-w-7xl mx-auto">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold text-slate-800">Ngân hàng Câu hỏi</h1>
-        <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition shadow-sm font-medium">
+        <button 
+          onClick={() => window.location.href = "/quan-ly/cau-hoi/tao-moi"}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition shadow-sm font-medium"
+        >
           Tạo Câu hỏi mới
         </button>
       </div>
@@ -133,7 +136,12 @@ export const QuestionBankPage = () => {
                 </div>
 
                 <div className="flex justify-end pt-4 border-t border-slate-100">
-                  <button className="text-blue-600 text-sm font-medium hover:underline">Chi tiết</button>
+                  <button 
+                    onClick={() => window.location.href = `/quan-ly/cau-hoi/${question.questionId}`}
+                    className="text-blue-600 text-sm font-medium hover:underline"
+                  >
+                    Chi tiết
+                  </button>
                 </div>
               </div>
             </div>

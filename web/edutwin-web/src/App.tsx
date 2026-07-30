@@ -10,6 +10,7 @@ import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
 import { CurriculumListPage } from "./pages/CurriculumListPage";
 import { QuestionBankPage } from "./pages/QuestionBankPage";
 import { QuestionEditorPage } from "./pages/QuestionEditorPage";
+import { CurriculumEditorPage } from "./pages/CurriculumEditorPage";
 import { RoleRoute } from "./routes/RoleRoute";
 import { useAuthStore } from "./stores/authStore";
 
@@ -39,8 +40,11 @@ function App() {
             <Route path="/quan-ly/lop-hoc" element={<ClassListPage />} />
             <Route path="/quan-ly/hoc-sinh" element={<StudentListPage />} />
             <Route path="/quan-ly/giao-trinh" element={<CurriculumListPage />} />
+            <Route path="/quan-ly/giao-trinh/tao-moi" element={<CurriculumEditorPage />} />
+            <Route path="/quan-ly/giao-trinh/:id" element={<CurriculumEditorPage />} />
             <Route path="/quan-ly/cau-hoi" element={<QuestionBankPage />} />
             <Route path="/quan-ly/cau-hoi/tao-moi" element={<QuestionEditorPage />} />
+            <Route path="/quan-ly/cau-hoi/:id" element={<QuestionEditorPage />} />
           </Route>
         </Route>
 

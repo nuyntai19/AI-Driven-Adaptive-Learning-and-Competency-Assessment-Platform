@@ -20,15 +20,30 @@ public class CurriculumsController : ControllerBase
 {
     private readonly ICreateCurriculumUseCase _createCurriculumUseCase;
     private readonly IListCurriculumsUseCase _listCurriculumsUseCase;
+    private readonly IGetCurriculumUseCase _getCurriculumUseCase;
+    private readonly IUpdateCurriculumUseCase _updateCurriculumUseCase;
+    private readonly IAssignCurriculumClassesUseCase _assignCurriculumClassesUseCase;
+    private readonly IAssignCurriculumNodesUseCase _assignCurriculumNodesUseCase;
+    private readonly IPublishCurriculumUseCase _publishCurriculumUseCase;
     private readonly TimeProvider _timeProvider;
 
     public CurriculumsController(
         ICreateCurriculumUseCase createCurriculumUseCase,
         IListCurriculumsUseCase listCurriculumsUseCase,
+        IGetCurriculumUseCase getCurriculumUseCase,
+        IUpdateCurriculumUseCase updateCurriculumUseCase,
+        IAssignCurriculumClassesUseCase assignCurriculumClassesUseCase,
+        IAssignCurriculumNodesUseCase assignCurriculumNodesUseCase,
+        IPublishCurriculumUseCase publishCurriculumUseCase,
         TimeProvider timeProvider)
     {
         _createCurriculumUseCase = createCurriculumUseCase;
         _listCurriculumsUseCase = listCurriculumsUseCase;
+        _getCurriculumUseCase = getCurriculumUseCase;
+        _updateCurriculumUseCase = updateCurriculumUseCase;
+        _assignCurriculumClassesUseCase = assignCurriculumClassesUseCase;
+        _assignCurriculumNodesUseCase = assignCurriculumNodesUseCase;
+        _publishCurriculumUseCase = publishCurriculumUseCase;
         _timeProvider = timeProvider;
     }
 
@@ -154,5 +169,122 @@ public class CurriculumsController : ControllerBase
         }
 
         throw new InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
+    }
+
+    [HttpGet("{id}")]
+    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [ProducesResponseType(typeof(CurriculumResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetCurriculum(
+        [FromRoute] Guid id,
+        CancellationToken cancellationToken)
+    {
+        var result = await _getCurriculumUseCase.ExecuteAsync(new GetCurriculumRequest { CurriculumId = id }, cancellationToken);
+        if (result.IsSuccess)
+        {
+            var response = new CurriculumResponse
+            {
+                Data = result.Data!,
+                Meta = new MetaDto { TraceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier, Timestamp = _timeProvider.GetUtcNow().UtcDateTime }
+            };
+            return Ok(response);
+        }
+        return NotFound(new ProblemDetails { Status = StatusCodes.Status404NotFound, Detail = "Not found." });
+    }
+
+    [HttpPatch("{id}")]
+    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [ProducesResponseType(typeof(CurriculumResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UpdateCurriculum(
+        [FromRoute] Guid id,
+        [FromBody] UpdateCurriculumRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _updateCurriculumUseCase.ExecuteAsync(id, request, cancellationToken);
+        if (result.IsSuccess)
+        {
+            var response = new CurriculumResponse
+            {
+                Data = result.Data!,
+                Meta = new MetaDto { TraceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier, Timestamp = _timeProvider.GetUtcNow().UtcDateTime }
+            };
+            return Ok(response);
+        }
+        if (result.ErrorCode == ErrorCodes.ResourceNotFound) return NotFound();
+        return BadRequest(new ProblemDetails { Status = StatusCodes.Status400BadRequest, Detail = "Invalid update." });
+    }
+
+    [HttpPut("{id}/classes")]
+    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [ProducesResponseType(typeof(CurriculumResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> AssignCurriculumClasses(
+        [FromRoute] Guid id,
+        [FromBody] AssignCurriculumClassesRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _assignCurriculumClassesUseCase.ExecuteAsync(id, request, cancellationToken);
+        if (result.IsSuccess)
+        {
+            var response = new CurriculumResponse
+            {
+                Data = result.Data!,
+                Meta = new MetaDto { TraceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier, Timestamp = _timeProvider.GetUtcNow().UtcDateTime }
+            };
+            return Ok(response);
+        }
+        if (result.ErrorCode == ErrorCodes.ResourceNotFound) return NotFound();
+        return BadRequest(new ProblemDetails { Status = StatusCodes.Status400BadRequest, Detail = "Invalid classes assignment." });
+    }
+
+    [HttpPut("{id}/nodes")]
+    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [ProducesResponseType(typeof(CurriculumResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> AssignCurriculumNodes(
+        [FromRoute] Guid id,
+        [FromBody] AssignCurriculumNodesRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _assignCurriculumNodesUseCase.ExecuteAsync(id, request, cancellationToken);
+        if (result.IsSuccess)
+        {
+            var response = new CurriculumResponse
+            {
+                Data = result.Data!,
+                Meta = new MetaDto { TraceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier, Timestamp = _timeProvider.GetUtcNow().UtcDateTime }
+            };
+            return Ok(response);
+        }
+        if (result.ErrorCode == ErrorCodes.ResourceNotFound) return NotFound();
+        return BadRequest(new ProblemDetails { Status = StatusCodes.Status400BadRequest, Detail = "Invalid nodes assignment." });
+    }
+
+    [HttpPost("{id}/publish")]
+    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [ProducesResponseType(typeof(CurriculumResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> PublishCurriculum(
+        [FromRoute] Guid id,
+        [FromBody] PublishCurriculumRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _publishCurriculumUseCase.ExecuteAsync(id, request, cancellationToken);
+        if (result.IsSuccess)
+        {
+            var response = new CurriculumResponse
+            {
+                Data = result.Data!,
+                Meta = new MetaDto { TraceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier, Timestamp = _timeProvider.GetUtcNow().UtcDateTime }
+            };
+            return Ok(response);
+        }
+        if (result.ErrorCode == ErrorCodes.ResourceNotFound) return NotFound();
+        return BadRequest(new ProblemDetails { Status = StatusCodes.Status400BadRequest, Detail = "Invalid publish action." });
     }
 }

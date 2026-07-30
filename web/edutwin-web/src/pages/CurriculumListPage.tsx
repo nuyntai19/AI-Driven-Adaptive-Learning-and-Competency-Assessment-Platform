@@ -15,7 +15,10 @@ export const CurriculumListPage = () => {
     <div className="p-6 max-w-7xl mx-auto">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold text-slate-800">Quản lý Lộ trình học</h1>
-        <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition shadow-sm font-medium">
+        <button 
+          onClick={() => window.location.href = "/quan-ly/giao-trinh/tao-moi"}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition shadow-sm font-medium"
+        >
           Tạo Lộ trình mới
         </button>
       </div>
@@ -85,7 +88,12 @@ export const CurriculumListPage = () => {
                 
                 <div className="flex justify-between items-center text-sm text-slate-500 pt-4 border-t border-slate-100">
                   <span>Môn học: {curriculum.subjectId.substring(0, 8)}...</span>
-                  <button className="text-blue-600 font-medium hover:underline">Chi tiết</button>
+                  <button 
+                    onClick={() => window.location.href = `/quan-ly/giao-trinh/${curriculum.curriculumId}`}
+                    className="text-blue-600 font-medium hover:underline"
+                  >
+                    Chi tiết
+                  </button>
                 </div>
               </div>
             </div>

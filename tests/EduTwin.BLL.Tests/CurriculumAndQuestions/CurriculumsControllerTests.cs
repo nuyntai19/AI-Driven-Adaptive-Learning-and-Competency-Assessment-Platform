@@ -23,6 +23,11 @@ public class CurriculumsControllerTests
 {
     private readonly Mock<ICreateCurriculumUseCase> _createUseCaseMock;
     private readonly Mock<IListCurriculumsUseCase> _listUseCaseMock;
+    private readonly Mock<IGetCurriculumUseCase> _getUseCaseMock;
+    private readonly Mock<IUpdateCurriculumUseCase> _updateUseCaseMock;
+    private readonly Mock<IAssignCurriculumClassesUseCase> _assignClassesUseCaseMock;
+    private readonly Mock<IAssignCurriculumNodesUseCase> _assignNodesUseCaseMock;
+    private readonly Mock<IPublishCurriculumUseCase> _publishUseCaseMock;
     private readonly Mock<TimeProvider> _timeProviderMock;
     private readonly CurriculumsController _sut;
     private readonly DateTimeOffset _fixedTime = new DateTimeOffset(2026, 7, 24, 14, 0, 0, TimeSpan.Zero);
@@ -31,10 +36,23 @@ public class CurriculumsControllerTests
     {
         _createUseCaseMock = new Mock<ICreateCurriculumUseCase>();
         _listUseCaseMock = new Mock<IListCurriculumsUseCase>();
+        _getUseCaseMock = new Mock<IGetCurriculumUseCase>();
+        _updateUseCaseMock = new Mock<IUpdateCurriculumUseCase>();
+        _assignClassesUseCaseMock = new Mock<IAssignCurriculumClassesUseCase>();
+        _assignNodesUseCaseMock = new Mock<IAssignCurriculumNodesUseCase>();
+        _publishUseCaseMock = new Mock<IPublishCurriculumUseCase>();
         _timeProviderMock = new Mock<TimeProvider>();
         _timeProviderMock.Setup(t => t.GetUtcNow()).Returns(_fixedTime);
 
-        _sut = new CurriculumsController(_createUseCaseMock.Object, _listUseCaseMock.Object, _timeProviderMock.Object);
+        _sut = new CurriculumsController(
+            _createUseCaseMock.Object, 
+            _listUseCaseMock.Object, 
+            _getUseCaseMock.Object,
+            _updateUseCaseMock.Object,
+            _assignClassesUseCaseMock.Object,
+            _assignNodesUseCaseMock.Object,
+            _publishUseCaseMock.Object,
+            _timeProviderMock.Object);
 
         var httpContext = new DefaultHttpContext
         {
