@@ -135,19 +135,23 @@ public class ListCurriculumsUseCase : IListCurriculumsUseCase
 
         // 5. Projection & Joins
         var curriculumIds = curriculums.Select(c => c.CurriculumId).ToList();
+        var curriculumIdSet = new HashSet<Guid>(curriculumIds);
 
         var classesMap = new Dictionary<Guid, List<string>>();
         var nodesMap = new Dictionary<Guid, List<string>>();
 
-        if (curriculumIds.Count > 0)
+        if (curriculumIdSet.Count > 0)
         {
-            var classes = await _dbContext.CurriculumClasses
+            // Load all classes and nodes for this center, then filter client-side.
+            // This avoids MySQL EF provider type mapping issues with Contains(List<Guid>)
+            // when columns are stored as varchar(36) via LowercaseGuidConverter.
+            var allClasses = await _dbContext.CurriculumClasses
                 .AsNoTracking()
-                .Where(cc => cc.CenterId == centerId && curriculumIds.Contains(cc.CurriculumId))
+                .Where(cc => cc.CenterId == centerId)
                 .OrderBy(cc => cc.ClassId)
                 .ToListAsync(cancellationToken);
 
-            foreach (var cc in classes)
+            foreach (var cc in allClasses.Where(cc => curriculumIdSet.Contains(cc.CurriculumId)))
             {
                 if (!classesMap.TryGetValue(cc.CurriculumId, out var list))
                 {
@@ -157,14 +161,14 @@ public class ListCurriculumsUseCase : IListCurriculumsUseCase
                 list.Add(cc.ClassId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant());
             }
 
-            var nodes = await _dbContext.CurriculumNodes
+            var allNodes = await _dbContext.CurriculumNodes
                 .AsNoTracking()
-                .Where(cn => cn.CenterId == centerId && curriculumIds.Contains(cn.CurriculumId))
+                .Where(cn => cn.CenterId == centerId)
                 .OrderBy(cn => cn.OrderIndex)
                 .ThenBy(cn => cn.NodeId)
                 .ToListAsync(cancellationToken);
 
-            foreach (var cn in nodes)
+            foreach (var cn in allNodes.Where(cn => curriculumIdSet.Contains(cn.CurriculumId)))
             {
                 if (!nodesMap.TryGetValue(cn.CurriculumId, out var list))
                 {

@@ -112,20 +112,26 @@ public class ListQuestionsUseCase : IListQuestionsUseCase
             return ListQuestionsResult.Success(new List<QuestionDto>(), totalItems);
 
         var questionIds = questions.Select(q => q.QuestionId).ToList();
+        var questionIdSet = new HashSet<ulong>(questionIds);
 
-        var options = await _dbContext.QuestionOptions
+        // Load options and mappings for this center then filter client-side.
+        // This avoids MySQL EF provider type mapping issues with Contains(List<ulong>)
+        // when columns are stored as bigint unsigned.
+        var allOptions = await _dbContext.QuestionOptions
             .AsNoTracking()
-            .Where(o => o.CenterId == centerId && questionIds.Contains(o.QuestionId) && !o.IsDeleted)
+            .Where(o => o.CenterId == centerId && !o.IsDeleted)
             .ToListAsync(cancellationToken);
 
-        var mappings = await _dbContext.QuestionKnowledgeNodes
+        var allMappings = await _dbContext.QuestionKnowledgeNodes
             .AsNoTracking()
-            .Where(m => m.CenterId == centerId && questionIds.Contains(m.QuestionId))
+            .Where(m => m.CenterId == centerId)
             .ToListAsync(cancellationToken);
 
-        var optionsMap = options.GroupBy(o => o.QuestionId)
+        var optionsMap = allOptions.Where(o => questionIdSet.Contains(o.QuestionId))
+            .GroupBy(o => o.QuestionId)
             .ToDictionary(g => g.Key, g => g.AsEnumerable());
-        var mappingsMap = mappings.GroupBy(m => m.QuestionId)
+        var mappingsMap = allMappings.Where(m => questionIdSet.Contains(m.QuestionId))
+            .GroupBy(m => m.QuestionId)
             .ToDictionary(g => g.Key, g => g.AsEnumerable());
 
         var dtos = questions.Select(q => QuestionProjection.ToDto(

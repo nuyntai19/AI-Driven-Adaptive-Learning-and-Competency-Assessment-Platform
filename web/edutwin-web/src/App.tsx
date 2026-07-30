@@ -7,6 +7,9 @@ import { TeacherListPage } from "./pages/TeacherListPage";
 import { ClassListPage } from "./pages/ClassListPage";
 import { StudentListPage } from "./pages/StudentListPage";
 import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
+import { CurriculumListPage } from "./pages/CurriculumListPage";
+import { QuestionBankPage } from "./pages/QuestionBankPage";
+import { QuestionEditorPage } from "./pages/QuestionEditorPage";
 import { RoleRoute } from "./routes/RoleRoute";
 import { useAuthStore } from "./stores/authStore";
 
@@ -35,6 +38,9 @@ function App() {
           <Route element={<RoleRoute allowedRoles={["CenterManager", "Teacher"]} />}>
             <Route path="/quan-ly/lop-hoc" element={<ClassListPage />} />
             <Route path="/quan-ly/hoc-sinh" element={<StudentListPage />} />
+            <Route path="/quan-ly/giao-trinh" element={<CurriculumListPage />} />
+            <Route path="/quan-ly/cau-hoi" element={<QuestionBankPage />} />
+            <Route path="/quan-ly/cau-hoi/tao-moi" element={<QuestionEditorPage />} />
           </Route>
         </Route>
 
