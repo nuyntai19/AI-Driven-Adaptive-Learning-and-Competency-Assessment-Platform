@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { 
-  useCurriculum, 
-  useCreateCurriculum, 
-  useUpdateCurriculum, 
+import { useQuery } from "@tanstack/react-query";
+import { organizationApi } from "../api/organizationApi";
+import {
+  useCurriculum,
+  useCreateCurriculum,
+  useUpdateCurriculum,
   useUpdateCurriculumClasses,
   useUpdateCurriculumNodes,
-  usePublishCurriculum 
+  usePublishCurriculum
 } from "../features/curriculum/useCurriculums";
 import type { CreateCurriculumRequest, UpdateCurriculumRequest } from "../types/curriculum";
 
@@ -26,14 +28,19 @@ export const CurriculumEditorPage = () => {
   });
 
   const [activeTab, setActiveTab] = useState<"info" | "nodes" | "classes">("info");
-  
+
   const { data: curriculumData, isLoading: isLoadingCurriculum } = useCurriculum(id || "");
-  
+
   const createMutation = useCreateCurriculum();
   const updateMutation = useUpdateCurriculum();
   const updateClassesMutation = useUpdateCurriculumClasses();
   const updateNodesMutation = useUpdateCurriculumNodes();
   const publishMutation = usePublishCurriculum();
+
+  const { data: subjectsData, isLoading: isLoadingSubjects } = useQuery({
+    queryKey: ["subjects", "active"],
+    queryFn: () => organizationApi.listSubjects(true),
+  });
 
   useEffect(() => {
     if (isEditMode && curriculumData?.data) {
@@ -174,14 +181,14 @@ export const CurriculumEditorPage = () => {
           {isEditMode ? "Chỉnh sửa Lộ trình học" : "Tạo Lộ trình học mới"}
         </h1>
         <div className="flex gap-3">
-          <button 
+          <button
             onClick={() => navigate("/quan-ly/giao-trinh")}
             className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition"
           >
             Quay lại
           </button>
           {isEditMode && isDraft && (
-            <button 
+            <button
               onClick={handlePublish}
               disabled={publishMutation.isPending}
               className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition shadow-sm font-medium disabled:opacity-50"
@@ -194,20 +201,20 @@ export const CurriculumEditorPage = () => {
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-6">
         <div className="flex border-b border-slate-200">
-          <button 
+          <button
             className={`px-6 py-3 font-medium text-sm ${activeTab === 'info' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-600 hover:text-slate-800'}`}
             onClick={() => setActiveTab('info')}
           >
             Thông tin chung
           </button>
-          <button 
+          <button
             className={`px-6 py-3 font-medium text-sm ${activeTab === 'nodes' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-600 hover:text-slate-800'} ${!isEditMode && 'opacity-50 cursor-not-allowed'}`}
             onClick={() => isEditMode && setActiveTab('nodes')}
             disabled={!isEditMode}
           >
             Nội dung kiến thức
           </button>
-          <button 
+          <button
             className={`px-6 py-3 font-medium text-sm ${activeTab === 'classes' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-600 hover:text-slate-800'} ${!isEditMode && 'opacity-50 cursor-not-allowed'}`}
             onClick={() => isEditMode && setActiveTab('classes')}
             disabled={!isEditMode}
@@ -221,8 +228,8 @@ export const CurriculumEditorPage = () => {
             <div className="space-y-4 max-w-2xl">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Tiêu đề lộ trình <span className="text-red-500">*</span></label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={formData.title}
                   onChange={e => handleInputChange("title", e.target.value)}
                   disabled={!isDraft}
@@ -230,22 +237,38 @@ export const CurriculumEditorPage = () => {
                   placeholder="Nhập tiêu đề..."
                 />
               </div>
-              
+
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">ID Môn học <span className="text-red-500">*</span></label>
-                <input 
-                  type="text" 
-                  value={formData.subjectId}
-                  onChange={e => handleInputChange("subjectId", e.target.value)}
-                  disabled={isEditMode} // Không cho sửa môn học khi đã tạo
-                  className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-slate-50"
-                  placeholder="VD: 2ed34b81-..."
-                />
+                <label className="block text-sm font-medium text-slate-700 mb-1">Môn học <span className="text-red-500">*</span></label>
+                {isEditMode ? (
+                  <input
+                    type="text"
+                    value={subjectsData?.data?.find((s: any) => s.subjectId === formData.subjectId)
+                      ? `${subjectsData?.data?.find((s: any) => s.subjectId === formData.subjectId)?.subjectName} — ${formData.subjectId}`
+                      : formData.subjectId}
+                    disabled
+                    className="w-full border border-slate-300 rounded-lg px-4 py-2 outline-none bg-slate-100 text-slate-500 text-sm"
+                  />
+                ) : (
+                  <select
+                    value={formData.subjectId}
+                    onChange={e => handleInputChange("subjectId", e.target.value)}
+                    disabled={isLoadingSubjects}
+                    className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none bg-white disabled:bg-slate-100"
+                  >
+                    <option value="">-- Chọn môn học --</option>
+                    {subjectsData?.data?.map((subject: any) => (
+                      <option key={subject.subjectId} value={subject.subjectId}>
+                        {subject.subjectName} — {subject.subjectId}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Mô tả chi tiết</label>
-                <textarea 
+                <textarea
                   rows={4}
                   value={formData.description}
                   onChange={e => handleInputChange("description", e.target.value)}
@@ -257,7 +280,7 @@ export const CurriculumEditorPage = () => {
 
               {isDraft && (
                 <div className="pt-4">
-                  <button 
+                  <button
                     onClick={handleSaveInfo}
                     disabled={createMutation.isPending || updateMutation.isPending}
                     className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition shadow-sm font-medium disabled:opacity-50"
@@ -273,7 +296,7 @@ export const CurriculumEditorPage = () => {
             <div className="space-y-4 max-w-2xl">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Danh sách Knowledge Node IDs (cách nhau bởi dấu phẩy)</label>
-                <textarea 
+                <textarea
                   rows={4}
                   value={formData.nodeIds?.join(", ")}
                   onChange={e => handleInputChange("nodeIds", e.target.value.split(",").map(s => s.trim()).filter(s => s))}
@@ -286,7 +309,7 @@ export const CurriculumEditorPage = () => {
 
               {isDraft && (
                 <div className="pt-4">
-                  <button 
+                  <button
                     onClick={handleSaveNodes}
                     disabled={updateNodesMutation.isPending}
                     className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition shadow-sm font-medium disabled:opacity-50"
@@ -302,7 +325,7 @@ export const CurriculumEditorPage = () => {
             <div className="space-y-4 max-w-2xl">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Danh sách Class IDs (cách nhau bởi dấu phẩy)</label>
-                <textarea 
+                <textarea
                   rows={4}
                   value={formData.classIds?.join(", ")}
                   onChange={e => handleInputChange("classIds", e.target.value.split(",").map(s => s.trim()).filter(s => s))}
@@ -315,7 +338,7 @@ export const CurriculumEditorPage = () => {
 
               {isDraft && (
                 <div className="pt-4">
-                  <button 
+                  <button
                     onClick={handleSaveClasses}
                     disabled={updateClassesMutation.isPending}
                     className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition shadow-sm font-medium disabled:opacity-50"

@@ -4,6 +4,7 @@ import type {
   KnowledgeGraphResponse,
   KnowledgeNodeDto,
   KnowledgeNodeResponse,
+  KnowledgeNodeListResponse,
   CreateKnowledgeNodeRequest,
   KnowledgeEdgeDto,
   KnowledgeEdgeResponse,
@@ -66,8 +67,18 @@ const createEdge = async (
   return response.data.data;
 };
 
+const listNodes = async (subjectId: string): Promise<KnowledgeNodeDto[]> => {
+  if (!subjectId) return [];
+  const response = await httpClient.get<KnowledgeNodeListResponse>(
+    "/knowledge/nodes",
+    { params: { subjectId } }
+  );
+  return response.data.data ?? [];
+};
+
 export const knowledgeGraphApi = {
   getGraph,
   createNode,
   createEdge,
+  listNodes,
 };

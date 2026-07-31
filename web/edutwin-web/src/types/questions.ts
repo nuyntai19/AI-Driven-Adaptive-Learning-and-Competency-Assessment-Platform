@@ -3,8 +3,8 @@ export type QuestionStatus = "Draft" | "Active" | "Archived";
 
 export interface QuestionOption {
   optionId: string;
-  label: string;
-  text: string;
+  optionLabel: string;
+  optionText: string;
   isCorrect: boolean;
   orderIndex: number;
 }
@@ -56,7 +56,7 @@ export interface CreateQuestionRequest {
   estimatedTimeSeconds: number;
   reasoningRequired: boolean;
   languageCode: string;
-  options?: Omit<QuestionOption, "optionId" | "orderIndex">[];
+  options?: { optionLabel: string; optionText: string; isCorrect: boolean; orderIndex: number }[];
   knowledgeMappings?: KnowledgeMapping[];
 }
 

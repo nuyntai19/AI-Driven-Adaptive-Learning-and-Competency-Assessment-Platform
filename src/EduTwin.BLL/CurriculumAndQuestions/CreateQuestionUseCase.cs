@@ -115,6 +115,7 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
         }
 
         // 3. Actor validation
+        Guid effectiveTeacherId = actorId;
         if (isTeacher)
         {
             var teacher = await _dbContext.Teachers
@@ -125,6 +126,22 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
             if (teacher == null || teacher.User == null || teacher.User.IsDeleted ||
                 teacher.User.CenterId != centerId || teacher.User.Status != UserStatus.Active)
                 return CreateQuestionResult.Failure(ErrorCodes.ResourceNotFound);
+        }
+        else
+        {
+            // CenterManager creates question -> attribute to the first active teacher in center
+            var firstTeacher = await _dbContext.Teachers
+                .AsNoTracking()
+                .FirstOrDefaultAsync(t => t.CenterId == centerId && !t.IsDeleted, cancellationToken);
+                
+            if (firstTeacher != null)
+            {
+                effectiveTeacherId = firstTeacher.TeacherId;
+            }
+            else
+            {
+                return CreateQuestionResult.Failure(ErrorCodes.ResourceNotFound);
+            }
         }
 
         // 4. Subject validation
@@ -171,7 +188,7 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
             CenterId = centerId,
             SubjectId = request.SubjectId,
             PrimaryTopicNodeId = topicNodeId,
-            CreatedByTeacherId = actorId,
+            CreatedByTeacherId = effectiveTeacherId,
             QuestionType = questionType,
             Difficulty = request.Difficulty,
             QuestionText = request.QuestionText,

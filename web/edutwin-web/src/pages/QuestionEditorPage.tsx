@@ -1,7 +1,11 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { organizationApi } from "../api/organizationApi";
+import { knowledgeGraphApi } from "../api/knowledgeGraphApi";
 import { useQuestion, useCreateQuestion, useUpdateQuestion } from "../features/questions/useQuestions";
 import type { QuestionType, CreateQuestionRequest, QuestionOption } from "../types/questions";
+
 
 export const QuestionEditorPage = () => {
   const [formData, setFormData] = useState<CreateQuestionRequest>({
@@ -15,8 +19,8 @@ export const QuestionEditorPage = () => {
     reasoningRequired: true,
     languageCode: "vi",
     options: [
-      { text: "", isCorrect: true, label: "A" },
-      { text: "", isCorrect: false, label: "B" }
+      { optionText: "", isCorrect: true, optionLabel: "A", orderIndex: 0 },
+      { optionText: "", isCorrect: false, optionLabel: "B", orderIndex: 1 }
     ],
   });
 
@@ -44,9 +48,10 @@ export const QuestionEditorPage = () => {
 
     const newOptions = [...(formData.options || [])] as any[];
     newOptions.push({
-      text: "",
+      optionText: "",
       isCorrect: false,
-      label: labels[currentLength] || String.fromCharCode(65 + currentLength)
+      optionLabel: labels[currentLength] || String.fromCharCode(65 + currentLength),
+      orderIndex: currentLength
     });
     setFormData(prev => ({ ...prev, options: newOptions }));
   };
@@ -58,7 +63,8 @@ export const QuestionEditorPage = () => {
 
     const labels = ["A", "B", "C", "D", "E", "F"];
     newOptions.forEach((opt, i) => {
-      opt.label = labels[i] || String.fromCharCode(65 + i);
+      opt.optionLabel = labels[i] || String.fromCharCode(65 + i);
+      opt.orderIndex = i;
     });
 
     setFormData(prev => ({ ...prev, options: newOptions }));
@@ -71,6 +77,17 @@ export const QuestionEditorPage = () => {
   const { data: questionData } = useQuestion(id || "");
   const createMutation = useCreateQuestion();
   const updateMutation = useUpdateQuestion();
+
+  const { data: subjectsData, isLoading: isLoadingSubjects } = useQuery({
+    queryKey: ["subjects", "active"],
+    queryFn: () => organizationApi.listSubjects(true),
+  });
+
+  const { data: nodesData, isLoading: isLoadingNodes } = useQuery({
+    queryKey: ["knowledge-nodes", formData.subjectId],
+    queryFn: () => knowledgeGraphApi.listNodes(formData.subjectId),
+    enabled: !!formData.subjectId,
+  });
 
   // Populate data when in edit mode
   useEffect(() => {
@@ -86,7 +103,11 @@ export const QuestionEditorPage = () => {
         estimatedTimeSeconds: q.estimatedTimeSeconds,
         reasoningRequired: q.reasoningRequired || false,
         languageCode: q.languageCode || "vi",
-        options: q.options || [],
+        options: (q.options || []).map((opt: any) => ({
+          ...opt,
+          optionLabel: opt.optionLabel || opt.label,
+          optionText: opt.optionText || opt.text,
+        })),
         correctAnswer: q.correctAnswer,
         solution: q.solution,
         gradingCriteria: q.gradingCriteria
@@ -95,25 +116,77 @@ export const QuestionEditorPage = () => {
   }, [isEditMode, questionData]);
 
   const handleSave = () => {
+    // Log payload để debug
+    console.log("[QuestionEditor] Submitting payload:", JSON.stringify(formData, null, 2));
+
+    const onError = (err: any) => {
+      console.error("[QuestionEditor] API Error:", err);
+      console.error("[QuestionEditor] Response data:", err.response?.data);
+      console.error("[QuestionEditor] Response status:", err.response?.status);
+      
+      const serverDetail = err.response?.data?.detail;
+      const serverTitle = err.response?.data?.title;
+      const serverErrors = err.response?.data?.errors;
+      const errorCode = err.response?.data?.extensions?.errorCode;
+      
+      let msg = "Lỗi không xác định.";
+      if (serverDetail) msg = serverDetail;
+      else if (serverTitle) msg = serverTitle;
+      else if (serverErrors) msg = JSON.stringify(serverErrors);
+      else if (err.message) msg = err.message;
+      
+      if (errorCode) msg += `\n[ErrorCode: ${errorCode}]`;
+      
+      alert(`Lỗi (${err.response?.status ?? "?"}): ${msg}\n\nXem Console (F12) để biết chi tiết.`);
+    };
+
     if (!isEditMode) {
-      createMutation.mutate(formData, {
+      // For create, make sure options are cleaned up
+      const createData = {
+        ...formData,
+        options: formData.options?.map(o => ({
+          optionLabel: (o as any).optionLabel || (o as any).label,
+          optionText: (o as any).optionText || (o as any).text,
+          isCorrect: o.isCorrect,
+          orderIndex: o.orderIndex
+        }))
+      };
+      createMutation.mutate(createData as any, {
         onSuccess: () => {
           alert("Tạo câu hỏi thành công!");
           navigate("/quan-ly/cau-hoi");
         },
-        onError: (err: any) => {
-          alert("Lỗi: " + (err.response?.data?.detail || err.message));
-        }
+        onError
       });
     } else {
-      updateMutation.mutate({ id: id!, data: formData as any }, {
+      const updateData = {
+        primaryTopicNodeId: formData.primaryTopicNodeId,
+        questionType: formData.questionType,
+        difficulty: formData.difficulty,
+        questionText: formData.questionText,
+        correctAnswer: formData.correctAnswer,
+        solution: formData.solution,
+        expectedReasoning: formData.expectedReasoning,
+        gradingCriteria: formData.gradingCriteria,
+        maxScore: formData.maxScore,
+        estimatedTimeSeconds: formData.estimatedTimeSeconds,
+        reasoningRequired: formData.reasoningRequired,
+        languageCode: formData.languageCode,
+        options: formData.options?.map(o => ({
+          optionLabel: (o as any).optionLabel || (o as any).label,
+          optionText: (o as any).optionText || (o as any).text,
+          isCorrect: o.isCorrect,
+          orderIndex: o.orderIndex
+        })),
+        rowVersion: questionData?.data?.rowVersion || "1"
+      };
+
+      updateMutation.mutate({ id: id!, data: updateData as any }, {
         onSuccess: () => {
           alert("Cập nhật câu hỏi thành công!");
           navigate("/quan-ly/cau-hoi");
         },
-        onError: (err: any) => {
-          alert("Lỗi: " + (err.response?.data?.detail || err.message));
-        }
+        onError
       });
     }
   };
@@ -155,25 +228,42 @@ export const QuestionEditorPage = () => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">ID Môn học <span className="text-red-500">*</span></label>
-            <input
-              type="text"
+            <label className="block text-sm font-medium text-slate-700 mb-2">Môn học <span className="text-red-500">*</span></label>
+            <select
               value={formData.subjectId}
               onChange={e => handleInputChange("subjectId", e.target.value)}
-              className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none"
-              placeholder="VD: 2ed34b81-..."
-            />
+              disabled={isLoadingSubjects}
+              className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none bg-white disabled:bg-slate-100"
+            >
+              <option value="">-- Chọn môn học --</option>
+              {subjectsData?.data?.map((subject: any) => (
+                <option key={subject.subjectId} value={subject.subjectId}>
+                  {subject.subjectName} — {subject.subjectId}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Topic Node ID <span className="text-red-500">*</span></label>
-            <input
-              type="text"
+            <label className="block text-sm font-medium text-slate-700 mb-2">Chủ đề kiến thức (Topic Node) <span className="text-red-500">*</span></label>
+            <select
               value={formData.primaryTopicNodeId}
               onChange={e => handleInputChange("primaryTopicNodeId", e.target.value)}
-              className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none"
-              placeholder="VD: 101"
-            />
+              disabled={!formData.subjectId || isLoadingNodes}
+              className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none bg-white disabled:bg-slate-100"
+            >
+              <option value="">
+                {!formData.subjectId ? "-- Chọn môn học trước --" : isLoadingNodes ? "Đang tải..." : "-- Chọn chủ đề --"}
+              </option>
+              {(nodesData ?? []).filter(n => n.isActive).map(node => (
+                <option key={node.nodeId} value={node.nodeId}>
+                  [{node.nodeType}] {node.nodeName} — ID: {node.nodeId}
+                </option>
+              ))}
+            </select>
+            {formData.subjectId && !isLoadingNodes && (nodesData ?? []).length === 0 && (
+              <p className="mt-1 text-xs text-amber-600">⚠ Môn học này chưa có chủ đề kiến thức nào. Vui lòng tạo node trên trang Đồ thị kiến thức trước.</p>
+            )}
           </div>
 
           <div>
@@ -256,7 +346,7 @@ export const QuestionEditorPage = () => {
               {formData.options?.map((option, idx) => (
                 <div key={idx} className={`flex items-start gap-4 p-4 rounded-lg border ${(option as any).isCorrect ? 'border-green-300 bg-green-50' : 'border-slate-200'}`}>
                   <div className="flex flex-col items-center gap-2 pt-2">
-                    <span className="font-bold text-slate-700 w-6 text-center">{(option as any).label}</span>
+                    <span className="font-bold text-slate-700 w-6 text-center">{(option as any).optionLabel}</span>
                     <input
                       type="radio"
                       name="correctOption"
@@ -268,9 +358,9 @@ export const QuestionEditorPage = () => {
                   <div className="flex-1">
                     <input
                       type="text"
-                      value={option.text}
-                      onChange={e => handleOptionChange(idx, "text", e.target.value)}
-                      placeholder={`Nhập đáp án ${(option as any).label}...`}
+                      value={(option as any).optionText}
+                      onChange={e => handleOptionChange(idx, "optionText", e.target.value)}
+                      placeholder={`Nhập đáp án ${(option as any).optionLabel}...`}
                       className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                     />
                   </div>
@@ -297,19 +387,59 @@ export const QuestionEditorPage = () => {
                   Thêm lựa chọn
                 </button>
               )}
+              {/* Backend yêu cầu correctAnswer và solution cho mọi loại câu hỏi */}
+              <div className="mt-4 space-y-3 border-t border-slate-200 pt-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Nhãn đáp án đúng (CorrectAnswer) <span className="text-red-500">*</span>
+                    <span className="ml-1 text-xs text-slate-500">— VD: "A", "B", hoặc text đáp án đúng</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.correctAnswer || ""}
+                    onChange={e => handleInputChange("correctAnswer", e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="Nhập nhãn hoặc nội dung đáp án đúng..."
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Lời giải / Giải thích (Solution) <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={formData.solution || ""}
+                    onChange={e => handleInputChange("solution", e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none resize-y"
+                    placeholder="Giải thích tại sao đáp án trên là đúng..."
+                  ></textarea>
+                </div>
+              </div>
             </div>
           )}
 
           {formData.questionType === "ShortAnswer" && (
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Đáp án chuẩn (Correct Answer) <span className="text-red-500">*</span></label>
-              <input
-                type="text"
-                value={formData.correctAnswer || ""}
-                onChange={e => handleInputChange("correctAnswer", e.target.value)}
-                className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none"
-                placeholder="Nhập đáp án chuẩn xác nhất..."
-              />
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Đáp án chuẩn (Correct Answer) <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={formData.correctAnswer || ""}
+                  onChange={e => handleInputChange("correctAnswer", e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none"
+                  placeholder="Nhập đáp án chuẩn xác nhất..."
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Lời giải (Solution) <span className="text-red-500">*</span></label>
+                <textarea
+                  rows={2}
+                  value={formData.solution || ""}
+                  onChange={e => handleInputChange("solution", e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none resize-y"
+                  placeholder="Giải thích đáp án..."
+                ></textarea>
+              </div>
             </div>
           )}
 

@@ -154,14 +154,15 @@ public class UpdateQuestionUseCase : IUpdateQuestionUseCase
 
         // 12. Replace options atomically if provided
         var existingOptions = await _dbContext.QuestionOptions
-            .Where(o => o.QuestionId == qId && o.CenterId == centerId && !o.IsDeleted)
+            .Where(o => o.QuestionId == qId && o.CenterId == centerId)
             .ToListAsync(cancellationToken);
 
-        foreach (var opt in existingOptions)
+        foreach (var opt in existingOptions.Where(o => !o.IsDeleted))
         {
             opt.IsDeleted = true;
             opt.DeletedAt = now;
             opt.DeletedBy = actorId;
+            opt.OrderIndex = 9999 + opt.OrderIndex; // temporarily move out of the way to avoid constraint conflicts
         }
 
         var newOptions = new List<QuestionOption>();
@@ -169,22 +170,39 @@ public class UpdateQuestionUseCase : IUpdateQuestionUseCase
         {
             foreach (var optInput in request.Options)
             {
-                var opt = new QuestionOption
+                var opt = existingOptions.FirstOrDefault(o => o.OptionLabel == optInput.OptionLabel);
+                if (opt != null)
                 {
-                    OptionId = question.QuestionId * 1000 + (ulong)newOptions.Count + 100,
-                    CenterId = centerId,
-                    QuestionId = question.QuestionId,
-                    OptionLabel = optInput.OptionLabel,
-                    OptionText = optInput.OptionText,
-                    IsCorrect = optInput.IsCorrect,
-                    OrderIndex = optInput.OrderIndex,
-                    CreatedAt = now,
-                    CreatedBy = actorId,
-                    UpdatedAt = now,
-                    UpdatedBy = actorId
-                };
-                _dbContext.QuestionOptions.Add(opt);
-                newOptions.Add(opt);
+                    opt.IsDeleted = false;
+                    opt.DeletedAt = null;
+                    opt.DeletedBy = null;
+                    opt.OptionText = optInput.OptionText;
+                    opt.IsCorrect = optInput.IsCorrect;
+                    opt.OrderIndex = optInput.OrderIndex;
+                    opt.UpdatedAt = now;
+                    opt.UpdatedBy = actorId;
+                    newOptions.Add(opt);
+                }
+                else
+                {
+                    var optId = question.QuestionId * 1000 + (ulong)(existingOptions.Count + newOptions.Count + 100);
+                    opt = new QuestionOption
+                    {
+                        OptionId = optId,
+                        CenterId = centerId,
+                        QuestionId = question.QuestionId,
+                        OptionLabel = optInput.OptionLabel,
+                        OptionText = optInput.OptionText,
+                        IsCorrect = optInput.IsCorrect,
+                        OrderIndex = optInput.OrderIndex,
+                        CreatedAt = now,
+                        CreatedBy = actorId,
+                        UpdatedAt = now,
+                        UpdatedBy = actorId
+                    };
+                    _dbContext.QuestionOptions.Add(opt);
+                    newOptions.Add(opt);
+                }
             }
         }
 

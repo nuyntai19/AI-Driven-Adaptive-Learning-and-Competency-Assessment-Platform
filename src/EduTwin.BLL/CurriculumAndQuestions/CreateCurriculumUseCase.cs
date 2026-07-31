@@ -111,25 +111,41 @@ public class CreateCurriculumUseCase : ICreateCurriculumUseCase
         }
         else
         {
-            if (string.IsNullOrWhiteSpace(request.TeacherId) || !Guid.TryParse(request.TeacherId, out var targetTeacherId) || targetTeacherId == Guid.Empty)
-                return CreateCurriculumResult.Failure(ErrorCodes.ValidationFailed);
-
-            var teacherEntity = await _dbContext.Teachers
-                .AsNoTracking()
-                .Include(t => t.User)
-                .FirstOrDefaultAsync(t => t.TeacherId == targetTeacherId && t.CenterId == centerId && !t.IsDeleted, cancellationToken);
-
-            if (teacherEntity == null ||
-                teacherEntity.User == null ||
-                teacherEntity.User.CenterId != centerId ||
-                teacherEntity.User.IsDeleted ||
-                teacherEntity.User.RoleName != UserRole.Teacher ||
-                teacherEntity.User.Status != UserStatus.Active)
+            if (!string.IsNullOrWhiteSpace(request.TeacherId) && Guid.TryParse(request.TeacherId, out var targetTeacherId) && targetTeacherId != Guid.Empty)
             {
-                return CreateCurriculumResult.Failure(ErrorCodes.ResourceNotFound);
-            }
+                var teacherEntity = await _dbContext.Teachers
+                    .AsNoTracking()
+                    .Include(t => t.User)
+                    .FirstOrDefaultAsync(t => t.TeacherId == targetTeacherId && t.CenterId == centerId && !t.IsDeleted, cancellationToken);
 
-            ownerTeacherId = targetTeacherId;
+                if (teacherEntity == null ||
+                    teacherEntity.User == null ||
+                    teacherEntity.User.CenterId != centerId ||
+                    teacherEntity.User.IsDeleted ||
+                    teacherEntity.User.RoleName != UserRole.Teacher ||
+                    teacherEntity.User.Status != UserStatus.Active)
+                {
+                    return CreateCurriculumResult.Failure(ErrorCodes.ResourceNotFound);
+                }
+
+                ownerTeacherId = targetTeacherId;
+            }
+            else
+            {
+                // Auto-assign to the first active teacher in the center
+                var firstTeacher = await _dbContext.Teachers
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(t => t.CenterId == centerId && !t.IsDeleted, cancellationToken);
+
+                if (firstTeacher != null)
+                {
+                    ownerTeacherId = firstTeacher.TeacherId;
+                }
+                else
+                {
+                    ownerTeacherId = actorId; // Fallback, though ideally there should be a teacher
+                }
+            }
         }
 
         // 4. Reference Validation

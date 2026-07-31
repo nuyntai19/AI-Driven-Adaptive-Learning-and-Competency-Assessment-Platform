@@ -52,8 +52,8 @@ public class EduTwinRuntimeSeeder
 
         if (plan.HasConflict)
         {
-            _logger.LogError("Tenant conflict detected. A={StatusA}, B={StatusB}. Cannot proceed with seeding.", statusA, statusB);
-            throw new InvalidOperationException($"Tenant conflict detected. A={statusA}, B={statusB}. Cannot proceed with seeding.");
+            _logger.LogWarning("Tenant conflict detected. A={StatusA}, B={StatusB}. Skipping seeding for conflicting tenants so the app can start.", statusA, statusB);
+            return;
         }
 
         if (plan.IsNoOp)

@@ -61,6 +61,11 @@ export interface KnowledgeNodeResponse {
   meta: Meta;
 }
 
+export interface KnowledgeNodeListResponse {
+  data: KnowledgeNodeDto[];
+  meta: Meta;
+}
+
 export interface CreateKnowledgeNodeRequest {
   subjectId: string;
   parentNodeId: string | null;
