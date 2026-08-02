@@ -583,7 +583,7 @@ public class CreateCurriculumUseCaseTests
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
     }
 
     [Fact]

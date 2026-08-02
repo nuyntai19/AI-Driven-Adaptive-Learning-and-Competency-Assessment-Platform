@@ -12,6 +12,7 @@ using EduTwin.BLL.Organization;
 using EduTwin.BLL.DigitalTwin;
 using EduTwin.BLL.KnowledgeGraph;
 using EduTwin.BLL.CurriculumAndQuestions;
+using EduTwin.BLL.Assignments;
 using EduTwin.API.Security;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -124,6 +125,7 @@ builder.Services.AddOrganization();
 builder.Services.AddDigitalTwin();
 builder.Services.AddKnowledgeGraph();
 builder.Services.AddCurriculumAndQuestions();
+builder.Services.AddAssignments();
 
 // We also need TimeProvider
 builder.Services.AddSingleton(TimeProvider.System);
