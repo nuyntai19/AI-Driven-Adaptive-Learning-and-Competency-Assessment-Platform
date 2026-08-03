@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { organizationApi } from "../api/organizationApi";
 import { knowledgeGraphApi } from "../api/knowledgeGraphApi";
-import { useQuestion, useCreateQuestion, useUpdateQuestion } from "../features/questions/useQuestions";
+import { useQuestion, useCreateQuestion, useUpdateQuestion, useActivateQuestion, useArchiveQuestion } from "../features/questions/useQuestions";
 import type { QuestionType, CreateQuestionRequest, QuestionOption } from "../types/questions";
 
 
@@ -77,6 +77,40 @@ export const QuestionEditorPage = () => {
   const { data: questionData } = useQuestion(id || "");
   const createMutation = useCreateQuestion();
   const updateMutation = useUpdateQuestion();
+  const activateMutation = useActivateQuestion();
+  const archiveMutation = useArchiveQuestion();
+
+  const currentStatus = questionData?.data?.status;
+
+  const handleActivate = () => {
+    if (!id || !questionData?.data?.rowVersion) return;
+    if (!confirm("Bạn có chắc muốn kích hoạt câu hỏi này? Câu hỏi sẽ có thể được gán vào bài tập.")) return;
+    activateMutation.mutate(
+      { id, data: { rowVersion: questionData.data.rowVersion } },
+      {
+        onSuccess: () => {
+          alert("Kích hoạt câu hỏi thành công!");
+          navigate("/quan-ly/cau-hoi");
+        },
+        onError: (err: any) => alert("Lỗi: " + (err.response?.data?.detail || err.message))
+      }
+    );
+  };
+
+  const handleArchive = () => {
+    if (!id || !questionData?.data?.rowVersion) return;
+    if (!confirm("Bạn có chắc muốn lưu trữ câu hỏi này? Câu hỏi sẽ không thể được gán vào bài tập mới.")) return;
+    archiveMutation.mutate(
+      { id, data: { rowVersion: questionData.data.rowVersion } },
+      {
+        onSuccess: () => {
+          alert("Lưu trữ câu hỏi thành công!");
+          navigate("/quan-ly/cau-hoi");
+        },
+        onError: (err: any) => alert("Lỗi: " + (err.response?.data?.detail || err.message))
+      }
+    );
+  };
 
   const { data: subjectsData, isLoading: isLoadingSubjects } = useQuery({
     queryKey: ["subjects", "active"],
@@ -202,6 +236,24 @@ export const QuestionEditorPage = () => {
           >
             Hủy
           </button>
+          {isEditMode && (currentStatus === 'Draft' || currentStatus === 'Archived') && (
+            <button
+              onClick={handleActivate}
+              disabled={activateMutation.isPending}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition shadow-sm font-medium disabled:opacity-50"
+            >
+              Kích hoạt
+            </button>
+          )}
+          {isEditMode && (currentStatus === 'Draft' || currentStatus === 'Active') && (
+            <button
+              onClick={handleArchive}
+              disabled={archiveMutation.isPending}
+              className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition shadow-sm font-medium disabled:opacity-50"
+            >
+              Lưu trữ
+            </button>
+          )}
           <button
             onClick={handleSave}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition shadow-sm font-medium"

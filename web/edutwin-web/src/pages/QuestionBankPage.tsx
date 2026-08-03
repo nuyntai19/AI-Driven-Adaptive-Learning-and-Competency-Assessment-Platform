@@ -1,11 +1,35 @@
 import { useState } from "react";
-import { useQuestions } from "../features/questions/useQuestions";
+import { useQuestions, useActivateQuestion, useArchiveQuestion } from "../features/questions/useQuestions";
 import type { QuestionFilter } from "../types/questions";
 
 export const QuestionBankPage = () => {
   const [filter, setFilter] = useState<QuestionFilter>({});
 
   const { data: response, isLoading, isError, error } = useQuestions(filter);
+  const activateMutation = useActivateQuestion();
+  const archiveMutation = useArchiveQuestion();
+
+  const handleActivate = (questionId: string, rowVersion: string) => {
+    if (!confirm("Bạn có chắc muốn kích hoạt câu hỏi này? Câu hỏi sẽ có thể được gán vào bài tập.")) return;
+    activateMutation.mutate(
+      { id: questionId, data: { rowVersion } },
+      {
+        onSuccess: () => alert("Kích hoạt câu hỏi thành công!"),
+        onError: (err: any) => alert("Lỗi: " + (err.response?.data?.detail || err.message))
+      }
+    );
+  };
+
+  const handleArchive = (questionId: string, rowVersion: string) => {
+    if (!confirm("Bạn có chắc muốn lưu trữ câu hỏi này? Câu hỏi sẽ không thể được gán vào bài tập mới.")) return;
+    archiveMutation.mutate(
+      { id: questionId, data: { rowVersion } },
+      {
+        onSuccess: () => alert("Lưu trữ câu hỏi thành công!"),
+        onError: (err: any) => alert("Lỗi: " + (err.response?.data?.detail || err.message))
+      }
+    );
+  };
 
   const handleFilterChange = (key: keyof QuestionFilter, value: any) => {
     setFilter(prev => ({
@@ -135,7 +159,27 @@ export const QuestionBankPage = () => {
                   </div>
                 </div>
 
-                <div className="flex justify-end pt-4 border-t border-slate-100">
+                <div className="flex justify-between items-center pt-4 border-t border-slate-100">
+                  <div className="flex gap-2">
+                    {(question.status === 'Draft' || question.status === 'Archived') && (
+                      <button
+                        onClick={() => handleActivate(question.questionId, question.rowVersion)}
+                        disabled={activateMutation.isPending}
+                        className="px-3 py-1 text-xs font-medium bg-green-50 text-green-700 border border-green-200 rounded-md hover:bg-green-100 transition disabled:opacity-50"
+                      >
+                        Kích hoạt
+                      </button>
+                    )}
+                    {(question.status === 'Draft' || question.status === 'Active') && (
+                      <button
+                        onClick={() => handleArchive(question.questionId, question.rowVersion)}
+                        disabled={archiveMutation.isPending}
+                        className="px-3 py-1 text-xs font-medium bg-slate-50 text-slate-600 border border-slate-200 rounded-md hover:bg-slate-100 transition disabled:opacity-50"
+                      >
+                        Lưu trữ
+                      </button>
+                    )}
+                  </div>
                   <button 
                     onClick={() => window.location.href = `/quan-ly/cau-hoi/${question.questionId}`}
                     className="text-blue-600 text-sm font-medium hover:underline"

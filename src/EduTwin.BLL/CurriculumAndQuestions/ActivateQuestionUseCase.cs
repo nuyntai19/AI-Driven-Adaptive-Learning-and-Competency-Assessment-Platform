@@ -72,8 +72,8 @@ public class ActivateQuestionUseCase : IActivateQuestionUseCase
         if (isTeacher && question.CreatedByTeacherId != actorId)
             return ActivateQuestionResult.Failure(ErrorCodes.ResourceNotFound);
 
-        // 6. State check
-        if (question.Status != QuestionStatus.Draft)
+        // 6. State check — Draft or Archived can be activated
+        if (question.Status != QuestionStatus.Draft && question.Status != QuestionStatus.Archived)
             return ActivateQuestionResult.Failure(ErrorCodes.InvalidStateTransition);
 
         // 7. Concurrency

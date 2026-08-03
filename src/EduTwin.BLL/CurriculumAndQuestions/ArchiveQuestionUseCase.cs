@@ -72,8 +72,8 @@ public class ArchiveQuestionUseCase : IArchiveQuestionUseCase
         if (isTeacher && question.CreatedByTeacherId != actorId)
             return ArchiveQuestionResult.Failure(ErrorCodes.ResourceNotFound);
 
-        // 6. State check — only Active can be archived
-        if (question.Status != QuestionStatus.Active)
+        // 6. State check — Draft or Active can be archived
+        if (question.Status != QuestionStatus.Active && question.Status != QuestionStatus.Draft)
             return ArchiveQuestionResult.Failure(ErrorCodes.InvalidStateTransition);
 
         // 7. Concurrency
