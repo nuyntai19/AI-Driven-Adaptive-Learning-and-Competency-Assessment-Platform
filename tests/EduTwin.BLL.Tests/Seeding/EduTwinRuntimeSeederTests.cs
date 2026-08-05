@@ -499,7 +499,8 @@ public class EduTwinRuntimeSeederTests
 
         var seeder = new EduTwinRuntimeSeeder(db, logger.Object, config, mockHasher.Object, mockEvaluator.Object);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => seeder.SeedAsync());
+        // Does not throw anymore, it just logs and returns so the app can start
+        await seeder.SeedAsync();
 
         mockHasher.Verify(h => h.HashPassword(It.IsAny<User>(), It.IsAny<string>()), Times.Never);
     }

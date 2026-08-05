@@ -244,6 +244,35 @@ public class UpdateAssignmentUseCase : IUpdateAssignmentUseCase
                     .ToListAsync(cancellationToken);
             }
 
+            // Replace Draft AssignmentTargets atomically if TargetMode is provided.
+            // WholeClass: xóa existing draft targets (Publish sẽ lấy active members tại publish time).
+            // SelectedStudents: replace toàn bộ với danh sách mới.
+            if (newTargetMode != null)
+            {
+                var existingDraftTargets = await _dbContext.AssignmentTargets
+                    .Where(at => at.AssignmentId == assignmentId)
+                    .ToListAsync(cancellationToken);
+
+                _dbContext.AssignmentTargets.RemoveRange(existingDraftTargets);
+
+                if (string.Equals(newTargetMode, "SelectedStudents", StringComparison.Ordinal) &&
+                    newParsedStudentIds != null && newParsedStudentIds.Count > 0)
+                {
+                    var updatedTargets = newParsedStudentIds.Select(sid => new AssignmentTarget
+                    {
+                        CenterId = assignment.CenterId,
+                        AssignmentId = assignmentId,
+                        StudentId = sid,
+                        TargetSource = TargetSource.SelectedStudents,
+                        CreatedAt = now,
+                        CreatedBy = actorId
+                    }).ToList();
+
+                    _dbContext.AssignmentTargets.AddRange(updatedTargets);
+                }
+                // WholeClass: không thêm records — Publish sẽ snapshot active members
+            }
+
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
 

@@ -10,6 +10,7 @@ public static class DependencyInjection
         services.AddScoped<IGetAssignmentUseCase, GetAssignmentUseCase>();
         services.AddScoped<IListAssignmentsUseCase, ListAssignmentsUseCase>();
         services.AddScoped<IUpdateAssignmentUseCase, UpdateAssignmentUseCase>();
+        services.AddScoped<IPublishAssignmentUseCase, PublishAssignmentUseCase>();
 
         return services;
     }

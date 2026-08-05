@@ -22,6 +22,7 @@ public class AssignmentsController : ControllerBase
     private readonly IGetAssignmentUseCase _getAssignmentUseCase;
     private readonly IListAssignmentsUseCase _listAssignmentsUseCase;
     private readonly IUpdateAssignmentUseCase _updateAssignmentUseCase;
+    private readonly IPublishAssignmentUseCase _publishAssignmentUseCase;
     private readonly TimeProvider _timeProvider;
 
     public AssignmentsController(
@@ -29,12 +30,14 @@ public class AssignmentsController : ControllerBase
         IGetAssignmentUseCase getAssignmentUseCase,
         IListAssignmentsUseCase listAssignmentsUseCase,
         IUpdateAssignmentUseCase updateAssignmentUseCase,
+        IPublishAssignmentUseCase publishAssignmentUseCase,
         TimeProvider timeProvider)
     {
         _createAssignmentUseCase = createAssignmentUseCase;
         _getAssignmentUseCase = getAssignmentUseCase;
         _listAssignmentsUseCase = listAssignmentsUseCase;
         _updateAssignmentUseCase = updateAssignmentUseCase;
+        _publishAssignmentUseCase = publishAssignmentUseCase;
         _timeProvider = timeProvider;
     }
 
@@ -153,6 +156,41 @@ public class AssignmentsController : ControllerBase
         CancellationToken cancellationToken)
     {
         var result = await _updateAssignmentUseCase.ExecuteAsync(id, request, cancellationToken);
+
+        if (result.IsSuccess)
+        {
+            var response = new AssignmentResponse
+            {
+                Data = result.Data!,
+                Meta = new MetaDto
+                {
+                    TraceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    Timestamp = _timeProvider.GetUtcNow().UtcDateTime
+                }
+            };
+            return Ok(response);
+        }
+
+        return MapErrorToResponse(result.ErrorCode);
+    }
+
+    /// <summary>
+    /// POST /api/v1/assignments/{id}/publish — Publish Assignment (API_CONTRACTS.md §51).
+    /// Materialize Targets và Progress trong một transaction; chốt Draft → Published.
+    /// Quyền: Teacher owner của Class hoặc CenterManager.
+    /// </summary>
+    [HttpPost("{id}/publish")]
+    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [ProducesResponseType(typeof(AssignmentResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> PublishAssignment(
+        [FromRoute] Guid id,
+        [FromBody] PublishAssignmentRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _publishAssignmentUseCase.ExecuteAsync(id, request, cancellationToken);
 
         if (result.IsSuccess)
         {

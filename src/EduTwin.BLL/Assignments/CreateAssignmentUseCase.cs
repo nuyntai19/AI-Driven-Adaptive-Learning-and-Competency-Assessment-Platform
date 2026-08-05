@@ -206,12 +206,33 @@ public class CreateAssignmentUseCase : ICreateAssignmentUseCase
             });
         }
 
+        // Draft AssignmentTargets: chỉ lưu khi SelectedStudents.
+        // WholeClass không lưu (Publish sẽ snapshot active members tại publish time).
+        var draftTargets = new List<AssignmentTarget>();
+        if (isSelectedStudents)
+        {
+            foreach (var sid in parsedStudentIds)
+            {
+                draftTargets.Add(new AssignmentTarget
+                {
+                    CenterId = centerId,
+                    AssignmentId = assignmentId,
+                    StudentId = sid,
+                    TargetSource = EduTwin.Contracts.Assignments.TargetSource.SelectedStudents,
+                    CreatedAt = now,
+                    CreatedBy = actorId
+                });
+            }
+        }
+
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
         try
         {
             _dbContext.Assignments.Add(assignment);
             if (assignmentQuestions.Count > 0)
                 _dbContext.AssignmentQuestions.AddRange(assignmentQuestions);
+            if (draftTargets.Count > 0)
+                _dbContext.AssignmentTargets.AddRange(draftTargets);
 
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
@@ -233,6 +254,14 @@ public class CreateAssignmentUseCase : ICreateAssignmentUseCase
             })
             .ToList();
 
+        var targetDtos = draftTargets
+            .Select(t => new AssignmentTargetDto
+            {
+                StudentId = t.StudentId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
+                TargetSource = t.TargetSource.ToString()
+            })
+            .ToList();
+
         var dto = new AssignmentDto
         {
             AssignmentId = assignment.AssignmentId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
@@ -243,9 +272,9 @@ public class CreateAssignmentUseCase : ICreateAssignmentUseCase
             DueAt = assignment.DueAt,
             Status = assignment.Status.ToString(),
             QuestionCount = questionDtos.Count,
-            TargetStudentCount = 0,
+            TargetStudentCount = targetDtos.Count,
             Questions = questionDtos,
-            Targets = new List<AssignmentTargetDto>(),
+            Targets = targetDtos,
             RowVersion = assignment.RowVersion.ToString(CultureInfo.InvariantCulture)
         };
 
