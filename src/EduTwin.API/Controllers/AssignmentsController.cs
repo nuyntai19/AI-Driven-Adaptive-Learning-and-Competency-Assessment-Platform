@@ -24,6 +24,8 @@ public class AssignmentsController : ControllerBase
     private readonly IUpdateAssignmentUseCase _updateAssignmentUseCase;
     private readonly IPublishAssignmentUseCase _publishAssignmentUseCase;
     private readonly ICloseAssignmentUseCase _closeAssignmentUseCase;
+    private readonly IListStudentAssignmentsUseCase _listStudentAssignmentsUseCase;
+    private readonly IGetStudentAssignmentUseCase _getStudentAssignmentUseCase;
     private readonly TimeProvider _timeProvider;
 
     public AssignmentsController(
@@ -33,6 +35,8 @@ public class AssignmentsController : ControllerBase
         IUpdateAssignmentUseCase updateAssignmentUseCase,
         IPublishAssignmentUseCase publishAssignmentUseCase,
         ICloseAssignmentUseCase closeAssignmentUseCase,
+        IListStudentAssignmentsUseCase listStudentAssignmentsUseCase,
+        IGetStudentAssignmentUseCase getStudentAssignmentUseCase,
         TimeProvider timeProvider)
     {
         _createAssignmentUseCase = createAssignmentUseCase;
@@ -41,6 +45,8 @@ public class AssignmentsController : ControllerBase
         _updateAssignmentUseCase = updateAssignmentUseCase;
         _publishAssignmentUseCase = publishAssignmentUseCase;
         _closeAssignmentUseCase = closeAssignmentUseCase;
+        _listStudentAssignmentsUseCase = listStudentAssignmentsUseCase;
+        _getStudentAssignmentUseCase = getStudentAssignmentUseCase;
         _timeProvider = timeProvider;
     }
 
@@ -241,6 +247,54 @@ public class AssignmentsController : ControllerBase
                     Timestamp = _timeProvider.GetUtcNow().UtcDateTime
                 }
             };
+            return Ok(response);
+        }
+
+        return MapErrorToResponse(result.ErrorCode);
+    }
+
+    /// <summary>
+    /// GET /api/v1/students/me/assignments — Danh sách Assignment cho Student (API_CONTRACTS.md §51).
+    /// </summary>
+    [HttpGet("/api/v1/students/me/assignments")]
+    [Authorize(Policy = AuthorizationPolicies.StudentOnly)]
+    [ProducesResponseType(typeof(StudentAssignmentListResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ListStudentAssignments(
+        [FromQuery] ListStudentAssignmentsQuery query,
+        CancellationToken cancellationToken)
+    {
+        var result = await _listStudentAssignmentsUseCase.ExecuteAsync(query, cancellationToken);
+
+        if (result.IsSuccess)
+        {
+            var response = result.Data!;
+            response.Meta.TraceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+            response.Meta.Timestamp = _timeProvider.GetUtcNow().UtcDateTime;
+            return Ok(response);
+        }
+
+        return MapErrorToResponse(result.ErrorCode);
+    }
+
+    /// <summary>
+    /// GET /api/v1/students/me/assignments/{id} — Chi tiết Assignment cho Student (không lộ đáp án).
+    /// </summary>
+    [HttpGet("/api/v1/students/me/assignments/{id}")]
+    [Authorize(Policy = AuthorizationPolicies.StudentOnly)]
+    [ProducesResponseType(typeof(StudentAssignmentDetailResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetStudentAssignment(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var result = await _getStudentAssignmentUseCase.ExecuteAsync(id, cancellationToken);
+
+        if (result.IsSuccess)
+        {
+            var response = result.Data!;
+            response.Meta.TraceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+            response.Meta.Timestamp = _timeProvider.GetUtcNow().UtcDateTime;
             return Ok(response);
         }
 
