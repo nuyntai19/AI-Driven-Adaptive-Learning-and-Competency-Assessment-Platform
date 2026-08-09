@@ -122,6 +122,23 @@ export const AuthenticatedHomePage = () => {
               >
                 Ngân hàng câu hỏi
               </Link>
+              <Link
+                to="/quan-ly/bai-tap"
+                className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+              >
+                Quản lý bài tập
+              </Link>
+            </div>
+          )}
+
+          {user.role === "Student" && (
+            <div className="mt-4 flex flex-wrap gap-4">
+              <Link
+                to="/hoc-tap/bai-tap"
+                className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+              >
+                Bài tập của tôi
+              </Link>
             </div>
           )}
         </div>

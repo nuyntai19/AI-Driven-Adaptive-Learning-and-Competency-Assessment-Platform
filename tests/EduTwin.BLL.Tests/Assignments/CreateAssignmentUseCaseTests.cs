@@ -520,4 +520,27 @@ public class CreateAssignmentUseCaseTests
         Assert.NotNull(result.Data);
         Assert.Equal("Draft", result.Data!.Status);
     }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(0)]
+    public async Task ExecuteAsync_DueAtNotInFuture_ReturnsValidationFailed(int offsetMinutes)
+    {
+        var centerId = Guid.NewGuid();
+        var teacherId = Guid.NewGuid();
+        SetupTenant(centerId, teacherId, nameof(UserRole.Teacher));
+        var ctx = CreateContext(centerId);
+
+        var result = await CreateSut(ctx).ExecuteAsync(new CreateAssignmentRequest
+        {
+            ClassId = Guid.NewGuid(),
+            Title = "Deadline invalid",
+            DueAt = new DateTime(2026, 7, 30, 10, 0, 0, DateTimeKind.Utc).AddMinutes(offsetMinutes),
+            TargetMode = "WholeClass",
+            QuestionIds = new List<string>()
+        });
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
 }

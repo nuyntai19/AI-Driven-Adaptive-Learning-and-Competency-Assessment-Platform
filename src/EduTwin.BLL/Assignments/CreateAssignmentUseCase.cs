@@ -60,6 +60,10 @@ public class CreateAssignmentUseCase : ICreateAssignmentUseCase
         if (request.QuestionIds == null)
             return CreateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
 
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
+        if (request.DueAt.HasValue && request.DueAt.Value <= now)
+            return CreateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
+
         // TargetMode validation
         var targetMode = request.TargetMode?.Trim();
         var isWholeClass = string.Equals(targetMode, "WholeClass", StringComparison.Ordinal);
@@ -170,7 +174,6 @@ public class CreateAssignmentUseCase : ICreateAssignmentUseCase
         }
 
         // 8. Atomic persistence
-        var now = _timeProvider.GetUtcNow().UtcDateTime;
         var assignmentId = Guid.NewGuid();
 
         var assignment = new Assignment

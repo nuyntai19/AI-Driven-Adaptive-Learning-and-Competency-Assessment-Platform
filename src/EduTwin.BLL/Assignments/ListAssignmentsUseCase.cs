@@ -61,14 +61,10 @@ public class ListAssignmentsUseCase : IListAssignmentsUseCase
         // Teacher scope: only assignments for their classes
         if (isTeacher)
         {
-            // Get classIds for this teacher
-            var teacherClassIds = await _dbContext.Classes
-                .AsNoTracking()
-                .Where(c => c.TeacherId == actorId)
-                .Select(c => c.ClassId)
-                .ToListAsync(cancellationToken);
-
-            assignmentsQuery = assignmentsQuery.Where(a => teacherClassIds.Contains(a.ClassId));
+            // Use a correlated EXISTS instead of Contains(List<Guid>). The MySQL
+            // provider cannot type-map a Guid collection against varchar(36).
+            assignmentsQuery = assignmentsQuery.Where(a =>
+                _dbContext.Classes.Any(c => c.ClassId == a.ClassId && c.TeacherId == actorId));
         }
 
         if (query.ClassId.HasValue && query.ClassId.Value != Guid.Empty)
@@ -85,33 +81,25 @@ public class ListAssignmentsUseCase : IListAssignmentsUseCase
             .ThenBy(a => a.AssignmentId)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
+            .Select(a => new
+            {
+                a.AssignmentId,
+                a.ClassId,
+                a.CreatedByTeacherId,
+                a.Title,
+                a.Instructions,
+                a.DueAt,
+                a.Status,
+                a.RowVersion,
+                QuestionCount = _dbContext.AssignmentQuestions.Count(aq => aq.AssignmentId == a.AssignmentId),
+                TargetStudentCount = _dbContext.AssignmentTargets.Count(at => at.AssignmentId == a.AssignmentId)
+            })
             .ToListAsync(cancellationToken);
 
         if (assignments.Count == 0)
             return ListAssignmentsResult.Success(new List<AssignmentDto>(), totalItems);
 
-        // 6. Load questions counts per assignment
-        var assignmentIds = assignments.Select(a => a.AssignmentId).ToList();
-
-        var questionCounts = await _dbContext.AssignmentQuestions
-            .AsNoTracking()
-            .Where(aq => assignmentIds.Contains(aq.AssignmentId))
-            .GroupBy(aq => aq.AssignmentId)
-            .Select(g => new { AssignmentId = g.Key, Count = g.Count() })
-            .ToListAsync(cancellationToken);
-
-        var questionCountDict = questionCounts.ToDictionary(x => x.AssignmentId, x => x.Count);
-
-        var targetCounts = await _dbContext.AssignmentTargets
-            .AsNoTracking()
-            .Where(at => assignmentIds.Contains(at.AssignmentId))
-            .GroupBy(at => at.AssignmentId)
-            .Select(g => new { AssignmentId = g.Key, Count = g.Count() })
-            .ToListAsync(cancellationToken);
-
-        var targetCountDict = targetCounts.ToDictionary(x => x.AssignmentId, x => x.Count);
-
-        // 7. Map to DTOs (list view — questions/targets arrays empty for performance)
+        // 6. Map to DTOs (list view — questions/targets arrays empty for performance)
         var dtos = assignments.Select(a => new AssignmentDto
         {
             AssignmentId = a.AssignmentId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
@@ -121,8 +109,8 @@ public class ListAssignmentsUseCase : IListAssignmentsUseCase
             Instructions = a.Instructions,
             DueAt = a.DueAt,
             Status = a.Status.ToString(),
-            QuestionCount = questionCountDict.TryGetValue(a.AssignmentId, out var qc) ? qc : 0,
-            TargetStudentCount = targetCountDict.TryGetValue(a.AssignmentId, out var tc) ? tc : 0,
+            QuestionCount = a.QuestionCount,
+            TargetStudentCount = a.TargetStudentCount,
             Questions = new List<AssignmentQuestionDto>(),
             Targets = new List<AssignmentTargetDto>(),
             RowVersion = a.RowVersion.ToString(CultureInfo.InvariantCulture)

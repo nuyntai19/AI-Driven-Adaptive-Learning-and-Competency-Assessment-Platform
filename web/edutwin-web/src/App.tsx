@@ -11,6 +11,11 @@ import { CurriculumListPage } from "./pages/CurriculumListPage";
 import { QuestionBankPage } from "./pages/QuestionBankPage";
 import { QuestionEditorPage } from "./pages/QuestionEditorPage";
 import { CurriculumEditorPage } from "./pages/CurriculumEditorPage";
+import { AssignmentListPage } from "./pages/AssignmentListPage";
+import { AssignmentEditorPage } from "./pages/AssignmentEditorPage";
+import { AssignmentProgressPage } from "./pages/AssignmentProgressPage";
+import { StudentAssignmentsPage } from "./pages/StudentAssignmentsPage";
+import { StudentAssignmentDetailPage } from "./pages/StudentAssignmentDetailPage";
 import { RoleRoute } from "./routes/RoleRoute";
 import { useAuthStore } from "./stores/authStore";
 
@@ -45,6 +50,15 @@ function App() {
             <Route path="/quan-ly/cau-hoi" element={<QuestionBankPage />} />
             <Route path="/quan-ly/cau-hoi/tao-moi" element={<QuestionEditorPage />} />
             <Route path="/quan-ly/cau-hoi/:id" element={<QuestionEditorPage />} />
+            <Route path="/quan-ly/bai-tap" element={<AssignmentListPage />} />
+            <Route path="/quan-ly/bai-tap/tao-moi" element={<AssignmentEditorPage />} />
+            <Route path="/quan-ly/bai-tap/:id" element={<AssignmentEditorPage />} />
+            <Route path="/quan-ly/bai-tap/:id/tien-do" element={<AssignmentProgressPage />} />
+          </Route>
+
+          <Route element={<RoleRoute allowedRoles={["Student"]} />}>
+            <Route path="/hoc-tap/bai-tap" element={<StudentAssignmentsPage />} />
+            <Route path="/hoc-tap/bai-tap/:id" element={<StudentAssignmentDetailPage />} />
           </Route>
         </Route>
 

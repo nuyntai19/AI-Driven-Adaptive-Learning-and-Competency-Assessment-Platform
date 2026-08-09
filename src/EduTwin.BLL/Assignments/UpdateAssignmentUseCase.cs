@@ -100,6 +100,10 @@ public class UpdateAssignmentUseCase : IUpdateAssignmentUseCase
                 return UpdateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
         }
 
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
+        if (request.DueAt.HasValue && request.DueAt.Value <= now)
+            return UpdateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
+
         // 8. Validate and parse new questionIds if provided
         List<ulong>? newParsedQuestionIds = null;
         if (request.QuestionIds != null)
@@ -191,8 +195,6 @@ public class UpdateAssignmentUseCase : IUpdateAssignmentUseCase
         }
 
         // 10. Apply updates and persist atomically
-        var now = _timeProvider.GetUtcNow().UtcDateTime;
-
         if (request.Title != null)
             assignment.Title = request.Title;
 

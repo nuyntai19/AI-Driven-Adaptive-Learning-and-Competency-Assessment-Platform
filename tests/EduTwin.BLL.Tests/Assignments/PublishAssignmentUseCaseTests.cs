@@ -243,7 +243,8 @@ public class PublishAssignmentUseCaseTests
 
     private static async Task<Assignment> SeedDraftAssignmentAsync(
         EduTwinDbContext ctx, Guid centerId, Guid teacherId, Guid classId, ulong questionId,
-        List<Guid>? selectedStudentIds = null)
+        List<Guid>? selectedStudentIds = null,
+        DateTime? dueAt = null)
     {
         var now = DateTime.UtcNow;
         var assignmentId = Guid.NewGuid();
@@ -255,6 +256,7 @@ public class PublishAssignmentUseCaseTests
             ClassId = classId,
             CreatedByTeacherId = teacherId,
             Title = "Bài kiểm tra",
+            DueAt = dueAt,
             Status = AssignmentStatus.Draft,
             IsDeleted = false,
             RowVersion = 1,
@@ -426,6 +428,33 @@ public class PublishAssignmentUseCaseTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ErrorCodes.ConcurrencyConflict, result.ErrorCode);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(0)]
+    public async Task ExecuteAsync_DueAtNotInFuture_ReturnsValidationFailed(int offsetMinutes)
+    {
+        var centerId = Guid.NewGuid();
+        var teacherId = Guid.NewGuid();
+        SetupTenant(centerId, teacherId, nameof(UserRole.Teacher));
+
+        var ctx = CreateContext(centerId);
+        var (_, _, _, _, classEntity, question) = await SeedBaseAsync(ctx, centerId, teacherId);
+        var assignment = await SeedDraftAssignmentAsync(
+            ctx,
+            centerId,
+            teacherId,
+            classEntity.ClassId,
+            question.QuestionId,
+            dueAt: _fixedUtcNow.UtcDateTime.AddMinutes(offsetMinutes));
+
+        var result = await CreateSut(ctx).ExecuteAsync(
+            assignment.AssignmentId,
+            new PublishAssignmentRequest { RowVersion = "1" });
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

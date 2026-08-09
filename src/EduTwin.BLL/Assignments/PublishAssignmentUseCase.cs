@@ -112,6 +112,10 @@ public class PublishAssignmentUseCase : IPublishAssignmentUseCase
         if (assignment.RowVersion != clientRowVersion)
             return PublishAssignmentResult.Failure(ErrorCodes.ConcurrencyConflict);
 
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
+        if (assignment.DueAt.HasValue && assignment.DueAt.Value <= now)
+            return PublishAssignmentResult.Failure(ErrorCodes.ValidationFailed);
+
         // ── 7. Load ordered Questions — phải không rỗng ─────────────────────────
         var orderedQuestions = await _dbContext.AssignmentQuestions
             .AsNoTracking()
@@ -258,8 +262,6 @@ public class PublishAssignmentUseCase : IPublishAssignmentUseCase
             return PublishAssignmentResult.Failure(ErrorCodes.ValidationFailed);
 
         var totalQuestionCount = (uint)orderedQuestions.Count;
-        var now = _timeProvider.GetUtcNow().UtcDateTime;
-
         // ── 10. Atomic publish transaction ──────────────────────────────────────
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
         try

@@ -294,4 +294,25 @@ public class UpdateAssignmentUseCaseTests
         Assert.False(result.IsSuccess);
         Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
     }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(0)]
+    public async Task ExecuteAsync_DueAtNotInFuture_ReturnsValidationFailed(int offsetMinutes)
+    {
+        var centerId = Guid.NewGuid();
+        var teacherId = Guid.NewGuid();
+        SetupTenant(centerId, teacherId, nameof(UserRole.Teacher));
+        var ctx = CreateContext(centerId);
+        var (_, assignment, _) = await SeedDraftAssignmentAsync(ctx, centerId, teacherId);
+
+        var result = await CreateSut(ctx).ExecuteAsync(assignment.AssignmentId, new UpdateAssignmentRequest
+        {
+            DueAt = new DateTime(2026, 7, 30, 12, 0, 0, DateTimeKind.Utc).AddMinutes(offsetMinutes),
+            RowVersion = "1"
+        });
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
 }

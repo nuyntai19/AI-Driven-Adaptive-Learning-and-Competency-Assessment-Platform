@@ -24,6 +24,7 @@ public class AssignmentsController : ControllerBase
     private readonly IUpdateAssignmentUseCase _updateAssignmentUseCase;
     private readonly IPublishAssignmentUseCase _publishAssignmentUseCase;
     private readonly ICloseAssignmentUseCase _closeAssignmentUseCase;
+    private readonly IGetAssignmentProgressUseCase _getAssignmentProgressUseCase;
     private readonly IListStudentAssignmentsUseCase _listStudentAssignmentsUseCase;
     private readonly IGetStudentAssignmentUseCase _getStudentAssignmentUseCase;
     private readonly TimeProvider _timeProvider;
@@ -35,6 +36,7 @@ public class AssignmentsController : ControllerBase
         IUpdateAssignmentUseCase updateAssignmentUseCase,
         IPublishAssignmentUseCase publishAssignmentUseCase,
         ICloseAssignmentUseCase closeAssignmentUseCase,
+        IGetAssignmentProgressUseCase getAssignmentProgressUseCase,
         IListStudentAssignmentsUseCase listStudentAssignmentsUseCase,
         IGetStudentAssignmentUseCase getStudentAssignmentUseCase,
         TimeProvider timeProvider)
@@ -45,6 +47,7 @@ public class AssignmentsController : ControllerBase
         _updateAssignmentUseCase = updateAssignmentUseCase;
         _publishAssignmentUseCase = publishAssignmentUseCase;
         _closeAssignmentUseCase = closeAssignmentUseCase;
+        _getAssignmentProgressUseCase = getAssignmentProgressUseCase;
         _listStudentAssignmentsUseCase = listStudentAssignmentsUseCase;
         _getStudentAssignmentUseCase = getStudentAssignmentUseCase;
         _timeProvider = timeProvider;
@@ -254,6 +257,36 @@ public class AssignmentsController : ControllerBase
     }
 
     /// <summary>
+    /// GET /api/v1/assignments/{id}/progress — Tiến độ snapshot của từng Student.
+    /// Quyền: Teacher owner của Class hoặc CenterManager.
+    /// </summary>
+    [HttpGet("{id}/progress")]
+    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [ProducesResponseType(typeof(AssignmentProgressListResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetAssignmentProgress(
+        [FromRoute] Guid id,
+        CancellationToken cancellationToken)
+    {
+        var result = await _getAssignmentProgressUseCase.ExecuteAsync(id, cancellationToken);
+
+        if (result.IsSuccess)
+        {
+            return Ok(new AssignmentProgressListResponse
+            {
+                Data = result.Data!,
+                Meta = new MetaDto
+                {
+                    TraceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    Timestamp = _timeProvider.GetUtcNow().UtcDateTime
+                }
+            });
+        }
+
+        return MapErrorToResponse(result.ErrorCode);
+    }
+
+    /// <summary>
     /// GET /api/v1/students/me/assignments — Danh sách Assignment cho Student (API_CONTRACTS.md §51).
     /// </summary>
     [HttpGet("/api/v1/students/me/assignments")]
@@ -293,8 +326,11 @@ public class AssignmentsController : ControllerBase
         if (result.IsSuccess)
         {
             var response = result.Data!;
-            response.Meta.TraceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
-            response.Meta.Timestamp = _timeProvider.GetUtcNow().UtcDateTime;
+            response.Meta = new MetaDto
+            {
+                TraceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                Timestamp = _timeProvider.GetUtcNow().UtcDateTime
+            };
             return Ok(response);
         }
 

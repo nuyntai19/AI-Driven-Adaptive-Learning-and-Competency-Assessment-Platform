@@ -247,4 +247,55 @@ public class ListAssignmentsUseCaseTests
         Assert.False(result.IsSuccess);
         Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
     }
+
+    [Fact]
+    public async Task ExecuteAsync_ReturnsCorrelatedQuestionAndTargetCounts()
+    {
+        var centerId = Guid.NewGuid();
+        var teacherId = Guid.NewGuid();
+        SetupTenant(centerId, teacherId, nameof(UserRole.Teacher));
+
+        var ctx = CreateContext(centerId);
+        var (classId, subjectId) = await SeedInfraAsync(ctx, centerId, teacherId);
+        await SeedAssignmentsAsync(ctx, centerId, teacherId, classId, subjectId);
+        var assignment = await ctx.Assignments.SingleAsync();
+        var now = DateTime.UtcNow;
+
+        ctx.AssignmentQuestions.AddRange(
+            new AssignmentQuestion
+            {
+                CenterId = centerId,
+                AssignmentId = assignment.AssignmentId,
+                QuestionId = 101,
+                OrderIndex = 1,
+                Points = 1,
+                CreatedAt = now
+            },
+            new AssignmentQuestion
+            {
+                CenterId = centerId,
+                AssignmentId = assignment.AssignmentId,
+                QuestionId = 102,
+                OrderIndex = 2,
+                Points = 1,
+                CreatedAt = now
+            });
+        ctx.AssignmentTargets.Add(new AssignmentTarget
+        {
+            CenterId = centerId,
+            AssignmentId = assignment.AssignmentId,
+            StudentId = Guid.NewGuid(),
+            TargetSource = TargetSource.SelectedStudents,
+            CreatedAt = now,
+            CreatedBy = teacherId
+        });
+        await ctx.SaveChangesAsync();
+
+        var result = await CreateSut(ctx).ExecuteAsync(new ListAssignmentsQuery());
+
+        Assert.True(result.IsSuccess, result.ErrorCode);
+        var item = Assert.Single(result.Data!);
+        Assert.Equal(2, item.QuestionCount);
+        Assert.Equal(1, item.TargetStudentCount);
+    }
 }
