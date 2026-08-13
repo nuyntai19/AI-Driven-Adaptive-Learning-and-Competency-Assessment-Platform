@@ -161,15 +161,18 @@ public class CreateAssignmentUseCase : ICreateAssignmentUseCase
         // 7. Validate StudentIds membership (SelectedStudents mode)
         if (isSelectedStudents && parsedStudentIds.Count > 0)
         {
+            // MySQL stores GUIDs as varchar(36). Its EF provider cannot reliably
+            // translate Contains(List<Guid>) for that mapping, so keep the bounded
+            // class-membership query server-side and compare the requested IDs in memory.
             var activeMemberIds = await _dbContext.ClassStudents
                 .AsNoTracking()
                 .Where(cs => cs.ClassId == classEntity.ClassId &&
-                             cs.Status == ClassStudentStatus.Active &&
-                             parsedStudentIds.Contains(cs.StudentId))
+                             cs.Status == ClassStudentStatus.Active)
                 .Select(cs => cs.StudentId)
                 .ToListAsync(cancellationToken);
 
-            if (activeMemberIds.Count != parsedStudentIds.Count)
+            var activeMemberIdSet = activeMemberIds.ToHashSet();
+            if (parsedStudentIds.Any(studentId => !activeMemberIdSet.Contains(studentId)))
                 return CreateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
         }
 

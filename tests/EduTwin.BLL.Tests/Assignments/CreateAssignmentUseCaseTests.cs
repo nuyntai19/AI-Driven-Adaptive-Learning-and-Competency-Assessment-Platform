@@ -54,6 +54,49 @@ public class CreateAssignmentUseCaseTests
     private CreateAssignmentUseCase CreateSut(EduTwinDbContext dbContext) =>
         new(dbContext, _tenantMock.Object, _timeProviderMock.Object);
 
+    private static async Task<Student> AddStudentToClassAsync(
+        EduTwinDbContext context,
+        Guid centerId,
+        Guid classId)
+    {
+        var studentId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        context.Users.Add(new User
+        {
+            UserId = studentId,
+            CenterId = centerId,
+            Username = "student-" + studentId.ToString()[..6],
+            PasswordHash = "hash",
+            RoleName = UserRole.Student,
+            DisplayName = "Selected Student",
+            Status = UserStatus.Active,
+            IsDeleted = false,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+        var student = new Student
+        {
+            StudentId = studentId,
+            CenterId = centerId,
+            FullName = "Selected Student",
+            GradeLevel = 12,
+            IsDeleted = false,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        context.Students.Add(student);
+        context.ClassStudents.Add(new ClassStudent
+        {
+            CenterId = centerId,
+            ClassId = classId,
+            StudentId = studentId,
+            Status = ClassStudentStatus.Active,
+            JoinedAt = now
+        });
+        await context.SaveChangesAsync();
+        return student;
+    }
+
     private void SetupTenant(Guid centerId, Guid userId, string role)
     {
         _tenantMock.SetupGet(x => x.IsResolved).Returns(true);
@@ -422,6 +465,42 @@ public class CreateAssignmentUseCaseTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_SelectedStudentsMode_ActiveMember_CreatesDraftTarget()
+    {
+        var centerId = Guid.NewGuid();
+        var teacherId = Guid.NewGuid();
+        SetupTenant(centerId, teacherId, nameof(UserRole.Teacher));
+
+        await using var ctx = CreateContext(centerId);
+        var (_, _, _, _, classEntity, question) = await SeedBaseAsync(ctx, centerId, teacherId);
+        var student = await AddStudentToClassAsync(ctx, centerId, classEntity.ClassId);
+
+        var result = await CreateSut(ctx).ExecuteAsync(new CreateAssignmentRequest
+        {
+            ClassId = classEntity.ClassId,
+            Title = "Giao riêng cho học sinh",
+            TargetMode = "SelectedStudents",
+            QuestionIds = new List<string>
+            {
+                question.QuestionId.ToString(CultureInfo.InvariantCulture)
+            },
+            StudentIds = new List<string> { student.StudentId.ToString() }
+        });
+
+        Assert.True(result.IsSuccess, $"Expected success but got: {result.ErrorCode}");
+        Assert.NotNull(result.Data);
+        Assert.Equal("Draft", result.Data!.Status);
+        Assert.Equal(1, result.Data.TargetStudentCount);
+        var target = Assert.Single(result.Data.Targets);
+        Assert.Equal(student.StudentId.ToString("D").ToLowerInvariant(), target.StudentId);
+        Assert.Equal("SelectedStudents", target.TargetSource);
+
+        var persistedTarget = await ctx.AssignmentTargets.SingleAsync();
+        Assert.Equal(student.StudentId, persistedTarget.StudentId);
+        Assert.Equal(TargetSource.SelectedStudents, persistedTarget.TargetSource);
     }
 
     [Fact]

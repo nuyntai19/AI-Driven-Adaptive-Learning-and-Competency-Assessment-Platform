@@ -237,12 +237,14 @@ public class PublishAssignmentUseCase : IPublishAssignmentUseCase
             var activeMemberIds = await _dbContext.ClassStudents
                 .AsNoTracking()
                 .Where(cs => cs.ClassId == assignment.ClassId &&
-                             cs.Status == ClassStudentStatus.Active &&
-                             targetStudentIds.Contains(cs.StudentId))
+                             cs.Status == ClassStudentStatus.Active)
                 .Select(cs => cs.StudentId)
                 .ToListAsync(cancellationToken);
 
-            if (activeMemberIds.Count != targetStudentIds.Count)
+            // Compare in memory because the MySQL EF provider cannot type-map
+            // Contains(List<Guid>) against GUID columns stored as varchar(36).
+            var activeMemberIdSet = activeMemberIds.ToHashSet();
+            if (targetStudentIds.Any(studentId => !activeMemberIdSet.Contains(studentId)))
                 return PublishAssignmentResult.Failure(ErrorCodes.ValidationFailed);
         }
         else
