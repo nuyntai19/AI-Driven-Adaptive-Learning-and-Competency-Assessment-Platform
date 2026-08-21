@@ -15,6 +15,7 @@ using EduTwin.BLL.CurriculumAndQuestions;
 using EduTwin.BLL.Assignments;
 using EduTwin.BLL.AssessmentAndReasoning;
 using EduTwin.API.AssessmentAndReasoning.Background;
+using EduTwin.API.AssessmentAndReasoning.AI;
 using EduTwin.API.Security;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -129,6 +130,7 @@ builder.Services.AddKnowledgeGraph();
 builder.Services.AddCurriculumAndQuestions();
 builder.Services.AddAssignments();
 builder.Services.AddAssessmentAndReasoning();
+builder.Services.AddGeminiAI(builder.Configuration);
 
 // We also need TimeProvider
 builder.Services.AddSingleton(TimeProvider.System);
