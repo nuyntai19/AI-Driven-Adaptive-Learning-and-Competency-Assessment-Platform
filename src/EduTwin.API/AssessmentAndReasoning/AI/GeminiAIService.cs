@@ -1,5 +1,3 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using EduTwin.BLL.AssessmentAndReasoning.AI;
 using Microsoft.Extensions.Options;
 
@@ -7,27 +5,30 @@ namespace EduTwin.API.AssessmentAndReasoning.AI;
 
 public sealed class GeminiAIService : IAIService
 {
-    private static readonly JsonSerializerOptions SerializerOptions = CreateSerializerOptions();
     private readonly GeminiOptions _options;
     private readonly IGeminiGenerateContentClient _client;
     private readonly GeminiPromptBuilder _promptBuilder;
     private readonly GeminiResponseJsonSchema _responseJsonSchema;
+    private readonly IAIAnalysisResponseParser _responseParser;
 
     public GeminiAIService(
         IOptions<GeminiOptions> options,
         IGeminiGenerateContentClient client,
         GeminiPromptBuilder promptBuilder,
-        GeminiResponseJsonSchema responseJsonSchema)
+        GeminiResponseJsonSchema responseJsonSchema,
+        IAIAnalysisResponseParser responseParser)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(promptBuilder);
         ArgumentNullException.ThrowIfNull(responseJsonSchema);
+        ArgumentNullException.ThrowIfNull(responseParser);
 
         _options = options.Value;
         _client = client;
         _promptBuilder = promptBuilder;
         _responseJsonSchema = responseJsonSchema;
+        _responseParser = responseParser;
     }
 
     public async Task<AnalyzeReasoningResponse> AnalyzeReasoningAsync(
@@ -85,28 +86,6 @@ public sealed class GeminiAIService : IAIService
             throw GeminiAdapterException.ResponseEmpty();
         }
 
-        try
-        {
-            return JsonSerializer.Deserialize<AnalyzeReasoningResponse>(responseText, SerializerOptions)
-                ?? throw GeminiAdapterException.ResponseInvalid();
-        }
-        catch (JsonException)
-        {
-            throw GeminiAdapterException.ResponseInvalid();
-        }
-        catch (NotSupportedException)
-        {
-            throw GeminiAdapterException.ResponseInvalid();
-        }
-    }
-
-    private static JsonSerializerOptions CreateSerializerOptions()
-    {
-        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
-        {
-            PropertyNameCaseInsensitive = false
-        };
-        options.Converters.Add(new JsonStringEnumConverter(namingPolicy: null, allowIntegerValues: false));
-        return options;
+        return _responseParser.ParseAndValidate(responseText, request);
     }
 }

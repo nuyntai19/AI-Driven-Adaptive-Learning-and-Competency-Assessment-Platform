@@ -13,7 +13,7 @@ namespace EduTwin.BLL.Tests.AssessmentAndReasoning.AI;
 public sealed class GeminiAIServiceTests
 {
     [Fact]
-    public async Task AnalyzeReasoningAsync_ValidProviderJson_ReturnsTypedResponse()
+    public async Task AnalyzeReasoningAsync_ValidProviderJson_ReturnsParserValidatedResponse()
     {
         var client = new FakeGeminiGenerateContentClient();
         var service = CreateService(client);
@@ -30,6 +30,22 @@ public sealed class GeminiAIServiceTests
         Assert.Equal(["101"], response.RootCauseNodeIds);
         Assert.Equal(85, response.Confidence);
         Assert.Equal("Em đã chọn đúng phương pháp.", response.Feedback);
+    }
+
+    [Fact]
+    public async Task AnalyzeReasoningAsync_PassesExactRawTextAndOriginalRequestToParser()
+    {
+        var client = new FakeGeminiGenerateContentClient();
+        var parser = new RecordingResponseParser();
+        var request = CreateRequest();
+        var service = CreateService(client, parser: parser);
+
+        var response = await service.AnalyzeReasoningAsync(request, CancellationToken.None);
+
+        Assert.Equal(1, parser.CallCount);
+        Assert.Equal(ValidResponseJson, parser.RawResponse);
+        Assert.Same(request, parser.Request);
+        Assert.Same(parser.Response, response);
     }
 
     [Fact]
@@ -100,13 +116,15 @@ public sealed class GeminiAIServiceTests
         using var callerCancellation = new CancellationTokenSource();
         callerCancellation.Cancel();
         var client = new FakeGeminiGenerateContentClient();
-        var service = CreateService(client);
+        var parser = new RecordingResponseParser();
+        var service = CreateService(client, parser: parser);
 
         var exception = await Assert.ThrowsAnyAsync<OperationCanceledException>(
             () => service.AnalyzeReasoningAsync(CreateRequest(), callerCancellation.Token));
 
         Assert.Equal(callerCancellation.Token, exception.CancellationToken);
         Assert.Equal(0, client.CallCount);
+        Assert.Equal(0, parser.CallCount);
     }
 
     [Fact]
@@ -121,7 +139,8 @@ public sealed class GeminiAIServiceTests
                 return ValidResponseJson;
             }
         };
-        var service = CreateService(client);
+        var parser = new RecordingResponseParser();
+        var service = CreateService(client, parser: parser);
 
         var operation = service.AnalyzeReasoningAsync(CreateRequest(), callerCancellation.Token);
         callerCancellation.Cancel();
@@ -129,6 +148,7 @@ public sealed class GeminiAIServiceTests
 
         Assert.Equal(callerCancellation.Token, exception.CancellationToken);
         Assert.Equal(1, client.CallCount);
+        Assert.Equal(0, parser.CallCount);
     }
 
     [Fact]
@@ -144,7 +164,8 @@ public sealed class GeminiAIServiceTests
         };
         var options = CreateValidOptions();
         options.Timeout = TimeSpan.FromMilliseconds(50);
-        var service = CreateService(client, options);
+        var parser = new RecordingResponseParser();
+        var service = CreateService(client, options, parser);
         var stopwatch = Stopwatch.StartNew();
 
         var exception = await Assert.ThrowsAsync<GeminiAdapterException>(
@@ -155,6 +176,7 @@ public sealed class GeminiAIServiceTests
         Assert.Equal("AI provider request timed out.", exception.Message);
         Assert.Null(exception.InnerException);
         Assert.Equal(1, client.CallCount);
+        Assert.Equal(0, parser.CallCount);
         Assert.InRange(stopwatch.Elapsed, TimeSpan.Zero, TimeSpan.FromSeconds(5));
     }
 
@@ -166,7 +188,8 @@ public sealed class GeminiAIServiceTests
         {
             Handler = (_, _, _, _) => Task.FromException<string>(new InvalidOperationException(providerMessage))
         };
-        var service = CreateService(client);
+        var parser = new RecordingResponseParser();
+        var service = CreateService(client, parser: parser);
 
         var exception = await Assert.ThrowsAsync<GeminiAdapterException>(
             () => service.AnalyzeReasoningAsync(CreateRequest(), CancellationToken.None));
@@ -174,6 +197,7 @@ public sealed class GeminiAIServiceTests
         Assert.Equal("AI_PROVIDER_REQUEST_FAILED", exception.ErrorCode);
         Assert.DoesNotContain(providerMessage, exception.Message, StringComparison.Ordinal);
         Assert.Null(exception.InnerException);
+        Assert.Equal(0, parser.CallCount);
     }
 
     [Fact]
@@ -183,7 +207,8 @@ public sealed class GeminiAIServiceTests
         {
             Handler = (_, _, _, _) => Task.FromResult("   ")
         };
-        var service = CreateService(client);
+        var parser = new RecordingResponseParser();
+        var service = CreateService(client, parser: parser);
 
         var exception = await Assert.ThrowsAsync<GeminiAdapterException>(
             () => service.AnalyzeReasoningAsync(CreateRequest(), CancellationToken.None));
@@ -191,10 +216,11 @@ public sealed class GeminiAIServiceTests
         Assert.Equal("AI_PROVIDER_RESPONSE_EMPTY", exception.ErrorCode);
         Assert.Equal("AI provider returned no usable response.", exception.Message);
         Assert.Null(exception.InnerException);
+        Assert.Equal(0, parser.CallCount);
     }
 
     [Fact]
-    public async Task AnalyzeReasoningAsync_MalformedJson_ThrowsSanitizedAdapterErrorWithoutRawResponse()
+    public async Task AnalyzeReasoningAsync_MalformedJson_ThrowsSanitizedValidationErrorWithoutRawResponse()
     {
         const string malformedResponse = "{\"feedback\":\"RAW_RESPONSE_MUST_NOT_LEAK\"";
         var client = new FakeGeminiGenerateContentClient
@@ -203,13 +229,114 @@ public sealed class GeminiAIServiceTests
         };
         var service = CreateService(client);
 
-        var exception = await Assert.ThrowsAsync<GeminiAdapterException>(
+        var exception = await Assert.ThrowsAsync<AIAnalysisValidationException>(
             () => service.AnalyzeReasoningAsync(CreateRequest(), CancellationToken.None));
 
-        Assert.Equal("AI_PROVIDER_RESPONSE_INVALID", exception.ErrorCode);
+        Assert.Equal("AI_RESPONSE_JSON_INVALID", exception.ErrorCode);
         Assert.DoesNotContain(malformedResponse, exception.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("RAW_RESPONSE_MUST_NOT_LEAK", exception.Message, StringComparison.Ordinal);
         Assert.Null(exception.InnerException);
+    }
+
+    [Fact]
+    public async Task AnalyzeReasoningAsync_ExtraField_ThrowsSanitizedValidationError()
+    {
+        var rawResponse = ValidResponseJson.Replace(
+            "\n}",
+            ",\n  \"unexpected\": \"RAW_VALUE_MUST_NOT_LEAK\"\n}",
+            StringComparison.Ordinal);
+        var client = new FakeGeminiGenerateContentClient
+        {
+            Handler = (_, _, _, _) => Task.FromResult(rawResponse)
+        };
+        var service = CreateService(client);
+
+        var exception = await Assert.ThrowsAsync<AIAnalysisValidationException>(
+            () => service.AnalyzeReasoningAsync(CreateRequest(), CancellationToken.None));
+
+        Assert.Equal("AI_RESPONSE_SHAPE_INVALID", exception.ErrorCode);
+        Assert.DoesNotContain("RAW_VALUE_MUST_NOT_LEAK", exception.Message, StringComparison.Ordinal);
+        Assert.Null(exception.InnerException);
+    }
+
+    [Fact]
+    public async Task AnalyzeReasoningAsync_OutOfRangeQuality_ThrowsSanitizedValidationError()
+    {
+        var rawResponse = ValidResponseJson.Replace(
+            "\"reasoningQuality\": 72",
+            "\"reasoningQuality\": 101",
+            StringComparison.Ordinal);
+        var client = new FakeGeminiGenerateContentClient
+        {
+            Handler = (_, _, _, _) => Task.FromResult(rawResponse)
+        };
+        var service = CreateService(client);
+
+        var exception = await Assert.ThrowsAsync<AIAnalysisValidationException>(
+            () => service.AnalyzeReasoningAsync(CreateRequest(), CancellationToken.None));
+
+        Assert.Equal("AI_RESPONSE_SEMANTIC_INVALID", exception.ErrorCode);
+        Assert.Null(exception.InnerException);
+    }
+
+    [Fact]
+    public async Task AnalyzeReasoningAsync_LanguageMismatch_ThrowsSanitizedValidationError()
+    {
+        var rawResponse = ValidResponseJson.Replace(
+            "\"language\": \"vi\"",
+            "\"language\": \"en\"",
+            StringComparison.Ordinal);
+        var client = new FakeGeminiGenerateContentClient
+        {
+            Handler = (_, _, _, _) => Task.FromResult(rawResponse)
+        };
+        var service = CreateService(client);
+
+        var exception = await Assert.ThrowsAsync<AIAnalysisValidationException>(
+            () => service.AnalyzeReasoningAsync(CreateRequest(), CancellationToken.None));
+
+        Assert.Equal("AI_RESPONSE_SEMANTIC_INVALID", exception.ErrorCode);
+        Assert.Null(exception.InnerException);
+    }
+
+    [Fact]
+    public async Task AnalyzeReasoningAsync_HallucinatedRootNode_ThrowsSanitizedValidationError()
+    {
+        var rawResponse = ValidResponseJson.Replace(
+            "\"rootCauseNodeIds\": [\"101\"]",
+            "\"rootCauseNodeIds\": [\"999\"]",
+            StringComparison.Ordinal);
+        var client = new FakeGeminiGenerateContentClient
+        {
+            Handler = (_, _, _, _) => Task.FromResult(rawResponse)
+        };
+        var service = CreateService(client);
+
+        var exception = await Assert.ThrowsAsync<AIAnalysisValidationException>(
+            () => service.AnalyzeReasoningAsync(CreateRequest(), CancellationToken.None));
+
+        Assert.Equal("AI_RESPONSE_SEMANTIC_INVALID", exception.ErrorCode);
+        Assert.DoesNotContain("999", exception.Message, StringComparison.Ordinal);
+        Assert.Null(exception.InnerException);
+    }
+
+    [Fact]
+    public async Task AnalyzeReasoningAsync_ValidationFailure_DoesNotRetryProvider()
+    {
+        var rawResponse = ValidResponseJson.Replace(
+            "\"confidence\": 85",
+            "\"confidence\": 101",
+            StringComparison.Ordinal);
+        var client = new FakeGeminiGenerateContentClient
+        {
+            Handler = (_, _, _, _) => Task.FromResult(rawResponse)
+        };
+        var service = CreateService(client);
+
+        await Assert.ThrowsAsync<AIAnalysisValidationException>(
+            () => service.AnalyzeReasoningAsync(CreateRequest(), CancellationToken.None));
+
+        Assert.Equal(1, client.CallCount);
     }
 
     [Fact]
@@ -235,7 +362,8 @@ public sealed class GeminiAIServiceTests
         var options = CreateValidOptions();
         options.ApiKey = secret;
         options.Model = "   ";
-        var service = CreateService(client, options);
+        var parser = new RecordingResponseParser();
+        var service = CreateService(client, options, parser);
 
         var exception = await Assert.ThrowsAsync<GeminiAdapterException>(
             () => service.AnalyzeReasoningAsync(CreateRequest(), CancellationToken.None));
@@ -244,16 +372,19 @@ public sealed class GeminiAIServiceTests
         Assert.DoesNotContain(secret, exception.Message, StringComparison.Ordinal);
         Assert.Null(exception.InnerException);
         Assert.Equal(0, client.CallCount);
+        Assert.Equal(0, parser.CallCount);
     }
 
     private static GeminiAIService CreateService(
         FakeGeminiGenerateContentClient client,
-        GeminiOptions? options = null) =>
+        GeminiOptions? options = null,
+        IAIAnalysisResponseParser? parser = null) =>
         new(
             Options.Create(options ?? CreateValidOptions()),
             client,
             new GeminiPromptBuilder(),
-            new GeminiResponseJsonSchema());
+            new GeminiResponseJsonSchema(),
+            parser ?? new StrictAIAnalysisResponseParser(new AnalyzeReasoningResponseValidator()));
 
     private static GeminiOptions CreateValidOptions() =>
         new()
@@ -343,6 +474,39 @@ public sealed class GeminiAIServiceTests
             Config = config;
             CancellationToken = cancellationToken;
             return Handler(model, prompt, config, cancellationToken);
+        }
+    }
+
+    private sealed class RecordingResponseParser : IAIAnalysisResponseParser
+    {
+        public int CallCount { get; private set; }
+
+        public string? RawResponse { get; private set; }
+
+        public AnalyzeReasoningRequest? Request { get; private set; }
+
+        public AnalyzeReasoningResponse Response { get; } = new()
+        {
+            SchemaVersion = AIAnalysisContract.SchemaVersion,
+            Language = "vi",
+            MethodDetected = null,
+            ReasoningQuality = 50,
+            ErrorType = ErrorType.None,
+            Misconception = null,
+            MissingSteps = [],
+            RootCauseNodeIds = [],
+            Confidence = 50,
+            Feedback = "Validated response"
+        };
+
+        public AnalyzeReasoningResponse ParseAndValidate(
+            string rawResponse,
+            AnalyzeReasoningRequest request)
+        {
+            CallCount++;
+            RawResponse = rawResponse;
+            Request = request;
+            return Response;
         }
     }
 }

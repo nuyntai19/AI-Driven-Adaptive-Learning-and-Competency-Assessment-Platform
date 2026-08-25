@@ -12,6 +12,40 @@ namespace EduTwin.BLL.Tests.AssessmentAndReasoning.AI;
 public sealed class GeminiDependencyInjectionTests
 {
     [Fact]
+    public void AddGeminiAI_RegistersExactlyOneSemanticValidator()
+    {
+        var services = new ServiceCollection();
+
+        services.AddGeminiAI(CreateConfiguration());
+
+        AssertSingletonRegistration<IAnalyzeReasoningResponseValidator, AnalyzeReasoningResponseValidator>(services);
+    }
+
+    [Fact]
+    public void AddGeminiAI_RegistersExactlyOneStrictParser()
+    {
+        var services = new ServiceCollection();
+
+        services.AddGeminiAI(CreateConfiguration());
+
+        AssertSingletonRegistration<IAIAnalysisResponseParser, StrictAIAnalysisResponseParser>(services);
+    }
+
+    [Fact]
+    public void AddGeminiAI_CalledTwice_DoesNotDuplicateParserValidatorOrIAIService()
+    {
+        var services = new ServiceCollection();
+        var configuration = CreateConfiguration();
+
+        services.AddGeminiAI(configuration);
+        services.AddGeminiAI(configuration);
+
+        AssertSingletonRegistration<IAnalyzeReasoningResponseValidator, AnalyzeReasoningResponseValidator>(services);
+        AssertSingletonRegistration<IAIAnalysisResponseParser, StrictAIAnalysisResponseParser>(services);
+        AssertSingletonRegistration<IAIService, GeminiAIService>(services);
+    }
+
+    [Fact]
     public void AddGeminiAI_RegistersExactlyOneIAIServiceAsGeminiAIService()
     {
         var services = new ServiceCollection();
@@ -40,6 +74,18 @@ public sealed class GeminiDependencyInjectionTests
         Assert.Equal(typeof(GoogleGenAIGenerateContentClient), descriptor.ImplementationType);
         Assert.Equal(ServiceLifetime.Singleton, descriptor.Lifetime);
         Assert.DoesNotContain(services, candidate => candidate.ServiceType == typeof(Client));
+    }
+
+    [Fact]
+    public void AddGeminiAI_KeepsPromptSchemaAndSdkSeamRegistrationsAsSingletons()
+    {
+        var services = new ServiceCollection();
+
+        services.AddGeminiAI(CreateConfiguration());
+
+        AssertSingletonRegistration<IGeminiGenerateContentClient, GoogleGenAIGenerateContentClient>(services);
+        AssertSingletonRegistration<GeminiPromptBuilder, GeminiPromptBuilder>(services);
+        AssertSingletonRegistration<GeminiResponseJsonSchema, GeminiResponseJsonSchema>(services);
     }
 
     [Fact]
@@ -73,6 +119,21 @@ public sealed class GeminiDependencyInjectionTests
         Assert.DoesNotContain(
             services,
             descriptor => descriptor.ServiceType.FullName?.Contains("HealthCheck", StringComparison.Ordinal) == true);
+    }
+
+    [Fact]
+    public void AddGeminiAI_ValidConfiguration_ResolvesGeminiAIServiceWithoutCallingProvider()
+    {
+        var services = new ServiceCollection();
+        services.AddGeminiAI(CreateConfiguration());
+        using var provider = services.BuildServiceProvider(validateScopes: true);
+
+        var service = provider.GetRequiredService<IAIService>();
+
+        Assert.IsType<GeminiAIService>(service);
+        Assert.IsType<StrictAIAnalysisResponseParser>(provider.GetRequiredService<IAIAnalysisResponseParser>());
+        Assert.IsType<AnalyzeReasoningResponseValidator>(
+            provider.GetRequiredService<IAnalyzeReasoningResponseValidator>());
     }
 
     [Fact]
@@ -130,4 +191,13 @@ public sealed class GeminiDependencyInjectionTests
                 ["Gemini:Timeout"] = timeout
             })
             .Build();
+
+    private static void AssertSingletonRegistration<TService, TImplementation>(IServiceCollection services)
+    {
+        var descriptor = Assert.Single(
+            services,
+            candidate => candidate.ServiceType == typeof(TService));
+        Assert.Equal(typeof(TImplementation), descriptor.ImplementationType);
+        Assert.Equal(ServiceLifetime.Singleton, descriptor.Lifetime);
+    }
 }

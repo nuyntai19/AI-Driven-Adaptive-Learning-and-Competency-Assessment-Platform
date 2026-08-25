@@ -14,6 +14,8 @@ public static class DependencyInjection
 
         services.AddOptions<GeminiOptions>()
             .Bind(configuration.GetSection(GeminiOptions.SectionName));
+        services.TryAddSingleton<IAnalyzeReasoningResponseValidator, AnalyzeReasoningResponseValidator>();
+        services.TryAddSingleton<IAIAnalysisResponseParser, StrictAIAnalysisResponseParser>();
         services.TryAddSingleton<IGeminiGenerateContentClient, GoogleGenAIGenerateContentClient>();
         services.TryAddSingleton<GeminiPromptBuilder>();
         services.TryAddSingleton<GeminiResponseJsonSchema>();
