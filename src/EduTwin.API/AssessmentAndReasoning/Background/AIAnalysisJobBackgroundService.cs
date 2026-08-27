@@ -76,6 +76,8 @@ public sealed class AIAnalysisJobBackgroundService : BackgroundService
         var recovered = 0;
         var stale = 0;
         var lostRace = 0;
+        var completed = 0;
+        var retryScheduled = 0;
         var fallbackCompleted = 0;
         var alreadyTerminal = 0;
         var processingStale = 0;
@@ -113,6 +115,12 @@ public sealed class AIAnalysisJobBackgroundService : BackgroundService
                             cancellationToken);
                         switch (processingResult.Outcome)
                         {
+                            case AIAnalysisJobProcessingOutcome.Completed:
+                                completed++;
+                                break;
+                            case AIAnalysisJobProcessingOutcome.RetryScheduled:
+                                retryScheduled++;
+                                break;
                             case AIAnalysisJobProcessingOutcome.FallbackCompleted:
                                 fallbackCompleted++;
                                 break;
@@ -186,6 +194,8 @@ public sealed class AIAnalysisJobBackgroundService : BackgroundService
             recovered,
             stale,
             lostRace,
+            completed,
+            retryScheduled,
             fallbackCompleted,
             alreadyTerminal,
             processingStale,

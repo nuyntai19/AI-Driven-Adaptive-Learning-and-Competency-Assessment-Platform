@@ -2,6 +2,8 @@ namespace EduTwin.BLL.AssessmentAndReasoning.Processing;
 
 public enum AIAnalysisJobProcessingOutcome
 {
+    Completed,
+    RetryScheduled,
     FallbackCompleted,
     AlreadyTerminal,
     NotFound,

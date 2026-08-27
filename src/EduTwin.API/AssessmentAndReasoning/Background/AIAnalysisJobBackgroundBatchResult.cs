@@ -6,6 +6,8 @@ public sealed record AIAnalysisJobBackgroundBatchResult(
     int RecoveredCount,
     int StaleCount,
     int LostRaceCount,
+    int CompletedCount,
+    int RetryScheduledCount,
     int FallbackCompletedCount,
     int AlreadyTerminalCount,
     int ProcessingStaleCount,

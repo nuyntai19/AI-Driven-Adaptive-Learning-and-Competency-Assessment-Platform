@@ -19,6 +19,8 @@ public sealed class AIAnalysisJobBackgroundDependencyInjectionTests
 
         AssertDescriptor<IAIAnalysisJobStateMachine>(services, ServiceLifetime.Singleton);
         AssertDescriptor<IRuleBasedFallbackBuilder>(services, ServiceLifetime.Singleton);
+        AssertDescriptor<IAIAnalysisRequestFactory>(services, ServiceLifetime.Singleton);
+        AssertDescriptor<IAIReasoningAnalysisBuilder>(services, ServiceLifetime.Singleton);
         AssertDescriptor<IAIAnalysisJobCandidateDiscovery>(services, ServiceLifetime.Scoped);
         AssertDescriptor<IAIAnalysisJobLeaseOperation>(services, ServiceLifetime.Scoped);
         AssertDescriptor<IAIAnalysisJobProcessor>(services, ServiceLifetime.Scoped);

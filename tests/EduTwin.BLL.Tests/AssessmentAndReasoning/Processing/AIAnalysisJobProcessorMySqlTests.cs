@@ -1,8 +1,13 @@
 using EduTwin.BLL.AssessmentAndReasoning.Jobs;
+using EduTwin.BLL.AssessmentAndReasoning.AI;
 using EduTwin.BLL.AssessmentAndReasoning.Processing;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
+using EduTwin.Contracts.CurriculumAndQuestions;
+using EduTwin.Contracts.KnowledgeGraph;
 using EduTwin.DAL.AssessmentAndReasoning;
+using EduTwin.DAL.CurriculumAndQuestions;
+using EduTwin.DAL.KnowledgeGraph;
 using EduTwin.DAL.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -78,7 +83,7 @@ public sealed class AIAnalysisJobProcessorMySqlTests
             Assert.Single(
                 results,
                 result => result.Outcome
-                    == AIAnalysisJobProcessingOutcome.FallbackCompleted);
+                    == AIAnalysisJobProcessingOutcome.Completed);
             Assert.Single(
                 results,
                 result => result.Outcome
@@ -87,9 +92,9 @@ public sealed class AIAnalysisJobProcessorMySqlTests
         }
 
         var persisted = await ReloadAsync(database.ConnectionString, centerId);
-        Assert.Equal(AttemptStatus.NeedsTeacherReview, persisted.Attempt.Status);
+        Assert.Equal(AttemptStatus.Completed, persisted.Attempt.Status);
         Assert.Equal(2ul, persisted.Attempt.RowVersion);
-        Assert.Equal(AIJobStatus.FallbackCompleted, persisted.Job.Status);
+        Assert.Equal(AIJobStatus.Completed, persisted.Job.Status);
         Assert.Equal(2ul, persisted.Job.RowVersion);
         Assert.Single(persisted.Analyses);
     }
@@ -109,7 +114,7 @@ public sealed class AIAnalysisJobProcessorMySqlTests
             var result = await CreateProcessor(processorContext, tenant)
                 .ExecuteAsync(1, "mysql-worker", CancellationToken.None);
             Assert.Equal(
-                AIAnalysisJobProcessingOutcome.FallbackCompleted,
+                AIAnalysisJobProcessingOutcome.Completed,
                 result.Outcome);
         }
 
@@ -141,6 +146,9 @@ public sealed class AIAnalysisJobProcessorMySqlTests
         new(
             context,
             tenant,
+            new SuccessfulAIService(),
+            new AIAnalysisRequestFactory(),
+            new AIReasoningAnalysisBuilder(),
             new RuleBasedFallbackBuilder(),
             new AIAnalysisJobStateMachine(),
             new FixedTimeProvider(UtcNow));
@@ -207,6 +215,57 @@ public sealed class AIAnalysisJobProcessorMySqlTests
                 CreatedAt = UtcNow.AddMinutes(-2),
                 UpdatedAt = UtcNow.AddMinutes(-1)
             });
+            var subjectId = Guid.NewGuid();
+            context.Questions.Add(new Question
+            {
+                QuestionId = 1,
+                CenterId = centerId,
+                SubjectId = subjectId,
+                PrimaryTopicNodeId = 1,
+                CreatedByTeacherId = Guid.NewGuid(),
+                QuestionType = QuestionType.Essay,
+                Difficulty = 3,
+                QuestionText = "Relational question",
+                CorrectAnswer = "answer",
+                Solution = "solution",
+                ExpectedReasoning = "reasoning",
+                GradingCriteria = new GradingCriteria
+                {
+                    SchemaVersion = "1.0",
+                    RequiredIdeas = ["idea"],
+                    CommonErrors = ["error"],
+                    ScoringNotes = "notes"
+                },
+                MaxScore = 1,
+                EstimatedTimeSeconds = 60,
+                ReasoningRequired = true,
+                LanguageCode = "en",
+                Status = QuestionStatus.Active,
+                CreatedAt = UtcNow.AddDays(-1),
+                UpdatedAt = UtcNow.AddDays(-1)
+            });
+            context.KnowledgeNodes.Add(new KnowledgeNode
+            {
+                NodeId = 1,
+                CenterId = centerId,
+                SubjectId = subjectId,
+                NodeType = NodeType.Topic,
+                NodeCode = "REL-1",
+                NodeName = "Relational topic",
+                ExamImportance = 50,
+                EstimatedLearningMinutes = 20,
+                IsActive = true,
+                CreatedAt = UtcNow.AddDays(-1),
+                UpdatedAt = UtcNow.AddDays(-1)
+            });
+            context.QuestionKnowledgeNodes.Add(new QuestionKnowledgeNode
+            {
+                CenterId = centerId,
+                QuestionId = 1,
+                NodeId = 1,
+                MappingRole = MappingRole.Primary,
+                CreatedAt = UtcNow.AddDays(-1)
+            });
             await context.SaveChangesAsync();
         }
         finally
@@ -237,6 +296,27 @@ public sealed class AIAnalysisJobProcessorMySqlTests
     private sealed class FixedTimeProvider(DateTime utcNow) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => new(utcNow);
+    }
+
+    private sealed class SuccessfulAIService : IAIService
+    {
+        public Task<AnalyzeReasoningResponse> AnalyzeReasoningAsync(
+            AnalyzeReasoningRequest request,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(new AnalyzeReasoningResponse
+            {
+                SchemaVersion = AIAnalysisContract.SchemaVersion,
+                Language = request.Language,
+                ReasoningQuality = 90,
+                ErrorType = ErrorType.None,
+                MissingSteps = [],
+                RootCauseNodeIds = [],
+                Confidence = 95,
+                Feedback = "Valid relational response."
+            });
+        }
     }
 
     private sealed class ThrowAfterSaveInterceptor : SaveChangesInterceptor

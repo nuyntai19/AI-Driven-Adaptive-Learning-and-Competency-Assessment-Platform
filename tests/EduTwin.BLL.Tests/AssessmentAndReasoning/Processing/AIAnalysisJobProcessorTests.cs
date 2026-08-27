@@ -1,10 +1,15 @@
 using EduTwin.BLL.AssessmentAndReasoning.Jobs;
+using EduTwin.BLL.AssessmentAndReasoning.AI;
 using EduTwin.BLL.AssessmentAndReasoning.Processing;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.Assignments;
+using EduTwin.Contracts.CurriculumAndQuestions;
+using EduTwin.Contracts.KnowledgeGraph;
 using EduTwin.DAL.AssessmentAndReasoning;
 using EduTwin.DAL.Assignments;
+using EduTwin.DAL.CurriculumAndQuestions;
+using EduTwin.DAL.KnowledgeGraph;
 using EduTwin.DAL.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -17,6 +22,267 @@ public sealed class AIAnalysisJobProcessorTests
 {
     private static readonly DateTime UtcNow =
         new(2026, 8, 14, 10, 0, 0, DateTimeKind.Utc);
+
+    [Theory]
+    [InlineData("vi")]
+    [InlineData("en")]
+    public async Task ExecuteAsync_ValidAIResponse_PersistsCompletedCheckpointWithMinimalOrderedContext(
+        string language)
+    {
+        var store = new InMemoryDatabaseRoot();
+        var databaseName = Guid.NewGuid().ToString();
+        var centerId = Guid.NewGuid();
+        await SeedAsync(
+            store,
+            databaseName,
+            centerId,
+            retryCount: 0,
+            language: language);
+        var tenant = new TenantContext();
+        using var tenantScope = tenant.BeginScope(centerId);
+        await using var context = CreateContext(store, databaseName, tenant);
+        using var cancellation = new CancellationTokenSource();
+        var aiService = new RecordingAIService((request, token) =>
+        {
+            Assert.Null(context.Database.CurrentTransaction);
+            Assert.Equal(cancellation.Token, token);
+            return Task.FromResult(ValidResponse(language));
+        });
+
+        var result = await CreateSut(context, tenant, UtcNow, aiService).ExecuteAsync(
+            1,
+            "worker-current",
+            cancellation.Token);
+
+        Assert.Equal(AIAnalysisJobProcessingOutcome.Completed, result.Outcome);
+        Assert.Equal(1, aiService.CallCount);
+        var request = Assert.IsType<AnalyzeReasoningRequest>(aiService.Request);
+        Assert.Equal(language, request.Language);
+        Assert.Equal(["10", "20"], request.AllowedKnowledgeNodes.Select(node => node.NodeId));
+        Assert.Equal(["Secondary mapped", "Primary mapped"], request.AllowedKnowledgeNodes.Select(node => node.NodeName));
+        var persisted = await ReloadAsync(store, databaseName, centerId);
+        Assert.Equal(AttemptStatus.Completed, persisted.Attempt.Status);
+        Assert.Equal(AIJobStatus.Completed, persisted.Job.Status);
+        Assert.Equal((byte)0, persisted.Job.RetryCount);
+        Assert.Null(persisted.Job.LeaseOwner);
+        Assert.Null(persisted.Job.LeaseUntil);
+        Assert.Null(persisted.Job.LastErrorCode);
+        Assert.Null(persisted.Job.LastErrorMessage);
+        var analysis = Assert.Single(persisted.Analyses);
+        Assert.False(analysis.IsFallback);
+        Assert.False(analysis.NeedsTeacherReview);
+        Assert.Equal(AnalysisProvider.Gemini, analysis.Provider);
+        Assert.Equal(84m, analysis.ReasoningQuality);
+        Assert.Equal(["20"], analysis.RootCauseNodeIds.RootElement.EnumerateArray().Select(item => item.GetString()));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_SkippedEmptyAnswerAndEmptyScoringNotes_StillCallsAIAndCompletes()
+    {
+        var store = new InMemoryDatabaseRoot();
+        var databaseName = Guid.NewGuid().ToString();
+        var centerId = Guid.NewGuid();
+        await SeedAsync(
+            store,
+            databaseName,
+            centerId,
+            retryCount: 0,
+            skipped: true,
+            finalAnswer: string.Empty,
+            emptyScoringNotes: true);
+        var aiService = new RecordingAIService((request, _) =>
+        {
+            Assert.Equal(string.Empty, request.StudentSubmission.FinalAnswer);
+            Assert.Equal(string.Empty, request.Question.GradingCriteria.ScoringNotes);
+            return Task.FromResult(ValidResponse("vi"));
+        });
+
+        var result = await ExecuteWithAIAsync(store, databaseName, centerId, aiService);
+
+        Assert.Equal(AIAnalysisJobProcessingOutcome.Completed, result.Outcome);
+        Assert.Equal(1, aiService.CallCount);
+        var persisted = await ReloadAsync(store, databaseName, centerId);
+        Assert.Equal(AttemptStatus.Completed, persisted.Attempt.Status);
+        Assert.Equal(AIJobStatus.Completed, persisted.Job.Status);
+        Assert.Single(persisted.Analyses);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_FirstProviderFailure_PersistsSingleSanitizedRetryWithoutAnalysis()
+    {
+        var store = new InMemoryDatabaseRoot();
+        var databaseName = Guid.NewGuid().ToString();
+        var centerId = Guid.NewGuid();
+        await SeedAsync(store, databaseName, centerId, retryCount: 0);
+        var aiService = new RecordingAIService((_, _) =>
+            throw new InvalidOperationException("raw-provider-sentinel-secret"));
+
+        var result = await ExecuteWithAIAsync(
+            store,
+            databaseName,
+            centerId,
+            aiService);
+
+        Assert.Equal(AIAnalysisJobProcessingOutcome.RetryScheduled, result.Outcome);
+        Assert.Equal(1, aiService.CallCount);
+        var persisted = await ReloadAsync(store, databaseName, centerId);
+        Assert.Equal(AttemptStatus.PendingAnalysis, persisted.Attempt.Status);
+        Assert.Equal(AIJobStatus.Pending, persisted.Job.Status);
+        Assert.Equal((byte)1, persisted.Job.RetryCount);
+        Assert.Equal(UtcNow, persisted.Job.AvailableAt);
+        Assert.Null(persisted.Job.StartedAt);
+        Assert.Null(persisted.Job.CompletedAt);
+        Assert.Null(persisted.Job.LeaseOwner);
+        Assert.Null(persisted.Job.LeaseUntil);
+        Assert.Equal("AI_ANALYSIS_ATTEMPT_FAILED", persisted.Job.LastErrorCode);
+        Assert.Equal("AI analysis attempt failed.", persisted.Job.LastErrorMessage);
+        Assert.DoesNotContain("sentinel", persisted.Job.LastErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(persisted.Analyses);
+    }
+
+    [Theory]
+    [InlineData((byte)0, AIAnalysisJobProcessingOutcome.RetryScheduled)]
+    [InlineData((byte)1, AIAnalysisJobProcessingOutcome.FallbackCompleted)]
+    public async Task ExecuteAsync_InvalidRequestContext_UsesDurableFailurePolicyWithoutProvider(
+        byte retryCount,
+        AIAnalysisJobProcessingOutcome expectedOutcome)
+    {
+        var store = new InMemoryDatabaseRoot();
+        var databaseName = Guid.NewGuid().ToString();
+        var centerId = Guid.NewGuid();
+        await SeedAsync(
+            store,
+            databaseName,
+            centerId,
+            retryCount: retryCount,
+            includeRequestContext: false);
+        var aiService = new RecordingAIService((_, _) =>
+            Task.FromResult(ValidResponse("vi")));
+
+        var result = await ExecuteWithAIAsync(store, databaseName, centerId, aiService);
+
+        Assert.Equal(expectedOutcome, result.Outcome);
+        Assert.Equal(0, aiService.CallCount);
+        var persisted = await ReloadAsync(store, databaseName, centerId);
+        Assert.Equal((byte)1, persisted.Job.RetryCount);
+        Assert.Equal(
+            retryCount == 0 ? AIJobStatus.Pending : AIJobStatus.FallbackCompleted,
+            persisted.Job.Status);
+        Assert.Equal(retryCount == 0 ? 0 : 1, persisted.Analyses.Count);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_SecondProviderFailure_PersistsFallbackWithoutThirdRetry()
+    {
+        var store = new InMemoryDatabaseRoot();
+        var databaseName = Guid.NewGuid().ToString();
+        var centerId = Guid.NewGuid();
+        await SeedAsync(store, databaseName, centerId, retryCount: 1);
+        var aiService = new RecordingAIService();
+
+        var result = await ExecuteWithAIAsync(store, databaseName, centerId, aiService);
+
+        Assert.Equal(AIAnalysisJobProcessingOutcome.FallbackCompleted, result.Outcome);
+        Assert.Equal(1, aiService.CallCount);
+        var persisted = await ReloadAsync(store, databaseName, centerId);
+        Assert.Equal(AIJobStatus.FallbackCompleted, persisted.Job.Status);
+        Assert.Equal((byte)1, persisted.Job.RetryCount);
+        Assert.Equal(AttemptStatus.NeedsTeacherReview, persisted.Attempt.Status);
+        Assert.Equal("AI_ANALYSIS_ATTEMPT_FAILED", persisted.Job.LastErrorCode);
+        Assert.Equal("AI analysis attempt failed.", persisted.Job.LastErrorMessage);
+        var fallback = Assert.Single(persisted.Analyses);
+        Assert.Null(fallback.ReasoningQuality);
+        Assert.True(fallback.NeedsTeacherReview);
+        Assert.Equal(AnalysisProvider.RuleBased, fallback.Provider);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_CallerCancellationDuringProvider_PropagatesWithoutMutation()
+    {
+        var store = new InMemoryDatabaseRoot();
+        var databaseName = Guid.NewGuid().ToString();
+        var centerId = Guid.NewGuid();
+        await SeedAsync(store, databaseName, centerId, retryCount: 0);
+        using var cancellation = new CancellationTokenSource();
+        var aiService = new RecordingAIService((_, token) =>
+        {
+            cancellation.Cancel();
+            token.ThrowIfCancellationRequested();
+            return Task.FromResult(ValidResponse("vi"));
+        });
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            ExecuteWithAIAsync(
+                store,
+                databaseName,
+                centerId,
+                aiService,
+                cancellation.Token));
+
+        Assert.Equal(1, aiService.CallCount);
+        await AssertUnchangedAsync(store, databaseName, centerId);
+    }
+
+    [Theory]
+    [InlineData("lease")]
+    [InlineData("question")]
+    [InlineData("mapping")]
+    [InlineData("attempt")]
+    public async Task ExecuteAsync_ContextOrAggregateDriftsDuringProvider_DiscardsResult(
+        string driftKind)
+    {
+        var store = new InMemoryDatabaseRoot();
+        var databaseName = Guid.NewGuid().ToString();
+        var centerId = Guid.NewGuid();
+        await SeedAsync(store, databaseName, centerId, retryCount: 0);
+        var aiService = new RecordingAIService(async (_, _) =>
+        {
+            await ApplyDriftAsync(store, databaseName, centerId, driftKind);
+            return ValidResponse("vi");
+        });
+
+        var result = await ExecuteWithAIAsync(store, databaseName, centerId, aiService);
+
+        Assert.Equal(AIAnalysisJobProcessingOutcome.NotEligible, result.Outcome);
+        var persisted = await ReloadAsync(store, databaseName, centerId);
+        Assert.Empty(persisted.Analyses);
+        Assert.NotEqual(AIJobStatus.Completed, persisted.Job.Status);
+        Assert.NotEqual(AIJobStatus.FallbackCompleted, persisted.Job.Status);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ExistingAnalysis_PreventsProviderCall()
+    {
+        var store = new InMemoryDatabaseRoot();
+        var databaseName = Guid.NewGuid().ToString();
+        var centerId = Guid.NewGuid();
+        await SeedAsync(store, databaseName, centerId);
+        await AddExistingAnalysisAsync(store, databaseName, centerId);
+        var aiService = new RecordingAIService((_, _) => Task.FromResult(ValidResponse("vi")));
+
+        var result = await ExecuteWithAIAsync(store, databaseName, centerId, aiService);
+
+        Assert.Equal(AIAnalysisJobProcessingOutcome.NotEligible, result.Outcome);
+        Assert.Equal(0, aiService.CallCount);
+    }
+
+    [Theory]
+    [InlineData(AIJobStatus.Completed)]
+    [InlineData(AIJobStatus.FallbackCompleted)]
+    [InlineData(AIJobStatus.FailedTerminal)]
+    public async Task ExecuteAsync_TerminalJob_PreventsProviderCall(AIJobStatus status)
+    {
+        var store = new InMemoryDatabaseRoot();
+        var databaseName = Guid.NewGuid().ToString();
+        var centerId = Guid.NewGuid();
+        await SeedAsync(store, databaseName, centerId, jobStatus: status);
+        var aiService = new RecordingAIService((_, _) => Task.FromResult(ValidResponse("vi")));
+
+        var result = await ExecuteWithAIAsync(store, databaseName, centerId, aiService);
+
+        Assert.Equal(AIAnalysisJobProcessingOutcome.AlreadyTerminal, result.Outcome);
+        Assert.Equal(0, aiService.CallCount);
+    }
 
     [Fact]
     public async Task ExecuteAsync_ValidClaim_AtomicallyPersistsFallbackTerminalCheckpoint()
@@ -38,7 +304,7 @@ public sealed class AIAnalysisJobProcessorTests
         Assert.Equal(UtcNow, persisted.Job.CompletedAt);
         Assert.Null(persisted.Job.LeaseOwner);
         Assert.Null(persisted.Job.LeaseUntil);
-        Assert.Equal((byte)0, persisted.Job.RetryCount);
+        Assert.Equal((byte)1, persisted.Job.RetryCount);
         Assert.Equal(2ul, persisted.Job.RowVersion);
         var analysis = Assert.Single(persisted.Analyses);
         Assert.Equal("ai-analysis-v1", analysis.SchemaVersion);
@@ -161,6 +427,9 @@ public sealed class AIAnalysisJobProcessorTests
         var sut = new AIAnalysisJobProcessor(
             context,
             tenant,
+            new RecordingAIService(),
+            new AIAnalysisRequestFactory(),
+            new AIReasoningAnalysisBuilder(),
             new RuleBasedFallbackBuilder(),
             new AIAnalysisJobStateMachine(),
             new SequenceTimeProvider(UtcNow, UtcNow.AddSeconds(2)));
@@ -191,6 +460,9 @@ public sealed class AIAnalysisJobProcessorTests
         var sut = new AIAnalysisJobProcessor(
             context,
             tenant,
+            new RecordingAIService(),
+            new AIAnalysisRequestFactory(),
+            new AIReasoningAnalysisBuilder(),
             new RuleBasedFallbackBuilder(),
             new AIAnalysisJobStateMachine(),
             new SequenceTimeProvider(
@@ -402,6 +674,9 @@ public sealed class AIAnalysisJobProcessorTests
         var sut = new AIAnalysisJobProcessor(
             context,
             tenant,
+            new RecordingAIService(),
+            new AIAnalysisRequestFactory(),
+            new AIReasoningAnalysisBuilder(),
             new ThrowingFallbackBuilder(),
             new AIAnalysisJobStateMachine(),
             new FixedTimeProvider(UtcNow));
@@ -478,13 +753,100 @@ public sealed class AIAnalysisJobProcessorTests
             cancellationToken);
     }
 
+    private static async Task<AIAnalysisJobProcessingResult> ExecuteWithAIAsync(
+        InMemoryDatabaseRoot store,
+        string databaseName,
+        Guid centerId,
+        IAIService aiService,
+        CancellationToken cancellationToken = default)
+    {
+        var tenant = new TenantContext();
+        using var tenantScope = tenant.BeginScope(centerId);
+        await using var context = CreateContext(store, databaseName, tenant);
+        return await CreateSut(context, tenant, UtcNow, aiService).ExecuteAsync(
+            1,
+            "worker-current",
+            cancellationToken);
+    }
+
+    private static AnalyzeReasoningResponse ValidResponse(string language) => new()
+    {
+        SchemaVersion = AIAnalysisContract.SchemaVersion,
+        Language = language,
+        MethodDetected = "worked-example",
+        ReasoningQuality = 84,
+        ErrorType = ErrorType.Reasoning,
+        Misconception = "missed transition",
+        MissingSteps = ["show transition", "verify result"],
+        RootCauseNodeIds = ["20"],
+        Confidence = 91,
+        Feedback = "Show the transition explicitly."
+    };
+
+    private static async Task ApplyDriftAsync(
+        InMemoryDatabaseRoot store,
+        string databaseName,
+        Guid centerId,
+        string driftKind)
+    {
+        var tenant = new TenantContext();
+        using var tenantScope = tenant.BeginScope(centerId);
+        await using var context = CreateContext(store, databaseName, tenant);
+        switch (driftKind)
+        {
+            case "lease":
+                (await context.AIAnalysisJobs.SingleAsync()).LeaseOwner = "other-worker";
+                break;
+            case "question":
+                (await context.Questions.SingleAsync()).QuestionText = "concurrently changed";
+                break;
+            case "mapping":
+                context.QuestionKnowledgeNodes.Remove(
+                    await context.QuestionKnowledgeNodes.SingleAsync(mapping =>
+                        mapping.NodeId == 10
+                        && mapping.MappingRole == MappingRole.Secondary));
+                break;
+            case "attempt":
+                (await context.Attempts.SingleAsync()).ReasoningText = "concurrently changed";
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(driftKind));
+        }
+
+        await context.SaveChangesAsync();
+    }
+
+    private static async Task AddExistingAnalysisAsync(
+        InMemoryDatabaseRoot store,
+        string databaseName,
+        Guid centerId)
+    {
+        var tenant = new TenantContext();
+        using var tenantScope = tenant.BeginScope(centerId);
+        await using var context = CreateContext(store, databaseName, tenant);
+        context.ReasoningAnalyses.Add(new RuleBasedFallbackBuilder().Build(
+            new RuleBasedFallbackInput(
+                centerId,
+                1,
+                true,
+                1,
+                false,
+                "vi",
+                UtcNow)));
+        await context.SaveChangesAsync();
+    }
+
     private static AIAnalysisJobProcessor CreateSut(
         EduTwinDbContext context,
         TenantContext tenant,
-        DateTime utcNow) =>
+        DateTime utcNow,
+        IAIService? aiService = null) =>
         new(
             context,
             tenant,
+            aiService ?? new RecordingAIService(),
+            new AIAnalysisRequestFactory(),
+            new AIReasoningAnalysisBuilder(),
             new RuleBasedFallbackBuilder(),
             new AIAnalysisJobStateMachine(),
             new FixedTimeProvider(utcNow));
@@ -516,7 +878,13 @@ public sealed class AIAnalysisJobProcessorTests
         string? leaseOwner = "worker-current",
         DateTime? leaseUntil = null,
         bool nullLease = false,
-        Guid? assignmentId = null)
+        Guid? assignmentId = null,
+        byte retryCount = 1,
+        string language = "vi",
+        bool includeRequestContext = true,
+        bool skipped = false,
+        string? finalAnswer = null,
+        bool emptyScoringNotes = false)
     {
         var tenant = new TenantContext();
         using var tenantScope = tenant.BeginScope(centerId);
@@ -528,15 +896,15 @@ public sealed class AIAnalysisJobProcessorTests
             StudentId = Guid.NewGuid(),
             QuestionId = 10,
             AssignmentId = assignmentId,
-            FinalAnswer = "raw-answer-must-not-be-copied",
+            FinalAnswer = finalAnswer ?? "raw-answer-must-not-be-copied",
             ReasoningText = "raw-reasoning-must-not-be-copied",
             IsCorrect = true,
             AwardedScore = 1,
             TimeSpentSeconds = 30,
             Confidence = 80,
             AnswerChanges = 0,
-            Skipped = false,
-            ReasoningLanguage = "vi",
+            Skipped = skipped,
+            ReasoningLanguage = language,
             Status = attemptStatus,
             ClientSubmissionId = Guid.NewGuid(),
             CreatedAt = UtcNow.AddMinutes(-2),
@@ -549,7 +917,7 @@ public sealed class AIAnalysisJobProcessorTests
             CenterId = centerId,
             AttemptId = 1,
             Status = jobStatus,
-            RetryCount = 0,
+            RetryCount = retryCount,
             AvailableAt = UtcNow.AddMinutes(-2),
             StartedAt = jobStatus == AIJobStatus.Processing ? UtcNow.AddMinutes(-1) : null,
             LeaseOwner = jobStatus == AIJobStatus.Processing ? leaseOwner : null,
@@ -560,6 +928,10 @@ public sealed class AIAnalysisJobProcessorTests
             CreatedAt = UtcNow.AddMinutes(-2),
             UpdatedAt = UtcNow.AddMinutes(-1)
         });
+        if (includeRequestContext)
+        {
+            AddRequestContext(context, centerId, language, emptyScoringNotes);
+        }
         if (assignmentId.HasValue)
         {
             context.StudentAssignmentProgresses.Add(new StudentAssignmentProgress
@@ -578,6 +950,100 @@ public sealed class AIAnalysisJobProcessorTests
         }
 
         await context.SaveChangesAsync();
+    }
+
+    private static void AddRequestContext(
+        EduTwinDbContext context,
+        Guid centerId,
+        string language,
+        bool emptyScoringNotes)
+    {
+        var subjectId = Guid.NewGuid();
+        var otherSubjectId = Guid.NewGuid();
+        var otherCenterId = Guid.NewGuid();
+        context.Questions.Add(new Question
+        {
+            QuestionId = 10,
+            CenterId = centerId,
+            SubjectId = subjectId,
+            PrimaryTopicNodeId = 20,
+            CreatedByTeacherId = Guid.NewGuid(),
+            QuestionType = QuestionType.Essay,
+            Difficulty = 3,
+            QuestionText = "Explain the solution.",
+            CorrectAnswer = "42",
+            Solution = "Apply the stated method.",
+            ExpectedReasoning = "Show each transition.",
+            GradingCriteria = new GradingCriteria
+            {
+                SchemaVersion = "1.0",
+                RequiredIdeas = ["method", "result"],
+                CommonErrors = ["sign"],
+                ScoringNotes = emptyScoringNotes
+                    ? string.Empty
+                    : "Award for a valid method."
+            },
+            MaxScore = 1,
+            EstimatedTimeSeconds = 60,
+            ReasoningRequired = true,
+            LanguageCode = language,
+            Status = QuestionStatus.Active,
+            CreatedAt = UtcNow.AddDays(-1),
+            UpdatedAt = UtcNow.AddDays(-1)
+        });
+
+        context.KnowledgeNodes.AddRange(
+            Node(10, centerId, subjectId, "Secondary mapped", true, false),
+            Node(20, centerId, subjectId, "Primary mapped", true, false),
+            Node(30, centerId, subjectId, "Inactive mapped", false, false),
+            Node(40, centerId, subjectId, "Deleted mapped", true, true),
+            Node(50, centerId, otherSubjectId, "Different subject mapped", true, false),
+            Node(60, centerId, subjectId, "Unmapped", true, false),
+            Node(70, otherCenterId, subjectId, "Cross tenant mapped", true, false));
+
+        context.QuestionKnowledgeNodes.AddRange(
+            Mapping(centerId, 10, 10, MappingRole.Secondary),
+            Mapping(centerId, 10, 20, MappingRole.Primary),
+            Mapping(centerId, 10, 20, MappingRole.Prerequisite),
+            Mapping(centerId, 10, 30, MappingRole.Secondary),
+            Mapping(centerId, 10, 40, MappingRole.Secondary),
+            Mapping(centerId, 10, 50, MappingRole.Secondary),
+            Mapping(otherCenterId, 10, 70, MappingRole.Secondary));
+
+        static KnowledgeNode Node(
+            ulong id,
+            Guid nodeCenterId,
+            Guid nodeSubjectId,
+            string name,
+            bool active,
+            bool deleted) => new()
+        {
+            NodeId = id,
+            CenterId = nodeCenterId,
+            SubjectId = nodeSubjectId,
+            NodeType = NodeType.Topic,
+            NodeCode = $"NODE-{id}",
+            NodeName = name,
+            ExamImportance = 50,
+            EstimatedLearningMinutes = 20,
+            IsActive = active,
+            IsDeleted = deleted,
+            CreatedAt = UtcNow.AddDays(-1),
+            UpdatedAt = UtcNow.AddDays(-1)
+        };
+
+        static QuestionKnowledgeNode Mapping(
+            Guid mappingCenterId,
+            ulong questionId,
+            ulong nodeId,
+            MappingRole role) => new()
+        {
+            CenterId = mappingCenterId,
+            QuestionId = questionId,
+            NodeId = nodeId,
+            MappingRole = role,
+            CreatedAt = UtcNow.AddDays(-1)
+        };
     }
 
     private static async Task<PersistedState> ReloadAsync(
@@ -715,5 +1181,31 @@ public sealed class AIAnalysisJobProcessorTests
     {
         public ReasoningAnalysis Build(RuleBasedFallbackInput input) =>
             throw new InvalidOperationException("Deliberate fallback build failure.");
+    }
+
+    private sealed class RecordingAIService : IAIService
+    {
+        private readonly Func<AnalyzeReasoningRequest, CancellationToken, Task<AnalyzeReasoningResponse>>
+            _handler;
+
+        public RecordingAIService(
+            Func<AnalyzeReasoningRequest, CancellationToken, Task<AnalyzeReasoningResponse>>?
+                handler = null)
+        {
+            _handler = handler ?? ((_, _) =>
+                throw new InvalidOperationException("Deliberate AI analysis failure."));
+        }
+
+        public int CallCount { get; private set; }
+        public AnalyzeReasoningRequest? Request { get; private set; }
+
+        public Task<AnalyzeReasoningResponse> AnalyzeReasoningAsync(
+            AnalyzeReasoningRequest request,
+            CancellationToken cancellationToken)
+        {
+            CallCount++;
+            Request = request;
+            return _handler(request, cancellationToken);
+        }
     }
 }

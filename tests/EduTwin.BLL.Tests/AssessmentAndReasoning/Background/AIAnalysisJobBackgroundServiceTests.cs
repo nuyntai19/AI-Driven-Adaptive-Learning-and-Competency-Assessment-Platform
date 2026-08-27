@@ -10,6 +10,42 @@ namespace EduTwin.BLL.Tests.AssessmentAndReasoning.Background;
 
 public sealed class AIAnalysisJobBackgroundServiceTests
 {
+    [Theory]
+    [InlineData(AIAnalysisJobProcessingOutcome.Completed, 1, 0, 0, 0, 0, 0)]
+    [InlineData(AIAnalysisJobProcessingOutcome.RetryScheduled, 0, 1, 0, 0, 0, 0)]
+    [InlineData(AIAnalysisJobProcessingOutcome.FallbackCompleted, 0, 0, 1, 0, 0, 0)]
+    [InlineData(AIAnalysisJobProcessingOutcome.AlreadyTerminal, 0, 0, 0, 1, 0, 0)]
+    [InlineData(AIAnalysisJobProcessingOutcome.NotFound, 0, 0, 0, 0, 1, 0)]
+    [InlineData(AIAnalysisJobProcessingOutcome.NotEligible, 0, 0, 0, 0, 1, 0)]
+    [InlineData(AIAnalysisJobProcessingOutcome.LostRace, 0, 0, 0, 0, 0, 1)]
+    public async Task RunBatchOnceAsync_MapsEveryProcessingOutcomeToExactlyOneCounter(
+        AIAnalysisJobProcessingOutcome processingOutcome,
+        int completed,
+        int retryScheduled,
+        int fallbackCompleted,
+        int alreadyTerminal,
+        int processingStale,
+        int processingLostRace)
+    {
+        var scenario = new WorkerScenario([WorkItem(99, Guid.NewGuid())])
+        {
+            ProcessingOutcome = processingOutcome
+        };
+        await using var provider = BuildProvider(scenario);
+
+        var result = await CreateWorker(provider, TimeProvider.System)
+            .RunBatchOnceAsync(CancellationToken.None);
+
+        Assert.Equal(1, result.ClaimedCount);
+        Assert.Equal(completed, result.CompletedCount);
+        Assert.Equal(retryScheduled, result.RetryScheduledCount);
+        Assert.Equal(fallbackCompleted, result.FallbackCompletedCount);
+        Assert.Equal(alreadyTerminal, result.AlreadyTerminalCount);
+        Assert.Equal(processingStale, result.ProcessingStaleCount);
+        Assert.Equal(processingLostRace, result.ProcessingLostRaceCount);
+        Assert.Equal(0, result.ExceptionCount);
+    }
+
     [Fact]
     public async Task RunBatchOnceAsync_TwoCentersAndCandidateFailure_IsolatesScopesAndContinues()
     {
