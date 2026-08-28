@@ -87,6 +87,15 @@ public sealed class AIAnalysisJobBackgroundService : BackgroundService
         foreach (var workItem in discoveryResult.WorkItems)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            using var loggingScope = _logger.BeginScope(
+                new Dictionary<string, object?>
+                {
+                    ["CorrelationId"] = workItem.CorrelationId,
+                    ["CenterId"] = workItem.CenterId,
+                    ["AttemptId"] = workItem.AttemptId,
+                    ["AnalysisJobId"] = workItem.AnalysisJobId,
+                    ["WorkerId"] = _identity.Value
+                });
 
             try
             {
@@ -141,10 +150,17 @@ public sealed class AIAnalysisJobBackgroundService : BackgroundService
                                     null);
                         }
 
+                        var errorCode = processingResult.Outcome is
+                            AIAnalysisJobProcessingOutcome.RetryScheduled or
+                            AIAnalysisJobProcessingOutcome.FallbackCompleted
+                                ? "AI_ANALYSIS_ATTEMPT_FAILED"
+                                : null;
                         _logger.LogDebug(
-                            "AI analysis job processing outcome {Outcome} for job {AnalysisJobId}, center {CenterId}, correlation {CorrelationId}, worker {WorkerId}.",
+                            "AI analysis job processing outcome {Outcome} with error code {ErrorCode} for job {AnalysisJobId}, attempt {AttemptId}, center {CenterId}, correlation {CorrelationId}, worker {WorkerId}.",
                             processingResult.Outcome,
+                            errorCode,
                             workItem.AnalysisJobId,
+                            workItem.AttemptId,
                             workItem.CenterId,
                             workItem.CorrelationId,
                             _identity.Value);
@@ -164,9 +180,10 @@ public sealed class AIAnalysisJobBackgroundService : BackgroundService
                 }
 
                 _logger.LogDebug(
-                    "AI analysis job lease outcome {Outcome} for job {AnalysisJobId}, center {CenterId}, correlation {CorrelationId}, worker {WorkerId}.",
+                    "AI analysis job lease outcome {Outcome} for job {AnalysisJobId}, attempt {AttemptId}, center {CenterId}, correlation {CorrelationId}, worker {WorkerId}.",
                     result.Outcome,
                     workItem.AnalysisJobId,
+                    workItem.AttemptId,
                     workItem.CenterId,
                     workItem.CorrelationId,
                     _identity.Value);
@@ -179,8 +196,9 @@ public sealed class AIAnalysisJobBackgroundService : BackgroundService
             {
                 exceptions++;
                 _logger.LogError(
-                    "AI analysis job candidate failed for job {AnalysisJobId}, center {CenterId}, correlation {CorrelationId}, worker {WorkerId} with {ExceptionType}.",
+                    "AI analysis job candidate failed for job {AnalysisJobId}, attempt {AttemptId}, center {CenterId}, correlation {CorrelationId}, worker {WorkerId} with {ExceptionType}.",
                     workItem.AnalysisJobId,
+                    workItem.AttemptId,
                     workItem.CenterId,
                     workItem.CorrelationId,
                     _identity.Value,

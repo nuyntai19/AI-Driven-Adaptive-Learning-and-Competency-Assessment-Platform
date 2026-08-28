@@ -17,7 +17,7 @@ public sealed class GoogleGenAIGenerateContentClient : IGeminiGenerateContentCli
         _options = options.Value;
     }
 
-    public async Task<string> GenerateContentAsync(
+    public async Task<GeminiGenerateContentResult> GenerateContentAsync(
         string model,
         string prompt,
         GenerateContentConfig config,
@@ -32,12 +32,11 @@ public sealed class GoogleGenAIGenerateContentClient : IGeminiGenerateContentCli
                 cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (string.IsNullOrWhiteSpace(response.Text))
-            {
-                throw GeminiAdapterException.ResponseEmpty();
-            }
-
-            return response.Text;
+            return new GeminiGenerateContentResult(
+                response.Text ?? string.Empty,
+                response.UsageMetadata?.PromptTokenCount,
+                response.UsageMetadata?.CandidatesTokenCount,
+                response.UsageMetadata?.TotalTokenCount);
         }
         catch (OperationCanceledException)
         {

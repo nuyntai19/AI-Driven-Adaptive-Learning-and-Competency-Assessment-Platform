@@ -8,6 +8,7 @@ public enum AIAnalysisJobWorkKind
 
 public sealed record AIAnalysisJobWorkItem(
     ulong AnalysisJobId,
+    ulong AttemptId,
     Guid CenterId,
     string CorrelationId,
     AIAnalysisJobWorkKind Kind,

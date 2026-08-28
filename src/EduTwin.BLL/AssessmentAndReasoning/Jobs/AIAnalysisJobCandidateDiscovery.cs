@@ -68,6 +68,7 @@ public sealed class AIAnalysisJobCandidateDiscovery : IAIAnalysisJobCandidateDis
                 .Select(job => new
                 {
                     job.AnalysisJobId,
+                    job.AttemptId,
                     job.CenterId,
                     job.CorrelationId,
                     job.Status,
@@ -90,6 +91,7 @@ public sealed class AIAnalysisJobCandidateDiscovery : IAIAnalysisJobCandidateDis
 
                 candidates.Add(new AIAnalysisJobWorkItem(
                     row.AnalysisJobId,
+                    row.AttemptId,
                     row.CenterId,
                     row.CorrelationId,
                     row.Status == AIJobStatus.Pending

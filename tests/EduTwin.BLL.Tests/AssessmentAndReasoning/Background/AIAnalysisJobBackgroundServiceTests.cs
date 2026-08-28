@@ -3,7 +3,7 @@ using EduTwin.BLL.AssessmentAndReasoning.Jobs;
 using EduTwin.BLL.AssessmentAndReasoning.Processing;
 using EduTwin.BLL.IdentityAndTenancy;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace EduTwin.BLL.Tests.AssessmentAndReasoning.Background;
@@ -44,6 +44,18 @@ public sealed class AIAnalysisJobBackgroundServiceTests
         Assert.Equal(processingStale, result.ProcessingStaleCount);
         Assert.Equal(processingLostRace, result.ProcessingLostRaceCount);
         Assert.Equal(0, result.ExceptionCount);
+
+        var processingLog = Assert.Single(
+            scenario.LoggerProvider.Entries,
+            entry => entry.Template.Contains("processing outcome", StringComparison.Ordinal));
+        Assert.Equal(processingOutcome, processingLog.State["Outcome"]);
+        Assert.Equal(
+            processingOutcome is AIAnalysisJobProcessingOutcome.RetryScheduled
+                or AIAnalysisJobProcessingOutcome.FallbackCompleted
+                    ? "AI_ANALYSIS_ATTEMPT_FAILED"
+                    : null,
+            processingLog.State["ErrorCode"]);
+        AssertStructuredIdentity(processingLog, scenario.WorkItems[0]);
     }
 
     [Fact]
@@ -76,6 +88,25 @@ public sealed class AIAnalysisJobBackgroundServiceTests
         Assert.All(scenario.TenantResolvedAtLeaseDisposal, Assert.False);
         Assert.All(scenario.TenantResolvedAtProcessorDisposal, Assert.False);
         Assert.Equal(1, scenario.DiscoveryDisposals);
+        Assert.Empty(scenario.LoggerProvider.CaptureCurrentScopes());
+
+        var candidateError = Assert.Single(
+            scenario.LoggerProvider.Entries,
+            entry => entry.Template.Contains("candidate failed", StringComparison.Ordinal));
+        Assert.Null(candidateError.Exception);
+        Assert.Equal(nameof(InvalidOperationException), candidateError.State["ExceptionType"]);
+        Assert.DoesNotContain(
+            "Deliberate test exception.",
+            candidateError.Message,
+            StringComparison.Ordinal);
+        AssertJobScope(candidateError, scenario.WorkItems[0]);
+
+        var leaseEntries = scenario.LoggerProvider.Entries
+            .Where(entry => entry.Category.EndsWith(nameof(RecordingLeaseOperation), StringComparison.Ordinal))
+            .ToArray();
+        Assert.Equal(2, leaseEntries.Length);
+        AssertJobScope(leaseEntries[0], scenario.WorkItems[0]);
+        AssertJobScope(leaseEntries[1], scenario.WorkItems[1]);
     }
 
     [Fact]
@@ -94,6 +125,35 @@ public sealed class AIAnalysisJobBackgroundServiceTests
         Assert.Equal(2, scenario.DiscoveryDisposals);
         Assert.Equal(2, scenario.LeaseOperationDisposals);
         Assert.Equal(2, scenario.ProcessorDisposals);
+    }
+
+    [Fact]
+    public async Task RunBatchOnceAsync_PerCandidateScopeSpansLeaseAndProcessingAndDisposesAfterSuccess()
+    {
+        var workItem = WorkItem(300, Guid.NewGuid());
+        var scenario = new WorkerScenario([workItem])
+        {
+            ProcessingOutcome = AIAnalysisJobProcessingOutcome.Completed
+        };
+        await using var provider = BuildProvider(scenario);
+
+        await CreateWorker(provider, TimeProvider.System)
+            .RunBatchOnceAsync(CancellationToken.None);
+
+        var leaseEntry = Assert.Single(
+            scenario.LoggerProvider.Entries,
+            entry => entry.Category.EndsWith(nameof(RecordingLeaseOperation), StringComparison.Ordinal));
+        var processingEntry = Assert.Single(
+            scenario.LoggerProvider.Entries,
+            entry => entry.Category.EndsWith(nameof(RecordingProcessor), StringComparison.Ordinal));
+        AssertJobScope(leaseEntry, workItem);
+        AssertJobScope(processingEntry, workItem);
+        var leaseOutcomeEntry = Assert.Single(
+            scenario.LoggerProvider.Entries,
+            entry => entry.Template.Contains("lease outcome", StringComparison.Ordinal));
+        Assert.Equal(AIAnalysisJobLeaseOutcome.Claimed, leaseOutcomeEntry.State["Outcome"]);
+        AssertStructuredIdentity(leaseOutcomeEntry, workItem);
+        Assert.Empty(scenario.LoggerProvider.CaptureCurrentScopes());
     }
 
     [Theory]
@@ -138,6 +198,7 @@ public sealed class AIAnalysisJobBackgroundServiceTests
         Assert.Equal([centerA, centerB], scenario.ProcessorObservedCenters);
         Assert.Equal(2, scenario.ProcessorDisposals);
         Assert.All(scenario.TenantResolvedAtProcessorDisposal, Assert.False);
+        Assert.Empty(scenario.LoggerProvider.CaptureCurrentScopes());
     }
 
     [Fact]
@@ -159,6 +220,11 @@ public sealed class AIAnalysisJobBackgroundServiceTests
         Assert.Single(scenario.TenantResolvedAtLeaseDisposal);
         Assert.False(scenario.TenantResolvedAtLeaseDisposal[0]);
         Assert.Equal(1, scenario.DiscoveryDisposals);
+        Assert.Empty(scenario.LoggerProvider.CaptureCurrentScopes());
+        var leaseEntry = Assert.Single(
+            scenario.LoggerProvider.Entries,
+            entry => entry.Category.EndsWith(nameof(RecordingLeaseOperation), StringComparison.Ordinal));
+        AssertJobScope(leaseEntry, scenario.WorkItems[0]);
     }
 
     [Fact]
@@ -179,7 +245,7 @@ public sealed class AIAnalysisJobBackgroundServiceTests
             timeProvider,
             options,
             new AIAnalysisJobWorkerIdentity("worker-test"),
-            NullLogger<AIAnalysisJobBackgroundService>.Instance);
+            provider.GetRequiredService<ILogger<AIAnalysisJobBackgroundService>>());
 
         await sut.StartAsync(CancellationToken.None);
         var dueTime = await timeProvider.TimerCreated.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -210,7 +276,7 @@ public sealed class AIAnalysisJobBackgroundServiceTests
             timeProvider,
             options,
             new AIAnalysisJobWorkerIdentity("worker-test"),
-            NullLogger<AIAnalysisJobBackgroundService>.Instance);
+            provider.GetRequiredService<ILogger<AIAnalysisJobBackgroundService>>());
 
         await sut.StartAsync(CancellationToken.None);
         var dueTime = await timeProvider.TimerCreated.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -224,6 +290,11 @@ public sealed class AIAnalysisJobBackgroundServiceTests
     {
         var services = new ServiceCollection();
         services.AddIdentityAndTenancy();
+        services.AddLogging(builder =>
+        {
+            builder.SetMinimumLevel(LogLevel.Trace);
+            builder.AddProvider(scenario.LoggerProvider);
+        });
         services.AddSingleton(scenario);
         services.AddScoped<IAIAnalysisJobCandidateDiscovery, RecordingDiscovery>();
         services.AddScoped<IAIAnalysisJobLeaseOperation, RecordingLeaseOperation>();
@@ -244,10 +315,11 @@ public sealed class AIAnalysisJobBackgroundServiceTests
                 PerCenterBatchSize = 5
             },
             new AIAnalysisJobWorkerIdentity("worker-test"),
-            NullLogger<AIAnalysisJobBackgroundService>.Instance);
+            provider.GetRequiredService<ILogger<AIAnalysisJobBackgroundService>>());
 
     private static AIAnalysisJobWorkItem WorkItem(ulong id, Guid centerId) => new(
         id,
+        id + 1000,
         centerId,
         $"correlation-{id}",
         AIAnalysisJobWorkKind.Claim,
@@ -279,6 +351,7 @@ public sealed class AIAnalysisJobBackgroundServiceTests
         public int DiscoveryDisposals { get; private set; }
         public int LeaseOperationDisposals { get; private set; }
         public int ProcessorDisposals { get; private set; }
+        public CapturingLoggerProvider LoggerProvider { get; } = new();
 
         public void RecordDiscovery(Guid instanceId)
         {
@@ -367,14 +440,17 @@ public sealed class AIAnalysisJobBackgroundServiceTests
     {
         private readonly WorkerScenario _scenario;
         private readonly ITenantContext _tenantContext;
+        private readonly ILogger<RecordingLeaseOperation> _logger;
         private readonly Guid _instanceId = Guid.NewGuid();
 
         public RecordingLeaseOperation(
             WorkerScenario scenario,
-            ITenantContext tenantContext)
+            ITenantContext tenantContext,
+            ILogger<RecordingLeaseOperation> logger)
         {
             _scenario = scenario;
             _tenantContext = tenantContext;
+            _logger = logger;
         }
 
         public Task<AIAnalysisJobLeaseResult> ExecuteAsync(
@@ -384,6 +460,7 @@ public sealed class AIAnalysisJobBackgroundServiceTests
             CancellationToken cancellationToken)
         {
             _scenario.RecordLeaseExecution(_instanceId, _tenantContext);
+            _logger.LogDebug("Recording lease operation executed.");
             if (_scenario.CancelOnJobId == workItem.AnalysisJobId)
             {
                 _scenario.CancellationSource!.Cancel();
@@ -408,14 +485,17 @@ public sealed class AIAnalysisJobBackgroundServiceTests
     {
         private readonly WorkerScenario _scenario;
         private readonly ITenantContext _tenantContext;
+        private readonly ILogger<RecordingProcessor> _logger;
         private readonly Guid _instanceId = Guid.NewGuid();
 
         public RecordingProcessor(
             WorkerScenario scenario,
-            ITenantContext tenantContext)
+            ITenantContext tenantContext,
+            ILogger<RecordingProcessor> logger)
         {
             _scenario = scenario;
             _tenantContext = tenantContext;
+            _logger = logger;
         }
 
         public Task<AIAnalysisJobProcessingResult> ExecuteAsync(
@@ -425,6 +505,7 @@ public sealed class AIAnalysisJobBackgroundServiceTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             _scenario.RecordProcessorExecution(_instanceId, _tenantContext);
+            _logger.LogDebug("Recording processor executed.");
             if (_scenario.ThrowDuringProcessingJobId == analysisJobId)
             {
                 throw new InvalidOperationException("Deliberate processor failure.");
@@ -462,6 +543,115 @@ public sealed class AIAnalysisJobBackgroundServiceTests
             }
 
             public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        }
+    }
+
+    private static void AssertStructuredIdentity(
+        CapturedLog entry,
+        AIAnalysisJobWorkItem workItem)
+    {
+        Assert.Equal(workItem.AnalysisJobId, entry.State["AnalysisJobId"]);
+        Assert.Equal(workItem.AttemptId, entry.State["AttemptId"]);
+        Assert.Equal(workItem.CenterId, entry.State["CenterId"]);
+        Assert.Equal(workItem.CorrelationId, entry.State["CorrelationId"]);
+        Assert.Equal("worker-test", entry.State["WorkerId"]);
+        AssertJobScope(entry, workItem);
+    }
+
+    private static void AssertJobScope(CapturedLog entry, AIAnalysisJobWorkItem workItem)
+    {
+        var scope = Assert.Single(entry.Scopes);
+        Assert.Equal(5, scope.Count);
+        Assert.Equal(workItem.CorrelationId, scope["CorrelationId"]);
+        Assert.Equal(workItem.CenterId, scope["CenterId"]);
+        Assert.Equal(workItem.AttemptId, scope["AttemptId"]);
+        Assert.Equal(workItem.AnalysisJobId, scope["AnalysisJobId"]);
+        Assert.Equal("worker-test", scope["WorkerId"]);
+    }
+
+    private sealed record CapturedLog(
+        LogLevel Level,
+        string Category,
+        string Template,
+        string Message,
+        IReadOnlyDictionary<string, object?> State,
+        IReadOnlyList<IReadOnlyDictionary<string, object?>> Scopes,
+        Exception? Exception);
+
+    private sealed class CapturingLoggerProvider : ILoggerProvider, ISupportExternalScope
+    {
+        private readonly object _gate = new();
+        private IExternalScopeProvider _scopeProvider = new LoggerExternalScopeProvider();
+
+        public List<CapturedLog> Entries { get; } = [];
+
+        public ILogger CreateLogger(string categoryName) => new CapturingLogger(this, categoryName);
+
+        public void SetScopeProvider(IExternalScopeProvider scopeProvider) =>
+            _scopeProvider = scopeProvider;
+
+        public IReadOnlyList<IReadOnlyDictionary<string, object?>> CaptureCurrentScopes() =>
+            CaptureScopes();
+
+        public void Dispose()
+        {
+        }
+
+        private void Record<TState>(
+            LogLevel logLevel,
+            string category,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            var structuredState = ToDictionary(state);
+            var template = structuredState.TryGetValue("{OriginalFormat}", out var value)
+                ? value?.ToString() ?? string.Empty
+                : string.Empty;
+            var entry = new CapturedLog(
+                logLevel,
+                category,
+                template,
+                formatter(state, exception),
+                structuredState,
+                CaptureScopes(),
+                exception);
+            lock (_gate)
+            {
+                Entries.Add(entry);
+            }
+        }
+
+        private IReadOnlyList<IReadOnlyDictionary<string, object?>> CaptureScopes()
+        {
+            var scopes = new List<IReadOnlyDictionary<string, object?>>();
+            _scopeProvider.ForEachScope(
+                (scope, collection) => collection.Add(ToDictionary(scope)),
+                scopes);
+            return scopes;
+        }
+
+        private static IReadOnlyDictionary<string, object?> ToDictionary<TState>(TState state) =>
+            state is IEnumerable<KeyValuePair<string, object?>> values
+                ? values.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)
+                : new Dictionary<string, object?>();
+
+        private sealed class CapturingLogger(
+            CapturingLoggerProvider provider,
+            string category) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull =>
+                provider._scopeProvider.Push(state);
+
+            public bool IsEnabled(LogLevel logLevel) => true;
+
+            public void Log<TState>(
+                LogLevel logLevel,
+                EventId eventId,
+                TState state,
+                Exception? exception,
+                Func<TState, Exception?, string> formatter) =>
+                provider.Record(logLevel, category, state, exception, formatter);
         }
     }
 }

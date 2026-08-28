@@ -46,6 +46,7 @@ public sealed class AIAnalysisJobCandidateDiscoveryTests
 
         Assert.True(result.HasCandidates);
         Assert.Equal([1ul, 4ul, 2ul], result.WorkItems.Select(item => item.AnalysisJobId));
+        Assert.Equal([1001ul, 1004ul, 1002ul], result.WorkItems.Select(item => item.AttemptId));
         Assert.Equal(
             [
                 AIAnalysisJobWorkKind.Claim,
@@ -80,10 +81,22 @@ public sealed class AIAnalysisJobCandidateDiscoveryTests
             tenantContext,
             new FixedTimeProvider(UtcNow));
 
+        var allResults = await sut.DiscoverAsync(2, 4, CancellationToken.None);
+        Assert.Equal(
+            [
+                (21ul, 1021ul, centerB),
+                (11ul, 1011ul, centerA),
+                (12ul, 1012ul, centerA),
+                (22ul, 1022ul, centerB)
+            ],
+            allResults.WorkItems.Select(item =>
+                (item.AnalysisJobId, item.AttemptId, item.CenterId)));
+
         var result = await sut.DiscoverAsync(1, 1, CancellationToken.None);
 
         var workItem = Assert.Single(result.WorkItems);
         Assert.Equal(21ul, workItem.AnalysisJobId);
+        Assert.Equal(1021ul, workItem.AttemptId);
         Assert.Equal(centerB, workItem.CenterId);
         Assert.Equal("correlation-21", workItem.CorrelationId);
         Assert.False(tenantContext.IsResolved);
@@ -156,7 +169,7 @@ public sealed class AIAnalysisJobCandidateDiscoveryTests
     {
         AnalysisJobId = id,
         CenterId = centerId,
-        AttemptId = id,
+        AttemptId = id + 1000,
         Status = status,
         AvailableAt = availableAt,
         StartedAt = status == AIJobStatus.Processing ? UtcNow.AddMinutes(-10) : null,

@@ -2,9 +2,15 @@ using Google.GenAI.Types;
 
 namespace EduTwin.API.AssessmentAndReasoning.AI;
 
+public sealed record GeminiGenerateContentResult(
+    string ResponseText,
+    int? PromptTokenCount,
+    int? CandidatesTokenCount,
+    int? TotalTokenCount);
+
 public interface IGeminiGenerateContentClient
 {
-    Task<string> GenerateContentAsync(
+    Task<GeminiGenerateContentResult> GenerateContentAsync(
         string model,
         string prompt,
         GenerateContentConfig config,

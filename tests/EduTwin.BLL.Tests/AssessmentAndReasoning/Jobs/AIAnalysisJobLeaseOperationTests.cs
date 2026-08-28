@@ -412,7 +412,7 @@ public sealed class AIAnalysisJobLeaseOperationTests
         ulong id,
         Guid centerId,
         AIAnalysisJobWorkKind kind) =>
-        new(id, centerId, $"correlation-{id}", kind, UtcNow.AddMinutes(-1));
+        new(id, id, centerId, $"correlation-{id}", kind, UtcNow.AddMinutes(-1));
 
     private static AIAnalysisJob CreateJob(
         ulong id,

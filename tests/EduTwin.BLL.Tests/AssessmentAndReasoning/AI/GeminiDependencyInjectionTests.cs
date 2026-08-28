@@ -15,6 +15,7 @@ public sealed class GeminiDependencyInjectionTests
     public void AddGeminiAI_RegistersExactlyOneSemanticValidator()
     {
         var services = new ServiceCollection();
+        AddRuntimeDependencies(services);
 
         services.AddGeminiAI(CreateConfiguration());
 
@@ -25,6 +26,7 @@ public sealed class GeminiDependencyInjectionTests
     public void AddGeminiAI_RegistersExactlyOneStrictParser()
     {
         var services = new ServiceCollection();
+        AddRuntimeDependencies(services);
 
         services.AddGeminiAI(CreateConfiguration());
 
@@ -35,6 +37,7 @@ public sealed class GeminiDependencyInjectionTests
     public void AddGeminiAI_CalledTwice_DoesNotDuplicateParserValidatorOrIAIService()
     {
         var services = new ServiceCollection();
+        AddRuntimeDependencies(services);
         var configuration = CreateConfiguration();
 
         services.AddGeminiAI(configuration);
@@ -49,6 +52,7 @@ public sealed class GeminiDependencyInjectionTests
     public void AddGeminiAI_RegistersExactlyOneIAIServiceAsGeminiAIService()
     {
         var services = new ServiceCollection();
+        AddRuntimeDependencies(services);
         var configuration = CreateConfiguration();
 
         services.AddGeminiAI(configuration);
@@ -65,6 +69,7 @@ public sealed class GeminiDependencyInjectionTests
     public void AddGeminiAI_RegistersOfficialSdkWrapperBehindNarrowInterface()
     {
         var services = new ServiceCollection();
+        AddRuntimeDependencies(services);
 
         services.AddGeminiAI(CreateConfiguration());
 
@@ -80,6 +85,7 @@ public sealed class GeminiDependencyInjectionTests
     public void AddGeminiAI_KeepsPromptSchemaAndSdkSeamRegistrationsAsSingletons()
     {
         var services = new ServiceCollection();
+        AddRuntimeDependencies(services);
 
         services.AddGeminiAI(CreateConfiguration());
 
@@ -92,6 +98,7 @@ public sealed class GeminiDependencyInjectionTests
     public void AddGeminiAI_BindsModelApiKeyAndTimeoutFromGeminiSection()
     {
         var services = new ServiceCollection();
+        AddRuntimeDependencies(services);
         services.AddGeminiAI(CreateConfiguration(
             apiKey: "bound-api-key",
             model: "bound-model",
@@ -109,13 +116,16 @@ public sealed class GeminiDependencyInjectionTests
     public void AddGeminiAI_MissingApiKey_DoesNotFailServiceCollectionBuildOrCreateReadinessDependency()
     {
         var services = new ServiceCollection();
+        AddRuntimeDependencies(services);
         var configuration = new ConfigurationBuilder().AddInMemoryCollection().Build();
 
         services.AddGeminiAI(configuration);
         using var provider = services.BuildServiceProvider(validateScopes: true);
         var service = provider.GetRequiredService<IAIService>();
+        var secondResolution = provider.GetRequiredService<IAIService>();
 
         Assert.IsType<GeminiAIService>(service);
+        Assert.Same(service, secondResolution);
         Assert.DoesNotContain(
             services,
             descriptor => descriptor.ServiceType.FullName?.Contains("HealthCheck", StringComparison.Ordinal) == true);
@@ -125,6 +135,7 @@ public sealed class GeminiDependencyInjectionTests
     public void AddGeminiAI_ValidConfiguration_ResolvesGeminiAIServiceWithoutCallingProvider()
     {
         var services = new ServiceCollection();
+        AddRuntimeDependencies(services);
         services.AddGeminiAI(CreateConfiguration());
         using var provider = services.BuildServiceProvider(validateScopes: true);
 
@@ -140,6 +151,7 @@ public sealed class GeminiDependencyInjectionTests
     public void AddGeminiAI_DoesNotUseBuildServiceProviderOrServiceLocator()
     {
         var services = new ServiceCollection();
+        AddRuntimeDependencies(services);
 
         services.AddGeminiAI(CreateConfiguration());
 
@@ -191,6 +203,12 @@ public sealed class GeminiDependencyInjectionTests
                 ["Gemini:Timeout"] = timeout
             })
             .Build();
+
+    private static void AddRuntimeDependencies(IServiceCollection services)
+    {
+        services.AddLogging();
+        services.AddSingleton(TimeProvider.System);
+    }
 
     private static void AssertSingletonRegistration<TService, TImplementation>(IServiceCollection services)
     {
