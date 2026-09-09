@@ -895,6 +895,7 @@ Attempts không soft delete; nếu cần loại khỏi replay phải có use cas
 Indexes/constraints:
 
 - UX(center_id, attempt_id).
+- UX(center_id, analysis_id, attempt_id), alternate key cho Evidence FK khóa analysis cùng Attempt.
 - IX(center_id, needs_teacher_review, created_at).
 - CHECK quality/confidence IS NULL OR BETWEEN 0 AND 100.
 - Override fields phải all-null hoặc có override_reason + teacher + time; BLL invariant.
@@ -1142,20 +1143,24 @@ Indexes/constraints:
 
 - PK(evidence_assessment_id).
 - UX(center_id, evidence_assessment_id).
+- UX(center_id, evidence_assessment_id, attempt_id), alternate key cho self-FK supersession cùng Attempt.
 - IX(center_id, attempt_id, evaluated_at).
 - IX(center_id, requires_teacher_review, evaluated_at).
 - FK(center_id, attempt_id) → attempts(center_id, attempt_id).
-- FK(center_id, analysis_id) → reasoning_analyses(center_id, analysis_id) khi khác null.
-- FK(center_id, supersedes_assessment_id) → evidence_assessments(center_id, evidence_assessment_id) khi khác null.
+- FK(center_id, analysis_id, attempt_id) → reasoning_analyses(center_id, analysis_id, attempt_id) khi analysis_id khác null.
+- FK(center_id, supersedes_assessment_id, attempt_id) → evidence_assessments(center_id, evidence_assessment_id, attempt_id) khi supersedes_assessment_id khác null.
 - CHECK reasoning_weight BETWEEN 0 AND 1.
 - CHECK trust_level IN (Trusted, Reduced, ReviewOnly).
 - CHECK source_type IN (AI, RuleFallback, TeacherOverride).
 - CHECK decision_mode IN (AIWeighted, DeterministicOnly, HumanConfirmed).
+- CHECK supersedes_assessment_id IS NULL OR supersedes_assessment_id <> evidence_assessment_id.
 
 Invariant:
 
 - Mỗi lần đánh giá/replay tạo row mới; không sửa lịch sử cũ.
+- analysis_id nếu có phải thuộc đúng attempt_id của EvidenceAssessment; supersedes_assessment_id nếu có phải thuộc cùng attempt_id. BLL kiểm tra invariant trước insert và MySQL integration test phải chứng minh cả hai composite FK từ chối mismatch dù cùng Center.
 - Fallback hoặc ReviewOnly có reasoning_weight = 0 và không làm đổi Knowledge Mastery.
+- Preliminary is_correct null bắt buộc ReviewOnly, requires_teacher_review = 1 và không được coerce thành false/neutral; TeacherOverride/HumanConfirmed mới tạo effective correctness cho replay.
 - Mapping v1: AI → AIWeighted; RuleFallback → ReviewOnly + DeterministicOnly; TeacherOverride → Trusted + HumanConfirmed.
 - Replay là event_source ở twin_update_history, không phải source_type/trust_level/decision_mode ở evidence_assessments.
 - TeacherOverride bắt buộc có analysis_override_version > 0, audit nguồn, actor và lý do ở reasoning_analyses/twin history liên quan.

@@ -394,7 +394,9 @@ ReasoningWeight = 0
 NewMastery = M
 ~~~
 
-Correctness, thời gian và hành vi vẫn được ghi như evidence quan sát được và có thể cập nhật Behavior Twin; chúng không được giả thành Reasoning Analysis.
+Correctness non-null, thời gian và hành vi vẫn được ghi như evidence quan sát được và có thể cập nhật Behavior Twin; chúng không được giả thành Reasoning Analysis.
+
+Nếu preliminary `isCorrect` là null, điển hình Essay chưa được chấm, Gate bắt buộc trả ReviewOnly với reasoning weight 0 và Knowledge Mastery giữ nguyên. AI có thể phân tích reasoning nhưng không được ép `null → false`, không thay bằng correctness neutral và không tạo quyết định cuối. Chỉ TeacherOverride/HumanConfirmed có effective correctness rõ ràng mới được replay vào Mastery.
 
 Hệ quả bắt buộc:
 
@@ -405,7 +407,8 @@ Hệ quả bắt buộc:
 - Mỗi lần cập nhật phải lưu input, output, delta và breakdown trong twin_update_history.
 - Mỗi quyết định Gate phải lưu trust level, weight, reason code và policy version.
 - Mỗi quyết định Gate phải lưu riêng source type, trust level, decision mode và analysis override version; không dùng một enum để biểu diễn nhiều chiều.
-- BLL test phải bao phủ boundary 0, 39, 40, 59, 60, 79, 80, 100 và null.
+- BLL test phân loại reasoning quality phải bao phủ 0, 39, 40, 59, 60, 79, 80, 100 và null.
+- BLL test Evidence Gate theo AI confidence phải bao phủ 0, 49, 50, 79, 80, 100 và null; 49/50 và 79/80 là hai cặp biên bắt buộc.
 
 Phân loại hiển thị:
 
@@ -685,9 +688,10 @@ Chỉ sau phê duyệt mới cập nhật specification trước, rồi mới c�
 
 ## 28. Course rebaseline và provenance
 
-- Prototype trước học kỳ được nhập vào repository môn học dưới một baseline commit minh bạch.
-- PROJECT_TRACKING.md phải lưu repository nguồn, full SHA, ngày import và repository môn học.
-- Chỉ commit sau baseline mới được dùng làm bằng chứng đóng góp trong học kỳ.
+- Pre-course source-code snapshot là commit `2d768f270e0395bcafcbcab2305ac3617fb5f9ca`; đây là mốc audit code, không phải mặc nhiên là commit import của repository môn học.
+- Documentation rebaseline checkpoint là commit `b14f6c4171dc55043a3bb910332061c55ba66a7f`; correction sau checkpoint vẫn thuộc snapshot chuẩn bị trước môn cho tới khi nhóm khóa baseline.
+- Repository môn học nhập một snapshot code + tài liệu đã được duyệt dưới một initial-import commit riêng. PROJECT_TRACKING.md phải lưu repository nguồn, hai source checkpoint, full SHA snapshot được nhập, ngày import và SHA initial-import.
+- Chỉ commit sau initial-import commit của repository môn học mới được dùng làm bằng chứng đóng góp trong học kỳ.
 - Không rewrite lịch sử để biến source cũ thành đóng góp mới của thành viên.
 - Yêu cầu giảng viên, stakeholder interview, Figma approval, weekly demo và quyết định nhóm phải có ngày, người xác nhận và liên kết bằng chứng.
 - Phần trăm hoàn thành không được tự ước lượng từ số commit; phải dựa trên acceptance criteria đã được xác minh.

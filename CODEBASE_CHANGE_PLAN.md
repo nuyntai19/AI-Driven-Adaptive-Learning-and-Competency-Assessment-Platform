@@ -6,6 +6,8 @@
 > Trạng thái: PLAN ONLY — không khẳng định các thay đổi Target đã được code
 > Nguồn: PROJECT_REQUIREMENTS, CONSTITUTION, DATABASE_SCHEMA, API_CONTRACTS, UI_UX_SPEC và MASTER_PLAN
 
+Provenance: `2d768f2` là source-code audit snapshot; `b14f6c4` là documentation rebaseline checkpoint. Approved import snapshot và course repository initial-import SHA còn TBD và phải được ghi riêng trong PROJECT_TRACKING.md.
+
 ## 1. Chức năng của tài liệu
 
 Tài liệu này trả lời: source hiện có gì, sai/thiếu gì so với rebaseline, file nào có khả năng phải sửa/tạo và thứ tự migration an toàn. Nó không thay DATABASE_SCHEMA/API_CONTRACTS và không phải allow-list tự động cho bất kỳ task nào. Mỗi task vẫn cần prompt, human owner, exact HEAD, exact allow-list và review.
@@ -64,6 +66,7 @@ Vì vậy: prototype kỹ thuật đã đi tới khoảng P13-T01 lịch sử, n
 
 - INFORMATION_SCHEMA đối chiếu table/column/FK/unique/check/delete/index.
 - Composite FK khóa center + account type.
+- Composite FK khóa EvidenceAssessment.analysis_id và supersedes_assessment_id cùng attempt_id; BLL + MySQL tests từ chối mismatch dù cùng Center.
 - Backfill role_name thành bootstrap role không mở rộng quyền.
 - Validation query chứng minh không orphan/mismatch.
 - Backup/rollback rehearsal và 3 MySQL integration test không còn skip.
@@ -103,7 +106,7 @@ Vì vậy: prototype kỹ thuật đã đi tới khoảng P13-T01 lịch sử, n
 Password reset, user disable/delete, user-role replace và role-permission replace phải:
 
 1. validate tenant/account type/delegation/self-elevation;
-2. re-read last-admin state với concurrency;
+2. validate target aggregate rowVersion và re-read last-admin state với concurrency; không dùng authorizationVersion làm expected concurrency token;
 3. mutate;
 4. append authorization audit;
 5. tăng users.auth_version đúng phạm vi;
@@ -148,9 +151,10 @@ New UI: role list/editor, permission matrix, user-role assignment, audit log và
 | src/EduTwin.BLL/AssessmentAndReasoning/Processing/AIAnalysisJobProcessor.cs | Persist analysis/job; chưa gate/twin orchestration | Sau observation/fallback, gọi deterministic gate và completion transaction idempotent |
 | src/EduTwin.BLL/AssessmentAndReasoning/Processing/AIReasoningAnalysisBuilder.cs | Xây AI observation | Giữ provenance; không gán trust/mastery |
 | src/EduTwin.BLL/AssessmentAndReasoning/Processing/RuleBasedFallbackBuilder.cs | Tạo fallback analysis | Gắn provenance RuleFallback, không giả AI confidence/quality |
+| src/EduTwin.BLL/AssessmentAndReasoning/PreliminaryGrading/EssayGrader.cs | Trả IsCorrect = null, Score = 0 | Giữ semantics pending review; không coerce null thành false/neutral |
 | src/EduTwin.DAL/AssessmentAndReasoning/ReasoningAnalysis.cs | Có fallback/override fields | Giữ output gốc; phối hợp evidence assessment bằng analysis/override version |
 | src/EduTwin.BLL/DigitalTwin/MasteryCalculator.cs | Fallback path có learning rate 0.10 và đổi mastery | Chỉ nhận effective evidence/weight; ReviewOnly/fallback giữ nguyên mastery |
-| src/EduTwin.BLL/DigitalTwin/MasteryCalculationInput.cs | Chưa biểu diễn gate decision | Nhận input đã được gate duyệt hoặc reasoning weight rõ ràng |
+| src/EduTwin.BLL/DigitalTwin/MasteryCalculationInput.cs | IsCorrect hiện là bool, không biểu diễn pending verdict | Orchestrator không gọi calculator khi correctness null; chỉ truyền effective non-null correctness đã qua Gate hoặc HumanConfirmed replay |
 | src/EduTwin.BLL/DigitalTwin/DependencyInjection.cs | Mới đăng ký goal use cases | Đăng ký gate/orchestrator/updaters/calculators |
 | src/EduTwin.DAL/Persistence/EduTwinDbContext.cs | Chưa có EvidenceAssessment | Thêm DbSet/config/filter |
 
@@ -168,7 +172,7 @@ New UI: role list/editor, permission matrix, user-role assignment, audit log và
 
 Gemini call luôn ở ngoài DB transaction. Sau khi có validated observation hoặc fallback:
 
-1. Gate structural/semantic/contradiction trước confidence.
+1. Gate structural/semantic/contradiction trước confidence; preliminary correctness null ép ReviewOnly và chờ teacher.
 2. Insert ReasoningAnalysis/provenance nếu chưa có.
 3. Insert append-only EvidenceAssessment.
 4. Update Behavior Twin từ observed telemetry.
@@ -209,8 +213,8 @@ Không xây Teacher ranking, Center AI score, Platform Admin hoặc cross-center
 
 - RBAC: account-type mismatch tại API/BLL/DB, self-elevation, over-grant, last-admin, stale token, audit rollback, cross-tenant.
 - MySQL: migration/backfill/rollback, constraints, query plans, three skipped tests.
-- Evidence: structural/semantic contradiction, confidence boundaries, three dimensions, policy version.
-- Mastery: fallback/ReviewOnly unchanged; reduced/trusted exact decimal.
+- Evidence: structural/semantic contradiction, confidence 0/49/50/79/80/100/null, three dimensions, policy version và same-attempt FK mismatch.
+- Mastery: fallback/ReviewOnly/Essay-null unchanged; reduced/trusted exact decimal; HumanConfirmed replay mới đổi Essay mastery.
 - Orchestrator: duplicate job, lost race, rollback injection, restart/reclaim.
 - Override: permission/scope/version/replay order/history preservation.
 - Frontend: capability route/button, direct URL, stale version no retry loop.

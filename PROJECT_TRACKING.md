@@ -32,11 +32,14 @@ Tài liệu này là hồ sơ quá trình của đồ án:
 | Deadline cuối kỳ | TBD |
 | Course repository | TBD |
 | Prototype repository | nuyntai19/AI-Driven-Adaptive-Learning-and-Competency-Assessment-Platform |
-| Prototype baseline | 2d768f270e0395bcafcbcab2305ac3617fb5f9ca |
+| Pre-course source-code snapshot | 2d768f270e0395bcafcbcab2305ac3617fb5f9ca |
+| Documentation rebaseline checkpoint | b14f6c4171dc55043a3bb910332061c55ba66a7f |
+| Approved import snapshot | TBD — khóa sau docs review/correction |
+| Course initial-import commit | TBD — tạo trong repository môn học |
 
 ## 3. Baseline provenance
 
-Repository môn học phải có commit đầu:
+Ba mốc phải được ghi riêng: source-code snapshot, documentation rebaseline/approved import snapshot và initial-import commit trong repository môn học. Repository môn học phải có commit đầu:
 
 ~~~text
 chore: import transparent pre-course EduTwin baseline
@@ -45,11 +48,13 @@ Source repository:
 nuyntai19/AI-Driven-Adaptive-Learning-and-Competency-Assessment-Platform
 
 Source commit:
-2d768f270e0395bcafcbcab2305ac3617fb5f9ca
+TBD approved import snapshot (phải truy ngược được source code 2d768f2 và documentation checkpoint b14f6c4)
 
 This commit contains work completed before the course.
 Course contribution starts after this baseline commit.
 ~~~
+
+Không cherry-pick documentation rebaseline sau initial import rồi tính thành đóng góp học kỳ. Khi nhóm khóa snapshot, điền full SHA approved import và SHA initial-import ở metadata; giữ `2d768f2` để truy vết code và `b14f6c4` để truy vết điểm bắt đầu rebaseline tài liệu.
 
 Không:
 
@@ -118,7 +123,7 @@ Nguồn: bản ghi .Net.m4a, Bản ghi mới 17.m4a và Bản ghi mới 18.m4a; 
 | W01-08 | Báo cáo tiến độ hằng tuần | Tracking | Dùng template ở mục 11 |
 | W01-09 | Phân công xét độ khó và thống nhất thời hạn | Teamwork | Weighted work package |
 | W01-10 | Báo cáo cuối có tỷ lệ đóng góp | Assessment | Contribution evidence |
-| W01-11 | AI/ML chất lượng có thể đạt điểm cao | Product | Evidence-first AI, ML có decision gate |
+| W01-11 | Tuấn Tài báo lại rằng AI/ML chất lượng có thể đạt điểm cao; chưa có đoạn transcript tương ứng trong ba bản hiện lưu | Product/provenance | Giữ Evidence-first AI, ML decision gate; bổ sung timestamp/transcript hoặc biên bản xác nhận |
 
 Khi giảng viên bổ sung yêu cầu, thêm một dòng mới với tuần/ngày/nguồn. Không sửa entry cũ để làm mất lịch sử.
 
@@ -144,6 +149,10 @@ Khi giảng viên bổ sung yêu cầu, thêm một dòng mới với tuần/ng�
 | DEC-016 | 2026-09-09 | Evidence tách source/trust/decision mode; Replay chỉ là history event | USER-APPROVED — group review pending |
 | DEC-017 | 2026-09-09 | AI là enhancement không đáng tin cậy; core learning/management và fallback phải chạy không cần Gemini/Internet | USER-APPROVED — group review pending |
 | DEC-018 | 2026-09-09 | Phân công hiện hành dùng effort points, dependency và review chéo trong TEAM_ASSIGNMENT.md; không suy ra 20% từ tên module | PROPOSED — cần năm thành viên xác nhận kỹ năng/giờ |
+| DEC-019 | 2026-09-09 | Essay/preliminary isCorrect null là ReviewOnly; Mastery chỉ đổi sau Teacher HumanConfirmed + replay | DOCUMENTED — group review pending |
+| DEC-020 | 2026-09-09 | Evidence analysis và supersession phải cùng Attempt bằng BLL invariant + composite FK/MySQL integration test | DOCUMENTED — group review pending |
+| DEC-021 | 2026-09-09 | User rowVersion chống lost update; authorizationVersion/auth_version chỉ làm stale token/cache | DOCUMENTED — group review pending |
+| DEC-022 | 2026-09-09 | Tách source snapshot 2d768f2, docs checkpoint b14f6c4, approved import snapshot và course initial-import SHA | DOCUMENTED — group review pending |
 
 ## 8. Team roster
 

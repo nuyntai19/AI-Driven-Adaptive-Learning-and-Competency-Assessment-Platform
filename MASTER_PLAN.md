@@ -176,7 +176,7 @@ Slices:
 1. Permission catalog read-only, permission-account-type mapping và bootstrap roles.
 2. Role CRUD/archival + optimistic concurrency.
 3. Atomic role-permission replacement.
-4. Atomic user-role replacement + users.auth_version/token invalidation; API authorizationVersion chỉ là projection của cột này.
+4. Atomic user-role replacement dùng users.row_version để chống lost update; sau mutation tăng users.auth_version/revoke token. API authorizationVersion chỉ là projection security của auth_version, không phải concurrency token.
 5. Append-only audit query.
 6. Migrate endpoint theo module; xóa legacy authorization chỉ sau cutover gate.
 
@@ -209,6 +209,8 @@ Deliverables:
 - Migration 008 evidence_assessments.
 - Deterministic gate tách source AI/RuleFallback/TeacherOverride, trust Trusted/Reduced/ReviewOnly và mode AIWeighted/DeterministicOnly/HumanConfirmed; policy version và reason code.
 - Fallback/ReviewOnly không đổi Knowledge Mastery.
+- Preliminary isCorrect null (điển hình Essay) luôn ReviewOnly cho tới Teacher HumanConfirmed + replay; cấm null → false/neutral.
+- Composite FK và BLL invariant khóa Evidence.analysis/supersedes cùng Center và cùng Attempt.
 - Review queue và explanation cho teacher/student phù hợp quyền.
 - Backfill lịch sử thiếu evidence về ReviewOnly, không tự suy diễn trust.
 
@@ -266,7 +268,7 @@ Gate: mọi tuyên bố Done có link tới requirement, commit/PR, test và rev
 
 ## Trạng thái source tại rebaseline
 
-Audit ngày 2026-09-08 tại commit 2d768f270e0395bcafcbcab2305ac3617fb5f9ca cho thấy:
+Audit source ngày 2026-09-08 tại commit `2d768f270e0395bcafcbcab2305ac3617fb5f9ca` và documentation rebaseline checkpoint `b14f6c4171dc55043a3bb910332061c55ba66a7f` cho thấy:
 
 - P00–P12 của prototype đã có phần triển khai đáng kể; P13-T01 Mastery Calculator v1 đã có.
 - Backend Release và frontend production build xanh; 2.853 test pass, 3 MySQL integration test skip.
@@ -325,7 +327,7 @@ Acceptance:
 
 ## 10. Definition of Done
 
-- Bộ tài liệu prototype được commit; course baseline dùng bộ tài liệu authoritative v2.
+- Bộ tài liệu prototype/rebaseline được commit; course repository initial import dùng đúng snapshot code + tài liệu authoritative v2 đã duyệt và ghi cả source SHA lẫn import SHA.
 - Product Owner xác nhận baseline.
 - AI Developer prompt bắt buộc đọc tài liệu authoritative liên quan theo thứ tự trong CONSTITUTION.md.
 
@@ -993,7 +995,7 @@ Dependencies: P08.
 
 - MultipleChoice: option/canonical label.
 - ShortAnswer: normalized exact/canonical comparison ở mức MVP.
-- Essay: isCorrect có thể null hoặc theo criteria đã định; AI phân tích reasoning sau.
+- Essay: preliminary isCorrect = null và score = 0 cho tới teacher review; AI chỉ phân tích reasoning. Null bắt buộc ReviewOnly/weight 0, không được cập nhật Knowledge Mastery.
 - Không dùng AI tại Controller.
 
 ### P09-T05 — UI
@@ -1325,7 +1327,7 @@ Confidence calibration:
 1 - Abs(confidence/100 - correctness)
 ~~~
 
-Nếu correctness null, K=0.5 neutral.
+Nếu correctness null, không tính K và không gọi Knowledge Mastery calculator. Attempt vào ReviewOnly; Teacher HumanConfirmed cung cấp effective correctness rồi replay. Tuyệt đối không quy đổi null thành false hoặc K=0.5 neutral.
 
 ### P13-T03 — Behavior Twin updater
 
@@ -1377,7 +1379,9 @@ Sai số decimal cho test: tối đa 0.01.
 
 ## 86. Unit tests
 
-- R boundary 0/39/40/59/60/79/80/100/null.
+- Reasoning-quality display boundary 0/39/40/59/60/79/80/100/null.
+- Evidence confidence boundary 0/49/50/79/80/100/null; bắt buộc test chuyển trạng thái tại 49/50 và 79/80.
+- Essay/null-correctness giữ nguyên Mastery trước review; HumanConfirmed replay mới cập nhật.
 - Difficulty 1–5.
 - Clamp 0/100.
 - Mastery tăng/giảm.

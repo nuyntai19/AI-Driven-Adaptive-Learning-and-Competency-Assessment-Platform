@@ -113,6 +113,8 @@ Thành Tài cần Khoa xác nhận question/node relations, Sơn cung cấp evid
 
 Sơn không để Gemini trực tiếp chấm điểm cuối, thay đổi Mastery hoặc chọn recommendation. Cần Tuấn Tài review transaction/concurrency, Khoa review dữ liệu/thuật toán và Thành Tài kiểm consumer UI.
 
+Để tránh một người trở thành critical path duy nhất, SO-01/02 không được bắt đầu nếu Khoa/Tuấn Tài chưa cùng walkthrough schema, same-attempt constraint và Essay-null policy; SO-03/04 phải có Khoa hoặc Thành Tài làm co-owner test/demo trong tuần. Nếu Sơn bị block quá hai ngày làm việc hoặc vượt giờ khả dụng đã khai báo, Team Lead tách package theo Evidence, Orchestrator và UI thay vì dồn thêm việc cho cùng owner.
+
 ## 6. Dependency map
 
 ~~~text

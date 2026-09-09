@@ -65,11 +65,13 @@ Baseline commit:
 2d768f270e0395bcafcbcab2305ac3617fb5f9ca
 ~~~
 
-Repository môn học mới phải ghi rõ đây là code trước học kỳ. Điểm đóng góp chỉ bắt đầu sau commit import baseline.
+Documentation rebaseline bắt đầu tại checkpoint `b14f6c4171dc55043a3bb910332061c55ba66a7f` trên repository prototype. Sau khi correction được nhóm duyệt, snapshot code + tài liệu được nhập nguyên trạng thành commit đầu của repository môn học; full SHA import được ghi trong PROJECT_TRACKING.md. Điểm đóng góp chỉ bắt đầu sau commit initial import, không bắt đầu sau source-code snapshot hoặc documentation checkpoint.
 
 ### 3.2. Yêu cầu giảng viên đã ghi nhận ở tuần 1
 
-Nguồn: ba bản ghi âm do thành viên nhóm ghi lại. Ngày chính xác cần bổ sung trong PROJECT_TRACKING.md.
+Nguồn: ba bản ghi âm do thành viên nhóm ghi lại và các thông tin giảng viên mà Tuấn Tài báo cáo trực tiếp. Ngày chính xác và mức bằng chứng phải được bổ sung trong PROJECT_TRACKING.md.
+
+Quy ước provenance: `LECTURER-CONFIRMED` chỉ dùng khi transcript/biên bản hiện có xác nhận nội dung; `LECTURER-REPORTED-BY-STUDENT` là lời giảng viên được thành viên báo lại nhưng chưa có đoạn transcript/biên bản tương ứng; `USER-CONFIRMED` là quyết định/quy trình do người dùng xác nhận, không tự nâng thành yêu cầu giảng viên.
 
 | ID | Yêu cầu | Trạng thái |
 |---|---|---|
@@ -85,10 +87,10 @@ Nguồn: ba bản ghi âm do thành viên nhóm ghi lại. Ngày chính xác c�
 | LEC-010 | Nhóm báo cáo hằng tuần: đã làm gì, phần trăm hoàn thành và vướng mắc | LECTURER-CONFIRMED |
 | LEC-011 | Báo cáo cuối kỳ phải có phân công và tỷ lệ đóng góp | LECTURER-CONFIRMED |
 | LEC-012 | Phân công phải xét độ khó; nhóm phải thống nhất hoặc chia gói cân bằng | LECTURER-CONFIRMED |
-| LEC-013 | Tích hợp AI/Machine Learning tốt có thể được đánh giá cao | LECTURER-CONFIRMED |
+| LEC-013 | Tích hợp AI/Machine Learning tốt có thể được đánh giá cao | LECTURER-REPORTED-BY-STUDENT |
 | LEC-014 | Nhóm được tiếp tục prototype nhưng phải tạo repository mới để theo dõi quá trình môn học | USER-CONFIRMED |
 
-LEC-014 là xác nhận của người dùng về chỉ dẫn của giảng viên; cần ghi nguồn/tuần trong tracking nếu có bằng chứng bổ sung.
+LEC-013 là lời Tuấn Tài báo lại từ phần hướng dẫn chưa có transcript trong ba đoạn hiện lưu; LEC-014 là xác nhận của người dùng về chỉ dẫn của giảng viên. Cả hai cần ghi tuần/nguồn bổ sung trong tracking khi có bằng chứng.
 
 ### 3.3. Mức đáp ứng Week 1 tại thời điểm rebaseline
 
@@ -288,6 +290,7 @@ Thiếu một điều kiện phải fail closed.
 | FR-AI-009 | AI confidence thấp không được tác động reasoning vào mastery | Must |
 | FR-AI-010 | Teacher xem queue, override analysis và kích hoạt replay | Must |
 | FR-AI-011 | AI chỉ phân tích reasoning và soạn phản hồi; chấm sơ bộ deterministic/teacher decision mới sở hữu điểm và kết quả cuối | Must |
+| FR-AI-012 | Khi preliminary `isCorrect = null` (điển hình Essay chưa chấm), Evidence phải ReviewOnly, reasoning weight bằng 0 và Knowledge Mastery không đổi cho tới Teacher HumanConfirmed + replay | Must |
 
 ### 7.7. Digital Twin và recommendation
 
@@ -467,7 +470,9 @@ Ba chiều không được trộn:
 | Gemini không khả dụng, dùng rule fallback | RuleFallback | ReviewOnly | DeterministicOnly | 0.00 |
 | Teacher xác nhận/sửa có permission, scope và lý do | TeacherOverride | Trusted | HumanConfirmed | 1.00 |
 
-Replay là event trong Twin history, không phải source/trust. Threshold là configuration có policy version, không hard-code rải rác. Structural validation, semantic validation và deterministic contradiction check chạy trước confidence. Behavior/correctness evidence vẫn có thể cập nhật theo rule riêng khi reasoning weight bằng 0.
+Preliminary `isCorrect = null` giữ nguyên provenance source thực tế nhưng bắt buộc `ReviewOnly`, reasoning weight `0.00` và `requiresTeacherReview = true`. AI vẫn có thể tạo observation cho Essay, nhưng không được chuyển `null` thành `false`, không dùng giá trị neutral thay thế và không kích hoạt Knowledge Mastery. Teacher grade/override tạo EvidenceAssessment `TeacherOverride + Trusted + HumanConfirmed`, sau đó replay mới được phép cập nhật Mastery.
+
+Replay là event trong Twin history, không phải source/trust. Threshold là configuration có policy version, không hard-code rải rác. Structural validation, semantic validation và deterministic contradiction check chạy trước confidence. Behavior telemetry vẫn có thể cập nhật khi reasoning weight bằng 0; correctness chỉ được dùng khi là giá trị quan sát non-null.
 
 ## 14. ML.NET decision gate
 

@@ -18,6 +18,7 @@
 - API version chỉ thay khi có breaking change được phê duyệt.
 - rowVersion được serialize thành string và bắt buộc khi update aggregate có concurrency.
 - authorizationVersion trong JSON và auth_version claim cùng ánh xạ tới users.auth_version; API không có version authorization thứ hai.
+- rowVersion và authorizationVersion có vai trò khác nhau: rowVersion chống lost update cho aggregate; authorizationVersion làm mất hiệu lực token/cache quyền cũ và không được dùng làm concurrency token từ client.
 
 ## 2. Authentication transport
 
@@ -1920,7 +1921,7 @@ PUT request:
   "roleIds": [
     "171bdf0d-bd77-4956-b575-449742199a2d"
   ],
-  "authorizationVersion": 4,
+  "rowVersion": "7",
   "reason": "Phân công điều phối học thuật tuần 2"
 }
 ~~~
@@ -1941,6 +1942,7 @@ Response 200:
       }
     ],
     "permissions": ["knowledge.nodes.update"],
+    "rowVersion": "8",
     "authorizationVersion": 5
   },
   "meta": {
@@ -1958,7 +1960,9 @@ Rules:
 - Khi target user là CenterManager, effective permission sau gán phải là subset effective permission của actor.
 - Cấm tự nâng quyền và cấm làm mất tenant administrator cuối cùng.
 - roleIds không trùng; role Archived bị từ chối.
+- Request rowVersion là concurrency token của target User; stale rowVersion trả 409 CONCURRENCY_CONFLICT. Client không gửi expected authorizationVersion cho mutation này.
 - Replace assignment, audit log, users.auth_version increment và refresh-token invalidation policy phải atomic.
+- Sau commit thành công, response trả rowVersion mới và authorizationVersion mới. authorizationVersion chỉ là security invalidation counter của target User, không thay rowVersion.
 - Audit query hỗ trợ from, to, actorUserId, targetUserId, actionType, page/pageSize; không trả before/after JSON chứa secret.
 
 ## 71. Evidence Gate contract

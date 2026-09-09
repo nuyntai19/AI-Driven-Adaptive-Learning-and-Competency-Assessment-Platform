@@ -280,11 +280,14 @@ Khi lưu:
 
 - chỉ chọn role trong cùng center và cùng account type với user;
 - không gửi accountType từ form assignment; backend lấy từ user/role canonical;
+- gửi rowVersion hiện tại của target User để chống lost update; không gửi authorizationVersion như concurrency token;
 - cảnh báo nếu thay đổi chính user hiện tại;
 - chặn self-elevation;
 - chặn làm mất CenterManager cuối cùng có đủ TenantAdminCorePermissionsV1;
 - hiển thị session của target có thể phải đăng nhập lại;
 - ghi audit.
+
+Sau mutation thành công, UI thay cả rowVersion và authorizationVersion bằng giá trị server trả về. rowVersion phục vụ conflict/reload; authorizationVersion báo session/cache quyền cũ đã stale và có thể yêu cầu bootstrap lại.
 
 TenantAdminCorePermissionsV1 gồm chín capability: authorization.permissions.read, authorization.roles.read/create/update/archive/manage_permissions, authorization.user_roles.read/assign và authorization.audit.read. UI có thể cảnh báo trước, nhưng backend mới là nơi mô phỏng effective permission sau mutation và quyết định 409 LAST_TENANT_ADMIN.
 
@@ -396,6 +399,8 @@ Teacher override form:
 
 Sau submit phải hiển thị replay result, Twin delta và recommendation thay đổi.
 
+Với Essay/preliminary `isCorrect = null`, trước teacher review UI phải hiển thị trạng thái “Chờ giáo viên chấm”, không hiển thị như câu sai và không hiển thị Mastery delta. AI observation nếu có vẫn tách riêng; chỉ HumanConfirmed replay mới sinh Mastery delta.
+
 Replay được hiển thị như một history event, không phải evidence source/trust. Khi Gemini lỗi, UI phải nói rõ “phân tích AI chưa khả dụng; kết quả tạm dùng quy tắc xác định trước và đang chờ giáo viên xem xét”, không ngụ ý AI đã chấm.
 
 ## 12. Digital Twin and recommendation
@@ -488,7 +493,7 @@ Mỗi flow quan trọng phải có:
 - Role editor/assignment account-type filtering và mismatch error test.
 - Self-elevation/last-admin API error rendering.
 - Learning submit/poll/fallback test.
-- Evidence review/override test.
+- Evidence review/override test, gồm Essay pending correctness không bị hiển thị là sai và không có Mastery delta trước review.
 - Không lưu refresh token vào localStorage/sessionStorage/indexedDB/cookie do JavaScript tạo.
 
 ## 18. Definition of UX Done

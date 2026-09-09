@@ -43,7 +43,13 @@ Message:
 feat(twin): add mastery v1 calculator
 ~~~
 
-Tên và URL repository môn học mới phải được ghi trong PROJECT_TRACKING.md trước khi bắt đầu tính đóng góp.
+Ba mốc provenance không được đánh đồng:
+
+- Pre-course source-code snapshot: `2d768f270e0395bcafcbcab2305ac3617fb5f9ca`.
+- Documentation rebaseline checkpoint trên repository prototype: `b14f6c4171dc55043a3bb910332061c55ba66a7f`; các correction sau checkpoint này vẫn là công việc chuẩn bị trước khi khóa course baseline.
+- Course repository initial-import commit: `TBD`; commit này phải nhập đúng snapshot code + tài liệu đã được nhóm duyệt và ghi lại full SHA nguồn.
+
+Documentation checkpoint không tự trở thành đóng góp môn học. Tên/URL repository môn học và initial-import SHA phải được ghi trong PROJECT_TRACKING.md; chỉ commit sau initial import mới được tính là đóng góp trong học kỳ.
 
 ## 3. Công nghệ
 
