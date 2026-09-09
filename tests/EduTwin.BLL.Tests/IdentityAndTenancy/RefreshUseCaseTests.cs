@@ -22,6 +22,7 @@ public class RefreshUseCaseTests : IDisposable
     private readonly Mock<IRefreshTokenStore> _mockStore;
     private readonly Mock<IBackgroundTenantScopeFactory> _mockScopeFactory;
     private readonly Mock<IJwtTokenGenerator> _mockJwtGen;
+    private readonly Mock<IAuthorizationSnapshotReader> _mockAuthorizationSnapshotReader;
     private readonly FixedTimeProvider _timeProvider;
     private readonly RefreshUseCase _sut;
 
@@ -40,6 +41,7 @@ public class RefreshUseCaseTests : IDisposable
         _mockStore = new Mock<IRefreshTokenStore>();
         _mockScopeFactory = new Mock<IBackgroundTenantScopeFactory>();
         _mockJwtGen = new Mock<IJwtTokenGenerator>();
+        _mockAuthorizationSnapshotReader = new Mock<IAuthorizationSnapshotReader>();
         _timeProvider = new FixedTimeProvider(new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc));
 
         _mockScopeFactory.Setup(x => x.BeginScope(It.IsAny<Guid>()))
@@ -52,6 +54,11 @@ public class RefreshUseCaseTests : IDisposable
             });
 
         _mockCodec.Setup(c => c.IsValidRawToken(It.IsAny<string>())).Returns(true);
+        _mockAuthorizationSnapshotReader
+            .Setup(reader => reader.ReadForUserAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthorizationSnapshot([], []));
 
         _sut = new RefreshUseCase(
             _mockCodec.Object,
@@ -59,7 +66,8 @@ public class RefreshUseCaseTests : IDisposable
             _mockScopeFactory.Object,
             _mockJwtGen.Object,
             _timeProvider,
-            _dbContext);
+            _dbContext,
+            _mockAuthorizationSnapshotReader.Object);
     }
 
     public void Dispose()
@@ -71,7 +79,7 @@ public class RefreshUseCaseTests : IDisposable
         new() { CenterId = centerId, CenterCode = code, CenterName = $"Center {code}", Status = status, Timezone = "UTC", CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc), UpdatedAt = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc) };
 
     private static User MakeUser(Guid userId, Guid centerId, Center center, UserStatus status = UserStatus.Active) =>
-        new() { UserId = userId, CenterId = centerId, Username = "test", PasswordHash = "hash", RoleName = UserRole.Student, DisplayName = "Test", Status = status, Center = center, CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc), UpdatedAt = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc) };
+        new() { UserId = userId, CenterId = centerId, Username = "test", PasswordHash = "hash", RoleName = UserRole.Student, DisplayName = "Test", Status = status, AuthVersion = 1, Center = center, CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc), UpdatedAt = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc) };
 
     [Fact]
     public async Task Refresh_ValidToken_RotatesSuccessfully()
@@ -112,6 +120,10 @@ public class RefreshUseCaseTests : IDisposable
 
         Assert.True(result.IsSuccess);
         Assert.Equal("new-jwt", result.Data!.AccessToken);
+        Assert.Equal("Student", result.Data.User.AccountType);
+        Assert.Equal(1u, result.Data.User.AuthorizationVersion);
+        Assert.Empty(result.Data.User.Roles);
+        Assert.Empty(result.Data.User.Permissions);
         Assert.Equal("raw-new-token", result.RawRefreshToken);
 
         // Assert New Expiry is 30 days

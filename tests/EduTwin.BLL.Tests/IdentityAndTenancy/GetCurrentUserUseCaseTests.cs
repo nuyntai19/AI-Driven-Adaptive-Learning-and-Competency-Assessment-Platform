@@ -19,6 +19,7 @@ public class GetCurrentUserUseCaseTests : IDisposable
 {
     private readonly EduTwinDbContext _dbContext;
     private readonly Mock<ITenantContext> _mockTenantContext;
+    private readonly Mock<IAuthorizationSnapshotReader> _mockAuthorizationSnapshotReader;
     private readonly GetCurrentUserUseCase _sut;
     private readonly Guid _centerId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
@@ -30,6 +31,7 @@ public class GetCurrentUserUseCaseTests : IDisposable
             .Options;
 
         _mockTenantContext = new Mock<ITenantContext>();
+        _mockAuthorizationSnapshotReader = new Mock<IAuthorizationSnapshotReader>();
 
         var mockAccessor = new Mock<EduTwin.DAL.Persistence.Tenancy.ITenantIdAccessor>();
         mockAccessor.Setup(a => a.CenterId).Returns(() => _mockTenantContext.Object.CenterId ?? Guid.Empty);
@@ -40,8 +42,16 @@ public class GetCurrentUserUseCaseTests : IDisposable
         _mockTenantContext.Setup(c => c.CenterId).Returns(_centerId);
         _mockTenantContext.Setup(c => c.UserId).Returns(_userId);
         _mockTenantContext.Setup(c => c.Role).Returns(nameof(UserRole.CenterManager));
+        _mockAuthorizationSnapshotReader
+            .Setup(reader => reader.ReadForUserAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthorizationSnapshot([], []));
 
-        _sut = new GetCurrentUserUseCase(_dbContext, _mockTenantContext.Object);
+        _sut = new GetCurrentUserUseCase(
+            _dbContext,
+            _mockTenantContext.Object,
+            _mockAuthorizationSnapshotReader.Object);
 
         _dbContext.Centers.Add(new Center { CenterId = _centerId, CenterCode = "C1", CenterName = "C1", Status = CenterStatus.Active, Timezone = "UTC", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         _dbContext.SaveChanges();
@@ -85,8 +95,12 @@ public class GetCurrentUserUseCaseTests : IDisposable
         Assert.Equal("C1", result.Data.CenterName);
         Assert.Equal("user1", result.Data.Username);
         Assert.Equal("User One", result.Data.DisplayName);
+        Assert.Equal("CenterManager", result.Data.AccountType);
         Assert.Equal("CenterManager", result.Data.Role);
         Assert.Equal("Active", result.Data.Status);
+        Assert.Equal(1u, result.Data.AuthorizationVersion);
+        Assert.Empty(result.Data.Roles);
+        Assert.Empty(result.Data.Permissions);
     }
 
     [Fact]

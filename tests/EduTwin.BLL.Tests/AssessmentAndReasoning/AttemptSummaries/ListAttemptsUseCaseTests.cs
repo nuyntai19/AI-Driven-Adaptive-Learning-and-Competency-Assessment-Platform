@@ -1068,7 +1068,7 @@ public sealed class ListAttemptsUseCaseTests
         public Guid? CenterId { get; } = centerId;
         public Guid? UserId { get; } = userId;
         public string? Role { get; } = role;
-        public int? AuthVersion { get; } = 1;
+        public uint? AuthVersion { get; } = 1;
         public bool IsResolved { get; } = isResolved;
     }
 

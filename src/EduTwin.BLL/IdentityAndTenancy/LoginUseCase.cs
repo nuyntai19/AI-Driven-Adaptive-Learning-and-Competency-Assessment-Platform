@@ -20,6 +20,7 @@ public class LoginUseCase : ILoginUseCase
     private readonly IJwtTokenGenerator _jwtTokenGenerator;
     private readonly TimeProvider _timeProvider;
     private readonly IRefreshTokenCodec _refreshTokenCodec;
+    private readonly IAuthorizationSnapshotReader _authorizationSnapshotReader;
 
     public LoginUseCase(
         EduTwinDbContext dbContext,
@@ -27,7 +28,8 @@ public class LoginUseCase : ILoginUseCase
         IPasswordHasher<User> passwordHasher,
         IJwtTokenGenerator jwtTokenGenerator,
         TimeProvider timeProvider,
-        IRefreshTokenCodec refreshTokenCodec)
+        IRefreshTokenCodec refreshTokenCodec,
+        IAuthorizationSnapshotReader authorizationSnapshotReader)
     {
         _dbContext = dbContext;
         _scopeFactory = scopeFactory;
@@ -35,6 +37,7 @@ public class LoginUseCase : ILoginUseCase
         _jwtTokenGenerator = jwtTokenGenerator;
         _timeProvider = timeProvider;
         _refreshTokenCodec = refreshTokenCodec;
+        _authorizationSnapshotReader = authorizationSnapshotReader;
     }
 
     public async Task<LoginResult> ExecuteAsync(LoginRequest request, string? clientIp, CancellationToken cancellationToken = default)
@@ -75,6 +78,10 @@ public class LoginUseCase : ILoginUseCase
         {
             return new LoginResult { IsSuccess = false, ErrorCode = ErrorCodes.AuthUserDisabled };
         }
+
+        var authorization = await _authorizationSnapshotReader.ReadForUserAsync(
+            user.UserId,
+            cancellationToken);
 
         // 6. Generate Refresh Token
         var rawRefreshToken = _refreshTokenCodec.GenerateRawToken();
@@ -119,7 +126,11 @@ public class LoginUseCase : ILoginUseCase
                 CenterName = center.CenterName,
                 Username = user.Username,
                 DisplayName = user.DisplayName,
-                Role = user.RoleName.ToString()
+                AccountType = user.RoleName.ToString(),
+                Role = user.RoleName.ToString(),
+                Roles = authorization.Roles,
+                Permissions = authorization.Permissions,
+                AuthorizationVersion = user.AuthVersion
             }
         };
 

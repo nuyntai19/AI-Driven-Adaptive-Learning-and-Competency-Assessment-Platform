@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using EduTwin.Contracts.Common;
 
 namespace EduTwin.Contracts.IdentityAndTenancy;
@@ -15,6 +16,10 @@ public class CurrentUserDataDto
     public string CenterName { get; set; } = string.Empty;
     public string Username { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
+    public string AccountType { get; set; } = string.Empty;
     public string Role { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
+    public IReadOnlyList<AuthorizationRoleSummaryDto> Roles { get; set; } = [];
+    public IReadOnlyList<string> Permissions { get; set; } = [];
+    public uint AuthorizationVersion { get; set; }
 }

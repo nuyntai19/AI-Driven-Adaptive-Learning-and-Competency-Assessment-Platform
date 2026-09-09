@@ -15,6 +15,9 @@ public static class DependencyInjection
 
         services.AddScoped<IClaimsResolver, ClaimsResolver>();
         services.AddScoped<ICenterResolver, CenterResolver>();
+        services.AddScoped<IAuthorizationSnapshotReader, AuthorizationSnapshotReader>();
+        services.AddScoped<IPermissionEvaluator, PermissionEvaluator>();
+        services.AddScoped<IListPermissionsUseCase, ListPermissionsUseCase>();
 
         services.AddScoped<ILoginUseCase, LoginUseCase>();
         services.AddScoped<IRefreshTokenCodec, RefreshTokenCodec>();

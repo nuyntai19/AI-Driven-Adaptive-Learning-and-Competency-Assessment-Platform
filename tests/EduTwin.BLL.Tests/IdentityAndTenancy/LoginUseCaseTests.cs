@@ -23,6 +23,7 @@ public class LoginUseCaseTests : IDisposable
     private readonly Mock<IBackgroundTenantScopeFactory> _mockScopeFactory;
     private readonly Mock<IPasswordHasher<User>> _mockHasher;
     private readonly Mock<IJwtTokenGenerator> _mockTokenGenerator;
+    private readonly Mock<IAuthorizationSnapshotReader> _mockAuthorizationSnapshotReader;
     private readonly FixedTimeProvider _timeProvider;
     private readonly LoginUseCase _sut;
 
@@ -49,6 +50,7 @@ public class LoginUseCaseTests : IDisposable
 
         _mockHasher = new Mock<IPasswordHasher<User>>();
         _mockTokenGenerator = new Mock<IJwtTokenGenerator>();
+        _mockAuthorizationSnapshotReader = new Mock<IAuthorizationSnapshotReader>();
         _timeProvider = new FixedTimeProvider(new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc));
 
         _mockHasher.Setup(h => h.VerifyHashedPassword(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<string>()))
@@ -56,10 +58,22 @@ public class LoginUseCaseTests : IDisposable
 
         _mockTokenGenerator.Setup(g => g.GenerateToken(It.IsAny<User>(), It.IsAny<Guid>()))
             .Returns("mock-jwt-token");
+        _mockAuthorizationSnapshotReader
+            .Setup(reader => reader.ReadForUserAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthorizationSnapshot([], []));
 
         var codec = new RefreshTokenCodec();
 
-        _sut = new LoginUseCase(_dbContext, _mockScopeFactory.Object, _mockHasher.Object, _mockTokenGenerator.Object, _timeProvider, codec);
+        _sut = new LoginUseCase(
+            _dbContext,
+            _mockScopeFactory.Object,
+            _mockHasher.Object,
+            _mockTokenGenerator.Object,
+            _timeProvider,
+            codec,
+            _mockAuthorizationSnapshotReader.Object);
     }
 
     public void Dispose()
@@ -71,7 +85,7 @@ public class LoginUseCaseTests : IDisposable
         new() { CenterId = centerId, CenterCode = code, CenterName = $"Center {code}", Status = status, Timezone = "UTC", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
 
     private static User MakeUser(Guid userId, Guid centerId, Center center, string username = "manager", UserRole role = UserRole.CenterManager, UserStatus status = UserStatus.Active, bool isDeleted = false) =>
-        new() { UserId = userId, CenterId = centerId, Username = username, PasswordHash = "hash", RoleName = role, DisplayName = "Display", Status = status, IsDeleted = isDeleted, Center = center, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
+        new() { UserId = userId, CenterId = centerId, Username = username, PasswordHash = "hash", RoleName = role, DisplayName = "Display", Status = status, AuthVersion = 1, IsDeleted = isDeleted, Center = center, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
 
     [Fact]
     public async Task Login_Success_ReturnsTokenAndCookieData()
@@ -94,6 +108,11 @@ public class LoginUseCaseTests : IDisposable
         Assert.Equal("Bearer", result.Data.TokenType);
         Assert.Equal(900, result.Data.ExpiresInSeconds);
         Assert.Equal("manager", result.Data.User.Username);
+        Assert.Equal("CenterManager", result.Data.User.AccountType);
+        Assert.Equal("CenterManager", result.Data.User.Role);
+        Assert.Equal(1u, result.Data.User.AuthorizationVersion);
+        Assert.Empty(result.Data.User.Roles);
+        Assert.Empty(result.Data.User.Permissions);
         Assert.NotNull(result.RawRefreshToken);
         Assert.NotNull(result.RefreshTokenExpiresAt);
 

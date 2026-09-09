@@ -48,7 +48,7 @@ public class ClaimsResolver : IClaimsResolver
             throw new UnauthorizedAccessException("Missing or invalid role claim.");
         }
 
-        if (!int.TryParse(authVersionClaim, out var authVersion) || authVersion < 1)
+        if (!uint.TryParse(authVersionClaim, out var authVersion) || authVersion < 1)
             throw new UnauthorizedAccessException("Missing or invalid auth_version claim.");
 
         initializer.Initialize(centerId, userId, roleClaim, authVersion);

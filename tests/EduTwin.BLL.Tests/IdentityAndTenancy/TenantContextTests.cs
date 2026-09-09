@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Xunit;
 using EduTwin.BLL.IdentityAndTenancy;
 using Microsoft.Extensions.DependencyInjection;
@@ -31,7 +31,7 @@ public class TenantContextTests
         Assert.Equal(centerId, context.CenterId);
         Assert.Equal(userId, context.UserId);
         Assert.Equal("Teacher", context.Role);
-        Assert.Equal(1, context.AuthVersion);
+        Assert.Equal(1u, context.AuthVersion);
     }
 
     [Fact]

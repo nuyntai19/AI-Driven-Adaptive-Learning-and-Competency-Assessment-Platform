@@ -11,7 +11,7 @@ public class TenantContext : ITenantContext, ITenantContextInitializer, IBackgro
         public Guid? CenterId { get; set; }
         public Guid? UserId { get; set; }
         public string? Role { get; set; }
-        public int? AuthVersion { get; set; }
+        public uint? AuthVersion { get; set; }
     }
 
     private readonly Stack<TenantState> _states = new();
@@ -21,10 +21,10 @@ public class TenantContext : ITenantContext, ITenantContextInitializer, IBackgro
     public Guid? CenterId => CurrentState?.CenterId;
     public Guid? UserId => CurrentState?.UserId;
     public string? Role => CurrentState?.Role;
-    public int? AuthVersion => CurrentState?.AuthVersion;
+    public uint? AuthVersion => CurrentState?.AuthVersion;
     public bool IsResolved => CenterId.HasValue && CenterId.Value != Guid.Empty;
 
-    public void Initialize(Guid centerId, Guid userId, string role, int authVersion)
+    public void Initialize(Guid centerId, Guid userId, string role, uint authVersion)
     {
         if (centerId == Guid.Empty) throw new InvalidOperationException("CenterId cannot be empty.");
         if (userId == Guid.Empty) throw new InvalidOperationException("UserId cannot be empty.");

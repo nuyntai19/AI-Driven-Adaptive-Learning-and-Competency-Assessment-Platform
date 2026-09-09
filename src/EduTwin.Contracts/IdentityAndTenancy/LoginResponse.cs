@@ -1,7 +1,16 @@
 using System;
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace EduTwin.Contracts.IdentityAndTenancy;
+
+public class AuthorizationRoleSummaryDto
+{
+    public required string RoleId { get; set; }
+    public required string RoleCode { get; set; }
+    public required string RoleName { get; set; }
+    public required string AccountType { get; set; }
+}
 
 public class UserDto
 {
@@ -10,7 +19,11 @@ public class UserDto
     public required string CenterName { get; set; }
     public required string Username { get; set; }
     public required string DisplayName { get; set; }
+    public required string AccountType { get; set; }
     public required string Role { get; set; }
+    public required IReadOnlyList<AuthorizationRoleSummaryDto> Roles { get; set; }
+    public required IReadOnlyList<string> Permissions { get; set; }
+    public required uint AuthorizationVersion { get; set; }
 }
 
 public class LoginDataDto

@@ -50,7 +50,7 @@ public class ClaimsResolverTests
         var principal = CreatePrincipal(role);
         _resolver.Resolve(principal, _mockInitializer.Object);
 
-        _mockInitializer.Verify(x => x.Initialize(_centerId, _userId, role, int.Parse(_authVersion)), Times.Once);
+        _mockInitializer.Verify(x => x.Initialize(_centerId, _userId, role, uint.Parse(_authVersion)), Times.Once);
     }
 
     [Theory]
@@ -72,7 +72,7 @@ public class ClaimsResolverTests
         Assert.Equal("Missing or invalid role claim.", exception.Message);
 
         // TenantContext không được initialize
-        _mockInitializer.Verify(x => x.Initialize(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<int>()), Times.Never);
+        _mockInitializer.Verify(x => x.Initialize(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<uint>()), Times.Never);
     }
 
     [Fact]
@@ -85,7 +85,7 @@ public class ClaimsResolverTests
 
         Assert.Equal("Missing or duplicate role claim.", exception.Message);
 
-        _mockInitializer.Verify(x => x.Initialize(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<int>()), Times.Never);
+        _mockInitializer.Verify(x => x.Initialize(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<uint>()), Times.Never);
     }
 
     private ClaimsPrincipal CreateCustomPrincipal(IEnumerable<Claim> claims, bool isAuthenticated = true)
@@ -101,7 +101,7 @@ public class ClaimsResolverTests
         var principal = CreateCustomPrincipal(claims);
         var exception = Assert.Throws<UnauthorizedAccessException>(() => _resolver.Resolve(principal, _mockInitializer.Object));
         Assert.Equal("Missing or duplicate center_id claim.", exception.Message);
-        _mockInitializer.Verify(x => x.Initialize(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<int>()), Times.Never);
+        _mockInitializer.Verify(x => x.Initialize(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<uint>()), Times.Never);
     }
 
     [Fact]
@@ -111,7 +111,7 @@ public class ClaimsResolverTests
         var principal = CreateCustomPrincipal(claims);
         var exception = Assert.Throws<UnauthorizedAccessException>(() => _resolver.Resolve(principal, _mockInitializer.Object));
         Assert.Equal("Missing or invalid sub claim.", exception.Message);
-        _mockInitializer.Verify(x => x.Initialize(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<int>()), Times.Never);
+        _mockInitializer.Verify(x => x.Initialize(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<uint>()), Times.Never);
     }
 
     [Fact]
@@ -121,7 +121,7 @@ public class ClaimsResolverTests
         var principal = CreateCustomPrincipal(claims);
         var exception = Assert.Throws<UnauthorizedAccessException>(() => _resolver.Resolve(principal, _mockInitializer.Object));
         Assert.Equal("Missing or duplicate auth_version claim.", exception.Message);
-        _mockInitializer.Verify(x => x.Initialize(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<int>()), Times.Never);
+        _mockInitializer.Verify(x => x.Initialize(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<uint>()), Times.Never);
     }
 
     [Fact]
@@ -131,7 +131,7 @@ public class ClaimsResolverTests
         var principal = CreateCustomPrincipal(claims);
         var exception = Assert.Throws<UnauthorizedAccessException>(() => _resolver.Resolve(principal, _mockInitializer.Object));
         Assert.Equal("Missing or invalid auth_version claim.", exception.Message);
-        _mockInitializer.Verify(x => x.Initialize(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<int>()), Times.Never);
+        _mockInitializer.Verify(x => x.Initialize(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<uint>()), Times.Never);
     }
 
     [Fact]
@@ -140,7 +140,7 @@ public class ClaimsResolverTests
         var claims = new[] { new Claim("sub", _userId.ToString()), new Claim("center_id", _centerId.ToString()), new Claim("role", "Student"), new Claim("auth_version", _authVersion) };
         var principal = CreateCustomPrincipal(claims, isAuthenticated: false);
         _resolver.Resolve(principal, _mockInitializer.Object);
-        _mockInitializer.Verify(x => x.Initialize(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<int>()), Times.Never);
+        _mockInitializer.Verify(x => x.Initialize(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<uint>()), Times.Never);
     }
 
     [Fact]
@@ -150,7 +150,7 @@ public class ClaimsResolverTests
         var principal = CreateCustomPrincipal(claims);
         var exception = Assert.Throws<UnauthorizedAccessException>(() => _resolver.Resolve(principal, _mockInitializer.Object));
         Assert.Equal("Missing or duplicate sub claim.", exception.Message);
-        _mockInitializer.Verify(x => x.Initialize(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<int>()), Times.Never);
+        _mockInitializer.Verify(x => x.Initialize(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<uint>()), Times.Never);
     }
 
     [Fact]
@@ -160,7 +160,7 @@ public class ClaimsResolverTests
         var principal = CreateCustomPrincipal(claims);
         var exception = Assert.Throws<UnauthorizedAccessException>(() => _resolver.Resolve(principal, _mockInitializer.Object));
         Assert.Equal("Missing or duplicate role claim.", exception.Message);
-        _mockInitializer.Verify(x => x.Initialize(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<int>()), Times.Never);
+        _mockInitializer.Verify(x => x.Initialize(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<uint>()), Times.Never);
     }
 
     [Fact]
@@ -170,6 +170,6 @@ public class ClaimsResolverTests
         var principal = CreateCustomPrincipal(claims);
         var exception = Assert.Throws<UnauthorizedAccessException>(() => _resolver.Resolve(principal, _mockInitializer.Object));
         Assert.Equal("Missing or duplicate center_id claim.", exception.Message);
-        _mockInitializer.Verify(x => x.Initialize(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<int>()), Times.Never);
+        _mockInitializer.Verify(x => x.Initialize(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<uint>()), Times.Never);
     }
 }

@@ -3,6 +3,8 @@ using System.Linq;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization.Policy;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using EduTwin.API.Health;
@@ -17,6 +19,7 @@ using EduTwin.BLL.AssessmentAndReasoning;
 using EduTwin.API.AssessmentAndReasoning.Background;
 using EduTwin.API.AssessmentAndReasoning.AI;
 using EduTwin.API.Security;
+using EduTwin.DAL.Seeding;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -110,7 +113,19 @@ builder.Services.AddAuthorization(options =>
         var roleNames = System.Linq.Enumerable.Select(kvp.Value, r => r.ToString()).ToArray();
         options.AddPolicy(kvp.Key, policy => policy.RequireClaim("role", roleNames));
     }
+
+    foreach (var permission in AuthorizationPermissionCatalog.CreatePermissions())
+    {
+        options.AddPolicy(
+            permission.PermissionCode,
+            policy => policy.AddRequirements(
+                new PermissionRequirement(permission.PermissionCode)));
+    }
 });
+builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
+builder.Services.AddSingleton<
+    IAuthorizationMiddlewareResultHandler,
+    ApiAuthorizationMiddlewareResultHandler>();
 builder.Services.AddHealthChecks()
     .Add(new Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckRegistration(
         "mysql",
@@ -154,6 +169,7 @@ await app.Services.ApplyMigrationsAndSeedAsync(app.Configuration, isDev);
 // --- Middleware Pipeline ---
 app.UseAuthentication();
 app.UseMiddleware<EduTwin.API.Middleware.TenantContextMiddleware>();
+app.UseMiddleware<EduTwin.API.Middleware.AuthorizationVersionMiddleware>();
 app.UseAuthorization();
 
 app.MapControllers();

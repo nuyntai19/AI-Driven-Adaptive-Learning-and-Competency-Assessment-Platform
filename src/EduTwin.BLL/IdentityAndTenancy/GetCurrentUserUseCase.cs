@@ -13,11 +13,16 @@ public class GetCurrentUserUseCase : IGetCurrentUserUseCase
 {
     private readonly EduTwinDbContext _dbContext;
     private readonly ITenantContext _tenantContext;
+    private readonly IAuthorizationSnapshotReader _authorizationSnapshotReader;
 
-    public GetCurrentUserUseCase(EduTwinDbContext dbContext, ITenantContext tenantContext)
+    public GetCurrentUserUseCase(
+        EduTwinDbContext dbContext,
+        ITenantContext tenantContext,
+        IAuthorizationSnapshotReader authorizationSnapshotReader)
     {
         _dbContext = dbContext;
         _tenantContext = tenantContext;
+        _authorizationSnapshotReader = authorizationSnapshotReader;
     }
 
     public async Task<GetCurrentUserResult> ExecuteAsync(CancellationToken cancellationToken = default)
@@ -51,6 +56,7 @@ public class GetCurrentUserUseCase : IGetCurrentUserUseCase
                 u.DisplayName,
                 u.RoleName,
                 u.Status,
+                u.AuthVersion,
                 CenterId = u.Center != null ? u.Center.CenterId : Guid.Empty,
                 CenterName = u.Center != null ? u.Center.CenterName : string.Empty,
                 CenterStatus = u.Center != null ? u.Center.Status : EduTwin.Contracts.Organization.CenterStatus.Suspended,
@@ -73,6 +79,10 @@ public class GetCurrentUserUseCase : IGetCurrentUserUseCase
             return new GetCurrentUserResult { IsSuccess = false, ErrorCode = ErrorCodes.AuthUserDisabled };
         }
 
+        var authorization = await _authorizationSnapshotReader.ReadForUserAsync(
+            user.UserId,
+            cancellationToken);
+
         return new GetCurrentUserResult
         {
             IsSuccess = true,
@@ -83,8 +93,12 @@ public class GetCurrentUserUseCase : IGetCurrentUserUseCase
                 CenterName = user.CenterName,
                 Username = user.Username,
                 DisplayName = user.DisplayName,
+                AccountType = user.RoleName.ToString(),
                 Role = user.RoleName.ToString(),
-                Status = user.Status.ToString()
+                Status = user.Status.ToString(),
+                Roles = authorization.Roles,
+                Permissions = authorization.Permissions,
+                AuthorizationVersion = user.AuthVersion
             }
         };
     }
