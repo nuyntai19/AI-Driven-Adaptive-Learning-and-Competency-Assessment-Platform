@@ -24,8 +24,9 @@ public class User : IMutableTenantAggregate
     public DateTime? DeletedAt { get; set; }
     public Guid? DeletedBy { get; set; }
     public ulong RowVersion { get; set; }
-    
+
     // Navigation property for composite FK reference validation (only required by EF)
     public Organization.Center Center { get; set; } = null!;
     public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
+    public ICollection<UserRoleAssignment> RoleAssignments { get; set; } = [];
 }

@@ -26,6 +26,7 @@ public static class SeedExtensions
         services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
         services.AddScoped<IManifestEvaluator, ManifestEvaluator>();
         services.AddScoped<EduTwinRuntimeSeeder>();
+        services.AddScoped<AuthorizationBootstrapper>();
 
         return services;
     }
@@ -49,5 +50,9 @@ public static class SeedExtensions
         // Seed
         var seeder = scope.ServiceProvider.GetRequiredService<EduTwinRuntimeSeeder>();
         await seeder.SeedAsync();
+
+        var authorizationBootstrapper =
+            scope.ServiceProvider.GetRequiredService<AuthorizationBootstrapper>();
+        await authorizationBootstrapper.EnsureAsync();
     }
 }

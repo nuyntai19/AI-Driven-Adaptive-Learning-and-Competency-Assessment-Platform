@@ -66,7 +66,8 @@ public class CreateCurriculumUseCaseTests
 
     private async Task<(Center Center, User TeacherUser, Teacher Teacher, Subject Subject, KnowledgeNode Node1, KnowledgeNode Node2)> SeedBasicEntitiesAsync(
         Guid? customCenterId = null,
-        Guid? customTeacherId = null)
+        Guid? customTeacherId = null,
+        UserRole teacherUserRole = UserRole.Teacher)
     {
         var centerId = customCenterId ?? Guid.NewGuid();
         var teacherId = customTeacherId ?? Guid.NewGuid();
@@ -92,7 +93,7 @@ public class CreateCurriculumUseCaseTests
             CenterId = centerId,
             Username = "teacher-" + teacherId.ToString()[..8],
             PasswordHash = "hash",
-            RoleName = UserRole.Teacher,
+            RoleName = teacherUserRole,
             DisplayName = "Teacher One",
             Status = UserStatus.Active,
             IsDeleted = false,
@@ -554,9 +555,7 @@ public class CreateCurriculumUseCaseTests
         var teacherId = Guid.NewGuid();
         SetupTenant(centerId, teacherId, nameof(UserRole.Teacher));
 
-        var seed = await SeedBasicEntitiesAsync(centerId, teacherId);
-        seed.TeacherUser.RoleName = UserRole.Student;
-        await _dbContext.SaveChangesAsync();
+        var seed = await SeedBasicEntitiesAsync(centerId, teacherId, UserRole.Student);
 
         var request = new CreateCurriculumRequest { SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
         var result = await _sut.ExecuteAsync(request);
@@ -687,9 +686,7 @@ public class CreateCurriculumUseCaseTests
         var teacherId = Guid.NewGuid();
         SetupTenant(centerId, managerId, nameof(UserRole.CenterManager));
 
-        var seed = await SeedBasicEntitiesAsync(centerId, teacherId);
-        seed.TeacherUser.RoleName = UserRole.Student;
-        await _dbContext.SaveChangesAsync();
+        var seed = await SeedBasicEntitiesAsync(centerId, teacherId, UserRole.Student);
 
         var request = new CreateCurriculumRequest { TeacherId = teacherId.ToString("D"), SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
         var result = await _sut.ExecuteAsync(request);

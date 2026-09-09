@@ -102,6 +102,9 @@ public class UserConfiguration : IEntityTypeConfiguration<IdentityAndTenancy.Use
         builder.HasAlternateKey(u => new { u.CenterId, u.UserId })
             .HasName("ux_users_center_id_user_id"); // This creates ux_users_center_id_user_id (center_id, user_id)
 
+        builder.HasAlternateKey(u => new { u.CenterId, u.UserId, u.RoleName })
+            .HasName("ux_users_center_id_user_id_role_name");
+
         // Indexes
         builder.HasIndex(u => new { u.CenterId, u.Username })
             .IsUnique()

@@ -35,7 +35,7 @@ public class GlobalQueryFilterTests
         using var context = CreateContext();
         var entityTypes = context.Model.GetEntityTypes().Where(e => typeof(ITenantOwnedEntity).IsAssignableFrom(e.ClrType)).ToList();
 
-        Assert.Equal(30, entityTypes.Count); // Total 30 tenant-owned entities
+        Assert.Equal(34, entityTypes.Count); // 30 legacy + role, role permission, user role and authorization audit
 
         foreach (var entityType in entityTypes)
         {
@@ -49,7 +49,7 @@ public class GlobalQueryFilterTests
         using var context = CreateContext();
         var entityTypes = context.Model.GetEntityTypes().Where(e => typeof(IMutableTenantAggregate).IsAssignableFrom(e.ClrType)).ToList();
 
-        Assert.Equal(19, entityTypes.Count); // 19 MTA
+        Assert.Equal(20, entityTypes.Count); // 19 legacy + authorization role
 
         foreach (var entityType in entityTypes)
         {
@@ -67,7 +67,7 @@ public class GlobalQueryFilterTests
         using var context = CreateContext();
         var entityTypes = context.Model.GetEntityTypes().Where(e => typeof(ITenantAppendOnlyEntity).IsAssignableFrom(e.ClrType)).ToList();
 
-        Assert.Equal(5, entityTypes.Count); // 5 Append Only
+        Assert.Equal(6, entityTypes.Count); // 5 legacy + authorization audit
 
         foreach (var entityType in entityTypes)
         {
@@ -85,7 +85,7 @@ public class GlobalQueryFilterTests
         using var context = CreateContext();
         var entityTypes = context.Model.GetEntityTypes().Where(e => typeof(ITenantJoinEntity).IsAssignableFrom(e.ClrType)).ToList();
 
-        Assert.Equal(6, entityTypes.Count); // 6 Join Entities
+        Assert.Equal(8, entityTypes.Count); // 6 legacy + role permission and user role
 
         foreach (var entityType in entityTypes)
         {
@@ -248,6 +248,7 @@ public class GlobalQueryFilterTests
 
         var expectedWhitelist = new[]
         {
+            "src/EduTwin.BLL/Seeding/AuthorizationBootstrapper.cs",
             "src/EduTwin.BLL/Seeding/ManifestEvaluator.cs",
             "src/EduTwin.DAL/IdentityAndTenancy/RefreshTokenStore.cs"
         }.OrderBy(f => f).ToList();

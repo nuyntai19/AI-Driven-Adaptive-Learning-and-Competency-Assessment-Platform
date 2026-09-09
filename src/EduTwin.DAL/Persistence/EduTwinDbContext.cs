@@ -35,6 +35,12 @@ public class EduTwinDbContext : DbContext
     public DbSet<Center> Centers => Set<Center>();
     public DbSet<User> Users => Set<User>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<Permission> Permissions => Set<Permission>();
+    public DbSet<PermissionAccountType> PermissionAccountTypes => Set<PermissionAccountType>();
+    public DbSet<AuthorizationRole> AuthorizationRoles => Set<AuthorizationRole>();
+    public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
+    public DbSet<UserRoleAssignment> UserRoleAssignments => Set<UserRoleAssignment>();
+    public DbSet<AuthorizationAuditLog> AuthorizationAuditLogs => Set<AuthorizationAuditLog>();
     public DbSet<Teacher> Teachers => Set<Teacher>();
     public DbSet<Student> Students => Set<Student>();
     public DbSet<Subject> Subjects => Set<Subject>();
@@ -79,7 +85,7 @@ public class EduTwinDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
-        
+
         // Apply all configurations defined in the current assembly (DAL)
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
 
@@ -118,7 +124,7 @@ public class EduTwinDbContext : DbContext
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         base.ConfigureConventions(configurationBuilder);
-        
+
         configurationBuilder.Properties<Guid>().HaveConversion<Conventions.LowercaseGuidConverter>();
         configurationBuilder.Properties<Guid?>().HaveConversion<Conventions.LowercaseGuidConverter>();
         configurationBuilder.Properties<DateTime>().HaveConversion<Conventions.UtcDateTimeConverter>();

@@ -58,7 +58,10 @@ public class ListCurriculumsUseCaseTests : IDisposable
         _mockTenantContext.Setup(c => c.Role).Returns(role);
     }
 
-    private async Task<(Center Center, User User, Teacher Teacher, Subject Subject)> SeedBasicEntitiesAsync(Guid centerId, Guid teacherId)
+    private async Task<(Center Center, User User, Teacher Teacher, Subject Subject)> SeedBasicEntitiesAsync(
+        Guid centerId,
+        Guid teacherId,
+        UserRole teacherUserRole = UserRole.Teacher)
     {
         var now = DateTime.UtcNow;
 
@@ -80,7 +83,7 @@ public class ListCurriculumsUseCaseTests : IDisposable
             CenterId = centerId,
             Username = "teacher-" + teacherId.ToString()[..8],
             PasswordHash = "hash",
-            RoleName = UserRole.Teacher,
+            RoleName = teacherUserRole,
             DisplayName = "Teacher One",
             Status = UserStatus.Active,
             IsDeleted = false,
@@ -118,7 +121,10 @@ public class ListCurriculumsUseCaseTests : IDisposable
         return (center, user, teacher, subject);
     }
 
-    private async Task<User> SeedCenterManagerAsync(Guid centerId, Guid managerId)
+    private async Task<User> SeedCenterManagerAsync(
+        Guid centerId,
+        Guid managerId,
+        UserRole managerUserRole = UserRole.CenterManager)
     {
         var now = DateTime.UtcNow;
         var managerUser = new User
@@ -127,7 +133,7 @@ public class ListCurriculumsUseCaseTests : IDisposable
             CenterId = centerId,
             Username = "manager-" + managerId.ToString()[..8],
             PasswordHash = "hash",
-            RoleName = UserRole.CenterManager,
+            RoleName = managerUserRole,
             DisplayName = "Manager One",
             Status = UserStatus.Active,
             IsDeleted = false,
@@ -492,9 +498,7 @@ public class ListCurriculumsUseCaseTests : IDisposable
         var teacherId = Guid.NewGuid();
         SetupTenant(centerId, teacherId, nameof(UserRole.Teacher));
 
-        var seed = await SeedBasicEntitiesAsync(centerId, teacherId);
-        seed.User.RoleName = UserRole.CenterManager;
-        await _dbContext.SaveChangesAsync();
+        await SeedBasicEntitiesAsync(centerId, teacherId, UserRole.CenterManager);
 
         var result = await _sut.ExecuteAsync(new CurriculumListQuery());
         Assert.False(result.IsSuccess);
@@ -887,9 +891,7 @@ public class ListCurriculumsUseCaseTests : IDisposable
         var managerId = Guid.NewGuid();
         SetupTenant(centerId, managerId, nameof(UserRole.CenterManager));
         await SeedBasicEntitiesAsync(centerId, Guid.NewGuid());
-        var manager = await SeedCenterManagerAsync(centerId, managerId);
-        manager.RoleName = UserRole.Teacher;
-        await _dbContext.SaveChangesAsync();
+        await SeedCenterManagerAsync(centerId, managerId, UserRole.Teacher);
 
         var result = await _sut.ExecuteAsync(new CurriculumListQuery());
         Assert.False(result.IsSuccess);
