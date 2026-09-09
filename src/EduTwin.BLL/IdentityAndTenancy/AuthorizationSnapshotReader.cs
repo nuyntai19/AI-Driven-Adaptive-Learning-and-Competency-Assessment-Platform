@@ -40,13 +40,13 @@ public sealed class AuthorizationSnapshotReader(EduTwinDbContext dbContext)
             return new AuthorizationSnapshot(orderedRoles, []);
         }
 
-        var roleIds = orderedRoles
-            .Select(role => Guid.Parse(role.RoleId))
-            .ToArray();
         var permissionCodes = await dbContext.RolePermissions
             .AsNoTracking()
             .Where(grant =>
-                roleIds.Contains(grant.RoleId) &&
+                dbContext.UserRoleAssignments.Any(assignment =>
+                    assignment.UserId == userId &&
+                    assignment.RoleId == grant.RoleId &&
+                    assignment.Status == UserRoleAssignmentStatus.Active) &&
                 grant.Role.Status == AuthorizationRoleStatus.Active &&
                 grant.PermissionAccountType.Permission.Status == PermissionStatus.Active)
             .Select(grant => grant.PermissionAccountType.Permission.PermissionCode)

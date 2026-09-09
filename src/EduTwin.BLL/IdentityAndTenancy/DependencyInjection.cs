@@ -17,7 +17,16 @@ public static class DependencyInjection
         services.AddScoped<ICenterResolver, CenterResolver>();
         services.AddScoped<IAuthorizationSnapshotReader, AuthorizationSnapshotReader>();
         services.AddScoped<IPermissionEvaluator, PermissionEvaluator>();
+        services.AddScoped<ITenantAdministratorGuard, TenantAdministratorGuard>();
         services.AddScoped<IListPermissionsUseCase, ListPermissionsUseCase>();
+        services.AddScoped<IListAuthorizationRolesUseCase, ListAuthorizationRolesUseCase>();
+        services.AddScoped<IGetAuthorizationRoleUseCase, GetAuthorizationRoleUseCase>();
+        services.AddScoped<ICreateAuthorizationRoleUseCase, CreateAuthorizationRoleUseCase>();
+        services.AddScoped<IUpdateAuthorizationRoleUseCase, UpdateAuthorizationRoleUseCase>();
+        services.AddScoped<IReplaceRolePermissionsUseCase, ReplaceRolePermissionsUseCase>();
+        services.AddScoped<IGetUserAuthorizationUseCase, GetUserAuthorizationUseCase>();
+        services.AddScoped<IReplaceUserRolesUseCase, ReplaceUserRolesUseCase>();
+        services.AddScoped<IListAuthorizationAuditUseCase, ListAuthorizationAuditUseCase>();
 
         services.AddScoped<ILoginUseCase, LoginUseCase>();
         services.AddScoped<IRefreshTokenCodec, RefreshTokenCodec>();

@@ -7,6 +7,20 @@ namespace EduTwin.DAL.Seeding;
 
 public static class AuthorizationPermissionCatalog
 {
+    public static readonly IReadOnlySet<string> TenantAdminCorePermissionsV1 =
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            "authorization.permissions.read",
+            "authorization.roles.read",
+            "authorization.roles.create",
+            "authorization.roles.update",
+            "authorization.roles.archive",
+            "authorization.roles.manage_permissions",
+            "authorization.user_roles.read",
+            "authorization.user_roles.assign",
+            "authorization.audit.read"
+        };
+
     public static readonly DateTime CatalogTimestampUtc =
         new(2026, 9, 9, 0, 0, 0, DateTimeKind.Utc);
 
