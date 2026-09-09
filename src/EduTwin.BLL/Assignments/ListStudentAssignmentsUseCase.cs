@@ -8,6 +8,7 @@ using EduTwin.Contracts.Common;
 using EduTwin.DAL;
 using EduTwin.DAL.Persistence;
 using EduTwin.BLL.IdentityAndTenancy;
+using EduTwin.Contracts.IdentityAndTenancy;
 
 namespace EduTwin.BLL.Assignments;
 
@@ -29,6 +30,14 @@ public class ListStudentAssignmentsUseCase : IListStudentAssignmentsUseCase
 
     public async Task<ListStudentAssignmentsResult> ExecuteAsync(ListStudentAssignmentsQuery query, CancellationToken cancellationToken)
     {
+        if (!_tenantContext.IsResolved ||
+            !_tenantContext.CenterId.HasValue || _tenantContext.CenterId.Value == Guid.Empty ||
+            !_tenantContext.UserId.HasValue || _tenantContext.UserId.Value == Guid.Empty ||
+            !string.Equals(_tenantContext.Role, nameof(UserRole.Student), StringComparison.Ordinal))
+        {
+            return ListStudentAssignmentsResult.Failure(ErrorCodes.ResourceNotFound);
+        }
+
         var currentUserId = _tenantContext.UserId;
         var centerId = _tenantContext.CenterId;
         var utcNow = _timeProvider.GetUtcNow().UtcDateTime;
@@ -36,10 +45,10 @@ public class ListStudentAssignmentsUseCase : IListStudentAssignmentsUseCase
         var baseQuery = _dbContext.StudentAssignmentProgresses
             .AsNoTracking()
             .Include(p => p.Assignment)
-            .Where(p => p.CenterId == centerId && 
-                        p.StudentId == currentUserId && 
-                        p.Assignment != null && 
-                        !p.Assignment.IsDeleted && 
+            .Where(p => p.CenterId == centerId &&
+                        p.StudentId == currentUserId &&
+                        p.Assignment != null &&
+                        !p.Assignment.IsDeleted &&
                         (p.Assignment.Status == AssignmentStatus.Published || p.Assignment.Status == AssignmentStatus.Closed));
 
         if (!string.IsNullOrEmpty(query.Status))
@@ -48,15 +57,15 @@ public class ListStudentAssignmentsUseCase : IListStudentAssignmentsUseCase
             {
                 if (statusFilter == ProgressStatus.Overdue)
                 {
-                    baseQuery = baseQuery.Where(p => 
-                        p.Status != ProgressStatus.Completed && 
-                        p.Assignment!.DueAt.HasValue && 
+                    baseQuery = baseQuery.Where(p =>
+                        p.Status != ProgressStatus.Completed &&
+                        p.Assignment!.DueAt.HasValue &&
                         p.Assignment.DueAt.Value < utcNow);
                 }
                 else
                 {
-                    baseQuery = baseQuery.Where(p => 
-                        p.Status == statusFilter && 
+                    baseQuery = baseQuery.Where(p =>
+                        p.Status == statusFilter &&
                         (!p.Assignment!.DueAt.HasValue || p.Assignment.DueAt.Value >= utcNow || p.Status == ProgressStatus.Completed));
                 }
             }

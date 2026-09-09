@@ -37,6 +37,7 @@ public class KnowledgeNodesController : ControllerBase
     }
 
     [HttpGet]
+    [Authorize(Policy = "knowledge.nodes.read")]
     [ProducesResponseType(typeof(KnowledgeNodeListResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -96,7 +97,7 @@ public class KnowledgeNodesController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Policy = EduTwin.BLL.IdentityAndTenancy.AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "knowledge.nodes.create")]
     [ProducesResponseType(typeof(KnowledgeNodeResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -174,7 +175,7 @@ public class KnowledgeNodesController : ControllerBase
     }
 
     [HttpPatch("{nodeId}")]
-    [Authorize(Policy = EduTwin.BLL.IdentityAndTenancy.AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "knowledge.nodes.update")]
     [ProducesResponseType(typeof(KnowledgeNodeResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -255,7 +256,7 @@ public class KnowledgeNodesController : ControllerBase
     }
 
     [HttpDelete("{nodeId}")]
-    [Authorize(Policy = EduTwin.BLL.IdentityAndTenancy.AuthorizationPolicies.CenterManagerOnly)]
+    [Authorize(Policy = "knowledge.nodes.delete")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]

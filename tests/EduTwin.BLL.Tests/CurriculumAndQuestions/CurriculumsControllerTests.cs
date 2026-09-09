@@ -45,8 +45,8 @@ public class CurriculumsControllerTests
         _timeProviderMock.Setup(t => t.GetUtcNow()).Returns(_fixedTime);
 
         _sut = new CurriculumsController(
-            _createUseCaseMock.Object, 
-            _listUseCaseMock.Object, 
+            _createUseCaseMock.Object,
+            _listUseCaseMock.Object,
             _getUseCaseMock.Object,
             _updateUseCaseMock.Object,
             _assignClassesUseCaseMock.Object,
@@ -203,7 +203,7 @@ public class CurriculumsControllerTests
 
         var createAuthAttr = createMethod.GetCustomAttribute<AuthorizeAttribute>();
         Assert.NotNull(createAuthAttr);
-        Assert.Equal(AuthorizationPolicies.TeacherOrCenterManager, createAuthAttr.Policy);
+        Assert.Equal("curriculum.curriculums.create", createAuthAttr.Policy);
 
         var createProducesAttrs = createMethod.GetCustomAttributes<ProducesResponseTypeAttribute>().ToList();
         Assert.Equal(3, createProducesAttrs.Count);
@@ -219,7 +219,7 @@ public class CurriculumsControllerTests
 
         var listAuthAttr = listMethod.GetCustomAttribute<AuthorizeAttribute>();
         Assert.NotNull(listAuthAttr);
-        Assert.Equal(AuthorizationPolicies.TeacherOrCenterManager, listAuthAttr.Policy);
+        Assert.Equal("curriculum.curriculums.read", listAuthAttr.Policy);
 
         var listProducesAttrs = listMethod.GetCustomAttributes<ProducesResponseTypeAttribute>().ToList();
         Assert.Equal(3, listProducesAttrs.Count);

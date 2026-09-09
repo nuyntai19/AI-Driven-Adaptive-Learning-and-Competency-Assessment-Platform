@@ -3,6 +3,7 @@ using EduTwin.BLL.AssessmentAndReasoning;
 using EduTwin.BLL.AssessmentAndReasoning.AttemptSummaries;
 using EduTwin.BLL.AssessmentAndReasoning.Polling;
 using EduTwin.BLL.IdentityAndTenancy;
+using EduTwin.API.Security;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.Common;
 using EduTwin.Contracts.IdentityAndTenancy;
@@ -34,6 +35,7 @@ public sealed class LearningController : ControllerBase
     }
 
     [HttpGet("attempts")]
+    [Authorize(Policy = CompositePermissionPolicies.AttemptsRead)]
     [ProducesResponseType(typeof(AttemptListResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
@@ -68,6 +70,7 @@ public sealed class LearningController : ControllerBase
 
     [HttpPost("attempts")]
     [Authorize(Policy = AuthorizationPolicies.StudentOnly)]
+    [Authorize(Policy = "learning.attempts.submit")]
     [ProducesResponseType(typeof(SubmitAttemptResponse), StatusCodes.Status202Accepted)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -101,6 +104,7 @@ public sealed class LearningController : ControllerBase
     }
 
     [HttpGet("analysis-jobs/{analysisJobId}")]
+    [Authorize(Policy = CompositePermissionPolicies.AttemptsRead)]
     [ProducesResponseType(typeof(AnalysisJobStatusResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]

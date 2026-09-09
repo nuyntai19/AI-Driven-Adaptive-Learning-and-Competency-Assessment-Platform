@@ -29,6 +29,8 @@ public class KnowledgeGraphController : ControllerBase
     }
 
     [HttpGet]
+    [Authorize(Policy = "knowledge.nodes.read")]
+    [Authorize(Policy = "knowledge.edges.read")]
     [ProducesResponseType(typeof(KnowledgeGraphResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]

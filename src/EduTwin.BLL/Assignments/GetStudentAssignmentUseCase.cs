@@ -8,6 +8,7 @@ using EduTwin.Contracts.Common;
 using EduTwin.DAL;
 using EduTwin.DAL.Persistence;
 using EduTwin.BLL.IdentityAndTenancy;
+using EduTwin.Contracts.IdentityAndTenancy;
 
 namespace EduTwin.BLL.Assignments;
 
@@ -29,6 +30,14 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
 
     public async Task<GetStudentAssignmentResult> ExecuteAsync(Guid assignmentId, CancellationToken cancellationToken)
     {
+        if (!_tenantContext.IsResolved ||
+            !_tenantContext.CenterId.HasValue || _tenantContext.CenterId.Value == Guid.Empty ||
+            !_tenantContext.UserId.HasValue || _tenantContext.UserId.Value == Guid.Empty ||
+            !string.Equals(_tenantContext.Role, nameof(UserRole.Student), StringComparison.Ordinal))
+        {
+            return GetStudentAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
+        }
+
         var currentUserId = _tenantContext.UserId;
         var centerId = _tenantContext.CenterId;
         var utcNow = _timeProvider.GetUtcNow().UtcDateTime;
@@ -36,9 +45,9 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
         var progress = await _dbContext.StudentAssignmentProgresses
             .AsNoTracking()
             .Include(p => p.Assignment)
-            .FirstOrDefaultAsync(p => 
-                p.CenterId == centerId && 
-                p.StudentId == currentUserId && 
+            .FirstOrDefaultAsync(p =>
+                p.CenterId == centerId &&
+                p.StudentId == currentUserId &&
                 p.AssignmentId == assignmentId &&
                 !p.IsDeleted, cancellationToken);
 
@@ -60,13 +69,13 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
             .ToListAsync(cancellationToken);
 
         var questionIds = assignmentQuestions.Select(aq => aq.QuestionId).ToList();
-        
+
         var questionOptions = await _dbContext.QuestionOptions
             .AsNoTracking()
             .Where(o => o.CenterId == centerId && questionIds.Contains(o.QuestionId))
             .ToListAsync(cancellationToken);
 
-        // Fetch user attempts to map attemptStatus if necessary (currently spec says AttemptStatus can be null or we can join it, 
+        // Fetch user attempts to map attemptStatus if necessary (currently spec says AttemptStatus can be null or we can join it,
         // for simplicity if not joined, we set to null as per API spec example `attemptStatus: null`).
         // The API_CONTRACTS.md shows AttemptStatus: null in the example. We'll leave it as null to match MVP requirements if it's not strictly required here or can fetch from Attempts.
         // Wait, to be fully compliant, let's fetch attempts if there are any, or just leave it null.

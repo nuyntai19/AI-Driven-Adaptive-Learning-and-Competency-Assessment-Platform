@@ -33,12 +33,14 @@ public static class AuthorizationPermissionCatalog
         "organization.students.delete", "organization.classes.create", "organization.classes.update",
         "organization.classes.manage_members", "knowledge.subjects.delete", "knowledge.nodes.delete",
         "knowledge.edges.delete", "curriculum.curriculums.publish", "curriculum.questions.publish",
+        "curriculum.questions.delete", "twin.student.update_scoped",
         "assignments.assignments.publish", "assignments.assignments.close", "twin.reasoning.override"
     ];
 
     private static readonly string[] StudentCodes =
     [
         "learning.attempts.submit", "learning.attempts.read_own", "twin.student.read_own",
+        "twin.student.update_own",
         "recommendations.student.read_own", "dashboards.student.read_own"
     ];
 
@@ -52,7 +54,7 @@ public static class AuthorizationPermissionCatalog
         "organization.center.read", "organization.center.update", "organization.teachers.create",
         "organization.teachers.update", "organization.teachers.delete", "organization.students.delete",
         "organization.classes.create", "organization.classes.update", "knowledge.subjects.delete",
-        "knowledge.nodes.delete", "dashboards.center.read"
+        "knowledge.nodes.delete", "curriculum.questions.delete", "dashboards.center.read"
     ];
 
     private static readonly string[] TeacherOrManagerCodes =
@@ -65,7 +67,8 @@ public static class AuthorizationPermissionCatalog
         "curriculum.curriculums.publish", "curriculum.questions.read", "curriculum.questions.create",
         "curriculum.questions.update", "curriculum.questions.publish", "assignments.assignments.create",
         "assignments.assignments.update", "assignments.assignments.publish", "assignments.assignments.close",
-        "learning.attempts.read_scoped", "twin.student.read_scoped", "twin.reasoning.review",
+        "learning.attempts.read_scoped", "twin.student.read_scoped", "twin.student.update_scoped",
+        "twin.reasoning.review",
         "twin.reasoning.override"
     ];
 

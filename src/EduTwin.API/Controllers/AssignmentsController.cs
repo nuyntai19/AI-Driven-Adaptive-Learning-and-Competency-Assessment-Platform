@@ -57,7 +57,7 @@ public class AssignmentsController : ControllerBase
     /// POST /api/v1/assignments — Tạo Assignment Draft mới (API_CONTRACTS.md §50).
     /// </summary>
     [HttpPost]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "assignments.assignments.create")]
     [ProducesResponseType(typeof(AssignmentResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -88,7 +88,7 @@ public class AssignmentsController : ControllerBase
     /// GET /api/v1/assignments — Danh sách Assignment (API_CONTRACTS.md §51).
     /// </summary>
     [HttpGet]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "assignments.assignments.read")]
     [ProducesResponseType(typeof(AssignmentListResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> ListAssignments(
@@ -126,7 +126,7 @@ public class AssignmentsController : ControllerBase
     /// GET /api/v1/assignments/{id} — Chi tiết Assignment (API_CONTRACTS.md §51).
     /// </summary>
     [HttpGet("{id}")]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "assignments.assignments.read")]
     [ProducesResponseType(typeof(AssignmentResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetAssignment(
@@ -157,7 +157,7 @@ public class AssignmentsController : ControllerBase
     /// Chỉ cho phép khi Status == Draft. Bắt buộc rowVersion.
     /// </summary>
     [HttpPatch("{id}")]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "assignments.assignments.update")]
     [ProducesResponseType(typeof(AssignmentResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -192,7 +192,7 @@ public class AssignmentsController : ControllerBase
     /// Quyền: Teacher owner của Class hoặc CenterManager.
     /// </summary>
     [HttpPost("{id}/publish")]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "assignments.assignments.publish")]
     [ProducesResponseType(typeof(AssignmentResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -227,7 +227,7 @@ public class AssignmentsController : ControllerBase
     /// Quyền: Teacher owner của Class hoặc CenterManager.
     /// </summary>
     [HttpPost("{id}/close")]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "assignments.assignments.close")]
     [ProducesResponseType(typeof(AssignmentResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -261,7 +261,7 @@ public class AssignmentsController : ControllerBase
     /// Quyền: Teacher owner của Class hoặc CenterManager.
     /// </summary>
     [HttpGet("{id}/progress")]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "assignments.assignments.read")]
     [ProducesResponseType(typeof(AssignmentProgressListResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetAssignmentProgress(
@@ -290,7 +290,7 @@ public class AssignmentsController : ControllerBase
     /// GET /api/v1/students/me/assignments — Danh sách Assignment cho Student (API_CONTRACTS.md §51).
     /// </summary>
     [HttpGet("/api/v1/students/me/assignments")]
-    [Authorize(Policy = AuthorizationPolicies.StudentOnly)]
+    [Authorize(Policy = "assignments.assignments.read")]
     [ProducesResponseType(typeof(StudentAssignmentListResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> ListStudentAssignments(
@@ -314,7 +314,7 @@ public class AssignmentsController : ControllerBase
     /// GET /api/v1/students/me/assignments/{id} — Chi tiết Assignment cho Student (không lộ đáp án).
     /// </summary>
     [HttpGet("/api/v1/students/me/assignments/{id}")]
-    [Authorize(Policy = AuthorizationPolicies.StudentOnly)]
+    [Authorize(Policy = "assignments.assignments.read")]
     [ProducesResponseType(typeof(StudentAssignmentDetailResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetStudentAssignment(

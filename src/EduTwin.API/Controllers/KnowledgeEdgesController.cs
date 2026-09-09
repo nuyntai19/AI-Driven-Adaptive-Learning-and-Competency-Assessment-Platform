@@ -35,7 +35,7 @@ public class KnowledgeEdgesController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Policy = EduTwin.BLL.IdentityAndTenancy.AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "knowledge.edges.create")]
     [ProducesResponseType(typeof(KnowledgeEdgeResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -132,7 +132,7 @@ public class KnowledgeEdgesController : ControllerBase
     }
 
     [HttpPatch("{edgeId}")]
-    [Authorize(Policy = EduTwin.BLL.IdentityAndTenancy.AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "knowledge.edges.update")]
     [ProducesResponseType(typeof(KnowledgeEdgeResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -213,7 +213,7 @@ public class KnowledgeEdgesController : ControllerBase
     }
 
     [HttpDelete("{edgeId}")]
-    [Authorize(Policy = EduTwin.BLL.IdentityAndTenancy.AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "knowledge.edges.delete")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]

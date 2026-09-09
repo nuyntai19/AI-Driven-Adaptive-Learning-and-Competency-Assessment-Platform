@@ -20,12 +20,40 @@ namespace EduTwin.BLL.Tests.Assignments;
 public class ListStudentAssignmentsUseCaseTests
 {
     [Fact]
+    public async Task ExecuteAsync_TeacherAccountType_FailsClosed()
+    {
+        var centerId = Guid.NewGuid();
+        var tenantContext = new Mock<ITenantContext>();
+        tenantContext.SetupGet(item => item.IsResolved).Returns(true);
+        tenantContext.SetupGet(item => item.CenterId).Returns(centerId);
+        tenantContext.SetupGet(item => item.UserId).Returns(Guid.NewGuid());
+        tenantContext.SetupGet(item => item.Role).Returns("Teacher");
+        var accessor = new Mock<ITenantIdAccessor>();
+        accessor.SetupGet(item => item.CenterId).Returns(centerId);
+        var options = new DbContextOptionsBuilder<EduTwinDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        await using var context = new EduTwinDbContext(options, accessor.Object);
+        var sut = new ListStudentAssignmentsUseCase(
+            context,
+            tenantContext.Object,
+            TimeProvider.System);
+
+        var result = await sut.ExecuteAsync(
+            new ListStudentAssignmentsQuery(),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(EduTwin.Contracts.Common.ErrorCodes.ResourceNotFound, result.ErrorCode);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_ShouldReturnAssignments_WhenAuthorized()
     {
         // Arrange
         var centerId = Guid.NewGuid();
         var studentId = Guid.NewGuid();
-        
+
         var options = new DbContextOptionsBuilder<EduTwinDbContext>()
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
             .Options;
@@ -88,7 +116,7 @@ public class ListStudentAssignmentsUseCaseTests
         // Arrange
         var centerId = Guid.NewGuid();
         var studentId = Guid.NewGuid();
-        
+
         var options = new DbContextOptionsBuilder<EduTwinDbContext>()
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
             .Options;
@@ -114,7 +142,7 @@ public class ListStudentAssignmentsUseCaseTests
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
-        
+
         var assignment2 = new Assignment
         {
             AssignmentId = Guid.NewGuid(),
@@ -139,7 +167,7 @@ public class ListStudentAssignmentsUseCaseTests
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
-        
+
         var progress2 = new StudentAssignmentProgress
         {
             ProgressId = 2,

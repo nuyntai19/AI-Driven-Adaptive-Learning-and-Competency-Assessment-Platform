@@ -267,7 +267,7 @@ public class KnowledgeEdgesControllerTests
         Assert.Single(authorizeAttrs);
 
         var attr = authorizeAttrs[0];
-        Assert.Equal(EduTwin.BLL.IdentityAndTenancy.AuthorizationPolicies.TeacherOrCenterManager, attr.Policy);
+        Assert.Equal("knowledge.edges.create", attr.Policy);
     }
 
     [Fact]
@@ -471,7 +471,7 @@ public class KnowledgeEdgesControllerTests
         Assert.Single(authorizeAttrs);
 
         var attr = authorizeAttrs[0];
-        Assert.Equal(EduTwin.BLL.IdentityAndTenancy.AuthorizationPolicies.TeacherOrCenterManager, attr.Policy);
+        Assert.Equal("knowledge.edges.update", attr.Policy);
     }
 
     [Fact]
@@ -621,7 +621,7 @@ public class KnowledgeEdgesControllerTests
         Assert.Single(authorizeAttrs);
 
         var attr = authorizeAttrs[0];
-        Assert.Equal(EduTwin.BLL.IdentityAndTenancy.AuthorizationPolicies.TeacherOrCenterManager, attr.Policy);
+        Assert.Equal("knowledge.edges.delete", attr.Policy);
     }
 
     [Fact]

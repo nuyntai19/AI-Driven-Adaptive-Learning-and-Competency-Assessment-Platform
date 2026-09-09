@@ -300,7 +300,7 @@ public class KnowledgeNodesControllerTests
     }
 
     [Fact]
-    public void ListKnowledgeNodes_HasNoActionLevelAuthorizeWithRoleOrPolicy()
+    public void ListKnowledgeNodes_HasReadPermissionPolicy()
     {
         var method = typeof(KnowledgeNodesController)
             .GetMethod(nameof(KnowledgeNodesController.ListKnowledgeNodes));
@@ -309,12 +309,9 @@ public class KnowledgeNodesControllerTests
 
         var actionAuthorizeAttrs = method!.GetCustomAttributes<AuthorizeAttribute>().ToList();
 
-        // Either no action-level Authorize, or if present, it must not restrict by role/policy
-        foreach (var attr in actionAuthorizeAttrs)
-        {
-            Assert.Null(attr.Roles);
-            Assert.Null(attr.Policy);
-        }
+        var attr = Assert.Single(actionAuthorizeAttrs);
+        Assert.Null(attr.Roles);
+        Assert.Equal("knowledge.nodes.read", attr.Policy);
     }
 
     [Fact]
@@ -329,7 +326,7 @@ public class KnowledgeNodesControllerTests
     }
 
     [Fact]
-    public void CreateKnowledgeNode_HasActionLevelAuthorizeWithTeacherOrCenterManagerPolicy()
+    public void CreateKnowledgeNode_HasCreatePermissionPolicy()
     {
         var method = typeof(KnowledgeNodesController)
             .GetMethod(nameof(KnowledgeNodesController.CreateKnowledgeNode));
@@ -340,7 +337,7 @@ public class KnowledgeNodesControllerTests
         Assert.Single(authorizeAttrs);
 
         var attr = authorizeAttrs[0];
-        Assert.Equal(EduTwin.BLL.IdentityAndTenancy.AuthorizationPolicies.TeacherOrCenterManager, attr.Policy);
+        Assert.Equal("knowledge.nodes.create", attr.Policy);
     }
 
     // ─── UpdateKnowledgeNode tests ───
@@ -530,7 +527,7 @@ public class KnowledgeNodesControllerTests
     }
 
     [Fact]
-    public void UpdateKnowledgeNode_HasTeacherOrCenterManagerPolicy()
+    public void UpdateKnowledgeNode_HasUpdatePermissionPolicy()
     {
         var method = typeof(KnowledgeNodesController)
             .GetMethod(nameof(KnowledgeNodesController.UpdateKnowledgeNode));
@@ -541,7 +538,7 @@ public class KnowledgeNodesControllerTests
         Assert.Single(authorizeAttrs);
 
         var attr = authorizeAttrs[0];
-        Assert.Equal(EduTwin.BLL.IdentityAndTenancy.AuthorizationPolicies.TeacherOrCenterManager, attr.Policy);
+        Assert.Equal("knowledge.nodes.update", attr.Policy);
     }
 
     [Fact]
@@ -731,7 +728,7 @@ public class KnowledgeNodesControllerTests
     }
 
     [Fact]
-    public void DeleteKnowledgeNode_MetadataRequiresCenterManagerOnly()
+    public void DeleteKnowledgeNode_MetadataRequiresDeletePermission()
     {
         var method = typeof(KnowledgeNodesController)
             .GetMethod(nameof(KnowledgeNodesController.DeleteKnowledgeNode));
@@ -742,7 +739,7 @@ public class KnowledgeNodesControllerTests
         Assert.Single(authorizeAttrs);
 
         var attr = authorizeAttrs[0];
-        Assert.Equal(EduTwin.BLL.IdentityAndTenancy.AuthorizationPolicies.CenterManagerOnly, attr.Policy);
+        Assert.Equal("knowledge.nodes.delete", attr.Policy);
     }
 
     [Fact]

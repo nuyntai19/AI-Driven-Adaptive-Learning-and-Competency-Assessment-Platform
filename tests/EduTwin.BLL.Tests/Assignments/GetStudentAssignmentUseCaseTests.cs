@@ -23,13 +23,39 @@ namespace EduTwin.BLL.Tests.Assignments;
 public class GetStudentAssignmentUseCaseTests
 {
     [Fact]
+    public async Task ExecuteAsync_TeacherAccountType_FailsClosed()
+    {
+        var centerId = Guid.NewGuid();
+        var tenantContext = new Mock<ITenantContext>();
+        tenantContext.SetupGet(item => item.IsResolved).Returns(true);
+        tenantContext.SetupGet(item => item.CenterId).Returns(centerId);
+        tenantContext.SetupGet(item => item.UserId).Returns(Guid.NewGuid());
+        tenantContext.SetupGet(item => item.Role).Returns("Teacher");
+        var accessor = new Mock<ITenantIdAccessor>();
+        accessor.SetupGet(item => item.CenterId).Returns(centerId);
+        var options = new DbContextOptionsBuilder<EduTwinDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        await using var context = new EduTwinDbContext(options, accessor.Object);
+        var sut = new GetStudentAssignmentUseCase(
+            context,
+            tenantContext.Object,
+            TimeProvider.System);
+
+        var result = await sut.ExecuteAsync(Guid.NewGuid(), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_ShouldReturnAssignmentDetail_WithoutLeakingAnswers()
     {
         // Arrange
         var centerId = Guid.NewGuid();
         var studentId = Guid.NewGuid();
         var assignmentId = Guid.NewGuid();
-        
+
         var options = new DbContextOptionsBuilder<EduTwinDbContext>()
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
             .Options;
@@ -63,7 +89,7 @@ public class GetStudentAssignmentUseCaseTests
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
-        
+
         var question = new Question
         {
             QuestionId = 1001,
@@ -78,10 +104,10 @@ public class GetStudentAssignmentUseCaseTests
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
-        
+
         var optionA = new QuestionOption { OptionId = 1, QuestionId = 1001, CenterId = centerId, OptionLabel = "A", OptionText = "1", IsCorrect = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
         var optionB = new QuestionOption { OptionId = 2, QuestionId = 1001, CenterId = centerId, OptionLabel = "B", OptionText = "2", IsCorrect = true, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
-        
+
         var aq = new AssignmentQuestion
         {
             CenterId = centerId,
@@ -116,14 +142,14 @@ public class GetStudentAssignmentUseCaseTests
         var detail = result.Data!.Data;
         Assert.Equal("Test Assignment", detail.Title);
         Assert.Single(detail.Questions);
-        
+
         var studentQuestion = detail.Questions[0];
         Assert.Equal("1 + 1 = ?", studentQuestion.QuestionText);
         // Ensure no correct answer or solution is leaked
         var properties = studentQuestion.GetType().GetProperties();
         Assert.Null(properties.FirstOrDefault(p => p.Name == "CorrectAnswer"));
         Assert.Null(properties.FirstOrDefault(p => p.Name == "Solution"));
-        
+
         Assert.Equal(2, studentQuestion.Options.Count);
         var optionProperties = studentQuestion.Options[0].GetType().GetProperties();
         Assert.Null(optionProperties.FirstOrDefault(p => p.Name == "IsCorrect"));
@@ -136,7 +162,7 @@ public class GetStudentAssignmentUseCaseTests
         var centerId = Guid.NewGuid();
         var studentId = Guid.NewGuid();
         var assignmentId = Guid.NewGuid();
-        
+
         var options = new DbContextOptionsBuilder<EduTwinDbContext>()
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
             .Options;

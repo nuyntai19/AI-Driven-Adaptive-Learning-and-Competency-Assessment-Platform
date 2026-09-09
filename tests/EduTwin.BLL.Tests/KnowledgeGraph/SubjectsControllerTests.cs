@@ -268,7 +268,7 @@ public class SubjectsControllerTests
             .FirstOrDefault() as Microsoft.AspNetCore.Authorization.AuthorizeAttribute;
 
         Assert.NotNull(attr);
-        Assert.Equal(AuthorizationPolicies.TeacherOrCenterManager, attr.Policy);
+        Assert.Equal("knowledge.subjects.create", attr.Policy);
     }
 
     [Fact]
@@ -368,7 +368,7 @@ public class SubjectsControllerTests
     }
 
     [Fact]
-    public void GetSubject_Endpoint_IsProtectedByAuthenticatedUser()
+    public void GetSubject_Endpoint_UsesReadPermission()
     {
         var controllerAttr = typeof(SubjectsController).GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), true);
         Assert.NotEmpty(controllerAttr); // Controller has [Authorize]
@@ -379,7 +379,10 @@ public class SubjectsControllerTests
         Assert.Empty(allowAnon ?? Array.Empty<object>());
 
         var methodAuthorize = method?.GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), true);
-        Assert.Empty(methodAuthorize ?? Array.Empty<object>()); // No specific policy override on GetSubject
+        var attr = Assert.Single(
+            (methodAuthorize ?? Array.Empty<object>())
+                .Cast<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>());
+        Assert.Equal("knowledge.subjects.read", attr.Policy);
     }
 
     [Fact]
@@ -511,14 +514,14 @@ public class SubjectsControllerTests
     }
 
     [Fact]
-    public void UpdateSubject_Endpoint_IsProtectedByTeacherOrCenterManagerPolicy()
+    public void UpdateSubject_Endpoint_UsesUpdatePermission()
     {
         var method = typeof(SubjectsController).GetMethod("UpdateSubject");
         var attributes = method?.GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), true);
         var attr = attributes?.FirstOrDefault() as Microsoft.AspNetCore.Authorization.AuthorizeAttribute;
 
         Assert.NotNull(attr);
-        Assert.Equal(AuthorizationPolicies.TeacherOrCenterManager, attr.Policy);
+        Assert.Equal("knowledge.subjects.update", attr.Policy);
     }
 
     [Fact]
@@ -661,13 +664,13 @@ public class SubjectsControllerTests
     }
 
     [Fact]
-    public void DeleteSubject_Endpoint_IsProtectedByCenterManagerOnlyPolicy()
+    public void DeleteSubject_Endpoint_UsesDeletePermission()
     {
         var method = typeof(SubjectsController).GetMethod("DeleteSubject");
         var attributes = method?.GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), true);
         var attr = attributes?.FirstOrDefault() as Microsoft.AspNetCore.Authorization.AuthorizeAttribute;
 
         Assert.NotNull(attr);
-        Assert.Equal(AuthorizationPolicies.CenterManagerOnly, attr.Policy);
+        Assert.Equal("knowledge.subjects.delete", attr.Policy);
     }
 }

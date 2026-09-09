@@ -700,7 +700,7 @@ public class ClassesControllerTests
     }
 
     [Fact]
-    public void RemoveStudent_Controller_UsesTeacherOrCenterManagerPolicy()
+    public void RemoveStudent_Controller_UsesManageMembersPermission()
     {
         var methodInfo = typeof(ClassesController).GetMethod(nameof(ClassesController.RemoveStudent));
         Assert.NotNull(methodInfo);
@@ -710,7 +710,7 @@ public class ClassesControllerTests
             .FirstOrDefault();
 
         Assert.NotNull(authorizeAttr);
-        Assert.Equal(AuthorizationPolicies.TeacherOrCenterManager, authorizeAttr.Policy);
+        Assert.Equal("organization.classes.manage_members", authorizeAttr.Policy);
     }
 
     [Fact]
@@ -769,7 +769,7 @@ public class ClassesControllerTests
     }
 
     [Fact]
-    public void GetClassStudents_Controller_UsesTeacherOrCenterManagerPolicy()
+    public void GetClassStudents_Controller_UsesReadPermission()
     {
         var methodInfo = typeof(ClassesController).GetMethod(nameof(ClassesController.GetClassStudents));
         Assert.NotNull(methodInfo);
@@ -779,7 +779,7 @@ public class ClassesControllerTests
             .FirstOrDefault();
 
         Assert.NotNull(authorizeAttr);
-        Assert.Equal(AuthorizationPolicies.TeacherOrCenterManager, authorizeAttr.Policy);
+        Assert.Equal("organization.classes.read", authorizeAttr.Policy);
     }
 
     [Fact]

@@ -16,6 +16,7 @@ using EduTwin.BLL.KnowledgeGraph;
 using EduTwin.BLL.CurriculumAndQuestions;
 using EduTwin.BLL.Assignments;
 using EduTwin.BLL.AssessmentAndReasoning;
+using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.API.AssessmentAndReasoning.Background;
 using EduTwin.API.AssessmentAndReasoning.AI;
 using EduTwin.API.Security;
@@ -107,12 +108,11 @@ builder.Services.AddAuthentication(options =>
     });
 builder.Services.AddAuthorization(options =>
 {
-    var policies = EduTwin.BLL.IdentityAndTenancy.AuthorizationPolicies.GetPolicyRoles();
-    foreach (var kvp in policies)
-    {
-        var roleNames = System.Linq.Enumerable.Select(kvp.Value, r => r.ToString()).ToArray();
-        options.AddPolicy(kvp.Key, policy => policy.RequireClaim("role", roleNames));
-    }
+    // Account type remains a domain boundary for student submissions. Effective
+    // authorization is additionally enforced by learning.attempts.submit.
+    options.AddPolicy(
+        AuthorizationPolicies.StudentOnly,
+        policy => policy.RequireClaim("role", nameof(UserRole.Student)));
 
     foreach (var permission in AuthorizationPermissionCatalog.CreatePermissions())
     {
@@ -121,8 +121,17 @@ builder.Services.AddAuthorization(options =>
             policy => policy.AddRequirements(
                 new PermissionRequirement(permission.PermissionCode)));
     }
+
+    foreach (var compositePolicy in CompositePermissionPolicies.GetAnyPermissionPolicies())
+    {
+        options.AddPolicy(
+            compositePolicy.Key,
+            policy => policy.AddRequirements(
+                new AnyPermissionRequirement(compositePolicy.Value)));
+    }
 });
 builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
+builder.Services.AddScoped<IAuthorizationHandler, AnyPermissionAuthorizationHandler>();
 builder.Services.AddSingleton<
     IAuthorizationMiddlewareResultHandler,
     ApiAuthorizationMiddlewareResultHandler>();

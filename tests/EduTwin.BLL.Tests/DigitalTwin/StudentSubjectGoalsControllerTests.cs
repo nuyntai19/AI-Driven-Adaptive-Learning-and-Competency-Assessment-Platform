@@ -393,7 +393,9 @@ public class StudentSubjectGoalsControllerTests
 
         var authorizeAttrs = method.GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), false).Cast<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>().ToList();
         Assert.Single(authorizeAttrs);
-        Assert.Null(authorizeAttrs[0].Policy);
+        Assert.Equal(
+            EduTwin.API.Security.CompositePermissionPolicies.StudentTwinRead,
+            authorizeAttrs[0].Policy);
     }
     [Fact]
     public void DependencyInjection_AddDigitalTwin_RegistersExpectedDescriptors()
@@ -430,6 +432,8 @@ public class StudentSubjectGoalsControllerTests
 
         var authorizeAttrs = method.GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), false).Cast<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>().ToList();
         Assert.Single(authorizeAttrs);
-        Assert.Null(authorizeAttrs[0].Policy);
+        Assert.Equal(
+            EduTwin.API.Security.CompositePermissionPolicies.StudentTwinUpdate,
+            authorizeAttrs[0].Policy);
     }
 }

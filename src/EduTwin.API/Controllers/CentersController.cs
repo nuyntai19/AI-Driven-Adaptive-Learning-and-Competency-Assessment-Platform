@@ -14,7 +14,7 @@ namespace EduTwin.API.Controllers;
 
 [ApiController]
 [Route("api/v1/centers")]
-[Authorize(Policy = AuthorizationPolicies.CenterManagerOnly)]
+[Authorize]
 public class CentersController : ControllerBase
 {
     private readonly IGetCenterProfileUseCase _getCenterProfileUseCase;
@@ -32,6 +32,7 @@ public class CentersController : ControllerBase
     }
 
     [HttpGet("me")]
+    [Authorize(Policy = "organization.center.read")]
     public async Task<IActionResult> GetMyCenterProfile(CancellationToken cancellationToken)
     {
         var result = await _getCenterProfileUseCase.ExecuteAsync(cancellationToken);
@@ -79,6 +80,7 @@ public class CentersController : ControllerBase
     }
 
     [HttpPatch("me")]
+    [Authorize(Policy = "organization.center.update")]
     public async Task<IActionResult> UpdateMyCenterProfile([FromBody] UpdateCenterProfileRequest request, CancellationToken cancellationToken)
     {
         var result = await _updateCenterProfileUseCase.ExecuteAsync(request, cancellationToken);

@@ -67,6 +67,26 @@ public class KnowledgeGraphControllerTests
     }
 
     [Fact]
+    public void GetKnowledgeGraph_RequiresNodeAndEdgeReadPermissions()
+    {
+        var method = typeof(KnowledgeGraphController)
+            .GetMethod(nameof(KnowledgeGraphController.GetKnowledgeGraph));
+
+        Assert.NotNull(method);
+        var policies = method!
+            .GetCustomAttributes<AuthorizeAttribute>()
+            .Select(attribute => attribute.Policy)
+            .ToHashSet(StringComparer.Ordinal);
+        Assert.Equal(
+            new HashSet<string?>
+            {
+                "knowledge.nodes.read",
+                "knowledge.edges.read"
+            },
+            policies);
+    }
+
+    [Fact]
     public void Controller_HasNoRoleSpecificPolicy()
     {
         var attr = typeof(KnowledgeGraphController).GetCustomAttribute<AuthorizeAttribute>();

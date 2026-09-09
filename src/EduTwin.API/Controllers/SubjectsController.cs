@@ -35,6 +35,7 @@ public class SubjectsController : ControllerBase
     }
 
     [HttpGet]
+    [Authorize(Policy = "knowledge.subjects.read")]
     [ProducesResponseType(typeof(SubjectListResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> ListSubjects([FromQuery] SubjectListQuery query, CancellationToken cancellationToken)
@@ -76,7 +77,7 @@ public class SubjectsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "knowledge.subjects.create")]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -140,6 +141,7 @@ public class SubjectsController : ControllerBase
     }
 
     [HttpGet("{subjectId:guid}")]
+    [Authorize(Policy = "knowledge.subjects.read")]
     [ProducesResponseType(typeof(SubjectResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetSubject(Guid subjectId, CancellationToken cancellationToken)
@@ -181,7 +183,7 @@ public class SubjectsController : ControllerBase
     }
 
     [HttpPatch("{subjectId:guid}")]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "knowledge.subjects.update")]
     [ProducesResponseType(typeof(SubjectResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -276,7 +278,7 @@ public class SubjectsController : ControllerBase
     }
 
     [HttpDelete("{subjectId:guid}")]
-    [Authorize(Policy = AuthorizationPolicies.CenterManagerOnly)]
+    [Authorize(Policy = "knowledge.subjects.delete")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]

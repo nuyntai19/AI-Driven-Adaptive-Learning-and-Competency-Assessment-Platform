@@ -36,7 +36,7 @@ public class ClassesController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "organization.classes.read")]
     public async Task<IActionResult> ListClasses([FromQuery] ClassListQuery query, CancellationToken cancellationToken)
     {
         var result = await _listClassesUseCase.ExecuteAsync(query, cancellationToken);
@@ -89,7 +89,7 @@ public class ClassesController : ControllerBase
     }
 
     [HttpGet("{classId:guid}")]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "organization.classes.read")]
     public async Task<IActionResult> GetClass([FromRoute] Guid classId, CancellationToken cancellationToken)
     {
         var result = await _getClassUseCase.ExecuteAsync(classId, cancellationToken);
@@ -138,7 +138,7 @@ public class ClassesController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Policy = AuthorizationPolicies.CenterManagerOnly)]
+    [Authorize(Policy = "organization.classes.create")]
     [ProducesResponseType(typeof(object), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -204,7 +204,7 @@ public class ClassesController : ControllerBase
     }
 
     [HttpPatch("{classId:guid}")]
-    [Authorize(Policy = AuthorizationPolicies.CenterManagerOnly)]
+    [Authorize(Policy = "organization.classes.update")]
     [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -283,7 +283,7 @@ public class ClassesController : ControllerBase
     }
 
     [HttpPost("{classId:guid}/students")]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "organization.classes.manage_members")]
     [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
@@ -353,7 +353,7 @@ public class ClassesController : ControllerBase
     }
 
     [HttpGet("{classId:guid}/students")]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "organization.classes.read")]
     [ProducesResponseType(typeof(StudentListResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
@@ -444,7 +444,7 @@ public class ClassesController : ControllerBase
     }
 
     [HttpDelete("{classId:guid}/students/{studentId:guid}")]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "organization.classes.manage_members")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]

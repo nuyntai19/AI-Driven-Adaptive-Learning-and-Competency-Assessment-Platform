@@ -40,7 +40,7 @@ public class TeachersController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Policy = AuthorizationPolicies.CenterManagerOnly)]
+    [Authorize(Policy = "organization.teachers.read")]
     public async Task<IActionResult> GetTeachers([FromQuery] TeacherListQuery query, CancellationToken cancellationToken)
     {
         var result = await _listTeachersUseCase.ExecuteAsync(query, cancellationToken);
@@ -101,7 +101,7 @@ public class TeachersController : ControllerBase
     }
 
     [HttpGet("{teacherId:guid}")]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "organization.teachers.read")]
     public async Task<IActionResult> GetTeacher([FromRoute] Guid teacherId, CancellationToken cancellationToken)
     {
         var result = await _getTeacherUseCase.ExecuteAsync(teacherId, cancellationToken);
@@ -149,7 +149,7 @@ public class TeachersController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Policy = AuthorizationPolicies.CenterManagerOnly)]
+    [Authorize(Policy = "organization.teachers.create")]
     public async Task<IActionResult> CreateTeacher([FromBody] CreateTeacherRequest request, CancellationToken cancellationToken)
     {
         var result = await _createTeacherUseCase.ExecuteAsync(request, cancellationToken);
@@ -217,7 +217,7 @@ public class TeachersController : ControllerBase
     }
 
     [HttpPatch("{teacherId:guid}")]
-    [Authorize(Policy = AuthorizationPolicies.CenterManagerOnly)]
+    [Authorize(Policy = "organization.teachers.update")]
     public async Task<IActionResult> UpdateTeacher([FromRoute] Guid teacherId, [FromBody] UpdateTeacherRequest request, CancellationToken cancellationToken)
     {
         var result = await _updateTeacherUseCase.ExecuteAsync(teacherId, request, cancellationToken);
@@ -282,7 +282,7 @@ public class TeachersController : ControllerBase
     }
 
     [HttpDelete("{teacherId:guid}")]
-    [Authorize(Policy = AuthorizationPolicies.CenterManagerOnly)]
+    [Authorize(Policy = "organization.teachers.delete")]
     public async Task<IActionResult> DeleteTeacher([FromRoute] Guid teacherId, CancellationToken cancellationToken)
     {
         var result = await _deleteTeacherUseCase.ExecuteAsync(teacherId, cancellationToken);

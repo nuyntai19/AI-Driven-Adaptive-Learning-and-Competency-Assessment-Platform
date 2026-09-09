@@ -163,8 +163,15 @@ public sealed class LearningControllerTests
         Assert.NotNull(method);
         var post = Assert.Single(method.GetCustomAttributes<HttpPostAttribute>());
         Assert.Equal("attempts", post.Template);
-        var authorization = Assert.Single(method.GetCustomAttributes<AuthorizeAttribute>());
-        Assert.Equal(AuthorizationPolicies.StudentOnly, authorization.Policy);
+        var authorizationPolicies = method
+            .GetCustomAttributes<AuthorizeAttribute>()
+            .Select(attribute => attribute.Policy)
+            .ToHashSet(StringComparer.Ordinal);
+        Assert.True(authorizationPolicies.SetEquals(
+        [
+            AuthorizationPolicies.StudentOnly,
+            "learning.attempts.submit"
+        ]));
 
         var responses = method.GetCustomAttributes<ProducesResponseTypeAttribute>().ToList();
         Assert.Contains(responses, response =>
@@ -300,7 +307,10 @@ public sealed class LearningControllerTests
         Assert.NotNull(method);
         var get = Assert.Single(method.GetCustomAttributes<HttpGetAttribute>());
         Assert.Equal("analysis-jobs/{analysisJobId}", get.Template);
-        Assert.Empty(method.GetCustomAttributes<AuthorizeAttribute>());
+        var authorization = Assert.Single(method.GetCustomAttributes<AuthorizeAttribute>());
+        Assert.Equal(
+            EduTwin.API.Security.CompositePermissionPolicies.AttemptsRead,
+            authorization.Policy);
 
         var responses = method.GetCustomAttributes<ProducesResponseTypeAttribute>().ToList();
         Assert.Contains(responses, response =>
@@ -426,7 +436,10 @@ public sealed class LearningControllerTests
         Assert.NotNull(method);
         var get = Assert.Single(method.GetCustomAttributes<HttpGetAttribute>());
         Assert.Equal("attempts", get.Template);
-        Assert.Empty(method.GetCustomAttributes<AuthorizeAttribute>());
+        var authorization = Assert.Single(method.GetCustomAttributes<AuthorizeAttribute>());
+        Assert.Equal(
+            EduTwin.API.Security.CompositePermissionPolicies.AttemptsRead,
+            authorization.Policy);
 
         var queryParameter = Assert.Single(
             method.GetParameters(),

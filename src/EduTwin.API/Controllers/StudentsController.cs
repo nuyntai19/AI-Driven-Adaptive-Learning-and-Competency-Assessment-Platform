@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.BLL.Organization;
 using EduTwin.BLL.DigitalTwin;
+using EduTwin.API.Security;
 using EduTwin.Contracts.Common;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.Contracts.Organization;
@@ -44,7 +45,7 @@ public class StudentsController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "organization.students.read")]
     public async Task<IActionResult> ListStudents([FromQuery] StudentListQuery query, CancellationToken cancellationToken)
     {
         var result = await _listStudentsUseCase.ExecuteAsync(query, cancellationToken);
@@ -110,7 +111,7 @@ public class StudentsController : ControllerBase
     }
 
     [HttpGet("{studentId}")]
-    [Authorize]
+    [Authorize(Policy = "organization.students.read")]
     public async Task<IActionResult> GetStudent(Guid studentId, CancellationToken cancellationToken)
     {
         var result = await _getStudentUseCase.ExecuteAsync(studentId, cancellationToken);
@@ -159,7 +160,7 @@ public class StudentsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "organization.students.create")]
     public async Task<IActionResult> CreateStudent([FromBody] CreateStudentRequest request, CancellationToken cancellationToken)
     {
         var result = await _createStudentUseCase.ExecuteAsync(request, cancellationToken);
@@ -234,7 +235,7 @@ public class StudentsController : ControllerBase
     }
 
     [HttpPatch("{studentId}")]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "organization.students.update")]
     public async Task<IActionResult> UpdateStudent(Guid studentId, [FromBody] UpdateStudentRequest request, CancellationToken cancellationToken)
     {
         if (request == null)
@@ -322,7 +323,7 @@ public class StudentsController : ControllerBase
     }
 
     [HttpPut("{studentId}/goals/{subjectId}")]
-    [Authorize]
+    [Authorize(Policy = CompositePermissionPolicies.StudentTwinUpdate)]
     public async Task<IActionResult> UpsertStudentSubjectGoal(Guid studentId, Guid subjectId, [FromBody] UpsertStudentSubjectGoalRequest request, CancellationToken cancellationToken)
     {
         if (request == null)
@@ -410,7 +411,7 @@ public class StudentsController : ControllerBase
     }
 
     [HttpGet("{studentId}/goals")]
-    [Authorize]
+    [Authorize(Policy = CompositePermissionPolicies.StudentTwinRead)]
     public async Task<IActionResult> ListStudentSubjectGoals(Guid studentId, CancellationToken cancellationToken)
     {
         var result = await _listStudentSubjectGoalsUseCase.ExecuteAsync(studentId, cancellationToken);

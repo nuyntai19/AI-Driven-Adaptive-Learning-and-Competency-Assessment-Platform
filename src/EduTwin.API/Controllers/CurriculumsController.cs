@@ -48,7 +48,7 @@ public class CurriculumsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "curriculum.curriculums.create")]
     [ProducesResponseType(typeof(CurriculumResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -110,7 +110,7 @@ public class CurriculumsController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "curriculum.curriculums.read")]
     [ProducesResponseType(typeof(CurriculumListResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -172,7 +172,7 @@ public class CurriculumsController : ControllerBase
     }
 
     [HttpGet("{id}")]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "curriculum.curriculums.read")]
     [ProducesResponseType(typeof(CurriculumResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetCurriculum(
@@ -193,7 +193,7 @@ public class CurriculumsController : ControllerBase
     }
 
     [HttpPatch("{id}")]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "curriculum.curriculums.update")]
     [ProducesResponseType(typeof(CurriculumResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -217,7 +217,7 @@ public class CurriculumsController : ControllerBase
     }
 
     [HttpPut("{id}/classes")]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "curriculum.curriculums.update")]
     [ProducesResponseType(typeof(CurriculumResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -241,7 +241,7 @@ public class CurriculumsController : ControllerBase
     }
 
     [HttpPut("{id}/nodes")]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "curriculum.curriculums.update")]
     [ProducesResponseType(typeof(CurriculumResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -265,7 +265,7 @@ public class CurriculumsController : ControllerBase
     }
 
     [HttpPost("{id}/publish")]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "curriculum.curriculums.publish")]
     [ProducesResponseType(typeof(CurriculumResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]

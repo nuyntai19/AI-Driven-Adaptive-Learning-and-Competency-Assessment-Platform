@@ -49,7 +49,7 @@ public class QuestionsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "curriculum.questions.create")]
     [ProducesResponseType(typeof(QuestionResponse), StatusCodes.Status201Created)]
     public async Task<IActionResult> Create([FromBody] CreateQuestionRequest request, CancellationToken cancellationToken)
     {
@@ -71,7 +71,7 @@ public class QuestionsController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "curriculum.questions.read")]
     [ProducesResponseType(typeof(QuestionListResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> List([FromQuery] QuestionListQuery query, CancellationToken cancellationToken)
     {
@@ -81,7 +81,7 @@ public class QuestionsController : ControllerBase
             var page = query.Page < 1 ? 1 : query.Page;
             var pageSize = query.PageSize < 1 ? 20 : (query.PageSize > 100 ? 100 : query.PageSize);
             var totalPages = (int)((result.TotalItems + pageSize - 1) / pageSize);
-            
+
             var meta = new PagedMetaDto
             {
                 Page = page,
@@ -91,14 +91,14 @@ public class QuestionsController : ControllerBase
                 TraceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
                 Timestamp = _timeProvider.GetUtcNow().UtcDateTime
             };
-            
+
             return Ok(new QuestionListResponse { Data = result.Data ?? new List<QuestionDto>(), Meta = meta });
         }
         return MapError(result.ErrorCode!);
     }
 
     [HttpGet("{id}")]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "curriculum.questions.read")]
     [ProducesResponseType(typeof(QuestionResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Get([FromRoute] string id, CancellationToken cancellationToken)
     {
@@ -120,7 +120,7 @@ public class QuestionsController : ControllerBase
     }
 
     [HttpPatch("{id}")]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "curriculum.questions.update")]
     [ProducesResponseType(typeof(QuestionResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Update([FromRoute] string id, [FromBody] UpdateQuestionRequest request, CancellationToken cancellationToken)
     {
@@ -142,7 +142,7 @@ public class QuestionsController : ControllerBase
     }
 
     [HttpPost("{id}/activate")]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "curriculum.questions.publish")]
     [ProducesResponseType(typeof(QuestionResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Activate([FromRoute] string id, [FromBody] ActivateQuestionRequest request, CancellationToken cancellationToken)
     {
@@ -164,7 +164,7 @@ public class QuestionsController : ControllerBase
     }
 
     [HttpPost("{id}/archive")]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "curriculum.questions.publish")]
     [ProducesResponseType(typeof(QuestionResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Archive([FromRoute] string id, [FromBody] ArchiveQuestionRequest request, CancellationToken cancellationToken)
     {
@@ -186,7 +186,7 @@ public class QuestionsController : ControllerBase
     }
 
     [HttpDelete("{id}")]
-    [Authorize(Policy = AuthorizationPolicies.TeacherOrCenterManager)]
+    [Authorize(Policy = "curriculum.questions.delete")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Delete([FromRoute] string id, CancellationToken cancellationToken)
     {
@@ -202,7 +202,7 @@ public class QuestionsController : ControllerBase
     {
         var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
         var path = HttpContext.Request.Path;
-        
+
         return errorCode switch
         {
             ErrorCodes.ResourceNotFound => NotFound(new ProblemDetails
@@ -262,4 +262,3 @@ public class QuestionsController : ControllerBase
         };
     }
 }
-
