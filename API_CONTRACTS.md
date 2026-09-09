@@ -1,9 +1,10 @@
 # EduTwin — API Contracts
 
-> Phiên bản: 1.0  
-> Trạng thái: FROZEN  
-> Base URL: /api/v1  
-> Media type: application/json; charset=utf-8  
+> Phiên bản: 2.1-draft
+> Trạng thái: COURSE REBASELINE — API v1 hiện hữu + target contract RBAC/Evidence chưa cutover
+> Base URL: /api/v1
+> Media type: application/json; charset=utf-8
+> Chủ sở hữu: Backend + Frontend integration owners; thay đổi cần nhóm phê duyệt
 
 ## 1. Nguyên tắc contract
 
@@ -16,6 +17,7 @@
 - Request unknown field phải bị từ chối tại contract nhạy cảm như AI output/override.
 - API version chỉ thay khi có breaking change được phê duyệt.
 - rowVersion được serialize thành string và bắt buộc khi update aggregate có concurrency.
+- authorizationVersion trong JSON và auth_version claim cùng ánh xạ tới users.auth_version; API không có version authorization thứ hai.
 
 ## 2. Authentication transport
 
@@ -84,7 +86,7 @@
 | 204 | Soft delete/logout/remove membership thành công |
 | 400 | Validation hoặc request malformed |
 | 401 | Chưa xác thực/token hết hạn |
-| 403 | Đã xác thực nhưng role không được phép |
+| 403 | Đã xác thực nhưng thiếu permission hoặc resource scope |
 | 404 | Không tồn tại hoặc resource thuộc tenant khác |
 | 409 | Concurrency, duplicate, DAG cycle, invalid state transition |
 | 422 | Request hợp lệ về cú pháp nhưng không thể xử lý nghiệp vụ |
@@ -100,7 +102,11 @@
 | AUTH_TOKEN_EXPIRED | 401 | Access Token hết hạn |
 | AUTH_REFRESH_INVALID | 401 | Refresh Token invalid/revoked |
 | AUTH_USER_DISABLED | 403 | User/Center bị khóa |
-| FORBIDDEN_RESOURCE | 403 | Role đúng nhưng không có ownership |
+| AUTH_PERMISSION_REQUIRED | 403 | Thiếu effective permission bắt buộc |
+| AUTH_PRIVILEGE_ESCALATION | 403 | Cố cấp role/permission vượt quyền actor |
+| ROLE_ACCOUNT_TYPE_MISMATCH | 400 | Role, permission hoặc user không tương thích account type |
+| AUTHORIZATION_VERSION_STALE | 401 | Token được phát trước thay đổi authorization |
+| FORBIDDEN_RESOURCE | 403 | Có permission chung nhưng không có resource scope/ownership |
 | RESOURCE_NOT_FOUND | 404 | Không tồn tại hoặc cross-tenant |
 | CONCURRENCY_CONFLICT | 409 | rowVersion cũ |
 | DUPLICATE_RESOURCE | 409 | Vi phạm unique business key |
@@ -111,6 +117,8 @@
 | QUESTION_REASONING_REQUIRED | 422 | Thiếu reasoningText |
 | AI_JOB_NOT_TERMINAL | 422 | Feedback chưa sẵn sàng |
 | OVERRIDE_REPLAY_FAILED | 500 | Transaction replay rollback |
+| LAST_TENANT_ADMIN | 409 | Thao tác làm Center không còn tenant administrator |
+| ROLE_IN_USE | 409 | Không thể archive role còn assignment active |
 
 ## 6. Pagination/filter/sort
 
@@ -128,7 +136,13 @@ Collection rỗng trả data: [], không trả 404.
 
 | Enum | Giá trị |
 |---|---|
-| RoleName | Student, Teacher, CenterManager |
+| AccountType | Student, Teacher, CenterManager |
+| RoleName | Student, Teacher, CenterManager — legacy alias, deprecated sau RBAC cutover |
+| RoleStatus | Active, Archived |
+| PermissionStatus | Active, Deprecated |
+| EvidenceSourceType | AI, RuleFallback, TeacherOverride |
+| EvidenceTrustLevel | Trusted, Reduced, ReviewOnly |
+| EvidenceDecisionMode | AIWeighted, DeterministicOnly, HumanConfirmed |
 | UserStatus | Active, Locked, Disabled |
 | ClassStatus | Active, Archived |
 | NodeType | Subject, Chapter, Topic, Skill, Concept |
@@ -173,7 +187,22 @@ Response 200:
       "centerName": "EduTwin Center A",
       "username": "manager.a",
       "displayName": "Quản lý Trung tâm A",
-      "role": "CenterManager"
+      "accountType": "CenterManager",
+      "role": "CenterManager",
+      "roles": [
+        {
+          "roleId": "171bdf0d-bd77-4956-b575-449742199a2d",
+          "roleCode": "TENANT_ADMIN",
+          "roleName": "Quản trị trung tâm",
+          "accountType": "CenterManager"
+        }
+      ],
+      "permissions": [
+        "authorization.roles.manage_permissions",
+        "authorization.user_roles.assign",
+        "organization.students.read"
+      ],
+      "authorizationVersion": 1
     }
   },
   "meta": {
@@ -184,6 +213,8 @@ Response 200:
 ~~~
 
 Side effect: Set-Cookie edutwin_refresh.
+
+Compatibility: field role được giữ tạm trong migration window và phản ánh accountType, không phải effective authorization. Frontend mới phải dùng permissions; field role sẽ bị xóa trong API major version sau khi cutover được phê duyệt.
 
 ## 9. POST /auth/refresh
 
@@ -197,7 +228,7 @@ Response 200: cùng data accessToken/user như login và rotate refresh cookie.
 
 Quyền: Authenticated hoặc refresh cookie hợp lệ.
 
-Request body: không có.  
+Request body: không có.
 Response: 204, revoke refresh token hiện tại và clear cookie.
 
 ## 11. GET /auth/me
@@ -214,8 +245,23 @@ Response 200 dùng object user như login, bổ sung:
     "centerName": "EduTwin Center A",
     "username": "manager.a",
     "displayName": "Quản lý Trung tâm A",
+    "accountType": "CenterManager",
     "role": "CenterManager",
-    "status": "Active"
+    "status": "Active",
+    "roles": [
+      {
+        "roleId": "171bdf0d-bd77-4956-b575-449742199a2d",
+        "roleCode": "TENANT_ADMIN",
+        "roleName": "Quản trị trung tâm",
+        "accountType": "CenterManager"
+      }
+    ],
+    "permissions": [
+      "authorization.roles.manage_permissions",
+      "authorization.user_roles.assign",
+      "organization.students.read"
+    ],
+    "authorizationVersion": 1
   },
   "meta": {
     "traceId": "00-abcd-1234-01",
@@ -225,6 +271,8 @@ Response 200 dùng object user như login, bổ sung:
 ~~~
 
 # Center và Organization
+
+Center được provision bằng migration/seed/deployment có kiểm soát. Course MVP không định nghĩa POST/DELETE /centers hoặc endpoint quản lý Center khác; CenterManager chỉ đọc/cập nhật Center hiện hành theo permission sau cutover.
 
 ## 12. GET /centers/me
 
@@ -355,13 +403,13 @@ Transaction: User + Teacher profile.
 
 ## 17. GET /teachers
 
-Quyền: CenterManager.  
-Query: page, pageSize, search, status.  
+Quyền: CenterManager.
+Query: page, pageSize, search, status.
 Response 200: collection Teacher DTO.
 
 ## 18. GET /teachers/{teacherId}
 
-Quyền: CenterManager hoặc chính Teacher.  
+Quyền: CenterManager hoặc chính Teacher.
 Response 200: Teacher DTO.
 
 ## 19. PATCH /teachers/{teacherId}
@@ -383,8 +431,8 @@ Response 200: Teacher DTO với rowVersion mới.
 
 ## 20. DELETE /teachers/{teacherId}
 
-Quyền: CenterManager.  
-Response 204.  
+Quyền: CenterManager.
+Response 204.
 Rule: từ chối 409 nếu Teacher còn Class Active; không hard delete.
 
 # Student management và goal
@@ -442,7 +490,7 @@ Teacher chỉ nhận Student thuộc Class mình quản lý.
 
 ## 24. GET /students/{studentId}
 
-Quyền: CenterManager, Teacher có ownership hoặc chính Student.  
+Quyền: CenterManager, Teacher có ownership hoặc chính Student.
 Response 200: Student DTO + classes + subject goals.
 
 ## 25. PATCH /students/{studentId}
@@ -501,7 +549,7 @@ Response 200:
 
 ## 27. GET /students/{studentId}/goals
 
-Quyền: chính Student, Teacher có ownership hoặc CenterManager.  
+Quyền: chính Student, Teacher có ownership hoặc CenterManager.
 Response 200: collection Goal DTO.
 
 # Classes
@@ -548,12 +596,12 @@ Response 201: Class DTO.
 
 Quyền: Teacher hoặc CenterManager.
 
-Query: teacherId optional cho CenterManager, subjectId, status, page, pageSize.  
+Query: teacherId optional cho CenterManager, subjectId, status, page, pageSize.
 Teacher chỉ nhận Class của mình.
 
 ## 31. GET /classes/{classId}
 
-Quyền: Teacher owner hoặc CenterManager.  
+Quyền: Teacher owner hoặc CenterManager.
 Response 200: Class DTO.
 
 ## 32. PATCH /classes/{classId}
@@ -607,14 +655,14 @@ Response 200:
 
 ## 34. DELETE /classes/{classId}/students/{studentId}
 
-Quyền: Teacher owner hoặc CenterManager.  
-Response 204.  
+Quyền: Teacher owner hoặc CenterManager.
+Response 204.
 Rule: đổi membership sang Removed; không xóa Assignment Target lịch sử.
 
 ## 35. GET /classes/{classId}/students
 
-Quyền: Teacher owner hoặc CenterManager.  
-Query: status, search, page, pageSize.  
+Quyền: Teacher owner hoặc CenterManager.
+Query: status, search, page, pageSize.
 Response 200: collection Student DTO.
 
 # Subjects và Knowledge Graph
@@ -682,7 +730,7 @@ Response 201: Node DTO.
 
 Quyền: Authenticated.
 
-Query: subjectId bắt buộc; nodeType, parentNodeId, isActive.  
+Query: subjectId bắt buộc; nodeType, parentNodeId, isActive.
 Response 200: collection Node DTO, mặc định sort orderIndex/nodeId.
 
 ## 41. PATCH /knowledge/nodes/{nodeId}
@@ -704,7 +752,7 @@ Request:
 }
 ~~~
 
-Response 200.  
+Response 200.
 Conflict DAG_CYCLE_DETECTED nếu đổi parent tạo cycle.
 
 ## 42. POST /knowledge/edges
@@ -1054,7 +1102,7 @@ Student-facing Question DTO không bao gồm correctAnswer, solution, expectedRe
 
 Quyền: Teacher hoặc CenterManager.
 
-Request: Question DTO bỏ IDs, status mặc định Draft, rowVersion.  
+Request: Question DTO bỏ IDs, status mặc định Draft, rowVersion.
 Response 201: Teacher-facing Question DTO.
 
 ## 48. Question endpoints
@@ -1360,7 +1408,7 @@ Quyền:
 - Teacher: cần studentId và ownership.
 - CenterManager: trong Center.
 
-Query: studentId, subjectId, questionId, assignmentId, status, from, to, page, pageSize.  
+Query: studentId, subjectId, questionId, assignmentId, status, from, to, page, pageSize.
 Response: collection Attempt Summary DTO.
 
 ## 56. GET /learning/next-question?subjectId={id}
@@ -1562,7 +1610,7 @@ Gap Group là projection động, không tạo table riêng.
 
 Quyền: Teacher.
 
-Query: classId optional, page, pageSize.  
+Query: classId optional, page, pageSize.
 Chỉ trả Analysis needsTeacherReview=true của Student thuộc Class Teacher.
 
 Response item:
@@ -1631,15 +1679,15 @@ Toàn bộ replay là transaction. Conflict nếu overrideVersion cũ.
 
 ## 62. GET /teachers/me/students/{studentId}/twin
 
-Quyền: Teacher có ownership.  
-Query: subjectId required.  
+Quyền: Teacher có ownership.
+Query: subjectId required.
 Response: Student dashboard data + chi tiết History/Reasoning gần nhất, không trả secret/raw Gemini.
 
 # Health và operational endpoints
 
 ## 63. GET /health/live
 
-Quyền: Anonymous.  
+Quyền: Anonymous.
 Response 200:
 
 ~~~json
@@ -1691,9 +1739,267 @@ Gemini không là readiness dependency vì có fallback.
 
 “Own Classes” luôn phải được kiểm tra bằng quan hệ Teacher–Class và Class–Student; không dựa vào ID client.
 
+Ma trận trên mô tả legacy baseline và resource scope nghiệp vụ. Trong migration v2, mỗi ô cho phép phải được ánh xạ sang permission code; accountType hoặc role legacy không được tự cấp quyền cho endpoint đã cutover.
+
+# Dynamic Authorization v2 [Target — chưa cutover]
+
+## 66. Mô hình authorization và capability catalog
+
+Mỗi request bảo vệ phải đạt đồng thời:
+
+1. access token hợp lệ và auth_version claim khớp users.auth_version hiện hành;
+2. effective permission tương ứng;
+3. cùng Center từ ITenantContext;
+4. resource scope/ownership nếu permission không có scope toàn Center.
+
+Account type là domain boundary, không phải authorization shortcut. Mỗi role có accountType immutable; catalog khai báo allowedAccountTypes; user chỉ nhận role cùng accountType.
+
+Permission code dùng dạng module.resource.action. Catalog v1 tối thiểu:
+
+| Nhóm | Permission code |
+|---|---|
+| Authorization | authorization.permissions.read, authorization.roles.read, authorization.roles.create, authorization.roles.update, authorization.roles.archive, authorization.roles.manage_permissions, authorization.user_roles.read, authorization.user_roles.assign, authorization.audit.read |
+| Organization | organization.center.read, organization.center.update, organization.teachers.read, organization.teachers.create, organization.teachers.update, organization.teachers.delete, organization.students.read, organization.students.create, organization.students.update, organization.students.delete, organization.classes.read, organization.classes.create, organization.classes.update, organization.classes.manage_members |
+| Knowledge | knowledge.subjects.read, knowledge.subjects.create, knowledge.subjects.update, knowledge.subjects.delete, knowledge.nodes.read, knowledge.nodes.create, knowledge.nodes.update, knowledge.nodes.delete, knowledge.edges.read, knowledge.edges.create, knowledge.edges.update, knowledge.edges.delete |
+| Curriculum | curriculum.curriculums.read, curriculum.curriculums.create, curriculum.curriculums.update, curriculum.curriculums.publish, curriculum.questions.read, curriculum.questions.create, curriculum.questions.update, curriculum.questions.publish |
+| Assignment | assignments.assignments.read, assignments.assignments.create, assignments.assignments.update, assignments.assignments.publish, assignments.assignments.close |
+| Learning/Twin | learning.attempts.submit, learning.attempts.read_own, learning.attempts.read_scoped, twin.student.read_own, twin.student.read_scoped, twin.reasoning.review, twin.reasoning.override, recommendations.student.read_own |
+| Dashboard | dashboards.student.read_own, dashboards.teacher.read_scoped, dashboards.center.read |
+
+Bootstrap allowedAccountTypes dưới đây là normative và bảo toàn ranh giới role hiện tại:
+
+- Student: learning.attempts.submit, learning.attempts.read_own, twin.student.read_own, recommendations.student.read_own, dashboards.student.read_own.
+- Teacher: dashboards.teacher.read_scoped.
+- CenterManager: authorization.permissions.read, authorization.roles.read, authorization.roles.create, authorization.roles.update, authorization.roles.archive, authorization.roles.manage_permissions, authorization.user_roles.read, authorization.user_roles.assign, authorization.audit.read, organization.center.read, organization.center.update, organization.teachers.create, organization.teachers.update, organization.teachers.delete, organization.students.delete, organization.classes.create, organization.classes.update, knowledge.subjects.delete, knowledge.nodes.delete, dashboards.center.read.
+- Teacher hoặc CenterManager: organization.teachers.read, organization.students.create, organization.students.update, organization.classes.read, organization.classes.manage_members, knowledge.subjects.create, knowledge.subjects.update, knowledge.nodes.create, knowledge.nodes.update, knowledge.edges.create, knowledge.edges.update, knowledge.edges.delete, curriculum.curriculums.read, curriculum.curriculums.create, curriculum.curriculums.update, curriculum.curriculums.publish, curriculum.questions.read, curriculum.questions.create, curriculum.questions.update, curriculum.questions.publish, assignments.assignments.create, assignments.assignments.update, assignments.assignments.publish, assignments.assignments.close, learning.attempts.read_scoped, twin.student.read_scoped, twin.reasoning.review, twin.reasoning.override.
+- Student, Teacher hoặc CenterManager: organization.students.read, knowledge.subjects.read, knowledge.nodes.read, knowledge.edges.read, assignments.assignments.read.
+
+Với permission dùng chung, endpoint vẫn phải áp dụng projection và resource scope đúng actor. Ví dụ Student có organization.students.read chỉ đọc hồ sơ của chính mình và assignments.assignments.read chỉ dùng student-safe route/projection; permission không cho phép gọi management projection.
+
+Catalog đầy đủ phải được seed idempotent. Mặc định isSensitive = false và isDelegable = true cho catalog v1. isSensitive = true chính xác cho authorization.roles.create, authorization.roles.update, authorization.roles.archive, authorization.roles.manage_permissions, authorization.user_roles.assign, authorization.audit.read, organization.center.update, organization.teachers.create, organization.teachers.update, organization.teachers.delete, organization.students.create, organization.students.update, organization.students.delete, organization.classes.create, organization.classes.update, organization.classes.manage_members, knowledge.subjects.delete, knowledge.nodes.delete, knowledge.edges.delete, curriculum.curriculums.publish, curriculum.questions.publish, assignments.assignments.publish, assignments.assignments.close và twin.reasoning.override. Thay đổi mapping/flag là contract change, không phải cấu hình tùy ý qua UI.
+
+Không có Platform/System Admin. Mọi endpoint dưới /authorization chỉ thao tác trong Center của caller, ngoại trừ permission catalog global chỉ đọc.
+
+TenantAdminCorePermissionsV1 gồm chính xác:
+
+- authorization.permissions.read;
+- authorization.roles.read;
+- authorization.roles.create;
+- authorization.roles.update;
+- authorization.roles.archive;
+- authorization.roles.manage_permissions;
+- authorization.user_roles.read;
+- authorization.user_roles.assign;
+- authorization.audit.read.
+
+Last-admin check phải mô phỏng effective permission sau mutation và xác nhận còn ít nhất một User Active có accountType CenterManager chứa đủ chín permission. Check này áp dụng cho role archive/update, role-permission replace, user-role replace và user disable/delete liên quan; transaction phải re-read/concurrency-check trước commit.
+
+## 67. GET /authorization/permissions
+
+Permission: authorization.permissions.read.
+
+Query: module, accountType, status; page/pageSize theo quy ước chung.
+
+Response 200 item:
+
+~~~json
+{
+  "permissionCode": "organization.students.update",
+  "module": "Organization",
+  "resource": "Students",
+  "action": "update",
+  "description": "Quản lý học sinh trong trung tâm",
+  "allowedAccountTypes": ["CenterManager"],
+  "isSensitive": true,
+  "isDelegable": true,
+  "status": "Active"
+}
+~~~
+
+Endpoint không cho tạo/sửa/xóa permission catalog.
+
+action phải đúng segment cuối của permissionCode; allowedAccountTypes sắp xếp deterministic theo Student, Teacher, CenterManager.
+
+## 68. Role endpoints
+
+| Method | Path | Permission | Kết quả |
+|---|---|---|---|
+| GET | /authorization/roles | authorization.roles.read | Danh sách role trong Center |
+| POST | /authorization/roles | authorization.roles.create | 201 tạo role |
+| GET | /authorization/roles/{roleId} | authorization.roles.read | Chi tiết role và permission |
+| PATCH | /authorization/roles/{roleId} | authorization.roles.update; archive cần authorization.roles.archive | 200 cập nhật tên/mô tả/status |
+
+GET list query: search, accountType, status, page, pageSize. Response item dùng Role response bên dưới.
+
+POST request:
+
+~~~json
+{
+  "roleCode": "ACADEMIC_COORDINATOR",
+  "roleName": "Điều phối học thuật",
+  "accountType": "Teacher",
+  "description": "Quản lý nội dung và theo dõi lớp"
+}
+~~~
+
+PATCH request:
+
+~~~json
+{
+  "roleName": "Điều phối học thuật",
+  "description": "Quản lý nội dung trong trung tâm",
+  "status": "Active",
+  "rowVersion": "3",
+  "reason": "Điều chỉnh phạm vi công việc học kỳ 1"
+}
+~~~
+
+Role response:
+
+~~~json
+{
+  "roleId": "171bdf0d-bd77-4956-b575-449742199a2d",
+  "roleCode": "ACADEMIC_COORDINATOR",
+  "roleName": "Điều phối học thuật",
+  "accountType": "Teacher",
+  "description": "Quản lý nội dung trong trung tâm",
+  "isSystemRole": false,
+  "status": "Active",
+  "permissionCodes": ["knowledge.nodes.update"],
+  "activeUserCount": 2,
+  "rowVersion": "3"
+}
+~~~
+
+roleCode và accountType immutable sau khi tạo. Archive role system được bảo vệ hoặc role đang cần để duy trì tenant administrator cuối cùng trả 409.
+
+## 69. PUT /authorization/roles/{roleId}/permissions
+
+Permission: authorization.roles.manage_permissions.
+
+Semantics: thay thế atomic toàn bộ permission set của role; không phải append mơ hồ.
+
+Request:
+
+~~~json
+{
+  "permissionCodes": [
+    "knowledge.nodes.read",
+    "knowledge.nodes.update"
+  ],
+  "rowVersion": "3",
+  "reason": "Bổ sung quyền quản lý knowledge graph"
+}
+~~~
+
+Response 200: Role response với rowVersion mới.
+
+Rules:
+
+- Mọi permission code phải tồn tại, Active và isDelegable.
+- Permission phải liệt kê accountType của role trong allowedAccountTypes; mismatch trả ROLE_ACCOUNT_TYPE_MISMATCH.
+- Với target role Student/Teacher, actor có authorization.roles.manage_permissions được cấp mọi permission Active, isDelegable và tương thích accountType; không yêu cầu actor sở hữu operational permission khác account type.
+- Với target role CenterManager, permission set mới phải là subset effective permission của actor.
+- Không được tự nâng quyền trực tiếp hoặc gián tiếp qua role actor đang giữ.
+- Không được làm mất tenant administrator cuối cùng.
+- Thay đổi role_permissions, audit log và users.auth_version của mọi user chịu ảnh hưởng nằm trong một transaction; refresh token của các user đó bị revoke theo policy.
+- Duplicate code trong request trả 400; stale rowVersion hoặc last-admin conflict trả 409; cross-tenant role trả 404.
+
+## 70. User-role assignment và audit endpoints
+
+| Method | Path | Permission | Kết quả |
+|---|---|---|---|
+| GET | /authorization/users/{userId}/roles | authorization.user_roles.read | Role active/revoked của user cùng Center |
+| PUT | /authorization/users/{userId}/roles | authorization.user_roles.assign | Replace atomic active role set |
+| GET | /authorization/audit | authorization.audit.read | Audit collection chỉ trong Center |
+
+PUT request:
+
+~~~json
+{
+  "roleIds": [
+    "171bdf0d-bd77-4956-b575-449742199a2d"
+  ],
+  "authorizationVersion": 4,
+  "reason": "Phân công điều phối học thuật tuần 2"
+}
+~~~
+
+Response 200:
+
+~~~json
+{
+  "data": {
+    "userId": "4bd79f57-55bb-4f08-a69b-47ee532343f1",
+    "accountType": "Teacher",
+    "roles": [
+      {
+        "roleId": "171bdf0d-bd77-4956-b575-449742199a2d",
+        "roleCode": "ACADEMIC_COORDINATOR",
+        "roleName": "Điều phối học thuật",
+        "accountType": "Teacher"
+      }
+    ],
+    "permissions": ["knowledge.nodes.update"],
+    "authorizationVersion": 5
+  },
+  "meta": {
+    "traceId": "00-abcd-1234-01",
+    "timestamp": "2026-09-08T09:00:00Z"
+  }
+}
+~~~
+
+Rules:
+
+- User, actor và mọi role phải cùng Center; cross-tenant ID trả 404.
+- accountType của mọi role phải trùng accountType của user; gán chéo loại tài khoản trả 400 ROLE_ACCOUNT_TYPE_MISMATCH.
+- Khi target user là Student/Teacher, actor có authorization.user_roles.assign được gán role Active tương thích; role có thể chứa operational permission khác account type của actor.
+- Khi target user là CenterManager, effective permission sau gán phải là subset effective permission của actor.
+- Cấm tự nâng quyền và cấm làm mất tenant administrator cuối cùng.
+- roleIds không trùng; role Archived bị từ chối.
+- Replace assignment, audit log, users.auth_version increment và refresh-token invalidation policy phải atomic.
+- Audit query hỗ trợ from, to, actorUserId, targetUserId, actionType, page/pageSize; không trả before/after JSON chứa secret.
+
+## 71. Evidence Gate contract
+
+Evidence Gate là BLL policy deterministic, không phải endpoint cho client tự chọn trust level hoặc weight. Feedback/teacher review projection được phép trả:
+
+~~~json
+{
+  "evidence": {
+    "sourceType": "AI",
+    "trustLevel": "Reduced",
+    "decisionMode": "AIWeighted",
+    "reasoningWeight": 0.5,
+    "reasonCodes": ["AI_CONFIDENCE_50_79"],
+    "requiresTeacherReview": false,
+    "policyVersion": "evidence-gate-v1",
+    "analysisOverrideVersion": 0,
+    "evaluatedAt": "2026-09-08T09:00:00Z"
+  }
+}
+~~~
+
+Rules:
+
+- sourceType là AI, RuleFallback hoặc TeacherOverride.
+- trustLevel là Trusted, Reduced hoặc ReviewOnly.
+- decisionMode là AIWeighted, DeterministicOnly hoặc HumanConfirmed.
+- AI + Trusted + AIWeighted: confidence 80–100 sau structural/semantic/contradiction checks, weight 1.0.
+- AI + Reduced + AIWeighted: confidence 50–79 sau các checks trên, weight 0.5.
+- AI + ReviewOnly + AIWeighted: confidence dưới 50, thiếu evidence hoặc anomaly/contradiction, weight 0.
+- RuleFallback + ReviewOnly + DeterministicOnly: Gemini không khả dụng/không hợp lệ sau retry, weight 0.
+- TeacherOverride + Trusted + HumanConfirmed: teacher có twin.reasoning.override, resource scope và lý do hợp lệ; weight 1.0 sau replay.
+- Replay là event/history và không phải sourceType, trustLevel hoặc decisionMode.
+- Fallback/ReviewOnly không đổi Knowledge Mastery nhưng vẫn có thể cập nhật Behavior Twin từ dữ liệu quan sát được.
+- Client không gửi policyVersion, trustLevel, reasoningWeight hoặc reasonCodes trong attempt/override request.
+- Client cũng không gửi sourceType, decisionMode hoặc analysisOverrideVersion; đây là server-owned projection.
+- Gemini response confidence chỉ là input sau validation/contradiction gate, không phải quyết định cuối cùng.
+
 # Contract cho AI adapter
 
-## 66. IAIService request contract logic
+## 72. IAIService request contract logic
 
 Đây là internal BLL contract, không phải public endpoint:
 
@@ -1732,7 +2038,9 @@ Gemini không là readiness dependency vì có fallback.
 
 Không gửi username, password, token, center name hoặc dữ liệu Student không cần thiết.
 
-## 67. Gemini response contract
+IAIService chỉ tạo observation/analysis. Adapter không được trả hoặc quyết định mastery delta, risk score, opportunity rank, permission hay authorization outcome.
+
+## 73. Gemini response contract
 
 ~~~json
 {
@@ -1755,7 +2063,7 @@ Validation failure được tính là AI call failure và đi vào retry/fallbac
 
 # Dashboard query semantics
 
-## 68. Quy tắc tính aggregate
+## 74. Quy tắc tính aggregate
 
 - averageMastery: trung bình weighted theo exam_importance của Topic active.
 - currentPredictedScore: 10 × averageMastery / 100.
@@ -1768,7 +2076,7 @@ Validation failure được tính là AI call failure và đi vào retry/fallbac
 
 # Versioning và change policy
 
-## 69. Breaking change
+## 75. Breaking change
 
 Các thay đổi sau là breaking:
 
@@ -1784,7 +2092,7 @@ Breaking change cần Change Proposal và cập nhật file này trước source
 
 Thêm optional field có thể là non-breaking nhưng vẫn phải cập nhật contract và frontend owner xác nhận.
 
-## 70. Contract acceptance checklist
+## 76. Contract acceptance checklist
 
 - [ ] Tất cả endpoint dùng /api/v1.
 - [ ] Không request nào nhận centerId.
@@ -1799,3 +2107,9 @@ Thêm optional field có thể là non-breaking nhưng vẫn phải cập nhật
 - [ ] Problem Details có traceId và errorCode.
 - [ ] rowVersion được dùng ở update mutable aggregate.
 - [ ] API implementation khớp schema và authorization matrix.
+- [ ] Endpoint đã cutover kiểm effective permission + tenant + resource scope ở server.
+- [ ] Login/me trả authorizationVersion và effective permissions; role legacy chỉ là compatibility field.
+- [ ] Role/permission assignment cho Student/Teacher tuân isDelegable + account type; target CenterManager chặn self-elevation, over-grant và last-admin removal.
+- [ ] Mọi mutation authorization có audit cùng transaction và làm token cũ mất hiệu lực theo policy.
+- [ ] Evidence Gate fields là server-owned, có policyVersion/reasonCodes và fallback không đổi Knowledge Mastery.
+- [ ] API target v2 chỉ được đánh dấu IMPLEMENTED sau khi schema migration, backend và frontend tương ứng hoàn tất.

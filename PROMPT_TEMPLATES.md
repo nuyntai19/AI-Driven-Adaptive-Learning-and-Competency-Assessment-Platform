@@ -1,22 +1,39 @@
-# EduTwin — Prompt Templates cho Claude/Gemini
+# EduTwin — Prompt Templates cho Human, Codex và Gemini
 
-> Phiên bản: 1.0  
-> Trạng thái: FROZEN  
-> Mục đích: giao việc có kiểm soát, giữ ngữ cảnh và ngăn schema/architecture drift  
+> Phiên bản: 2.1-draft
+> Trạng thái: COURSE REBASELINE
+> Mục đích: giao việc có kiểm soát, giữ provenance và ngăn scope/schema/authorization drift
+> Chủ sở hữu: Team process owner; mọi thành viên có trách nhiệm tuân thủ
 
 ## 1. Cách sử dụng
 
-Mỗi lần giao việc:
+Workflow mặc định cho mỗi work package:
 
-1. Chỉ giao một Task ID hoặc một nhóm task rất nhỏ cùng Phase.
-2. Dán Mandatory Context Preamble.
-3. Dán template chuyên biệt.
-4. Điền đầy đủ placeholder trong dấu {{...}}.
-5. Nêu file/folder được phép sửa bằng allow-list.
-6. Yêu cầu AI Developer dừng nếu cần sửa ngoài allow-list.
-7. Sau khi code xong, dùng Code Review Template cho Codex/AI Reviewer.
+1. Human owner chọn requirement ID, scope, acceptance và độ khó từ PROJECT_TRACKING.md.
+2. Codex kiểm tra specification, dependency, security/data risk và viết hoặc review prompt triển khai.
+3. Human owner phê duyệt prompt và gửi cho Gemini hoặc implementation agent được chọn.
+4. Implementation agent chỉ sửa allow-list, chạy verification rồi dừng với working tree chưa stage.
+5. Codex review diff độc lập, nêu finding theo severity và viết remediation prompt nếu cần.
+6. Human owner quyết định accept/reject; chỉ gửi closeout prompt riêng khi review APPROVED.
+7. Closeout agent chạy lại gate, stage explicit paths, commit/push khi và chỉ khi được ủy quyền rõ.
+8. PROJECT_TRACKING.md được cập nhật bằng evidence thật; AI output không được tính là đóng góp cá nhân.
 
-Không dùng prompt kiểu “hãy làm Phase này” mà thiếu file scope, acceptance và test.
+Codex và Gemini có thể đổi vai khi cần, nhưng mỗi prompt phải ghi rõ IMPLEMENTER hay REVIEWER. Không để cùng một lượt vừa tự triển khai, tự duyệt và tự closeout.
+
+Không dùng prompt kiểu “hãy làm Phase này” mà thiếu human owner, requirement ID, expected HEAD, file scope, acceptance và test.
+
+### 1.1. Cách phối hợp Human — Codex — Gemini
+
+| Vai trò | Trách nhiệm | Không được làm |
+|---|---|---|
+| Human owner | Chốt requirement/scope, hiểu diff, xác nhận acceptance, chịu trách nhiệm commit/demo | Giao toàn bộ Phase mơ hồ hoặc nhận output AI mà không kiểm tra |
+| Codex ở vai REVIEWER/PLANNER | Đối chiếu docs–source–diff, phản biện, phát hiện security/data drift, viết prompt/remediation cụ thể | Tự APPROVE thay stakeholder hoặc âm thầm sửa khi prompt chỉ review |
+| Gemini/Codex ở vai IMPLEMENTER | Sửa đúng allow-list, thêm test, chạy gate, dừng unstaged để review | Mở rộng scope, đổi schema/API, lặp command/fix vô hạn |
+| CLOSEOUT agent | Chỉ verify, stage exact paths, forward commit/push khi có APPROVED + ủy quyền | Sửa code, amend/rebase/force-push hoặc tự bắt đầu task sau |
+
+Một task dùng một prompt riêng cho từng trạng thái: implementation → review → remediation (nếu có) → review lại → closeout. Không dán cùng lúc lệnh “sửa, tự duyệt và commit” cho một agent. Khi đổi Codex/Gemini hoặc hết quota, dùng Template L và luôn kiểm tra lại Git thay vì tin status report.
+
+AI trong sản phẩm và AI Developer là hai khái niệm khác nhau. Gemini runtime chỉ là optional reasoning observation; Codex/Gemini developer chỉ hỗ trợ nhóm viết/review code. Không bên nào được thay con người sở hữu requirement, contribution hoặc quyết định cuối.
 
 ## 2. Mandatory Context Preamble
 
@@ -25,15 +42,26 @@ Dán nguyên khối này trước mọi prompt triển khai:
 ~~~text
 BẠN ĐANG TRIỂN KHAI DỰ ÁN EDUTWIN.
 
+AGENT ROLE: {{IMPLEMENTER / REVIEWER / CLOSEOUT}}
+HUMAN OWNER: {{tên thành viên chịu trách nhiệm}}
+TASK ID: {{Rxx-WPyy hoặc task ID được nhóm duyệt}}
+REQUIREMENT IDS: {{LEC/FR/BR/SEC/DATA/AI/UX IDs}}
+BASELINE SHA: {{full SHA của repository môn học}}
+EXPECTED HEAD: {{full SHA trước khi bắt đầu}}
+
 Trước khi làm bất kỳ thay đổi nào, bắt buộc đọc đầy đủ theo thứ tự:
-1. CONSTITUTION.md
-2. DATABASE_SCHEMA.md
-3. API_CONTRACTS.md
-4. MASTER_PLAN.md
-5. PROMPT_TEMPLATES.md
+1. PROJECT_REQUIREMENTS.md
+2. CONSTITUTION.md
+3. DATABASE_SCHEMA.md nếu task có data/persistence
+4. API_CONTRACTS.md nếu task có HTTP/frontend integration
+5. UI_UX_SPEC.md nếu task có UI/interaction
+6. MASTER_PLAN.md
+7. PROJECT_TRACKING.md và TEAM_ASSIGNMENT.md
+8. CODEBASE_CHANGE_PLAN.md nếu task thuộc course migration
+9. PROMPT_TEMPLATES.md
 
 Thứ tự authority:
-CONSTITUTION > DATABASE_SCHEMA > API_CONTRACTS > MASTER_PLAN > PROMPT_TEMPLATES > source code hiện tại.
+Yêu cầu giảng viên/stakeholder đã xác minh > quyết định nhóm đã duyệt > PROJECT_REQUIREMENTS > CONSTITUTION > DATABASE_SCHEMA/API_CONTRACTS > UI_UX_SPEC > MASTER_PLAN > PROJECT_TRACKING > PROMPT_TEMPLATES > source code hiện tại.
 
 Các quy tắc không được vi phạm:
 - Không tự ý đổi Database Schema, migration baseline, API contract, enum, thuật toán hoặc kiến trúc.
@@ -44,29 +72,41 @@ Các quy tắc không được vi phạm:
 - Không nhận centerId từ client; tenant lấy từ JWT/ITenantContext.
 - Không bỏ Global Query Filter, ownership guard, transaction, validation hoặc test để làm nhanh.
 - Không commit secret, API key, password, JWT key hoặc Refresh Token.
-- Không triển khai tính năng ngoài MVP.
+- Không triển khai tính năng ngoài requirement/task.
+- Không tự suy đoán yêu cầu khách hàng hoặc đánh dấu stakeholder-validated khi chưa có bằng chứng.
+- Không dùng legacy role OR dynamic permission để tạo đường cấp quyền rộng hơn.
+- AI analysis không được trực tiếp quyết định mastery/risk/recommendation; phải qua Evidence Gate.
+- Auth, RBAC, organization, content, assignment, submission, preliminary grading và deterministic fallback không được phụ thuộc Gemini/Internet.
 - Nếu specification và source code mâu thuẫn, specification thắng; báo mâu thuẫn trước khi sửa.
-- Nếu cần thay đổi frozen decision, DỪNG và xuất Change Proposal. Không tự triển khai đề xuất.
+- Nếu cần thay đổi decision đã duyệt, DỪNG và xuất Change Proposal. Không tự triển khai đề xuất.
+- IMPLEMENTER không stage/commit/push nếu prompt không phải CLOSEOUT và không có ủy quyền rõ.
+- Nếu lặp cùng command/fix hai lần mà không có tiến triển, command chạy quá 10 phút không có output, quota hết hoặc context bị hỏng: DỪNG command, không tiếp tục loop, báo trạng thái read-only.
 
 Trước khi code, hãy trả lời ngắn:
-1. Task ID bạn hiểu là gì?
-2. Dependencies nào đã phải hoàn thành?
-3. File/folder nào bạn sẽ sửa?
-4. Invariant nào có rủi ro cao nhất?
-5. Test nào bạn sẽ chạy?
+1. Agent role, Task ID, requirement IDs và human owner là gì?
+2. Branch/HEAD thực tế có đúng expected HEAD không?
+3. Dependencies nào đã phải hoàn thành?
+4. File/folder nào sẽ sửa và file nào tuyệt đối không sửa?
+5. Invariant/rủi ro cao nhất là gì?
+6. Test/gate nào sẽ chạy?
+7. Điều kiện nào buộc dừng?
+8. Có được stage/commit/push không?
 
-Chỉ bắt đầu sau khi đã nêu năm điểm trên.
+Chỉ bắt đầu sau khi đã nêu tám điểm trên. Nếu agent role là REVIEWER, chỉ đọc và đánh giá; không tự sửa. Nếu là CLOSEOUT, không sửa source.
 ~~~
 
 ## 3. Template A — Phase/Task Implementation tổng quát
 
 ~~~text
 VAI TRÒ:
-Bạn là {{Backend/Frontend/Full-stack}} Developer triển khai đúng một task của EduTwin.
+Bạn là IMPLEMENTER {{Backend/Frontend/Full-stack}} triển khai đúng một task của EduTwin. Bạn không tự review/closeout.
 
 TASK:
 - Task ID: {{Pxx-Tyy}}
 - Phase: {{Tên Phase}}
+- Human owner: {{tên thành viên}}
+- Requirement IDs: {{...}}
+- Expected branch/HEAD: {{...}}
 - Mục tiêu duy nhất: {{Mục tiêu cụ thể}}
 
 CONTEXT NGHIỆP VỤ:
@@ -76,6 +116,8 @@ DEPENDENCIES ĐÃ DONE:
 {{Danh sách Task/Phase}}
 
 SPECIFICATION PHẢI ĐỐI CHIẾU:
+- PROJECT_REQUIREMENTS.md: {{requirement IDs}}
+- UI_UX_SPEC.md: {{mục hoặc N/A}}
 - CONSTITUTION.md: {{mục}}
 - DATABASE_SCHEMA.md: {{table/mục}}
 - API_CONTRACTS.md: {{endpoint/mục}}
@@ -87,7 +129,7 @@ FILE/FOLDER ĐƯỢC PHÉP SỬA:
 
 FILE/FOLDER BỊ CẤM:
 - Mọi path không nằm trong allow-list.
-- Năm file specification.
+- Mọi tài liệu authoritative trừ khi task là documentation change đã duyệt.
 - Migration đã merge.
 - {{path cấm bổ sung}}
 
@@ -126,6 +168,7 @@ OUTPUT BÀN GIAO:
 5. Assumption còn lại.
 6. Risk/TODO hợp lệ.
 7. Xác nhận không đổi schema/API ngoài task.
+8. Xác nhận working tree chưa stage và không commit/push.
 ~~~
 
 ## 4. Template B — Database Entity/Configuration/Migration
@@ -185,8 +228,9 @@ TASK ID: {{...}}
 ENDPOINT:
 {{METHOD /api/v1/path}}
 
-ROLE:
-{{Student/Teacher/CenterManager}}
+AUTHORIZATION:
+- Required permission: {{permission code hoặc legacy policy trong migration window}}
+- Account type/profile prerequisite: {{Student/Teacher/CenterManager/N/A}}
 
 CONTRACT:
 API_CONTRACTS.md mục {{...}}.
@@ -209,9 +253,10 @@ YÊU CẦU LAYER:
 
 TENANT/AUTHORIZATION:
 - center_id từ ITenantContext.
-- Role policy: {{...}}.
+- Permission/policy: {{...}}.
 - Ownership: {{...}}.
 - Cross-tenant/missing resource trả 404.
+- Test thiếu permission, over-grant/self-elevation nếu liên quan.
 
 TRANSACTION:
 {{Không cần / mô tả transaction exact}}
@@ -298,12 +343,12 @@ Ngoài file/test, cung cấp bảng input → expected → actual cho các case 
 ## 7. Template E — Gemini/AI Integration
 
 ~~~text
-TASK ID: {{P12-Txx}}
+TASK ID: {{R05/P12 task}}
 MỤC TIÊU: {{Adapter/parser/orchestrator/fallback}}
 
 CONTRACT:
-- API_CONTRACTS.md mục 66–67.
-- DATABASE_SCHEMA.md mục 33–35.
+- API_CONTRACTS.md mục 71–73.
+- DATABASE_SCHEMA.md mục 33–41.
 - CONSTITUTION.md mục AI governance.
 
 ALLOW-LIST:
@@ -322,6 +367,8 @@ CẤM:
 - Retry quá một lần.
 - Tạo chatbot/history/vector search.
 - Cho AI cập nhật Knowledge Graph.
+- Cho Gemini trả mastery delta, risk score, recommendation rank hoặc authorization decision.
+- Bỏ qua Evidence Gate để cập nhật Twin trực tiếp.
 
 STRUCTURED OUTPUT:
 {{Dán Gemini response schema}}
@@ -340,6 +387,7 @@ FAILURE POLICY:
 - reasoningQuality null.
 - needsTeacherReview true.
 - Job FallbackCompleted.
+- Evidence Gate ReviewOnly, reasoningWeight 0 và Knowledge Mastery không đổi.
 
 TEST:
 - Valid.
@@ -610,18 +658,23 @@ Trạng thái đề xuất: PENDING
 {{List}}
 
 8. Quyết định
-Chưa được phép triển khai cho đến khi Product Owner và Codex phê duyệt.
+Chưa được phép triển khai cho đến khi human decision owner và reviewer phê duyệt.
 ~~~
 
 ## 14. Template L — Continuation/Handoff giữ ngữ cảnh
 
-Dùng khi đổi Claude ↔ Gemini hoặc phiên chat bị dài.
+Dùng khi đổi Codex ↔ Gemini, đổi người thực hiện, quota hết hoặc phiên chat bị dài.
 
 ~~~text
 EDUTWIN HANDOFF
 
-Baseline specification version: 1.0 FROZEN
+Specification version: 2.1-draft
+Source repository/full baseline SHA: {{...}}
+Course repository/baseline SHA: {{...}}
+Human owner: {{...}}
+Requirement IDs: {{...}}
 Current branch: {{...}}
+Current full HEAD: {{...}}
 Current Phase/Task: {{...}}
 Last approved Phase: {{...}}
 Reviewer status: {{APPROVED/...}}
@@ -646,11 +699,20 @@ Tests:
 - Command:
 - Passed:
 - Failed:
+- Skipped và lý do:
 - Coverage:
+
+Process status:
+- Running command/PID: {{none hoặc chi tiết}}
+- Staged files: {{none/list}}
+- Untracked/temp files: {{none/list}}
+- Commit/push authorization: {{no/yes-closeout-only}}
 
 Decisions tuyệt đối không được quên:
 - Multi-tenant center_id từ JWT.
-- Không schema/API change.
+- Permission + tenant + resource scope; không legacy OR dynamic authorization.
+- AI analysis phải qua Evidence Gate.
+- Không schema/API change ngoài quyết định đã duyệt.
 - {{task-specific invariants}}
 
 Known issues:
@@ -659,7 +721,7 @@ Known issues:
 Next exact action:
 {{Một hành động cụ thể}}
 
-Trước khi tiếp tục, agent mới phải đọc lại năm specification và tự xác nhận allow-list.
+Trước khi tiếp tục, agent mới phải đọc tài liệu authoritative liên quan, kiểm tra branch/HEAD/status và tự xác nhận allow-list. Không tin báo cáo handoff nếu Git/diff/test evidence không khớp.
 ~~~
 
 ## 15. Template M — Phase Acceptance
@@ -716,12 +778,14 @@ Kiểm tra từ clean clone:
 6. Assignment flow.
 7. Gemini success flow.
 8. Gemini fallback flow.
-9. Twin/History/Recommendation.
-10. Teacher Override replay.
-11. Student/Teacher/Center Dashboard.
-12. dotnet build/test/coverage.
-13. GitHub Actions.
-14. Secret scan thủ công.
+9. Evidence Gate chứng minh fallback không đổi Knowledge Mastery.
+10. Dynamic role/permission UI + API denial + audit.
+11. Twin/History/Recommendation.
+12. Teacher Override replay.
+13. Student/Teacher/Center Dashboard.
+14. MySQL constraint/integration verification.
+15. Backend/frontend build/test/coverage và GitHub Actions.
+16. Secret scan thủ công.
 
 Với mỗi bước ghi:
 - Expected.
@@ -738,7 +802,7 @@ Không sửa code trong quá trình acceptance. Mọi lỗi được tạo findi
 TASK ID: P13-T01
 MỤC TIÊU: Triển khai pure Mastery Calculator version mastery-v1.
 
-Đọc Mandatory Context Preamble và năm specification.
+Đọc Mandatory Context Preamble và các tài liệu authoritative liên quan.
 
 DEPENDENCIES: P12 APPROVED.
 
@@ -758,7 +822,8 @@ EvidenceTarget và NewMastery đúng CONSTITUTION.md mục 13.
 ACCEPTANCE CASE:
 - M=0, R=.20, C=1, T=1, K=1, D=1 → 5.00.
 - M=50, R=.80, C=1, T=1, K=1, D=1 → 57.50.
-- M=0, R=null, C=1, T=1, D=1 → 2.50.
+- M=50, R=.80, C=1, T=1, K=1, D=1, Reduced weight=.5 → 53.75.
+- M=0, fallback/ReviewOnly, weight=0 → 0.00.
 - Clamp và boundary đầy đủ theo P13.
 
 OUTPUT:
@@ -822,6 +887,10 @@ Không giao các prompt sau:
 - “Dùng bất kỳ package nào bạn muốn.”
 - “Tự sửa các file liên quan.”
 - “Bỏ tenant/auth để demo trước.”
+- “Cứ chạy/sửa tiếp cho đến khi mọi test pass” mà không có stop condition.
+- “Tự commit tất cả thay đổi liên quan.”
+- “Ẩn nút là đủ phân quyền.”
+- “Dùng AI confidence trực tiếp để cập nhật hồ sơ học sinh.”
 
 Những prompt này phá scope, làm mất traceability và khiến AI Developer tự thay frozen decision.
 
@@ -829,6 +898,8 @@ Những prompt này phá scope, làm mất traceability và khiến AI Developer
 
 - [ ] Có Mandatory Context Preamble.
 - [ ] Một Task ID rõ.
+- [ ] Có human owner và requirement IDs.
+- [ ] Có agent role và branch/expected full HEAD.
 - [ ] Dependencies đã APPROVED.
 - [ ] Allow-list cụ thể.
 - [ ] Contract/schema mục cụ thể.
@@ -836,6 +907,7 @@ Những prompt này phá scope, làm mất traceability và khiến AI Developer
 - [ ] Acceptance observable.
 - [ ] Test command/cases.
 - [ ] Stop rule.
+- [ ] Ghi rõ có hay không quyền stage/commit/push.
 - [ ] Handoff output.
 
 ## 21. Checklist khi nhận kết quả từ AI Developer
@@ -850,3 +922,200 @@ Những prompt này phá scope, làm mất traceability và khiến AI Developer
 - [ ] Có test boundary.
 - [ ] Có assumption/risk.
 - [ ] Đưa diff cho Codex review trước merge.
+- [ ] Báo cáo Git/status/test được kiểm chứng, không chỉ tự tuyên bố.
+- [ ] AI không được ghi nhận là người đóng góp thay thành viên.
+
+## 22. Template O — Requirements/Documentation Audit
+
+~~~text
+AGENT ROLE: REVIEWER
+HUMAN OWNER: {{...}}
+TASK ID: {{R00/R01 task}}
+EXPECTED BRANCH/FULL HEAD: {{...}}
+
+MỤC TIÊU DUY NHẤT:
+Đối chiếu yêu cầu giảng viên/stakeholder, tài liệu authoritative và source hiện tại. Không sửa source/schema/migration.
+
+INPUT EVIDENCE:
+- Lecturer notes/recording/date: {{...}}
+- Stakeholder interview/approval: {{...}}
+- Existing documents: {{...}}
+- Source/migration audit commit: {{...}}
+
+CHECK:
+1. Requirement nào fact, reported confirmation, hypothesis hoặc chưa xác minh.
+2. Tài liệu nào authoritative, stale, duplicate, empty hoặc cần archive.
+3. Mâu thuẫn giữa requirements, schema, API, UI và source.
+4. Tuyên bố Done nào thiếu test/demo/owner evidence.
+5. Quyết định nào cần Change Proposal.
+
+CẤM:
+- Không mặc định đồng ý.
+- Không tự biến source hiện tại thành requirement.
+- Không xóa tài liệu trước khi nội dung duy nhất đã được merge/trace.
+- Không stage/commit/push.
+
+OUTPUT:
+- Findings theo severity và bằng chứng.
+- Assumption/TBD cần con người xác nhận.
+- Danh sách file đề xuất update/create/merge/archive/delete và lý do.
+- Roadmap thay đổi tăng dần, không rewrite hệ thống.
+~~~
+
+## 23. Template P — Dynamic RBAC theo Center
+
+~~~text
+AGENT ROLE: IMPLEMENTER
+HUMAN OWNER: {{...}}
+TASK/REQUIREMENT IDS: {{R02/R03/R04 + SEC/FR IDs}}
+EXPECTED BRANCH/FULL HEAD: {{...}}
+MIGRATION SLICE: {{catalog/roles/role-permissions/user-roles/audit/cutover/UI}}
+
+SOURCE OF TRUTH:
+- PROJECT_REQUIREMENTS.md: dynamic authorization requirements.
+- CONSTITUTION.md: Identity và authorization.
+- DATABASE_SCHEMA.md: Module 6.
+- API_CONTRACTS.md: mục 66–70.
+- UI_UX_SPEC.md: capability-first navigation và màn hình quản trị quyền.
+
+INVARIANTS:
+- Không có Platform Admin; CenterManager chỉ trong Center của mình.
+- Permission catalog source-defined; UI không tạo permission code tùy ý.
+- Role có accountType immutable; permission phải có mapping account type và user chỉ nhận role cùng account type.
+- Effective permission = union active roles; không explicit deny ở v1.
+- Permission + tenant + resource scope đều bắt buộc.
+- Student/Teacher target: actor quản trị permission Active + delegable + compatible dù actor không sở hữu operational permission khác account type.
+- CenterManager target: permission/effective permission mới phải là subset actor; chặn self-elevation, over-grant và thao tác làm mất CenterManager Active cuối có đủ TenantAdminCorePermissionsV1.
+- Mutation + audit + users.auth_version/token invalidation phải atomic; JSON authorizationVersion chỉ là projection của cột này.
+- Endpoint đã cutover không dùng legacy role OR dynamic permission.
+
+ALLOW-LIST:
+{{explicit paths}}
+
+MIGRATION/COMPATIBILITY:
+{{permission_account_types seed, account-type composite FK, backfill, validation query, rollback, endpoint cutover list}}
+
+TEST BẮT BUỘC:
+- Same-tenant happy path.
+- Missing permission 403.
+- Cross-tenant 404.
+- Role–permission và user–role account-type mismatch bị API/BLL/DB từ chối.
+- Student/Teacher delegation không bị chặn sai bởi actor-own rule.
+- CenterManager self-elevation/over-grant denied.
+- Last admin + concurrency conflict.
+- Audit rollback and token version invalidation.
+- UI direct URL, hidden/disabled action và handcrafted API request.
+
+STOP:
+Nếu schema/API chưa được duyệt, cần permission mới ngoài catalog, hoặc slice tạo quyền rộng hơn legacy baseline: dừng và xuất Change Proposal. Không stage/commit/push.
+~~~
+
+## 24. Template Q — Evidence Gate và Twin Mutation
+
+~~~text
+AGENT ROLE: IMPLEMENTER
+HUMAN OWNER: {{...}}
+TASK/REQUIREMENT IDS: {{R05/R06 + AI/DATA IDs}}
+EXPECTED BRANCH/FULL HEAD: {{...}}
+
+MỤC TIÊU:
+{{Gate policy / persistence / orchestrator / review projection / replay}}
+
+CONTRACT:
+- CONSTITUTION.md mục 12–13.
+- DATABASE_SCHEMA.md: evidence_assessments và invariant completion.
+- API_CONTRACTS.md: Evidence Gate contract.
+
+DECISION TABLE:
+- AI + Trusted + AIWeighted: structurally/semantically valid, không contradiction, confidence 80–100, weight 1.0.
+- AI + Reduced + AIWeighted: structurally/semantically valid, không contradiction nghiêm trọng, confidence 50–79, weight 0.5.
+- AI + ReviewOnly + AIWeighted: confidence <50, missing/anomaly/contradiction, weight 0.
+- RuleFallback + ReviewOnly + DeterministicOnly: AI unavailable/invalid sau retry, weight 0.
+- TeacherOverride + Trusted + HumanConfirmed: authorized override, weight 1.0 và replay.
+
+INVARIANTS:
+- Gate pure/deterministic; không gọi AI/network/database trong calculator.
+- sourceType, trustLevel và decisionMode là ba enum độc lập; Replay chỉ là history event.
+- policyVersion và reasonCodes bắt buộc.
+- Fallback/ReviewOnly không đổi Knowledge Mastery.
+- Dữ liệu quan sát được có thể cập nhật Behavior Twin độc lập.
+- Persist analysis + assessment + conditional Twin/history/job state theo transaction đã đặc tả.
+- Replay không sửa/xóa AI output hoặc assessment cũ.
+
+TEST:
+- Boundary confidence 0, 49, 50, 79, 80, 100 và null.
+- Malformed/semantic anomaly/fallback.
+- Reduced delta chính xác.
+- ReviewOnly mastery unchanged.
+- Idempotency, retry, transaction rollback và replay order.
+- Permission/resource scope cho review/override.
+
+STOP:
+Không tự đổi threshold/weight/formula hoặc backfill trust từ dữ liệu thiếu. Không stage/commit/push.
+~~~
+
+## 25. Template R — Weekly Progress và Contribution Evidence
+
+~~~text
+WEEK: {{số tuần, from–to}}
+TEAM: {{tên nhóm}}
+REPOSITORY/BASELINE SHA: {{...}}
+
+LECTURER/STAKEHOLDER INPUT MỚI:
+- Date/source/person:
+- Requirement/decision IDs:
+- Evidence link:
+- Impact:
+
+WORK PACKAGE STATUS:
+| WP | Human owner | Reviewer | Difficulty points | Planned | Done criteria met | Commit/PR/test evidence | Blocker |
+|---|---|---|---:|---:|---:|---|---|
+
+DEMO ĐÃ CHẠY:
+- Scenario:
+- Expected/actual:
+- Evidence:
+
+RISK/DECISION:
+- New risk:
+- Decision needed:
+- Owner/deadline:
+
+CONTRIBUTION:
+Chỉ ghi công việc con người có thể giải thích và bảo vệ. Không dùng số commit/dòng code hoặc AI output làm thước đo duy nhất.
+
+NEXT WEEK:
+- Work package, owner, reviewer, dependency và acceptance cụ thể.
+~~~
+
+## 26. Template S — Strict Closeout sau APPROVED
+
+~~~text
+AGENT ROLE: CLOSEOUT
+TASK ID/HUMAN OWNER: {{...}}
+CODEX/REVIEW VERDICT: APPROVED
+EXPECTED BRANCH/FULL HEAD: {{...}}
+EXACT ALLOW-LIST: {{paths}}
+COMMIT MESSAGE: {{...}}
+PUSH TARGET: {{remote/branch}}
+
+CẤM:
+- Không sửa source/tài liệu trong closeout.
+- Không dùng git add . hoặc wildcard.
+- Không amend/reset/revert/rebase/merge/force-push.
+- Không đọc/in .env.
+- Gate fail thì dừng trước commit.
+
+PRE-COMMIT:
+- Verify branch/full HEAD/status/staged/untracked/diff-check/.env tracking.
+- Direct scan bytes của allow-list: UTF-8 no BOM, không U+FFFD/merge marker/trailing whitespace, có EOF newline.
+- Chạy exact build/targeted/full/EF/frontend/MySQL gates của task.
+
+STAGE:
+Chỉ git add -- với từng exact path. Xác minh staged set bằng allow-list equality; yêu cầu không còn unstaged/untracked ngoài ignored files đã biết.
+
+POST-COMMIT/PUSH:
+- Verify commit file set, git show --check, full diff check, clean tree và ahead/behind 0 0.
+- Báo hash/message/file list/test/push evidence.
+- Dừng; không bắt đầu task kế tiếp.
+~~~

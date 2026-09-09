@@ -1,57 +1,78 @@
 # EduTwin — Hiến pháp kỹ thuật
 
-> Phiên bản: 1.0  
-> Trạng thái: FROZEN — Baseline cho MVP  
-> Ngày khóa: 2026-07-15  
-> Chủ sở hữu quyết định: Product Owner  
-> Kiến trúc sư kiểm duyệt: Codex  
+> Phiên bản: 2.1-draft
+> Trạng thái: COURSE REBASELINE — source migration chưa hoàn tất
+> Baseline v1: 2026-07-15
+> Re-baseline bắt đầu: 2026-09-08; làm rõ course architecture: 2026-09-09
+> Chủ sở hữu quyết định: Nhóm EduTwin; giảng viên/stakeholder sở hữu yêu cầu tương ứng
+> AI reviewer: Codex/Gemini chỉ tư vấn và kiểm tra, không sở hữu quyết định
 
 ## 1. Mục đích và hiệu lực
 
-Tài liệu này là nguồn luật kỹ thuật cao nhất của EduTwin. Claude, Gemini và mọi AI Developer phải đọc toàn bộ năm tài liệu theo thứ tự:
+Tài liệu này là nguồn invariant kỹ thuật cao nhất của EduTwin, nhưng không đứng trên yêu cầu môn học hoặc yêu cầu stakeholder đã được xác minh.
 
-1. CONSTITUTION.md
-2. DATABASE_SCHEMA.md
-3. API_CONTRACTS.md
-4. MASTER_PLAN.md
-5. PROMPT_TEMPLATES.md
+README.md là cổng vào repository. Thành viên nhóm và AI hỗ trợ phải đọc tài liệu authoritative theo thứ tự:
+
+1. PROJECT_REQUIREMENTS.md.
+2. CONSTITUTION.md.
+3. DATABASE_SCHEMA.md nếu task có data/persistence.
+4. API_CONTRACTS.md nếu task có HTTP/frontend integration.
+5. UI_UX_SPEC.md nếu task có UI/interaction.
+6. MASTER_PLAN.md.
+7. PROJECT_TRACKING.md và TEAM_ASSIGNMENT.md.
+8. CODEBASE_CHANGE_PLAN.md khi lập task migration từ prototype.
+9. PROMPT_TEMPLATES.md.
+
+Năm file kỹ thuật cốt lõi giữ thứ tự CONSTITUTION → DATABASE_SCHEMA → API_CONTRACTS → MASTER_PLAN → PROMPT_TEMPLATES. Các file requirements, UI, tracking, phân công và code-change plan bổ sung bằng chứng môn học hoặc điều phối; chúng không tạo schema/API thứ hai.
 
 Thứ tự ưu tiên khi có mâu thuẫn:
 
-1. Quyết định mới đã được Product Owner phê duyệt bằng văn bản.
-2. CONSTITUTION.md.
-3. DATABASE_SCHEMA.md.
-4. API_CONTRACTS.md.
-5. MASTER_PLAN.md.
-6. PROMPT_TEMPLATES.md.
-7. Source code hiện tại.
+1. Yêu cầu giảng viên đã được ghi nhận và xác nhận.
+2. Yêu cầu stakeholder đã được xác minh.
+3. Quyết định thay đổi đã được nhóm phê duyệt bằng văn bản.
+4. PROJECT_REQUIREMENTS.md.
+5. CONSTITUTION.md.
+6. DATABASE_SCHEMA.md và API_CONTRACTS.md; conflict giữa hai file phải dừng để xử lý.
+7. UI_UX_SPEC.md.
+8. MASTER_PLAN.md.
+9. PROJECT_TRACKING.md.
+10. PROMPT_TEMPLATES.md.
+11. Source code hiện tại.
 
 Source code không được dùng để hợp thức hóa một hành vi trái specification. Khi phát hiện mâu thuẫn, AI Developer phải dừng phần bị ảnh hưởng, ghi đề xuất thay đổi và chờ phê duyệt.
 
 ## 2. Tuyên ngôn sản phẩm
 
-EduTwin là nền tảng AI-Native, Multi-tenant dành cho trung tâm giáo dục THPT. Hệ thống xây dựng Learning Digital Twin cho từng học sinh từ bài làm, cách trình bày lời giải và hành vi học tập.
+EduTwin là nền tảng học tập thích ứng, đánh giá năng lực và quản trị trung tâm theo mô hình Multi-tenant dành cho giáo dục THPT. Nền tảng thu thập bằng chứng từ bài làm, cách trình bày lời giải và hành vi học tập để xây dựng Learning Digital Twin có thể giải thích.
+
+AI là khả năng nâng cao chất lượng phân tích reasoning và phản hồi, không phải lõi vận hành hay điều kiện sống còn. Authentication, phân quyền, quản lý dữ liệu, giao bài, nộp bài, chấm sơ bộ deterministic, lưu evidence, cập nhật hành vi, xem tiến độ và tạo khuyến nghị fallback phải hoạt động khi Gemini hoặc Internet không khả dụng.
 
 Luồng giá trị trung tâm:
 
 ~~~text
-Giáo viên giao bài
-→ Học sinh nộp đáp án và reasoning_text
-→ AI trả JSON phân tích tư duy
-→ Hệ thống cập nhật Knowledge Twin và Behavior Twin
-→ Opportunity Gap chọn Topic và Question tiếp theo
-→ Student, Teacher và Center Manager theo dõi Dashboard
+CenterManager cấu hình tổ chức và quyền trong Center
+→ Giáo viên quản lý nội dung và giao bài
+→ Học sinh nộp đáp án, reasoning_text và telemetry
+→ BLL chấm sơ bộ, lưu Attempt và khởi tạo xử lý phân tích
+→ Gemini tạo observation nếu khả dụng; nếu không, deterministic fallback hoàn tất luồng
+→ Evidence Gate đánh giá nguồn, độ tin cậy và chế độ quyết định
+→ BLL cập nhật Behavior Twin; Knowledge Twin chỉ đổi khi evidence được phép
+→ Recommendation engine dùng dữ liệu đã xác thực và luôn có linear/rule fallback
+→ Student, Teacher và CenterManager nhận dashboard/hành động phù hợp quyền
 ~~~
 
-AI không phải chatbot phụ trợ. AI cung cấp Reasoning Analysis; dữ liệu có cấu trúc, thuật toán BLL và Teacher Override mới là nguồn quyết định cuối cùng.
+Gemini chỉ cung cấp một observation có thể sai hoặc vắng mặt. Chấm điểm sơ bộ, Evidence Gate, dữ liệu quan sát được, thuật toán BLL có version và Teacher Override mới là nguồn quyết định. AI không tự giải bài thay học sinh, không là người chấm cuối, không cấp quyền và không trực tiếp quyết định mastery, risk hoặc recommendation.
 
 ## 3. Phạm vi MVP đã khóa
 
 ### 3.1. Có trong MVP
 
 - Multi-tenant B2B SaaS theo mô hình Shared Database, Shared Schema.
-- Ba vai trò: Student, Teacher, CenterManager.
-- Center Manager đồng thời đảm nhận chức năng Admin trong phạm vi Center.
+- Ba account type: Student, Teacher, CenterManager.
+- Dynamic role và permission theo từng Center; một user có thể có nhiều role cùng account type.
+- CenterManager đảm nhận tenant administration trong Center của mình; không có Platform/System Admin.
+- Center được provision bằng migration/seed/deployment có kiểm soát; course MVP không có UI/API cho CenterManager tạo, xóa hoặc quản lý Center khác.
+- Permission catalog do source định nghĩa; CenterManager cấu hình role và assignment qua UI.
 - Quản lý Center, User, Teacher, Student, Class và Class membership.
 - Subject và Knowledge Graph dạng DAG.
 - Question Bank với MultipleChoice, ShortAnswer và Essay.
@@ -84,7 +105,7 @@ AI không phải chatbot phụ trợ. AI cung cấp Reasoning Analysis; dữ li�
 - Rate limiting, payment, subscription và billing.
 - Teacher Twin, Center Twin và AI chấm hiệu suất giáo viên.
 - Full i18n; UI chỉ dùng tiếng Việt.
-- Integration Test, E2E Test và Frontend automated test trong phạm vi bắt buộc.
+- Full browser/device matrix và cloud-scale load test; selected integration, frontend và E2E security test vẫn bắt buộc.
 - Cloud deployment/CD; chỉ yêu cầu cấu trúc container cloud-ready.
 
 ## 4. Stack bắt buộc
@@ -241,16 +262,30 @@ Không endpoint nào cho phép client đổi center_id. Truy cập ID hợp lệ
 - Access Token sống ngắn; Refresh Token sống dài hơn và được rotate.
 - Chỉ lưu hash của Refresh Token.
 - Password phải hash bằng cơ chế chuẩn của ASP.NET Core Identity hoặc PasswordHasher tương đương; không tự thiết kế thuật toán.
-- Role hợp lệ: Student, Teacher, CenterManager.
-- CenterManager tạo Teacher.
-- Teacher tạo Student và quản lý Class của mình.
-- Student chỉ xem dữ liệu bản thân.
-- Teacher chỉ xem Student thuộc Class mình phụ trách.
-- CenterManager chỉ xem dữ liệu trong Center của mình.
+- Account type hợp lệ: Student, Teacher, CenterManager. Account type mô tả domain context, không được dùng như toàn bộ permission model sau cutover.
+- Permission code là catalog do hệ thống định nghĩa và phải có server-side enforcement.
+- Permission applicability theo account type phải được lưu quan hệ chuẩn hóa, không giấu trong JSON nếu cần relational join/FK.
+- Role thuộc đúng một Center và đúng một account type; role code unique trong Center; account type immutable sau khi tạo.
+- Role chỉ được nhận permission cho phép account type đó; user chỉ được nhận role trùng account type.
+- Account type không thể bị thay đổi gián tiếp bằng role assignment; đổi account type cần use case/migration riêng được duyệt.
+- Một user có thể nhận nhiều active role cùng Center.
+- Effective permission v1 là hợp các permission từ active role; không có explicit deny.
+- CenterManager chỉ quản lý role, permission assignment và user-role assignment trong Center của mình.
+- CenterManager có authorization.roles.manage_permissions được cấp permission Active/delegable/tương thích cho role Student hoặc Teacher. Khi target là role/user CenterManager, permission mới phải là subset effective permission của actor; luôn cấm tự nâng quyền và làm mất tenant administrator cuối cùng.
+- Mọi thay đổi role/permission/assignment phải có authorization audit append-only và làm authorization version cũ mất hiệu lực theo policy.
+- Trường JSON authorizationVersion và claim auth_version đều ánh xạ duy nhất tới users.auth_version; không tạo cột/version thứ hai.
+- Password reset, thay đổi trạng thái user, replace user-role và thay role-permission ảnh hưởng user phải tăng users.auth_version trong cùng transaction. Access token có version cũ bị từ chối; refresh token của user bị ảnh hưởng phải được revoke theo cùng policy.
+- TenantAdminCorePermissionsV1 gồm authorization.permissions.read, authorization.roles.read, authorization.roles.create, authorization.roles.update, authorization.roles.archive, authorization.roles.manage_permissions, authorization.user_roles.read, authorization.user_roles.assign và authorization.audit.read. Sau mọi mutation authorization phải còn ít nhất một User Active có account type CenterManager và effective permission chứa đủ tập này.
 - Logout/revoke phải vô hiệu Refresh Token.
 - User bị khóa phải mất quyền refresh.
 
-Authorization phải kết hợp Role + Resource Ownership; chỉ Role check là chưa đủ.
+Authorization phải kết hợp Authentication + Permission + Tenant + Resource Ownership/Scope. UI ẩn nút không phải security control.
+
+Trong migration:
+
+- Endpoint chưa migrate tiếp tục dùng legacy policy + tenant + ownership.
+- Endpoint đã migrate chỉ dùng permission + tenant + ownership.
+- Cấm dùng biểu thức legacy role OR dynamic permission làm đường cho phép chung.
 
 ## 10. Quy tắc dữ liệu
 
@@ -288,6 +323,12 @@ DATABASE_SCHEMA.md là nguồn duy nhất cho table, column, key, index và dele
 - AI output bắt buộc theo JSON Schema được version hóa trong contract.
 - Deserialize, schema validation và semantic validation phải hoàn tất trước khi ghi Reasoning Analysis.
 - AI không được tự thay đổi schema, Knowledge Graph, correct answer hoặc Teacher-authored content.
+- Reasoning Analysis phải qua deterministic Evidence Gate trước khi ảnh hưởng Digital Twin.
+- Evidence source, trust level và decision mode là ba chiều độc lập: source = AI/RuleFallback/TeacherOverride; trust = Trusted/Reduced/ReviewOnly; mode = AIWeighted/DeterministicOnly/HumanConfirmed.
+- Replay là loại sự kiện/history, không phải evidence source hoặc trust level.
+- AI confidence chỉ được xét sau structural validation, semantic validation và kiểm tra contradiction deterministic; confidence cao không được vượt qua anomaly hoặc dữ liệu không nhất quán.
+- Correctness, score, time, student confidence và answer changes là observed evidence; chúng không được giả thành AI Reasoning Analysis.
+- Gemini không được trực tiếp quyết định mastery, risk, opportunity ranking hoặc recommendation.
 
 ### 12.2. Retry và fallback
 
@@ -315,7 +356,7 @@ DATABASE_SCHEMA.md là nguồn duy nhất cho table, column, key, index và dele
 - Sau override phải deterministic replay toàn bộ Attempt liên quan của Student + Topic.
 - Replay, Twin update, History và Recommendation replacement nằm trong một transaction.
 
-## 13. Mastery heuristic đã khóa
+## 13. Evidence Gate và Mastery heuristic v2
 
 Mọi giá trị chuẩn hóa về 0–1 trước khi tính.
 
@@ -328,27 +369,42 @@ Ký hiệu:
 - D: difficulty multiplier; 0.85, 0.925, 1.0, 1.075, 1.15 cho difficulty 1–5.
 - M: Mastery hiện tại từ 0 đến 100.
 
-Khi có Reasoning Analysis:
+Evidence Gate chạy trước mọi thay đổi Knowledge Twin. Gate dùng policy có version, dữ liệu quan sát được và kết quả semantic validation; không gọi AI thêm lần nữa.
+
+| Trust level | Source/mode điển hình | Điều kiện mặc định | ReasoningWeight | Hành động |
+|---|---|---|---:|---|
+| Trusted | AI/AIWeighted hoặc TeacherOverride/HumanConfirmed | Validation hợp lệ, không contradiction; AI confidence 80–100 hoặc giáo viên xác nhận hợp lệ | 1.00 | Cho phép cập nhật/replay theo policy |
+| Reduced | AI/AIWeighted | Validation hợp lệ, không contradiction nghiêm trọng; AI confidence 50–79 | 0.50 | Cập nhật giảm trọng số và gắn cờ theo dõi |
+| ReviewOnly | AI/AIWeighted hoặc RuleFallback/DeterministicOnly | Confidence dưới 50, fallback, thiếu evidence, anomaly hoặc contradiction | 0.00 | Không đổi Knowledge Mastery; đưa vào hàng review |
+
+Ngưỡng phải nằm trong configuration có version. Thay đổi ngưỡng cần Change Proposal, regression test và migration dữ liệu nếu ảnh hưởng replay.
+
+Khi có Reasoning Analysis hợp lệ:
 
 ~~~text
-EvidenceTarget = 100 × R × (0.65 + 0.20C + 0.10T + 0.05K)
-NewMastery = Clamp(M + 0.25 × D × (EvidenceTarget - M), 0, 100)
+RawEvidenceTarget = 100 × R × (0.65 + 0.20C + 0.10T + 0.05K)
+RawDelta = 0.25 × D × (RawEvidenceTarget - M)
+NewMastery = Clamp(M + ReasoningWeight × RawDelta, 0, 100)
 ~~~
 
-Khi fallback:
+Khi fallback hoặc ReviewOnly:
 
 ~~~text
-EvidenceTarget = 100 × (0.20C + 0.05T)
-NewMastery = Clamp(M + 0.10 × D × (EvidenceTarget - M), 0, 100)
+ReasoningWeight = 0
+NewMastery = M
 ~~~
+
+Correctness, thời gian và hành vi vẫn được ghi như evidence quan sát được và có thể cập nhật Behavior Twin; chúng không được giả thành Reasoning Analysis.
 
 Hệ quả bắt buộc:
 
 - reasoning_quality có ảnh hưởng lớn nhất.
 - Đúng nhưng reasoning kém chỉ tăng ít.
 - Sai nhưng reasoning tốt có thể ghi nhận partial mastery.
-- Fallback không được làm Mastery tăng mạnh.
+- Fallback và evidence ReviewOnly không được thay đổi Knowledge Mastery.
 - Mỗi lần cập nhật phải lưu input, output, delta và breakdown trong twin_update_history.
+- Mỗi quyết định Gate phải lưu trust level, weight, reason code và policy version.
+- Mỗi quyết định Gate phải lưu riêng source type, trust level, decision mode và analysis override version; không dùng một enum để biểu diễn nhiều chiều.
 - BLL test phải bao phủ boundary 0, 39, 40, 59, 60, 79, 80, 100 và null.
 
 Phân loại hiển thị:
@@ -471,6 +527,7 @@ Không giữ database transaction trong thời gian gọi Gemini. AI call diễn
 
 ### 21.1. Student
 
+- Câu hỏi phải trả lời: “Em yếu ở đâu, nên làm gì tiếp theo và có nguy cơ không đạt mục tiêu môn học không?”
 - Header: Target Score và Remaining Days.
 - Radar: Topic Mastery.
 - Line: Twin Update History.
@@ -478,6 +535,7 @@ Không giữ database transaction trong thời gian gọi Gemini. AI call diễn
 
 ### 21.2. Teacher
 
+- Câu hỏi phải trả lời: “Học sinh nào cần hỗ trợ, lỗi chung là gì và nên giao hoạt động/bài tập nào tiếp theo?”
 - Class overview: sĩ số và predicted score trung bình.
 - High-risk Students.
 - Weak Topics dạng Bar chart.
@@ -485,6 +543,7 @@ Không giữ database transaction trong thời gian gọi Gemini. AI call diễn
 
 ### 21.3. Center Manager
 
+- Câu hỏi phải trả lời: “Quyền trong Center có an toàn không, lớp nào cần chú ý và mức đạt mục tiêu toàn Center ra sao?”
 - Tổng Teachers, Students, Classes.
 - Mastery trung bình theo Subject.
 - High-risk Students theo Class.
@@ -506,13 +565,18 @@ Phạm vi bắt buộc:
 - Teacher Override replay.
 - Tenant ownership guards ở service quan trọng.
 - Job state machine/fallback policy.
+- Database constraint, migration và query quan trọng trên MySQL thật.
+- Dynamic permission, privilege escalation, cross-tenant assignment và last-admin protection.
+- Evidence Gate, policy boundary và deterministic replay.
+- Frontend capability gate, direct URL denial và trạng thái unauthorized.
+- Selected end-to-end security flow cho đường nghiệp vụ quan trọng.
 
 Coverage:
 
 - Nhóm thuật toán BLL lõi tối thiểu 80%.
 - Coverage không thay thế test boundary và invariant.
 
-Mỗi test phải deterministic, không gọi Gemini thật, không phụ thuộc thời gian hệ thống trực tiếp và không dùng shared mutable state.
+Mỗi test phải deterministic, không gọi Gemini thật, dùng TimeProvider hoặc clock abstraction thay vì thời gian hệ thống trực tiếp và không dùng shared mutable state.
 
 ## 23. Git, CI và commit gate
 
@@ -521,7 +585,7 @@ Mỗi test phải deterministic, không gọi Gemini thật, không phụ thuộ
 - Commit nhỏ, mô tả theo Conventional Commits.
 - Không commit khi build/test đỏ.
 - Không trộn refactor ngoài scope vào task.
-- GitHub Actions chỉ bắt buộc chạy dotnet restore, dotnet build và dotnet test.
+- GitHub Actions bắt buộc chạy backend restore/build/test, frontend clean install/build, EF pending-model check và tập MySQL integration test đã chọn.
 - Migration đi cùng code sử dụng migration đó.
 - Sau mỗi Phase phải chạy local bằng Docker Compose theo MASTER_PLAN.md trước khi merge.
 
@@ -552,13 +616,16 @@ File .env thật không commit; chỉ commit .env.example không chứa secret.
 
 Một task chỉ Done khi:
 
-- Không vi phạm năm specification.
+- Không vi phạm bộ tài liệu authoritative và requirement ID của task.
+- Có human owner, acceptance criteria và bằng chứng review.
 - Chỉ sửa file được cho phép.
 - Build thành công.
 - Test liên quan thành công.
-- Migration/seed áp dụng được nếu có thay đổi dữ liệu đã duyệt.
+- Migration/seed áp dụng được trên MySQL thật nếu có thay đổi dữ liệu đã duyệt.
 - API contract không drift.
 - Tenant isolation được kiểm tra.
+- Permission, account-type compatibility và resource scope được kiểm tra ở server nếu task có authorization.
+- Evidence provenance và policy version được lưu nếu task ảnh hưởng Digital Twin.
 - Error/empty/loading state được xử lý nếu có UI.
 - Không có secret hoặc log nhạy cảm.
 - Có self-review và danh sách file đã đổi.
@@ -576,8 +643,9 @@ Một Phase chỉ Done khi:
 
 AI Developer bắt buộc:
 
-- Đọc đủ năm file trước khi làm.
+- Đọc PROJECT_REQUIREMENTS.md, CONSTITUTION.md và các tài liệu authoritative liên quan trước khi làm.
 - Chỉ thực hiện Task ID được giao.
+- Ghi human owner, requirement ID, expected HEAD, allow-list và acceptance gate trong prompt.
 - Liệt kê assumption trước khi sửa.
 - Không tự đổi schema, endpoint, architecture, enum hoặc thuật toán.
 - Không thêm package nếu task không cho phép.
@@ -586,6 +654,8 @@ AI Developer bắt buộc:
 - Không bỏ validation/test để làm demo chạy nhanh.
 - Báo BLOCKED nếu specification thiếu hoặc mâu thuẫn.
 - Khi đề xuất thay đổi, dùng Change Proposal trong PROMPT_TEMPLATES.md và chờ duyệt.
+- Dừng và báo trạng thái nếu lặp cùng thao tác, command không tiến triển hoặc quota/tool bị gián đoạn.
+- Không stage, commit, push hay nhận quyền tác giả nếu chưa có chỉ dẫn closeout rõ ràng của con người.
 
 AI Developer bị cấm:
 
@@ -597,6 +667,7 @@ AI Developer bị cấm:
 - Tạo endpoint không có trong API_CONTRACTS.md.
 - Lưu API key trong code/repository.
 - Tự ý “cải tiến” sang microservices, Clean Architecture hoặc Event Sourcing.
+- Che giấu việc dùng AI, tạo commit giả hoặc chia baseline cũ thành đóng góp mới.
 
 ## 27. Change control
 
@@ -608,11 +679,31 @@ Mọi thay đổi frozen decision phải có:
 - Phương án A/B.
 - Tác động migration, API, test và timeline.
 - Khuyến nghị của Codex.
-- Quyết định của Product Owner.
+- Human decision owner và người phê duyệt.
 
 Chỉ sau phê duyệt mới cập nhật specification trước, rồi mới cập nhật source code.
 
-## 28. Nguồn kỹ thuật nền
+## 28. Course rebaseline và provenance
+
+- Prototype trước học kỳ được nhập vào repository môn học dưới một baseline commit minh bạch.
+- PROJECT_TRACKING.md phải lưu repository nguồn, full SHA, ngày import và repository môn học.
+- Chỉ commit sau baseline mới được dùng làm bằng chứng đóng góp trong học kỳ.
+- Không rewrite lịch sử để biến source cũ thành đóng góp mới của thành viên.
+- Yêu cầu giảng viên, stakeholder interview, Figma approval, weekly demo và quyết định nhóm phải có ngày, người xác nhận và liên kết bằng chứng.
+- Phần trăm hoàn thành không được tự ước lượng từ số commit; phải dựa trên acceptance criteria đã được xác minh.
+
+## 29. Nguyên tắc migration từ prototype sang v2
+
+- Rebaseline là thay đổi tăng dần, không viết lại toàn hệ thống.
+- Specification được chốt trước schema; schema trước API; API trước UI.
+- Dynamic RBAC được triển khai theo capability slice, có compatibility window và cutover rõ ràng.
+- Không cho phép legacy role OR dynamic permission trở thành đường cấp quyền lâu dài.
+- Evidence Gate được đặt trước Twin mutation; source cũ chỉ được chuyển sang sau khi có regression baseline.
+- Mỗi migration dữ liệu phải có forward plan, backup/rollback procedure, idempotency check và validation query.
+- Chỉ xóa compatibility code khi toàn bộ endpoint trong slice đã migrate, test security xanh và nhóm phê duyệt.
+- Thay đổi schema lớn phải thử trên bản sao dữ liệu hoặc fixture đại diện trước khi áp dụng môi trường dùng chung.
+
+## 30. Nguồn kỹ thuật nền
 
 - [.NET releases and support](https://learn.microsoft.com/en-us/dotnet/core/releases-and-support)
 - [EF Core Global Query Filters](https://learn.microsoft.com/en-us/ef/core/querying/filters)

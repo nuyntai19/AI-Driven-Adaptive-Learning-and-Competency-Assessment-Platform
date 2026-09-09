@@ -1,10 +1,11 @@
 # EduTwin — Master Development Plan
 
-> Phiên bản: 1.0  
-> Trạng thái: FROZEN  
-> Phương châm: Data First, Plan Second  
-> Phạm vi: MVP chạy Local bằng Docker Compose  
-> Vai trò Codex: Architect, Specification Manager, Code Reviewer, Acceptance Reviewer  
+> Phiên bản: 2.1-draft
+> Trạng thái: COURSE REBASELINE — roadmap v2 đang chờ nhóm phê duyệt
+> Phương châm: Validated Requirements, Data Integrity, Incremental Delivery
+> Phạm vi: MVP chạy Local bằng Docker Compose
+> Vai trò AI: Codex review độc lập; Gemini triển khai giới hạn; con người sở hữu quyết định và commit
+> Chủ sở hữu: Team lead và năm module owners
 
 ## 1. Mục tiêu của Master Plan
 
@@ -15,7 +16,7 @@ Tài liệu này phân rã EduTwin thành các Phase nhỏ, tuần tự và có 
 - Có thể commit và mở Pull Request mà không phụ thuộc code chưa tồn tại ở Phase sau.
 - Không được để migration/API/schema ở trạng thái nửa vời.
 
-Claude/Gemini chỉ triển khai Task ID được giao. Codex review theo Constitution, Database Schema, API Contracts và Definition of Done trong tài liệu này.
+Gemini/Codex chỉ thực hiện Task ID được giao. Human owner chịu trách nhiệm requirement, phân công, review và commit; AI không được xem là tác giả đóng góp của thành viên.
 
 ## 2. Kết quả cuối của MVP
 
@@ -26,14 +27,15 @@ Kịch bản demo cuối:
 3. Teacher tạo Subject/Knowledge Graph hoặc dùng Seed Data.
 4. Teacher tạo Question, tạo Assignment và giao cho Class/Gap Group.
 5. Student đăng nhập, mở Assignment, trả lời và nhập reasoning_text.
-6. API trả 202 cùng AI Job; UI polling trạng thái.
-7. Gemini trả structured JSON hoặc hệ thống fallback.
-8. BLL cập nhật Knowledge Twin, Behavior Twin, Goal/Risk, History và Recommendation.
+6. API chấm sơ bộ deterministic, commit Attempt + AI Job và trả 202; UI polling trạng thái.
+7. Gemini trả structured observation nếu khả dụng; nếu lỗi sau retry, deterministic fallback hoàn tất luồng và đưa vào review.
+8. Evidence Gate phân loại source/trust/mode; Behavior dùng telemetry quan sát được, Knowledge Mastery chỉ dùng effective evidence có weight lớn hơn 0.
 9. Student thấy Radar/Line/Opportunity Action thay đổi.
 10. Teacher thấy lớp, high-risk Students, weak Topics và Gap Groups.
 11. Teacher Override một analysis; hệ thống replay và cập nhật lại Twin.
 12. Center Manager thấy tổng quan toàn trung tâm.
 13. Đăng nhập Center B chứng minh không đọc được dữ liệu Center A.
+14. CenterManager thay đổi role/permission qua UI; quyền nút, route và API thay đổi đồng bộ, có audit.
 
 ## 3. Nguyên tắc lập kế hoạch
 
@@ -41,11 +43,14 @@ Kịch bản demo cuối:
 - Hoàn thành backend contract trước màn hình phụ thuộc contract đó.
 - Mỗi thuật toán lõi phải có Unit Test trước khi tích hợp UI.
 - Gemini là dependency không tin cậy; fallback phải được hoàn thành cùng phase AI.
+- Auth, RBAC, organization, content, assignment, submission, preliminary grading và deterministic recommendation không được phụ thuộc Gemini/Internet.
 - Không gọi Gemini trong transaction.
 - Không tạo “temporary endpoint” ngoài API_CONTRACTS.md.
 - Không trì hoãn tenant isolation đến cuối.
 - UI chỉ tích hợp endpoint đã có contract và backend checkpoint.
 - Mỗi Phase có branch/commit riêng.
+- Mỗi task có human owner, requirement ID, acceptance evidence và reviewer độc lập.
+- Không tính source trước baseline như đóng góp mới của học kỳ.
 
 ## 4. Sơ đồ phụ thuộc Phase
 
@@ -114,17 +119,177 @@ Template nằm trong PROMPT_TEMPLATES.md.
 | P17 | feat/center-app | feat: add center management dashboard |
 | P18 | release/mvp | chore: harden and release edutwin mvp |
 
+# Course Rebaseline Roadmap v2
+
+Các phase P00–P18 phía dưới là kế hoạch prototype ban đầu và được giữ làm lịch sử/chi tiết kỹ thuật. Chúng không phải bảng tiến độ học kỳ và không chứng minh task đã Done. Tiến độ chính thức từ repository môn học dùng roadmap R00–R09 và PROJECT_TRACKING.md.
+
+## R00 — Baseline minh bạch và governance
+
+Mục tiêu: tạo repository môn học mới, import nguyên trạng source trước học kỳ và khóa provenance.
+
+Deliverables:
+
+- README, PROJECT_REQUIREMENTS, UI_UX_SPEC, CONSTITUTION, DATABASE_SCHEMA, API_CONTRACTS, MASTER_PLAN, PROJECT_TRACKING và PROMPT_TEMPLATES thống nhất.
+- Repository nguồn, full baseline SHA, ngày import và năm thành viên được ghi nhận.
+- Branch protection, PR review rule, issue/task template và weekly evidence convention.
+
+Gate:
+
+- Không chia lịch sử cũ thành commit giả.
+- Giảng viên/stakeholder requirement có ID, nguồn, trạng thái.
+- Nhóm phê duyệt decision log và cách tính đóng góp.
+
+## R01 — Khảo sát, quy trình và Figma
+
+Mục tiêu: kiểm chứng giả thuyết sản phẩm trước khi tiếp tục code.
+
+Deliverables:
+
+- Interview ít nhất CenterManager, Teacher và Student đại diện; ghi consent, ngày, câu hỏi, insight và requirement liên quan.
+- As-is/to-be workflow cho quản lý quyền, giao bài, làm bài, AI review, override và dashboard.
+- Sitemap, wireframe/Figma và biên bản xác nhận cho các màn hình MVP.
+- Rà soát accessibility, loading/empty/error/forbidden và responsive states.
+
+Gate: requirement chưa stakeholder-validated không được trình bày như nhu cầu khách hàng đã chắc chắn.
+
+## R02 — Live database audit và RBAC schema
+
+Mục tiêu: chứng minh database hiện tại đúng trên MySQL thật và chuẩn bị migration 007.
+
+Deliverables:
+
+- Đối chiếu migration-generated SQL với information_schema: table, column, FK, unique, check, delete behavior và index.
+- Chạy ba integration test đang skip bằng database test riêng.
+- Review EXPLAIN cho query tenant/dashboard quan trọng.
+- Chốt bảy bảng v2, gồm permission_account_types để khóa compatibility bằng FK; backfill role_name → account type + bootstrap roles, rollback/validation query.
+
+Gate: không tạo migration trước khi schema/API/RBAC threat model được nhóm duyệt.
+
+## R03 — Dynamic RBAC backend và API
+
+Mục tiêu: CenterManager quản lý role/quyền trong Center của mình, không có Platform Admin.
+
+Center lifecycle không thuộc R03: Center được provision bằng deployment/seed; tenant admin chỉ quản lý profile và quyền của Center hiện hành.
+
+Slices:
+
+1. Permission catalog read-only, permission-account-type mapping và bootstrap roles.
+2. Role CRUD/archival + optimistic concurrency.
+3. Atomic role-permission replacement.
+4. Atomic user-role replacement + users.auth_version/token invalidation; API authorizationVersion chỉ là projection của cột này.
+5. Append-only audit query.
+6. Migrate endpoint theo module; xóa legacy authorization chỉ sau cutover gate.
+
+Security gate:
+
+- Cross-tenant ID trả 404.
+- Role–permission và user–role lệch account type trả lỗi ổn định và bị composite FK chặn.
+- Cho phép tenant admin quản trị operational permission delegable của Student/Teacher; chặn self-elevation/over-grant ở target CenterManager, stale token và thao tác làm mất CenterManager Active cuối có đủ TenantAdminCorePermissionsV1.
+- Không dùng legacy role OR dynamic permission làm đường cho phép chung.
+
+## R04 — Dynamic RBAC UI
+
+Mục tiêu: quyền được quản lý và phản ánh rõ trên giao diện.
+
+Deliverables:
+
+- Màn hình role list/detail/editor có account type immutable, permission matrix lọc theo allowed account type, user-role assignment tương thích và audit log.
+- Route guard và nút/action dựa trên effective permission.
+- Direct URL/handcrafted request vẫn bị API từ chối.
+- Session tự refresh/re-auth khi authorizationVersion thay đổi; tránh retry loop.
+
+Gate: ẩn nút không được xem là security control; frontend và API đều có test.
+
+## R05 — Evidence Gate và AI safety
+
+Mục tiêu: AI chỉ tạo observation, không trực tiếp điều khiển Digital Twin.
+
+Deliverables:
+
+- Migration 008 evidence_assessments.
+- Deterministic gate tách source AI/RuleFallback/TeacherOverride, trust Trusted/Reduced/ReviewOnly và mode AIWeighted/DeterministicOnly/HumanConfirmed; policy version và reason code.
+- Fallback/ReviewOnly không đổi Knowledge Mastery.
+- Review queue và explanation cho teacher/student phù hợp quyền.
+- Backfill lịch sử thiếu evidence về ReviewOnly, không tự suy diễn trust.
+
+Gate: replay cùng input/policy cho cùng kết quả; mọi Twin mutation truy được evidence assessment.
+
+## R06 — Twin completion orchestrator
+
+Mục tiêu: hoàn tất luồng sau AI job trong transaction nhỏ, idempotent.
+
+Deliverables:
+
+- Behavior updater, Risk calculator, completion orchestrator, history và feedback projection.
+- Không giữ transaction trong lúc gọi Gemini.
+- Retry/lease/recovery không tạo analysis, gate hoặc history trùng.
+- Teacher Override replay atomic và giữ nguyên output AI gốc.
+
+Gate: failure injection chứng minh rollback và retry an toàn.
+
+## R07 — Recommendation và quyết định ML
+
+Mục tiêu: hoàn thiện Opportunity Gap/recommendation bằng baseline giải thích được; chỉ thêm ML khi có bằng chứng.
+
+Deliverables:
+
+- Rule-based baseline, evaluation dataset, label definition, train/test split và metric.
+- Decision record so sánh heuristic với ML.NET; chọn ML chỉ khi cải thiện đo được và demo offline ổn định.
+- Model version, feature provenance, fallback và teacher override.
+
+Gate: không gọi API AI để thay thế ML pipeline và không quảng bá heuristic là dự báo xác suất.
+
+## R08 — Dashboard và end-to-end UX
+
+Mục tiêu: hoàn thiện Student, Teacher, CenterManager experience từ contract đã ổn định.
+
+Deliverables:
+
+- Dashboard, assignment/learning flow, AI status, review/override và permission administration.
+- Loading, empty, error, stale, forbidden; chart có text/table fallback.
+- Figma comparison và stakeholder acceptance evidence.
+
+Gate: không hard-code ID/permission và không lưu refresh token ở browser storage.
+
+## R09 — Hardening, báo cáo và release rehearsal
+
+Mục tiêu: tạo bản demo có thể tái lập và bộ bằng chứng chấm môn.
+
+Deliverables:
+
+- Backend/frontend/MySQL integration/E2E security CI.
+- Clean-clone Docker rehearsal, backup/restore và forced Gemini fallback demo.
+- SRS, database dictionary, UML/workflow, Figma, test report, slide, weekly progress và contribution matrix.
+- Security/performance/accessibility review; không mở thêm feature sát ngày demo.
+
+Gate: mọi tuyên bố Done có link tới requirement, commit/PR, test và reviewer.
+
+## Trạng thái source tại rebaseline
+
+Audit ngày 2026-09-08 tại commit 2d768f270e0395bcafcbcab2305ac3617fb5f9ca cho thấy:
+
+- P00–P12 của prototype đã có phần triển khai đáng kể; P13-T01 Mastery Calculator v1 đã có.
+- Backend Release và frontend production build xanh; 2.853 test pass, 3 MySQL integration test skip.
+- 31 bảng hiện tại không có EF pending model changes.
+- Dynamic RBAC, Evidence Gate, Twin completion orchestrator và dashboard cuối chưa hoàn tất.
+- Authorization hiện vẫn dùng role claim/RoleRoute tĩnh; users.auth_version có sẵn nhưng chưa được kiểm chứng server-side trên mỗi request và chưa được trả đầy đủ cùng effective permissions.
+- MasteryCalculator v1 hiện còn fallback learning-rate path làm đổi mastery; đây là behavior Current cần remediation ở R05/P13 trước khi tích hợp orchestrator.
+
+Đây là inventory kỹ thuật, không phải tỷ lệ hoàn thành môn học. Sau khi tạo repository mới, R00 bắt đầu từ baseline commit và mọi phần trăm nằm trong PROJECT_TRACKING.md.
+
 # Phase P00 — Governance Baseline
+
+> Legacy prototype plan, giữ để truy vết. Giới hạn “đúng năm specification/không tạo file thứ sáu” đã bị roadmap R00 và bản đồ tài liệu v2 thay thế.
 
 ## 7. Mục tiêu
 
-Đóng băng năm specification, thiết lập cơ chế change control và bảo đảm AI Developer không triển khai từ mô tả cũ trong DOCX.
+Thiết lập specification prototype và cơ chế change control ban đầu; hiện đã được course rebaseline v2 mở rộng.
 
 Dependencies: không.
 
 ## 8. Tasks
 
-### P00-T01 — Đặt năm specification tại repository root
+### P00-T01 — Đặt specification prototype tại repository root
 
 Kết quả:
 
@@ -136,13 +301,12 @@ Kết quả:
 
 Acceptance:
 
-- Chỉ có đúng một baseline version cho MVP.
-- Mọi file có trạng thái FROZEN.
-- README tương lai chỉ link đến năm file, không sao chép nội dung gây drift.
+- Baseline prototype có một version rõ ràng.
+- Tài liệu v2 hiện dùng authority map trong README/CONSTITUTION.
 
-### P00-T02 — Lập Specification Compliance Checklist
+### P00-T02 — Lập Specification Compliance Checklist [đã được v2 thay thế]
 
-Không tạo file thứ sáu. Checklist được dùng trực tiếp từ cuối mỗi tài liệu.
+Quyết định không tạo file thứ sáu không còn hiệu lực. PROJECT_REQUIREMENTS.md, UI_UX_SPEC.md và PROJECT_TRACKING.md là bắt buộc cho yêu cầu môn học và provenance.
 
 Acceptance:
 
@@ -151,7 +315,7 @@ Acceptance:
 
 ### P00-T03 — Review scope cũ
 
-Đánh dấu EduTwin-Overview.docx là tài liệu vision, không phải implementation authority.
+Đánh dấu docs/archive/vision-v0/EduTwin-Overview.docx là tài liệu vision, không phải implementation authority.
 
 ## 9. Business rules
 
@@ -161,9 +325,9 @@ Acceptance:
 
 ## 10. Definition of Done
 
-- Năm file được commit.
+- Bộ tài liệu prototype được commit; course baseline dùng bộ tài liệu authoritative v2.
 - Product Owner xác nhận baseline.
-- AI Developer prompt bắt buộc đọc năm file.
+- AI Developer prompt bắt buộc đọc tài liệu authoritative liên quan theo thứ tự trong CONSTITUTION.md.
 
 ## 11. Checkpoint/commit gate
 
@@ -566,7 +730,7 @@ Sử dụng fixed seed cho Bogus. Không log/commit seed password thật.
 
 ## 40. Commit gate
 
-Tag nội bộ gợi ý: data-baseline-v1.  
+Tag nội bộ gợi ý: data-baseline-v1.
 Từ Phase sau, schema frozen; mọi table/column mới cần Change Proposal.
 
 # Phase P06 — Authentication và Tenant Isolation
@@ -1206,8 +1370,8 @@ Difficulty D=1.0:
 |---|---:|---:|---:|---:|---:|---:|
 | Đúng nhưng reasoning kém | 0 | 0.20 | 1 | 1 | 1 | 5.00 |
 | Đúng, reasoning tốt | 50 | 0.80 | 1 | 1 | 1 | 57.50 |
-| Fallback đúng | 0 | null | 1 | 1 | — | 2.50 |
-| Fallback sai/skipped | 40 | null | 0 | 0 | — | 36.00 |
+| Fallback đúng (ReviewOnly) | 0 | null | 1 | 1 | — | 0.00 |
+| Fallback sai/skipped (ReviewOnly) | 40 | null | 0 | 0 | — | 40.00 |
 
 Sai số decimal cho test: tối đa 0.01.
 
@@ -1217,6 +1381,7 @@ Sai số decimal cho test: tối đa 0.01.
 - Difficulty 1–5.
 - Clamp 0/100.
 - Mastery tăng/giảm.
+- Fallback/ReviewOnly giữ nguyên Mastery; observed telemetry chỉ cập nhật Behavior Twin.
 - Behavior aggregate.
 - Risk remainingDays 0/180/>180.
 - No Topic evidence.
@@ -1673,7 +1838,7 @@ Không đặt performance SLA giả nếu chưa đo.
 
 - Pull Request main chạy build/test.
 - Không CD.
-- README hiện hữu có quick start, demo accounts lấy từ env/seed policy và link năm specification.
+- README hiện hữu có quick start, demo accounts lấy từ env/seed policy và link bộ tài liệu authoritative.
 
 ### P18-T08 — Release rehearsal
 
@@ -1785,7 +1950,7 @@ Mọi page data-driven phải có:
 |---|---|
 | .NET Modular Monolith 3 Layer | P01 |
 | Docker 4 services | P02 |
-| 5 DB modules | P03–P05 |
+| 31 bảng/5 DB modules prototype | P03–P05 |
 | Multi-tenant | P03, P06, P17, P18 |
 | JWT + Refresh | P06 |
 | Center/Teacher/Student/Class | P07 |
@@ -1806,6 +1971,13 @@ Mọi page data-driven phải có:
 | Center Dashboard | P17 |
 | BLL coverage >=80% | P13–P14, P16, P18 |
 | CI build/test | P01, P18 |
+| Course provenance và weekly evidence | R00, R09 |
+| Stakeholder validation và Figma | R01, R08 |
+| Dynamic RBAC theo Center | R02–R04 |
+| Authorization audit | R03–R04 |
+| Evidence Gate | R05–R06 |
+| ML/heuristic evaluation | R07 |
+| MySQL live constraint audit | R02, R09 |
 
 ## 121. Table → Phase
 
@@ -1817,6 +1989,8 @@ Mọi page data-driven phải có:
 | goals, twins, history, paths, recommendations | P05 |
 | attempts, reasoning_analyses, ai_analysis_jobs | P05 |
 | Seed data | P05 |
+| permissions, permission_account_types, roles, role_permissions, user_roles, authorization_audit_logs | R02–R03 |
+| evidence_assessments | R05 |
 
 ## 122. Endpoint → Phase
 
@@ -1833,6 +2007,9 @@ Mọi page data-driven phải có:
 | /students/me dashboard/twin/path | P13–P15 |
 | Teacher dashboard/review/override | P16 |
 | Center dashboard | P17 |
+| /authorization/permissions, /authorization/roles | R03–R04 |
+| /authorization/users/{userId}/roles, /authorization/audit | R03–R04 |
+| Evidence projection trong feedback/review | R05–R06 |
 
 # Risk Register
 
@@ -1851,6 +2028,12 @@ Mọi page data-driven phải có:
 | Docker startup race | Trung bình | Trung bình | Healthcheck/service_healthy | P02 |
 | AI Developer đổi schema | Cao | Cao | Frozen docs + prompt allow-list | Mọi Phase |
 | Demo phụ thuộc internet/Gemini | Cao | Cao | Fallback path demo-ready | P12/P18 |
+| Baseline cũ bị tính sai thành đóng góp mới | Trung bình | Rất cao | Import baseline minh bạch, không rewrite history | R00 |
+| Phân quyền động tạo self-elevation | Trung bình | Rất cao | Over-grant/last-admin/tenant tests + audit transaction | R02–R04 |
+| Legacy role và permission mới tạo đường vòng | Cao | Rất cao | Cutover theo slice, cấm OR authorization | R03 |
+| AI confidence thấp vẫn làm lệch Twin | Cao | Rất cao | Evidence Gate, weight 0, review và replay | R05–R06 |
+| Schema chỉ xanh trên EF nhưng sai MySQL thật | Trung bình | Cao | information_schema, integration test, EXPLAIN | R02/R09 |
+| Phân công năm người không công bằng | Trung bình | Cao | Weighted work package, reviewer rotation, weekly evidence | R00–R09 |
 
 # Review Protocol
 
