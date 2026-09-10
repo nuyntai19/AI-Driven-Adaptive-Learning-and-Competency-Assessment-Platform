@@ -1,5 +1,6 @@
 using EduTwin.BLL.AssessmentAndReasoning.Jobs;
 using EduTwin.BLL.AssessmentAndReasoning.AI;
+using EduTwin.BLL.AssessmentAndReasoning.Evidence;
 using EduTwin.BLL.AssessmentAndReasoning.Processing;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
@@ -151,6 +152,8 @@ public sealed class AIAnalysisJobProcessorMySqlTests
             new AIReasoningAnalysisBuilder(),
             new RuleBasedFallbackBuilder(),
             new AIAnalysisJobStateMachine(),
+            new EvidenceGate(),
+            new EvidenceAssessmentFactory(),
             new FixedTimeProvider(UtcNow));
 
     private static EduTwinDbContext CreateContext(

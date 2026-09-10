@@ -17,9 +17,18 @@ public static class MasteryCalculator
             ValidatePercentage(reasoningQuality, nameof(input.ReasoningQuality));
         }
 
+        ValidateNormalizedFactor(input.ReasoningWeight, nameof(input.ReasoningWeight));
+
         ValidateNormalizedFactor(input.TimeQuality, nameof(input.TimeQuality));
 
-        if (input.ReasoningQuality is not null && input.ConfidenceCalibration is null)
+        if (input.ReasoningWeight > 0m && input.ReasoningQuality is null)
+        {
+            throw new ArgumentNullException(
+                nameof(input.ReasoningQuality),
+                "Reasoning quality is required when evidence has a positive weight.");
+        }
+
+        if (input.ReasoningWeight > 0m && input.ConfidenceCalibration is null)
         {
             throw new ArgumentNullException(
                 nameof(input.ConfidenceCalibration),
@@ -44,10 +53,10 @@ public static class MasteryCalculator
         var correctness = input.IsCorrect ? 1m : 0m;
         var effectiveConfidenceCalibration = isFallback ? null : input.ConfidenceCalibration;
         var difficultyMultiplier = GetDifficultyMultiplier(input.Difficulty);
-        var learningRate = isFallback ? 0.10m : 0.25m;
+        var learningRate = input.ReasoningWeight == 0m ? 0m : 0.25m;
 
-        var evidenceTarget = isFallback
-            ? 100m * (0.20m * correctness + 0.05m * input.TimeQuality)
+        var evidenceTarget = input.ReasoningWeight == 0m
+            ? input.CurrentMastery
             : 100m * normalizedReasoningQuality!.Value *
                 (0.65m +
                  0.20m * correctness +
@@ -55,7 +64,8 @@ public static class MasteryCalculator
                  0.05m * effectiveConfidenceCalibration!.Value);
 
         var unclampedNewMastery = input.CurrentMastery +
-            learningRate * difficultyMultiplier * (evidenceTarget - input.CurrentMastery);
+            learningRate * difficultyMultiplier * input.ReasoningWeight *
+            (evidenceTarget - input.CurrentMastery);
         var clampedNewMastery = Math.Clamp(unclampedNewMastery, 0m, 100m);
         var newMastery = RoundForPersistence(clampedNewMastery);
         var delta = RoundForPersistence(newMastery - input.CurrentMastery);
@@ -64,6 +74,7 @@ public static class MasteryCalculator
             IsFallback: isFallback,
             PreviousMastery: input.CurrentMastery,
             NormalizedReasoningQuality: normalizedReasoningQuality,
+            ReasoningWeight: input.ReasoningWeight,
             Correctness: correctness,
             TimeQuality: input.TimeQuality,
             ConfidenceCalibration: effectiveConfidenceCalibration,
@@ -88,7 +99,8 @@ public static class MasteryCalculator
                 newMastery,
                 delta,
                 input.Difficulty,
-                input.ReasoningQuality));
+                input.ReasoningQuality,
+                input.ReasoningWeight));
     }
 
     private static void ValidatePercentage(decimal value, string paramName)
@@ -132,16 +144,20 @@ public static class MasteryCalculator
         decimal newMastery,
         decimal delta,
         byte difficulty,
-        decimal? reasoningQuality)
+        decimal? reasoningQuality,
+        decimal reasoningWeight)
     {
         var path = isFallback ? "Fallback" : "Reasoning";
         var signedDelta = delta.ToString("+0.00;-0.00;0.00", CultureInfo.InvariantCulture);
         var commonFacts = FormattableString.Invariant(
             $"{path} path: mastery {previousMastery:0.00} -> {newMastery:0.00} (delta {signedDelta}) at difficulty {difficulty}.");
 
-        return isFallback
-            ? commonFacts + " Reduced-trust evidence was used; teacher review is required."
-            : commonFacts + FormattableString.Invariant(
-                $" Effective reasoning quality: {reasoningQuality!.Value:0.00}%.");
+        if (reasoningWeight == 0m)
+        {
+            return commonFacts + " Review-only evidence has weight 0.00 and cannot change mastery before teacher confirmation.";
+        }
+
+        return commonFacts + FormattableString.Invariant(
+            $" Effective reasoning quality: {reasoningQuality!.Value:0.00}%; evidence weight: {reasoningWeight:0.00}.");
     }
 }

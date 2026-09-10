@@ -4,6 +4,7 @@ public sealed record MasteryCalculationBreakdown(
     bool IsFallback,
     decimal PreviousMastery,
     decimal? NormalizedReasoningQuality,
+    decimal ReasoningWeight,
     decimal Correctness,
     decimal TimeQuality,
     decimal? ConfidenceCalibration,

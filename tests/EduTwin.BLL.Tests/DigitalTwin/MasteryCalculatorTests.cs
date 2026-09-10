@@ -15,7 +15,7 @@ public class MasteryCalculatorTests
                 currentMastery: 0m,
                 reasoningQuality: null,
                 confidenceCalibration: null),
-            2.50m
+            0.00m
         },
         {
             Input(
@@ -24,7 +24,7 @@ public class MasteryCalculatorTests
                 isCorrect: false,
                 timeQuality: 0m,
                 confidenceCalibration: null),
-            36.00m
+            40.00m
         }
     };
 
@@ -91,16 +91,17 @@ public class MasteryCalculatorTests
     }
 
     [Fact]
-    public void Calculate_NullReasoningQuality_UsesFallbackInsteadOfZeroReasoningPath()
+    public void Calculate_NullReasoningQuality_IsReviewOnlyAndCannotChangeMastery()
     {
         var fallback = MasteryCalculator.Calculate(Input(reasoningQuality: null));
         var zeroReasoning = MasteryCalculator.Calculate(Input(reasoningQuality: 0m));
 
         Assert.True(fallback.Breakdown.IsFallback);
-        Assert.Equal(0.10m, fallback.Breakdown.LearningRate);
+        Assert.Equal(0m, fallback.Breakdown.LearningRate);
+        Assert.Equal(0m, fallback.Breakdown.ReasoningWeight);
         Assert.False(zeroReasoning.Breakdown.IsFallback);
         Assert.Equal(0.25m, zeroReasoning.Breakdown.LearningRate);
-        Assert.Equal(2.50m, fallback.NewMastery);
+        Assert.Equal(0.00m, fallback.NewMastery);
         Assert.Equal(0.00m, zeroReasoning.NewMastery);
     }
 
@@ -153,6 +154,7 @@ public class MasteryCalculatorTests
         Assert.False(result.Breakdown.IsFallback);
         Assert.Equal(50m, result.Breakdown.PreviousMastery);
         Assert.Equal(0.8m, result.Breakdown.NormalizedReasoningQuality);
+        Assert.Equal(1m, result.Breakdown.ReasoningWeight);
         Assert.Equal(0m, result.Breakdown.Correctness);
         Assert.Equal(0.5m, result.Breakdown.TimeQuality);
         Assert.Equal(0.25m, result.Breakdown.ConfidenceCalibration);
@@ -166,7 +168,7 @@ public class MasteryCalculatorTests
     }
 
     [Fact]
-    public void Calculate_FallbackPath_PopulatesCompleteBreakdownAndIgnoresValidConfidence()
+    public void Calculate_FallbackPath_PopulatesNoOpBreakdownAndIgnoresValidConfidence()
     {
         var withoutConfidence = MasteryCalculator.Calculate(Input(
             currentMastery: 40m,
@@ -190,11 +192,12 @@ public class MasteryCalculatorTests
         Assert.Equal(0m, withoutConfidence.Breakdown.Correctness);
         Assert.Equal(0.5m, withoutConfidence.Breakdown.TimeQuality);
         Assert.Null(withoutConfidence.Breakdown.ConfidenceCalibration);
-        Assert.Equal(0.10m, withoutConfidence.Breakdown.LearningRate);
-        Assert.Equal(2.5m, withoutConfidence.Breakdown.EvidenceTarget);
-        Assert.Equal(36.53125m, withoutConfidence.Breakdown.UnclampedNewMastery);
-        Assert.Equal(36.53m, withoutConfidence.NewMastery);
-        Assert.Equal(-3.47m, withoutConfidence.Delta);
+        Assert.Equal(0m, withoutConfidence.Breakdown.ReasoningWeight);
+        Assert.Equal(0m, withoutConfidence.Breakdown.LearningRate);
+        Assert.Equal(40m, withoutConfidence.Breakdown.EvidenceTarget);
+        Assert.Equal(40m, withoutConfidence.Breakdown.UnclampedNewMastery);
+        Assert.Equal(40m, withoutConfidence.NewMastery);
+        Assert.Equal(0m, withoutConfidence.Delta);
     }
 
     [Fact]
@@ -216,15 +219,15 @@ public class MasteryCalculatorTests
     }
 
     [Fact]
-    public void Calculate_FallbackPath_UsesOnlyCorrectnessAndTimeQuality()
+    public void Calculate_FallbackPath_IgnoresCorrectnessAndTimeQualityUntilHumanConfirmation()
     {
         var allEvidence = MasteryCalculator.Calculate(Input(reasoningQuality: null));
         var incorrect = MasteryCalculator.Calculate(Input(reasoningQuality: null, isCorrect: false));
         var poorTime = MasteryCalculator.Calculate(Input(reasoningQuality: null, timeQuality: 0m));
 
-        Assert.Equal(2.50m, allEvidence.NewMastery);
-        Assert.Equal(0.50m, incorrect.NewMastery);
-        Assert.Equal(2.00m, poorTime.NewMastery);
+        Assert.Equal(0.00m, allEvidence.NewMastery);
+        Assert.Equal(0.00m, incorrect.NewMastery);
+        Assert.Equal(0.00m, poorTime.NewMastery);
     }
 
     [Fact]
@@ -237,13 +240,13 @@ public class MasteryCalculatorTests
     }
 
     [Fact]
-    public void Calculate_SameCorrectEvidence_FallbackIncreaseIsLowerThanReasoningIncrease()
+    public void Calculate_SameCorrectEvidence_FallbackCannotChangeMastery()
     {
         var reasoning = MasteryCalculator.Calculate(Input(reasoningQuality: 80m));
         var fallback = MasteryCalculator.Calculate(Input(reasoningQuality: null));
 
         Assert.Equal(20.00m, reasoning.NewMastery);
-        Assert.Equal(2.50m, fallback.NewMastery);
+        Assert.Equal(0.00m, fallback.NewMastery);
         Assert.True(fallback.Delta < reasoning.Delta);
     }
 
@@ -326,6 +329,41 @@ public class MasteryCalculatorTests
             MasteryCalculator.Calculate(Input(timeQuality: timeQuality)));
 
         Assert.Equal("TimeQuality", exception.ParamName);
+    }
+
+    [Theory]
+    [MemberData(nameof(InvalidNormalizedFactors))]
+    public void Calculate_InvalidReasoningWeight_ThrowsForReasoningWeight(decimal reasoningWeight)
+    {
+        var exception = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            MasteryCalculator.Calculate(Input(reasoningWeight: reasoningWeight)));
+
+        Assert.Equal("ReasoningWeight", exception.ParamName);
+    }
+
+    [Fact]
+    public void Calculate_ReducedTrustEvidence_ScalesMasteryDeltaByHalf()
+    {
+        var trusted = MasteryCalculator.Calculate(Input(reasoningQuality: 100m, reasoningWeight: 1m));
+        var reduced = MasteryCalculator.Calculate(Input(reasoningQuality: 100m, reasoningWeight: 0.5m));
+
+        Assert.Equal(25m, trusted.NewMastery);
+        Assert.Equal(12.5m, reduced.NewMastery);
+        Assert.Equal(0.5m, reduced.Breakdown.ReasoningWeight);
+    }
+
+    [Fact]
+    public void Calculate_ReviewOnlyEvidenceWithAnalysis_CannotChangeMastery()
+    {
+        var result = MasteryCalculator.Calculate(Input(
+            currentMastery: 62.5m,
+            reasoningQuality: 100m,
+            reasoningWeight: 0m,
+            confidenceCalibration: null));
+
+        Assert.Equal(62.5m, result.NewMastery);
+        Assert.Equal(0m, result.Delta);
+        Assert.Contains("cannot change mastery", result.Explanation, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -466,11 +504,11 @@ public class MasteryCalculatorTests
         Assert.True(result.Explanation.Length <= 1000);
         Assert.Contains("Fallback path", result.Explanation, StringComparison.Ordinal);
         Assert.Contains("40.00", result.Explanation, StringComparison.Ordinal);
-        Assert.Contains("36.00", result.Explanation, StringComparison.Ordinal);
-        Assert.Contains("-4.00", result.Explanation, StringComparison.Ordinal);
+        Assert.Contains("40.00", result.Explanation, StringComparison.Ordinal);
+        Assert.Contains("0.00", result.Explanation, StringComparison.Ordinal);
         Assert.Contains("difficulty 3", result.Explanation, StringComparison.Ordinal);
-        Assert.Contains("Reduced-trust", result.Explanation, StringComparison.Ordinal);
-        Assert.Contains("teacher review", result.Explanation, StringComparison.Ordinal);
+        Assert.Contains("Review-only", result.Explanation, StringComparison.Ordinal);
+        Assert.Contains("teacher confirmation", result.Explanation, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -531,6 +569,7 @@ public class MasteryCalculatorTests
     private static MasteryCalculationInput Input(
         decimal currentMastery = 0m,
         decimal? reasoningQuality = 80m,
+        decimal? reasoningWeight = null,
         bool isCorrect = true,
         decimal timeQuality = 1m,
         decimal? confidenceCalibration = 1m,
@@ -538,6 +577,7 @@ public class MasteryCalculatorTests
         new(
             CurrentMastery: currentMastery,
             ReasoningQuality: reasoningQuality,
+            ReasoningWeight: reasoningWeight ?? (reasoningQuality.HasValue ? 1m : 0m),
             IsCorrect: isCorrect,
             TimeQuality: timeQuality,
             ConfidenceCalibration: confidenceCalibration,

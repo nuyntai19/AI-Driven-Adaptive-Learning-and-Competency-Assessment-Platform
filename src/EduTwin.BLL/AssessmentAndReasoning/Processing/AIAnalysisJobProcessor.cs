@@ -1,4 +1,5 @@
 using EduTwin.BLL.AssessmentAndReasoning.AI;
+using EduTwin.BLL.AssessmentAndReasoning.Evidence;
 using EduTwin.BLL.AssessmentAndReasoning.Jobs;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
@@ -24,6 +25,8 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
     private readonly IAIReasoningAnalysisBuilder _analysisBuilder;
     private readonly IRuleBasedFallbackBuilder _fallbackBuilder;
     private readonly IAIAnalysisJobStateMachine _stateMachine;
+    private readonly IEvidenceGate _evidenceGate;
+    private readonly IEvidenceAssessmentFactory _evidenceAssessmentFactory;
     private readonly TimeProvider _timeProvider;
 
     public AIAnalysisJobProcessor(
@@ -34,6 +37,8 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         IAIReasoningAnalysisBuilder analysisBuilder,
         IRuleBasedFallbackBuilder fallbackBuilder,
         IAIAnalysisJobStateMachine stateMachine,
+        IEvidenceGate evidenceGate,
+        IEvidenceAssessmentFactory evidenceAssessmentFactory,
         TimeProvider timeProvider)
     {
         _dbContext = dbContext;
@@ -43,6 +48,8 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         _analysisBuilder = analysisBuilder;
         _fallbackBuilder = fallbackBuilder;
         _stateMachine = stateMachine;
+        _evidenceGate = evidenceGate;
+        _evidenceAssessmentFactory = evidenceAssessmentFactory;
         _timeProvider = timeProvider;
     }
 
@@ -229,8 +236,30 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             var attempt = reload.Attempt!;
             var transactionalUtcNow = reload.UtcNow;
 
+            var decision = _evidenceGate.Evaluate(new EvidenceGateInput(
+                EvidenceSourceType.AI,
+                StructuralValidationPassed: true,
+                SemanticValidationPassed: true,
+                HasContradiction: false,
+                HasAnomaly: false,
+                HasRequiredEvidence: analysis.ReasoningQuality.HasValue,
+                EffectiveIsCorrect: attempt.IsCorrect,
+                AnalysisConfidence: analysis.AnalysisConfidence,
+                AnalysisOverrideVersion: analysis.OverrideVersion));
+            analysis.NeedsTeacherReview = decision.RequiresTeacherReview;
+            var evidence = _evidenceAssessmentFactory.Create(
+                attempt,
+                analysis,
+                supersedes: null,
+                decision,
+                transactionalUtcNow,
+                createdBy: null);
+
             _dbContext.ReasoningAnalyses.Add(analysis);
-            attempt.Status = AttemptStatus.Completed;
+            _dbContext.EvidenceAssessments.Add(evidence);
+            attempt.Status = decision.RequiresTeacherReview
+                ? AttemptStatus.NeedsTeacherReview
+                : AttemptStatus.Completed;
             attempt.UpdatedAt = transactionalUtcNow;
             if (_stateMachine.Complete(job, transactionalUtcNow)
                 != AIAnalysisJobTransitionResult.Success)
@@ -355,7 +384,27 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             }
             else if (job.RetryCount == 1 && fallback is not null)
             {
+                var decision = _evidenceGate.Evaluate(new EvidenceGateInput(
+                    EvidenceSourceType.RuleFallback,
+                    StructuralValidationPassed: true,
+                    SemanticValidationPassed: true,
+                    HasContradiction: false,
+                    HasAnomaly: false,
+                    HasRequiredEvidence: false,
+                    EffectiveIsCorrect: attempt.IsCorrect,
+                    AnalysisConfidence: null,
+                    AnalysisOverrideVersion: fallback.OverrideVersion));
+                fallback.NeedsTeacherReview = decision.RequiresTeacherReview;
+                var evidence = _evidenceAssessmentFactory.Create(
+                    attempt,
+                    fallback,
+                    supersedes: null,
+                    decision,
+                    transactionalUtcNow,
+                    createdBy: null);
+
                 _dbContext.ReasoningAnalyses.Add(fallback);
+                _dbContext.EvidenceAssessments.Add(evidence);
                 transition = _stateMachine.CompleteFallback(
                     job,
                     transactionalUtcNow,
@@ -616,11 +665,22 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             return false;
         }
 
-        return await _dbContext.ReasoningAnalyses
+        var hasAnalysis = await _dbContext.ReasoningAnalyses
             .AsNoTracking()
             .AnyAsync(
                 analysis => analysis.CenterId == centerId
                     && analysis.AttemptId == attemptId,
+                cancellationToken);
+        if (!hasAnalysis)
+        {
+            return false;
+        }
+
+        return await _dbContext.EvidenceAssessments
+            .AsNoTracking()
+            .AnyAsync(
+                evidence => evidence.CenterId == centerId
+                    && evidence.AttemptId == attemptId,
                 cancellationToken);
     }
 

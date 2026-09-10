@@ -1,5 +1,6 @@
 using EduTwin.BLL.AssessmentAndReasoning.Jobs;
 using EduTwin.BLL.AssessmentAndReasoning.AI;
+using EduTwin.BLL.AssessmentAndReasoning.Evidence;
 using EduTwin.BLL.AssessmentAndReasoning.Processing;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
@@ -74,6 +75,13 @@ public sealed class AIAnalysisJobProcessorTests
         Assert.Equal(AnalysisProvider.Gemini, analysis.Provider);
         Assert.Equal(84m, analysis.ReasoningQuality);
         Assert.Equal(["20"], analysis.RootCauseNodeIds.RootElement.EnumerateArray().Select(item => item.GetString()));
+        var evidence = Assert.Single(persisted.Evidence);
+        Assert.Equal(EvidenceSourceType.AI, evidence.SourceType);
+        Assert.Equal(EvidenceTrustLevel.Trusted, evidence.TrustLevel);
+        Assert.Equal(EvidenceDecisionMode.AIWeighted, evidence.DecisionMode);
+        Assert.Equal(1m, evidence.ReasoningWeight);
+        Assert.False(evidence.RequiresTeacherReview);
+        Assert.Equal(analysis.AttemptId, evidence.AttemptId);
     }
 
     [Fact]
@@ -194,6 +202,12 @@ public sealed class AIAnalysisJobProcessorTests
         Assert.Null(fallback.ReasoningQuality);
         Assert.True(fallback.NeedsTeacherReview);
         Assert.Equal(AnalysisProvider.RuleBased, fallback.Provider);
+        var evidence = Assert.Single(persisted.Evidence);
+        Assert.Equal(EvidenceSourceType.RuleFallback, evidence.SourceType);
+        Assert.Equal(EvidenceTrustLevel.ReviewOnly, evidence.TrustLevel);
+        Assert.Equal(EvidenceDecisionMode.DeterministicOnly, evidence.DecisionMode);
+        Assert.Equal(0m, evidence.ReasoningWeight);
+        Assert.True(evidence.RequiresTeacherReview);
     }
 
     [Fact]
@@ -432,6 +446,8 @@ public sealed class AIAnalysisJobProcessorTests
             new AIReasoningAnalysisBuilder(),
             new RuleBasedFallbackBuilder(),
             new AIAnalysisJobStateMachine(),
+            new EvidenceGate(),
+            new EvidenceAssessmentFactory(),
             new SequenceTimeProvider(UtcNow, UtcNow.AddSeconds(2)));
 
         var result = await sut.ExecuteAsync(
@@ -465,6 +481,8 @@ public sealed class AIAnalysisJobProcessorTests
             new AIReasoningAnalysisBuilder(),
             new RuleBasedFallbackBuilder(),
             new AIAnalysisJobStateMachine(),
+            new EvidenceGate(),
+            new EvidenceAssessmentFactory(),
             new SequenceTimeProvider(
                 UtcNow,
                 UtcNow,
@@ -679,6 +697,8 @@ public sealed class AIAnalysisJobProcessorTests
             new AIReasoningAnalysisBuilder(),
             new ThrowingFallbackBuilder(),
             new AIAnalysisJobStateMachine(),
+            new EvidenceGate(),
+            new EvidenceAssessmentFactory(),
             new FixedTimeProvider(UtcNow));
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => sut.ExecuteAsync(
@@ -849,6 +869,8 @@ public sealed class AIAnalysisJobProcessorTests
             new AIReasoningAnalysisBuilder(),
             new RuleBasedFallbackBuilder(),
             new AIAnalysisJobStateMachine(),
+            new EvidenceGate(),
+            new EvidenceAssessmentFactory(),
             new FixedTimeProvider(utcNow));
 
     private static EduTwinDbContext CreateContext(
@@ -1058,6 +1080,7 @@ public sealed class AIAnalysisJobProcessorTests
             await context.Attempts.AsNoTracking().SingleAsync(),
             await context.AIAnalysisJobs.AsNoTracking().SingleAsync(),
             await context.ReasoningAnalyses.AsNoTracking().ToArrayAsync(),
+            await context.EvidenceAssessments.AsNoTracking().ToArrayAsync(),
             await context.StudentAssignmentProgresses.AsNoTracking().SingleOrDefaultAsync(),
             await context.KnowledgeTwins.CountAsync(),
             await context.BehaviorTwins.CountAsync(),
@@ -1084,6 +1107,7 @@ public sealed class AIAnalysisJobProcessorTests
         Attempt Attempt,
         AIAnalysisJob Job,
         IReadOnlyList<ReasoningAnalysis> Analyses,
+        IReadOnlyList<EvidenceAssessment> Evidence,
         StudentAssignmentProgress? Progress,
         int KnowledgeTwinCount,
         int BehaviorTwinCount,

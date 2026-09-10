@@ -16,6 +16,9 @@ public class ReasoningAnalysisConfiguration : IEntityTypeConfiguration<Reasoning
         builder.HasAlternateKey(r => new { r.CenterId, r.AnalysisId })
             .HasName("ux_reasoning_analyses_center_id_analysis_id");
 
+        builder.HasAlternateKey(r => new { r.CenterId, r.AnalysisId, r.AttemptId })
+            .HasName("ux_reasoning_analyses_center_id_analysis_id_attempt_id");
+
         builder.HasIndex(r => new { r.CenterId, r.AttemptId })
             .IsUnique()
             .HasDatabaseName("ux_reasoning_analyses_center_id_attempt_id");

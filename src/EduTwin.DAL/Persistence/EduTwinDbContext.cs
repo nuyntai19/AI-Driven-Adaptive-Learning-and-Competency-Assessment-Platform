@@ -80,6 +80,7 @@ public class EduTwinDbContext : DbContext
     // Assessment and Reasoning
     public DbSet<Attempt> Attempts => Set<Attempt>();
     public DbSet<ReasoningAnalysis> ReasoningAnalyses => Set<ReasoningAnalysis>();
+    public DbSet<EvidenceAssessment> EvidenceAssessments => Set<EvidenceAssessment>();
     public DbSet<AIAnalysisJob> AIAnalysisJobs => Set<AIAnalysisJob>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
