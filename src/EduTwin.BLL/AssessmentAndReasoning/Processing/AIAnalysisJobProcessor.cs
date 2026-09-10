@@ -1,9 +1,12 @@
 using EduTwin.BLL.AssessmentAndReasoning.AI;
 using EduTwin.BLL.AssessmentAndReasoning.Evidence;
 using EduTwin.BLL.AssessmentAndReasoning.Jobs;
+using EduTwin.BLL.DigitalTwin;
+using EduTwin.BLL.DigitalTwin.Orchestration;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.CurriculumAndQuestions;
+using EduTwin.Contracts.DigitalTwin;
 using EduTwin.DAL.AssessmentAndReasoning;
 using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.KnowledgeGraph;
@@ -27,6 +30,7 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
     private readonly IAIAnalysisJobStateMachine _stateMachine;
     private readonly IEvidenceGate _evidenceGate;
     private readonly IEvidenceAssessmentFactory _evidenceAssessmentFactory;
+    private readonly ITwinCompletionOrchestrator _twinCompletionOrchestrator;
     private readonly TimeProvider _timeProvider;
 
     public AIAnalysisJobProcessor(
@@ -39,7 +43,8 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         IAIAnalysisJobStateMachine stateMachine,
         IEvidenceGate evidenceGate,
         IEvidenceAssessmentFactory evidenceAssessmentFactory,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        ITwinCompletionOrchestrator? twinCompletionOrchestrator = null)
     {
         _dbContext = dbContext;
         _tenantContext = tenantContext;
@@ -51,6 +56,15 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         _evidenceGate = evidenceGate;
         _evidenceAssessmentFactory = evidenceAssessmentFactory;
         _timeProvider = timeProvider;
+        _twinCompletionOrchestrator = twinCompletionOrchestrator ?? new TwinCompletionOrchestrator(
+            dbContext,
+            evidenceGate,
+            evidenceAssessmentFactory,
+            new BehaviorTwinUpdater(dbContext),
+            new KnowledgeTwinUpdater(dbContext),
+            new TwinUpdateHistoryWriter(dbContext),
+            new StudentGoalRiskUpdater(dbContext),
+            new StudentTwinUpdater(dbContext));
     }
 
     public async Task<AIAnalysisJobProcessingResult> ExecuteAsync(
@@ -236,31 +250,13 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             var attempt = reload.Attempt!;
             var transactionalUtcNow = reload.UtcNow;
 
-            var decision = _evidenceGate.Evaluate(new EvidenceGateInput(
-                EvidenceSourceType.AI,
-                StructuralValidationPassed: true,
-                SemanticValidationPassed: true,
-                HasContradiction: false,
-                HasAnomaly: false,
-                HasRequiredEvidence: analysis.ReasoningQuality.HasValue,
-                EffectiveIsCorrect: attempt.IsCorrect,
-                AnalysisConfidence: analysis.AnalysisConfidence,
-                AnalysisOverrideVersion: analysis.OverrideVersion));
-            analysis.NeedsTeacherReview = decision.RequiresTeacherReview;
-            var evidence = _evidenceAssessmentFactory.Create(
+            await _twinCompletionOrchestrator.CompleteAsync(
                 attempt,
+                requestContext.Question,
                 analysis,
-                supersedes: null,
-                decision,
+                TwinEventSource.AIAnalysis,
                 transactionalUtcNow,
-                createdBy: null);
-
-            _dbContext.ReasoningAnalyses.Add(analysis);
-            _dbContext.EvidenceAssessments.Add(evidence);
-            attempt.Status = decision.RequiresTeacherReview
-                ? AttemptStatus.NeedsTeacherReview
-                : AttemptStatus.Completed;
-            attempt.UpdatedAt = transactionalUtcNow;
+                cancellationToken);
             if (_stateMachine.Complete(job, transactionalUtcNow)
                 != AIAnalysisJobTransitionResult.Success)
             {
@@ -405,12 +401,14 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
 
                 _dbContext.ReasoningAnalyses.Add(fallback);
                 _dbContext.EvidenceAssessments.Add(evidence);
+                attempt.Status = AttemptStatus.NeedsTeacherReview;
+                attempt.UpdatedAt = transactionalUtcNow;
+
                 transition = _stateMachine.CompleteFallback(
                     job,
                     transactionalUtcNow,
                     AnalysisFailureCode,
                     AnalysisFailureMessage);
-                attempt.Status = AttemptStatus.NeedsTeacherReview;
                 outcome = AIAnalysisJobProcessingOutcome.FallbackCompleted;
             }
             else

@@ -1,4 +1,5 @@
 using EduTwin.API.Controllers;
+using EduTwin.BLL.AssessmentAndReasoning.Override;
 using EduTwin.BLL.AssessmentAndReasoning.ReviewQueue;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
@@ -85,6 +86,101 @@ public sealed class TeacherReviewControllerTests
         Assert.Equal("review-queue", httpGet.Template);
         Assert.Contains(AuthorizationPolicies.TeacherOnly, policies);
         Assert.Contains("twin.reasoning.review", policies);
+
+        var overrideMethod = type.GetMethod(nameof(TeacherReviewController.OverrideAnalysis))!;
+        var httpPost = Assert.Single(overrideMethod.GetCustomAttributes(typeof(HttpPostAttribute), true).Cast<HttpPostAttribute>());
+        Assert.Equal("reasoning-analyses/{analysisId}/override", httpPost.Template);
+        var overridePolicies = overrideMethod.GetCustomAttributes(typeof(AuthorizeAttribute), true)
+            .Cast<AuthorizeAttribute>()
+            .Select(attribute => attribute.Policy)
+            .ToArray();
+        Assert.Contains("twin.reasoning.override", overridePolicies);
+    }
+
+    [Fact]
+    public async Task OverrideAnalysis_Success_Returns200WithReplayData()
+    {
+        var overrideData = new TeacherOverrideDataDto
+        {
+            AnalysisId = "2001",
+            HasTeacherOverride = true,
+            OverrideVersion = 1,
+            OverriddenAt = UtcNow,
+            Replay = new TeacherOverrideReplayDto
+            {
+                StudentId = Guid.NewGuid().ToString(),
+                TopicNodeId = "101",
+                AttemptsReplayed = 3,
+                PreviousMastery = 50m,
+                NewMastery = 65m,
+                NewRiskScore = 20m,
+                RecommendationRecalculated = true
+            }
+        };
+
+        var stubOverride = new StubOverrideUseCase(TeacherOverrideResult.Success(overrideData));
+        var controller = CreateControllerWithOverride(stubOverride);
+
+        var action = await controller.OverrideAnalysis(
+            2001,
+            new TeacherOverrideRequest { ReasoningQuality = 80m, IsCorrect = true, Reason = "Verified" },
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(action);
+        var response = Assert.IsType<TeacherOverrideResponse>(ok.Value);
+        Assert.Equal("2001", response.Data.AnalysisId);
+        Assert.True(response.Data.HasTeacherOverride);
+        Assert.Equal(65m, response.Data.Replay.NewMastery);
+        Assert.Equal("trace-review", response.Meta.TraceId);
+    }
+
+    [Theory]
+    [InlineData(TeacherOverrideStatus.Conflict, StatusCodes.Status409Conflict, "CONCURRENCY_CONFLICT")]
+    [InlineData(TeacherOverrideStatus.Forbidden, StatusCodes.Status403Forbidden, "FORBIDDEN")]
+    [InlineData(TeacherOverrideStatus.NotFound, StatusCodes.Status404NotFound, "ANALYSIS_NOT_FOUND")]
+    [InlineData(TeacherOverrideStatus.ValidationFailed, StatusCodes.Status400BadRequest, "VALIDATION_FAILED")]
+    public async Task OverrideAnalysis_Failure_ReturnsProblemDetails(TeacherOverrideStatus status, int expectedHttp, string expectedError)
+    {
+        var result = status switch
+        {
+            TeacherOverrideStatus.Conflict => TeacherOverrideResult.Conflict(expectedError),
+            TeacherOverrideStatus.Forbidden => TeacherOverrideResult.Forbidden(expectedError),
+            TeacherOverrideStatus.NotFound => TeacherOverrideResult.NotFound(expectedError),
+            _ => TeacherOverrideResult.ValidationFailed(expectedError)
+        };
+
+        var stubOverride = new StubOverrideUseCase(result);
+        var controller = CreateControllerWithOverride(stubOverride);
+
+        var action = await controller.OverrideAnalysis(
+            2001,
+            new TeacherOverrideRequest(),
+            CancellationToken.None);
+
+        var objResult = Assert.IsType<ObjectResult>(action);
+        Assert.Equal(expectedHttp, objResult.StatusCode);
+        var problem = Assert.IsType<ProblemDetails>(objResult.Value);
+        Assert.Equal(expectedError, problem.Extensions["errorCode"]);
+    }
+
+    private static TeacherReviewController CreateControllerWithOverride(ITeacherOverrideUseCase overrideUseCase)
+    {
+        var stubQueue = new StubUseCase(ListTeacherReviewQueueResult.Success([], 1, 10, 0, 0));
+        var controller = new TeacherReviewController(stubQueue, overrideUseCase, new FixedTimeProvider(UtcNow));
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext { TraceIdentifier = "trace-review" }
+        };
+        return controller;
+    }
+
+    private sealed class StubOverrideUseCase : ITeacherOverrideUseCase
+    {
+        private readonly TeacherOverrideResult _result;
+        public StubOverrideUseCase(TeacherOverrideResult result) => _result = result;
+
+        public Task<TeacherOverrideResult> ExecuteAsync(ulong analysisId, TeacherOverrideRequest request, CancellationToken cancellationToken) =>
+            Task.FromResult(_result);
     }
 
     private static TeacherReviewController CreateController(StubUseCase useCase)

@@ -1,9 +1,15 @@
+using System;
 using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+using EduTwin.BLL.AssessmentAndReasoning.Override;
 using EduTwin.BLL.AssessmentAndReasoning.ReviewQueue;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.Common;
+using EduTwin.Contracts.IdentityAndTenancy;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace EduTwin.API.Controllers;
@@ -14,15 +20,27 @@ namespace EduTwin.API.Controllers;
 [Authorize(Policy = "twin.reasoning.review")]
 public sealed class TeacherReviewController : ControllerBase
 {
-    private readonly IListTeacherReviewQueueUseCase _useCase;
+    private readonly IListTeacherReviewQueueUseCase _reviewQueueUseCase;
+    private readonly ITeacherOverrideUseCase? _overrideUseCase;
     private readonly TimeProvider _timeProvider;
 
     public TeacherReviewController(
-        IListTeacherReviewQueueUseCase useCase,
+        IListTeacherReviewQueueUseCase reviewQueueUseCase,
+        ITeacherOverrideUseCase overrideUseCase,
         TimeProvider timeProvider)
     {
-        _useCase = useCase;
-        _timeProvider = timeProvider;
+        _reviewQueueUseCase = reviewQueueUseCase ?? throw new ArgumentNullException(nameof(reviewQueueUseCase));
+        _overrideUseCase = overrideUseCase ?? throw new ArgumentNullException(nameof(overrideUseCase));
+        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+    }
+
+    public TeacherReviewController(
+        IListTeacherReviewQueueUseCase reviewQueueUseCase,
+        TimeProvider timeProvider)
+    {
+        _reviewQueueUseCase = reviewQueueUseCase ?? throw new ArgumentNullException(nameof(reviewQueueUseCase));
+        _overrideUseCase = null;
+        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     }
 
     [HttpGet("review-queue")]
@@ -36,7 +54,7 @@ public sealed class TeacherReviewController : ControllerBase
         CancellationToken cancellationToken)
     {
         var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
-        var result = await _useCase.ExecuteAsync(query, cancellationToken);
+        var result = await _reviewQueueUseCase.ExecuteAsync(query, cancellationToken);
 
         if (result.IsSuccess)
         {
@@ -80,6 +98,74 @@ public sealed class TeacherReviewController : ControllerBase
                 ErrorCodes.ResourceNotFound,
                 traceId),
             _ => throw new InvalidOperationException($"Unexpected error code: {result.ErrorCode}")
+        };
+    }
+
+    [HttpPost("reasoning-analyses/{analysisId}/override")]
+    [Authorize(Policy = "twin.reasoning.override")]
+    [ProducesResponseType(typeof(TeacherOverrideResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> OverrideAnalysis(
+        [FromRoute] ulong analysisId,
+        [FromBody] TeacherOverrideRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (_overrideUseCase is null)
+        {
+            throw new InvalidOperationException("TeacherOverrideUseCase is not configured.");
+        }
+
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        var result = await _overrideUseCase.ExecuteAsync(analysisId, request, cancellationToken);
+
+        if (result.Status == TeacherOverrideStatus.Success)
+        {
+            return Ok(new TeacherOverrideResponse
+            {
+                Data = result.Data ?? throw new InvalidOperationException(
+                    "Override succeeded without response data."),
+                Meta = new MetaDto
+                {
+                    TraceId = traceId,
+                    Timestamp = _timeProvider.GetUtcNow().UtcDateTime
+                }
+            });
+        }
+
+        return result.Status switch
+        {
+            TeacherOverrideStatus.ValidationFailed => ProblemResponse(
+                StatusCodes.Status400BadRequest,
+                "validation",
+                "Dữ liệu không hợp lệ",
+                result.ErrorMessage,
+                result.ErrorCode,
+                traceId),
+            TeacherOverrideStatus.Forbidden => ProblemResponse(
+                StatusCodes.Status403Forbidden,
+                "forbidden",
+                "Không có quyền can thiệp",
+                result.ErrorMessage,
+                result.ErrorCode,
+                traceId),
+            TeacherOverrideStatus.NotFound => ProblemResponse(
+                StatusCodes.Status404NotFound,
+                "not-found",
+                "Không tìm thấy dữ liệu",
+                result.ErrorMessage,
+                result.ErrorCode,
+                traceId),
+            TeacherOverrideStatus.Conflict => ProblemResponse(
+                StatusCodes.Status409Conflict,
+                "conflict",
+                "Xung đột phiên bản",
+                result.ErrorMessage,
+                result.ErrorCode,
+                traceId),
+            _ => throw new InvalidOperationException($"Unexpected status: {result.Status}")
         };
     }
 

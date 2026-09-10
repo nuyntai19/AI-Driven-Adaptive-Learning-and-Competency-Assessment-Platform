@@ -47,7 +47,7 @@ public sealed class EvidenceAssessmentFactory : IEvidenceAssessmentFactory
             CenterId = attempt.CenterId,
             AttemptId = attempt.AttemptId,
             Analysis = analysis,
-            AnalysisId = analysis?.AnalysisId,
+            AnalysisId = analysis != null && analysis.AnalysisId > 0 ? analysis.AnalysisId : null,
             SupersedesAssessment = supersedes,
             SupersedesAssessmentId = supersedes?.EvidenceAssessmentId,
             SourceType = decision.SourceType,

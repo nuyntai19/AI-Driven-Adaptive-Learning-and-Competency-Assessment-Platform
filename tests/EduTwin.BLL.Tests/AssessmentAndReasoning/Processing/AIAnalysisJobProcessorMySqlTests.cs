@@ -6,9 +6,11 @@ using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.KnowledgeGraph;
+using EduTwin.Contracts.Organization;
 using EduTwin.DAL.AssessmentAndReasoning;
 using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.KnowledgeGraph;
+using EduTwin.DAL.Organization;
 using EduTwin.DAL.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -182,11 +184,46 @@ public sealed class AIAnalysisJobProcessorMySqlTests
         try
         {
             await context.Database.ExecuteSqlRawAsync("SET FOREIGN_KEY_CHECKS = 0;");
+            var studentId = Guid.NewGuid();
+            var subjectId = Guid.NewGuid();
+
+            context.Centers.Add(new Center
+            {
+                CenterId = centerId,
+                CenterCode = $"C-{centerId:N}"[..10],
+                CenterName = "Test Center",
+                Status = CenterStatus.Active,
+                Timezone = "UTC",
+                CreatedAt = UtcNow.AddDays(-1),
+                UpdatedAt = UtcNow.AddDays(-1)
+            });
+
+            context.Students.Add(new Student
+            {
+                CenterId = centerId,
+                StudentId = studentId,
+                FullName = "Relational Test Student",
+                GradeLevel = 10,
+                CreatedAt = UtcNow.AddDays(-1),
+                UpdatedAt = UtcNow.AddDays(-1)
+            });
+
+            context.Subjects.Add(new Subject
+            {
+                CenterId = centerId,
+                SubjectId = subjectId,
+                SubjectCode = "MATH",
+                SubjectName = "Mathematics",
+                IsActive = true,
+                CreatedAt = UtcNow.AddDays(-1),
+                UpdatedAt = UtcNow.AddDays(-1)
+            });
+
             context.Attempts.Add(new Attempt
             {
                 AttemptId = 1,
                 CenterId = centerId,
-                StudentId = Guid.NewGuid(),
+                StudentId = studentId,
                 QuestionId = 1,
                 FinalAnswer = "relational-test-answer",
                 ReasoningText = "relational-test-reasoning",
@@ -218,7 +255,6 @@ public sealed class AIAnalysisJobProcessorMySqlTests
                 CreatedAt = UtcNow.AddMinutes(-2),
                 UpdatedAt = UtcNow.AddMinutes(-1)
             });
-            var subjectId = Guid.NewGuid();
             context.Questions.Add(new Question
             {
                 QuestionId = 1,

@@ -1,6 +1,7 @@
 using EduTwin.BLL.AssessmentAndReasoning.AttemptSummaries;
 using EduTwin.BLL.AssessmentAndReasoning.Evidence;
 using EduTwin.BLL.AssessmentAndReasoning.Jobs;
+using EduTwin.BLL.AssessmentAndReasoning.Override;
 using EduTwin.BLL.AssessmentAndReasoning.Polling;
 using EduTwin.BLL.AssessmentAndReasoning.PreliminaryGrading;
 using EduTwin.BLL.AssessmentAndReasoning.Processing;
@@ -29,6 +30,7 @@ public static class DependencyInjection
         services.TryAddScoped<IAIAnalysisJobProcessor, AIAnalysisJobProcessor>();
         services.TryAddScoped<IListAttemptsUseCase, ListAttemptsUseCase>();
         services.TryAddScoped<IListTeacherReviewQueueUseCase, ListTeacherReviewQueueUseCase>();
+        services.TryAddScoped<ITeacherOverrideUseCase, TeacherOverrideUseCase>();
         services.TryAddScoped<IGetAnalysisJobStatusUseCase, GetAnalysisJobStatusUseCase>();
         services.TryAddScoped<IAttemptSubmissionValidator, AttemptSubmissionValidator>();
         services.TryAddScoped<ISubmitAttemptUseCase, SubmitAttemptUseCase>();
