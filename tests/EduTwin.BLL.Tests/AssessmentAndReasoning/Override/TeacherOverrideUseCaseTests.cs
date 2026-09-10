@@ -177,9 +177,10 @@ public sealed class TeacherOverrideUseCaseTests : IDisposable
         Assert.False(analysis.NeedsTeacherReview);
         Assert.Equal(_teacherId, analysis.OverriddenByTeacherId);
 
-        // Verify attempt was completed
-        Assert.Equal(AttemptStatus.Completed, attempt.Status);
-        Assert.True(attempt.IsCorrect);
+        // Verify preliminary correctness provenance is preserved, and override is recorded in analysis
+        Assert.False(attempt.IsCorrect);
+        Assert.True(analysis.OverrideIsCorrect);
+        Assert.Equal(true, analysis.OverrideIsCorrect ?? attempt.IsCorrect);
 
         // Verify new EvidenceAssessment was created with superseding
         var newEvidence = await _dbContext.EvidenceAssessments

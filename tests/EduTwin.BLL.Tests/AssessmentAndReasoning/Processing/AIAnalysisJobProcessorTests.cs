@@ -335,10 +335,10 @@ public sealed class AIAnalysisJobProcessorTests
         Assert.NotNull(persisted.Progress);
         Assert.Equal(ProgressStatus.InProgress, persisted.Progress.Status);
         Assert.Equal(1u, persisted.Progress.CompletedQuestionCount);
-        Assert.Equal(1ul, persisted.Progress.RowVersion);
-        Assert.Equal(0, persisted.KnowledgeTwinCount);
-        Assert.Equal(0, persisted.BehaviorTwinCount);
-        Assert.Equal(0, persisted.HistoryCount);
+        Assert.Equal(2ul, persisted.Progress.RowVersion);
+        Assert.Equal(1, persisted.KnowledgeTwinCount);
+        Assert.Equal(1, persisted.BehaviorTwinCount);
+        Assert.Equal(1, persisted.HistoryCount);
         Assert.Equal(0, persisted.GoalCount);
         Assert.Equal(0, persisted.RecommendationCount);
         Assert.Equal(0, persisted.LearningPathCount);

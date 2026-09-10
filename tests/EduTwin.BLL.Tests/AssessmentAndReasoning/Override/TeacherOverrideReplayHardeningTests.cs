@@ -14,7 +14,9 @@ using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.DigitalTwin;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.Contracts.Organization;
+using EduTwin.Contracts.Assignments;
 using EduTwin.DAL.AssessmentAndReasoning;
+using EduTwin.DAL.Assignments;
 using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.DigitalTwin;
 using EduTwin.DAL.Organization;
@@ -612,6 +614,626 @@ public sealed class TeacherOverrideReplayHardeningTests : IDisposable
         var result = await useCase.ExecuteAsync(4301, request, CancellationToken.None);
 
         Assert.Equal(TeacherOverrideStatus.Conflict, result.Status);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_OverrideScore_SetsOverrideAwardedScore_DoesNotMutateAttemptAwardedScoreOrIsCorrect()
+    {
+        var classId = Guid.NewGuid();
+        SeedBaseHierarchy(classId);
+        SeedQuestions();
+
+        var attempt = new Attempt
+        {
+            CenterId = _centerId,
+            AttemptId = 3401,
+            StudentId = _studentId,
+            QuestionId = 601,
+            FinalAnswer = "A",
+            ReasoningText = "Preliminary work",
+            IsCorrect = false,
+            AwardedScore = 3.00m,
+            TimeSpentSeconds = 50,
+            Confidence = 85m,
+            ReasoningLanguage = "vi",
+            Status = AttemptStatus.NeedsTeacherReview,
+            CreatedAt = _utcNow.AddMinutes(-5),
+            UpdatedAt = _utcNow.AddMinutes(-5)
+        };
+        _dbContext.Attempts.Add(attempt);
+
+        var analysis = new ReasoningAnalysis
+        {
+            CenterId = _centerId,
+            AnalysisId = 4401,
+            AttemptId = 3401,
+            ReasoningQuality = 40m,
+            AnalysisConfidence = 40m,
+            Feedback = "Needs teacher check",
+            IsFallback = false,
+            NeedsTeacherReview = true,
+            OverrideVersion = 0,
+            SchemaVersion = "1.0",
+            MissingSteps = JsonDocument.Parse("[]"),
+            RootCauseNodeIds = JsonDocument.Parse("[]"),
+            CreatedAt = _utcNow.AddMinutes(-5),
+            UpdatedAt = _utcNow.AddMinutes(-5)
+        };
+        _dbContext.ReasoningAnalyses.Add(analysis);
+
+        await _dbContext.SaveChangesAsync();
+
+        var timeProvider = new FixedTimeProvider(_utcNow);
+        var useCase = new TeacherOverrideUseCase(
+            _dbContext,
+            _tenantContext,
+            new EvidenceGate(),
+            new EvidenceAssessmentFactory(),
+            new StudentGoalRiskUpdater(_dbContext),
+            new StudentTwinUpdater(_dbContext),
+            new TwinUpdateHistoryWriter(_dbContext),
+            timeProvider);
+
+        var request = new TeacherOverrideRequest
+        {
+            ReasoningQuality = 85m,
+            ErrorType = ErrorType.None,
+            Feedback = "Teacher verified answer and awarded partial credit.",
+            IsCorrect = true,
+            AwardedScore = 8.50m,
+            Reason = "Manual scoring",
+            OverrideVersion = 0
+        };
+
+        var result = await useCase.ExecuteAsync(4401, request, CancellationToken.None);
+
+        Assert.Equal(TeacherOverrideStatus.Success, result.Status);
+        Assert.NotNull(result.Data);
+        Assert.Equal(8.50m, result.Data.OverrideAwardedScore);
+        Assert.Equal(8.50m, result.Data.EffectiveAwardedScore);
+
+        // Verification: Attempt preliminary provenance is strictly preserved!
+        var savedAttempt = await _dbContext.Attempts.SingleAsync(a => a.AttemptId == 3401);
+        Assert.False(savedAttempt.IsCorrect);
+        Assert.Equal(3.00m, savedAttempt.AwardedScore);
+
+        // Verification: Override values are recorded on ReasoningAnalysis
+        var savedAnalysis = await _dbContext.ReasoningAnalyses.SingleAsync(a => a.AnalysisId == 4401);
+        Assert.True(savedAnalysis.OverrideIsCorrect);
+        Assert.Equal(8.50m, savedAnalysis.OverrideAwardedScore);
+        Assert.Equal(1u, savedAnalysis.OverrideVersion);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_OverrideScoreNull_ResetsToPreliminaryScore()
+    {
+        var classId = Guid.NewGuid();
+        SeedBaseHierarchy(classId);
+        SeedQuestions();
+
+        var attempt = new Attempt
+        {
+            CenterId = _centerId,
+            AttemptId = 3402,
+            StudentId = _studentId,
+            QuestionId = 601,
+            FinalAnswer = "A",
+            IsCorrect = false,
+            AwardedScore = 4.00m,
+            TimeSpentSeconds = 50,
+            Confidence = 85m,
+            ReasoningLanguage = "vi",
+            Status = AttemptStatus.NeedsTeacherReview,
+            CreatedAt = _utcNow.AddMinutes(-5),
+            UpdatedAt = _utcNow.AddMinutes(-5)
+        };
+        _dbContext.Attempts.Add(attempt);
+
+        // Analysis starts already overridden once with score 9.00m, version 1
+        var analysis = new ReasoningAnalysis
+        {
+            CenterId = _centerId,
+            AnalysisId = 4402,
+            AttemptId = 3402,
+            ReasoningQuality = 40m,
+            AnalysisConfidence = 40m,
+            OverrideAwardedScore = 9.00m,
+            OverrideIsCorrect = true,
+            Feedback = "First override",
+            IsFallback = false,
+            NeedsTeacherReview = false,
+            OverrideVersion = 1,
+            SchemaVersion = "1.0",
+            MissingSteps = JsonDocument.Parse("[]"),
+            RootCauseNodeIds = JsonDocument.Parse("[]"),
+            CreatedAt = _utcNow.AddMinutes(-5),
+            UpdatedAt = _utcNow.AddMinutes(-5)
+        };
+        _dbContext.ReasoningAnalyses.Add(analysis);
+
+        await _dbContext.SaveChangesAsync();
+
+        var timeProvider = new FixedTimeProvider(_utcNow);
+        var useCase = new TeacherOverrideUseCase(
+            _dbContext,
+            _tenantContext,
+            new EvidenceGate(),
+            new EvidenceAssessmentFactory(),
+            new StudentGoalRiskUpdater(_dbContext),
+            new StudentTwinUpdater(_dbContext),
+            new TwinUpdateHistoryWriter(_dbContext),
+            timeProvider);
+
+        // Teacher sends AwardedScore = null to clear override and reset to preliminary
+        var request = new TeacherOverrideRequest
+        {
+            ReasoningQuality = 85m,
+            ErrorType = ErrorType.None,
+            Feedback = "Resetting override score to preliminary",
+            IsCorrect = false,
+            AwardedScore = null,
+            Reason = "Reset override score",
+            OverrideVersion = 1
+        };
+
+        var result = await useCase.ExecuteAsync(4402, request, CancellationToken.None);
+
+        Assert.Equal(TeacherOverrideStatus.Success, result.Status);
+        Assert.NotNull(result.Data);
+        Assert.Null(result.Data.OverrideAwardedScore);
+        // EffectiveAwardedScore falls back to preliminary 4.00m
+        Assert.Equal(4.00m, result.Data.EffectiveAwardedScore);
+
+        var savedAnalysis = await _dbContext.ReasoningAnalyses.SingleAsync(a => a.AnalysisId == 4402);
+        Assert.Null(savedAnalysis.OverrideAwardedScore);
+        Assert.Equal(2u, savedAnalysis.OverrideVersion);
+
+        var savedAttempt = await _dbContext.Attempts.SingleAsync(a => a.AttemptId == 3402);
+        Assert.Equal(4.00m, savedAttempt.AwardedScore);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_AssignmentAttempt_UpdatesStudentAssignmentProgress()
+    {
+        var classId = Guid.NewGuid();
+        SeedBaseHierarchy(classId);
+        SeedQuestions();
+
+        var assignmentId = Guid.NewGuid();
+        var progress = new StudentAssignmentProgress
+        {
+            ProgressId = 7001,
+            CenterId = _centerId,
+            AssignmentId = assignmentId,
+            StudentId = _studentId,
+            Status = ProgressStatus.NotStarted,
+            CompletedQuestionCount = 0,
+            TotalQuestionCount = 2,
+            CreatedAt = _utcNow.AddHours(-1),
+            UpdatedAt = _utcNow.AddHours(-1)
+        };
+        _dbContext.StudentAssignmentProgresses.Add(progress);
+
+        var attempt = new Attempt
+        {
+            CenterId = _centerId,
+            AttemptId = 3403,
+            StudentId = _studentId,
+            AssignmentId = assignmentId,
+            QuestionId = 601,
+            FinalAnswer = "A",
+            IsCorrect = false,
+            TimeSpentSeconds = 60,
+            Confidence = 80m,
+            ReasoningLanguage = "vi",
+            Status = AttemptStatus.NeedsTeacherReview,
+            CreatedAt = _utcNow.AddMinutes(-10),
+            UpdatedAt = _utcNow.AddMinutes(-10)
+        };
+        _dbContext.Attempts.Add(attempt);
+
+        var analysis = new ReasoningAnalysis
+        {
+            CenterId = _centerId,
+            AnalysisId = 4403,
+            AttemptId = 3403,
+            ReasoningQuality = 40m,
+            AnalysisConfidence = 40m,
+            Feedback = "Needs review",
+            IsFallback = false,
+            NeedsTeacherReview = true,
+            OverrideVersion = 0,
+            SchemaVersion = "1.0",
+            MissingSteps = JsonDocument.Parse("[]"),
+            RootCauseNodeIds = JsonDocument.Parse("[]"),
+            CreatedAt = _utcNow.AddMinutes(-10),
+            UpdatedAt = _utcNow.AddMinutes(-10)
+        };
+        _dbContext.ReasoningAnalyses.Add(analysis);
+
+        await _dbContext.SaveChangesAsync();
+
+        var timeProvider = new FixedTimeProvider(_utcNow);
+        var useCase = new TeacherOverrideUseCase(
+            _dbContext,
+            _tenantContext,
+            new EvidenceGate(),
+            new EvidenceAssessmentFactory(),
+            new StudentGoalRiskUpdater(_dbContext),
+            new StudentTwinUpdater(_dbContext),
+            new TwinUpdateHistoryWriter(_dbContext),
+            timeProvider);
+
+        var request = new TeacherOverrideRequest
+        {
+            ReasoningQuality = 90m,
+            ErrorType = ErrorType.None,
+            Feedback = "Overridden to correct",
+            IsCorrect = true,
+            Reason = "Assignment check",
+            OverrideVersion = 0
+        };
+
+        var result = await useCase.ExecuteAsync(4403, request, CancellationToken.None);
+
+        Assert.Equal(TeacherOverrideStatus.Success, result.Status);
+
+        var updatedProgress = await _dbContext.StudentAssignmentProgresses.SingleAsync(p => p.ProgressId == 7001);
+        Assert.Equal(1u, updatedProgress.CompletedQuestionCount);
+        Assert.Equal(ProgressStatus.InProgress, updatedProgress.Status);
+        Assert.NotNull(updatedProgress.StartedAt);
+    }
+
+    [Fact]
+    public async Task Replay_FailClosed_WhenPositiveWeightEvidenceHasNullCorrectness_ThrowsInvalidOperationException()
+    {
+        var classId = Guid.NewGuid();
+        SeedBaseHierarchy(classId);
+        SeedQuestions();
+
+        // Attempt 1 with positive reasoning weight (0.80m) but null correctness
+        var attempt1 = new Attempt
+        {
+            CenterId = _centerId,
+            AttemptId = 3404,
+            StudentId = _studentId,
+            QuestionId = 601,
+            FinalAnswer = "A",
+            IsCorrect = null, // UNRESOLVED!
+            TimeSpentSeconds = 60,
+            Confidence = 80m,
+            ReasoningLanguage = "vi",
+            Status = AttemptStatus.Completed,
+            CreatedAt = _utcNow.AddMinutes(-20),
+            UpdatedAt = _utcNow.AddMinutes(-20)
+        };
+        _dbContext.Attempts.Add(attempt1);
+
+        var analysis1 = new ReasoningAnalysis
+        {
+            CenterId = _centerId,
+            AnalysisId = 4404,
+            AttemptId = 3404,
+            ReasoningQuality = 80m,
+            AnalysisConfidence = 80m,
+            OverrideIsCorrect = null, // ALSO UNRESOLVED!
+            Feedback = "Initial analysis",
+            IsFallback = false,
+            NeedsTeacherReview = false,
+            OverrideVersion = 0,
+            SchemaVersion = "1.0",
+            MissingSteps = JsonDocument.Parse("[]"),
+            RootCauseNodeIds = JsonDocument.Parse("[]"),
+            CreatedAt = _utcNow.AddMinutes(-20),
+            UpdatedAt = _utcNow.AddMinutes(-20)
+        };
+        _dbContext.ReasoningAnalyses.Add(analysis1);
+
+        var evidence1 = new EvidenceAssessment
+        {
+            CenterId = _centerId,
+            EvidenceAssessmentId = 5404,
+            AttemptId = 3404,
+            AnalysisId = 4404,
+            SourceType = EvidenceSourceType.AI,
+            TrustLevel = EvidenceTrustLevel.Trusted,
+            DecisionMode = EvidenceDecisionMode.AIWeighted,
+            ReasoningWeight = 0.80m, // Positive weight with null correctness!
+            ReasonCodes = JsonDocument.Parse("[]"),
+            RequiresTeacherReview = false,
+            PolicyVersion = "evidence-gate-v1",
+            EvaluatedAt = _utcNow.AddMinutes(-20),
+            CreatedAt = _utcNow.AddMinutes(-20)
+        };
+        _dbContext.EvidenceAssessments.Add(evidence1);
+
+        // Attempt 2 that teacher is trying to override
+        var attempt2 = new Attempt
+        {
+            CenterId = _centerId,
+            AttemptId = 3405,
+            StudentId = _studentId,
+            QuestionId = 602,
+            FinalAnswer = "B",
+            IsCorrect = false,
+            TimeSpentSeconds = 60,
+            Confidence = 80m,
+            ReasoningLanguage = "vi",
+            Status = AttemptStatus.NeedsTeacherReview,
+            CreatedAt = _utcNow.AddMinutes(-10),
+            UpdatedAt = _utcNow.AddMinutes(-10)
+        };
+        _dbContext.Attempts.Add(attempt2);
+
+        var analysis2 = new ReasoningAnalysis
+        {
+            CenterId = _centerId,
+            AnalysisId = 4405,
+            AttemptId = 3405,
+            ReasoningQuality = 40m,
+            AnalysisConfidence = 40m,
+            Feedback = "Needs review",
+            IsFallback = false,
+            NeedsTeacherReview = true,
+            OverrideVersion = 0,
+            SchemaVersion = "1.0",
+            MissingSteps = JsonDocument.Parse("[]"),
+            RootCauseNodeIds = JsonDocument.Parse("[]"),
+            CreatedAt = _utcNow.AddMinutes(-10),
+            UpdatedAt = _utcNow.AddMinutes(-10)
+        };
+        _dbContext.ReasoningAnalyses.Add(analysis2);
+
+        await _dbContext.SaveChangesAsync();
+
+        var timeProvider = new FixedTimeProvider(_utcNow);
+        var useCase = new TeacherOverrideUseCase(
+            _dbContext,
+            _tenantContext,
+            new EvidenceGate(),
+            new EvidenceAssessmentFactory(),
+            new StudentGoalRiskUpdater(_dbContext),
+            new StudentTwinUpdater(_dbContext),
+            new TwinUpdateHistoryWriter(_dbContext),
+            timeProvider);
+
+        var request = new TeacherOverrideRequest
+        {
+            ReasoningQuality = 90m,
+            ErrorType = ErrorType.None,
+            Feedback = "Teacher override",
+            IsCorrect = true,
+            Reason = "Reviewing attempt 2",
+            OverrideVersion = 0
+        };
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            useCase.ExecuteAsync(4405, request, CancellationToken.None));
+        Assert.Contains("unresolved correctness", ex.Message);
+    }
+
+    [Fact]
+    public async Task Replay_SubjectWideRollingCalibration_TotalOrderingPreventsFutureLeakage()
+    {
+        var classId = Guid.NewGuid();
+        SeedBaseHierarchy(classId);
+        SeedQuestions();
+
+        // Question 603 in Topic 202
+        _dbContext.Questions.Add(new Question
+        {
+            CenterId = _centerId,
+            QuestionId = 603,
+            SubjectId = _subjectId,
+            PrimaryTopicNodeId = 202,
+            QuestionText = "Topic 202 Question",
+            CorrectAnswer = "C",
+            Solution = "Sol 3",
+            Difficulty = 3,
+            EstimatedTimeSeconds = 60,
+            LanguageCode = "vi",
+            MaxScore = 10,
+            Status = QuestionStatus.Active,
+            CreatedAt = _utcNow,
+            UpdatedAt = _utcNow
+        });
+
+        // Attempt 1: Topic 201, T1 = -30m, confidence = 90, IsCorrect = true -> calibration = 90
+        var attempt1 = new Attempt
+        {
+            CenterId = _centerId,
+            AttemptId = 3501,
+            StudentId = _studentId,
+            QuestionId = 601,
+            FinalAnswer = "A",
+            IsCorrect = true,
+            TimeSpentSeconds = 60,
+            Confidence = 90m,
+            ReasoningLanguage = "vi",
+            Status = AttemptStatus.Completed,
+            CreatedAt = _utcNow.AddMinutes(-30),
+            UpdatedAt = _utcNow.AddMinutes(-30)
+        };
+        _dbContext.Attempts.Add(attempt1);
+
+        var analysis1 = new ReasoningAnalysis
+        {
+            CenterId = _centerId,
+            AnalysisId = 4501,
+            AttemptId = 3501,
+            ReasoningQuality = 90m,
+            AnalysisConfidence = 90m,
+            Feedback = "Good",
+            IsFallback = false,
+            NeedsTeacherReview = false,
+            OverrideVersion = 0,
+            SchemaVersion = "1.0",
+            MissingSteps = JsonDocument.Parse("[]"),
+            RootCauseNodeIds = JsonDocument.Parse("[]"),
+            CreatedAt = _utcNow.AddMinutes(-30),
+            UpdatedAt = _utcNow.AddMinutes(-30)
+        };
+        _dbContext.ReasoningAnalyses.Add(analysis1);
+
+        var evidence1 = new EvidenceAssessment
+        {
+            CenterId = _centerId,
+            EvidenceAssessmentId = 5501,
+            AttemptId = 3501,
+            AnalysisId = 4501,
+            SourceType = EvidenceSourceType.AI,
+            TrustLevel = EvidenceTrustLevel.Trusted,
+            DecisionMode = EvidenceDecisionMode.AIWeighted,
+            ReasoningWeight = 1.00m,
+            ReasonCodes = JsonDocument.Parse("[]"),
+            RequiresTeacherReview = false,
+            PolicyVersion = "evidence-gate-v1",
+            EvaluatedAt = _utcNow.AddMinutes(-30),
+            CreatedAt = _utcNow.AddMinutes(-30)
+        };
+        _dbContext.EvidenceAssessments.Add(evidence1);
+
+        // Attempt 2: Topic 202, T2 = -20m, confidence = 50, IsCorrect = false -> calibration = 100 - |50 - 0| = 50
+        var attempt2 = new Attempt
+        {
+            CenterId = _centerId,
+            AttemptId = 3502,
+            StudentId = _studentId,
+            QuestionId = 603,
+            FinalAnswer = "X",
+            IsCorrect = false,
+            TimeSpentSeconds = 60,
+            Confidence = 50m,
+            ReasoningLanguage = "vi",
+            Status = AttemptStatus.Completed,
+            CreatedAt = _utcNow.AddMinutes(-20),
+            UpdatedAt = _utcNow.AddMinutes(-20)
+        };
+        _dbContext.Attempts.Add(attempt2);
+
+        var analysis2 = new ReasoningAnalysis
+        {
+            CenterId = _centerId,
+            AnalysisId = 4502,
+            AttemptId = 3502,
+            ReasoningQuality = 50m,
+            AnalysisConfidence = 50m,
+            Feedback = "Topic 202",
+            IsFallback = false,
+            NeedsTeacherReview = false,
+            OverrideVersion = 0,
+            SchemaVersion = "1.0",
+            MissingSteps = JsonDocument.Parse("[]"),
+            RootCauseNodeIds = JsonDocument.Parse("[]"),
+            CreatedAt = _utcNow.AddMinutes(-20),
+            UpdatedAt = _utcNow.AddMinutes(-20)
+        };
+        _dbContext.ReasoningAnalyses.Add(analysis2);
+
+        var evidence2 = new EvidenceAssessment
+        {
+            CenterId = _centerId,
+            EvidenceAssessmentId = 5502,
+            AttemptId = 3502,
+            AnalysisId = 4502,
+            SourceType = EvidenceSourceType.AI,
+            TrustLevel = EvidenceTrustLevel.Trusted,
+            DecisionMode = EvidenceDecisionMode.AIWeighted,
+            ReasoningWeight = 1.00m,
+            ReasonCodes = JsonDocument.Parse("[]"),
+            RequiresTeacherReview = false,
+            PolicyVersion = "evidence-gate-v1",
+            EvaluatedAt = _utcNow.AddMinutes(-20),
+            CreatedAt = _utcNow.AddMinutes(-20)
+        };
+        _dbContext.EvidenceAssessments.Add(evidence2);
+
+        // Attempt 3: Topic 201, T3 = -10m, confidence = 100, IsCorrect = true -> calibration = 100
+        var attempt3 = new Attempt
+        {
+            CenterId = _centerId,
+            AttemptId = 3503,
+            StudentId = _studentId,
+            QuestionId = 601,
+            FinalAnswer = "A",
+            IsCorrect = false,
+            TimeSpentSeconds = 60,
+            Confidence = 100m,
+            ReasoningLanguage = "vi",
+            Status = AttemptStatus.NeedsTeacherReview,
+            CreatedAt = _utcNow.AddMinutes(-10),
+            UpdatedAt = _utcNow.AddMinutes(-10)
+        };
+        _dbContext.Attempts.Add(attempt3);
+
+        var analysis3 = new ReasoningAnalysis
+        {
+            CenterId = _centerId,
+            AnalysisId = 4503,
+            AttemptId = 3503,
+            ReasoningQuality = 40m,
+            AnalysisConfidence = 40m,
+            Feedback = "Needs review",
+            IsFallback = false,
+            NeedsTeacherReview = true,
+            OverrideVersion = 0,
+            SchemaVersion = "1.0",
+            MissingSteps = JsonDocument.Parse("[]"),
+            RootCauseNodeIds = JsonDocument.Parse("[]"),
+            CreatedAt = _utcNow.AddMinutes(-10),
+            UpdatedAt = _utcNow.AddMinutes(-10)
+        };
+        _dbContext.ReasoningAnalyses.Add(analysis3);
+
+        await _dbContext.SaveChangesAsync();
+
+        var timeProvider = new FixedTimeProvider(_utcNow);
+        var useCase = new TeacherOverrideUseCase(
+            _dbContext,
+            _tenantContext,
+            new EvidenceGate(),
+            new EvidenceAssessmentFactory(),
+            new StudentGoalRiskUpdater(_dbContext),
+            new StudentTwinUpdater(_dbContext),
+            new TwinUpdateHistoryWriter(_dbContext),
+            timeProvider);
+
+        var request = new TeacherOverrideRequest
+        {
+            ReasoningQuality = 95m,
+            ErrorType = ErrorType.None,
+            Feedback = "Overriding attempt 3 to correct",
+            IsCorrect = true,
+            Reason = "Replay test",
+            OverrideVersion = 0
+        };
+
+        var result = await useCase.ExecuteAsync(4503, request, CancellationToken.None);
+
+        Assert.Equal(TeacherOverrideStatus.Success, result.Status);
+
+        // Verify TwinUpdateHistory has ReplaySteps with rolling calibration
+        var history = await _dbContext.TwinUpdateHistories
+            .SingleAsync(h => h.CenterId == _centerId && h.StudentId == _studentId && h.EventSource == TwinEventSource.TeacherOverride);
+
+        var breakdownJson = history.CalculationBreakdown.RootElement;
+        Assert.True(breakdownJson.TryGetProperty("ReplaySteps", out var replayStepsElement));
+        var steps = replayStepsElement.EnumerateArray().ToList();
+        Assert.Equal(2, steps.Count);
+
+        // Step 1: Attempt 1 at T1 (-30m)
+        // Rolling calibration evaluated only on attempts up to T1 in the subject -> only Attempt 1!
+        // Calibration = 100 - |90 - 100| = 90.00m (Attempt 2 at -20m and Attempt 3 at -10m do NOT leak!)
+        var step1 = steps[0];
+        Assert.Equal(3501ul, step1.GetProperty("AttemptId").GetUInt64());
+        Assert.Equal(90.00m, step1.GetProperty("RollingCalibration").GetDecimal());
+
+        // Step 2: Attempt 3 at T3 (-10m)
+        // Rolling calibration evaluated on attempts up to T3 -> Attempt 1 (90), Attempt 2 (50), Attempt 3 (100)
+        // Mean = (90 + 50 + 100) / 3 = 80.00m!
+        var step2 = steps[1];
+        Assert.Equal(3503ul, step2.GetProperty("AttemptId").GetUInt64());
+        Assert.Equal(80.00m, step2.GetProperty("RollingCalibration").GetDecimal());
     }
 
     private sealed class ThrowingConcurrencyInterceptor : SaveChangesInterceptor

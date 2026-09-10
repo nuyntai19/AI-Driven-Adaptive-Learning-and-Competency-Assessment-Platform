@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
@@ -8,10 +9,12 @@ using EduTwin.BLL.AssessmentAndReasoning.Evidence;
 using EduTwin.BLL.DigitalTwin;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
+using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.DigitalTwin;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.Contracts.Organization;
 using EduTwin.DAL.AssessmentAndReasoning;
+using EduTwin.DAL.Assignments;
 using EduTwin.DAL.DigitalTwin;
 using EduTwin.DAL.Persistence;
 
@@ -26,6 +29,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
     private readonly IStudentGoalRiskUpdater _goalRiskUpdater;
     private readonly IStudentTwinUpdater _studentTwinUpdater;
     private readonly ITwinUpdateHistoryWriter _historyWriter;
+    private readonly IBehaviorCalibrationCalculator _calibrationCalculator;
     private readonly TimeProvider _timeProvider;
 
     public TeacherOverrideUseCase(
@@ -36,7 +40,8 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
         IStudentGoalRiskUpdater goalRiskUpdater,
         IStudentTwinUpdater studentTwinUpdater,
         ITwinUpdateHistoryWriter historyWriter,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        IBehaviorCalibrationCalculator? calibrationCalculator = null)
     {
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         _tenantContext = tenantContext ?? throw new ArgumentNullException(nameof(tenantContext));
@@ -46,6 +51,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
         _studentTwinUpdater = studentTwinUpdater ?? throw new ArgumentNullException(nameof(studentTwinUpdater));
         _historyWriter = historyWriter ?? throw new ArgumentNullException(nameof(historyWriter));
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+        _calibrationCalculator = calibrationCalculator ?? new BehaviorCalibrationCalculator();
     }
 
     public async Task<TeacherOverrideResult> ExecuteAsync(
@@ -75,6 +81,16 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
             return TeacherOverrideResult.ValidationFailed("REASON_REQUIRED", "Override reason is required.");
         }
 
+        if (request.Reason.Length > 1000)
+        {
+            return TeacherOverrideResult.ValidationFailed("REASON_TOO_LONG", "Override reason must not exceed 1000 characters.");
+        }
+
+        if (!Enum.IsDefined(typeof(ErrorType), request.ErrorType))
+        {
+            return TeacherOverrideResult.ValidationFailed("INVALID_ERROR_TYPE", "ErrorType is invalid.");
+        }
+
         // 2. Load ReasoningAnalysis with Attempt and Question
         var analysis = await _dbContext.ReasoningAnalyses
             .Include(ra => ra.Attempt)
@@ -83,9 +99,21 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                 ra => ra.CenterId == centerId && ra.AnalysisId == analysisId,
                 cancellationToken);
 
-        if (analysis is null)
+        if (analysis is null || analysis.Attempt is null || analysis.Attempt.Question is null)
         {
             return TeacherOverrideResult.NotFound();
+        }
+
+        var attempt = analysis.Attempt;
+        var question = attempt.Question;
+
+        if (request.AwardedScore.HasValue)
+        {
+            var maxScore = question.MaxScore;
+            if (request.AwardedScore.Value < 0m || request.AwardedScore.Value > maxScore)
+            {
+                return TeacherOverrideResult.ValidationFailed("INVALID_AWARDED_SCORE", $"Awarded score must be between 0 and {maxScore}.");
+            }
         }
 
         // 3. Validate Teacher Ownership (unless CenterManager)
@@ -94,7 +122,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
             var isClassTeacher = await _dbContext.ClassStudents
                 .AnyAsync(
                     cs => cs.CenterId == centerId
-                        && cs.StudentId == analysis.Attempt.StudentId
+                        && cs.StudentId == attempt.StudentId
                         && cs.Status == ClassStudentStatus.Active
                         && cs.Class.TeacherId == teacherId,
                     cancellationToken);
@@ -118,11 +146,12 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
             var now = _timeProvider.GetUtcNow().UtcDateTime;
             var newOverrideVersion = analysis.OverrideVersion + 1;
 
-            // A. Update ReasoningAnalysis override fields
+            // A. Update ReasoningAnalysis override fields (full-state semantics: null AwardedScore clears override)
             analysis.OverrideReasoningQuality = request.ReasoningQuality;
             analysis.OverrideErrorType = request.ErrorType;
             analysis.OverrideFeedback = request.Feedback;
             analysis.OverrideIsCorrect = request.IsCorrect;
+            analysis.OverrideAwardedScore = request.AwardedScore;
             analysis.OverrideReason = request.Reason;
             analysis.OverriddenByTeacherId = teacherId;
             analysis.OverriddenAt = now;
@@ -130,20 +159,71 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
             analysis.NeedsTeacherReview = false;
             analysis.UpdatedAt = now;
 
-            // B. Update Attempt
-            var attempt = analysis.Attempt;
-            attempt.IsCorrect = request.IsCorrect;
+            // B. Update Attempt Status without mutating preliminary IsCorrect or AwardedScore!
             attempt.Status = AttemptStatus.Completed;
             attempt.UpdatedAt = now;
 
-            // C. Find previous latest EvidenceAssessment for this attempt
+            // C. Update StudentAssignmentProgress if attempt belongs to an assignment
+            if (attempt.AssignmentId.HasValue)
+            {
+                var progress = await _dbContext.StudentAssignmentProgresses
+                    .SingleOrDefaultAsync(
+                        p => p.CenterId == attempt.CenterId
+                            && p.AssignmentId == attempt.AssignmentId.Value
+                            && p.StudentId == attempt.StudentId
+                            && !p.IsDeleted,
+                        cancellationToken);
+
+                if (progress is not null)
+                {
+                    var dbQuestionIds = await _dbContext.Attempts
+                        .Where(a => a.CenterId == attempt.CenterId
+                            && a.AssignmentId == attempt.AssignmentId.Value
+                            && a.StudentId == attempt.StudentId
+                            && (a.Status == AttemptStatus.Completed
+                                || a.Status == AttemptStatus.NeedsTeacherReview
+                                || a.AttemptId == attempt.AttemptId))
+                        .Select(a => a.QuestionId)
+                        .ToListAsync(cancellationToken);
+
+                    var localQuestionIds = _dbContext.Attempts.Local
+                        .Where(a => a.CenterId == attempt.CenterId
+                            && a.AssignmentId == attempt.AssignmentId.Value
+                            && a.StudentId == attempt.StudentId
+                            && (a.Status == AttemptStatus.Completed
+                                || a.Status == AttemptStatus.NeedsTeacherReview
+                                || a.AttemptId == attempt.AttemptId))
+                        .Select(a => a.QuestionId);
+
+                    var answeredQuestionCount = dbQuestionIds
+                        .Concat(localQuestionIds)
+                        .Append(attempt.QuestionId)
+                        .Distinct()
+                        .Count();
+
+                    progress.CompletedQuestionCount = (uint)answeredQuestionCount;
+                    if (progress.CompletedQuestionCount >= progress.TotalQuestionCount && progress.TotalQuestionCount > 0)
+                    {
+                        progress.Status = ProgressStatus.Completed;
+                        progress.CompletedAt ??= now;
+                    }
+                    else if (progress.Status == ProgressStatus.NotStarted)
+                    {
+                        progress.Status = ProgressStatus.InProgress;
+                        progress.StartedAt ??= now;
+                    }
+                    progress.UpdatedAt = now;
+                }
+            }
+
+            // D. Find previous latest EvidenceAssessment for this attempt
             var previousEvidence = await _dbContext.EvidenceAssessments
                 .Where(e => e.CenterId == centerId && e.AttemptId == attempt.AttemptId)
                 .OrderByDescending(e => e.EvaluatedAt)
                 .ThenByDescending(e => e.EvidenceAssessmentId)
                 .FirstOrDefaultAsync(cancellationToken);
 
-            // D. Evaluate Gate for TeacherOverride
+            // E. Evaluate Gate for TeacherOverride
             var gateDecision = _evidenceGate.Evaluate(new EvidenceGateInput(
                 SourceType: EvidenceSourceType.TeacherOverride,
                 StructuralValidationPassed: true,
@@ -165,7 +245,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
 
             _dbContext.EvidenceAssessments.Add(newEvidence);
 
-            // E. Replay all attempts for this student and topic chronologically
+            // F. Replay all attempts for this student and topic chronologically
             var studentId = attempt.StudentId;
             var subjectId = attempt.Question.SubjectId;
             var topicNodeId = attempt.Question.PrimaryTopicNodeId;
@@ -180,14 +260,14 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                 select new { Attempt = att, Question = q }
             ).ToListAsync(cancellationToken);
 
-            var attemptIds = topicAttempts.Select(ta => ta.Attempt.AttemptId).ToArray();
-            var analyses = await _dbContext.ReasoningAnalyses
-                .Where(ra => ra.CenterId == centerId && attemptIds.Contains(ra.AttemptId))
+            var topicAttemptIds = topicAttempts.Select(ta => ta.Attempt.AttemptId).ToArray();
+            var topicAnalyses = await _dbContext.ReasoningAnalyses
+                .Where(ra => ra.CenterId == centerId && topicAttemptIds.Contains(ra.AttemptId))
                 .ToListAsync(cancellationToken);
-            var analysesByAttempt = analyses.ToDictionary(ra => ra.AttemptId);
+            var topicAnalysesByAttempt = topicAnalyses.ToDictionary(ra => ra.AttemptId);
 
             var persistedEvidences = await _dbContext.EvidenceAssessments
-                .Where(ea => ea.CenterId == centerId && attemptIds.Contains(ea.AttemptId))
+                .Where(ea => ea.CenterId == centerId && topicAttemptIds.Contains(ea.AttemptId))
                 .OrderBy(ea => ea.EvaluatedAt)
                 .ThenBy(ea => ea.EvidenceAssessmentId)
                 .ToListAsync(cancellationToken);
@@ -195,55 +275,68 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                 .GroupBy(ea => ea.AttemptId)
                 .ToDictionary(g => g.Key, g => g.Last());
 
-            // Recompute BehaviorTwin ConfidenceCalibration so that changes to attempt correctness (e.g. Essay null -> true/false)
-            // are reflected with the true denominator of graded attempts before replaying topic mastery
-            var behaviorTwin = await _dbContext.BehaviorTwins
-                .SingleOrDefaultAsync(
-                    b => b.CenterId == centerId && b.StudentId == studentId && b.SubjectId == subjectId && !b.IsDeleted,
-                    cancellationToken);
-
-            if (behaviorTwin is not null)
-            {
-                var attemptsWithQuestions = await (
-                    from a in _dbContext.Attempts
-                    join q in _dbContext.Questions on new { a.CenterId, a.QuestionId } equals new { q.CenterId, q.QuestionId }
-                    where a.CenterId == centerId
-                        && a.StudentId == studentId
-                        && q.SubjectId == subjectId
-                    select new { a.AttemptId, a.Confidence, a.IsCorrect }
-                ).ToListAsync(cancellationToken);
-
-                var calibratedList = attemptsWithQuestions
-                    .Select(a => new
-                    {
-                        a.Confidence,
-                        IsCorrect = a.AttemptId == attempt.AttemptId ? (bool?)request.IsCorrect : a.IsCorrect
-                    })
-                    .Where(a => a.IsCorrect != null)
-                    .ToList();
-
-                if (calibratedList.Count > 0)
+            // G. Load all attempts in the subject to build subject-wide chronological rolling calibration
+            var allSubjectAttempts = await (
+                from a in _dbContext.Attempts
+                join q in _dbContext.Questions on new { a.CenterId, a.QuestionId } equals new { q.CenterId, q.QuestionId }
+                where a.CenterId == centerId
+                    && a.StudentId == studentId
+                    && q.SubjectId == subjectId
+                select new
                 {
-                    var totalCalib = calibratedList.Sum(ca => Math.Clamp(100m - Math.Abs(ca.Confidence - (ca.IsCorrect == true ? 100m : 0m)), 0m, 100m));
-                    behaviorTwin.ConfidenceCalibration = Math.Round(totalCalib / calibratedList.Count, 2, MidpointRounding.AwayFromZero);
-                    behaviorTwin.UpdatedAt = now;
+                    a.AttemptId,
+                    a.CreatedAt,
+                    a.Confidence,
+                    a.IsCorrect
                 }
-            }
+            ).ToListAsync(cancellationToken);
 
-            var calibration = behaviorTwin is not null
-                ? Math.Clamp(behaviorTwin.ConfidenceCalibration / 100m, 0m, 1m)
-                : 0.50m;
+            var subjectAttemptIds = allSubjectAttempts.Select(a => a.AttemptId).ToArray();
+            var allSubjectAnalyses = await _dbContext.ReasoningAnalyses
+                .Where(ra => ra.CenterId == centerId && subjectAttemptIds.Contains(ra.AttemptId))
+                .ToListAsync(cancellationToken);
+            var subjectAnalysesByAttempt = allSubjectAnalyses.ToDictionary(ra => ra.AttemptId);
+
+            var gradedSubjectAttempts = allSubjectAttempts
+                .Select(a =>
+                {
+                    bool? effCorrect;
+                    if (a.AttemptId == attempt.AttemptId)
+                    {
+                        effCorrect = request.IsCorrect;
+                    }
+                    else if (subjectAnalysesByAttempt.TryGetValue(a.AttemptId, out var ra) && ra.OverrideIsCorrect.HasValue)
+                    {
+                        effCorrect = ra.OverrideIsCorrect.Value;
+                    }
+                    else
+                    {
+                        effCorrect = a.IsCorrect;
+                    }
+
+                    return new
+                    {
+                        a.AttemptId,
+                        a.CreatedAt,
+                        a.Confidence,
+                        EffectiveIsCorrect = effCorrect
+                    };
+                })
+                .Where(x => x.EffectiveIsCorrect.HasValue)
+                .OrderBy(x => x.CreatedAt)
+                .ThenBy(x => x.AttemptId)
+                .ToList();
 
             decimal replayedMastery = 0m;
             int replayedCount = 0;
             int effectiveEvidenceCount = 0;
-            MasteryCalculationResult? overrideCalcResult = null;
+            var replayedSteps = new List<ReplayStepBreakdown>(topicAttempts.Count);
 
             foreach (var item in topicAttempts)
             {
                 var att = item.Attempt;
                 var q = item.Question;
-                var a = analysesByAttempt.GetValueOrDefault(att.AttemptId);
+                var a = topicAnalysesByAttempt.GetValueOrDefault(att.AttemptId);
 
                 // Use the persisted EvidenceAssessment as the sole authoritative source of truth for reasoning weight
                 var ev = att.AttemptId == attempt.AttemptId
@@ -255,16 +348,34 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                     ? (a.OverrideVersion > 0 ? a.OverrideReasoningQuality : a.ReasoningQuality)
                     : null;
 
-                bool effectiveCorrectness = att.IsCorrect ?? false;
+                bool? effectiveCorrectness;
                 if (att.AttemptId == attempt.AttemptId)
                 {
                     effectiveCorrectness = request.IsCorrect;
+                }
+                else
+                {
+                    effectiveCorrectness = a?.OverrideIsCorrect ?? att.IsCorrect;
+                }
+
+                // Fail closed if positive weight evidence has unresolved correctness
+                if (reasoningWeight > 0m && !effectiveCorrectness.HasValue)
+                {
+                    throw new InvalidOperationException(
+                        $"Attempt {att.AttemptId} on topic {topicNodeId} has positive evidence weight ({reasoningWeight}) but unresolved correctness.");
                 }
 
                 if (reasoningWeight > 0m)
                 {
                     effectiveEvidenceCount++;
                 }
+
+                // Subject-wide rolling calibration up to (CreatedAt, AttemptId)
+                var rollingWindow = gradedSubjectAttempts
+                    .Where(x => x.CreatedAt < att.CreatedAt || (x.CreatedAt == att.CreatedAt && x.AttemptId <= att.AttemptId))
+                    .Select(x => new GradedAttemptSample(x.Confidence, x.EffectiveIsCorrect!.Value))
+                    .ToList();
+                var stepCalibration = _calibrationCalculator.CalculateCalibration(rollingWindow);
 
                 var timeRatio = q.EstimatedTimeSeconds > 0
                     ? att.TimeSpentSeconds / (decimal)q.EstimatedTimeSeconds
@@ -276,22 +387,42 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                     CurrentMastery: replayedMastery,
                     ReasoningQuality: effectiveQuality,
                     ReasoningWeight: reasoningWeight,
-                    IsCorrect: effectiveCorrectness,
+                    IsCorrect: effectiveCorrectness ?? false,
                     TimeQuality: timeQuality,
-                    ConfidenceCalibration: reasoningWeight > 0m && effectiveQuality.HasValue ? calibration : null,
+                    ConfidenceCalibration: reasoningWeight > 0m && effectiveQuality.HasValue ? stepCalibration / 100m : null,
                     Difficulty: q.Difficulty);
 
                 var calcResult = MasteryCalculator.Calculate(calcInput);
+                var prevStepMastery = replayedMastery;
                 replayedMastery = calcResult.NewMastery;
                 replayedCount++;
 
-                if (att.AttemptId == attempt.AttemptId)
-                {
-                    overrideCalcResult = calcResult;
-                }
+                replayedSteps.Add(new ReplayStepBreakdown(
+                    AttemptId: att.AttemptId,
+                    ReasoningWeight: reasoningWeight,
+                    EffectiveCorrectness: effectiveCorrectness ?? false,
+                    RollingCalibration: stepCalibration,
+                    PreviousMastery: prevStepMastery,
+                    NewMastery: calcResult.NewMastery,
+                    Delta: calcResult.Delta));
             }
 
-            // Update or create KnowledgeTwin with consistent EvidenceCount (only positive-weight evidence counted)
+            // H. Update BehaviorTwin with final calibration across all graded subject attempts
+            var behaviorTwin = await _dbContext.BehaviorTwins
+                .SingleOrDefaultAsync(
+                    b => b.CenterId == centerId && b.StudentId == studentId && b.SubjectId == subjectId && !b.IsDeleted,
+                    cancellationToken);
+
+            var finalCalibration = _calibrationCalculator.CalculateCalibration(
+                gradedSubjectAttempts.Select(x => new GradedAttemptSample(x.Confidence, x.EffectiveIsCorrect!.Value)));
+
+            if (behaviorTwin is not null)
+            {
+                behaviorTwin.ConfidenceCalibration = finalCalibration;
+                behaviorTwin.UpdatedAt = now;
+            }
+
+            // I. Update or create KnowledgeTwin with consistent EvidenceCount
             var knowledgeTwin = await _dbContext.KnowledgeTwins
                 .SingleOrDefaultAsync(
                     k => k.CenterId == centerId && k.StudentId == studentId && k.SubjectId == subjectId && k.TopicNodeId == topicNodeId && !k.IsDeleted,
@@ -302,6 +433,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
             {
                 knowledgeTwin = new KnowledgeTwin
                 {
+                    KnowledgeTwinId = (ulong)now.Ticks ^ (ulong)attempt.AttemptId,
                     CenterId = centerId,
                     StudentId = studentId,
                     SubjectId = subjectId,
@@ -327,38 +459,38 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                 knowledgeTwin.UpdatedAt = now;
             }
 
-            // Update StudentSubjectGoal Risk Score
+            // J. Update StudentSubjectGoal Risk Score & StudentTwin
             var goal = await _goalRiskUpdater.UpdateAsync(centerId, studentId, subjectId, now, cancellationToken);
             decimal newRiskScore = goal?.RiskScore ?? 0m;
 
-            // Update StudentTwin
             await _studentTwinUpdater.UpdateAsync(centerId, studentId, now, cancellationToken);
 
-            // Append TwinUpdateHistory using actual calculation breakdown from replay
-            var historyBreakdown = overrideCalcResult?.Breakdown ?? new MasteryCalculationBreakdown(
+            // K. Append TwinUpdateHistory using truthful ReplaySummaryBreakdown with full trace
+            var historyBreakdown = new MasteryCalculationBreakdown(
                 IsFallback: false,
                 PreviousMastery: previousMastery,
                 NormalizedReasoningQuality: request.ReasoningQuality / 100m,
                 ReasoningWeight: 1.00m,
                 Correctness: request.IsCorrect ? 1m : 0m,
                 TimeQuality: 1.00m,
-                ConfidenceCalibration: calibration,
+                ConfidenceCalibration: finalCalibration / 100m,
                 Difficulty: attempt.Question.Difficulty,
                 DifficultyMultiplier: 1.00m,
                 LearningRate: 0.25m,
                 EvidenceTarget: request.ReasoningQuality,
                 UnclampedNewMastery: replayedMastery,
                 NewMastery: replayedMastery,
-                Delta: replayedMastery - previousMastery);
+                Delta: replayedMastery - previousMastery,
+                ReplaySteps: replayedSteps);
 
             var historyCalcResult = new MasteryCalculationResult(
                 PreviousMastery: previousMastery,
                 NewMastery: replayedMastery,
                 Delta: replayedMastery - previousMastery,
                 EffectiveReasoningQuality: request.ReasoningQuality,
-                CalculationVersion: MasteryCalculator.CalculationVersion,
+                CalculationVersion: "replay-v1",
                 Breakdown: historyBreakdown,
-                Explanation: $"Teacher override applied by {teacherId}: {request.Reason} (Replayed {replayedCount} attempts, {effectiveEvidenceCount} effective evidence records).");
+                Explanation: $"Teacher override applied by {teacherId} on attempt {attempt.AttemptId}: {request.Reason} (Replayed {replayedCount} attempts; {effectiveEvidenceCount} effective evidence records; final mastery {replayedMastery}%).");
 
             await _historyWriter.WriteAsync(
                 centerId,
@@ -376,12 +508,16 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
 
+            var effectiveAwardedScore = request.AwardedScore ?? attempt.AwardedScore;
+
             var responseData = new TeacherOverrideDataDto
             {
                 AnalysisId = analysis.AnalysisId.ToString(CultureInfo.InvariantCulture),
                 HasTeacherOverride = true,
                 OverrideVersion = newOverrideVersion,
                 OverriddenAt = now,
+                OverrideAwardedScore = request.AwardedScore,
+                EffectiveAwardedScore = effectiveAwardedScore,
                 Replay = new TeacherOverrideReplayDto
                 {
                     StudentId = studentId.ToString("D"),

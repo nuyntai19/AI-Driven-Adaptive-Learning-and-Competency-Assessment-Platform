@@ -36,12 +36,6 @@ public sealed class EvidenceAssessmentFactory : IEvidenceAssessmentFactory
                 "Superseded evidence must be persisted and belong to the same center and attempt.");
         }
 
-        if (supersedes is not null &&
-            (supersedes.CenterId != attempt.CenterId || supersedes.AttemptId != attempt.AttemptId))
-        {
-            throw new InvalidOperationException("Superseded evidence must belong to the same center and attempt.");
-        }
-
         return new EvidenceAssessment
         {
             CenterId = attempt.CenterId,

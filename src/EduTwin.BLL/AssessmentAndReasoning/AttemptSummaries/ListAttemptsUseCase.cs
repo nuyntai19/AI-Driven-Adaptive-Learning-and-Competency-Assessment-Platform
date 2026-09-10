@@ -183,6 +183,10 @@ public sealed class ListAttemptsUseCase : IListAttemptsUseCase
                 join job in _dbContext.AIAnalysisJobs.AsNoTracking()
                     on new { attempt.CenterId, attempt.AttemptId }
                     equals new { job.CenterId, job.AttemptId }
+                join analysis in _dbContext.ReasoningAnalyses.AsNoTracking()
+                    on new { attempt.CenterId, attempt.AttemptId }
+                    equals new { analysis.CenterId, analysis.AttemptId } into analyses
+                from analysis in analyses.DefaultIfEmpty()
                 select new AttemptSummaryRow(
                     attempt.AttemptId,
                     attempt.StudentId,
@@ -192,8 +196,8 @@ public sealed class ListAttemptsUseCase : IListAttemptsUseCase
                     attempt.Question.QuestionText,
                     attempt.AssignmentId,
                     attempt.Status,
-                    attempt.IsCorrect,
-                    attempt.AwardedScore,
+                    analysis != null && analysis.OverrideIsCorrect != null ? analysis.OverrideIsCorrect : attempt.IsCorrect,
+                    analysis != null && analysis.OverrideAwardedScore != null ? analysis.OverrideAwardedScore : attempt.AwardedScore,
                     attempt.Question.MaxScore,
                     attempt.Skipped,
                     job.AnalysisJobId,

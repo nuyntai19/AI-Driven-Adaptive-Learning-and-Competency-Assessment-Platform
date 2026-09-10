@@ -99,6 +99,18 @@ public sealed class EvidenceGate : IEvidenceGate
         if (input.HasAnomaly) reasons.Add(EvidenceReasonCodes.AnomalyDetected);
         if (!input.HasRequiredEvidence) reasons.Add(EvidenceReasonCodes.RequiredEvidenceMissing);
         if (input.EffectiveIsCorrect is null) reasons.Add(EvidenceReasonCodes.PreliminaryCorrectnessPending);
+
+        if (input.DiagnosticReasonCodes is not null)
+        {
+            foreach (var code in input.DiagnosticReasonCodes)
+            {
+                if (!string.IsNullOrWhiteSpace(code) && !reasons.Contains(code))
+                {
+                    reasons.Add(code);
+                }
+            }
+        }
+
         return reasons;
     }
 

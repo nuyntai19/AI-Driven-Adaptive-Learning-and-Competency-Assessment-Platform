@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using MySql.Data.MySqlClient;
 using EduTwin.BLL.AssessmentAndReasoning.Evidence;
 using EduTwin.BLL.AssessmentAndReasoning.Override;
@@ -83,8 +84,9 @@ public sealed class TeacherOverrideMySqlTests
         Assert.False(analysis.NeedsTeacherReview);
 
         var attempt = await verifyContext.Attempts.SingleAsync(a => a.CenterId == centerId && a.AttemptId == 1001);
-        Assert.Equal(AttemptStatus.Completed, attempt.Status);
-        Assert.True(attempt.IsCorrect);
+        Assert.False(attempt.IsCorrect);
+        Assert.True(analysis.OverrideIsCorrect);
+        Assert.Equal(true, analysis.OverrideIsCorrect ?? attempt.IsCorrect);
 
         var newEvidence = await verifyContext.EvidenceAssessments.SingleAsync(ea => ea.CenterId == centerId && ea.AnalysisOverrideVersion == 1);
         Assert.Equal(EvidenceSourceType.TeacherOverride, newEvidence.SourceType);
@@ -155,12 +157,101 @@ public sealed class TeacherOverrideMySqlTests
         Assert.Equal(TeacherOverrideStatus.Conflict, result2.Status);
     }
 
-    private static EduTwinDbContext CreateContext(string connectionString, TenantContext tenant)
+    [MySqlIntegrationFact]
+    public async Task ExecuteAsync_ConcurrentOverridesWithBarrier_ExactlyOneSucceedsAndOneReturnsConflict()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var centerId = Guid.NewGuid();
+        var teacherId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+
+        await SeedHierarchyAsync(database.ConnectionString, centerId, teacherId, studentId, subjectId);
+
+        var barrier = new CompetingSaveBarrier(2);
+        var tenantA = new TenantContext();
+        var tenantB = new TenantContext();
+        tenantA.Initialize(centerId, teacherId, nameof(UserRole.Teacher), 1);
+        tenantB.Initialize(centerId, teacherId, nameof(UserRole.Teacher), 1);
+
+        await using var contextA = CreateContext(database.ConnectionString, tenantA, barrier);
+        await using var contextB = CreateContext(database.ConnectionString, tenantB, barrier);
+
+        var timeProvider = new FixedTimeProvider(UtcNow);
+        var useCaseA = new TeacherOverrideUseCase(
+            contextA,
+            tenantA,
+            new EvidenceGate(),
+            new EvidenceAssessmentFactory(),
+            new StudentGoalRiskUpdater(contextA),
+            new StudentTwinUpdater(contextA),
+            new TwinUpdateHistoryWriter(contextA),
+            timeProvider);
+
+        var useCaseB = new TeacherOverrideUseCase(
+            contextB,
+            tenantB,
+            new EvidenceGate(),
+            new EvidenceAssessmentFactory(),
+            new StudentGoalRiskUpdater(contextB),
+            new StudentTwinUpdater(contextB),
+            new TwinUpdateHistoryWriter(contextB),
+            timeProvider);
+
+        var requestA = new TeacherOverrideRequest
+        {
+            ReasoningQuality = 80m,
+            ErrorType = ErrorType.None,
+            Feedback = "Concurrent teacher A",
+            IsCorrect = true,
+            Reason = "Race test A",
+            OverrideVersion = 0
+        };
+
+        var requestB = new TeacherOverrideRequest
+        {
+            ReasoningQuality = 85m,
+            ErrorType = ErrorType.None,
+            Feedback = "Concurrent teacher B",
+            IsCorrect = true,
+            Reason = "Race test B",
+            OverrideVersion = 0
+        };
+
+        var results = await Task.WhenAll(
+            useCaseA.ExecuteAsync(2001, requestA, CancellationToken.None),
+            useCaseB.ExecuteAsync(2001, requestB, CancellationToken.None));
+
+        Assert.Single(results, r => r.Status == TeacherOverrideStatus.Success);
+        Assert.Single(results, r => r.Status == TeacherOverrideStatus.Conflict);
+
+        // Verify in fresh context: exactly 1 override evidence exists
+        var verifyTenant = new TenantContext();
+        verifyTenant.Initialize(centerId, teacherId, nameof(UserRole.Teacher), 1);
+        await using var verifyContext = CreateContext(database.ConnectionString, verifyTenant);
+
+        var overrideEvidences = await verifyContext.EvidenceAssessments
+            .Where(e => e.CenterId == centerId && e.SourceType == EvidenceSourceType.TeacherOverride)
+            .ToListAsync();
+        Assert.Single(overrideEvidences);
+
+        var analysis = await verifyContext.ReasoningAnalyses
+            .SingleAsync(a => a.CenterId == centerId && a.AnalysisId == 2001);
+        Assert.Equal(1u, analysis.OverrideVersion);
+    }
+
+    private static EduTwinDbContext CreateContext(
+        string connectionString,
+        TenantContext tenant,
+        params IInterceptor[] interceptors)
     {
         var options = new DbContextOptionsBuilder<EduTwinDbContext>()
-            .UseMySQL(connectionString)
-            .Options;
-        return new EduTwinDbContext(options, tenant);
+            .UseMySQL(connectionString);
+        if (interceptors.Length > 0)
+        {
+            options.AddInterceptors(interceptors);
+        }
+        return new EduTwinDbContext(options.Options, tenant);
     }
 
     private static async Task SeedHierarchyAsync(
@@ -205,6 +296,16 @@ public sealed class TeacherOverrideMySqlTests
                 StudentId = studentId,
                 FullName = "MySQL Test Student",
                 GradeLevel = 10,
+                CreatedAt = UtcNow.AddDays(-1),
+                UpdatedAt = UtcNow.AddDays(-1)
+            });
+
+            context.StudentTwins.Add(new StudentTwin
+            {
+                TwinId = Guid.NewGuid(),
+                CenterId = centerId,
+                StudentId = studentId,
+                OverallMastery = 0m,
                 CreatedAt = UtcNow.AddDays(-1),
                 UpdatedAt = UtcNow.AddDays(-1)
             });
@@ -258,6 +359,7 @@ public sealed class TeacherOverrideMySqlTests
 
             context.BehaviorTwins.Add(new BehaviorTwin
             {
+                BehaviorTwinId = 1,
                 CenterId = centerId,
                 StudentId = studentId,
                 SubjectId = subjectId,
@@ -265,6 +367,19 @@ public sealed class TeacherOverrideMySqlTests
                 AvgConfidence = 90m,
                 ConfidenceCalibration = 50.00m,
                 AttemptCount = 1,
+                CreatedAt = UtcNow.AddDays(-1),
+                UpdatedAt = UtcNow.AddDays(-1)
+            });
+
+            context.KnowledgeTwins.Add(new KnowledgeTwin
+            {
+                KnowledgeTwinId = 1,
+                CenterId = centerId,
+                StudentId = studentId,
+                SubjectId = subjectId,
+                TopicNodeId = 101,
+                MasteryPercentage = 0m,
+                EvidenceCount = 0,
                 CreatedAt = UtcNow.AddDays(-1),
                 UpdatedAt = UtcNow.AddDays(-1)
             });
@@ -428,5 +543,31 @@ public sealed class TeacherOverrideMySqlTests
         private readonly DateTimeOffset _utcNow;
         public FixedTimeProvider(DateTime utcNow) => _utcNow = new DateTimeOffset(utcNow);
         public override DateTimeOffset GetUtcNow() => _utcNow;
+    }
+
+    private sealed class CompetingSaveBarrier : SaveChangesInterceptor
+    {
+        private readonly TaskCompletionSource _allArrived =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _remaining;
+
+        public CompetingSaveBarrier(int participants)
+        {
+            _remaining = participants;
+        }
+
+        public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Decrement(ref _remaining) == 0)
+            {
+                _allArrived.TrySetResult();
+            }
+
+            await _allArrived.Task.WaitAsync(cancellationToken);
+            return result;
+        }
     }
 }

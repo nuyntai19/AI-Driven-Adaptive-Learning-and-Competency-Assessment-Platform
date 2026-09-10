@@ -76,7 +76,8 @@ public sealed class TwinCompletionOrchestrator : ITwinCompletionOrchestrator
             HasRequiredEvidence: consistency.HasRequiredEvidence,
             EffectiveIsCorrect: attempt.IsCorrect,
             AnalysisConfidence: analysis.AnalysisConfidence,
-            AnalysisOverrideVersion: analysis.OverrideVersion);
+            AnalysisOverrideVersion: analysis.OverrideVersion,
+            DiagnosticReasonCodes: consistency.ReasonCodes);
 
         var decision = _evidenceGate.Evaluate(gateInput);
         analysis.NeedsTeacherReview = decision.RequiresTeacherReview;

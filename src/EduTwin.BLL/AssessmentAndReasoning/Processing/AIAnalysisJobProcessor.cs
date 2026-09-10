@@ -386,10 +386,27 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             else if (job.RetryCount == 1 && fallback is not null)
             {
                 var allowedIds = requestContext?.AllowedNodes?.Select(n => n.NodeId).ToArray();
-                var question = requestContext?.Question ?? attempt.Question;
-                var consistency = question is not null
-                    ? _consistencyChecker.Evaluate(attempt, question, fallback, allowedIds)
-                    : new EvidenceConsistencyResult(
+                var question = requestContext?.Question
+                    ?? attempt.Question
+                    ?? await _dbContext.Questions
+                        .SingleOrDefaultAsync(
+                            q => q.CenterId == attempt.CenterId && q.QuestionId == attempt.QuestionId,
+                            cancellationToken);
+
+                if (question is not null)
+                {
+                    await _twinCompletionOrchestrator.CompleteAsync(
+                        attempt,
+                        question,
+                        fallback,
+                        TwinEventSource.RuleFallback,
+                        transactionalUtcNow,
+                        cancellationToken,
+                        allowedIds);
+                }
+                else
+                {
+                    var consistency = new EvidenceConsistencyResult(
                         SemanticValidationPassed: true,
                         HasContradiction: false,
                         HasAnomaly: false,
@@ -397,29 +414,30 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                         ReasonCodes: [EvidenceReasonCodes.SourceRuleFallback],
                         StructuralValidationPassed: true);
 
-                var decision = _evidenceGate.Evaluate(new EvidenceGateInput(
-                    EvidenceSourceType.RuleFallback,
-                    StructuralValidationPassed: consistency.StructuralValidationPassed,
-                    SemanticValidationPassed: consistency.SemanticValidationPassed,
-                    HasContradiction: consistency.HasContradiction,
-                    HasAnomaly: consistency.HasAnomaly,
-                    HasRequiredEvidence: consistency.HasRequiredEvidence,
-                    EffectiveIsCorrect: attempt.IsCorrect,
-                    AnalysisConfidence: null,
-                    AnalysisOverrideVersion: fallback.OverrideVersion));
-                fallback.NeedsTeacherReview = decision.RequiresTeacherReview;
-                var evidence = _evidenceAssessmentFactory.Create(
-                    attempt,
-                    fallback,
-                    supersedes: null,
-                    decision,
-                    transactionalUtcNow,
-                    createdBy: null);
+                    var decision = _evidenceGate.Evaluate(new EvidenceGateInput(
+                        EvidenceSourceType.RuleFallback,
+                        StructuralValidationPassed: consistency.StructuralValidationPassed,
+                        SemanticValidationPassed: consistency.SemanticValidationPassed,
+                        HasContradiction: consistency.HasContradiction,
+                        HasAnomaly: consistency.HasAnomaly,
+                        HasRequiredEvidence: consistency.HasRequiredEvidence,
+                        EffectiveIsCorrect: attempt.IsCorrect,
+                        AnalysisConfidence: null,
+                        AnalysisOverrideVersion: fallback.OverrideVersion));
+                    fallback.NeedsTeacherReview = decision.RequiresTeacherReview;
+                    var evidence = _evidenceAssessmentFactory.Create(
+                        attempt,
+                        fallback,
+                        supersedes: null,
+                        decision,
+                        transactionalUtcNow,
+                        createdBy: null);
 
-                _dbContext.ReasoningAnalyses.Add(fallback);
-                _dbContext.EvidenceAssessments.Add(evidence);
-                attempt.Status = AttemptStatus.NeedsTeacherReview;
-                attempt.UpdatedAt = transactionalUtcNow;
+                    _dbContext.ReasoningAnalyses.Add(fallback);
+                    _dbContext.EvidenceAssessments.Add(evidence);
+                    attempt.Status = AttemptStatus.NeedsTeacherReview;
+                    attempt.UpdatedAt = transactionalUtcNow;
+                }
 
                 transition = _stateMachine.CompleteFallback(
                     job,

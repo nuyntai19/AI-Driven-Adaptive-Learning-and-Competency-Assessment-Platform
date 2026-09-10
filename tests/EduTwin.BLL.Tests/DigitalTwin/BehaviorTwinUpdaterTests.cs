@@ -3,7 +3,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using EduTwin.BLL.DigitalTwin;
+using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.DAL.AssessmentAndReasoning;
+using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.DigitalTwin;
 using EduTwin.DAL.Persistence;
 using EduTwin.DAL.Persistence.Tenancy;
@@ -33,9 +35,51 @@ public sealed class BehaviorTwinUpdaterTests : IDisposable
 
     public void Dispose() => _dbContext.Dispose();
 
+    private void SeedQuestions()
+    {
+        _dbContext.Questions.AddRange(
+            new Question
+            {
+                CenterId = _centerId,
+                QuestionId = 1,
+                SubjectId = _subjectId,
+                PrimaryTopicNodeId = 101,
+                Difficulty = 3,
+                EstimatedTimeSeconds = 60,
+                QuestionText = "Q1",
+                CorrectAnswer = "A",
+                Solution = "Sol 1",
+                LanguageCode = "vi",
+                MaxScore = 10,
+                Status = QuestionStatus.Active,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            },
+            new Question
+            {
+                CenterId = _centerId,
+                QuestionId = 2,
+                SubjectId = _subjectId,
+                PrimaryTopicNodeId = 101,
+                Difficulty = 3,
+                EstimatedTimeSeconds = 60,
+                QuestionText = "Q2",
+                CorrectAnswer = "B",
+                Solution = "Sol 2",
+                LanguageCode = "vi",
+                MaxScore = 10,
+                Status = QuestionStatus.Active,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            }
+        );
+        _dbContext.SaveChanges();
+    }
+
     [Fact]
     public async Task UpdateAsync_FirstAttempt_InitializesBehaviorTwin()
     {
+        SeedQuestions();
         var updater = new BehaviorTwinUpdater(_dbContext);
         var now = new DateTime(2026, 9, 10, 10, 0, 0, DateTimeKind.Utc);
 
@@ -44,6 +88,8 @@ public sealed class BehaviorTwinUpdaterTests : IDisposable
             CenterId = _centerId,
             StudentId = _studentId,
             QuestionId = 1,
+            FinalAnswer = "A",
+            ReasoningLanguage = "vi",
             TimeSpentSeconds = 120,
             Confidence = 80m,
             AnswerChanges = 1,
@@ -52,6 +98,7 @@ public sealed class BehaviorTwinUpdaterTests : IDisposable
             CreatedAt = now,
             UpdatedAt = now
         };
+        _dbContext.Attempts.Add(attempt);
 
         var result = await updater.UpdateAsync(attempt, _subjectId, now, CancellationToken.None);
         await _dbContext.SaveChangesAsync();
@@ -69,6 +116,7 @@ public sealed class BehaviorTwinUpdaterTests : IDisposable
     [Fact]
     public async Task UpdateAsync_MultipleAttempts_ComputesAccurateCumulativeMetrics()
     {
+        SeedQuestions();
         var updater = new BehaviorTwinUpdater(_dbContext);
         var now = new DateTime(2026, 9, 10, 10, 0, 0, DateTimeKind.Utc);
 
@@ -78,6 +126,8 @@ public sealed class BehaviorTwinUpdaterTests : IDisposable
             CenterId = _centerId,
             StudentId = _studentId,
             QuestionId = 1,
+            FinalAnswer = "A",
+            ReasoningLanguage = "vi",
             TimeSpentSeconds = 60,
             Confidence = 100m,
             AnswerChanges = 0,
@@ -86,6 +136,7 @@ public sealed class BehaviorTwinUpdaterTests : IDisposable
             CreatedAt = now,
             UpdatedAt = now
         };
+        _dbContext.Attempts.Add(attempt1);
         await updater.UpdateAsync(attempt1, _subjectId, now, CancellationToken.None);
         await _dbContext.SaveChangesAsync();
 
@@ -95,6 +146,8 @@ public sealed class BehaviorTwinUpdaterTests : IDisposable
             CenterId = _centerId,
             StudentId = _studentId,
             QuestionId = 2,
+            FinalAnswer = "B",
+            ReasoningLanguage = "vi",
             TimeSpentSeconds = 120,
             Confidence = 60m,
             AnswerChanges = 2,
@@ -103,6 +156,7 @@ public sealed class BehaviorTwinUpdaterTests : IDisposable
             CreatedAt = now.AddMinutes(1),
             UpdatedAt = now.AddMinutes(1)
         };
+        _dbContext.Attempts.Add(attempt2);
         var result2 = await updater.UpdateAsync(attempt2, _subjectId, now.AddMinutes(1), CancellationToken.None);
         await _dbContext.SaveChangesAsync();
 
@@ -118,4 +172,62 @@ public sealed class BehaviorTwinUpdaterTests : IDisposable
         // Calibration: (100 + 40) / 2 = 70%
         Assert.Equal(70m, result2.ConfidenceCalibration);
     }
+
+    [Fact]
+    public async Task UpdateAsync_EssayNullCorrectnessFollowedByMcq_CalculatesCalibrationOverGradedAttemptsOnly()
+    {
+        SeedQuestions();
+        var updater = new BehaviorTwinUpdater(_dbContext);
+        var now = new DateTime(2026, 9, 10, 10, 0, 0, DateTimeKind.Utc);
+
+        // Attempt 1: Essay attempt with IsCorrect = null, Confidence = 70
+        var essayAttempt = new Attempt
+        {
+            CenterId = _centerId,
+            StudentId = _studentId,
+            QuestionId = 1,
+            FinalAnswer = "Essay text",
+            ReasoningLanguage = "vi",
+            TimeSpentSeconds = 120,
+            Confidence = 70m,
+            AnswerChanges = 0,
+            Skipped = false,
+            IsCorrect = null,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        _dbContext.Attempts.Add(essayAttempt);
+        var result1 = await updater.UpdateAsync(essayAttempt, _subjectId, now, CancellationToken.None);
+        await _dbContext.SaveChangesAsync();
+
+        Assert.Equal(1u, result1.AttemptCount);
+        // Ungraded attempt has no calibration sample, returns neutral default 50.00m
+        Assert.Equal(50.00m, result1.ConfidenceCalibration);
+
+        // Attempt 2: MCQ attempt with IsCorrect = true, Confidence = 100
+        var mcqAttempt = new Attempt
+        {
+            CenterId = _centerId,
+            StudentId = _studentId,
+            QuestionId = 2,
+            FinalAnswer = "B",
+            ReasoningLanguage = "vi",
+            TimeSpentSeconds = 60,
+            Confidence = 100m,
+            AnswerChanges = 0,
+            Skipped = false,
+            IsCorrect = true,
+            CreatedAt = now.AddMinutes(2),
+            UpdatedAt = now.AddMinutes(2)
+        };
+        _dbContext.Attempts.Add(mcqAttempt);
+        var result2 = await updater.UpdateAsync(mcqAttempt, _subjectId, now.AddMinutes(2), CancellationToken.None);
+        await _dbContext.SaveChangesAsync();
+
+        Assert.Equal(2u, result2.AttemptCount);
+        // Denominator must be 1 (only the graded MCQ attempt), NOT 2!
+        // MCQ calibration is 100 - |100 - 100| = 100.00m
+        Assert.Equal(100.00m, result2.ConfidenceCalibration);
+    }
 }
+

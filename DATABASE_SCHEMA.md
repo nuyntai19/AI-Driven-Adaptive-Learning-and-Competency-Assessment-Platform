@@ -1,7 +1,7 @@
 # EduTwin — Database Schema
 
-> Phiên bản: 2.1-draft
-> Trạng thái: COURSE REBASELINE — 31 bảng hiện tại đã migration; 7 bảng v2 chưa triển khai
+> Phiên bản: 2.2
+> Trạng thái: ACTIVE — 38 bảng đã migration và kiểm tra trên MySQL thật; bao gồm Dynamic Authorization & Evidence Governance và Override Awarded Score
 > Database: MySQL 8.x / InnoDB / utf8mb4
 > ORM: Entity Framework Core 10
 > Chủ sở hữu: Data/Architecture owners; thay đổi cần nhóm phê duyệt
@@ -18,7 +18,7 @@ Schema phục vụ đồng thời bảy mục tiêu:
 6. Cấp quyền động theo từng Center mà không phá tenant isolation.
 7. Ghi lại provenance và mức tin cậy của evidence trước khi cập nhật Digital Twin.
 
-Schema target v2 được chia thành sáu module logic:
+Schema gồm sáu module logic:
 
 1. System Users & Organization.
 2. Knowledge Graph.
@@ -27,7 +27,7 @@ Schema target v2 được chia thành sáu module logic:
 5. Assessment & AI Reasoning.
 6. Dynamic Authorization & Evidence Governance.
 
-Baseline migration hiện tại có 31 bảng. Target v2 có 38 bảng sau khi bảy bảng ở Module 6 được phê duyệt, tạo migration và kiểm tra trên MySQL thật. Tài liệu không được dùng để tuyên bố bảy bảng mới đã tồn tại trong source.
+Hệ thống có đầy đủ 38 bảng vật lý đã migration và kiểm tra trên MySQL thật (bao gồm 7 bảng ở Module 6 và cột override_awarded_score tại reasoning_analyses).
 
 ## 2. Quy ước vật lý
 
@@ -211,13 +211,13 @@ erDiagram
 | 29 | attempts | Current | Bài nộp, telemetry và chấm sơ bộ append-oriented | FK student/question/assignment; parent job/analysis/evidence |
 | 30 | reasoning_analyses | Current | Observation AI/fallback và teacher override provenance | One-to-one logical với attempt; referenced by evidence/history |
 | 31 | ai_analysis_jobs | Current | Queue bền vững, lease, retry và terminal state | Unique theo attempt |
-| 32 | permissions | Target v2 | Catalog capability toàn hệ thống, chỉ đọc ở runtime | Parent applicability/role grant |
-| 33 | permission_account_types | Target v2 | Khóa permission được dùng bởi account type nào | Join permissions–account type; principal cho role grant |
-| 34 | roles | Target v2 | Vai trò động do từng Center quản lý | Parent role_permissions/user_roles |
-| 35 | role_permissions | Target v2 | Permission set hiện hành của role | Join roles–permissions có account-type FK |
-| 36 | user_roles | Target v2 | Role active/revoked của user | Join users–roles có account-type FK |
-| 37 | authorization_audit_logs | Target v2 | Audit append-only của thay đổi quyền | FK actor/target users khi có |
-| 38 | evidence_assessments | Target v2 | Quyết định policy append-only, không nhân bản analysis/mastery | FK attempts/analyses/self-supersession |
+| 32 | permissions | Current | Catalog capability toàn hệ thống, chỉ đọc ở runtime | Parent applicability/role grant |
+| 33 | permission_account_types | Current | Khóa permission được dùng bởi account type nào | Join permissions–account type; principal cho role grant |
+| 34 | roles | Current | Vai trò động do từng Center quản lý | Parent role_permissions/user_roles |
+| 35 | role_permissions | Current | Permission set hiện hành của role | Join roles–permissions có account-type FK |
+| 36 | user_roles | Current | Role active/revoked của user | Join users–roles có account-type FK |
+| 37 | authorization_audit_logs | Current | Audit append-only của thay đổi quyền | FK actor/target users khi có |
+| 38 | evidence_assessments | Current | Quyết định policy append-only, không nhân bản analysis/mastery | FK attempts/analyses/self-supersession |
 
 # Module 1 — System Users & Organization
 
@@ -884,6 +884,7 @@ Attempts không soft delete; nếu cần loại khỏi replay phải có use cas
 | override_error_type | VARCHAR(32) | Yes | Error type giáo viên xác nhận/sửa |
 | override_feedback | LONGTEXT | Yes | Feedback hiệu lực do giáo viên sửa |
 | override_is_correct | TINYINT(1) | Yes | Correctness hiệu lực do giáo viên xác nhận |
+| override_awarded_score | DECIMAL(5,2) | Yes | Điểm hiệu lực do giáo viên xác nhận/sửa; null cho phép reset về điểm sơ bộ |
 | override_reason | VARCHAR(1000) | Yes | Lý do bắt buộc của override |
 | overridden_by_teacher_id | VARCHAR(36) | Yes | Tenant-safe FK teacher thực hiện |
 | overridden_at | DATETIME(6) | Yes | Thời điểm UTC override |
@@ -898,6 +899,7 @@ Indexes/constraints:
 - UX(center_id, analysis_id, attempt_id), alternate key cho Evidence FK khóa analysis cùng Attempt.
 - IX(center_id, needs_teacher_review, created_at).
 - CHECK quality/confidence IS NULL OR BETWEEN 0 AND 100.
+- CHECK override_awarded_score IS NULL OR BETWEEN 0 AND 100.
 - Override fields phải all-null hoặc có override_reason + teacher + time; BLL invariant.
 
 Effective values:
@@ -906,6 +908,7 @@ Effective values:
 - effective_error_type = override_error_type ?? error_type.
 - effective_feedback = override_feedback ?? feedback.
 - effective_is_correct = override_is_correct ?? attempt.is_correct.
+- effective_awarded_score = override_awarded_score ?? attempt.awarded_score.
 
 Không lưu raw Gemini request/response trong table này.
 
@@ -943,7 +946,7 @@ Recovery:
 - Job terminal không được xử lý lại.
 - Unique attempt_id bảo đảm idempotency.
 
-# Module 6 — Dynamic Authorization & Evidence Governance [Target v2 — chưa migration]
+# Module 6 — Dynamic Authorization & Evidence Governance [Active — đã migration và kiểm tra trên MySQL]
 
 ## 35. permissions [System catalog, không có center_id]
 
@@ -1374,8 +1377,8 @@ Nếu AI Developer cho rằng cần table mới, phải tạo Change Proposal; k
 
 ## 50. Checklist nghiệm thu schema
 
-- [ ] Baseline 31 bảng được đối chiếu với migration-generated SQL và MySQL information_schema.
-- [ ] Target v2 đủ 6 module và 38 bảng sau khi migration 007–008 được phê duyệt.
+- [x] Baseline 31 bảng và 7 bảng Module 6 được đối chiếu với migration-generated SQL và MySQL information_schema.
+- [x] Target v2 đủ 6 module và 38 bảng đã được migration và nghiệm thu trên MySQL thật.
 - [ ] Mọi tenant-owned table có center_id.
 - [ ] Composite tenant FK được cấu hình tại quan hệ nhạy cảm.
 - [ ] Global Query Filter gồm tenant + soft delete.

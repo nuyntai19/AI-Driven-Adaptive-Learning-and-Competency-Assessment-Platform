@@ -11,10 +11,14 @@ namespace EduTwin.BLL.DigitalTwin;
 public sealed class BehaviorTwinUpdater : IBehaviorTwinUpdater
 {
     private readonly EduTwinDbContext _dbContext;
+    private readonly IBehaviorCalibrationCalculator _calibrationCalculator;
 
-    public BehaviorTwinUpdater(EduTwinDbContext dbContext)
+    public BehaviorTwinUpdater(
+        EduTwinDbContext dbContext,
+        IBehaviorCalibrationCalculator? calibrationCalculator = null)
     {
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
+        _calibrationCalculator = calibrationCalculator ?? new BehaviorCalibrationCalculator();
     }
 
     public async Task<BehaviorTwin> UpdateAsync(
@@ -75,15 +79,32 @@ public sealed class BehaviorTwinUpdater : IBehaviorTwinUpdater
         var avgConfidence = Math.Clamp(totalConfidence / newCountDecimal, 0m, 100m);
         twin.AvgConfidence = Math.Round(avgConfidence, 2, MidpointRounding.AwayFromZero);
 
-        // 5. Confidence Calibration (0 - 100)
-        if (attempt.IsCorrect.HasValue)
+        // 5. Confidence Calibration (0 - 100) based strictly on graded attempts
+        var subjectAttempts = await (
+            from a in _dbContext.Attempts
+            join q in _dbContext.Questions on new { a.CenterId, a.QuestionId } equals new { q.CenterId, q.QuestionId }
+            where a.CenterId == attempt.CenterId
+                && a.StudentId == attempt.StudentId
+                && q.SubjectId == subjectId
+            select new { a.AttemptId, a.Confidence, a.IsCorrect }
+        ).ToListAsync(cancellationToken);
+
+        var gradedSamples = subjectAttempts
+            .Select(a => new
+            {
+                a.Confidence,
+                IsCorrect = a.AttemptId == attempt.AttemptId ? attempt.IsCorrect : a.IsCorrect
+            })
+            .Where(a => a.IsCorrect.HasValue)
+            .Select(a => new GradedAttemptSample(a.Confidence, a.IsCorrect!.Value))
+            .ToList();
+
+        if (attempt.IsCorrect.HasValue && !subjectAttempts.Any(a => a.AttemptId == attempt.AttemptId))
         {
-            var targetCorrectness = attempt.IsCorrect.Value ? 100m : 0m;
-            var attemptCalibration = Math.Clamp(100m - Math.Abs(attempt.Confidence - targetCorrectness), 0m, 100m);
-            var totalCalibration = (twin.ConfidenceCalibration * prevCount) + attemptCalibration;
-            var avgCalibration = Math.Clamp(totalCalibration / newCountDecimal, 0m, 100m);
-            twin.ConfidenceCalibration = Math.Round(avgCalibration, 2, MidpointRounding.AwayFromZero);
+            gradedSamples.Add(new GradedAttemptSample(attempt.Confidence, attempt.IsCorrect.Value));
         }
+
+        twin.ConfidenceCalibration = _calibrationCalculator.CalculateCalibration(gradedSamples);
 
         twin.AttemptCount = newCount;
         twin.UpdatedAt = utcNow;

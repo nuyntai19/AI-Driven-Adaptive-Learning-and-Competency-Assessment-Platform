@@ -150,15 +150,23 @@ public sealed class EvidenceConsistencyChecker : IEvidenceConsistencyChecker
             reasons.Add(EvidenceConsistencyReasonCodes.SemanticInvalidRootCauseFormat);
         }
 
-        if (allowedNodeIds is not null && allowedNodeIds.Count > 0)
+        if (rootCauseIds.Count > 0)
         {
-            foreach (var rootCauseId in rootCauseIds)
+            if (allowedNodeIds is null || allowedNodeIds.Count == 0)
             {
-                if (!allowedNodeIds.Contains(rootCauseId))
+                semanticPassed = false;
+                reasons.Add(EvidenceConsistencyReasonCodes.SemanticInvalidRootCauseMismatch);
+            }
+            else
+            {
+                foreach (var rootCauseId in rootCauseIds)
                 {
-                    semanticPassed = false;
-                    reasons.Add(EvidenceConsistencyReasonCodes.SemanticInvalidRootCauseMismatch);
-                    break;
+                    if (!allowedNodeIds.Contains(rootCauseId))
+                    {
+                        semanticPassed = false;
+                        reasons.Add(EvidenceConsistencyReasonCodes.SemanticInvalidRootCauseMismatch);
+                        break;
+                    }
                 }
             }
         }

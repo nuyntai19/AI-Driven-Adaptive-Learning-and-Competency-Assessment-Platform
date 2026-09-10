@@ -29,6 +29,7 @@ public class ReasoningAnalysis : ITenantAppendOnlyEntity, IHasRowVersion
     public ErrorType? OverrideErrorType { get; set; }
     public string? OverrideFeedback { get; set; }
     public bool? OverrideIsCorrect { get; set; }
+    public decimal? OverrideAwardedScore { get; set; }
     public string? OverrideReason { get; set; }
     public Guid? OverriddenByTeacherId { get; set; }
     public DateTime? OverriddenAt { get; set; }

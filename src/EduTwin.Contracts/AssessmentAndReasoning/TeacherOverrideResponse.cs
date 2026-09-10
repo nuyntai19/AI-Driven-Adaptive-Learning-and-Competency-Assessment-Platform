@@ -15,6 +15,8 @@ public sealed class TeacherOverrideDataDto
     public bool HasTeacherOverride { get; set; }
     public uint OverrideVersion { get; set; }
     public DateTime OverriddenAt { get; set; }
+    public decimal? OverrideAwardedScore { get; set; }
+    public decimal? EffectiveAwardedScore { get; set; }
     public TeacherOverrideReplayDto Replay { get; set; } = new();
 }
 

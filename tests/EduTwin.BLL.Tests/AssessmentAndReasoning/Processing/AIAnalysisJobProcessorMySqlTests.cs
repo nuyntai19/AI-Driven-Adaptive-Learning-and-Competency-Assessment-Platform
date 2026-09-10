@@ -143,13 +143,92 @@ public sealed class AIAnalysisJobProcessorMySqlTests
         Assert.Single(persisted.Analyses);
     }
 
+    [MySqlIntegrationFact]
+    public async Task ExecuteAsync_RuleFallback_PersistsOperationalTelemetryAndAppliesExactlyOnceInMySql()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var centerId = Guid.NewGuid();
+        await SeedAsync(database.ConnectionString, centerId);
+        var tenant = new TenantContext();
+        using var tenantScope = tenant.BeginScope(centerId);
+
+        var failingAiService = new FailingAIService();
+
+        // 1. First run: retry 0 fails, transitions to Pending with retry 1
+        await using (var context1 = CreateContext(database.ConnectionString, tenant))
+        {
+            var processor1 = CreateProcessor(context1, tenant, failingAiService);
+            var result1 = await processor1.ExecuteAsync(1, "mysql-worker", CancellationToken.None);
+            Assert.Equal(AIAnalysisJobProcessingOutcome.RetryScheduled, result1.Outcome);
+        }
+
+        // Simulate lease renewal for retry: worker picks up pending job
+        await using (var leaseContext = CreateContext(database.ConnectionString, tenant))
+        {
+            var job = await leaseContext.AIAnalysisJobs.SingleAsync(j => j.AnalysisJobId == 1);
+            Assert.Equal(1u, job.RetryCount);
+            Assert.Equal(AIJobStatus.Pending, job.Status);
+            job.Status = AIJobStatus.Processing;
+            job.LeaseOwner = "mysql-worker";
+            job.LeaseUntil = UtcNow.AddMinutes(5);
+            await leaseContext.SaveChangesAsync();
+        }
+
+        // 2. Second run: retry 1 fails again -> triggers RuleFallback through TwinCompletionOrchestrator
+        await using (var context2 = CreateContext(database.ConnectionString, tenant))
+        {
+            var processor2 = CreateProcessor(context2, tenant, failingAiService);
+            var result2 = await processor2.ExecuteAsync(1, "mysql-worker", CancellationToken.None);
+            Assert.Equal(AIAnalysisJobProcessingOutcome.FallbackCompleted, result2.Outcome);
+        }
+
+        // 3. Verify MySQL database state
+        await using (var verifyContext = CreateContext(database.ConnectionString, tenant))
+        {
+            var attempt = await verifyContext.Attempts.SingleAsync(a => a.AttemptId == 1);
+            Assert.Equal(AttemptStatus.NeedsTeacherReview, attempt.Status);
+
+            var job = await verifyContext.AIAnalysisJobs.SingleAsync(j => j.AnalysisJobId == 1);
+            Assert.Equal(AIJobStatus.FallbackCompleted, job.Status);
+
+            var analysis = await verifyContext.ReasoningAnalyses.SingleAsync(ra => ra.AttemptId == 1);
+            Assert.True(analysis.IsFallback);
+            Assert.True(analysis.NeedsTeacherReview);
+
+            var evidence = await verifyContext.EvidenceAssessments.SingleAsync(ea => ea.AttemptId == 1);
+            Assert.Equal(EvidenceTrustLevel.ReviewOnly, evidence.TrustLevel);
+            Assert.Equal(0.00m, evidence.ReasoningWeight);
+
+            // Operational telemetry must be applied to BehaviorTwin!
+            var behaviorTwin = await verifyContext.BehaviorTwins.SingleAsync(b => b.CenterId == centerId);
+            Assert.Equal(1u, behaviorTwin.AttemptCount);
+            Assert.Equal(20m, behaviorTwin.AvgTimeSpentSeconds);
+
+            // KnowledgeTwin mastery delta is 0
+            var knowledgeTwin = await verifyContext.KnowledgeTwins.SingleAsync(kt => kt.CenterId == centerId);
+            Assert.Equal(0.00m, knowledgeTwin.MasteryPercentage);
+        }
+
+        // 4. Exactly-once check: re-running or reclaimed retry cannot double-apply
+        await using (var retryContext = CreateContext(database.ConnectionString, tenant))
+        {
+            var processorRetry = CreateProcessor(retryContext, tenant, failingAiService);
+            var retryResult = await processorRetry.ExecuteAsync(1, "mysql-worker", CancellationToken.None);
+            Assert.Equal(AIAnalysisJobProcessingOutcome.AlreadyTerminal, retryResult.Outcome);
+
+            var behaviorTwin = await retryContext.BehaviorTwins.SingleAsync(b => b.CenterId == centerId);
+            Assert.Equal(1u, behaviorTwin.AttemptCount); // Did NOT increment to 2!
+        }
+    }
+
     private static AIAnalysisJobProcessor CreateProcessor(
         EduTwinDbContext context,
-        TenantContext tenant) =>
+        TenantContext tenant,
+        IAIService? aiService = null) =>
         new(
             context,
             tenant,
-            new SuccessfulAIService(),
+            aiService ?? new SuccessfulAIService(),
             new AIAnalysisRequestFactory(),
             new AIReasoningAnalysisBuilder(),
             new RuleBasedFallbackBuilder(),
@@ -356,6 +435,14 @@ public sealed class AIAnalysisJobProcessorMySqlTests
                 Feedback = "Valid relational response."
             });
         }
+    }
+
+    private sealed class FailingAIService : IAIService
+    {
+        public Task<AnalyzeReasoningResponse> AnalyzeReasoningAsync(
+            AnalyzeReasoningRequest request,
+            CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Deliberate AI failure for fallback test.");
     }
 
     private sealed class ThrowAfterSaveInterceptor : SaveChangesInterceptor

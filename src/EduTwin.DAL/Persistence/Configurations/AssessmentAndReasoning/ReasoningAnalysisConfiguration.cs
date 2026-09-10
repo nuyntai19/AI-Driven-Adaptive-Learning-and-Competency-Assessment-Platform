@@ -81,6 +81,7 @@ public class ReasoningAnalysisConfiguration : IEntityTypeConfiguration<Reasoning
 
         builder.Property(r => r.OverrideFeedback).HasColumnName("override_feedback").HasColumnType("longtext");
         builder.Property(r => r.OverrideIsCorrect).HasColumnName("override_is_correct").HasColumnType("tinyint(1)");
+        builder.Property(r => r.OverrideAwardedScore).HasColumnName("override_awarded_score").HasColumnType("decimal(5,2)");
         builder.Property(r => r.OverrideReason).HasColumnName("override_reason").HasColumnType("varchar(1000)");
         builder.Property(r => r.OverriddenByTeacherId).HasColumnName("overridden_by_teacher_id").HasColumnType("varchar(36)");
         builder.Property(r => r.OverriddenAt).HasColumnName("overridden_at").HasColumnType("datetime(6)");
@@ -98,6 +99,7 @@ public class ReasoningAnalysisConfiguration : IEntityTypeConfiguration<Reasoning
             t.HasCheckConstraint("ck_reasoning_analyses_override_reasoning_quality", "`override_reasoning_quality` IS NULL OR `override_reasoning_quality` BETWEEN 0 AND 100");
             t.HasCheckConstraint("ck_reasoning_analyses_error_type", "`error_type` IN ('None', 'Knowledge', 'Skill', 'Reasoning', 'Behavior', 'Presentation', 'Unknown')");
             t.HasCheckConstraint("ck_reasoning_analyses_override_error_type", "`override_error_type` IS NULL OR `override_error_type` IN ('None', 'Knowledge', 'Skill', 'Reasoning', 'Behavior', 'Presentation', 'Unknown')");
+            t.HasCheckConstraint("ck_reasoning_analyses_override_awarded_score", "`override_awarded_score` IS NULL OR `override_awarded_score` >= 0");
             t.HasCheckConstraint("ck_reasoning_analyses_provider", "`provider` IN ('Gemini', 'RuleBased')");
         });
 

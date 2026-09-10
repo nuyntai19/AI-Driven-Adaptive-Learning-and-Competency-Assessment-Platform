@@ -45,6 +45,7 @@ public sealed class KnowledgeTwinUpdater : IKnowledgeTwinUpdater
         {
             twin = new KnowledgeTwin
             {
+                KnowledgeTwinId = (ulong)utcNow.Ticks ^ (ulong)attempt.AttemptId,
                 CenterId = attempt.CenterId,
                 StudentId = attempt.StudentId,
                 SubjectId = question.SubjectId,

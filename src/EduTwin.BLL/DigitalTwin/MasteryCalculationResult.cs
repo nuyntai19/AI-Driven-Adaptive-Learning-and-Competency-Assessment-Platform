@@ -1,5 +1,14 @@
 namespace EduTwin.BLL.DigitalTwin;
 
+public sealed record ReplayStepBreakdown(
+    ulong AttemptId,
+    decimal ReasoningWeight,
+    bool EffectiveCorrectness,
+    decimal RollingCalibration,
+    decimal PreviousMastery,
+    decimal NewMastery,
+    decimal Delta);
+
 public sealed record MasteryCalculationBreakdown(
     bool IsFallback,
     decimal PreviousMastery,
@@ -14,7 +23,8 @@ public sealed record MasteryCalculationBreakdown(
     decimal EvidenceTarget,
     decimal UnclampedNewMastery,
     decimal NewMastery,
-    decimal Delta);
+    decimal Delta,
+    IReadOnlyList<ReplayStepBreakdown>? ReplaySteps = null);
 
 public sealed record MasteryCalculationResult(
     decimal PreviousMastery,
