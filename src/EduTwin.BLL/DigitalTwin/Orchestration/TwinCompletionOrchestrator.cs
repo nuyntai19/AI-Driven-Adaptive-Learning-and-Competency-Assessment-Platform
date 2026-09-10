@@ -18,6 +18,7 @@ public sealed class TwinCompletionOrchestrator : ITwinCompletionOrchestrator
     private readonly EduTwinDbContext _dbContext;
     private readonly IEvidenceGate _evidenceGate;
     private readonly IEvidenceAssessmentFactory _evidenceAssessmentFactory;
+    private readonly IEvidenceConsistencyChecker _consistencyChecker;
     private readonly IBehaviorTwinUpdater _behaviorTwinUpdater;
     private readonly IKnowledgeTwinUpdater _knowledgeTwinUpdater;
     private readonly ITwinUpdateHistoryWriter _historyWriter;
@@ -32,7 +33,8 @@ public sealed class TwinCompletionOrchestrator : ITwinCompletionOrchestrator
         IKnowledgeTwinUpdater knowledgeTwinUpdater,
         ITwinUpdateHistoryWriter historyWriter,
         IStudentGoalRiskUpdater goalRiskUpdater,
-        IStudentTwinUpdater studentTwinUpdater)
+        IStudentTwinUpdater studentTwinUpdater,
+        IEvidenceConsistencyChecker? consistencyChecker = null)
     {
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         _evidenceGate = evidenceGate ?? throw new ArgumentNullException(nameof(evidenceGate));
@@ -42,6 +44,7 @@ public sealed class TwinCompletionOrchestrator : ITwinCompletionOrchestrator
         _historyWriter = historyWriter ?? throw new ArgumentNullException(nameof(historyWriter));
         _goalRiskUpdater = goalRiskUpdater ?? throw new ArgumentNullException(nameof(goalRiskUpdater));
         _studentTwinUpdater = studentTwinUpdater ?? throw new ArgumentNullException(nameof(studentTwinUpdater));
+        _consistencyChecker = consistencyChecker ?? new EvidenceConsistencyChecker();
     }
 
     public async Task<TwinCompletionResult> CompleteAsync(
@@ -50,24 +53,27 @@ public sealed class TwinCompletionOrchestrator : ITwinCompletionOrchestrator
         ReasoningAnalysis analysis,
         TwinEventSource eventSource,
         DateTime utcNow,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyCollection<ulong>? allowedNodeIds = null)
     {
         ArgumentNullException.ThrowIfNull(attempt);
         ArgumentNullException.ThrowIfNull(question);
         ArgumentNullException.ThrowIfNull(analysis);
 
-        // 1. Evaluate Evidence Gate
+        // 1. Evaluate Evidence Consistency and Gate
         var gateSource = eventSource == TwinEventSource.RuleFallback
             ? EvidenceSourceType.RuleFallback
             : (eventSource == TwinEventSource.TeacherOverride ? EvidenceSourceType.TeacherOverride : EvidenceSourceType.AI);
 
+        var consistency = _consistencyChecker.Evaluate(attempt, question, analysis, allowedNodeIds);
+
         var gateInput = new EvidenceGateInput(
             SourceType: gateSource,
-            StructuralValidationPassed: true,
-            SemanticValidationPassed: true,
-            HasContradiction: false,
-            HasAnomaly: false,
-            HasRequiredEvidence: analysis.ReasoningQuality.HasValue,
+            StructuralValidationPassed: consistency.StructuralValidationPassed,
+            SemanticValidationPassed: consistency.SemanticValidationPassed,
+            HasContradiction: consistency.HasContradiction,
+            HasAnomaly: consistency.HasAnomaly,
+            HasRequiredEvidence: consistency.HasRequiredEvidence,
             EffectiveIsCorrect: attempt.IsCorrect,
             AnalysisConfidence: analysis.AnalysisConfidence,
             AnalysisOverrideVersion: analysis.OverrideVersion);

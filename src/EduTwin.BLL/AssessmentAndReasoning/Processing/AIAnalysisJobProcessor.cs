@@ -30,6 +30,7 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
     private readonly IAIAnalysisJobStateMachine _stateMachine;
     private readonly IEvidenceGate _evidenceGate;
     private readonly IEvidenceAssessmentFactory _evidenceAssessmentFactory;
+    private readonly IEvidenceConsistencyChecker _consistencyChecker;
     private readonly ITwinCompletionOrchestrator _twinCompletionOrchestrator;
     private readonly TimeProvider _timeProvider;
 
@@ -44,7 +45,8 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         IEvidenceGate evidenceGate,
         IEvidenceAssessmentFactory evidenceAssessmentFactory,
         TimeProvider timeProvider,
-        ITwinCompletionOrchestrator? twinCompletionOrchestrator = null)
+        ITwinCompletionOrchestrator? twinCompletionOrchestrator = null,
+        IEvidenceConsistencyChecker? consistencyChecker = null)
     {
         _dbContext = dbContext;
         _tenantContext = tenantContext;
@@ -55,6 +57,7 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         _stateMachine = stateMachine;
         _evidenceGate = evidenceGate;
         _evidenceAssessmentFactory = evidenceAssessmentFactory;
+        _consistencyChecker = consistencyChecker ?? new EvidenceConsistencyChecker();
         _timeProvider = timeProvider;
         _twinCompletionOrchestrator = twinCompletionOrchestrator ?? new TwinCompletionOrchestrator(
             dbContext,
@@ -64,7 +67,8 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             new KnowledgeTwinUpdater(dbContext),
             new TwinUpdateHistoryWriter(dbContext),
             new StudentGoalRiskUpdater(dbContext),
-            new StudentTwinUpdater(dbContext));
+            new StudentTwinUpdater(dbContext),
+            _consistencyChecker);
     }
 
     public async Task<AIAnalysisJobProcessingResult> ExecuteAsync(
@@ -256,7 +260,8 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                 analysis,
                 TwinEventSource.AIAnalysis,
                 transactionalUtcNow,
-                cancellationToken);
+                cancellationToken,
+                requestContext.AllowedNodes.Select(n => n.NodeId).ToArray());
             if (_stateMachine.Complete(job, transactionalUtcNow)
                 != AIAnalysisJobTransitionResult.Success)
             {
@@ -380,13 +385,25 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             }
             else if (job.RetryCount == 1 && fallback is not null)
             {
+                var allowedIds = requestContext?.AllowedNodes?.Select(n => n.NodeId).ToArray();
+                var question = requestContext?.Question ?? attempt.Question;
+                var consistency = question is not null
+                    ? _consistencyChecker.Evaluate(attempt, question, fallback, allowedIds)
+                    : new EvidenceConsistencyResult(
+                        SemanticValidationPassed: true,
+                        HasContradiction: false,
+                        HasAnomaly: false,
+                        HasRequiredEvidence: false,
+                        ReasonCodes: [EvidenceReasonCodes.SourceRuleFallback],
+                        StructuralValidationPassed: true);
+
                 var decision = _evidenceGate.Evaluate(new EvidenceGateInput(
                     EvidenceSourceType.RuleFallback,
-                    StructuralValidationPassed: true,
-                    SemanticValidationPassed: true,
-                    HasContradiction: false,
-                    HasAnomaly: false,
-                    HasRequiredEvidence: false,
+                    StructuralValidationPassed: consistency.StructuralValidationPassed,
+                    SemanticValidationPassed: consistency.SemanticValidationPassed,
+                    HasContradiction: consistency.HasContradiction,
+                    HasAnomaly: consistency.HasAnomaly,
+                    HasRequiredEvidence: consistency.HasRequiredEvidence,
                     EffectiveIsCorrect: attempt.IsCorrect,
                     AnalysisConfidence: null,
                     AnalysisOverrideVersion: fallback.OverrideVersion));

@@ -24,5 +24,6 @@ public interface ITwinCompletionOrchestrator
         ReasoningAnalysis analysis,
         TwinEventSource eventSource,
         DateTime utcNow,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        IReadOnlyCollection<ulong>? allowedNodeIds = null);
 }

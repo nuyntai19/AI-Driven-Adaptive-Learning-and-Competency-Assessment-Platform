@@ -21,6 +21,7 @@ public static class DependencyInjection
         services.TryAddSingleton<PreliminaryGraderFactory>();
         services.TryAddSingleton<IAIAnalysisJobStateMachine, AIAnalysisJobStateMachine>();
         services.TryAddSingleton<IEvidenceGate, EvidenceGate>();
+        services.TryAddSingleton<IEvidenceConsistencyChecker, EvidenceConsistencyChecker>();
         services.TryAddSingleton<IEvidenceAssessmentFactory, EvidenceAssessmentFactory>();
         services.TryAddSingleton<IRuleBasedFallbackBuilder, RuleBasedFallbackBuilder>();
         services.TryAddSingleton<IAIAnalysisRequestFactory, AIAnalysisRequestFactory>();
