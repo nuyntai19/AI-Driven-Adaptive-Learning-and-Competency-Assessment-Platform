@@ -5,6 +5,8 @@ import { isAxiosError } from "axios";
 import { organizationApi } from "../api/organizationApi";
 import type { ProblemDetails, UserStatus } from "../types/auth";
 import type { TeacherListParams, CreateTeacherRequest } from "../types/organization";
+import { useAuthStore } from "../stores/authStore";
+import { permissions } from "../auth/permissions";
 
 class CreateTeacherMutationError extends Error {
   constructor(public readonly errorCode?: string) {
@@ -14,6 +16,7 @@ class CreateTeacherMutationError extends Error {
 
 export const TeacherListPage: React.FC = () => {
   const queryClient = useQueryClient();
+  const canCreateTeacher = useAuthStore((state) => state.hasPermission(permissions.teachersCreate));
   const [page, setPage] = useState<number>(1);
   const pageSize = 20;
   const [search, setSearch] = useState<string>("");
@@ -150,13 +153,11 @@ export const TeacherListPage: React.FC = () => {
             </h1>
           </div>
           <div className="flex gap-4">
-            <button
-              type="button"
-              onClick={() => setIsCreating(true)}
-              className="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-            >
-              Thêm giáo viên
-            </button>
+            {canCreateTeacher && (
+              <button type="button" onClick={() => setIsCreating(true)} className="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">
+                Thêm giáo viên
+              </button>
+            )}
             <Link
               to="/"
               className="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
@@ -172,7 +173,7 @@ export const TeacherListPage: React.FC = () => {
           </div>
         )}
 
-        {isCreating && (
+        {isCreating && canCreateTeacher && (
           <div className="mb-8 rounded-lg bg-white shadow p-6">
             <h2 className="text-lg font-medium leading-6 text-gray-900 mb-4">Thêm giáo viên mới</h2>
 

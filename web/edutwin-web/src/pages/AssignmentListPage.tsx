@@ -3,6 +3,8 @@ import { isAxiosError } from "axios";
 import { Link } from "react-router-dom";
 import { useAssignments } from "../features/assignments/useAssignments";
 import type { AssignmentStatus } from "../types/assignments";
+import { useAuthStore } from "../stores/authStore";
+import { permissions } from "../auth/permissions";
 
 const getListError = (error: unknown) => {
   if (isAxiosError(error)) return error.response?.data?.detail || error.message;
@@ -12,6 +14,8 @@ const getListError = (error: unknown) => {
 export const AssignmentListPage = () => {
   const [classId, setClassId] = useState<string>("");
   const [status, setStatus] = useState<AssignmentStatus | "">("");
+  const canCreate = useAuthStore((state) => state.hasPermission(permissions.assignmentsCreate));
+  const canUpdate = useAuthStore((state) => state.hasPermission(permissions.assignmentsUpdate));
 
   const { data: response, isLoading, isError, error } = useAssignments({
     classId: classId || undefined,
@@ -22,12 +26,12 @@ export const AssignmentListPage = () => {
     <div className="p-6 max-w-7xl mx-auto">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold text-slate-800">Quản lý Bài tập</h1>
-        <Link
+        {canCreate && <Link
           to="/quan-ly/bai-tap/tao-moi"
           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition shadow-sm font-medium"
         >
           Tạo bài tập mới
-        </Link>
+        </Link>}
       </div>
 
       <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mb-6 flex gap-4">
@@ -114,12 +118,12 @@ export const AssignmentListPage = () => {
                 </div>
               </div>
               <div className="bg-slate-50 px-5 py-3 border-t border-slate-100 flex justify-end gap-3">
-                <Link
+                {canUpdate && <Link
                   to={`/quan-ly/bai-tap/${assignment.assignmentId}`}
                   className="text-sm font-medium text-blue-600 hover:text-blue-700"
                 >
                   Chi tiết
-                </Link>
+                </Link>}
                 {(assignment.status === "Published" || assignment.status === "Closed") && (
                   <Link
                     to={`/quan-ly/bai-tap/${assignment.assignmentId}/tien-do`}

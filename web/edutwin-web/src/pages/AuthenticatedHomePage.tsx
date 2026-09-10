@@ -3,9 +3,10 @@ import { useNavigate, Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { logout } from "../auth/authApi";
 import { useAuthStore } from "../stores/authStore";
-import type { UserRole, UserStatus } from "../types/auth";
+import type { AccountType, UserStatus } from "../types/auth";
+import { authorizationUiPermissions, permissions } from "../auth/permissions";
 
-const roleLabels: Record<UserRole, string> = {
+const roleLabels: Record<AccountType, string> = {
   Student: "Học sinh",
   Teacher: "Giáo viên",
   CenterManager: "Quản lý trung tâm",
@@ -21,6 +22,8 @@ export const AuthenticatedHomePage = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
+  const hasPermission = useAuthStore((state) => state.hasPermission);
+  const hasAnyPermission = useAuthStore((state) => state.hasAnyPermission);
 
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
@@ -60,7 +63,10 @@ export const AuthenticatedHomePage = () => {
         <div className="mt-6">
           <div className="mb-6 flex gap-4 flex-wrap">
             <span className="inline-flex items-center rounded-md bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700 ring-1 ring-inset ring-indigo-700/10">
-              Vai trò: {roleLabels[user.role]}
+              Loại tài khoản: {roleLabels[user.accountType]}
+            </span>
+            <span className="inline-flex items-center rounded-md bg-slate-50 px-2 py-1 text-xs font-medium text-slate-700 ring-1 ring-inset ring-slate-300">
+              {user.roles.length} role · {user.permissions.length} permission
             </span>
             {user.status && (
               <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
@@ -75,17 +81,13 @@ export const AuthenticatedHomePage = () => {
             </p>
           </div>
 
-          {/* Links accessible to ALL authenticated users */}
           <div className="mt-6 flex flex-wrap gap-4">
-            <Link
-              to="/kien-thuc/do-thi"
-              className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-            >
-              Đồ thị kiến thức
-            </Link>
+            {hasPermission(permissions.subjectsRead) && hasPermission(permissions.nodesRead) && hasPermission(permissions.edgesRead) && (
+              <Link to="/kien-thuc/do-thi" className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">Đồ thị kiến thức</Link>
+            )}
           </div>
 
-          {user.role === "CenterManager" && (
+          {hasPermission(permissions.teachersRead) && (
             <div className="mt-4 flex flex-wrap gap-4">
               <Link
                 to="/quan-ly/giao-vien"
@@ -96,42 +98,16 @@ export const AuthenticatedHomePage = () => {
             </div>
           )}
 
-          {(user.role === "CenterManager" || user.role === "Teacher") && (
-            <div className="mt-4 flex flex-wrap gap-4">
-              <Link
-                to="/quan-ly/lop-hoc"
-                className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-              >
-                Danh sách lớp học
-              </Link>
-              <Link
-                to="/quan-ly/hoc-sinh"
-                className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-              >
-                Danh sách học sinh
-              </Link>
-              <Link
-                to="/quan-ly/giao-trinh"
-                className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-              >
-                Quản lý lộ trình
-              </Link>
-              <Link
-                to="/quan-ly/cau-hoi"
-                className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-              >
-                Ngân hàng câu hỏi
-              </Link>
-              <Link
-                to="/quan-ly/bai-tap"
-                className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-              >
-                Quản lý bài tập
-              </Link>
-            </div>
-          )}
+          <div className="mt-4 flex flex-wrap gap-4">
+            {hasPermission(permissions.classesRead) && <Link to="/quan-ly/lop-hoc" className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">Danh sách lớp học</Link>}
+            {hasPermission(permissions.studentsRead) && <Link to="/quan-ly/hoc-sinh" className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">Danh sách học sinh</Link>}
+            {hasPermission(permissions.curriculumsRead) && <Link to="/quan-ly/giao-trinh" className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">Quản lý lộ trình</Link>}
+            {hasPermission(permissions.questionsRead) && <Link to="/quan-ly/cau-hoi" className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">Ngân hàng câu hỏi</Link>}
+            {hasPermission(permissions.assignmentsRead) && user.accountType !== "Student" && <Link to="/quan-ly/bai-tap" className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">Quản lý bài tập</Link>}
+            {hasAnyPermission(authorizationUiPermissions) && user.accountType === "CenterManager" && <Link to="/quan-ly/phan-quyen" className="inline-flex items-center justify-center rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-500">Phân quyền trung tâm</Link>}
+          </div>
 
-          {user.role === "Student" && (
+          {user.accountType === "Student" && hasPermission(permissions.assignmentsRead) && (
             <div className="mt-4 flex flex-wrap gap-4">
               <Link
                 to="/hoc-tap/bai-tap"

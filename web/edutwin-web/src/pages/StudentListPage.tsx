@@ -5,6 +5,8 @@ import { isAxiosError } from "axios";
 import { organizationApi } from "../api/organizationApi";
 import type { ProblemDetails, UserStatus } from "../types/auth";
 import type { StudentListParams, CreateStudentRequest } from "../types/organization";
+import { useAuthStore } from "../stores/authStore";
+import { permissions } from "../auth/permissions";
 
 class CreateStudentMutationError extends Error {
   constructor(public readonly errorCode?: string) {
@@ -14,6 +16,7 @@ class CreateStudentMutationError extends Error {
 
 export const StudentListPage: React.FC = () => {
   const queryClient = useQueryClient();
+  const canCreateStudent = useAuthStore((state) => state.hasPermission(permissions.studentsCreate));
   const [page, setPage] = useState<number>(1);
   const pageSize = 20;
 
@@ -176,13 +179,11 @@ export const StudentListPage: React.FC = () => {
             </h1>
           </div>
           <div className="flex gap-4">
-            <button
-              type="button"
-              onClick={() => setIsCreating(true)}
-              className="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-            >
-              Thêm học sinh
-            </button>
+            {canCreateStudent && (
+              <button type="button" onClick={() => setIsCreating(true)} className="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">
+                Thêm học sinh
+              </button>
+            )}
             <Link
               to="/"
               className="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
@@ -198,7 +199,7 @@ export const StudentListPage: React.FC = () => {
           </div>
         )}
 
-        {isCreating && (
+        {isCreating && canCreateStudent && (
           <div className="mb-8 rounded-lg bg-white shadow p-6">
             <h2 className="text-lg font-medium leading-6 text-gray-900 mb-4">Thêm học sinh mới</h2>
 

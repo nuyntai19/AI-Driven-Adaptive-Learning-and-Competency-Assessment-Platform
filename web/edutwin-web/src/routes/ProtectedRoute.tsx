@@ -1,13 +1,11 @@
 import { Navigate, Outlet } from "react-router-dom";
 import { useAuthStore } from "../stores/authStore";
-import type { UserRole } from "../types/auth";
 
 interface ProtectedRouteProps {
-  allowedRoles?: UserRole[];
   children?: React.ReactNode;
 }
 
-export const ProtectedRoute = ({ allowedRoles, children }: ProtectedRouteProps) => {
+export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   const { sessionStatus, user } = useAuthStore();
 
   if (sessionStatus === "unknown") {
@@ -22,12 +20,6 @@ export const ProtectedRoute = ({ allowedRoles, children }: ProtectedRouteProps) 
 
   if (sessionStatus === "anonymous" || !user) {
     return <Navigate to="/dang-nhap" replace />;
-  }
-
-  if (allowedRoles && allowedRoles.length > 0) {
-    if (!allowedRoles.includes(user.role)) {
-      return <Navigate to="/" replace />;
-    }
   }
 
   return children ? <>{children}</> : <Outlet />;

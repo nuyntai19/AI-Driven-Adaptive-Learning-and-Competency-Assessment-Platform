@@ -1,5 +1,13 @@
-export type UserRole = "Student" | "Teacher" | "CenterManager";
+export type AccountType = "Student" | "Teacher" | "CenterManager";
+export type UserRole = AccountType;
 export type UserStatus = "Active" | "Locked" | "Disabled";
+
+export interface AuthorizationRoleSummary {
+  roleId: string;
+  roleCode: string;
+  roleName: string;
+  accountType: AccountType;
+}
 
 export interface AuthUser {
   userId: string;
@@ -7,7 +15,12 @@ export interface AuthUser {
   centerName: string;
   username: string;
   displayName: string;
+  accountType: AccountType;
+  /** Compatibility projection only. Never use this field as a capability check. */
   role: UserRole;
+  roles: AuthorizationRoleSummary[];
+  permissions: string[];
+  authorizationVersion: number;
   status?: UserStatus;
 }
 

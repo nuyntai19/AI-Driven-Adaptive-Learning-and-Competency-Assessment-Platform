@@ -1,9 +1,15 @@
 import { useState } from "react";
 import { useQuestions, useActivateQuestion, useArchiveQuestion } from "../features/questions/useQuestions";
 import type { QuestionFilter } from "../types/questions";
+import { useAuthStore } from "../stores/authStore";
+import { permissions } from "../auth/permissions";
 
 export const QuestionBankPage = () => {
   const [filter, setFilter] = useState<QuestionFilter>({});
+  const hasPermission = useAuthStore((state) => state.hasPermission);
+  const canCreate = hasPermission(permissions.questionsCreate);
+  const canUpdate = hasPermission(permissions.questionsUpdate);
+  const canPublish = hasPermission(permissions.questionsPublish);
 
   const { data: response, isLoading, isError, error } = useQuestions(filter);
   const activateMutation = useActivateQuestion();
@@ -42,12 +48,12 @@ export const QuestionBankPage = () => {
     <div className="p-6 max-w-7xl mx-auto">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold text-slate-800">Ngân hàng Câu hỏi</h1>
-        <button 
+        {canCreate && <button
           onClick={() => window.location.href = "/quan-ly/cau-hoi/tao-moi"}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition shadow-sm font-medium"
         >
           Tạo Câu hỏi mới
-        </button>
+        </button>}
       </div>
 
       <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -161,7 +167,7 @@ export const QuestionBankPage = () => {
 
                 <div className="flex justify-between items-center pt-4 border-t border-slate-100">
                   <div className="flex gap-2">
-                    {(question.status === 'Draft' || question.status === 'Archived') && (
+                    {canPublish && (question.status === 'Draft' || question.status === 'Archived') && (
                       <button
                         onClick={() => handleActivate(question.questionId, question.rowVersion)}
                         disabled={activateMutation.isPending}
@@ -170,7 +176,7 @@ export const QuestionBankPage = () => {
                         Kích hoạt
                       </button>
                     )}
-                    {(question.status === 'Draft' || question.status === 'Active') && (
+                    {canPublish && (question.status === 'Draft' || question.status === 'Active') && (
                       <button
                         onClick={() => handleArchive(question.questionId, question.rowVersion)}
                         disabled={archiveMutation.isPending}
@@ -180,12 +186,12 @@ export const QuestionBankPage = () => {
                       </button>
                     )}
                   </div>
-                  <button 
+                  {canUpdate && <button
                     onClick={() => window.location.href = `/quan-ly/cau-hoi/${question.questionId}`}
                     className="text-blue-600 text-sm font-medium hover:underline"
                   >
                     Chi tiết
-                  </button>
+                  </button>}
                 </div>
               </div>
             </div>

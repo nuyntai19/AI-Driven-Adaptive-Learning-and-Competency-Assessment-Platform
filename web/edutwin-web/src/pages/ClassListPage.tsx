@@ -6,11 +6,15 @@ import { organizationApi } from "../api/organizationApi";
 import type { ClassListParams, ClassStatus } from "../types/organization";
 import type { ProblemDetails } from "../types/auth";
 import { useAuthStore } from "../stores/authStore";
+import { permissions } from "../auth/permissions";
 
 export const ClassListPage: React.FC = () => {
   const queryClient = useQueryClient();
-  const { user } = useAuthStore();
-  const isCenterManager = user?.role === "CenterManager";
+  const hasPermission = useAuthStore((state) => state.hasPermission);
+  const canCreateClass =
+    hasPermission(permissions.classesCreate) &&
+    hasPermission(permissions.subjectsRead) &&
+    hasPermission(permissions.teachersRead);
 
   const [page, setPage] = useState<number>(1);
   const pageSize = 10;
@@ -39,7 +43,7 @@ export const ClassListPage: React.FC = () => {
     queryFn: () => organizationApi.listClasses(queryParams),
   });
 
-  const shouldFetchOptions = isCenterManager && isCreateModalOpen;
+  const shouldFetchOptions = canCreateClass && isCreateModalOpen;
 
   const {
     data: subjectsData,
@@ -108,7 +112,7 @@ export const ClassListPage: React.FC = () => {
   const normalizedTeacherId = teacherId.trim();
 
   const isFormValid =
-    isCenterManager &&
+    canCreateClass &&
     isCreateModalOpen &&
     normalizedClassName.length > 0 &&
     normalizedClassName.length <= 150 &&
@@ -138,7 +142,7 @@ export const ClassListPage: React.FC = () => {
     const normTeacherId = teacherId.trim();
 
     const isValid =
-      isCenterManager &&
+      canCreateClass &&
       isCreateModalOpen &&
       normClassName.length > 0 &&
       normClassName.length <= 150 &&
@@ -209,7 +213,7 @@ export const ClassListPage: React.FC = () => {
             >
               Về trang chủ
             </Link>
-            {isCenterManager && (
+            {canCreateClass && (
               <button
                 type="button"
                 onClick={() => setIsCreateModalOpen(true)}
@@ -409,7 +413,7 @@ export const ClassListPage: React.FC = () => {
         </div>
       </div>
 
-      {isCreateModalOpen && isCenterManager && (
+      {isCreateModalOpen && canCreateClass && (
         <div className="fixed inset-0 z-10 overflow-y-auto">
           <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
             <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={createClassMutation.isPending ? undefined : handleCancelCreate}></div>

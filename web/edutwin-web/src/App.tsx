@@ -16,7 +16,10 @@ import { AssignmentEditorPage } from "./pages/AssignmentEditorPage";
 import { AssignmentProgressPage } from "./pages/AssignmentProgressPage";
 import { StudentAssignmentsPage } from "./pages/StudentAssignmentsPage";
 import { StudentAssignmentDetailPage } from "./pages/StudentAssignmentDetailPage";
-import { RoleRoute } from "./routes/RoleRoute";
+import { PermissionRoute } from "./routes/PermissionRoute";
+import { permissions, authorizationUiPermissions } from "./auth/permissions";
+import { AccessDeniedPage } from "./pages/AccessDeniedPage";
+import { AuthorizationManagementPage } from "./pages/AuthorizationManagementPage";
 import { useAuthStore } from "./stores/authStore";
 
 const FallbackRoute = () => {
@@ -35,30 +38,60 @@ function App() {
 
         <Route element={<ProtectedRoute />}>
           <Route path="/" element={<AuthenticatedHomePage />} />
-          <Route path="/kien-thuc/do-thi" element={<KnowledgeGraphPage />} />
+          <Route path="/khong-co-quyen" element={<AccessDeniedPage />} />
 
-          <Route element={<RoleRoute allowedRoles={["CenterManager"]} />}>
+          <Route element={<PermissionRoute allOf={[permissions.subjectsRead, permissions.nodesRead, permissions.edgesRead]} />}>
+            <Route path="/kien-thuc/do-thi" element={<KnowledgeGraphPage />} />
+          </Route>
+
+          <Route element={<PermissionRoute allOf={[permissions.teachersRead]} />}>
             <Route path="/quan-ly/giao-vien" element={<TeacherListPage />} />
           </Route>
 
-          <Route element={<RoleRoute allowedRoles={["CenterManager", "Teacher"]} />}>
+          <Route element={<PermissionRoute allOf={[permissions.classesRead]} />}>
             <Route path="/quan-ly/lop-hoc" element={<ClassListPage />} />
+          </Route>
+          <Route element={<PermissionRoute allOf={[permissions.studentsRead]} />}>
             <Route path="/quan-ly/hoc-sinh" element={<StudentListPage />} />
+          </Route>
+          <Route element={<PermissionRoute allOf={[permissions.curriculumsRead]} />}>
             <Route path="/quan-ly/giao-trinh" element={<CurriculumListPage />} />
+          </Route>
+          <Route element={<PermissionRoute allOf={[permissions.curriculumsCreate]} />}>
             <Route path="/quan-ly/giao-trinh/tao-moi" element={<CurriculumEditorPage />} />
+          </Route>
+          <Route element={<PermissionRoute allOf={[permissions.curriculumsUpdate]} />}>
             <Route path="/quan-ly/giao-trinh/:id" element={<CurriculumEditorPage />} />
+          </Route>
+          <Route element={<PermissionRoute allOf={[permissions.questionsRead]} />}>
             <Route path="/quan-ly/cau-hoi" element={<QuestionBankPage />} />
+          </Route>
+          <Route element={<PermissionRoute allOf={[permissions.questionsCreate]} />}>
             <Route path="/quan-ly/cau-hoi/tao-moi" element={<QuestionEditorPage />} />
+          </Route>
+          <Route element={<PermissionRoute allOf={[permissions.questionsUpdate]} />}>
             <Route path="/quan-ly/cau-hoi/:id" element={<QuestionEditorPage />} />
+          </Route>
+          <Route element={<PermissionRoute allOf={[permissions.assignmentsRead]} accountTypes={["CenterManager", "Teacher"]} />}>
             <Route path="/quan-ly/bai-tap" element={<AssignmentListPage />} />
+          </Route>
+          <Route element={<PermissionRoute allOf={[permissions.assignmentsCreate]} accountTypes={["CenterManager", "Teacher"]} />}>
             <Route path="/quan-ly/bai-tap/tao-moi" element={<AssignmentEditorPage />} />
+          </Route>
+          <Route element={<PermissionRoute allOf={[permissions.assignmentsUpdate]} accountTypes={["CenterManager", "Teacher"]} />}>
             <Route path="/quan-ly/bai-tap/:id" element={<AssignmentEditorPage />} />
+          </Route>
+          <Route element={<PermissionRoute allOf={[permissions.assignmentsRead]} accountTypes={["CenterManager", "Teacher"]} />}>
             <Route path="/quan-ly/bai-tap/:id/tien-do" element={<AssignmentProgressPage />} />
           </Route>
 
-          <Route element={<RoleRoute allowedRoles={["Student"]} />}>
+          <Route element={<PermissionRoute allOf={[permissions.assignmentsRead]} accountTypes={["Student"]} />}>
             <Route path="/hoc-tap/bai-tap" element={<StudentAssignmentsPage />} />
             <Route path="/hoc-tap/bai-tap/:id" element={<StudentAssignmentDetailPage />} />
+          </Route>
+
+          <Route element={<PermissionRoute anyOf={authorizationUiPermissions} accountTypes={["CenterManager"]} />}>
+            <Route path="/quan-ly/phan-quyen" element={<AuthorizationManagementPage />} />
           </Route>
         </Route>
 

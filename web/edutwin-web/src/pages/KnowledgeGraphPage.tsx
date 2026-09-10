@@ -7,6 +7,7 @@ import { useAuthStore } from "../stores/authStore";
 import { KnowledgeNodeCreatePanel } from "../components/KnowledgeNodeCreatePanel";
 import { KnowledgeEdgeCreatePanel } from "../components/KnowledgeEdgeCreatePanel";
 import type { KnowledgeNodeType, KnowledgeRelationType } from "../types/knowledgeGraph";
+import { permissions } from "../auth/permissions";
 
 const nodeTypeLabels: Record<KnowledgeNodeType, string> = {
   Subject: "Môn học",
@@ -24,11 +25,12 @@ const relationTypeLabels: Record<KnowledgeRelationType, string> = {
 };
 
 export const KnowledgeGraphPage: React.FC = () => {
-  const { user } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
+  const hasPermission = useAuthStore((state) => state.hasPermission);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>("");
 
-  const canManageGraph =
-    user?.role === "Teacher" || user?.role === "CenterManager";
+  const canCreateNodes = hasPermission(permissions.nodesCreate);
+  const canCreateEdges = hasPermission(permissions.edgesCreate);
 
   const {
     data: subjectsData,
@@ -200,21 +202,24 @@ export const KnowledgeGraphPage: React.FC = () => {
           </div>
         ) : (
           <div className="space-y-8">
-            {/* Mutation Panels for Teacher and CenterManager */}
-            {canManageGraph && user?.centerId && (
+            {user?.centerId && (
               <>
+                {canCreateNodes && (
                 <KnowledgeNodeCreatePanel
                   key={`knowledge-node-create:${user.centerId}:${selectedSubjectId}`}
                   subjectId={selectedSubjectId}
                   centerId={user.centerId}
                   nodes={graphData?.nodes ?? []}
                 />
+                )}
+                {canCreateEdges && (
                 <KnowledgeEdgeCreatePanel
                   key={`knowledge-edge-create:${user.centerId}:${selectedSubjectId}`}
                   subjectId={selectedSubjectId}
                   centerId={user.centerId}
                   nodes={graphData?.nodes ?? []}
                 />
+                )}
               </>
             )}
 

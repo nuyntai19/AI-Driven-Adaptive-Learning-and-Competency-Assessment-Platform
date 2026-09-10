@@ -1,7 +1,8 @@
 import axios, { AxiosError } from "axios";
 import type { InternalAxiosRequestConfig } from "axios";
 import { useAuthStore } from "../stores/authStore";
-import type { LoginResponse } from "../types/auth";
+import type { LoginResponse, ProblemDetails } from "../types/auth";
+import { shouldAttemptSessionRefresh } from "../auth/sessionRecovery";
 
 export const publicTransport = axios.create({
   baseURL: "/api/v1",
@@ -45,7 +46,13 @@ httpClient.interceptors.response.use(
     const isAuthEndpoint =
       url === "/auth/login" || url === "/auth/refresh" || url === "/auth/logout";
 
-    if (status === 401 && !originalRequest._retry && !isAuthEndpoint) {
+    const errorCode = (error.response.data as ProblemDetails | undefined)?.errorCode;
+    if (shouldAttemptSessionRefresh({
+      status,
+      errorCode,
+      alreadyRetried: originalRequest._retry === true,
+      isAuthEndpoint,
+    })) {
       originalRequest._retry = true;
 
       if (!refreshPromise) {
