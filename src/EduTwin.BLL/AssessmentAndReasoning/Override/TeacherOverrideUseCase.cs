@@ -186,16 +186,58 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                 .ToListAsync(cancellationToken);
             var analysesByAttempt = analyses.ToDictionary(ra => ra.AttemptId);
 
+            var persistedEvidences = await _dbContext.EvidenceAssessments
+                .Where(ea => ea.CenterId == centerId && attemptIds.Contains(ea.AttemptId))
+                .OrderBy(ea => ea.EvaluatedAt)
+                .ThenBy(ea => ea.EvidenceAssessmentId)
+                .ToListAsync(cancellationToken);
+            var latestEvidenceByAttempt = persistedEvidences
+                .GroupBy(ea => ea.AttemptId)
+                .ToDictionary(g => g.Key, g => g.Last());
+
+            // Recompute BehaviorTwin ConfidenceCalibration so that changes to attempt correctness (e.g. Essay null -> true/false)
+            // are reflected with the true denominator of graded attempts before replaying topic mastery
             var behaviorTwin = await _dbContext.BehaviorTwins
                 .SingleOrDefaultAsync(
                     b => b.CenterId == centerId && b.StudentId == studentId && b.SubjectId == subjectId && !b.IsDeleted,
                     cancellationToken);
+
+            if (behaviorTwin is not null)
+            {
+                var attemptsWithQuestions = await (
+                    from a in _dbContext.Attempts
+                    join q in _dbContext.Questions on new { a.CenterId, a.QuestionId } equals new { q.CenterId, q.QuestionId }
+                    where a.CenterId == centerId
+                        && a.StudentId == studentId
+                        && q.SubjectId == subjectId
+                    select new { a.AttemptId, a.Confidence, a.IsCorrect }
+                ).ToListAsync(cancellationToken);
+
+                var calibratedList = attemptsWithQuestions
+                    .Select(a => new
+                    {
+                        a.Confidence,
+                        IsCorrect = a.AttemptId == attempt.AttemptId ? (bool?)request.IsCorrect : a.IsCorrect
+                    })
+                    .Where(a => a.IsCorrect != null)
+                    .ToList();
+
+                if (calibratedList.Count > 0)
+                {
+                    var totalCalib = calibratedList.Sum(ca => Math.Clamp(100m - Math.Abs(ca.Confidence - (ca.IsCorrect == true ? 100m : 0m)), 0m, 100m));
+                    behaviorTwin.ConfidenceCalibration = Math.Round(totalCalib / calibratedList.Count, 2, MidpointRounding.AwayFromZero);
+                    behaviorTwin.UpdatedAt = now;
+                }
+            }
+
             var calibration = behaviorTwin is not null
                 ? Math.Clamp(behaviorTwin.ConfidenceCalibration / 100m, 0m, 1m)
                 : 0.50m;
 
             decimal replayedMastery = 0m;
             int replayedCount = 0;
+            int effectiveEvidenceCount = 0;
+            MasteryCalculationResult? overrideCalcResult = null;
 
             foreach (var item in topicAttempts)
             {
@@ -203,26 +245,25 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                 var q = item.Question;
                 var a = analysesByAttempt.GetValueOrDefault(att.AttemptId);
 
-                decimal? effectiveQuality = null;
-                bool effectiveCorrectness = att.IsCorrect ?? false;
-                decimal reasoningWeight = 0m;
+                // Use the persisted EvidenceAssessment as the sole authoritative source of truth for reasoning weight
+                var ev = att.AttemptId == attempt.AttemptId
+                    ? newEvidence
+                    : latestEvidenceByAttempt.GetValueOrDefault(att.AttemptId);
 
-                if (a is not null)
+                decimal reasoningWeight = ev?.ReasoningWeight ?? 0m;
+                decimal? effectiveQuality = a is not null
+                    ? (a.OverrideVersion > 0 ? a.OverrideReasoningQuality : a.ReasoningQuality)
+                    : null;
+
+                bool effectiveCorrectness = att.IsCorrect ?? false;
+                if (att.AttemptId == attempt.AttemptId)
                 {
-                    effectiveQuality = a.OverrideVersion > 0 ? a.OverrideReasoningQuality : a.ReasoningQuality;
-                    if (a.OverrideVersion > 0 && a.OverrideIsCorrect.HasValue)
-                    {
-                        effectiveCorrectness = a.OverrideIsCorrect.Value;
-                        reasoningWeight = 1.00m;
-                    }
-                    else if (a.IsFallback || a.NeedsTeacherReview || !effectiveQuality.HasValue)
-                    {
-                        reasoningWeight = 0.00m;
-                    }
-                    else
-                    {
-                        reasoningWeight = (a.AnalysisConfidence >= 80m) ? 1.00m : ((a.AnalysisConfidence >= 50m) ? 0.50m : 0.00m);
-                    }
+                    effectiveCorrectness = request.IsCorrect;
+                }
+
+                if (reasoningWeight > 0m)
+                {
+                    effectiveEvidenceCount++;
                 }
 
                 var timeRatio = q.EstimatedTimeSeconds > 0
@@ -243,9 +284,14 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                 var calcResult = MasteryCalculator.Calculate(calcInput);
                 replayedMastery = calcResult.NewMastery;
                 replayedCount++;
+
+                if (att.AttemptId == attempt.AttemptId)
+                {
+                    overrideCalcResult = calcResult;
+                }
             }
 
-            // Update or create KnowledgeTwin
+            // Update or create KnowledgeTwin with consistent EvidenceCount (only positive-weight evidence counted)
             var knowledgeTwin = await _dbContext.KnowledgeTwins
                 .SingleOrDefaultAsync(
                     k => k.CenterId == centerId && k.StudentId == studentId && k.SubjectId == subjectId && k.TopicNodeId == topicNodeId && !k.IsDeleted,
@@ -261,7 +307,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                     SubjectId = subjectId,
                     TopicNodeId = topicNodeId,
                     MasteryPercentage = replayedMastery,
-                    EvidenceCount = (uint)replayedCount,
+                    EvidenceCount = (uint)effectiveEvidenceCount,
                     LastReasoningQuality = request.ReasoningQuality,
                     LastAttemptId = attempt.AttemptId,
                     LastEvidenceAt = now,
@@ -274,6 +320,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
             {
                 previousMastery = knowledgeTwin.MasteryPercentage;
                 knowledgeTwin.MasteryPercentage = replayedMastery;
+                knowledgeTwin.EvidenceCount = (uint)effectiveEvidenceCount;
                 knowledgeTwin.LastReasoningQuality = request.ReasoningQuality;
                 knowledgeTwin.LastAttemptId = attempt.AttemptId;
                 knowledgeTwin.LastEvidenceAt = now;
@@ -287,15 +334,15 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
             // Update StudentTwin
             await _studentTwinUpdater.UpdateAsync(centerId, studentId, now, cancellationToken);
 
-            // Append TwinUpdateHistory for the TeacherOverride event
-            var historyBreakdown = new MasteryCalculationBreakdown(
+            // Append TwinUpdateHistory using actual calculation breakdown from replay
+            var historyBreakdown = overrideCalcResult?.Breakdown ?? new MasteryCalculationBreakdown(
                 IsFallback: false,
                 PreviousMastery: previousMastery,
                 NormalizedReasoningQuality: request.ReasoningQuality / 100m,
                 ReasoningWeight: 1.00m,
                 Correctness: request.IsCorrect ? 1m : 0m,
                 TimeQuality: 1.00m,
-                ConfidenceCalibration: 1.00m,
+                ConfidenceCalibration: calibration,
                 Difficulty: attempt.Question.Difficulty,
                 DifficultyMultiplier: 1.00m,
                 LearningRate: 0.25m,
@@ -309,9 +356,9 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                 NewMastery: replayedMastery,
                 Delta: replayedMastery - previousMastery,
                 EffectiveReasoningQuality: request.ReasoningQuality,
-                CalculationVersion: "mastery-v1",
+                CalculationVersion: MasteryCalculator.CalculationVersion,
                 Breakdown: historyBreakdown,
-                Explanation: $"Teacher override applied by {teacherId}: {request.Reason}");
+                Explanation: $"Teacher override applied by {teacherId}: {request.Reason} (Replayed {replayedCount} attempts, {effectiveEvidenceCount} effective evidence records).");
 
             await _historyWriter.WriteAsync(
                 centerId,
@@ -343,11 +390,17 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                     PreviousMastery = previousMastery,
                     NewMastery = replayedMastery,
                     NewRiskScore = newRiskScore,
-                    RecommendationRecalculated = true
+                    RecommendationRecalculated = false
                 }
             };
 
             return TeacherOverrideResult.Success(responseData);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            _dbContext.ChangeTracker.Clear();
+            return TeacherOverrideResult.Conflict();
         }
         catch
         {
