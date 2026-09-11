@@ -9,6 +9,8 @@ using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.Dashboards;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.Contracts.Organization;
+using EduTwin.Contracts.CurriculumAndQuestions;
+using EduTwin.Contracts.KnowledgeGraph;
 using EduTwin.DAL.Persistence;
 
 namespace EduTwin.BLL.Dashboards;
@@ -102,8 +104,32 @@ public sealed class GetCenterDashboardUseCase : IGetCenterDashboardUseCase
 
         foreach (var subject in subjects)
         {
-            var activeTopics = await _dbContext.KnowledgeNodes.AsNoTracking()
-                .Where(n => n.CenterId == centerId && n.SubjectId == subject.SubjectId && n.IsActive && !n.IsDeleted)
+            var publishedCurriculumExists = await _dbContext.Curriculums.AsNoTracking()
+                .AnyAsync(c => c.CenterId == centerId &&
+                               c.SubjectId == subject.SubjectId &&
+                               c.ReviewStatus == ReviewStatus.Published &&
+                               !c.IsDeleted,
+                    cancellationToken);
+
+            var activeTopicsQuery = _dbContext.KnowledgeNodes.AsNoTracking()
+                .Where(n => n.CenterId == centerId &&
+                            n.SubjectId == subject.SubjectId &&
+                            n.NodeType == NodeType.Topic &&
+                            n.IsActive &&
+                            !n.IsDeleted);
+
+            if (publishedCurriculumExists)
+            {
+                activeTopicsQuery = activeTopicsQuery.Where(n =>
+                    _dbContext.CurriculumNodes.Any(cn =>
+                        cn.CenterId == centerId &&
+                        cn.NodeId == n.NodeId &&
+                        cn.Curriculum != null &&
+                        cn.Curriculum.ReviewStatus == ReviewStatus.Published &&
+                        !cn.Curriculum.IsDeleted));
+            }
+
+            var activeTopics = await activeTopicsQuery
                 .Select(n => new { n.NodeId, n.ExamImportance })
                 .ToListAsync(cancellationToken);
 
@@ -202,17 +228,28 @@ public sealed class GetCenterDashboardUseCase : IGetCenterDashboardUseCase
             if (enrolledCount > 0)
             {
                 // Find applicable topics from assigned curriculum or fallback to subject active topics
-                var classCurriculumQuery = _dbContext.CurriculumClasses.AsNoTracking()
+                var anyClassCurriculumQuery = _dbContext.CurriculumClasses.AsNoTracking()
                     .Where(cc => cc.CenterId == centerId && cc.ClassId == cls.ClassId);
 
+                var classCurriculumQuery = anyClassCurriculumQuery
+                    .Where(cc => cc.Curriculum != null &&
+                                 !cc.Curriculum.IsDeleted &&
+                                 cc.Curriculum.ReviewStatus == ReviewStatus.Published);
+
+                var hasAnyCurriculumAssigned = await anyClassCurriculumQuery.AnyAsync(cancellationToken);
                 var hasCurriculumAssigned = await classCurriculumQuery.AnyAsync(cancellationToken);
 
                 var applicableTopicsQuery = _dbContext.KnowledgeNodes.AsNoTracking()
-                    .Where(n => n.CenterId == centerId && n.SubjectId == cls.SubjectId && n.IsActive && !n.IsDeleted);
+                    .Where(n => n.CenterId == centerId &&
+                                n.SubjectId == cls.SubjectId &&
+                                n.NodeType == NodeType.Topic &&
+                                n.IsActive &&
+                                !n.IsDeleted);
 
-                if (hasCurriculumAssigned)
+                if (hasAnyCurriculumAssigned)
                 {
                     applicableTopicsQuery = applicableTopicsQuery.Where(n =>
+                        hasCurriculumAssigned &&
                         _dbContext.CurriculumNodes.AsNoTracking().Any(cn =>
                             cn.CenterId == centerId &&
                             cn.NodeId == n.NodeId &&

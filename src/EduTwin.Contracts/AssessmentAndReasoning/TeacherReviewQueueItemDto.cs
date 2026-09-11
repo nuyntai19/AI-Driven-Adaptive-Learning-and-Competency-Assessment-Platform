@@ -6,6 +6,7 @@ public sealed class TeacherReviewQueueItemDto
     public string StudentId { get; set; } = string.Empty;
     public string StudentName { get; set; } = string.Empty;
     public string QuestionId { get; set; } = string.Empty;
+    public string SubjectId { get; set; } = string.Empty;
     public string QuestionText { get; set; } = string.Empty;
     public string AnalysisId { get; set; } = string.Empty;
     public string FinalAnswer { get; set; } = string.Empty;

@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.DigitalTwin;
+using EduTwin.Contracts.KnowledgeGraph;
 using EduTwin.DAL.Persistence;
 
 namespace EduTwin.BLL.DigitalTwin;
@@ -75,7 +76,7 @@ public sealed class GetTeacherStudentTwinUseCase : IGetTeacherStudentTwinUseCase
 
         // 1. Active topics for subject + student KnowledgeTwins
         var activeTopics = await _dbContext.KnowledgeNodes.AsNoTracking()
-            .Where(n => n.CenterId == centerId && n.SubjectId == subjectId && n.IsActive && !n.IsDeleted)
+            .Where(n => n.CenterId == centerId && n.SubjectId == subjectId && n.NodeType == NodeType.Topic && n.IsActive && !n.IsDeleted)
             .OrderBy(n => n.OrderIndex)
             .Select(n => new { n.NodeId, n.NodeName })
             .ToListAsync(cancellationToken);

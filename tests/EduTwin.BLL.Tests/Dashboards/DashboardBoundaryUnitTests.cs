@@ -105,6 +105,36 @@ public sealed class DashboardBoundaryUnitTests
     }
 
     [Fact]
+    public async Task StudentDashboard_MasteryRadar_IncludesTopicsOnly()
+    {
+        var (dbContext, tenantContext) = CreateDbContext($"StudentDashboard_TopicsOnly_{Guid.NewGuid():N}");
+        var centerId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+        tenantContext.CenterId = centerId;
+        tenantContext.UserId = studentId;
+        tenantContext.Role = nameof(UserRole.Student);
+
+        dbContext.Centers.Add(CreateCenter(centerId));
+        dbContext.Users.Add(new User { UserId = studentId, CenterId = centerId, Username = "student", DisplayName = "Student", PasswordHash = "h", RoleName = UserRole.Student, Status = UserStatus.Active, CreatedAt = UtcNow, UpdatedAt = UtcNow });
+        dbContext.Students.Add(new Student { StudentId = studentId, CenterId = centerId, FullName = "Student", GradeLevel = 10, CreatedAt = UtcNow, UpdatedAt = UtcNow });
+        dbContext.Subjects.Add(new Subject { SubjectId = subjectId, CenterId = centerId, SubjectCode = "M", SubjectName = "Math", IsActive = true, CreatedAt = UtcNow, UpdatedAt = UtcNow });
+        dbContext.KnowledgeNodes.AddRange(
+            new KnowledgeNode { NodeId = 1, CenterId = centerId, SubjectId = subjectId, NodeCode = "C", NodeName = "Chapter", NodeType = NodeType.Chapter, OrderIndex = 1, ExamImportance = 1, EstimatedLearningMinutes = 1, IsActive = true, CreatedAt = UtcNow, UpdatedAt = UtcNow },
+            new KnowledgeNode { NodeId = 2, CenterId = centerId, SubjectId = subjectId, NodeCode = "T", NodeName = "Topic", NodeType = NodeType.Topic, OrderIndex = 2, ExamImportance = 1, EstimatedLearningMinutes = 1, IsActive = true, CreatedAt = UtcNow, UpdatedAt = UtcNow },
+            new KnowledgeNode { NodeId = 3, CenterId = centerId, SubjectId = subjectId, NodeCode = "S", NodeName = "Skill", NodeType = NodeType.Skill, OrderIndex = 3, ExamImportance = 1, EstimatedLearningMinutes = 1, IsActive = true, CreatedAt = UtcNow, UpdatedAt = UtcNow });
+        await dbContext.SaveChangesAsync();
+
+        var result = await new GetStudentDashboardUseCase(dbContext, tenantContext, TimeProvider.System)
+            .ExecuteAsync(subjectId, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var topic = Assert.Single(result.Data!.MasteryRadar);
+        Assert.Equal("2", topic.TopicNodeId);
+        Assert.Equal("Topic", topic.TopicName);
+    }
+
+    [Fact]
     public async Task StudentDashboard_ProgressLineReconstruction_SameCreatedAt_OrderedDeterministicallyByHistoryId()
     {
         var dbName = $"StudentDashboard_TieBreak_{Guid.NewGuid():N}";
@@ -312,10 +342,14 @@ public sealed class DashboardBoundaryUnitTests
     }
 
     [Theory]
-    [InlineData(60.0, false)]
-    [InlineData(59.9, true)]
-    [InlineData(45.0, true)]
-    public async Task ClassDashboard_WeakTopicBoundary_Exact60_IsNotWeak_59_9_IsWeak(decimal topicMastery, bool expectedWeak)
+    [InlineData(60.0, false, ReviewStatus.Published)]
+    [InlineData(59.9, true, ReviewStatus.Published)]
+    [InlineData(45.0, true, ReviewStatus.Published)]
+    [InlineData(45.0, false, ReviewStatus.Draft)]
+    public async Task ClassDashboard_WeakTopicBoundary_AndPublishedCurriculumScope(
+        decimal topicMastery,
+        bool expectedWeak,
+        ReviewStatus curriculumStatus)
     {
         var dbName = $"ClassDashboard_WeakTopic_{Guid.NewGuid():N}";
         var (dbContext, tenantContext) = CreateDbContext(dbName);
@@ -341,7 +375,7 @@ public sealed class DashboardBoundaryUnitTests
         var classStudent = new ClassStudent { ClassId = classId, StudentId = studentId, CenterId = centerId, Status = ClassStudentStatus.Active, JoinedAt = UtcNow };
 
         var node = new KnowledgeNode { NodeId = 10, CenterId = centerId, SubjectId = subjectId, NodeCode = "TOPIC-10", NodeName = "Topic 10", NodeType = NodeType.Topic, OrderIndex = 1, ExamImportance = 1.0m, EstimatedLearningMinutes = 60, IsActive = true, CreatedAt = UtcNow, UpdatedAt = UtcNow };
-        var curriculum = new Curriculum { CurriculumId = curriculumId, CenterId = centerId, TeacherId = teacherId, SubjectId = subjectId, Title = "Curr", ReviewStatus = ReviewStatus.Published, CreatedAt = UtcNow, UpdatedAt = UtcNow };
+        var curriculum = new Curriculum { CurriculumId = curriculumId, CenterId = centerId, TeacherId = teacherId, SubjectId = subjectId, Title = "Curr", ReviewStatus = curriculumStatus, CreatedAt = UtcNow, UpdatedAt = UtcNow };
         var curriculumNode = new CurriculumNode { CurriculumId = curriculumId, NodeId = 10, CenterId = centerId, OrderIndex = 1, CreatedAt = UtcNow };
         var curriculumClass = new CurriculumClass { CurriculumId = curriculumId, ClassId = classId, CenterId = centerId, AssignedAt = UtcNow, AssignedBy = teacherId };
 

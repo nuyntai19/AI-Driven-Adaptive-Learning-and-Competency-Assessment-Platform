@@ -18,11 +18,12 @@ import {
 import { getStudentDashboard } from "../api/dashboardsApi";
 import { acceptRecommendation, dismissRecommendation } from "../api/learningFeedbackApi";
 import type { StudentDashboardDataDto } from "../types/dashboards";
+import { SubjectRequiredState } from "../components/SubjectRequiredState";
 
 export const StudentDashboardPage = () => {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const selectedSubjectId = searchParams.get("subjectId") || undefined;
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedSubjectId = searchParams.get("subjectId") || "";
   const queryClient = useQueryClient();
   const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
 
@@ -35,6 +36,7 @@ export const StudentDashboardPage = () => {
   } = useQuery<StudentDashboardDataDto>({
     queryKey: ["studentDashboard", selectedSubjectId],
     queryFn: () => getStudentDashboard(selectedSubjectId),
+    enabled: !!selectedSubjectId,
   });
 
   const acceptMutation = useMutation({
@@ -54,6 +56,10 @@ export const StudentDashboardPage = () => {
       setTimeout(() => setActionSuccessMessage(null), 4000);
     },
   });
+
+  if (!selectedSubjectId) {
+    return <SubjectRequiredState onSelect={(subjectId) => setSearchParams({ subjectId })} />;
+  }
 
   if (isLoading) {
     return (
@@ -161,7 +167,7 @@ export const StudentDashboardPage = () => {
           </div>
           <div className="flex items-center gap-3">
             <Link
-              to="/hoc-tap/ho-so-nang-luc"
+              to={`/hoc-tap/ho-so-nang-luc?subjectId=${subject.subjectId}`}
               className="inline-flex items-center rounded-md bg-white px-3.5 py-2 text-sm font-semibold text-indigo-600 shadow-sm ring-1 ring-inset ring-indigo-200 hover:bg-indigo-50"
             >
               Hồ sơ năng lực (Twin)
@@ -313,6 +319,42 @@ export const StudentDashboardPage = () => {
           </div>
         </div>
 
+        <details className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+          <summary className="cursor-pointer text-sm font-bold text-slate-900">
+            Xem dữ liệu biểu đồ dưới dạng bảng
+          </summary>
+          <div className="mt-4 grid gap-6 lg:grid-cols-2">
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left text-sm">
+                <caption className="mb-2 text-left font-semibold text-slate-700">Năng lực theo chuyên đề</caption>
+                <thead><tr><th className="py-2">Chuyên đề</th><th className="py-2">Thành thạo</th></tr></thead>
+                <tbody>
+                  {masteryRadar.map((item) => (
+                    <tr key={item.topicNodeId} className="border-t border-slate-100">
+                      <td className="py-2">{item.topicName}</td>
+                      <td className="py-2">{item.mastery.toFixed(1)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left text-sm">
+                <caption className="mb-2 text-left font-semibold text-slate-700">Lịch sử tiến triển</caption>
+                <thead><tr><th className="py-2">Thời điểm</th><th className="py-2">Thành thạo tổng</th></tr></thead>
+                <tbody>
+                  {progressLine.map((item) => (
+                    <tr key={item.recordedAt} className="border-t border-slate-100">
+                      <td className="py-2">{new Date(item.recordedAt).toLocaleString("vi-VN")}</td>
+                      <td className="py-2">{item.overallSubjectMastery.toFixed(1)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+
         {/* Recommended Next Action Card */}
         {action ? (
           <div className="rounded-xl bg-gradient-to-r from-indigo-900 via-indigo-800 to-indigo-950 p-6 text-white shadow-md">
@@ -322,9 +364,11 @@ export const StudentDashboardPage = () => {
                   <span className="rounded-full bg-indigo-500/30 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-indigo-200 ring-1 ring-inset ring-indigo-400/30">
                     Chiến lược: {action.strategy}
                   </span>
-                  <span className="rounded-full bg-emerald-500/30 px-3 py-1 text-xs font-semibold text-emerald-200 ring-1 ring-inset ring-emerald-400/30">
-                    Cơ hội tăng điểm: +{action.opportunityScore.toFixed(1)}%
-                  </span>
+                  {action.opportunityScore !== null && action.opportunityScore !== undefined && (
+                    <span className="rounded-full bg-emerald-500/30 px-3 py-1 text-xs font-semibold text-emerald-200 ring-1 ring-inset ring-emerald-400/30">
+                      Cơ hội tăng điểm: +{action.opportunityScore.toFixed(1)}%
+                    </span>
+                  )}
                 </div>
                 <h3 className="text-xl font-bold text-white">
                   Đề xuất ưu tiên: {action.topicName}
@@ -335,11 +379,7 @@ export const StudentDashboardPage = () => {
               <div className="flex flex-wrap items-center gap-3">
                 <button
                   onClick={() =>
-                    navigate(
-                      `/hoc-tap/luyen-tap?subjectId=${subject.subjectId}&topicNodeId=${action.topicNodeId}${
-                        action.questionId ? `&questionId=${action.questionId}` : ""
-                      }`
-                    )
+                    navigate(`/hoc-tap/luyen-tap?subjectId=${subject.subjectId}`)
                   }
                   className="rounded-lg bg-emerald-500 px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-emerald-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500"
                 >

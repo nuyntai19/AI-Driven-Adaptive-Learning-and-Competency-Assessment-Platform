@@ -2,10 +2,11 @@ import { useParams, Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getTeacherStudentTwin } from "../api/digitalTwinApi";
 import type { StudentTwinDataDto } from "../types/digitalTwin";
+import { SubjectRequiredState } from "../components/SubjectRequiredState";
 
 export const TeacherStudentTwinPage = () => {
   const { studentId } = useParams<{ studentId: string }>();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const subjectId = searchParams.get("subjectId") || undefined;
 
   const {
@@ -16,9 +17,13 @@ export const TeacherStudentTwinPage = () => {
     refetch,
   } = useQuery<StudentTwinDataDto>({
     queryKey: ["teacherStudentTwin", studentId, subjectId],
-    queryFn: () => getTeacherStudentTwin(studentId!, subjectId),
-    enabled: !!studentId,
+    queryFn: () => getTeacherStudentTwin(studentId!, subjectId!),
+    enabled: !!studentId && !!subjectId,
   });
+
+  if (!subjectId) {
+    return <SubjectRequiredState onSelect={(selected) => setSearchParams({ subjectId: selected })} />;
+  }
 
   if (isLoading) {
     return (
@@ -58,7 +63,16 @@ export const TeacherStudentTwinPage = () => {
     );
   }
 
-  const { student, subject, cognitiveGrowth, knowledgeTwin, behaviorTwin } = twinData;
+  const knowledgeTwin = twinData.topics.map((topic) => ({
+    ...topic,
+    mastery: topic.masteryPercentage,
+  }));
+  const behaviorTwin = twinData.behavior;
+  const overallMastery = knowledgeTwin.length > 0
+    ? knowledgeTwin.reduce((sum, topic) => sum + topic.mastery, 0) / knowledgeTwin.length
+    : 0;
+  const weakTopicCount = knowledgeTwin.filter((topic) => topic.mastery < 60).length;
+  const evidenceCount = knowledgeTwin.reduce((sum, topic) => sum + topic.evidenceCount, 0);
 
   return (
     <div className="min-h-screen bg-slate-50 p-6">
@@ -74,10 +88,11 @@ export const TeacherStudentTwinPage = () => {
               <span className="text-slate-900">Hồ sơ năng lực học sinh</span>
             </div>
             <h1 className="text-2xl font-bold text-slate-900">
-              Hồ Sơ Năng Lực (Digital Twin): {student.fullName}
+              Hồ Sơ Năng Lực (Digital Twin)
             </h1>
             <p className="mt-1 text-sm text-slate-500">
-              Môn học: <span className="font-semibold text-slate-800">{subject.subjectName}</span>
+              Học sinh: <span className="font-semibold text-slate-800">{twinData.studentId}</span>
+              {" · "}Môn học: <span className="font-semibold text-slate-800">{twinData.subjectId}</span>
             </p>
           </div>
 
@@ -105,7 +120,7 @@ export const TeacherStudentTwinPage = () => {
             </span>
             <div className="mt-2 flex items-baseline gap-2">
               <span className="text-3xl font-black text-indigo-600">
-                {cognitiveGrowth.overallMastery.toFixed(1)}%
+                {overallMastery.toFixed(1)}%
               </span>
             </div>
             <p className="mt-1 text-xs text-slate-500">Mô hình tính toán năng lực xác định</p>
@@ -113,47 +128,38 @@ export const TeacherStudentTwinPage = () => {
 
           <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Tốc độ tăng trưởng (Velocity)
+              Số chuyên đề theo dõi
             </span>
             <div className="mt-2 flex items-baseline gap-2">
               <span className="text-3xl font-black text-slate-900">
-                {cognitiveGrowth.growthVelocity >= 0 ? `+${cognitiveGrowth.growthVelocity.toFixed(1)}%` : `${cognitiveGrowth.growthVelocity.toFixed(1)}%`}
+                {knowledgeTwin.length}
               </span>
             </div>
-            <p className="mt-1 text-xs text-slate-500">Tốc độ tích lũy năng lực</p>
+            <p className="mt-1 text-xs text-slate-500">Chuyên đề thuộc môn học</p>
           </div>
 
           <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Mức độ rủi ro (Risk Score)
+              Chuyên đề cần hỗ trợ
             </span>
             <div className="mt-2 flex items-baseline gap-2">
-              <span
-                className={`text-3xl font-black ${
-                  cognitiveGrowth.riskScore >= 70
-                    ? "text-red-600"
-                    : cognitiveGrowth.riskScore >= 30
-                    ? "text-amber-600"
-                    : "text-emerald-600"
-                }`}
-              >
-                {cognitiveGrowth.riskScore.toFixed(1)}%
+              <span className={`text-3xl font-black ${weakTopicCount > 0 ? "text-amber-600" : "text-emerald-600"}`}>
+                {weakTopicCount}
               </span>
             </div>
-            <p className="mt-1 text-xs text-slate-500">Xác suất tụt lùi so với mục tiêu</p>
+            <p className="mt-1 text-xs text-slate-500">Mức thành thạo dưới 60%</p>
           </div>
 
           <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Dự báo điểm kỳ thi
+              Tổng bằng chứng
             </span>
             <div className="mt-2 flex items-baseline gap-2">
               <span className="text-3xl font-black text-purple-600">
-                {cognitiveGrowth.currentPredictedScore.toFixed(1)}
+                {evidenceCount}
               </span>
-              <span className="text-xs text-slate-400">/ {cognitiveGrowth.targetScore.toFixed(1)}</span>
             </div>
-            <p className="mt-1 text-xs text-slate-500">Mục tiêu đặt ra của học sinh</p>
+            <p className="mt-1 text-xs text-slate-500">Lượt làm bài được ghi nhận</p>
           </div>
         </div>
 
@@ -201,10 +207,10 @@ export const TeacherStudentTwinPage = () => {
                         <span>Chất lượng suy luận gần nhất: {kt.lastReasoningQuality.toFixed(0)}%</span>
                       </>
                     )}
-                    {kt.lastAttemptAt && (
+                    {kt.lastAttemptId && (
                       <>
                         <span>·</span>
-                        <span>Gần nhất: {new Date(kt.lastAttemptAt).toLocaleDateString("vi-VN")}</span>
+                        <span>Mã lần làm gần nhất: {kt.lastAttemptId}</span>
                       </>
                     )}
                   </div>
@@ -259,10 +265,10 @@ export const TeacherStudentTwinPage = () => {
                 </span>
                 <span
                   className={`mt-1 text-lg font-bold block ${
-                    behaviorTwin.skipRate > 0.3 ? "text-red-600" : "text-emerald-600"
+                    behaviorTwin.skipRate > 30 ? "text-red-600" : "text-emerald-600"
                   }`}
                 >
-                  {(behaviorTwin.skipRate * 100).toFixed(0)}%
+                  {behaviorTwin.skipRate.toFixed(0)}%
                 </span>
                 <span className="text-[10px] text-slate-400">Bỏ câu hỏi</span>
               </div>

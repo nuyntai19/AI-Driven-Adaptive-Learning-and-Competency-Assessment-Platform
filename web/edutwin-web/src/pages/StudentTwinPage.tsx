@@ -2,11 +2,13 @@ import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getStudentTwin, getStudentTwinHistory } from "../api/digitalTwinApi";
-import type { StudentTwinDataDto, TwinUpdateHistoryItemDto, PagedList } from "../types/digitalTwin";
+import { getStudentDashboard } from "../api/dashboardsApi";
+import type { StudentTwinDataDto, TwinUpdateHistoryItemDto } from "../types/digitalTwin";
+import { SubjectRequiredState } from "../components/SubjectRequiredState";
 
 export const StudentTwinPage = () => {
-  const [searchParams] = useSearchParams();
-  const selectedSubjectId = searchParams.get("subjectId") || undefined;
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedSubjectId = searchParams.get("subjectId") || "";
   const [historyPage, setHistoryPage] = useState<number>(1);
 
   const {
@@ -18,15 +20,27 @@ export const StudentTwinPage = () => {
   } = useQuery<StudentTwinDataDto>({
     queryKey: ["studentTwin", selectedSubjectId],
     queryFn: () => getStudentTwin(selectedSubjectId),
+    enabled: !!selectedSubjectId,
+  });
+
+  const dashboardQuery = useQuery({
+    queryKey: ["studentDashboard", selectedSubjectId],
+    queryFn: () => getStudentDashboard(selectedSubjectId),
+    enabled: !!selectedSubjectId,
   });
 
   const {
     data: historyData,
     isLoading: historyLoading,
-  } = useQuery<PagedList<TwinUpdateHistoryItemDto>>({
-    queryKey: ["studentTwinHistory", selectedSubjectId, historyPage],
-    queryFn: () => getStudentTwinHistory(selectedSubjectId, undefined, historyPage, 10),
+  } = useQuery<TwinUpdateHistoryItemDto[]>({
+    queryKey: ["studentTwinHistory", selectedSubjectId],
+    queryFn: () => getStudentTwinHistory(selectedSubjectId),
+    enabled: !!selectedSubjectId,
   });
+
+  if (!selectedSubjectId) {
+    return <SubjectRequiredState onSelect={(subjectId) => setSearchParams({ subjectId })} />;
+  }
 
   if (twinLoading) {
     return (
@@ -43,7 +57,7 @@ export const StudentTwinPage = () => {
     );
   }
 
-  if (twinError || !twinData) {
+  if (twinError || dashboardQuery.isError || !twinData || !dashboardQuery.data) {
     return (
       <div className="min-h-screen bg-slate-50 p-6">
         <div className="mx-auto max-w-4xl rounded-xl bg-white p-8 shadow-sm ring-1 ring-slate-200">
@@ -70,7 +84,28 @@ export const StudentTwinPage = () => {
     );
   }
 
-  const { student, subject, cognitiveGrowth, knowledgeTwin, behaviorTwin } = twinData;
+  const { student, subject, goal, progressLine } = dashboardQuery.data;
+  const knowledgeTwin = twinData.topics.map((topic) => ({
+    ...topic,
+    mastery: topic.masteryPercentage,
+  }));
+  const behaviorTwin = twinData.behavior;
+  const overallMastery = knowledgeTwin.length > 0
+    ? knowledgeTwin.reduce((sum, topic) => sum + topic.mastery, 0) / knowledgeTwin.length
+    : 0;
+  const growthVelocity = progressLine.length > 1
+    ? progressLine[progressLine.length - 1].overallSubjectMastery - progressLine[progressLine.length - 2].overallSubjectMastery
+    : 0;
+  const cognitiveGrowth = {
+    overallMastery,
+    growthVelocity,
+    currentPredictedScore: goal.currentPredictedScore,
+    targetScore: goal.targetScore,
+    riskScore: goal.riskScore,
+  };
+  const historyPageSize = 10;
+  const historyTotalPages = Math.max(1, Math.ceil((historyData?.length ?? 0) / historyPageSize));
+  const visibleHistory = historyData?.slice((historyPage - 1) * historyPageSize, historyPage * historyPageSize) ?? [];
 
   const getQualityBadge = (quality?: number | null) => {
     if (quality === undefined || quality === null) return null;
@@ -214,21 +249,21 @@ export const StudentTwinPage = () => {
               <div className="flex items-center justify-between border-b border-slate-100 py-2">
                 <span className="text-xs text-slate-600">Tỷ lệ bỏ qua câu</span>
                 <span className="text-sm font-semibold text-slate-900">
-                  {(behaviorTwin.skipRate * 100).toFixed(1)}%
+                  {behaviorTwin.skipRate.toFixed(1)}%
                 </span>
               </div>
 
               <div className="flex items-center justify-between border-b border-slate-100 py-2">
                 <span className="text-xs text-slate-600">Tỷ lệ thay đổi đáp án</span>
                 <span className="text-sm font-semibold text-slate-900">
-                  {(behaviorTwin.changeAnswerRate * 100).toFixed(1)}%
+                  {behaviorTwin.changeAnswerRate.toFixed(1)}%
                 </span>
               </div>
 
               <div className="flex items-center justify-between border-b border-slate-100 py-2">
                 <span className="text-xs text-slate-600">Độ tự tin trung bình</span>
                 <span className="text-sm font-semibold text-slate-900">
-                  {(behaviorTwin.avgConfidence * 100).toFixed(1)}%
+                  {behaviorTwin.avgConfidence.toFixed(1)}%
                 </span>
               </div>
 
@@ -236,7 +271,7 @@ export const StudentTwinPage = () => {
                 <span className="text-xs text-slate-600">Hiệu chuẩn tự tin</span>
                 <span
                   className={`text-sm font-semibold ${
-                    behaviorTwin.confidenceCalibration >= 0.8
+                    behaviorTwin.confidenceCalibration >= 80
                       ? "text-emerald-600"
                       : "text-amber-600"
                   }`}
@@ -274,7 +309,7 @@ export const StudentTwinPage = () => {
                   <th className="px-6 py-3">Độ thành thạo</th>
                   <th className="px-6 py-3">Số lượng bằng chứng</th>
                   <th className="px-6 py-3">Chất lượng tư duy gần nhất</th>
-                  <th className="px-6 py-3">Lần làm bài gần nhất</th>
+                  <th className="px-6 py-3">Mã lần làm gần nhất</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -311,15 +346,7 @@ export const StudentTwinPage = () => {
                       )}
                     </td>
                     <td className="px-6 py-4 text-xs text-slate-500">
-                      {topic.lastAttemptAt
-                        ? new Date(topic.lastAttemptAt).toLocaleDateString("vi-VN", {
-                            day: "2-digit",
-                            month: "2-digit",
-                            year: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })
-                        : "—"}
+                      {topic.lastAttemptId ?? "—"}
                     </td>
                   </tr>
                 ))}
@@ -344,8 +371,8 @@ export const StudentTwinPage = () => {
           <div className="mt-4 divide-y divide-slate-100">
             {historyLoading ? (
               <div className="p-4 text-center text-sm text-slate-400">Đang tải lịch sử...</div>
-            ) : historyData && historyData.items.length > 0 ? (
-              historyData.items.map((item) => (
+            ) : visibleHistory.length > 0 ? (
+              visibleHistory.map((item) => (
                 <div key={item.historyId} className="flex flex-col sm:flex-row sm:items-center justify-between py-3 gap-2">
                   <div>
                     <div className="flex items-center gap-2">
@@ -373,7 +400,7 @@ export const StudentTwinPage = () => {
                       </span>
                     </div>
                     <span className="text-xs text-slate-400">
-                      {new Date(item.createdAt).toLocaleDateString("vi-VN", {
+                      {new Date(item.recordedAt).toLocaleDateString("vi-VN", {
                         day: "2-digit",
                         month: "2-digit",
                         hour: "2-digit",
@@ -390,7 +417,7 @@ export const StudentTwinPage = () => {
             )}
           </div>
 
-          {historyData && historyData.totalPages > 1 && (
+          {historyTotalPages > 1 && (
             <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
               <button
                 onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
@@ -400,11 +427,11 @@ export const StudentTwinPage = () => {
                 Trang trước
               </button>
               <span className="text-xs text-slate-500">
-                Trang {historyPage} / {historyData.totalPages}
+                Trang {historyPage} / {historyTotalPages}
               </span>
               <button
-                onClick={() => setHistoryPage((p) => Math.min(historyData.totalPages, p + 1))}
-                disabled={historyPage >= historyData.totalPages}
+                onClick={() => setHistoryPage((p) => Math.min(historyTotalPages, p + 1))}
+                disabled={historyPage >= historyTotalPages}
                 className="rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-slate-300 disabled:opacity-50"
               >
                 Trang sau

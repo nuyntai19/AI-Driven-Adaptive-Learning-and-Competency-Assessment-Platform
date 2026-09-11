@@ -9,6 +9,8 @@ using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.Dashboards;
 using EduTwin.Contracts.Organization;
+using EduTwin.Contracts.CurriculumAndQuestions;
+using EduTwin.Contracts.KnowledgeGraph;
 using EduTwin.DAL.Persistence;
 
 namespace EduTwin.BLL.Dashboards;
@@ -132,17 +134,28 @@ public sealed class GetClassDashboardUseCase : IGetClassDashboardUseCase
         highRiskStudents = highRiskStudents.OrderByDescending(s => s.RiskScore).ToList();
 
         // 2. Applicable Topics (curriculum assigned to class or subject active topics)
-        var classCurriculumQuery = _dbContext.CurriculumClasses.AsNoTracking()
+        var anyClassCurriculumQuery = _dbContext.CurriculumClasses.AsNoTracking()
             .Where(cc => cc.CenterId == centerId && cc.ClassId == classEntity.ClassId);
 
+        var classCurriculumQuery = anyClassCurriculumQuery
+            .Where(cc => cc.Curriculum != null &&
+                         !cc.Curriculum.IsDeleted &&
+                         cc.Curriculum.ReviewStatus == ReviewStatus.Published);
+
+        var hasAnyCurriculumAssigned = await anyClassCurriculumQuery.AnyAsync(cancellationToken);
         var hasCurriculumAssigned = await classCurriculumQuery.AnyAsync(cancellationToken);
 
         var applicableTopicsQuery = _dbContext.KnowledgeNodes.AsNoTracking()
-            .Where(n => n.CenterId == centerId && n.SubjectId == classEntity.SubjectId && n.IsActive && !n.IsDeleted);
+            .Where(n => n.CenterId == centerId &&
+                        n.SubjectId == classEntity.SubjectId &&
+                        n.NodeType == NodeType.Topic &&
+                        n.IsActive &&
+                        !n.IsDeleted);
 
-        if (hasCurriculumAssigned)
+        if (hasAnyCurriculumAssigned)
         {
             applicableTopicsQuery = applicableTopicsQuery.Where(n =>
+                hasCurriculumAssigned &&
                 _dbContext.CurriculumNodes.AsNoTracking().Any(cn =>
                     cn.CenterId == centerId &&
                     cn.NodeId == n.NodeId &&
@@ -150,8 +163,21 @@ public sealed class GetClassDashboardUseCase : IGetClassDashboardUseCase
         }
 
         var applicableTopics = await applicableTopicsQuery
-            .OrderBy(n => n.OrderIndex)
-            .Select(n => new { n.NodeId, n.NodeName, n.ExamImportance })
+            .Select(n => new
+            {
+                n.NodeId,
+                n.NodeName,
+                n.ExamImportance,
+                SortOrder = hasCurriculumAssigned
+                    ? _dbContext.CurriculumNodes
+                        .Where(cn => cn.CenterId == centerId &&
+                                     cn.NodeId == n.NodeId &&
+                                     classCurriculumQuery.Any(cc => cc.CurriculumId == cn.CurriculumId))
+                        .Min(cn => (uint?)cn.OrderIndex) ?? n.OrderIndex
+                    : n.OrderIndex
+            })
+            .OrderBy(n => n.SortOrder)
+            .ThenBy(n => n.NodeId)
             .ToListAsync(cancellationToken);
 
         var weakTopics = new List<ClassWeakTopicDto>();

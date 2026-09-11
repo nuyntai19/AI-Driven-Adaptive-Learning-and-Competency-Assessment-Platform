@@ -18,6 +18,7 @@ export interface TeacherReviewQueueItemDto {
   studentId: string;
   studentName: string;
   questionId: string;
+  subjectId: string;
   questionText: string;
   analysisId: string;
   finalAnswer: string;

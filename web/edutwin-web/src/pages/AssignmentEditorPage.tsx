@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { isAxiosError } from "axios";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useAssignment } from "../features/assignments/useAssignment";
 import { useCloseAssignment } from "../features/assignments/useCloseAssignment";
 import { useCreateAssignment } from "../features/assignments/useCreateAssignment";
@@ -32,6 +32,7 @@ const toLocalDateTime = (value: string | null) => {
 export const AssignmentEditorPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const isEditing = !!id;
 
   const assignmentQuery = useAssignment(id);
@@ -41,14 +42,17 @@ export const AssignmentEditorPage = () => {
   const closeMutation = useCloseAssignment();
 
   const [step, setStep] = useState(0);
-  const [classId, setClassId] = useState("");
+  const [classId, setClassId] = useState(() => isEditing ? "" : searchParams.get("classId") || "");
   const [title, setTitle] = useState("");
   const [instructions, setInstructions] = useState("");
   const [dueAt, setDueAt] = useState("");
   const [minimumDueAt] = useState(() => toLocalDateTime(new Date(Date.now() + 60_000).toISOString()));
-  const [targetMode, setTargetMode] = useState<TargetMode>("WholeClass");
+  const initialStudentIds = isEditing
+    ? []
+    : (searchParams.get("studentIds") || "").split(",").map((value) => value.trim()).filter(Boolean);
+  const [targetMode, setTargetMode] = useState<TargetMode>(initialStudentIds.length > 0 ? "SelectedStudents" : "WholeClass");
   const [questionIds, setQuestionIds] = useState<string[]>([]);
-  const [studentIds, setStudentIds] = useState<string[]>([]);
+  const [studentIds, setStudentIds] = useState<string[]>(initialStudentIds);
   const [errorMessage, setErrorMessage] = useState("");
 
   const assignment = assignmentQuery.data?.data;

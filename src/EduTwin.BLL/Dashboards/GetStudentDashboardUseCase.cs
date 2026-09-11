@@ -9,6 +9,7 @@ using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.Dashboards;
 using EduTwin.Contracts.Organization;
 using EduTwin.Contracts.Recommendations;
+using EduTwin.Contracts.KnowledgeGraph;
 using EduTwin.DAL.Persistence;
 
 namespace EduTwin.BLL.Dashboards;
@@ -83,7 +84,7 @@ public sealed class GetStudentDashboardUseCase : IGetStudentDashboardUseCase
 
         // 2. Topic Mastery Radar (zero-fill missing KnowledgeTwin)
         var activeTopics = await _dbContext.KnowledgeNodes.AsNoTracking()
-            .Where(n => n.CenterId == centerId && n.SubjectId == subjectId && n.IsActive && !n.IsDeleted)
+            .Where(n => n.CenterId == centerId && n.SubjectId == subjectId && n.NodeType == NodeType.Topic && n.IsActive && !n.IsDeleted)
             .OrderBy(n => n.OrderIndex)
             .Select(n => new { n.NodeId, n.NodeName, n.ExamImportance })
             .ToListAsync(cancellationToken);
@@ -150,6 +151,7 @@ public sealed class GetStudentDashboardUseCase : IGetStudentDashboardUseCase
             .OrderByDescending(r => r.GeneratedAt)
             .Select(r => new
             {
+                r.RecommendationId,
                 r.RecommendationType,
                 r.TopicNodeId,
                 TopicName = r.TopicNode.NodeName,
@@ -164,6 +166,7 @@ public sealed class GetStudentDashboardUseCase : IGetStudentDashboardUseCase
         {
             actionDto = new StudentOpportunityActionDto
             {
+                RecommendationId = activeRec.RecommendationId.ToString(CultureInfo.InvariantCulture),
                 Strategy = activeRec.RecommendationType.ToString(),
                 TopicNodeId = activeRec.TopicNodeId.ToString(CultureInfo.InvariantCulture),
                 TopicName = activeRec.TopicName,

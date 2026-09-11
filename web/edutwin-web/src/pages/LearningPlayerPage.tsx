@@ -11,9 +11,11 @@ import type {
   NextQuestionDataDto,
   AttemptFeedbackDataDto,
 } from "../types/learning";
+import { isTerminalStatus, shouldContinuePolling } from "../utils/polling";
+import { SubjectRequiredState } from "../components/SubjectRequiredState";
 
 export const LearningPlayerPage = () => {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const subjectId = searchParams.get("subjectId") || "";
 
   // Attempt form state
@@ -32,6 +34,7 @@ export const LearningPlayerPage = () => {
   const [pollingStatus, setPollingStatus] = useState<string>("Đang xử lý...");
   const [feedbackData, setFeedbackData] = useState<AttemptFeedbackDataDto | null>(null);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const pollingAttemptRef = useRef(0);
 
   // Timer
   useEffect(() => {
@@ -51,7 +54,7 @@ export const LearningPlayerPage = () => {
   } = useQuery<NextQuestionDataDto>({
     queryKey: ["nextQuestion", subjectId],
     queryFn: () => getNextQuestion(subjectId),
-    enabled: !feedbackData && !pollingJobId,
+    enabled: !!subjectId && !feedbackData && !pollingJobId,
   });
 
   // Track answer changes deterministically
@@ -69,6 +72,10 @@ export const LearningPlayerPage = () => {
       setSubmissionError("Vui lòng nhập đáp án trước khi nộp.");
       return;
     }
+    if (!skipped && question.reasoningRequired && !reasoningText.trim()) {
+      setSubmissionError("Câu hỏi này yêu cầu bạn trình bày các bước suy luận.");
+      return;
+    }
 
     setIsSubmitting(true);
     setSubmissionError(null);
@@ -79,7 +86,7 @@ export const LearningPlayerPage = () => {
         finalAnswer: skipped ? "SKIPPED" : finalAnswer.trim(),
         reasoningText: reasoningText.trim() ? reasoningText.trim() : null,
         timeSpentSeconds,
-        confidence: confidence / 100,
+        confidence,
         answerChanges,
         skipped,
         reasoningLanguage: "vi",
@@ -87,6 +94,10 @@ export const LearningPlayerPage = () => {
       });
 
       const activeJobId = response.analysisJobId || response.jobId || "";
+      if (!activeJobId) {
+        throw new Error("Máy chủ không trả về mã tiến trình phân tích.");
+      }
+      pollingAttemptRef.current = 0;
       setPollingJobId(activeJobId);
       setPollingStatus("AI đang phân tích câu trả lời...");
     } catch (err: unknown) {
@@ -106,21 +117,41 @@ export const LearningPlayerPage = () => {
         const jobStatus = await getAnalysisJobStatus(pollingJobId);
         if (!isMounted) return;
 
+        pollingAttemptRef.current += 1;
+
         setPollingStatus(`Đang phân tích tư duy... (${jobStatus.status})`);
 
-        if (jobStatus.terminal) {
+        if (jobStatus.terminal || isTerminalStatus(jobStatus.status)) {
           clearInterval(interval);
           setPollingJobId(null);
           setIsSubmitting(false);
+
+          if (jobStatus.status.toLowerCase() !== "completed") {
+            setSubmissionError(jobStatus.error || "Phân tích không hoàn tất. Bạn có thể thử lại mà không cần nộp lại bài.");
+            return;
+          }
 
           // Fetch full feedback according to API contract 54
           const feedback = await getAttemptFeedback(jobStatus.attemptId);
           if (isMounted) {
             setFeedbackData(feedback);
           }
+        } else if (!shouldContinuePolling(jobStatus.status, pollingAttemptRef.current)) {
+          clearInterval(interval);
+          setPollingJobId(null);
+          setIsSubmitting(false);
+          setSubmissionError("Phân tích mất nhiều thời gian hơn dự kiến. Hãy thử tải kết quả lại sau.");
         }
-      } catch {
-        // Continue polling until timeout or success
+      } catch (error: unknown) {
+        pollingAttemptRef.current += 1;
+        if (!shouldContinuePolling(undefined, pollingAttemptRef.current)) {
+          clearInterval(interval);
+          if (isMounted) {
+            setPollingJobId(null);
+            setIsSubmitting(false);
+            setSubmissionError((error as Error)?.message || "Không thể kiểm tra tiến trình phân tích.");
+          }
+        }
       }
     }, 3000);
 
@@ -129,6 +160,10 @@ export const LearningPlayerPage = () => {
       clearInterval(interval);
     };
   }, [pollingJobId]);
+
+  if (!subjectId) {
+    return <SubjectRequiredState onSelect={(selected) => setSearchParams({ subjectId: selected })} />;
+  }
 
   // Next question handler
   const handleNextQuestion = () => {
@@ -140,6 +175,7 @@ export const LearningPlayerPage = () => {
     setTimeSpentSeconds(0);
     setIsSubmitting(false);
     setSubmissionError(null);
+    pollingAttemptRef.current = 0;
     clientSubmissionIdRef.current = crypto.randomUUID();
     refetchQuestion();
   };
@@ -210,15 +246,21 @@ export const LearningPlayerPage = () => {
           {/* Header Result Card */}
           <div
             className={`rounded-xl p-6 text-white shadow-md ${
-              grading.isCorrect
+              grading.isCorrect === true
                 ? "bg-gradient-to-r from-emerald-600 to-teal-700"
-                : "bg-gradient-to-r from-rose-600 to-amber-700"
+                : grading.isCorrect === false
+                  ? "bg-gradient-to-r from-rose-600 to-amber-700"
+                  : "bg-gradient-to-r from-slate-600 to-indigo-700"
             }`}
           >
             <div className="flex items-center justify-between">
               <div>
                 <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-bold uppercase tracking-wider text-white">
-                  {grading.isCorrect ? "Đáp án chính xác" : "Cần hoàn thiện"}
+                  {grading.isCorrect === true
+                    ? "Đáp án chính xác"
+                    : grading.isCorrect === false
+                      ? "Cần hoàn thiện"
+                      : "Đang chờ đánh giá"}
                 </span>
                 <h2 className="mt-2 text-2xl font-black">
                   Điểm số: {grading.awardedScore ?? 0} / {grading.maxScore}
@@ -437,19 +479,61 @@ export const LearningPlayerPage = () => {
             </div>
           </div>
 
-          {/* Final Answer Input */}
+          {/* Question-type-specific answer control. Options never contain correctness metadata. */}
           <div className="border-t border-slate-100 pt-6">
-            <label className="block text-sm font-bold text-slate-900">
+            <p className="block text-sm font-bold text-slate-900">
               Đáp án cuối cùng của bạn:
-            </label>
-            <input
-              type="text"
-              value={finalAnswer}
-              onChange={(e) => handleAnswerChange(e.target.value)}
-              disabled={isSubmitting}
-              placeholder="Nhập đáp án (ví dụ: A, 2x, 4.5...)"
-              className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-            />
+            </p>
+            {question?.questionType === "MultipleChoice" ? (
+              <fieldset className="mt-3 space-y-2" disabled={isSubmitting}>
+                <legend className="sr-only">Chọn một đáp án</legend>
+                {question.options.map((option) => (
+                  <label
+                    key={option.optionId}
+                    className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${
+                      finalAnswer === option.optionId
+                        ? "border-indigo-500 bg-indigo-50"
+                        : "border-slate-200 hover:bg-slate-50"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="answer"
+                      value={option.optionId}
+                      checked={finalAnswer === option.optionId}
+                      onChange={() => handleAnswerChange(option.optionId)}
+                      className="mt-1 accent-indigo-600"
+                    />
+                    <span className="text-sm text-slate-800">
+                      <strong>{option.label}.</strong> {option.text}
+                    </span>
+                  </label>
+                ))}
+                {question.options.length === 0 && (
+                  <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+                    Câu hỏi trắc nghiệm chưa có lựa chọn khả dụng. Vui lòng báo giáo viên.
+                  </p>
+                )}
+              </fieldset>
+            ) : question?.questionType === "Essay" ? (
+              <textarea
+                rows={7}
+                value={finalAnswer}
+                onChange={(e) => handleAnswerChange(e.target.value)}
+                disabled={isSubmitting}
+                placeholder="Trình bày câu trả lời tự luận của bạn..."
+                className="mt-2 w-full rounded-lg border border-slate-300 p-3 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            ) : (
+              <input
+                type="text"
+                value={finalAnswer}
+                onChange={(e) => handleAnswerChange(e.target.value)}
+                disabled={isSubmitting}
+                placeholder="Nhập câu trả lời ngắn..."
+                className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            )}
           </div>
 
           {/* Reasoning Text Input */}
@@ -509,7 +593,12 @@ export const LearningPlayerPage = () => {
 
             <button
               onClick={() => handleSubmit(false)}
-              disabled={isSubmitting || !finalAnswer.trim()}
+              disabled={
+                isSubmitting ||
+                !finalAnswer.trim() ||
+                (question?.reasoningRequired === true && !reasoningText.trim()) ||
+                (question?.questionType === "MultipleChoice" && question.options.length === 0)
+              }
               className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50"
             >
               {isSubmitting ? "Đang nộp bài..." : "Nộp bài & Phân tích"}

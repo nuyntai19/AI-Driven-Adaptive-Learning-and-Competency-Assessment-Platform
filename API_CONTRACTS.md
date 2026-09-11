@@ -1433,9 +1433,11 @@ Response:
       "questionType": "ShortAnswer",
       "difficulty": 3,
       "questionText": "Tính ...",
+      "maxScore": 10,
       "estimatedTimeSeconds": 240,
       "reasoningRequired": true,
-      "languageCode": "vi"
+      "languageCode": "vi",
+      "options": []
     },
     "explanation": "Đề xuất dựa trên Opportunity Gap cao nhất."
   },
@@ -1445,6 +1447,8 @@ Response:
   }
 }
 ~~~
+
+Với `questionType = MultipleChoice`, `options` chứa `optionId`, `label`, `text` và `orderIndex`; tuyệt đối không trả `isCorrect`, đáp án đúng, lời giải hoặc tiêu chí chấm trước khi học sinh nộp bài. Với `ShortAnswer` và `Essay`, `options` là mảng rỗng.
 
 Dưới 3 Attempt trả strategy LinearFallback.
 
@@ -1496,6 +1500,7 @@ Response 200:
       }
     ],
     "action": {
+      "recommendationId": "15001",
       "strategy": "OpportunityGap",
       "topicNodeId": "101",
       "topicName": "Mũ và Logarit",

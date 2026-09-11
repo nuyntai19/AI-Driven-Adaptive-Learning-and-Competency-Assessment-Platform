@@ -64,7 +64,7 @@ function App() {
             <Route path="/quan-ly/tong-quan-lop-hoc" element={<TeacherClassDashboardPage />} />
             <Route path="/quan-ly/lop-hoc/:classId/tong-quan" element={<TeacherClassDashboardPage />} />
           </Route>
-          <Route element={<PermissionRoute anyOf={[permissions.teacherReviewsRead, permissions.teacherReviewsOverride]} />}>
+          <Route element={<PermissionRoute allOf={[permissions.teacherReviewsRead]} />}>
             <Route path="/quan-ly/duyet-bai" element={<ReviewQueuePage />} />
           </Route>
           <Route element={<PermissionRoute allOf={[permissions.twinStudentReadScoped]} />}>

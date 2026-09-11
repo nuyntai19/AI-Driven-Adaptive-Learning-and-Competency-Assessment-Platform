@@ -57,6 +57,7 @@ public sealed class SubjectProgressPointDto
 
 public sealed class StudentOpportunityActionDto
 {
+    public string RecommendationId { get; set; } = null!;
     public string Strategy { get; set; } = null!;
     public string TopicNodeId { get; set; } = null!;
     public string TopicName { get; set; } = null!;

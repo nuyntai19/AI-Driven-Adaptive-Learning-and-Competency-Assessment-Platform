@@ -118,6 +118,7 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
             StudentId = evidence.Attempt.StudentId.ToString("D").ToLowerInvariant(),
             StudentName = evidence.Attempt.Student.FullName,
             QuestionId = evidence.Attempt.QuestionId.ToString(CultureInfo.InvariantCulture),
+            SubjectId = evidence.Attempt.Question.SubjectId.ToString("D").ToLowerInvariant(),
             QuestionText = evidence.Attempt.Question.QuestionText,
             AnalysisId = evidence.AnalysisId!.Value.ToString(CultureInfo.InvariantCulture),
             FinalAnswer = evidence.Attempt.FinalAnswer,

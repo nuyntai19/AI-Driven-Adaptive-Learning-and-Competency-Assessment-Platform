@@ -5,6 +5,8 @@ import { listTeacherReviewQueue } from "../api/teacherReviewsApi";
 import { organizationApi } from "../api/organizationApi";
 import { TeacherOverrideModal } from "../components/TeacherOverrideModal";
 import type { TeacherReviewQueueItemDto } from "../types/reviews";
+import { useAuthStore } from "../stores/authStore";
+import { permissions } from "../auth/permissions";
 
 export const ReviewQueuePage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -12,6 +14,7 @@ export const ReviewQueuePage = () => {
   const [page, setPage] = useState<number>(1);
   const [selectedReview, setSelectedReview] = useState<TeacherReviewQueueItemDto | null>(null);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const canOverride = useAuthStore((state) => state.hasPermission)(permissions.teacherReviewsOverride);
 
   // Load teacher classes for filtering
   const { data: classesData } = useQuery({
@@ -151,7 +154,7 @@ export const ReviewQueuePage = () => {
                         <tr key={item.attemptId} className="hover:bg-slate-50/80 transition-colors">
                           <td className="px-6 py-4 font-semibold text-slate-900 whitespace-nowrap">
                             <Link
-                              to={`/quan-ly/hoc-sinh/${item.studentId}/nang-luc`}
+                              to={`/quan-ly/hoc-sinh/${item.studentId}/nang-luc?subjectId=${item.subjectId}`}
                               className="text-indigo-600 hover:underline"
                             >
                               {item.studentName}
@@ -171,7 +174,7 @@ export const ReviewQueuePage = () => {
                                 </span>
                                 {item.analysisConfidence !== null && item.analysisConfidence !== undefined && (
                                   <span className="text-xs text-slate-400">
-                                    (Tin cậy: {(item.analysisConfidence * 100).toFixed(0)}%)
+                                    (Tin cậy: {item.analysisConfidence.toFixed(0)}%)
                                   </span>
                                 )}
                               </div>
@@ -186,12 +189,16 @@ export const ReviewQueuePage = () => {
                             {new Date(item.submittedAt).toLocaleString("vi-VN")}
                           </td>
                           <td className="px-6 py-4 text-right whitespace-nowrap">
-                            <button
-                              onClick={() => handleOpenOverride(item)}
-                              className="rounded-lg bg-indigo-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-500"
-                            >
-                              Đánh giá & Điều chỉnh
-                            </button>
+                            {canOverride ? (
+                              <button
+                                onClick={() => handleOpenOverride(item)}
+                                className="rounded-lg bg-indigo-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-500"
+                              >
+                                Đánh giá & Điều chỉnh
+                              </button>
+                            ) : (
+                              <span className="text-xs text-slate-400">Chỉ xem</span>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -230,15 +237,17 @@ export const ReviewQueuePage = () => {
       </div>
 
       {/* Teacher Override Modal */}
-      <TeacherOverrideModal
-        review={selectedReview}
-        isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false);
-          setSelectedReview(null);
-        }}
-        onSuccess={handleOverrideSuccess}
-      />
+      {canOverride && (
+        <TeacherOverrideModal
+          review={selectedReview}
+          isOpen={isModalOpen}
+          onClose={() => {
+            setIsModalOpen(false);
+            setSelectedReview(null);
+          }}
+          onSuccess={handleOverrideSuccess}
+        />
+      )}
     </div>
   );
 };

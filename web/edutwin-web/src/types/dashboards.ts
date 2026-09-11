@@ -32,7 +32,7 @@ export interface StudentRecommendedActionDto {
   topicNodeId: string;
   topicName: string;
   questionId?: string;
-  opportunityScore: number;
+  opportunityScore?: number | null;
   explanation: string;
 }
 
@@ -57,8 +57,6 @@ export interface ClassOverviewDto {
   averageMastery: number;
   averagePredictedScore: number;
   assignmentCompletionRate: number;
-  highRiskStudentCount: number;
-  weakTopicCount: number;
 }
 
 export interface ClassHighRiskStudentDto {
@@ -121,7 +119,6 @@ export interface ClassRankingItemDto {
   subjectName: string;
   averageMastery: number;
   assignmentCompletionRate: number;
-  highRiskStudentCount: number;
 }
 
 export interface CenterDashboardDataDto {

@@ -46,23 +46,66 @@ export const getAttemptFeedback = async (
 export const getNextQuestion = async (
   subjectId: string
 ): Promise<NextQuestionDataDto> => {
-  const response = await httpClient.get<ApiResponse<NextQuestionDataDto>>(
+  interface NextQuestionApiDto {
+    strategy: string;
+    recommendationId?: string | null;
+    topic: { nodeId: string; nodeName: string; mastery: number };
+    question?: {
+      questionId: string;
+      questionType: string;
+      difficulty: number;
+      questionText: string;
+      maxScore: number;
+      estimatedTimeSeconds: number;
+      reasoningRequired: boolean;
+      languageCode: string;
+      options: NextQuestionDataDto["options"];
+    } | null;
+    explanation: string;
+  }
+
+  const response = await httpClient.get<ApiResponse<NextQuestionApiDto>>(
     "/learning/next-question",
     {
       params: { subjectId },
     }
   );
-  return response.data.data;
+  const data = response.data.data;
+  if (!data.question) {
+    throw new Error("Lộ trình hiện tại chưa có câu hỏi phù hợp.");
+  }
+
+  return {
+    strategy: data.strategy,
+    recommendationId: data.recommendationId,
+    questionId: data.question.questionId,
+    topicNodeId: data.topic.nodeId,
+    topicName: data.topic.nodeName,
+    topicMastery: data.topic.mastery,
+    questionType: data.question.questionType,
+    difficulty: data.question.difficulty,
+    questionText: data.question.questionText,
+    maxScore: data.question.maxScore,
+    estimatedTimeSeconds: data.question.estimatedTimeSeconds,
+    reasoningRequired: data.question.reasoningRequired,
+    languageCode: data.question.languageCode,
+    options: data.question.options ?? [],
+    explanation: data.explanation,
+  };
 };
 
 export const acceptRecommendation = async (
   recommendationId: string
 ): Promise<void> => {
-  await httpClient.post(`/recommendations/${encodeURIComponent(recommendationId)}/accept`);
+  await httpClient.post(`/students/me/recommendation/${encodeURIComponent(recommendationId)}/accept`);
 };
 
 export const dismissRecommendation = async (
-  recommendationId: string
+  recommendationId: string,
+  reason?: string
 ): Promise<void> => {
-  await httpClient.post(`/recommendations/${encodeURIComponent(recommendationId)}/dismiss`);
+  await httpClient.post(
+    `/students/me/recommendation/${encodeURIComponent(recommendationId)}/dismiss`,
+    { reason: reason?.trim() || null }
+  );
 };

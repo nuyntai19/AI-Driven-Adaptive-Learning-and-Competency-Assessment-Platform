@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using EduTwin.Contracts.Common;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.IdentityAndTenancy;
@@ -15,9 +16,11 @@ public sealed record NextQuestionQuestionDto(
     QuestionType QuestionType,
     byte Difficulty,
     string QuestionText,
+    decimal MaxScore,
     uint EstimatedTimeSeconds,
     bool ReasoningRequired,
-    string LanguageCode);
+    string LanguageCode,
+    IReadOnlyList<StudentQuestionOptionDto> Options);
 
 public sealed class NextQuestionDto
 {

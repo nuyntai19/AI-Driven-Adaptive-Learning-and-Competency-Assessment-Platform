@@ -31,6 +31,7 @@ public sealed class ListTeacherReviewQueueUseCaseTests
         var item = Assert.Single(result.Data!);
         Assert.Equal("1", item.AttemptId);
         Assert.Equal("11", item.AnalysisId);
+        Assert.True(Guid.TryParse(item.SubjectId, out _));
         Assert.Equal("answer", item.FinalAnswer);
         Assert.False(item.IsFallback);
         Assert.Equal("Teacher review required", item.AnalysisFeedback);

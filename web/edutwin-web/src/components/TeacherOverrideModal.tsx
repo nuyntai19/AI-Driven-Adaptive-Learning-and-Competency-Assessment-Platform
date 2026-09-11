@@ -31,7 +31,7 @@ export const TeacherOverrideModal = ({
   useEffect(() => {
     if (review) {
       setIsCorrect(true);
-      setReasoningQuality(review.reasoningQuality ? Number(review.reasoningQuality) : 75);
+      setReasoningQuality(review.reasoningQuality !== null ? Number(review.reasoningQuality) : 75);
       setErrorType("None");
       setAwardedScore("");
       setFeedback(review.analysisFeedback || "");
@@ -130,7 +130,9 @@ export const TeacherOverrideModal = ({
               <span className="text-xs font-bold text-slate-500">AI đánh giá ban đầu:</span>
               <p className="text-slate-700">
                 Chất lượng: {review.reasoningQuality ?? "N/A"}% · Tin cậy:{" "}
-                {review.analysisConfidence ? `${(review.analysisConfidence * 100).toFixed(0)}%` : "N/A"}
+                {review.analysisConfidence !== null && review.analysisConfidence !== undefined
+                  ? `${review.analysisConfidence.toFixed(0)}%`
+                  : "Không có"}
               </p>
             </div>
           </div>

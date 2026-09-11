@@ -2,7 +2,6 @@ import { httpClient } from "./httpClient";
 import type {
   StudentTwinDataDto,
   TwinUpdateHistoryItemDto,
-  PagedList,
 } from "../types/digitalTwin";
 
 interface ApiResponse<T> {
@@ -13,11 +12,8 @@ interface ApiResponse<T> {
   };
 }
 
-export const getStudentTwin = async (subjectId?: string): Promise<StudentTwinDataDto> => {
-  const params: Record<string, string> = {};
-  if (subjectId) {
-    params.subjectId = subjectId;
-  }
+export const getStudentTwin = async (subjectId: string): Promise<StudentTwinDataDto> => {
+  const params = { subjectId };
   const response = await httpClient.get<ApiResponse<StudentTwinDataDto>>("/students/me/twin", {
     params,
   });
@@ -26,18 +22,16 @@ export const getStudentTwin = async (subjectId?: string): Promise<StudentTwinDat
 
 export const getStudentTwinHistory = async (
   subjectId?: string,
-  topicNodeId?: string,
-  page: number = 1,
-  pageSize: number = 20
-): Promise<PagedList<TwinUpdateHistoryItemDto>> => {
-  const params: Record<string, string | number> = { page, pageSize };
+  topicNodeId?: string
+): Promise<TwinUpdateHistoryItemDto[]> => {
+  const params: Record<string, string> = {};
   if (subjectId) {
     params.subjectId = subjectId;
   }
   if (topicNodeId) {
     params.topicNodeId = topicNodeId;
   }
-  const response = await httpClient.get<ApiResponse<PagedList<TwinUpdateHistoryItemDto>>>(
+  const response = await httpClient.get<ApiResponse<TwinUpdateHistoryItemDto[]>>(
     "/students/me/twin/history",
     { params }
   );
@@ -46,12 +40,9 @@ export const getStudentTwinHistory = async (
 
 export const getTeacherStudentTwin = async (
   studentId: string,
-  subjectId?: string
+  subjectId: string
 ): Promise<StudentTwinDataDto> => {
-  const params: Record<string, string> = {};
-  if (subjectId) {
-    params.subjectId = subjectId;
-  }
+  const params = { subjectId };
   const response = await httpClient.get<ApiResponse<StudentTwinDataDto>>(
     `/teachers/me/students/${encodeURIComponent(studentId)}/twin`,
     { params }

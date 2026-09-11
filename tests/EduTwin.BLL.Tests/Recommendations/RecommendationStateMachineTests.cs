@@ -464,6 +464,9 @@ public sealed class RecommendationStateMachineTests : IDisposable
 
         var q = new Question { CenterId = _centerId, SubjectId = _subjectId, PrimaryTopicNodeId = 10, QuestionId = 1010, QuestionText = "Integral of x", CorrectAnswer = "A", Solution = "S", LanguageCode = "vi", Status = QuestionStatus.Active, MaxScore = 10, CreatedAt = _utcNow, UpdatedAt = _utcNow };
         _dbContext.Questions.Add(q);
+        _dbContext.QuestionOptions.AddRange(
+            new QuestionOption { CenterId = _centerId, QuestionId = 1010, OptionId = 1, OptionLabel = "A", OptionText = "x² / 2 + C", IsCorrect = true, OrderIndex = 1, CreatedAt = _utcNow, UpdatedAt = _utcNow },
+            new QuestionOption { CenterId = _centerId, QuestionId = 1010, OptionId = 2, OptionLabel = "B", OptionText = "x + C", IsCorrect = false, OrderIndex = 2, CreatedAt = _utcNow, UpdatedAt = _utcNow });
 
         var path = new LearningPath
         {
@@ -520,6 +523,21 @@ public sealed class RecommendationStateMachineTests : IDisposable
         Assert.NotNull(nextQ);
         Assert.Equal(10ul, nextQ.Topic.NodeId);
         Assert.Equal(1010ul, nextQ.Question!.QuestionId);
+        Assert.Equal(10m, nextQ.Question.MaxScore);
+        Assert.Collection(
+            nextQ.Question.Options,
+            option =>
+            {
+                Assert.Equal("1", option.OptionId);
+                Assert.Equal("A", option.Label);
+                Assert.Equal("x² / 2 + C", option.Text);
+            },
+            option =>
+            {
+                Assert.Equal("2", option.OptionId);
+                Assert.Equal("B", option.Label);
+                Assert.Equal("x + C", option.Text);
+            });
         Assert.Equal(rec.RecommendationId, nextQ.RecommendationId);
     }
 

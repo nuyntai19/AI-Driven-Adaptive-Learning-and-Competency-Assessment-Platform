@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -9,6 +10,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using EduTwin.Contracts.Recommendations;
+using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.KnowledgeGraph;
 using EduTwin.DAL.Persistence;
@@ -949,6 +951,25 @@ public sealed class RecommendationEngine : IRecommendationEngine
             .OrderByDescending(r => r.GeneratedAt)
             .FirstOrDefaultAsync(cancellationToken);
 
+        var questionOptions = currentItem.RecommendedQuestion is null
+            ? []
+            : await _dbContext.QuestionOptions
+                .AsNoTracking()
+                .Where(option =>
+                    option.CenterId == centerId &&
+                    option.QuestionId == currentItem.RecommendedQuestion.QuestionId &&
+                    !option.IsDeleted)
+                .OrderBy(option => option.OrderIndex)
+                .ThenBy(option => option.OptionId)
+                .Select(option => new StudentQuestionOptionDto
+                {
+                    OptionId = option.OptionId.ToString(CultureInfo.InvariantCulture),
+                    Label = option.OptionLabel,
+                    Text = option.OptionText,
+                    OrderIndex = option.OrderIndex
+                })
+                .ToListAsync(cancellationToken);
+
         return new NextQuestionDto
         {
             Strategy = activePath.Strategy,
@@ -963,9 +984,11 @@ public sealed class RecommendationEngine : IRecommendationEngine
                     QuestionType: currentItem.RecommendedQuestion.QuestionType,
                     Difficulty: currentItem.RecommendedQuestion.Difficulty,
                     QuestionText: currentItem.RecommendedQuestion.QuestionText,
+                    MaxScore: currentItem.RecommendedQuestion.MaxScore,
                     EstimatedTimeSeconds: currentItem.RecommendedQuestion.EstimatedTimeSeconds,
                     ReasoningRequired: currentItem.RecommendedQuestion.ReasoningRequired,
-                    LanguageCode: currentItem.RecommendedQuestion.LanguageCode)
+                    LanguageCode: currentItem.RecommendedQuestion.LanguageCode,
+                    Options: questionOptions)
                 : null,
             Explanation = currentItem.Reason
         };

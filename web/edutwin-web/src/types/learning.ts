@@ -89,13 +89,24 @@ export interface AttemptFeedbackDataDto {
 }
 
 export interface NextQuestionDataDto {
+  strategy: string;
+  recommendationId?: string | null;
   questionId: string;
   topicNodeId: string;
   topicName: string;
+  topicMastery: number;
   questionType: string;
   difficulty: number;
   questionText: string;
   maxScore: number;
   estimatedTimeSeconds: number;
   reasoningRequired: boolean;
+  languageCode: string;
+  options: Array<{
+    optionId: string;
+    label: string;
+    text: string;
+    orderIndex: number;
+  }>;
+  explanation: string;
 }

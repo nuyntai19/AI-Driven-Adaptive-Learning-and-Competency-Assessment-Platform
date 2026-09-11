@@ -150,10 +150,10 @@ export const TeacherClassDashboardPage = () => {
                 <div className="mt-2 flex items-baseline gap-2">
                   <span
                     className={`text-3xl font-black ${
-                      dashboard.overview.highRiskStudentCount > 0 ? "text-red-600" : "text-emerald-600"
+                      dashboard.highRiskStudents.length > 0 ? "text-red-600" : "text-emerald-600"
                     }`}
                   >
-                    {dashboard.overview.highRiskStudentCount}
+                    {dashboard.highRiskStudents.length}
                   </span>
                   <span className="text-xs text-slate-500">em</span>
                 </div>
@@ -225,7 +225,7 @@ export const TeacherClassDashboardPage = () => {
 
                       <div className="mt-4 pt-3 border-t border-slate-100 flex justify-end">
                         <Link
-                          to={`/quan-ly/bai-tap/tao-moi?classId=${selectedClassId}&topicNodeId=${group.topicNodeId}`}
+                          to={`/quan-ly/bai-tap/tao-moi?classId=${selectedClassId}&topicNodeId=${group.topicNodeId}&studentIds=${encodeURIComponent(group.studentIds.join(","))}`}
                           className="rounded-lg bg-indigo-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-500"
                         >
                           Giao bài tập bổ trợ cho nhóm →
@@ -296,7 +296,7 @@ export const TeacherClassDashboardPage = () => {
                             </td>
                             <td className="py-3 text-right whitespace-nowrap">
                               <Link
-                                to={`/quan-ly/hoc-sinh/${s.studentId}/nang-luc`}
+                                to={`/quan-ly/hoc-sinh/${s.studentId}/nang-luc?subjectId=${dashboard.class.subjectId}`}
                                 className="rounded bg-indigo-50 px-2.5 py-1 font-bold text-indigo-700 hover:bg-indigo-100"
                               >
                                 Xem Twin →

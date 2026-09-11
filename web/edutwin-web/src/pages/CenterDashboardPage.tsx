@@ -1,9 +1,17 @@
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getCenterDashboard } from "../api/dashboardsApi";
+import { organizationApi } from "../api/organizationApi";
 import type { CenterDashboardDataDto } from "../types/dashboards";
 
 export const CenterDashboardPage = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedSubjectId = searchParams.get("subjectId") || "";
+  const subjectsQuery = useQuery({
+    queryKey: ["subjects", "center-dashboard", "active"],
+    queryFn: () => organizationApi.listSubjects(true),
+  });
+
   const {
     data: dashboard,
     isLoading,
@@ -11,8 +19,8 @@ export const CenterDashboardPage = () => {
     error,
     refetch,
   } = useQuery<CenterDashboardDataDto>({
-    queryKey: ["centerDashboard"],
-    queryFn: () => getCenterDashboard(),
+    queryKey: ["centerDashboard", selectedSubjectId],
+    queryFn: () => getCenterDashboard(selectedSubjectId || undefined),
   });
 
   return (
@@ -35,6 +43,30 @@ export const CenterDashboardPage = () => {
           </div>
 
           <div className="flex items-center gap-3">
+            <nav className="hidden items-center gap-2 lg:flex" aria-label="Quản lý trung tâm">
+              <Link to="/quan-ly/giao-vien" className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50">Giáo viên</Link>
+              <Link to="/quan-ly/lop-hoc" className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50">Lớp học</Link>
+              <Link to="/quan-ly/hoc-sinh" className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50">Học sinh</Link>
+            </nav>
+            <label className="text-xs font-semibold text-slate-600">
+              Môn học
+              <select
+                value={selectedSubjectId}
+                onChange={(event) => {
+                  const subjectId = event.target.value;
+                  setSearchParams(subjectId ? { subjectId } : {});
+                }}
+                disabled={subjectsQuery.isLoading}
+                className="ml-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+              >
+                <option value="">Tất cả môn học</option>
+                {subjectsQuery.data?.data.map((subject) => (
+                  <option key={subject.subjectId} value={subject.subjectId}>
+                    {subject.subjectName}
+                  </option>
+                ))}
+              </select>
+            </label>
             <button
               onClick={() => refetch()}
               className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50"
@@ -218,12 +250,12 @@ export const CenterDashboardPage = () => {
                           <td className="py-3 whitespace-nowrap">
                             <span
                               className={`rounded px-2 py-0.5 font-bold ${
-                                c.highRiskStudentCount > 0
+                                (dashboard.highRiskByClass.find((item) => item.classId === c.classId)?.highRiskStudentCount ?? 0) > 0
                                   ? "bg-red-100 text-red-800"
                                   : "bg-emerald-100 text-emerald-800"
                               }`}
                             >
-                              {c.highRiskStudentCount} em
+                              {dashboard.highRiskByClass.find((item) => item.classId === c.classId)?.highRiskStudentCount ?? 0} em
                             </span>
                           </td>
                           <td className="py-3 text-right whitespace-nowrap">
