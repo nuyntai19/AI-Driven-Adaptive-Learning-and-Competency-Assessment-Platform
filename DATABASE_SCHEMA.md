@@ -910,6 +910,13 @@ Effective values:
 - effective_is_correct = override_is_correct ?? attempt.is_correct.
 - effective_awarded_score = override_awarded_score ?? attempt.awarded_score.
 
+Provenance semantics:
+
+- Raw AI observation fields are immutable after analysis creation; Teacher Override only writes the dedicated override columns.
+- Override columns represent the current effective human override and may be replaced through optimistic `override_version` concurrency.
+- `evidence_assessments` and `twin_update_history` are append-only policy/replay lineage, but they do not snapshot the complete payload of every historical override version.
+- Full payload-level override history requires a future approved append-only relation such as `reasoning_analysis_overrides`; that capability is not claimed by the current schema.
+
 Không lưu raw Gemini request/response trong table này.
 
 ## 34. ai_analysis_jobs [TA + mutable state]

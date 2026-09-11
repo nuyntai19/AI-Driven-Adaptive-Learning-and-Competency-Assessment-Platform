@@ -1,8 +1,8 @@
 # EduTwin — Course Tracking, Weekly Requirements and Contribution
 
-> Phiên bản: 1.1-draft
+> Phiên bản: 1.2-draft
 > Trạng thái: ACTIVE TRACKING
-> Cập nhật gần nhất: 2026-09-09
+> Cập nhật gần nhất: 2026-09-11
 > Quy tắc: không xóa lịch sử tuần; sửa sai bằng một entry đính chính mới
 > Chủ sở hữu: Team lead; mọi thành viên xác nhận phần việc của mình
 
@@ -104,6 +104,24 @@ Không được dùng kết quả test --no-build từ binary cũ nếu build hi
 | Twin Orchestrator | NOT STARTED/INCOMPLETE | Runtime gần như dừng ở ReasoningAnalysis |
 | Recommendation pipeline | INCOMPLETE | Schema có, orchestration chưa xong |
 | Final dashboards/release | INCOMPLETE | Cần contract/security/E2E |
+
+### 5.1. Trạng thái kỹ thuật hiện tại của prototype — 2026-09-11
+
+Mục 4–5 phía trên là snapshot lịch sử ngày 2026-09-08 và không được sửa lại để giả rằng tính năng đã tồn tại tại baseline. Bảng dưới đây ghi tiến triển kỹ thuật mới trên repository prototype/personal; các commit này không tự động được tính là đóng góp học kỳ và phải được import/re-verify minh bạch nếu nhóm tạo course repository.
+
+| Roadmap | Trạng thái kỹ thuật | Requirement/decision | Bằng chứng source | Verification cục bộ | Acceptance còn lại |
+|---|---|---|---|---|---|
+| R05 — Evidence Gate và AI safety | TECHNICALLY VERIFIED | DEC-009, DEC-010, DEC-016, DEC-019, DEC-020; MASTER_PLAN R05 | `9636e5b` cùng các commit R05 trước đó trên `codex/personal-system-completion` | Release build 0 warning/error; full suite 3.002 pass + 9 MySQL tests chạy riêng pass; EF model synchronized | Group/course-repository review và CI evidence |
+| R06 — Twin completion orchestrator | TECHNICALLY VERIFIED | DEC-009, DEC-016, DEC-017, DEC-019; MASTER_PLAN R06 | `9636e5b`, closeout correction `1d84980` | Targeted R06 17/17; MySQL R05/R06 9/9; full suite 3.002 pass, 9 relational tests skip trong run thường; failure/concurrency/replay coverage pass | Group/course-repository review và CI evidence |
+
+Các invariant được chốt trong closeout:
+
+- Behavior calibration và Teacher Override replay dùng cùng nguồn effective correctness: `reasoning_analysis.override_is_correct ?? attempt.is_correct`.
+- Replay history lưu `calculation_version = replay-v1`, replay summary và dữ liệu từng step; không trình bày kết quả replay nhiều attempt như một phép tính mastery đơn.
+- Raw AI observation không bị Teacher Override ghi đè.
+- Các cột override trong `reasoning_analyses` biểu diễn human override hiện hành và được bảo vệ bằng optimistic versioning.
+- `evidence_assessments` và `twin_update_history` append-only giữ policy/replay lineage, nhưng chưa snapshot đầy đủ payload của mọi phiên bản override. Nếu nghiên cứu/audit yêu cầu khôi phục nguyên văn từng override cũ, phải có Change Proposal cho bảng append-only riêng; không được tuyên bố khả năng này ở phiên bản hiện tại.
+- Các số test trên là log local đã chạy lại, chưa phải GitHub Actions/CI attestation.
 
 ## 6. Lecturer requirement log
 
@@ -209,12 +227,12 @@ Không phân chia cố định A chỉ database, B chỉ frontend, C chỉ tài 
 | WP-C01 | C | Audit Question/Assignment workflows | 4 | WP-GOV-01 | NOT STARTED |
 | WP-C02 | C | Complete Question/Assignment UI and permissions | 8 | WP-A02, WP-C01 | NOT STARTED |
 | WP-C03 | C | Publish/idempotency/target integration tests | 7 | WP-C02 | NOT STARTED |
-| WP-D01 | D | Evidence Gate contract/schema | 6 | WP-GOV-01 | NOT STARTED |
-| WP-D02 | D | Deterministic Evidence Gate | 8 | WP-D01 | NOT STARTED |
-| WP-D03 | D | Review queue/override/replay integration | 8 | WP-D02 | NOT STARTED |
-| WP-D04 | D | Malformed/low-confidence/fallback tests | 7 | WP-D02 | NOT STARTED |
-| WP-E01 | E | Twin Orchestrator and Behavior updater | 9 | WP-D02 | NOT STARTED |
-| WP-E02 | E | Risk and Twin history | 7 | WP-E01 | NOT STARTED |
+| WP-D01 | D | Evidence Gate contract/schema | 6 | WP-GOV-01 | PROTOTYPE VERIFIED; COURSE REPLAY PENDING |
+| WP-D02 | D | Deterministic Evidence Gate | 8 | WP-D01 | PROTOTYPE VERIFIED; COURSE REPLAY PENDING |
+| WP-D03 | D | Review queue/override/replay integration | 8 | WP-D02 | PROTOTYPE VERIFIED; COURSE REPLAY PENDING |
+| WP-D04 | D | Malformed/low-confidence/fallback tests | 7 | WP-D02 | PROTOTYPE VERIFIED; COURSE REPLAY PENDING |
+| WP-E01 | E | Twin Orchestrator and Behavior updater | 9 | WP-D02 | PROTOTYPE VERIFIED; COURSE REPLAY PENDING |
+| WP-E02 | E | Risk and Twin history | 7 | WP-E01 | PROTOTYPE VERIFIED; COURSE REPLAY PENDING |
 | WP-E03 | E | Opportunity Gap/Recommendation | 9 | WP-E02 | NOT STARTED |
 | WP-E04 | E | Twin/recommendation UI | 7 | WP-E03 | NOT STARTED |
 | WP-E05 | E/Shared | ML.NET feasibility report | 4 | Dataset available | NOT STARTED |
