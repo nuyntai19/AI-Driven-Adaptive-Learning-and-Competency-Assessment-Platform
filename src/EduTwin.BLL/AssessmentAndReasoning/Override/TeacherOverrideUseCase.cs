@@ -160,7 +160,6 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
 
         // 5. Transactional Override & Replay
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
-        await StudentLockHelper.AcquireStudentLockAsync(_dbContext, centerId, attempt.StudentId, cancellationToken);
         TeacherOverrideDataDto? committedResponse = null;
         Guid recommendationStudentId = default;
         Guid recommendationSubjectId = default;

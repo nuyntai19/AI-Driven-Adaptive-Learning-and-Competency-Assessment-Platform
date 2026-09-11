@@ -243,7 +243,6 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         cancellationToken.ThrowIfCancellationRequested();
         await using var transaction = await _dbContext.Database
             .BeginTransactionAsync(cancellationToken);
-        await StudentLockHelper.AcquireStudentLockAsync(_dbContext, initialAttempt.CenterId, initialAttempt.StudentId, cancellationToken);
         Guid recommendationCenterId = default;
         Guid recommendationStudentId = default;
         Guid recommendationSubjectId = default;
@@ -377,7 +376,6 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         cancellationToken.ThrowIfCancellationRequested();
         await using var transaction = await _dbContext.Database
             .BeginTransactionAsync(cancellationToken);
-        await StudentLockHelper.AcquireStudentLockAsync(_dbContext, initialAttempt.CenterId, initialAttempt.StudentId, cancellationToken);
         AIAnalysisJobProcessingOutcome committedOutcome = default;
         Guid recommendationCenterId = default;
         Guid recommendationStudentId = default;
