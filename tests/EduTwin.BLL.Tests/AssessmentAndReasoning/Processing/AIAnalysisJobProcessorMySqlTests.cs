@@ -296,7 +296,79 @@ public sealed class AIAnalysisJobProcessorMySqlTests
             Assert.Equal(1u, midBehavior.AttemptCount);
         }
 
-        // Exercise the real production retry/reclaim path for the loser in a fresh unit-of-work
+        // Advance time past loser's LeaseUntil to exercise true background recovery:
+        // CandidateDiscovery (RecoverExpiredLease) -> LeaseOperation.RecoverExpiredLease ->
+        // CandidateDiscovery (Claim) -> LeaseOperation.Claim -> AIAnalysisJobProcessor.ExecuteAsync
+        var recoveryTime = UtcNow.AddMinutes(6);
+
+        // Step 1: CandidateDiscovery detects strictly expired lease
+        var discoveryTenant = new TenantContext();
+        await using var discoveryContext = CreateContext(database.ConnectionString, discoveryTenant);
+        var discovery = new AIAnalysisJobCandidateDiscovery(
+            discoveryContext,
+            discoveryTenant,
+            discoveryTenant,
+            new FixedTimeProvider(recoveryTime));
+
+        var discoveryResult = await discovery.DiscoverAsync(10, 10, CancellationToken.None);
+        Assert.True(discoveryResult.HasCandidates);
+        var recoverWorkItem = discoveryResult.WorkItems.Single(w => w.AnalysisJobId == losingJobId);
+        Assert.Equal(AIAnalysisJobWorkKind.RecoverExpiredLease, recoverWorkItem.Kind);
+
+        // Step 2: LeaseOperation recovers expired lease, resetting status to Pending
+        var recoverTenant = new TenantContext();
+        using (recoverTenant.BeginScope(centerId))
+        {
+            await using var recoverContext = CreateContext(database.ConnectionString, recoverTenant);
+            var leaseOperation = new AIAnalysisJobLeaseOperation(
+                recoverContext,
+                recoverTenant,
+                new AIAnalysisJobStateMachine(),
+                new FixedTimeProvider(recoveryTime));
+
+            var recoverResult = await leaseOperation.ExecuteAsync(
+                recoverWorkItem,
+                "recovery-worker",
+                TimeSpan.FromMinutes(5),
+                CancellationToken.None);
+
+            Assert.Equal(AIAnalysisJobLeaseOutcome.Recovered, recoverResult.Outcome);
+        }
+
+        // Step 3: Next batch discovery detects the now-Pending job for Claim
+        var claimDiscoveryTenant = new TenantContext();
+        await using var claimDiscoveryContext = CreateContext(database.ConnectionString, claimDiscoveryTenant);
+        var claimDiscovery = new AIAnalysisJobCandidateDiscovery(
+            claimDiscoveryContext,
+            claimDiscoveryTenant,
+            claimDiscoveryTenant,
+            new FixedTimeProvider(recoveryTime));
+
+        var claimDiscoveryResult = await claimDiscovery.DiscoverAsync(10, 10, CancellationToken.None);
+        var claimWorkItem = claimDiscoveryResult.WorkItems.Single(w => w.AnalysisJobId == losingJobId);
+        Assert.Equal(AIAnalysisJobWorkKind.Claim, claimWorkItem.Kind);
+
+        // Step 4: Worker claims the job (transitions Pending -> Processing)
+        var claimTenant = new TenantContext();
+        using (claimTenant.BeginScope(centerId))
+        {
+            await using var claimContext = CreateContext(database.ConnectionString, claimTenant);
+            var claimLeaseOperation = new AIAnalysisJobLeaseOperation(
+                claimContext,
+                claimTenant,
+                new AIAnalysisJobStateMachine(),
+                new FixedTimeProvider(recoveryTime));
+
+            var claimResult = await claimLeaseOperation.ExecuteAsync(
+                claimWorkItem,
+                "recovery-worker",
+                TimeSpan.FromMinutes(5),
+                CancellationToken.None);
+
+            Assert.Equal(AIAnalysisJobLeaseOutcome.Claimed, claimResult.Outcome);
+        }
+
+        // Step 5: Processor executes the claimed job in a fresh unit-of-work
         var retryTenant = new TenantContext();
         using (retryTenant.BeginScope(centerId))
         {
@@ -308,7 +380,7 @@ public sealed class AIAnalysisJobProcessorMySqlTests
 
             var retryResult = await retryProcessor.ExecuteAsync(
                 losingJobId,
-                losingWorkerId,
+                "recovery-worker",
                 CancellationToken.None);
 
             Assert.Equal(AIAnalysisJobProcessingOutcome.Completed, retryResult.Outcome);
@@ -363,6 +435,8 @@ public sealed class AIAnalysisJobProcessorMySqlTests
             var knowledgeTwin = await verifyContext.KnowledgeTwins
                 .SingleAsync(k => k.CenterId == centerId && k.StudentId == studentId && k.TopicNodeId == 1);
             Assert.True(knowledgeTwin.MasteryPercentage > 20.00m);
+            Assert.Equal(2u, knowledgeTwin.EvidenceCount);
+            Assert.Equal(loserOutcome.AttemptId!.Value, knowledgeTwin.LastAttemptId);
 
             // 7. TwinUpdateHistory has exactly 2 entries (no duplicates)
             var histories = await verifyContext.TwinUpdateHistories
@@ -373,11 +447,11 @@ public sealed class AIAnalysisJobProcessorMySqlTests
             Assert.Contains(histories, h => h.AttemptId == 101ul);
             Assert.Contains(histories, h => h.AttemptId == 102ul);
 
-            // 8. Recommendation generation state watermark points to latest trigger
+            // 8. Recommendation generation state watermark points to latest trigger by tie-break rule (102ul)
             var generationState = await verifyContext.RecommendationGenerationStates
                 .SingleOrDefaultAsync(gs => gs.CenterId == centerId && gs.StudentId == studentId && gs.SubjectId == subjectId);
             Assert.NotNull(generationState);
-            Assert.Equal(loserOutcome.AttemptId!.Value, generationState.LastSourceAttemptId);
+            Assert.Equal(102ul, generationState.LastSourceAttemptId);
             Assert.Equal(RecommendationGenerationStatus.Generated.ToString(), generationState.LastOutcome);
         }
     }
@@ -386,7 +460,8 @@ public sealed class AIAnalysisJobProcessorMySqlTests
         EduTwinDbContext context,
         TenantContext tenant,
         IAIService? aiService = null,
-        IRecommendationEngine? recommendationEngine = null) =>
+        IRecommendationEngine? recommendationEngine = null,
+        TimeProvider? timeProvider = null) =>
         new(
             context,
             tenant,
@@ -397,7 +472,7 @@ public sealed class AIAnalysisJobProcessorMySqlTests
             new AIAnalysisJobStateMachine(),
             new EvidenceGate(),
             new EvidenceAssessmentFactory(),
-            new FixedTimeProvider(UtcNow),
+            timeProvider ?? new FixedTimeProvider(UtcNow),
             recommendationEngine: recommendationEngine);
 
     private static RecommendationEngine CreateRecommendationEngine(EduTwinDbContext context) =>
