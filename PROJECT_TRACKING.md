@@ -111,17 +111,18 @@ Mục 4–5 phía trên là snapshot lịch sử ngày 2026-09-08 và không đ�
 
 | Roadmap | Trạng thái kỹ thuật | Requirement/decision | Bằng chứng source | Verification cục bộ | Acceptance còn lại |
 |---|---|---|---|---|---|
-| R05 — Evidence Gate và AI safety | TECHNICALLY VERIFIED | DEC-009, DEC-010, DEC-016, DEC-019, DEC-020; MASTER_PLAN R05 | `9636e5b` cùng các commit R05 trước đó trên `codex/personal-system-completion` | Release build 0 warning/error; full suite 3.002 pass + 9 MySQL tests chạy riêng pass; EF model synchronized | Group/course-repository review và CI evidence |
-| R06 — Twin completion orchestrator | TECHNICALLY VERIFIED | DEC-009, DEC-016, DEC-017, DEC-019; MASTER_PLAN R06 | `9636e5b`, closeout correction `1d84980` | Targeted R06 17/17; MySQL R05/R06 9/9; full suite 3.002 pass, 9 relational tests skip trong run thường; failure/concurrency/replay coverage pass | Group/course-repository review và CI evidence |
+| R05 — Evidence Gate và AI safety | TECHNICALLY VERIFIED / FROZEN | DEC-009, DEC-010, DEC-016, DEC-019, DEC-020; MASTER_PLAN R05 | `9636e5b`, `1d84980`, final freeze `52378b8` (`52378b82ef685d4f67886b7bfe44867c2ac30b5b`) | Release build 0 warning/error; full suite 3.014 pass + 9 MySQL tests chạy trên MySQL thật pass; EF model synchronized | Group/course-repository review và CI evidence |
+| R06 — Twin completion orchestrator | TECHNICALLY VERIFIED / FROZEN | DEC-009, DEC-016, DEC-017, DEC-019; MASTER_PLAN R06 | `9636e5b`, `1d84980`, final freeze `52378b8` (`52378b82ef685d4f67886b7bfe44867c2ac30b5b`) | Targeted R06 pass; MySQL R05/R06 9/9; full suite 3.014 pass; failure/concurrency/replay/tri-state coverage pass | Group/course-repository review và CI evidence |
 
 Các invariant được chốt trong closeout:
 
 - Behavior calibration và Teacher Override replay dùng cùng nguồn effective correctness: `reasoning_analysis.override_is_correct ?? attempt.is_correct`.
 - Replay history lưu `calculation_version = replay-v1`, replay summary và dữ liệu từng step; không trình bày kết quả replay nhiều attempt như một phép tính mastery đơn.
-- Raw AI observation không bị Teacher Override ghi đè.
+- Tri-state correctness (`bool?`) được bảo toàn xuyên suốt từ `MasteryCalculationInput`, `MasteryCalculator` đến `ReplayStepBreakdown` / history: positive-weight + null correctness fail closed; zero-weight + null correctness giữ nguyên `null`, không coerce thành `false`, mastery delta = 0.
+- Raw AI observation không bị Teacher Override ghi đè; preliminary grading provenance trên Attempt được giữ nguyên.
 - Các cột override trong `reasoning_analyses` biểu diễn human override hiện hành và được bảo vệ bằng optimistic versioning.
 - `evidence_assessments` và `twin_update_history` append-only giữ policy/replay lineage, nhưng chưa snapshot đầy đủ payload của mọi phiên bản override. Nếu nghiên cứu/audit yêu cầu khôi phục nguyên văn từng override cũ, phải có Change Proposal cho bảng append-only riêng; không được tuyên bố khả năng này ở phiên bản hiện tại.
-- Các số test trên là log local đã chạy lại, chưa phải GitHub Actions/CI attestation.
+- Các số test trên (3.014 .NET tests, 9 MySQL tests, 8 web tests) là log local execution đã chạy lại, chưa phải GitHub Actions/CI attestation.
 
 ## 6. Lecturer requirement log
 
