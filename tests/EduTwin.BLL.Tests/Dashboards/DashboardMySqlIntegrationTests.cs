@@ -30,6 +30,7 @@ using Xunit;
 
 namespace EduTwin.BLL.Tests.Dashboards;
 
+[Collection("MySqlDatabase")]
 public sealed class DashboardMySqlIntegrationTests
 {
     private const string AdminConnectionVariable = "EDUTWIN_TEST_MYSQL_ADMIN_CONNECTION_STRING";

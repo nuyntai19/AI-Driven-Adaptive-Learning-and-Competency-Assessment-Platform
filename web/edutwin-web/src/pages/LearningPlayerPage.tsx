@@ -86,7 +86,8 @@ export const LearningPlayerPage = () => {
         clientSubmissionId: clientSubmissionIdRef.current,
       });
 
-      setPollingJobId(response.jobId);
+      const activeJobId = response.analysisJobId || response.jobId || "";
+      setPollingJobId(activeJobId);
       setPollingStatus("AI đang phân tích câu trả lời...");
     } catch (err: unknown) {
       setIsSubmitting(false);

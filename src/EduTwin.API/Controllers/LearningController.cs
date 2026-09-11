@@ -10,6 +10,7 @@ using EduTwin.Contracts.Common;
 using EduTwin.Contracts.IdentityAndTenancy;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using EduTwin.BLL.Recommendations.UseCases;
 using EduTwin.Contracts.Recommendations;
 
@@ -46,6 +47,7 @@ public sealed class LearningController : ControllerBase
     {
     }
 
+    [ActivatorUtilitiesConstructor]
     public LearningController(
         ISubmitAttemptUseCase submitAttemptUseCase,
         IListAttemptsUseCase listAttemptsUseCase,

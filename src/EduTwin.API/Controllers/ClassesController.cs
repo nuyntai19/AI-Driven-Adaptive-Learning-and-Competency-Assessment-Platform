@@ -12,6 +12,7 @@ using EduTwin.API.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace EduTwin.API.Controllers;
 
@@ -36,6 +37,7 @@ public class ClassesController : ControllerBase
     {
     }
 
+    [ActivatorUtilitiesConstructor]
     public ClassesController(
         IListClassesUseCase listClassesUseCase,
         IGetClassUseCase getClassUseCase,

@@ -27,6 +27,7 @@ using Xunit;
 
 namespace EduTwin.BLL.Tests.Recommendations;
 
+[Collection("MySqlDatabase")]
 public sealed class RecommendationMySqlConcurrencyTests
 {
     private const string AdminConnectionVariable = "EDUTWIN_TEST_MYSQL_ADMIN_CONNECTION_STRING";

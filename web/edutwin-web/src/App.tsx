@@ -59,8 +59,8 @@ function App() {
             <Route path="/hoc-tap/luyen-tap/:questionId" element={<LearningPlayerPage />} />
           </Route>
 
-          {/* Teacher R08 Experiences */}
-          <Route element={<PermissionRoute allOf={[permissions.dashboardsTeacherRead]} />}>
+          {/* Teacher & Center Manager Class Dashboard (Composite Policy) */}
+          <Route element={<PermissionRoute anyOf={[permissions.dashboardsTeacherRead, permissions.dashboardsCenterRead]} />}>
             <Route path="/quan-ly/tong-quan-lop-hoc" element={<TeacherClassDashboardPage />} />
             <Route path="/quan-ly/lop-hoc/:classId/tong-quan" element={<TeacherClassDashboardPage />} />
           </Route>

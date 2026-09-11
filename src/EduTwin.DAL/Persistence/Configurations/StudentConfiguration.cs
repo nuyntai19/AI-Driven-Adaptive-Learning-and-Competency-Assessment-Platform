@@ -28,7 +28,10 @@ public class StudentConfiguration : IEntityTypeConfiguration<Organization.Studen
 
         builder.Property(s => s.DateOfBirth)
             .HasColumnName("date_of_birth")
-            .HasColumnType("DATE");
+            .HasColumnType("DATE")
+            .HasConversion(
+                d => d.HasValue ? d.Value.ToDateTime(TimeOnly.MinValue) : (DateTime?)null,
+                d => d.HasValue ? DateOnly.FromDateTime(d.Value) : (DateOnly?)null);
 
         // MTA fields
         builder.Property(s => s.CenterId)

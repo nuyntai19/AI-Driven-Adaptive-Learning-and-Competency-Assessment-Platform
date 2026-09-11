@@ -26,6 +26,7 @@ using Xunit;
 
 namespace EduTwin.BLL.Tests.AssessmentAndReasoning.Processing;
 
+[Collection("MySqlDatabase")]
 public sealed class AIAnalysisJobProcessorMySqlTests
 {
     private const string AdminConnectionVariable =

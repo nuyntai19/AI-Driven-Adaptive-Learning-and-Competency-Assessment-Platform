@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { AuthUser } from "../types/auth";
-import { hasAllPermissions, hasAnyPermission, hasPermission } from "../auth/capabilities";
+import { hasAllPermissions, hasAnyPermission, hasPermission } from "../auth/capabilities.ts";
 
 interface AuthState {
   accessToken: string | null;

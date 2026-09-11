@@ -12,6 +12,7 @@ using EduTwin.Contracts.Common;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.Contracts.Organization;
 using EduTwin.Contracts.Dashboards;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace EduTwin.API.Controllers;
 
@@ -33,6 +34,7 @@ public class CentersController : ControllerBase
     {
     }
 
+    [ActivatorUtilitiesConstructor]
     public CentersController(
         IGetCenterProfileUseCase getCenterProfileUseCase,
         IUpdateCenterProfileUseCase updateCenterProfileUseCase,

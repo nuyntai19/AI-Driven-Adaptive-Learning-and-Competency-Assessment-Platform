@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { overrideReasoningAnalysis } from "../api/teacherReviewsApi";
 import type { TeacherReviewQueueItemDto, ErrorType, TeacherOverrideRequest } from "../types/reviews";
-import axios from "axios";
+import { extractProblemDetails, isOverrideConflict } from "../utils/problemDetails";
 
 interface TeacherOverrideModalProps {
   review: TeacherReviewQueueItemDto | null;
@@ -74,14 +74,14 @@ export const TeacherOverrideModal = ({
         onClose();
       }, 1200);
     } catch (err: unknown) {
-      if (axios.isAxiosError(err) && err.response?.status === 409) {
+      if (isOverrideConflict(err)) {
+        const errorInfo = extractProblemDetails(err);
         setErrorMessage(
-          "Xung đột phiên bản (409 Conflict): Lượt phân tích này đã được điều chỉnh bởi một phiên khác. Vui lòng làm mới danh sách."
+          `Xung đột phiên bản (409 Conflict): Lượt phân tích này đã được điều chỉnh bởi một phiên khác. Vui lòng làm mới danh sách.${errorInfo.traceId ? ` (Mã theo dõi: ${errorInfo.traceId})` : ""}`
         );
-      } else if (axios.isAxiosError(err) && err.response?.data?.detail) {
-        setErrorMessage(err.response.data.detail);
       } else {
-        setErrorMessage("Đã xảy ra lỗi khi gửi yêu cầu điều chỉnh. Vui lòng thử lại.");
+        const errorInfo = extractProblemDetails(err);
+        setErrorMessage(errorInfo.message);
       }
     } finally {
       setIsSubmitting(false);

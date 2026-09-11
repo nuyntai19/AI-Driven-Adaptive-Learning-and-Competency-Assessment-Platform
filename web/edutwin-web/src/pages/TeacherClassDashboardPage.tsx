@@ -189,10 +189,10 @@ export const TeacherClassDashboardPage = () => {
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <h2 className="text-lg font-bold text-slate-900">
-                      Nhóm Hổng Kiến Thức Tự Động (AI Gap Groups)
+                      Nhóm Cần Bổ Trợ Kiến Thức (Gap Groups)
                     </h2>
                     <p className="text-xs text-slate-600">
-                      Hệ thống tự động gom nhóm học sinh có cùng lỗ hổng kiến thức để giáo viên can thiệp tập trung.
+                      Hệ thống tự động gom nhóm học sinh có cùng lỗ hổng kiến thức theo ngưỡng năng lực để giáo viên can thiệp tập trung.
                     </p>
                   </div>
                   <span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-bold text-indigo-700">

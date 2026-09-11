@@ -108,7 +108,7 @@ export const TeacherStudentTwinPage = () => {
                 {cognitiveGrowth.overallMastery.toFixed(1)}%
               </span>
             </div>
-            <p className="mt-1 text-xs text-slate-500">Dựa trên mô hình Bayesian BKT</p>
+            <p className="mt-1 text-xs text-slate-500">Mô hình tính toán năng lực xác định</p>
           </div>
 
           <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">

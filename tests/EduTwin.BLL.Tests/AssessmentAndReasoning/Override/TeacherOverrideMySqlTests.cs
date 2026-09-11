@@ -27,6 +27,7 @@ using Xunit;
 
 namespace EduTwin.BLL.Tests.AssessmentAndReasoning.Override;
 
+[Collection("MySqlDatabase")]
 public sealed class TeacherOverrideMySqlTests
 {
     private const string AdminConnectionVariable = "EDUTWIN_TEST_MYSQL_ADMIN_CONNECTION_STRING";

@@ -12,6 +12,7 @@ using EduTwin.BLL.DigitalTwin;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace EduTwin.API.Controllers;
 
@@ -32,6 +33,7 @@ public sealed class TeacherReviewController : ControllerBase
     {
     }
 
+    [ActivatorUtilitiesConstructor]
     public TeacherReviewController(
         IListTeacherReviewQueueUseCase reviewQueueUseCase,
         ITeacherOverrideUseCase? overrideUseCase,

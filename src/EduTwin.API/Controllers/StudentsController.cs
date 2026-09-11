@@ -14,6 +14,7 @@ using EduTwin.Contracts.DigitalTwin;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace EduTwin.API.Controllers;
 
@@ -54,6 +55,7 @@ public class StudentsController : ControllerBase
     {
     }
 
+    [ActivatorUtilitiesConstructor]
     public StudentsController(
         IListStudentsUseCase listStudentsUseCase,
         IGetStudentUseCase getStudentUseCase,

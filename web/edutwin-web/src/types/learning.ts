@@ -13,9 +13,13 @@ export interface SubmitAttemptRequest {
 
 export interface SubmitAttemptDataDto {
   attemptId: string;
-  jobId: string;
-  status: string;
-  feedbackUrl: string;
+  analysisJobId?: string;
+  jobId?: string;
+  attemptStatus?: string;
+  jobStatus?: string;
+  status?: string;
+  pollUrl?: string;
+  feedbackUrl?: string;
 }
 
 export interface AnalysisJobStatusDataDto {
