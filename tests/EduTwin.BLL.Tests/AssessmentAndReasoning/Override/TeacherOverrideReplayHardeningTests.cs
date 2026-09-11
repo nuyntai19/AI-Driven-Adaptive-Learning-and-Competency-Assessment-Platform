@@ -260,6 +260,62 @@ public sealed class TeacherOverrideReplayHardeningTests : IDisposable
         };
         _dbContext.EvidenceAssessments.Add(evidence2);
 
+        // Attempt 3 is later than the overridden attempt and already has effective evidence.
+        // Replay provenance must therefore point at this attempt, not at the override target.
+        var attempt3 = new Attempt
+        {
+            CenterId = _centerId,
+            AttemptId = 3003,
+            StudentId = _studentId,
+            QuestionId = 601,
+            FinalAnswer = "A",
+            ReasoningText = "Later reasoning",
+            IsCorrect = true,
+            TimeSpentSeconds = 60,
+            Confidence = 75m,
+            ReasoningLanguage = "vi",
+            Status = AttemptStatus.Completed,
+            CreatedAt = _utcNow.AddMinutes(-5),
+            UpdatedAt = _utcNow.AddMinutes(-5)
+        };
+        _dbContext.Attempts.Add(attempt3);
+
+        var analysis3 = new ReasoningAnalysis
+        {
+            CenterId = _centerId,
+            AnalysisId = 4003,
+            AttemptId = 3003,
+            ReasoningQuality = 70m,
+            AnalysisConfidence = 75m,
+            Feedback = "Later effective analysis",
+            IsFallback = false,
+            NeedsTeacherReview = false,
+            OverrideVersion = 0,
+            SchemaVersion = "1.0",
+            MissingSteps = JsonDocument.Parse("[]"),
+            RootCauseNodeIds = JsonDocument.Parse("[]"),
+            CreatedAt = _utcNow.AddMinutes(-5),
+            UpdatedAt = _utcNow.AddMinutes(-5)
+        };
+        _dbContext.ReasoningAnalyses.Add(analysis3);
+
+        _dbContext.EvidenceAssessments.Add(new EvidenceAssessment
+        {
+            CenterId = _centerId,
+            EvidenceAssessmentId = 5003,
+            AttemptId = 3003,
+            AnalysisId = 4003,
+            SourceType = EvidenceSourceType.AI,
+            TrustLevel = EvidenceTrustLevel.Reduced,
+            DecisionMode = EvidenceDecisionMode.AIWeighted,
+            ReasoningWeight = 0.50m,
+            ReasonCodes = JsonDocument.Parse("[\"AI_CONFIDENCE_50_TO_79\"]"),
+            RequiresTeacherReview = false,
+            PolicyVersion = "evidence-gate-v1",
+            EvaluatedAt = _utcNow.AddMinutes(-5),
+            CreatedAt = _utcNow.AddMinutes(-5)
+        });
+
         await _dbContext.SaveChangesAsync();
 
         var timeProvider = new FixedTimeProvider(_utcNow);
@@ -288,19 +344,21 @@ public sealed class TeacherOverrideReplayHardeningTests : IDisposable
         Assert.Equal(TeacherOverrideStatus.Success, result.Status);
         Assert.NotNull(result.Data);
 
-        // Attempts replayed count is 2 (both attempts in the topic were checked chronologically)
-        Assert.Equal(2, result.Data.Replay.AttemptsReplayed);
+        // All three attempts in the topic were replayed chronologically.
+        Assert.Equal(3, result.Data.Replay.AttemptsReplayed);
 
-        // Verification: EvidenceCount must be 1, because Attempt 1 had weight 0.00 and Attempt 2 had weight 1.00
+        // Attempt 1 has zero weight; the override and later attempt are effective.
         var twin = await _dbContext.KnowledgeTwins.SingleAsync(k => k.CenterId == _centerId && k.StudentId == _studentId && k.TopicNodeId == 201);
-        Assert.Equal(1u, twin.EvidenceCount);
+        Assert.Equal(2u, twin.EvidenceCount);
+        Assert.Equal(3003ul, twin.LastAttemptId);
+        Assert.Equal(70m, twin.LastReasoningQuality);
 
         // RecommendationRecalculated must be false
         Assert.False(result.Data.Replay.RecommendationRecalculated);
 
         // Check calculation breakdown in history
         var history = await _dbContext.TwinUpdateHistories
-            .SingleAsync(h => h.CenterId == _centerId && h.StudentId == _studentId && h.EventSource == TwinEventSource.TeacherOverride);
+            .SingleAsync(h => h.CenterId == _centerId && h.StudentId == _studentId && h.EventSource == TwinEventSource.Replay);
         var doc = JsonDocument.Parse(history.CalculationBreakdown.RootElement.GetRawText());
         Assert.Equal(1.00m, doc.RootElement.GetProperty("ReasoningWeight").GetDecimal());
     }
@@ -1214,7 +1272,7 @@ public sealed class TeacherOverrideReplayHardeningTests : IDisposable
 
         // Verify TwinUpdateHistory has ReplaySteps with rolling calibration
         var history = await _dbContext.TwinUpdateHistories
-            .SingleAsync(h => h.CenterId == _centerId && h.StudentId == _studentId && h.EventSource == TwinEventSource.TeacherOverride);
+            .SingleAsync(h => h.CenterId == _centerId && h.StudentId == _studentId && h.EventSource == TwinEventSource.Replay);
 
         var breakdownJson = history.CalculationBreakdown.RootElement;
         Assert.True(breakdownJson.TryGetProperty("ReplaySteps", out var replayStepsElement));

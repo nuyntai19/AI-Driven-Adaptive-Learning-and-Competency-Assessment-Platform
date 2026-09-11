@@ -38,7 +38,7 @@ public sealed class RuleBasedFallbackBuilderTests
         Assert.Null(result.OverrideFeedback);
         Assert.Null(result.OverrideIsCorrect);
         Assert.Null(result.OverrideReason);
-        Assert.Null(result.OverriddenByTeacherId);
+        Assert.Null(result.OverriddenByUserId);
         Assert.Null(result.OverriddenAt);
         Assert.Equal(0u, result.OverrideVersion);
         Assert.Equal(UtcNow, result.CreatedAt);

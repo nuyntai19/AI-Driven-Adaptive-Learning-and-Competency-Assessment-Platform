@@ -4,7 +4,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using EduTwin.BLL.AssessmentAndReasoning.Override;
 using EduTwin.BLL.AssessmentAndReasoning.ReviewQueue;
-using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.Common;
 using EduTwin.Contracts.IdentityAndTenancy;
@@ -16,8 +15,6 @@ namespace EduTwin.API.Controllers;
 
 [ApiController]
 [Route("api/v1/teachers/me")]
-[Authorize(Policy = AuthorizationPolicies.TeacherOnly)]
-[Authorize(Policy = "twin.reasoning.review")]
 public sealed class TeacherReviewController : ControllerBase
 {
     private readonly IListTeacherReviewQueueUseCase _reviewQueueUseCase;

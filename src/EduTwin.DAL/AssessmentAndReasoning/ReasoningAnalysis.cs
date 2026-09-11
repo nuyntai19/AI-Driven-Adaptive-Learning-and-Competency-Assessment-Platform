@@ -2,7 +2,7 @@ using System;
 using System.Text.Json;
 using EduTwin.DAL.Persistence.Models;
 using EduTwin.Contracts.AssessmentAndReasoning;
-using EduTwin.DAL.Organization;
+using EduTwin.DAL.IdentityAndTenancy;
 
 namespace EduTwin.DAL.AssessmentAndReasoning;
 
@@ -31,7 +31,7 @@ public class ReasoningAnalysis : ITenantAppendOnlyEntity, IHasRowVersion
     public bool? OverrideIsCorrect { get; set; }
     public decimal? OverrideAwardedScore { get; set; }
     public string? OverrideReason { get; set; }
-    public Guid? OverriddenByTeacherId { get; set; }
+    public Guid? OverriddenByUserId { get; set; }
     public DateTime? OverriddenAt { get; set; }
     public uint OverrideVersion { get; set; }
 
@@ -41,5 +41,5 @@ public class ReasoningAnalysis : ITenantAppendOnlyEntity, IHasRowVersion
     public ulong RowVersion { get; set; }
 
     public Attempt Attempt { get; set; } = null!;
-    public Teacher? OverriddenByTeacher { get; set; }
+    public User? OverriddenByUser { get; set; }
 }

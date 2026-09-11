@@ -886,7 +886,7 @@ Attempts không soft delete; nếu cần loại khỏi replay phải có use cas
 | override_is_correct | TINYINT(1) | Yes | Correctness hiệu lực do giáo viên xác nhận |
 | override_awarded_score | DECIMAL(5,2) | Yes | Điểm hiệu lực do giáo viên xác nhận/sửa; null cho phép reset về điểm sơ bộ |
 | override_reason | VARCHAR(1000) | Yes | Lý do bắt buộc của override |
-| overridden_by_teacher_id | VARCHAR(36) | Yes | Tenant-safe FK teacher thực hiện |
+| overridden_by_user_id | VARCHAR(36) | Yes | Tenant-safe FK tới User thực hiện override; hỗ trợ Teacher hoặc CenterManager |
 | overridden_at | DATETIME(6) | Yes | Thời điểm UTC override |
 | override_version | INT UNSIGNED | No | Default 0 |
 | updated_at | DATETIME(6) | No | Thay đổi khi override |
@@ -1156,7 +1156,8 @@ Indexes/constraints:
 - CHECK trust_level IN (Trusted, Reduced, ReviewOnly).
 - CHECK source_type IN (AI, RuleFallback, TeacherOverride).
 - CHECK decision_mode IN (AIWeighted, DeterministicOnly, HumanConfirmed).
-- CHECK supersedes_assessment_id IS NULL OR supersedes_assessment_id <> evidence_assessment_id.
+- Trigger `tr_evidence_no_self_supersede` từ chối insert tự supersede. MySQL không cho CHECK tham chiếu cột AUTO_INCREMENT, nên invariant này dùng trigger thay vì CHECK.
+- Trigger `tr_evidence_append_only_update` và `tr_evidence_append_only_delete` chặn UPDATE/DELETE để database tự bảo vệ lịch sử append-only.
 
 Invariant:
 

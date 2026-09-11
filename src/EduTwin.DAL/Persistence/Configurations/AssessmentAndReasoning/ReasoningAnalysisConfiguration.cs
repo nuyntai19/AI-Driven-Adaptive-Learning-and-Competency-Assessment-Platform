@@ -26,8 +26,8 @@ public class ReasoningAnalysisConfiguration : IEntityTypeConfiguration<Reasoning
         builder.HasIndex(r => new { r.CenterId, r.NeedsTeacherReview, r.CreatedAt })
             .HasDatabaseName("ix_reasoning_analyses_center_id_needs_teacher_review_created_at");
 
-        builder.HasIndex(r => new { r.CenterId, r.OverriddenByTeacherId })
-            .HasDatabaseName("ix_reasoning_analyses_center_id_overridden_by_teacher_id");
+        builder.HasIndex(r => new { r.CenterId, r.OverriddenByUserId })
+            .HasDatabaseName("ix_reasoning_analyses_center_id_overridden_by_user_id");
 
         builder.Property(r => r.AnalysisId).HasColumnName("analysis_id").HasColumnType("bigint unsigned").ValueGeneratedOnAdd();
         builder.Property(r => r.CenterId).HasColumnName("center_id").HasColumnType("varchar(36)").IsRequired();
@@ -83,7 +83,7 @@ public class ReasoningAnalysisConfiguration : IEntityTypeConfiguration<Reasoning
         builder.Property(r => r.OverrideIsCorrect).HasColumnName("override_is_correct").HasColumnType("tinyint(1)");
         builder.Property(r => r.OverrideAwardedScore).HasColumnName("override_awarded_score").HasColumnType("decimal(5,2)");
         builder.Property(r => r.OverrideReason).HasColumnName("override_reason").HasColumnType("varchar(1000)");
-        builder.Property(r => r.OverriddenByTeacherId).HasColumnName("overridden_by_teacher_id").HasColumnType("varchar(36)");
+        builder.Property(r => r.OverriddenByUserId).HasColumnName("overridden_by_user_id").HasColumnType("varchar(36)");
         builder.Property(r => r.OverriddenAt).HasColumnName("overridden_at").HasColumnType("datetime(6)");
         builder.Property(r => r.OverrideVersion).HasColumnName("override_version").HasColumnType("int unsigned").HasDefaultValue(0u);
 
@@ -110,11 +110,11 @@ public class ReasoningAnalysisConfiguration : IEntityTypeConfiguration<Reasoning
             .OnDelete(DeleteBehavior.Restrict)
             .HasConstraintName("fk_reasoning_analyses_attempts_attempt");
 
-        builder.HasOne(r => r.OverriddenByTeacher)
+        builder.HasOne(r => r.OverriddenByUser)
             .WithMany()
-            .HasForeignKey(r => new { r.CenterId, r.OverriddenByTeacherId })
-            .HasPrincipalKey(t => new { t.CenterId, t.TeacherId })
+            .HasForeignKey(r => new { r.CenterId, r.OverriddenByUserId })
+            .HasPrincipalKey(user => new { user.CenterId, user.UserId })
             .OnDelete(DeleteBehavior.Restrict)
-            .HasConstraintName("fk_reasoning_analyses_teachers_overridden_by_teacher");
+            .HasConstraintName("fk_reasoning_analyses_users_overridden_by_user");
     }
 }

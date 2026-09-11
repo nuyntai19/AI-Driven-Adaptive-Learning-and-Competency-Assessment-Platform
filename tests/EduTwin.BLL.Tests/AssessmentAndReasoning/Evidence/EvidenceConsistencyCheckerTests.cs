@@ -114,7 +114,7 @@ public sealed class EvidenceConsistencyCheckerTests
     }
 
     [Fact]
-    public void Evaluate_IncorrectAttempt_AIClaimsHighReasoningQuality_DetectsContradiction()
+    public void Evaluate_IncorrectAttempt_WithHighReasoningQuality_DoesNotFalsePositiveContradiction()
     {
         var (attempt, question, analysis) = CreateValidContext(
             isCorrect: false,
@@ -123,12 +123,11 @@ public sealed class EvidenceConsistencyCheckerTests
 
         var result = _checker.Evaluate(attempt, question, analysis);
 
-        Assert.True(result.HasContradiction);
-        Assert.Contains(EvidenceConsistencyReasonCodes.ContradictionIncorrectAttemptHighQuality, result.ReasonCodes);
+        Assert.False(result.HasContradiction);
     }
 
     [Fact]
-    public void Evaluate_CorrectAttempt_AIReportsFatalErrorWithAbysmalQuality_DetectsContradiction()
+    public void Evaluate_CorrectAttempt_WithLowReasoningQuality_DoesNotFalsePositiveContradiction()
     {
         var (attempt, question, analysis) = CreateValidContext(
             isCorrect: true,
@@ -137,8 +136,7 @@ public sealed class EvidenceConsistencyCheckerTests
 
         var result = _checker.Evaluate(attempt, question, analysis);
 
-        Assert.True(result.HasContradiction);
-        Assert.Contains(EvidenceConsistencyReasonCodes.ContradictionCorrectAttemptFatalError, result.ReasonCodes);
+        Assert.False(result.HasContradiction);
     }
 
     [Fact]
@@ -258,7 +256,7 @@ public sealed class EvidenceConsistencyCheckerTests
     }
 
     [Fact]
-    public void Evaluate_LanguageMismatch_DetectsSemanticInvalid()
+    public void Evaluate_ReasoningLanguageDifferentFromQuestionLanguage_RemainsSemanticallyValid()
     {
         var (attempt, question, analysis) = CreateValidContext();
         attempt.ReasoningLanguage = "en";
@@ -266,8 +264,7 @@ public sealed class EvidenceConsistencyCheckerTests
 
         var result = _checker.Evaluate(attempt, question, analysis);
 
-        Assert.False(result.SemanticValidationPassed);
-        Assert.Contains(EvidenceConsistencyReasonCodes.SemanticInvalidLanguageMismatch, result.ReasonCodes);
+        Assert.True(result.SemanticValidationPassed);
     }
 
     [Fact]

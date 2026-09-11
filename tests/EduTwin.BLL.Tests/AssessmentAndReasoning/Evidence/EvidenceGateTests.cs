@@ -7,9 +7,12 @@ namespace EduTwin.BLL.Tests.AssessmentAndReasoning.Evidence;
 public sealed class EvidenceGateTests
 {
     [Theory]
+    [InlineData("0", EvidenceTrustLevel.ReviewOnly, "0", true, EvidenceReasonCodes.AIConfidenceBelow50)]
+    [InlineData("49", EvidenceTrustLevel.ReviewOnly, "0", true, EvidenceReasonCodes.AIConfidenceBelow50)]
     [InlineData("80", EvidenceTrustLevel.Trusted, "1", false, EvidenceReasonCodes.AIConfidence80To100)]
     [InlineData("100", EvidenceTrustLevel.Trusted, "1", false, EvidenceReasonCodes.AIConfidence80To100)]
     [InlineData("50", EvidenceTrustLevel.Reduced, "0.5", false, EvidenceReasonCodes.AIConfidence50To79)]
+    [InlineData("79", EvidenceTrustLevel.Reduced, "0.5", false, EvidenceReasonCodes.AIConfidence50To79)]
     [InlineData("79.99", EvidenceTrustLevel.Reduced, "0.5", false, EvidenceReasonCodes.AIConfidence50To79)]
     [InlineData("49.99", EvidenceTrustLevel.ReviewOnly, "0", true, EvidenceReasonCodes.AIConfidenceBelow50)]
     public void Evaluate_AIConfidenceBoundary_UsesDocumentedTrustPolicy(
@@ -29,6 +32,17 @@ public sealed class EvidenceGateTests
         Assert.Equal([expectedReason], result.ReasonCodes);
         Assert.Equal(EvidenceDecisionMode.AIWeighted, result.DecisionMode);
         Assert.Equal(EvidenceGate.CurrentPolicyVersion, result.PolicyVersion);
+    }
+
+    [Fact]
+    public void Evaluate_MissingAIConfidence_IsReviewOnly()
+    {
+        var result = CreateGate().Evaluate(ValidAI(null));
+
+        Assert.Equal(EvidenceTrustLevel.ReviewOnly, result.TrustLevel);
+        Assert.Equal(0m, result.ReasoningWeight);
+        Assert.True(result.RequiresTeacherReview);
+        Assert.Equal([EvidenceReasonCodes.AIConfidenceMissing], result.ReasonCodes);
     }
 
     [Fact]

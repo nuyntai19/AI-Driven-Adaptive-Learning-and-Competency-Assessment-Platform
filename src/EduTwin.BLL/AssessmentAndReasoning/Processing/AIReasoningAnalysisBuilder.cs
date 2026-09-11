@@ -47,7 +47,7 @@ public sealed class AIReasoningAnalysisBuilder : IAIReasoningAnalysisBuilder
             OverrideFeedback = null,
             OverrideIsCorrect = null,
             OverrideReason = null,
-            OverriddenByTeacherId = null,
+            OverriddenByUserId = null,
             OverriddenAt = null,
             OverrideVersion = 0,
             CreatedAt = utcNow,

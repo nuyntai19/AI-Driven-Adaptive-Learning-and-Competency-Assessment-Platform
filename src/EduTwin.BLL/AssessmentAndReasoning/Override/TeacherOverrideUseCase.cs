@@ -67,8 +67,15 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
         }
 
         var centerId = _tenantContext.CenterId.Value;
-        var teacherId = _tenantContext.UserId.Value;
+        var actorId = _tenantContext.UserId.Value;
         var role = _tenantContext.Role;
+
+        var isTeacher = string.Equals(role, nameof(UserRole.Teacher), StringComparison.OrdinalIgnoreCase);
+        var isCenterManager = string.Equals(role, nameof(UserRole.CenterManager), StringComparison.OrdinalIgnoreCase);
+        if (!isTeacher && !isCenterManager)
+        {
+            return TeacherOverrideResult.Forbidden();
+        }
 
         // 1. Validate request parameters
         if (request.ReasoningQuality < 0m || request.ReasoningQuality > 100m)
@@ -117,14 +124,14 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
         }
 
         // 3. Validate Teacher Ownership (unless CenterManager)
-        if (!string.Equals(role, nameof(UserRole.CenterManager), StringComparison.OrdinalIgnoreCase))
+        if (isTeacher)
         {
             var isClassTeacher = await _dbContext.ClassStudents
                 .AnyAsync(
                     cs => cs.CenterId == centerId
                         && cs.StudentId == attempt.StudentId
                         && cs.Status == ClassStudentStatus.Active
-                        && cs.Class.TeacherId == teacherId,
+                        && cs.Class.TeacherId == actorId,
                     cancellationToken);
 
             if (!isClassTeacher)
@@ -153,7 +160,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
             analysis.OverrideIsCorrect = request.IsCorrect;
             analysis.OverrideAwardedScore = request.AwardedScore;
             analysis.OverrideReason = request.Reason;
-            analysis.OverriddenByTeacherId = teacherId;
+            analysis.OverriddenByUserId = actorId;
             analysis.OverriddenAt = now;
             analysis.OverrideVersion = newOverrideVersion;
             analysis.NeedsTeacherReview = false;
@@ -241,7 +248,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                 previousEvidence,
                 gateDecision,
                 now,
-                teacherId);
+                actorId);
 
             _dbContext.EvidenceAssessments.Add(newEvidence);
 
@@ -330,6 +337,8 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
             decimal replayedMastery = 0m;
             int replayedCount = 0;
             int effectiveEvidenceCount = 0;
+            decimal? latestEffectiveReasoningQuality = null;
+            ulong? latestEffectiveAttemptId = null;
             var replayedSteps = new List<ReplayStepBreakdown>(topicAttempts.Count);
 
             foreach (var item in topicAttempts)
@@ -368,6 +377,8 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                 if (reasoningWeight > 0m)
                 {
                     effectiveEvidenceCount++;
+                    latestEffectiveReasoningQuality = effectiveQuality;
+                    latestEffectiveAttemptId = att.AttemptId;
                 }
 
                 // Subject-wide rolling calibration up to (CreatedAt, AttemptId)
@@ -433,15 +444,15 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
             {
                 knowledgeTwin = new KnowledgeTwin
                 {
-                    KnowledgeTwinId = (ulong)now.Ticks ^ (ulong)attempt.AttemptId,
+                    KnowledgeTwinId = TwinAggregateIdGenerator.NewId(),
                     CenterId = centerId,
                     StudentId = studentId,
                     SubjectId = subjectId,
                     TopicNodeId = topicNodeId,
                     MasteryPercentage = replayedMastery,
                     EvidenceCount = (uint)effectiveEvidenceCount,
-                    LastReasoningQuality = request.ReasoningQuality,
-                    LastAttemptId = attempt.AttemptId,
+                    LastReasoningQuality = latestEffectiveReasoningQuality,
+                    LastAttemptId = latestEffectiveAttemptId,
                     LastEvidenceAt = now,
                     CreatedAt = now,
                     UpdatedAt = now
@@ -453,8 +464,8 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                 previousMastery = knowledgeTwin.MasteryPercentage;
                 knowledgeTwin.MasteryPercentage = replayedMastery;
                 knowledgeTwin.EvidenceCount = (uint)effectiveEvidenceCount;
-                knowledgeTwin.LastReasoningQuality = request.ReasoningQuality;
-                knowledgeTwin.LastAttemptId = attempt.AttemptId;
+                knowledgeTwin.LastReasoningQuality = latestEffectiveReasoningQuality;
+                knowledgeTwin.LastAttemptId = latestEffectiveAttemptId;
                 knowledgeTwin.LastEvidenceAt = now;
                 knowledgeTwin.UpdatedAt = now;
             }
@@ -490,7 +501,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                 EffectiveReasoningQuality: request.ReasoningQuality,
                 CalculationVersion: "replay-v1",
                 Breakdown: historyBreakdown,
-                Explanation: $"Teacher override applied by {teacherId} on attempt {attempt.AttemptId}: {request.Reason} (Replayed {replayedCount} attempts; {effectiveEvidenceCount} effective evidence records; final mastery {replayedMastery}%).");
+                Explanation: $"Teacher override applied by {actorId} on attempt {attempt.AttemptId}: {request.Reason} (Replayed {replayedCount} attempts; {effectiveEvidenceCount} effective evidence records; final mastery {replayedMastery}%).");
 
             await _historyWriter.WriteAsync(
                 centerId,
@@ -499,10 +510,10 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                 topicNodeId,
                 attempt.AttemptId,
                 analysis.AnalysisId,
-                TwinEventSource.TeacherOverride,
+                TwinEventSource.Replay,
                 historyCalcResult,
                 now,
-                teacherId,
+                actorId,
                 cancellationToken);
 
             await _dbContext.SaveChangesAsync(cancellationToken);

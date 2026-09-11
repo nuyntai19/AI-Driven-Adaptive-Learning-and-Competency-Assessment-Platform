@@ -175,7 +175,7 @@ public sealed class TeacherOverrideUseCaseTests : IDisposable
         Assert.True(analysis.OverrideIsCorrect);
         Assert.Equal(1u, analysis.OverrideVersion);
         Assert.False(analysis.NeedsTeacherReview);
-        Assert.Equal(_teacherId, analysis.OverriddenByTeacherId);
+        Assert.Equal(_teacherId, analysis.OverriddenByUserId);
 
         // Verify preliminary correctness provenance is preserved, and override is recorded in analysis
         Assert.False(attempt.IsCorrect);
@@ -321,6 +321,41 @@ public sealed class TeacherOverrideUseCaseTests : IDisposable
         var result = await useCase.ExecuteAsync(2003, request, CancellationToken.None);
 
         Assert.Equal(TeacherOverrideStatus.Forbidden, result.Status);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_UnsupportedRole_FailsClosedBeforeLoadingAnalysis()
+    {
+        var unauthorizedContext = new Mock<ITenantContext>();
+        unauthorizedContext.SetupGet(context => context.IsResolved).Returns(true);
+        unauthorizedContext.SetupGet(context => context.CenterId).Returns(_centerId);
+        unauthorizedContext.SetupGet(context => context.UserId).Returns(_studentId);
+        unauthorizedContext.SetupGet(context => context.Role).Returns(nameof(UserRole.Student));
+
+        var useCase = new TeacherOverrideUseCase(
+            _dbContext,
+            unauthorizedContext.Object,
+            new EvidenceGate(),
+            new EvidenceAssessmentFactory(),
+            new StudentGoalRiskUpdater(_dbContext),
+            new StudentTwinUpdater(_dbContext),
+            new TwinUpdateHistoryWriter(_dbContext),
+            TimeProvider.System);
+
+        var result = await useCase.ExecuteAsync(
+            9999,
+            new TeacherOverrideRequest
+            {
+                ReasoningQuality = 80m,
+                ErrorType = ErrorType.None,
+                Feedback = "Not authorized",
+                IsCorrect = true,
+                Reason = "Must never be applied"
+            },
+            CancellationToken.None);
+
+        Assert.Equal(TeacherOverrideStatus.Forbidden, result.Status);
+        Assert.Empty(_dbContext.ChangeTracker.Entries<EvidenceAssessment>());
     }
 
     private sealed class FixedTimeProvider : TimeProvider

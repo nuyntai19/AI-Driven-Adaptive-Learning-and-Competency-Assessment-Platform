@@ -229,5 +229,50 @@ public sealed class BehaviorTwinUpdaterTests : IDisposable
         // MCQ calibration is 100 - |100 - 100| = 100.00m
         Assert.Equal(100.00m, result2.ConfidenceCalibration);
     }
-}
 
+    [Fact]
+    public async Task UpdateAsync_TwoNewAggregates_AssignsDistinctNonZeroIds()
+    {
+        SeedQuestions();
+        var updater = new BehaviorTwinUpdater(_dbContext);
+        var now = new DateTime(2026, 9, 10, 10, 0, 0, DateTimeKind.Utc);
+        var secondStudentId = Guid.NewGuid();
+
+        var first = new Attempt
+        {
+            CenterId = _centerId,
+            StudentId = _studentId,
+            QuestionId = 1,
+            FinalAnswer = "A",
+            ReasoningLanguage = "vi",
+            Confidence = 50m,
+            IsCorrect = true,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        var second = new Attempt
+        {
+            CenterId = _centerId,
+            StudentId = secondStudentId,
+            QuestionId = 2,
+            FinalAnswer = "B",
+            ReasoningLanguage = "vi",
+            Confidence = 50m,
+            IsCorrect = false,
+            CreatedAt = now.AddSeconds(1),
+            UpdatedAt = now.AddSeconds(1)
+        };
+
+        _dbContext.Attempts.Add(first);
+        var firstTwin = await updater.UpdateAsync(first, _subjectId, now, CancellationToken.None);
+        await _dbContext.SaveChangesAsync();
+
+        _dbContext.Attempts.Add(second);
+        var secondTwin = await updater.UpdateAsync(second, _subjectId, now.AddSeconds(1), CancellationToken.None);
+        await _dbContext.SaveChangesAsync();
+
+        Assert.NotEqual(0ul, firstTwin.BehaviorTwinId);
+        Assert.NotEqual(0ul, secondTwin.BehaviorTwinId);
+        Assert.NotEqual(firstTwin.BehaviorTwinId, secondTwin.BehaviorTwinId);
+    }
+}

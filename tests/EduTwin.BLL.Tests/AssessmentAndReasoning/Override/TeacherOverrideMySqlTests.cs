@@ -18,6 +18,7 @@ using EduTwin.Contracts.Organization;
 using EduTwin.DAL.AssessmentAndReasoning;
 using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.DigitalTwin;
+using EduTwin.DAL.IdentityAndTenancy;
 using EduTwin.DAL.KnowledgeGraph;
 using EduTwin.DAL.Organization;
 using EduTwin.DAL.Persistence;
@@ -98,7 +99,7 @@ public sealed class TeacherOverrideMySqlTests
         Assert.Equal(1u, twin.EvidenceCount);
         Assert.True(twin.MasteryPercentage > 0m);
 
-        var history = await verifyContext.TwinUpdateHistories.SingleAsync(h => h.CenterId == centerId && h.StudentId == studentId && h.EventSource == TwinEventSource.TeacherOverride);
+        var history = await verifyContext.TwinUpdateHistories.SingleAsync(h => h.CenterId == centerId && h.StudentId == studentId && h.EventSource == TwinEventSource.Replay);
         Assert.NotNull(history.CalculationBreakdown);
     }
 
@@ -240,6 +241,181 @@ public sealed class TeacherOverrideMySqlTests
         Assert.Equal(1u, analysis.OverrideVersion);
     }
 
+    [MySqlIntegrationFact]
+    public async Task ExecuteAsync_CenterManagerWithoutTeacherProfile_PersistsUserActor()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var centerId = Guid.NewGuid();
+        var teacherId = Guid.NewGuid();
+        var managerId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+
+        await SeedHierarchyAsync(database.ConnectionString, centerId, teacherId, studentId, subjectId);
+
+        var tenant = new TenantContext();
+        tenant.Initialize(centerId, managerId, nameof(UserRole.CenterManager), 1);
+
+        await using var context = CreateContext(database.ConnectionString, tenant);
+        context.Users.Add(new User
+        {
+            CenterId = centerId,
+            UserId = managerId,
+            Username = $"manager-{managerId:N}",
+            PasswordHash = "test-only-hash",
+            RoleName = UserRole.CenterManager,
+            DisplayName = "Center Manager",
+            Status = UserStatus.Active,
+            AuthVersion = 1,
+            CreatedAt = UtcNow.AddDays(-1),
+            UpdatedAt = UtcNow.AddDays(-1)
+        });
+        await context.SaveChangesAsync();
+
+        var useCase = new TeacherOverrideUseCase(
+            context,
+            tenant,
+            new EvidenceGate(),
+            new EvidenceAssessmentFactory(),
+            new StudentGoalRiskUpdater(context),
+            new StudentTwinUpdater(context),
+            new TwinUpdateHistoryWriter(context),
+            new FixedTimeProvider(UtcNow));
+
+        var result = await useCase.ExecuteAsync(
+            2001,
+            new TeacherOverrideRequest
+            {
+                ReasoningQuality = 88m,
+                ErrorType = ErrorType.Presentation,
+                Feedback = "Center manager confirmed the evidence.",
+                IsCorrect = true,
+                Reason = "Escalated review",
+                OverrideVersion = 0
+            },
+            CancellationToken.None);
+
+        Assert.Equal(TeacherOverrideStatus.Success, result.Status);
+
+        await using var verifyContext = CreateContext(database.ConnectionString, tenant);
+        var analysis = await verifyContext.ReasoningAnalyses
+            .SingleAsync(item => item.CenterId == centerId && item.AnalysisId == 2001);
+        Assert.Equal(managerId, analysis.OverriddenByUserId);
+        Assert.False(await verifyContext.Teachers.AnyAsync(item => item.TeacherId == managerId));
+    }
+
+    [MySqlIntegrationFact]
+    public async Task EvidenceGovernance_CompositeForeignKeysAndAppendOnlyTriggers_RejectInvalidRows()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var centerId = Guid.NewGuid();
+        var teacherId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+
+        await SeedHierarchyAsync(database.ConnectionString, centerId, teacherId, studentId, subjectId);
+
+        var tenant = new TenantContext();
+        tenant.Initialize(centerId, teacherId, nameof(UserRole.Teacher), 1);
+
+        await using (var setupContext = CreateContext(database.ConnectionString, tenant))
+        {
+            setupContext.Attempts.Add(new Attempt
+            {
+                CenterId = centerId,
+                AttemptId = 1002,
+                StudentId = studentId,
+                QuestionId = 501,
+                FinalAnswer = "B",
+                ReasoningText = "Second attempt",
+                IsCorrect = false,
+                Confidence = 50m,
+                ReasoningLanguage = "vi",
+                Status = AttemptStatus.Completed,
+                ClientSubmissionId = Guid.NewGuid(),
+                CreatedAt = UtcNow.AddMinutes(-5),
+                UpdatedAt = UtcNow.AddMinutes(-5)
+            });
+            setupContext.ReasoningAnalyses.Add(new ReasoningAnalysis
+            {
+                CenterId = centerId,
+                AnalysisId = 2002,
+                AttemptId = 1002,
+                ReasoningQuality = 50m,
+                AnalysisConfidence = 50m,
+                Feedback = "Second analysis",
+                SchemaVersion = "1.0",
+                MissingSteps = JsonDocument.Parse("[]"),
+                RootCauseNodeIds = JsonDocument.Parse("[]"),
+                CreatedAt = UtcNow.AddMinutes(-5),
+                UpdatedAt = UtcNow.AddMinutes(-5)
+            });
+            setupContext.EvidenceAssessments.Add(CreateEvidence(centerId, 3002, 1002, 2002));
+            await setupContext.SaveChangesAsync();
+        }
+
+        await using (var mismatchedAnalysisContext = CreateContext(database.ConnectionString, tenant))
+        {
+            mismatchedAnalysisContext.EvidenceAssessments.Add(CreateEvidence(centerId, 4001, 1002, 2001));
+            await Assert.ThrowsAsync<DbUpdateException>(() => mismatchedAnalysisContext.SaveChangesAsync());
+        }
+
+        await using (var mismatchedSupersedesContext = CreateContext(database.ConnectionString, tenant))
+        {
+            var evidence = CreateEvidence(centerId, 4002, 1002, 2002);
+            evidence.SupersedesAssessmentId = 3001;
+            mismatchedSupersedesContext.EvidenceAssessments.Add(evidence);
+            await Assert.ThrowsAsync<DbUpdateException>(() => mismatchedSupersedesContext.SaveChangesAsync());
+        }
+
+        await using (var selfSupersedesContext = CreateContext(database.ConnectionString, tenant))
+        {
+            var evidence = CreateEvidence(centerId, 4003, 1002, 2002);
+            evidence.SupersedesAssessmentId = 4003;
+            selfSupersedesContext.EvidenceAssessments.Add(evidence);
+            var exception = await Assert.ThrowsAsync<DbUpdateException>(() => selfSupersedesContext.SaveChangesAsync());
+            Assert.Contains("cannot supersede itself", exception.InnerException?.Message, StringComparison.OrdinalIgnoreCase);
+        }
+
+        await using (var updateContext = CreateContext(database.ConnectionString, tenant))
+        {
+            var evidence = await updateContext.EvidenceAssessments
+                .SingleAsync(item => item.CenterId == centerId && item.EvidenceAssessmentId == 3002);
+            evidence.RequiresTeacherReview = true;
+            var exception = await Assert.ThrowsAsync<DbUpdateException>(() => updateContext.SaveChangesAsync());
+            Assert.Contains("append-only", exception.InnerException?.Message, StringComparison.OrdinalIgnoreCase);
+        }
+
+        await using (var deleteContext = CreateContext(database.ConnectionString, tenant))
+        {
+            var evidence = await deleteContext.EvidenceAssessments
+                .SingleAsync(item => item.CenterId == centerId && item.EvidenceAssessmentId == 3002);
+            deleteContext.EvidenceAssessments.Remove(evidence);
+            var exception = await Assert.ThrowsAsync<DbUpdateException>(() => deleteContext.SaveChangesAsync());
+            Assert.Contains("append-only", exception.InnerException?.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    private static EvidenceAssessment CreateEvidence(
+        Guid centerId,
+        ulong evidenceAssessmentId,
+        ulong attemptId,
+        ulong analysisId) => new()
+    {
+        CenterId = centerId,
+        EvidenceAssessmentId = evidenceAssessmentId,
+        AttemptId = attemptId,
+        AnalysisId = analysisId,
+        SourceType = EvidenceSourceType.AI,
+        TrustLevel = EvidenceTrustLevel.Reduced,
+        DecisionMode = EvidenceDecisionMode.AIWeighted,
+        ReasoningWeight = 0.5m,
+        ReasonCodes = JsonDocument.Parse("[\"AI_CONFIDENCE_50_TO_79\"]"),
+        PolicyVersion = EvidenceGate.CurrentPolicyVersion,
+        EvaluatedAt = UtcNow,
+        CreatedAt = UtcNow
+    };
+
     private static EduTwinDbContext CreateContext(
         string connectionString,
         TenantContext tenant,
@@ -278,6 +454,20 @@ public sealed class TeacherOverrideMySqlTests
                 CenterName = "MySQL Test Center",
                 Status = CenterStatus.Active,
                 Timezone = "UTC",
+                CreatedAt = UtcNow.AddDays(-1),
+                UpdatedAt = UtcNow.AddDays(-1)
+            });
+
+            context.Users.Add(new User
+            {
+                CenterId = centerId,
+                UserId = teacherId,
+                Username = $"teacher-{teacherId:N}",
+                PasswordHash = "test-only-hash",
+                RoleName = UserRole.Teacher,
+                DisplayName = "MySQL Test Teacher",
+                Status = UserStatus.Active,
+                AuthVersion = 1,
                 CreatedAt = UtcNow.AddDays(-1),
                 UpdatedAt = UtcNow.AddDays(-1)
             });

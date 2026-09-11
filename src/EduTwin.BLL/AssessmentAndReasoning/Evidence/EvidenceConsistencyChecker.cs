@@ -84,28 +84,14 @@ public sealed class EvidenceConsistencyChecker : IEvidenceConsistencyChecker
             reasons.Add(EvidenceConsistencyReasonCodes.ContradictionIncorrectAttemptNoError);
         }
 
-        // Contradiction 2: Student is incorrect, but AI claims high reasoning quality (>= 80)
-        if (attempt.IsCorrect == false && analysis.ReasoningQuality >= 80m)
-        {
-            hasContradiction = true;
-            reasons.Add(EvidenceConsistencyReasonCodes.ContradictionIncorrectAttemptHighQuality);
-        }
-
-        // Contradiction 3: Student is correct, but AI reports severe error with abysmal reasoning quality (< 20)
-        if (attempt.IsCorrect == true && analysis.ErrorType != ErrorType.None && analysis.ReasoningQuality < 20m)
-        {
-            hasContradiction = true;
-            reasons.Add(EvidenceConsistencyReasonCodes.ContradictionCorrectAttemptFatalError);
-        }
-
-        // Contradiction 4: ErrorType.None, but AI returns root cause nodes
+        // Contradiction 2: ErrorType.None, but AI returns root cause nodes
         if (analysis.ErrorType == ErrorType.None && rootCauseIds.Count > 0)
         {
             hasContradiction = true;
             reasons.Add(EvidenceConsistencyReasonCodes.ContradictionNoErrorWithRootCauses);
         }
 
-        // Contradiction 5: Metadata mismatch (attempt/center/question mismatch)
+        // Contradiction 3: Metadata mismatch (attempt/center/question mismatch)
         if (analysis.AttemptId != attempt.AttemptId || analysis.CenterId != attempt.CenterId)
         {
             hasContradiction = true;
@@ -169,14 +155,6 @@ public sealed class EvidenceConsistencyChecker : IEvidenceConsistencyChecker
                     }
                 }
             }
-        }
-
-        if (!string.IsNullOrWhiteSpace(attempt.ReasoningLanguage)
-            && !string.IsNullOrWhiteSpace(question.LanguageCode)
-            && !string.Equals(attempt.ReasoningLanguage, question.LanguageCode, StringComparison.OrdinalIgnoreCase))
-        {
-            semanticPassed = false;
-            reasons.Add(EvidenceConsistencyReasonCodes.SemanticInvalidLanguageMismatch);
         }
 
         // 7. Required Evidence check

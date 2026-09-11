@@ -175,4 +175,64 @@ public sealed class KnowledgeTwinUpdaterTests : IDisposable
         Assert.Equal(3u, result.Twin.EvidenceCount); // not incremented
         Assert.Equal(0.00m, result.Calculation.Delta);
     }
+
+    [Fact]
+    public async Task UpdateAsync_TwoNewAggregates_AssignsDistinctNonZeroIds()
+    {
+        var updater = new KnowledgeTwinUpdater(_dbContext);
+        var now = new DateTime(2026, 9, 10, 10, 0, 0, DateTimeKind.Utc);
+
+        async Task<KnowledgeTwin> CreateTwinAsync(ulong attemptId, ulong questionId, ulong topicNodeId)
+        {
+            var attempt = new Attempt
+            {
+                CenterId = _centerId,
+                AttemptId = attemptId,
+                StudentId = _studentId,
+                QuestionId = questionId,
+                TimeSpentSeconds = 60,
+                IsCorrect = true
+            };
+            var question = new Question
+            {
+                CenterId = _centerId,
+                QuestionId = questionId,
+                SubjectId = _subjectId,
+                PrimaryTopicNodeId = topicNodeId,
+                Difficulty = 3,
+                EstimatedTimeSeconds = 60
+            };
+            var analysis = new ReasoningAnalysis
+            {
+                CenterId = _centerId,
+                AttemptId = attemptId,
+                ReasoningQuality = 80m
+            };
+            var evidence = new EvidenceAssessment
+            {
+                CenterId = _centerId,
+                AttemptId = attemptId,
+                ReasoningWeight = 1m,
+                TrustLevel = EvidenceTrustLevel.Trusted
+            };
+
+            var result = await updater.UpdateAsync(
+                attempt,
+                question,
+                analysis,
+                evidence,
+                80m,
+                now,
+                CancellationToken.None);
+            await _dbContext.SaveChangesAsync();
+            return result.Twin;
+        }
+
+        var firstTwin = await CreateTwinAsync(1101, 601, 301);
+        var secondTwin = await CreateTwinAsync(1102, 602, 302);
+
+        Assert.NotEqual(0ul, firstTwin.KnowledgeTwinId);
+        Assert.NotEqual(0ul, secondTwin.KnowledgeTwinId);
+        Assert.NotEqual(firstTwin.KnowledgeTwinId, secondTwin.KnowledgeTwinId);
+    }
 }

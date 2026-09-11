@@ -41,6 +41,7 @@ public sealed class BehaviorTwinUpdater : IBehaviorTwinUpdater
         {
             twin = new BehaviorTwin
             {
+                BehaviorTwinId = TwinAggregateIdGenerator.NewId(),
                 CenterId = attempt.CenterId,
                 StudentId = attempt.StudentId,
                 SubjectId = subjectId,

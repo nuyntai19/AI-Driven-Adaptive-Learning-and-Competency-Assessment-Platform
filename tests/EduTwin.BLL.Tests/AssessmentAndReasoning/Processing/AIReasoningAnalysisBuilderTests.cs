@@ -50,7 +50,7 @@ public sealed class AIReasoningAnalysisBuilderTests
         Assert.Null(analysis.OverrideFeedback);
         Assert.Null(analysis.OverrideIsCorrect);
         Assert.Null(analysis.OverrideReason);
-        Assert.Null(analysis.OverriddenByTeacherId);
+        Assert.Null(analysis.OverriddenByUserId);
         Assert.Null(analysis.OverriddenAt);
         Assert.Equal(0u, analysis.OverrideVersion);
         Assert.Equal(utcNow, analysis.CreatedAt);

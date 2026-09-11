@@ -1,7 +1,6 @@
 using EduTwin.API.Controllers;
 using EduTwin.BLL.AssessmentAndReasoning.Override;
 using EduTwin.BLL.AssessmentAndReasoning.ReviewQueue;
-using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.Common;
 using Microsoft.AspNetCore.Authorization;
@@ -84,8 +83,13 @@ public sealed class TeacherReviewControllerTests
 
         Assert.Equal("api/v1/teachers/me", route.Template);
         Assert.Equal("review-queue", httpGet.Template);
-        Assert.Contains(AuthorizationPolicies.TeacherOnly, policies);
-        Assert.Contains("twin.reasoning.review", policies);
+        Assert.Empty(policies);
+
+        var listPolicies = method.GetCustomAttributes(typeof(AuthorizeAttribute), true)
+            .Cast<AuthorizeAttribute>()
+            .Select(attribute => attribute.Policy)
+            .ToArray();
+        Assert.Equal("twin.reasoning.review", Assert.Single(listPolicies));
 
         var overrideMethod = type.GetMethod(nameof(TeacherReviewController.OverrideAnalysis))!;
         var httpPost = Assert.Single(overrideMethod.GetCustomAttributes(typeof(HttpPostAttribute), true).Cast<HttpPostAttribute>());
@@ -95,6 +99,7 @@ public sealed class TeacherReviewControllerTests
             .Select(attribute => attribute.Policy)
             .ToArray();
         Assert.Contains("twin.reasoning.override", overridePolicies);
+        Assert.DoesNotContain("twin.reasoning.review", overridePolicies);
     }
 
     [Fact]
