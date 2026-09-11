@@ -16,6 +16,9 @@ import { AssignmentEditorPage } from "./pages/AssignmentEditorPage";
 import { AssignmentProgressPage } from "./pages/AssignmentProgressPage";
 import { StudentAssignmentsPage } from "./pages/StudentAssignmentsPage";
 import { StudentAssignmentDetailPage } from "./pages/StudentAssignmentDetailPage";
+import { StudentDashboardPage } from "./pages/StudentDashboardPage";
+import { StudentTwinPage } from "./pages/StudentTwinPage";
+import { LearningPlayerPage } from "./pages/LearningPlayerPage";
 import { PermissionRoute } from "./routes/PermissionRoute";
 import { permissions, authorizationUiPermissions } from "./auth/permissions";
 import { AccessDeniedPage } from "./pages/AccessDeniedPage";
@@ -39,6 +42,18 @@ function App() {
         <Route element={<ProtectedRoute />}>
           <Route path="/" element={<AuthenticatedHomePage />} />
           <Route path="/khong-co-quyen" element={<AccessDeniedPage />} />
+
+          {/* Student R08 Experiences */}
+          <Route element={<PermissionRoute allOf={[permissions.dashboardsStudentRead]} />}>
+            <Route path="/hoc-tap/tong-quan" element={<StudentDashboardPage />} />
+          </Route>
+          <Route element={<PermissionRoute allOf={[permissions.twinStudentReadOwn]} />}>
+            <Route path="/hoc-tap/ho-so-nang-luc" element={<StudentTwinPage />} />
+          </Route>
+          <Route element={<PermissionRoute allOf={[permissions.learningAttemptsSubmit]} />}>
+            <Route path="/hoc-tap/luyen-tap" element={<LearningPlayerPage />} />
+            <Route path="/hoc-tap/luyen-tap/:questionId" element={<LearningPlayerPage />} />
+          </Route>
 
           <Route element={<PermissionRoute allOf={[permissions.subjectsRead, permissions.nodesRead, permissions.edgesRead]} />}>
             <Route path="/kien-thuc/do-thi" element={<KnowledgeGraphPage />} />

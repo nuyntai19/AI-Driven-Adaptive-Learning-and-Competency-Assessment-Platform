@@ -29,6 +29,17 @@ export const permissions = {
   userRolesRead: "authorization.user_roles.read",
   userRolesAssign: "authorization.user_roles.assign",
   auditRead: "authorization.audit.read",
+  dashboardsStudentRead: "dashboards.student.read_own",
+  dashboardsTeacherRead: "dashboards.teacher.read_scoped",
+  dashboardsCenterRead: "dashboards.center.read",
+  twinStudentReadOwn: "twin.student.read_own",
+  twinStudentReadScoped: "twin.student.read_scoped",
+  learningAttemptsReadOwn: "learning.attempts.read_own",
+  learningAttemptsReadScoped: "learning.attempts.read_scoped",
+  learningAttemptsSubmit: "learning.attempts.submit",
+  recommendationsStudentUpdateOwn: "recommendations.student.update_own",
+  twinReasoningReview: "twin.reasoning.review",
+  twinReasoningOverride: "twin.reasoning.override",
 } as const;
 
 export const authorizationUiPermissions = [
