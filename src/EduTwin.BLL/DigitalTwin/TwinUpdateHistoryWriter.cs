@@ -10,7 +10,6 @@ namespace EduTwin.BLL.DigitalTwin;
 
 public sealed class TwinUpdateHistoryWriter : ITwinUpdateHistoryWriter
 {
-    private const string MasteryCalculationVersion = "mastery-v1";
     private readonly EduTwinDbContext _dbContext;
 
     public TwinUpdateHistoryWriter(EduTwinDbContext dbContext)
@@ -33,7 +32,8 @@ public sealed class TwinUpdateHistoryWriter : ITwinUpdateHistoryWriter
     {
         ArgumentNullException.ThrowIfNull(calculation);
 
-        var breakdownJson = JsonSerializer.SerializeToDocument(calculation.Breakdown);
+        var breakdownJson = JsonSerializer.SerializeToDocument(
+            calculation.HistoryBreakdown ?? calculation.Breakdown);
 
         var history = new TwinUpdateHistory
         {
@@ -47,12 +47,8 @@ public sealed class TwinUpdateHistoryWriter : ITwinUpdateHistoryWriter
             PreviousMastery = calculation.PreviousMastery,
             NewMastery = calculation.NewMastery,
             MasteryDelta = calculation.Delta,
-            EffectiveReasoningQuality = calculation.Breakdown.IsFallback
-                ? null
-                : (calculation.Breakdown.NormalizedReasoningQuality.HasValue
-                    ? calculation.Breakdown.NormalizedReasoningQuality.Value * 100m
-                    : null),
-            CalculationVersion = MasteryCalculationVersion,
+            EffectiveReasoningQuality = calculation.EffectiveReasoningQuality,
+            CalculationVersion = calculation.CalculationVersion,
             CalculationBreakdown = breakdownJson,
             Explanation = calculation.Explanation,
             CreatedAt = utcNow,

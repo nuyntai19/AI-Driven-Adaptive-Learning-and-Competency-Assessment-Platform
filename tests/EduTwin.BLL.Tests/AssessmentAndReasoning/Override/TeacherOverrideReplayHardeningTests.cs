@@ -360,7 +360,22 @@ public sealed class TeacherOverrideReplayHardeningTests : IDisposable
         var history = await _dbContext.TwinUpdateHistories
             .SingleAsync(h => h.CenterId == _centerId && h.StudentId == _studentId && h.EventSource == TwinEventSource.Replay);
         var doc = JsonDocument.Parse(history.CalculationBreakdown.RootElement.GetRawText());
-        Assert.Equal(1.00m, doc.RootElement.GetProperty("ReasoningWeight").GetDecimal());
+        Assert.Equal("replay-v1", history.CalculationVersion);
+        Assert.Equal(70m, history.EffectiveReasoningQuality);
+        Assert.Equal(3002ul, doc.RootElement.GetProperty("TriggerAttemptId").GetUInt64());
+        Assert.Equal(3, doc.RootElement.GetProperty("ReplayCount").GetInt32());
+        Assert.Equal(2, doc.RootElement.GetProperty("EffectiveEvidenceCount").GetInt32());
+        Assert.False(doc.RootElement.TryGetProperty("ReasoningWeight", out _));
+
+        var replaySteps = doc.RootElement.GetProperty("ReplaySteps").EnumerateArray().ToList();
+        Assert.Equal(3, replaySteps.Count);
+        var finalStep = replaySteps[^1];
+        Assert.Equal(3003ul, finalStep.GetProperty("AttemptId").GetUInt64());
+        Assert.Equal(70m, finalStep.GetProperty("EffectiveReasoningQuality").GetDecimal());
+        Assert.Equal(0.50m, finalStep.GetProperty("ReasoningWeight").GetDecimal());
+        Assert.True(finalStep.TryGetProperty("TimeQuality", out _));
+        Assert.True(finalStep.TryGetProperty("DifficultyMultiplier", out _));
+        Assert.True(finalStep.TryGetProperty("LearningRate", out _));
     }
 
     [Fact]

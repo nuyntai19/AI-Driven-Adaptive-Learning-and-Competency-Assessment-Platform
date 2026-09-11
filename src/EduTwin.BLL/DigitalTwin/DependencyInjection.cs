@@ -11,6 +11,7 @@ public static class DependencyInjection
         services.AddScoped<IUpsertStudentSubjectGoalUseCase, UpsertStudentSubjectGoalUseCase>();
         services.AddScoped<IListStudentSubjectGoalsUseCase, ListStudentSubjectGoalsUseCase>();
         services.AddSingleton<IBehaviorCalibrationCalculator, BehaviorCalibrationCalculator>();
+        services.AddScoped<IBehaviorCalibrationSampleProvider, BehaviorCalibrationSampleProvider>();
         services.AddScoped<IBehaviorTwinUpdater, BehaviorTwinUpdater>();
         services.AddScoped<IKnowledgeTwinUpdater, KnowledgeTwinUpdater>();
         services.AddScoped<IStudentGoalRiskUpdater, StudentGoalRiskUpdater>();

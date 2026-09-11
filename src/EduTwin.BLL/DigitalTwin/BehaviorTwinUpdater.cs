@@ -12,13 +12,16 @@ public sealed class BehaviorTwinUpdater : IBehaviorTwinUpdater
 {
     private readonly EduTwinDbContext _dbContext;
     private readonly IBehaviorCalibrationCalculator _calibrationCalculator;
+    private readonly IBehaviorCalibrationSampleProvider _calibrationSampleProvider;
 
     public BehaviorTwinUpdater(
         EduTwinDbContext dbContext,
-        IBehaviorCalibrationCalculator? calibrationCalculator = null)
+        IBehaviorCalibrationCalculator? calibrationCalculator = null,
+        IBehaviorCalibrationSampleProvider? calibrationSampleProvider = null)
     {
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         _calibrationCalculator = calibrationCalculator ?? new BehaviorCalibrationCalculator();
+        _calibrationSampleProvider = calibrationSampleProvider ?? new BehaviorCalibrationSampleProvider(_dbContext);
     }
 
     public async Task<BehaviorTwin> UpdateAsync(
@@ -81,29 +84,19 @@ public sealed class BehaviorTwinUpdater : IBehaviorTwinUpdater
         twin.AvgConfidence = Math.Round(avgConfidence, 2, MidpointRounding.AwayFromZero);
 
         // 5. Confidence Calibration (0 - 100) based strictly on graded attempts
-        var subjectAttempts = await (
-            from a in _dbContext.Attempts
-            join q in _dbContext.Questions on new { a.CenterId, a.QuestionId } equals new { q.CenterId, q.QuestionId }
-            where a.CenterId == attempt.CenterId
-                && a.StudentId == attempt.StudentId
-                && q.SubjectId == subjectId
-            select new { a.AttemptId, a.Confidence, a.IsCorrect }
-        ).ToListAsync(cancellationToken);
+        var subjectSamples = await _calibrationSampleProvider.GetSubjectSamplesAsync(
+            attempt.CenterId,
+            attempt.StudentId,
+            subjectId,
+            attempt,
+            hasPendingCorrectnessOverride: false,
+            pendingCorrectnessOverride: null,
+            cancellationToken);
 
-        var gradedSamples = subjectAttempts
-            .Select(a => new
-            {
-                a.Confidence,
-                IsCorrect = a.AttemptId == attempt.AttemptId ? attempt.IsCorrect : a.IsCorrect
-            })
-            .Where(a => a.IsCorrect.HasValue)
-            .Select(a => new GradedAttemptSample(a.Confidence, a.IsCorrect!.Value))
+        var gradedSamples = subjectSamples
+            .Where(sample => sample.EffectiveIsCorrect.HasValue)
+            .Select(sample => new GradedAttemptSample(sample.Confidence, sample.EffectiveIsCorrect!.Value))
             .ToList();
-
-        if (attempt.IsCorrect.HasValue && !subjectAttempts.Any(a => a.AttemptId == attempt.AttemptId))
-        {
-            gradedSamples.Add(new GradedAttemptSample(attempt.Confidence, attempt.IsCorrect.Value));
-        }
 
         twin.ConfidenceCalibration = _calibrationCalculator.CalculateCalibration(gradedSamples);
 

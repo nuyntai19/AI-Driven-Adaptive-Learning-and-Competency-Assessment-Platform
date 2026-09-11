@@ -1,8 +1,10 @@
 using System;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using EduTwin.BLL.DigitalTwin;
+using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.DAL.AssessmentAndReasoning;
 using EduTwin.DAL.CurriculumAndQuestions;
@@ -228,6 +230,72 @@ public sealed class BehaviorTwinUpdaterTests : IDisposable
         // Denominator must be 1 (only the graded MCQ attempt), NOT 2!
         // MCQ calibration is 100 - |100 - 100| = 100.00m
         Assert.Equal(100.00m, result2.ConfidenceCalibration);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_AfterEarlierTeacherOverride_PreservesEffectiveCorrectnessInCalibration()
+    {
+        SeedQuestions();
+        var updater = new BehaviorTwinUpdater(_dbContext);
+        var now = new DateTime(2026, 9, 10, 10, 0, 0, DateTimeKind.Utc);
+
+        var overriddenAttempt = new Attempt
+        {
+            CenterId = _centerId,
+            StudentId = _studentId,
+            QuestionId = 1,
+            FinalAnswer = "A",
+            ReasoningLanguage = "vi",
+            TimeSpentSeconds = 60,
+            Confidence = 100m,
+            IsCorrect = false,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        _dbContext.Attempts.Add(overriddenAttempt);
+        await updater.UpdateAsync(overriddenAttempt, _subjectId, now, CancellationToken.None);
+        await _dbContext.SaveChangesAsync();
+
+        _dbContext.ReasoningAnalyses.Add(new ReasoningAnalysis
+        {
+            CenterId = _centerId,
+            AnalysisId = 7001,
+            AttemptId = overriddenAttempt.AttemptId,
+            SchemaVersion = "1.0",
+            MissingSteps = JsonDocument.Parse("[]"),
+            RootCauseNodeIds = JsonDocument.Parse("[]"),
+            Feedback = "Original analysis",
+            Provider = AnalysisProvider.Gemini,
+            OverrideIsCorrect = true,
+            OverrideReason = "Teacher confirmed the answer.",
+            OverrideVersion = 1,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+        await _dbContext.SaveChangesAsync();
+
+        var nextAttempt = new Attempt
+        {
+            CenterId = _centerId,
+            StudentId = _studentId,
+            QuestionId = 2,
+            FinalAnswer = "B",
+            ReasoningLanguage = "vi",
+            TimeSpentSeconds = 60,
+            Confidence = 100m,
+            IsCorrect = true,
+            CreatedAt = now.AddMinutes(1),
+            UpdatedAt = now.AddMinutes(1)
+        };
+        _dbContext.Attempts.Add(nextAttempt);
+
+        var result = await updater.UpdateAsync(
+            nextAttempt,
+            _subjectId,
+            now.AddMinutes(1),
+            CancellationToken.None);
+
+        Assert.Equal(100.00m, result.ConfidenceCalibration);
     }
 
     [Fact]

@@ -30,6 +30,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
     private readonly IStudentTwinUpdater _studentTwinUpdater;
     private readonly ITwinUpdateHistoryWriter _historyWriter;
     private readonly IBehaviorCalibrationCalculator _calibrationCalculator;
+    private readonly IBehaviorCalibrationSampleProvider _calibrationSampleProvider;
     private readonly TimeProvider _timeProvider;
 
     public TeacherOverrideUseCase(
@@ -41,7 +42,8 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
         IStudentTwinUpdater studentTwinUpdater,
         ITwinUpdateHistoryWriter historyWriter,
         TimeProvider timeProvider,
-        IBehaviorCalibrationCalculator? calibrationCalculator = null)
+        IBehaviorCalibrationCalculator? calibrationCalculator = null,
+        IBehaviorCalibrationSampleProvider? calibrationSampleProvider = null)
     {
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         _tenantContext = tenantContext ?? throw new ArgumentNullException(nameof(tenantContext));
@@ -52,6 +54,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
         _historyWriter = historyWriter ?? throw new ArgumentNullException(nameof(historyWriter));
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
         _calibrationCalculator = calibrationCalculator ?? new BehaviorCalibrationCalculator();
+        _calibrationSampleProvider = calibrationSampleProvider ?? new BehaviorCalibrationSampleProvider(_dbContext);
     }
 
     public async Task<TeacherOverrideResult> ExecuteAsync(
@@ -283,52 +286,16 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                 .ToDictionary(g => g.Key, g => g.Last());
 
             // G. Load all attempts in the subject to build subject-wide chronological rolling calibration
-            var allSubjectAttempts = await (
-                from a in _dbContext.Attempts
-                join q in _dbContext.Questions on new { a.CenterId, a.QuestionId } equals new { q.CenterId, q.QuestionId }
-                where a.CenterId == centerId
-                    && a.StudentId == studentId
-                    && q.SubjectId == subjectId
-                select new
-                {
-                    a.AttemptId,
-                    a.CreatedAt,
-                    a.Confidence,
-                    a.IsCorrect
-                }
-            ).ToListAsync(cancellationToken);
+            var subjectSamples = await _calibrationSampleProvider.GetSubjectSamplesAsync(
+                centerId,
+                studentId,
+                subjectId,
+                attempt,
+                hasPendingCorrectnessOverride: true,
+                pendingCorrectnessOverride: request.IsCorrect,
+                cancellationToken);
 
-            var subjectAttemptIds = allSubjectAttempts.Select(a => a.AttemptId).ToArray();
-            var allSubjectAnalyses = await _dbContext.ReasoningAnalyses
-                .Where(ra => ra.CenterId == centerId && subjectAttemptIds.Contains(ra.AttemptId))
-                .ToListAsync(cancellationToken);
-            var subjectAnalysesByAttempt = allSubjectAnalyses.ToDictionary(ra => ra.AttemptId);
-
-            var gradedSubjectAttempts = allSubjectAttempts
-                .Select(a =>
-                {
-                    bool? effCorrect;
-                    if (a.AttemptId == attempt.AttemptId)
-                    {
-                        effCorrect = request.IsCorrect;
-                    }
-                    else if (subjectAnalysesByAttempt.TryGetValue(a.AttemptId, out var ra) && ra.OverrideIsCorrect.HasValue)
-                    {
-                        effCorrect = ra.OverrideIsCorrect.Value;
-                    }
-                    else
-                    {
-                        effCorrect = a.IsCorrect;
-                    }
-
-                    return new
-                    {
-                        a.AttemptId,
-                        a.CreatedAt,
-                        a.Confidence,
-                        EffectiveIsCorrect = effCorrect
-                    };
-                })
+            var gradedSubjectAttempts = subjectSamples
                 .Where(x => x.EffectiveIsCorrect.HasValue)
                 .OrderBy(x => x.CreatedAt)
                 .ThenBy(x => x.AttemptId)
@@ -410,9 +377,14 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
 
                 replayedSteps.Add(new ReplayStepBreakdown(
                     AttemptId: att.AttemptId,
+                    EffectiveReasoningQuality: effectiveQuality,
                     ReasoningWeight: reasoningWeight,
                     EffectiveCorrectness: effectiveCorrectness ?? false,
+                    TimeQuality: timeQuality,
                     RollingCalibration: stepCalibration,
+                    Difficulty: q.Difficulty,
+                    DifficultyMultiplier: calcResult.Breakdown.DifficultyMultiplier,
+                    LearningRate: calcResult.Breakdown.LearningRate,
                     PreviousMastery: prevStepMastery,
                     NewMastery: calcResult.NewMastery,
                     Delta: calcResult.Delta));
@@ -476,7 +448,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
 
             await _studentTwinUpdater.UpdateAsync(centerId, studentId, now, cancellationToken);
 
-            // K. Append TwinUpdateHistory using truthful ReplaySummaryBreakdown with full trace
+            // K. Append TwinUpdateHistory using a replay summary, never a synthetic single-step breakdown.
             var historyBreakdown = new MasteryCalculationBreakdown(
                 IsFallback: false,
                 PreviousMastery: previousMastery,
@@ -494,14 +466,24 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                 Delta: replayedMastery - previousMastery,
                 ReplaySteps: replayedSteps);
 
+            var replaySummary = new ReplaySummaryBreakdown(
+                TriggerAttemptId: attempt.AttemptId,
+                PreviousMastery: previousMastery,
+                FinalMastery: replayedMastery,
+                ReplayCount: replayedCount,
+                EffectiveEvidenceCount: effectiveEvidenceCount,
+                FinalCalibration: finalCalibration,
+                ReplaySteps: replayedSteps);
+
             var historyCalcResult = new MasteryCalculationResult(
                 PreviousMastery: previousMastery,
                 NewMastery: replayedMastery,
                 Delta: replayedMastery - previousMastery,
-                EffectiveReasoningQuality: request.ReasoningQuality,
+                EffectiveReasoningQuality: latestEffectiveReasoningQuality,
                 CalculationVersion: "replay-v1",
                 Breakdown: historyBreakdown,
-                Explanation: $"Teacher override applied by {actorId} on attempt {attempt.AttemptId}: {request.Reason} (Replayed {replayedCount} attempts; {effectiveEvidenceCount} effective evidence records; final mastery {replayedMastery}%).");
+                Explanation: $"Teacher override applied by {actorId} on attempt {attempt.AttemptId}: {request.Reason} (Replayed {replayedCount} attempts; {effectiveEvidenceCount} effective evidence records; final mastery {replayedMastery}%).",
+                HistoryBreakdown: replaySummary);
 
             await _historyWriter.WriteAsync(
                 centerId,
