@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using EduTwin.BLL.DigitalTwin.Orchestration;
+using EduTwin.BLL.Recommendations;
 
 namespace EduTwin.BLL.DigitalTwin;
 
@@ -18,6 +19,7 @@ public static class DependencyInjection
         services.AddScoped<IStudentTwinUpdater, StudentTwinUpdater>();
         services.AddScoped<ITwinUpdateHistoryWriter, TwinUpdateHistoryWriter>();
         services.AddScoped<ITwinCompletionOrchestrator, TwinCompletionOrchestrator>();
+        services.AddRecommendations();
         return services;
     }
 }

@@ -4,6 +4,7 @@ using EduTwin.BLL.AssessmentAndReasoning.Jobs;
 using EduTwin.BLL.DigitalTwin;
 using EduTwin.BLL.DigitalTwin.Orchestration;
 using EduTwin.BLL.IdentityAndTenancy;
+using EduTwin.BLL.Recommendations;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.DigitalTwin;
@@ -32,6 +33,7 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
     private readonly IEvidenceAssessmentFactory _evidenceAssessmentFactory;
     private readonly IEvidenceConsistencyChecker _consistencyChecker;
     private readonly ITwinCompletionOrchestrator _twinCompletionOrchestrator;
+    private readonly IRecommendationEngine? _recommendationEngine;
     private readonly TimeProvider _timeProvider;
 
     public AIAnalysisJobProcessor(
@@ -46,7 +48,8 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         IEvidenceAssessmentFactory evidenceAssessmentFactory,
         TimeProvider timeProvider,
         ITwinCompletionOrchestrator? twinCompletionOrchestrator = null,
-        IEvidenceConsistencyChecker? consistencyChecker = null)
+        IEvidenceConsistencyChecker? consistencyChecker = null,
+        IRecommendationEngine? recommendationEngine = null)
     {
         _dbContext = dbContext;
         _tenantContext = tenantContext;
@@ -69,6 +72,7 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             new StudentGoalRiskUpdater(dbContext),
             new StudentTwinUpdater(dbContext),
             _consistencyChecker);
+        _recommendationEngine = recommendationEngine;
     }
 
     public async Task<AIAnalysisJobProcessingResult> ExecuteAsync(
@@ -234,6 +238,7 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         cancellationToken.ThrowIfCancellationRequested();
         await using var transaction = await _dbContext.Database
             .BeginTransactionAsync(cancellationToken);
+        await StudentLockHelper.AcquireStudentLockAsync(_dbContext, initialAttempt.CenterId, initialAttempt.StudentId, cancellationToken);
 
         try
         {
@@ -274,6 +279,20 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             }
 
             cancellationToken.ThrowIfCancellationRequested();
+            // Checkpoint: save Twin & Goal updates before recommendation generation
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            if (_recommendationEngine is not null)
+            {
+                await _recommendationEngine.GenerateAndPersistAsync(
+                    attempt.CenterId,
+                    attempt.StudentId,
+                    requestContext.Question.SubjectId,
+                    attempt.AttemptId,
+                    transactionalUtcNow,
+                    cancellationToken);
+            }
+
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
 
@@ -350,6 +369,7 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         cancellationToken.ThrowIfCancellationRequested();
         await using var transaction = await _dbContext.Database
             .BeginTransactionAsync(cancellationToken);
+        await StudentLockHelper.AcquireStudentLockAsync(_dbContext, initialAttempt.CenterId, initialAttempt.StudentId, cancellationToken);
 
         try
         {
@@ -468,6 +488,31 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
 
             attempt.UpdatedAt = transactionalUtcNow;
             cancellationToken.ThrowIfCancellationRequested();
+
+            if (outcome == AIAnalysisJobProcessingOutcome.FallbackCompleted && _recommendationEngine is not null)
+            {
+                // Checkpoint: save Twin & Goal updates before recommendation generation
+                await _dbContext.SaveChangesAsync(cancellationToken);
+
+                var targetSubjectId = requestContext?.Question?.SubjectId
+                    ?? attempt.Question?.SubjectId
+                    ?? await _dbContext.Questions
+                        .Where(q => q.CenterId == attempt.CenterId && q.QuestionId == attempt.QuestionId)
+                        .Select(q => q.SubjectId)
+                        .FirstOrDefaultAsync(cancellationToken);
+
+                if (targetSubjectId != Guid.Empty)
+                {
+                    await _recommendationEngine.GenerateAndPersistAsync(
+                        attempt.CenterId,
+                        attempt.StudentId,
+                        targetSubjectId,
+                        attempt.AttemptId,
+                        transactionalUtcNow,
+                        cancellationToken);
+                }
+            }
+
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
 

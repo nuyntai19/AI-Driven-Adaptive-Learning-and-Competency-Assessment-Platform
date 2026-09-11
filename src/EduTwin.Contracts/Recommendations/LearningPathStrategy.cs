@@ -1,7 +1,9 @@
-﻿namespace EduTwin.Contracts.Recommendations;
+namespace EduTwin.Contracts.Recommendations;
 
 public enum LearningPathStrategy
 {
     LinearFallback,
-    OpportunityGap
+    OpportunityGap,
+    MaintenanceReview
 }
+

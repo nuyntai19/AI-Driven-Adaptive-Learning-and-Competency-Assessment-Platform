@@ -9,6 +9,8 @@ using EduTwin.Contracts.Common;
 using EduTwin.Contracts.IdentityAndTenancy;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using EduTwin.BLL.Recommendations.UseCases;
+using EduTwin.Contracts.Recommendations;
 
 namespace EduTwin.API.Controllers;
 
@@ -20,6 +22,7 @@ public sealed class LearningController : ControllerBase
     private readonly ISubmitAttemptUseCase _submitAttemptUseCase;
     private readonly IListAttemptsUseCase _listAttemptsUseCase;
     private readonly IGetAnalysisJobStatusUseCase _getAnalysisJobStatusUseCase;
+    private readonly IGetNextQuestionUseCase _getNextQuestionUseCase;
     private readonly TimeProvider _timeProvider;
 
     public LearningController(
@@ -27,11 +30,81 @@ public sealed class LearningController : ControllerBase
         IListAttemptsUseCase listAttemptsUseCase,
         IGetAnalysisJobStatusUseCase getAnalysisJobStatusUseCase,
         TimeProvider timeProvider)
+        : this(submitAttemptUseCase, listAttemptsUseCase, getAnalysisJobStatusUseCase, null!, timeProvider)
+    {
+    }
+
+    public LearningController(
+        ISubmitAttemptUseCase submitAttemptUseCase,
+        IListAttemptsUseCase listAttemptsUseCase,
+        IGetAnalysisJobStatusUseCase getAnalysisJobStatusUseCase,
+        IGetNextQuestionUseCase getNextQuestionUseCase,
+        TimeProvider timeProvider)
     {
         _submitAttemptUseCase = submitAttemptUseCase;
         _listAttemptsUseCase = listAttemptsUseCase;
         _getAnalysisJobStatusUseCase = getAnalysisJobStatusUseCase;
+        _getNextQuestionUseCase = getNextQuestionUseCase;
         _timeProvider = timeProvider;
+    }
+
+    [HttpGet("next-question")]
+    [Authorize(Policy = "recommendations.student.read_own")]
+    [ProducesResponseType(typeof(NextQuestionResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetNextQuestion(
+        [FromQuery] Guid subjectId,
+        CancellationToken cancellationToken)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        if (subjectId == Guid.Empty)
+        {
+            return BadRequest(CreateProblemDetails(
+                StatusCodes.Status400BadRequest,
+                "https://edutwin.local/problems/bad-request",
+                "Dữ liệu không hợp lệ",
+                "Mã môn học (subjectId) không hợp lệ.",
+                traceId,
+                "INVALID_SUBJECT_ID"));
+        }
+
+        var result = await _getNextQuestionUseCase.ExecuteAsync(subjectId, cancellationToken);
+
+        if (result.Forbidden)
+        {
+            return StatusCode(
+                StatusCodes.Status403Forbidden,
+                CreateProblemDetails(
+                    StatusCodes.Status403Forbidden,
+                    "https://edutwin.local/problems/forbidden",
+                    "Không có quyền truy cập",
+                    result.ErrorMessage ?? "Bạn không có quyền truy cập.",
+                    traceId,
+                    ErrorCodes.ForbiddenResource));
+        }
+
+        if (result.NotFound || result.Data is null)
+        {
+            return NotFound(CreateProblemDetails(
+                StatusCodes.Status404NotFound,
+                "https://edutwin.local/problems/not-found",
+                "Không tìm thấy dữ liệu",
+                result.ErrorMessage ?? "Không tìm thấy câu hỏi hoặc gợi ý học tập tiếp theo.",
+                traceId,
+                ErrorCodes.ResourceNotFound));
+        }
+
+        return Ok(new NextQuestionResponse
+        {
+            Data = result.Data,
+            Meta = new MetaDto
+            {
+                Timestamp = _timeProvider.GetUtcNow().UtcDateTime,
+                TraceId = traceId
+            }
+        });
     }
 
     [HttpGet("attempts")]

@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using EduTwin.BLL.AssessmentAndReasoning.Evidence;
 using EduTwin.BLL.DigitalTwin;
 using EduTwin.BLL.IdentityAndTenancy;
+using EduTwin.BLL.Recommendations;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.DigitalTwin;
@@ -31,6 +32,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
     private readonly ITwinUpdateHistoryWriter _historyWriter;
     private readonly IBehaviorCalibrationCalculator _calibrationCalculator;
     private readonly IBehaviorCalibrationSampleProvider _calibrationSampleProvider;
+    private readonly IRecommendationEngine? _recommendationEngine;
     private readonly TimeProvider _timeProvider;
 
     public TeacherOverrideUseCase(
@@ -43,7 +45,8 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
         ITwinUpdateHistoryWriter historyWriter,
         TimeProvider timeProvider,
         IBehaviorCalibrationCalculator? calibrationCalculator = null,
-        IBehaviorCalibrationSampleProvider? calibrationSampleProvider = null)
+        IBehaviorCalibrationSampleProvider? calibrationSampleProvider = null,
+        IRecommendationEngine? recommendationEngine = null)
     {
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         _tenantContext = tenantContext ?? throw new ArgumentNullException(nameof(tenantContext));
@@ -55,6 +58,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
         _calibrationCalculator = calibrationCalculator ?? new BehaviorCalibrationCalculator();
         _calibrationSampleProvider = calibrationSampleProvider ?? new BehaviorCalibrationSampleProvider(_dbContext);
+        _recommendationEngine = recommendationEngine;
     }
 
     public async Task<TeacherOverrideResult> ExecuteAsync(
@@ -151,6 +155,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
 
         // 5. Transactional Override & Replay
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+        await StudentLockHelper.AcquireStudentLockAsync(_dbContext, centerId, attempt.StudentId, cancellationToken);
         try
         {
             var now = _timeProvider.GetUtcNow().UtcDateTime;
@@ -498,6 +503,22 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                 actorId,
                 cancellationToken);
 
+            // Checkpoint: save replay changes so recommendation engine observes freshly replayed twin state
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            bool recommendationRecalculated = false;
+            if (_recommendationEngine is not null)
+            {
+                var rec = await _recommendationEngine.GenerateAndPersistAsync(
+                    centerId,
+                    studentId,
+                    subjectId,
+                    attempt.AttemptId,
+                    now,
+                    cancellationToken);
+                recommendationRecalculated = rec is not null;
+            }
+
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
 
@@ -519,7 +540,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                     PreviousMastery = previousMastery,
                     NewMastery = replayedMastery,
                     NewRiskScore = newRiskScore,
-                    RecommendationRecalculated = false
+                    RecommendationRecalculated = recommendationRecalculated
                 }
             };
 

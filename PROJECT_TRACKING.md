@@ -234,9 +234,9 @@ Không phân chia cố định A chỉ database, B chỉ frontend, C chỉ tài 
 | WP-D04 | D | Malformed/low-confidence/fallback tests | 7 | WP-D02 | PROTOTYPE VERIFIED; COURSE REPLAY PENDING |
 | WP-E01 | E | Twin Orchestrator and Behavior updater | 9 | WP-D02 | PROTOTYPE VERIFIED; COURSE REPLAY PENDING |
 | WP-E02 | E | Risk and Twin history | 7 | WP-E01 | PROTOTYPE VERIFIED; COURSE REPLAY PENDING |
-| WP-E03 | E | Opportunity Gap/Recommendation | 9 | WP-E02 | NOT STARTED |
+| WP-E03 | E | Opportunity Gap/Recommendation | 9 | WP-E02 | PROTOTYPE VERIFIED; COURSE REPLAY PENDING |
 | WP-E04 | E | Twin/recommendation UI | 7 | WP-E03 | NOT STARTED |
-| WP-E05 | E/Shared | ML.NET feasibility report | 4 | Dataset available | NOT STARTED |
+| WP-E05 | E/Shared | ML.NET feasibility report | 4 | Dataset available | PROTOTYPE VERIFIED; NO-GO DOCUMENTED |
 | WP-REL-01 | Shared | E2E, performance, accessibility and demo | 8 | Core WP | NOT STARTED |
 
 Nếu effort mỗi thành viên lệch lớn, trưởng nhóm phải chuyển work package hoặc thêm reviewer/co-owner. Không dùng bảng này để mặc định 20% × 5.

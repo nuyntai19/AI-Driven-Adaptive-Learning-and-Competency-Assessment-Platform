@@ -57,7 +57,7 @@ public class LearningPathConfiguration : IEntityTypeConfiguration<LearningPath>
 
         builder.ToTable(t =>
         {
-            t.HasCheckConstraint("ck_learning_paths_strategy", "`strategy` IN ('LinearFallback', 'OpportunityGap')");
+            t.HasCheckConstraint("ck_learning_paths_strategy", "`strategy` IN ('LinearFallback', 'OpportunityGap', 'MaintenanceReview')");
             t.HasCheckConstraint("ck_learning_paths_status", "`status` IN ('Active', 'Superseded', 'Completed')");
         });
 
