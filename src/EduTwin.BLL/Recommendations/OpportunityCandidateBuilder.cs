@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using EduTwin.Contracts.KnowledgeGraph;
 using EduTwin.Contracts.Organization;
+using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.DAL.AssessmentAndReasoning;
 using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.KnowledgeGraph;
@@ -57,12 +58,17 @@ public sealed class OpportunityCandidateBuilder : IOpportunityCandidateBuilder
             from cs in _dbContext.ClassStudents
             join c in _dbContext.Classes on new { cs.CenterId, cs.ClassId } equals new { c.CenterId, c.ClassId }
             join cc in _dbContext.CurriculumClasses on new { c.CenterId, c.ClassId } equals new { cc.CenterId, cc.ClassId }
+            join curriculum in _dbContext.Curriculums
+                on new { cc.CenterId, cc.CurriculumId } equals new { curriculum.CenterId, curriculum.CurriculumId }
             where cs.CenterId == centerId
                 && cs.StudentId == studentId
                 && cs.Status == ClassStudentStatus.Active
                 && c.SubjectId == subjectId
                 && c.Status == ClassStatus.Active
                 && !c.IsDeleted
+                && curriculum.SubjectId == subjectId
+                && curriculum.ReviewStatus == ReviewStatus.Published
+                && !curriculum.IsDeleted
             select cc.CurriculumId
         ).Distinct().ToListAsync(cancellationToken);
 
@@ -77,25 +83,42 @@ public sealed class OpportunityCandidateBuilder : IOpportunityCandidateBuilder
 
         // 1. Query active topic nodes in subject (scoped to curriculum if assigned, otherwise subject-wide)
         var topicQuery = _dbContext.KnowledgeNodes
+            .AsNoTracking()
             .Where(n => n.CenterId == centerId
                 && n.SubjectId == subjectId
                 && n.NodeType == NodeType.Topic
                 && n.IsActive
                 && !n.IsDeleted);
 
+        List<KnowledgeNode> allActiveTopicNodes;
         if (assignedCurriculumIds.Count == 1)
         {
             var singleCurriculumId = assignedCurriculumIds[0];
-            topicQuery = topicQuery.Where(n => _dbContext.CurriculumNodes
-                .Where(cn => cn.CenterId == centerId && cn.CurriculumId == singleCurriculumId)
-                .Select(cn => cn.NodeId)
-                .Contains(n.NodeId));
-        }
+            var curriculumTopics = await (
+                from cn in _dbContext.CurriculumNodes.AsNoTracking()
+                join n in topicQuery
+                    on new { cn.CenterId, cn.NodeId } equals new { n.CenterId, n.NodeId }
+                where cn.CenterId == centerId && cn.CurriculumId == singleCurriculumId
+                orderby cn.OrderIndex, n.NodeId
+                select new { Node = n, CurriculumOrderIndex = cn.OrderIndex }
+            ).ToListAsync(cancellationToken);
 
-        var allActiveTopicNodes = await topicQuery
-            .OrderBy(n => n.OrderIndex)
-            .ThenBy(n => n.NodeId)
-            .ToListAsync(cancellationToken);
+            // The detached node is a read model here. Replacing OrderIndex makes every
+            // downstream selector use the curriculum-specific order without mutating storage.
+            foreach (var item in curriculumTopics)
+            {
+                item.Node.OrderIndex = item.CurriculumOrderIndex;
+            }
+
+            allActiveTopicNodes = curriculumTopics.Select(x => x.Node).ToList();
+        }
+        else
+        {
+            allActiveTopicNodes = await topicQuery
+                .OrderBy(n => n.OrderIndex)
+                .ThenBy(n => n.NodeId)
+                .ToListAsync(cancellationToken);
+        }
 
         if (allActiveTopicNodes.Count == 0)
         {
@@ -110,10 +133,6 @@ public sealed class OpportunityCandidateBuilder : IOpportunityCandidateBuilder
                 && !kt.IsDeleted)
             .ToListAsync(cancellationToken);
 
-        var masteryByNodeId = allActiveTopicNodes.ToDictionary(
-            n => n.NodeId,
-            n => twins.FirstOrDefault(t => t.TopicNodeId == n.NodeId)?.MasteryPercentage ?? 0m);
-
         // 3. Query prerequisite edges in this subject
         var edges = await _dbContext.KnowledgeEdges
             .Where(e => e.CenterId == centerId
@@ -125,6 +144,34 @@ public sealed class OpportunityCandidateBuilder : IOpportunityCandidateBuilder
         var prerequisitesByTarget = edges
             .GroupBy(e => e.TargetNodeId)
             .ToDictionary(g => g.Key, g => g.Select(x => x.SourceNodeId).Distinct().ToList());
+
+        // Candidates remain curriculum-scoped, but prerequisite readiness is subject-scoped.
+        // A valid prerequisite outside the curriculum must use its real mastery instead of 0.
+        var prerequisiteNodeIds = prerequisitesByTarget.Values
+            .SelectMany(ids => ids)
+            .Distinct()
+            .ToArray();
+        var validPrerequisiteNodeIds = await _dbContext.KnowledgeNodes
+            .AsNoTracking()
+            .Where(n => n.CenterId == centerId
+                && n.SubjectId == subjectId
+                && n.NodeType == NodeType.Topic
+                && n.IsActive
+                && !n.IsDeleted
+                && prerequisiteNodeIds.Contains(n.NodeId))
+            .Select(n => n.NodeId)
+            .ToListAsync(cancellationToken);
+
+        var twinsByNodeId = twins.ToDictionary(t => t.TopicNodeId, t => t.MasteryPercentage);
+        var masteryByNodeId = allActiveTopicNodes.ToDictionary(
+            n => n.NodeId,
+            n => twinsByNodeId.GetValueOrDefault(n.NodeId, 0m));
+        foreach (var prerequisiteNodeId in validPrerequisiteNodeIds)
+        {
+            masteryByNodeId.TryAdd(
+                prerequisiteNodeId,
+                twinsByNodeId.GetValueOrDefault(prerequisiteNodeId, 0m));
+        }
 
         // 4. Query all non-superseded (head) evidence assessments for this student and subject
         // Relational fix: Include Attempt.Question so PrimaryTopicNodeId is available after materialization

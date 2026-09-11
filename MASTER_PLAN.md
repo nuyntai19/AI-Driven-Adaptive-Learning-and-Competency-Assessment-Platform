@@ -235,8 +235,9 @@ Mục tiêu: hoàn thiện Opportunity Gap/recommendation bằng baseline giải
 
 Deliverables:
 
-- Rule-based baseline, evaluation dataset, label definition, train/test split và metric.
-- Decision record so sánh heuristic với ML.NET; chọn ML chỉ khi cải thiện đo được và demo offline ổn định.
+- Rule-based baseline và evaluation protocol gồm dataset eligibility, label definition, temporal/student-safe train/test split và metric.
+- Dataset thật chỉ được tạo từ governed production evidence có consent. Nếu chưa đủ dữ liệu, decision record phải ghi N thực tế, không train/split và không được chế tạo dữ liệu giả để hợp thức hóa ML.
+- Decision record so sánh heuristic với ML.NET khi gate dữ liệu đạt; chọn ML chỉ khi cải thiện đo được và demo offline ổn định. Khi gate chưa đạt, ghi NO-GO định lượng và giữ heuristic.
 - Model version, feature provenance, fallback và teacher override.
 
 Gate: không gọi API AI để thay thế ML pipeline và không quảng bá heuristic là dự báo xác suất.
@@ -1452,7 +1453,8 @@ Dưới 3 Attempts trong Subject:
 - Supersede Recommendation cũ.
 - Insert Recommendation mới.
 - Regenerate active Learning Path/version.
-- Tích hợp vào completion transaction P13.
+- Completion/Twin commit trong Transaction A; recommendation chạy best-effort sau commit trong Transaction B riêng, có timeout/logging và không rollback dữ liệu authoritative.
+- Persist generation watermark theo Center/Student/Subject để trigger cũ không resurrect state sau Accepted, Dismissed, Blocked hoặc NoCandidate.
 
 ### P14-T06 — API
 
@@ -1480,6 +1482,8 @@ Dưới 3 Attempts trong Subject:
 - Attempt thứ 3 chuyển OpportunityGap.
 - Response có breakdown/explanation.
 - Recommendation không chọn Topic khóa bởi prerequisite.
+- Curriculum scope chỉ dùng curriculum Published; curriculum order dùng curriculum_nodes.order_index.
+- Accept/Dismiss dùng cùng Student row-lock transaction protocol và deterministic concurrent outcome.
 - BLL lõi Opportunity coverage >=80%.
 
 ## 93. Commit gate

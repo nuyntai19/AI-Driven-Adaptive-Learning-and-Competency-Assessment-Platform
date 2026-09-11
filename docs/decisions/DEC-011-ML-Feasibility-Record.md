@@ -1,9 +1,9 @@
 # DEC-011: ML.NET Recommendation Feasibility & Adoption Decision
 
-**Status:** REJECTED / NO-GO (Baseline Heuristic `opportunity-v1` Preserved)  
-**Date:** 2026-09-11  
-**Scope:** R07 (Opportunity Gap, Recommendation Pipeline, Adaptive Learning Path)  
-**Author:** EduTwin Architecture Team  
+**Status:** REJECTED / NO-GO (Baseline Heuristic `opportunity-v1` Preserved)
+**Date:** 2026-09-11
+**Scope:** R07 (Opportunity Gap, Recommendation Pipeline, Adaptive Learning Path)
+**Author:** EduTwin Architecture Team
 
 ---
 
@@ -41,6 +41,35 @@ During the planning of Release R07 (Opportunity Gap, Recommendation Pipeline, an
    * Strict 5-tier tie-breaking: `NormalizedScore DESC` $\to$ `Mastery ASC` $\to$ `ExamImportance DESC` $\to$ `OrderIndex ASC` $\to$ `TopicId ASC`.
 3. **Linear Fallback with Ready Prerequisite Frontier:** Used when governed evidence count $< 3$ or when reasoning telemetry is temporarily unavailable.
 4. **MaintenanceReview:** Deterministic consolidation mode triggered when all topics achieve $\ge 80\%$ mastery.
+
+## 3.1. Quantitative data-readiness result
+
+The R07 audit did not find a consented, governed historical export that satisfies the evaluation-unit and label rules in the companion evaluation protocol.
+
+| Measurement | Result |
+|---|---:|
+| Eligible verified recommendation events | 0 |
+| Minimum required before model evaluation | 10,000 |
+| Train/validation/test split executed | No |
+| ML.NET model trained | No |
+| ML metric computed | No |
+| Heuristic-versus-ML comparison | Not executable |
+| Decision | NO-GO |
+
+Zero here is a data-readiness result, not a model-quality result. Synthetic unit-test fixtures are excluded and must not be presented as a training or evaluation dataset. The approved label, split and metrics are defined in docs/evaluation/R07-ML-Evaluation-Protocol.md so a future evaluation is reproducible once the gate is met.
+
+### 3.2. Model governance disposition
+
+| Governance field | R07 value |
+|---|---|
+| Model version | `none` — no model artifact exists |
+| Feature extractor version | `r07-evaluation-protocol-v1` for future offline evaluation only |
+| Operational calculation version | `opportunity-v1` |
+| Runtime fallback | `opportunity-v1`; no network or model dependency |
+| Human control | Teacher Override changes governed evidence and triggers deterministic replay; Student accept/dismiss remains explicit |
+| Provenance | Persisted calculation breakdown plus source Attempt and governed evidence references |
+
+Any future model must record its model version, feature-extractor version and training-dataset manifest hash in the evaluation artifact and in every shadow-mode output. It remains downstream of prerequisite/evidence gates and must fall back to `opportunity-v1` on missing artifact, invalid output, timeout or unsupported feature version. A model may rank eligible candidates only; it may not bypass tenant, consent, curriculum, prerequisite or Teacher Override rules.
 
 ---
 

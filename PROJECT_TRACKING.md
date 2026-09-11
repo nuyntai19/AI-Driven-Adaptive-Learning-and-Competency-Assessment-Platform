@@ -113,6 +113,7 @@ Mục 4–5 phía trên là snapshot lịch sử ngày 2026-09-08 và không đ�
 |---|---|---|---|---|---|
 | R05 — Evidence Gate và AI safety | TECHNICALLY VERIFIED / FROZEN | DEC-009, DEC-010, DEC-016, DEC-019, DEC-020; MASTER_PLAN R05 | `9636e5b`, `1d84980`, final freeze `52378b8` (`52378b82ef685d4f67886b7bfe44867c2ac30b5b`) | Release build 0 warning/error; full suite 3.014 pass + 9 MySQL tests chạy trên MySQL thật pass; EF model synchronized | Group/course-repository review và CI evidence |
 | R06 — Twin completion orchestrator | TECHNICALLY VERIFIED / FROZEN | DEC-009, DEC-016, DEC-017, DEC-019; MASTER_PLAN R06 | `9636e5b`, `1d84980`, final freeze `52378b8` (`52378b82ef685d4f67886b7bfe44867c2ac30b5b`) | Targeted R06 pass; MySQL R05/R06 9/9; full suite 3.014 pass; failure/concurrency/replay/tri-state coverage pass | Group/course-repository review và CI evidence |
+| R07 — Recommendation và quyết định ML | TECHNICALLY VERIFIED / FROZEN | DEC-011; MASTER_PLAN R07/P14 | Base `b6f3edb`, hardening `7d63a73`, remediation verified | Release build 0 warning/error; recommendation/query-filter 45 pass + 10 MySQL pass; full .NET 3.048 pass + 9 skip; web 8 pass + production build; EF no model drift; direct scan clean; ML readiness N=0/NO-GO | Group/course-repository review và CI evidence |
 
 Các invariant được chốt trong closeout:
 

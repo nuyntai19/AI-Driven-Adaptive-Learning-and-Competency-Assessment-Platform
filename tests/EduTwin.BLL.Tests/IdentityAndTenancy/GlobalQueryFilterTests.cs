@@ -35,7 +35,7 @@ public class GlobalQueryFilterTests
         using var context = CreateContext();
         var entityTypes = context.Model.GetEntityTypes().Where(e => typeof(ITenantOwnedEntity).IsAssignableFrom(e.ClrType)).ToList();
 
-        Assert.Equal(35, entityTypes.Count); // 30 legacy + role, role permission, user role, authorization audit, and evidence assessment
+        Assert.Equal(36, entityTypes.Count); // 30 legacy + role, role permission, user role, authorization audit, evidence assessment, and recommendation generation state
 
         foreach (var entityType in entityTypes)
         {
@@ -85,7 +85,7 @@ public class GlobalQueryFilterTests
         using var context = CreateContext();
         var entityTypes = context.Model.GetEntityTypes().Where(e => typeof(ITenantJoinEntity).IsAssignableFrom(e.ClrType)).ToList();
 
-        Assert.Equal(8, entityTypes.Count); // 6 legacy + role permission and user role
+        Assert.Equal(9, entityTypes.Count); // 6 legacy + role permission, user role, and recommendation generation state
 
         foreach (var entityType in entityTypes)
         {

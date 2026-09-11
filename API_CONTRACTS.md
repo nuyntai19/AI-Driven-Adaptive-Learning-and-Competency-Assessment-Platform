@@ -1520,7 +1520,7 @@ Response 200:
 | GET | /students/me/twin/history | subjectId, topicId optional, from/to | History collection |
 | GET | /students/me/recommendation | subjectId required | Active Recommendation |
 | POST | /students/me/recommendation/{id}/accept | — | 200 updated status |
-| POST | /students/me/recommendation/{id}/dismiss | reason optional | 200 updated status |
+| POST | /students/me/recommendation/{id}/dismiss | reason optional, tối đa 1000 ký tự | 200 updated status; reason được lưu vào audit state của recommendation |
 | GET | /students/me/learning-path | subjectId required | Active Learning Path |
 
 Twin history item:

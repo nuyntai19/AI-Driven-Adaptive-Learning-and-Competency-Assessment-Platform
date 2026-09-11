@@ -5,6 +5,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using EduTwin.BLL.AssessmentAndReasoning.Evidence;
 using EduTwin.BLL.DigitalTwin;
 using EduTwin.BLL.IdentityAndTenancy;
@@ -34,6 +36,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
     private readonly IBehaviorCalibrationSampleProvider _calibrationSampleProvider;
     private readonly IRecommendationEngine? _recommendationEngine;
     private readonly TimeProvider _timeProvider;
+    private readonly ILogger<TeacherOverrideUseCase> _logger;
 
     public TeacherOverrideUseCase(
         EduTwinDbContext dbContext,
@@ -46,7 +49,8 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
         TimeProvider timeProvider,
         IBehaviorCalibrationCalculator? calibrationCalculator = null,
         IBehaviorCalibrationSampleProvider? calibrationSampleProvider = null,
-        IRecommendationEngine? recommendationEngine = null)
+        IRecommendationEngine? recommendationEngine = null,
+        ILogger<TeacherOverrideUseCase>? logger = null)
     {
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         _tenantContext = tenantContext ?? throw new ArgumentNullException(nameof(tenantContext));
@@ -59,6 +63,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
         _calibrationCalculator = calibrationCalculator ?? new BehaviorCalibrationCalculator();
         _calibrationSampleProvider = calibrationSampleProvider ?? new BehaviorCalibrationSampleProvider(_dbContext);
         _recommendationEngine = recommendationEngine;
+        _logger = logger ?? NullLogger<TeacherOverrideUseCase>.Instance;
     }
 
     public async Task<TeacherOverrideResult> ExecuteAsync(
@@ -156,6 +161,11 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
         // 5. Transactional Override & Replay
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
         await StudentLockHelper.AcquireStudentLockAsync(_dbContext, centerId, attempt.StudentId, cancellationToken);
+        TeacherOverrideDataDto? committedResponse = null;
+        Guid recommendationStudentId = default;
+        Guid recommendationSubjectId = default;
+        ulong recommendationAttemptId = default;
+        DateTime recommendationTriggerAt = default;
         try
         {
             var now = _timeProvider.GetUtcNow().UtcDateTime;
@@ -506,31 +516,9 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
 
-            bool recommendationRecalculated = false;
-            if (_recommendationEngine is not null)
-            {
-                try
-                {
-                    var recResult = await _recommendationEngine.GenerateAndPersistAsync(
-                        centerId,
-                        studentId,
-                        subjectId,
-                        attempt.AttemptId,
-                        now,
-                        CancellationToken.None);
-                    recommendationRecalculated = recResult?.Status == RecommendationGenerationStatus.Generated;
-                }
-                catch (Exception)
-                {
-                    // Recommendation is best-effort derived state.
-                    // Authoritative transaction A has already committed.
-                    recommendationRecalculated = false;
-                }
-            }
-
             var effectiveAwardedScore = request.AwardedScore ?? attempt.AwardedScore;
 
-            var responseData = new TeacherOverrideDataDto
+            committedResponse = new TeacherOverrideDataDto
             {
                 AnalysisId = analysis.AnalysisId.ToString(CultureInfo.InvariantCulture),
                 HasTeacherOverride = true,
@@ -546,11 +534,13 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                     PreviousMastery = previousMastery,
                     NewMastery = replayedMastery,
                     NewRiskScore = newRiskScore,
-                    RecommendationRecalculated = recommendationRecalculated
+                    RecommendationRecalculated = false
                 }
             };
-
-            return TeacherOverrideResult.Success(responseData);
+            recommendationStudentId = studentId;
+            recommendationSubjectId = subjectId;
+            recommendationAttemptId = attempt.AttemptId;
+            recommendationTriggerAt = now;
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -563,5 +553,34 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
             await transaction.RollbackAsync(CancellationToken.None);
             throw;
         }
+
+        if (_recommendationEngine is not null)
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            try
+            {
+                var recResult = await _recommendationEngine.GenerateAndPersistAsync(
+                    centerId,
+                    recommendationStudentId,
+                    recommendationSubjectId,
+                    recommendationAttemptId,
+                    recommendationTriggerAt,
+                    timeout.Token);
+                committedResponse!.Replay.RecommendationRecalculated =
+                    recResult.Status == RecommendationGenerationStatus.Generated;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Best-effort recommendation generation failed after teacher override commit for center {CenterId}, student {StudentId}, subject {SubjectId}, attempt {AttemptId}.",
+                    centerId,
+                    recommendationStudentId,
+                    recommendationSubjectId,
+                    recommendationAttemptId);
+            }
+        }
+
+        return TeacherOverrideResult.Success(committedResponse!);
     }
 }

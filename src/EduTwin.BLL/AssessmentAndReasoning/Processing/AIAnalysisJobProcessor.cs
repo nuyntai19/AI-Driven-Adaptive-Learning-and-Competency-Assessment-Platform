@@ -14,6 +14,8 @@ using EduTwin.DAL.KnowledgeGraph;
 using EduTwin.DAL.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace EduTwin.BLL.AssessmentAndReasoning.Processing;
 
@@ -35,6 +37,7 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
     private readonly ITwinCompletionOrchestrator _twinCompletionOrchestrator;
     private readonly IRecommendationEngine? _recommendationEngine;
     private readonly TimeProvider _timeProvider;
+    private readonly ILogger<AIAnalysisJobProcessor> _logger;
 
     public AIAnalysisJobProcessor(
         EduTwinDbContext dbContext,
@@ -49,7 +52,8 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         TimeProvider timeProvider,
         ITwinCompletionOrchestrator? twinCompletionOrchestrator = null,
         IEvidenceConsistencyChecker? consistencyChecker = null,
-        IRecommendationEngine? recommendationEngine = null)
+        IRecommendationEngine? recommendationEngine = null,
+        ILogger<AIAnalysisJobProcessor>? logger = null)
     {
         _dbContext = dbContext;
         _tenantContext = tenantContext;
@@ -73,6 +77,7 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             new StudentTwinUpdater(dbContext),
             _consistencyChecker);
         _recommendationEngine = recommendationEngine;
+        _logger = logger ?? NullLogger<AIAnalysisJobProcessor>.Instance;
     }
 
     public async Task<AIAnalysisJobProcessingResult> ExecuteAsync(
@@ -239,6 +244,11 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         await using var transaction = await _dbContext.Database
             .BeginTransactionAsync(cancellationToken);
         await StudentLockHelper.AcquireStudentLockAsync(_dbContext, initialAttempt.CenterId, initialAttempt.StudentId, cancellationToken);
+        Guid recommendationCenterId = default;
+        Guid recommendationStudentId = default;
+        Guid recommendationSubjectId = default;
+        ulong recommendationAttemptId = default;
+        DateTime recommendationTriggerAt = default;
 
         try
         {
@@ -281,30 +291,11 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             cancellationToken.ThrowIfCancellationRequested();
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
-
-            if (_recommendationEngine is not null)
-            {
-                try
-                {
-                    await _recommendationEngine.GenerateAndPersistAsync(
-                        attempt.CenterId,
-                        attempt.StudentId,
-                        requestContext.Question.SubjectId,
-                        attempt.AttemptId,
-                        transactionalUtcNow,
-                        CancellationToken.None);
-                }
-                catch (Exception)
-                {
-                    // Recommendation is best-effort derived state.
-                    // Authoritative transaction A has already committed.
-                }
-            }
-
-            return Result(
-                initialJob.AnalysisJobId,
-                initialAttempt.AttemptId,
-                AIAnalysisJobProcessingOutcome.Completed);
+            recommendationCenterId = attempt.CenterId;
+            recommendationStudentId = attempt.StudentId;
+            recommendationSubjectId = requestContext.Question.SubjectId;
+            recommendationAttemptId = attempt.AttemptId;
+            recommendationTriggerAt = transactionalUtcNow;
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -340,6 +331,18 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             _dbContext.ChangeTracker.Clear();
             throw;
         }
+
+        await TryGenerateRecommendationAfterCommitAsync(
+            recommendationCenterId,
+            recommendationStudentId,
+            recommendationSubjectId,
+            recommendationAttemptId,
+            recommendationTriggerAt);
+
+        return Result(
+            initialJob.AnalysisJobId,
+            initialAttempt.AttemptId,
+            AIAnalysisJobProcessingOutcome.Completed);
     }
 
     private async Task<AIAnalysisJobProcessingResult> PersistAnalysisFailureAsync(
@@ -375,6 +378,13 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         await using var transaction = await _dbContext.Database
             .BeginTransactionAsync(cancellationToken);
         await StudentLockHelper.AcquireStudentLockAsync(_dbContext, initialAttempt.CenterId, initialAttempt.StudentId, cancellationToken);
+        AIAnalysisJobProcessingOutcome committedOutcome = default;
+        Guid recommendationCenterId = default;
+        Guid recommendationStudentId = default;
+        Guid recommendationSubjectId = default;
+        ulong recommendationQuestionId = default;
+        ulong recommendationAttemptId = default;
+        DateTime recommendationTriggerAt = default;
 
         try
         {
@@ -495,37 +505,15 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             cancellationToken.ThrowIfCancellationRequested();
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
-
-            if (outcome == AIAnalysisJobProcessingOutcome.FallbackCompleted && _recommendationEngine is not null)
-            {
-                try
-                {
-                    var targetSubjectId = requestContext?.Question?.SubjectId
-                        ?? attempt.Question?.SubjectId
-                        ?? await _dbContext.Questions
-                            .Where(q => q.CenterId == attempt.CenterId && q.QuestionId == attempt.QuestionId)
-                            .Select(q => q.SubjectId)
-                            .FirstOrDefaultAsync(CancellationToken.None);
-
-                    if (targetSubjectId != Guid.Empty)
-                    {
-                        await _recommendationEngine.GenerateAndPersistAsync(
-                            attempt.CenterId,
-                            attempt.StudentId,
-                            targetSubjectId,
-                            attempt.AttemptId,
-                            transactionalUtcNow,
-                            CancellationToken.None);
-                    }
-                }
-                catch (Exception)
-                {
-                    // Recommendation is best-effort derived state.
-                    // Authoritative transaction A has already committed.
-                }
-            }
-
-            return Result(initialJob.AnalysisJobId, initialAttempt.AttemptId, outcome);
+            committedOutcome = outcome;
+            recommendationCenterId = attempt.CenterId;
+            recommendationStudentId = attempt.StudentId;
+            recommendationSubjectId = requestContext?.Question?.SubjectId
+                ?? attempt.Question?.SubjectId
+                ?? Guid.Empty;
+            recommendationQuestionId = attempt.QuestionId;
+            recommendationAttemptId = attempt.AttemptId;
+            recommendationTriggerAt = transactionalUtcNow;
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -560,6 +548,85 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             await transaction.RollbackAsync(CancellationToken.None);
             _dbContext.ChangeTracker.Clear();
             throw;
+        }
+
+        if (committedOutcome == AIAnalysisJobProcessingOutcome.FallbackCompleted)
+        {
+            if (recommendationSubjectId == Guid.Empty)
+            {
+                recommendationSubjectId = await ResolveSubjectIdAfterCommitAsync(
+                    recommendationCenterId,
+                    recommendationQuestionId);
+            }
+
+            if (recommendationSubjectId != Guid.Empty)
+            {
+                await TryGenerateRecommendationAfterCommitAsync(
+                    recommendationCenterId,
+                    recommendationStudentId,
+                    recommendationSubjectId,
+                    recommendationAttemptId,
+                    recommendationTriggerAt);
+            }
+        }
+
+        return Result(initialJob.AnalysisJobId, initialAttempt.AttemptId, committedOutcome);
+    }
+
+    private async Task<Guid> ResolveSubjectIdAfterCommitAsync(Guid centerId, ulong questionId)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        try
+        {
+            return await _dbContext.Questions
+                .AsNoTracking()
+                .Where(q => q.CenterId == centerId && q.QuestionId == questionId)
+                .Select(q => q.SubjectId)
+                .FirstOrDefaultAsync(timeout.Token);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Post-commit recommendation subject lookup failed for center {CenterId}, question {QuestionId}.",
+                centerId,
+                questionId);
+            return Guid.Empty;
+        }
+    }
+
+    private async Task TryGenerateRecommendationAfterCommitAsync(
+        Guid centerId,
+        Guid studentId,
+        Guid subjectId,
+        ulong sourceAttemptId,
+        DateTime triggerAt)
+    {
+        if (_recommendationEngine is null)
+        {
+            return;
+        }
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        try
+        {
+            await _recommendationEngine.GenerateAndPersistAsync(
+                centerId,
+                studentId,
+                subjectId,
+                sourceAttemptId,
+                triggerAt,
+                timeout.Token);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Best-effort recommendation generation failed after authoritative commit for center {CenterId}, student {StudentId}, subject {SubjectId}, attempt {AttemptId}.",
+                centerId,
+                studentId,
+                subjectId,
+                sourceAttemptId);
         }
     }
 

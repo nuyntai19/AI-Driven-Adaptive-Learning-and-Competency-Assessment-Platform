@@ -25,6 +25,7 @@ public class Recommendation : IMutableTenantAggregate
     public RecommendationStatus Status { get; set; }
     public DateTime GeneratedAt { get; set; }
     public DateTime? ExpiresAt { get; set; }
+    public string? DismissReason { get; set; }
 
     public Guid CenterId { get; set; }
     public DateTime CreatedAt { get; set; }

@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using EduTwin.Contracts.Recommendations;
 using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.KnowledgeGraph;
@@ -68,23 +69,49 @@ public sealed class RecommendationEngine : IRecommendationEngine
         // 1. Acquire tenant-safe student row lock under Transaction B
         await StudentLockHelper.AcquireStudentLockAsync(_dbContext, centerId, studentId, cancellationToken);
 
-        // 2. Stale-Trigger Protection: Check if a newer recommendation has already been generated
-        var latestActiveRec = await _dbContext.Recommendations
-            .Where(r => r.CenterId == centerId
-                && r.StudentId == studentId
-                && r.SubjectId == subjectId
-                && r.Status == RecommendationStatus.Active
-                && !r.IsDeleted)
-            .OrderByDescending(r => r.GeneratedAt)
-            .FirstOrDefaultAsync(cancellationToken);
+        // 2. Durable stale-trigger protection. The watermark survives recommendation
+        // Accept/Dismiss and also records terminal runs that produce no recommendation.
+        var generationState = await _dbContext.RecommendationGenerationStates
+            .SingleOrDefaultAsync(
+                x => x.CenterId == centerId
+                    && x.StudentId == studentId
+                    && x.SubjectId == subjectId,
+                cancellationToken);
 
-        if (latestActiveRec is not null)
+        if (generationState is not null
+            && IsStaleOrDuplicateTrigger(
+                generationState.LastTriggerAt,
+                generationState.LastSourceAttemptId,
+                utcNow,
+                sourceAttemptId))
         {
-            if (latestActiveRec.GeneratedAt > utcNow ||
-                (latestActiveRec.GeneratedAt == utcNow && latestActiveRec.SourceAttemptId.HasValue && sourceAttemptId.HasValue && latestActiveRec.SourceAttemptId.Value > sourceAttemptId.Value))
+            await transactionB.RollbackAsync(cancellationToken);
+            return RecommendationGenerationResult.StaleIgnored("This recommendation trigger was already processed or superseded by a newer trigger.");
+        }
+
+        // Compatibility for databases upgraded with historical recommendation rows.
+        // Once the first post-migration trigger completes, the durable watermark is used.
+        if (generationState is null)
+        {
+            var latestHistoricalRecommendation = await _dbContext.Recommendations
+                .AsNoTracking()
+                .Where(r => r.CenterId == centerId
+                    && r.StudentId == studentId
+                    && r.SubjectId == subjectId
+                    && !r.IsDeleted)
+                .OrderByDescending(r => r.GeneratedAt)
+                .ThenByDescending(r => r.RecommendationId)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (latestHistoricalRecommendation is not null
+                && IsStaleOrDuplicateTrigger(
+                    latestHistoricalRecommendation.GeneratedAt,
+                    latestHistoricalRecommendation.SourceAttemptId,
+                    utcNow,
+                    sourceAttemptId))
             {
                 await transactionB.RollbackAsync(cancellationToken);
-                return RecommendationGenerationResult.StaleIgnored("A newer recommendation exists.");
+                return RecommendationGenerationResult.StaleIgnored("This recommendation trigger predates persisted recommendation history.");
             }
         }
 
@@ -99,6 +126,15 @@ public sealed class RecommendationEngine : IRecommendationEngine
         {
             // Fail closed on ambiguous curriculum assignment: supersede active artifacts and commit
             await SupersedeActiveArtifactsAsync(centerId, studentId, subjectId, utcNow, cancellationToken);
+            generationState = AdvanceGenerationState(
+                generationState,
+                centerId,
+                studentId,
+                subjectId,
+                utcNow,
+                sourceAttemptId,
+                RecommendationGenerationStatus.Blocked,
+                candidateResult.BlockedReason);
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transactionB.CommitAsync(cancellationToken);
             return RecommendationGenerationResult.Blocked(candidateResult.BlockedReason);
@@ -108,6 +144,15 @@ public sealed class RecommendationEngine : IRecommendationEngine
         {
             // No active topics: supersede active artifacts and commit
             await SupersedeActiveArtifactsAsync(centerId, studentId, subjectId, utcNow, cancellationToken);
+            generationState = AdvanceGenerationState(
+                generationState,
+                centerId,
+                studentId,
+                subjectId,
+                utcNow,
+                sourceAttemptId,
+                RecommendationGenerationStatus.NoCandidate,
+                "No active topic nodes found.");
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transactionB.CommitAsync(cancellationToken);
             return RecommendationGenerationResult.NoCandidate("No active topic nodes found.");
@@ -331,6 +376,15 @@ public sealed class RecommendationEngine : IRecommendationEngine
             {
                 // Prerequisite graph blocked or cycle: cleanly supersede active artifacts and commit
                 await SupersedeActiveArtifactsAsync(centerId, studentId, subjectId, utcNow, cancellationToken);
+                generationState = AdvanceGenerationState(
+                    generationState,
+                    centerId,
+                    studentId,
+                    subjectId,
+                    utcNow,
+                    sourceAttemptId,
+                    RecommendationGenerationStatus.Blocked,
+                    LinearFallbackResult.PrerequisiteGraphBlocked);
                 await _dbContext.SaveChangesAsync(cancellationToken);
                 await transactionB.CommitAsync(cancellationToken);
                 return RecommendationGenerationResult.Blocked(LinearFallbackResult.PrerequisiteGraphBlocked);
@@ -447,11 +501,80 @@ public sealed class RecommendationEngine : IRecommendationEngine
 
         _dbContext.LearningPaths.Add(learningPath);
         _dbContext.Recommendations.Add(recommendation);
+        AdvanceGenerationState(
+            generationState,
+            centerId,
+            studentId,
+            subjectId,
+            utcNow,
+            sourceAttemptId,
+            RecommendationGenerationStatus.Generated,
+            diagnosticReason: null);
 
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transactionB.CommitAsync(cancellationToken);
 
         return RecommendationGenerationResult.Success(recommendation);
+    }
+
+    private RecommendationGenerationState AdvanceGenerationState(
+        RecommendationGenerationState? state,
+        Guid centerId,
+        Guid studentId,
+        Guid subjectId,
+        DateTime triggerAt,
+        ulong? sourceAttemptId,
+        RecommendationGenerationStatus outcome,
+        string? diagnosticReason)
+    {
+        if (state is null)
+        {
+            state = new RecommendationGenerationState
+            {
+                CenterId = centerId,
+                StudentId = studentId,
+                SubjectId = subjectId,
+                CreatedAt = triggerAt
+            };
+            _dbContext.RecommendationGenerationStates.Add(state);
+        }
+
+        state.LastTriggerAt = triggerAt;
+        state.LastSourceAttemptId = sourceAttemptId;
+        state.LastOutcome = outcome.ToString();
+        state.DiagnosticReason = diagnosticReason;
+        state.UpdatedAt = triggerAt;
+        if (_dbContext.Entry(state).State != EntityState.Added)
+        {
+            state.RowVersion++;
+        }
+        return state;
+    }
+
+    private static bool IsStaleOrDuplicateTrigger(
+        DateTime persistedTriggerAt,
+        ulong? persistedSourceAttemptId,
+        DateTime incomingTriggerAt,
+        ulong? incomingSourceAttemptId)
+    {
+        if (persistedTriggerAt != incomingTriggerAt)
+        {
+            return persistedTriggerAt > incomingTriggerAt;
+        }
+
+        if (persistedSourceAttemptId == incomingSourceAttemptId)
+        {
+            return true;
+        }
+
+        if (persistedSourceAttemptId.HasValue && incomingSourceAttemptId.HasValue)
+        {
+            return persistedSourceAttemptId.Value > incomingSourceAttemptId.Value;
+        }
+
+        // At the same timestamp a persisted trigger without an attempt identity is
+        // authoritative; an identified incoming attempt may still advance a legacy row.
+        return !incomingSourceAttemptId.HasValue || persistedSourceAttemptId.HasValue;
     }
 
     private async Task SupersedeActiveArtifactsAsync(
@@ -473,6 +596,7 @@ public sealed class RecommendationEngine : IRecommendationEngine
         {
             activeRec.Status = RecommendationStatus.Superseded;
             activeRec.UpdatedAt = utcNow;
+            activeRec.RowVersion++;
         }
 
         var existingActivePaths = await _dbContext.LearningPaths
@@ -487,6 +611,7 @@ public sealed class RecommendationEngine : IRecommendationEngine
         {
             activePath.Status = LearningPathStatus.Superseded;
             activePath.UpdatedAt = utcNow;
+            activePath.RowVersion++;
         }
     }
 
@@ -497,38 +622,83 @@ public sealed class RecommendationEngine : IRecommendationEngine
         DateTime utcNow,
         CancellationToken cancellationToken)
     {
-        await StudentLockHelper.AcquireStudentLockAsync(_dbContext, centerId, studentId, cancellationToken);
+        await using var ownedTransaction = _dbContext.Database.IsRelational()
+            && _dbContext.Database.CurrentTransaction is null
+            ? await _dbContext.Database.BeginTransactionAsync(cancellationToken)
+            : null;
 
-        var rec = await _dbContext.Recommendations
-            .SingleOrDefaultAsync(
-                r => r.CenterId == centerId
-                    && r.StudentId == studentId
-                    && r.RecommendationId == recommendationId
-                    && !r.IsDeleted,
+        try
+        {
+            await StudentLockHelper.AcquireStudentLockAsync(_dbContext, centerId, studentId, cancellationToken);
+
+            var rec = await _dbContext.Recommendations
+                .SingleOrDefaultAsync(
+                    r => r.CenterId == centerId
+                        && r.StudentId == studentId
+                        && r.RecommendationId == recommendationId
+                        && !r.IsDeleted,
+                    cancellationToken);
+
+            if (rec is null)
+            {
+                return await CommitOwnedAsync(
+                    ownedTransaction,
+                    RecommendationOperationResult.FailNotFound("Recommendation not found."),
+                    cancellationToken);
+            }
+
+            if (rec.Status == RecommendationStatus.Accepted)
+            {
+                return await CommitOwnedAsync(
+                    ownedTransaction,
+                    RecommendationOperationResult.Ok(rec),
+                    cancellationToken);
+            }
+
+            if (rec.Status != RecommendationStatus.Active)
+            {
+                return await CommitOwnedAsync(
+                    ownedTransaction,
+                    RecommendationOperationResult.FailConflict(
+                        "RECOMMENDATION_NOT_ACTIVE",
+                        $"Cannot accept recommendation with status '{rec.Status}'."),
+                    cancellationToken);
+            }
+
+            rec.Status = RecommendationStatus.Accepted;
+            rec.UpdatedAt = utcNow;
+            rec.UpdatedBy = studentId;
+            rec.RowVersion++;
+
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            return await CommitOwnedAsync(
+                ownedTransaction,
+                RecommendationOperationResult.Ok(rec),
                 cancellationToken);
-
-        if (rec is null)
-        {
-            return RecommendationOperationResult.FailNotFound("Recommendation not found.");
         }
-
-        if (rec.Status == RecommendationStatus.Accepted)
+        catch (DbUpdateConcurrencyException) when (ownedTransaction is not null)
         {
-            return RecommendationOperationResult.Ok(rec);
+            await ownedTransaction.RollbackAsync(CancellationToken.None);
+            _dbContext.ChangeTracker.Clear();
+            var current = await FindRecommendationSnapshotAsync(
+                centerId,
+                studentId,
+                recommendationId,
+                CancellationToken.None);
+            return current?.Status == RecommendationStatus.Accepted
+                ? RecommendationOperationResult.Ok(current)
+                : RecommendationOperationResult.FailConflict(
+                    "RECOMMENDATION_CONCURRENTLY_CHANGED",
+                    "Recommendation state changed concurrently.");
         }
-
-        if (rec.Status != RecommendationStatus.Active)
+        catch
         {
-            return RecommendationOperationResult.FailConflict(
-                "RECOMMENDATION_NOT_ACTIVE",
-                $"Cannot accept recommendation with status '{rec.Status}'.");
+            if (ownedTransaction is not null)
+            {
+                await ownedTransaction.RollbackAsync(CancellationToken.None);
+            }
+            throw;
         }
-
-        rec.Status = RecommendationStatus.Accepted;
-        rec.UpdatedAt = utcNow;
-
-        await _dbContext.SaveChangesAsync(cancellationToken);
-        return RecommendationOperationResult.Ok(rec);
     }
 
     public async Task<RecommendationOperationResult> DismissAsync(
@@ -539,38 +709,57 @@ public sealed class RecommendationEngine : IRecommendationEngine
         DateTime utcNow,
         CancellationToken cancellationToken)
     {
-        await StudentLockHelper.AcquireStudentLockAsync(_dbContext, centerId, studentId, cancellationToken);
+        await using var ownedTransaction = _dbContext.Database.IsRelational()
+            && _dbContext.Database.CurrentTransaction is null
+            ? await _dbContext.Database.BeginTransactionAsync(cancellationToken)
+            : null;
 
-        var rec = await _dbContext.Recommendations
-            .SingleOrDefaultAsync(
-                r => r.CenterId == centerId
-                    && r.StudentId == studentId
-                    && r.RecommendationId == recommendationId
-                    && !r.IsDeleted,
-                cancellationToken);
-
-        if (rec is null)
+        try
         {
-            return RecommendationOperationResult.FailNotFound("Recommendation not found.");
-        }
+            await StudentLockHelper.AcquireStudentLockAsync(_dbContext, centerId, studentId, cancellationToken);
 
-        if (rec.Status == RecommendationStatus.Dismissed)
-        {
-            return RecommendationOperationResult.Ok(rec);
-        }
+            var rec = await _dbContext.Recommendations
+                .SingleOrDefaultAsync(
+                    r => r.CenterId == centerId
+                        && r.StudentId == studentId
+                        && r.RecommendationId == recommendationId
+                        && !r.IsDeleted,
+                    cancellationToken);
 
-        if (rec.Status != RecommendationStatus.Active)
-        {
-            return RecommendationOperationResult.FailConflict(
-                "RECOMMENDATION_NOT_ACTIVE",
-                $"Cannot dismiss recommendation with status '{rec.Status}'.");
-        }
+            if (rec is null)
+            {
+                return await CommitOwnedAsync(
+                    ownedTransaction,
+                    RecommendationOperationResult.FailNotFound("Recommendation not found."),
+                    cancellationToken);
+            }
 
-        rec.Status = RecommendationStatus.Dismissed;
-        rec.UpdatedAt = utcNow;
+            if (rec.Status == RecommendationStatus.Dismissed)
+            {
+                return await CommitOwnedAsync(
+                    ownedTransaction,
+                    RecommendationOperationResult.Ok(rec),
+                    cancellationToken);
+            }
 
-        // State Machine: Update LearningPath
-        var activePath = await _dbContext.LearningPaths
+            if (rec.Status != RecommendationStatus.Active)
+            {
+                return await CommitOwnedAsync(
+                    ownedTransaction,
+                    RecommendationOperationResult.FailConflict(
+                        "RECOMMENDATION_NOT_ACTIVE",
+                        $"Cannot dismiss recommendation with status '{rec.Status}'."),
+                    cancellationToken);
+            }
+
+            rec.Status = RecommendationStatus.Dismissed;
+            rec.DismissReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+            rec.UpdatedAt = utcNow;
+            rec.UpdatedBy = studentId;
+            rec.RowVersion++;
+
+            // State Machine: Update LearningPath
+            var activePath = await _dbContext.LearningPaths
             .Include(lp => lp.Items)
             .SingleOrDefaultAsync(
                 lp => lp.CenterId == centerId
@@ -580,73 +769,129 @@ public sealed class RecommendationEngine : IRecommendationEngine
                     && !lp.IsDeleted,
                 cancellationToken);
 
-        if (activePath is not null)
-        {
-            var currentItem = activePath.Items
-                .FirstOrDefault(i => i.Status == LearningPathItemStatus.Current && !i.IsDeleted);
-
-            if (currentItem is not null)
+            if (activePath is not null)
             {
-                currentItem.Status = LearningPathItemStatus.Skipped;
-                currentItem.UpdatedAt = utcNow;
-            }
+                var currentItem = activePath.Items
+                    .FirstOrDefault(i => i.Status == LearningPathItemStatus.Current && !i.IsDeleted);
 
-            var nextPendingItem = activePath.Items
-                .Where(i => i.Status == LearningPathItemStatus.Pending && !i.IsDeleted)
-                .OrderBy(i => i.RankOrder)
-                .FirstOrDefault();
-
-            if (nextPendingItem is not null)
-            {
-                nextPendingItem.Status = LearningPathItemStatus.Current;
-                nextPendingItem.UpdatedAt = utcNow;
-
-                // Candidate snapshot promotion: DO NOT rerun question selector or recompute breakdown!
-                // Promote stored snapshot directly from nextPendingItem.
-                var promotedBreakdown = nextPendingItem.CalculationBreakdown ?? JsonSerializer.SerializeToDocument(new
+                if (currentItem is not null)
                 {
-                    Strategy = activePath.Strategy.ToString(),
-                    CalculationVersion = rec.CalculationVersion,
-                    TopicNodeId = nextPendingItem.TopicNodeId,
-                    SnapshotUnavailable = true,
-                    PromotedFromRank = nextPendingItem.RankOrder
-                });
+                    currentItem.Status = LearningPathItemStatus.Skipped;
+                    currentItem.UpdatedAt = utcNow;
+                    currentItem.RowVersion++;
+                }
 
-                var newRec = new Recommendation
+                var nextPendingItem = activePath.Items
+                    .Where(i => i.Status == LearningPathItemStatus.Pending && !i.IsDeleted)
+                    .OrderBy(i => i.RankOrder)
+                    .FirstOrDefault();
+
+                if (nextPendingItem is not null)
                 {
-                    RecommendationId = GenerateUlongId(),
-                    CenterId = centerId,
-                    StudentId = studentId,
-                    SubjectId = rec.SubjectId,
-                    TopicNodeId = nextPendingItem.TopicNodeId,
-                    QuestionId = nextPendingItem.RecommendedQuestionId,
-                    RecommendationType = activePath.Strategy == LearningPathStrategy.LinearFallback
-                        ? RecommendationType.LinearFallback
-                        : RecommendationType.TopicAndQuestion,
-                    OpportunityScore = nextPendingItem.OpportunityScore,
-                    CalculationVersion = rec.CalculationVersion,
-                    CalculationBreakdown = promotedBreakdown,
-                    Explanation = nextPendingItem.Reason,
-                    SourceAttemptId = rec.SourceAttemptId,
-                    Status = RecommendationStatus.Active,
-                    GeneratedAt = utcNow,
-                    CreatedAt = utcNow,
-                    UpdatedAt = utcNow
-                };
+                    nextPendingItem.Status = LearningPathItemStatus.Current;
+                    nextPendingItem.UpdatedAt = utcNow;
+                    nextPendingItem.RowVersion++;
 
-                _dbContext.Recommendations.Add(newRec);
+                    // Candidate snapshot promotion: DO NOT rerun question selector or recompute breakdown!
+                    // Promote stored snapshot directly from nextPendingItem.
+                    var promotedBreakdown = nextPendingItem.CalculationBreakdown ?? JsonSerializer.SerializeToDocument(new
+                    {
+                        Strategy = activePath.Strategy.ToString(),
+                        CalculationVersion = rec.CalculationVersion,
+                        TopicNodeId = nextPendingItem.TopicNodeId,
+                        SnapshotUnavailable = true,
+                        PromotedFromRank = nextPendingItem.RankOrder
+                    });
+
+                    var newRec = new Recommendation
+                    {
+                        RecommendationId = GenerateUlongId(),
+                        CenterId = centerId,
+                        StudentId = studentId,
+                        SubjectId = rec.SubjectId,
+                        TopicNodeId = nextPendingItem.TopicNodeId,
+                        QuestionId = nextPendingItem.RecommendedQuestionId,
+                        RecommendationType = activePath.Strategy == LearningPathStrategy.LinearFallback
+                            ? RecommendationType.LinearFallback
+                            : RecommendationType.TopicAndQuestion,
+                        OpportunityScore = nextPendingItem.OpportunityScore,
+                        CalculationVersion = rec.CalculationVersion,
+                        CalculationBreakdown = promotedBreakdown,
+                        Explanation = nextPendingItem.Reason,
+                        SourceAttemptId = rec.SourceAttemptId,
+                        Status = RecommendationStatus.Active,
+                        GeneratedAt = utcNow,
+                        CreatedAt = utcNow,
+                        UpdatedAt = utcNow
+                    };
+
+                    _dbContext.Recommendations.Add(newRec);
+                }
+                else
+                {
+                    // No pending items remaining -> Completed
+                    activePath.Status = LearningPathStatus.Completed;
+                    activePath.UpdatedAt = utcNow;
+                    activePath.RowVersion++;
+                }
             }
-            else
-            {
-                // No pending items remaining -> Completed
-                activePath.Status = LearningPathStatus.Completed;
-                activePath.UpdatedAt = utcNow;
-            }
+
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            return await CommitOwnedAsync(
+                ownedTransaction,
+                RecommendationOperationResult.Ok(rec),
+                cancellationToken);
         }
-
-        await _dbContext.SaveChangesAsync(cancellationToken);
-        return RecommendationOperationResult.Ok(rec);
+        catch (DbUpdateConcurrencyException) when (ownedTransaction is not null)
+        {
+            await ownedTransaction.RollbackAsync(CancellationToken.None);
+            _dbContext.ChangeTracker.Clear();
+            var current = await FindRecommendationSnapshotAsync(
+                centerId,
+                studentId,
+                recommendationId,
+                CancellationToken.None);
+            return current?.Status == RecommendationStatus.Dismissed
+                ? RecommendationOperationResult.Ok(current)
+                : RecommendationOperationResult.FailConflict(
+                    "RECOMMENDATION_CONCURRENTLY_CHANGED",
+                    "Recommendation state changed concurrently.");
+        }
+        catch
+        {
+            if (ownedTransaction is not null)
+            {
+                await ownedTransaction.RollbackAsync(CancellationToken.None);
+            }
+            throw;
+        }
     }
+
+    private static async Task<RecommendationOperationResult> CommitOwnedAsync(
+        IDbContextTransaction? transaction,
+        RecommendationOperationResult result,
+        CancellationToken cancellationToken)
+    {
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
+        return result;
+    }
+
+    private Task<Recommendation?> FindRecommendationSnapshotAsync(
+        Guid centerId,
+        Guid studentId,
+        ulong recommendationId,
+        CancellationToken cancellationToken) =>
+        _dbContext.Recommendations
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                r => r.CenterId == centerId
+                    && r.StudentId == studentId
+                    && r.RecommendationId == recommendationId
+                    && !r.IsDeleted,
+                cancellationToken);
 
     public async Task<NextQuestionDto?> GetNextQuestionAsync(
         Guid centerId,

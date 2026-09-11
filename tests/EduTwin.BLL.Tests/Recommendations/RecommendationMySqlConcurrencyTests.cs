@@ -142,6 +142,11 @@ public sealed class RecommendationMySqlConcurrencyTests
             .ToListAsync();
 
         Assert.Single(activeRecs);
+        Assert.Equal(
+            50m,
+            activeRecs[0].CalculationBreakdown.RootElement
+                .GetProperty("CurrentMastery")
+                .GetDecimal());
 
         var activePaths = await verifyContext.LearningPaths
             .Where(lp => lp.CenterId == centerId && lp.StudentId == studentId && lp.SubjectId == subjectId && lp.Status == LearningPathStatus.Active)
@@ -214,6 +219,109 @@ public sealed class RecommendationMySqlConcurrencyTests
         var reloadedRec = await context.Recommendations.FindAsync(newerResult.Recommendation.RecommendationId);
         Assert.NotNull(reloadedRec);
         Assert.Equal(RecommendationStatus.Active, reloadedRec.Status);
+    }
+
+    [MySqlIntegrationFact]
+    public async Task NewerRecommendationAccepted_DelayedOlderTrigger_RemainsStaleInMySql()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var centerId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+        await SeedHierarchyAsync(database.ConnectionString, centerId, studentId, subjectId);
+
+        var tenant = new TenantContext();
+        using var scope = tenant.BeginScope(centerId);
+        await using var context = CreateContext(database.ConnectionString, tenant);
+        var engine = CreateEngine(context);
+
+        var newer = await engine.GenerateAndPersistAsync(
+            centerId,
+            studentId,
+            subjectId,
+            sourceAttemptId: 2,
+            UtcNow,
+            CancellationToken.None);
+        Assert.Equal(RecommendationGenerationStatus.Generated, newer.Status);
+
+        var accepted = await engine.AcceptAsync(
+            centerId,
+            studentId,
+            newer.Recommendation!.RecommendationId,
+            UtcNow.AddSeconds(1),
+            CancellationToken.None);
+        Assert.True(accepted.Success);
+
+        var stale = await engine.GenerateAndPersistAsync(
+            centerId,
+            studentId,
+            subjectId,
+            sourceAttemptId: 1,
+            UtcNow.AddMinutes(-5),
+            CancellationToken.None);
+
+        Assert.Equal(RecommendationGenerationStatus.StaleIgnored, stale.Status);
+        Assert.Single(
+            await context.Recommendations.Where(r => r.Status == RecommendationStatus.Accepted).ToListAsync());
+        Assert.Empty(
+            await context.Recommendations.Where(r => r.Status == RecommendationStatus.Active).ToListAsync());
+    }
+
+    [MySqlIntegrationFact]
+    public async Task NewerNoCandidate_DelayedOlderTrigger_RemainsStaleInMySql()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var centerId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+        await SeedHierarchyAsync(database.ConnectionString, centerId, studentId, subjectId);
+
+        var tenant = new TenantContext();
+        using var scope = tenant.BeginScope(centerId);
+        await using var context = CreateContext(database.ConnectionString, tenant);
+        var node = await context.KnowledgeNodes.SingleAsync(n => n.NodeId == 1);
+        node.IsActive = false;
+        await context.SaveChangesAsync();
+
+        var engine = CreateEngine(context);
+        var newer = await engine.GenerateAndPersistAsync(
+            centerId,
+            studentId,
+            subjectId,
+            sourceAttemptId: 2,
+            UtcNow,
+            CancellationToken.None);
+        Assert.Equal(RecommendationGenerationStatus.NoCandidate, newer.Status);
+
+        node = await context.KnowledgeNodes.SingleAsync(n => n.NodeId == 1);
+        node.IsActive = true;
+        await context.SaveChangesAsync();
+
+        var stale = await engine.GenerateAndPersistAsync(
+            centerId,
+            studentId,
+            subjectId,
+            sourceAttemptId: 1,
+            UtcNow.AddMinutes(-5),
+            CancellationToken.None);
+
+        Assert.Equal(RecommendationGenerationStatus.StaleIgnored, stale.Status);
+        Assert.Empty(await context.Recommendations.ToListAsync());
+        var watermark = await context.RecommendationGenerationStates.SingleAsync();
+        Assert.Equal(nameof(RecommendationGenerationStatus.NoCandidate), watermark.LastOutcome);
+        Assert.Equal(2ul, watermark.LastSourceAttemptId);
+    }
+
+    [MySqlIntegrationFact]
+    public async Task ConcurrentAccept_IsSerializedAndIdempotentInMySql()
+    {
+        await AssertConcurrentMutationIsIdempotentAsync(dismiss: false);
+    }
+
+    [MySqlIntegrationFact]
+    public async Task ConcurrentDismiss_IsSerializedAndIdempotentInMySql()
+    {
+        await AssertConcurrentMutationIsIdempotentAsync(dismiss: true);
     }
 
     [MySqlIntegrationFact]
@@ -372,6 +480,77 @@ public sealed class RecommendationMySqlConcurrencyTests
         var options = new DbContextOptionsBuilder<EduTwinDbContext>()
             .UseMySQL(connectionString);
         return new EduTwinDbContext(options.Options, tenant);
+    }
+
+    private static RecommendationEngine CreateEngine(EduTwinDbContext context) =>
+        new(
+            context,
+            new OpportunityCandidateBuilder(context),
+            new LinearFallbackSelector(),
+            new AdaptiveQuestionSelector(context));
+
+    private static async Task AssertConcurrentMutationIsIdempotentAsync(bool dismiss)
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var centerId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+        await SeedHierarchyAsync(database.ConnectionString, centerId, studentId, subjectId);
+
+        ulong recommendationId;
+        var seedTenant = new TenantContext();
+        using (seedTenant.BeginScope(centerId))
+        {
+            await using var seedContext = CreateContext(database.ConnectionString, seedTenant);
+            var generated = await CreateEngine(seedContext).GenerateAndPersistAsync(
+                centerId,
+                studentId,
+                subjectId,
+                sourceAttemptId: 2,
+                UtcNow,
+                CancellationToken.None);
+            recommendationId = generated.Recommendation!.RecommendationId;
+        }
+
+        async Task<RecommendationOperationResult> MutateAsync()
+        {
+            var tenant = new TenantContext();
+            using var scope = tenant.BeginScope(centerId);
+            await using var context = CreateContext(database.ConnectionString, tenant);
+            var engine = CreateEngine(context);
+            return dismiss
+                ? await engine.DismissAsync(
+                    centerId,
+                    studentId,
+                    recommendationId,
+                    "Concurrent dismiss",
+                    UtcNow.AddSeconds(1),
+                    CancellationToken.None)
+                : await engine.AcceptAsync(
+                    centerId,
+                    studentId,
+                    recommendationId,
+                    UtcNow.AddSeconds(1),
+                    CancellationToken.None);
+        }
+
+        var results = await Task.WhenAll(
+            Task.Run(MutateAsync),
+            Task.Run(MutateAsync));
+        Assert.All(results, result => Assert.True(result.Success));
+
+        var verifyTenant = new TenantContext();
+        using var verifyScope = verifyTenant.BeginScope(centerId);
+        await using var verifyContext = CreateContext(database.ConnectionString, verifyTenant);
+        var persisted = await verifyContext.Recommendations
+            .SingleAsync(r => r.RecommendationId == recommendationId);
+        Assert.Equal(
+            dismiss ? RecommendationStatus.Dismissed : RecommendationStatus.Accepted,
+            persisted.Status);
+        if (dismiss)
+        {
+            Assert.Equal("Concurrent dismiss", persisted.DismissReason);
+        }
     }
 
     private static async Task SeedHierarchyAsync(

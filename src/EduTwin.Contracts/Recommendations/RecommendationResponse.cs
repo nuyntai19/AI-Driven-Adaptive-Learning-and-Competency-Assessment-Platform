@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel.DataAnnotations;
 using EduTwin.Contracts.Common;
 using EduTwin.Contracts.IdentityAndTenancy;
 
@@ -26,5 +27,6 @@ public sealed class RecommendationResponse
 
 public sealed class DismissRecommendationRequest
 {
+    [MaxLength(1000)]
     public string? Reason { get; set; }
 }

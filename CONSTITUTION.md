@@ -354,7 +354,7 @@ DATABASE_SCHEMA.md là nguồn duy nhất cho table, column, key, index và dele
 - Override phải lưu Teacher, lý do, giá trị sửa và thời gian.
 - Effective analysis ưu tiên override.
 - Sau override phải deterministic replay toàn bộ Attempt liên quan của Student + Topic.
-- Replay, Twin update, History và Recommendation replacement nằm trong một transaction.
+- Replay, Twin update và History authoritative nằm trong Transaction A. Recommendation replacement là derived state, chỉ chạy best-effort sau khi A commit thành công trong Transaction B riêng, có timeout/logging và generation watermark; lỗi B không được rollback A.
 
 ## 13. Evidence Gate và Mastery heuristic v2
 
@@ -479,11 +479,13 @@ Các luồng sau bắt buộc dùng database transaction:
 
 - Tạo Student User + Student profile + Class membership.
 - Publish Assignment + materialize Assignment Targets.
-- Hoàn tất AI job: Reasoning Analysis + Attempt status + Knowledge Twin + Behavior Twin + Goal/Risk + Twin History + Recommendation/Learning Path.
-- Teacher Override + replay + History + Recommendation replacement.
+- Hoàn tất AI job, Transaction A: Reasoning Analysis + Attempt status + Knowledge Twin + Behavior Twin + Goal/Risk + Twin History; sau commit, Recommendation/Learning Path chạy trong Transaction B riêng.
+- Teacher Override, Transaction A: override + deterministic replay + Twin/History; sau commit, Recommendation replacement chạy trong Transaction B riêng.
 - Refresh Token rotation.
 
 Không giữ database transaction trong thời gian gọi Gemini. AI call diễn ra ngoài transaction; transaction chỉ mở khi output đã hợp lệ hoặc fallback đã được xác định.
+
+Transaction B của Recommendation là best-effort derived state nhưng không được chạy không giới hạn: caller phải đặt timeout, ghi log khi thất bại và dùng generation watermark theo Center/Student/Subject để chống trigger cũ hoặc trùng. Accept/Dismiss phải dùng Student row-lock và transaction riêng khi caller chưa có transaction.
 
 ## 18. Background processing
 

@@ -88,6 +88,7 @@ public sealed class RecommendationStateMachineTests : IDisposable
         _dbContext.LearningPaths.Add(path);
         _dbContext.Recommendations.Add(rec);
         await _dbContext.SaveChangesAsync();
+        var originalRecommendationRowVersion = rec.RowVersion;
 
         var engine = new RecommendationEngine(
             _dbContext,
@@ -99,6 +100,7 @@ public sealed class RecommendationStateMachineTests : IDisposable
         var res1 = await engine.AcceptAsync(_centerId, _studentId, rec.RecommendationId, _utcNow, CancellationToken.None);
         Assert.True(res1.Success);
         Assert.Equal(RecommendationStatus.Accepted, res1.Recommendation!.Status);
+        Assert.Equal(originalRecommendationRowVersion + 1, res1.Recommendation.RowVersion);
 
         // Path item retains Current
         var item1 = path.Items.First(i => i.RankOrder == 1);
@@ -160,6 +162,7 @@ public sealed class RecommendationStateMachineTests : IDisposable
         _dbContext.LearningPaths.Add(path);
         _dbContext.Recommendations.Add(rec);
         await _dbContext.SaveChangesAsync();
+        var originalDismissedRecommendationRowVersion = rec.RowVersion;
 
         var engine = new RecommendationEngine(
             _dbContext,
@@ -171,6 +174,18 @@ public sealed class RecommendationStateMachineTests : IDisposable
         var res = await engine.DismissAsync(_centerId, _studentId, rec.RecommendationId, "Too difficult", _utcNow, CancellationToken.None);
         Assert.True(res.Success);
         Assert.Equal(RecommendationStatus.Dismissed, res.Recommendation!.Status);
+        Assert.Equal("Too difficult", res.Recommendation.DismissReason);
+        Assert.Equal(originalDismissedRecommendationRowVersion + 1, res.Recommendation.RowVersion);
+
+        var retry = await engine.DismissAsync(
+            _centerId,
+            _studentId,
+            rec.RecommendationId,
+            "A retry must not rewrite the original reason",
+            _utcNow.AddSeconds(1),
+            CancellationToken.None);
+        Assert.True(retry.Success);
+        Assert.Equal("Too difficult", retry.Recommendation!.DismissReason);
 
         // Path item 1 -> Skipped
         var item1 = path.Items.First(i => i.RankOrder == 1);
@@ -193,6 +208,153 @@ public sealed class RecommendationStateMachineTests : IDisposable
         var resDismissLast = await engine.DismissAsync(_centerId, _studentId, newActiveRec.RecommendationId, "Skip last", _utcNow, CancellationToken.None);
         Assert.True(resDismissLast.Success);
         Assert.Equal(LearningPathStatus.Completed, path.Status);
+    }
+
+    [Fact]
+    public async Task NewerGeneratedThenAccepted_DelayedOlderTrigger_IsIgnoredByDurableWatermark()
+    {
+        await AddSingleTopicAsync();
+        var engine = CreateEngine();
+        var newer = await engine.GenerateAndPersistAsync(
+            _centerId,
+            _studentId,
+            _subjectId,
+            sourceAttemptId: 20,
+            _utcNow,
+            CancellationToken.None);
+        Assert.Equal(RecommendationGenerationStatus.Generated, newer.Status);
+
+        var accepted = await engine.AcceptAsync(
+            _centerId,
+            _studentId,
+            newer.Recommendation!.RecommendationId,
+            _utcNow.AddSeconds(1),
+            CancellationToken.None);
+        Assert.True(accepted.Success);
+
+        var stale = await engine.GenerateAndPersistAsync(
+            _centerId,
+            _studentId,
+            _subjectId,
+            sourceAttemptId: 10,
+            _utcNow.AddMinutes(-1),
+            CancellationToken.None);
+
+        Assert.Equal(RecommendationGenerationStatus.StaleIgnored, stale.Status);
+        Assert.Empty(_dbContext.Recommendations.Where(r => r.Status == RecommendationStatus.Active));
+        Assert.Single(_dbContext.Recommendations.Where(r => r.Status == RecommendationStatus.Accepted));
+    }
+
+    [Fact]
+    public async Task NewerNoCandidate_DelayedOlderTrigger_IsIgnoredAfterTopicsAppear()
+    {
+        var engine = CreateEngine();
+        var newer = await engine.GenerateAndPersistAsync(
+            _centerId,
+            _studentId,
+            _subjectId,
+            sourceAttemptId: 20,
+            _utcNow,
+            CancellationToken.None);
+        Assert.Equal(RecommendationGenerationStatus.NoCandidate, newer.Status);
+
+        await AddSingleTopicAsync();
+        var stale = await engine.GenerateAndPersistAsync(
+            _centerId,
+            _studentId,
+            _subjectId,
+            sourceAttemptId: 10,
+            _utcNow.AddMinutes(-1),
+            CancellationToken.None);
+
+        Assert.Equal(RecommendationGenerationStatus.StaleIgnored, stale.Status);
+        Assert.Empty(_dbContext.Recommendations);
+        var watermark = Assert.Single(_dbContext.RecommendationGenerationStates);
+        Assert.Equal("NoCandidate", watermark.LastOutcome);
+        Assert.Equal(20ul, watermark.LastSourceAttemptId);
+    }
+
+    [Fact]
+    public async Task NewerBlocked_DelayedOlderTrigger_IsIgnoredAfterGraphIsRepaired()
+    {
+        _dbContext.KnowledgeNodes.AddRange(
+            new KnowledgeNode
+            {
+                CenterId = _centerId,
+                SubjectId = _subjectId,
+                NodeId = 31,
+                NodeCode = "B31",
+                NodeName = "Blocked 31",
+                NodeType = NodeType.Topic,
+                OrderIndex = 1,
+                IsActive = true,
+                CreatedAt = _utcNow,
+                UpdatedAt = _utcNow
+            },
+            new KnowledgeNode
+            {
+                CenterId = _centerId,
+                SubjectId = _subjectId,
+                NodeId = 32,
+                NodeCode = "B32",
+                NodeName = "Blocked 32",
+                NodeType = NodeType.Topic,
+                OrderIndex = 2,
+                IsActive = true,
+                CreatedAt = _utcNow,
+                UpdatedAt = _utcNow
+            });
+        _dbContext.KnowledgeEdges.AddRange(
+            new KnowledgeEdge
+            {
+                CenterId = _centerId,
+                EdgeId = 310,
+                SubjectId = _subjectId,
+                SourceNodeId = 31,
+                TargetNodeId = 32,
+                RelationType = RelationType.PrerequisiteOf,
+                Weight = 1m,
+                CreatedAt = _utcNow,
+                UpdatedAt = _utcNow
+            },
+            new KnowledgeEdge
+            {
+                CenterId = _centerId,
+                EdgeId = 320,
+                SubjectId = _subjectId,
+                SourceNodeId = 32,
+                TargetNodeId = 31,
+                RelationType = RelationType.PrerequisiteOf,
+                Weight = 1m,
+                CreatedAt = _utcNow,
+                UpdatedAt = _utcNow
+            });
+        await _dbContext.SaveChangesAsync();
+
+        var engine = CreateEngine();
+        var newer = await engine.GenerateAndPersistAsync(
+            _centerId,
+            _studentId,
+            _subjectId,
+            sourceAttemptId: 20,
+            _utcNow,
+            CancellationToken.None);
+        Assert.Equal(RecommendationGenerationStatus.Blocked, newer.Status);
+
+        _dbContext.KnowledgeEdges.RemoveRange(_dbContext.KnowledgeEdges);
+        await _dbContext.SaveChangesAsync();
+        var stale = await engine.GenerateAndPersistAsync(
+            _centerId,
+            _studentId,
+            _subjectId,
+            sourceAttemptId: 10,
+            _utcNow.AddMinutes(-5),
+            CancellationToken.None);
+
+        Assert.Equal(RecommendationGenerationStatus.StaleIgnored, stale.Status);
+        Assert.Empty(_dbContext.Recommendations);
+        var watermark = Assert.Single(_dbContext.RecommendationGenerationStates);
+        Assert.Equal("Blocked", watermark.LastOutcome);
     }
 
     [Fact]
@@ -359,5 +521,32 @@ public sealed class RecommendationStateMachineTests : IDisposable
         Assert.Equal(10ul, nextQ.Topic.NodeId);
         Assert.Equal(1010ul, nextQ.Question!.QuestionId);
         Assert.Equal(rec.RecommendationId, nextQ.RecommendationId);
+    }
+
+    private RecommendationEngine CreateEngine() =>
+        new(
+            _dbContext,
+            new OpportunityCandidateBuilder(_dbContext),
+            new LinearFallbackSelector(),
+            new AdaptiveQuestionSelector(_dbContext));
+
+    private async Task AddSingleTopicAsync()
+    {
+        _dbContext.KnowledgeNodes.Add(new KnowledgeNode
+        {
+            CenterId = _centerId,
+            SubjectId = _subjectId,
+            NodeId = 900,
+            NodeCode = "N900",
+            NodeName = "Durable watermark topic",
+            NodeType = NodeType.Topic,
+            OrderIndex = 1,
+            ExamImportance = 50m,
+            EstimatedLearningMinutes = 60,
+            IsActive = true,
+            CreatedAt = _utcNow,
+            UpdatedAt = _utcNow
+        });
+        await _dbContext.SaveChangesAsync();
     }
 }

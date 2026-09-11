@@ -60,6 +60,7 @@ public class RecommendationConfiguration : IEntityTypeConfiguration<Recommendati
 
         builder.Property(r => r.GeneratedAt).HasColumnName("generated_at").HasColumnType("datetime(6)");
         builder.Property(r => r.ExpiresAt).HasColumnName("expires_at").HasColumnType("datetime(6)");
+        builder.Property(r => r.DismissReason).HasColumnName("dismiss_reason").HasColumnType("varchar(1000)");
 
         builder.Property(r => r.CenterId).HasColumnName("center_id").HasColumnType("varchar(36)").IsRequired();
         builder.Property(r => r.CreatedAt).HasColumnName("created_at").HasColumnType("datetime(6)");

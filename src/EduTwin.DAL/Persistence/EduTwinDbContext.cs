@@ -76,6 +76,7 @@ public class EduTwinDbContext : DbContext
     public DbSet<LearningPath> LearningPaths => Set<LearningPath>();
     public DbSet<LearningPathItem> LearningPathItems => Set<LearningPathItem>();
     public DbSet<Recommendation> Recommendations => Set<Recommendation>();
+    public DbSet<RecommendationGenerationState> RecommendationGenerationStates => Set<RecommendationGenerationState>();
 
     // Assessment and Reasoning
     public DbSet<Attempt> Attempts => Set<Attempt>();

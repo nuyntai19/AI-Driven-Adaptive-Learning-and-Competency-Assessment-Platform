@@ -1,7 +1,7 @@
 # EduTwin — Database Schema
 
-> Phiên bản: 2.2
-> Trạng thái: ACTIVE — 38 bảng đã migration và kiểm tra trên MySQL thật; bao gồm Dynamic Authorization & Evidence Governance và Override Awarded Score
+> Phiên bản: 2.3
+> Trạng thái: ACTIVE — 39 bảng đã migration trong model; live-MySQL verification của migration R07 hardening đang chờ test-admin connection
 > Database: MySQL 8.x / InnoDB / utf8mb4
 > ORM: Entity Framework Core 10
 > Chủ sở hữu: Data/Architecture owners; thay đổi cần nhóm phê duyệt
@@ -27,7 +27,7 @@ Schema gồm sáu module logic:
 5. Assessment & AI Reasoning.
 6. Dynamic Authorization & Evidence Governance.
 
-Hệ thống có đầy đủ 38 bảng vật lý đã migration và kiểm tra trên MySQL thật (bao gồm 7 bảng ở Module 6 và cột override_awarded_score tại reasoning_analyses).
+Hệ thống có 39 bảng vật lý trong EF migration model, bao gồm 7 bảng ở Module 6 và bảng watermark recommendation generation. Baseline 38 bảng đã được kiểm tra trên MySQL thật; bảng thứ 39 phải qua live-MySQL verification trước khi R07 technical freeze.
 
 ## 2. Quy ước vật lý
 
@@ -163,6 +163,8 @@ erDiagram
     STUDENTS ||--o{ TWIN_UPDATE_HISTORY : explains
     STUDENTS ||--o{ LEARNING_PATHS : follows
     STUDENTS ||--o{ RECOMMENDATIONS : receives
+    STUDENTS ||--o{ RECOMMENDATION_GENERATION_STATES : serializes
+    SUBJECTS ||--o{ RECOMMENDATION_GENERATION_STATES : scopes
     CENTERS ||--o{ ROLES : defines
     USERS ||--o{ USER_ROLES : receives
     ROLES ||--o{ USER_ROLES : assigned
@@ -174,9 +176,9 @@ erDiagram
     CENTERS ||--o{ AUTHORIZATION_AUDIT_LOGS : audits
 ~~~
 
-## 3.1. Danh mục 38 bảng, mục đích và quan hệ chính
+## 3.1. Danh mục 39 bảng, mục đích và quan hệ chính
 
-Đây là data dictionary cấp bảng. Các mục 4–41 bên dưới là data dictionary cấp cột và là nguồn chi tiết duy nhất; không tạo thêm file schema song song.
+Đây là data dictionary cấp bảng. Các mục 4–42 bên dưới là data dictionary cấp cột và là nguồn chi tiết duy nhất; không tạo thêm file schema song song.
 
 | # | Table | Trạng thái | Chức năng | Quan hệ chính |
 |---:|---|---|---|---|
@@ -208,16 +210,17 @@ erDiagram
 | 26 | learning_paths | Current | Phiên bản lộ trình active/superseded | FK student/subject/source attempt |
 | 27 | learning_path_items | Current | Các bước topic/question trong lộ trình | FK learning_paths/node/question |
 | 28 | recommendations | Current | Hành động học tiếp theo có breakdown | FK student/subject/node/question/source attempt |
-| 29 | attempts | Current | Bài nộp, telemetry và chấm sơ bộ append-oriented | FK student/question/assignment; parent job/analysis/evidence |
-| 30 | reasoning_analyses | Current | Observation AI/fallback và teacher override provenance | One-to-one logical với attempt; referenced by evidence/history |
-| 31 | ai_analysis_jobs | Current | Queue bền vững, lease, retry và terminal state | Unique theo attempt |
-| 32 | permissions | Current | Catalog capability toàn hệ thống, chỉ đọc ở runtime | Parent applicability/role grant |
-| 33 | permission_account_types | Current | Khóa permission được dùng bởi account type nào | Join permissions–account type; principal cho role grant |
-| 34 | roles | Current | Vai trò động do từng Center quản lý | Parent role_permissions/user_roles |
-| 35 | role_permissions | Current | Permission set hiện hành của role | Join roles–permissions có account-type FK |
-| 36 | user_roles | Current | Role active/revoked của user | Join users–roles có account-type FK |
-| 37 | authorization_audit_logs | Current | Audit append-only của thay đổi quyền | FK actor/target users khi có |
-| 38 | evidence_assessments | Current | Quyết định policy append-only, không nhân bản analysis/mastery | FK attempts/analyses/self-supersession |
+| 29 | recommendation_generation_states | Current | Watermark bền vững chống trigger cũ/duplicate kể cả khi kết quả Blocked/NoCandidate | PK/FK center–student–subject |
+| 30 | attempts | Current | Bài nộp, telemetry và chấm sơ bộ append-oriented | FK student/question/assignment; parent job/analysis/evidence |
+| 31 | reasoning_analyses | Current | Observation AI/fallback và teacher override provenance | One-to-one logical với attempt; referenced by evidence/history |
+| 32 | ai_analysis_jobs | Current | Queue bền vững, lease, retry và terminal state | Unique theo attempt |
+| 33 | permissions | Current | Catalog capability toàn hệ thống, chỉ đọc ở runtime | Parent applicability/role grant |
+| 34 | permission_account_types | Current | Khóa permission được dùng bởi account type nào | Join permissions–account type; principal cho role grant |
+| 35 | roles | Current | Vai trò động do từng Center quản lý | Parent role_permissions/user_roles |
+| 36 | role_permissions | Current | Permission set hiện hành của role | Join roles–permissions có account-type FK |
+| 37 | user_roles | Current | Role active/revoked của user | Join users–roles có account-type FK |
+| 38 | authorization_audit_logs | Current | Audit append-only của thay đổi quyền | FK actor/target users khi có |
+| 39 | evidence_assessments | Current | Quyết định policy append-only, không nhân bản analysis/mastery | FK attempts/analyses/self-supersession |
 
 # Module 1 — System Users & Organization
 
@@ -819,14 +822,35 @@ Table append-only; replay tạo event mới, không sửa event cũ.
 | status | VARCHAR(32) | No | Active, Accepted, Dismissed, Superseded |
 | generated_at | DATETIME(6) | No | Thời điểm UTC sinh recommendation |
 | expires_at | DATETIME(6) | Yes | Hạn dùng nếu policy quy định |
+| dismiss_reason | VARCHAR(1000) | Yes | Lý do học sinh bỏ qua; trim trước khi lưu, giữ nguyên khi retry idempotent |
 | ...MTA | | | Kế thừa audit, soft-delete, tenant và row_version tại mục 2.3 |
 
 - IX(center_id, student_id, subject_id, status, generated_at).
 - BLL supersede recommendation cũ trong cùng transaction tạo recommendation mới.
 
+## 32. recommendation_generation_states [Tenant state + row version]
+
+| Column | Type | Null | Constraint/Ý nghĩa |
+|---|---|---:|---|
+| center_id | VARCHAR(36) | No | PK part; tenant discriminator |
+| student_id | VARCHAR(36) | No | PK part; tenant-safe FK student |
+| subject_id | VARCHAR(36) | No | PK part; tenant-safe FK subject |
+| last_trigger_at | DATETIME(6) | No | UTC ordering watermark của trigger đã xử lý gần nhất |
+| last_source_attempt_id | BIGINT UNSIGNED | Yes | Tie-break/idempotency identity khi trigger đến từ Attempt |
+| last_outcome | VARCHAR(32) | No | Generated, NoCandidate hoặc Blocked |
+| diagnostic_reason | VARCHAR(500) | Yes | Lý do terminal khi không tạo recommendation |
+| created_at | DATETIME(6) | No | UTC |
+| updated_at | DATETIME(6) | No | UTC |
+| row_version | BIGINT UNSIGNED | No | Concurrency token |
+
+- Chính xác một row cho mỗi center/student/subject.
+- Check và update dưới cùng Student row lock trong Recommendation Transaction B.
+- Không xóa row khi recommendation được Accepted/Dismissed; đây là nguồn ordering độc lập với current Active row.
+- Trigger cũ hoặc retry cùng trigger-time/source-attempt trả StaleIgnored, không resurrect artifact cũ.
+
 # Module 5 — Assessment & AI Reasoning
 
-## 32. attempts [TA + trạng thái nghiệp vụ]
+## 33. attempts [TA + trạng thái nghiệp vụ]
 
 | Column | Type | Null | Constraint/Ý nghĩa |
 |---|---|---:|---|
@@ -861,7 +885,7 @@ Indexes/constraints:
 
 Attempts không soft delete; nếu cần loại khỏi replay phải có use case invalidate được phê duyệt trong tương lai.
 
-## 33. reasoning_analyses [TA + override fields]
+## 34. reasoning_analyses [TA + override fields]
 
 | Column | Type | Null | Constraint/Ý nghĩa |
 |---|---|---:|---|
@@ -919,7 +943,7 @@ Provenance semantics:
 
 Không lưu raw Gemini request/response trong table này.
 
-## 34. ai_analysis_jobs [TA + mutable state]
+## 35. ai_analysis_jobs [TA + mutable state]
 
 | Column | Type | Null | Constraint/Ý nghĩa |
 |---|---|---:|---|
@@ -955,7 +979,7 @@ Recovery:
 
 # Module 6 — Dynamic Authorization & Evidence Governance [Active — đã migration và kiểm tra trên MySQL]
 
-## 35. permissions [System catalog, không có center_id]
+## 36. permissions [System catalog, không có center_id]
 
 | Column | Type | Null | Constraint/Ý nghĩa |
 |---|---|---:|---|
@@ -985,7 +1009,7 @@ Invariant:
 - Mỗi permission phải có ít nhất một row trong permission_account_types; không lưu danh sách loại tài khoản trong JSON vì quan hệ này cần join và foreign key.
 - CenterManager chỉ được gán permission Active, is_delegable = 1 và tương thích target role. Nếu target role có account_type = CenterManager, permission mới còn phải nằm trong effective permission của actor; role Student/Teacher không áp dụng điều kiện actor-own vì CenterManager không thể sở hữu permission khác account type.
 
-## 36. permission_account_types [System catalog join, không có center_id]
+## 37. permission_account_types [System catalog join, không có center_id]
 
 | Column | Type | Null | Constraint/Ý nghĩa |
 |---|---|---:|---|
@@ -1007,7 +1031,7 @@ Invariant:
 - API tổng hợp các row thành allowedAccountTypes; array API không phải nguồn dữ liệu JSON trong database.
 - Xóa mapping đang được role_permissions tham chiếu phải bị RESTRICT.
 
-## 37. roles [MTA]
+## 38. roles [MTA]
 
 | Column | Type | Null | Constraint/Ý nghĩa |
 |---|---|---:|---|
@@ -1038,7 +1062,7 @@ Invariant:
 - is_system_role không đồng nghĩa quyền global; role vẫn tenant-scoped.
 - TenantAdminCorePermissionsV1 là chín permission authorization.permissions.read, authorization.roles.read/create/update/archive/manage_permissions, authorization.user_roles.read/assign và authorization.audit.read.
 
-## 38. role_permissions [Tenant join]
+## 39. role_permissions [Tenant join]
 
 | Column | Type | Null | Constraint/Ý nghĩa |
 |---|---|---:|---|
@@ -1064,7 +1088,7 @@ Invariant:
 - account_type được BLL lấy từ role, không nhận từ request; hai composite FK buộc role và permission tương thích ngay tại database.
 - Grant/revoke phải cập nhật users.auth_version theo phạm vi ảnh hưởng và ghi authorization_audit_logs trong cùng transaction.
 
-## 39. user_roles [Tenant current-state join]
+## 40. user_roles [Tenant current-state join]
 
 | Column | Type | Null | Constraint/Ý nghĩa |
 |---|---|---:|---|
@@ -1098,7 +1122,7 @@ Invariant:
 - Mỗi lần assign/revoke phải tăng users.auth_version và ghi audit trong cùng transaction.
 - Cấm tự gán quyền, cấp role vượt quá quyền của actor hoặc làm Center không còn ít nhất một CenterManager Active có đủ TenantAdminCorePermissionsV1.
 
-## 40. authorization_audit_logs [TA append-only]
+## 41. authorization_audit_logs [TA append-only]
 
 | Column | Type | Null | Constraint/Ý nghĩa |
 |---|---|---:|---|
@@ -1130,7 +1154,7 @@ Invariant:
 - Không lưu password, token, secret hoặc raw authorization header trong JSON.
 - Audit failure làm rollback thay đổi authorization tương ứng.
 
-## 41. evidence_assessments [TA append-only]
+## 42. evidence_assessments [TA append-only]
 
 | Column | Type | Null | Constraint/Ý nghĩa |
 |---|---|---:|---|
@@ -1178,7 +1202,7 @@ Invariant:
 - policy_version và reason_codes phải đủ để tái lập quyết định Gate.
 - Bảng chỉ lưu policy decision/provenance; không copy feedback, mastery delta hoặc calculation breakdown từ analysis/history.
 
-## 42. Structured AI output contract lưu vào reasoning_analyses
+## 43. Structured AI output contract lưu vào reasoning_analyses
 
 Payload hợp lệ trước khi persistence:
 
@@ -1207,7 +1231,7 @@ Semantic validation:
 - feedback không rỗng.
 - Không chấp nhận field thừa nếu parser được cấu hình strict.
 
-## 43. Invariant liên module
+## 44. Invariant liên module
 
 ### 43.1. Submit Attempt
 
@@ -1246,7 +1270,7 @@ Nếu transaction rollback, job không được đánh Completed.
 - Insert History event TeacherOverride/Replay.
 - Toàn bộ nằm trong một transaction.
 
-## 44. Index chiến lược
+## 45. Index chiến lược
 
 Ngoài index từng table, bắt buộc review EXPLAIN cho các query:
 
@@ -1261,7 +1285,7 @@ Ngoài index từng table, bắt buộc review EXPLAIN cho các query:
 
 Không index mọi cột. Mỗi index phải gắn với query cụ thể trong API_CONTRACTS.md.
 
-## 45. Global Query Filter
+## 46. Global Query Filter
 
 Áp dụng cho:
 
@@ -1278,7 +1302,7 @@ Ngoại lệ:
 
 Không dùng request-provided center_id để khởi tạo filter.
 
-## 46. Seed Data
+## 47. Seed Data
 
 Seed phải deterministic và idempotent.
 
@@ -1318,7 +1342,7 @@ Mỗi Center seed:
 
 Không seed Attempt/Twin ở baseline chính nếu demo cần thể hiện thay đổi từ 0%; có thể có profile demo phụ chứa lịch sử mẫu, nhưng phải được gắn nhãn rõ.
 
-## 47. Migration policy
+## 48. Migration policy
 
 - Migration 001: Tenant + Identity + Organization.
 - Migration 002: Knowledge Graph.
@@ -1343,7 +1367,7 @@ Quy tắc:
 - Migration 008 không được tự suy diễn trust cho lịch sử thiếu dữ liệu; mặc định ReviewOnly và đánh dấu provenance backfill.
 - Mọi migration v2 phải có validation query, backup/rollback procedure và chạy thử trên MySQL thật.
 
-## 48. Data validation matrix
+## 49. Data validation matrix
 
 | Rule | DB | BLL | API |
 |---|:---:|:---:|:---:|
@@ -1367,7 +1391,7 @@ Quy tắc:
 | Evidence weight 0–1 | CHECK | Bắt buộc | Read-only result |
 | Fallback không đổi Knowledge Mastery | Không đầy đủ | Bắt buộc | Không cho client override |
 
-## 49. Không được thêm trong MVP
+## 50. Không được thêm trong MVP
 
 Không tạo table cho:
 
@@ -1383,7 +1407,7 @@ Không tạo table cho:
 
 Nếu AI Developer cho rằng cần table mới, phải tạo Change Proposal; không tự ý tạo migration.
 
-## 50. Checklist nghiệm thu schema
+## 51. Checklist nghiệm thu schema
 
 - [x] Baseline 31 bảng và 7 bảng Module 6 được đối chiếu với migration-generated SQL và MySQL information_schema.
 - [x] Target v2 đủ 6 module và 38 bảng đã được migration và nghiệm thu trên MySQL thật.
