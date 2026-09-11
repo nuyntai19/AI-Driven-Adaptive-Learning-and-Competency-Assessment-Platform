@@ -4,7 +4,11 @@ using System.Threading.Tasks;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.BLL.Organization;
 using EduTwin.Contracts.Common;
+using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.Contracts.Organization;
+using EduTwin.Contracts.Dashboards;
+using EduTwin.BLL.Dashboards;
+using EduTwin.API.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -19,6 +23,7 @@ public class ClassesController : ControllerBase
     private readonly IGetClassUseCase _getClassUseCase;
     private readonly ICreateClassUseCase _createClassUseCase;
     private readonly IUpdateClassUseCase _updateClassUseCase;
+    private readonly IGetClassDashboardUseCase _getClassDashboardUseCase;
     private readonly TimeProvider _timeProvider;
 
     public ClassesController(
@@ -27,11 +32,23 @@ public class ClassesController : ControllerBase
         ICreateClassUseCase createClassUseCase,
         IUpdateClassUseCase updateClassUseCase,
         TimeProvider timeProvider)
+        : this(listClassesUseCase, getClassUseCase, createClassUseCase, updateClassUseCase, null!, timeProvider)
+    {
+    }
+
+    public ClassesController(
+        IListClassesUseCase listClassesUseCase,
+        IGetClassUseCase getClassUseCase,
+        ICreateClassUseCase createClassUseCase,
+        IUpdateClassUseCase updateClassUseCase,
+        IGetClassDashboardUseCase getClassDashboardUseCase,
+        TimeProvider timeProvider)
     {
         _listClassesUseCase = listClassesUseCase;
         _getClassUseCase = getClassUseCase;
         _createClassUseCase = createClassUseCase;
         _updateClassUseCase = updateClassUseCase;
+        _getClassDashboardUseCase = getClassDashboardUseCase;
         _timeProvider = timeProvider;
     }
 
@@ -502,5 +519,66 @@ public class ClassesController : ControllerBase
         }
 
         throw new System.InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
+    }
+
+    [HttpGet("{classId}/dashboard")]
+    [Authorize(Policy = CompositePermissionPolicies.DashboardsClassRead)]
+    public async Task<IActionResult> GetClassDashboard(
+        [FromRoute] Guid classId,
+        [FromQuery] decimal riskThreshold = 70m,
+        CancellationToken cancellationToken = default)
+    {
+        var traceId = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        var result = await _getClassDashboardUseCase.ExecuteAsync(classId, riskThreshold, cancellationToken);
+
+        if (result.IsSuccess)
+        {
+            var response = new ClassDashboardResponse
+            {
+                Data = result.Data!,
+                Meta = new MetaDto
+                {
+                    TraceId = traceId,
+                    Timestamp = _timeProvider.GetUtcNow().UtcDateTime
+                }
+            };
+            return Ok(response);
+        }
+
+        if (result.ErrorCode == ErrorCodes.ResourceNotFound)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.5",
+                Status = StatusCodes.Status404NotFound,
+                Title = "Không tìm thấy dữ liệu.",
+                Detail = result.ErrorMessage ?? "Không tìm thấy lớp học hoặc dữ liệu.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = traceId, ["errorCode"] = ErrorCodes.ResourceNotFound }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ForbiddenResource)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.4",
+                Status = StatusCodes.Status403Forbidden,
+                Title = "Không có quyền truy cập.",
+                Detail = result.ErrorMessage ?? "Bạn không có quyền truy cập bảng điều khiển lớp học này.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = traceId, ["errorCode"] = ErrorCodes.ForbiddenResource }
+            });
+        }
+
+        return BadRequest(new ProblemDetails
+        {
+            Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.1",
+            Status = StatusCodes.Status400BadRequest,
+            Title = "Dữ liệu không hợp lệ.",
+            Detail = result.ErrorMessage ?? "Yêu cầu không hợp lệ.",
+            Instance = HttpContext.Request.Path,
+            Extensions = { ["traceId"] = traceId, ["errorCode"] = result.ErrorCode ?? ErrorCodes.ValidationFailed }
+        });
     }
 }

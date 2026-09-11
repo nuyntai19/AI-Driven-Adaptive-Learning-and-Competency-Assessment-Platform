@@ -25,7 +25,7 @@ public sealed class GetStudentTwinHistoryUseCase : IGetStudentTwinHistoryUseCase
     }
 
     public async Task<TwinHistoryResult> ExecuteAsync(
-        Guid subjectId,
+        Guid? subjectId,
         ulong? topicId,
         DateTime? from,
         DateTime? to,
@@ -43,29 +43,36 @@ public sealed class GetStudentTwinHistoryUseCase : IGetStudentTwinHistoryUseCase
         var centerId = _tenantContext.CenterId.Value;
         var studentId = _tenantContext.UserId.Value;
 
-        if (subjectId == Guid.Empty)
+        if (subjectId.HasValue && subjectId.Value == Guid.Empty)
         {
-            return TwinHistoryResult.ValidationFailed();
+            return TwinHistoryResult.ValidationFailed("Mã môn học không hợp lệ.");
         }
 
         var studentExists = await _dbContext.Students.AsNoTracking()
             .AnyAsync(s => s.CenterId == centerId && s.StudentId == studentId && !s.IsDeleted, cancellationToken);
         if (!studentExists)
         {
-            return TwinHistoryResult.NotFound();
+            return TwinHistoryResult.NotFound("Không tìm thấy học viên.");
         }
 
-        var subjectExists = await _dbContext.Subjects.AsNoTracking()
-            .AnyAsync(s => s.CenterId == centerId && s.SubjectId == subjectId && !s.IsDeleted, cancellationToken);
-        if (!subjectExists)
+        if (subjectId.HasValue)
         {
-            return TwinHistoryResult.NotFound();
+            var subjectExists = await _dbContext.Subjects.AsNoTracking()
+                .AnyAsync(s => s.CenterId == centerId && s.SubjectId == subjectId.Value && !s.IsDeleted, cancellationToken);
+            if (!subjectExists)
+            {
+                return TwinHistoryResult.NotFound("Không tìm thấy môn học.");
+            }
         }
 
         var query = _dbContext.TwinUpdateHistories.AsNoTracking()
             .Where(h => h.CenterId == centerId &&
-                        h.StudentId == studentId &&
-                        h.SubjectId == subjectId);
+                        h.StudentId == studentId);
+
+        if (subjectId.HasValue)
+        {
+            query = query.Where(h => h.SubjectId == subjectId.Value);
+        }
 
         if (topicId.HasValue)
         {

@@ -3,12 +3,15 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.BLL.Organization;
+using EduTwin.BLL.Dashboards;
 using EduTwin.Contracts.Common;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.Contracts.Organization;
+using EduTwin.Contracts.Dashboards;
 
 namespace EduTwin.API.Controllers;
 
@@ -19,15 +22,26 @@ public class CentersController : ControllerBase
 {
     private readonly IGetCenterProfileUseCase _getCenterProfileUseCase;
     private readonly IUpdateCenterProfileUseCase _updateCenterProfileUseCase;
+    private readonly IGetCenterDashboardUseCase _getCenterDashboardUseCase;
     private readonly TimeProvider _timeProvider;
 
     public CentersController(
         IGetCenterProfileUseCase getCenterProfileUseCase,
         IUpdateCenterProfileUseCase updateCenterProfileUseCase,
         TimeProvider timeProvider)
+        : this(getCenterProfileUseCase, updateCenterProfileUseCase, null!, timeProvider)
+    {
+    }
+
+    public CentersController(
+        IGetCenterProfileUseCase getCenterProfileUseCase,
+        IUpdateCenterProfileUseCase updateCenterProfileUseCase,
+        IGetCenterDashboardUseCase getCenterDashboardUseCase,
+        TimeProvider timeProvider)
     {
         _getCenterProfileUseCase = getCenterProfileUseCase;
         _updateCenterProfileUseCase = updateCenterProfileUseCase;
+        _getCenterDashboardUseCase = getCenterDashboardUseCase;
         _timeProvider = timeProvider;
     }
 
@@ -159,5 +173,78 @@ public class CentersController : ControllerBase
         }
 
         throw new InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
+    }
+
+    [HttpGet("me/dashboard")]
+    [Authorize(Policy = "dashboards.center.read")]
+    public async Task<IActionResult> GetCenterDashboard(
+        [FromQuery] Guid? subjectId,
+        [FromQuery] decimal riskThreshold = 70m,
+        CancellationToken cancellationToken = default)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        var result = await _getCenterDashboardUseCase.ExecuteAsync(subjectId, riskThreshold, cancellationToken);
+
+        if (result.IsSuccess)
+        {
+            var response = new CenterDashboardResponse
+            {
+                Data = result.Data!,
+                Meta = new MetaDto
+                {
+                    TraceId = traceId,
+                    Timestamp = _timeProvider.GetUtcNow().UtcDateTime
+                }
+            };
+            return Ok(response);
+        }
+
+        if (result.ErrorCode == ErrorCodes.ResourceNotFound)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.4",
+                Title = "Không tìm thấy dữ liệu",
+                Status = StatusCodes.Status404NotFound,
+                Detail = result.ErrorMessage ?? "Không tìm thấy trung tâm hoặc dữ liệu.",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = traceId,
+                    ["errorCode"] = ErrorCodes.ResourceNotFound
+                }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ForbiddenResource)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.3",
+                Title = "Không có quyền truy cập",
+                Status = StatusCodes.Status403Forbidden,
+                Detail = result.ErrorMessage ?? "Bạn không có quyền truy cập trung tâm này.",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = traceId,
+                    ["errorCode"] = ErrorCodes.ForbiddenResource
+                }
+            });
+        }
+
+        return BadRequest(new ProblemDetails
+        {
+            Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.1",
+            Title = "Dữ liệu không hợp lệ",
+            Status = StatusCodes.Status400BadRequest,
+            Detail = result.ErrorMessage ?? "Yêu cầu không hợp lệ.",
+            Instance = HttpContext.Request.Path,
+            Extensions =
+            {
+                ["traceId"] = traceId,
+                ["errorCode"] = result.ErrorCode ?? ErrorCodes.ValidationFailed
+            }
+        });
     }
 }

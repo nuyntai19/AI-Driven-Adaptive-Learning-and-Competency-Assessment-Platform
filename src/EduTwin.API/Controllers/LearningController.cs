@@ -2,6 +2,7 @@ using System.Diagnostics;
 using EduTwin.BLL.AssessmentAndReasoning;
 using EduTwin.BLL.AssessmentAndReasoning.AttemptSummaries;
 using EduTwin.BLL.AssessmentAndReasoning.Polling;
+using EduTwin.BLL.AssessmentAndReasoning.Feedback;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.API.Security;
 using EduTwin.Contracts.AssessmentAndReasoning;
@@ -23,6 +24,7 @@ public sealed class LearningController : ControllerBase
     private readonly IListAttemptsUseCase _listAttemptsUseCase;
     private readonly IGetAnalysisJobStatusUseCase _getAnalysisJobStatusUseCase;
     private readonly IGetNextQuestionUseCase _getNextQuestionUseCase;
+    private readonly IGetAttemptFeedbackUseCase _getAttemptFeedbackUseCase;
     private readonly TimeProvider _timeProvider;
 
     public LearningController(
@@ -30,7 +32,7 @@ public sealed class LearningController : ControllerBase
         IListAttemptsUseCase listAttemptsUseCase,
         IGetAnalysisJobStatusUseCase getAnalysisJobStatusUseCase,
         TimeProvider timeProvider)
-        : this(submitAttemptUseCase, listAttemptsUseCase, getAnalysisJobStatusUseCase, null!, timeProvider)
+        : this(submitAttemptUseCase, listAttemptsUseCase, getAnalysisJobStatusUseCase, null!, null!, timeProvider)
     {
     }
 
@@ -40,11 +42,23 @@ public sealed class LearningController : ControllerBase
         IGetAnalysisJobStatusUseCase getAnalysisJobStatusUseCase,
         IGetNextQuestionUseCase getNextQuestionUseCase,
         TimeProvider timeProvider)
+        : this(submitAttemptUseCase, listAttemptsUseCase, getAnalysisJobStatusUseCase, getNextQuestionUseCase, null!, timeProvider)
+    {
+    }
+
+    public LearningController(
+        ISubmitAttemptUseCase submitAttemptUseCase,
+        IListAttemptsUseCase listAttemptsUseCase,
+        IGetAnalysisJobStatusUseCase getAnalysisJobStatusUseCase,
+        IGetNextQuestionUseCase getNextQuestionUseCase,
+        IGetAttemptFeedbackUseCase getAttemptFeedbackUseCase,
+        TimeProvider timeProvider)
     {
         _submitAttemptUseCase = submitAttemptUseCase;
         _listAttemptsUseCase = listAttemptsUseCase;
         _getAnalysisJobStatusUseCase = getAnalysisJobStatusUseCase;
         _getNextQuestionUseCase = getNextQuestionUseCase;
+        _getAttemptFeedbackUseCase = getAttemptFeedbackUseCase;
         _timeProvider = timeProvider;
     }
 
@@ -206,6 +220,78 @@ public sealed class LearningController : ControllerBase
         }
 
         return MapAnalysisJobErrorToResponse(result.ErrorCode, traceId);
+    }
+
+    [HttpGet("attempts/{attemptId}/feedback")]
+    [Authorize(Policy = CompositePermissionPolicies.AttemptsRead)]
+    [ProducesResponseType(typeof(AttemptFeedbackResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetAttemptFeedback(
+        [FromRoute] ulong attemptId,
+        CancellationToken cancellationToken)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        if (attemptId == 0)
+        {
+            return BadRequest(CreateProblemDetails(
+                StatusCodes.Status400BadRequest,
+                "https://edutwin.local/problems/bad-request",
+                "Dữ liệu không hợp lệ",
+                "Mã bài làm (attemptId) không hợp lệ.",
+                traceId,
+                ErrorCodes.ValidationFailed));
+        }
+
+        if (_getAttemptFeedbackUseCase is null)
+        {
+            throw new InvalidOperationException("GetAttemptFeedbackUseCase is not configured.");
+        }
+
+        var result = await _getAttemptFeedbackUseCase.ExecuteAsync(attemptId, cancellationToken);
+
+        if (result.IsSuccess)
+        {
+            return Ok(new AttemptFeedbackResponse
+            {
+                Data = result.Data!,
+                Meta = new MetaDto
+                {
+                    TraceId = traceId,
+                    Timestamp = _timeProvider.GetUtcNow().UtcDateTime
+                }
+            });
+        }
+
+        return result.ErrorCode switch
+        {
+            ErrorCodes.ForbiddenResource => StatusCode(
+                StatusCodes.Status403Forbidden,
+                CreateProblemDetails(
+                    StatusCodes.Status403Forbidden,
+                    "https://edutwin.local/problems/forbidden",
+                    "Không có quyền truy cập",
+                    result.ErrorMessage ?? "Bạn không có quyền xem phản hồi bài làm này.",
+                    traceId,
+                    ErrorCodes.ForbiddenResource)),
+
+            ErrorCodes.ResourceNotFound => NotFound(CreateProblemDetails(
+                StatusCodes.Status404NotFound,
+                "https://edutwin.local/problems/not-found",
+                "Không tìm thấy dữ liệu",
+                result.ErrorMessage ?? "Không tìm thấy bài làm hoặc kết quả phân tích.",
+                traceId,
+                ErrorCodes.ResourceNotFound)),
+
+            _ => BadRequest(CreateProblemDetails(
+                StatusCodes.Status400BadRequest,
+                "https://edutwin.local/problems/bad-request",
+                "Dữ liệu không hợp lệ",
+                result.ErrorMessage ?? "Yêu cầu không hợp lệ.",
+                traceId,
+                result.ErrorCode ?? ErrorCodes.ValidationFailed))
+        };
     }
 
     private IActionResult MapErrorToResponse(string? errorCode, string traceId) =>

@@ -99,8 +99,8 @@ public sealed class GetClassDashboardUseCase : IGetClassDashboardUseCase
             var studentGoals = await _dbContext.StudentSubjectGoals.AsNoTracking()
                 .Where(g => g.CenterId == centerId &&
                             g.SubjectId == classEntity.SubjectId &&
-                            enrolledStudentIds.Contains(g.StudentId) &&
-                            !g.IsDeleted)
+                            !g.IsDeleted &&
+                            _dbContext.ClassStudents.Any(cs => cs.CenterId == centerId && cs.ClassId == classId && cs.StudentId == g.StudentId && cs.Status == ClassStudentStatus.Active))
                 .ToListAsync(cancellationToken);
 
             var studentGoalMap = studentGoals.ToDictionary(g => g.StudentId);
@@ -132,21 +132,21 @@ public sealed class GetClassDashboardUseCase : IGetClassDashboardUseCase
         highRiskStudents = highRiskStudents.OrderByDescending(s => s.RiskScore).ToList();
 
         // 2. Applicable Topics (curriculum assigned to class or subject active topics)
-        var curriculumNodeIds = await _dbContext.CurriculumClasses.AsNoTracking()
-            .Where(cc => cc.CenterId == centerId && cc.ClassId == classEntity.ClassId)
-            .Join(_dbContext.CurriculumNodes.AsNoTracking().Where(cn => cn.CenterId == centerId),
-                  cc => cc.CurriculumId,
-                  cn => cn.CurriculumId,
-                  (cc, cn) => cn.NodeId)
-            .Distinct()
-            .ToListAsync(cancellationToken);
+        var classCurriculumQuery = _dbContext.CurriculumClasses.AsNoTracking()
+            .Where(cc => cc.CenterId == centerId && cc.ClassId == classEntity.ClassId);
+
+        var hasCurriculumAssigned = await classCurriculumQuery.AnyAsync(cancellationToken);
 
         var applicableTopicsQuery = _dbContext.KnowledgeNodes.AsNoTracking()
             .Where(n => n.CenterId == centerId && n.SubjectId == classEntity.SubjectId && n.IsActive && !n.IsDeleted);
 
-        if (curriculumNodeIds.Count > 0)
+        if (hasCurriculumAssigned)
         {
-            applicableTopicsQuery = applicableTopicsQuery.Where(n => curriculumNodeIds.Contains(n.NodeId));
+            applicableTopicsQuery = applicableTopicsQuery.Where(n =>
+                _dbContext.CurriculumNodes.AsNoTracking().Any(cn =>
+                    cn.CenterId == centerId &&
+                    cn.NodeId == n.NodeId &&
+                    classCurriculumQuery.Any(cc => cc.CurriculumId == cn.CurriculumId)));
         }
 
         var applicableTopics = await applicableTopicsQuery
@@ -160,16 +160,17 @@ public sealed class GetClassDashboardUseCase : IGetClassDashboardUseCase
 
         if (studentCount > 0 && applicableTopics.Count > 0)
         {
-            var applicableTopicIds = applicableTopics.Select(t => t.NodeId).ToList();
+            var applicableTopicNodeIdSet = applicableTopics.Select(t => t.NodeId).ToHashSet();
 
-            var twins = await _dbContext.KnowledgeTwins.AsNoTracking()
+            var allClassTwins = await _dbContext.KnowledgeTwins.AsNoTracking()
                 .Where(kt => kt.CenterId == centerId &&
                              kt.SubjectId == classEntity.SubjectId &&
-                             enrolledStudentIds.Contains(kt.StudentId) &&
-                             applicableTopicIds.Contains(kt.TopicNodeId) &&
-                             !kt.IsDeleted)
+                             !kt.IsDeleted &&
+                             _dbContext.ClassStudents.Any(cs => cs.CenterId == centerId && cs.ClassId == classId && cs.StudentId == kt.StudentId && cs.Status == ClassStudentStatus.Active))
                 .Select(kt => new { kt.StudentId, kt.TopicNodeId, kt.MasteryPercentage })
                 .ToListAsync(cancellationToken);
+
+            var twins = allClassTwins.Where(kt => applicableTopicNodeIdSet.Contains(kt.TopicNodeId)).ToList();
 
             var totalWeight = applicableTopics.Sum(t => t.ExamImportance);
             if (totalWeight > 0m)
@@ -225,22 +226,22 @@ public sealed class GetClassDashboardUseCase : IGetClassDashboardUseCase
 
         // 3. Assignment completion rate
         decimal assignmentCompletionRate = 0m;
-        var publishedAssignmentIds = await _dbContext.Assignments.AsNoTracking()
-            .Where(a => a.CenterId == centerId && a.ClassId == classEntity.ClassId && a.Status == AssignmentStatus.Published && !a.IsDeleted)
-            .Select(a => a.AssignmentId)
-            .ToListAsync(cancellationToken);
+        var publishedAssignmentsQuery = _dbContext.Assignments.AsNoTracking()
+            .Where(a => a.CenterId == centerId && a.ClassId == classEntity.ClassId && a.Status == AssignmentStatus.Published && !a.IsDeleted);
 
-        if (publishedAssignmentIds.Count > 0)
+        var hasPublishedAssignments = await publishedAssignmentsQuery.AnyAsync(cancellationToken);
+
+        if (hasPublishedAssignments)
         {
             var totalTargets = await _dbContext.AssignmentTargets.AsNoTracking()
-                .Where(t => t.CenterId == centerId && publishedAssignmentIds.Contains(t.AssignmentId))
+                .Where(t => t.CenterId == centerId && publishedAssignmentsQuery.Any(a => a.AssignmentId == t.AssignmentId))
                 .CountAsync(cancellationToken);
 
             var completedTargets = await _dbContext.StudentAssignmentProgresses.AsNoTracking()
                 .Where(p => p.CenterId == centerId &&
-                            publishedAssignmentIds.Contains(p.AssignmentId) &&
                             p.Status == ProgressStatus.Completed &&
-                            !p.IsDeleted)
+                            !p.IsDeleted &&
+                            publishedAssignmentsQuery.Any(a => a.AssignmentId == p.AssignmentId))
                 .CountAsync(cancellationToken);
 
             assignmentCompletionRate = totalTargets > 0

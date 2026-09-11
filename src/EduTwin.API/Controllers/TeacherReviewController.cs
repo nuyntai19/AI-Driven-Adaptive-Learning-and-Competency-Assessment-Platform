@@ -7,6 +7,8 @@ using EduTwin.BLL.AssessmentAndReasoning.ReviewQueue;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.Common;
 using EduTwin.Contracts.IdentityAndTenancy;
+using EduTwin.Contracts.DigitalTwin;
+using EduTwin.BLL.DigitalTwin;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -19,25 +21,34 @@ public sealed class TeacherReviewController : ControllerBase
 {
     private readonly IListTeacherReviewQueueUseCase _reviewQueueUseCase;
     private readonly ITeacherOverrideUseCase? _overrideUseCase;
+    private readonly IGetTeacherStudentTwinUseCase? _teacherStudentTwinUseCase;
     private readonly TimeProvider _timeProvider;
 
     public TeacherReviewController(
         IListTeacherReviewQueueUseCase reviewQueueUseCase,
         ITeacherOverrideUseCase overrideUseCase,
         TimeProvider timeProvider)
+        : this(reviewQueueUseCase, overrideUseCase, null!, timeProvider)
+    {
+    }
+
+    public TeacherReviewController(
+        IListTeacherReviewQueueUseCase reviewQueueUseCase,
+        ITeacherOverrideUseCase? overrideUseCase,
+        IGetTeacherStudentTwinUseCase teacherStudentTwinUseCase,
+        TimeProvider timeProvider)
     {
         _reviewQueueUseCase = reviewQueueUseCase ?? throw new ArgumentNullException(nameof(reviewQueueUseCase));
-        _overrideUseCase = overrideUseCase ?? throw new ArgumentNullException(nameof(overrideUseCase));
+        _overrideUseCase = overrideUseCase;
+        _teacherStudentTwinUseCase = teacherStudentTwinUseCase;
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     }
 
     public TeacherReviewController(
         IListTeacherReviewQueueUseCase reviewQueueUseCase,
         TimeProvider timeProvider)
+        : this(reviewQueueUseCase, null, null!, timeProvider)
     {
-        _reviewQueueUseCase = reviewQueueUseCase ?? throw new ArgumentNullException(nameof(reviewQueueUseCase));
-        _overrideUseCase = null;
-        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     }
 
     [HttpGet("review-queue")]
@@ -185,5 +196,86 @@ public sealed class TeacherReviewController : ControllerBase
         problem.Extensions["traceId"] = traceId;
         problem.Extensions["errorCode"] = errorCode;
         return StatusCode(status, problem);
+    }
+
+    [HttpGet("students/{studentId}/twin")]
+    [Authorize(Policy = "twin.student.read_scoped")]
+    [ProducesResponseType(typeof(StudentTwinResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetStudentTwin(
+        [FromRoute] Guid studentId,
+        [FromQuery] Guid subjectId,
+        CancellationToken cancellationToken)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        if (studentId == Guid.Empty)
+        {
+            return ProblemResponse(
+                StatusCodes.Status400BadRequest,
+                "bad-request",
+                "Dữ liệu không hợp lệ",
+                "Mã học viên (studentId) không hợp lệ.",
+                ErrorCodes.ValidationFailed,
+                traceId);
+        }
+
+        if (subjectId == Guid.Empty)
+        {
+            return ProblemResponse(
+                StatusCodes.Status400BadRequest,
+                "bad-request",
+                "Dữ liệu không hợp lệ",
+                "Mã môn học (subjectId) không hợp lệ.",
+                ErrorCodes.ValidationFailed,
+                traceId);
+        }
+
+        if (_teacherStudentTwinUseCase is null)
+        {
+            throw new InvalidOperationException("TeacherStudentTwinUseCase is not configured.");
+        }
+
+        var result = await _teacherStudentTwinUseCase.ExecuteAsync(studentId, subjectId, cancellationToken);
+        if (result.IsSuccess)
+        {
+            return Ok(new StudentTwinResponse
+            {
+                Data = result.Data!,
+                Meta = new MetaDto
+                {
+                    TraceId = traceId,
+                    Timestamp = _timeProvider.GetUtcNow().UtcDateTime
+                }
+            });
+        }
+
+        return result.ErrorCode switch
+        {
+            ErrorCodes.ForbiddenResource => ProblemResponse(
+                StatusCodes.Status403Forbidden,
+                "forbidden",
+                "Không có quyền truy cập",
+                result.ErrorMessage ?? "Bạn không có quyền truy cập Digital Twin của học sinh này.",
+                ErrorCodes.ForbiddenResource,
+                traceId),
+
+            ErrorCodes.ResourceNotFound => ProblemResponse(
+                StatusCodes.Status404NotFound,
+                "not-found",
+                "Không tìm thấy dữ liệu",
+                result.ErrorMessage ?? "Không tìm thấy thông tin Digital Twin.",
+                ErrorCodes.ResourceNotFound,
+                traceId),
+
+            _ => ProblemResponse(
+                StatusCodes.Status400BadRequest,
+                "bad-request",
+                "Dữ liệu không hợp lệ",
+                result.ErrorMessage ?? "Yêu cầu không hợp lệ.",
+                result.ErrorCode ?? ErrorCodes.ValidationFailed,
+                traceId)
+        };
     }
 }

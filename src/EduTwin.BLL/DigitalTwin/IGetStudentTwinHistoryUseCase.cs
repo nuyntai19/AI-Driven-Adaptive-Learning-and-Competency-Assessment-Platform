@@ -10,7 +10,7 @@ namespace EduTwin.BLL.DigitalTwin;
 public interface IGetStudentTwinHistoryUseCase
 {
     Task<TwinHistoryResult> ExecuteAsync(
-        Guid subjectId,
+        Guid? subjectId,
         ulong? topicId,
         DateTime? from,
         DateTime? to,
@@ -22,16 +22,17 @@ public sealed class TwinHistoryResult
     public bool IsSuccess { get; private init; }
     public List<TwinHistoryItemDto>? Data { get; private init; }
     public string? ErrorCode { get; private init; }
+    public string? ErrorMessage { get; private init; }
 
     public static TwinHistoryResult Success(List<TwinHistoryItemDto> data) =>
         new() { IsSuccess = true, Data = data };
 
-    public static TwinHistoryResult ValidationFailed() =>
-        new() { IsSuccess = false, ErrorCode = ErrorCodes.ValidationFailed };
+    public static TwinHistoryResult ValidationFailed(string? message = null) =>
+        new() { IsSuccess = false, ErrorCode = ErrorCodes.ValidationFailed, ErrorMessage = message };
 
-    public static TwinHistoryResult NotFound() =>
-        new() { IsSuccess = false, ErrorCode = ErrorCodes.ResourceNotFound };
+    public static TwinHistoryResult NotFound(string? message = null) =>
+        new() { IsSuccess = false, ErrorCode = ErrorCodes.ResourceNotFound, ErrorMessage = message };
 
-    public static TwinHistoryResult Forbidden() =>
-        new() { IsSuccess = false, ErrorCode = ErrorCodes.ForbiddenResource };
+    public static TwinHistoryResult Forbidden(string? message = null) =>
+        new() { IsSuccess = false, ErrorCode = ErrorCodes.ForbiddenResource, ErrorMessage = message };
 }

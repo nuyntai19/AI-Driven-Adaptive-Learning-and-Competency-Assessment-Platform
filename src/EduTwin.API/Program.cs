@@ -17,6 +17,7 @@ using EduTwin.BLL.CurriculumAndQuestions;
 using EduTwin.BLL.Assignments;
 using EduTwin.BLL.AssessmentAndReasoning;
 using EduTwin.BLL.Recommendations;
+using EduTwin.BLL.Dashboards;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.API.AssessmentAndReasoning.Background;
 using EduTwin.API.AssessmentAndReasoning.AI;
@@ -156,6 +157,7 @@ builder.Services.AddCurriculumAndQuestions();
 builder.Services.AddAssignments();
 builder.Services.AddAssessmentAndReasoning();
 builder.Services.AddRecommendations();
+builder.Services.AddDashboards();
 builder.Services.AddGeminiAI(builder.Configuration);
 
 // We also need TimeProvider

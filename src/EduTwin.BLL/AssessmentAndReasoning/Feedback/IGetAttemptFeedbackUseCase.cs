@@ -15,16 +15,17 @@ public sealed class AttemptFeedbackResult
     public bool IsSuccess { get; private init; }
     public AttemptFeedbackDataDto? Data { get; private init; }
     public string? ErrorCode { get; private init; }
+    public string? ErrorMessage { get; private init; }
 
     public static AttemptFeedbackResult Success(AttemptFeedbackDataDto data) =>
         new() { IsSuccess = true, Data = data };
 
-    public static AttemptFeedbackResult ValidationFailed() =>
-        new() { IsSuccess = false, ErrorCode = ErrorCodes.ValidationFailed };
+    public static AttemptFeedbackResult ValidationFailed(string? message = null) =>
+        new() { IsSuccess = false, ErrorCode = ErrorCodes.ValidationFailed, ErrorMessage = message };
 
-    public static AttemptFeedbackResult NotFound() =>
-        new() { IsSuccess = false, ErrorCode = ErrorCodes.ResourceNotFound };
+    public static AttemptFeedbackResult NotFound(string? message = null) =>
+        new() { IsSuccess = false, ErrorCode = ErrorCodes.ResourceNotFound, ErrorMessage = message };
 
-    public static AttemptFeedbackResult Forbidden() =>
-        new() { IsSuccess = false, ErrorCode = ErrorCodes.ForbiddenResource };
+    public static AttemptFeedbackResult Forbidden(string? message = null) =>
+        new() { IsSuccess = false, ErrorCode = ErrorCodes.ForbiddenResource, ErrorMessage = message };
 }
