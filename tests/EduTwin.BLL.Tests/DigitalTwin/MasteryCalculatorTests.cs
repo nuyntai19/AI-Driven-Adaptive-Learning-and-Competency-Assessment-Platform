@@ -566,11 +566,48 @@ public class MasteryCalculatorTests
         Assert.Equal(first.Explanation, second.Explanation);
     }
 
+    [Fact]
+    public void Calculate_ZeroReasoningWeight_WithNullIsCorrect_PreservesNullCorrectnessAndZeroDelta()
+    {
+        var input = Input(
+            currentMastery: 45m,
+            reasoningQuality: null,
+            reasoningWeight: 0m,
+            isCorrect: null,
+            timeQuality: 0.8m,
+            confidenceCalibration: null,
+            difficulty: 3);
+
+        var result = MasteryCalculator.Calculate(input);
+
+        Assert.Equal(45m, result.PreviousMastery);
+        Assert.Equal(45m, result.NewMastery);
+        Assert.Equal(0m, result.Delta);
+        Assert.Null(result.Breakdown.Correctness);
+        Assert.Equal(0m, result.Breakdown.ReasoningWeight);
+    }
+
+    [Fact]
+    public void Calculate_PositiveReasoningWeight_WithNullIsCorrect_ThrowsArgumentNullException()
+    {
+        var input = Input(
+            currentMastery: 45m,
+            reasoningQuality: 80m,
+            reasoningWeight: 1m,
+            isCorrect: null,
+            timeQuality: 0.8m,
+            confidenceCalibration: 0.9m,
+            difficulty: 3);
+
+        var ex = Assert.Throws<ArgumentNullException>(() => MasteryCalculator.Calculate(input));
+        Assert.Equal("IsCorrect", ex.ParamName);
+    }
+
     private static MasteryCalculationInput Input(
         decimal currentMastery = 0m,
         decimal? reasoningQuality = 80m,
         decimal? reasoningWeight = null,
-        bool isCorrect = true,
+        bool? isCorrect = true,
         decimal timeQuality = 1m,
         decimal? confidenceCalibration = 1m,
         byte difficulty = 3) =>

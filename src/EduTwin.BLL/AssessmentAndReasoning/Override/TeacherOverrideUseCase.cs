@@ -365,7 +365,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                     CurrentMastery: replayedMastery,
                     ReasoningQuality: effectiveQuality,
                     ReasoningWeight: reasoningWeight,
-                    IsCorrect: effectiveCorrectness ?? false,
+                    IsCorrect: effectiveCorrectness,
                     TimeQuality: timeQuality,
                     ConfidenceCalibration: reasoningWeight > 0m && effectiveQuality.HasValue ? stepCalibration / 100m : null,
                     Difficulty: q.Difficulty);
@@ -379,7 +379,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                     AttemptId: att.AttemptId,
                     EffectiveReasoningQuality: effectiveQuality,
                     ReasoningWeight: reasoningWeight,
-                    EffectiveCorrectness: effectiveCorrectness ?? false,
+                    EffectiveCorrectness: effectiveCorrectness,
                     TimeQuality: timeQuality,
                     RollingCalibration: stepCalibration,
                     Difficulty: q.Difficulty,

@@ -4,7 +4,7 @@ public sealed record MasteryCalculationInput(
     decimal CurrentMastery,
     decimal? ReasoningQuality,
     decimal ReasoningWeight,
-    bool IsCorrect,
+    bool? IsCorrect,
     decimal TimeQuality,
     decimal? ConfidenceCalibration,
     byte Difficulty);

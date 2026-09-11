@@ -68,7 +68,7 @@ public sealed class KnowledgeTwinUpdater : IKnowledgeTwinUpdater
             CurrentMastery: twin.MasteryPercentage,
             ReasoningQuality: analysis.ReasoningQuality,
             ReasoningWeight: evidence.ReasoningWeight,
-            IsCorrect: attempt.IsCorrect ?? false,
+            IsCorrect: attempt.IsCorrect,
             TimeQuality: timeQuality,
             ConfidenceCalibration: evidence.ReasoningWeight > 0m && analysis.ReasoningQuality.HasValue ? normalizedCalibration : null,
             Difficulty: question.Difficulty);

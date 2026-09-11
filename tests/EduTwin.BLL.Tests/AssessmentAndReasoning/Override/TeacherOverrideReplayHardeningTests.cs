@@ -1309,6 +1309,177 @@ public sealed class TeacherOverrideReplayHardeningTests : IDisposable
         Assert.Equal(80.00m, step2.GetProperty("RollingCalibration").GetDecimal());
     }
 
+    [Fact]
+    public async Task Replay_ReviewOnlyNullCorrectness_PreservesNullInHistory()
+    {
+        var classId = Guid.NewGuid();
+        SeedBaseHierarchy(classId);
+        SeedQuestions();
+
+        // Attempt 1: Essay on Topic 101, T1 = -30m, IsCorrect = null, ReviewOnly with ReasoningWeight = 0
+        var attempt1 = new Attempt
+        {
+            CenterId = _centerId,
+            AttemptId = 3601,
+            StudentId = _studentId,
+            QuestionId = 601,
+            FinalAnswer = "Essay content",
+            IsCorrect = null,
+            AwardedScore = null,
+            TimeSpentSeconds = 60,
+            Confidence = 80m,
+            ReasoningLanguage = "vi",
+            Status = AttemptStatus.NeedsTeacherReview,
+            CreatedAt = _utcNow.AddMinutes(-30),
+            UpdatedAt = _utcNow.AddMinutes(-30)
+        };
+        _dbContext.Attempts.Add(attempt1);
+
+        var analysis1 = new ReasoningAnalysis
+        {
+            CenterId = _centerId,
+            AnalysisId = 4601,
+            AttemptId = 3601,
+            ReasoningQuality = null,
+            AnalysisConfidence = 50m,
+            Feedback = "Pending human review",
+            IsFallback = false,
+            NeedsTeacherReview = true,
+            OverrideVersion = 0,
+            SchemaVersion = "1.0",
+            MissingSteps = JsonDocument.Parse("[]"),
+            RootCauseNodeIds = JsonDocument.Parse("[]"),
+            CreatedAt = _utcNow.AddMinutes(-30),
+            UpdatedAt = _utcNow.AddMinutes(-30)
+        };
+        _dbContext.ReasoningAnalyses.Add(analysis1);
+
+        var evidence1 = new EvidenceAssessment
+        {
+            CenterId = _centerId,
+            EvidenceAssessmentId = 5601,
+            AttemptId = 3601,
+            AnalysisId = 4601,
+            SourceType = EvidenceSourceType.AI,
+            TrustLevel = EvidenceTrustLevel.ReviewOnly,
+            DecisionMode = EvidenceDecisionMode.DeterministicOnly,
+            ReasoningWeight = 0.00m,
+            ReasonCodes = JsonDocument.Parse("[\"PENDING_ESSAY_REVIEW\"]"),
+            RequiresTeacherReview = true,
+            PolicyVersion = "evidence-gate-v1",
+            EvaluatedAt = _utcNow.AddMinutes(-30),
+            CreatedAt = _utcNow.AddMinutes(-30)
+        };
+        _dbContext.EvidenceAssessments.Add(evidence1);
+
+        // Attempt 2: Topic 101, T2 = -10m, preliminary false, ReviewOnly, overridden by teacher
+        var attempt2 = new Attempt
+        {
+            CenterId = _centerId,
+            AttemptId = 3602,
+            StudentId = _studentId,
+            QuestionId = 601,
+            FinalAnswer = "A",
+            IsCorrect = false,
+            AwardedScore = 0m,
+            TimeSpentSeconds = 60,
+            Confidence = 90m,
+            ReasoningLanguage = "vi",
+            Status = AttemptStatus.NeedsTeacherReview,
+            CreatedAt = _utcNow.AddMinutes(-10),
+            UpdatedAt = _utcNow.AddMinutes(-10)
+        };
+        _dbContext.Attempts.Add(attempt2);
+
+        var analysis2 = new ReasoningAnalysis
+        {
+            CenterId = _centerId,
+            AnalysisId = 4602,
+            AttemptId = 3602,
+            ReasoningQuality = 40m,
+            AnalysisConfidence = 45m,
+            Feedback = "Low confidence",
+            IsFallback = false,
+            NeedsTeacherReview = true,
+            OverrideVersion = 0,
+            SchemaVersion = "1.0",
+            MissingSteps = JsonDocument.Parse("[]"),
+            RootCauseNodeIds = JsonDocument.Parse("[]"),
+            CreatedAt = _utcNow.AddMinutes(-10),
+            UpdatedAt = _utcNow.AddMinutes(-10)
+        };
+        _dbContext.ReasoningAnalyses.Add(analysis2);
+
+        var evidence2 = new EvidenceAssessment
+        {
+            CenterId = _centerId,
+            EvidenceAssessmentId = 5602,
+            AttemptId = 3602,
+            AnalysisId = 4602,
+            SourceType = EvidenceSourceType.AI,
+            TrustLevel = EvidenceTrustLevel.ReviewOnly,
+            DecisionMode = EvidenceDecisionMode.DeterministicOnly,
+            ReasoningWeight = 0.00m,
+            ReasonCodes = JsonDocument.Parse("[\"LOW_CONFIDENCE\"]"),
+            RequiresTeacherReview = true,
+            PolicyVersion = "evidence-gate-v1",
+            EvaluatedAt = _utcNow.AddMinutes(-10),
+            CreatedAt = _utcNow.AddMinutes(-10)
+        };
+        _dbContext.EvidenceAssessments.Add(evidence2);
+
+        await _dbContext.SaveChangesAsync();
+
+        var timeProvider = new FixedTimeProvider(_utcNow);
+        var useCase = new TeacherOverrideUseCase(
+            _dbContext,
+            _tenantContext,
+            new EvidenceGate(),
+            new EvidenceAssessmentFactory(),
+            new StudentGoalRiskUpdater(_dbContext),
+            new StudentTwinUpdater(_dbContext),
+            new TwinUpdateHistoryWriter(_dbContext),
+            timeProvider);
+
+        var request = new TeacherOverrideRequest
+        {
+            ReasoningQuality = 85m,
+            ErrorType = ErrorType.None,
+            Feedback = "Confirmed correct by teacher",
+            IsCorrect = true,
+            AwardedScore = 10m,
+            Reason = "Essay replay preservation test",
+            OverrideVersion = 0
+        };
+
+        var result = await useCase.ExecuteAsync(4602, request, CancellationToken.None);
+
+        Assert.Equal(TeacherOverrideStatus.Success, result.Status);
+
+        // Verify TwinUpdateHistory has ReplaySteps with preserved null correctness
+        var history = await _dbContext.TwinUpdateHistories
+            .SingleAsync(h => h.CenterId == _centerId && h.StudentId == _studentId && h.EventSource == TwinEventSource.Replay);
+
+        var breakdownJson = history.CalculationBreakdown.RootElement;
+        Assert.True(breakdownJson.TryGetProperty("ReplaySteps", out var replayStepsElement));
+        var steps = replayStepsElement.EnumerateArray().ToList();
+        Assert.Equal(2, steps.Count);
+
+        // Step 1: Historical Essay with IsCorrect = null, ReasoningWeight = 0.00m
+        var essayStep = steps[0];
+        Assert.Equal(3601ul, essayStep.GetProperty("AttemptId").GetUInt64());
+        Assert.Equal(JsonValueKind.Null, essayStep.GetProperty("EffectiveCorrectness").ValueKind);
+        Assert.Equal(0.00m, essayStep.GetProperty("ReasoningWeight").GetDecimal());
+        Assert.Equal(0.00m, essayStep.GetProperty("Delta").GetDecimal());
+
+        // Step 2: Overridden Attempt with IsCorrect = true, ReasoningWeight = 1.00m
+        var overriddenStep = steps[1];
+        Assert.Equal(3602ul, overriddenStep.GetProperty("AttemptId").GetUInt64());
+        Assert.True(overriddenStep.GetProperty("EffectiveCorrectness").GetBoolean());
+        Assert.Equal(1.00m, overriddenStep.GetProperty("ReasoningWeight").GetDecimal());
+        Assert.True(overriddenStep.GetProperty("Delta").GetDecimal() > 0m);
+    }
+
     private sealed class ThrowingConcurrencyInterceptor : SaveChangesInterceptor
     {
         public bool ShouldThrow { get; set; }

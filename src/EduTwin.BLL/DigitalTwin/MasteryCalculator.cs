@@ -21,6 +21,13 @@ public static class MasteryCalculator
 
         ValidateNormalizedFactor(input.TimeQuality, nameof(input.TimeQuality));
 
+        if (input.ReasoningWeight > 0m && !input.IsCorrect.HasValue)
+        {
+            throw new ArgumentNullException(
+                nameof(input.IsCorrect),
+                "Correctness is required when evidence has a positive weight.");
+        }
+
         if (input.ReasoningWeight > 0m && input.ReasoningQuality is null)
         {
             throw new ArgumentNullException(
@@ -50,7 +57,7 @@ public static class MasteryCalculator
 
         var isFallback = input.ReasoningQuality is null;
         var normalizedReasoningQuality = input.ReasoningQuality / 100m;
-        var correctness = input.IsCorrect ? 1m : 0m;
+        var correctness = input.IsCorrect.HasValue ? (input.IsCorrect.Value ? 1m : 0m) : (decimal?)null;
         var effectiveConfidenceCalibration = isFallback ? null : input.ConfidenceCalibration;
         var difficultyMultiplier = GetDifficultyMultiplier(input.Difficulty);
         var learningRate = input.ReasoningWeight == 0m ? 0m : 0.25m;
@@ -59,7 +66,7 @@ public static class MasteryCalculator
             ? input.CurrentMastery
             : 100m * normalizedReasoningQuality!.Value *
                 (0.65m +
-                 0.20m * correctness +
+                 0.20m * correctness!.Value +
                  0.10m * input.TimeQuality +
                  0.05m * effectiveConfidenceCalibration!.Value);
 
