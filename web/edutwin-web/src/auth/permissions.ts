@@ -40,6 +40,8 @@ export const permissions = {
   recommendationsStudentUpdateOwn: "recommendations.student.update_own",
   twinReasoningReview: "twin.reasoning.review",
   twinReasoningOverride: "twin.reasoning.override",
+  teacherReviewsRead: "twin.reasoning.review",
+  teacherReviewsOverride: "twin.reasoning.override",
 } as const;
 
 export const authorizationUiPermissions = [

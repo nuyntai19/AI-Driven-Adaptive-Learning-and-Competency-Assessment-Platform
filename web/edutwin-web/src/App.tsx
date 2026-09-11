@@ -19,6 +19,10 @@ import { StudentAssignmentDetailPage } from "./pages/StudentAssignmentDetailPage
 import { StudentDashboardPage } from "./pages/StudentDashboardPage";
 import { StudentTwinPage } from "./pages/StudentTwinPage";
 import { LearningPlayerPage } from "./pages/LearningPlayerPage";
+import { TeacherClassDashboardPage } from "./pages/TeacherClassDashboardPage";
+import { ReviewQueuePage } from "./pages/ReviewQueuePage";
+import { TeacherStudentTwinPage } from "./pages/TeacherStudentTwinPage";
+import { CenterDashboardPage } from "./pages/CenterDashboardPage";
 import { PermissionRoute } from "./routes/PermissionRoute";
 import { permissions, authorizationUiPermissions } from "./auth/permissions";
 import { AccessDeniedPage } from "./pages/AccessDeniedPage";
@@ -55,10 +59,29 @@ function App() {
             <Route path="/hoc-tap/luyen-tap/:questionId" element={<LearningPlayerPage />} />
           </Route>
 
+          {/* Teacher R08 Experiences */}
+          <Route element={<PermissionRoute allOf={[permissions.dashboardsTeacherRead]} />}>
+            <Route path="/quan-ly/tong-quan-lop-hoc" element={<TeacherClassDashboardPage />} />
+            <Route path="/quan-ly/lop-hoc/:classId/tong-quan" element={<TeacherClassDashboardPage />} />
+          </Route>
+          <Route element={<PermissionRoute anyOf={[permissions.teacherReviewsRead, permissions.teacherReviewsOverride]} />}>
+            <Route path="/quan-ly/duyet-bai" element={<ReviewQueuePage />} />
+          </Route>
+          <Route element={<PermissionRoute allOf={[permissions.twinStudentReadScoped]} />}>
+            <Route path="/quan-ly/hoc-sinh/:studentId/nang-luc" element={<TeacherStudentTwinPage />} />
+          </Route>
+
+          {/* Center Manager R08 Experiences */}
+          <Route element={<PermissionRoute allOf={[permissions.dashboardsCenterRead]} />}>
+            <Route path="/quan-ly/tong-quan-trung-tam" element={<CenterDashboardPage />} />
+          </Route>
+
+          {/* Knowledge Graph */}
           <Route element={<PermissionRoute allOf={[permissions.subjectsRead, permissions.nodesRead, permissions.edgesRead]} />}>
             <Route path="/kien-thuc/do-thi" element={<KnowledgeGraphPage />} />
           </Route>
 
+          {/* Organization & Academic Management */}
           <Route element={<PermissionRoute allOf={[permissions.teachersRead]} />}>
             <Route path="/quan-ly/giao-vien" element={<TeacherListPage />} />
           </Route>
