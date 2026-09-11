@@ -94,27 +94,25 @@ public sealed class RecommendationMySqlConcurrencyTests
             var questionSelector = new AdaptiveQuestionSelector(context);
             var engine = new RecommendationEngine(context, candidateBuilder, linearSelector, questionSelector);
 
-            await using var transaction = await context.Database.BeginTransactionAsync();
-
-            // 1. Acquire early student row lock
-            await StudentLockHelper.AcquireStudentLockAsync(context, centerId, studentId);
-
-            // Synchronize workers to demonstrate serialization
-            barrier.SignalAndWait(5000);
-
-            // 2. Update KnowledgeTwin state
-            var twin = await context.KnowledgeTwins
-                .SingleOrDefaultAsync(kt => kt.CenterId == centerId && kt.StudentId == studentId && kt.TopicNodeId == 1);
-            if (twin != null)
+            // Phase A: Authoritative Transaction A (Update Twin & Commit)
+            await using (var txA = await context.Database.BeginTransactionAsync())
             {
-                twin.MasteryPercentage += (completionIndex * 10m);
-                twin.UpdatedAt = UtcNow;
+                await StudentLockHelper.AcquireStudentLockAsync(context, centerId, studentId);
+                barrier.SignalAndWait(5000);
+
+                var twin = await context.KnowledgeTwins
+                    .SingleOrDefaultAsync(kt => kt.CenterId == centerId && kt.StudentId == studentId && kt.TopicNodeId == 1);
+                if (twin != null)
+                {
+                    twin.MasteryPercentage += (completionIndex * 10m);
+                    twin.UpdatedAt = UtcNow;
+                }
+
+                await context.SaveChangesAsync();
+                await txA.CommitAsync();
             }
 
-            // 3. SaveChanges checkpoint
-            await context.SaveChangesAsync();
-
-            // 4. Generate recommendation
+            // Phase B: Recommendation Transaction B (Separate Unit of Work)
             await engine.GenerateAndPersistAsync(
                 centerId,
                 studentId,
@@ -122,9 +120,6 @@ public sealed class RecommendationMySqlConcurrencyTests
                 sourceAttemptId: (ulong)completionIndex,
                 UtcNow.AddSeconds(completionIndex),
                 CancellationToken.None);
-
-            await context.SaveChangesAsync();
-            await transaction.CommitAsync();
         }
 
         // Run both concurrent pipelines
@@ -137,6 +132,11 @@ public sealed class RecommendationMySqlConcurrencyTests
         using var verifyScope = verifyTenant.BeginScope(centerId);
         await using var verifyContext = CreateContext(database.ConnectionString, verifyTenant);
 
+        var finalTwin = await verifyContext.KnowledgeTwins
+            .SingleOrDefaultAsync(kt => kt.CenterId == centerId && kt.StudentId == studentId && kt.TopicNodeId == 1);
+        Assert.NotNull(finalTwin);
+        Assert.Equal(50m, finalTwin.MasteryPercentage); // Seed 20m + P1 (10m) + P2 (20m) = 50m!
+
         var activeRecs = await verifyContext.Recommendations
             .Where(r => r.CenterId == centerId && r.StudentId == studentId && r.SubjectId == subjectId && r.Status == RecommendationStatus.Active)
             .ToListAsync();
@@ -148,15 +148,223 @@ public sealed class RecommendationMySqlConcurrencyTests
             .ToListAsync();
 
         Assert.Single(activePaths);
-        Assert.Equal(2u, activePaths[0].Version); // Second serialized execution incremented version to 2!
 
         var allRecs = await verifyContext.Recommendations
             .Where(r => r.CenterId == centerId && r.StudentId == studentId && r.SubjectId == subjectId)
             .ToListAsync();
 
-        Assert.Equal(2, allRecs.Count);
         Assert.Single(allRecs, r => r.Status == RecommendationStatus.Active);
-        Assert.Single(allRecs, r => r.Status == RecommendationStatus.Superseded);
+        if (allRecs.Count == 2)
+        {
+            // Pipeline 1 committed first, then Pipeline 2 superseded it and incremented version to 2
+            Assert.Equal(2u, activePaths[0].Version);
+            Assert.Single(allRecs, r => r.Status == RecommendationStatus.Superseded);
+        }
+        else
+        {
+            // Pipeline 2 committed first, then Pipeline 1 was safely recognized as a stale trigger and ignored
+            Assert.Single(allRecs);
+            Assert.Equal(1u, activePaths[0].Version);
+        }
+    }
+
+    [MySqlIntegrationFact]
+    public async Task StaleTrigger_DoesNotSupersedeNewerRecommendation()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var centerId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+
+        await SeedHierarchyAsync(database.ConnectionString, centerId, studentId, subjectId);
+
+        var tenant = new TenantContext();
+        using var scope = tenant.BeginScope(centerId);
+        await using var context = CreateContext(database.ConnectionString, tenant);
+
+        var candidateBuilder = new OpportunityCandidateBuilder(context);
+        var linearSelector = new LinearFallbackSelector();
+        var questionSelector = new AdaptiveQuestionSelector(context);
+        var engine = new RecommendationEngine(context, candidateBuilder, linearSelector, questionSelector);
+
+        // 1. Newer trigger generates recommendation at UtcNow (sourceAttemptId: 2)
+        var newerResult = await engine.GenerateAndPersistAsync(
+            centerId,
+            studentId,
+            subjectId,
+            sourceAttemptId: 2,
+            UtcNow,
+            CancellationToken.None);
+
+        Assert.Equal(RecommendationGenerationStatus.Generated, newerResult.Status);
+        Assert.NotNull(newerResult.Recommendation);
+
+        // 2. Older trigger runs with an earlier timestamp UtcNow.AddMinutes(-5) (sourceAttemptId: 1)
+        var staleResult = await engine.GenerateAndPersistAsync(
+            centerId,
+            studentId,
+            subjectId,
+            sourceAttemptId: 1,
+            UtcNow.AddMinutes(-5),
+            CancellationToken.None);
+
+        Assert.Equal(RecommendationGenerationStatus.StaleIgnored, staleResult.Status);
+
+        // 3. Verify original recommendation remains active and was NOT superseded
+        var reloadedRec = await context.Recommendations.FindAsync(newerResult.Recommendation.RecommendationId);
+        Assert.NotNull(reloadedRec);
+        Assert.Equal(RecommendationStatus.Active, reloadedRec.Status);
+    }
+
+    [MySqlIntegrationFact]
+    public async Task OpportunityCandidateBuilder_RelationalEvidenceLoading_ExecutesTopicSpecificWindow()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var centerId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+
+        await SeedHierarchyAsync(database.ConnectionString, centerId, studentId, subjectId);
+
+        var tenant = new TenantContext();
+        using var scope = tenant.BeginScope(centerId);
+        await using var context = CreateContext(database.ConnectionString, tenant);
+
+        // Seed 3 attempts on Topic 1 with Question loaded and positive-weight EvidenceAssessment
+        for (ulong i = 10; i <= 12; i++)
+        {
+            var att = new Attempt
+            {
+                CenterId = centerId,
+                AttemptId = i,
+                StudentId = studentId,
+                QuestionId = 101,
+                FinalAnswer = "A",
+                ReasoningLanguage = "vi",
+                Status = AttemptStatus.Completed,
+                ClientSubmissionId = Guid.NewGuid(),
+                IsCorrect = true,
+                CreatedAt = UtcNow.AddMinutes(-(double)i),
+                UpdatedAt = UtcNow.AddMinutes(-(double)i)
+            };
+            context.Attempts.Add(att);
+
+            var ana = new ReasoningAnalysis
+            {
+                CenterId = centerId,
+                AnalysisId = i + 100,
+                AttemptId = i,
+                SchemaVersion = "v1",
+                MissingSteps = JsonDocument.Parse("[]"),
+                RootCauseNodeIds = JsonDocument.Parse("[]"),
+                Feedback = "Solid proof",
+                ReasoningQuality = 80m,
+                CreatedAt = UtcNow.AddMinutes(-(double)i),
+                UpdatedAt = UtcNow.AddMinutes(-(double)i)
+            };
+            context.ReasoningAnalyses.Add(ana);
+
+            context.EvidenceAssessments.Add(new EvidenceAssessment
+            {
+                CenterId = centerId,
+                EvidenceAssessmentId = i + 200,
+                AttemptId = i,
+                Attempt = att,
+                AnalysisId = ana.AnalysisId,
+                Analysis = ana,
+                SourceType = EvidenceSourceType.AI,
+                DecisionMode = EvidenceDecisionMode.AIWeighted,
+                RequiresTeacherReview = false,
+                AnalysisOverrideVersion = 0,
+                ReasoningWeight = 1.0m,
+                TrustLevel = EvidenceTrustLevel.Trusted,
+                PolicyVersion = "v1",
+                ReasonCodes = JsonDocument.Parse("[]"),
+                EvaluatedAt = UtcNow.AddMinutes(-(double)i),
+                CreatedAt = UtcNow.AddMinutes(-(double)i)
+            });
+        }
+        await context.SaveChangesAsync();
+
+        var candidateBuilder = new OpportunityCandidateBuilder(context);
+        var result = await candidateBuilder.BuildCandidatesAsync(centerId, studentId, subjectId, CancellationToken.None);
+
+        Assert.NotEmpty(result.EligibleCandidates);
+        var topic1Candidate = result.EligibleCandidates.First(c => c.TopicNodeId == 1);
+        Assert.Equal("TopicWindow", topic1Candidate.ReasoningQualitySource);
+        Assert.Equal(3, topic1Candidate.ReasoningQualitySampleCount);
+        Assert.Equal(3.0m, topic1Candidate.ReasoningWeightSum);
+    }
+
+    [MySqlIntegrationFact]
+    public async Task FreshMigration_Catalog_Contains63PermissionsAnd102Mappings()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var tenant = new TenantContext();
+        await using var context = CreateContext(database.ConnectionString, tenant);
+
+        var permissionCount = await context.Permissions.CountAsync();
+        var mappingCount = await context.PermissionAccountTypes.CountAsync();
+
+        Assert.Equal(63, permissionCount);
+        Assert.Equal(102, mappingCount);
+    }
+
+    [MySqlIntegrationFact]
+    public async Task LearningPathItem_CalculationBreakdown_RoundTripsJsonCorrectly()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var centerId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+
+        await SeedHierarchyAsync(database.ConnectionString, centerId, studentId, subjectId);
+
+        var tenant = new TenantContext();
+        using var scope = tenant.BeginScope(centerId);
+        await using var context = CreateContext(database.ConnectionString, tenant);
+
+        var path = new LearningPath
+        {
+            LearningPathId = Guid.NewGuid(),
+            CenterId = centerId,
+            StudentId = studentId,
+            SubjectId = subjectId,
+            Strategy = LearningPathStrategy.OpportunityGap,
+            Version = 1,
+            Status = LearningPathStatus.Active,
+            GeneratedAt = UtcNow,
+            CreatedAt = UtcNow,
+            UpdatedAt = UtcNow,
+            Items = new List<LearningPathItem>
+            {
+                new()
+                {
+                    LearningPathItemId = 99991,
+                    CenterId = centerId,
+                    TopicNodeId = 1,
+                    RankOrder = 1,
+                    Status = LearningPathItemStatus.Current,
+                    Reason = "Breakdown Test",
+                    CalculationBreakdown = JsonDocument.Parse("{\"TopicNodeId\":1,\"CurrentMastery\":42.5}"),
+                    CreatedAt = UtcNow,
+                    UpdatedAt = UtcNow
+                }
+            }
+        };
+
+        context.LearningPaths.Add(path);
+        await context.SaveChangesAsync();
+
+        await using var readContext = CreateContext(database.ConnectionString, tenant);
+        var loadedItem = await readContext.LearningPathItems
+            .AsNoTracking()
+            .SingleOrDefaultAsync(i => i.LearningPathItemId == 99991);
+
+        Assert.NotNull(loadedItem);
+        Assert.NotNull(loadedItem.CalculationBreakdown);
+        Assert.Equal(1ul, loadedItem.CalculationBreakdown.RootElement.GetProperty("TopicNodeId").GetUInt64());
+        Assert.Equal(42.5m, loadedItem.CalculationBreakdown.RootElement.GetProperty("CurrentMastery").GetDecimal());
     }
 
     private static EduTwinDbContext CreateContext(string connectionString, TenantContext tenant)

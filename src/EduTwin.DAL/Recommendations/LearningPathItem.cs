@@ -1,4 +1,5 @@
-﻿using System;
+using System;
+using System.Text.Json;
 using EduTwin.DAL.Persistence.Models;
 using EduTwin.DAL.KnowledgeGraph;
 using EduTwin.DAL.CurriculumAndQuestions;
@@ -16,6 +17,7 @@ public class LearningPathItem : IMutableTenantAggregate
     public decimal? OpportunityScore { get; set; }
     public string Reason { get; set; } = null!;
     public LearningPathItemStatus Status { get; set; }
+    public JsonDocument? CalculationBreakdown { get; set; }
 
     public Guid CenterId { get; set; }
     public DateTime CreatedAt { get; set; }

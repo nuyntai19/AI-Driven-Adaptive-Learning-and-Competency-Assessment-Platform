@@ -12,7 +12,10 @@ public sealed record TopicCandidateEvaluationInput(
     uint EstimatedLearningMinutes,
     decimal CurrentMastery,
     IReadOnlyList<decimal> PrerequisiteMasteries,
-    decimal? WeightedRecentReasoningAverage);
+    decimal? WeightedRecentReasoningAverage,
+    int ReasoningQualitySampleCount = 0,
+    decimal ReasoningWeightSum = 0m,
+    string ReasoningQualitySource = "SubjectFallback");
 
 public sealed record OpportunityCandidateScored(
     ulong TopicNodeId,
@@ -28,7 +31,10 @@ public sealed record OpportunityCandidateScored(
     decimal ExpectedScoreGain,
     decimal RawOpportunity,
     decimal NormalizedOpportunityScore,
-    int Rank);
+    int Rank,
+    int ReasoningQualitySampleCount = 0,
+    decimal ReasoningWeightSum = 0m,
+    string ReasoningQualitySource = "SubjectFallback");
 
 public static class OpportunityGapCalculator
 {
@@ -113,7 +119,10 @@ public static class OpportunityGapCalculator
             ExpectedScoreGain: item.Gain,
             RawOpportunity: item.Raw,
             NormalizedOpportunityScore: item.NormalizedScore,
-            Rank: index + 1
+            Rank: index + 1,
+            ReasoningQualitySampleCount: item.Candidate.ReasoningQualitySampleCount,
+            ReasoningWeightSum: item.Candidate.ReasoningWeightSum,
+            ReasoningQualitySource: item.Candidate.ReasoningQualitySource
         )).ToList();
     }
 }

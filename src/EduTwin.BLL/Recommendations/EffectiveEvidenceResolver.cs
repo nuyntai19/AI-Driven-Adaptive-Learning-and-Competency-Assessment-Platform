@@ -26,7 +26,16 @@ public static class EffectiveEvidenceResolver
             list.Where(a => a.SupersedesAssessmentId.HasValue)
                 .Select(a => a.SupersedesAssessmentId!.Value));
 
-        return list.Where(a => !supersededIds.Contains(a.EvidenceAssessmentId)).ToList();
+        var heads = list.Where(a => !supersededIds.Contains(a.EvidenceAssessmentId)).ToList();
+        var duplicateAttempt = heads
+            .GroupBy(h => h.AttemptId)
+            .FirstOrDefault(g => g.Count() > 1);
+        if (duplicateAttempt != null)
+        {
+            throw new InvalidOperationException($"Invariant violation: Multiple unsuperseded evidence assessment heads found for AttemptId {duplicateAttempt.Key}.");
+        }
+
+        return heads;
     }
 
     public static int CountEffectiveGovernedEvidence(IEnumerable<EvidenceAssessment> assessments)

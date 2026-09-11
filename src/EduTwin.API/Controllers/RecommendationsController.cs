@@ -86,8 +86,8 @@ public sealed class RecommendationsController : ControllerBase
         });
     }
 
-    [HttpPost("recommendation/{id:long}/accept")]
-    [Authorize(Policy = "recommendations.student.read_own")]
+    [HttpPost("recommendation/{id}/accept")]
+    [Authorize(Policy = "recommendations.student.update_own")]
     [ProducesResponseType(typeof(RecommendationResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
@@ -157,8 +157,8 @@ public sealed class RecommendationsController : ControllerBase
         });
     }
 
-    [HttpPost("recommendation/{id:long}/dismiss")]
-    [Authorize(Policy = "recommendations.student.read_own")]
+    [HttpPost("recommendation/{id}/dismiss")]
+    [Authorize(Policy = "recommendations.student.update_own")]
     [ProducesResponseType(typeof(RecommendationResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]

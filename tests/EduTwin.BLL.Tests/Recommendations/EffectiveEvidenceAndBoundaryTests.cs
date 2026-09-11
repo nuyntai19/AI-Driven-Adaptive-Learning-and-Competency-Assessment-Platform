@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using EduTwin.BLL.Recommendations;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.CurriculumAndQuestions;
@@ -34,6 +35,7 @@ public sealed class EffectiveEvidenceAndBoundaryTests : IDisposable
     {
         var options = new DbContextOptionsBuilder<EduTwinDbContext>()
             .UseInMemoryDatabase(databaseName: $"EffectiveEvidenceTests_{Guid.NewGuid():N}")
+            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
             .Options;
 
         _tenantContext = new TenantContext();
@@ -280,8 +282,8 @@ public sealed class EffectiveEvidenceAndBoundaryTests : IDisposable
             _utcNow,
             CancellationToken.None);
 
-        Assert.NotNull(recFallback);
-        Assert.Equal(RecommendationType.LinearFallback, recFallback.RecommendationType);
+        Assert.NotNull(recFallback.Recommendation);
+        Assert.Equal(RecommendationType.LinearFallback, recFallback.Recommendation.RecommendationType);
 
         var pathFallback = await _dbContext.LearningPaths
             .FirstOrDefaultAsync(lp => lp.CenterId == _centerId && lp.StudentId == _studentId && lp.Status == LearningPathStatus.Active);
@@ -346,13 +348,37 @@ public sealed class EffectiveEvidenceAndBoundaryTests : IDisposable
             _utcNow,
             CancellationToken.None);
 
-        Assert.NotNull(recOpportunity);
-        Assert.Equal(RecommendationType.TopicAndQuestion, recOpportunity.RecommendationType);
-        Assert.NotNull(recOpportunity.OpportunityScore);
+        Assert.NotNull(recOpportunity.Recommendation);
+        Assert.Equal(RecommendationType.TopicAndQuestion, recOpportunity.Recommendation.RecommendationType);
+        Assert.NotNull(recOpportunity.Recommendation.OpportunityScore);
 
         var pathOpportunity = await _dbContext.LearningPaths
             .FirstOrDefaultAsync(lp => lp.CenterId == _centerId && lp.StudentId == _studentId && lp.Status == LearningPathStatus.Active);
         Assert.NotNull(pathOpportunity);
         Assert.Equal(LearningPathStrategy.OpportunityGap, pathOpportunity.Strategy);
+    }
+
+    [Fact]
+    public void GetEffectiveHeads_Throws_WhenDuplicateUnsupersededHeadsForSameAttempt()
+    {
+        var e1 = new EvidenceAssessment
+        {
+            CenterId = _centerId,
+            EvidenceAssessmentId = 101,
+            AttemptId = 55,
+            EvaluatedAt = _utcNow
+        };
+        var e2 = new EvidenceAssessment
+        {
+            CenterId = _centerId,
+            EvidenceAssessmentId = 102,
+            AttemptId = 55, // Duplicate unsuperseded head for attempt 55
+            EvaluatedAt = _utcNow
+        };
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            EffectiveEvidenceResolver.GetEffectiveHeads(new[] { e1, e2 }));
+        Assert.Contains("Invariant violation", ex.Message);
+        Assert.Contains("55", ex.Message);
     }
 }

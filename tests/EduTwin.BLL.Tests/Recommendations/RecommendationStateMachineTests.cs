@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using EduTwin.BLL.Recommendations;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.KnowledgeGraph;
@@ -32,6 +33,7 @@ public sealed class RecommendationStateMachineTests : IDisposable
     {
         var options = new DbContextOptionsBuilder<EduTwinDbContext>()
             .UseInMemoryDatabase(databaseName: $"RecStateMachineTests_{Guid.NewGuid():N}")
+            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
             .Options;
 
         _tenantContext = new TenantContext();
@@ -133,8 +135,8 @@ public sealed class RecommendationStateMachineTests : IDisposable
             UpdatedAt = _utcNow,
             Items = new List<LearningPathItem>
             {
-                new() { LearningPathItemId = 201, CenterId = _centerId, TopicNodeId = 1, RankOrder = 1, Status = LearningPathItemStatus.Current, Reason = "Top 1 Reason", OpportunityScore = 90m, CreatedAt = _utcNow, UpdatedAt = _utcNow },
-                new() { LearningPathItemId = 202, CenterId = _centerId, TopicNodeId = 2, RankOrder = 2, Status = LearningPathItemStatus.Pending, Reason = "Top 2 Reason", OpportunityScore = 75m, CreatedAt = _utcNow, UpdatedAt = _utcNow }
+                new() { LearningPathItemId = 201, CenterId = _centerId, TopicNodeId = 1, RankOrder = 1, Status = LearningPathItemStatus.Current, Reason = "Top 1 Reason", OpportunityScore = 90m, RecommendedQuestionId = 201ul, CreatedAt = _utcNow, UpdatedAt = _utcNow },
+                new() { LearningPathItemId = 202, CenterId = _centerId, TopicNodeId = 2, RankOrder = 2, Status = LearningPathItemStatus.Pending, Reason = "Top 2 Reason", OpportunityScore = 75m, RecommendedQuestionId = 202ul, CalculationBreakdown = JsonDocument.Parse("{\"TopicNodeId\":2}"), CreatedAt = _utcNow, UpdatedAt = _utcNow }
             }
         };
 
@@ -185,6 +187,7 @@ public sealed class RecommendationStateMachineTests : IDisposable
         Assert.NotNull(newActiveRec);
         Assert.Equal(2ul, newActiveRec.TopicNodeId);
         Assert.Equal(202ul, newActiveRec.QuestionId);
+        Assert.Equal(2ul, newActiveRec.CalculationBreakdown.RootElement.GetProperty("TopicNodeId").GetUInt64());
 
         // Dismiss item 2 (last item) -> LearningPath completes
         var resDismissLast = await engine.DismissAsync(_centerId, _studentId, newActiveRec.RecommendationId, "Skip last", _utcNow, CancellationToken.None);
@@ -244,9 +247,9 @@ public sealed class RecommendationStateMachineTests : IDisposable
             CalculationBreakdown = JsonDocument.Parse("{}"),
             Explanation = "Active explanation",
             Status = RecommendationStatus.Active,
-            GeneratedAt = _utcNow,
-            CreatedAt = _utcNow,
-            UpdatedAt = _utcNow
+            GeneratedAt = _utcNow.AddMinutes(-10),
+            CreatedAt = _utcNow.AddMinutes(-10),
+            UpdatedAt = _utcNow.AddMinutes(-10)
         };
 
         _dbContext.Recommendations.AddRange(acceptedRec, dismissedRec, activeRec);
@@ -275,15 +278,20 @@ public sealed class RecommendationStateMachineTests : IDisposable
             new AdaptiveQuestionSelector(_dbContext));
 
         // Generate new recommendation
-        await engine.GenerateAndPersistAsync(_centerId, _studentId, _subjectId, sourceAttemptId: 99, _utcNow, CancellationToken.None);
+        var genResult = await engine.GenerateAndPersistAsync(_centerId, _studentId, _subjectId, sourceAttemptId: 99, _utcNow, CancellationToken.None);
+        Assert.Equal(RecommendationGenerationStatus.Generated, genResult.Status);
 
-        // Verify:
+        // Verify reloaded from database (since ChangeTracker was cleared):
+        var reloadedAccepted = await _dbContext.Recommendations.FindAsync(acceptedRec.RecommendationId);
+        var reloadedDismissed = await _dbContext.Recommendations.FindAsync(dismissedRec.RecommendationId);
+        var reloadedActive = await _dbContext.Recommendations.FindAsync(activeRec.RecommendationId);
+
         // Accepted is still Accepted!
-        Assert.Equal(RecommendationStatus.Accepted, acceptedRec.Status);
+        Assert.Equal(RecommendationStatus.Accepted, reloadedAccepted!.Status);
         // Dismissed is still Dismissed!
-        Assert.Equal(RecommendationStatus.Dismissed, dismissedRec.Status);
+        Assert.Equal(RecommendationStatus.Dismissed, reloadedDismissed!.Status);
         // Previously Active was superseded!
-        Assert.Equal(RecommendationStatus.Superseded, activeRec.Status);
+        Assert.Equal(RecommendationStatus.Superseded, reloadedActive!.Status);
     }
 
     [Fact]

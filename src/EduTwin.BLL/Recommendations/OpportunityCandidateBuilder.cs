@@ -5,8 +5,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using EduTwin.Contracts.KnowledgeGraph;
+using EduTwin.Contracts.Organization;
 using EduTwin.DAL.AssessmentAndReasoning;
+using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.KnowledgeGraph;
+using EduTwin.DAL.Organization;
 using EduTwin.DAL.Persistence;
 
 namespace EduTwin.BLL.Recommendations;
@@ -14,6 +17,7 @@ namespace EduTwin.BLL.Recommendations;
 public sealed class CandidateBuildResult
 {
     public bool IsAllMastered { get; init; }
+    public string? BlockedReason { get; init; }
     public IReadOnlyList<TopicCandidateEvaluationInput> EligibleCandidates { get; init; } = Array.Empty<TopicCandidateEvaluationInput>();
     public IReadOnlyList<KnowledgeNode> AllActiveTopicNodes { get; init; } = Array.Empty<KnowledgeNode>();
     public IReadOnlyDictionary<ulong, decimal> MasteryByTopicNodeId { get; init; } = new Dictionary<ulong, decimal>();
@@ -48,13 +52,47 @@ public sealed class OpportunityCandidateBuilder : IOpportunityCandidateBuilder
         Guid subjectId,
         CancellationToken cancellationToken)
     {
-        // 1. Query all active topic nodes in subject
-        var allActiveTopicNodes = await _dbContext.KnowledgeNodes
+        // 0. Scope Resolution: Determine active curriculum for this student and subject
+        var assignedCurriculumIds = await (
+            from cs in _dbContext.ClassStudents
+            join c in _dbContext.Classes on new { cs.CenterId, cs.ClassId } equals new { c.CenterId, c.ClassId }
+            join cc in _dbContext.CurriculumClasses on new { c.CenterId, c.ClassId } equals new { cc.CenterId, cc.ClassId }
+            where cs.CenterId == centerId
+                && cs.StudentId == studentId
+                && cs.Status == ClassStudentStatus.Active
+                && c.SubjectId == subjectId
+                && c.Status == ClassStatus.Active
+                && !c.IsDeleted
+            select cc.CurriculumId
+        ).Distinct().ToListAsync(cancellationToken);
+
+        if (assignedCurriculumIds.Count > 1)
+        {
+            // Ambiguous curriculum: multiple active curriculums assigned for this subject. Fail closed!
+            return new CandidateBuildResult
+            {
+                BlockedReason = "AMBIGUOUS_CURRICULUM_ASSIGNMENT"
+            };
+        }
+
+        // 1. Query active topic nodes in subject (scoped to curriculum if assigned, otherwise subject-wide)
+        var topicQuery = _dbContext.KnowledgeNodes
             .Where(n => n.CenterId == centerId
                 && n.SubjectId == subjectId
                 && n.NodeType == NodeType.Topic
                 && n.IsActive
-                && !n.IsDeleted)
+                && !n.IsDeleted);
+
+        if (assignedCurriculumIds.Count == 1)
+        {
+            var singleCurriculumId = assignedCurriculumIds[0];
+            topicQuery = topicQuery.Where(n => _dbContext.CurriculumNodes
+                .Where(cn => cn.CenterId == centerId && cn.CurriculumId == singleCurriculumId)
+                .Select(cn => cn.NodeId)
+                .Contains(n.NodeId));
+        }
+
+        var allActiveTopicNodes = await topicQuery
             .OrderBy(n => n.OrderIndex)
             .ThenBy(n => n.NodeId)
             .ToListAsync(cancellationToken);
@@ -89,8 +127,10 @@ public sealed class OpportunityCandidateBuilder : IOpportunityCandidateBuilder
             .ToDictionary(g => g.Key, g => g.Select(x => x.SourceNodeId).Distinct().ToList());
 
         // 4. Query all non-superseded (head) evidence assessments for this student and subject
+        // Relational fix: Include Attempt.Question so PrimaryTopicNodeId is available after materialization
         var allAssessments = await _dbContext.EvidenceAssessments
             .Include(e => e.Attempt)
+                .ThenInclude(a => a.Question)
             .Include(e => e.Analysis)
             .Where(e => e.CenterId == centerId
                 && e.Attempt.StudentId == studentId
@@ -147,12 +187,16 @@ public sealed class OpportunityCandidateBuilder : IOpportunityCandidateBuilder
                 .Take(3)
                 .ToList();
 
-            var (topicWeightedAvg, topicSampleCount, _) =
+            var (topicWeightedAvg, topicSampleCount, topicWeightSum) =
                 EffectiveEvidenceResolver.CalculateWeightedReasoningAverage(topicHeads);
 
             decimal? effectiveReasoningAvg = topicSampleCount > 0
                 ? topicWeightedAvg
                 : subjectWeightedAvg;
+
+            int sampleCount = topicSampleCount > 0 ? topicSampleCount : subjectSampleCount;
+            decimal weightSum = topicSampleCount > 0 ? topicWeightSum : subjectWeightSum;
+            string qualitySource = topicSampleCount > 0 ? "TopicWindow" : "SubjectFallback";
 
             eligibleInputs.Add(new TopicCandidateEvaluationInput(
                 TopicNodeId: node.NodeId,
@@ -162,7 +206,10 @@ public sealed class OpportunityCandidateBuilder : IOpportunityCandidateBuilder
                 EstimatedLearningMinutes: node.EstimatedLearningMinutes,
                 CurrentMastery: currentMastery,
                 PrerequisiteMasteries: prereqMasteries,
-                WeightedRecentReasoningAverage: effectiveReasoningAvg));
+                WeightedRecentReasoningAverage: effectiveReasoningAvg,
+                ReasoningQualitySampleCount: sampleCount,
+                ReasoningWeightSum: weightSum,
+                ReasoningQualitySource: qualitySource));
         }
 
         return new CandidateBuildResult

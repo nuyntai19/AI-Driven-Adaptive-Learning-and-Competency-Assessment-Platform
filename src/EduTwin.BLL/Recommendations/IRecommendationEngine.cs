@@ -6,6 +6,33 @@ using EduTwin.DAL.Recommendations;
 
 namespace EduTwin.BLL.Recommendations;
 
+public enum RecommendationGenerationStatus
+{
+    Generated,
+    NoCandidate,
+    Blocked,
+    StaleIgnored
+}
+
+public sealed class RecommendationGenerationResult
+{
+    public RecommendationGenerationStatus Status { get; init; }
+    public Recommendation? Recommendation { get; init; }
+    public string? DiagnosticReason { get; init; }
+
+    public static RecommendationGenerationResult Success(Recommendation recommendation) =>
+        new() { Status = RecommendationGenerationStatus.Generated, Recommendation = recommendation };
+
+    public static RecommendationGenerationResult NoCandidate(string reason = "No eligible candidates found.") =>
+        new() { Status = RecommendationGenerationStatus.NoCandidate, DiagnosticReason = reason };
+
+    public static RecommendationGenerationResult Blocked(string reason) =>
+        new() { Status = RecommendationGenerationStatus.Blocked, DiagnosticReason = reason };
+
+    public static RecommendationGenerationResult StaleIgnored(string reason = "A newer recommendation has already been generated.") =>
+        new() { Status = RecommendationGenerationStatus.StaleIgnored, DiagnosticReason = reason };
+}
+
 public sealed class RecommendationOperationResult
 {
     public bool Success { get; init; }
@@ -27,7 +54,7 @@ public sealed class RecommendationOperationResult
 
 public interface IRecommendationEngine
 {
-    Task<Recommendation?> GenerateAndPersistAsync(
+    Task<RecommendationGenerationResult> GenerateAndPersistAsync(
         Guid centerId,
         Guid studentId,
         Guid subjectId,

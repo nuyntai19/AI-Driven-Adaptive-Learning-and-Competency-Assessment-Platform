@@ -6,6 +6,8 @@ public sealed record OpportunityGapBreakdown(
     string Strategy,
     string CalculationVersion,
     int EffectiveEvidenceCount,
+    ulong TopicNodeId,
+    string TopicName,
     decimal MasteryPercentage,
     decimal ExamImportance,
     uint EstimatedLearningMinutes,

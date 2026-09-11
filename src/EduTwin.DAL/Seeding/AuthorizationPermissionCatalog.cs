@@ -41,7 +41,7 @@ public static class AuthorizationPermissionCatalog
     [
         "learning.attempts.submit", "learning.attempts.read_own", "twin.student.read_own",
         "twin.student.update_own",
-        "recommendations.student.read_own", "dashboards.student.read_own"
+        "recommendations.student.read_own", "recommendations.student.update_own", "dashboards.student.read_own"
     ];
 
     private static readonly string[] TeacherCodes = ["dashboards.teacher.read_scoped"];

@@ -503,24 +503,30 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                 actorId,
                 cancellationToken);
 
-            // Checkpoint: save replay changes so recommendation engine observes freshly replayed twin state
             await _dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
 
             bool recommendationRecalculated = false;
             if (_recommendationEngine is not null)
             {
-                var rec = await _recommendationEngine.GenerateAndPersistAsync(
-                    centerId,
-                    studentId,
-                    subjectId,
-                    attempt.AttemptId,
-                    now,
-                    cancellationToken);
-                recommendationRecalculated = rec is not null;
+                try
+                {
+                    var recResult = await _recommendationEngine.GenerateAndPersistAsync(
+                        centerId,
+                        studentId,
+                        subjectId,
+                        attempt.AttemptId,
+                        now,
+                        CancellationToken.None);
+                    recommendationRecalculated = recResult?.Status == RecommendationGenerationStatus.Generated;
+                }
+                catch (Exception)
+                {
+                    // Recommendation is best-effort derived state.
+                    // Authoritative transaction A has already committed.
+                    recommendationRecalculated = false;
+                }
             }
-
-            await _dbContext.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
 
             var effectiveAwardedScore = request.AwardedScore ?? attempt.AwardedScore;
 

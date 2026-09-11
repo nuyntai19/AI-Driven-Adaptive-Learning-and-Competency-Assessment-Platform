@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -46,7 +47,7 @@ public sealed class RecommendationEngine : IRecommendationEngine
         _questionSelector = questionSelector ?? throw new ArgumentNullException(nameof(questionSelector));
     }
 
-    public async Task<Recommendation?> GenerateAndPersistAsync(
+    public async Task<RecommendationGenerationResult> GenerateAndPersistAsync(
         Guid centerId,
         Guid studentId,
         Guid subjectId,
@@ -54,22 +55,65 @@ public sealed class RecommendationEngine : IRecommendationEngine
         DateTime utcNow,
         CancellationToken cancellationToken)
     {
-        // 1. Acquire early tenant-safe student row lock
+        // 0. Transaction B Isolation: Assert no uncommitted transaction and clear change tracker
+        Debug.Assert(_dbContext.Database.CurrentTransaction is null, "Recommendation Transaction B requires a clean context without an active transaction.");
+        if (_dbContext.ChangeTracker.HasChanges())
+        {
+            throw new InvalidOperationException("Pending changes detected before recommendation Transaction B.");
+        }
+        _dbContext.ChangeTracker.Clear();
+
+        await using var transactionB = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+        // 1. Acquire tenant-safe student row lock under Transaction B
         await StudentLockHelper.AcquireStudentLockAsync(_dbContext, centerId, studentId, cancellationToken);
 
-        // 2. Build candidate inputs
+        // 2. Stale-Trigger Protection: Check if a newer recommendation has already been generated
+        var latestActiveRec = await _dbContext.Recommendations
+            .Where(r => r.CenterId == centerId
+                && r.StudentId == studentId
+                && r.SubjectId == subjectId
+                && r.Status == RecommendationStatus.Active
+                && !r.IsDeleted)
+            .OrderByDescending(r => r.GeneratedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (latestActiveRec is not null)
+        {
+            if (latestActiveRec.GeneratedAt > utcNow ||
+                (latestActiveRec.GeneratedAt == utcNow && latestActiveRec.SourceAttemptId.HasValue && sourceAttemptId.HasValue && latestActiveRec.SourceAttemptId.Value > sourceAttemptId.Value))
+            {
+                await transactionB.RollbackAsync(cancellationToken);
+                return RecommendationGenerationResult.StaleIgnored("A newer recommendation exists.");
+            }
+        }
+
+        // 3. Build candidate inputs
         var candidateResult = await _candidateBuilder.BuildCandidatesAsync(
             centerId,
             studentId,
             subjectId,
             cancellationToken);
 
-        if (candidateResult.AllActiveTopicNodes.Count == 0)
+        if (candidateResult.BlockedReason is not null)
         {
-            return null;
+            // Fail closed on ambiguous curriculum assignment: supersede active artifacts and commit
+            await SupersedeActiveArtifactsAsync(centerId, studentId, subjectId, utcNow, cancellationToken);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            await transactionB.CommitAsync(cancellationToken);
+            return RecommendationGenerationResult.Blocked(candidateResult.BlockedReason);
         }
 
-        // 3. Determine Strategy & Sequence
+        if (candidateResult.AllActiveTopicNodes.Count == 0)
+        {
+            // No active topics: supersede active artifacts and commit
+            await SupersedeActiveArtifactsAsync(centerId, studentId, subjectId, utcNow, cancellationToken);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            await transactionB.CommitAsync(cancellationToken);
+            return RecommendationGenerationResult.NoCandidate("No active topic nodes found.");
+        }
+
+        // 4. Determine Strategy & Sequence
         LearningPathStrategy strategy;
         RecommendationType recType;
         ulong topTopicNodeId;
@@ -79,6 +123,7 @@ public sealed class RecommendationEngine : IRecommendationEngine
         JsonDocument calculationBreakdown;
         string explanation;
         decimal topMastery;
+        Question? topQuestion = null;
         var pathItems = new List<LearningPathItem>();
 
         int effectiveEvidenceCount = candidateResult.EffectiveEvidenceCount;
@@ -121,13 +166,39 @@ public sealed class RecommendationEngine : IRecommendationEngine
                 var node = maintenanceTopics[i];
                 var m = candidateResult.MasteryByTopicNodeId.GetValueOrDefault(node.NodeId, 0m);
                 var itemReason = RecommendationExplanationBuilder.BuildMaintenanceReviewExplanation(node.NodeName, m);
+                var itemQuestion = await _questionSelector.SelectQuestionAsync(
+                    centerId,
+                    studentId,
+                    node.NodeId,
+                    m,
+                    cancellationToken);
+
+                if (i == 0)
+                {
+                    topQuestion = itemQuestion;
+                }
+
+                var itemBreakdown = JsonSerializer.SerializeToDocument(new
+                {
+                    CalculationVersion = calculationVersion,
+                    Strategy = strategy.ToString(),
+                    TopicNodeId = node.NodeId,
+                    TopicName = node.NodeName,
+                    CurrentMastery = m,
+                    ExamImportance = node.ExamImportance,
+                    TotalTopicsCount = candidateResult.AllActiveTopicNodes.Count,
+                    EffectiveEvidenceCount = effectiveEvidenceCount
+                });
+
                 pathItems.Add(new LearningPathItem
                 {
                     LearningPathItemId = GenerateUlongId(),
                     CenterId = centerId,
                     TopicNodeId = node.NodeId,
+                    RecommendedQuestionId = itemQuestion?.QuestionId,
                     RankOrder = (uint)(i + 1),
                     OpportunityScore = null,
+                    CalculationBreakdown = itemBreakdown,
                     Reason = itemReason,
                     Status = i == 0 ? LearningPathItemStatus.Current : LearningPathItemStatus.Pending,
                     CreatedAt = utcNow,
@@ -159,18 +230,20 @@ public sealed class RecommendationEngine : IRecommendationEngine
                 topScored.ExamImportance,
                 topScored.PrerequisiteReadiness);
 
-            var breakdownDto = new OpportunityGapBreakdown(
+            var topBreakdownDto = new OpportunityGapBreakdown(
                 Strategy: strategy.ToString(),
                 CalculationVersion: calculationVersion,
                 EffectiveEvidenceCount: effectiveEvidenceCount,
+                TopicNodeId: topTopicNodeId,
+                TopicName: topTopicName,
                 MasteryPercentage: topMastery,
                 ExamImportance: topScored.ExamImportance,
                 EstimatedLearningMinutes: topScored.EstimatedLearningMinutes,
                 EstimatedLearningHours: topScored.EstimatedLearningHours,
                 WeightedRecentReasoningAverage: topScored.RecentReasoningAverage01 * 100m,
-                ReasoningQualitySampleCount: candidateResult.SubjectReasoningSampleCount,
-                ReasoningWeightSum: candidateResult.SubjectReasoningWeightSum,
-                ReasoningQualitySource: "RecentWeightedHeads",
+                ReasoningQualitySampleCount: topScored.ReasoningQualitySampleCount,
+                ReasoningWeightSum: topScored.ReasoningWeightSum,
+                ReasoningQualitySource: topScored.ReasoningQualitySource,
                 PrerequisiteReadiness: topScored.PrerequisiteReadiness,
                 ProbabilityOfMastery: topScored.ProbabilityOfMastery,
                 ExpectedScoreGain: topScored.ExpectedScoreGain,
@@ -179,7 +252,7 @@ public sealed class RecommendationEngine : IRecommendationEngine
                 CandidateCount: candidateResult.EligibleCandidates.Count,
                 TieBreakRank: topScored.Rank,
                 TieBreakFactors: "NormalizedScore DESC, CurrentMastery ASC, ExamImportance DESC, OrderIndex ASC, TopicNodeId ASC");
-            calculationBreakdown = JsonSerializer.SerializeToDocument(breakdownDto);
+            calculationBreakdown = JsonSerializer.SerializeToDocument(topBreakdownDto);
 
             for (int i = 0; i < topCandidates.Count; i++)
             {
@@ -191,13 +264,50 @@ public sealed class RecommendationEngine : IRecommendationEngine
                     candidate.ExamImportance,
                     candidate.PrerequisiteReadiness);
 
+                var itemQuestion = await _questionSelector.SelectQuestionAsync(
+                    centerId,
+                    studentId,
+                    candidate.TopicNodeId,
+                    candidate.CurrentMastery,
+                    cancellationToken);
+
+                if (i == 0)
+                {
+                    topQuestion = itemQuestion;
+                }
+
+                var candidateBreakdownDto = new OpportunityGapBreakdown(
+                    Strategy: strategy.ToString(),
+                    CalculationVersion: calculationVersion,
+                    EffectiveEvidenceCount: effectiveEvidenceCount,
+                    TopicNodeId: candidate.TopicNodeId,
+                    TopicName: candidate.TopicName,
+                    MasteryPercentage: candidate.CurrentMastery,
+                    ExamImportance: candidate.ExamImportance,
+                    EstimatedLearningMinutes: candidate.EstimatedLearningMinutes,
+                    EstimatedLearningHours: candidate.EstimatedLearningHours,
+                    WeightedRecentReasoningAverage: candidate.RecentReasoningAverage01 * 100m,
+                    ReasoningQualitySampleCount: candidate.ReasoningQualitySampleCount,
+                    ReasoningWeightSum: candidate.ReasoningWeightSum,
+                    ReasoningQualitySource: candidate.ReasoningQualitySource,
+                    PrerequisiteReadiness: candidate.PrerequisiteReadiness,
+                    ProbabilityOfMastery: candidate.ProbabilityOfMastery,
+                    ExpectedScoreGain: candidate.ExpectedScoreGain,
+                    RawOpportunity: candidate.RawOpportunity,
+                    NormalizedOpportunityScore: candidate.NormalizedOpportunityScore,
+                    CandidateCount: candidateResult.EligibleCandidates.Count,
+                    TieBreakRank: candidate.Rank,
+                    TieBreakFactors: "NormalizedScore DESC, CurrentMastery ASC, ExamImportance DESC, OrderIndex ASC, TopicNodeId ASC");
+
                 pathItems.Add(new LearningPathItem
                 {
                     LearningPathItemId = GenerateUlongId(),
                     CenterId = centerId,
                     TopicNodeId = candidate.TopicNodeId,
+                    RecommendedQuestionId = itemQuestion?.QuestionId,
                     RankOrder = (uint)(i + 1),
                     OpportunityScore = candidate.NormalizedOpportunityScore,
+                    CalculationBreakdown = JsonSerializer.SerializeToDocument(candidateBreakdownDto),
                     Reason = itemReason,
                     Status = i == 0 ? LearningPathItemStatus.Current : LearningPathItemStatus.Pending,
                     CreatedAt = utcNow,
@@ -219,7 +329,11 @@ public sealed class RecommendationEngine : IRecommendationEngine
 
             if (linearResult.IsBlocked || linearResult.SelectedTopics.Count == 0)
             {
-                throw new InvalidOperationException(LinearFallbackResult.PrerequisiteGraphBlocked);
+                // Prerequisite graph blocked or cycle: cleanly supersede active artifacts and commit
+                await SupersedeActiveArtifactsAsync(centerId, studentId, subjectId, utcNow, cancellationToken);
+                await _dbContext.SaveChangesAsync(cancellationToken);
+                await transactionB.CommitAsync(cancellationToken);
+                return RecommendationGenerationResult.Blocked(LinearFallbackResult.PrerequisiteGraphBlocked);
             }
 
             var topNode = linearResult.SelectedTopics[0];
@@ -242,32 +356,45 @@ public sealed class RecommendationEngine : IRecommendationEngine
             for (int i = 0; i < linearResult.SelectedTopics.Count; i++)
             {
                 var node = linearResult.SelectedTopics[i];
+                var m = candidateResult.MasteryByTopicNodeId.GetValueOrDefault(node.NodeId, 0m);
+                var itemQuestion = await _questionSelector.SelectQuestionAsync(
+                    centerId,
+                    studentId,
+                    node.NodeId,
+                    m,
+                    cancellationToken);
+
+                if (i == 0)
+                {
+                    topQuestion = itemQuestion;
+                }
+
+                var itemBreakdown = JsonSerializer.SerializeToDocument(new
+                {
+                    CalculationVersion = calculationVersion,
+                    Strategy = strategy.ToString(),
+                    TopicNodeId = node.NodeId,
+                    TopicName = node.NodeName,
+                    CurrentMastery = m,
+                    EffectiveEvidenceCount = effectiveEvidenceCount,
+                    ReasoningSampleUnavailable = candidateResult.SubjectReasoningSampleCount == 0
+                });
+
                 pathItems.Add(new LearningPathItem
                 {
                     LearningPathItemId = GenerateUlongId(),
                     CenterId = centerId,
                     TopicNodeId = node.NodeId,
+                    RecommendedQuestionId = itemQuestion?.QuestionId,
                     RankOrder = (uint)(i + 1),
                     OpportunityScore = null,
+                    CalculationBreakdown = itemBreakdown,
                     Reason = explanation,
                     Status = i == 0 ? LearningPathItemStatus.Current : LearningPathItemStatus.Pending,
                     CreatedAt = utcNow,
                     UpdatedAt = utcNow
                 });
             }
-        }
-
-        // 4. Select adaptive question for top topic
-        var question = await _questionSelector.SelectQuestionAsync(
-            centerId,
-            studentId,
-            topTopicNodeId,
-            topMastery,
-            cancellationToken);
-
-        if (pathItems.Count > 0)
-        {
-            pathItems[0].RecommendedQuestionId = question?.QuestionId;
         }
 
         // 5. Query latest version number for learning path
@@ -278,37 +405,10 @@ public sealed class RecommendationEngine : IRecommendationEngine
             .Select(lp => (uint?)lp.Version)
             .MaxAsync(cancellationToken) ?? 0u;
 
-        // 6. Supersede previous ACTIVE recommendations (preserve Accepted and Dismissed history!)
-        var existingActiveRecs = await _dbContext.Recommendations
-            .Where(r => r.CenterId == centerId
-                && r.StudentId == studentId
-                && r.SubjectId == subjectId
-                && r.Status == RecommendationStatus.Active
-                && !r.IsDeleted)
-            .ToListAsync(cancellationToken);
+        // 6. Supersede previous active artifacts
+        await SupersedeActiveArtifactsAsync(centerId, studentId, subjectId, utcNow, cancellationToken);
 
-        foreach (var activeRec in existingActiveRecs)
-        {
-            activeRec.Status = RecommendationStatus.Superseded;
-            activeRec.UpdatedAt = utcNow;
-        }
-
-        // 7. Supersede previous ACTIVE learning paths
-        var existingActivePaths = await _dbContext.LearningPaths
-            .Where(lp => lp.CenterId == centerId
-                && lp.StudentId == studentId
-                && lp.SubjectId == subjectId
-                && lp.Status == LearningPathStatus.Active
-                && !lp.IsDeleted)
-            .ToListAsync(cancellationToken);
-
-        foreach (var activePath in existingActivePaths)
-        {
-            activePath.Status = LearningPathStatus.Superseded;
-            activePath.UpdatedAt = utcNow;
-        }
-
-        // 8. Create new LearningPath and Recommendation
+        // 7. Create new LearningPath and Recommendation
         var learningPath = new LearningPath
         {
             LearningPathId = Guid.NewGuid(),
@@ -332,7 +432,7 @@ public sealed class RecommendationEngine : IRecommendationEngine
             StudentId = studentId,
             SubjectId = subjectId,
             TopicNodeId = topTopicNodeId,
-            QuestionId = question?.QuestionId,
+            QuestionId = topQuestion?.QuestionId,
             RecommendationType = recType,
             OpportunityScore = topOpportunityScore,
             CalculationVersion = calculationVersion,
@@ -349,8 +449,45 @@ public sealed class RecommendationEngine : IRecommendationEngine
         _dbContext.Recommendations.Add(recommendation);
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await transactionB.CommitAsync(cancellationToken);
 
-        return recommendation;
+        return RecommendationGenerationResult.Success(recommendation);
+    }
+
+    private async Task SupersedeActiveArtifactsAsync(
+        Guid centerId,
+        Guid studentId,
+        Guid subjectId,
+        DateTime utcNow,
+        CancellationToken cancellationToken)
+    {
+        var existingActiveRecs = await _dbContext.Recommendations
+            .Where(r => r.CenterId == centerId
+                && r.StudentId == studentId
+                && r.SubjectId == subjectId
+                && r.Status == RecommendationStatus.Active
+                && !r.IsDeleted)
+            .ToListAsync(cancellationToken);
+
+        foreach (var activeRec in existingActiveRecs)
+        {
+            activeRec.Status = RecommendationStatus.Superseded;
+            activeRec.UpdatedAt = utcNow;
+        }
+
+        var existingActivePaths = await _dbContext.LearningPaths
+            .Where(lp => lp.CenterId == centerId
+                && lp.StudentId == studentId
+                && lp.SubjectId == subjectId
+                && lp.Status == LearningPathStatus.Active
+                && !lp.IsDeleted)
+            .ToListAsync(cancellationToken);
+
+        foreach (var activePath in existingActivePaths)
+        {
+            activePath.Status = LearningPathStatus.Superseded;
+            activePath.UpdatedAt = utcNow;
+        }
     }
 
     public async Task<RecommendationOperationResult> AcceptAsync(
@@ -464,23 +601,16 @@ public sealed class RecommendationEngine : IRecommendationEngine
                 nextPendingItem.Status = LearningPathItemStatus.Current;
                 nextPendingItem.UpdatedAt = utcNow;
 
-                var nextTwin = await _dbContext.KnowledgeTwins
-                    .SingleOrDefaultAsync(
-                        kt => kt.CenterId == centerId
-                            && kt.StudentId == studentId
-                            && kt.TopicNodeId == nextPendingItem.TopicNodeId
-                            && !kt.IsDeleted,
-                        cancellationToken);
-                decimal nextMastery = nextTwin?.MasteryPercentage ?? 0m;
-
-                var nextQuestion = await _questionSelector.SelectQuestionAsync(
-                    centerId,
-                    studentId,
-                    nextPendingItem.TopicNodeId,
-                    nextMastery,
-                    cancellationToken);
-
-                nextPendingItem.RecommendedQuestionId = nextQuestion?.QuestionId;
+                // Candidate snapshot promotion: DO NOT rerun question selector or recompute breakdown!
+                // Promote stored snapshot directly from nextPendingItem.
+                var promotedBreakdown = nextPendingItem.CalculationBreakdown ?? JsonSerializer.SerializeToDocument(new
+                {
+                    Strategy = activePath.Strategy.ToString(),
+                    CalculationVersion = rec.CalculationVersion,
+                    TopicNodeId = nextPendingItem.TopicNodeId,
+                    SnapshotUnavailable = true,
+                    PromotedFromRank = nextPendingItem.RankOrder
+                });
 
                 var newRec = new Recommendation
                 {
@@ -489,13 +619,13 @@ public sealed class RecommendationEngine : IRecommendationEngine
                     StudentId = studentId,
                     SubjectId = rec.SubjectId,
                     TopicNodeId = nextPendingItem.TopicNodeId,
-                    QuestionId = nextQuestion?.QuestionId,
+                    QuestionId = nextPendingItem.RecommendedQuestionId,
                     RecommendationType = activePath.Strategy == LearningPathStrategy.LinearFallback
                         ? RecommendationType.LinearFallback
                         : RecommendationType.TopicAndQuestion,
                     OpportunityScore = nextPendingItem.OpportunityScore,
                     CalculationVersion = rec.CalculationVersion,
-                    CalculationBreakdown = rec.CalculationBreakdown,
+                    CalculationBreakdown = promotedBreakdown,
                     Explanation = nextPendingItem.Reason,
                     SourceAttemptId = rec.SourceAttemptId,
                     Status = RecommendationStatus.Active,
@@ -525,10 +655,12 @@ public sealed class RecommendationEngine : IRecommendationEngine
         DateTime utcNow,
         CancellationToken cancellationToken)
     {
+        // Strictly read-only query: no persistence, no entity mutation
         var activePath = await _dbContext.LearningPaths
-            .Include(lp => lp.Items)
+            .AsNoTracking()
+            .Include(lp => lp.Items.Where(i => !i.IsDeleted))
                 .ThenInclude(i => i.TopicNode)
-            .Include(lp => lp.Items)
+            .Include(lp => lp.Items.Where(i => !i.IsDeleted))
                 .ThenInclude(i => i.RecommendedQuestion)
             .SingleOrDefaultAsync(
                 lp => lp.CenterId == centerId
@@ -537,23 +669,6 @@ public sealed class RecommendationEngine : IRecommendationEngine
                     && lp.Status == LearningPathStatus.Active
                     && !lp.IsDeleted,
                 cancellationToken);
-
-        if (activePath is null)
-        {
-            await GenerateAndPersistAsync(centerId, studentId, subjectId, null, utcNow, cancellationToken);
-            activePath = await _dbContext.LearningPaths
-                .Include(lp => lp.Items)
-                    .ThenInclude(i => i.TopicNode)
-                .Include(lp => lp.Items)
-                    .ThenInclude(i => i.RecommendedQuestion)
-                .SingleOrDefaultAsync(
-                    lp => lp.CenterId == centerId
-                        && lp.StudentId == studentId
-                        && lp.SubjectId == subjectId
-                        && lp.Status == LearningPathStatus.Active
-                        && !lp.IsDeleted,
-                    cancellationToken);
-        }
 
         if (activePath is null)
         {
@@ -568,34 +683,8 @@ public sealed class RecommendationEngine : IRecommendationEngine
             return null;
         }
 
-        // Dynamically resolve question if not yet assigned
-        if (currentItem.RecommendedQuestion is null)
-        {
-            var twin = await _dbContext.KnowledgeTwins
-                .SingleOrDefaultAsync(
-                    kt => kt.CenterId == centerId
-                        && kt.StudentId == studentId
-                        && kt.TopicNodeId == currentItem.TopicNodeId
-                        && !kt.IsDeleted,
-                    cancellationToken);
-            decimal mastery = twin?.MasteryPercentage ?? 0m;
-
-            var q = await _questionSelector.SelectQuestionAsync(
-                centerId,
-                studentId,
-                currentItem.TopicNodeId,
-                mastery,
-                cancellationToken);
-
-            if (q is not null)
-            {
-                currentItem.RecommendedQuestionId = q.QuestionId;
-                currentItem.RecommendedQuestion = q;
-                await _dbContext.SaveChangesAsync(cancellationToken);
-            }
-        }
-
         var topicTwin = await _dbContext.KnowledgeTwins
+            .AsNoTracking()
             .SingleOrDefaultAsync(
                 kt => kt.CenterId == centerId
                     && kt.StudentId == studentId
@@ -605,6 +694,7 @@ public sealed class RecommendationEngine : IRecommendationEngine
         decimal topicMastery = topicTwin?.MasteryPercentage ?? 0m;
 
         var rec = await _dbContext.Recommendations
+            .AsNoTracking()
             .Where(r => r.CenterId == centerId
                 && r.StudentId == studentId
                 && r.SubjectId == subjectId

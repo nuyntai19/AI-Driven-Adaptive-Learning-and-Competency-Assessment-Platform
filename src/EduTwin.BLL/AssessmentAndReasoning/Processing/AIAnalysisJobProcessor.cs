@@ -279,22 +279,27 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            // Checkpoint: save Twin & Goal updates before recommendation generation
             await _dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
 
             if (_recommendationEngine is not null)
             {
-                await _recommendationEngine.GenerateAndPersistAsync(
-                    attempt.CenterId,
-                    attempt.StudentId,
-                    requestContext.Question.SubjectId,
-                    attempt.AttemptId,
-                    transactionalUtcNow,
-                    cancellationToken);
+                try
+                {
+                    await _recommendationEngine.GenerateAndPersistAsync(
+                        attempt.CenterId,
+                        attempt.StudentId,
+                        requestContext.Question.SubjectId,
+                        attempt.AttemptId,
+                        transactionalUtcNow,
+                        CancellationToken.None);
+                }
+                catch (Exception)
+                {
+                    // Recommendation is best-effort derived state.
+                    // Authoritative transaction A has already committed.
+                }
             }
-
-            await _dbContext.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
 
             return Result(
                 initialJob.AnalysisJobId,
@@ -488,33 +493,37 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
 
             attempt.UpdatedAt = transactionalUtcNow;
             cancellationToken.ThrowIfCancellationRequested();
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
 
             if (outcome == AIAnalysisJobProcessingOutcome.FallbackCompleted && _recommendationEngine is not null)
             {
-                // Checkpoint: save Twin & Goal updates before recommendation generation
-                await _dbContext.SaveChangesAsync(cancellationToken);
-
-                var targetSubjectId = requestContext?.Question?.SubjectId
-                    ?? attempt.Question?.SubjectId
-                    ?? await _dbContext.Questions
-                        .Where(q => q.CenterId == attempt.CenterId && q.QuestionId == attempt.QuestionId)
-                        .Select(q => q.SubjectId)
-                        .FirstOrDefaultAsync(cancellationToken);
-
-                if (targetSubjectId != Guid.Empty)
+                try
                 {
-                    await _recommendationEngine.GenerateAndPersistAsync(
-                        attempt.CenterId,
-                        attempt.StudentId,
-                        targetSubjectId,
-                        attempt.AttemptId,
-                        transactionalUtcNow,
-                        cancellationToken);
+                    var targetSubjectId = requestContext?.Question?.SubjectId
+                        ?? attempt.Question?.SubjectId
+                        ?? await _dbContext.Questions
+                            .Where(q => q.CenterId == attempt.CenterId && q.QuestionId == attempt.QuestionId)
+                            .Select(q => q.SubjectId)
+                            .FirstOrDefaultAsync(CancellationToken.None);
+
+                    if (targetSubjectId != Guid.Empty)
+                    {
+                        await _recommendationEngine.GenerateAndPersistAsync(
+                            attempt.CenterId,
+                            attempt.StudentId,
+                            targetSubjectId,
+                            attempt.AttemptId,
+                            transactionalUtcNow,
+                            CancellationToken.None);
+                    }
+                }
+                catch (Exception)
+                {
+                    // Recommendation is best-effort derived state.
+                    // Authoritative transaction A has already committed.
                 }
             }
-
-            await _dbContext.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
 
             return Result(initialJob.AnalysisJobId, initialAttempt.AttemptId, outcome);
         }

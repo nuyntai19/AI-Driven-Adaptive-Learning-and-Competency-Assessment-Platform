@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using EduTwin.DAL.Recommendations;
 
@@ -32,6 +33,13 @@ public class LearningPathItemConfiguration : IEntityTypeConfiguration<LearningPa
         builder.Property(i => i.RecommendedQuestionId).HasColumnName("recommended_question_id").HasColumnType("bigint unsigned");
         builder.Property(i => i.RankOrder).HasColumnName("rank_order").HasColumnType("int unsigned");
         builder.Property(i => i.OpportunityScore).HasColumnName("opportunity_score").HasColumnType("decimal(5,2)");
+        builder.Property(i => i.CalculationBreakdown)
+            .HasColumnName("calculation_breakdown")
+            .HasColumnType("json")
+            .IsRequired(false)
+            .HasConversion(
+                v => v != null ? v.RootElement.ToString() : null,
+                v => !string.IsNullOrEmpty(v) ? JsonDocument.Parse(v, new JsonDocumentOptions()) : null);
         builder.Property(i => i.Reason).HasColumnName("reason").HasColumnType("varchar(1000)").IsRequired();
 
         builder.Property(i => i.Status)
