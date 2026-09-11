@@ -19,6 +19,9 @@ public static class DependencyInjection
         services.AddScoped<IStudentTwinUpdater, StudentTwinUpdater>();
         services.AddScoped<ITwinUpdateHistoryWriter, TwinUpdateHistoryWriter>();
         services.AddScoped<ITwinCompletionOrchestrator, TwinCompletionOrchestrator>();
+        services.AddScoped<IGetStudentTwinUseCase, GetStudentTwinUseCase>();
+        services.AddScoped<IGetStudentTwinHistoryUseCase, GetStudentTwinHistoryUseCase>();
+        services.AddScoped<IGetTeacherStudentTwinUseCase, GetTeacherStudentTwinUseCase>();
         services.AddRecommendations();
         return services;
     }
