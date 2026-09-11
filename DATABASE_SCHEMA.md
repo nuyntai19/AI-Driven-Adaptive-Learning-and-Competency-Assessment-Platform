@@ -1,7 +1,7 @@
 # EduTwin — Database Schema
 
 > Phiên bản: 2.3
-> Trạng thái: ACTIVE — 39 bảng đã migration trong model; live-MySQL verification của migration R07 hardening đang chờ test-admin connection
+> Trạng thái: ACTIVE — 39 bảng đã migration và đã verified 100% trên live-MySQL (20/20 live-MySQL integration tests pass, 0 pending verification)
 > Database: MySQL 8.x / InnoDB / utf8mb4
 > ORM: Entity Framework Core 10
 > Chủ sở hữu: Data/Architecture owners; thay đổi cần nhóm phê duyệt
@@ -27,7 +27,7 @@ Schema gồm sáu module logic:
 5. Assessment & AI Reasoning.
 6. Dynamic Authorization & Evidence Governance.
 
-Hệ thống có 39 bảng vật lý trong EF migration model, bao gồm 7 bảng ở Module 6 và bảng watermark recommendation generation. Baseline 38 bảng đã được kiểm tra trên MySQL thật; bảng thứ 39 phải qua live-MySQL verification trước khi R07 technical freeze.
+Hệ thống có 39 bảng vật lý trong EF migration model, bao gồm 7 bảng ở Module 6 và bảng watermark recommendation generation (bảng thứ 39: recommendation_generation_states). Toàn bộ 39 bảng đã qua live-MySQL verification đầy đủ (20/20 MySQL integration tests pass, 0 model drift).
 
 ## 2. Quy ước vật lý
 

@@ -113,7 +113,7 @@ Mục 4–5 phía trên là snapshot lịch sử ngày 2026-09-08 và không đ�
 |---|---|---|---|---|---|
 | R05 — Evidence Gate và AI safety | TECHNICALLY VERIFIED / FROZEN | DEC-009, DEC-010, DEC-016, DEC-019, DEC-020; MASTER_PLAN R05 | `9636e5b`, `1d84980`, final freeze `52378b8` (`52378b82ef685d4f67886b7bfe44867c2ac30b5b`) | Release build 0 warning/error; full suite 3.014 pass + 9 MySQL tests chạy trên MySQL thật pass; EF model synchronized | Group/course-repository review và CI evidence |
 | R06 — Twin completion orchestrator | TECHNICALLY VERIFIED / FROZEN | DEC-009, DEC-016, DEC-017, DEC-019; MASTER_PLAN R06 | `9636e5b`, `1d84980`, final freeze `52378b8` (`52378b82ef685d4f67886b7bfe44867c2ac30b5b`) | Targeted R06 pass; MySQL R05/R06 9/9; full suite 3.014 pass; failure/concurrency/replay/tri-state coverage pass | Group/course-repository review và CI evidence |
-| R07 — Recommendation và quyết định ML | TECHNICALLY VERIFIED / FROZEN | DEC-011; MASTER_PLAN R07/P14 | Base `b6f3edb`, hardening `7d63a73`, remediation verified | Release build 0 warning/error; recommendation/query-filter 45 pass + 10 MySQL pass; full .NET 3.048 pass + 9 skip; web 8 pass + production build; EF no model drift; direct scan clean; ML readiness N=0/NO-GO | Group/course-repository review và CI evidence |
+| R07 — Recommendation và quyết định ML | TECHNICALLY VERIFIED / FROZEN | DEC-011; MASTER_PLAN R07/P14 | Base `b6f3edb`, hardening `7d63a73`, deadlock-fix `5416d92`, distinct-concurrency verified | Release build 0 warning/error; recommendation/query-filter 45 pass + 10 MySQL pass; full .NET 3.058 pass + 0 fail + 0 skip (20/20 live-MySQL tests pass); web 8 pass + production build; EF no model drift; direct scan clean; ML readiness N=0/NO-GO | Group/course-repository review và CI evidence |
 
 Các invariant được chốt trong closeout:
 
@@ -121,9 +121,11 @@ Các invariant được chốt trong closeout:
 - Replay history lưu `calculation_version = replay-v1`, replay summary và dữ liệu từng step; không trình bày kết quả replay nhiều attempt như một phép tính mastery đơn.
 - Tri-state correctness (`bool?`) được bảo toàn xuyên suốt từ `MasteryCalculationInput`, `MasteryCalculator` đến `ReplayStepBreakdown` / history: positive-weight + null correctness fail closed; zero-weight + null correctness giữ nguyên `null`, không coerce thành `false`, mastery delta = 0.
 - Raw AI observation không bị Teacher Override ghi đè; preliminary grading provenance trên Attempt được giữ nguyên.
-- Các cột override trong `reasoning_analyses` biểu diễn human override hiện hành và được bảo vệ bằng optimistic versioning.
+- Các cột override trong `reasoning_analyses` biểu diễn human override hiện hành: `OverrideVersion` đóng vai trò là business optimistic-version counter cho override, trong khi concurrency protection của EF Core được đảm bảo bởi `ReasoningAnalysis.RowVersion` (cột `row_version` được đánh dấu `IsConcurrencyToken()`).
+- `recommendation_generation_states.last_outcome` là generation watermark lưu các outcome sinh khuyến nghị (`Generated`, `NoCandidate`, `Blocked`); hành động `Accepted` / `Dismissed` là lifecycle action riêng của Recommendation và không ghi đè giá trị `last_outcome` của generation watermark.
+- Transaction A trong production (`AIAnalysisJobProcessor` và `TeacherOverrideUseCase`) vận hành theo optimistic concurrency model thuần túy (không lấy pessimistic `Student` row lock); bảo vệ chống lost update hoàn toàn dựa vào EF Core concurrency tokens (`RowVersion`) trên `KnowledgeTwin`, `BehaviorTwin`, `StudentTwin`, `Attempt` và `AIAnalysisJob`. Khi có race giữa hai job/attempt cùng học sinh, transaction thua nhận `DbUpdateConcurrencyException`, rollback an toàn thành `LostRace`, và worker retry/reclaim thành công đưa toàn bộ evidence vào Digital Twin mà không gây duplicate hay treo job `Processing`.
 - `evidence_assessments` và `twin_update_history` append-only giữ policy/replay lineage, nhưng chưa snapshot đầy đủ payload của mọi phiên bản override. Nếu nghiên cứu/audit yêu cầu khôi phục nguyên văn từng override cũ, phải có Change Proposal cho bảng append-only riêng; không được tuyên bố khả năng này ở phiên bản hiện tại.
-- Các số test trên (3.014 .NET tests, 9 MySQL tests, 8 web tests) là log local execution đã chạy lại, chưa phải GitHub Actions/CI attestation.
+- Các số test trên (3.058 .NET tests, 20 MySQL tests, 8 web tests) là log local execution đã chạy lại và verify trên MySQL Docker thật, chưa phải GitHub Actions/CI attestation.
 
 ## 6. Lecturer requirement log
 

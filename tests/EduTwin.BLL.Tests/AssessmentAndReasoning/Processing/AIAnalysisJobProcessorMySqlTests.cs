@@ -3,15 +3,22 @@ using EduTwin.BLL.AssessmentAndReasoning.AI;
 using EduTwin.BLL.AssessmentAndReasoning.Evidence;
 using EduTwin.BLL.AssessmentAndReasoning.Processing;
 using EduTwin.BLL.IdentityAndTenancy;
+using EduTwin.BLL.Recommendations;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.CurriculumAndQuestions;
+using EduTwin.Contracts.DigitalTwin;
+using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.Contracts.KnowledgeGraph;
 using EduTwin.Contracts.Organization;
+using EduTwin.Contracts.Recommendations;
 using EduTwin.DAL.AssessmentAndReasoning;
 using EduTwin.DAL.CurriculumAndQuestions;
+using EduTwin.DAL.DigitalTwin;
+using EduTwin.DAL.IdentityAndTenancy;
 using EduTwin.DAL.KnowledgeGraph;
 using EduTwin.DAL.Organization;
 using EduTwin.DAL.Persistence;
+using EduTwin.DAL.Recommendations;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using MySql.Data.MySqlClient;
@@ -221,10 +228,165 @@ public sealed class AIAnalysisJobProcessorMySqlTests
         }
     }
 
+    [MySqlIntegrationFact]
+    public async Task ExecuteAsync_TwoDistinctJobsForSameStudent_ConcurrentRaceAndRecovery_ConvergesBothEvidenceIntoTwin()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var centerId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+        var teacherId = Guid.NewGuid();
+
+        await SeedTwoJobsForSameStudentAsync(
+            database.ConnectionString,
+            centerId,
+            studentId,
+            subjectId,
+            teacherId);
+
+        var barrier = new CompetingSaveBarrier(2);
+        var tenant1 = new TenantContext();
+        var tenant2 = new TenantContext();
+        using var scope1 = tenant1.BeginScope(centerId);
+        using var scope2 = tenant2.BeginScope(centerId);
+
+        AIAnalysisJobProcessingResult[] results;
+        await using (var context1 = CreateContext(database.ConnectionString, tenant1, barrier))
+        await using (var context2 = CreateContext(database.ConnectionString, tenant2, barrier))
+        {
+            var processor1 = CreateProcessor(
+                context1,
+                tenant1,
+                recommendationEngine: CreateRecommendationEngine(context1));
+            var processor2 = CreateProcessor(
+                context2,
+                tenant2,
+                recommendationEngine: CreateRecommendationEngine(context2));
+
+            // Concurrent execution on distinct jobs (201 & 202) for the same student on the same topic.
+            // Transaction A acquires NO Student row lock.
+            // When both reach SaveChangesAsync, RowVersion concurrency token on twins ensures exactly one winner.
+            results = await Task.WhenAll(
+                processor1.ExecuteAsync(201, "worker-1", CancellationToken.None),
+                processor2.ExecuteAsync(202, "worker-2", CancellationToken.None));
+
+            Assert.Single(results, r => r.Outcome == AIAnalysisJobProcessingOutcome.Completed);
+            Assert.Single(results, r => r.Outcome == AIAnalysisJobProcessingOutcome.LostRace);
+        }
+
+        var winnerOutcome = results.Single(r => r.Outcome == AIAnalysisJobProcessingOutcome.Completed);
+        var loserOutcome = results.Single(r => r.Outcome == AIAnalysisJobProcessingOutcome.LostRace);
+        var losingJobId = loserOutcome.AnalysisJobId;
+        var losingWorkerId = losingJobId == 201 ? "worker-1" : "worker-2";
+
+        // Verify intermediate state: loser rolled back Transaction A cleanly without dirty state
+        var checkTenant = new TenantContext();
+        using (checkTenant.BeginScope(centerId))
+        {
+            await using var checkContext = CreateContext(database.ConnectionString, checkTenant);
+            var losingJob = await checkContext.AIAnalysisJobs.SingleAsync(j => j.AnalysisJobId == losingJobId);
+            Assert.Equal(AIJobStatus.Processing, losingJob.Status);
+
+            var losingAttempt = await checkContext.Attempts.SingleAsync(a => a.AttemptId == loserOutcome.AttemptId!.Value);
+            Assert.Equal(AttemptStatus.PendingAnalysis, losingAttempt.Status);
+
+            Assert.Single(await checkContext.ReasoningAnalyses.Where(ra => ra.CenterId == centerId).ToListAsync());
+            Assert.Single(await checkContext.EvidenceAssessments.Where(ea => ea.CenterId == centerId).ToListAsync());
+            var midBehavior = await checkContext.BehaviorTwins.SingleAsync(b => b.CenterId == centerId && b.StudentId == studentId);
+            Assert.Equal(1u, midBehavior.AttemptCount);
+        }
+
+        // Exercise the real production retry/reclaim path for the loser in a fresh unit-of-work
+        var retryTenant = new TenantContext();
+        using (retryTenant.BeginScope(centerId))
+        {
+            await using var retryContext = CreateContext(database.ConnectionString, retryTenant);
+            var retryProcessor = CreateProcessor(
+                retryContext,
+                retryTenant,
+                recommendationEngine: CreateRecommendationEngine(retryContext));
+
+            var retryResult = await retryProcessor.ExecuteAsync(
+                losingJobId,
+                losingWorkerId,
+                CancellationToken.None);
+
+            Assert.Equal(AIAnalysisJobProcessingOutcome.Completed, retryResult.Outcome);
+        }
+
+        // Final authoritative state assertions
+        var verifyTenant = new TenantContext();
+        using (verifyTenant.BeginScope(centerId))
+        {
+            await using var verifyContext = CreateContext(database.ConnectionString, verifyTenant);
+
+            // 1. Both jobs reached terminal Completed status (no job stuck in Processing)
+            var job1 = await verifyContext.AIAnalysisJobs.SingleAsync(j => j.AnalysisJobId == 201);
+            var job2 = await verifyContext.AIAnalysisJobs.SingleAsync(j => j.AnalysisJobId == 202);
+            Assert.Equal(AIJobStatus.Completed, job1.Status);
+            Assert.Equal(AIJobStatus.Completed, job2.Status);
+
+            var anyStuck = await verifyContext.AIAnalysisJobs
+                .AnyAsync(j => j.CenterId == centerId && j.Status == AIJobStatus.Processing);
+            Assert.False(anyStuck);
+
+            // 2. Both attempts reached terminal Completed status
+            var attempt1 = await verifyContext.Attempts.SingleAsync(a => a.AttemptId == 101);
+            var attempt2 = await verifyContext.Attempts.SingleAsync(a => a.AttemptId == 102);
+            Assert.Equal(AttemptStatus.Completed, attempt1.Status);
+            Assert.Equal(AttemptStatus.Completed, attempt2.Status);
+
+            // 3. Exactly 2 ReasoningAnalysis records exist (1 per attempt, no duplicates)
+            var analyses = await verifyContext.ReasoningAnalyses
+                .Where(ra => ra.CenterId == centerId)
+                .OrderBy(ra => ra.AttemptId)
+                .ToListAsync();
+            Assert.Equal(2, analyses.Count);
+            Assert.Equal(101ul, analyses[0].AttemptId);
+            Assert.Equal(102ul, analyses[1].AttemptId);
+
+            // 4. Exactly 2 EvidenceAssessment records exist (effective evidence for both A + B)
+            var evidences = await verifyContext.EvidenceAssessments
+                .Where(ea => ea.CenterId == centerId)
+                .OrderBy(ea => ea.AttemptId)
+                .ToListAsync();
+            Assert.Equal(2, evidences.Count);
+            Assert.Equal(101ul, evidences[0].AttemptId);
+            Assert.Equal(102ul, evidences[1].AttemptId);
+
+            // 5. BehaviorTwin.AttemptCount incremented to exactly 2 (not 1, not 3)
+            var behaviorTwin = await verifyContext.BehaviorTwins
+                .SingleAsync(b => b.CenterId == centerId && b.StudentId == studentId);
+            Assert.Equal(2u, behaviorTwin.AttemptCount);
+
+            // 6. KnowledgeTwin state reflects both evidence contributions
+            var knowledgeTwin = await verifyContext.KnowledgeTwins
+                .SingleAsync(k => k.CenterId == centerId && k.StudentId == studentId && k.TopicNodeId == 1);
+            Assert.True(knowledgeTwin.MasteryPercentage > 20.00m);
+
+            // 7. TwinUpdateHistory has exactly 2 entries (no duplicates)
+            var histories = await verifyContext.TwinUpdateHistories
+                .Where(h => h.CenterId == centerId && h.StudentId == studentId)
+                .OrderBy(h => h.CreatedAt)
+                .ToListAsync();
+            Assert.Equal(2, histories.Count);
+            Assert.Contains(histories, h => h.AttemptId == 101ul);
+            Assert.Contains(histories, h => h.AttemptId == 102ul);
+
+            // 8. Recommendation generation state watermark points to latest trigger
+            var generationState = await verifyContext.RecommendationGenerationStates
+                .SingleOrDefaultAsync(gs => gs.CenterId == centerId && gs.StudentId == studentId && gs.SubjectId == subjectId);
+            Assert.NotNull(generationState);
+            Assert.Equal(loserOutcome.AttemptId!.Value, generationState.LastSourceAttemptId);
+            Assert.Equal(RecommendationGenerationStatus.Generated.ToString(), generationState.LastOutcome);
+        }
+    }
+
     private static AIAnalysisJobProcessor CreateProcessor(
         EduTwinDbContext context,
         TenantContext tenant,
-        IAIService? aiService = null) =>
+        IAIService? aiService = null,
+        IRecommendationEngine? recommendationEngine = null) =>
         new(
             context,
             tenant,
@@ -235,7 +397,15 @@ public sealed class AIAnalysisJobProcessorMySqlTests
             new AIAnalysisJobStateMachine(),
             new EvidenceGate(),
             new EvidenceAssessmentFactory(),
-            new FixedTimeProvider(UtcNow));
+            new FixedTimeProvider(UtcNow),
+            recommendationEngine: recommendationEngine);
+
+    private static RecommendationEngine CreateRecommendationEngine(EduTwinDbContext context) =>
+        new(
+            context,
+            new OpportunityCandidateBuilder(context),
+            new LinearFallbackSelector(),
+            new AdaptiveQuestionSelector(context));
 
     private static EduTwinDbContext CreateContext(
         string connectionString,
@@ -384,6 +554,316 @@ public sealed class AIAnalysisJobProcessorMySqlTests
                 MappingRole = MappingRole.Primary,
                 CreatedAt = UtcNow.AddDays(-1)
             });
+            await context.SaveChangesAsync();
+        }
+        finally
+        {
+            await context.Database.ExecuteSqlRawAsync("SET FOREIGN_KEY_CHECKS = 1;");
+            await context.Database.CloseConnectionAsync();
+        }
+    }
+
+    private static async Task SeedTwoJobsForSameStudentAsync(
+        string connectionString,
+        Guid centerId,
+        Guid studentId,
+        Guid subjectId,
+        Guid teacherId)
+    {
+        var tenant = new TenantContext();
+        using var tenantScope = tenant.BeginScope(centerId);
+        await using var context = CreateContext(connectionString, tenant);
+        await context.Database.OpenConnectionAsync();
+        try
+        {
+            await context.Database.ExecuteSqlRawAsync("SET FOREIGN_KEY_CHECKS = 0;");
+
+            context.Centers.Add(new Center
+            {
+                CenterId = centerId,
+                CenterCode = $"C-{centerId:N}"[..10],
+                CenterName = "Test Center",
+                Status = CenterStatus.Active,
+                Timezone = "UTC",
+                CreatedAt = UtcNow.AddDays(-1),
+                UpdatedAt = UtcNow.AddDays(-1)
+            });
+
+            context.Users.Add(new User
+            {
+                UserId = studentId,
+                CenterId = centerId,
+                Username = $"student-{studentId:N}"[..20],
+                DisplayName = "Relational Test Student",
+                PasswordHash = "hash",
+                RoleName = UserRole.Student,
+                Status = UserStatus.Active,
+                AuthVersion = 1,
+                CreatedAt = UtcNow.AddDays(-1),
+                UpdatedAt = UtcNow.AddDays(-1)
+            });
+
+            context.Students.Add(new Student
+            {
+                CenterId = centerId,
+                StudentId = studentId,
+                FullName = "Relational Test Student",
+                GradeLevel = 10,
+                CreatedAt = UtcNow.AddDays(-1),
+                UpdatedAt = UtcNow.AddDays(-1)
+            });
+
+            context.Subjects.Add(new Subject
+            {
+                CenterId = centerId,
+                SubjectId = subjectId,
+                SubjectCode = "MATH",
+                SubjectName = "Mathematics",
+                IsActive = true,
+                CreatedAt = UtcNow.AddDays(-1),
+                UpdatedAt = UtcNow.AddDays(-1)
+            });
+
+            context.KnowledgeNodes.Add(new KnowledgeNode
+            {
+                NodeId = 1,
+                CenterId = centerId,
+                SubjectId = subjectId,
+                NodeType = NodeType.Topic,
+                NodeCode = "REL-TOPIC-1",
+                NodeName = "Relational Topic 1",
+                OrderIndex = 1,
+                ExamImportance = 50m,
+                EstimatedLearningMinutes = 20,
+                IsActive = true,
+                CreatedAt = UtcNow.AddDays(-1),
+                UpdatedAt = UtcNow.AddDays(-1)
+            });
+
+            context.Questions.AddRange(
+                new Question
+                {
+                    QuestionId = 1,
+                    CenterId = centerId,
+                    SubjectId = subjectId,
+                    PrimaryTopicNodeId = 1,
+                    CreatedByTeacherId = teacherId,
+                    QuestionType = QuestionType.Essay,
+                    Difficulty = 3,
+                    QuestionText = "Distinct question 1",
+                    CorrectAnswer = "answer 1",
+                    Solution = "solution 1",
+                    ExpectedReasoning = "reasoning 1",
+                    GradingCriteria = new GradingCriteria
+                    {
+                        SchemaVersion = "1.0",
+                        RequiredIdeas = ["idea 1"],
+                        CommonErrors = ["error 1"],
+                        ScoringNotes = "notes 1"
+                    },
+                    MaxScore = 1,
+                    EstimatedTimeSeconds = 60,
+                    ReasoningRequired = true,
+                    LanguageCode = "en",
+                    Status = QuestionStatus.Active,
+                    CreatedAt = UtcNow.AddDays(-1),
+                    UpdatedAt = UtcNow.AddDays(-1)
+                },
+                new Question
+                {
+                    QuestionId = 2,
+                    CenterId = centerId,
+                    SubjectId = subjectId,
+                    PrimaryTopicNodeId = 1,
+                    CreatedByTeacherId = teacherId,
+                    QuestionType = QuestionType.Essay,
+                    Difficulty = 3,
+                    QuestionText = "Distinct question 2",
+                    CorrectAnswer = "answer 2",
+                    Solution = "solution 2",
+                    ExpectedReasoning = "reasoning 2",
+                    GradingCriteria = new GradingCriteria
+                    {
+                        SchemaVersion = "1.0",
+                        RequiredIdeas = ["idea 2"],
+                        CommonErrors = ["error 2"],
+                        ScoringNotes = "notes 2"
+                    },
+                    MaxScore = 1,
+                    EstimatedTimeSeconds = 60,
+                    ReasoningRequired = true,
+                    LanguageCode = "en",
+                    Status = QuestionStatus.Active,
+                    CreatedAt = UtcNow.AddDays(-1),
+                    UpdatedAt = UtcNow.AddDays(-1)
+                },
+                new Question
+                {
+                    QuestionId = 3,
+                    CenterId = centerId,
+                    SubjectId = subjectId,
+                    PrimaryTopicNodeId = 1,
+                    CreatedByTeacherId = teacherId,
+                    QuestionType = QuestionType.MultipleChoice,
+                    Difficulty = 2,
+                    QuestionText = "Recommendation pool question 3",
+                    CorrectAnswer = "A",
+                    Solution = "solution 3",
+                    ExpectedReasoning = "reasoning 3",
+                    MaxScore = 1,
+                    EstimatedTimeSeconds = 60,
+                    ReasoningRequired = false,
+                    LanguageCode = "en",
+                    Status = QuestionStatus.Active,
+                    CreatedAt = UtcNow.AddDays(-1),
+                    UpdatedAt = UtcNow.AddDays(-1)
+                }
+            );
+
+            context.QuestionKnowledgeNodes.AddRange(
+                new QuestionKnowledgeNode
+                {
+                    CenterId = centerId,
+                    QuestionId = 1,
+                    NodeId = 1,
+                    MappingRole = MappingRole.Primary,
+                    CreatedAt = UtcNow.AddDays(-1)
+                },
+                new QuestionKnowledgeNode
+                {
+                    CenterId = centerId,
+                    QuestionId = 2,
+                    NodeId = 1,
+                    MappingRole = MappingRole.Primary,
+                    CreatedAt = UtcNow.AddDays(-1)
+                },
+                new QuestionKnowledgeNode
+                {
+                    CenterId = centerId,
+                    QuestionId = 3,
+                    NodeId = 1,
+                    MappingRole = MappingRole.Primary,
+                    CreatedAt = UtcNow.AddDays(-1)
+                }
+            );
+
+            context.KnowledgeTwins.Add(new KnowledgeTwin
+            {
+                KnowledgeTwinId = 1,
+                CenterId = centerId,
+                StudentId = studentId,
+                SubjectId = subjectId,
+                TopicNodeId = 1,
+                MasteryPercentage = 20.00m,
+                EvidenceCount = 0,
+                CreatedAt = UtcNow.AddDays(-1),
+                UpdatedAt = UtcNow.AddDays(-1)
+            });
+
+            context.BehaviorTwins.Add(new BehaviorTwin
+            {
+                BehaviorTwinId = 1,
+                CenterId = centerId,
+                StudentId = studentId,
+                SubjectId = subjectId,
+                AvgTimeSpentSeconds = 0m,
+                SkipRate = 0m,
+                ChangeAnswerRate = 0m,
+                AvgConfidence = 0m,
+                ConfidenceCalibration = 0m,
+                AttemptCount = 0,
+                CreatedAt = UtcNow.AddDays(-1),
+                UpdatedAt = UtcNow.AddDays(-1)
+            });
+
+            context.StudentTwins.Add(new StudentTwin
+            {
+                TwinId = Guid.NewGuid(),
+                CenterId = centerId,
+                StudentId = studentId,
+                OverallMastery = 20.00m,
+                CreatedAt = UtcNow.AddDays(-1),
+                UpdatedAt = UtcNow.AddDays(-1)
+            });
+
+            context.Attempts.AddRange(
+                new Attempt
+                {
+                    AttemptId = 101,
+                    CenterId = centerId,
+                    StudentId = studentId,
+                    QuestionId = 1,
+                    FinalAnswer = "answer-1",
+                    ReasoningText = "reasoning-1",
+                    IsCorrect = true,
+                    AwardedScore = 1,
+                    TimeSpentSeconds = 20,
+                    Confidence = 80,
+                    AnswerChanges = 0,
+                    Skipped = false,
+                    ReasoningLanguage = "en",
+                    Status = AttemptStatus.PendingAnalysis,
+                    ClientSubmissionId = Guid.NewGuid(),
+                    CreatedAt = UtcNow.AddMinutes(-2),
+                    CreatedBy = studentId,
+                    UpdatedAt = UtcNow.AddMinutes(-2)
+                },
+                new Attempt
+                {
+                    AttemptId = 102,
+                    CenterId = centerId,
+                    StudentId = studentId,
+                    QuestionId = 2,
+                    FinalAnswer = "answer-2",
+                    ReasoningText = "reasoning-2",
+                    IsCorrect = true,
+                    AwardedScore = 1,
+                    TimeSpentSeconds = 25,
+                    Confidence = 85,
+                    AnswerChanges = 0,
+                    Skipped = false,
+                    ReasoningLanguage = "en",
+                    Status = AttemptStatus.PendingAnalysis,
+                    ClientSubmissionId = Guid.NewGuid(),
+                    CreatedAt = UtcNow.AddMinutes(-1),
+                    CreatedBy = studentId,
+                    UpdatedAt = UtcNow.AddMinutes(-1)
+                }
+            );
+
+            context.AIAnalysisJobs.AddRange(
+                new AIAnalysisJob
+                {
+                    AnalysisJobId = 201,
+                    CenterId = centerId,
+                    AttemptId = 101,
+                    Status = AIJobStatus.Processing,
+                    RetryCount = 0,
+                    AvailableAt = UtcNow.AddMinutes(-2),
+                    StartedAt = UtcNow.AddMinutes(-1),
+                    LeaseOwner = "worker-1",
+                    LeaseUntil = UtcNow.AddMinutes(5),
+                    CorrelationId = "corr-201",
+                    CreatedAt = UtcNow.AddMinutes(-2),
+                    UpdatedAt = UtcNow.AddMinutes(-1)
+                },
+                new AIAnalysisJob
+                {
+                    AnalysisJobId = 202,
+                    CenterId = centerId,
+                    AttemptId = 102,
+                    Status = AIJobStatus.Processing,
+                    RetryCount = 0,
+                    AvailableAt = UtcNow.AddMinutes(-2),
+                    StartedAt = UtcNow.AddMinutes(-1),
+                    LeaseOwner = "worker-2",
+                    LeaseUntil = UtcNow.AddMinutes(5),
+                    CorrelationId = "corr-202",
+                    CreatedAt = UtcNow.AddMinutes(-2),
+                    UpdatedAt = UtcNow.AddMinutes(-1)
+                }
+            );
+
             await context.SaveChangesAsync();
         }
         finally
