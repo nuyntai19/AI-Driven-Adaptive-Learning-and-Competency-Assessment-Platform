@@ -9,6 +9,7 @@ import {
 } from "../src/utils/problemDetails.ts";
 import {
   isTerminalStatus,
+  isSuccessfulTerminalStatus,
   shouldContinuePolling,
 } from "../src/utils/polling.ts";
 import {
@@ -136,9 +137,11 @@ test("terminal-based polling recognizes completed, failed, and in-progress jobs"
   // Terminal statuses
   assert.equal(isTerminalStatus("completed"), true);
   assert.equal(isTerminalStatus("COMPLETED"), true);
-  assert.equal(isTerminalStatus("failed"), true);
-  assert.equal(isTerminalStatus("cancelled"), true);
-  assert.equal(isTerminalStatus("timed_out"), true);
+  assert.equal(isTerminalStatus("FallbackCompleted"), true);
+  assert.equal(isTerminalStatus("FailedTerminal"), true);
+  assert.equal(isSuccessfulTerminalStatus("Completed"), true);
+  assert.equal(isSuccessfulTerminalStatus("FallbackCompleted"), true);
+  assert.equal(isSuccessfulTerminalStatus("FailedTerminal"), false);
 
   // Non-terminal statuses
   assert.equal(isTerminalStatus("pending"), false);

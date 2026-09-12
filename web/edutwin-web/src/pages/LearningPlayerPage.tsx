@@ -11,12 +11,17 @@ import type {
   NextQuestionDataDto,
   AttemptFeedbackDataDto,
 } from "../types/learning";
-import { isTerminalStatus, shouldContinuePolling } from "../utils/polling";
+import {
+  isSuccessfulTerminalStatus,
+  isTerminalStatus,
+  shouldContinuePolling,
+} from "../utils/polling";
 import { SubjectRequiredState } from "../components/SubjectRequiredState";
 
 export const LearningPlayerPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const subjectId = searchParams.get("subjectId") || "";
+  const persistedJobId = searchParams.get("analysisJobId");
 
   // Attempt form state
   const [finalAnswer, setFinalAnswer] = useState<string>("");
@@ -29,8 +34,8 @@ export const LearningPlayerPage = () => {
   const clientSubmissionIdRef = useRef<string>(crypto.randomUUID());
 
   // Workflow state
-  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [pollingJobId, setPollingJobId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(Boolean(persistedJobId));
+  const [pollingJobId, setPollingJobId] = useState<string | null>(persistedJobId);
   const [pollingStatus, setPollingStatus] = useState<string>("Đang xử lý...");
   const [feedbackData, setFeedbackData] = useState<AttemptFeedbackDataDto | null>(null);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
@@ -54,7 +59,7 @@ export const LearningPlayerPage = () => {
   } = useQuery<NextQuestionDataDto>({
     queryKey: ["nextQuestion", subjectId],
     queryFn: () => getNextQuestion(subjectId),
-    enabled: !!subjectId && !feedbackData && !pollingJobId,
+    enabled: !!subjectId && !feedbackData && !pollingJobId && !persistedJobId,
   });
 
   // Track answer changes deterministically
@@ -82,14 +87,13 @@ export const LearningPlayerPage = () => {
 
     try {
       const response = await submitAttempt({
-        questionId: question.questionId,
+        questionId: String(question.questionId),
         finalAnswer: skipped ? "SKIPPED" : finalAnswer.trim(),
         reasoningText: reasoningText.trim() ? reasoningText.trim() : null,
         timeSpentSeconds,
         confidence,
         answerChanges,
         skipped,
-        reasoningLanguage: "vi",
         clientSubmissionId: clientSubmissionIdRef.current,
       });
 
@@ -100,6 +104,12 @@ export const LearningPlayerPage = () => {
       pollingAttemptRef.current = 0;
       setPollingJobId(activeJobId);
       setPollingStatus("AI đang phân tích câu trả lời...");
+      setSearchParams((current) => {
+        const next = new URLSearchParams(current);
+        next.set("analysisJobId", activeJobId);
+        next.set("attemptId", response.attemptId);
+        return next;
+      });
     } catch (err: unknown) {
       setIsSubmitting(false);
       const message = (err as Error)?.message || "Không thể gửi bài làm. Vui lòng thử lại.";
@@ -107,62 +117,102 @@ export const LearningPlayerPage = () => {
     }
   };
 
-  // Poll analysis job every 3 seconds until terminal == true
+  // Poll status only (never resubmit the Attempt). The URL-backed job id survives refresh/remount.
+  const jobStatusQuery = useQuery({
+    queryKey: ["analysisJobStatus", pollingJobId],
+    queryFn: () => getAnalysisJobStatus(pollingJobId!),
+    enabled: Boolean(pollingJobId),
+    retry: false,
+    refetchInterval: (query) => {
+      const status = query.state.data;
+      if (status && (status.terminal || isTerminalStatus(status.status))) return false;
+      return pollingAttemptRef.current >= 60 ? false : 3000;
+    },
+  });
+
   useEffect(() => {
-    if (!pollingJobId) return;
+    if (!pollingJobId || !jobStatusQuery.data) return;
 
-    let isMounted = true;
-    const interval = setInterval(async () => {
-      try {
-        const jobStatus = await getAnalysisJobStatus(pollingJobId);
-        if (!isMounted) return;
+    const jobStatus = jobStatusQuery.data;
+    pollingAttemptRef.current += 1;
+    setPollingStatus(`Đang phân tích tư duy... (${jobStatus.status})`);
 
-        pollingAttemptRef.current += 1;
+    if (jobStatus.terminal || isTerminalStatus(jobStatus.status)) {
+      setPollingJobId(null);
 
-        setPollingStatus(`Đang phân tích tư duy... (${jobStatus.status})`);
-
-        if (jobStatus.terminal || isTerminalStatus(jobStatus.status)) {
-          clearInterval(interval);
-          setPollingJobId(null);
-          setIsSubmitting(false);
-
-          if (jobStatus.status.toLowerCase() !== "completed") {
-            setSubmissionError(jobStatus.error || "Phân tích không hoàn tất. Bạn có thể thử lại mà không cần nộp lại bài.");
-            return;
-          }
-
-          // Fetch full feedback according to API contract 54
-          const feedback = await getAttemptFeedback(jobStatus.attemptId);
-          if (isMounted) {
-            setFeedbackData(feedback);
-          }
-        } else if (!shouldContinuePolling(jobStatus.status, pollingAttemptRef.current)) {
-          clearInterval(interval);
-          setPollingJobId(null);
-          setIsSubmitting(false);
-          setSubmissionError("Phân tích mất nhiều thời gian hơn dự kiến. Hãy thử tải kết quả lại sau.");
-        }
-      } catch (error: unknown) {
-        pollingAttemptRef.current += 1;
-        if (!shouldContinuePolling(undefined, pollingAttemptRef.current)) {
-          clearInterval(interval);
-          if (isMounted) {
-            setPollingJobId(null);
-            setIsSubmitting(false);
-            setSubmissionError((error as Error)?.message || "Không thể kiểm tra tiến trình phân tích.");
-          }
-        }
+      if (!isSuccessfulTerminalStatus(jobStatus.status)) {
+        setIsSubmitting(false);
+        setSearchParams((current) => {
+          const next = new URLSearchParams(current);
+          next.delete("analysisJobId");
+          next.delete("attemptId");
+          return next;
+        });
+        setSubmissionError("Phân tích không hoàn tất. Bạn có thể thử tải lại kết quả mà không cần nộp lại bài.");
+        return;
       }
-    }, 3000);
 
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, [pollingJobId]);
+      void getAttemptFeedback(jobStatus.attemptId)
+        .then((feedback) => {
+          setFeedbackData(feedback);
+          setSearchParams((current) => {
+            const next = new URLSearchParams(current);
+            next.delete("analysisJobId");
+            next.delete("attemptId");
+            return next;
+          });
+        })
+        .catch((error: unknown) => {
+          setSubmissionError((error as Error)?.message || "Không thể tải kết quả phân tích.");
+        })
+        .finally(() => setIsSubmitting(false));
+    } else if (!shouldContinuePolling(jobStatus.status, pollingAttemptRef.current)) {
+      setPollingJobId(null);
+      setIsSubmitting(false);
+      setSubmissionError("Phân tích mất nhiều thời gian hơn dự kiến. Hãy thử tải kết quả lại sau.");
+    }
+  }, [jobStatusQuery.data, jobStatusQuery.dataUpdatedAt, pollingJobId, setSearchParams]);
+
+  useEffect(() => {
+    if (!pollingJobId || !jobStatusQuery.error) return;
+    pollingAttemptRef.current += 1;
+    if (!shouldContinuePolling(undefined, pollingAttemptRef.current)) {
+      setPollingJobId(null);
+      setIsSubmitting(false);
+      setSubmissionError((jobStatusQuery.error as Error)?.message || "Không thể kiểm tra tiến trình phân tích.");
+    }
+  }, [jobStatusQuery.error, jobStatusQuery.errorUpdatedAt, pollingJobId]);
 
   if (!subjectId) {
     return <SubjectRequiredState onSelect={(selected) => setSearchParams({ subjectId: selected })} />;
+  }
+
+  if (!pollingJobId && persistedJobId) {
+    return (
+      <div className="min-h-screen bg-slate-50 p-6">
+        <div className="mx-auto max-w-xl rounded-xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-200">
+          <h2 className="text-xl font-bold text-slate-900">
+            {isSubmitting ? "Đang tải kết quả phân tích" : "Tiến trình phân tích đang được giữ lại"}
+          </h2>
+          <p role="alert" className="mt-2 text-sm text-slate-600">
+            {submissionError || "Bạn có thể tiếp tục kiểm tra tiến trình mà không cần nộp lại bài."}
+          </p>
+          <button
+            type="button"
+            disabled={isSubmitting}
+            onClick={() => {
+              pollingAttemptRef.current = 0;
+              setSubmissionError(null);
+              setIsSubmitting(true);
+              setPollingJobId(persistedJobId);
+            }}
+            className="mt-5 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-indigo-500 disabled:opacity-50"
+          >
+            {isSubmitting ? "Đang tải..." : "Tiếp tục kiểm tra kết quả"}
+          </button>
+        </div>
+      </div>
+    );
   }
 
   // Next question handler
@@ -177,6 +227,12 @@ export const LearningPlayerPage = () => {
     setSubmissionError(null);
     pollingAttemptRef.current = 0;
     clientSubmissionIdRef.current = crypto.randomUUID();
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete("analysisJobId");
+      next.delete("attemptId");
+      return next;
+    });
     refetchQuestion();
   };
 
@@ -263,7 +319,9 @@ export const LearningPlayerPage = () => {
                       : "Đang chờ đánh giá"}
                 </span>
                 <h2 className="mt-2 text-2xl font-black">
-                  Điểm số: {grading.awardedScore ?? 0} / {grading.maxScore}
+                  Điểm số: {grading.awardedScore === null || grading.awardedScore === undefined
+                    ? `Chưa chấm / ${grading.maxScore}`
+                    : `${grading.awardedScore} / ${grading.maxScore}`}
                 </h2>
               </div>
               <div className="text-right">

@@ -43,6 +43,7 @@ export interface StudentDashboardDataDto {
   masteryRadar: StudentMasteryRadarItemDto[];
   progressLine: StudentProgressLinePointDto[];
   action?: StudentRecommendedActionDto | null;
+  generatedAt: string;
 }
 
 export interface ClassBasicInfoDto {
@@ -91,6 +92,7 @@ export interface ClassDashboardDataDto {
   highRiskStudents: ClassHighRiskStudentDto[];
   weakTopics: ClassWeakTopicDto[];
   gapGroups: ClassGapGroupDto[];
+  generatedAt: string;
 }
 
 export interface CenterSummaryDto {
@@ -126,4 +128,5 @@ export interface CenterDashboardDataDto {
   masteryBySubject: SubjectMasterySummaryDto[];
   highRiskByClass: ClassHighRiskSummaryDto[];
   classRanking: ClassRankingItemDto[];
+  generatedAt: string;
 }

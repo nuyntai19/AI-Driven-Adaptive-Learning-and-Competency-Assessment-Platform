@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { overrideReasoningAnalysis } from "../api/teacherReviewsApi";
 import type { TeacherReviewQueueItemDto, ErrorType, TeacherOverrideRequest } from "../types/reviews";
 import { extractProblemDetails, isOverrideConflict } from "../utils/problemDetails";
@@ -27,6 +27,13 @@ export const TeacherOverrideModal = ({
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successInfo, setSuccessInfo] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const isSubmittingRef = useRef(false);
+
+  useEffect(() => {
+    isSubmittingRef.current = isSubmitting;
+  }, [isSubmitting]);
 
   useEffect(() => {
     if (review) {
@@ -41,6 +48,44 @@ export const TeacherOverrideModal = ({
       setSuccessInfo(null);
     }
   }, [review]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    closeButtonRef.current?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !isSubmittingRef.current) {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const focusable = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+        )
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      previouslyFocused?.focus();
+    };
+  }, [isOpen, onClose]);
 
   if (!isOpen || !review) return null;
 
@@ -90,17 +135,26 @@ export const TeacherOverrideModal = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-900/60 p-4">
-      <div className="relative w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-slate-200 sm:p-8 max-h-[90vh] overflow-y-auto">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="teacher-override-title"
+        className="relative w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-slate-200 sm:p-8 max-h-[90vh] overflow-y-auto"
+      >
         <div className="flex items-center justify-between border-b border-slate-100 pb-4">
           <div>
             <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">
               Giám sát & Đánh giá chuyên môn
             </span>
-            <h2 className="text-xl font-bold text-slate-900">
+            <h2 id="teacher-override-title" className="text-xl font-bold text-slate-900">
               Điều Chỉnh Đánh Giá Suy Luận (Teacher Override)
             </h2>
           </div>
           <button
+            ref={closeButtonRef}
+            type="button"
+            aria-label="Đóng hộp thoại điều chỉnh đánh giá"
             onClick={onClose}
             disabled={isSubmitting}
             className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
@@ -155,13 +209,13 @@ export const TeacherOverrideModal = ({
 
         {/* Feedback / error alerts */}
         {errorMessage && (
-          <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm font-medium text-red-800 ring-1 ring-red-200">
+          <div role="alert" aria-live="assertive" className="mt-4 rounded-lg bg-red-50 p-3 text-sm font-medium text-red-800 ring-1 ring-red-200">
             {errorMessage}
           </div>
         )}
 
         {successInfo && (
-          <div className="mt-4 rounded-lg bg-emerald-50 p-3 text-sm font-medium text-emerald-800 ring-1 ring-emerald-200">
+          <div role="status" aria-live="polite" className="mt-4 rounded-lg bg-emerald-50 p-3 text-sm font-medium text-emerald-800 ring-1 ring-emerald-200">
             {successInfo}
           </div>
         )}
@@ -170,10 +224,10 @@ export const TeacherOverrideModal = ({
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Correctness */}
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+            <fieldset>
+              <legend className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
                 Kết quả bài giải
-              </label>
+              </legend>
               <div className="flex gap-4 mt-2">
                 <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700 cursor-pointer">
                   <input
@@ -196,14 +250,15 @@ export const TeacherOverrideModal = ({
                   Chưa chính xác (Sai)
                 </label>
               </div>
-            </div>
+            </fieldset>
 
             {/* Error Type */}
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+              <label htmlFor="override-error-type" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
                 Phân loại lỗi (Error Type)
               </label>
               <select
+                id="override-error-type"
                 value={errorType}
                 onChange={(e) => setErrorType(e.target.value as ErrorType)}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
@@ -222,12 +277,13 @@ export const TeacherOverrideModal = ({
           {/* Reasoning Quality Slider */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
+              <label htmlFor="override-reasoning-quality" className="text-xs font-bold uppercase tracking-wider text-slate-700">
                 Chất lượng suy luận (Reasoning Quality)
               </label>
               <span className="text-sm font-bold text-indigo-600">{reasoningQuality}/100</span>
             </div>
             <input
+              id="override-reasoning-quality"
               type="range"
               min={0}
               max={100}
@@ -239,10 +295,11 @@ export const TeacherOverrideModal = ({
 
           {/* Teacher Feedback to student */}
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+            <label htmlFor="override-feedback" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
               Nhận xét của Giáo viên (Gửi tới học sinh)
             </label>
             <textarea
+              id="override-feedback"
               rows={2}
               value={feedback}
               onChange={(e) => setFeedback(e.target.value)}
@@ -253,10 +310,11 @@ export const TeacherOverrideModal = ({
 
           {/* Override Reason (Mandatory) */}
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+            <label htmlFor="override-reason" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
               Lý do can thiệp / điều chỉnh <span className="text-red-500">* (Bắt buộc kiểm toán)</span>
             </label>
             <input
+              id="override-reason"
               type="text"
               required
               value={reason}

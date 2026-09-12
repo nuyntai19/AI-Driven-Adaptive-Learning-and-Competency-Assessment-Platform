@@ -82,4 +82,3 @@ test("r08 center manager capabilities require exact permissions", () => {
   assert.equal(canAccess(manager, { allOf: ["dashboards.center.read"] }), true);
   assert.equal(canAccess(manager, { allOf: ["dashboards.student.read_own"] }), false);
 });
-

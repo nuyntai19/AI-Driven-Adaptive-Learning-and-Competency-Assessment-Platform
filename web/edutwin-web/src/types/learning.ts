@@ -7,7 +7,6 @@ export interface SubmitAttemptRequest {
   confidence: number;
   answerChanges: number;
   skipped: boolean;
-  reasoningLanguage: string;
   clientSubmissionId: string;
 }
 
@@ -23,12 +22,13 @@ export interface SubmitAttemptDataDto {
 }
 
 export interface AnalysisJobStatusDataDto {
-  jobId: string;
+  analysisJobId: string;
   attemptId: string;
   status: string;
+  retryCount: number;
   terminal: boolean;
-  error?: string | null;
   feedbackUrl?: string | null;
+  updatedAt: string;
 }
 
 export interface AttemptFeedbackGradingDto {

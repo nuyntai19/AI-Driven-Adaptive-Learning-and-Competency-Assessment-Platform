@@ -18,9 +18,13 @@ interface ApiResponse<T> {
 export const submitAttempt = async (
   body: SubmitAttemptRequest
 ): Promise<SubmitAttemptDataDto> => {
+  const payload = {
+    ...body,
+    questionId: String(body.questionId),
+  };
   const response = await httpClient.post<ApiResponse<SubmitAttemptDataDto>>(
     "/learning/attempts",
-    body
+    payload
   );
   return response.data.data;
 };
