@@ -126,10 +126,47 @@ public class MathAnswerNormalizerTests
     [InlineData("1/2", "-1/2", false)]
     [InlineData("1/2", "abc", false)]
     [InlineData("abc", "def", false)]
+    [InlineData(@"\frac{3}{2}", "3/2", true)] // Visual LaTeX matches semantic fraction
+    [InlineData(@"\frac{3}{2}", "1.5", true)]
+    [InlineData(@"\frac{-3}{4}", "-0.75", true)]
+    [InlineData(@"\frac{2}{4}", "1/2", true)]
     public void AreEquivalent_EquivalenceChecks_ReturnsExpectedResult(string answerA, string answerB, bool expectedEquivalent)
     {
         var result = _normalizer.AreEquivalent(answerA, answerB);
 
         Assert.Equal(expectedEquivalent, result);
+    }
+
+    [Theory]
+    [InlineData("1 1/-2")]
+    [InlineData("1 -1/2")]
+    [InlineData("-1 -1/2")]
+    [InlineData("-1 1/-2")]
+    public void TryNormalize_AmbiguousMixedNumberSigns_ReturnsFalse(string input)
+    {
+        var success = _normalizer.TryNormalize(input, out var frac);
+
+        Assert.False(success);
+        Assert.Null(frac);
+    }
+
+    [Fact]
+    public void TryNormalize_ExceedsMaxRawLength_ReturnsFalse()
+    {
+        var overlyLongInput = new string('1', 129);
+        var success = _normalizer.TryNormalize(overlyLongInput, out var frac);
+
+        Assert.False(success);
+        Assert.Null(frac);
+    }
+
+    [Fact]
+    public void TryNormalize_ExceedsMaxDecimalDigits_ReturnsFalse()
+    {
+        var overlyLongDecimal = "0." + new string('1', 31);
+        var success = _normalizer.TryNormalize(overlyLongDecimal, out var frac);
+
+        Assert.False(success);
+        Assert.Null(frac);
     }
 }

@@ -17,6 +17,7 @@ public class QuestionTemplate
     public GradingCriteria GradingCriteria { get; set; } = null!;
     public decimal MaxScore { get; set; }
     public uint EstimatedTimeSeconds { get; set; }
+    public QuestionAnswerEvaluationMode? AnswerEvaluationMode { get; set; }
     public List<OptionTemplate> Options { get; set; } = new();
 }
 
@@ -99,6 +100,7 @@ public static class QuestionSeedTemplates
         templates.Add(new QuestionTemplate
         {
             LogicalCode = "MATH-EXPLOG-02", TopicCode = "MATH-EXP-LOG", Difficulty = 2, QuestionType = QuestionType.ShortAnswer, LanguageCode = "vi", MaxScore = 20, EstimatedTimeSeconds = 120,
+            AnswerEvaluationMode = QuestionAnswerEvaluationMode.NumericRational,
             QuestionText = "Tính giá trị biểu thức A = log_3(9) + log_2(8).", CorrectAnswer = "5",
             Solution = "A = log_3(3^2) + log_2(2^3) = 2 * log_3(3) + 3 * log_2(2) = 2 * 1 + 3 * 1 = 5.",
             ExpectedReasoning = "Biến đổi số nguyên dưới dấu logarit thành lũy thừa của cơ số tương ứng. Sử dụng tính chất log_a(a^n) = n.",

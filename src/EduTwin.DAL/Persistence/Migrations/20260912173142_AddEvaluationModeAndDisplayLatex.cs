@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
@@ -16,6 +16,9 @@ namespace EduTwin.DAL.Persistence.Migrations
                 type: "varchar(32)",
                 nullable: false,
                 defaultValue: "TextExact");
+
+            migrationBuilder.Sql("UPDATE questions SET answer_evaluation_mode = 'Manual' WHERE question_type = 'Essay';");
+            migrationBuilder.Sql("UPDATE questions SET answer_evaluation_mode = 'TextExact' WHERE question_type = 'MultipleChoice';");
 
             migrationBuilder.AddColumn<string>(
                 name: "answer_display_latex",

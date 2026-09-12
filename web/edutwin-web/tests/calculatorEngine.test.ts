@@ -14,6 +14,15 @@ test("calculatorEngine evaluates basic arithmetic and operator precedence", () =
   assert.equal(calc.evaluate("2 ^ 3 ^ 2"), 512);
   assert.equal(calc.evaluate("-5 + 10"), 5);
   assert.equal(calc.evaluate("-(3 + 2)"), -5);
+  // Unary minus binds looser than exponentiation: -2^2 = -(2^2) = -4
+  assert.equal(calc.evaluate("-2 ^ 2"), -4);
+  assert.equal(calc.evaluate("-2^2"), -4);
+  assert.equal(calc.evaluate("(-2) ^ 2"), 4);
+  assert.equal(calc.evaluate("(-2)^2"), 4);
+  assert.equal(calc.evaluate("2 ^ -2"), 0.25);
+  assert.equal(calc.evaluate("2^-2"), 0.25);
+  assert.equal(calc.evaluate("-2 ^ 3"), -8);
+  assert.equal(calc.evaluate("-2^3"), -8);
 });
 
 test("calculatorEngine supports unicode symbols ×, ÷, and π", () => {

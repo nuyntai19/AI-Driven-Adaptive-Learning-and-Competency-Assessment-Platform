@@ -224,6 +224,13 @@ public class EduTwinSeedFactory
                 PrimaryTopicNodeId = topic.NodeId,
                 CreatedByTeacherId = teacherId,
                 QuestionType = t.QuestionType,
+                AnswerEvaluationMode = t.AnswerEvaluationMode ?? (t.QuestionType switch
+                {
+                    EduTwin.Contracts.CurriculumAndQuestions.QuestionType.MultipleChoice => EduTwin.Contracts.CurriculumAndQuestions.QuestionAnswerEvaluationMode.TextExact,
+                    EduTwin.Contracts.CurriculumAndQuestions.QuestionType.Essay => EduTwin.Contracts.CurriculumAndQuestions.QuestionAnswerEvaluationMode.Manual,
+                    EduTwin.Contracts.CurriculumAndQuestions.QuestionType.ShortAnswer => EduTwin.Contracts.CurriculumAndQuestions.QuestionAnswerEvaluationMode.TextExact,
+                    _ => EduTwin.Contracts.CurriculumAndQuestions.QuestionAnswerEvaluationMode.TextExact
+                }),
                 Difficulty = t.Difficulty,
                 Status = EduTwin.Contracts.CurriculumAndQuestions.QuestionStatus.Active,
                 ReasoningRequired = true,

@@ -21,7 +21,7 @@ public class ShortAnswerGraderEvaluationModeTests
 
         Assert.False(result.IsCorrect);
         Assert.Equal(0m, result.Score);
-        Assert.Equal("No answer provided.", result.Feedback);
+        Assert.Equal("No answer provided (skipped).", result.Feedback);
     }
 
     [Fact]
@@ -81,7 +81,7 @@ public class ShortAnswerGraderEvaluationModeTests
     }
 
     [Fact]
-    public void Grade_NumericRationalMode_NonNumericStudentAnswer_ReturnsIncorrect()
+    public void Grade_NumericRationalMode_NonNumericStudentAnswer_RequiresTeacherReview()
     {
         var context = new QuestionGradingContext
         {
@@ -91,9 +91,29 @@ public class ShortAnswerGraderEvaluationModeTests
 
         var result = _grader.Grade("not a number", "1/2", context);
 
+        Assert.Null(result.IsCorrect);
+        Assert.Equal(0m, result.Score);
+        Assert.Contains("Unsupported mathematical format. Requires teacher review.", result.Feedback);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("SKIPPED")]
+    [InlineData("skipped")]
+    public void Grade_NumericRationalMode_SkippedOrEmpty_ReturnsIncorrectWithoutTeacherReview(string answer)
+    {
+        var context = new QuestionGradingContext
+        {
+            EvaluationMode = QuestionAnswerEvaluationMode.NumericRational,
+            MaxScore = 1.0m
+        };
+
+        var result = _grader.Grade(answer, "1/2", context);
+
         Assert.False(result.IsCorrect);
         Assert.Equal(0m, result.Score);
-        Assert.Contains("cannot evaluate as a numeric rational value", result.Feedback);
+        Assert.Contains("No answer provided", result.Feedback);
     }
 
     [Fact]

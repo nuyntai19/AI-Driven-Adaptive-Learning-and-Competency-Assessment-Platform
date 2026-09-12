@@ -148,8 +148,12 @@ public class UpdateQuestionUseCase : IUpdateQuestionUseCase
         }
         else
         {
-            if (!Enum.TryParse<QuestionAnswerEvaluationMode>(request.AnswerEvaluationMode, ignoreCase: false, out evalMode))
+            if (!Enum.TryParse<QuestionAnswerEvaluationMode>(request.AnswerEvaluationMode, ignoreCase: false, out evalMode)
+                || !Enum.IsDefined(evalMode)
+                || request.AnswerEvaluationMode != evalMode.ToString())
+            {
                 return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+            }
 
             if (questionType == QuestionType.MultipleChoice && evalMode != QuestionAnswerEvaluationMode.TextExact)
                 return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);

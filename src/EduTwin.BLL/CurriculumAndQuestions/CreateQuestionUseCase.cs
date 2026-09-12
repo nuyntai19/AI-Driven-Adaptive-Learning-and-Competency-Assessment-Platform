@@ -112,8 +112,12 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
         }
         else
         {
-            if (!Enum.TryParse<QuestionAnswerEvaluationMode>(request.AnswerEvaluationMode, ignoreCase: false, out evalMode))
+            if (!Enum.TryParse<QuestionAnswerEvaluationMode>(request.AnswerEvaluationMode, ignoreCase: false, out evalMode)
+                || !Enum.IsDefined(evalMode)
+                || request.AnswerEvaluationMode != evalMode.ToString())
+            {
                 return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+            }
 
             if (questionType == QuestionType.MultipleChoice && evalMode != QuestionAnswerEvaluationMode.TextExact)
                 return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);

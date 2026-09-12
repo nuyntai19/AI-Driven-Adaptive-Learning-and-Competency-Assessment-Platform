@@ -40,13 +40,13 @@ public class ShortAnswerGrader : IQuestionGrader
         string? correctAnswer,
         QuestionGradingContext context)
     {
-        if (string.IsNullOrWhiteSpace(studentAnswer))
+        if (string.IsNullOrWhiteSpace(studentAnswer) || string.Equals(studentAnswer.Trim(), "SKIPPED", StringComparison.OrdinalIgnoreCase))
         {
             return new PreliminaryGradingResult
             {
                 IsCorrect = false,
                 Score = 0m,
-                Feedback = "No answer provided."
+                Feedback = "No answer provided (skipped)."
             };
         }
 
@@ -98,11 +98,13 @@ public class ShortAnswerGrader : IQuestionGrader
                 };
             }
 
+            // Unsupported mathematical grammar/format: cannot assume student is wrong.
+            // Coercing to false would mutate mastery prematurely. Defer to teacher review.
             return new PreliminaryGradingResult
             {
-                IsCorrect = false,
+                IsCorrect = null,
                 Score = 0m,
-                Feedback = "Incorrect answer (cannot evaluate as a numeric rational value)."
+                Feedback = "Unsupported mathematical format. Requires teacher review."
             };
         }
 

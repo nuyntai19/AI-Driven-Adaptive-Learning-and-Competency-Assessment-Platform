@@ -988,7 +988,8 @@ public sealed class RecommendationEngine : IRecommendationEngine
                     EstimatedTimeSeconds: currentItem.RecommendedQuestion.EstimatedTimeSeconds,
                     ReasoningRequired: currentItem.RecommendedQuestion.ReasoningRequired,
                     LanguageCode: currentItem.RecommendedQuestion.LanguageCode,
-                    Options: questionOptions)
+                    Options: questionOptions,
+                    AnswerEvaluationMode: currentItem.RecommendedQuestion.AnswerEvaluationMode)
                 : null,
             Explanation = currentItem.Reason
         };

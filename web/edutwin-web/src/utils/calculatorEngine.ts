@@ -52,9 +52,9 @@ export class CalculatorEngine {
 
     // Parser grammar:
     // expr = term (( '+' | '-' ) term)*
-    // term = power (( '*' | '/' | '%' ) power)*
-    // power = factor ( '^' power )?   (right-associative)
-    // factor = ( '+' | '-' )? primary
+    // term = unary (( '*' | '/' | '%' ) unary)*
+    // unary = ( '+' | '-' ) unary | power
+    // power = primary ( '^' unary )?   (right-associative, looser than primary, tighter than unary)
     // primary = NUMBER | CONSTANT | FUNCTION '(' expr ')' | '(' expr ')'
 
     const parseExpr = (): number => {
@@ -69,10 +69,10 @@ export class CalculatorEngine {
     };
 
     const parseTerm = (): number => {
-      let val = parsePower();
+      let val = parseUnary();
       while (peek() === "*" || peek() === "/" || peek() === "%") {
         const op = consume();
-        const next = parsePower();
+        const next = parseUnary();
         if (op === "*") {
           val *= next;
         } else if (op === "/") {
@@ -90,26 +90,26 @@ export class CalculatorEngine {
       return val;
     };
 
-    const parsePower = (): number => {
-      const base = parseFactor();
-      if (peek() === "^") {
-        consume();
-        const exponent = parsePower();
-        return Math.pow(base, exponent);
-      }
-      return base;
-    };
-
-    const parseFactor = (): number => {
+    const parseUnary = (): number => {
       if (peek() === "-") {
         consume();
-        return -parseFactor();
+        return -parseUnary();
       }
       if (peek() === "+") {
         consume();
-        return parseFactor();
+        return parseUnary();
       }
-      return parsePrimary();
+      return parsePower();
+    };
+
+    const parsePower = (): number => {
+      const base = parsePrimary();
+      if (peek() === "^") {
+        consume();
+        const exponent = parseUnary();
+        return Math.pow(base, exponent);
+      }
+      return base;
     };
 
     const parsePrimary = (): number => {

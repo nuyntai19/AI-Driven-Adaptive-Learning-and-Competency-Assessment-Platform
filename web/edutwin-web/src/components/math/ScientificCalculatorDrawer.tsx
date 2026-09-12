@@ -49,7 +49,7 @@ export const ScientificCalculatorDrawer: React.FC<ScientificCalculatorDrawerProp
         ...prev.slice(0, 19),
       ]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Calculation error");
+      setError(err instanceof Error ? err.message : "Lỗi tính toán");
       setResult(null);
     }
   };
@@ -118,7 +118,7 @@ export const ScientificCalculatorDrawer: React.FC<ScientificCalculatorDrawerProp
       className="fixed inset-0 z-50 flex justify-end bg-slate-900/40 backdrop-blur-xs transition-opacity"
       role="dialog"
       aria-modal="true"
-      aria-label="Scientific Calculator"
+      aria-label="Máy tính khoa học"
     >
       {/* Backdrop click to close */}
       <div className="absolute inset-0" onClick={onClose} />
@@ -129,7 +129,7 @@ export const ScientificCalculatorDrawer: React.FC<ScientificCalculatorDrawerProp
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950">
           <div className="flex items-center gap-2">
             <span className="text-base font-semibold text-slate-900 dark:text-slate-100">
-              Scientific Calculator
+              Máy tính khoa học
             </span>
             {memory !== 0 && (
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
@@ -147,13 +147,13 @@ export const ScientificCalculatorDrawer: React.FC<ScientificCalculatorDrawerProp
                   : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700"
               }`}
             >
-              History
+              Lịch sử
             </button>
             <button
               type="button"
               onClick={onClose}
               className="p-1 rounded text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
-              aria-label="Close calculator"
+              aria-label="Đóng máy tính"
             >
               ✕
             </button>
@@ -164,7 +164,7 @@ export const ScientificCalculatorDrawer: React.FC<ScientificCalculatorDrawerProp
         <div className="p-4 bg-slate-100 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800">
           <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
             <div className="flex items-center gap-2">
-              <span className="font-medium">MODE:</span>
+              <span className="font-medium">CHẾ ĐỘ:</span>
               <button
                 type="button"
                 onClick={() => setAngleMode(angleMode === "deg" ? "rad" : "deg")}
@@ -175,7 +175,7 @@ export const ScientificCalculatorDrawer: React.FC<ScientificCalculatorDrawerProp
             </div>
             {result !== null && (
               <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                Evaluated
+                Đã tính
               </span>
             )}
           </div>
@@ -187,7 +187,7 @@ export const ScientificCalculatorDrawer: React.FC<ScientificCalculatorDrawerProp
             value={expression}
             onChange={(e) => setExpression(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="e.g. sin(30) + sqrt(16)"
+            placeholder="Ví dụ: sin(30) + sqrt(16)..."
             className="w-full bg-transparent font-mono text-lg text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-600 outline-hidden border-b border-slate-300 dark:border-slate-700 focus:border-blue-500 pb-1"
           />
 
@@ -212,7 +212,7 @@ export const ScientificCalculatorDrawer: React.FC<ScientificCalculatorDrawerProp
                 onClick={() => onInsertResult(result)}
                 className="text-xs px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium transition-colors shadow-xs"
               >
-                Insert result ({result})
+                Chèn kết quả ({result})
               </button>
             </div>
           )}
@@ -222,19 +222,19 @@ export const ScientificCalculatorDrawer: React.FC<ScientificCalculatorDrawerProp
         {showHistory && (
           <div className="p-3 bg-slate-50 dark:bg-slate-950/80 border-b border-slate-200 dark:border-slate-800 max-h-48 overflow-y-auto text-xs">
             <div className="font-semibold text-slate-700 dark:text-slate-300 mb-2 flex justify-between items-center">
-              <span>Calculation History</span>
+              <span>Lịch sử tính toán</span>
               {history.length > 0 && (
                 <button
                   type="button"
                   onClick={() => setHistory([])}
                   className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                 >
-                  Clear
+                  Xóa lịch sử
                 </button>
               )}
             </div>
             {history.length === 0 ? (
-              <div className="text-slate-400 italic">No history yet</div>
+              <p className="text-slate-400 italic">Lịch sử trống</p>
             ) : (
               <div className="space-y-1.5">
                 {history.map((h, i) => (

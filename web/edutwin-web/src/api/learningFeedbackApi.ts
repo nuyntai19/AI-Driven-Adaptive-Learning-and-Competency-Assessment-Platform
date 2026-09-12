@@ -64,6 +64,7 @@ export const getNextQuestion = async (
       reasoningRequired: boolean;
       languageCode: string;
       options: NextQuestionDataDto["options"];
+      answerEvaluationMode?: string;
     } | null;
     explanation: string;
   }
@@ -96,6 +97,13 @@ export const getNextQuestion = async (
     languageCode: data.question.languageCode,
     options: data.question.options ?? [],
     explanation: data.explanation,
+    answerEvaluationMode:
+      data.question.answerEvaluationMode ||
+      (data.question.questionType === "MultipleChoice"
+        ? "TextExact"
+        : data.question.questionType === "Essay"
+        ? "Manual"
+        : "NumericRational"),
   };
 };
 

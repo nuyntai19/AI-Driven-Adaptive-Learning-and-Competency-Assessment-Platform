@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { organizationApi } from "../api/organizationApi";
@@ -9,6 +9,7 @@ import { MathInputToolbar } from "../components/math/MathInputToolbar";
 import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
 
 export const QuestionEditorPage = () => {
+  const questionTextRef = useRef<HTMLTextAreaElement>(null);
   const [formData, setFormData] = useState<CreateQuestionRequest>({
     subjectId: "",
     primaryTopicNodeId: "",
@@ -312,16 +313,33 @@ export const QuestionEditorPage = () => {
             {showQuestionMathToolbar && (
               <div className="mb-2">
                 <MathInputToolbar
-                  onInsert={(sym) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      questionText: prev.questionText + sym,
-                    }))
-                  }
+                  onInsert={(sym) => {
+                    const el = questionTextRef.current;
+                    if (!el) {
+                      setFormData((prev) => ({
+                        ...prev,
+                        questionText: prev.questionText + sym,
+                      }));
+                      return;
+                    }
+                    const start = el.selectionStart ?? formData.questionText.length;
+                    const end = el.selectionEnd ?? formData.questionText.length;
+                    const nextVal =
+                      formData.questionText.substring(0, start) +
+                      sym +
+                      formData.questionText.substring(end);
+                    setFormData((prev) => ({ ...prev, questionText: nextVal }));
+                    requestAnimationFrame(() => {
+                      el.focus();
+                      const pos = start + sym.length;
+                      el.setSelectionRange(pos, pos);
+                    });
+                  }}
                 />
               </div>
             )}
             <textarea
+              ref={questionTextRef}
               rows={4}
               value={formData.questionText}
               onChange={(e) => handleInputChange("questionText", e.target.value)}
@@ -430,7 +448,7 @@ export const QuestionEditorPage = () => {
                   {formData.answerEvaluationMode === "NumericRational"
                     ? "Tự động quy chuẩn phân số, số thập phân, số hỗn số về dạng tối giản để so sánh chính xác."
                     : formData.answerEvaluationMode === "TextExact"
-                    ? "So khớp chuỗi ký tự chính xác tuyệt đối (phân biệt ký tự, khoảng trắng)."
+                    ? "So khớp chuỗi chính xác (không phân biệt hoa thường, tự động loại bỏ khoảng trắng thừa đầu cuối)."
                     : "Giáo viên sẽ xem và chấm điểm trực tiếp."}
                 </p>
               </div>

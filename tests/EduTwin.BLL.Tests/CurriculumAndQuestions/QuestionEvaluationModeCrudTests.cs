@@ -414,4 +414,89 @@ public class QuestionEvaluationModeCrudTests : IDisposable
         Assert.NotNull(result.Data);
         Assert.Equal(QuestionStatus.Active.ToString(), result.Data.Status);
     }
+
+    [Theory]
+    [InlineData("999")]
+    [InlineData("-1")]
+    [InlineData("textexact")]
+    [InlineData("numericrational")]
+    [InlineData("manual")]
+    [InlineData("UnknownMode")]
+    public async Task CreateQuestion_WithInvalidOrNonCanonicalEvaluationMode_ReturnsValidationFailed(string mode)
+    {
+        var sut = new CreateQuestionUseCase(_dbContext, _tenantContextMock.Object, _timeProviderMock.Object);
+        var request = new CreateQuestionRequest
+        {
+            SubjectId = _subjectId,
+            PrimaryTopicNodeId = _nodeId.ToString(),
+            QuestionType = nameof(QuestionType.ShortAnswer),
+            AnswerEvaluationMode = mode,
+            Difficulty = 2,
+            QuestionText = "Calculate 1/2",
+            CorrectAnswer = "0.5",
+            Solution = "Solution",
+            MaxScore = 1m,
+            EstimatedTimeSeconds = 60,
+            LanguageCode = "vi"
+        };
+
+        var result = await sut.ExecuteAsync(request);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
+
+    [Theory]
+    [InlineData("999")]
+    [InlineData("-1")]
+    [InlineData("textexact")]
+    [InlineData("numericrational")]
+    [InlineData("manual")]
+    public async Task UpdateQuestion_WithInvalidOrNonCanonicalEvaluationMode_ReturnsValidationFailed(string mode)
+    {
+        var question = new Question
+        {
+            QuestionId = 5UL,
+            CenterId = _centerId,
+            SubjectId = _subjectId,
+            PrimaryTopicNodeId = _nodeId,
+            CreatedByTeacherId = _teacherId,
+            QuestionType = QuestionType.ShortAnswer,
+            AnswerEvaluationMode = QuestionAnswerEvaluationMode.TextExact,
+            Difficulty = 2,
+            QuestionText = "Question text",
+            CorrectAnswer = "Answer",
+            Solution = "Solution",
+            MaxScore = 1m,
+            EstimatedTimeSeconds = 60,
+            LanguageCode = "vi",
+            Status = QuestionStatus.Draft,
+            RowVersion = 1UL,
+            CreatedAt = _fixedTime.UtcDateTime,
+            UpdatedAt = _fixedTime.UtcDateTime
+        };
+        _dbContext.Questions.Add(question);
+        await _dbContext.SaveChangesAsync();
+
+        var sut = new UpdateQuestionUseCase(_dbContext, _tenantContextMock.Object, _timeProviderMock.Object);
+        var request = new UpdateQuestionRequest
+        {
+            PrimaryTopicNodeId = _nodeId.ToString(),
+            QuestionType = nameof(QuestionType.ShortAnswer),
+            AnswerEvaluationMode = mode,
+            Difficulty = 2,
+            QuestionText = "Updated question",
+            CorrectAnswer = "Updated answer",
+            Solution = "Updated solution",
+            MaxScore = 1m,
+            EstimatedTimeSeconds = 60,
+            LanguageCode = "vi",
+            RowVersion = "1"
+        };
+
+        var result = await sut.ExecuteAsync("5", request);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
 }

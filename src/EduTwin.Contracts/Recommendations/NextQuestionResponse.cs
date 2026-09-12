@@ -23,7 +23,8 @@ public sealed record NextQuestionQuestionDto(
     uint EstimatedTimeSeconds,
     bool ReasoningRequired,
     string LanguageCode,
-    IReadOnlyList<StudentQuestionOptionDto> Options);
+    IReadOnlyList<StudentQuestionOptionDto> Options,
+    QuestionAnswerEvaluationMode AnswerEvaluationMode = QuestionAnswerEvaluationMode.TextExact);
 
 public sealed class NextQuestionDto
 {

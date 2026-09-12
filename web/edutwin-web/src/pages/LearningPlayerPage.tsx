@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -36,6 +36,12 @@ export const LearningPlayerPage = () => {
   const [isCalculatorOpen, setIsCalculatorOpen] = useState<boolean>(false);
   const [showMathToolbar, setShowMathToolbar] = useState<boolean>(false);
 
+  // Input refs and cursor management
+  const shortAnswerInputRef = useRef<HTMLInputElement>(null);
+  const essayTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const reasoningTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const [activeInputTarget, setActiveInputTarget] = useState<"answer" | "reasoning">("answer");
+
   // Client submission token (unique per attempt session)
   const clientSubmissionIdRef = useRef<string>(crypto.randomUUID());
 
@@ -68,12 +74,84 @@ export const LearningPlayerPage = () => {
     enabled: !!subjectId && !feedbackData && !pollingJobId && !persistedJobId,
   });
 
+  // Derive presentation LaTeX separating presentation from semantic evaluation
+  const derivedDisplayLatex = useMemo(() => {
+    if (answerDisplayLatex.trim()) return answerDisplayLatex.trim();
+    if (!finalAnswer.trim()) return "";
+    // If it's a simple rational fraction like 3/2 or -1/4, auto-format to KaTeX \frac{p}{q}
+    const fracMatch = finalAnswer.trim().match(/^([+-]?\d+)\s*\/\s*(\d+)$/);
+    if (fracMatch) {
+      const sign = fracMatch[1].startsWith("-") ? "-" : "";
+      const num = fracMatch[1].replace(/^[+-]/, "");
+      const den = fracMatch[2];
+      return `${sign}\\frac{${num}}{${den}}`;
+    }
+    return finalAnswer.trim();
+  }, [answerDisplayLatex, finalAnswer]);
+
   // Track answer changes deterministically
   const handleAnswerChange = (newAnswer: string) => {
     if (newAnswer !== finalAnswer && finalAnswer !== "") {
       setAnswerChanges((prev) => prev + 1);
     }
     setFinalAnswer(newAnswer);
+  };
+
+  // Cursor-aware insertion supporting both answer inputs and reasoning text
+  const insertTextAtCursor = (textToInsert: string) => {
+    if (activeInputTarget === "reasoning") {
+      const el = reasoningTextareaRef.current;
+      if (!el) {
+        setReasoningText((prev) => prev + textToInsert);
+        return;
+      }
+      const start = el.selectionStart ?? reasoningText.length;
+      const end = el.selectionEnd ?? reasoningText.length;
+      const nextVal = reasoningText.substring(0, start) + textToInsert + reasoningText.substring(end);
+      setReasoningText(nextVal);
+      requestAnimationFrame(() => {
+        el.focus();
+        const pos = start + textToInsert.length;
+        el.setSelectionRange(pos, pos);
+      });
+      return;
+    }
+
+    if (question?.questionType === "Essay") {
+      const el = essayTextareaRef.current;
+      if (!el) {
+        handleAnswerChange(finalAnswer + textToInsert);
+        return;
+      }
+      const start = el.selectionStart ?? finalAnswer.length;
+      const end = el.selectionEnd ?? finalAnswer.length;
+      const nextVal = finalAnswer.substring(0, start) + textToInsert + finalAnswer.substring(end);
+      handleAnswerChange(nextVal);
+      requestAnimationFrame(() => {
+        el.focus();
+        const pos = start + textToInsert.length;
+        el.setSelectionRange(pos, pos);
+      });
+    } else {
+      const el = shortAnswerInputRef.current;
+      let insertStr = textToInsert;
+      if (question?.answerEvaluationMode === "NumericRational" && textToInsert === "\\frac{a}{b}") {
+        insertStr = "/";
+      }
+      if (!el) {
+        handleAnswerChange(finalAnswer + insertStr);
+        return;
+      }
+      const start = el.selectionStart ?? finalAnswer.length;
+      const end = el.selectionEnd ?? finalAnswer.length;
+      const nextVal = finalAnswer.substring(0, start) + insertStr + finalAnswer.substring(end);
+      handleAnswerChange(nextVal);
+      requestAnimationFrame(() => {
+        el.focus();
+        const pos = start + insertStr.length;
+        el.setSelectionRange(pos, pos);
+      });
+    }
   };
 
   // Submit attempt
@@ -101,7 +179,7 @@ export const LearningPlayerPage = () => {
         answerChanges,
         skipped,
         clientSubmissionId: clientSubmissionIdRef.current,
-        answerDisplayLatex: answerDisplayLatex.trim() ? answerDisplayLatex.trim() : (finalAnswer.trim() ? finalAnswer.trim() : null),
+        answerDisplayLatex: derivedDisplayLatex || (finalAnswer.trim() ? finalAnswer.trim() : null),
       });
 
       const activeJobId = response.analysisJobId || response.jobId || "";
@@ -583,11 +661,7 @@ export const LearningPlayerPage = () => {
             {showMathToolbar && question?.questionType !== "MultipleChoice" && (
               <div className="mb-3">
                 <MathInputToolbar
-                  onInsert={(sym) => {
-                    const nextAns = finalAnswer + sym;
-                    handleAnswerChange(nextAns);
-                    setAnswerDisplayLatex(nextAns);
-                  }}
+                  onInsert={(sym) => insertTextAtCursor(sym)}
                 />
               </div>
             )}
@@ -626,19 +700,18 @@ export const LearningPlayerPage = () => {
             ) : question?.questionType === "Essay" ? (
               <div>
                 <textarea
+                  ref={essayTextareaRef}
                   rows={7}
                   value={finalAnswer}
-                  onChange={(e) => {
-                    handleAnswerChange(e.target.value);
-                    setAnswerDisplayLatex(e.target.value);
-                  }}
+                  onFocus={() => setActiveInputTarget("answer")}
+                  onChange={(e) => handleAnswerChange(e.target.value)}
                   disabled={isSubmitting}
                   placeholder="Trình bày câu trả lời tự luận của bạn (hỗ trợ công thức LaTeX)..."
                   className="mt-2 w-full rounded-lg border border-slate-300 p-3 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono"
                 />
                 {finalAnswer.trim() && (
                   <MathFormulaPreview
-                    formula={answerDisplayLatex || finalAnswer}
+                    formula={derivedDisplayLatex}
                     label="Xem trước bài làm (KaTeX)"
                     className="mt-2"
                   />
@@ -646,23 +719,47 @@ export const LearningPlayerPage = () => {
               </div>
             ) : (
               <div>
+                <div className="flex items-center gap-2 mb-1">
+                  {question?.answerEvaluationMode === "NumericRational" ? (
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                      Chế độ chấm: Số hữu tỉ (hỗ trợ phân số, số thập phân, hỗn số)
+                    </span>
+                  ) : question?.answerEvaluationMode === "Manual" ? (
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
+                      Chế độ chấm: Giáo viên chấm thủ công
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                      Chế độ chấm: Chuỗi chính xác
+                    </span>
+                  )}
+                </div>
                 <input
+                  ref={shortAnswerInputRef}
                   type="text"
                   value={finalAnswer}
-                  onChange={(e) => {
-                    handleAnswerChange(e.target.value);
-                    setAnswerDisplayLatex(e.target.value);
-                  }}
+                  onFocus={() => setActiveInputTarget("answer")}
+                  onChange={(e) => handleAnswerChange(e.target.value)}
                   disabled={isSubmitting}
-                  placeholder="Nhập câu trả lời ngắn (ví dụ: 3/4, 0.75, 1 1/2 hoặc biểu thức)..."
-                  className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 font-mono focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  placeholder={
+                    question?.answerEvaluationMode === "NumericRational"
+                      ? "Nhập đáp án số học / phân số (ví dụ: 3/2, 0.75, 1 1/2)..."
+                      : "Nhập câu trả lời ngắn..."
+                  }
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 font-mono focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 />
                 {finalAnswer.trim() && (
-                  <MathFormulaPreview
-                    formula={answerDisplayLatex || finalAnswer}
-                    label="Xem trước đáp án hiển thị (KaTeX)"
-                    className="mt-2"
-                  />
+                  <div className="mt-2 space-y-1">
+                    <MathFormulaPreview
+                      formula={derivedDisplayLatex}
+                      label="Xem trước công thức (KaTeX)"
+                    />
+                    {question?.answerEvaluationMode === "NumericRational" && derivedDisplayLatex !== finalAnswer && (
+                      <p className="text-[11px] text-slate-500">
+                        Hiển thị công thức KaTeX: <code className="text-indigo-600">{derivedDisplayLatex}</code> (giá trị chấm: <code className="text-slate-700">{finalAnswer}</code>)
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
             )}
@@ -682,13 +779,22 @@ export const LearningPlayerPage = () => {
               Hệ thống AI sẽ phân tích các bước lập luận để phát hiện thiếu sót và cập nhật Hồ sơ Năng lực.
             </p>
             <textarea
+              ref={reasoningTextareaRef}
               rows={4}
               value={reasoningText}
+              onFocus={() => setActiveInputTarget("reasoning")}
               onChange={(e) => setReasoningText(e.target.value)}
               disabled={isSubmitting}
               placeholder="Mô tả từng bước bạn đã thực hiện để tìm ra kết quả..."
               className="mt-2 w-full rounded-lg border border-slate-300 p-3 text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-sm"
             />
+            {reasoningText.trim() && /[\\[{^_\\]]/.test(reasoningText) && (
+              <MathFormulaPreview
+                formula={reasoningText}
+                label="Xem trước công thức trong lập luận (KaTeX)"
+                className="mt-2"
+              />
+            )}
           </div>
 
           {/* Confidence Slider */}
@@ -743,10 +849,7 @@ export const LearningPlayerPage = () => {
       <ScientificCalculatorDrawer
         isOpen={isCalculatorOpen}
         onClose={() => setIsCalculatorOpen(false)}
-        onInsertResult={(val) => {
-          handleAnswerChange(val);
-          setAnswerDisplayLatex(val);
-        }}
+        onInsertResult={(val) => insertTextAtCursor(val)}
       />
     </div>
   );

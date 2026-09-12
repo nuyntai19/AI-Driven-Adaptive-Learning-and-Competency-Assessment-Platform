@@ -14,11 +14,11 @@ interface SymbolItem {
 }
 
 const TABS: { id: TabType; name: string }[] = [
-  { id: "basic", name: "Basic" },
-  { id: "algebra", name: "Algebra" },
-  { id: "calculus", name: "Calculus" },
-  { id: "sets", name: "Sets & Logic" },
-  { id: "geometry", name: "Geometry & Greek" },
+  { id: "basic", name: "Cơ bản" },
+  { id: "algebra", name: "Đại số" },
+  { id: "calculus", name: "Giải tích" },
+  { id: "sets", name: "Tập hợp & Logic" },
+  { id: "geometry", name: "Hình học & Hy Lạp" },
 ];
 
 const SYMBOLS: Record<TabType, SymbolItem[]> = {
