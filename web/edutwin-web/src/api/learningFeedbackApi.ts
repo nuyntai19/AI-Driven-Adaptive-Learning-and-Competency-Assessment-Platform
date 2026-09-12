@@ -81,9 +81,10 @@ export const getNextQuestion = async (
 
   return {
     strategy: data.strategy,
-    recommendationId: data.recommendationId,
-    questionId: data.question.questionId,
-    topicNodeId: data.topic.nodeId,
+    recommendationId:
+      data.recommendationId == null ? null : String(data.recommendationId),
+    questionId: String(data.question.questionId),
+    topicNodeId: String(data.topic.nodeId),
     topicName: data.topic.nodeName,
     topicMastery: data.topic.mastery,
     questionType: data.question.questionType,

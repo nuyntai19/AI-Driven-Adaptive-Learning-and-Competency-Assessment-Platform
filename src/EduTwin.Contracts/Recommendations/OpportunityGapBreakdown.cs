@@ -1,4 +1,5 @@
 using System;
+using System.Text.Json.Serialization;
 
 namespace EduTwin.Contracts.Recommendations;
 
@@ -6,6 +7,7 @@ public sealed record OpportunityGapBreakdown(
     string Strategy,
     string CalculationVersion,
     int EffectiveEvidenceCount,
+    [property: JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.WriteAsString)]
     ulong TopicNodeId,
     string TopicName,
     decimal MasteryPercentage,

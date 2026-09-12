@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 using EduTwin.Contracts.Common;
 using EduTwin.Contracts.IdentityAndTenancy;
 
@@ -7,10 +8,17 @@ namespace EduTwin.Contracts.Recommendations;
 
 public sealed class LearningPathItemDto
 {
+    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.WriteAsString)]
     public ulong LearningPathItemId { get; set; }
+
+    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.WriteAsString)]
     public ulong TopicNodeId { get; set; }
+
     public string TopicName { get; set; } = null!;
+
+    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.WriteAsString)]
     public ulong? RecommendedQuestionId { get; set; }
+
     public uint RankOrder { get; set; }
     public decimal? OpportunityScore { get; set; }
     public string Reason { get; set; } = null!;
