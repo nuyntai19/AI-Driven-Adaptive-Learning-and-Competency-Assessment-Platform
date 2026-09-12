@@ -15,6 +15,7 @@ public record PlatformCenterListItemDto
     public Guid? InitialManagerUserId { get; init; }
     public string? InitialManagerUsername { get; init; }
     public string? InitialManagerDisplayName { get; init; }
+    public string? InitialManagerUserRowVersion { get; init; }
 }
 
 public record CreatePlatformCenterRequest

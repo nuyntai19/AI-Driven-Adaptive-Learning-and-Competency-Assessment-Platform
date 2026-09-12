@@ -55,10 +55,10 @@ public sealed class PlatformAdminProvisioner(
             await dbContext.SaveChangesAsync(cancellationToken);
             logger.LogInformation("Provisioned Root Tenant PLATFORM ({CenterId})", ReservedPlatformCenterId);
         }
-        else if (platformCenter.CenterCode != "PLATFORM" || platformCenter.Status != CenterStatus.Active)
+        else if (platformCenter.CenterCode != "PLATFORM" || platformCenter.Status != CenterStatus.Active || platformCenter.IsDeleted)
         {
             throw new InvalidOperationException(
-                $"Root Tenant PLATFORM ({ReservedPlatformCenterId}) is in a malformed state (CenterCode='{platformCenter.CenterCode}', Status='{platformCenter.Status}').");
+                $"Root Tenant PLATFORM ({ReservedPlatformCenterId}) is in a malformed state (CenterCode='{platformCenter.CenterCode}', Status='{platformCenter.Status}', IsDeleted={platformCenter.IsDeleted}).");
         }
 
         // Invariant: No ordinary non-PlatformAdmin users inside Root Tenant PLATFORM

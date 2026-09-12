@@ -84,9 +84,11 @@ test("platform center contracts serialize correctly", () => {
     initialManagerUserId: "22222222-2222-2222-2222-222222222222",
     initialManagerUsername: "manager_test",
     initialManagerDisplayName: "Test Manager",
+    initialManagerUserRowVersion: "1",
   };
   assert.equal(centerItem.centerCode, "CENTER_TEST");
   assert.equal(centerItem.status, "Active");
+  assert.equal(centerItem.initialManagerUserRowVersion, "1");
 
   const createReq: CreatePlatformCenterRequest = {
     centerCode: "NEW_CENTER",

@@ -9,6 +9,7 @@ export interface PlatformCenterListItem {
   initialManagerUserId?: string | null;
   initialManagerUsername?: string | null;
   initialManagerDisplayName?: string | null;
+  initialManagerUserRowVersion?: string | null;
 }
 
 export interface CreatePlatformCenterRequest {

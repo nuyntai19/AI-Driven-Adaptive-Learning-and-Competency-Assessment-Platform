@@ -116,7 +116,19 @@ export const PlatformCentersPage: React.FC = () => {
       managerUserId: string;
       request: ResetCenterManagerPasswordRequest;
     }) => platformApi.resetCenterManagerPassword(centerId, managerUserId, request),
-    onSuccess: () => {
+    onSuccess: (res) => {
+      // Optimistically update the cached list item with the new row version if available
+      queryClient.setQueriesData({ queryKey: ["platform-centers"] }, (old: any) => {
+        if (!old || !old.items) return old;
+        return {
+          ...old,
+          items: old.items.map((item: PlatformCenterListItem) =>
+            item.centerId === resetPasswordCenter?.centerId
+              ? { ...item, initialManagerUserRowVersion: res.newUserRowVersion }
+              : item
+          ),
+        };
+      });
       queryClient.invalidateQueries({ queryKey: ["platform-centers"] });
       setResetPasswordCenter(null);
       setNewPassword("");
@@ -175,7 +187,7 @@ export const PlatformCentersPage: React.FC = () => {
       managerUserId: resetPasswordCenter.initialManagerUserId,
       request: {
         newPassword,
-        expectedUserRowVersion: "1", // Initial or fallback version
+        expectedUserRowVersion: resetPasswordCenter.initialManagerUserRowVersion || "1",
       },
     });
   };
@@ -235,7 +247,7 @@ export const PlatformCentersPage: React.FC = () => {
         <div className="relative flex-1 w-full">
           <input
             type="text"
-            placeholder="Tìm kiếm theo mã, tên trung tâm..."
+            placeholder="Tìm kiếm theo mã, tên trung tâm hoặc người quản lý..."
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -523,13 +535,13 @@ export const PlatformCentersPage: React.FC = () => {
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                      Mật Khẩu Ban Đầu (tối thiểu 8 ký tự) *
+                      Mật Khẩu Ban Đầu (tối thiểu 12 ký tự) *
                     </label>
                     <input
                       type="password"
                       required
-                      minLength={8}
-                      placeholder="••••••••"
+                      minLength={12}
+                      placeholder="••••••••••••"
                       value={newManagerPassword}
                       onChange={(e) => setNewManagerPassword(e.target.value)}
                       className="w-full px-3 py-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600"
@@ -625,13 +637,13 @@ export const PlatformCentersPage: React.FC = () => {
             <form onSubmit={handleResetPasswordConfirm} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  Mật Khẩu Mới (tối thiểu 8 ký tự) *
+                  Mật Khẩu Mới (tối thiểu 12 ký tự) *
                 </label>
                 <input
                   type="password"
                   required
-                  minLength={8}
-                  placeholder="Nhập mật khẩu mới..."
+                  minLength={12}
+                  placeholder="Nhập mật khẩu mới (tối thiểu 12 ký tự)..."
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   className="w-full px-3 py-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600"

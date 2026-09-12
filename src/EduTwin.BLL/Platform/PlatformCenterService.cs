@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -83,7 +84,13 @@ public class PlatformCenterService : IPlatformCenterService
         if (!string.IsNullOrWhiteSpace(search))
         {
             var trimmedSearch = search.Trim();
-            query = query.Where(c => c.CenterCode.Contains(trimmedSearch) || c.CenterName.Contains(trimmedSearch));
+            query = query.Where(c => c.CenterCode.Contains(trimmedSearch) ||
+                                     c.CenterName.Contains(trimmedSearch) ||
+                                     _dbContext.Users.IgnoreQueryFilters().Any(u =>
+                                         u.CenterId == c.CenterId &&
+                                         u.RoleName == UserRole.CenterManager &&
+                                         !u.IsDeleted &&
+                                         (u.Username.Contains(trimmedSearch) || u.DisplayName.Contains(trimmedSearch))));
         }
 
         if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<CenterStatus>(status, true, out var parsedStatus))
@@ -120,28 +127,43 @@ public class PlatformCenterService : IPlatformCenterService
             })
             .ToListAsync(cancellationToken);
 
-        var centerIds = pagedCenters.Select(c => c.CenterId).ToList();
-
-        var initialManagers = await _dbContext.Users
-            .IgnoreQueryFilters()
-            .Where(u => centerIds.Contains(u.CenterId) && u.RoleName == UserRole.CenterManager && !u.IsDeleted)
-            .OrderBy(u => u.CreatedAt)
-            .Select(u => new
+        var managerDict = new Dictionary<Guid, (Guid UserId, string Username, string DisplayName, ulong RowVersion)>();
+        if (pagedCenters.Count > 0)
+        {
+            var parameter = Expression.Parameter(typeof(User), "u");
+            var property = Expression.Property(parameter, nameof(User.CenterId));
+            Expression? orBody = null;
+            foreach (var c in pagedCenters)
             {
-                u.CenterId,
-                u.UserId,
-                u.Username,
-                u.DisplayName
-            })
-            .ToListAsync(cancellationToken);
+                var equals = Expression.Equal(property, Expression.Constant(c.CenterId));
+                orBody = orBody == null ? equals : Expression.OrElse(orBody, equals);
+            }
+            var centerFilter = Expression.Lambda<Func<User, bool>>(orBody!, parameter);
 
-        var managerDict = initialManagers
-            .GroupBy(u => u.CenterId)
-            .ToDictionary(g => g.Key, g => g.First());
+            var initialManagers = await _dbContext.Users
+                .IgnoreQueryFilters()
+                .Where(centerFilter)
+                .Where(u => u.RoleName == UserRole.CenterManager && !u.IsDeleted)
+                .OrderBy(u => u.CreatedAt)
+                .Select(u => new
+                {
+                    u.CenterId,
+                    u.UserId,
+                    u.Username,
+                    u.DisplayName,
+                    u.RowVersion
+                })
+                .ToListAsync(cancellationToken);
+
+            foreach (var m in initialManagers)
+            {
+                managerDict.TryAdd(m.CenterId, (m.UserId, m.Username, m.DisplayName, m.RowVersion));
+            }
+        }
 
         var items = pagedCenters.Select(c =>
         {
-            managerDict.TryGetValue(c.CenterId, out var manager);
+            var hasManager = managerDict.TryGetValue(c.CenterId, out var manager);
             return new PlatformCenterListItemDto
             {
                 CenterId = c.CenterId,
@@ -151,9 +173,10 @@ public class PlatformCenterService : IPlatformCenterService
                 Timezone = c.Timezone,
                 CreatedAt = c.CreatedAt,
                 RowVersion = c.RowVersion.ToString(CultureInfo.InvariantCulture),
-                InitialManagerUserId = manager?.UserId,
-                InitialManagerUsername = manager?.Username,
-                InitialManagerDisplayName = manager?.DisplayName
+                InitialManagerUserId = hasManager ? manager.UserId : null,
+                InitialManagerUsername = hasManager ? manager.Username : null,
+                InitialManagerDisplayName = hasManager ? manager.DisplayName : null,
+                InitialManagerUserRowVersion = hasManager ? manager.RowVersion.ToString(CultureInfo.InvariantCulture) : null
             };
         }).ToList();
 
@@ -307,7 +330,8 @@ public class PlatformCenterService : IPlatformCenterService
             RowVersion = center.RowVersion.ToString(CultureInfo.InvariantCulture),
             InitialManagerUserId = managerUser.UserId,
             InitialManagerUsername = managerUser.Username,
-            InitialManagerDisplayName = managerUser.DisplayName
+            InitialManagerDisplayName = managerUser.DisplayName,
+            InitialManagerUserRowVersion = managerUser.RowVersion.ToString(CultureInfo.InvariantCulture)
         });
     }
 
@@ -429,7 +453,8 @@ public class PlatformCenterService : IPlatformCenterService
             {
                 u.UserId,
                 u.Username,
-                u.DisplayName
+                u.DisplayName,
+                u.RowVersion
             })
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -444,7 +469,8 @@ public class PlatformCenterService : IPlatformCenterService
             RowVersion = center.RowVersion.ToString(CultureInfo.InvariantCulture),
             InitialManagerUserId = manager?.UserId,
             InitialManagerUsername = manager?.Username,
-            InitialManagerDisplayName = manager?.DisplayName
+            InitialManagerDisplayName = manager?.DisplayName,
+            InitialManagerUserRowVersion = manager?.RowVersion.ToString(CultureInfo.InvariantCulture)
         });
     }
 

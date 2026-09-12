@@ -62,7 +62,7 @@ To support production onboarding, partner center provisioning, and tenant lifecy
 - **List Centers (`GET /api/v1/platform/centers`):**
   - Caller must possess `platform.centers.read` claim and belong to `PLATFORM` tenant.
   - Executes intentional cross-tenant query using `IgnoreQueryFilters()`, filtering `center_id != ReservedPlatformCenterId` and `is_deleted == false`.
-  - Returns canonical model fields: `centerId`, `centerCode`, `centerName`, `status`, `timezone`, `createdAt`, `rowVersion`, `initialManagerUserId`, `initialManagerUsername`, `initialManagerDisplayName`.
+  - Returns canonical model fields: `centerId`, `centerCode`, `centerName`, `status`, `timezone`, `createdAt`, `rowVersion`, `initialManagerUserId`, `initialManagerUsername`, `initialManagerDisplayName`, `initialManagerUserRowVersion` (Change Proposal CP-POST-R08-01: added to provide current manager `users.row_version` for client OCC password reset without separate lookup).
   - Empty State: When 0 customer centers exist, returns HTTP 200 OK with `items: []`, `totalCount: 0`.
 - **Create Center (`POST /api/v1/platform/centers`):**
   - Caller must possess `platform.centers.manage` claim and belong to `PLATFORM` tenant.

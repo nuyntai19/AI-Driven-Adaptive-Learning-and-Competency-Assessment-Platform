@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Data.Common;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Logging;
@@ -504,6 +506,574 @@ public sealed class PlatformMySqlIntegrationTests
     }
 
     [MySqlIntegrationFact]
+    public async Task UpdateCenterStatusAsync_RelationalOCCRace_WhenDbUpdateConcurrencyExceptionThrown_ReturnsConcurrencyConflict()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var platformCenterId = AuthorizationBootstrapper.ReservedPlatformCenterId;
+        var platformAdminUserId = Guid.NewGuid();
+        var testCenterId = Guid.NewGuid();
+
+        var setupTenant = new TenantContext();
+        await using (var setupContext = CreateContext(database.ConnectionString, setupTenant))
+        {
+            setupContext.Centers.AddRange(
+                new Center
+                {
+                    CenterId = platformCenterId,
+                    CenterCode = "PLATFORM",
+                    CenterName = "Root Tenant",
+                    Status = CenterStatus.Active,
+                    Timezone = "Asia/Ho_Chi_Minh",
+                    CreatedAt = FixedUtcNow,
+                    UpdatedAt = FixedUtcNow
+                },
+                new Center
+                {
+                    CenterId = testCenterId,
+                    CenterCode = "RACE_CTR",
+                    CenterName = "Race Target Center",
+                    Status = CenterStatus.Active,
+                    Timezone = "Asia/Ho_Chi_Minh",
+                    RowVersion = 1,
+                    CreatedAt = FixedUtcNow,
+                    UpdatedAt = FixedUtcNow
+                }
+            );
+            setupContext.Users.Add(new User
+            {
+                UserId = platformAdminUserId,
+                CenterId = platformCenterId,
+                Username = "root.admin",
+                DisplayName = "Root Admin",
+                PasswordHash = "hash",
+                RoleName = UserRole.PlatformAdmin,
+                Status = UserStatus.Active,
+                AuthVersion = 1,
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow
+            });
+            await setupContext.SaveChangesAsync();
+        }
+
+        var callerContext = new TenantContext();
+        callerContext.Initialize(platformCenterId, platformAdminUserId, nameof(UserRole.PlatformAdmin), 1);
+
+        // Interceptor simulates concurrent transaction mutating target center's row_version right before EF Core executes UPDATE
+        var interceptor = new RelationalRaceInterceptor(async cmd =>
+        {
+            if (cmd.CommandText.Contains("UPDATE", StringComparison.OrdinalIgnoreCase)
+                && cmd.CommandText.Contains("centers", StringComparison.OrdinalIgnoreCase))
+            {
+                await using var rawConn = new MySqlConnection(database.ConnectionString);
+                await rawConn.OpenAsync();
+                await using var rawCmd = rawConn.CreateCommand();
+                rawCmd.CommandText = $"UPDATE centers SET row_version = 999 WHERE center_id = '{testCenterId:D}';";
+                await rawCmd.ExecuteNonQueryAsync();
+                return true;
+            }
+            return false;
+        });
+
+        await using var context = CreateContext(database.ConnectionString, callerContext, interceptor);
+        var passwordHasher = new PasswordHasher<User>();
+        var authBootstrapper = new AuthorizationBootstrapper(context, _mockTimeProvider.Object);
+        var service = new PlatformCenterService(
+            context,
+            callerContext,
+            passwordHasher,
+            authBootstrapper,
+            _mockTimeProvider.Object);
+
+        var updateReq = new UpdatePlatformCenterStatusRequest
+        {
+            Status = CenterStatus.Suspended.ToString(),
+            RowVersion = "1"
+        };
+
+        // Service executes: pre-check passes (rowVersion==1), but during SaveChangesAsync the UPDATE matches 0 rows due to race
+        // EF Core throws DbUpdateConcurrencyException -> caught by service and mapped to ConcurrencyConflict (409)
+        var result = await service.UpdateCenterStatusAsync(testCenterId, updateReq, "trace-race-status");
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ConcurrencyConflict, result.ErrorCode);
+        Assert.Contains("thay đổi bởi thao tác khác", result.ErrorMessage);
+    }
+
+    [MySqlIntegrationFact]
+    public async Task ResetCenterManagerPasswordAsync_RelationalOCCRace_WhenDbUpdateConcurrencyExceptionThrown_ReturnsConcurrencyConflict()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var platformCenterId = AuthorizationBootstrapper.ReservedPlatformCenterId;
+        var platformAdminUserId = Guid.NewGuid();
+        var testCenterId = Guid.NewGuid();
+        var managerUserId = Guid.NewGuid();
+
+        var setupTenant = new TenantContext();
+        await using (var setupContext = CreateContext(database.ConnectionString, setupTenant))
+        {
+            setupContext.Centers.AddRange(
+                new Center
+                {
+                    CenterId = platformCenterId,
+                    CenterCode = "PLATFORM",
+                    CenterName = "Root Tenant",
+                    Status = CenterStatus.Active,
+                    Timezone = "Asia/Ho_Chi_Minh",
+                    CreatedAt = FixedUtcNow,
+                    UpdatedAt = FixedUtcNow
+                },
+                new Center
+                {
+                    CenterId = testCenterId,
+                    CenterCode = "PW_RACE_CTR",
+                    CenterName = "Password Race Center",
+                    Status = CenterStatus.Active,
+                    Timezone = "Asia/Ho_Chi_Minh",
+                    RowVersion = 1,
+                    CreatedAt = FixedUtcNow,
+                    UpdatedAt = FixedUtcNow
+                }
+            );
+            setupContext.Users.AddRange(
+                new User
+                {
+                    UserId = platformAdminUserId,
+                    CenterId = platformCenterId,
+                    Username = "root.admin",
+                    DisplayName = "Root Admin",
+                    PasswordHash = "hash",
+                    RoleName = UserRole.PlatformAdmin,
+                    Status = UserStatus.Active,
+                    AuthVersion = 1,
+                    CreatedAt = FixedUtcNow,
+                    UpdatedAt = FixedUtcNow
+                },
+                new User
+                {
+                    UserId = managerUserId,
+                    CenterId = testCenterId,
+                    Username = "pw.manager",
+                    DisplayName = "Password Manager",
+                    PasswordHash = "InitialHash123",
+                    RoleName = UserRole.CenterManager,
+                    Status = UserStatus.Active,
+                    AuthVersion = 1,
+                    RowVersion = 1,
+                    CreatedAt = FixedUtcNow,
+                    UpdatedAt = FixedUtcNow
+                }
+            );
+            await setupContext.SaveChangesAsync();
+        }
+
+        var callerContext = new TenantContext();
+        callerContext.Initialize(platformCenterId, platformAdminUserId, nameof(UserRole.PlatformAdmin), 1);
+
+        // Interceptor simulates concurrent modification of the manager user row_version right before EF Core executes UPDATE
+        var interceptor = new RelationalRaceInterceptor(async cmd =>
+        {
+            if (cmd.CommandText.Contains("UPDATE", StringComparison.OrdinalIgnoreCase)
+                && cmd.CommandText.Contains("users", StringComparison.OrdinalIgnoreCase))
+            {
+                await using var rawConn = new MySqlConnection(database.ConnectionString);
+                await rawConn.OpenAsync();
+                await using var rawCmd = rawConn.CreateCommand();
+                rawCmd.CommandText = $"UPDATE users SET row_version = 999 WHERE user_id = '{managerUserId:D}';";
+                await rawCmd.ExecuteNonQueryAsync();
+                return true;
+            }
+            return false;
+        });
+
+        await using var context = CreateContext(database.ConnectionString, callerContext, interceptor);
+        var passwordHasher = new PasswordHasher<User>();
+        var authBootstrapper = new AuthorizationBootstrapper(context, _mockTimeProvider.Object);
+        var service = new PlatformCenterService(
+            context,
+            callerContext,
+            passwordHasher,
+            authBootstrapper,
+            _mockTimeProvider.Object);
+
+        var resetReq = new ResetCenterManagerPasswordRequest
+        {
+            NewPassword = "NewSecretPassword123!",
+            ExpectedUserRowVersion = "1"
+        };
+
+        // Service executes: pre-check passes (rowVersion==1), but during SaveChangesAsync the UPDATE matches 0 rows due to race
+        // EF Core throws DbUpdateConcurrencyException -> caught by service and mapped to ConcurrencyConflict (409)
+        var result = await service.ResetCenterManagerPasswordAsync(testCenterId, managerUserId, resetReq, "trace-race-pw");
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ConcurrencyConflict, result.ErrorCode);
+        Assert.Contains("thay đổi bởi thao tác khác", result.ErrorMessage);
+    }
+
+    [MySqlIntegrationFact]
+    public async Task CreateCenterAsync_RelationalDuplicateKeyRace_WhenMySql1062Thrown_ReturnsDuplicateResource()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var platformCenterId = AuthorizationBootstrapper.ReservedPlatformCenterId;
+        var platformAdminUserId = Guid.NewGuid();
+
+        var setupTenant = new TenantContext();
+        await using (var setupContext = CreateContext(database.ConnectionString, setupTenant))
+        {
+            setupContext.Centers.Add(new Center
+            {
+                CenterId = platformCenterId,
+                CenterCode = "PLATFORM",
+                CenterName = "Root Tenant",
+                Status = CenterStatus.Active,
+                Timezone = "Asia/Ho_Chi_Minh",
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow
+            });
+            setupContext.Users.Add(new User
+            {
+                UserId = platformAdminUserId,
+                CenterId = platformCenterId,
+                Username = "root.admin",
+                DisplayName = "Root Admin",
+                PasswordHash = "hash",
+                RoleName = UserRole.PlatformAdmin,
+                Status = UserStatus.Active,
+                AuthVersion = 1,
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow
+            });
+            await setupContext.SaveChangesAsync();
+        }
+
+        var callerContext = new TenantContext();
+        callerContext.Initialize(platformCenterId, platformAdminUserId, nameof(UserRole.PlatformAdmin), 1);
+
+        const string raceCenterCode = "RACE_DUP_1062";
+
+        // Interceptor simulates concurrent transaction committing the center code between AnyAsync pre-check and SaveChangesAsync
+        var interceptor = new RelationalRaceInterceptor(async cmd =>
+        {
+            if (cmd.CommandText.Contains("INSERT", StringComparison.OrdinalIgnoreCase)
+                && cmd.CommandText.Contains("centers", StringComparison.OrdinalIgnoreCase))
+            {
+                await using var rawConn = new MySqlConnection(database.ConnectionString);
+                await rawConn.OpenAsync();
+                await using var rawCmd = rawConn.CreateCommand();
+                rawCmd.CommandText = $@"INSERT INTO centers (center_id, center_code, center_name, status, timezone, created_at, updated_at, row_version)
+                                       VALUES ('{Guid.NewGuid():D}', '{raceCenterCode}', 'Concurrently Inserted Center', 'Active', 'Asia/Ho_Chi_Minh', '{FixedUtcNow:yyyy-MM-dd HH:mm:ss}', '{FixedUtcNow:yyyy-MM-dd HH:mm:ss}', 1);";
+                await rawCmd.ExecuteNonQueryAsync();
+                return true;
+            }
+            return false;
+        });
+
+        await using var context = CreateContext(database.ConnectionString, callerContext, interceptor);
+        var passwordHasher = new PasswordHasher<User>();
+        var authBootstrapper = new AuthorizationBootstrapper(context, _mockTimeProvider.Object);
+        var service = new PlatformCenterService(
+            context,
+            callerContext,
+            passwordHasher,
+            authBootstrapper,
+            _mockTimeProvider.Object);
+
+        var request = new CreatePlatformCenterRequest
+        {
+            CenterCode = raceCenterCode,
+            CenterName = "My Race Attempt Center",
+            Timezone = "Asia/Ho_Chi_Minh",
+            InitialManagerUsername = "race.manager",
+            InitialManagerDisplayName = "Race Manager",
+            InitialManagerPassword = "StrongPassword123!"
+        };
+
+        // Service executes: AnyAsync pre-check returns false (not yet inserted).
+        // Then interceptor inserts duplicate center code on separate connection.
+        // SaveChangesAsync triggers MySQL 1062 on unique constraint uq_centers_center_code.
+        // Service catches DbUpdateException with InnerException MySqlException 1062 -> returns DuplicateResource (409).
+        var result = await service.CreateCenterAsync(request, "trace-race-dup");
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.DuplicateResource, result.ErrorCode);
+        Assert.Contains("đã tồn tại", result.ErrorMessage);
+    }
+
+    [MySqlIntegrationFact]
+    public async Task ResetCenterManagerPassword_ConsecutiveResets_UsingReturnedRowVersions_SucceedsSequentially_And_StaleVersion_ReturnsConflict()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var platformCenterId = AuthorizationBootstrapper.ReservedPlatformCenterId;
+        var platformAdminUserId = Guid.NewGuid();
+        var targetCenterId = Guid.NewGuid();
+        var managerUserId = Guid.NewGuid();
+
+        var setupTenant = new TenantContext();
+        await using (var setupContext = CreateContext(database.ConnectionString, setupTenant))
+        {
+            setupContext.Centers.AddRange(
+                new Center
+                {
+                    CenterId = platformCenterId,
+                    CenterCode = "PLATFORM",
+                    CenterName = "Root Tenant",
+                    Status = CenterStatus.Active,
+                    Timezone = "Asia/Ho_Chi_Minh",
+                    CreatedAt = FixedUtcNow,
+                    UpdatedAt = FixedUtcNow
+                },
+                new Center
+                {
+                    CenterId = targetCenterId,
+                    CenterCode = "RESET_SEQ_CTR",
+                    CenterName = "Sequential Reset Center",
+                    Status = CenterStatus.Active,
+                    Timezone = "Asia/Ho_Chi_Minh",
+                    RowVersion = 1,
+                    CreatedAt = FixedUtcNow,
+                    UpdatedAt = FixedUtcNow
+                }
+            );
+            setupContext.Users.AddRange(
+                new User
+                {
+                    UserId = platformAdminUserId,
+                    CenterId = platformCenterId,
+                    Username = "root.admin",
+                    DisplayName = "Root Admin",
+                    PasswordHash = "hash",
+                    RoleName = UserRole.PlatformAdmin,
+                    Status = UserStatus.Active,
+                    AuthVersion = 1,
+                    CreatedAt = FixedUtcNow,
+                    UpdatedAt = FixedUtcNow
+                },
+                new User
+                {
+                    UserId = managerUserId,
+                    CenterId = targetCenterId,
+                    Username = "seq.manager",
+                    DisplayName = "Sequential Manager",
+                    PasswordHash = "InitialPasswordHash123",
+                    RoleName = UserRole.CenterManager,
+                    Status = UserStatus.Active,
+                    AuthVersion = 1,
+                    RowVersion = 1,
+                    CreatedAt = FixedUtcNow,
+                    UpdatedAt = FixedUtcNow
+                }
+            );
+            await setupContext.SaveChangesAsync();
+        }
+
+        var callerContext = new TenantContext();
+        callerContext.Initialize(platformCenterId, platformAdminUserId, nameof(UserRole.PlatformAdmin), 1);
+
+        await using var serviceContext = CreateContext(database.ConnectionString, callerContext);
+        var passwordHasher = new PasswordHasher<User>();
+        var authBootstrapper = new AuthorizationBootstrapper(serviceContext, _mockTimeProvider.Object);
+        var service = new PlatformCenterService(
+            serviceContext,
+            callerContext,
+            passwordHasher,
+            authBootstrapper,
+            _mockTimeProvider.Object);
+
+        // 1. Verify initial list returns InitialManagerUserRowVersion = "1"
+        var initialList = await service.ListCentersAsync(1, 20, null, null, "trace-list-1");
+        Assert.True(initialList.IsSuccess);
+        var centerItem1 = initialList.Data!.Items.Single(c => c.CenterId == targetCenterId);
+        Assert.Equal("1", centerItem1.InitialManagerUserRowVersion);
+
+        // 2. First password reset with ExpectedUserRowVersion = "1"
+        var reset1 = await service.ResetCenterManagerPasswordAsync(
+            targetCenterId,
+            managerUserId,
+            new ResetCenterManagerPasswordRequest
+            {
+                NewPassword = "FirstNewPassword123!",
+                ExpectedUserRowVersion = "1"
+            },
+            "trace-reset-1");
+        Assert.True(reset1.IsSuccess, reset1.ErrorMessage);
+        Assert.Equal("2", reset1.Data!.NewUserRowVersion);
+
+        // 3. Verify list now reflects bumped InitialManagerUserRowVersion = "2"
+        var secondList = await service.ListCentersAsync(1, 20, null, null, "trace-list-2");
+        Assert.True(secondList.IsSuccess);
+        var centerItem2 = secondList.Data!.Items.Single(c => c.CenterId == targetCenterId);
+        Assert.Equal("2", centerItem2.InitialManagerUserRowVersion);
+
+        // 4. Second password reset using returned row version "2"
+        var reset2 = await service.ResetCenterManagerPasswordAsync(
+            targetCenterId,
+            managerUserId,
+            new ResetCenterManagerPasswordRequest
+            {
+                NewPassword = "SecondNewPassword456!",
+                ExpectedUserRowVersion = reset1.Data!.NewUserRowVersion // "2"
+            },
+            "trace-reset-2");
+        Assert.True(reset2.IsSuccess, reset2.ErrorMessage);
+        Assert.Equal("3", reset2.Data!.NewUserRowVersion);
+
+        // 5. Stale reset attempt using old version "1" MUST fail with 409 ConcurrencyConflict
+        var staleReset1 = await service.ResetCenterManagerPasswordAsync(
+            targetCenterId,
+            managerUserId,
+            new ResetCenterManagerPasswordRequest
+            {
+                NewPassword = "StalePasswordAttempt789!",
+                ExpectedUserRowVersion = "1"
+            },
+            "trace-stale-1");
+        Assert.False(staleReset1.IsSuccess);
+        Assert.Equal(ErrorCodes.ConcurrencyConflict, staleReset1.ErrorCode);
+
+        // 6. Stale reset attempt using previous version "2" MUST also fail with 409 ConcurrencyConflict
+        var staleReset2 = await service.ResetCenterManagerPasswordAsync(
+            targetCenterId,
+            managerUserId,
+            new ResetCenterManagerPasswordRequest
+            {
+                NewPassword = "StalePasswordAttempt789!",
+                ExpectedUserRowVersion = "2"
+            },
+            "trace-stale-2");
+        Assert.False(staleReset2.IsSuccess);
+        Assert.Equal(ErrorCodes.ConcurrencyConflict, staleReset2.ErrorCode);
+
+        // 7. Verify live MySQL state: AuthVersion bumped to 3, RowVersion bumped to 3, password verifies against latest
+        await using var verifyContext = CreateContext(database.ConnectionString, setupTenant);
+        var managerUser = await verifyContext.Users.IgnoreQueryFilters().SingleAsync(u => u.UserId == managerUserId);
+        Assert.Equal(3u, managerUser.RowVersion);
+        Assert.Equal(3u, managerUser.AuthVersion);
+        var verifyResult = passwordHasher.VerifyHashedPassword(managerUser, managerUser.PasswordHash, "SecondNewPassword456!");
+        Assert.Equal(PasswordVerificationResult.Success, verifyResult);
+    }
+
+    [MySqlIntegrationFact]
+    public async Task ListCentersAsync_SearchFilter_MatchesManagerUsernameAndDisplayName()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var platformCenterId = AuthorizationBootstrapper.ReservedPlatformCenterId;
+        var platformAdminUserId = Guid.NewGuid();
+        var centerAId = Guid.NewGuid();
+        var centerBId = Guid.NewGuid();
+
+        var setupTenant = new TenantContext();
+        await using (var setupContext = CreateContext(database.ConnectionString, setupTenant))
+        {
+            setupContext.Centers.AddRange(
+                new Center
+                {
+                    CenterId = platformCenterId,
+                    CenterCode = "PLATFORM",
+                    CenterName = "Root Tenant",
+                    Status = CenterStatus.Active,
+                    Timezone = "Asia/Ho_Chi_Minh",
+                    CreatedAt = FixedUtcNow,
+                    UpdatedAt = FixedUtcNow
+                },
+                new Center
+                {
+                    CenterId = centerAId,
+                    CenterCode = "CENTER_ALPHA",
+                    CenterName = "Alpha Academy",
+                    Status = CenterStatus.Active,
+                    Timezone = "Asia/Ho_Chi_Minh",
+                    RowVersion = 1,
+                    CreatedAt = FixedUtcNow,
+                    UpdatedAt = FixedUtcNow
+                },
+                new Center
+                {
+                    CenterId = centerBId,
+                    CenterCode = "CENTER_BETA",
+                    CenterName = "Beta Institute",
+                    Status = CenterStatus.Active,
+                    Timezone = "Asia/Ho_Chi_Minh",
+                    RowVersion = 1,
+                    CreatedAt = FixedUtcNow,
+                    UpdatedAt = FixedUtcNow
+                }
+            );
+            setupContext.Users.AddRange(
+                new User
+                {
+                    UserId = platformAdminUserId,
+                    CenterId = platformCenterId,
+                    Username = "root.admin",
+                    DisplayName = "Root Admin",
+                    PasswordHash = "hash",
+                    RoleName = UserRole.PlatformAdmin,
+                    Status = UserStatus.Active,
+                    AuthVersion = 1,
+                    CreatedAt = FixedUtcNow,
+                    UpdatedAt = FixedUtcNow
+                },
+                new User
+                {
+                    UserId = Guid.NewGuid(),
+                    CenterId = centerAId,
+                    Username = "unique_manager_alpha",
+                    DisplayName = "Nguyen Van Manager Alpha",
+                    PasswordHash = "hash",
+                    RoleName = UserRole.CenterManager,
+                    Status = UserStatus.Active,
+                    AuthVersion = 1,
+                    RowVersion = 1,
+                    CreatedAt = FixedUtcNow,
+                    UpdatedAt = FixedUtcNow
+                },
+                new User
+                {
+                    UserId = Guid.NewGuid(),
+                    CenterId = centerBId,
+                    Username = "unique_manager_beta",
+                    DisplayName = "Tran Thi Manager Beta",
+                    PasswordHash = "hash",
+                    RoleName = UserRole.CenterManager,
+                    Status = UserStatus.Active,
+                    AuthVersion = 1,
+                    RowVersion = 1,
+                    CreatedAt = FixedUtcNow,
+                    UpdatedAt = FixedUtcNow
+                }
+            );
+            await setupContext.SaveChangesAsync();
+        }
+
+        var callerContext = new TenantContext();
+        callerContext.Initialize(platformCenterId, platformAdminUserId, nameof(UserRole.PlatformAdmin), 1);
+
+        await using var context = CreateContext(database.ConnectionString, callerContext);
+        var service = new PlatformCenterService(
+            context,
+            callerContext,
+            new PasswordHasher<User>(),
+            new AuthorizationBootstrapper(context, _mockTimeProvider.Object),
+            _mockTimeProvider.Object);
+
+        // Search by manager username
+        var searchUserRes = await service.ListCentersAsync(1, 20, "unique_manager_alpha", null, "trace-s1");
+        Assert.True(searchUserRes.IsSuccess);
+        Assert.Single(searchUserRes.Data!.Items);
+        Assert.Equal("CENTER_ALPHA", searchUserRes.Data.Items[0].CenterCode);
+
+        // Search by manager display name
+        var searchDisplayRes = await service.ListCentersAsync(1, 20, "Tran Thi Manager Beta", null, "trace-s2");
+        Assert.True(searchDisplayRes.IsSuccess);
+        Assert.Single(searchDisplayRes.Data!.Items);
+        Assert.Equal("CENTER_BETA", searchDisplayRes.Data.Items[0].CenterCode);
+
+        // Search non-existent
+        var searchNoneRes = await service.ListCentersAsync(1, 20, "NonExistentPerson", null, "trace-s3");
+        Assert.True(searchNoneRes.IsSuccess);
+        Assert.Empty(searchNoneRes.Data!.Items);
+    }
+
+    [MySqlIntegrationFact]
     public async Task UpdateCenterStatusAsync_Suspended_EvictsSessionsAndRevokesRefreshTokensInMySql()
     {
         await using var database = await MySqlTestDatabase.CreateAsync();
@@ -743,11 +1313,63 @@ public sealed class PlatformMySqlIntegrationTests
         Assert.Contains("malformed state", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static EduTwinDbContext CreateContext(string connectionString, ITenantIdAccessor tenant)
+    private static EduTwinDbContext CreateContext(
+        string connectionString,
+        ITenantIdAccessor tenant,
+        params IInterceptor[] interceptors)
     {
         var options = new DbContextOptionsBuilder<EduTwinDbContext>()
             .UseMySQL(connectionString);
+        if (interceptors != null && interceptors.Length > 0)
+        {
+            options.AddInterceptors(interceptors);
+        }
         return new EduTwinDbContext(options.Options, tenant);
+    }
+
+    private sealed class RelationalRaceInterceptor : DbCommandInterceptor
+    {
+        private readonly Func<DbCommand, Task<bool>> _actionAsync;
+        private int _executed;
+
+        public RelationalRaceInterceptor(Func<DbCommand, Task<bool>> actionAsync)
+        {
+            _actionAsync = actionAsync;
+        }
+
+        public override async ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (Volatile.Read(ref _executed) == 0)
+            {
+                var matched = await _actionAsync(command);
+                if (matched)
+                {
+                    Interlocked.Exchange(ref _executed, 1);
+                }
+            }
+            return await base.NonQueryExecutingAsync(command, eventData, result, cancellationToken);
+        }
+
+        public override async ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<DbDataReader> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (Volatile.Read(ref _executed) == 0)
+            {
+                var matched = await _actionAsync(command);
+                if (matched)
+                {
+                    Interlocked.Exchange(ref _executed, 1);
+                }
+            }
+            return await base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
+        }
     }
 
     private sealed class MySqlIntegrationFactAttribute : FactAttribute
