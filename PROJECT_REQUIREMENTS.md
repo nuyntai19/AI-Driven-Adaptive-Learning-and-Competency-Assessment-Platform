@@ -273,7 +273,7 @@ Thiếu một điều kiện phải fail closed.
 | FR-LEARN-002 | Publish assignment tạo target snapshot atomically | Must |
 | FR-LEARN-003 | Student chỉ thấy assignment được giao và đang khả dụng | Must |
 | FR-LEARN-004 | Submission có client submission ID để bảo vệ idempotency | Must |
-| FR-LEARN-005 | Student gửi final answer, reasoning, confidence, time và hành vi cần thiết | Must |
+| FR-LEARN-005 | Nộp bài (POST /learning/attempts) và upload ảnh nháp bắt buộc tài khoản Student (AccountType == Student) và có quyền learning.attempts.submit; gửi final answer, reasoning, confidence, time và hành vi cần thiết | Must |
 | FR-LEARN-006 | API nhận submission và trả trạng thái AI job bất đồng bộ | Must |
 
 ### 7.6. AI Reasoning và Evidence
@@ -282,8 +282,8 @@ Thiếu một điều kiện phải fail closed.
 |---|---|---|
 | FR-AI-001 | Gemini được truy cập qua IAIService, không gọi trực tiếp từ Controller | Must |
 | FR-AI-002 | AI response phải qua structural và semantic validation | Must |
-| FR-AI-003 | Lỗi tạm thời được retry tối đa một lần | Must |
-| FR-AI-004 | Sau retry thất bại, hệ thống tạo deterministic fallback và teacher-review state | Must |
+| FR-AI-003 | Lỗi tạm thời (AI, mạng hoặc hạ tầng) được retry tối đa 3 lần có lưu vết trạng thái (persisted retries) kèm exponential backoff qua AIAnalysisJobStateMachine | Must |
+| FR-AI-004 | Sau khi cạn kiệt 3 persisted retries: bài có assignment tạo deterministic fallback và đưa vào Teacher Review Queue; bài tự do (free-practice) chuyển sang FailedTerminal / AnalysisFailed (không vào review queue) và cho phép học sinh nộp lại với ClientSubmissionId mới | Must |
 | FR-AI-005 | AI success tạo ReasoningAnalysis; fallback deterministic tạo record/provenance rõ và không giả là AI success | Must |
 | FR-AI-006 | Evidence Gate đánh giá confidence, correctness, score, time, behavior và override | Must |
 | FR-AI-007 | Gate lưu riêng source type, trust level và decision mode; fallback là RuleFallback + ReviewOnly + DeterministicOnly | Must |
@@ -332,11 +332,11 @@ Thiếu một điều kiện phải fail closed.
 
 | ID | Requirement | Priority |
 |---|---|---|
-| FR-PLT-001 | Hệ thống khởi tạo Root Tenant PLATFORM (ID cố định 00000000-0000-0000-0000-000000000001) và tài khoản PlatformAdmin qua PlatformAdminProvisioner đọc secret từ biến môi trường | Must |
+| FR-PLT-001 | Hệ thống khởi tạo Root Tenant PLATFORM (ID cố định 00000000-0000-0000-0000-000000000001) và tài khoản PlatformAdmin qua PlatformAdminProvisioner đọc secret từ biến môi trường; nếu admin hợp lệ đã tồn tại thì kiểm tra hợp lệ rồi bỏ qua (skip), tuyệt đối không tự động reset password | Must |
 | FR-PLT-002 | PlatformAdmin liệt kê danh sách các trung tâm đối tác; trả về items: [] (HTTP 200) khi chưa có trung tâm thường nào | Must |
-| FR-PLT-003 | PlatformAdmin khởi tạo trung tâm mới kèm tài khoản CenterManager ban đầu trong một transaction duy nhất | Must |
+| FR-PLT-003 | PlatformAdmin khởi tạo trung tâm mới kèm tài khoản CenterManager ban đầu trong một transaction duy nhất (các trường khớp model hiện hành: centerCode, centerName, timezone, initialManagerUsername, initialManagerDisplayName, initialManagerPassword; không phát sinh trường ngoài schema) | Must |
 | FR-PLT-004 | PlatformAdmin thay đổi trạng thái kích hoạt/tạm dừng của trung tâm có Optimistic Concurrency Control (row_version); cấm thao tác trên PLATFORM | Must |
-| FR-PLT-005 | PlatformAdmin đặt lại mật khẩu tài khoản CenterManager ban đầu, cập nhật mật khẩu, tăng users.auth_version làm vô hiệu hóa token cũ, và revoke toàn bộ refresh tokens còn hiệu lực | Must |
+| FR-PLT-005 | PlatformAdmin đặt lại mật khẩu tài khoản CenterManager (POST /api/v1/platform/centers/{centerId}/managers/{managerUserId}/reset-password) yêu cầu quyền platform.managers.manage và expectedUserRowVersion, cập nhật mật khẩu, tăng users.row_version, tăng users.auth_version làm vô hiệu hóa token cũ, và revoke toàn bộ refresh tokens còn hiệu lực | Must |
 
 ### 7.11. Bộ Công cụ Toán học & Minh chứng Đa phương thức (Math Toolkit & Multimodal Evidence - Track 2)
 
@@ -347,7 +347,7 @@ Thiếu một điều kiện phải fail closed.
 | FR-MTH-003 | Xây dựng MathAnswerNormalizer chuẩn hóa số thập phân, phân số, hỗn số về dạng phân số tối giản P/Q bằng BigInteger | Must |
 | FR-MTH-004 | Cung cấp ngăn kéo Máy tính Khoa học (Scientific Calculator Drawer) thuần tính toán, không chứa engine tự động giải toán | Must |
 | FR-MTH-005 | Cung cấp Bảng vẽ nháp vector (Vector Scratchpad Canvas) với đầy đủ công cụ vẽ, lưới ô ly, thước hình học, trục Oxy, lưu trữ draft scoped IndexedDB theo draft:{centerId}:{userId}:{clientSubmissionId} | Must |
-| FR-MTH-006 | Hỗ trợ streaming multipart upload ảnh nháp PNG có bounded full validation (1..5MB, IHDR, IEND CRC), Data Protection token bind SHA-256, nộp bài atomic promote no-overwrite, và lưu trữ bảng 40 attempt_attachments | Must |
+| FR-MTH-006 | Hỗ trợ streaming multipart upload ảnh nháp PNG (yêu cầu tài khoản Student và quyền learning.attempts.submit) có bounded full validation (1..5MB, IHDR, IEND CRC), Data Protection token bind SHA-256, nộp bài atomic promote no-overwrite, và lưu trữ bảng mục tiêu 40 attempt_attachments (thỏa mãn audit TA gồm created_by và FK attempts(center_id, attempt_id)) | Must |
 
 ## 8. Business rules
 
@@ -372,7 +372,7 @@ Thiếu một điều kiện phải fail closed.
 | BR-017 | users.auth_version là authorization version duy nhất; password reset, user status, user-role và role-permission mutation phải bump version theo phạm vi ảnh hưởng |
 | BR-018 | Replay là event/history; không được lưu như evidence source hoặc trust level |
 | BR-019 | Center lifecycle ngoài profile hiện hành thuộc deployment/seed trong course MVP, không thuộc tenant-admin UI |
-| BR-020 | Quyền platform.* là bất khả ủy quyền (IsDelegable = false) và chỉ thuộc PlatformAdmin trong Root Tenant PLATFORM; cấm thao tác trên Root Tenant |
+| BR-020 | Quyền platform.* (gồm platform.centers.read, platform.centers.manage, platform.managers.manage) là bất khả ủy quyền (IsDelegable = false) và chỉ thuộc PlatformAdmin trong Root Tenant PLATFORM; cấm thao tác trên Root Tenant |
 | BR-021 | Minh chứng ảnh đính kèm chỉ được truy cập bởi học sinh sở hữu hoặc giáo viên phụ trách bài tập được giao (thông qua IAttemptTeacherReviewScopeGuard); bài tự do fail closed |
 
 ## 9. Security requirements
@@ -411,7 +411,7 @@ Thiếu một điều kiện phải fail closed.
 | DATA-010 | Query trọng yếu phải được kiểm tra EXPLAIN trên MySQL thật |
 | DATA-011 | Permission applicability được chuẩn hóa bằng permission_account_types; role_permissions và user_roles dùng composite FK để khóa account type |
 | DATA-012 | Năm MySQL CHECK constraints (ck_users_role_name, ck_roles_account_type, ck_permission_account_types_account_type, ck_user_roles_account_type, ck_role_permissions_account_type) được cập nhật chấp nhận 'PlatformAdmin' |
-| DATA-013 | Bổ sung Bảng thứ 40 attempt_attachments với ràng buộc ck_attempt_attachments_file_size_bytes (1..5MB), ck_attempt_attachments_content_type ('image/png'), unique storage_key, unique upload_nonce, và cập nhật ck_attempts_status chấp nhận 'AnalysisFailed' |
+| DATA-013 | Bổ sung Bảng thứ 40 attempt_attachments (mục tiêu sau Gate 5, thỏa mãn audit TA gồm created_by và FK attempts(center_id, attempt_id)) với ràng buộc ck_attempt_attachments_file_size_bytes (1..5MB), ck_attempt_attachments_content_type ('image/png'), unique storage_key, unique upload_nonce, và cập nhật ck_attempts_status chấp nhận 5 trạng thái chuẩn: 'PendingAnalysis', 'Processing', 'Completed', 'NeedsTeacherReview', 'AnalysisFailed' |
 
 ## 11. Non-functional requirements
 
@@ -465,8 +465,10 @@ Kết quả lỗi phải rõ cho validation/concurrency nhưng không làm lộ 
 
 1. Worker claim lease.
 2. Gemini trả structured observation hoặc lỗi; HTTP submission không chờ Gemini.
-3. Output được validate; lỗi retry tối đa một lần.
-4. Sau lỗi cuối, deterministic fallback được tạo và đánh dấu review; luồng vẫn kết thúc mà không giả AI output.
+3. Output được validate; khi gặp lỗi (Gemini lỗi, timeout hoặc hạ tầng), thực hiện tối đa 3 persisted retries kèm exponential backoff qua AIAnalysisJobStateMachine.
+4. Sau khi cạn kiệt 3 persisted retries (retry exhaustion):
+   - Bài có assignment (assignment_id != null): tạo deterministic fallback, đánh dấu reviewOnly (weight = 0), đưa vào Teacher Review Queue;
+   - Bài tự do (free-practice, assignment_id == null): AIAnalysisJob.Status = FailedTerminal và Attempt.Status = AnalysisFailed, ghi nhận LastErrorCode (ví dụ AttachmentStorageUnavailable), fail-closed không vào Teacher Review Queue; client hiển thị thông báo lỗi hạ tầng và cho phép học sinh nộp lại (resubmit) với ClientSubmissionId mới.
 5. ReasoningAnalysis/provenance phù hợp được lưu.
 6. Evidence Gate kiểm tra contradiction/semantic trước confidence và đánh giá source, trust level, decision mode, weight/reasons.
 7. Twin Orchestrator chỉ dùng effective evidence.

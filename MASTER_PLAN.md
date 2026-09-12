@@ -2133,21 +2133,22 @@ Phần bổ sung phạm vi chính thức sau Release R08 nhằm hoàn thiện ha
 ### 132.1. Track 1: Phân Quyền Quản Trị Nền Tảng (Platform Administration)
 1. **Root Tenant & Account Type:**
    - Khởi tạo Root Tenant hệ thống `PLATFORM` với `CenterId = 00000000-0000-0000-0000-000000000001` (`ReservedPlatformCenterId`).
-   - Bổ sung account type và role `PlatformAdmin` với các quyền bất khả ủy quyền (`IsDelegable = false`): `platform.centers.read`, `platform.centers.manage`.
+   - Bổ sung account type và role `PlatformAdmin` với các quyền bất khả ủy quyền (`IsDelegable = false`): `platform.centers.read`, `platform.centers.manage`, `platform.managers.manage`.
    - Cập nhật 5 MySQL CHECK constraints (`ck_users_role_name`, `ck_roles_account_type`, `ck_permission_account_types_account_type`, `ck_user_roles_account_type`, `ck_role_permissions_account_type`) chấp nhận `PlatformAdmin`.
    - Chặn tuyệt đối hành vi gán quyền/vai trò `PlatformAdmin` trong tenant thường bằng `ErrorCodes.AuthPrivilegeEscalation` (HTTP 403 Forbidden).
 2. **Platform Admin Provisioner:**
    - Tách biệt hoàn toàn khỏi seed dữ liệu demo; khởi tạo tài khoản quản trị nền tảng từ biến môi trường `PlatformBootstrap__AdminPassword` (tuyệt đối không hard-code fallback password trong mã nguồn).
+   - Idempotency & Safety: Nếu tài khoản quản trị nền tảng hợp lệ đã tồn tại trong Root Tenant, provisioner xác thực bản ghi và bỏ qua (skip); tuyệt đối không tự động đặt lại hoặc ghi đè mật khẩu của quản trị viên hiện có.
 3. **Quản Lý Vòng Đời Trung Tâm (Center Lifecycle):**
-   - API `GET /api/v1/platform/centers`: Cho phép liệt kê các trung tâm đối tác; trả về `items: []` (HTTP 200 OK) khi hệ thống chưa có trung tâm thường nào.
-   - API `POST /api/v1/platform/centers`: Khởi tạo trung tâm mới kèm tài khoản `CenterManager` ban đầu trong 1 database transaction duy nhất.
-   - API `PATCH /api/v1/platform/centers/{id}/status`: Chuyển đổi trạng thái `Active` / `Suspended` với cơ chế Optimistic Concurrency Control (`row_version`); cấm thao tác trên trung tâm `PLATFORM` (`ErrorCodes.ForbiddenResource`).
-   - API `POST /api/v1/platform/centers/{id}/managers/initial-password-reset`: Đặt lại mật khẩu tài khoản quản lý trung tâm ban đầu, cập nhật mật khẩu, tăng `users.auth_version` làm vô hiệu hóa token cũ, và revoke toàn bộ refresh tokens còn hiệu lực.
+   - API `GET /api/v1/platform/centers`: Yêu cầu quyền `platform.centers.read`. Liệt kê các trung tâm đối tác với các trường chuẩn (`centerId`, `centerCode`, `centerName`, `status`, `timezone`, `createdAt`, `rowVersion`, `initialManagerUserId`, `initialManagerUsername`, `initialManagerDisplayName`); trả về `items: []` (HTTP 200 OK) khi hệ thống chưa có trung tâm thường nào.
+   - API `POST /api/v1/platform/centers`: Yêu cầu quyền `platform.centers.manage`. Khởi tạo trung tâm mới kèm tài khoản `CenterManager` ban đầu trong 1 database transaction duy nhất (các trường request khớp domain model hiện hành: `centerCode`, `centerName`, `timezone`, `initialManagerUsername`, `initialManagerDisplayName`, `initialManagerPassword`; không phát sinh các trường địa chỉ, số điện thoại, email hay phản hồi mật khẩu tạm thời ngoài schema).
+   - API `PATCH /api/v1/platform/centers/{id}/status`: Cho phép đổi trạng thái `Active` / `Suspended` với cơ chế Optimistic Concurrency Control (`row_version`); cấm thao tác trên trung tâm `PLATFORM` (`ErrorCodes.ForbiddenResource`).
+   - API `POST /api/v1/platform/centers/{centerId}/managers/{managerUserId}/reset-password`: Yêu cầu quyền `platform.managers.manage` và `expectedUserRowVersion` (OCC chống ghi đè phiên làm việc đồng thời). Đặt lại mật khẩu tài khoản quản lý trung tâm, cập nhật hash mật khẩu, tăng `users.row_version`, tăng `users.auth_version` làm vô hiệu hóa toàn bộ JWT tokens cũ, và revoke toàn bộ refresh tokens còn hiệu lực của user.
 
 ### 132.2. Track 2: Bộ Công Cụ Toán Học & Minh Chứng Đa Phương Thức (Math Toolkit & Multimodal Evidence)
 1. **Visual Math Input Toolbar & KaTeX:**
    - Toolbar 5 tab ký tự toán học (Basic, Algebra, Calculus, Sets, Geometry) tích hợp vào trình soạn thảo và trình làm bài.
-   - Xem trước công thức thời gian thực qua KaTeX an toàn (`trust: false`), lưu vết trường `answer_display_latex` trong bảng `attempts`.
+   - Xem trước công thức thời gian thực qua KaTeX an toàn (`trust: false`), lưu vết trường `answer_display_latex` (`VARCHAR(2048) NULL`) trong bảng `attempts`.
 2. **Chế Độ Chấm Điểm & Chuẩn Hóa Phân Số Rút Gọn:**
    - Thêm cột `answer_evaluation_mode` vào bảng `questions` với các giá trị: `TextExact`, `NumericRational`, `Manual`.
    - Khóa chặt ma trận: `MultipleChoice` $\to$ `TextExact`; `Essay` $\to$ `Manual`; `ShortAnswer` $\to$ `TextExact` / `NumericRational` / `Manual`.
@@ -2157,11 +2158,12 @@ Phần bổ sung phạm vi chính thức sau Release R08 nhằm hoàn thiện ha
 4. **Vector Scratchpad Canvas:**
    - Bảng vẽ nháp vector toàn màn hình với các công cụ: Bút, Tẩy, Lưới ô ly, Thước thẳng, Thước compa/tròn, Tam giác, Hệ trục tọa độ Oxy, Undo/Redo 30 bước.
    - Lưu trữ bản nháp cục bộ IndexedDB scoped theo `draft:${centerId}:${userId}:${clientSubmissionId}`; dọn dẹp khi logout và startup TTL; chỉ xóa khi nhận kết quả nộp bài thành công (HTTP 202/200).
-5. **Streaming Upload, Physical Table 40 & Atomic Promotion:**
+5. **Streaming Upload, Bảng vật lý mục tiêu 40 & Atomic Promotion:**
+   - Cả nộp bài (`POST /learning/attempts`) và upload minh chứng (`POST /learning/attempts/attachments/prepare-upload`) bắt buộc yêu cầu tài khoản loại `Student` và quyền `learning.attempts.submit`.
    - Upload ảnh nháp qua endpoint streaming với xác thực binary PNG đầy đủ (header 8-byte, IHDR dimensions $\le 4096 \times 4096$, color types $\{0,2,4,6\}$, memory limits, IEND CRC check).
    - Cấp signed token Data Protection bind SHA-256 hash và upload nonce.
    - Nộp bài kèm token: Áp dụng atomic promote không ghi đè (`overwrite: false` / `FileMode.CreateNew`), same hash coi như thành công idempotent, diff hash fail closed.
-   - Bảng vật lý thứ 40 `attempt_attachments` lưu trữ minh chứng, quản lý qua unique index `(center_id, upload_nonce)` để giải quyết race condition (MySQL Error 1062 map sang HTTP 409 `UPLOAD_TOKEN_ALREADY_USED`).
+   - Bảng vật lý thứ 40 `attempt_attachments` (bảng mục tiêu sau Gate 5; thỏa mãn audit TA gồm `created_by` và composite FK tham chiếu `attempts(center_id, attempt_id)`) lưu trữ minh chứng, quản lý qua unique index `(center_id, upload_nonce)` để giải quyết race condition (MySQL Error 1062 map sang HTTP 409 `UPLOAD_TOKEN_ALREADY_USED`).
 6. **Bảo Vệ Thống Nhất Qua Scope Guard (`IAttemptTeacherReviewScopeGuard`):**
    - Hợp nhất phân quyền trên 3 luồng: Tải ảnh minh chứng, Teacher Review Queue, và Teacher Override.
    - Kiểm tra: Cùng tenant, có Assignment, học sinh thuộc target, giáo viên phụ trách lớp (hoặc CenterManager).
@@ -2169,6 +2171,7 @@ Phần bổ sung phạm vi chính thức sau Release R08 nhằm hoàn thiện ha
 7. **Xử Lý Sự Cố Lưu Trữ Bền Vững & Free-Practice Terminal Failure:**
    - Lỗi hạ tầng `AttachmentStorageUnavailable` được ghi vào `AIAnalysisJob.LastErrorCode` (tuyệt đối không đưa vào `EvidenceGate` hay nhầm với nhận thức sư phạm).
    - `AIAnalysisJobStateMachine` nâng cấp hỗ trợ tối đa 3 persisted retries kèm exponential backoff.
+   - Trạng thái Attempt tuân thủ nghiêm ngặt 5 giá trị chuẩn: `PendingAnalysis`, `Processing`, `Completed`, `NeedsTeacherReview`, `AnalysisFailed` (tuyệt đối không thêm trạng thái ngoài hợp đồng).
    - Khi hết retry:
      - Bài có assignment: Chuyển Teacher Review Queue với cờ thông báo sự cố hạ tầng.
      - Bài tự do (free-practice): Gọi `FailTerminal(...)`, chuyển trạng thái `AIAnalysisJob.Status = AIJobStatus.FailedTerminal` và `Attempt.Status = AttemptStatus.AnalysisFailed`, không tạo item trong review queue, hiển thị nút nộp lại (resubmit với `ClientSubmissionId` mới) cho học sinh.
@@ -2180,5 +2183,5 @@ Phần bổ sung phạm vi chính thức sau Release R08 nhằm hoàn thiện ha
 - **Gate 2:** Backend và Frontend Platform Administration (5 CHECK constraints, `PlatformAdminProvisioner`, `PlatformCentersPage`).
 - **Gate 3:** Visual Math Toolbar, Rational Normalizer, Calculator Drawer và migration `answer_evaluation_mode`.
 - **Gate 4:** Vector Scratchpad Canvas và Scoped IndexedDB Cache.
-- **Gate 5:** Streaming Multipart Storage, Bảng vật lý 40 `attempt_attachments`, Gemini Multimodal Integration, Scope Guard và Resilient Storage Fallback.
+- **Gate 5:** Streaming Multipart Storage, Bảng vật lý mục tiêu 40 `attempt_attachments`, Gemini Multimodal Integration, Scope Guard và Resilient Storage Fallback.
 - **Gate 6:** Kiểm thử toàn diện môi trường container hóa (clean-clone rehearsal), kiểm tra EXPLAIN execution plans, và lập hồ sơ nghiệm thu chính thức.

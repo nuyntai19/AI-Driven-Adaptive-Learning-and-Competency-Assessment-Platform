@@ -114,20 +114,23 @@ Căn cứ phê duyệt của nhóm và hai bản ghi kiến trúc độc lập (
 
 1. **Quản trị Nền tảng (Platform Administration - Track 1):**
    - Thiết lập Root Tenant chuyên biệt `PLATFORM` (`CenterId = 00000000-0000-0000-0000-000000000001`).
-   - Bổ sung account type và vai trò `PlatformAdmin` với các quyền bất khả ủy quyền (`IsDelegable = false`): `platform.centers.read`, `platform.centers.manage`.
-   - Cung cấp API quản lý vòng đời trung tâm (tạo, liệt kê `items: []` khi 0 centers, kích hoạt/tạm dừng có OCC `row_version`, đặt lại mật khẩu quản lý ban đầu kèm revoke refresh token và tăng `auth_version`).
+   - Bổ sung account type và vai trò `PlatformAdmin` với các quyền bất khả ủy quyền (`IsDelegable = false`): `platform.centers.read`, `platform.centers.manage`, `platform.managers.manage`.
+   - Cung cấp API quản lý vòng đời trung tâm (tạo với các trường khớp model hiện hành, liệt kê `items: []` khi 0 centers, kích hoạt/tạm dừng có OCC `row_version`, đặt lại mật khẩu quản lý qua `POST /platform/centers/{centerId}/managers/{managerUserId}/reset-password` với quyền `platform.managers.manage` và `expectedUserRowVersion`).
+   - `PlatformAdminProvisioner`: Nếu tài khoản quản trị nền tảng hợp lệ đã tồn tại thì kiểm tra hợp lệ rồi bỏ qua (skip), tuyệt đối không tự động đặt lại mật khẩu.
    - Tuyệt đối cấm PlatformAdmin đọc dữ liệu bài làm, Digital Twin, hoặc can thiệp học thuật của các trung tâm đối tác.
    - Cấm người dùng tenant nâng quyền hoặc gán vai trò `PlatformAdmin` (`ErrorCodes.AuthPrivilegeEscalation` / HTTP 403).
 
 2. **Bộ Công Cụ Toán Học & Minh Chứng Đa Phương Thức (Math Toolkit & Multimodal Evidence - Track 2):**
-   - Cung cấp Visual Math Toolbar 5 tab ký tự toán học và xem trước KaTeX an toàn (`trust: false`).
+   - Cung cấp Visual Math Toolbar 5 tab ký tự toán học và xem trước KaTeX an toàn (`trust: false`), lưu vết `answer_display_latex` (`VARCHAR(2048) NULL`).
    - Bổ sung chế độ chấm điểm `QuestionAnswerEvaluationMode` (`TextExact`, `NumericRational`, `Manual`) kèm bộ chuẩn hóa phân số tối giản `MathAnswerNormalizer` bằng `BigInteger`.
    - Cung cấp Scientific Calculator Drawer thuần tính toán, tuyệt đối không có tính năng tự động giải toán.
    - Bảng vẽ nháp vector (Vector Scratchpad Canvas) lưu trữ draft scoped IndexedDB theo `draft:${centerId}:${userId}:${clientSubmissionId}`.
-   - Bảng vật lý thứ 40 `attempt_attachments` với ràng buộc dung lượng 1..5MB, `image/png`, unique storage key và upload nonce.
+   - Nộp bài (`POST /learning/attempts`) và upload minh chứng bắt buộc tài khoản loại `Student` và quyền `learning.attempts.submit`.
+   - Bảng vật lý thứ 40 `attempt_attachments` (bảng mục tiêu sau Gate 5, thỏa mãn audit TA gồm `created_by` và FK `attempts(center_id, attempt_id)`) với ràng buộc dung lượng 1..5MB, `image/png`, unique storage key và upload nonce.
    - Phân quyền minh chứng thống nhất qua `IAttemptTeacherReviewScopeGuard` (Attempt $\to$ Assignment $\to$ Class $\to$ Teacher; bài tự do free-practice mặc định Fail-Closed trả về HTTP 404).
-   - Cơ chế chịu lỗi lưu trữ bền vững: Sự cố `AttachmentStorageUnavailable` được ghi vào `AIAnalysisJob.LastErrorCode` (không đưa vào `EvidenceGate`). `AIAnalysisJobStateMachine` hỗ trợ tối đa 3 persisted retries kèm exponential backoff. Khi hết retry, bài free-practice kết thúc bằng `AIJobStatus.FailedTerminal` và `AttemptStatus.AnalysisFailed` (kèm nút nộp lại resubmit với `ClientSubmissionId` mới, không làm ô nhiễm Teacher Review Queue).
-   - Nâng tổng số bảng vật lý của hệ thống lên 40 bảng (bổ sung bảng `attempt_attachments`).
+   - Cơ chế chịu lỗi lưu trữ bền vững: Sự cố `AttachmentStorageUnavailable` được ghi vào `AIAnalysisJob.LastErrorCode` (không đưa vào `EvidenceGate`). `AIAnalysisJobStateMachine` hỗ trợ tối đa 3 persisted retries kèm exponential backoff.
+   - Trạng thái Attempt tuân thủ nghiêm ngặt 5 giá trị: `PendingAnalysis`, `Processing`, `Completed`, `NeedsTeacherReview`, `AnalysisFailed`. Khi hết retry, bài free-practice kết thúc bằng `AIJobStatus.FailedTerminal` và `AttemptStatus.AnalysisFailed` (kèm nút nộp lại resubmit với `ClientSubmissionId` mới, không làm ô nhiễm Teacher Review Queue).
+   - Mô hình EF migration hiện hành duy trì 39 bảng vật lý; bảng thứ 40 (`attempt_attachments`) là mục tiêu triển khai tại Gate 5.
 
 ## 4. Stack bắt buộc
 

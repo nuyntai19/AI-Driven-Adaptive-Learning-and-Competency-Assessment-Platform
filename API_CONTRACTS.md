@@ -154,7 +154,7 @@ Collection rỗng trả data: [], không trả 404.
 | QuestionStatus | Draft, Active, Archived |
 | AssignmentStatus | Draft, Published, Closed, Archived |
 | ProgressStatus | NotStarted, InProgress, Completed, Overdue |
-| AttemptStatus | Submitted, PreliminaryGraded, AIAnalysisCompleted, TeacherReviewed, NeedsTeacherReview, FallbackCompleted, AnalysisFailed (legacy aliases: PendingAnalysis, Processing, Completed) |
+| AttemptStatus | PendingAnalysis, Processing, Completed, NeedsTeacherReview, AnalysisFailed |
 | AIJobStatus | Pending, Processing, Completed, FallbackCompleted, FailedTerminal |
 | ErrorType | None, Knowledge, Skill, Reasoning, Behavior, Presentation, Unknown |
 | RecommendationStatus | Active, Accepted, Dismissed, Superseded |
@@ -1251,7 +1251,7 @@ Student assignment response không lộ đáp án:
 
 ## 52. POST /learning/attempts
 
-Quyền: Student.
+Quyền: Student (AccountType == Student, có permission learning.attempts.submit).
 
 Request:
 
@@ -1270,6 +1270,10 @@ Request:
   "skipped": false
 }
 ~~~
+
+Ràng buộc trường:
+- `answerDisplayLatex`: Chuỗi LaTeX hiển thị công thức, độ dài tối đa 2048 ký tự (`VARCHAR(2048) NULL`).
+- `drawingUploadToken`: Token ký Data Protection bind SHA-256 hash và upload nonce (tùy chọn).
 
 Response 202:
 
@@ -1298,7 +1302,7 @@ Idempotency & Replay:
 
 ## 52.1. POST /learning/attempts/attachments/prepare-upload
 
-Quyền: Student.
+Quyền: Student (AccountType == Student, có permission learning.attempts.submit).
 
 Content-Type: `multipart/form-data` (form field: `file`).
 
@@ -1346,6 +1350,7 @@ Pending/Processing response:
     "analysisJobId": "13001",
     "attemptId": "12001",
     "status": "Processing",
+    "attemptStatus": "Processing",
     "retryCount": 0,
     "terminal": false,
     "feedbackUrl": null,
@@ -1358,7 +1363,7 @@ Pending/Processing response:
 }
 ~~~
 
-Terminal response:
+Terminal success response (Completed):
 
 ~~~json
 {
@@ -1366,6 +1371,7 @@ Terminal response:
     "analysisJobId": "13001",
     "attemptId": "12001",
     "status": "Completed",
+    "attemptStatus": "Completed",
     "retryCount": 0,
     "terminal": true,
     "feedbackUrl": "/api/v1/learning/attempts/12001/feedback",
@@ -1378,7 +1384,38 @@ Terminal response:
 }
 ~~~
 
-Frontend poll 3 giây, dừng khi terminal=true.
+Terminal failure response (FailedTerminal / AnalysisFailed - ví dụ bài free-practice retry exhaustion do sự cố lưu trữ):
+
+~~~json
+{
+  "data": {
+    "analysisJobId": "13001",
+    "attemptId": "12001",
+    "status": "FailedTerminal",
+    "attemptStatus": "AnalysisFailed",
+    "errorCode": "AttachmentStorageUnavailable",
+    "retryCount": 3,
+    "terminal": true,
+    "feedbackUrl": null,
+    "updatedAt": "2026-07-15T08:32:30Z"
+  },
+  "meta": {
+    "traceId": "00-abcd-1234-01",
+    "timestamp": "2026-07-15T08:32:30Z"
+  }
+}
+~~~
+
+Frontend Polling & Resubmit Flow:
+- Frontend poll mỗi 3 giây, dừng ngay khi `terminal === true`.
+- Với terminal failure (`status === "FailedTerminal"` hoặc `attemptStatus === "AnalysisFailed"`):
+  - Giao diện học sinh hiển thị thông báo lỗi hạ tầng thân thiện kèm nút "Thử nộp lại" (Resubmit).
+  - Luồng nộp lại:
+    1. Giữ nguyên câu trả lời và nội dung bài làm trên giao diện.
+    2. Sinh `clientSubmissionId` mới (UUID v4).
+    3. Nếu có bản vẽ nháp, upload lại ảnh nháp qua `POST /learning/attempts/attachments/prepare-upload` để nhận `drawingUploadToken` mới.
+    4. Gửi yêu cầu nộp bài mới qua `POST /learning/attempts`.
+    5. Bắt đầu phiên polling mới theo `pollUrl` trả về.
 
 ## 54. GET /learning/attempts/{attemptId}/feedback
 
@@ -1815,9 +1852,11 @@ Permission code dùng dạng module.resource.action. Catalog v1 tối thiểu:
 | Assignment | assignments.assignments.read, assignments.assignments.create, assignments.assignments.update, assignments.assignments.publish, assignments.assignments.close |
 | Learning/Twin | learning.attempts.submit, learning.attempts.read_own, learning.attempts.read_scoped, twin.student.read_own, twin.student.read_scoped, twin.student.update_own, twin.student.update_scoped, twin.reasoning.review, twin.reasoning.override, recommendations.student.read_own |
 | Dashboard | dashboards.student.read_own, dashboards.teacher.read_scoped, dashboards.center.read |
+| Platform | platform.centers.read, platform.centers.manage, platform.managers.manage |
 
 Bootstrap allowedAccountTypes dưới đây là normative và bảo toàn ranh giới role hiện tại:
 
+- PlatformAdmin: platform.centers.read, platform.centers.manage, platform.managers.manage.
 - Student: learning.attempts.submit, learning.attempts.read_own, twin.student.read_own, twin.student.update_own, recommendations.student.read_own, dashboards.student.read_own.
 - Teacher: dashboards.teacher.read_scoped.
 - CenterManager: authorization.permissions.read, authorization.roles.read, authorization.roles.create, authorization.roles.update, authorization.roles.archive, authorization.roles.manage_permissions, authorization.user_roles.read, authorization.user_roles.assign, authorization.audit.read, organization.center.read, organization.center.update, organization.teachers.create, organization.teachers.update, organization.teachers.delete, organization.students.delete, organization.classes.create, organization.classes.update, knowledge.subjects.delete, knowledge.nodes.delete, curriculum.questions.delete, dashboards.center.read.
@@ -1826,9 +1865,9 @@ Bootstrap allowedAccountTypes dưới đây là normative và bảo toàn ranh g
 
 Với permission dùng chung, endpoint vẫn phải áp dụng projection và resource scope đúng actor. Ví dụ Student có organization.students.read chỉ đọc hồ sơ của chính mình và assignments.assignments.read chỉ dùng student-safe route/projection; permission không cho phép gọi management projection.
 
-Catalog đầy đủ phải được seed idempotent. Mặc định isSensitive = false và isDelegable = true cho catalog v1. isSensitive = true chính xác cho authorization.roles.create, authorization.roles.update, authorization.roles.archive, authorization.roles.manage_permissions, authorization.user_roles.assign, authorization.audit.read, organization.center.update, organization.teachers.create, organization.teachers.update, organization.teachers.delete, organization.students.create, organization.students.update, organization.students.delete, organization.classes.create, organization.classes.update, organization.classes.manage_members, knowledge.subjects.delete, knowledge.nodes.delete, knowledge.edges.delete, curriculum.curriculums.publish, curriculum.questions.publish, curriculum.questions.delete, assignments.assignments.publish, assignments.assignments.close, twin.student.update_scoped và twin.reasoning.override. Thay đổi mapping/flag là contract change, không phải cấu hình tùy ý qua UI.
+Catalog đầy đủ phải được seed idempotent. Mặc định isSensitive = false và isDelegable = true cho catalog v1. isSensitive = true chính xác cho authorization.roles.create, authorization.roles.update, authorization.roles.archive, authorization.roles.manage_permissions, authorization.user_roles.assign, authorization.audit.read, organization.center.update, organization.teachers.create, organization.teachers.update, organization.teachers.delete, organization.students.create, organization.students.update, organization.students.delete, organization.classes.create, organization.classes.update, organization.classes.manage_members, knowledge.subjects.delete, knowledge.nodes.delete, knowledge.edges.delete, curriculum.curriculums.publish, curriculum.questions.publish, curriculum.questions.delete, assignments.assignments.publish, assignments.assignments.close, twin.student.update_scoped và twin.reasoning.override. Các quyền platform.* luôn có isDelegable = false. Thay đổi mapping/flag là contract change, không phải cấu hình tùy ý qua UI.
 
-Không có Platform/System Admin. Mọi endpoint dưới /authorization chỉ thao tác trong Center của caller, ngoại trừ permission catalog global chỉ đọc.
+Tài khoản PlatformAdmin quản trị ở Root Tenant PLATFORM (không nằm trong Center thường). Mọi endpoint dưới /authorization chỉ thao tác trong Center của caller, ngoại trừ permission catalog global chỉ đọc.
 
 TenantAdminCorePermissionsV1 gồm chính xác:
 
@@ -2148,13 +2187,12 @@ Response 200:
         "centerCode": "CENTER_A",
         "centerName": "Trung tâm Ôn thi Đại học A",
         "status": "Active",
-        "contactPhone": "0912345678",
-        "address": "123 Đường Nguyễn Trãi, Hà Nội",
-        "managerUsername": "manager_a",
-        "managerEmail": "manager@centera.edu.vn",
-        "managerFullName": "Nguyễn Văn Quản",
+        "timezone": "Asia/Bangkok",
         "createdAt": "2026-07-15T08:00:00Z",
-        "rowVersion": "1"
+        "rowVersion": "1",
+        "initialManagerUserId": "baf68743-a272-4983-a9e2-41663734a7c2",
+        "initialManagerUsername": "manager_a",
+        "initialManagerDisplayName": "Nguyễn Văn Quản"
       }
     ],
     "totalCount": 1
@@ -2176,17 +2214,16 @@ Thực hiện trong một database transaction:
 3. Cấp phát các role mặc định (`CenterManager`, `Teacher`, `Student`) cho Center mới.
 4. Gán vai trò `CenterManager` cho người dùng quản trị ban đầu.
 
-Request:
+Request (khớp domain model hiện hành):
 
 ~~~json
 {
   "centerCode": "CENTER_C",
   "centerName": "Trung tâm Giáo dục C",
-  "address": "456 Đường Lê Lợi, TP. Hồ Chí Minh",
-  "contactPhone": "0987654321",
-  "managerUsername": "manager_c",
-  "managerEmail": "manager@centerc.edu.vn",
-  "managerFullName": "Lê Quản Trị"
+  "timezone": "Asia/Bangkok",
+  "initialManagerUsername": "manager_c",
+  "initialManagerDisplayName": "Lê Quản Trị",
+  "initialManagerPassword": "InitialSecurePassword123!"
 }
 ~~~
 
@@ -2199,9 +2236,11 @@ Response 201:
     "centerCode": "CENTER_C",
     "centerName": "Trung tâm Giáo dục C",
     "status": "Active",
+    "timezone": "Asia/Bangkok",
     "initialManagerUserId": "4dc67ba3-2d2f-469e-aaaa-8c90a72c55f4",
     "initialManagerUsername": "manager_c",
-    "initialManagerTemporaryPassword": "SecurePasswordGenerated...",
+    "initialManagerDisplayName": "Lê Quản Trị",
+    "createdAt": "2026-09-12T20:30:00Z",
     "rowVersion": "1"
   },
   "meta": {
@@ -2230,20 +2269,23 @@ Request:
 
 Response 200: Center DTO sau cập nhật (kèm `rowVersion` mới tăng thêm 1).
 
-## 78. POST /platform/centers/{id}/managers/initial-password-reset
+## 78. POST /platform/centers/{centerId}/managers/{managerUserId}/reset-password
 
-Quyền: PlatformAdmin (có quyền `platform.centers.manage`).
+Quyền: PlatformAdmin (có quyền `platform.managers.manage`).
 
 Thực hiện:
-1. Đặt lại mật khẩu tài khoản quản lý trung tâm ban đầu.
-2. Tăng `users.auth_version` làm mất hiệu lực toàn bộ JWT Access Tokens cũ của user.
-3. Đánh dấu `revoked_at` trên toàn bộ Refresh Tokens còn hiệu lực của user.
+1. Xác thực `expectedUserRowVersion` khớp `users.row_version` hiện hành của tài khoản quản lý (OCC).
+2. Đặt lại mật khẩu tài khoản quản lý trung tâm (cập nhật hash mật khẩu mới).
+3. Tăng `users.row_version` của tài khoản quản lý.
+4. Tăng `users.auth_version` làm mất hiệu lực toàn bộ JWT Access Tokens cũ của user.
+5. Đánh dấu `revoked_at` trên toàn bộ Refresh Tokens còn hiệu lực của user.
 
 Request:
 
 ~~~json
 {
-  "newPassword": "NewGeneratedSecurePassword123!"
+  "newPassword": "NewGeneratedSecurePassword123!",
+  "expectedUserRowVersion": "1"
 }
 ~~~
 
@@ -2254,6 +2296,7 @@ Response 200:
   "data": {
     "centerId": "3cb56a92-1c1e-458d-999e-7b89f61b44e3",
     "managerUserId": "4dc67ba3-2d2f-469e-aaaa-8c90a72c55f4",
+    "newUserRowVersion": "2",
     "resetAtUtc": "2026-09-12T20:30:00Z",
     "success": true
   },

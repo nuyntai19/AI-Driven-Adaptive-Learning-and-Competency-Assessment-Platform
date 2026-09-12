@@ -46,8 +46,9 @@ To support production onboarding, partner center provisioning, and tenant lifecy
   4. `ck_user_roles_account_type`
   5. `ck_role_permissions_account_type`
 - Platform capabilities:
-  - `platform.centers.read`: View centers, metadata, and manager contact details.
-  - `platform.centers.manage`: Provision centers, toggle suspension, reset initial manager credentials.
+  - `platform.centers.read`: View centers and metadata.
+  - `platform.centers.manage`: Provision centers, toggle suspension.
+  - `platform.managers.manage`: Reset center manager credentials with optimistic concurrency control.
 - Invariant: All `platform.*` capabilities have `IsDelegable = false`. They cannot be created, edited, or granted inside ordinary centers.
 - Privilege Escalation Guard: Any attempt by a tenant user to create a role with `PlatformAdmin` account type, assign `PlatformAdmin` role, or grant `platform.*` permissions throws `ConflictException` / `ForbiddenException` with `ErrorCodes.AuthPrivilegeEscalation` (HTTP 403 Forbidden).
 
@@ -55,23 +56,28 @@ To support production onboarding, partner center provisioning, and tenant lifecy
 - Separated entirely from test/demo seeders (`DataSeeder`).
 - Runs during host startup if database migrations are applied.
 - Reads password from environment variable `PlatformBootstrap__AdminPassword`. If running in `Development` mode, fallback configuration must also be explicitly sourced from environment variables; zero plaintext fallback strings in code.
-- If the platform admin user exists, updates password hash if credentials rotated; if absent, provisions the user and assigns `PlatformAdmin` role within `PLATFORM` tenant.
+- Idempotency & Safety: If a valid platform administrator already exists in the `PLATFORM` tenant, the provisioner validates the record and skips provisioning; it **never** resets or overwrites existing administrator passwords automatically. If absent, provisions the user and assigns `PlatformAdmin` role within `PLATFORM` tenant.
 
 ### 3.4. Center Lifecycle Management
 - **List Centers (`GET /api/v1/platform/centers`):**
   - Caller must possess `platform.centers.read` claim and belong to `PLATFORM` tenant.
   - Executes intentional cross-tenant query using `IgnoreQueryFilters()`, filtering `center_id != ReservedPlatformCenterId` and `is_deleted == false`.
+  - Returns canonical model fields: `centerId`, `centerCode`, `centerName`, `status`, `timezone`, `createdAt`, `rowVersion`, `initialManagerUserId`, `initialManagerUsername`, `initialManagerDisplayName`.
   - Empty State: When 0 customer centers exist, returns HTTP 200 OK with `items: []`, `totalCount: 0`.
 - **Create Center (`POST /api/v1/platform/centers`):**
+  - Caller must possess `platform.centers.manage` claim and belong to `PLATFORM` tenant.
+  - Request fields match existing domain model: `centerCode`, `centerName`, `timezone`, initial manager `username`, `displayName`, `password`.
   - Transactional boundary: Inserts `Center`, initial `User` (`CenterManager`), provisions default roles for the new center (`CenterManager`, `Teacher`, `Student`), and assigns `CenterManager` role to the initial user.
 - **Center Status Transition (`PATCH /api/v1/platform/centers/{id}/status`):**
+  - Caller must possess `platform.centers.manage` claim.
   - Allows toggling `Active` $\leftrightarrow$ `Suspended`.
   - Concurrency token: Enforces Optimistic Concurrency Control (OCC) via `row_version`.
   - Target protection: Mutating `PLATFORM` center is strictly forbidden (`ErrorCodes.ForbiddenResource`).
-- **Initial Manager Password Reset (`POST /api/v1/platform/centers/{id}/managers/initial-password-reset`):**
-  - Resets password for the primary center manager.
-  - Atomically increments `users.auth_version` to invalidate all active JWTs.
-  - Bulk revokes all active refresh tokens for the user by setting `revoked_at = utcNow`.
+- **Center Manager Password Reset (`POST /api/v1/platform/centers/{centerId}/managers/{managerUserId}/reset-password`):**
+  - Caller must possess `platform.managers.manage` claim and belong to `PLATFORM` tenant.
+  - Request fields: `newPassword`, `expectedUserRowVersion`.
+  - Validates `expectedUserRowVersion` matches manager's current `users.row_version` to prevent clobbering concurrent user edits.
+  - Updates password hash, increments `users.row_version`, atomically increments `users.auth_version` to invalidate all active JWT sessions, and bulk revokes all active refresh tokens for the user by setting `revoked_at = utcNow`.
 
 ### 3.5. Data Boundary & Privacy Guarantee
 - `PlatformAdmin` possesses administrative metadata authority only.

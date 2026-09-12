@@ -37,7 +37,7 @@ In the R00–R08 baseline, students submitted plain text `reasoning_text` and sc
   - Sets & Logic ($\in, \notin, \subset, \cup, \cap, \emptyset, \forall, \exists, \implies$)
   - Geometry & Trigonometry ($\sin, \cos, \tan, \cot, \angle, \Delta, \perp, \parallel, ^\circ$)
 - Integrated real-time LaTeX rendering via KaTeX configured with `trust: false` to sanitize against script injection.
-- Stored as `answer_display_latex` in `attempts` table.
+- Stored as `answer_display_latex` (`VARCHAR(2048) NULL`) in `attempts` table.
 
 ### 3.2. Question Answer Evaluation Modes & Rational Normalizer
 - Matrix constraint between `QuestionType` and `QuestionAnswerEvaluationMode`:
@@ -67,6 +67,7 @@ In the R00–R08 baseline, students submitted plain text `reasoning_text` and sc
 
 ### 3.5. Bounded Multipart Streaming Upload & Data Protection Token
 - Thin controller: `AttemptAttachmentsController.cs` delegates directly to BLL use cases.
+- Caller must possess `Student` account type and `learning.attempts.submit` permission.
 - `PrepareAttemptAttachmentUploadUseCase`:
   - Enforces server-side size limit $\le 5\text{MB}$ (`5,242,880` bytes).
   - Bounded full PNG validation: 8-byte PNG header (`0x89 0x50 0x4E 0x47 0x0D 0x0A 0x1A 0x0A`), valid `IHDR` chunk ($W, H \le 4096$, allowed color types $\{0,2,4,6\}$, bit depth), streaming chunk decode with memory boundaries, and terminating `IEND` chunk with CRC verification. Rejects truncated or trailing-garbage payloads.
@@ -75,6 +76,7 @@ In the R00–R08 baseline, students submitted plain text `reasoning_text` and sc
 
 ### 3.6. Idempotent Replay, Upload Race Semantics & Atomic Promotion
 - In `SubmitAttemptUseCase`:
+  - Caller must possess `Student` account type and `learning.attempts.submit` permission.
   - If submission already exists: Compares payload and `uploadNonce`. If identical, returns HTTP 200/202 replay success even if the temp blob was already promoted or purged. If mismatched, throws `ConflictException(ErrorCodes.DuplicateSubmission)`.
   - If submission is new: Validates signed token against caller context and hash.
   - Atomic promote semantics: Promotes temp file to permanent destination `tenants/{centerId}/attempt-attachments/{uploadNonce}.png` with `overwrite: false` (or `FileMode.CreateNew`).
@@ -88,7 +90,8 @@ In the R00–R08 baseline, students submitted plain text `reasoning_text` and sc
 - Schema details:
   - Table name: `attempt_attachments`.
   - Primary Key: `id` (BIGINT UNSIGNED AUTO_INCREMENT).
-  - Composite FK: `(center_id, attempt_id)` references `attempts(center_id, id)`.
+  - Columns: `id`, `center_id`, `attempt_id`, `upload_nonce`, `storage_key`, `file_size_bytes`, `content_type`, `sha256_hash`, `created_at`, `created_by` (satisfies TA audit columns).
+  - Composite FK: `(center_id, attempt_id)` references `attempts(center_id, attempt_id)`.
   - Database Constraints:
     - `CONSTRAINT ck_attempt_attachments_file_size_bytes CHECK (file_size_bytes >= 1 AND file_size_bytes <= 5242880)`
     - `CONSTRAINT ck_attempt_attachments_content_type CHECK (content_type = 'image/png')`

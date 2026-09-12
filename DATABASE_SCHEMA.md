@@ -1,7 +1,7 @@
 # EduTwin — Database Schema
 
 > Phiên bản: 2.4 (Post-R08 Scope Amendments)
-> Trạng thái: ACTIVE — 40 bảng vật lý trong EF migration model (bổ sung Bảng thứ 40: attempt_attachments)
+> Trạng thái: ACTIVE — 39 bảng vật lý trong EF migration model hiện hành (Bảng thứ 40: attempt_attachments là bảng mục tiêu sau Gate 5)
 > Database: MySQL 8.x / InnoDB / utf8mb4
 > ORM: Entity Framework Core 10
 > Chủ sở hữu: Data/Architecture owners; thay đổi cần nhóm phê duyệt
@@ -27,7 +27,7 @@ Schema gồm sáu module logic:
 5. Assessment & AI Reasoning.
 6. Dynamic Authorization & Evidence Governance.
 
-Hệ thống có 40 bảng vật lý trong EF migration model, bao gồm 7 bảng ở Module 6, bảng watermark recommendation generation (bảng thứ 39: recommendation_generation_states) và bảng lưu trữ minh chứng đính kèm (bảng thứ 40: attempt_attachments). Toàn bộ mô hình tuân thủ kiểm tra live-MySQL và Global Query Filter nghiêm ngặt.
+Hệ thống có 39 bảng vật lý trong EF migration model hiện hành, bao gồm 7 bảng ở Module 6 và bảng watermark recommendation generation (bảng thứ 39: recommendation_generation_states). Bảng lưu trữ minh chứng đính kèm (bảng thứ 40: attempt_attachments) là bảng mục tiêu được triển khai tại Gate 5. Toàn bộ mô hình tuân thủ kiểm tra live-MySQL và Global Query Filter nghiêm ngặt.
 
 ## 2. Quy ước vật lý
 
@@ -176,9 +176,9 @@ erDiagram
     CENTERS ||--o{ AUTHORIZATION_AUDIT_LOGS : audits
 ~~~
 
-## 3.1. Danh mục 39 bảng, mục đích và quan hệ chính
+## 3.1. Danh mục 39 bảng hiện hành (và Bảng 40 mục tiêu sau Gate 5), mục đích và quan hệ chính
 
-Đây là data dictionary cấp bảng. Các mục 4–42 bên dưới là data dictionary cấp cột và là nguồn chi tiết duy nhất; không tạo thêm file schema song song.
+Đây là data dictionary cấp bảng. Các mục 4–42 bên dưới là data dictionary cấp cột của 39 bảng hiện hành và mục 43 là bảng mục tiêu thứ 40 sau Gate 5; không tạo thêm file schema song song.
 
 | # | Table | Trạng thái | Chức năng | Quan hệ chính |
 |---:|---|---|---|---|
@@ -221,7 +221,7 @@ erDiagram
 | 37 | user_roles | Current | Role active/revoked của user | Join users–roles có account-type FK |
 | 38 | authorization_audit_logs | Current | Audit append-only của thay đổi quyền | FK actor/target users khi có |
 | 39 | evidence_assessments | Current | Quyết định policy append-only, không nhân bản analysis/mastery | FK attempts/analyses/self-supersession |
-| 40 | attempt_attachments | Current | Minh chứng ảnh nháp đính kèm Attempt | FK attempts; quan hệ 1:1, unique nonce giải quyết race condition |
+| 40 | attempt_attachments | Target post-Gate 5 | Minh chứng ảnh nháp đính kèm Attempt | FK attempts; quan hệ 1:1, unique nonce giải quyết race condition |
 
 # Module 1 — System Users & Organization
 
@@ -863,7 +863,7 @@ Table append-only; replay tạo event mới, không sửa event cũ.
 | assignment_id | VARCHAR(36) | Yes | Null nếu luyện tự do |
 | final_answer | LONGTEXT | No | Câu trả lời cuối cùng dùng chấm sơ bộ deterministic |
 | reasoning_text | LONGTEXT | Yes | Bắt buộc nếu question.reasoning_required |
-| answer_display_latex | LONGTEXT | Yes | Công thức LaTeX hiển thị của câu trả lời |
+| answer_display_latex | VARCHAR(2048) | Yes | Công thức LaTeX hiển thị của câu trả lời |
 | is_correct | TINYINT(1) | Yes | Preliminary deterministic grade |
 | awarded_score | DECIMAL(5,2) | Yes | Điểm sơ bộ theo grader/criteria; teacher có thể review theo use case |
 | time_spent_seconds | INT UNSIGNED | No | Telemetry thời gian quan sát được |
@@ -871,7 +871,7 @@ Table append-only; replay tạo event mới, không sửa event cũ.
 | answer_changes | INT UNSIGNED | No | Default 0 |
 | skipped | TINYINT(1) | No | Default 0 |
 | reasoning_language | VARCHAR(8) | No | vi hoặc en |
-| status | VARCHAR(32) | No | Submitted, PreliminaryGraded, AIAnalysisCompleted, TeacherReviewed, NeedsTeacherReview, FallbackCompleted, AnalysisFailed |
+| status | VARCHAR(32) | No | PendingAnalysis, Processing, Completed, NeedsTeacherReview, AnalysisFailed |
 | client_submission_id | VARCHAR(36) | No | Idempotency key từ client |
 | updated_at | DATETIME(6) | No | Thời điểm trạng thái thay đổi gần nhất |
 | row_version | BIGINT UNSIGNED | No | Concurrency token |
@@ -883,7 +883,7 @@ Indexes/constraints:
 - IX(center_id, student_id, question_id, created_at).
 - IX(center_id, assignment_id, student_id).
 - IX(center_id, status, created_at).
-- CHECK status IN ('Submitted', 'PreliminaryGraded', 'AIAnalysisCompleted', 'TeacherReviewed', 'NeedsTeacherReview', 'FallbackCompleted', 'AnalysisFailed').
+- CHECK status IN ('PendingAnalysis', 'Processing', 'Completed', 'NeedsTeacherReview', 'AnalysisFailed').
 - CHECK confidence BETWEEN 0 AND 100.
 - CHECK time_spent_seconds >= 0.
 - CHECK reasoning_language IN (vi, en).
@@ -1207,7 +1207,7 @@ Invariant:
 - policy_version và reason_codes phải đủ để tái lập quyết định Gate.
 - Bảng chỉ lưu policy decision/provenance; không copy feedback, mastery delta hoặc calculation breakdown từ analysis/history.
 
-## 43. attempt_attachments [TA - Bảng vật lý thứ 40]
+## 43. attempt_attachments [TA - Bảng vật lý mục tiêu thứ 40 sau Gate 5]
 
 | Column | Type | Null | Constraint/Ý nghĩa |
 |---|---|---:|---|
@@ -1220,6 +1220,7 @@ Invariant:
 | content_type | VARCHAR(64) | No | MIME type bắt buộc image/png |
 | sha256_hash | VARCHAR(64) | No | Mã băm SHA-256 xác thực tính toàn vẹn của blob |
 | created_at | DATETIME(6) | No | UTC; thời điểm nộp bài và promote blob |
+| created_by | VARCHAR(36) | Yes | Actor user ID (học sinh nộp bài) |
 
 Indexes/constraints:
 

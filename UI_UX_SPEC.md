@@ -112,6 +112,7 @@ Permission catalog do backend trả. Nhóm code khởi tạo:
 
 - platform.centers.read
 - platform.centers.manage
+- platform.managers.manage
 
 ### Organization
 
@@ -533,11 +534,11 @@ Không dùng biểu thức role OR permission để “chạy tạm”, vì sẽ
 - **Thành phần giao diện:**
   - Tiêu đề & Breadcrumb: "Quản trị Nền tảng" / "Danh sách Trung tâm Giáo dục".
   - Thanh tác vụ: Ô tìm kiếm (mã trung tâm, tên trung tâm, tên người quản lý), bộ lọc trạng thái (`Tất cả`, `Đang hoạt động`, `Tạm ngưng`), nút "Thêm trung tâm mới" (yêu cầu quyền `platform.centers.manage`).
-  - Bảng dữ liệu: Cột Mã trung tâm, Tên trung tâm, Trạng thái (Badge xanh `Hoạt động` / Badge vàng `Tạm ngưng`), Quản lý chính (Username, Họ tên, Email), Số điện thoại, Ngày tạo, Nút thao tác (Đổi trạng thái, Đặt lại mật khẩu).
+  - Bảng dữ liệu: Cột Mã trung tâm, Tên trung tâm, Trạng thái (Badge xanh `Hoạt động` / Badge vàng `Tạm ngưng`), Múi giờ, Quản lý chính (Username, Họ và tên), Ngày tạo, Nút thao tác (Đổi trạng thái, Đặt lại mật khẩu).
   - Empty State: Khi hệ thống chưa có trung tâm thường nào (`items: []`), hiển thị hình minh họa, dòng thông báo "Chưa có trung tâm giáo dục nào được khởi tạo trên nền tảng" và nút kêu gọi hành động "Tạo trung tâm đầu tiên".
-  - Modal tạo trung tâm mới: Form nhập Mã trung tâm, Tên trung tâm, Địa chỉ, Số điện thoại, Thông tin quản lý ban đầu (Username, Email, Họ và tên). Hiển thị mật khẩu tạm thời được hệ thống sinh ngẫu nhiên sau khi tạo thành công kèm nút sao chép an toàn.
+  - Modal tạo trung tâm mới: Form nhập Mã trung tâm (`centerCode`), Tên trung tâm (`centerName`), Múi giờ (`timezone`, mặc định `Asia/Bangkok`), Thông tin quản lý ban đầu (Username `initialManagerUsername`, Họ và tên `initialManagerDisplayName`, Mật khẩu quản trị ban đầu `initialManagerPassword`).
   - Modal chuyển đổi trạng thái: Hộp thoại xác nhận chuyển sang `Tạm ngưng` hoặc `Kích hoạt lại`. Gửi kèm `rowVersion`. Khi phát sinh xung đột đồng thời (HTTP 409), hiển thị thông báo "Dữ liệu trung tâm đã bị thay đổi bởi tác vụ khác. Vui lòng tải lại dữ liệu mới nhất" và tự động kích hoạt query refetch.
-  - Modal đặt lại mật khẩu ban đầu: Hộp thoại xác nhận đặt lại mật khẩu tài khoản quản lý trung tâm, sinh mật khẩu an toàn mới và cảnh báo các phiên làm việc hiện tại của tài khoản này sẽ lập tức bị thu hồi (auth_version bump).
+  - Modal đặt lại mật khẩu quản lý: Hộp thoại xác nhận đặt lại mật khẩu tài khoản quản lý trung tâm (gửi `POST /api/v1/platform/centers/{centerId}/managers/{managerUserId}/reset-password` yêu cầu quyền `platform.managers.manage`, nhận `newPassword` và `expectedUserRowVersion`), cảnh báo các phiên làm việc hiện tại của tài khoản này sẽ lập tức bị thu hồi (`auth_version` bump).
 
 ### 20.2. Thanh Công Cụ Toán Học Trực Quan (`MathInputToolbar.tsx`) & Xem Trước KaTeX (`MathFormulaPreview.tsx`)
 - **Vị trí tích hợp:** Trình soạn thảo câu hỏi (`QuestionEditorPage.tsx`) và Trình làm bài của học sinh (`LearningPlayerPage.tsx`).
