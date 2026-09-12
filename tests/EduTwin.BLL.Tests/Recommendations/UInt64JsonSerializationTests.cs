@@ -72,7 +72,7 @@ public sealed class UInt64JsonSerializationTests
             QuestionId = questionId,
             Explanation = "Explanation",
             Status = RecommendationStatus.Active,
-            GeneratedAt = DateTime.UtcNow
+            GeneratedAt = new DateTime(2026, 7, 15, 8, 30, 0, DateTimeKind.Utc)
         };
 
         var json = JsonSerializer.Serialize(rec, JsonOptions);
@@ -131,7 +131,7 @@ public sealed class UInt64JsonSerializationTests
             TargetType = "Role",
             TargetId = "1000",
             Reason = "Test",
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = new DateTime(2026, 7, 15, 8, 30, 0, DateTimeKind.Utc)
         };
 
         var json = JsonSerializer.Serialize(audit, JsonOptions);
