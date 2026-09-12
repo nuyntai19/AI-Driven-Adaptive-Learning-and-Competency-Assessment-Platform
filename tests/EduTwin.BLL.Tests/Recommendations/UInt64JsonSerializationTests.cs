@@ -118,4 +118,29 @@ public sealed class UInt64JsonSerializationTests
         Assert.Equal(topicId, roundTripped.TopicNodeId);
         Assert.Equal(questionId, roundTripped.RecommendedQuestionId);
     }
+
+    [Fact]
+    public void AuthorizationAuditDto_SerializesUInt64IdAsString()
+    {
+        const ulong auditId = ulong.MaxValue;
+
+        var audit = new EduTwin.Contracts.IdentityAndTenancy.AuthorizationAuditDto
+        {
+            AuthorizationAuditId = auditId,
+            ActionType = "RoleUpdated",
+            TargetType = "Role",
+            TargetId = "1000",
+            Reason = "Test",
+            CreatedAt = DateTime.UtcNow
+        };
+
+        var json = JsonSerializer.Serialize(audit, JsonOptions);
+
+        Assert.Contains($"\"authorizationAuditId\":\"{auditId}\"", json);
+
+        var roundTripped = JsonSerializer.Deserialize<EduTwin.Contracts.IdentityAndTenancy.AuthorizationAuditDto>(json, JsonOptions);
+        Assert.NotNull(roundTripped);
+        Assert.Equal(auditId, roundTripped.AuthorizationAuditId);
+    }
 }
+
