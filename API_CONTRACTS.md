@@ -120,6 +120,7 @@
 | OVERRIDE_REPLAY_FAILED | 500 | Transaction replay rollback |
 | LAST_TENANT_ADMIN | 409 | Thao tác làm Center không còn tenant administrator |
 | ROLE_IN_USE | 409 | Không thể archive role còn assignment active |
+| UPLOAD_TOKEN_ALREADY_USED | 409 | Token tải ảnh nháp đã được sử dụng bởi một bài nộp khác (race condition trên CSDL unique constraint ux_attempt_attachments_center_id_upload_nonce) |
 
 ## 6. Pagination/filter/sort
 
@@ -137,8 +138,8 @@ Collection rỗng trả data: [], không trả 404.
 
 | Enum | Giá trị |
 |---|---|
-| AccountType | Student, Teacher, CenterManager |
-| RoleName | Student, Teacher, CenterManager — legacy alias, deprecated sau RBAC cutover |
+| AccountType | Student, Teacher, CenterManager, PlatformAdmin |
+| RoleName | Student, Teacher, CenterManager, PlatformAdmin |
 | RoleStatus | Active, Archived |
 | PermissionStatus | Active, Deprecated |
 | EvidenceSourceType | AI, RuleFallback, TeacherOverride |
@@ -149,10 +150,11 @@ Collection rỗng trả data: [], không trả 404.
 | NodeType | Subject, Chapter, Topic, Skill, Concept |
 | RelationType | PrerequisiteOf, RelatedTo, PartOf, CausesErrorIn |
 | QuestionType | MultipleChoice, ShortAnswer, Essay |
+| QuestionAnswerEvaluationMode | TextExact, NumericRational, Manual |
 | QuestionStatus | Draft, Active, Archived |
 | AssignmentStatus | Draft, Published, Closed, Archived |
 | ProgressStatus | NotStarted, InProgress, Completed, Overdue |
-| AttemptStatus | PendingAnalysis, Processing, Completed, NeedsTeacherReview |
+| AttemptStatus | Submitted, PreliminaryGraded, AIAnalysisCompleted, TeacherReviewed, NeedsTeacherReview, FallbackCompleted, AnalysisFailed (legacy aliases: PendingAnalysis, Processing, Completed) |
 | AIJobStatus | Pending, Processing, Completed, FallbackCompleted, FailedTerminal |
 | ErrorType | None, Knowledge, Skill, Reasoning, Behavior, Presentation, Unknown |
 | RecommendationStatus | Active, Accepted, Dismissed, Superseded |
@@ -1050,6 +1052,7 @@ Không có upload/analyze/map AI endpoint trong MVP.
   "subjectId": "2ed34b81-0b0d-457c-888d-6a78f50a33d2",
   "primaryTopicNodeId": "101",
   "questionType": "MultipleChoice",
+  "answerEvaluationMode": "TextExact",
   "difficulty": 3,
   "questionText": "Giải phương trình ...",
   "correctAnswer": "B",
@@ -1259,6 +1262,8 @@ Request:
   "assignmentId": "12ae0f80-d90e-4627-964f-4404e692e3d6",
   "finalAnswer": "B",
   "reasoningText": "Em đặt điều kiện rồi đưa hai vế về cùng cơ số...",
+  "drawingUploadToken": "CfDJ8...",
+  "answerDisplayLatex": "\\frac{1}{2}",
   "timeSpentSeconds": 165,
   "confidence": 80,
   "answerChanges": 1,
@@ -1285,10 +1290,49 @@ Response 202:
 }
 ~~~
 
-Idempotency:
+Idempotency & Replay:
 
-- Cùng Student + clientSubmissionId + cùng payload luôn trả lại 202 với Attempt/Job hiện có và trạng thái hiện tại.
-- Cùng key nhưng payload khác trả 409 DUPLICATE_SUBMISSION.
+- Cùng Student + clientSubmissionId + cùng payload (bao gồm cả cùng drawingUploadToken/nonce): Trả lại 202 hoặc 200 Replay Success với dữ liệu Attempt hiện có, ngay cả khi file tạm đã được promote hoặc xóa.
+- Cùng key nhưng khác payload hoặc khác token nonce: Trả 409 DUPLICATE_SUBMISSION.
+- Trường hợp đua nộp bài (upload race) giữa các request song song dùng chung token: CSDL unique constraint `(center_id, upload_nonce)` là thẩm quyền tối cao; request thua nhận mã 409 UPLOAD_TOKEN_ALREADY_USED.
+
+## 52.1. POST /learning/attempts/attachments/prepare-upload
+
+Quyền: Student.
+
+Content-Type: `multipart/form-data` (form field: `file`).
+
+Xác thực payload:
+
+- Giới hạn dung lượng: 1 byte đến 5,242,880 bytes (5MB).
+- Binary validation đầy đủ: 8-byte PNG signature (`0x89 0x50 0x4E 0x47 0x0D 0x0A 0x1A 0x0A`), chunk IHDR hợp lệ (Dimensions $\le 4096 \times 4096$, color types $\{0,2,4,6\}$, bit depth hợp lệ), decode streaming có giới hạn bộ nhớ (chống decompression bomb), và chunk kết thúc IEND kèm kiểm tra CRC. Từ chối file corrupt, truncated hoặc trailing garbage bytes.
+
+Response 200:
+
+~~~json
+{
+  "data": {
+    "drawingUploadToken": "CfDJ8...",
+    "expiresAtUtc": "2026-09-12T21:00:00Z"
+  },
+  "meta": {
+    "traceId": "00-abcd-1234-01",
+    "timestamp": "2026-09-12T20:30:00Z"
+  }
+}
+~~~
+
+## 52.2. GET /learning/attempts/{attemptId}/attachment
+
+Quyền: Student sở hữu Attempt; Teacher phụ trách bài tập được giao (thông qua `IAttemptTeacherReviewScopeGuard`: kiểm tra Attempt -> Assignment -> AssignmentTarget -> Class -> Teacher); CenterManager.
+
+Fail-Closed Invariant:
+
+- Free-practice attempts (`assignmentId == null`): Giáo viên truy cập trả về 404 RESOURCE_NOT_FOUND.
+- Attempt ngoài phân công lớp của giáo viên: Trả về 404 RESOURCE_NOT_FOUND.
+- Attempt không có ảnh đính kèm: Trả về 404 RESOURCE_NOT_FOUND.
+
+Response 200: Stream nhị phân với `Content-Type: image/png`.
 
 ## 53. GET /learning/analysis-jobs/{analysisJobId}
 
@@ -2083,9 +2127,146 @@ Validation failure được tính là AI call failure và đi vào retry/fallbac
 - Dashboard response phải kèm generatedAt.
 - Query phải tenant-scoped trước khi group/aggregate.
 
+# Platform Administration
+
+## 75. GET /platform/centers
+
+Quyền: PlatformAdmin (thuộc Root Tenant PLATFORM `00000000-0000-0000-0000-000000000001`, có quyền `platform.centers.read`).
+
+Truy vấn liên tenant có chủ đích (`IgnoreQueryFilters`), loại trừ Root Tenant `PLATFORM`.
+
+Khi hệ thống có 0 trung tâm thường: Trả về HTTP 200 OK với danh sách rỗng (`items: []`, `totalCount: 0`).
+
+Response 200:
+
+~~~json
+{
+  "data": {
+    "items": [
+      {
+        "centerId": "2ed34b81-0b0d-457c-888d-6a78f50a33d2",
+        "centerCode": "CENTER_A",
+        "centerName": "Trung tâm Ôn thi Đại học A",
+        "status": "Active",
+        "contactPhone": "0912345678",
+        "address": "123 Đường Nguyễn Trãi, Hà Nội",
+        "managerUsername": "manager_a",
+        "managerEmail": "manager@centera.edu.vn",
+        "managerFullName": "Nguyễn Văn Quản",
+        "createdAt": "2026-07-15T08:00:00Z",
+        "rowVersion": "1"
+      }
+    ],
+    "totalCount": 1
+  },
+  "meta": {
+    "traceId": "00-abcd-1234-01",
+    "timestamp": "2026-09-12T20:30:00Z"
+  }
+}
+~~~
+
+## 76. POST /platform/centers
+
+Quyền: PlatformAdmin (thuộc Root Tenant PLATFORM, có quyền `platform.centers.manage`).
+
+Thực hiện trong một database transaction:
+1. Tạo thực thể `Center` mới.
+2. Tạo người dùng `User` (`CenterManager`) ban đầu.
+3. Cấp phát các role mặc định (`CenterManager`, `Teacher`, `Student`) cho Center mới.
+4. Gán vai trò `CenterManager` cho người dùng quản trị ban đầu.
+
+Request:
+
+~~~json
+{
+  "centerCode": "CENTER_C",
+  "centerName": "Trung tâm Giáo dục C",
+  "address": "456 Đường Lê Lợi, TP. Hồ Chí Minh",
+  "contactPhone": "0987654321",
+  "managerUsername": "manager_c",
+  "managerEmail": "manager@centerc.edu.vn",
+  "managerFullName": "Lê Quản Trị"
+}
+~~~
+
+Response 201:
+
+~~~json
+{
+  "data": {
+    "centerId": "3cb56a92-1c1e-458d-999e-7b89f61b44e3",
+    "centerCode": "CENTER_C",
+    "centerName": "Trung tâm Giáo dục C",
+    "status": "Active",
+    "initialManagerUserId": "4dc67ba3-2d2f-469e-aaaa-8c90a72c55f4",
+    "initialManagerUsername": "manager_c",
+    "initialManagerTemporaryPassword": "SecurePasswordGenerated...",
+    "rowVersion": "1"
+  },
+  "meta": {
+    "traceId": "00-abcd-1234-01",
+    "timestamp": "2026-09-12T20:30:00Z"
+  }
+}
+~~~
+
+## 77. PATCH /platform/centers/{id}/status
+
+Quyền: PlatformAdmin (có quyền `platform.centers.manage`).
+
+Bảo vệ đối tượng (Target Protection): Cấm tuyệt đối thao tác đột biến trên Root Tenant `PLATFORM` hoặc `CenterId == 00000000-0000-0000-0000-000000000001` (`ErrorCodes.ForbiddenResource` / HTTP 403).
+
+Optimistic Concurrency Control (OCC): Bắt buộc gửi `rowVersion`. Mismatch trả về HTTP 409 `CONCURRENCY_CONFLICT`.
+
+Request:
+
+~~~json
+{
+  "status": "Suspended",
+  "rowVersion": "1"
+}
+~~~
+
+Response 200: Center DTO sau cập nhật (kèm `rowVersion` mới tăng thêm 1).
+
+## 78. POST /platform/centers/{id}/managers/initial-password-reset
+
+Quyền: PlatformAdmin (có quyền `platform.centers.manage`).
+
+Thực hiện:
+1. Đặt lại mật khẩu tài khoản quản lý trung tâm ban đầu.
+2. Tăng `users.auth_version` làm mất hiệu lực toàn bộ JWT Access Tokens cũ của user.
+3. Đánh dấu `revoked_at` trên toàn bộ Refresh Tokens còn hiệu lực của user.
+
+Request:
+
+~~~json
+{
+  "newPassword": "NewGeneratedSecurePassword123!"
+}
+~~~
+
+Response 200:
+
+~~~json
+{
+  "data": {
+    "centerId": "3cb56a92-1c1e-458d-999e-7b89f61b44e3",
+    "managerUserId": "4dc67ba3-2d2f-469e-aaaa-8c90a72c55f4",
+    "resetAtUtc": "2026-09-12T20:30:00Z",
+    "success": true
+  },
+  "meta": {
+    "traceId": "00-abcd-1234-01",
+    "timestamp": "2026-09-12T20:30:00Z"
+  }
+}
+~~~
+
 # Versioning và change policy
 
-## 75. Breaking change
+## 79. Breaking change
 
 Các thay đổi sau là breaking:
 
@@ -2101,7 +2282,7 @@ Breaking change cần Change Proposal và cập nhật file này trước source
 
 Thêm optional field có thể là non-breaking nhưng vẫn phải cập nhật contract và frontend owner xác nhận.
 
-## 76. Contract acceptance checklist
+## 80. Contract acceptance checklist
 
 - [ ] Tất cả endpoint dùng /api/v1.
 - [ ] Không request nào nhận centerId.

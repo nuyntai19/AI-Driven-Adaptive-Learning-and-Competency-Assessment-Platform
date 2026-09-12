@@ -97,6 +97,8 @@ Không tạo điều kiện mới kiểu user.role === CenterManager trong page/
 │   ├── /quan-tri-quyen/vai-tro/:id
 │   ├── /quan-tri-quyen/nguoi-dung
 │   └── /quan-tri-quyen/nhat-ky
+├── /quan-tri-nen-tang
+│   └── /quan-tri-nen-tang/trung-tam
 └── /cai-dat
 ~~~
 
@@ -105,6 +107,11 @@ Route không có permission phải đưa về trang Không có quyền, không �
 ## 5. Permission catalog cho UI
 
 Permission catalog do backend trả. Nhóm code khởi tạo:
+
+### Platform Administration (Chỉ dành cho Root Tenant PLATFORM)
+
+- platform.centers.read
+- platform.centers.manage
 
 ### Organization
 
@@ -517,3 +524,69 @@ Cutover phải theo từng slice:
 4. Chỉ xóa RoleRoute/allowedRoles của slice sau test direct URL và handcrafted request.
 
 Không dùng biểu thức role OR permission để “chạy tạm”, vì sẽ tạo đường cấp quyền rộng hơn contract.
+
+## 20. Đặc tả UI/UX Bổ sung Hậu R08 (Post-R08 Extension Specs)
+
+### 20.1. Màn hình Quản trị Trung tâm Nền tảng (`PlatformCentersPage.tsx`)
+- **Route:** `/quan-tri-nen-tang/trung-tam`.
+- **Yêu cầu phân quyền:** Phải có quyền `platform.centers.read` hoặc `platform.centers.manage`, và người dùng thuộc Root Tenant `PLATFORM` (`AccountType === 'PlatformAdmin'`).
+- **Thành phần giao diện:**
+  - Tiêu đề & Breadcrumb: "Quản trị Nền tảng" / "Danh sách Trung tâm Giáo dục".
+  - Thanh tác vụ: Ô tìm kiếm (mã trung tâm, tên trung tâm, tên người quản lý), bộ lọc trạng thái (`Tất cả`, `Đang hoạt động`, `Tạm ngưng`), nút "Thêm trung tâm mới" (yêu cầu quyền `platform.centers.manage`).
+  - Bảng dữ liệu: Cột Mã trung tâm, Tên trung tâm, Trạng thái (Badge xanh `Hoạt động` / Badge vàng `Tạm ngưng`), Quản lý chính (Username, Họ tên, Email), Số điện thoại, Ngày tạo, Nút thao tác (Đổi trạng thái, Đặt lại mật khẩu).
+  - Empty State: Khi hệ thống chưa có trung tâm thường nào (`items: []`), hiển thị hình minh họa, dòng thông báo "Chưa có trung tâm giáo dục nào được khởi tạo trên nền tảng" và nút kêu gọi hành động "Tạo trung tâm đầu tiên".
+  - Modal tạo trung tâm mới: Form nhập Mã trung tâm, Tên trung tâm, Địa chỉ, Số điện thoại, Thông tin quản lý ban đầu (Username, Email, Họ và tên). Hiển thị mật khẩu tạm thời được hệ thống sinh ngẫu nhiên sau khi tạo thành công kèm nút sao chép an toàn.
+  - Modal chuyển đổi trạng thái: Hộp thoại xác nhận chuyển sang `Tạm ngưng` hoặc `Kích hoạt lại`. Gửi kèm `rowVersion`. Khi phát sinh xung đột đồng thời (HTTP 409), hiển thị thông báo "Dữ liệu trung tâm đã bị thay đổi bởi tác vụ khác. Vui lòng tải lại dữ liệu mới nhất" và tự động kích hoạt query refetch.
+  - Modal đặt lại mật khẩu ban đầu: Hộp thoại xác nhận đặt lại mật khẩu tài khoản quản lý trung tâm, sinh mật khẩu an toàn mới và cảnh báo các phiên làm việc hiện tại của tài khoản này sẽ lập tức bị thu hồi (auth_version bump).
+
+### 20.2. Thanh Công Cụ Toán Học Trực Quan (`MathInputToolbar.tsx`) & Xem Trước KaTeX (`MathFormulaPreview.tsx`)
+- **Vị trí tích hợp:** Trình soạn thảo câu hỏi (`QuestionEditorPage.tsx`) và Trình làm bài của học sinh (`LearningPlayerPage.tsx`).
+- **Cấu trúc 5 Tabs biểu tượng toán học:**
+  1. *Cơ bản:* $\pm, \times, \div, \sqrt{x}, x^2, x^n, \frac{a}{b}, =, \neq$.
+  2. *Đại số:* $\le, \ge, \approx, \infty, \pi, \alpha, \beta, \theta, |x|$.
+  3. *Giải tích:* $\int, \frac{d}{dx}, \sum, \lim_{x \to x_0}$.
+  4. *Tập hợp & Logic:* $\in, \notin, \subset, \cup, \cap, \emptyset, \forall, \exists, \implies, \iff$.
+  5. *Hình học & Lượng giác:* $\sin, \cos, \tan, \cot, \angle, \Delta, \perp, \parallel, ^\circ$.
+- **Hành vi người dùng:** Khi nhấp vào nút biểu tượng, chèn mã LaTeX tương ứng vào vị trí con trỏ chuột hiện tại của textarea.
+- **Xem trước công thức thời gian thực (`MathFormulaPreview.tsx`):**
+  - Hiển thị song song hoặc ngay bên dưới ô nhập liệu.
+  - Sử dụng thư viện `katex` với tùy chọn cấu hình an toàn tuyệt đối `trust: false` nhằm ngăn chặn script injection.
+  - Xử lý lỗi cú pháp mượt mà: Nếu mã LaTeX chưa hoàn chỉnh khi đang gõ, hiển thị công thức thô màu xám nhạt thay vì báo lỗi đỏ gắt gỏng.
+
+### 20.3. Ngăn Kéo Máy Tính Khoa Học (`ScientificCalculatorDrawer.tsx`)
+- **Vị trí & Cơ chế mở:** Nút nổi hoặc icon máy tính trên thanh công cụ học tập `LearningPlayerPage`; mở ngăn kéo trượt mượt mà (slide-over drawer) từ cạnh phải màn hình.
+- **Bàn phím & Chức năng tính toán:**
+  - Bàn phím số 0-9, dấu chấm thập phân, dấu âm $\pm$.
+  - Bốn phép tính cơ bản: $+ - \times \div$.
+  - Hàm lượng giác: $\sin, \cos, \tan$ (hỗ trợ chuyển đổi đơn vị Deg/Rad qua toggle switch).
+  - Hàm logarit: $\ln, \log_{10}$.
+  - Căn bậc hai $\sqrt{x}$, lũy thừa $x^y, x^2$, nghịch đảo $1/x$, hằng số $\pi, e$.
+- **Tính toán thuần túy (No Auto-Solver Invariant):** Động cơ tính toán (`calculatorEngine.ts`) chỉ thực thi tính giá trị biểu thức số học tức thời; tuyệt đối không cung cấp tính năng giải phương trình, tích phân ký hiệu hoặc tự động làm hộ bài tập.
+
+### 20.4. Bảng Vẽ Nháp Vector Toàn Màn Hình (`ScratchpadCanvasModal.tsx`)
+- **Cơ chế kích hoạt:** Nút "Bảng vẽ nháp" với biểu tượng bút vẽ nổi bật trong khu vực trả lời bài tập. Nhấp vào mở modal toàn màn hình (fullscreen canvas).
+- **Bộ công cụ vẽ trực quan:**
+  - Bút vẽ tự do (Freehand Pen): Lựa chọn màu sắc (Đen, Xanh dương, Đỏ, Xanh lá), điều chỉnh nét vẽ (Mảnh, Vừa, Dày).
+  - Tẩy nét vẽ (Eraser) và Xóa toàn bộ bảng vẽ (Clear All kèm xác nhận).
+  - Lịch sử Undo / Redo: Lưu tối đa 30 trạng thái vẽ, cho phép hoàn tác/lặp lại thao tác mượt mà.
+  - Bật/tắt lưới nền (Grid Toggle): Lưới ô ly chuẩn học sinh THPT, lưới tọa độ, hoặc nền trắng trơn.
+  - Thước đo và hình học mẫu: Thước thẳng, compa vẽ hình tròn, tam giác, và hệ trục tọa độ Oxy với mũi tên định hướng.
+- **Lưu trữ nháp cục bộ IndexedDB Scoped:**
+  - Lưu tự động sau mỗi nét vẽ vào IndexedDB của trình duyệt với khóa định danh phân lập chặt chẽ:
+    `draft:${centerId}:${userId}:${clientSubmissionId}`
+  - Không mất bản vẽ khi học sinh lỡ tay reload trang hoặc chuyển tab.
+  - Vòng đời dọn dẹp nháp:
+    - Khi người dùng Đăng xuất (Logout) $\to$ Xóa toàn bộ drafts của user.
+    - Khi khởi động ứng dụng $\to$ Quét và dọn dẹp các drafts quá hạn (TTL > 24 giờ).
+    - Khi Nộp bài thành công (Server trả mã HTTP 202 hoặc HTTP 200 Replay) $\to$ Xóa draft tương ứng trong IndexedDB.
+    - Khi gặp lỗi mạng hoặc lỗi validation $\to$ Giữ nguyên draft để học sinh không bị mất dữ liệu.
+- **Xuất minh chứng:** Xuất dữ liệu hình ảnh thành định dạng `image/png` blob nén với dung lượng $\le 5\text{MB}$.
+
+### 20.5. Xem Minh Chứng Đa Phương Thức & Xử Lý Sự Cố Lưu Trữ Bền Vững
+- **Hàng đợi giáo viên (`ReviewQueue`) & Teacher Override:**
+  - Danh sách bài nộp hiển thị huy hiệu (Badge) "Có bản vẽ nháp" đối với các attempt có `hasAttachment === true`.
+  - Nhấp vào huy hiệu hoặc nút "Xem bản vẽ" mở modal hiển thị ảnh nháp kích thước lớn, tải an toàn qua API đính kèm có xác thực token Bearer.
+- **Xử lý sự cố lưu trữ bền vững đối với bài tự do (Free-Practice Terminal State):**
+  - Khi bài tự do gặp lỗi hạ tầng lưu trữ và hết số lần retry bền vững, trạng thái bài làm chuyển thành `AnalysisFailed`.
+  - Giao diện học sinh hiển thị thông báo thân thiện: "Không thể xử lý bản vẽ nháp do sự cố hạ tầng lưu trữ. Kết quả bài nộp tạm thời chưa được phân tích."
+  - Cung cấp nút hành động "Thử nộp lại" (Resubmit) tự động gán `ClientSubmissionId` mới, giúp học sinh gửi lại bài dễ dàng mà không làm ô nhiễm Hàng đợi duyệt của giáo viên.

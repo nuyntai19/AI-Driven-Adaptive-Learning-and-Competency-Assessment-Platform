@@ -97,8 +97,8 @@ Gemini chỉ cung cấp một observation có thể sai hoặc vắng mặt. Ch�
 
 - Exam Mode và thi thử toàn đề.
 - Public registration và email verification.
-- Global Super Admin.
-- OCR, ảnh bài làm, chữ viết tay và LaTeX rendering.
+- Global Super Admin (thay thế bằng PlatformAdmin bị cô lập nghiêm ngặt trong Root Tenant PLATFORM theo mục 3.3).
+- OCR, ảnh bài làm, chữ viết tay và LaTeX rendering (chỉ hỗ trợ bản vẽ vector nháp và KaTeX preview client-side theo mục 3.3).
 - PDF/Video import, vector search, RAG và recommendation tài liệu/video.
 - SignalR, Redis, message broker và Quartz.NET.
 - Multi-model ensemble hoặc tự động xoay nhiều API key.
@@ -107,6 +107,27 @@ Gemini chỉ cung cấp một observation có thể sai hoặc vắng mặt. Ch�
 - Full i18n; UI chỉ dùng tiếng Việt.
 - Full browser/device matrix và cloud-scale load test; selected integration, frontend và E2E security test vẫn bắt buộc.
 - Cloud deployment/CD; chỉ yêu cầu cấu trúc container cloud-ready.
+
+### 3.3. Phạm vi bổ sung sau R08 (Post-R08 Scope Amendments)
+
+Căn cứ phê duyệt của nhóm và hai bản ghi kiến trúc độc lập (ADR-POST-R08-PLATFORM và ADR-POST-R08-MATH), hệ thống bổ sung hai năng lực chính thức:
+
+1. **Quản trị Nền tảng (Platform Administration - Track 1):**
+   - Thiết lập Root Tenant chuyên biệt `PLATFORM` (`CenterId = 00000000-0000-0000-0000-000000000001`).
+   - Bổ sung account type và vai trò `PlatformAdmin` với các quyền bất khả ủy quyền (`IsDelegable = false`): `platform.centers.read`, `platform.centers.manage`.
+   - Cung cấp API quản lý vòng đời trung tâm (tạo, liệt kê `items: []` khi 0 centers, kích hoạt/tạm dừng có OCC `row_version`, đặt lại mật khẩu quản lý ban đầu kèm revoke refresh token và tăng `auth_version`).
+   - Tuyệt đối cấm PlatformAdmin đọc dữ liệu bài làm, Digital Twin, hoặc can thiệp học thuật của các trung tâm đối tác.
+   - Cấm người dùng tenant nâng quyền hoặc gán vai trò `PlatformAdmin` (`ErrorCodes.AuthPrivilegeEscalation` / HTTP 403).
+
+2. **Bộ Công Cụ Toán Học & Minh Chứng Đa Phương Thức (Math Toolkit & Multimodal Evidence - Track 2):**
+   - Cung cấp Visual Math Toolbar 5 tab ký tự toán học và xem trước KaTeX an toàn (`trust: false`).
+   - Bổ sung chế độ chấm điểm `QuestionAnswerEvaluationMode` (`TextExact`, `NumericRational`, `Manual`) kèm bộ chuẩn hóa phân số tối giản `MathAnswerNormalizer` bằng `BigInteger`.
+   - Cung cấp Scientific Calculator Drawer thuần tính toán, tuyệt đối không có tính năng tự động giải toán.
+   - Bảng vẽ nháp vector (Vector Scratchpad Canvas) lưu trữ draft scoped IndexedDB theo `draft:${centerId}:${userId}:${clientSubmissionId}`.
+   - Bảng vật lý thứ 40 `attempt_attachments` với ràng buộc dung lượng 1..5MB, `image/png`, unique storage key và upload nonce.
+   - Phân quyền minh chứng thống nhất qua `IAttemptTeacherReviewScopeGuard` (Attempt $\to$ Assignment $\to$ Class $\to$ Teacher; bài tự do free-practice mặc định Fail-Closed trả về HTTP 404).
+   - Cơ chế chịu lỗi lưu trữ bền vững: Sự cố `AttachmentStorageUnavailable` được ghi vào `AIAnalysisJob.LastErrorCode` (không đưa vào `EvidenceGate`). `AIAnalysisJobStateMachine` hỗ trợ tối đa 3 persisted retries kèm exponential backoff. Khi hết retry, bài free-practice kết thúc bằng `AIJobStatus.FailedTerminal` và `AttemptStatus.AnalysisFailed` (kèm nút nộp lại resubmit với `ClientSubmissionId` mới, không làm ô nhiễm Teacher Review Queue).
+   - Nâng tổng số bảng vật lý của hệ thống lên 40 bảng (bổ sung bảng `attempt_attachments`).
 
 ## 4. Stack bắt buộc
 
@@ -249,7 +270,7 @@ Quy tắc:
 - DbContext phải áp dụng Global Query Filter theo center_id.
 - Soft-delete filter và tenant filter phải đồng thời có hiệu lực.
 - BLL phải kiểm tra ownership tại use case nhạy cảm.
-- IgnoreQueryFilters chỉ được dùng trong hạ tầng có lý do ghi chú rõ; MVP không có Global Admin nên mặc định cấm trong business flow.
+- IgnoreQueryFilters chỉ được dùng trong hạ tầng hoặc quản trị nền tảng có lý do ghi chú rõ (như PlatformCenterService quản lý danh mục trung tâm hoặc AttachmentOrphanCleanupWorker dọn dẹp blob vô thừa nhận ngoài tenant context); tuyệt đối cấm dùng bừa bãi trong business flow học thuật thông thường.
 - Foreign key tenant-scoped phải dùng composite alternate key khi DATABASE_SCHEMA.md yêu cầu.
 - Cache key, log scope và file path phải mang CenterId nếu có tenant data.
 - BackgroundService phải dựng TenantContext từ center_id của job trước khi xử lý.
@@ -262,7 +283,7 @@ Không endpoint nào cho phép client đổi center_id. Truy cập ID hợp lệ
 - Access Token sống ngắn; Refresh Token sống dài hơn và được rotate.
 - Chỉ lưu hash của Refresh Token.
 - Password phải hash bằng cơ chế chuẩn của ASP.NET Core Identity hoặc PasswordHasher tương đương; không tự thiết kế thuật toán.
-- Account type hợp lệ: Student, Teacher, CenterManager. Account type mô tả domain context, không được dùng như toàn bộ permission model sau cutover.
+- Account type hợp lệ: Student, Teacher, CenterManager, và PlatformAdmin (PlatformAdmin chỉ thuộc Root Tenant PLATFORM và sở hữu quyền platform.* bất khả ủy quyền). Account type mô tả domain context, không được dùng như toàn bộ permission model sau cutover.
 - Permission code là catalog do hệ thống định nghĩa và phải có server-side enforcement.
 - Permission applicability theo account type phải được lưu quan hệ chuẩn hóa, không giấu trong JSON nếu cần relational join/FK.
 - Role thuộc đúng một Center và đúng một account type; role code unique trong Center; account type immutable sau khi tạo.

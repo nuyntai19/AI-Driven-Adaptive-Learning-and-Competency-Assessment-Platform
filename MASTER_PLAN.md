@@ -2125,3 +2125,60 @@ Không thêm tính năng mới trong tuần/ngày chốt demo. Chỉ sửa:
 - Tenant/security defect.
 - Demo reproducibility.
 - UI readability nghiêm trọng.
+
+## 132. Post-R08 Scope Amendments: Quản Trị Nền Tảng & Bộ Công Cụ Toán Học Trực Quan
+
+Phần bổ sung phạm vi chính thức sau Release R08 nhằm hoàn thiện hai năng lực cốt lõi theo phê duyệt kiến trúc (ADR-POST-R08-PLATFORM và ADR-POST-R08-MATH):
+
+### 132.1. Track 1: Phân Quyền Quản Trị Nền Tảng (Platform Administration)
+1. **Root Tenant & Account Type:**
+   - Khởi tạo Root Tenant hệ thống `PLATFORM` với `CenterId = 00000000-0000-0000-0000-000000000001` (`ReservedPlatformCenterId`).
+   - Bổ sung account type và role `PlatformAdmin` với các quyền bất khả ủy quyền (`IsDelegable = false`): `platform.centers.read`, `platform.centers.manage`.
+   - Cập nhật 5 MySQL CHECK constraints (`ck_users_role_name`, `ck_roles_account_type`, `ck_permission_account_types_account_type`, `ck_user_roles_account_type`, `ck_role_permissions_account_type`) chấp nhận `PlatformAdmin`.
+   - Chặn tuyệt đối hành vi gán quyền/vai trò `PlatformAdmin` trong tenant thường bằng `ErrorCodes.AuthPrivilegeEscalation` (HTTP 403 Forbidden).
+2. **Platform Admin Provisioner:**
+   - Tách biệt hoàn toàn khỏi seed dữ liệu demo; khởi tạo tài khoản quản trị nền tảng từ biến môi trường `PlatformBootstrap__AdminPassword` (tuyệt đối không hard-code fallback password trong mã nguồn).
+3. **Quản Lý Vòng Đời Trung Tâm (Center Lifecycle):**
+   - API `GET /api/v1/platform/centers`: Cho phép liệt kê các trung tâm đối tác; trả về `items: []` (HTTP 200 OK) khi hệ thống chưa có trung tâm thường nào.
+   - API `POST /api/v1/platform/centers`: Khởi tạo trung tâm mới kèm tài khoản `CenterManager` ban đầu trong 1 database transaction duy nhất.
+   - API `PATCH /api/v1/platform/centers/{id}/status`: Chuyển đổi trạng thái `Active` / `Suspended` với cơ chế Optimistic Concurrency Control (`row_version`); cấm thao tác trên trung tâm `PLATFORM` (`ErrorCodes.ForbiddenResource`).
+   - API `POST /api/v1/platform/centers/{id}/managers/initial-password-reset`: Đặt lại mật khẩu tài khoản quản lý trung tâm ban đầu, cập nhật mật khẩu, tăng `users.auth_version` làm vô hiệu hóa token cũ, và revoke toàn bộ refresh tokens còn hiệu lực.
+
+### 132.2. Track 2: Bộ Công Cụ Toán Học & Minh Chứng Đa Phương Thức (Math Toolkit & Multimodal Evidence)
+1. **Visual Math Input Toolbar & KaTeX:**
+   - Toolbar 5 tab ký tự toán học (Basic, Algebra, Calculus, Sets, Geometry) tích hợp vào trình soạn thảo và trình làm bài.
+   - Xem trước công thức thời gian thực qua KaTeX an toàn (`trust: false`), lưu vết trường `answer_display_latex` trong bảng `attempts`.
+2. **Chế Độ Chấm Điểm & Chuẩn Hóa Phân Số Rút Gọn:**
+   - Thêm cột `answer_evaluation_mode` vào bảng `questions` với các giá trị: `TextExact`, `NumericRational`, `Manual`.
+   - Khóa chặt ma trận: `MultipleChoice` $\to$ `TextExact`; `Essay` $\to$ `Manual`; `ShortAnswer` $\to$ `TextExact` / `NumericRational` / `Manual`.
+   - Xây dựng `MathAnswerNormalizer` chuẩn hóa số thập phân, phân số, hỗn số về dạng phân số tối giản $P/Q$ bằng .NET `BigInteger` (tránh sai số dấu phẩy động).
+3. **Ngăn Kéo Máy Tính Khoa Học (Scientific Calculator Drawer):**
+   - Máy tính khoa học bỏ túi client-side phục vụ tính toán trực tiếp; tuyệt đối không tích hợp giải phương trình tự động.
+4. **Vector Scratchpad Canvas:**
+   - Bảng vẽ nháp vector toàn màn hình với các công cụ: Bút, Tẩy, Lưới ô ly, Thước thẳng, Thước compa/tròn, Tam giác, Hệ trục tọa độ Oxy, Undo/Redo 30 bước.
+   - Lưu trữ bản nháp cục bộ IndexedDB scoped theo `draft:${centerId}:${userId}:${clientSubmissionId}`; dọn dẹp khi logout và startup TTL; chỉ xóa khi nhận kết quả nộp bài thành công (HTTP 202/200).
+5. **Streaming Upload, Physical Table 40 & Atomic Promotion:**
+   - Upload ảnh nháp qua endpoint streaming với xác thực binary PNG đầy đủ (header 8-byte, IHDR dimensions $\le 4096 \times 4096$, color types $\{0,2,4,6\}$, memory limits, IEND CRC check).
+   - Cấp signed token Data Protection bind SHA-256 hash và upload nonce.
+   - Nộp bài kèm token: Áp dụng atomic promote không ghi đè (`overwrite: false` / `FileMode.CreateNew`), same hash coi như thành công idempotent, diff hash fail closed.
+   - Bảng vật lý thứ 40 `attempt_attachments` lưu trữ minh chứng, quản lý qua unique index `(center_id, upload_nonce)` để giải quyết race condition (MySQL Error 1062 map sang HTTP 409 `UPLOAD_TOKEN_ALREADY_USED`).
+6. **Bảo Vệ Thống Nhất Qua Scope Guard (`IAttemptTeacherReviewScopeGuard`):**
+   - Hợp nhất phân quyền trên 3 luồng: Tải ảnh minh chứng, Teacher Review Queue, và Teacher Override.
+   - Kiểm tra: Cùng tenant, có Assignment, học sinh thuộc target, giáo viên phụ trách lớp (hoặc CenterManager).
+   - Bài làm tự do (free-practice `AssignmentId == null`) mặc định Fail-Closed (HTTP 404 cho attachment download, không vào review queue, cấm override).
+7. **Xử Lý Sự Cố Lưu Trữ Bền Vững & Free-Practice Terminal Failure:**
+   - Lỗi hạ tầng `AttachmentStorageUnavailable` được ghi vào `AIAnalysisJob.LastErrorCode` (tuyệt đối không đưa vào `EvidenceGate` hay nhầm với nhận thức sư phạm).
+   - `AIAnalysisJobStateMachine` nâng cấp hỗ trợ tối đa 3 persisted retries kèm exponential backoff.
+   - Khi hết retry:
+     - Bài có assignment: Chuyển Teacher Review Queue với cờ thông báo sự cố hạ tầng.
+     - Bài tự do (free-practice): Gọi `FailTerminal(...)`, chuyển trạng thái `AIAnalysisJob.Status = AIJobStatus.FailedTerminal` và `Attempt.Status = AttemptStatus.AnalysisFailed`, không tạo item trong review queue, hiển thị nút nộp lại (resubmit với `ClientSubmissionId` mới) cho học sinh.
+8. **Dọn Dẹp Minh Chứng Rác (Sweeper Semantics):**
+   - Background service `AttachmentOrphanCleanupWorker` chạy ngoài tenant context sử dụng `IgnoreQueryFilters().AsNoTracking()`, truy vấn storage keys hợp lệ, không follow symlink, dọn dẹp file tạm quá hạn và file vĩnh viễn không còn tham chiếu vượt quá thời gian gia hạn an toàn (`AttachmentStorage__GracePeriodHours`).
+
+### 132.3. Lộ Trình Triển Khai Tuân Thủ (Strict 6-Gate Pipeline)
+- **Gate 1:** Đặc tả tài liệu kỹ thuật (.md), 2 bản ghi ADR độc lập, cập nhật Master Plan (Zero source code change).
+- **Gate 2:** Backend và Frontend Platform Administration (5 CHECK constraints, `PlatformAdminProvisioner`, `PlatformCentersPage`).
+- **Gate 3:** Visual Math Toolbar, Rational Normalizer, Calculator Drawer và migration `answer_evaluation_mode`.
+- **Gate 4:** Vector Scratchpad Canvas và Scoped IndexedDB Cache.
+- **Gate 5:** Streaming Multipart Storage, Bảng vật lý 40 `attempt_attachments`, Gemini Multimodal Integration, Scope Guard và Resilient Storage Fallback.
+- **Gate 6:** Kiểm thử toàn diện môi trường container hóa (clean-clone rehearsal), kiểm tra EXPLAIN execution plans, và lập hồ sơ nghiệm thu chính thức.

@@ -140,10 +140,10 @@ AI là enhancement, không phải operational core: nếu Gemini/Internet dừng
 
 ### 4.4. Ngoài phạm vi course baseline
 
-- Platform/System Admin quản lý nhiều center.
+- Platform/System Admin quản lý nhiều center (được thay thế bằng mô hình PlatformAdmin cô lập trong Root Tenant PLATFORM theo Post-R08 Scope Amendments).
 - Thanh toán, subscription và billing.
 - Public registration.
-- OCR chữ viết tay.
+- OCR chữ viết tay toàn diện (hệ thống hỗ trợ bản vẽ vector nháp và KaTeX preview client-side theo Post-R08 Scope Amendments).
 - RAG/vector search.
 - Multi-provider AI orchestration.
 - Giám sát giáo viên bằng AI.
@@ -174,13 +174,14 @@ Không dùng AI để chấm hiệu suất hoặc xếp hạng giáo viên.
 
 ### 6.1. Account type
 
-EduTwin giữ ba account type để nhận biết domain context:
+EduTwin phân định bốn account type để nhận biết domain context:
 
 - Student.
 - Teacher.
 - CenterManager.
+- PlatformAdmin (chỉ thuộc Root Tenant duy nhất PLATFORM, sở hữu quyền quản lý trung tâm bất khả ủy quyền).
 
-Account type không phải toàn bộ authorization, nhưng là ranh giới domain bắt buộc: Student, Teacher và CenterManager có profile/quy trình khác nhau nên dynamic role không được dùng để đổi chéo loại tài khoản.
+Account type không phải toàn bộ authorization, nhưng là ranh giới domain bắt buộc: Student, Teacher, CenterManager và PlatformAdmin có profile/quy trình khác nhau nên dynamic role không được dùng để đổi chéo loại tài khoản.
 
 ### 6.2. Dynamic role
 
@@ -291,6 +292,7 @@ Thiếu một điều kiện phải fail closed.
 | FR-AI-010 | Teacher xem queue, override analysis và kích hoạt replay | Must |
 | FR-AI-011 | AI chỉ phân tích reasoning và soạn phản hồi; chấm sơ bộ deterministic/teacher decision mới sở hữu điểm và kết quả cuối | Must |
 | FR-AI-012 | Khi preliminary `isCorrect = null` (điển hình Essay chưa chấm), Evidence phải ReviewOnly, reasoning weight bằng 0 và Knowledge Mastery không đổi cho tới Teacher HumanConfirmed + replay | Must |
+| FR-AI-013 | Phân tích đa phương thức với bản vẽ nháp; AIAnalysisJobStateMachine hỗ trợ tối đa 3 persisted retries kèm exponential backoff; sự cố lưu trữ AttachmentStorageUnavailable ghi vào AIAnalysisJob.LastErrorCode (không đưa vào EvidenceGate); bài free-practice khi hết retry chuyển sang FailedTerminal/AnalysisFailed và cho phép resubmit với ClientSubmissionId mới mà không vào review queue | Must |
 
 ### 7.7. Digital Twin và recommendation
 
@@ -326,6 +328,27 @@ Thiếu một điều kiện phải fail closed.
 | FR-COURSE-005 | Có Figma/prototype và stakeholder feedback | Must |
 | FR-COURSE-006 | Báo cáo cuối có bảng phân công, trọng số và tỷ lệ đóng góp | Must |
 
+### 7.10. Quản trị Nền tảng (Platform Administration - Track 1)
+
+| ID | Requirement | Priority |
+|---|---|---|
+| FR-PLT-001 | Hệ thống khởi tạo Root Tenant PLATFORM (ID cố định 00000000-0000-0000-0000-000000000001) và tài khoản PlatformAdmin qua PlatformAdminProvisioner đọc secret từ biến môi trường | Must |
+| FR-PLT-002 | PlatformAdmin liệt kê danh sách các trung tâm đối tác; trả về items: [] (HTTP 200) khi chưa có trung tâm thường nào | Must |
+| FR-PLT-003 | PlatformAdmin khởi tạo trung tâm mới kèm tài khoản CenterManager ban đầu trong một transaction duy nhất | Must |
+| FR-PLT-004 | PlatformAdmin thay đổi trạng thái kích hoạt/tạm dừng của trung tâm có Optimistic Concurrency Control (row_version); cấm thao tác trên PLATFORM | Must |
+| FR-PLT-005 | PlatformAdmin đặt lại mật khẩu tài khoản CenterManager ban đầu, cập nhật mật khẩu, tăng users.auth_version làm vô hiệu hóa token cũ, và revoke toàn bộ refresh tokens còn hiệu lực | Must |
+
+### 7.11. Bộ Công cụ Toán học & Minh chứng Đa phương thức (Math Toolkit & Multimodal Evidence - Track 2)
+
+| ID | Requirement | Priority |
+|---|---|---|
+| FR-MTH-001 | Cung cấp Visual Math Input Toolbar với 5 tab ký tự toán học và xem trước công thức qua KaTeX client-side an toàn (trust: false) | Must |
+| FR-MTH-002 | Cung cấp QuestionAnswerEvaluationMode (TextExact, NumericRational, Manual) với ma trận ràng buộc QuestionType chặt chẽ | Must |
+| FR-MTH-003 | Xây dựng MathAnswerNormalizer chuẩn hóa số thập phân, phân số, hỗn số về dạng phân số tối giản P/Q bằng BigInteger | Must |
+| FR-MTH-004 | Cung cấp ngăn kéo Máy tính Khoa học (Scientific Calculator Drawer) thuần tính toán, không chứa engine tự động giải toán | Must |
+| FR-MTH-005 | Cung cấp Bảng vẽ nháp vector (Vector Scratchpad Canvas) với đầy đủ công cụ vẽ, lưới ô ly, thước hình học, trục Oxy, lưu trữ draft scoped IndexedDB theo draft:{centerId}:{userId}:{clientSubmissionId} | Must |
+| FR-MTH-006 | Hỗ trợ streaming multipart upload ảnh nháp PNG có bounded full validation (1..5MB, IHDR, IEND CRC), Data Protection token bind SHA-256, nộp bài atomic promote no-overwrite, và lưu trữ bảng 40 attempt_attachments | Must |
+
 ## 8. Business rules
 
 | ID | Rule |
@@ -349,6 +372,8 @@ Thiếu một điều kiện phải fail closed.
 | BR-017 | users.auth_version là authorization version duy nhất; password reset, user status, user-role và role-permission mutation phải bump version theo phạm vi ảnh hưởng |
 | BR-018 | Replay là event/history; không được lưu như evidence source hoặc trust level |
 | BR-019 | Center lifecycle ngoài profile hiện hành thuộc deployment/seed trong course MVP, không thuộc tenant-admin UI |
+| BR-020 | Quyền platform.* là bất khả ủy quyền (IsDelegable = false) và chỉ thuộc PlatformAdmin trong Root Tenant PLATFORM; cấm thao tác trên Root Tenant |
+| BR-021 | Minh chứng ảnh đính kèm chỉ được truy cập bởi học sinh sở hữu hoặc giáo viên phụ trách bài tập được giao (thông qua IAttemptTeacherReviewScopeGuard); bài tự do fail closed |
 
 ## 9. Security requirements
 
@@ -367,6 +392,8 @@ Thiếu một điều kiện phải fail closed.
 | SEC-011 | UI không được coi là security boundary |
 | SEC-012 | AI prompt/response được giới hạn dữ liệu cần thiết và có retention policy |
 | SEC-013 | Role–permission và user–role lệch account type phải bị chặn ở API/BLL và bằng relational constraint |
+| SEC-014 | Chặn nâng quyền PlatformAdmin: Người dùng tenant không được tạo role PlatformAdmin, gán role PlatformAdmin hoặc gán quyền platform.*; vi phạm trả về AuthPrivilegeEscalation (HTTP 403) |
+| SEC-015 | Bảo vệ minh chứng đính kèm bằng Scope Guard thống nhất: Tải minh chứng, Review Queue và Teacher Override bắt buộc đi qua IAttemptTeacherReviewScopeGuard xác thực Attempt -> Assignment -> Class -> Teacher; bài tự do fail closed trả về 404 |
 
 ## 10. Data requirements
 
@@ -383,6 +410,8 @@ Thiếu một điều kiện phải fail closed.
 | DATA-009 | Schema thực tế phải đối chiếu migration snapshot và INFORMATION_SCHEMA |
 | DATA-010 | Query trọng yếu phải được kiểm tra EXPLAIN trên MySQL thật |
 | DATA-011 | Permission applicability được chuẩn hóa bằng permission_account_types; role_permissions và user_roles dùng composite FK để khóa account type |
+| DATA-012 | Năm MySQL CHECK constraints (ck_users_role_name, ck_roles_account_type, ck_permission_account_types_account_type, ck_user_roles_account_type, ck_role_permissions_account_type) được cập nhật chấp nhận 'PlatformAdmin' |
+| DATA-013 | Bổ sung Bảng thứ 40 attempt_attachments với ràng buộc ck_attempt_attachments_file_size_bytes (1..5MB), ck_attempt_attachments_content_type ('image/png'), unique storage_key, unique upload_nonce, và cập nhật ck_attempts_status chấp nhận 'AnalysisFailed' |
 
 ## 11. Non-functional requirements
 

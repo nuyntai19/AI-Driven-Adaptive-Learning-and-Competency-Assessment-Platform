@@ -1,7 +1,7 @@
 # EduTwin — Database Schema
 
-> Phiên bản: 2.3
-> Trạng thái: ACTIVE — 39 bảng đã migration và đã verified 100% trên live-MySQL (20/20 live-MySQL integration tests pass, 0 pending verification)
+> Phiên bản: 2.4 (Post-R08 Scope Amendments)
+> Trạng thái: ACTIVE — 40 bảng vật lý trong EF migration model (bổ sung Bảng thứ 40: attempt_attachments)
 > Database: MySQL 8.x / InnoDB / utf8mb4
 > ORM: Entity Framework Core 10
 > Chủ sở hữu: Data/Architecture owners; thay đổi cần nhóm phê duyệt
@@ -27,7 +27,7 @@ Schema gồm sáu module logic:
 5. Assessment & AI Reasoning.
 6. Dynamic Authorization & Evidence Governance.
 
-Hệ thống có 39 bảng vật lý trong EF migration model, bao gồm 7 bảng ở Module 6 và bảng watermark recommendation generation (bảng thứ 39: recommendation_generation_states). Toàn bộ 39 bảng đã qua live-MySQL verification đầy đủ (20/20 MySQL integration tests pass, 0 model drift).
+Hệ thống có 40 bảng vật lý trong EF migration model, bao gồm 7 bảng ở Module 6, bảng watermark recommendation generation (bảng thứ 39: recommendation_generation_states) và bảng lưu trữ minh chứng đính kèm (bảng thứ 40: attempt_attachments). Toàn bộ mô hình tuân thủ kiểm tra live-MySQL và Global Query Filter nghiêm ngặt.
 
 ## 2. Quy ước vật lý
 
@@ -221,6 +221,7 @@ erDiagram
 | 37 | user_roles | Current | Role active/revoked của user | Join users–roles có account-type FK |
 | 38 | authorization_audit_logs | Current | Audit append-only của thay đổi quyền | FK actor/target users khi có |
 | 39 | evidence_assessments | Current | Quyết định policy append-only, không nhân bản analysis/mastery | FK attempts/analyses/self-supersession |
+| 40 | attempt_attachments | Current | Minh chứng ảnh nháp đính kèm Attempt | FK attempts; quan hệ 1:1, unique nonce giải quyết race condition |
 
 # Module 1 — System Users & Organization
 
@@ -258,7 +259,7 @@ Invariant:
 | user_id | VARCHAR(36) | No | PK |
 | username | VARCHAR(100) | No | Unique trong Center |
 | password_hash | VARCHAR(500) | No | Không lưu password |
-| role_name | VARCHAR(32) | No | Legacy physical name; v2 semantics là account type Student, Teacher, CenterManager |
+| role_name | VARCHAR(32) | No | Legacy physical name; v2 semantics là account type Student, Teacher, CenterManager, PlatformAdmin |
 | display_name | VARCHAR(200) | No | Tên hiển thị của tài khoản |
 | status | VARCHAR(32) | No | Active, Locked, Disabled |
 | last_login_at | DATETIME(6) | Yes | Lần đăng nhập thành công gần nhất theo UTC |
@@ -272,7 +273,7 @@ Indexes/constraints:
 - UX(center_id, user_id).
 - UX(center_id, user_id, role_name) để làm principal key cho ràng buộc account type của user_roles.
 - IX(center_id, role_name, status).
-- CHECK role_name IN (Student, Teacher, CenterManager).
+- CHECK role_name IN (Student, Teacher, CenterManager, PlatformAdmin).
 - CHECK status IN (Active, Locked, Disabled).
 
 Invariant:
@@ -527,6 +528,7 @@ Indexes:
 | primary_topic_node_id | BIGINT UNSIGNED | No | Phải là Topic |
 | created_by_teacher_id | VARCHAR(36) | No | Tenant-safe FK |
 | question_type | VARCHAR(32) | No | MultipleChoice, ShortAnswer, Essay |
+| answer_evaluation_mode | VARCHAR(32) | No | TextExact, NumericRational, Manual (Default TextExact) |
 | difficulty | TINYINT UNSIGNED | No | 1–5 |
 | question_text | LONGTEXT | No | Việt hoặc Anh |
 | correct_answer | TEXT | No | Canonical final answer/model answer |
@@ -546,6 +548,7 @@ Indexes/constraints:
 - IX(center_id, subject_id, primary_topic_node_id, status, difficulty).
 - IX(center_id, created_by_teacher_id, status).
 - CHECK question_type IN (MultipleChoice, ShortAnswer, Essay).
+- CHECK answer_evaluation_mode IN (TextExact, NumericRational, Manual).
 - CHECK difficulty BETWEEN 1 AND 5.
 - CHECK max_score > 0.
 - CHECK estimated_time_seconds > 0.
@@ -860,6 +863,7 @@ Table append-only; replay tạo event mới, không sửa event cũ.
 | assignment_id | VARCHAR(36) | Yes | Null nếu luyện tự do |
 | final_answer | LONGTEXT | No | Câu trả lời cuối cùng dùng chấm sơ bộ deterministic |
 | reasoning_text | LONGTEXT | Yes | Bắt buộc nếu question.reasoning_required |
+| answer_display_latex | LONGTEXT | Yes | Công thức LaTeX hiển thị của câu trả lời |
 | is_correct | TINYINT(1) | Yes | Preliminary deterministic grade |
 | awarded_score | DECIMAL(5,2) | Yes | Điểm sơ bộ theo grader/criteria; teacher có thể review theo use case |
 | time_spent_seconds | INT UNSIGNED | No | Telemetry thời gian quan sát được |
@@ -867,7 +871,7 @@ Table append-only; replay tạo event mới, không sửa event cũ.
 | answer_changes | INT UNSIGNED | No | Default 0 |
 | skipped | TINYINT(1) | No | Default 0 |
 | reasoning_language | VARCHAR(8) | No | vi hoặc en |
-| status | VARCHAR(32) | No | PendingAnalysis, Processing, Completed, NeedsTeacherReview |
+| status | VARCHAR(32) | No | Submitted, PreliminaryGraded, AIAnalysisCompleted, TeacherReviewed, NeedsTeacherReview, FallbackCompleted, AnalysisFailed |
 | client_submission_id | VARCHAR(36) | No | Idempotency key từ client |
 | updated_at | DATETIME(6) | No | Thời điểm trạng thái thay đổi gần nhất |
 | row_version | BIGINT UNSIGNED | No | Concurrency token |
@@ -879,6 +883,7 @@ Indexes/constraints:
 - IX(center_id, student_id, question_id, created_at).
 - IX(center_id, assignment_id, student_id).
 - IX(center_id, status, created_at).
+- CHECK status IN ('Submitted', 'PreliminaryGraded', 'AIAnalysisCompleted', 'TeacherReviewed', 'NeedsTeacherReview', 'FallbackCompleted', 'AnalysisFailed').
 - CHECK confidence BETWEEN 0 AND 100.
 - CHECK time_spent_seconds >= 0.
 - CHECK reasoning_language IN (vi, en).
@@ -950,7 +955,7 @@ Không lưu raw Gemini request/response trong table này.
 | analysis_job_id | BIGINT UNSIGNED | No | PK, auto increment |
 | attempt_id | BIGINT UNSIGNED | No | Unique |
 | status | VARCHAR(32) | No | Pending, Processing, Completed, FallbackCompleted, FailedTerminal |
-| retry_count | TINYINT UNSIGNED | No | Default 0, tối đa 1 retry |
+| retry_count | TINYINT UNSIGNED | No | Default 0, tối đa 3 retries có exponential backoff |
 | available_at | DATETIME(6) | No | Thời điểm UTC job đủ điều kiện claim/retry |
 | started_at | DATETIME(6) | Yes | Thời điểm UTC bắt đầu processing gần nhất |
 | completed_at | DATETIME(6) | Yes | Thời điểm UTC đạt terminal state |
@@ -968,7 +973,7 @@ Indexes/constraints:
 - UX(center_id, attempt_id).
 - IX(status, available_at, lease_until).
 - IX(center_id, status, created_at).
-- CHECK retry_count BETWEEN 0 AND 1.
+- CHECK retry_count BETWEEN 0 AND 3.
 - CHECK status IN (Pending, Processing, Completed, FallbackCompleted, FailedTerminal).
 
 Recovery:
@@ -1014,7 +1019,7 @@ Invariant:
 | Column | Type | Null | Constraint/Ý nghĩa |
 |---|---|---:|---|
 | permission_id | VARCHAR(36) | No | FK permissions global catalog |
-| account_type | VARCHAR(32) | No | Student, Teacher hoặc CenterManager |
+| account_type | VARCHAR(32) | No | Student, Teacher, CenterManager hoặc PlatformAdmin |
 | created_at | DATETIME(6) | No | UTC; do migration/seed quản lý |
 
 Indexes/constraints:
@@ -1022,7 +1027,7 @@ Indexes/constraints:
 - PK(permission_id, account_type).
 - FK(permission_id) → permissions(permission_id) ON DELETE RESTRICT.
 - IX(account_type, permission_id).
-- CHECK account_type IN (Student, Teacher, CenterManager).
+- CHECK account_type IN (Student, Teacher, CenterManager, PlatformAdmin).
 
 Invariant:
 
@@ -1038,7 +1043,7 @@ Invariant:
 | role_id | VARCHAR(36) | No | PK |
 | role_code | VARCHAR(64) | No | Stable trong Center |
 | role_name | VARCHAR(150) | No | Tên hiển thị |
-| account_type | VARCHAR(32) | No | Student, Teacher hoặc CenterManager |
+| account_type | VARCHAR(32) | No | Student, Teacher, CenterManager hoặc PlatformAdmin |
 | description | VARCHAR(500) | Yes | Phạm vi trách nhiệm |
 | is_system_role | TINYINT(1) | No | Role bootstrap được bảo vệ |
 | status | VARCHAR(32) | No | Active, Archived |
@@ -1052,7 +1057,7 @@ Indexes/constraints:
 - UX(center_id, role_code).
 - IX(center_id, account_type, status, role_name).
 - CHECK status IN (Active, Archived).
-- CHECK account_type IN (Student, Teacher, CenterManager).
+- CHECK account_type IN (Student, Teacher, CenterManager, PlatformAdmin).
 
 Invariant:
 
@@ -1080,7 +1085,7 @@ Indexes/constraints:
 - FK(permission_id, account_type) → permission_account_types(permission_id, account_type).
 - FK(center_id, granted_by_user_id) → users(center_id, user_id).
 - IX(center_id, permission_id, role_id).
-- CHECK account_type IN (Student, Teacher, CenterManager).
+- CHECK account_type IN (Student, Teacher, CenterManager, PlatformAdmin).
 
 Invariant:
 
@@ -1113,7 +1118,7 @@ Indexes/constraints:
 - IX(center_id, role_id, status, user_id).
 - IX(center_id, user_id, status).
 - CHECK status IN (Active, Revoked).
-- CHECK account_type IN (Student, Teacher, CenterManager).
+- CHECK account_type IN (Student, Teacher, CenterManager, PlatformAdmin).
 
 Invariant:
 
@@ -1202,7 +1207,38 @@ Invariant:
 - policy_version và reason_codes phải đủ để tái lập quyết định Gate.
 - Bảng chỉ lưu policy decision/provenance; không copy feedback, mastery delta hoặc calculation breakdown từ analysis/history.
 
-## 43. Structured AI output contract lưu vào reasoning_analyses
+## 43. attempt_attachments [TA - Bảng vật lý thứ 40]
+
+| Column | Type | Null | Constraint/Ý nghĩa |
+|---|---|---:|---|
+| id | BIGINT UNSIGNED | No | PK, auto increment |
+| center_id | VARCHAR(36) | No | Tenant discriminator |
+| attempt_id | BIGINT UNSIGNED | No | Tenant-safe FK attempts; quan hệ 1:1 |
+| upload_nonce | VARCHAR(64) | No | Nonce định danh luồng upload đính kèm |
+| storage_key | VARCHAR(256) | No | Đường dẫn tương đối lưu trữ blob |
+| file_size_bytes | INT UNSIGNED | No | Dung lượng file nhị phân (1..5,242,880 bytes) |
+| content_type | VARCHAR(64) | No | MIME type bắt buộc image/png |
+| sha256_hash | VARCHAR(64) | No | Mã băm SHA-256 xác thực tính toàn vẹn của blob |
+| created_at | DATETIME(6) | No | UTC; thời điểm nộp bài và promote blob |
+
+Indexes/constraints:
+
+- PK(id).
+- UX(center_id, attempt_id) — quan hệ 1:1 giữa Attempt và minh chứng đính kèm.
+- UX(center_id, upload_nonce) — unique key theo tenant, thẩm quyền tối cao giải quyết race condition khi submit.
+- UX(center_id, storage_key) — ngăn ngừa trùng lặp đường dẫn lưu trữ trong tenant.
+- FK(center_id, attempt_id) → attempts(center_id, attempt_id) ON DELETE RESTRICT.
+- CONSTRAINT ck_attempt_attachments_file_size_bytes CHECK (file_size_bytes >= 1 AND file_size_bytes <= 5242880).
+- CONSTRAINT ck_attempt_attachments_content_type CHECK (content_type = 'image/png').
+
+Invariant:
+
+- Mỗi Attempt chỉ có tối đa một bản vẽ đính kèm; lưu trữ và liên kết được thiết lập nguyên tử trong transaction nộp bài.
+- upload_nonce được trích xuất từ signed Data Protection token và là nguồn phân xử duy nhất cho các request nộp bài đồng thời: request nào ghi CSDL trước sẽ thắng, request sau vi phạm unique constraint (MySQL Error 1062) sẽ nhận HTTP 409 UPLOAD_TOKEN_ALREADY_USED.
+- storage_key có cấu trúc xác định: `tenants/{centerId}/attempt-attachments/{uploadNonce}.png`.
+- Tải ảnh minh chứng qua API yêu cầu quyền sở hữu của học sinh hoặc giáo viên phụ trách bài tập (xác thực qua `IAttemptTeacherReviewScopeGuard`); bài tự do fail closed trả về HTTP 404.
+
+## 44. Structured AI output contract lưu vào reasoning_analyses
 
 Payload hợp lệ trước khi persistence:
 
@@ -1231,7 +1267,7 @@ Semantic validation:
 - feedback không rỗng.
 - Không chấp nhận field thừa nếu parser được cấu hình strict.
 
-## 44. Invariant liên module
+## 45. Invariant liên module
 
 ### 43.1. Submit Attempt
 

@@ -368,5 +368,19 @@ Append-only; sửa sai bằng entry mới, không xóa entry đã dùng làm evi
 | 2026-09-08 | 2.0-draft | Toàn bộ bộ tài liệu authoritative | Course rebaseline, dynamic RBAC, Evidence Gate, team tracking | Nhóm EduTwin | Working tree; chờ group review/commit |
 | 2026-09-08 | archive-v0 | docs/archive/vision-v0/EduTwin-Overview.docx | Bảo tồn vision Next.js/FastAPI/Supabase/PostgreSQL cũ, không còn authority | Nhóm EduTwin | Archived, không xóa |
 | 2026-09-09 | 2.1-draft | Requirements/core specs/tracking + TEAM_ASSIGNMENT + CODEBASE_CHANGE_PLAN + DOCX hiện hành | Làm rõ AI không phải operational core, Center provisioning, users.auth_version, last-admin, evidence ba chiều, Week 1 và phân công năm người | Tuấn Tài/nhóm EduTwin | Working tree; chờ group review/commit |
+| 2026-09-12 | 3.0-post-r08 | ADR-POST-R08-PLATFORM, ADR-POST-R08-MATH, MASTER_PLAN (Mục 132), CONSTITUTION (Mục 3.3), PROJECT_REQUIREMENTS, API_CONTRACTS, UI_UX_SPEC, DATABASE_SCHEMA (Bảng 40), PROJECT_TRACKING | Post-R08 Scope Amendments: Quản trị nền tảng (Track 1) và Bộ công cụ Toán học & Minh chứng đa phương thức (Track 2) theo phê duyệt Plan v3.1.3-ADDENDUM-03 | Nhóm EduTwin | Gate 1 COMPLETED; zero code change; tài liệu đồng bộ 100% |
 
 Khi chuyển 2.1-draft sang APPROVED/FROZEN, thêm entry ghi reviewer, commit/PR và ngày nhóm xác nhận.
+
+## 18. Post-R08 Extension Milestones & Execution Tracking
+
+Kế hoạch thực thi 6 Gate kỹ thuật nghiêm ngặt (Strict 6-Gate Pipeline) theo Plan v3.1.3-ADDENDUM-03:
+
+| Gate | Nội dung thực thi | Trạng thái | Ghi chú & Bằng chứng |
+|---|---|---|---|
+| **GATE 1** | Đặc tả tài liệu kỹ thuật (.md), 2 bản ghi ADR độc lập, cập nhật Master Plan | **COMPLETED** | 2 file ADR mới, 7 file đặc tả cập nhật; 0 file mã nguồn bị thay đổi; 2 file DOCX được bảo vệ nguyên vẹn. |
+| **GATE 2** | Track 1 — Platform Admin (5 CHECK constraints, Provisioner, Web UI) | **READY TO EXECUTE** | Sửa 5 CHECK constraints, PlatformAdminProvisioner, PlatformCenterService, PlatformCentersPage.tsx, 100% tests pass. |
+| **GATE 3** | Track 2A/B — Math Toolbar, Evaluation Mode, Rational Normalizer & Calculator Drawer | **PENDING** | Migration answer_evaluation_mode, BigInteger rational normalizer, MathInputToolbar, KaTeX, Calculator Drawer. |
+| **GATE 4** | Track 2C — Vector Scratchpad Canvas & Scoped IndexedDB Cache | **PENDING** | Fullscreen modal canvas, bộ công cụ hình học, draft scoped IndexedDB theo draft:{centerId}:{userId}:{clientSubmissionId}. |
+| **GATE 5** | Track 2D — Multipart Storage, Bảng vật lý 40, Gemini Multimodal & Review Fallback | **PENDING** | Bảng 40 attempt_attachments, IAttemptTeacherReviewScopeGuard, streaming upload bounded full PNG validation, 3 retries state machine, AnalysisFailed/resubmit cho bài free-practice. |
+| **GATE 6** | Post-R08 Extension Verification & Hardening | **PENDING** | Clean-clone container rehearsal, EXPLAIN execution plans, kiểm chứng E2E và lập báo cáo nghiệm thu hoàn chỉnh. |
