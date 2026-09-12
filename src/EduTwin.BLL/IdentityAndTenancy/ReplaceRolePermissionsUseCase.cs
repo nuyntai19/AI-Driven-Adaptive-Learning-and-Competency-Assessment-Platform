@@ -61,6 +61,12 @@ public sealed class ReplaceRolePermissionsUseCase(
             return AuthorizationRoleResult.Failure(ErrorCodes.ConcurrencyConflict);
         }
 
+        if (role.AccountType == UserRole.PlatformAdmin ||
+            codes.Any(code => code.StartsWith("platform.", StringComparison.OrdinalIgnoreCase)))
+        {
+            return AuthorizationRoleResult.Failure(ErrorCodes.AuthPrivilegeEscalation);
+        }
+
         var requestedCodes = codes.ToHashSet(StringComparer.Ordinal);
         var permissions = (await dbContext.Permissions
                 .AsNoTracking()

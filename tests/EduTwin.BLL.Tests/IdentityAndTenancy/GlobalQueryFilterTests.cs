@@ -248,8 +248,10 @@ public class GlobalQueryFilterTests
 
         var expectedWhitelist = new[]
         {
+            "src/EduTwin.BLL/Platform/PlatformCenterService.cs",
             "src/EduTwin.BLL/Seeding/AuthorizationBootstrapper.cs",
             "src/EduTwin.BLL/Seeding/ManifestEvaluator.cs",
+            "src/EduTwin.BLL/Seeding/PlatformAdminProvisioner.cs",
             "src/EduTwin.DAL/IdentityAndTenancy/RefreshTokenStore.cs"
         }.OrderBy(f => f).ToList();
 

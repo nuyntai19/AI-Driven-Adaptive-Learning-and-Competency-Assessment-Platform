@@ -10,7 +10,7 @@ public sealed class PermissionAccountTypeConfiguration : IEntityTypeConfiguratio
     public void Configure(EntityTypeBuilder<PermissionAccountType> builder)
     {
         builder.ToTable("permission_account_types", table =>
-            table.HasCheckConstraint("ck_permission_account_types_account_type", "`account_type` IN ('Student', 'Teacher', 'CenterManager')"));
+            table.HasCheckConstraint("ck_permission_account_types_account_type", "`account_type` IN ('Student', 'Teacher', 'CenterManager', 'PlatformAdmin')"));
         builder.HasKey(x => new { x.PermissionId, x.AccountType }).HasName("pk_permission_account_types");
         builder.Property(x => x.PermissionId).HasColumnName("permission_id").HasColumnType("varchar(36)");
         builder.Property(x => x.AccountType).HasColumnName("account_type").HasColumnType("varchar(32)").HasConversion<string>();

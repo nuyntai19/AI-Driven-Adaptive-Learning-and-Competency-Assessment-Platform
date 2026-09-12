@@ -11,7 +11,7 @@ public sealed class UserRoleAssignmentConfiguration : IEntityTypeConfiguration<U
         builder.ToTable("user_roles", table =>
         {
             table.HasCheckConstraint("ck_user_roles_status", "`status` IN ('Active', 'Revoked')");
-            table.HasCheckConstraint("ck_user_roles_account_type", "`account_type` IN ('Student', 'Teacher', 'CenterManager')");
+            table.HasCheckConstraint("ck_user_roles_account_type", "`account_type` IN ('Student', 'Teacher', 'CenterManager', 'PlatformAdmin')");
         });
         builder.HasKey(x => new { x.CenterId, x.UserId, x.RoleId }).HasName("pk_user_roles");
         builder.Property(x => x.CenterId).HasColumnName("center_id").HasColumnType("varchar(36)");

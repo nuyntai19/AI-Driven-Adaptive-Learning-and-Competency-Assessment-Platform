@@ -62,6 +62,10 @@ public sealed class ReplaceUserRolesUseCase(
         {
             return UserAuthorizationResult.Failure(ErrorCodes.ResourceNotFound);
         }
+        if (roles.Any(role => role.AccountType == UserRole.PlatformAdmin) || user.RoleName == UserRole.PlatformAdmin)
+        {
+            return UserAuthorizationResult.Failure(ErrorCodes.AuthPrivilegeEscalation);
+        }
         if (roles.Any(role => role.Status != AuthorizationRoleStatus.Active))
         {
             return UserAuthorizationResult.Failure(ErrorCodes.InvalidStateTransition);

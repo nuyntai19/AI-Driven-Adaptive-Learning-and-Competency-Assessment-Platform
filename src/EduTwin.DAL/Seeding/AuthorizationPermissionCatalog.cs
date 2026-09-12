@@ -34,7 +34,18 @@ public static class AuthorizationPermissionCatalog
         "organization.classes.manage_members", "knowledge.subjects.delete", "knowledge.nodes.delete",
         "knowledge.edges.delete", "curriculum.curriculums.publish", "curriculum.questions.publish",
         "curriculum.questions.delete", "twin.student.update_scoped",
-        "assignments.assignments.publish", "assignments.assignments.close", "twin.reasoning.override"
+        "assignments.assignments.publish", "assignments.assignments.close", "twin.reasoning.override",
+        "platform.centers.read", "platform.centers.manage", "platform.managers.manage"
+    ];
+
+    private static readonly HashSet<string> NonDelegableCodes =
+    [
+        "platform.centers.read", "platform.centers.manage", "platform.managers.manage"
+    ];
+
+    private static readonly string[] PlatformCodes =
+    [
+        "platform.centers.read", "platform.centers.manage", "platform.managers.manage"
     ];
 
     private static readonly string[] StudentCodes =
@@ -95,7 +106,7 @@ public static class AuthorizationPermissionCatalog
                     ActionName = parts[2],
                     Description = $"Cho phép {parts[2]} {parts[1]} trong phạm vi được cấp.",
                     IsSensitive = SensitiveCodes.Contains(code),
-                    IsDelegable = true,
+                    IsDelegable = !NonDelegableCodes.Contains(code),
                     Status = PermissionStatus.Active,
                     CreatedAt = CatalogTimestampUtc,
                     UpdatedAt = CatalogTimestampUtc
@@ -144,6 +155,7 @@ public static class AuthorizationPermissionCatalog
         Add(result, CenterManagerCodes, UserRole.CenterManager);
         Add(result, TeacherOrManagerCodes, UserRole.Teacher, UserRole.CenterManager);
         Add(result, AllAccountTypeCodes, UserRole.Student, UserRole.Teacher, UserRole.CenterManager);
+        Add(result, PlatformCodes, UserRole.PlatformAdmin);
         return result;
     }
 

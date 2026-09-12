@@ -21,8 +21,8 @@ public sealed class ListPermissionsUseCaseTests
         });
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(63, result.TotalItems);
-        Assert.Equal(63, result.Data.Count);
+        Assert.Equal(66, result.TotalItems);
+        Assert.Equal(66, result.Data.Count);
         Assert.All(result.Data, permission =>
         {
             Assert.Equal(
@@ -35,7 +35,8 @@ public sealed class ListPermissionsUseCaseTests
                         [
                             nameof(UserRole.Student),
                             nameof(UserRole.Teacher),
-                            nameof(UserRole.CenterManager)
+                            nameof(UserRole.CenterManager),
+                            nameof(UserRole.PlatformAdmin)
                         ],
                         value)),
                 permission.AllowedAccountTypes);

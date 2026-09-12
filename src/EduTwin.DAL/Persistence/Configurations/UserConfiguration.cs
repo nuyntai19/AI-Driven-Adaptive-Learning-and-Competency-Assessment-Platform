@@ -114,7 +114,7 @@ public class UserConfiguration : IEntityTypeConfiguration<IdentityAndTenancy.Use
             .HasDatabaseName("ix_users_center_id_role_name_status");
 
         // CHECK Constraints
-        builder.ToTable(t => t.HasCheckConstraint("ck_users_role_name", "role_name IN ('Student', 'Teacher', 'CenterManager')"));
+        builder.ToTable(t => t.HasCheckConstraint("ck_users_role_name", "role_name IN ('Student', 'Teacher', 'CenterManager', 'PlatformAdmin')"));
         builder.ToTable(t => t.HasCheckConstraint("ck_users_status", "status IN ('Active', 'Locked', 'Disabled')"));
 
         // Relations

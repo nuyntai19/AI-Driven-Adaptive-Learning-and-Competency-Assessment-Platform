@@ -23,6 +23,7 @@ using EduTwin.API.AssessmentAndReasoning.Background;
 using EduTwin.API.AssessmentAndReasoning.AI;
 using EduTwin.API.Security;
 using EduTwin.DAL.Seeding;
+using EduTwin.BLL.Platform;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -158,6 +159,7 @@ builder.Services.AddAssignments();
 builder.Services.AddAssessmentAndReasoning();
 builder.Services.AddRecommendations();
 builder.Services.AddDashboards();
+builder.Services.AddPlatform(builder.Configuration);
 builder.Services.AddGeminiAI(builder.Configuration);
 
 // We also need TimeProvider

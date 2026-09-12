@@ -42,6 +42,9 @@ export const permissions = {
   twinReasoningOverride: "twin.reasoning.override",
   teacherReviewsRead: "twin.reasoning.review",
   teacherReviewsOverride: "twin.reasoning.override",
+  platformCentersRead: "platform.centers.read",
+  platformCentersManage: "platform.centers.manage",
+  platformManagersManage: "platform.managers.manage",
 } as const;
 
 export const authorizationUiPermissions = [

@@ -35,6 +35,11 @@ public sealed class CreateAuthorizationRoleUseCase(
             return AuthorizationRoleResult.Failure(ErrorCodes.ValidationFailed);
         }
 
+        if (request.AccountType.Value == UserRole.PlatformAdmin)
+        {
+            return AuthorizationRoleResult.Failure(ErrorCodes.AuthPrivilegeEscalation);
+        }
+
         var actorExists = await dbContext.Users.AnyAsync(user =>
             user.UserId == actorId && user.Status == UserStatus.Active,
             cancellationToken);

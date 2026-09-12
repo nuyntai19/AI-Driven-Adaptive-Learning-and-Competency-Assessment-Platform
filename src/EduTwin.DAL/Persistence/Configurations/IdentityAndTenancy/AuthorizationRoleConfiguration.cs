@@ -11,7 +11,7 @@ public sealed class AuthorizationRoleConfiguration : IEntityTypeConfiguration<Au
         builder.ToTable("roles", table =>
         {
             table.HasCheckConstraint("ck_roles_status", "`status` IN ('Active', 'Archived')");
-            table.HasCheckConstraint("ck_roles_account_type", "`account_type` IN ('Student', 'Teacher', 'CenterManager')");
+            table.HasCheckConstraint("ck_roles_account_type", "`account_type` IN ('Student', 'Teacher', 'CenterManager', 'PlatformAdmin')");
         });
         builder.HasKey(x => x.RoleId).HasName("pk_roles");
         builder.Property(x => x.RoleId).HasColumnName("role_id").HasColumnType("varchar(36)");

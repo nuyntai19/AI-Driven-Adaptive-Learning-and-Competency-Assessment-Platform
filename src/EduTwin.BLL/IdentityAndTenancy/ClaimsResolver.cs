@@ -43,7 +43,8 @@ public class ClaimsResolver : IClaimsResolver
         if (string.IsNullOrWhiteSpace(roleClaim) ||
             (roleClaim != nameof(EduTwin.Contracts.IdentityAndTenancy.UserRole.Student) &&
              roleClaim != nameof(EduTwin.Contracts.IdentityAndTenancy.UserRole.Teacher) &&
-             roleClaim != nameof(EduTwin.Contracts.IdentityAndTenancy.UserRole.CenterManager)))
+             roleClaim != nameof(EduTwin.Contracts.IdentityAndTenancy.UserRole.CenterManager) &&
+             roleClaim != nameof(EduTwin.Contracts.IdentityAndTenancy.UserRole.PlatformAdmin)))
         {
             throw new UnauthorizedAccessException("Missing or invalid role claim.");
         }
@@ -53,5 +54,4 @@ public class ClaimsResolver : IClaimsResolver
 
         initializer.Initialize(centerId, userId, roleClaim, authVersion);
     }
-
 }

@@ -10,11 +10,14 @@ public sealed class AuthorizationBootstrapper(
     EduTwinDbContext dbContext,
     TimeProvider timeProvider)
 {
+    public static readonly Guid ReservedPlatformCenterId =
+        Guid.Parse("00000000-0000-0000-0000-000000000001");
+
     public async Task EnsureAsync(CancellationToken cancellationToken = default)
     {
         var centers = await dbContext.Centers
             .IgnoreQueryFilters()
-            .Where(center => !center.IsDeleted)
+            .Where(center => !center.IsDeleted && center.CenterId != ReservedPlatformCenterId)
             .Select(center => center.CenterId)
             .ToArrayAsync(cancellationToken);
 
@@ -28,11 +31,15 @@ public sealed class AuthorizationBootstrapper(
         }
     }
 
-    private async Task EnsureCenterAsync(
+    public async Task EnsureCenterAsync(
         Guid centerId,
-        IReadOnlyCollection<PermissionAccountType> permissionMappings,
-        CancellationToken cancellationToken)
+        IReadOnlyCollection<PermissionAccountType>? permissionMappings = null,
+        CancellationToken cancellationToken = default)
     {
+        permissionMappings ??= await dbContext.PermissionAccountTypes
+            .AsNoTracking()
+            .ToArrayAsync(cancellationToken);
+
         var users = await dbContext.Users
             .IgnoreQueryFilters()
             .Where(user => user.CenterId == centerId && !user.IsDeleted)
@@ -54,6 +61,11 @@ public sealed class AuthorizationBootstrapper(
 
         foreach (var accountType in Enum.GetValues<UserRole>())
         {
+            if (accountType == UserRole.PlatformAdmin)
+            {
+                continue;
+            }
+
             var role = roles.SingleOrDefault(item => item.AccountType == accountType);
             if (role is null)
             {
@@ -96,6 +108,11 @@ public sealed class AuthorizationBootstrapper(
             .ToHashSet();
         foreach (var user in users)
         {
+            if (user.RoleName == UserRole.PlatformAdmin)
+            {
+                continue;
+            }
+
             var role = roles.Single(item => item.AccountType == user.RoleName);
             if (assignmentKeys.Add((user.UserId, role.RoleId)))
             {
@@ -134,6 +151,71 @@ public sealed class AuthorizationBootstrapper(
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task BootstrapPlatformAsync(
+        Guid platformCenterId,
+        Guid adminUserId,
+        CancellationToken cancellationToken = default)
+    {
+        var utcNow = timeProvider.GetUtcNow().UtcDateTime;
+        var role = await dbContext.AuthorizationRoles
+            .IgnoreQueryFilters()
+            .SingleOrDefaultAsync(r => r.CenterId == platformCenterId && r.AccountType == UserRole.PlatformAdmin && r.IsSystemRole, cancellationToken);
+
+        if (role is null)
+        {
+            role = CreateSystemRole(platformCenterId, UserRole.PlatformAdmin, utcNow);
+            dbContext.AuthorizationRoles.Add(role);
+        }
+
+        var platformPermissions = await dbContext.PermissionAccountTypes
+            .IgnoreQueryFilters()
+            .Where(p => p.AccountType == UserRole.PlatformAdmin)
+            .Select(p => p.PermissionId)
+            .ToArrayAsync(cancellationToken);
+
+        var existingRolePermissions = await dbContext.RolePermissions
+            .IgnoreQueryFilters()
+            .Where(rp => rp.CenterId == platformCenterId && rp.RoleId == role.RoleId)
+            .Select(rp => rp.PermissionId)
+            .ToHashSetAsync(cancellationToken);
+
+        foreach (var permId in platformPermissions)
+        {
+            if (existingRolePermissions.Add(permId))
+            {
+                dbContext.RolePermissions.Add(new RolePermission
+                {
+                    CenterId = platformCenterId,
+                    RoleId = role.RoleId,
+                    PermissionId = permId,
+                    AccountType = UserRole.PlatformAdmin,
+                    GrantedAt = utcNow,
+                    GrantedByUserId = adminUserId
+                });
+            }
+        }
+
+        var assignmentExists = await dbContext.UserRoleAssignments
+            .IgnoreQueryFilters()
+            .AnyAsync(a => a.CenterId == platformCenterId && a.UserId == adminUserId && a.RoleId == role.RoleId, cancellationToken);
+
+        if (!assignmentExists)
+        {
+            dbContext.UserRoleAssignments.Add(new UserRoleAssignment
+            {
+                CenterId = platformCenterId,
+                UserId = adminUserId,
+                RoleId = role.RoleId,
+                AccountType = UserRole.PlatformAdmin,
+                Status = UserRoleAssignmentStatus.Active,
+                AssignedAt = utcNow,
+                AssignedByUserId = adminUserId
+            });
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
     private static AuthorizationRole CreateSystemRole(
         Guid centerId,
         UserRole accountType,
@@ -144,6 +226,7 @@ public sealed class AuthorizationBootstrapper(
             UserRole.Student => "Học viên hệ thống",
             UserRole.Teacher => "Giáo viên hệ thống",
             UserRole.CenterManager => "Quản trị trung tâm",
+            UserRole.PlatformAdmin => "Quản trị viên nền tảng",
             _ => throw new ArgumentOutOfRangeException(nameof(accountType))
         };
 

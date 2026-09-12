@@ -39,7 +39,8 @@ public class GetCurrentUserUseCase : IGetCurrentUserUseCase
         var role = _tenantContext.Role;
         if (role != nameof(UserRole.Student) &&
             role != nameof(UserRole.Teacher) &&
-            role != nameof(UserRole.CenterManager))
+            role != nameof(UserRole.CenterManager) &&
+            role != nameof(UserRole.PlatformAdmin))
         {
             return new GetCurrentUserResult { IsSuccess = false, ErrorCode = ErrorCodes.ResourceNotFound };
         }

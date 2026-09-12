@@ -23,6 +23,7 @@ const accountTypeLabels: Record<AccountType, string> = {
   CenterManager: "Quản lý trung tâm",
   Teacher: "Giáo viên",
   Student: "Học sinh",
+  PlatformAdmin: "Quản trị viên nền tảng",
 };
 
 const errorMessage = (error: unknown) => {

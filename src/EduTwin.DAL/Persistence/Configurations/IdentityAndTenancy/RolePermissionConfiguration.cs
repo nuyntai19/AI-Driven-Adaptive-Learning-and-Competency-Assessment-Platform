@@ -9,7 +9,7 @@ public sealed class RolePermissionConfiguration : IEntityTypeConfiguration<RoleP
     public void Configure(EntityTypeBuilder<RolePermission> builder)
     {
         builder.ToTable("role_permissions", table =>
-            table.HasCheckConstraint("ck_role_permissions_account_type", "`account_type` IN ('Student', 'Teacher', 'CenterManager')"));
+            table.HasCheckConstraint("ck_role_permissions_account_type", "`account_type` IN ('Student', 'Teacher', 'CenterManager', 'PlatformAdmin')"));
         builder.HasKey(x => new { x.CenterId, x.RoleId, x.PermissionId }).HasName("pk_role_permissions");
         builder.Property(x => x.CenterId).HasColumnName("center_id").HasColumnType("varchar(36)");
         builder.Property(x => x.RoleId).HasColumnName("role_id").HasColumnType("varchar(36)");

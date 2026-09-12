@@ -1,4 +1,4 @@
-export type AccountType = "Student" | "Teacher" | "CenterManager";
+export type AccountType = "Student" | "Teacher" | "CenterManager" | "PlatformAdmin";
 export type UserRole = AccountType;
 export type UserStatus = "Active" | "Locked" | "Disabled";
 

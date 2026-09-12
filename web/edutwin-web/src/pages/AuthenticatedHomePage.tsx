@@ -10,6 +10,7 @@ const roleLabels: Record<AccountType, string> = {
   Student: "Học sinh",
   Teacher: "Giáo viên",
   CenterManager: "Quản lý trung tâm",
+  PlatformAdmin: "Quản trị viên nền tảng",
 };
 
 const statusLabels: Record<UserStatus, string> = {
@@ -178,6 +179,31 @@ export const AuthenticatedHomePage = () => {
                       className="inline-flex items-center justify-center rounded-lg bg-purple-700 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-purple-600"
                     >
                       Xem Dashboard Trung tâm →
+                    </Link>
+                  </div>
+                </div>
+              )}
+
+              {/* Platform Administration Experience */}
+              {(hasPermission(permissions.platformCentersRead) || hasPermission(permissions.platformCentersManage)) && (
+                <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-blue-50/60 to-cyan-50/60 p-5 flex flex-col justify-between">
+                  <div>
+                    <span className="text-xs font-bold uppercase tracking-wider text-blue-700">
+                      Nền tảng hệ thống
+                    </span>
+                    <h3 className="mt-1 text-lg font-bold text-slate-900">
+                      Quản Trị Trung Tâm Đối Tác
+                    </h3>
+                    <p className="mt-1 text-xs text-slate-600">
+                      Khởi tạo trung tâm mới, quản lý vòng đời kích hoạt/tạm ngưng và hỗ trợ quản trị viên.
+                    </p>
+                  </div>
+                  <div className="mt-4 flex flex-col gap-2">
+                    <Link
+                      to="/quan-tri-nen-tang/trung-tam"
+                      className="inline-flex items-center justify-center rounded-lg bg-blue-700 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-600"
+                    >
+                      Vào Quản Trị Trung Tâm →
                     </Link>
                   </div>
                 </div>

@@ -4,5 +4,6 @@ public enum UserRole
 {
     Student,
     Teacher,
-    CenterManager
+    CenterManager,
+    PlatformAdmin
 }

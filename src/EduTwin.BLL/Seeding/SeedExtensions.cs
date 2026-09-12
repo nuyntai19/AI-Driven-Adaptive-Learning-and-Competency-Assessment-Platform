@@ -27,12 +27,24 @@ public static class SeedExtensions
         services.AddScoped<IManifestEvaluator, ManifestEvaluator>();
         services.AddScoped<EduTwinRuntimeSeeder>();
         services.AddScoped<AuthorizationBootstrapper>();
+        services.AddScoped<PlatformAdminProvisioner>();
 
         return services;
     }
 
     public static async Task ApplyMigrationsAndSeedAsync(this IServiceProvider services, IConfiguration config, bool isDevelopment)
     {
+        using var scope = services.CreateScope();
+
+        // 1. Migrate database schema
+        var dbContext = scope.ServiceProvider.GetRequiredService<EduTwinDbContext>();
+        await dbContext.Database.MigrateAsync();
+
+        // 2. Ensure Root Tenant PLATFORM and Platform Administrator are provisioned
+        var platformAdminProvisioner = scope.ServiceProvider.GetRequiredService<PlatformAdminProvisioner>();
+        await platformAdminProvisioner.EnsureAsync();
+
+        // 3. Demo/Development data seeding (only if enabled in configuration)
         bool seedEnabled = config.GetValue<bool>("Seed:Enabled");
         if (!seedEnabled) return;
 
@@ -41,13 +53,6 @@ public static class SeedExtensions
             throw new InvalidOperationException("Seeding is only allowed in Development environment.");
         }
 
-        using var scope = services.CreateScope();
-
-        // Migrate
-        var dbContext = scope.ServiceProvider.GetRequiredService<EduTwinDbContext>();
-        await dbContext.Database.MigrateAsync();
-
-        // Seed
         var seeder = scope.ServiceProvider.GetRequiredService<EduTwinRuntimeSeeder>();
         await seeder.SeedAsync();
 
