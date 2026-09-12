@@ -7,6 +7,7 @@ services:
   mysql:
     image: mysql:8.0.35
     container_name: ${COMPOSE_PROJECT_NAME}-mysql
+    command: --log-bin-trust-function-creators=1
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
@@ -41,6 +42,9 @@ services:
       - HealthChecks__MySqlPort=${HealthChecks__MySqlPort}
       - Seed__Enabled=${Seed__Enabled:-true}
       - Seed__CenterManagerPassword=${Seed__CenterManagerPassword}
+      - PlatformBootstrap__AdminUsername=${PlatformBootstrap__AdminUsername:-platform.admin}
+      - PlatformBootstrap__AdminDisplayName=${PlatformBootstrap__AdminDisplayName:-Platform Administrator}
+      - PlatformBootstrap__AdminPassword=${PlatformBootstrap__AdminPassword}
     ports:
       - "${API_PORT}:8080"
     depends_on:
