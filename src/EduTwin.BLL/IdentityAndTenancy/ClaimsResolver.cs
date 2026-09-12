@@ -49,6 +49,19 @@ public class ClaimsResolver : IClaimsResolver
             throw new UnauthorizedAccessException("Missing or invalid role claim.");
         }
 
+        var isPlatformAdmin = roleClaim == nameof(EduTwin.Contracts.IdentityAndTenancy.UserRole.PlatformAdmin);
+        var isPlatformCenter = centerId == EduTwin.BLL.Seeding.AuthorizationBootstrapper.ReservedPlatformCenterId;
+
+        if (isPlatformAdmin && !isPlatformCenter)
+        {
+            throw new UnauthorizedAccessException("PlatformAdmin role must belong to Root Tenant PLATFORM.");
+        }
+
+        if (isPlatformCenter && !isPlatformAdmin)
+        {
+            throw new UnauthorizedAccessException("Root Tenant PLATFORM only accepts PlatformAdmin role.");
+        }
+
         if (!uint.TryParse(authVersionClaim, out var authVersion) || authVersion < 1)
             throw new UnauthorizedAccessException("Missing or invalid auth_version claim.");
 

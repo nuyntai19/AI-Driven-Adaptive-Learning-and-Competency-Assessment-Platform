@@ -55,16 +55,52 @@ public sealed class PlatformAdminProvisioner(
             await dbContext.SaveChangesAsync(cancellationToken);
             logger.LogInformation("Provisioned Root Tenant PLATFORM ({CenterId})", ReservedPlatformCenterId);
         }
-
-        // 2. Check if a PlatformAdmin user already exists in PLATFORM tenant
-        var existingAdmin = await dbContext.Users
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(u => u.CenterId == ReservedPlatformCenterId &&
-                                     u.RoleName == UserRole.PlatformAdmin &&
-                                     !u.IsDeleted, cancellationToken);
-
-        if (existingAdmin is not null)
+        else if (platformCenter.CenterCode != "PLATFORM" || platformCenter.Status != CenterStatus.Active)
         {
+            throw new InvalidOperationException(
+                $"Root Tenant PLATFORM ({ReservedPlatformCenterId}) is in a malformed state (CenterCode='{platformCenter.CenterCode}', Status='{platformCenter.Status}').");
+        }
+
+        // Invariant: No ordinary non-PlatformAdmin users inside Root Tenant PLATFORM
+        var unauthorizedUsersInPlatform = await dbContext.Users
+            .IgnoreQueryFilters()
+            .Where(u => u.CenterId == ReservedPlatformCenterId && u.RoleName != UserRole.PlatformAdmin && !u.IsDeleted)
+            .ToListAsync(cancellationToken);
+        if (unauthorizedUsersInPlatform.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"Root Tenant PLATFORM contains {unauthorizedUsersInPlatform.Count} unauthorized non-PlatformAdmin user(s).");
+        }
+
+        // Invariant: No PlatformAdmin users outside Root Tenant PLATFORM
+        var platformAdminsOutsidePlatform = await dbContext.Users
+            .IgnoreQueryFilters()
+            .Where(u => u.CenterId != ReservedPlatformCenterId && u.RoleName == UserRole.PlatformAdmin && !u.IsDeleted)
+            .ToListAsync(cancellationToken);
+        if (platformAdminsOutsidePlatform.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"Found {platformAdminsOutsidePlatform.Count} PlatformAdmin user(s) outside Root Tenant PLATFORM.");
+        }
+
+        // 2. Check if active PlatformAdmin user already exists in PLATFORM tenant
+        var activeAdmins = await dbContext.Users
+            .IgnoreQueryFilters()
+            .Where(u => u.CenterId == ReservedPlatformCenterId &&
+                        u.RoleName == UserRole.PlatformAdmin &&
+                        u.Status == UserStatus.Active &&
+                        !u.IsDeleted)
+            .ToListAsync(cancellationToken);
+
+        if (activeAdmins.Count > 1)
+        {
+            throw new InvalidOperationException(
+                $"Multiple active PlatformAdmin users ({activeAdmins.Count}) found in Root Tenant PLATFORM.");
+        }
+
+        if (activeAdmins.Count == 1)
+        {
+            var existingAdmin = activeAdmins[0];
             logger.LogInformation("PlatformAdmin user already exists ({UserId}). Skipping credential modification.", existingAdmin.UserId);
             await authBootstrapper.BootstrapPlatformAsync(ReservedPlatformCenterId, existingAdmin.UserId, cancellationToken);
             return;
@@ -72,9 +108,9 @@ public sealed class PlatformAdminProvisioner(
 
         // 3. Create initial PlatformAdmin user if missing
         var bootstrapOptions = options.Value;
-        if (string.IsNullOrWhiteSpace(bootstrapOptions.AdminPassword))
+        if (string.IsNullOrWhiteSpace(bootstrapOptions.AdminPassword) || bootstrapOptions.AdminPassword.Length < 12)
         {
-            throw new InvalidOperationException("Missing mandatory PlatformBootstrap:AdminPassword configuration. PlatformAdmin cannot be provisioned.");
+            throw new InvalidOperationException("Missing or invalid PlatformBootstrap:AdminPassword configuration (must be at least 12 characters). PlatformAdmin cannot be provisioned.");
         }
 
         var newAdmin = new User

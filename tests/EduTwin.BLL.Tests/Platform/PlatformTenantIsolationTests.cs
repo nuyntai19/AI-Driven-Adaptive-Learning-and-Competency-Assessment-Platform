@@ -21,6 +21,8 @@ public class PlatformTenantIsolationTests : IDisposable
     private readonly Guid _platformCenterId = AuthorizationBootstrapper.ReservedPlatformCenterId;
     private readonly Guid _customerCenterId = Guid.NewGuid();
 
+    private static readonly DateTime FixedUtcNow = new(2026, 9, 12, 12, 0, 0, DateTimeKind.Utc);
+
     public PlatformTenantIsolationTests()
     {
         var options = new DbContextOptionsBuilder<EduTwinDbContext>()
@@ -43,8 +45,8 @@ public class PlatformTenantIsolationTests : IDisposable
                 CenterName = "EduTwin Platform Administration",
                 Status = CenterStatus.Active,
                 Timezone = "Asia/Ho_Chi_Minh",
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow
             },
             new Center
             {
@@ -53,8 +55,8 @@ public class PlatformTenantIsolationTests : IDisposable
                 CenterName = "Customer Center A",
                 Status = CenterStatus.Active,
                 Timezone = "Asia/Ho_Chi_Minh",
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow
             }
         );
 
@@ -71,8 +73,8 @@ public class PlatformTenantIsolationTests : IDisposable
                 AuthVersion = 1,
                 PasswordHash = "hashed_pass",
                 RowVersion = 1,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow
             },
             new User
             {
@@ -85,8 +87,8 @@ public class PlatformTenantIsolationTests : IDisposable
                 AuthVersion = 1,
                 PasswordHash = "hashed_pass",
                 RowVersion = 1,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow
             }
         );
 

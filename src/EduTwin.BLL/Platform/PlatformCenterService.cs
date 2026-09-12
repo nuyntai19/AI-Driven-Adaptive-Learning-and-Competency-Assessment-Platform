@@ -189,10 +189,10 @@ public class PlatformCenterService : IPlatformCenterService
             string.IsNullOrWhiteSpace(centerName) || centerName.Length > 200 ||
             string.IsNullOrWhiteSpace(managerUsername) || managerUsername.Length > 100 ||
             string.IsNullOrWhiteSpace(managerDisplayName) || managerDisplayName.Length > 200 ||
-            string.IsNullOrWhiteSpace(managerPassword) || managerPassword.Length < 8)
+            string.IsNullOrWhiteSpace(managerPassword) || managerPassword.Length < 12)
         {
             return PlatformResult<PlatformCenterListItemDto>.Failure(
-                ErrorCodes.ValidationFailed, "Dữ liệu yêu cầu tạo trung tâm không hợp lệ.");
+                ErrorCodes.ValidationFailed, "Dữ liệu yêu cầu tạo trung tâm không hợp lệ (mật khẩu phải tối thiểu 12 ký tự).");
         }
 
         if (centerCode == "PLATFORM")
@@ -278,7 +278,16 @@ public class PlatformCenterService : IPlatformCenterService
         _dbContext.Users.Add(managerUser);
         _dbContext.AuthorizationAuditLogs.Add(auditLog);
 
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException dbEx) when (dbEx.InnerException?.Message.Contains("ux_centers_center_code") == true ||
+                                             dbEx.InnerException?.Message.Contains("1062") == true)
+        {
+            return PlatformResult<PlatformCenterListItemDto>.Failure(
+                ErrorCodes.DuplicateResource, $"Mã trung tâm '{centerCode}' đã tồn tại.");
+        }
 
         await _authorizationBootstrapper.EnsureCenterAsync(centerId, cancellationToken: cancellationToken);
 
@@ -351,6 +360,30 @@ public class PlatformCenterService : IPlatformCenterService
         center.UpdatedAt = now;
         center.RowVersion++;
 
+        if (newStatus == CenterStatus.Suspended && oldStatus != CenterStatus.Suspended.ToString())
+        {
+            var centerUsers = await _dbContext.Users
+                .IgnoreQueryFilters()
+                .Where(u => u.CenterId == centerId && !u.IsDeleted)
+                .ToListAsync(cancellationToken);
+            foreach (var u in centerUsers)
+            {
+                u.AuthVersion++;
+                u.UpdatedAt = now;
+                u.UpdatedBy = callerUserId;
+            }
+
+            var activeTokens = await _dbContext.RefreshTokens
+                .IgnoreQueryFilters()
+                .Where(rt => rt.CenterId == centerId && rt.RevokedAt == null)
+                .ToListAsync(cancellationToken);
+            foreach (var rt in activeTokens)
+            {
+                rt.RevokedAt = now;
+                rt.RevokeReason = "Center suspended by platform administrator.";
+            }
+        }
+
         var auditLog = new AuthorizationAuditLog
         {
             CenterId = AuthorizationBootstrapper.ReservedPlatformCenterId,
@@ -372,7 +405,16 @@ public class PlatformCenterService : IPlatformCenterService
             : null;
 
         _dbContext.AuthorizationAuditLogs.Add(auditLog);
-        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return PlatformResult<PlatformCenterListItemDto>.Failure(
+                ErrorCodes.ConcurrencyConflict, "Dữ liệu trung tâm đã bị thay đổi bởi thao tác khác.");
+        }
 
         if (transaction is not null)
         {
@@ -425,12 +467,12 @@ public class PlatformCenterService : IPlatformCenterService
                 ErrorCodes.ForbiddenResource, "Không được phép đặt lại mật khẩu tài khoản quản trị PLATFORM qua endpoint này.");
         }
 
-        if (string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length < 8 ||
+        if (string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length < 12 ||
             !ulong.TryParse(request.ExpectedUserRowVersion, NumberStyles.None, CultureInfo.InvariantCulture, out var expectedVersion) ||
             expectedVersion == 0)
         {
             return PlatformResult<ResetCenterManagerPasswordData>.Failure(
-                ErrorCodes.ValidationFailed, "Dữ liệu đặt lại mật khẩu quản lý không hợp lệ.");
+                ErrorCodes.ValidationFailed, "Dữ liệu đặt lại mật khẩu quản lý không hợp lệ (mật khẩu phải tối thiểu 12 ký tự).");
         }
 
         var user = await _dbContext.Users
@@ -502,7 +544,16 @@ public class PlatformCenterService : IPlatformCenterService
             : null;
 
         _dbContext.AuthorizationAuditLogs.Add(auditLog);
-        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return PlatformResult<ResetCenterManagerPasswordData>.Failure(
+                ErrorCodes.ConcurrencyConflict, "Dữ liệu người dùng đã bị thay đổi bởi thao tác khác.");
+        }
 
         if (transaction is not null)
         {

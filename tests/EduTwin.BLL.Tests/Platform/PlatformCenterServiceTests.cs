@@ -28,6 +28,8 @@ public class PlatformCenterServiceTests : IDisposable
     private readonly PlatformCenterService _sut;
     private readonly Guid _platformCenterId = AuthorizationBootstrapper.ReservedPlatformCenterId;
     private readonly Guid _platformAdminUserId = Guid.NewGuid();
+    private static readonly DateTime FixedUtcNow = new(2026, 9, 12, 12, 0, 0, DateTimeKind.Utc);
+    private readonly Mock<TimeProvider> _mockTimeProvider;
 
     public PlatformCenterServiceTests()
     {
@@ -41,11 +43,16 @@ public class PlatformCenterServiceTests : IDisposable
             .Setup(h => h.HashPassword(It.IsAny<User>(), It.IsAny<string>()))
             .Returns("hashed_password_123");
 
+        _mockTimeProvider = new Mock<TimeProvider>();
+        _mockTimeProvider
+            .Setup(t => t.GetUtcNow())
+            .Returns(new DateTimeOffset(FixedUtcNow, TimeSpan.Zero));
+
         var mockAccessor = new Mock<EduTwin.DAL.Persistence.Tenancy.ITenantIdAccessor>();
         mockAccessor.Setup(a => a.CenterId).Returns(() => _mockTenantContext.Object.CenterId ?? Guid.Empty);
 
         _dbContext = new EduTwinDbContext(options, mockAccessor.Object);
-        _authorizationBootstrapper = new AuthorizationBootstrapper(_dbContext, TimeProvider.System);
+        _authorizationBootstrapper = new AuthorizationBootstrapper(_dbContext, _mockTimeProvider.Object);
 
         _mockTenantContext.Setup(c => c.IsResolved).Returns(true);
         _mockTenantContext.Setup(c => c.CenterId).Returns(_platformCenterId);
@@ -57,7 +64,7 @@ public class PlatformCenterServiceTests : IDisposable
             _mockTenantContext.Object,
             _mockPasswordHasher.Object,
             _authorizationBootstrapper,
-            TimeProvider.System);
+            _mockTimeProvider.Object);
 
         // Seed Root Tenant PLATFORM
         _dbContext.Centers.Add(new Center
@@ -67,8 +74,8 @@ public class PlatformCenterServiceTests : IDisposable
             CenterName = "EduTwin Platform Administration",
             Status = CenterStatus.Active,
             Timezone = "Asia/Ho_Chi_Minh",
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
+            CreatedAt = FixedUtcNow,
+            UpdatedAt = FixedUtcNow,
             RowVersion = 1
         });
         _dbContext.SaveChanges();
@@ -181,8 +188,8 @@ public class PlatformCenterServiceTests : IDisposable
             Status = CenterStatus.Active,
             Timezone = "UTC",
             RowVersion = 2,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            CreatedAt = FixedUtcNow,
+            UpdatedAt = FixedUtcNow
         });
         await _dbContext.SaveChangesAsync();
 
@@ -199,6 +206,108 @@ public class PlatformCenterServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task UpdateCenterStatusAsync_WhenSuspended_EvictsSessionsAndRevokesRefreshTokens()
+    {
+        var centerId = Guid.NewGuid();
+        var managerId = Guid.NewGuid();
+
+        _dbContext.Centers.Add(new Center
+        {
+            CenterId = centerId,
+            CenterCode = "CENTER_SUSPEND_TEST",
+            CenterName = "Suspend Test Center",
+            Status = CenterStatus.Active,
+            Timezone = "UTC",
+            RowVersion = 1,
+            CreatedAt = FixedUtcNow,
+            UpdatedAt = FixedUtcNow
+        });
+
+        var user = new User
+        {
+            UserId = managerId,
+            CenterId = centerId,
+            Username = "mgr_suspend",
+            DisplayName = "Mgr Suspend",
+            RoleName = UserRole.CenterManager,
+            Status = UserStatus.Active,
+            AuthVersion = 1,
+            RowVersion = 1,
+            PasswordHash = "hash",
+            CreatedAt = FixedUtcNow,
+            UpdatedAt = FixedUtcNow
+        };
+        _dbContext.Users.Add(user);
+
+        var token = new RefreshToken
+        {
+            RefreshTokenId = 200,
+            CenterId = centerId,
+            UserId = managerId,
+            TokenHash = "token_hash_200",
+            ExpiresAt = FixedUtcNow.AddDays(7),
+            RevokedAt = null,
+            CreatedAt = FixedUtcNow
+        };
+        _dbContext.RefreshTokens.Add(token);
+        await _dbContext.SaveChangesAsync();
+
+        var request = new UpdatePlatformCenterStatusRequest
+        {
+            Status = "Suspended",
+            RowVersion = "1",
+            Reason = "Investigation"
+        };
+
+        var result = await _sut.UpdateCenterStatusAsync(centerId, request, "trace-suspend");
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Suspended", result.Data!.Status);
+
+        // Verify session eviction: AuthVersion bumped and token revoked
+        var updatedUser = await _dbContext.Users.IgnoreQueryFilters().FirstAsync(u => u.UserId == managerId);
+        Assert.Equal(2u, updatedUser.AuthVersion);
+
+        var updatedToken = await _dbContext.RefreshTokens.IgnoreQueryFilters().FirstAsync(rt => rt.RefreshTokenId == 200);
+        Assert.NotNull(updatedToken.RevokedAt);
+        Assert.Equal("Center suspended by platform administrator.", updatedToken.RevokeReason);
+    }
+
+    [Fact]
+    public async Task CreateCenterAsync_WhenPasswordLessThan12Chars_ReturnsValidationFailed()
+    {
+        var request = new CreatePlatformCenterRequest
+        {
+            CenterCode = "SHORT_PASS",
+            CenterName = "Short Pass Center",
+            Timezone = "Asia/Bangkok",
+            InitialManagerUsername = "manager_short",
+            InitialManagerDisplayName = "Manager Short",
+            InitialManagerPassword = "Pass1" // < 12 chars
+        };
+
+        var result = await _sut.CreateCenterAsync(request, "trace-short");
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task ResetCenterManagerPasswordAsync_WhenPasswordLessThan12Chars_ReturnsValidationFailed()
+    {
+        var request = new ResetCenterManagerPasswordRequest
+        {
+            NewPassword = "Pass1", // < 12 chars
+            ExpectedUserRowVersion = "1"
+        };
+
+        var result = await _sut.ResetCenterManagerPasswordAsync(Guid.NewGuid(), Guid.NewGuid(), request, "trace-short-reset");
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
+
+    [Fact]
     public async Task ResetCenterManagerPasswordAsync_ValidRequest_BumpsAuthVersionRevokesTokensAndPreservesAuditInvariant()
     {
         var centerId = Guid.NewGuid();
@@ -212,8 +321,8 @@ public class PlatformCenterServiceTests : IDisposable
             Status = CenterStatus.Active,
             Timezone = "UTC",
             RowVersion = 1,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            CreatedAt = FixedUtcNow,
+            UpdatedAt = FixedUtcNow
         });
 
         var manager = new User
@@ -227,8 +336,8 @@ public class PlatformCenterServiceTests : IDisposable
             AuthVersion = 1,
             RowVersion = 1,
             PasswordHash = "old_hash",
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            CreatedAt = FixedUtcNow,
+            UpdatedAt = FixedUtcNow
         };
         _dbContext.Users.Add(manager);
 
@@ -238,9 +347,9 @@ public class PlatformCenterServiceTests : IDisposable
             CenterId = centerId,
             UserId = managerId,
             TokenHash = "token_hash",
-            ExpiresAt = DateTime.UtcNow.AddDays(7),
+            ExpiresAt = FixedUtcNow.AddDays(7),
             RevokedAt = null,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = FixedUtcNow
         };
         _dbContext.RefreshTokens.Add(activeToken);
         await _dbContext.SaveChangesAsync();

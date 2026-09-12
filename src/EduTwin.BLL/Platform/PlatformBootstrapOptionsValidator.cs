@@ -26,10 +26,15 @@ public sealed class PlatformBootstrapOptionsValidator(IConfiguration configurati
         var env = configuration["ASPNETCORE_ENVIRONMENT"] ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
         bool isDevelopment = string.Equals(env, "Development", StringComparison.OrdinalIgnoreCase);
 
-        // In non-development environments, AdminPassword must be explicitly configured
-        if (!isDevelopment && string.IsNullOrWhiteSpace(options.AdminPassword))
+        if (!string.IsNullOrWhiteSpace(options.AdminPassword) && options.AdminPassword.Length < 12)
         {
-            return ValidateOptionsResult.Fail("PlatformBootstrap:AdminPassword is required in non-Development environments.");
+            return ValidateOptionsResult.Fail("PlatformBootstrap:AdminPassword must be at least 12 characters.");
+        }
+
+        // In non-development environments, AdminPassword must be explicitly configured
+        if (!isDevelopment && (string.IsNullOrWhiteSpace(options.AdminPassword) || options.AdminPassword.Length < 12))
+        {
+            return ValidateOptionsResult.Fail("PlatformBootstrap:AdminPassword is required and must be at least 12 characters in non-Development environments.");
         }
 
         return ValidateOptionsResult.Success;

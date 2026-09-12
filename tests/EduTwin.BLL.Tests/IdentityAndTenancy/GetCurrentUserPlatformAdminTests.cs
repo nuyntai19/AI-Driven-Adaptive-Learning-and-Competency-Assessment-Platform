@@ -24,6 +24,8 @@ public class GetCurrentUserPlatformAdminTests : IDisposable
     private readonly Guid _platformCenterId = AuthorizationBootstrapper.ReservedPlatformCenterId;
     private readonly Guid _adminUserId = Guid.NewGuid();
 
+    private static readonly DateTime FixedUtcNow = new(2026, 9, 12, 12, 0, 0, DateTimeKind.Utc);
+
     public GetCurrentUserPlatformAdminTests()
     {
         var options = new DbContextOptionsBuilder<EduTwinDbContext>()
@@ -63,8 +65,8 @@ public class GetCurrentUserPlatformAdminTests : IDisposable
             CenterName = "EduTwin Platform Administration",
             Status = CenterStatus.Active,
             Timezone = "Asia/Ho_Chi_Minh",
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            CreatedAt = FixedUtcNow,
+            UpdatedAt = FixedUtcNow
         });
         _dbContext.SaveChanges();
     }
@@ -88,8 +90,8 @@ public class GetCurrentUserPlatformAdminTests : IDisposable
             Status = UserStatus.Active,
             AuthVersion = 1,
             PasswordHash = "hashed_pass",
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
+            CreatedAt = FixedUtcNow,
+            UpdatedAt = FixedUtcNow,
             RowVersion = 1
         };
         _dbContext.Users.Add(adminUser);
@@ -125,8 +127,8 @@ public class GetCurrentUserPlatformAdminTests : IDisposable
             Status = UserStatus.Active,
             AuthVersion = 1,
             PasswordHash = "hashed_pass",
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
+            CreatedAt = FixedUtcNow,
+            UpdatedAt = FixedUtcNow,
             RowVersion = 1
         };
         _dbContext.Users.Add(adminUser);
@@ -138,5 +140,48 @@ public class GetCurrentUserPlatformAdminTests : IDisposable
         // Assert
         Assert.False(result.IsSuccess);
         Assert.Equal(ErrorCodes.AuthUserDisabled, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_PlatformAdminInNonPlatformCenter_ReturnsForbidden()
+    {
+        // Arrange
+        var nonPlatformCenterId = Guid.NewGuid();
+        _dbContext.Centers.Add(new Center
+        {
+            CenterId = nonPlatformCenterId,
+            CenterCode = "CENTER1",
+            CenterName = "Center 1",
+            Status = CenterStatus.Active,
+            Timezone = "Asia/Ho_Chi_Minh",
+            CreatedAt = FixedUtcNow,
+            UpdatedAt = FixedUtcNow
+        });
+
+        var user = new User
+        {
+            UserId = _adminUserId,
+            CenterId = nonPlatformCenterId,
+            Username = "fake.admin",
+            DisplayName = "Fake Admin",
+            RoleName = UserRole.PlatformAdmin,
+            Status = UserStatus.Active,
+            AuthVersion = 1,
+            PasswordHash = "hashed_pass",
+            CreatedAt = FixedUtcNow,
+            UpdatedAt = FixedUtcNow,
+            RowVersion = 1
+        };
+        _dbContext.Users.Add(user);
+        await _dbContext.SaveChangesAsync();
+
+        _mockTenantContext.Setup(c => c.CenterId).Returns(nonPlatformCenterId);
+
+        // Act
+        var result = await _sut.ExecuteAsync();
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 }

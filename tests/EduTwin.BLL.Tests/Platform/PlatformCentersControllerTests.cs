@@ -15,12 +15,19 @@ namespace EduTwin.BLL.Tests.Platform;
 public class PlatformCentersControllerTests
 {
     private readonly Mock<IPlatformCenterService> _mockService;
+    private readonly Mock<TimeProvider> _mockTimeProvider;
     private readonly PlatformCentersController _controller;
+    private static readonly DateTime FixedUtcNow = new(2026, 9, 12, 12, 0, 0, DateTimeKind.Utc);
 
     public PlatformCentersControllerTests()
     {
         _mockService = new Mock<IPlatformCenterService>();
-        _controller = new PlatformCentersController(_mockService.Object, TimeProvider.System);
+        _mockTimeProvider = new Mock<TimeProvider>();
+        _mockTimeProvider
+            .Setup(t => t.GetUtcNow())
+            .Returns(new DateTimeOffset(FixedUtcNow, TimeSpan.Zero));
+
+        _controller = new PlatformCentersController(_mockService.Object, _mockTimeProvider.Object);
 
         _controller.ControllerContext = new ControllerContext
         {
@@ -106,7 +113,7 @@ public class PlatformCentersControllerTests
             CenterId = centerId,
             ManagerUserId = managerId,
             NewUserRowVersion = "2",
-            ResetAtUtc = DateTime.UtcNow,
+            ResetAtUtc = FixedUtcNow,
             Success = true
         };
 

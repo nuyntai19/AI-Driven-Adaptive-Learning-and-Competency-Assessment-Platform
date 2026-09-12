@@ -21,6 +21,8 @@ public class PlatformPrivilegeEscalationTests : IDisposable
     private readonly Mock<ITenantAdministratorGuard> _mockAdminGuard;
     private readonly Guid _customerCenterId = Guid.NewGuid();
     private readonly Guid _managerUserId = Guid.NewGuid();
+    private static readonly DateTime FixedUtcNow = new(2026, 9, 12, 12, 0, 0, DateTimeKind.Utc);
+    private readonly Mock<TimeProvider> _mockTimeProvider;
 
     public PlatformPrivilegeEscalationTests()
     {
@@ -31,6 +33,10 @@ public class PlatformPrivilegeEscalationTests : IDisposable
         _mockTenantContext = new Mock<ITenantContext>();
         _mockSnapshotReader = new Mock<IAuthorizationSnapshotReader>();
         _mockAdminGuard = new Mock<ITenantAdministratorGuard>();
+        _mockTimeProvider = new Mock<TimeProvider>();
+        _mockTimeProvider
+            .Setup(t => t.GetUtcNow())
+            .Returns(new DateTimeOffset(FixedUtcNow, TimeSpan.Zero));
 
         var mockAccessor = new Mock<EduTwin.DAL.Persistence.Tenancy.ITenantIdAccessor>();
         mockAccessor.Setup(a => a.CenterId).Returns(() => _mockTenantContext.Object.CenterId ?? Guid.Empty);
@@ -49,8 +55,8 @@ public class PlatformPrivilegeEscalationTests : IDisposable
             CenterName = "Test Center",
             Status = Contracts.Organization.CenterStatus.Active,
             Timezone = "UTC",
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            CreatedAt = FixedUtcNow,
+            UpdatedAt = FixedUtcNow
         });
 
         _dbContext.Users.Add(new User
@@ -64,8 +70,8 @@ public class PlatformPrivilegeEscalationTests : IDisposable
             AuthVersion = 1,
             PasswordHash = "hashed_pass",
             RowVersion = 1,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            CreatedAt = FixedUtcNow,
+            UpdatedAt = FixedUtcNow
         });
 
         _dbContext.SaveChanges();
@@ -79,7 +85,7 @@ public class PlatformPrivilegeEscalationTests : IDisposable
     [Fact]
     public async Task CreateAuthorizationRole_WhenAccountTypeIsPlatformAdmin_ReturnsAuthPrivilegeEscalation()
     {
-        var sut = new CreateAuthorizationRoleUseCase(_dbContext, _mockTenantContext.Object, TimeProvider.System);
+        var sut = new CreateAuthorizationRoleUseCase(_dbContext, _mockTenantContext.Object, _mockTimeProvider.Object);
 
         var request = new CreateAuthorizationRoleRequest
         {
@@ -103,7 +109,7 @@ public class PlatformPrivilegeEscalationTests : IDisposable
             _mockTenantContext.Object,
             _mockSnapshotReader.Object,
             _mockAdminGuard.Object,
-            TimeProvider.System);
+            _mockTimeProvider.Object);
 
         var platformRole = new AuthorizationRole
         {
@@ -113,8 +119,8 @@ public class PlatformPrivilegeEscalationTests : IDisposable
             RoleName = "Fake Platform Role",
             AccountType = UserRole.PlatformAdmin,
             Status = AuthorizationRoleStatus.Active,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
+            CreatedAt = FixedUtcNow,
+            UpdatedAt = FixedUtcNow,
             RowVersion = 1
         };
         _dbContext.AuthorizationRoles.Add(platformRole);
@@ -141,7 +147,7 @@ public class PlatformPrivilegeEscalationTests : IDisposable
             _mockTenantContext.Object,
             _mockSnapshotReader.Object,
             _mockAdminGuard.Object,
-            TimeProvider.System);
+            _mockTimeProvider.Object);
 
         var tenantRole = new AuthorizationRole
         {
@@ -151,8 +157,8 @@ public class PlatformPrivilegeEscalationTests : IDisposable
             RoleName = "Tenant Role",
             AccountType = UserRole.CenterManager,
             Status = AuthorizationRoleStatus.Active,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
+            CreatedAt = FixedUtcNow,
+            UpdatedAt = FixedUtcNow,
             RowVersion = 1
         };
         _dbContext.AuthorizationRoles.Add(tenantRole);

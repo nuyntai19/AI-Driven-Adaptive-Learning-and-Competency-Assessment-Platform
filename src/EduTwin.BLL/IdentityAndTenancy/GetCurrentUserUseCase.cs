@@ -70,6 +70,19 @@ public class GetCurrentUserUseCase : IGetCurrentUserUseCase
             return new GetCurrentUserResult { IsSuccess = false, ErrorCode = ErrorCodes.ResourceNotFound };
         }
 
+        var isPlatformAdmin = user.RoleName == UserRole.PlatformAdmin;
+        var isPlatformCenter = user.CenterId == EduTwin.BLL.Seeding.AuthorizationBootstrapper.ReservedPlatformCenterId;
+
+        if (isPlatformAdmin && !isPlatformCenter)
+        {
+            return new GetCurrentUserResult { IsSuccess = false, ErrorCode = ErrorCodes.ForbiddenResource };
+        }
+
+        if (isPlatformCenter && !isPlatformAdmin)
+        {
+            return new GetCurrentUserResult { IsSuccess = false, ErrorCode = ErrorCodes.ForbiddenResource };
+        }
+
         if (user.CenterStatus == EduTwin.Contracts.Organization.CenterStatus.Suspended)
         {
             return new GetCurrentUserResult { IsSuccess = false, ErrorCode = ErrorCodes.AuthUserDisabled };

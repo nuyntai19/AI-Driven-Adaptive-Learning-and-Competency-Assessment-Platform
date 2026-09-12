@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -79,9 +79,20 @@ namespace EduTwin.DAL.Persistence.Migrations
                 sql: "`account_type` IN ('Student', 'Teacher', 'CenterManager', 'PlatformAdmin')");
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Reverts PlatformAdmin CHECK constraints and catalog seedings.
+        /// Includes safe cascaded removal of provisioned PlatformAdmin records and Root Tenant PLATFORM to avoid foreign key violations on Restrict.
+        /// </summary>
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.Sql(
+                "DELETE FROM `user_roles` WHERE `account_type` = 'PlatformAdmin' OR `center_id` = '00000000-0000-0000-0000-000000000001';\n" +
+                "DELETE FROM `role_permissions` WHERE `account_type` = 'PlatformAdmin' OR `center_id` = '00000000-0000-0000-0000-000000000001';\n" +
+                "DELETE FROM `roles` WHERE `center_id` = '00000000-0000-0000-0000-000000000001';\n" +
+                "DELETE FROM `authorization_audit_logs` WHERE `center_id` = '00000000-0000-0000-0000-000000000001';\n" +
+                "DELETE FROM `users` WHERE `center_id` = '00000000-0000-0000-0000-000000000001' OR `role_name` = 'PlatformAdmin';\n" +
+                "DELETE FROM `centers` WHERE `center_id` = '00000000-0000-0000-0000-000000000001';");
+
             migrationBuilder.DropCheckConstraint(
                 name: "ck_users_role_name",
                 table: "users");
