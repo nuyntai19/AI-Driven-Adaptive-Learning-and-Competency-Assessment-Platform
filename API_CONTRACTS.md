@@ -1384,7 +1384,7 @@ Terminal success response (Completed):
 }
 ~~~
 
-Terminal failure response (FailedTerminal / AnalysisFailed - ví dụ bài free-practice retry exhaustion do sự cố lưu trữ):
+Terminal failure response (FailedTerminal / AnalysisFailed - chỉ xảy ra khi bài free-practice cạn kiệt 3 persisted retries do sự cố hạ tầng lưu trữ AttachmentStorageUnavailable; các lỗi AI/mạng thông thường luôn fallback thành công sang FallbackCompleted):
 
 ~~~json
 {
@@ -2213,6 +2213,7 @@ Thực hiện trong một database transaction:
 2. Tạo người dùng `User` (`CenterManager`) ban đầu.
 3. Cấp phát các role mặc định (`CenterManager`, `Teacher`, `Student`) cho Center mới.
 4. Gán vai trò `CenterManager` cho người dùng quản trị ban đầu.
+5. Ghi audit log theo Platform Audit Invariant: `center_id = PLATFORM`, `target_user_id = null` (bảo toàn composite tenant FK), `target_id = centerId`, metadata redacted, tuyệt đối không log mật khẩu.
 
 Request (khớp domain model hiện hành):
 
@@ -2279,6 +2280,7 @@ Thực hiện:
 3. Tăng `users.row_version` của tài khoản quản lý.
 4. Tăng `users.auth_version` làm mất hiệu lực toàn bộ JWT Access Tokens cũ của user.
 5. Đánh dấu `revoked_at` trên toàn bộ Refresh Tokens còn hiệu lực của user.
+6. Ghi audit log theo Platform Audit Invariant: `center_id = PLATFORM`, `target_user_id = null` (bảo toàn composite tenant FK), `target_id = "{centerId}:{managerUserId}"`, metadata redacted, tuyệt đối không log mật khẩu.
 
 Request:
 

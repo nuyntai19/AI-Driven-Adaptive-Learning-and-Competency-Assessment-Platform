@@ -87,6 +87,18 @@ To support production onboarding, partner center provisioning, and tenant lifecy
   - Learning Digital Twins (Knowledge Twin, Behavior Twin) or Personalized Recommendations.
 - Global Query Filters in standard BLL use cases prevent access unless an explicit tenant context is bound.
 
+### 3.6. Platform Authorization Audit Invariant & Cross-Tenant Isolation
+- In `authorization_audit_logs`:
+  - `center_id` is strictly the Root Tenant `PLATFORM` (`00000000-0000-0000-0000-000000000001` / `ReservedPlatformCenterId`).
+  - `actor_user_id` is the `PlatformAdmin` user ID (belonging to tenant `PLATFORM`).
+  - **Cross-Tenant Target Isolation (`target_user_id = null`):**
+    - The database enforces a tenant-safe composite foreign key `(center_id, target_user_id) REFERENCES users(center_id, user_id)`.
+    - Because the targeted entity (such as a customer center or its `CenterManager`) belongs to a different center, storing that user ID in `target_user_id` would violate the composite foreign key.
+    - Therefore, cross-tenant platform actions MUST persist `target_user_id = null`.
+    - The target entity identity is captured unambiguously via `target_type` (e.g. `'Center'`, `'CenterManager'`), `target_id` (e.g. `{centerId}` or `{centerId}:{managerUserId}`), and redacted metadata (`before_data` / `after_data`).
+  - **Credential Privacy Invariant:**
+    - Absolutely NO plaintext passwords, new passwords, temporary credentials, password hashes, or raw bearer tokens are ever written to `authorization_audit_logs.before_data`, `after_data`, or `reason`.
+
 ---
 
 ## 4. Consequences and Verification
@@ -101,5 +113,6 @@ To support production onboarding, partner center provisioning, and tenant lifecy
 - Requires maintenance of 5 MySQL CHECK constraints across database migrations.
 
 ### Verification Plan:
-- Unit & integration tests in `PlatformCenterServiceTests`, `PlatformTenantIsolationTests`, `PlatformPrivilegeEscalationTests`, and `PlatformAdminMigrationTests`.
+- Unit & integration tests in `PlatformCenterServiceTests`, `PlatformTenantIsolationTests`, `PlatformPrivilegeEscalationTests`, `PlatformAuditCrossTenantTests`, and `PlatformAdminMigrationTests`.
+- Database constraint verification: Cross-tenant audit insertion with non-null `target_user_id` fails FK; audit insertion with `target_user_id = null` succeeds and redacts sensitive credentials.
 - E2E tests verifying token invalidation on password reset and HTTP 403 on tenant escalation attempts.

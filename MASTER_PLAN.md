@@ -2144,6 +2144,11 @@ Phần bổ sung phạm vi chính thức sau Release R08 nhằm hoàn thiện ha
    - API `POST /api/v1/platform/centers`: Yêu cầu quyền `platform.centers.manage`. Khởi tạo trung tâm mới kèm tài khoản `CenterManager` ban đầu trong 1 database transaction duy nhất (các trường request khớp domain model hiện hành: `centerCode`, `centerName`, `timezone`, `initialManagerUsername`, `initialManagerDisplayName`, `initialManagerPassword`; không phát sinh các trường địa chỉ, số điện thoại, email hay phản hồi mật khẩu tạm thời ngoài schema).
    - API `PATCH /api/v1/platform/centers/{id}/status`: Cho phép đổi trạng thái `Active` / `Suspended` với cơ chế Optimistic Concurrency Control (`row_version`); cấm thao tác trên trung tâm `PLATFORM` (`ErrorCodes.ForbiddenResource`).
    - API `POST /api/v1/platform/centers/{centerId}/managers/{managerUserId}/reset-password`: Yêu cầu quyền `platform.managers.manage` và `expectedUserRowVersion` (OCC chống ghi đè phiên làm việc đồng thời). Đặt lại mật khẩu tài khoản quản lý trung tâm, cập nhật hash mật khẩu, tăng `users.row_version`, tăng `users.auth_version` làm vô hiệu hóa toàn bộ JWT tokens cũ, và revoke toàn bộ refresh tokens còn hiệu lực của user.
+4. **Platform Audit Invariant & Cross-Tenant Isolation:**
+   - Mọi thao tác quản trị nền tảng (tạo trung tâm, đổi trạng thái, reset password quản lý) ghi `authorization_audit_logs` với `CenterId = PLATFORM` (`ReservedPlatformCenterId`).
+   - Thao tác cross-tenant bắt buộc gán `TargetUserId = null` để không vi phạm ràng buộc tenant-safe FK `(center_id, target_user_id) -> users(center_id, user_id)`; định danh đối tượng được lưu tại `TargetId` (ví dụ `{centerId}` hoặc `{centerId}:{managerUserId}`) và metadata JSON đã redact.
+   - Tuyệt đối không log password, hash hoặc secret.
+   - Kiểm chứng tự động qua integration test xác nhận FK không bị vi phạm và metadata không chứa dữ liệu nhạy cảm.
 
 ### 132.2. Track 2: Bộ Công Cụ Toán Học & Minh Chứng Đa Phương Thức (Math Toolkit & Multimodal Evidence)
 1. **Visual Math Input Toolbar & KaTeX:**
@@ -2161,19 +2166,20 @@ Phần bổ sung phạm vi chính thức sau Release R08 nhằm hoàn thiện ha
 5. **Streaming Upload, Bảng vật lý mục tiêu 40 & Atomic Promotion:**
    - Cả nộp bài (`POST /learning/attempts`) và upload minh chứng (`POST /learning/attempts/attachments/prepare-upload`) bắt buộc yêu cầu tài khoản loại `Student` và quyền `learning.attempts.submit`.
    - Upload ảnh nháp qua endpoint streaming với xác thực binary PNG đầy đủ (header 8-byte, IHDR dimensions $\le 4096 \times 4096$, color types $\{0,2,4,6\}$, memory limits, IEND CRC check).
-   - Cấp signed token Data Protection bind SHA-256 hash và upload nonce.
+   - Cấp signed token Data Protection bind SHA-256 hash và upload nonce (xác thực in-memory, không lưu cột persisted sha256_hash).
    - Nộp bài kèm token: Áp dụng atomic promote không ghi đè (`overwrite: false` / `FileMode.CreateNew`), same hash coi như thành công idempotent, diff hash fail closed.
-   - Bảng vật lý thứ 40 `attempt_attachments` (bảng mục tiêu sau Gate 5; thỏa mãn audit TA gồm `created_by` và composite FK tham chiếu `attempts(center_id, attempt_id)`) lưu trữ minh chứng, quản lý qua unique index `(center_id, upload_nonce)` để giải quyết race condition (MySQL Error 1062 map sang HTTP 409 `UPLOAD_TOKEN_ALREADY_USED`).
+   - Bảng vật lý thứ 40 `attempt_attachments` (bảng mục tiêu sau Gate 5 gồm `attachment_id`, `center_id`, `attempt_id`, `file_name`, `storage_key VARCHAR(512)`, `file_size_bytes BIGINT`, `content_type`, `upload_nonce`, `created_at`, `created_by`; composite FK tham chiếu `attempts(center_id, attempt_id)`) lưu trữ minh chứng, quản lý qua unique index `(center_id, upload_nonce)` để giải quyết race condition (MySQL Error 1062 map sang HTTP 409 `UPLOAD_TOKEN_ALREADY_USED`).
 6. **Bảo Vệ Thống Nhất Qua Scope Guard (`IAttemptTeacherReviewScopeGuard`):**
    - Hợp nhất phân quyền trên 3 luồng: Tải ảnh minh chứng, Teacher Review Queue, và Teacher Override.
    - Kiểm tra: Cùng tenant, có Assignment, học sinh thuộc target, giáo viên phụ trách lớp (hoặc CenterManager).
    - Bài làm tự do (free-practice `AssignmentId == null`) mặc định Fail-Closed (HTTP 404 cho attachment download, không vào review queue, cấm override).
-7. **Xử Lý Sự Cố Lưu Trữ Bền Vững & Free-Practice Terminal Failure:**
-   - Lỗi hạ tầng `AttachmentStorageUnavailable` được ghi vào `AIAnalysisJob.LastErrorCode` (tuyệt đối không đưa vào `EvidenceGate` hay nhầm với nhận thức sư phạm).
-   - `AIAnalysisJobStateMachine` nâng cấp hỗ trợ tối đa 3 persisted retries kèm exponential backoff.
-   - Trạng thái Attempt tuân thủ nghiêm ngặt 5 giá trị chuẩn: `PendingAnalysis`, `Processing`, `Completed`, `NeedsTeacherReview`, `AnalysisFailed` (tuyệt đối không thêm trạng thái ngoài hợp đồng).
-   - Khi hết retry:
-     - Bài có assignment: Chuyển Teacher Review Queue với cờ thông báo sự cố hạ tầng.
+7. **Phân Biệt Lỗi AI/Mạng và Sự Cố Lưu Trữ Bền Vững:**
+   - Lỗi tạm thời của Gemini/mạng/AI provider luôn được xử lý qua deterministic rule fallback cho CẢ bài tập có assignment lẫn bài luyện tự do (luồng học không bao giờ bị failed-terminal do AI lỗi).
+   - Sự cố lưu trữ ảnh nháp hạ tầng (`AttachmentStorageUnavailable`): Được ghi vào `AIAnalysisJob.LastErrorCode` (tuyệt đối không đưa vào `EvidenceGate` hay nhầm với nhận thức sư phạm).
+   - `AIAnalysisJobStateMachine` nâng cấp hỗ trợ tối đa 3 persisted retries kèm exponential backoff riêng cho sự cố lưu trữ.
+   - Trạng thái Attempt tuân thủ nghiêm ngặt 5 giá trị chuẩn: `PendingAnalysis`, `Processing`, `Completed`, `NeedsTeacherReview`, `AnalysisFailed`.
+   - Khi hết retry sự cố lưu trữ:
+     - Bài có assignment: Chuyển Teacher Review Queue với cờ thông báo sự cố lưu trữ file đính kèm.
      - Bài tự do (free-practice): Gọi `FailTerminal(...)`, chuyển trạng thái `AIAnalysisJob.Status = AIJobStatus.FailedTerminal` và `Attempt.Status = AttemptStatus.AnalysisFailed`, không tạo item trong review queue, hiển thị nút nộp lại (resubmit với `ClientSubmissionId` mới) cho học sinh.
 8. **Dọn Dẹp Minh Chứng Rác (Sweeper Semantics):**
    - Background service `AttachmentOrphanCleanupWorker` chạy ngoài tenant context sử dụng `IgnoreQueryFilters().AsNoTracking()`, truy vấn storage keys hợp lệ, không follow symlink, dọn dẹp file tạm quá hạn và file vĩnh viễn không còn tham chiếu vượt quá thời gian gia hạn an toàn (`AttachmentStorage__GracePeriodHours`).

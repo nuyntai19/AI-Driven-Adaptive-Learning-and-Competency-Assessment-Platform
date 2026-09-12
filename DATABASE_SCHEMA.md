@@ -1158,6 +1158,12 @@ Invariant:
 - Append-only; không update, soft delete hoặc hard delete trong business flow.
 - Không lưu password, token, secret hoặc raw authorization header trong JSON.
 - Audit failure làm rollback thay đổi authorization tương ứng.
+- Platform Audit Invariant: Khi PlatformAdmin (Root Tenant PLATFORM `00000000-0000-0000-0000-000000000001`) thực hiện thao tác quản trị nền tảng hoặc cross-tenant (ví dụ đổi trạng thái trung tâm, đặt lại mật khẩu cho CenterManager của trung tâm đối tác):
+  - `center_id` bắt buộc ghi nhận là `PLATFORM` (ReservedPlatformCenterId).
+  - `actor_user_id` là User ID của PlatformAdmin thực hiện thao tác.
+  - `target_user_id` bắt buộc đặt là `null` đối với mọi thao tác cross-tenant. Nếu gán target_user_id của một user thuộc center khác sẽ vi phạm trực tiếp ràng buộc toàn vẹn khóa ngoại tenant-safe `FK(center_id, target_user_id) → users(center_id, user_id)`.
+  - Định danh đối tượng bị tác động (Target Center ID, Target CenterManager User ID) được lưu tại `target_id` (ví dụ `{centerId}` hoặc `{centerId}:{managerUserId}`) và trong payload metadata `after_data` / `before_data` đã redacted.
+  - Tuyệt đối không log mật khẩu (kể cả mật khẩu mới được đặt lại hoặc mật khẩu tạm thời), hash mật khẩu, secret, hoặc raw bearer token trong audit metadata.
 
 ## 42. evidence_assessments [TA append-only]
 
@@ -1211,20 +1217,20 @@ Invariant:
 
 | Column | Type | Null | Constraint/Ý nghĩa |
 |---|---|---:|---|
-| id | BIGINT UNSIGNED | No | PK, auto increment |
+| attachment_id | BIGINT UNSIGNED | No | PK, auto increment |
 | center_id | VARCHAR(36) | No | Tenant discriminator |
 | attempt_id | BIGINT UNSIGNED | No | Tenant-safe FK attempts; quan hệ 1:1 |
-| upload_nonce | VARCHAR(64) | No | Nonce định danh luồng upload đính kèm |
-| storage_key | VARCHAR(256) | No | Đường dẫn tương đối lưu trữ blob |
-| file_size_bytes | INT UNSIGNED | No | Dung lượng file nhị phân (1..5,242,880 bytes) |
+| file_name | VARCHAR(255) | No | Tên file gốc do client tải lên |
+| storage_key | VARCHAR(512) | No | Đường dẫn tương đối lưu trữ blob |
+| file_size_bytes | BIGINT | No | Dung lượng file nhị phân (1..5,242,880 bytes) |
 | content_type | VARCHAR(64) | No | MIME type bắt buộc image/png |
-| sha256_hash | VARCHAR(64) | No | Mã băm SHA-256 xác thực tính toàn vẹn của blob |
+| upload_nonce | VARCHAR(64) | No | Nonce định danh luồng upload đính kèm |
 | created_at | DATETIME(6) | No | UTC; thời điểm nộp bài và promote blob |
 | created_by | VARCHAR(36) | Yes | Actor user ID (học sinh nộp bài) |
 
 Indexes/constraints:
 
-- PK(id).
+- PK(attachment_id).
 - UX(center_id, attempt_id) — quan hệ 1:1 giữa Attempt và minh chứng đính kèm.
 - UX(center_id, upload_nonce) — unique key theo tenant, thẩm quyền tối cao giải quyết race condition khi submit.
 - UX(center_id, storage_key) — ngăn ngừa trùng lặp đường dẫn lưu trữ trong tenant.
@@ -1235,6 +1241,7 @@ Indexes/constraints:
 Invariant:
 
 - Mỗi Attempt chỉ có tối đa một bản vẽ đính kèm; lưu trữ và liên kết được thiết lập nguyên tử trong transaction nộp bài.
+- SHA-256 hash được gắn và xác thực toàn vẹn qua signed Data Protection token trong bộ nhớ khi kiểm tra temp file và promote atomic; bảng dữ liệu không lưu cột persisted sha256_hash.
 - upload_nonce được trích xuất từ signed Data Protection token và là nguồn phân xử duy nhất cho các request nộp bài đồng thời: request nào ghi CSDL trước sẽ thắng, request sau vi phạm unique constraint (MySQL Error 1062) sẽ nhận HTTP 409 UPLOAD_TOKEN_ALREADY_USED.
 - storage_key có cấu trúc xác định: `tenants/{centerId}/attempt-attachments/{uploadNonce}.png`.
 - Tải ảnh minh chứng qua API yêu cầu quyền sở hữu của học sinh hoặc giáo viên phụ trách bài tập (xác thực qua `IAttemptTeacherReviewScopeGuard`); bài tự do fail closed trả về HTTP 404.

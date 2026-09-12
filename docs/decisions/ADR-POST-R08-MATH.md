@@ -89,8 +89,9 @@ In the R00–R08 baseline, students submitted plain text `reasoning_text` and sc
 ### 3.7. Physical Table 40 (`attempt_attachments`)
 - Schema details:
   - Table name: `attempt_attachments`.
-  - Primary Key: `id` (BIGINT UNSIGNED AUTO_INCREMENT).
-  - Columns: `id`, `center_id`, `attempt_id`, `upload_nonce`, `storage_key`, `file_size_bytes`, `content_type`, `sha256_hash`, `created_at`, `created_by` (satisfies TA audit columns).
+  - Primary Key: `attachment_id` (BIGINT UNSIGNED AUTO_INCREMENT).
+  - Columns: `attachment_id`, `center_id`, `attempt_id`, `file_name`, `storage_key` (VARCHAR(512)), `file_size_bytes` (BIGINT), `content_type`, `upload_nonce`, `created_at`, `created_by` (satisfies TA audit columns).
+  - Persistence Invariant: SHA-256 hash is bound and verified cryptographically inside the signed Data Protection token during temporary streaming validation and atomic promotion; it is NOT stored as a persisted column in the database table schema.
   - Composite FK: `(center_id, attempt_id)` references `attempts(center_id, attempt_id)`.
   - Database Constraints:
     - `CONSTRAINT ck_attempt_attachments_file_size_bytes CHECK (file_size_bytes >= 1 AND file_size_bytes <= 5242880)`
@@ -108,12 +109,14 @@ In the R00–R08 baseline, students submitted plain text `reasoning_text` and sc
   - Responsible teacher: `Assignment.Class.TeacherId == caller.UserId` (or caller is `CenterManager`).
 - Invariant: Free-practice attempts (`AssignmentId == null`) fail closed (returns HTTP 404 for attachment download; invisible in review queue; rejects teacher overrides).
 
-### 3.9. Storage Outage Handling & Free-Practice Terminal Failure
-- `AttachmentStorageUnavailable` is an operational failure, recorded in `AIAnalysisJob.LastErrorCode`. It is NOT an academic misconception and must never be evaluated by `EvidenceGate`.
-- `AIAnalysisJobStateMachine`: Upgraded to support up to 3 persisted retries with exponential backoff before transitioning to `RetryExhausted`.
-- Resolution on retry exhaustion:
-  - Assignment-scoped attempt: Routes to Teacher Review Queue (`RequiresTeacherReview = true`, weight = 0, fallback feedback).
-  - Free-practice attempt: Must NOT enter the Teacher Review Queue (as no teacher has authorization to view free-practice attempts). Transitions to:
+### 3.9. Failure Differentiation & Storage Outage Handling
+- **Failure Classification Invariant:**
+  - Ordinary AI/Gemini, network, or provider outages: Handled via standard deterministic rule fallback (`AIJobStatus.FallbackCompleted`, `RuleFallback`, `ReviewOnly`, `DeterministicOnly`) for **both assignment-scoped and free-practice** attempts. The learning workflow and Digital Twin updates complete successfully; they NEVER transition to terminal failure.
+  - Special infrastructure storage outage (`AttachmentStorageUnavailable`): Recorded in `AIAnalysisJob.LastErrorCode`. It is NOT an academic misconception and must never be evaluated by `EvidenceGate`.
+- `AIAnalysisJobStateMachine`: Upgraded to support up to 3 persisted retries with exponential backoff before transitioning to `RetryExhausted` exclusively for storage recovery.
+- Resolution on storage retry exhaustion:
+  - Assignment-scoped attempt: Routes to Teacher Review Queue (`RequiresTeacherReview = true`, weight = 0, fallback feedback indicating missing drawing attachment).
+  - Free-practice attempt: Must NOT enter the Teacher Review Queue (as no teacher has authorization to view free-practice attempts; fail-closed). ONLY in this storage outage scenario does it transition to:
     - `AIAnalysisJob.Status = AIJobStatus.FailedTerminal`
     - `Attempt.Status = AttemptStatus.AnalysisFailed`
     - Student UI displays clear infrastructure failure messaging and a "Resubmit" action with a new `ClientSubmissionId`.

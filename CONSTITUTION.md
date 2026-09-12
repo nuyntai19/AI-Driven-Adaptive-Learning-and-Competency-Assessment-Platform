@@ -117,6 +117,7 @@ Căn cứ phê duyệt của nhóm và hai bản ghi kiến trúc độc lập (
    - Bổ sung account type và vai trò `PlatformAdmin` với các quyền bất khả ủy quyền (`IsDelegable = false`): `platform.centers.read`, `platform.centers.manage`, `platform.managers.manage`.
    - Cung cấp API quản lý vòng đời trung tâm (tạo với các trường khớp model hiện hành, liệt kê `items: []` khi 0 centers, kích hoạt/tạm dừng có OCC `row_version`, đặt lại mật khẩu quản lý qua `POST /platform/centers/{centerId}/managers/{managerUserId}/reset-password` với quyền `platform.managers.manage` và `expectedUserRowVersion`).
    - `PlatformAdminProvisioner`: Nếu tài khoản quản trị nền tảng hợp lệ đã tồn tại thì kiểm tra hợp lệ rồi bỏ qua (skip), tuyệt đối không tự động đặt lại mật khẩu.
+   - Platform Audit Invariant: Mọi thao tác cross-tenant của PlatformAdmin ghi `authorization_audit_logs` với `CenterId = PLATFORM`, `TargetUserId = null` (bảo toàn composite tenant FK), định danh đối tượng lưu ở `TargetId`/redacted metadata, tuyệt đối không log password/secret.
    - Tuyệt đối cấm PlatformAdmin đọc dữ liệu bài làm, Digital Twin, hoặc can thiệp học thuật của các trung tâm đối tác.
    - Cấm người dùng tenant nâng quyền hoặc gán vai trò `PlatformAdmin` (`ErrorCodes.AuthPrivilegeEscalation` / HTTP 403).
 
@@ -126,10 +127,10 @@ Căn cứ phê duyệt của nhóm và hai bản ghi kiến trúc độc lập (
    - Cung cấp Scientific Calculator Drawer thuần tính toán, tuyệt đối không có tính năng tự động giải toán.
    - Bảng vẽ nháp vector (Vector Scratchpad Canvas) lưu trữ draft scoped IndexedDB theo `draft:${centerId}:${userId}:${clientSubmissionId}`.
    - Nộp bài (`POST /learning/attempts`) và upload minh chứng bắt buộc tài khoản loại `Student` và quyền `learning.attempts.submit`.
-   - Bảng vật lý thứ 40 `attempt_attachments` (bảng mục tiêu sau Gate 5, thỏa mãn audit TA gồm `created_by` và FK `attempts(center_id, attempt_id)`) với ràng buộc dung lượng 1..5MB, `image/png`, unique storage key và upload nonce.
+   - Bảng vật lý thứ 40 `attempt_attachments` (bảng mục tiêu sau Gate 5 gồm `attachment_id`, `center_id`, `attempt_id`, `file_name`, `storage_key VARCHAR(512)`, `file_size_bytes BIGINT`, `content_type`, `upload_nonce`, `created_at`, `created_by`; không persist cột sha256_hash; FK `attempts(center_id, attempt_id)`) với ràng buộc dung lượng 1..5MB, `image/png`, unique storage key và upload nonce.
    - Phân quyền minh chứng thống nhất qua `IAttemptTeacherReviewScopeGuard` (Attempt $\to$ Assignment $\to$ Class $\to$ Teacher; bài tự do free-practice mặc định Fail-Closed trả về HTTP 404).
-   - Cơ chế chịu lỗi lưu trữ bền vững: Sự cố `AttachmentStorageUnavailable` được ghi vào `AIAnalysisJob.LastErrorCode` (không đưa vào `EvidenceGate`). `AIAnalysisJobStateMachine` hỗ trợ tối đa 3 persisted retries kèm exponential backoff.
-   - Trạng thái Attempt tuân thủ nghiêm ngặt 5 giá trị: `PendingAnalysis`, `Processing`, `Completed`, `NeedsTeacherReview`, `AnalysisFailed`. Khi hết retry, bài free-practice kết thúc bằng `AIJobStatus.FailedTerminal` và `AttemptStatus.AnalysisFailed` (kèm nút nộp lại resubmit với `ClientSubmissionId` mới, không làm ô nhiễm Teacher Review Queue).
+   - Phân biệt lỗi & cơ chế chịu lỗi lưu trữ: Lỗi tạm thời của Gemini/mạng luôn tạo deterministic rule fallback cho CẢ bài assignment lẫn free-practice (luồng học không bao giờ bị failed-terminal do AI lỗi). Chỉ sự cố lưu trữ ảnh nháp đặc biệt (`AttachmentStorageUnavailable`) qua `AIAnalysisJobStateMachine` (tối đa 3 persisted retries kèm exponential backoff) khi cạn kiệt retry mới chuyển bài free-practice sang `AIJobStatus.FailedTerminal` và `AttemptStatus.AnalysisFailed` (kèm nút nộp lại resubmit với `ClientSubmissionId` mới).
+   - Trạng thái Attempt tuân thủ nghiêm ngặt 5 giá trị: `PendingAnalysis`, `Processing`, `Completed`, `NeedsTeacherReview`, `AnalysisFailed`.
    - Mô hình EF migration hiện hành duy trì 39 bảng vật lý; bảng thứ 40 (`attempt_attachments`) là mục tiêu triển khai tại Gate 5.
 
 ## 4. Stack bắt buộc
