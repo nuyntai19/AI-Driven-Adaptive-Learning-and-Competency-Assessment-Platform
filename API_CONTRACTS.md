@@ -2192,7 +2192,8 @@ Response 200:
         "rowVersion": "1",
         "initialManagerUserId": "baf68743-a272-4983-a9e2-41663734a7c2",
         "initialManagerUsername": "manager_a",
-        "initialManagerDisplayName": "Nguyễn Văn Quản"
+        "initialManagerDisplayName": "Nguyễn Văn Quản",
+        "initialManagerUserRowVersion": "1"
       }
     ],
     "totalCount": 1
@@ -2203,6 +2204,8 @@ Response 200:
   }
 }
 ~~~
+
+Ghi chú trường `initialManagerUserRowVersion`: Là string token kiểm soát tương tranh lạc quan (OCC) của bản ghi `users.row_version` đại diện cho người quản lý ban đầu (nullable khi trung tâm chưa có quản lý). Client sử dụng trường này làm `expectedUserRowVersion` khi gọi thao tác đặt lại mật khẩu quản lý.
 
 ## 76. POST /platform/centers
 
@@ -2241,6 +2244,7 @@ Response 201:
     "initialManagerUserId": "4dc67ba3-2d2f-469e-aaaa-8c90a72c55f4",
     "initialManagerUsername": "manager_c",
     "initialManagerDisplayName": "Lê Quản Trị",
+    "initialManagerUserRowVersion": "1",
     "createdAt": "2026-09-12T20:30:00Z",
     "rowVersion": "1"
   },
@@ -2250,6 +2254,8 @@ Response 201:
   }
 }
 ~~~
+
+Ghi chú trường `initialManagerUserRowVersion`: Là string token OCC của bản ghi `users.row_version` cho tài khoản quản lý vừa được khởi tạo đồng thời trong giao dịch.
 
 ## 77. PATCH /platform/centers/{id}/status
 

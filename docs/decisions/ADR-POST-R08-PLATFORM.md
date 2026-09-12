@@ -55,7 +55,7 @@ To support production onboarding, partner center provisioning, and tenant lifecy
 ### 3.3. Independent `PlatformAdminProvisioner`
 - Separated entirely from test/demo seeders (`DataSeeder`).
 - Runs during host startup if database migrations are applied.
-- Reads password from environment variable `PlatformBootstrap__AdminPassword`. If running in `Development` mode, fallback configuration must also be explicitly sourced from environment variables; zero plaintext fallback strings in code.
+- `PlatformBootstrap__AdminPassword` must be supplied from configuration/environment; no built-in fallback password exists (zero plaintext fallback strings in code).
 - Idempotency & Safety: If a valid platform administrator already exists in the `PLATFORM` tenant, the provisioner validates the record and skips provisioning; it **never** resets or overwrites existing administrator passwords automatically. If absent, provisions the user and assigns `PlatformAdmin` role within `PLATFORM` tenant.
 
 ### 3.4. Center Lifecycle Management

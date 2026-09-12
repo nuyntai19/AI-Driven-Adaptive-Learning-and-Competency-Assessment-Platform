@@ -305,11 +305,27 @@ public class PlatformCenterService : IPlatformCenterService
         {
             await _dbContext.SaveChangesAsync(cancellationToken);
         }
-        catch (DbUpdateException dbEx) when (dbEx.InnerException?.Message.Contains("ux_centers_center_code") == true ||
-                                             dbEx.InnerException?.Message.Contains("1062") == true)
+        catch (DbUpdateException dbEx)
         {
-            return PlatformResult<PlatformCenterListItemDto>.Failure(
-                ErrorCodes.DuplicateResource, $"Mã trung tâm '{centerCode}' đã tồn tại.");
+            var mysql = (dbEx.GetBaseException() as MySql.Data.MySqlClient.MySqlException)
+                        ?? (dbEx.InnerException as MySql.Data.MySqlClient.MySqlException);
+
+            if (mysql?.Number == 1062 &&
+                mysql.Message.Contains("ux_centers_center_code", StringComparison.OrdinalIgnoreCase))
+            {
+                return PlatformResult<PlatformCenterListItemDto>.Failure(
+                    ErrorCodes.DuplicateResource, $"Mã trung tâm '{centerCode}' đã tồn tại.");
+            }
+
+            var message = dbEx.GetBaseException()?.Message ?? dbEx.InnerException?.Message ?? string.Empty;
+            if (message.Contains("1062", StringComparison.OrdinalIgnoreCase) &&
+                message.Contains("ux_centers_center_code", StringComparison.OrdinalIgnoreCase))
+            {
+                return PlatformResult<PlatformCenterListItemDto>.Failure(
+                    ErrorCodes.DuplicateResource, $"Mã trung tâm '{centerCode}' đã tồn tại.");
+            }
+
+            throw;
         }
 
         await _authorizationBootstrapper.EnsureCenterAsync(centerId, cancellationToken: cancellationToken);

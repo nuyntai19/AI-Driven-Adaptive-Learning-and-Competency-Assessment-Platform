@@ -182,12 +182,19 @@ export const PlatformCentersPage: React.FC = () => {
   const handleResetPasswordConfirm = (e: React.FormEvent) => {
     e.preventDefault();
     if (!resetPasswordCenter || !resetPasswordCenter.initialManagerUserId) return;
+
+    if (!resetPasswordCenter.initialManagerUserRowVersion) {
+      setErrorMessage("Không có phiên bản dữ liệu quản lý hiện hành. Vui lòng tải lại danh sách.");
+      refetch();
+      return;
+    }
+
     resetPasswordMutation.mutate({
       centerId: resetPasswordCenter.centerId,
       managerUserId: resetPasswordCenter.initialManagerUserId,
       request: {
         newPassword,
-        expectedUserRowVersion: resetPasswordCenter.initialManagerUserRowVersion || "1",
+        expectedUserRowVersion: resetPasswordCenter.initialManagerUserRowVersion,
       },
     });
   };

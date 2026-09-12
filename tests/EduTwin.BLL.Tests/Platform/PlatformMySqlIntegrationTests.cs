@@ -800,6 +800,92 @@ public sealed class PlatformMySqlIntegrationTests
     }
 
     [MySqlIntegrationFact]
+    public async Task CreateCenterAsync_RelationalDuplicateKeyRace_WhenMySql1062OnOtherIndex_RethrowsException()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var platformCenterId = AuthorizationBootstrapper.ReservedPlatformCenterId;
+        var platformAdminUserId = Guid.NewGuid();
+
+        await using (var setupContext = CreateContext(database.ConnectionString, new TenantContext()))
+        {
+            setupContext.Centers.Add(new Center
+            {
+                CenterId = platformCenterId,
+                CenterCode = "PLATFORM",
+                CenterName = "Platform Root Center",
+                Status = CenterStatus.Active,
+                Timezone = "Asia/Ho_Chi_Minh",
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow
+            });
+            setupContext.Users.Add(new User
+            {
+                UserId = platformAdminUserId,
+                CenterId = platformCenterId,
+                Username = "platform.admin",
+                DisplayName = "Platform Administrator",
+                PasswordHash = "hash",
+                RoleName = UserRole.PlatformAdmin,
+                Status = UserStatus.Active,
+                AuthVersion = 1,
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow
+            });
+            await setupContext.SaveChangesAsync();
+        }
+
+        var callerContext = new TenantContext();
+        callerContext.Initialize(platformCenterId, platformAdminUserId, nameof(UserRole.PlatformAdmin), 1);
+
+        // Interceptor causes MySQL 1062 on unique key ux_users_center_id_username instead of ux_centers_center_code
+        var interceptor = new RelationalRaceInterceptor(async cmd =>
+        {
+            if (cmd.CommandText.Contains("INSERT", StringComparison.OrdinalIgnoreCase))
+            {
+                // Clear parameters and replace command with duplicate insert on ux_users_center_id_username (platform.admin already exists)
+                cmd.Parameters.Clear();
+                cmd.CommandText = $@"INSERT INTO users (user_id, center_id, username, display_name, password_hash, role_name, status, auth_version, created_at, updated_at, row_version)
+                                     VALUES ('{Guid.NewGuid():D}', '{platformCenterId:D}', 'platform.admin', 'Duplicate User', 'hash', 'PlatformAdmin', 'Active', 1, '{FixedUtcNow:yyyy-MM-dd HH:mm:ss}', '{FixedUtcNow:yyyy-MM-dd HH:mm:ss}', 1);";
+                return true;
+            }
+            return false;
+        });
+
+        await using var context = CreateContext(database.ConnectionString, callerContext, interceptor);
+        var passwordHasher = new PasswordHasher<User>();
+        var authBootstrapper = new AuthorizationBootstrapper(context, _mockTimeProvider.Object);
+        var service = new PlatformCenterService(
+            context,
+            callerContext,
+            passwordHasher,
+            authBootstrapper,
+            _mockTimeProvider.Object);
+
+        var request = new CreatePlatformCenterRequest
+        {
+            CenterCode = "UNIQUE_CODE_NOT_COLLIDING",
+            CenterName = "Non Colliding Code Center",
+            Timezone = "Asia/Ho_Chi_Minh",
+            InitialManagerUsername = "unique.manager",
+            InitialManagerDisplayName = "Unique Manager",
+            InitialManagerPassword = "StrongPassword123!"
+        };
+
+        // When 1062 occurs on a key other than ux_centers_center_code (such as ux_users_center_id_username),
+        // CreateCenterAsync MUST rethrow the DbUpdateException and NOT swallow/map it as duplicate CenterCode!
+        var ex = await Assert.ThrowsAsync<DbUpdateException>(async () =>
+        {
+            await service.CreateCenterAsync(request, "trace-race-other-1062");
+        });
+
+        var mysqlEx = ex.GetBaseException() as MySqlException;
+        Assert.NotNull(mysqlEx);
+        Assert.Equal(1062, mysqlEx.Number);
+        Assert.Contains("ux_users_center_id_username", mysqlEx.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ux_centers_center_code", mysqlEx.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [MySqlIntegrationFact]
     public async Task ResetCenterManagerPassword_ConsecutiveResets_UsingReturnedRowVersions_SucceedsSequentially_And_StaleVersion_ReturnsConflict()
     {
         await using var database = await MySqlTestDatabase.CreateAsync();
