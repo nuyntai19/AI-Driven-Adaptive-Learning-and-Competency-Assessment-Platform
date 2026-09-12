@@ -220,6 +220,7 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
             AssignmentId = submission.AssignmentId,
             FinalAnswer = submission.FinalAnswer,
             ReasoningText = submission.ReasoningText,
+            AnswerDisplayLatex = submission.AnswerDisplayLatex,
             IsCorrect = submission.IsCorrect,
             AwardedScore = submission.AwardedScore,
             TimeSpentSeconds = submission.TimeSpentSeconds,
@@ -277,6 +278,7 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
         attempt.AssignmentId == submission.AssignmentId &&
         string.Equals(attempt.FinalAnswer, submission.FinalAnswer, StringComparison.Ordinal) &&
         string.Equals(attempt.ReasoningText, submission.ReasoningText, StringComparison.Ordinal) &&
+        string.Equals(attempt.AnswerDisplayLatex, submission.AnswerDisplayLatex, StringComparison.Ordinal) &&
         attempt.TimeSpentSeconds == submission.TimeSpentSeconds &&
         attempt.Confidence == submission.Confidence &&
         attempt.AnswerChanges == submission.AnswerChanges &&

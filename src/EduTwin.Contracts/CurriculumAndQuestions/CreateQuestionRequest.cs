@@ -18,6 +18,7 @@ public class CreateQuestionRequest
     public uint EstimatedTimeSeconds { get; set; }
     public bool ReasoningRequired { get; set; } = true;
     public string LanguageCode { get; set; } = "vi";
+    public string? AnswerEvaluationMode { get; set; }
     public List<QuestionOptionInput> Options { get; set; } = new();
     public List<KnowledgeMappingInput> KnowledgeMappings { get; set; } = new();
 }

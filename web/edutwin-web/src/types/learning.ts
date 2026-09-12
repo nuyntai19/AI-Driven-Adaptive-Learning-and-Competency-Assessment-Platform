@@ -8,6 +8,7 @@ export interface SubmitAttemptRequest {
   answerChanges: number;
   skipped: boolean;
   clientSubmissionId: string;
+  answerDisplayLatex?: string | null;
 }
 
 export interface SubmitAttemptDataDto {
@@ -109,4 +110,5 @@ export interface NextQuestionDataDto {
     orderIndex: number;
   }>;
   explanation: string;
+  answerEvaluationMode?: string;
 }

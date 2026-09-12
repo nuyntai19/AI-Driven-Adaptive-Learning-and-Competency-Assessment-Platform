@@ -53,6 +53,7 @@ public class AttemptConfiguration : IEntityTypeConfiguration<Attempt>
             .IsRequired();
 
         builder.Property(a => a.ClientSubmissionId).HasColumnName("client_submission_id").HasColumnType("varchar(36)").IsRequired();
+        builder.Property(a => a.AnswerDisplayLatex).HasColumnName("answer_display_latex").HasColumnType("varchar(2048)").IsRequired(false);
 
         builder.Property(a => a.CreatedAt).HasColumnName("created_at").HasColumnType("datetime(6)").IsRequired();
         builder.Property(a => a.CreatedBy).HasColumnName("created_by").HasColumnType("varchar(36)");

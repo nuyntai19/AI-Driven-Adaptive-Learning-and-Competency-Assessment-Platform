@@ -16,6 +16,7 @@ public class UpdateQuestionRequest
     public uint EstimatedTimeSeconds { get; set; }
     public bool ReasoningRequired { get; set; }
     public string LanguageCode { get; set; } = null!;
+    public string? AnswerEvaluationMode { get; set; }
     public List<QuestionOptionInput> Options { get; set; } = new();
     public List<KnowledgeMappingInput> KnowledgeMappings { get; set; } = new();
     public string RowVersion { get; set; } = null!;

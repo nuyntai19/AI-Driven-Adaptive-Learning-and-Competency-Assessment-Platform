@@ -114,6 +114,13 @@ public class QuestionConfiguration : IEntityTypeConfiguration<Question>
             .HasConversion<string>()
             .IsRequired();
 
+        builder.Property(q => q.AnswerEvaluationMode)
+            .HasColumnName("answer_evaluation_mode")
+            .HasColumnType("varchar(32)")
+            .HasConversion<string>()
+            .HasDefaultValue(QuestionAnswerEvaluationMode.TextExact)
+            .IsRequired();
+
         // MTA Properties
         builder.Property(q => q.CreatedAt).HasColumnName("created_at").HasColumnType("datetime(6)").IsRequired();
         builder.Property(q => q.CreatedBy).HasColumnName("created_by").HasColumnType("varchar(36)");
@@ -144,6 +151,7 @@ public class QuestionConfiguration : IEntityTypeConfiguration<Question>
             t.HasCheckConstraint("ck_questions_estimated_time_seconds", "estimated_time_seconds > 0");
             t.HasCheckConstraint("ck_questions_language_code", "language_code IN ('vi', 'en')");
             t.HasCheckConstraint("ck_questions_status", "status IN ('Draft', 'Active', 'Archived')");
+            t.HasCheckConstraint("ck_questions_answer_evaluation_mode", "answer_evaluation_mode IN ('TextExact', 'NumericRational', 'Manual')");
         });
 
         // Relations

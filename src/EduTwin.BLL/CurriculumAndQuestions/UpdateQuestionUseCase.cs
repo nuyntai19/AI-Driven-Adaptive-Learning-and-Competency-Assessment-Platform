@@ -135,10 +135,34 @@ public class UpdateQuestionUseCase : IUpdateQuestionUseCase
                 return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
         }
 
+        // AnswerEvaluationMode validation & matrix enforcement
+        QuestionAnswerEvaluationMode evalMode;
+        if (string.IsNullOrWhiteSpace(request.AnswerEvaluationMode))
+        {
+            evalMode = questionType switch
+            {
+                QuestionType.MultipleChoice => QuestionAnswerEvaluationMode.TextExact,
+                QuestionType.Essay => QuestionAnswerEvaluationMode.Manual,
+                _ => question.AnswerEvaluationMode
+            };
+        }
+        else
+        {
+            if (!Enum.TryParse<QuestionAnswerEvaluationMode>(request.AnswerEvaluationMode, ignoreCase: false, out evalMode))
+                return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+
+            if (questionType == QuestionType.MultipleChoice && evalMode != QuestionAnswerEvaluationMode.TextExact)
+                return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+
+            if (questionType == QuestionType.Essay && evalMode != QuestionAnswerEvaluationMode.Manual)
+                return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+        }
+
         // 11. Update scalar fields
         var now = _timeProvider.GetUtcNow().UtcDateTime;
         question.PrimaryTopicNodeId = topicNodeId;
         question.QuestionType = questionType;
+        question.AnswerEvaluationMode = evalMode;
         question.Difficulty = request.Difficulty;
         question.QuestionText = request.QuestionText;
         question.CorrectAnswer = request.CorrectAnswer;

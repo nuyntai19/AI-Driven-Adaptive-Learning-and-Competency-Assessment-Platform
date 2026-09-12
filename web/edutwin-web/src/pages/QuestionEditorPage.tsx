@@ -4,8 +4,9 @@ import { useQuery } from "@tanstack/react-query";
 import { organizationApi } from "../api/organizationApi";
 import { knowledgeGraphApi } from "../api/knowledgeGraphApi";
 import { useQuestion, useCreateQuestion, useUpdateQuestion, useActivateQuestion, useArchiveQuestion } from "../features/questions/useQuestions";
-import type { QuestionType, CreateQuestionRequest, QuestionOption } from "../types/questions";
-
+import type { QuestionType, QuestionAnswerEvaluationMode, CreateQuestionRequest, QuestionOption } from "../types/questions";
+import { MathInputToolbar } from "../components/math/MathInputToolbar";
+import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
 
 export const QuestionEditorPage = () => {
   const [formData, setFormData] = useState<CreateQuestionRequest>({
@@ -18,13 +19,36 @@ export const QuestionEditorPage = () => {
     estimatedTimeSeconds: 60,
     reasoningRequired: true,
     languageCode: "vi",
+    answerEvaluationMode: "TextExact",
     options: [
       { optionText: "", isCorrect: true, optionLabel: "A", orderIndex: 0 },
       { optionText: "", isCorrect: false, optionLabel: "B", orderIndex: 1 }
     ],
   });
 
+  const [showQuestionMathToolbar, setShowQuestionMathToolbar] = useState(false);
+  const [showSolutionMathToolbar, setShowSolutionMathToolbar] = useState(false);
+
   const handleInputChange = (field: keyof CreateQuestionRequest, value: any) => {
+    if (field === "questionType") {
+      const qType = value as QuestionType;
+      let newMode: QuestionAnswerEvaluationMode = "TextExact";
+      if (qType === "MultipleChoice") {
+        newMode = "TextExact";
+      } else if (qType === "Essay") {
+        newMode = "Manual";
+      } else if (qType === "ShortAnswer") {
+        newMode = formData.answerEvaluationMode === "TextExact" || formData.answerEvaluationMode === "NumericRational" || formData.answerEvaluationMode === "Manual"
+          ? (formData.answerEvaluationMode || "NumericRational")
+          : "NumericRational";
+      }
+      setFormData(prev => ({
+        ...prev,
+        questionType: qType,
+        answerEvaluationMode: newMode,
+      }));
+      return;
+    }
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -137,6 +161,7 @@ export const QuestionEditorPage = () => {
         estimatedTimeSeconds: q.estimatedTimeSeconds,
         reasoningRequired: q.reasoningRequired || false,
         languageCode: q.languageCode || "vi",
+        answerEvaluationMode: q.answerEvaluationMode || (q.questionType === "MultipleChoice" ? "TextExact" : q.questionType === "Essay" ? "Manual" : "NumericRational"),
         options: (q.options || []).map((opt: any) => ({
           ...opt,
           optionLabel: opt.optionLabel || opt.label,
@@ -178,6 +203,7 @@ export const QuestionEditorPage = () => {
       // For create, make sure options are cleaned up
       const createData = {
         ...formData,
+        answerEvaluationMode: formData.answerEvaluationMode || (formData.questionType === "MultipleChoice" ? "TextExact" : formData.questionType === "Essay" ? "Manual" : "NumericRational"),
         options: formData.options?.map(o => ({
           optionLabel: (o as any).optionLabel || (o as any).label,
           optionText: (o as any).optionText || (o as any).text,
@@ -206,6 +232,7 @@ export const QuestionEditorPage = () => {
         estimatedTimeSeconds: formData.estimatedTimeSeconds,
         reasoningRequired: formData.reasoningRequired,
         languageCode: formData.languageCode,
+        answerEvaluationMode: formData.answerEvaluationMode || (formData.questionType === "MultipleChoice" ? "TextExact" : formData.questionType === "Essay" ? "Manual" : "NumericRational"),
         options: formData.options?.map(o => ({
           optionLabel: (o as any).optionLabel || (o as any).label,
           optionText: (o as any).optionText || (o as any).text,
@@ -269,14 +296,45 @@ export const QuestionEditorPage = () => {
         </div>
         <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="col-span-2">
-            <label className="block text-sm font-medium text-slate-700 mb-2">Nội dung câu hỏi <span className="text-red-500">*</span></label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-slate-700">
+                Nội dung câu hỏi <span className="text-red-500">*</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowQuestionMathToolbar(!showQuestionMathToolbar)}
+                className="text-xs font-semibold px-2.5 py-1 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition-colors flex items-center gap-1"
+              >
+                <span>∑ Bảng ký hiệu Toán học (LaTeX)</span>
+                <span>{showQuestionMathToolbar ? "▲" : "▼"}</span>
+              </button>
+            </div>
+            {showQuestionMathToolbar && (
+              <div className="mb-2">
+                <MathInputToolbar
+                  onInsert={(sym) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      questionText: prev.questionText + sym,
+                    }))
+                  }
+                />
+              </div>
+            )}
             <textarea
               rows={4}
               value={formData.questionText}
-              onChange={e => handleInputChange("questionText", e.target.value)}
-              className="w-full border border-slate-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none resize-y"
-              placeholder="Nhập nội dung câu hỏi..."
+              onChange={(e) => handleInputChange("questionText", e.target.value)}
+              className="w-full border border-slate-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none resize-y font-mono text-sm"
+              placeholder="Nhập nội dung câu hỏi (hỗ trợ văn bản và công thức LaTeX)..."
             ></textarea>
+            {formData.questionText.trim() && (
+              <MathFormulaPreview
+                formula={formData.questionText}
+                label="Xem trước công thức (KaTeX)"
+                className="mt-2"
+              />
+            )}
           </div>
 
           <div>
@@ -329,6 +387,54 @@ export const QuestionEditorPage = () => {
               <option value="ShortAnswer">Điền khuyết (Short Answer)</option>
               <option value="Essay">Tự luận (Essay)</option>
             </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">
+              Chế độ chấm đáp án (Evaluation Mode) <span className="text-red-500">*</span>
+            </label>
+            {formData.questionType === "MultipleChoice" ? (
+              <div>
+                <select
+                  disabled
+                  value="TextExact"
+                  className="w-full border border-slate-300 rounded-lg px-4 py-2 bg-slate-100 text-slate-600 outline-none cursor-not-allowed"
+                >
+                  <option value="TextExact">TextExact (So khớp chính xác)</option>
+                </select>
+                <p className="mt-1 text-xs text-slate-500">Trắc nghiệm bắt buộc chế độ TextExact.</p>
+              </div>
+            ) : formData.questionType === "Essay" ? (
+              <div>
+                <select
+                  disabled
+                  value="Manual"
+                  className="w-full border border-slate-300 rounded-lg px-4 py-2 bg-slate-100 text-slate-600 outline-none cursor-not-allowed"
+                >
+                  <option value="Manual">Manual (Giáo viên chấm thủ công)</option>
+                </select>
+                <p className="mt-1 text-xs text-slate-500">Tự luận bắt buộc chế độ chấm thủ công (Manual).</p>
+              </div>
+            ) : (
+              <div>
+                <select
+                  value={formData.answerEvaluationMode || "NumericRational"}
+                  onChange={e => handleInputChange("answerEvaluationMode", e.target.value as QuestionAnswerEvaluationMode)}
+                  className="w-full border border-blue-400 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none bg-white font-medium text-slate-800"
+                >
+                  <option value="NumericRational">NumericRational (Chuẩn hóa số học & phân số)</option>
+                  <option value="TextExact">TextExact (So khớp chuỗi chính xác)</option>
+                  <option value="Manual">Manual (Giáo viên chấm thủ công)</option>
+                </select>
+                <p className="mt-1 text-xs text-blue-600">
+                  {formData.answerEvaluationMode === "NumericRational"
+                    ? "Tự động quy chuẩn phân số, số thập phân, số hỗn số về dạng tối giản để so sánh chính xác."
+                    : formData.answerEvaluationMode === "TextExact"
+                    ? "So khớp chuỗi ký tự chính xác tuyệt đối (phân biệt ký tự, khoảng trắng)."
+                    : "Giáo viên sẽ xem và chấm điểm trực tiếp."}
+                </p>
+              </div>
+            )}
           </div>
 
           <div>
@@ -471,26 +577,71 @@ export const QuestionEditorPage = () => {
           )}
 
           {formData.questionType === "ShortAnswer" && (
-            <div className="space-y-3">
+            <div className="space-y-4">
+              {formData.answerEvaluationMode === "NumericRational" && (
+                <div className="p-3 bg-blue-50 dark:bg-blue-950/40 rounded-lg border border-blue-200 dark:border-blue-800 text-xs text-blue-800 dark:text-blue-300">
+                  <div className="font-semibold flex items-center gap-1 mb-1">
+                    <span>💡 Quy chuẩn số học tự động (NumericRational Normalizer):</span>
+                  </div>
+                  <p>
+                    Bạn có thể nhập đáp án chuẩn dưới dạng số nguyên (<code>42</code>), phân số (<code>-3/4</code>), số thập phân (<code>0.75</code> hoặc <code>0,75</code>), hoặc hỗn số (<code>1 1/2</code>). Hệ thống sẽ chuyển đổi chính xác sang phân số tối giản để so khớp với bài làm học sinh.
+                  </p>
+                </div>
+              )}
+
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Đáp án chuẩn (Correct Answer) <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Đáp án chuẩn (Correct Answer) <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="text"
                   value={formData.correctAnswer || ""}
                   onChange={e => handleInputChange("correctAnswer", e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none"
-                  placeholder="Nhập đáp án chuẩn xác nhất..."
+                  className="w-full border border-slate-300 rounded-lg px-4 py-2 font-mono focus:ring-2 focus:ring-blue-500 outline-none"
+                  placeholder="Ví dụ: 3/4 hoặc 0.75 hoặc x^2 + 1..."
                 />
               </div>
+
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Lời giải (Solution) <span className="text-red-500">*</span></label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-slate-700">
+                    Lời giải (Solution) <span className="text-red-500">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowSolutionMathToolbar(!showSolutionMathToolbar)}
+                    className="text-xs font-semibold px-2 py-0.5 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition-colors flex items-center gap-1"
+                  >
+                    <span>∑ Bảng ký hiệu Toán</span>
+                    <span>{showSolutionMathToolbar ? "▲" : "▼"}</span>
+                  </button>
+                </div>
+                {showSolutionMathToolbar && (
+                  <div className="mb-2">
+                    <MathInputToolbar
+                      onInsert={(sym) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          solution: (prev.solution || "") + sym,
+                        }))
+                      }
+                    />
+                  </div>
+                )}
                 <textarea
-                  rows={2}
+                  rows={3}
                   value={formData.solution || ""}
                   onChange={e => handleInputChange("solution", e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none resize-y"
-                  placeholder="Giải thích đáp án..."
+                  className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none resize-y font-mono text-sm"
+                  placeholder="Giải thích chi tiết các bước tìm ra đáp án..."
                 ></textarea>
+                {formData.solution && formData.solution.trim() && (
+                  <MathFormulaPreview
+                    formula={formData.solution}
+                    label="Xem trước lời giải (KaTeX)"
+                    className="mt-2"
+                  />
+                )}
               </div>
             </div>
           )}

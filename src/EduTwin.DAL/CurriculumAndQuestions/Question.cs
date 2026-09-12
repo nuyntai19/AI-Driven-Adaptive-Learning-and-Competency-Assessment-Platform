@@ -27,6 +27,7 @@ public class Question : IMutableTenantAggregate
     public bool ReasoningRequired { get; set; }
     public string LanguageCode { get; set; } = null!;
     public QuestionStatus Status { get; set; }
+    public QuestionAnswerEvaluationMode AnswerEvaluationMode { get; set; } = QuestionAnswerEvaluationMode.TextExact;
 
     // Audit and MTA
     public DateTime CreatedAt { get; set; }

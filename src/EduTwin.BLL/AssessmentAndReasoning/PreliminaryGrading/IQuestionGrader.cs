@@ -21,5 +21,19 @@ public interface IQuestionGrader
         string? correctAnswer, 
         decimal maxScore, 
         GradingCriteria criteria, 
-        IEnumerable<QuestionOption>? options = null);
+        IEnumerable<QuestionOption>? options = null)
+    {
+        return Grade(studentAnswer, correctAnswer, new QuestionGradingContext
+        {
+            EvaluationMode = QuestionAnswerEvaluationMode.TextExact,
+            MaxScore = maxScore,
+            Criteria = criteria,
+            Options = options
+        });
+    }
+
+    PreliminaryGradingResult Grade(
+        string? studentAnswer,
+        string? correctAnswer,
+        QuestionGradingContext context);
 }

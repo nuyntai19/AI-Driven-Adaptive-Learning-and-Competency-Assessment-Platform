@@ -23,6 +23,7 @@ public class QuestionDto
     public bool ReasoningRequired { get; set; }
     public string LanguageCode { get; set; } = null!;
     public string Status { get; set; } = null!;
+    public string AnswerEvaluationMode { get; set; } = null!;
     public List<QuestionOptionDto> Options { get; set; } = new();
     public List<KnowledgeMappingDto> KnowledgeMappings { get; set; } = new();
     public string RowVersion { get; set; } = null!;

@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using EduTwin.BLL.AssessmentAndReasoning.PreliminaryGrading;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.Common;
 using EduTwin.Contracts.CurriculumAndQuestions;
@@ -18,15 +19,18 @@ public class ActivateQuestionUseCase : IActivateQuestionUseCase
     private readonly EduTwinDbContext _dbContext;
     private readonly ITenantContext _tenantContext;
     private readonly TimeProvider _timeProvider;
+    private readonly IMathAnswerNormalizer _mathNormalizer;
 
     public ActivateQuestionUseCase(
         EduTwinDbContext dbContext,
         ITenantContext tenantContext,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        IMathAnswerNormalizer? mathNormalizer = null)
     {
         _dbContext = dbContext;
         _tenantContext = tenantContext;
         _timeProvider = timeProvider;
+        _mathNormalizer = mathNormalizer ?? new MathAnswerNormalizer();
     }
 
     public async Task<ActivateQuestionResult> ExecuteAsync(string questionId, ActivateQuestionRequest request, CancellationToken cancellationToken = default)
@@ -80,7 +84,26 @@ public class ActivateQuestionUseCase : IActivateQuestionUseCase
         if (question.RowVersion != rowVersion)
             return ActivateQuestionResult.Failure(ErrorCodes.ConcurrencyConflict);
 
-        // 8. MultipleChoice activation guard
+        // 8. Evaluation mode and matrix activation guard
+        if (question.QuestionType == QuestionType.Essay && question.AnswerEvaluationMode != QuestionAnswerEvaluationMode.Manual)
+        {
+            return ActivateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+        }
+
+        if (question.QuestionType == QuestionType.MultipleChoice && question.AnswerEvaluationMode != QuestionAnswerEvaluationMode.TextExact)
+        {
+            return ActivateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+        }
+
+        if (question.QuestionType == QuestionType.ShortAnswer && question.AnswerEvaluationMode == QuestionAnswerEvaluationMode.NumericRational)
+        {
+            if (string.IsNullOrWhiteSpace(question.CorrectAnswer) || !_mathNormalizer.TryNormalize(question.CorrectAnswer, out _))
+            {
+                return ActivateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+            }
+        }
+
+        // 9. MultipleChoice activation guard
         if (question.QuestionType == QuestionType.MultipleChoice)
         {
             var activeOptions = await _dbContext.QuestionOptions

@@ -1,5 +1,6 @@
 export type QuestionType = "MultipleChoice" | "ShortAnswer" | "Essay";
 export type QuestionStatus = "Draft" | "Active" | "Archived";
+export type QuestionAnswerEvaluationMode = "TextExact" | "NumericRational" | "Manual";
 
 export interface QuestionOption {
   optionId: string;
@@ -37,6 +38,7 @@ export interface Question {
   reasoningRequired: boolean;
   languageCode: string;
   status: QuestionStatus;
+  answerEvaluationMode?: QuestionAnswerEvaluationMode;
   options?: QuestionOption[];
   knowledgeMappings: KnowledgeMapping[];
   rowVersion: string;
@@ -56,6 +58,7 @@ export interface CreateQuestionRequest {
   estimatedTimeSeconds: number;
   reasoningRequired: boolean;
   languageCode: string;
+  answerEvaluationMode?: QuestionAnswerEvaluationMode;
   options?: { optionLabel: string; optionText: string; isCorrect: boolean; orderIndex: number }[];
   knowledgeMappings?: KnowledgeMapping[];
 }

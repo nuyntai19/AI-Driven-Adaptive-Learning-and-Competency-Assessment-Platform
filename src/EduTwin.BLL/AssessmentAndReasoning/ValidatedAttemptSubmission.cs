@@ -20,6 +20,7 @@ public sealed class ValidatedAttemptSubmission
     public string ReasoningLanguage { get; init; } = string.Empty;
     public bool? IsCorrect { get; init; }
     public decimal? AwardedScore { get; init; }
+    public string? AnswerDisplayLatex { get; init; }
 
     /// <summary>
     /// Set when this is an idempotent replay of an already-persisted submission.

@@ -28,5 +28,6 @@ public class StudentQuestionDto
     public uint EstimatedTimeSeconds { get; set; }
     public bool ReasoningRequired { get; set; }
     public string LanguageCode { get; set; } = null!;
+    public string AnswerEvaluationMode { get; set; } = null!;
     public List<StudentQuestionOptionDto> Options { get; set; } = new();
 }

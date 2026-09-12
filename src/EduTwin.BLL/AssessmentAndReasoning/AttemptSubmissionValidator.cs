@@ -152,6 +152,11 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
             return AttemptSubmissionValidationResult.Failure(ErrorCodes.QuestionReasoningRequired);
         }
 
+        if (request.AnswerDisplayLatex != null && request.AnswerDisplayLatex.Length > 2048)
+        {
+            return AttemptSubmissionValidationResult.Failure(ErrorCodes.ValidationFailed);
+        }
+
         var options = question.QuestionType == QuestionType.MultipleChoice
             ? await _dbContext.QuestionOptions
                 .AsNoTracking()
@@ -169,9 +174,13 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
             .Grade(
                 request.FinalAnswer,
                 question.CorrectAnswer,
-                question.MaxScore,
-                question.GradingCriteria,
-                options);
+                new PreliminaryGrading.QuestionGradingContext
+                {
+                    EvaluationMode = question.AnswerEvaluationMode,
+                    MaxScore = question.MaxScore,
+                    Criteria = question.GradingCriteria,
+                    Options = options
+                });
 
         return AttemptSubmissionValidationResult.Success(new ValidatedAttemptSubmission
         {
@@ -182,6 +191,7 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
             AssignmentId = request.AssignmentId,
             FinalAnswer = request.FinalAnswer,
             ReasoningText = request.ReasoningText,
+            AnswerDisplayLatex = request.AnswerDisplayLatex,
             TimeSpentSeconds = request.TimeSpentSeconds,
             Confidence = request.Confidence,
             AnswerChanges = request.AnswerChanges,
@@ -248,6 +258,7 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
         existingAttempt.AssignmentId == request.AssignmentId &&
         string.Equals(existingAttempt.FinalAnswer, request.FinalAnswer, StringComparison.Ordinal) &&
         string.Equals(existingAttempt.ReasoningText, request.ReasoningText, StringComparison.Ordinal) &&
+        string.Equals(existingAttempt.AnswerDisplayLatex, request.AnswerDisplayLatex, StringComparison.Ordinal) &&
         existingAttempt.TimeSpentSeconds == request.TimeSpentSeconds &&
         existingAttempt.Confidence == request.Confidence &&
         existingAttempt.AnswerChanges == request.AnswerChanges &&
@@ -262,6 +273,7 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
         AssignmentId = attempt.AssignmentId,
         FinalAnswer = attempt.FinalAnswer,
         ReasoningText = attempt.ReasoningText,
+        AnswerDisplayLatex = attempt.AnswerDisplayLatex,
         TimeSpentSeconds = attempt.TimeSpentSeconds,
         Confidence = attempt.Confidence,
         AnswerChanges = attempt.AnswerChanges,

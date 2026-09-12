@@ -17,6 +17,9 @@ import {
   shouldContinuePolling,
 } from "../utils/polling";
 import { SubjectRequiredState } from "../components/SubjectRequiredState";
+import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
+import { MathInputToolbar } from "../components/math/MathInputToolbar";
+import { ScientificCalculatorDrawer } from "../components/math/ScientificCalculatorDrawer";
 
 export const LearningPlayerPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -25,10 +28,13 @@ export const LearningPlayerPage = () => {
 
   // Attempt form state
   const [finalAnswer, setFinalAnswer] = useState<string>("");
+  const [answerDisplayLatex, setAnswerDisplayLatex] = useState<string>("");
   const [reasoningText, setReasoningText] = useState<string>("");
   const [confidence, setConfidence] = useState<number>(80);
   const [answerChanges, setAnswerChanges] = useState<number>(0);
   const [timeSpentSeconds, setTimeSpentSeconds] = useState<number>(0);
+  const [isCalculatorOpen, setIsCalculatorOpen] = useState<boolean>(false);
+  const [showMathToolbar, setShowMathToolbar] = useState<boolean>(false);
 
   // Client submission token (unique per attempt session)
   const clientSubmissionIdRef = useRef<string>(crypto.randomUUID());
@@ -95,6 +101,7 @@ export const LearningPlayerPage = () => {
         answerChanges,
         skipped,
         clientSubmissionId: clientSubmissionIdRef.current,
+        answerDisplayLatex: answerDisplayLatex.trim() ? answerDisplayLatex.trim() : (finalAnswer.trim() ? finalAnswer.trim() : null),
       });
 
       const activeJobId = response.analysisJobId || response.jobId || "";
@@ -220,10 +227,12 @@ export const LearningPlayerPage = () => {
     setFeedbackData(null);
     setPollingJobId(null);
     setFinalAnswer("");
+    setAnswerDisplayLatex("");
     setReasoningText("");
     setAnswerChanges(0);
     setTimeSpentSeconds(0);
     setIsSubmitting(false);
+    setShowMathToolbar(false);
     setSubmissionError(null);
     pollingAttemptRef.current = 0;
     clientSubmissionIdRef.current = crypto.randomUUID();
@@ -504,6 +513,15 @@ export const LearningPlayerPage = () => {
         {/* Header bar */}
         <div className="flex items-center justify-between rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setIsCalculatorOpen(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors shadow-2xs cursor-pointer"
+              title="Mở máy tính khoa học"
+            >
+              <span>🖩</span>
+              <span>Máy tính khoa học</span>
+            </button>
             <span className="rounded-md bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700">
               {question?.topicName || "Chuyên đề luyện tập"}
             </span>
@@ -535,13 +553,45 @@ export const LearningPlayerPage = () => {
             <div className="mt-3 text-base text-slate-900 leading-relaxed whitespace-pre-wrap">
               {question?.questionText}
             </div>
+            {question?.questionText && /[\\[{^_\\]]/.test(question.questionText) && (
+              <MathFormulaPreview
+                formula={question.questionText}
+                label="Hiển thị công thức Toán (KaTeX)"
+                className="mt-3"
+              />
+            )}
           </div>
 
           {/* Question-type-specific answer control. Options never contain correctness metadata. */}
           <div className="border-t border-slate-100 pt-6">
-            <p className="block text-sm font-bold text-slate-900">
-              Đáp án cuối cùng của bạn:
-            </p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="block text-sm font-bold text-slate-900">
+                Đáp án cuối cùng của bạn:
+              </p>
+              {question?.questionType !== "MultipleChoice" && (
+                <button
+                  type="button"
+                  onClick={() => setShowMathToolbar(!showMathToolbar)}
+                  className="text-xs font-semibold px-2.5 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  <span>∑ Bảng gõ ký hiệu Toán</span>
+                  <span>{showMathToolbar ? "▲" : "▼"}</span>
+                </button>
+              )}
+            </div>
+
+            {showMathToolbar && question?.questionType !== "MultipleChoice" && (
+              <div className="mb-3">
+                <MathInputToolbar
+                  onInsert={(sym) => {
+                    const nextAns = finalAnswer + sym;
+                    handleAnswerChange(nextAns);
+                    setAnswerDisplayLatex(nextAns);
+                  }}
+                />
+              </div>
+            )}
+
             {question?.questionType === "MultipleChoice" ? (
               <fieldset className="mt-3 space-y-2" disabled={isSubmitting}>
                 <legend className="sr-only">Chọn một đáp án</legend>
@@ -574,23 +624,47 @@ export const LearningPlayerPage = () => {
                 )}
               </fieldset>
             ) : question?.questionType === "Essay" ? (
-              <textarea
-                rows={7}
-                value={finalAnswer}
-                onChange={(e) => handleAnswerChange(e.target.value)}
-                disabled={isSubmitting}
-                placeholder="Trình bày câu trả lời tự luận của bạn..."
-                className="mt-2 w-full rounded-lg border border-slate-300 p-3 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              />
+              <div>
+                <textarea
+                  rows={7}
+                  value={finalAnswer}
+                  onChange={(e) => {
+                    handleAnswerChange(e.target.value);
+                    setAnswerDisplayLatex(e.target.value);
+                  }}
+                  disabled={isSubmitting}
+                  placeholder="Trình bày câu trả lời tự luận của bạn (hỗ trợ công thức LaTeX)..."
+                  className="mt-2 w-full rounded-lg border border-slate-300 p-3 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono"
+                />
+                {finalAnswer.trim() && (
+                  <MathFormulaPreview
+                    formula={answerDisplayLatex || finalAnswer}
+                    label="Xem trước bài làm (KaTeX)"
+                    className="mt-2"
+                  />
+                )}
+              </div>
             ) : (
-              <input
-                type="text"
-                value={finalAnswer}
-                onChange={(e) => handleAnswerChange(e.target.value)}
-                disabled={isSubmitting}
-                placeholder="Nhập câu trả lời ngắn..."
-                className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              />
+              <div>
+                <input
+                  type="text"
+                  value={finalAnswer}
+                  onChange={(e) => {
+                    handleAnswerChange(e.target.value);
+                    setAnswerDisplayLatex(e.target.value);
+                  }}
+                  disabled={isSubmitting}
+                  placeholder="Nhập câu trả lời ngắn (ví dụ: 3/4, 0.75, 1 1/2 hoặc biểu thức)..."
+                  className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 font-mono focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+                {finalAnswer.trim() && (
+                  <MathFormulaPreview
+                    formula={answerDisplayLatex || finalAnswer}
+                    label="Xem trước đáp án hiển thị (KaTeX)"
+                    className="mt-2"
+                  />
+                )}
+              </div>
             )}
           </div>
 
@@ -664,6 +738,16 @@ export const LearningPlayerPage = () => {
           </div>
         </div>
       </div>
+
+      {/* Scientific Calculator Drawer */}
+      <ScientificCalculatorDrawer
+        isOpen={isCalculatorOpen}
+        onClose={() => setIsCalculatorOpen(false)}
+        onInsertResult={(val) => {
+          handleAnswerChange(val);
+          setAnswerDisplayLatex(val);
+        }}
+      />
     </div>
   );
 };

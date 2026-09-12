@@ -99,6 +99,29 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
                 return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
         }
 
+        // AnswerEvaluationMode validation & matrix enforcement
+        QuestionAnswerEvaluationMode evalMode;
+        if (string.IsNullOrWhiteSpace(request.AnswerEvaluationMode))
+        {
+            evalMode = questionType switch
+            {
+                QuestionType.MultipleChoice => QuestionAnswerEvaluationMode.TextExact,
+                QuestionType.Essay => QuestionAnswerEvaluationMode.Manual,
+                _ => QuestionAnswerEvaluationMode.TextExact
+            };
+        }
+        else
+        {
+            if (!Enum.TryParse<QuestionAnswerEvaluationMode>(request.AnswerEvaluationMode, ignoreCase: false, out evalMode))
+                return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+
+            if (questionType == QuestionType.MultipleChoice && evalMode != QuestionAnswerEvaluationMode.TextExact)
+                return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+
+            if (questionType == QuestionType.Essay && evalMode != QuestionAnswerEvaluationMode.Manual)
+                return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+        }
+
         // Knowledge mapping validation
         if (request.KnowledgeMappings != null)
         {
@@ -201,6 +224,7 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
             ReasoningRequired = request.ReasoningRequired,
             LanguageCode = request.LanguageCode,
             Status = QuestionStatus.Draft,
+            AnswerEvaluationMode = evalMode,
             CreatedAt = now,
             CreatedBy = actorId,
             UpdatedAt = now,

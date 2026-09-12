@@ -15,4 +15,5 @@ public class SubmitAttemptRequest
     public decimal Confidence { get; set; }
     public uint AnswerChanges { get; set; }
     public bool Skipped { get; set; }
+    public string? AnswerDisplayLatex { get; set; }
 }

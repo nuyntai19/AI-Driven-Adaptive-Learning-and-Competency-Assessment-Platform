@@ -67,4 +67,12 @@ public class MultipleChoiceGrader : IQuestionGrader
             Feedback = isCorrect ? "Correct answer." : "Incorrect answer."
         };
     }
+
+    public PreliminaryGradingResult Grade(
+        string? studentAnswer,
+        string? correctAnswer,
+        QuestionGradingContext context)
+    {
+        return Grade(studentAnswer, correctAnswer, context.MaxScore, context.Criteria, context.Options);
+    }
 }

@@ -23,4 +23,12 @@ public class EssayGrader : IQuestionGrader
             Feedback = "Requires AI or manual teacher review."
         };
     }
+
+    public PreliminaryGradingResult Grade(
+        string? studentAnswer,
+        string? correctAnswer,
+        QuestionGradingContext context)
+    {
+        return Grade(studentAnswer, correctAnswer, context.MaxScore, context.Criteria, context.Options);
+    }
 }

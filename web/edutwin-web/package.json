@@ -12,7 +12,9 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.62.0",
+    "@types/katex": "^0.16.8",
     "axios": "^1.7.0",
+    "katex": "^0.18.7",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.1.0",

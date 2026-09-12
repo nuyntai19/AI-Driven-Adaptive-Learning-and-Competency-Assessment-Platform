@@ -34,6 +34,7 @@ internal static class QuestionProjection
             ReasoningRequired = q.ReasoningRequired,
             LanguageCode = q.LanguageCode,
             Status = q.Status.ToString(),
+            AnswerEvaluationMode = q.AnswerEvaluationMode.ToString(),
             Options = options
                 .OrderBy(o => o.OrderIndex)
                 .ThenBy(o => o.OptionId)

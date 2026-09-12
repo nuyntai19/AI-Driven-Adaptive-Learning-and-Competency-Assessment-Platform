@@ -25,6 +25,7 @@ public class Attempt : ITenantAppendOnlyEntity, IHasRowVersion
     public string ReasoningLanguage { get; set; } = null!;
     public AttemptStatus Status { get; set; }
     public Guid ClientSubmissionId { get; set; }
+    public string? AnswerDisplayLatex { get; set; }
 
     public DateTime CreatedAt { get; set; }
     public Guid? CreatedBy { get; set; }
