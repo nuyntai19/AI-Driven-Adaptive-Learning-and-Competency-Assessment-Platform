@@ -1,4 +1,5 @@
 using EduTwin.BLL.AssessmentAndReasoning;
+using EduTwin.BLL.AssessmentAndReasoning.Attachments;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.Assignments;
@@ -498,8 +499,42 @@ public sealed class SubmitAttemptUseCaseTests
     // concurrent transaction timing. The production path verifies the named Attempt
     // unique constraint, rolls back, reloads the committed row, and only then maps it.
 
-    private SubmitAttemptUseCase CreateSut(EduTwinDbContext context) =>
-        new(context, _validator.Object, _timeProvider.Object);
+    [Fact]
+    public async Task ExecuteAsync_ExpiredUploadToken_ReturnsValidationFailed()
+    {
+        await using var context = CreateContext(_centerId);
+        var tokenServiceMock = new Mock<IAttemptAttachmentTokenService>();
+        var storageMock = new Mock<IAttemptAttachmentStorage>();
+
+        var expiredPayload = new AttachmentUploadTokenPayload(
+            _centerId,
+            _studentId,
+            Guid.NewGuid().ToString("N"),
+            new string('a', 64),
+            "drawing.png",
+            2048,
+            FixedNow.UtcDateTime.AddMinutes(-5));
+
+        tokenServiceMock
+            .Setup(s => s.TryRead("expired-token-xyz", out expiredPayload))
+            .Returns(true);
+
+        var submission = CreateSubmission(drawingUploadToken: "expired-token-xyz");
+        var request = CreateRequest(submission);
+        SetupValidation(request, submission);
+
+        var sut = CreateSut(context, tokenServiceMock.Object, storageMock.Object);
+        var result = await sut.ExecuteAsync(request, "trace-expired");
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
+
+    private SubmitAttemptUseCase CreateSut(
+        EduTwinDbContext context,
+        IAttemptAttachmentTokenService? attachmentTokens = null,
+        IAttemptAttachmentStorage? attachmentStorage = null) =>
+        new(context, _validator.Object, _timeProvider.Object, attachmentTokens, attachmentStorage);
 
     private EduTwinDbContext CreateContext(Guid tenantId)
     {
@@ -524,7 +559,7 @@ public sealed class SubmitAttemptUseCaseTests
             .Setup(candidate => candidate.ValidateAsync(request, It.IsAny<CancellationToken>()))
             .ReturnsAsync(AttemptSubmissionValidationResult.Success(submission));
 
-    private ValidatedAttemptSubmission CreateSubmission(Guid? assignmentId = null) =>
+    private ValidatedAttemptSubmission CreateSubmission(Guid? assignmentId = null, string? drawingUploadToken = null) =>
         new()
         {
             CenterId = _centerId,
@@ -532,6 +567,7 @@ public sealed class SubmitAttemptUseCaseTests
             ClientSubmissionId = Guid.NewGuid(),
             QuestionId = 9001,
             AssignmentId = assignmentId,
+            DrawingUploadToken = drawingUploadToken,
             FinalAnswer = "B",
             ReasoningText = "Lập luận kiểm tra",
             TimeSpentSeconds = 165,
@@ -549,6 +585,7 @@ public sealed class SubmitAttemptUseCaseTests
             ClientSubmissionId = submission.ClientSubmissionId,
             QuestionId = submission.QuestionId.ToString(),
             AssignmentId = submission.AssignmentId,
+            DrawingUploadToken = submission.DrawingUploadToken,
             FinalAnswer = submission.FinalAnswer,
             ReasoningText = submission.ReasoningText,
             TimeSpentSeconds = submission.TimeSpentSeconds,

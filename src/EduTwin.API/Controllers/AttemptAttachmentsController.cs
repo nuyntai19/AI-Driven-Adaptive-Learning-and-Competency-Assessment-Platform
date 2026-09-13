@@ -72,7 +72,8 @@ public sealed class AttemptAttachmentsController : ControllerBase
         var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
 
         if (string.IsNullOrWhiteSpace(Request.ContentType) ||
-            !Request.ContentType.Contains("multipart/form-data", StringComparison.OrdinalIgnoreCase))
+            !MediaTypeHeaderValue.TryParse(Request.ContentType, out var mediaType) ||
+            !mediaType.MediaType.Equals("multipart/form-data", StringComparison.OrdinalIgnoreCase))
         {
             return BadRequest(CreateProblem(
                 StatusCodes.Status400BadRequest,
@@ -82,29 +83,43 @@ public sealed class AttemptAttachmentsController : ControllerBase
                 ErrorCodes.ValidationFailed));
         }
 
-        var boundary = HeaderUtilities.RemoveQuotes(
-            MediaTypeHeaderValue.Parse(Request.ContentType).Boundary).Value;
-        if (string.IsNullOrWhiteSpace(boundary))
+        var boundary = HeaderUtilities.RemoveQuotes(mediaType.Boundary).Value;
+        if (string.IsNullOrWhiteSpace(boundary) || boundary.Length > 128)
         {
             return BadRequest(CreateProblem(
                 StatusCodes.Status400BadRequest,
                 "Dữ liệu không hợp lệ",
-                "Thiếu multipart boundary.",
+                "Multipart boundary không hợp lệ hoặc vượt quá độ dài cho phép.",
                 traceId,
                 ErrorCodes.ValidationFailed));
         }
 
-        var reader = new MultipartReader(boundary, Request.Body)
+        MultipartReader reader;
+        try
         {
-            HeadersCountLimit = 16,
-            HeadersLengthLimit = 2048,
-            BodyLengthLimit = 6 * 1024 * 1024
-        };
+            reader = new MultipartReader(boundary, Request.Body)
+            {
+                HeadersCountLimit = 16,
+                HeadersLengthLimit = 2048,
+                BodyLengthLimit = 6 * 1024 * 1024
+            };
+        }
+        catch (Exception)
+        {
+            return BadRequest(CreateProblem(
+                StatusCodes.Status400BadRequest,
+                "Dữ liệu không hợp lệ",
+                "Không thể khởi tạo multipart reader từ dữ liệu yêu cầu.",
+                traceId,
+                ErrorCodes.ValidationFailed));
+        }
 
         MultipartSection? section;
         string? targetFileName = null;
         using var stream = new MemoryStream();
         var foundFile = false;
+        long totalNonFileBytes = 0;
+        const long MaxNonFileBytes = 64 * 1024; // 64 KB limit for non-file form sections
 
         try
         {
@@ -117,7 +132,10 @@ public sealed class AttemptAttachmentsController : ControllerBase
                     contentDisposition.DispositionType.Equals("form-data", StringComparison.OrdinalIgnoreCase))
                 {
                     var fieldName = contentDisposition.Name.Value?.Trim('"') ?? string.Empty;
-                    if (fieldName.Equals("file", StringComparison.OrdinalIgnoreCase))
+                    var hasFileName = !string.IsNullOrEmpty(contentDisposition.FileName.Value) ||
+                                      !string.IsNullOrEmpty(contentDisposition.FileNameStar.Value);
+
+                    if (fieldName.Equals("file", StringComparison.OrdinalIgnoreCase) || hasFileName)
                     {
                         if (foundFile)
                         {
@@ -125,6 +143,16 @@ public sealed class AttemptAttachmentsController : ControllerBase
                                 StatusCodes.Status400BadRequest,
                                 "Dữ liệu không hợp lệ",
                                 "Chỉ cho phép gửi tối đa một tệp đính kèm trong trường 'file'.",
+                                traceId,
+                                ErrorCodes.ValidationFailed));
+                        }
+
+                        if (!fieldName.Equals("file", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return BadRequest(CreateProblem(
+                                StatusCodes.Status400BadRequest,
+                                "Dữ liệu không hợp lệ",
+                                "Tệp đính kèm phải được gửi trong trường 'file'.",
                                 traceId,
                                 ErrorCodes.ValidationFailed));
                         }
@@ -138,7 +166,6 @@ public sealed class AttemptAttachmentsController : ControllerBase
                         int bytesRead;
                         long totalBytes = 0;
 
-                        // Bounded buffering in memory: strictly capped at MaxFileBytes (5 MB)
                         while ((bytesRead = await section.Body.ReadAsync(buffer, 0, buffer.Length, cancellationToken)) > 0)
                         {
                             totalBytes += bytesRead;
@@ -154,17 +181,60 @@ public sealed class AttemptAttachmentsController : ControllerBase
 
                             await stream.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
                         }
-
-                        // Break immediately after successfully reading the single required file
-                        // to avoid MultipartReader attempting to drain an already-exhausted Kestrel request stream.
-                        break;
+                    }
+                    else
+                    {
+                        // Drain non-file section with bounded size limit
+                        var drainBuffer = new byte[4096];
+                        int drainRead;
+                        while ((drainRead = await section.Body.ReadAsync(drainBuffer, 0, drainBuffer.Length, cancellationToken)) > 0)
+                        {
+                            totalNonFileBytes += drainRead;
+                            if (totalNonFileBytes > MaxNonFileBytes)
+                            {
+                                return BadRequest(CreateProblem(
+                                    StatusCodes.Status400BadRequest,
+                                    "Dữ liệu không hợp lệ",
+                                    "Kích thước các trường dữ liệu phụ vượt quá giới hạn cho phép.",
+                                    traceId,
+                                    ErrorCodes.ValidationFailed));
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    // Non-form-data section: drain with bounded size limit
+                    var drainBuffer = new byte[4096];
+                    int drainRead;
+                    while ((drainRead = await section.Body.ReadAsync(drainBuffer, 0, drainBuffer.Length, cancellationToken)) > 0)
+                    {
+                        totalNonFileBytes += drainRead;
+                        if (totalNonFileBytes > MaxNonFileBytes)
+                        {
+                            return BadRequest(CreateProblem(
+                                StatusCodes.Status400BadRequest,
+                                "Dữ liệu không hợp lệ",
+                                "Kích thước các trường dữ liệu phụ vượt quá giới hạn cho phép.",
+                                traceId,
+                                ErrorCodes.ValidationFailed));
+                        }
                     }
                 }
             }
         }
-        catch (IOException ex) when (foundFile && stream.Length > 0 && ex.Message.Contains("Unexpected end of Stream"))
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            // Defensive: Kestrel request body pipe reached EOF after the file content was completely read.
+            throw;
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or FormatException)
+        {
+            return BadRequest(CreateProblem(
+                StatusCodes.Status400BadRequest,
+                "Dữ liệu không hợp lệ",
+                "Nội dung multipart không hợp lệ hoặc luồng truyền bị gián đoạn.",
+                traceId,
+                ErrorCodes.ValidationFailed));
         }
 
         if (!foundFile || stream.Length == 0)
