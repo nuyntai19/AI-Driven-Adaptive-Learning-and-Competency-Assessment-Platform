@@ -10,12 +10,14 @@ using EduTwin.BLL.AssessmentAndReasoning.Override;
 using EduTwin.BLL.DigitalTwin;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
+using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.DigitalTwin;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.Contracts.KnowledgeGraph;
 using EduTwin.Contracts.Organization;
 using EduTwin.DAL.AssessmentAndReasoning;
+using EduTwin.DAL.Assignments;
 using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.DigitalTwin;
 using EduTwin.DAL.IdentityAndTenancy;
@@ -521,6 +523,29 @@ public sealed class TeacherOverrideMySqlTests
                 JoinedAt = UtcNow.AddDays(-1)
             });
 
+            var assignmentId = Guid.NewGuid();
+            context.Assignments.Add(new Assignment
+            {
+                CenterId = centerId,
+                AssignmentId = assignmentId,
+                ClassId = classId,
+                CreatedByTeacherId = teacherId,
+                Title = "Homework 1",
+                Status = AssignmentStatus.Published,
+                CreatedAt = UtcNow.AddDays(-1),
+                UpdatedAt = UtcNow.AddDays(-1)
+            });
+
+            context.AssignmentTargets.Add(new AssignmentTarget
+            {
+                CenterId = centerId,
+                AssignmentId = assignmentId,
+                StudentId = studentId,
+                TargetSource = TargetSource.WholeClass,
+                CreatedAt = UtcNow.AddDays(-1),
+                CreatedBy = teacherId
+            });
+
             context.Subjects.Add(new Subject
             {
                 CenterId = centerId,
@@ -599,6 +624,7 @@ public sealed class TeacherOverrideMySqlTests
                 AttemptId = 1001,
                 StudentId = studentId,
                 QuestionId = 501,
+                AssignmentId = assignmentId,
                 FinalAnswer = "A",
                 ReasoningText = "Reasoning text",
                 IsCorrect = false,

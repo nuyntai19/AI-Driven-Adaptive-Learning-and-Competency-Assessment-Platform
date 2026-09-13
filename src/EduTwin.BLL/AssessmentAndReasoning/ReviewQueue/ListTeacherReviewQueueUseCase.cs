@@ -81,12 +81,15 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
                 !_dbContext.EvidenceAssessments.Any(successor =>
                     successor.CenterId == centerId &&
                     successor.SupersedesAssessmentId == evidence.EvidenceAssessmentId) &&
-                _dbContext.ClassStudents.Any(membership =>
-                    membership.CenterId == centerId &&
-                    membership.StudentId == evidence.Attempt.StudentId &&
-                    membership.Status == ClassStudentStatus.Active &&
-                    membership.Class.TeacherId == teacherId &&
-                    (!query.ClassId.HasValue || membership.ClassId == query.ClassId.Value)));
+                evidence.Attempt.AssignmentId.HasValue &&
+                _dbContext.AssignmentTargets.Any(target =>
+                    target.CenterId == centerId &&
+                    target.AssignmentId == evidence.Attempt.AssignmentId.Value &&
+                    target.StudentId == evidence.Attempt.StudentId &&
+                    target.Assignment != null &&
+                    target.Assignment.Class != null &&
+                    target.Assignment.Class.TeacherId == teacherId &&
+                    (!query.ClassId.HasValue || target.Assignment.ClassId == query.ClassId.Value)));
 
         var totalItems = await reviewItems.LongCountAsync(cancellationToken);
         var totalPages = totalItems == 0

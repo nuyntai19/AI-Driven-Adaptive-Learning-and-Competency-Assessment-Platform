@@ -21,6 +21,7 @@ using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.Contracts.KnowledgeGraph;
 using EduTwin.Contracts.Organization;
 using EduTwin.DAL.AssessmentAndReasoning;
+using EduTwin.DAL.Assignments;
 using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.DigitalTwin;
 using EduTwin.DAL.KnowledgeGraph;
@@ -260,11 +261,54 @@ public sealed class CyclicPrerequisiteNonRollbackTests : IDisposable
     {
         SeedCyclicKnowledgeGraph();
 
+        var classId = Guid.NewGuid();
+        var assignmentId = Guid.NewGuid();
+
+        _dbContext.Classes.Add(new Class
+        {
+            CenterId = _centerId,
+            ClassId = classId,
+            TeacherId = _teacherId,
+            SubjectId = _subjectId,
+            ClassName = "Class 10A",
+            AcademicYear = "2025-2026",
+            Status = ClassStatus.Active,
+            CreatedAt = _utcNow,
+            UpdatedAt = _utcNow
+        });
+        _dbContext.ClassStudents.Add(new ClassStudent
+        {
+            CenterId = _centerId,
+            ClassId = classId,
+            StudentId = _studentId,
+            Status = ClassStudentStatus.Active,
+            JoinedAt = _utcNow
+        });
+        _dbContext.Assignments.Add(new Assignment
+        {
+            CenterId = _centerId,
+            AssignmentId = assignmentId,
+            ClassId = classId,
+            CreatedByTeacherId = _teacherId,
+            Title = "Prerequisite Test Assignment",
+            CreatedAt = _utcNow,
+            UpdatedAt = _utcNow
+        });
+        _dbContext.AssignmentTargets.Add(new AssignmentTarget
+        {
+            CenterId = _centerId,
+            AssignmentId = assignmentId,
+            StudentId = _studentId,
+            CreatedAt = _utcNow,
+            CreatedBy = _teacherId
+        });
+
         var attempt = new Attempt
         {
             CenterId = _centerId,
             AttemptId = 3001,
             StudentId = _studentId,
+            AssignmentId = assignmentId,
             QuestionId = 501,
             FinalAnswer = "A",
             ReasoningLanguage = "vi",
@@ -309,28 +353,6 @@ public sealed class CyclicPrerequisiteNonRollbackTests : IDisposable
             CreatedAt = _utcNow.AddHours(-1)
         };
         _dbContext.EvidenceAssessments.Add(initialEvidence);
-
-        var classId = Guid.NewGuid();
-        _dbContext.Classes.Add(new Class
-        {
-            CenterId = _centerId,
-            ClassId = classId,
-            TeacherId = _teacherId,
-            SubjectId = _subjectId,
-            ClassName = "Class 10A",
-            AcademicYear = "2025-2026",
-            Status = ClassStatus.Active,
-            CreatedAt = _utcNow,
-            UpdatedAt = _utcNow
-        });
-        _dbContext.ClassStudents.Add(new ClassStudent
-        {
-            CenterId = _centerId,
-            ClassId = classId,
-            StudentId = _studentId,
-            Status = ClassStudentStatus.Active,
-            JoinedAt = _utcNow
-        });
 
         var initialTwin = new KnowledgeTwin
         {

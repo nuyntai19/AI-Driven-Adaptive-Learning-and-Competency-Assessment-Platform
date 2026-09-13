@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using EduTwin.BLL.AssessmentAndReasoning.Attachments;
 using EduTwin.BLL.AssessmentAndReasoning.Evidence;
 using EduTwin.BLL.DigitalTwin;
 using EduTwin.BLL.IdentityAndTenancy;
@@ -36,6 +37,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
     private readonly IBehaviorCalibrationSampleProvider _calibrationSampleProvider;
     private readonly IRecommendationEngine? _recommendationEngine;
     private readonly TimeProvider _timeProvider;
+    private readonly IAttemptTeacherReviewScopeGuard _scopeGuard;
     private readonly ILogger<TeacherOverrideUseCase> _logger;
 
     public TeacherOverrideUseCase(
@@ -50,6 +52,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
         IBehaviorCalibrationCalculator? calibrationCalculator = null,
         IBehaviorCalibrationSampleProvider? calibrationSampleProvider = null,
         IRecommendationEngine? recommendationEngine = null,
+        IAttemptTeacherReviewScopeGuard? scopeGuard = null,
         ILogger<TeacherOverrideUseCase>? logger = null)
     {
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
@@ -63,6 +66,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
         _calibrationCalculator = calibrationCalculator ?? new BehaviorCalibrationCalculator();
         _calibrationSampleProvider = calibrationSampleProvider ?? new BehaviorCalibrationSampleProvider(_dbContext);
         _recommendationEngine = recommendationEngine;
+        _scopeGuard = scopeGuard ?? new AttemptTeacherReviewScopeGuard(_dbContext);
         _logger = logger ?? NullLogger<TeacherOverrideUseCase>.Instance;
     }
 
@@ -80,7 +84,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
 
         var centerId = _tenantContext.CenterId.Value;
         var actorId = _tenantContext.UserId.Value;
-        var role = _tenantContext.Role;
+        var role = _tenantContext.Role ?? string.Empty;
 
         var isTeacher = string.Equals(role, nameof(UserRole.Teacher), StringComparison.OrdinalIgnoreCase);
         var isCenterManager = string.Equals(role, nameof(UserRole.CenterManager), StringComparison.OrdinalIgnoreCase);
@@ -135,21 +139,17 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
             }
         }
 
-        // 3. Validate Teacher Ownership (unless CenterManager)
-        if (isTeacher)
-        {
-            var isClassTeacher = await _dbContext.ClassStudents
-                .AnyAsync(
-                    cs => cs.CenterId == centerId
-                        && cs.StudentId == attempt.StudentId
-                        && cs.Status == ClassStudentStatus.Active
-                        && cs.Class.TeacherId == actorId,
-                    cancellationToken);
+        // 3. Validate Teacher / CenterManager Ownership via Fail-Closed Scope Guard
+        var canAccess = await _scopeGuard.CanAccessAttemptAsync(
+            centerId,
+            actorId,
+            role,
+            attempt,
+            cancellationToken);
 
-            if (!isClassTeacher)
-            {
-                return TeacherOverrideResult.Forbidden();
-            }
+        if (!canAccess)
+        {
+            return TeacherOverrideResult.Forbidden();
         }
 
         // 4. Optimistic concurrency check on OverrideVersion

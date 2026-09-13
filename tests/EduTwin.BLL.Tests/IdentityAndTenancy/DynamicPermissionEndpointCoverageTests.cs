@@ -72,7 +72,11 @@ public sealed class DynamicPermissionEndpointCoverageTests
             .ToArray();
 
         Assert.Equal(
-            ["LearningController.SubmitAttempt:StudentOnly"],
-            uses);
+            new[]
+            {
+                "AttemptAttachmentsController.PrepareUpload:StudentOnly",
+                "LearningController.SubmitAttempt:StudentOnly"
+            },
+            uses.OrderBy(u => u, StringComparer.Ordinal).ToArray());
     }
 }

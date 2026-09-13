@@ -5,5 +5,6 @@ public enum AttemptStatus
     PendingAnalysis,
     Processing,
     Completed,
-    NeedsTeacherReview
+    NeedsTeacherReview,
+    AnalysisFailed
 }

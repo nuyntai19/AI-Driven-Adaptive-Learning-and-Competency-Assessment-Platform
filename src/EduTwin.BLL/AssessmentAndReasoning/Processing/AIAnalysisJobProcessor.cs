@@ -24,6 +24,8 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
 {
     private const string AnalysisFailureCode = "AI_ANALYSIS_ATTEMPT_FAILED";
     private const string AnalysisFailureMessage = "AI analysis attempt failed.";
+    private const string AttachmentStorageUnavailableCode = "ATTACHMENT_STORAGE_UNAVAILABLE";
+    private const string AttachmentStorageUnavailableMessage = "Attempt attachment storage is temporarily unavailable.";
 
     private readonly EduTwinDbContext _dbContext;
     private readonly ITenantContext _tenantContext;
@@ -221,6 +223,15 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
+        }
+        catch (AttemptAttachmentStorageUnavailableException)
+        {
+            return await PersistStorageFailureAsync(
+                initialJob,
+                initialAttempt,
+                requestContext,
+                workerId,
+                cancellationToken);
         }
         catch
         {
@@ -602,18 +613,23 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
 
         try
         {
-            await using var source = await _attachmentStorage.OpenPermanentReadAsync(
-                attachment.StorageKey,
-                cancellationToken);
-            await using var destination = new MemoryStream(checked((int)attachment.FileSizeBytes));
-            await source.CopyToAsync(destination, cancellationToken);
-            if (destination.Length != attachment.FileSizeBytes || destination.Length > 5_242_880)
+            var bytes = await BoundedRetryHelper.ExecuteWithRetryAsync(async () =>
             {
-                throw new AttemptAttachmentStorageUnavailableException(
-                    "Stored attachment content does not match its immutable metadata.");
-            }
+                await using var source = await _attachmentStorage.OpenPermanentReadAsync(
+                    attachment.StorageKey,
+                    cancellationToken);
+                await using var destination = new MemoryStream(checked((int)attachment.FileSizeBytes));
+                await source.CopyToAsync(destination, cancellationToken);
+                if (destination.Length != attachment.FileSizeBytes || destination.Length > 5_242_880)
+                {
+                    throw new AttemptAttachmentStorageUnavailableException(
+                        "Stored attachment content does not match its immutable metadata.");
+                }
 
-            return [new AnalyzeReasoningImagePart(destination.ToArray(), attachment.ContentType)];
+                return destination.ToArray();
+            }, maxAttempts: 3, initialDelayMs: 50, cancellationToken: cancellationToken);
+
+            return [new AnalyzeReasoningImagePart(bytes, attachment.ContentType)];
         }
         catch (AttemptAttachmentStorageUnavailableException)
         {
@@ -624,6 +640,170 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             throw new AttemptAttachmentStorageUnavailableException(
                 "Attempt attachment is temporarily unavailable.", exception);
         }
+    }
+
+    private async Task<AIAnalysisJobProcessingResult> PersistStorageFailureAsync(
+        AIAnalysisJob initialJob,
+        Attempt initialAttempt,
+        RequestContext requestContext,
+        string workerId,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+        AIAnalysisJobProcessingOutcome committedOutcome = default;
+
+        try
+        {
+            var reload = await ReloadAndRevalidateAsync(
+                initialJob,
+                initialAttempt,
+                requestContext,
+                workerId,
+                cancellationToken);
+            if (reload.Outcome.HasValue)
+            {
+                return await RollbackResultAsync(
+                    transaction,
+                    Result(initialJob.AnalysisJobId, initialAttempt.AttemptId, reload.Outcome.Value));
+            }
+
+            var job = reload.Job!;
+            var attempt = reload.Attempt!;
+            var transactionalUtcNow = reload.UtcNow;
+            AIAnalysisJobProcessingOutcome outcome;
+            AIAnalysisJobTransitionResult transition;
+
+            if (job.RetryCount < 3)
+            {
+                var delaySeconds = Math.Min(300, (int)Math.Pow(2, job.RetryCount) * 10);
+                var retryAvailableAt = transactionalUtcNow.AddSeconds(delaySeconds);
+
+                transition = _stateMachine.Retry(
+                    job,
+                    transactionalUtcNow,
+                    retryAvailableAt,
+                    AttachmentStorageUnavailableCode,
+                    AttachmentStorageUnavailableMessage,
+                    maxRetries: 3);
+
+                attempt.Status = AttemptStatus.PendingAnalysis;
+                outcome = AIAnalysisJobProcessingOutcome.RetryScheduled;
+            }
+            else
+            {
+                if (attempt.AssignmentId.HasValue)
+                {
+                    attempt.Status = AttemptStatus.NeedsTeacherReview;
+                    transition = _stateMachine.CompleteFallback(
+                        job,
+                        transactionalUtcNow,
+                        AttachmentStorageUnavailableCode,
+                        AttachmentStorageUnavailableMessage);
+
+                    var fallbackUtcNow = _timeProvider.GetUtcNow().UtcDateTime;
+                    var fallback = _fallbackBuilder.Build(new RuleBasedFallbackInput(
+                        attempt.CenterId,
+                        attempt.AttemptId,
+                        attempt.IsCorrect,
+                        attempt.AwardedScore,
+                        attempt.Skipped,
+                        attempt.ReasoningLanguage,
+                        fallbackUtcNow));
+
+                    var consistency = new EvidenceConsistencyResult(
+                        SemanticValidationPassed: true,
+                        HasContradiction: false,
+                        HasAnomaly: false,
+                        HasRequiredEvidence: false,
+                        ReasonCodes: [EvidenceReasonCodes.SourceRuleFallback],
+                        StructuralValidationPassed: true);
+
+                    var decision = _evidenceGate.Evaluate(new EvidenceGateInput(
+                        EvidenceSourceType.RuleFallback,
+                        StructuralValidationPassed: consistency.StructuralValidationPassed,
+                        SemanticValidationPassed: consistency.SemanticValidationPassed,
+                        HasContradiction: consistency.HasContradiction,
+                        HasAnomaly: consistency.HasAnomaly,
+                        HasRequiredEvidence: consistency.HasRequiredEvidence,
+                        EffectiveIsCorrect: attempt.IsCorrect,
+                        AnalysisConfidence: null,
+                        AnalysisOverrideVersion: fallback.OverrideVersion));
+
+                    fallback.NeedsTeacherReview = true;
+
+                    var evidence = _evidenceAssessmentFactory.Create(
+                        attempt,
+                        fallback,
+                        supersedes: null,
+                        decision,
+                        transactionalUtcNow,
+                        createdBy: null);
+
+                    _dbContext.ReasoningAnalyses.Add(fallback);
+                    _dbContext.EvidenceAssessments.Add(evidence);
+
+                    outcome = AIAnalysisJobProcessingOutcome.FallbackCompleted;
+                }
+                else
+                {
+                    transition = _stateMachine.FailTerminal(
+                        job,
+                        transactionalUtcNow,
+                        AttachmentStorageUnavailableCode,
+                        AttachmentStorageUnavailableMessage);
+
+                    attempt.Status = AttemptStatus.AnalysisFailed;
+                    outcome = AIAnalysisJobProcessingOutcome.FailedTerminal;
+                }
+            }
+
+            if (transition != AIAnalysisJobTransitionResult.Success)
+            {
+                return await RollbackResultAsync(
+                    transaction,
+                    Result(
+                        initialJob.AnalysisJobId,
+                        initialAttempt.AttemptId,
+                        AIAnalysisJobProcessingOutcome.NotEligible));
+            }
+
+            attempt.UpdatedAt = transactionalUtcNow;
+            cancellationToken.ThrowIfCancellationRequested();
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            committedOutcome = outcome;
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            _dbContext.ChangeTracker.Clear();
+            return Result(
+                initialJob.AnalysisJobId,
+                initialAttempt.AttemptId,
+                AIAnalysisJobProcessingOutcome.LostRace);
+        }
+        catch (DbUpdateException)
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            await transaction.DisposeAsync();
+            _dbContext.ChangeTracker.Clear();
+
+            if (await WasCompletedByAnotherProcessorAsync(
+                    initialJob.AnalysisJobId,
+                    initialAttempt.AttemptId,
+                    cancellationToken))
+            {
+                return Result(
+                    initialJob.AnalysisJobId,
+                    initialAttempt.AttemptId,
+                    AIAnalysisJobProcessingOutcome.AlreadyTerminal);
+            }
+
+            throw;
+        }
+
+        return Result(initialJob.AnalysisJobId, initialAttempt.AttemptId, committedOutcome);
     }
 
     private async Task<Guid> ResolveSubjectIdAfterCommitAsync(Guid centerId, ulong questionId)

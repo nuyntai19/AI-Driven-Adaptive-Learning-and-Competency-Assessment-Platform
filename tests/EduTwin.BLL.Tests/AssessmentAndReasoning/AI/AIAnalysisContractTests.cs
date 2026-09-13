@@ -47,7 +47,8 @@ public sealed class AIAnalysisContractTests
             ("ReasoningText", typeof(string), NullabilityState.Nullable, false),
             ("TimeSpentSeconds", typeof(uint), NullabilityState.NotNull, false),
             ("Confidence", typeof(decimal), NullabilityState.NotNull, false),
-            ("AnswerChanges", typeof(uint), NullabilityState.NotNull, false));
+            ("AnswerChanges", typeof(uint), NullabilityState.NotNull, false),
+            ("ImageParts", typeof(IReadOnlyList<AnalyzeReasoningImagePart>), NullabilityState.NotNull, false));
         AssertExactProperties(
             typeof(AnalyzeReasoningAllowedKnowledgeNode),
             ("NodeId", typeof(string), NullabilityState.NotNull, true),
@@ -110,7 +111,8 @@ public sealed class AIAnalysisContractTests
             "reasoningText",
             "timeSpentSeconds",
             "confidence",
-            "answerChanges");
+            "answerChanges",
+            "imageParts");
         Assert.Equal("B", submission.GetProperty("finalAnswer").GetString());
         Assert.Equal("Em đặt điều kiện...", submission.GetProperty("reasoningText").GetString());
         Assert.Equal(165u, submission.GetProperty("timeSpentSeconds").GetUInt32());

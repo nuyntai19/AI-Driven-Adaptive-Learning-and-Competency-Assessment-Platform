@@ -21,4 +21,5 @@ public static class ErrorCodes
     public const string DagCycleDetected = "DAG_CYCLE_DETECTED";
     public const string AssignmentNotAvailable = "ASSIGNMENT_NOT_AVAILABLE";
     public const string QuestionReasoningRequired = "QUESTION_REASONING_REQUIRED";
+    public const string StorageUnavailable = "STORAGE_UNAVAILABLE";
 }

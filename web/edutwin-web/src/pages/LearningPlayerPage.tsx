@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -22,7 +22,8 @@ import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
 import { MathInputToolbar } from "../components/math/MathInputToolbar";
 import { ScientificCalculatorDrawer } from "../components/math/ScientificCalculatorDrawer";
 import { ScratchpadCanvasModal } from "../components/math/ScratchpadCanvasModal";
-import { deleteScratchpadDraft } from "../utils/scratchpadStorage";
+import { renderPng } from "../utils/scratchpadRenderer";
+import { deleteScratchpadDraft, getScratchpadDraft } from "../utils/scratchpadStorage";
 import {
   clearAttemptSessionId,
   createClientSubmissionId,
@@ -65,6 +66,7 @@ export const LearningPlayerPage = () => {
   const [pollingStatus, setPollingStatus] = useState<string>("Đang xử lý...");
   const [feedbackData, setFeedbackData] = useState<AttemptFeedbackDataDto | null>(null);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const [canResubmit, setCanResubmit] = useState<boolean>(false);
   const pollingAttemptRef = useRef(0);
 
   // Timer
@@ -104,12 +106,42 @@ export const LearningPlayerPage = () => {
     clientSubmissionIdRef.current = getOrCreateAttemptSessionId(attemptSessionScope);
   }, [attemptSessionScope]);
 
-  const getClientSubmissionId = () => {
+  const getClientSubmissionId = useCallback(() => {
     if (!attemptSessionScope) return clientSubmissionIdRef.current;
     const id = getOrCreateAttemptSessionId(attemptSessionScope);
     clientSubmissionIdRef.current = id;
     return id;
-  };
+  }, [attemptSessionScope]);
+
+  // Auto-restore vector scratchpad draft and render preview PNG on mount/reload
+  useEffect(() => {
+    if (!currentUser || !question || feedbackData || pollingJobId || persistedJobId) return;
+    const clientSubId = getClientSubmissionId();
+    let active = true;
+
+    void getScratchpadDraft(currentUser.centerId, currentUser.userId, clientSubId)
+      .then(async (draft) => {
+        if (!active || !draft || !draft.strokes || draft.strokes.length === 0) return;
+        try {
+          const png = await renderPng(
+            draft.strokes,
+            draft.gridType,
+            draft.canvasWidth || 1200,
+            draft.canvasHeight || 800
+          );
+          if (!active) return;
+          setScratchpadPng(png);
+          setScratchpadPngBytes(png.size);
+        } catch {
+          // Ignore canvas rendering failure during initial restore
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [currentUser, feedbackData, getClientSubmissionId, persistedJobId, pollingJobId, question]);
 
   // Derive presentation LaTeX separating presentation from semantic evaluation
   const derivedDisplayLatex = useMemo(() => {
@@ -297,7 +329,10 @@ export const LearningPlayerPage = () => {
           next.delete("attemptId");
           return next;
         });
-        setSubmissionError("Phân tích không hoàn tất. Bạn có thể thử tải lại kết quả mà không cần nộp lại bài.");
+        setSubmissionError(
+          "Quá trình phân tích bài làm gặp sự cố (AnalysisFailed). Bạn có thể nộp lại bài làm này."
+        );
+        setCanResubmit(true);
         return;
       }
 
@@ -377,7 +412,10 @@ export const LearningPlayerPage = () => {
     setShowMathToolbar(false);
     setIsScratchpadOpen(false);
     setScratchpadPngBytes(null);
+    setScratchpadPng(null);
+    setDrawingUploadToken(null);
     setSubmissionError(null);
+    setCanResubmit(false);
     pollingAttemptRef.current = 0;
     if (attemptSessionScope) clearAttemptSessionId(attemptSessionScope);
     clientSubmissionIdRef.current = createClientSubmissionId();
@@ -388,6 +426,21 @@ export const LearningPlayerPage = () => {
       return next;
     });
     refetchQuestion();
+  };
+
+  // Explicit resubmit handler when previous attempt failed terminally
+  const handleResubmit = () => {
+    if (attemptSessionScope) {
+      clearAttemptSessionId(attemptSessionScope);
+    }
+    const newId = createClientSubmissionId();
+    clientSubmissionIdRef.current = newId;
+    setDrawingUploadToken(null);
+    setSubmissionError(null);
+    setCanResubmit(false);
+    setIsSubmitting(false);
+    setPollingJobId(null);
+    pollingAttemptRef.current = 0;
   };
 
   if (questionLoading) {
@@ -685,7 +738,18 @@ export const LearningPlayerPage = () => {
 
         {submissionError && (
           <div className="rounded-lg bg-red-50 p-4 text-sm font-medium text-red-800 ring-1 ring-red-200">
-            {submissionError}
+            <p>{submissionError}</p>
+            {canResubmit && (
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={handleResubmit}
+                  className="rounded-md bg-red-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-red-700 shadow-sm"
+                >
+                  Nộp lại bài làm
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -947,8 +1011,13 @@ export const LearningPlayerPage = () => {
           userId={currentUser.userId}
           clientSubmissionId={clientSubmissionIdRef.current}
           onExportPng={(png) => {
-            setScratchpadPngBytes(png.size);
-            setScratchpadPng(png);
+            if (png) {
+              setScratchpadPngBytes(png.size);
+              setScratchpadPng(png);
+            } else {
+              setScratchpadPngBytes(null);
+              setScratchpadPng(null);
+            }
             setDrawingUploadToken(null);
           }}
         />

@@ -340,6 +340,7 @@ public sealed class ListAttemptsUseCase : IListAttemptsUseCase
             nameof(AttemptStatus.Processing) => AttemptStatus.Processing,
             nameof(AttemptStatus.Completed) => AttemptStatus.Completed,
             nameof(AttemptStatus.NeedsTeacherReview) => AttemptStatus.NeedsTeacherReview,
+            nameof(AttemptStatus.AnalysisFailed) => AttemptStatus.AnalysisFailed,
             _ => null
         };
         return value is null || parsed.HasValue;
@@ -421,6 +422,7 @@ public sealed class ListAttemptsUseCase : IListAttemptsUseCase
             AttemptStatus.Processing => nameof(AttemptStatus.Processing),
             AttemptStatus.Completed => nameof(AttemptStatus.Completed),
             AttemptStatus.NeedsTeacherReview => nameof(AttemptStatus.NeedsTeacherReview),
+            AttemptStatus.AnalysisFailed => nameof(AttemptStatus.AnalysisFailed),
             _ => throw new InvalidOperationException($"Unknown attempt status: {status}")
         };
 

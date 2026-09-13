@@ -56,7 +56,10 @@ public sealed record AnalyzeReasoningStudentSubmission
     public IReadOnlyList<AnalyzeReasoningImagePart> ImageParts { get; init; } = [];
 }
 
-public sealed record AnalyzeReasoningImagePart(byte[] Data, string MimeType);
+public sealed record AnalyzeReasoningImagePart(byte[] Data, string MimeType)
+{
+    public AnalyzeReasoningImagePart() : this([], "image/png") { }
+}
 
 public sealed record AnalyzeReasoningAllowedKnowledgeNode
 {

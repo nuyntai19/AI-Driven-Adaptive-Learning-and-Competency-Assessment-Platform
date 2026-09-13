@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.IO.Compression;
 using System.Security.Cryptography;
 using EduTwin.BLL.AssessmentAndReasoning.Attachments;
 using Microsoft.Extensions.Options;
@@ -127,6 +128,10 @@ public sealed class FileSystemAttemptAttachmentStorage : IAttemptAttachmentStora
 
         var isFirstChunk = true;
         var foundEnd = false;
+        var hasIdat = false;
+        (uint Width, uint Height, byte BitDepth, byte ColorType) ihdrInfo = default;
+        await using var idatStream = new MemoryStream();
+
         while (stream.Position < fileSize)
         {
             var header = new byte[8];
@@ -146,11 +151,17 @@ public sealed class FileSystemAttemptAttachmentStorage : IAttemptAttachmentStora
                 }
                 var ihdr = new byte[13];
                 await ReadExactlyAsync(stream, ihdr, cancellationToken);
-                ValidateIhdr(ihdr);
+                ihdrInfo = ValidateIhdr(ihdr);
                 var declaredCrc = await ReadUInt32Async(stream, cancellationToken);
                 if (CalculateCrc(type, ihdr) != declaredCrc) throw new AttemptAttachmentValidationException("PNG IHDR CRC is invalid.");
                 isFirstChunk = false;
                 continue;
+            }
+
+            var isIdat = type.AsSpan().SequenceEqual("IDAT"u8);
+            if (isIdat)
+            {
+                hasIdat = true;
             }
 
             var crc = new PngCrc(type);
@@ -161,6 +172,10 @@ public sealed class FileSystemAttemptAttachmentStorage : IAttemptAttachmentStora
                 var count = Math.Min(buffer.Length, remaining);
                 await ReadExactlyAsync(stream, buffer.AsMemory(0, count), cancellationToken);
                 crc.Append(buffer.AsSpan(0, count));
+                if (isIdat)
+                {
+                    await idatStream.WriteAsync(buffer.AsMemory(0, count), cancellationToken);
+                }
                 remaining -= count;
             }
             var expectedCrc = await ReadUInt32Async(stream, cancellationToken);
@@ -174,19 +189,102 @@ public sealed class FileSystemAttemptAttachmentStorage : IAttemptAttachmentStora
         }
 
         if (isFirstChunk || !foundEnd) throw new AttemptAttachmentValidationException("PNG is truncated.");
+        if (!hasIdat || idatStream.Length == 0) throw new AttemptAttachmentValidationException("PNG contains no image data (missing IDAT chunk).");
+
+        await ValidateIdatDecompressionAsync(idatStream, ihdrInfo, cancellationToken);
     }
 
-    private static void ValidateIhdr(ReadOnlySpan<byte> ihdr)
+    private static (uint Width, uint Height, byte BitDepth, byte ColorType) ValidateIhdr(ReadOnlySpan<byte> ihdr)
     {
         var width = BinaryPrimitives.ReadUInt32BigEndian(ihdr[..4]);
         var height = BinaryPrimitives.ReadUInt32BigEndian(ihdr.Slice(4, 4));
         var bitDepth = ihdr[8];
         var colorType = ihdr[9];
-        if (width is 0 or > 4096 || height is 0 or > 4096 ||
-            bitDepth is not (8 or 16) || colorType is not (0 or 2 or 4 or 6) ||
-            ihdr[10] != 0 || ihdr[11] != 0 || ihdr[12] is > 1)
+        var compressionMethod = ihdr[10];
+        var filterMethod = ihdr[11];
+        var interlaceMethod = ihdr[12];
+
+        if (width is 0 or > 4096 || height is 0 or > 4096)
         {
-            throw new AttemptAttachmentValidationException("PNG IHDR values are not supported.");
+            throw new AttemptAttachmentValidationException("PNG dimensions are invalid or exceed 4096x4096.");
+        }
+
+        if (compressionMethod != 0 || filterMethod != 0 || interlaceMethod > 1)
+        {
+            throw new AttemptAttachmentValidationException("PNG compression/filter/interlace values are not supported.");
+        }
+
+        var isValidColorMatrix = colorType switch
+        {
+            0 => bitDepth is 1 or 2 or 4 or 8 or 16,
+            2 => bitDepth is 8 or 16,
+            3 => bitDepth is 1 or 2 or 4 or 8,
+            4 => bitDepth is 8 or 16,
+            6 => bitDepth is 8 or 16,
+            _ => false
+        };
+
+        if (!isValidColorMatrix)
+        {
+            throw new AttemptAttachmentValidationException($"PNG colorType {colorType} and bitDepth {bitDepth} combination is not supported.");
+        }
+
+        return (width, height, bitDepth, colorType);
+    }
+
+    private static async Task ValidateIdatDecompressionAsync(
+        MemoryStream idatStream,
+        (uint Width, uint Height, byte BitDepth, byte ColorType) ihdrInfo,
+        CancellationToken cancellationToken)
+    {
+        idatStream.Position = 0;
+
+        var bitsPerPixel = ihdrInfo.ColorType switch
+        {
+            0 => (long)ihdrInfo.BitDepth,
+            2 => (long)ihdrInfo.BitDepth * 3,
+            3 => (long)ihdrInfo.BitDepth,
+            4 => (long)ihdrInfo.BitDepth * 2,
+            6 => (long)ihdrInfo.BitDepth * 4,
+            _ => (long)ihdrInfo.BitDepth * 4
+        };
+
+        var rowBytes = (ihdrInfo.Width * bitsPerPixel + 7) / 8;
+        var bytesPerScanline = 1 + rowBytes;
+        var expectedRawBytes = (long)ihdrInfo.Height * bytesPerScanline;
+
+        // Bounded budget: allow up to 2x expected raw bytes or 1 MB minimum, capped strictly at 64 MB
+        var maxDecompressedBudget = Math.Min(64L * 1024 * 1024, Math.Max(1024L * 1024, expectedRawBytes * 2));
+
+        try
+        {
+            await using var zlib = new ZLibStream(idatStream, CompressionMode.Decompress, leaveOpen: true);
+            var buffer = new byte[8192];
+            long totalDecompressedBytes = 0;
+
+            while (true)
+            {
+                var read = await zlib.ReadAsync(buffer.AsMemory(), cancellationToken);
+                if (read == 0) break;
+                totalDecompressedBytes += read;
+                if (totalDecompressedBytes > maxDecompressedBudget)
+                {
+                    throw new AttemptAttachmentValidationException("PNG decompressed payload exceeds maximum allowed memory budget.");
+                }
+            }
+
+            if (totalDecompressedBytes == 0)
+            {
+                throw new AttemptAttachmentValidationException("PNG decompressed image data is empty.");
+            }
+        }
+        catch (AttemptAttachmentValidationException)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is InvalidDataException or IOException)
+        {
+            throw new AttemptAttachmentValidationException("PNG IDAT zlib decompression failed: data is corrupted or invalid.", ex);
         }
     }
 

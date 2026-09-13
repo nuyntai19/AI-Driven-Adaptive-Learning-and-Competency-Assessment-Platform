@@ -8,7 +8,8 @@ public enum AIAnalysisJobProcessingOutcome
     AlreadyTerminal,
     NotFound,
     NotEligible,
-    LostRace
+    LostRace,
+    FailedTerminal
 }
 
 public sealed record AIAnalysisJobProcessingResult(

@@ -16,6 +16,10 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
         "ux_attempts_center_id_student_id_client_submission_id";
     private const string AttachmentNonceConstraint =
         "ux_attempt_attachments_center_id_upload_nonce";
+    private const string AttachmentStorageKeyConstraint =
+        "ux_attempt_attachments_center_id_storage_key";
+    private const string AttachmentAttemptConstraint =
+        "ux_attempt_attachments_center_id_attempt_id";
 
     private readonly EduTwinDbContext _dbContext;
     private readonly IAttemptSubmissionValidator _validator;
@@ -179,7 +183,7 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
 
             throw;
         }
-        catch (DbUpdateException exception) when (IsAttachmentNonceDuplicate(exception))
+        catch (DbUpdateException exception) when (IsAttachmentDuplicate(exception))
         {
             await transaction.RollbackAsync(CancellationToken.None);
             _dbContext.ChangeTracker.Clear();
@@ -377,7 +381,16 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
 
         try
         {
-            await _attachmentStorage.DeletePermanentAsync(promotedAttachment.StorageKey, CancellationToken.None);
+            // Protect against race conditions: if another concurrent transaction won the race and committed
+            // an attachment record referencing this storage key, never delete the physical file!
+            var isReferenced = await _dbContext.AttemptAttachments
+                .AsNoTracking()
+                .AnyAsync(candidate => candidate.StorageKey == promotedAttachment.StorageKey);
+
+            if (!isReferenced)
+            {
+                await _attachmentStorage.DeletePermanentAsync(promotedAttachment.StorageKey, CancellationToken.None);
+            }
         }
         catch
         {
@@ -435,11 +448,18 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
         return false;
     }
 
-    private static bool IsAttachmentNonceDuplicate(Exception exception)
+    private static bool IsAttachmentDuplicate(Exception exception)
     {
         for (var current = exception; current is not null; current = current.InnerException)
         {
-            if (current.Message.Contains(AttachmentNonceConstraint, StringComparison.OrdinalIgnoreCase)) return true;
+            if (current.Message.Contains(AttachmentNonceConstraint, StringComparison.OrdinalIgnoreCase) ||
+                current.Message.Contains(AttachmentStorageKeyConstraint, StringComparison.OrdinalIgnoreCase) ||
+                current.Message.Contains(AttachmentAttemptConstraint, StringComparison.OrdinalIgnoreCase) ||
+                (current.Message.Contains("attempt_attachments", StringComparison.OrdinalIgnoreCase) &&
+                 current.Message.Contains("Duplicate", StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
         }
         return false;
     }

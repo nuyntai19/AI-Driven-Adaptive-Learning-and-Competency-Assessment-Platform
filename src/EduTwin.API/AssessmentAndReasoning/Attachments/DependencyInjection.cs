@@ -18,6 +18,7 @@ public static class DependencyInjection
         }
         services.TryAddSingleton<IAttemptAttachmentTokenService, DataProtectionAttemptAttachmentTokenService>();
         services.TryAddSingleton<IAttemptAttachmentStorage, FileSystemAttemptAttachmentStorage>();
+        services.AddHostedService<AttachmentOrphanCleanupWorker>();
         return services;
     }
 }

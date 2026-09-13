@@ -6,4 +6,5 @@ public sealed class AttachmentStorageOptions
     public string? RootPath { get; set; }
     public string? DataProtectionKeysPath { get; set; }
     public int GracePeriodHours { get; set; } = 24;
+    public int CleanupIntervalMinutes { get; set; } = 60;
 }

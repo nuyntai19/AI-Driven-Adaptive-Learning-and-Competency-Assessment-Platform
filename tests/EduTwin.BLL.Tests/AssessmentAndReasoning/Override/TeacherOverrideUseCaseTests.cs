@@ -13,6 +13,7 @@ using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.Contracts.Organization;
 using EduTwin.DAL.AssessmentAndReasoning;
+using EduTwin.DAL.Assignments;
 using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.DigitalTwin;
 using EduTwin.DAL.Organization;
@@ -72,12 +73,31 @@ public sealed class TeacherOverrideUseCaseTests : IDisposable
     [Fact]
     public async Task ExecuteAsync_ValidOverride_ReplaysAttemptsChronologicallyAndReturnsReplaySummary()
     {
-        // 1. Seed Teacher, Class, Student, ClassStudent
+        // 1. Seed Teacher, Class, Student, ClassStudent, Assignment, AssignmentTarget
         var classId = Guid.NewGuid();
+        var assignmentId = Guid.NewGuid();
         _dbContext.Teachers.Add(new Teacher { CenterId = _centerId, TeacherId = _teacherId, CreatedAt = _utcNow, UpdatedAt = _utcNow });
         _dbContext.Students.Add(new Student { CenterId = _centerId, StudentId = _studentId, FullName = "Test Student", CreatedAt = _utcNow, UpdatedAt = _utcNow });
         _dbContext.Classes.Add(new Class { CenterId = _centerId, ClassId = classId, TeacherId = _teacherId, ClassName = "Class 10A", AcademicYear = "2026-2027", CreatedAt = _utcNow, UpdatedAt = _utcNow });
         _dbContext.ClassStudents.Add(new ClassStudent { CenterId = _centerId, ClassId = classId, StudentId = _studentId, Status = ClassStudentStatus.Active, JoinedAt = _utcNow });
+        _dbContext.Assignments.Add(new Assignment
+        {
+            CenterId = _centerId,
+            AssignmentId = assignmentId,
+            ClassId = classId,
+            CreatedByTeacherId = _teacherId,
+            Title = "Classwork",
+            CreatedAt = _utcNow,
+            UpdatedAt = _utcNow
+        });
+        _dbContext.AssignmentTargets.Add(new AssignmentTarget
+        {
+            CenterId = _centerId,
+            AssignmentId = assignmentId,
+            StudentId = _studentId,
+            CreatedAt = _utcNow,
+            CreatedBy = _teacherId
+        });
 
         // 2. Seed Question with Topic 101
         SeedQuestion();
@@ -88,6 +108,7 @@ public sealed class TeacherOverrideUseCaseTests : IDisposable
             CenterId = _centerId,
             AttemptId = 1001,
             StudentId = _studentId,
+            AssignmentId = assignmentId,
             QuestionId = 501,
             FinalAnswer = "A",
             ReasoningText = "My reasoning",
@@ -199,10 +220,29 @@ public sealed class TeacherOverrideUseCaseTests : IDisposable
     public async Task ExecuteAsync_StaleOverrideVersion_ReturnsConflict()
     {
         var classId = Guid.NewGuid();
+        var assignmentId = Guid.NewGuid();
         _dbContext.Teachers.Add(new Teacher { CenterId = _centerId, TeacherId = _teacherId, CreatedAt = _utcNow, UpdatedAt = _utcNow });
         _dbContext.Students.Add(new Student { CenterId = _centerId, StudentId = _studentId, FullName = "Test Student", CreatedAt = _utcNow, UpdatedAt = _utcNow });
         _dbContext.Classes.Add(new Class { CenterId = _centerId, ClassId = classId, TeacherId = _teacherId, ClassName = "Class 10A", AcademicYear = "2026-2027", CreatedAt = _utcNow, UpdatedAt = _utcNow });
         _dbContext.ClassStudents.Add(new ClassStudent { CenterId = _centerId, ClassId = classId, StudentId = _studentId, Status = ClassStudentStatus.Active, JoinedAt = _utcNow });
+        _dbContext.Assignments.Add(new Assignment
+        {
+            CenterId = _centerId,
+            AssignmentId = assignmentId,
+            ClassId = classId,
+            CreatedByTeacherId = _teacherId,
+            Title = "Classwork",
+            CreatedAt = _utcNow,
+            UpdatedAt = _utcNow
+        });
+        _dbContext.AssignmentTargets.Add(new AssignmentTarget
+        {
+            CenterId = _centerId,
+            AssignmentId = assignmentId,
+            StudentId = _studentId,
+            CreatedAt = _utcNow,
+            CreatedBy = _teacherId
+        });
 
         SeedQuestion();
 
@@ -226,6 +266,7 @@ public sealed class TeacherOverrideUseCaseTests : IDisposable
             CenterId = _centerId,
             AttemptId = 1002,
             StudentId = _studentId,
+            AssignmentId = assignmentId,
             QuestionId = 501,
             FinalAnswer = "A",
             ReasoningLanguage = "vi",
@@ -356,6 +397,71 @@ public sealed class TeacherOverrideUseCaseTests : IDisposable
 
         Assert.Equal(TeacherOverrideStatus.Forbidden, result.Status);
         Assert.Empty(_dbContext.ChangeTracker.Entries<EvidenceAssessment>());
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_FreePracticeAttempt_ReturnsForbiddenForTeacher()
+    {
+        var classId = Guid.NewGuid();
+        _dbContext.Teachers.Add(new Teacher { CenterId = _centerId, TeacherId = _teacherId, CreatedAt = _utcNow, UpdatedAt = _utcNow });
+        _dbContext.Students.Add(new Student { CenterId = _centerId, StudentId = _studentId, FullName = "Test Student", CreatedAt = _utcNow, UpdatedAt = _utcNow });
+        _dbContext.Classes.Add(new Class { CenterId = _centerId, ClassId = classId, TeacherId = _teacherId, ClassName = "Class 10A", AcademicYear = "2026-2027", CreatedAt = _utcNow, UpdatedAt = _utcNow });
+        _dbContext.ClassStudents.Add(new ClassStudent { CenterId = _centerId, ClassId = classId, StudentId = _studentId, Status = ClassStudentStatus.Active, JoinedAt = _utcNow });
+
+        SeedQuestion();
+
+        var attempt = new Attempt
+        {
+            CenterId = _centerId,
+            AttemptId = 1099,
+            StudentId = _studentId,
+            QuestionId = 501,
+            AssignmentId = null, // Free practice!
+            FinalAnswer = "A",
+            ReasoningLanguage = "vi",
+            CreatedAt = _utcNow,
+            UpdatedAt = _utcNow
+        };
+        _dbContext.Attempts.Add(attempt);
+
+        var analysis = new ReasoningAnalysis
+        {
+            CenterId = _centerId,
+            AnalysisId = 2099,
+            AttemptId = 1099,
+            OverrideVersion = 0,
+            SchemaVersion = "1.0",
+            MissingSteps = JsonDocument.Parse("[]"),
+            RootCauseNodeIds = JsonDocument.Parse("[]"),
+            Feedback = "Test",
+            CreatedAt = _utcNow,
+            UpdatedAt = _utcNow
+        };
+        _dbContext.ReasoningAnalyses.Add(analysis);
+        await _dbContext.SaveChangesAsync();
+
+        var useCase = new TeacherOverrideUseCase(
+            _dbContext,
+            _tenantContext,
+            new EvidenceGate(),
+            new EvidenceAssessmentFactory(),
+            new StudentGoalRiskUpdater(_dbContext),
+            new StudentTwinUpdater(_dbContext),
+            new TwinUpdateHistoryWriter(_dbContext),
+            TimeProvider.System);
+
+        var request = new TeacherOverrideRequest
+        {
+            ReasoningQuality = 90m,
+            ErrorType = ErrorType.None,
+            Feedback = "Teacher override attempt",
+            IsCorrect = true,
+            Reason = "Valid reason",
+            OverrideVersion = 0
+        };
+
+        var result = await useCase.ExecuteAsync(2099, request, CancellationToken.None);
+        Assert.Equal(TeacherOverrideStatus.Forbidden, result.Status);
     }
 
     private sealed class FixedTimeProvider : TimeProvider

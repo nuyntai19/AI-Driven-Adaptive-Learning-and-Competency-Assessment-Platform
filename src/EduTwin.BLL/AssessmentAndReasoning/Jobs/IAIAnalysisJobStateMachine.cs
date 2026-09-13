@@ -21,7 +21,8 @@ public interface IAIAnalysisJobStateMachine
         DateTime utcNow,
         DateTime retryAvailableAt,
         string? lastErrorCode = null,
-        string? lastErrorMessage = null);
+        string? lastErrorMessage = null,
+        int maxRetries = 1);
 
     AIAnalysisJobTransitionResult RecoverExpiredLease(
         AIAnalysisJob job,

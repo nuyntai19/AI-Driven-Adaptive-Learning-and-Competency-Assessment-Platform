@@ -1,10 +1,14 @@
+using System;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using EduTwin.BLL.AssessmentAndReasoning.ReviewQueue;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.Contracts.Organization;
 using EduTwin.DAL.AssessmentAndReasoning;
+using EduTwin.DAL.Assignments;
 using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.Organization;
 using EduTwin.DAL.Persistence;
@@ -96,6 +100,78 @@ public sealed class ListTeacherReviewQueueUseCaseTests
         Assert.Equal(EduTwin.Contracts.Common.ErrorCodes.ValidationFailed, result.ErrorCode);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_FreePracticeAttempt_IsNeverIncludedInReviewQueue()
+    {
+        var fixture = await CreateFixtureAsync(UserRole.Teacher);
+        await using var context = fixture.Context;
+
+        // Add a free practice attempt (AssignmentId = null) for the student with unresolved evidence requiring review
+        var freePracticeAttemptId = 99UL;
+        var freePracticeAnalysisId = 999UL;
+        var freePracticeEvidenceId = 9999UL;
+        var now = DateTime.UtcNow;
+
+        context.Attempts.Add(new Attempt
+        {
+            CenterId = fixture.Tenant.CenterId!.Value,
+            AttemptId = freePracticeAttemptId,
+            StudentId = fixture.StudentId,
+            QuestionId = 1,
+            AssignmentId = null, // Free-practice
+            FinalAnswer = "free practice answer",
+            ReasoningLanguage = "en",
+            ClientSubmissionId = Guid.NewGuid(),
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+
+        context.ReasoningAnalyses.Add(new ReasoningAnalysis
+        {
+            CenterId = fixture.Tenant.CenterId!.Value,
+            AnalysisId = freePracticeAnalysisId,
+            AttemptId = freePracticeAttemptId,
+            SchemaVersion = "1.0",
+            MissingSteps = JsonDocument.Parse("[]"),
+            RootCauseNodeIds = JsonDocument.Parse("[]"),
+            Feedback = "Free practice review needed",
+            AnalysisConfidence = 30m,
+            OverrideVersion = 0,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+
+        context.EvidenceAssessments.Add(new EvidenceAssessment
+        {
+            CenterId = fixture.Tenant.CenterId!.Value,
+            EvidenceAssessmentId = freePracticeEvidenceId,
+            AttemptId = freePracticeAttemptId,
+            AnalysisId = freePracticeAnalysisId,
+            SourceType = EvidenceSourceType.AI,
+            TrustLevel = EvidenceTrustLevel.ReviewOnly,
+            DecisionMode = EvidenceDecisionMode.AIWeighted,
+            ReasoningWeight = 0m,
+            ReasonCodes = JsonDocument.Parse("[\"AI_CONFIDENCE_BELOW_50\"]"),
+            RequiresTeacherReview = true,
+            PolicyVersion = "evidence-gate-v1",
+            EvaluatedAt = now,
+            CreatedAt = now
+        });
+
+        await context.SaveChangesAsync();
+
+        var sut = new ListTeacherReviewQueueUseCase(
+            context,
+            fixture.Tenant,
+            new StubClassOwnershipGuard(OwnershipDecision.Allowed));
+
+        var result = await sut.ExecuteAsync(new TeacherReviewQueueQuery(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        // Free practice attempt 99 must NOT be in the teacher review queue
+        Assert.DoesNotContain(result.Data!, item => item.AttemptId == freePracticeAttemptId.ToString());
+    }
+
     private static async Task<Fixture> CreateFixtureAsync(UserRole role)
     {
         var centerId = Guid.NewGuid();
@@ -172,11 +248,52 @@ public sealed class ListTeacherReviewQueueUseCaseTests
                 JoinedAt = now
             });
 
+        var ownedAssignmentId = Guid.NewGuid();
+        var otherAssignmentId = Guid.NewGuid();
+        context.Assignments.AddRange(
+            new EduTwin.DAL.Assignments.Assignment
+            {
+                CenterId = centerId,
+                AssignmentId = ownedAssignmentId,
+                ClassId = ownedClassId,
+                CreatedByTeacherId = teacherId,
+                Title = "Owned Assignment",
+                CreatedAt = now,
+                UpdatedAt = now
+            },
+            new EduTwin.DAL.Assignments.Assignment
+            {
+                CenterId = centerId,
+                AssignmentId = otherAssignmentId,
+                ClassId = otherClassId,
+                CreatedByTeacherId = otherTeacherId,
+                Title = "Other Assignment",
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+        context.AssignmentTargets.AddRange(
+            new EduTwin.DAL.Assignments.AssignmentTarget
+            {
+                CenterId = centerId,
+                AssignmentId = ownedAssignmentId,
+                StudentId = studentId,
+                CreatedAt = now,
+                CreatedBy = teacherId
+            },
+            new EduTwin.DAL.Assignments.AssignmentTarget
+            {
+                CenterId = centerId,
+                AssignmentId = otherAssignmentId,
+                StudentId = otherStudentId,
+                CreatedAt = now,
+                CreatedBy = otherTeacherId
+            });
+
         context.Attempts.AddRange(
-            Attempt(1, studentId, now),
-            Attempt(2, studentId, now.AddMinutes(1)),
-            Attempt(3, otherStudentId, now.AddMinutes(2)),
-            Attempt(4, studentId, now.AddMinutes(3)));
+            Attempt(1, studentId, now, ownedAssignmentId),
+            Attempt(2, studentId, now.AddMinutes(1), ownedAssignmentId),
+            Attempt(3, otherStudentId, now.AddMinutes(2), otherAssignmentId),
+            Attempt(4, studentId, now.AddMinutes(3), ownedAssignmentId));
         context.ReasoningAnalyses.AddRange(
             Analysis(11, 1, now),
             Analysis(12, 2, now.AddMinutes(1)),
@@ -190,14 +307,15 @@ public sealed class ListTeacherReviewQueueUseCaseTests
             Evidence(105, 4, 14, false, 104, now.AddMinutes(4)));
 
         await context.SaveChangesAsync();
-        return new Fixture(context, tenant);
+        return new Fixture(context, tenant, studentId);
 
-        Attempt Attempt(ulong attemptId, Guid ownerStudentId, DateTime createdAt) => new()
+        Attempt Attempt(ulong attemptId, Guid ownerStudentId, DateTime createdAt, Guid? assignmentId = null) => new()
         {
             CenterId = centerId,
             AttemptId = attemptId,
             StudentId = ownerStudentId,
             QuestionId = 1,
+            AssignmentId = assignmentId,
             FinalAnswer = "answer",
             ReasoningLanguage = "en",
             ClientSubmissionId = Guid.NewGuid(),
@@ -247,7 +365,7 @@ public sealed class ListTeacherReviewQueueUseCaseTests
         };
     }
 
-    private sealed record Fixture(EduTwinDbContext Context, TenantContext Tenant);
+    private sealed record Fixture(EduTwinDbContext Context, TenantContext Tenant, Guid StudentId);
 
     private sealed class StubClassOwnershipGuard : IClassOwnershipGuard
     {

@@ -50,7 +50,8 @@ public sealed class GeminiPromptBuilderTests
             "reasoningText",
             "timeSpentSeconds",
             "confidence",
-            "answerChanges");
+            "answerChanges",
+            "imageParts");
         AssertObjectProperties(root.GetProperty("allowedKnowledgeNodes")[0], "nodeId", "nodeName");
     }
 

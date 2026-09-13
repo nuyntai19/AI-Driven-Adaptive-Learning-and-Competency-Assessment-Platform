@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Update;
+using EduTwin.BLL.AssessmentAndReasoning.Attachments;
 using EduTwin.BLL.AssessmentAndReasoning.Evidence;
 using EduTwin.BLL.AssessmentAndReasoning.Override;
 using EduTwin.BLL.DigitalTwin;
@@ -50,6 +51,25 @@ public sealed class TeacherOverrideReplayHardeningTests : IDisposable
     }
 
     public void Dispose() => _dbContext.Dispose();
+
+    private sealed class AllowAllScopeGuard : IAttemptTeacherReviewScopeGuard
+    {
+        public Task<bool> CanAccessAttemptAsync(Guid centerId, Guid actorUserId, string role, ulong attemptId, CancellationToken cancellationToken = default) => Task.FromResult(true);
+        public Task<bool> CanAccessAttemptAsync(Guid centerId, Guid actorUserId, string role, Attempt attempt, CancellationToken cancellationToken = default) => Task.FromResult(true);
+    }
+
+    private TeacherOverrideUseCase CreateUseCase(TimeProvider timeProvider, IBehaviorCalibrationSampleProvider? sampleProvider = null) =>
+        new(
+            _dbContext,
+            _tenantContext,
+            new EvidenceGate(),
+            new EvidenceAssessmentFactory(),
+            new StudentGoalRiskUpdater(_dbContext),
+            new StudentTwinUpdater(_dbContext),
+            new TwinUpdateHistoryWriter(_dbContext),
+            timeProvider,
+            calibrationSampleProvider: sampleProvider,
+            scopeGuard: new AllowAllScopeGuard());
 
     private void SeedBaseHierarchy(Guid classId)
     {
@@ -319,15 +339,7 @@ public sealed class TeacherOverrideReplayHardeningTests : IDisposable
         await _dbContext.SaveChangesAsync();
 
         var timeProvider = new FixedTimeProvider(_utcNow);
-        var useCase = new TeacherOverrideUseCase(
-            _dbContext,
-            _tenantContext,
-            new EvidenceGate(),
-            new EvidenceAssessmentFactory(),
-            new StudentGoalRiskUpdater(_dbContext),
-            new StudentTwinUpdater(_dbContext),
-            new TwinUpdateHistoryWriter(_dbContext),
-            timeProvider);
+        var useCase = CreateUseCase(timeProvider);
 
         var request = new TeacherOverrideRequest
         {
@@ -460,15 +472,7 @@ public sealed class TeacherOverrideReplayHardeningTests : IDisposable
         await _dbContext.SaveChangesAsync();
 
         var timeProvider = new FixedTimeProvider(_utcNow);
-        var useCase = new TeacherOverrideUseCase(
-            _dbContext,
-            _tenantContext,
-            new EvidenceGate(),
-            new EvidenceAssessmentFactory(),
-            new StudentGoalRiskUpdater(_dbContext),
-            new StudentTwinUpdater(_dbContext),
-            new TwinUpdateHistoryWriter(_dbContext),
-            timeProvider);
+        var useCase = CreateUseCase(timeProvider);
 
         var request = new TeacherOverrideRequest
         {
@@ -553,15 +557,7 @@ public sealed class TeacherOverrideReplayHardeningTests : IDisposable
         await _dbContext.SaveChangesAsync();
 
         var timeProvider = new FixedTimeProvider(_utcNow);
-        var useCase = new TeacherOverrideUseCase(
-            _dbContext,
-            _tenantContext,
-            new EvidenceGate(),
-            new EvidenceAssessmentFactory(),
-            new StudentGoalRiskUpdater(_dbContext),
-            new StudentTwinUpdater(_dbContext),
-            new TwinUpdateHistoryWriter(_dbContext),
-            timeProvider);
+        var useCase = CreateUseCase(timeProvider);
 
         var request = new TeacherOverrideRequest
         {
@@ -673,7 +669,8 @@ public sealed class TeacherOverrideReplayHardeningTests : IDisposable
             new StudentGoalRiskUpdater(dbContext),
             new StudentTwinUpdater(dbContext),
             new TwinUpdateHistoryWriter(dbContext),
-            TimeProvider.System);
+            TimeProvider.System,
+            scopeGuard: new AllowAllScopeGuard());
 
         var request = new TeacherOverrideRequest
         {
@@ -737,15 +734,7 @@ public sealed class TeacherOverrideReplayHardeningTests : IDisposable
         await _dbContext.SaveChangesAsync();
 
         var timeProvider = new FixedTimeProvider(_utcNow);
-        var useCase = new TeacherOverrideUseCase(
-            _dbContext,
-            _tenantContext,
-            new EvidenceGate(),
-            new EvidenceAssessmentFactory(),
-            new StudentGoalRiskUpdater(_dbContext),
-            new StudentTwinUpdater(_dbContext),
-            new TwinUpdateHistoryWriter(_dbContext),
-            timeProvider);
+        var useCase = CreateUseCase(timeProvider);
 
         var request = new TeacherOverrideRequest
         {
@@ -827,15 +816,7 @@ public sealed class TeacherOverrideReplayHardeningTests : IDisposable
         await _dbContext.SaveChangesAsync();
 
         var timeProvider = new FixedTimeProvider(_utcNow);
-        var useCase = new TeacherOverrideUseCase(
-            _dbContext,
-            _tenantContext,
-            new EvidenceGate(),
-            new EvidenceAssessmentFactory(),
-            new StudentGoalRiskUpdater(_dbContext),
-            new StudentTwinUpdater(_dbContext),
-            new TwinUpdateHistoryWriter(_dbContext),
-            timeProvider);
+        var useCase = CreateUseCase(timeProvider);
 
         // Teacher sends AwardedScore = null to clear override and reset to preliminary
         var request = new TeacherOverrideRequest
@@ -927,15 +908,7 @@ public sealed class TeacherOverrideReplayHardeningTests : IDisposable
         await _dbContext.SaveChangesAsync();
 
         var timeProvider = new FixedTimeProvider(_utcNow);
-        var useCase = new TeacherOverrideUseCase(
-            _dbContext,
-            _tenantContext,
-            new EvidenceGate(),
-            new EvidenceAssessmentFactory(),
-            new StudentGoalRiskUpdater(_dbContext),
-            new StudentTwinUpdater(_dbContext),
-            new TwinUpdateHistoryWriter(_dbContext),
-            timeProvider);
+        var useCase = CreateUseCase(timeProvider);
 
         var request = new TeacherOverrideRequest
         {
@@ -1060,15 +1033,7 @@ public sealed class TeacherOverrideReplayHardeningTests : IDisposable
         await _dbContext.SaveChangesAsync();
 
         var timeProvider = new FixedTimeProvider(_utcNow);
-        var useCase = new TeacherOverrideUseCase(
-            _dbContext,
-            _tenantContext,
-            new EvidenceGate(),
-            new EvidenceAssessmentFactory(),
-            new StudentGoalRiskUpdater(_dbContext),
-            new StudentTwinUpdater(_dbContext),
-            new TwinUpdateHistoryWriter(_dbContext),
-            timeProvider);
+        var useCase = CreateUseCase(timeProvider);
 
         var request = new TeacherOverrideRequest
         {
@@ -1261,15 +1226,7 @@ public sealed class TeacherOverrideReplayHardeningTests : IDisposable
         await _dbContext.SaveChangesAsync();
 
         var timeProvider = new FixedTimeProvider(_utcNow);
-        var useCase = new TeacherOverrideUseCase(
-            _dbContext,
-            _tenantContext,
-            new EvidenceGate(),
-            new EvidenceAssessmentFactory(),
-            new StudentGoalRiskUpdater(_dbContext),
-            new StudentTwinUpdater(_dbContext),
-            new TwinUpdateHistoryWriter(_dbContext),
-            timeProvider);
+        var useCase = CreateUseCase(timeProvider);
 
         var request = new TeacherOverrideRequest
         {
@@ -1431,15 +1388,7 @@ public sealed class TeacherOverrideReplayHardeningTests : IDisposable
         await _dbContext.SaveChangesAsync();
 
         var timeProvider = new FixedTimeProvider(_utcNow);
-        var useCase = new TeacherOverrideUseCase(
-            _dbContext,
-            _tenantContext,
-            new EvidenceGate(),
-            new EvidenceAssessmentFactory(),
-            new StudentGoalRiskUpdater(_dbContext),
-            new StudentTwinUpdater(_dbContext),
-            new TwinUpdateHistoryWriter(_dbContext),
-            timeProvider);
+        var useCase = CreateUseCase(timeProvider);
 
         var request = new TeacherOverrideRequest
         {

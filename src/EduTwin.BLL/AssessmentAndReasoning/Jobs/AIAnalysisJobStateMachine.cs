@@ -53,7 +53,8 @@ public sealed class AIAnalysisJobStateMachine : IAIAnalysisJobStateMachine
         DateTime utcNow,
         DateTime retryAvailableAt,
         string? lastErrorCode = null,
-        string? lastErrorMessage = null)
+        string? lastErrorMessage = null,
+        int maxRetries = 1)
     {
         ArgumentNullException.ThrowIfNull(job);
 
@@ -62,7 +63,7 @@ public sealed class AIAnalysisJobStateMachine : IAIAnalysisJobStateMachine
             return AIAnalysisJobTransitionResult.InvalidTransition;
         }
 
-        if (job.RetryCount >= 1)
+        if (job.RetryCount >= maxRetries)
         {
             return AIAnalysisJobTransitionResult.RetryExhausted;
         }
@@ -76,7 +77,7 @@ public sealed class AIAnalysisJobStateMachine : IAIAnalysisJobStateMachine
         var normalizedErrorMessage = SanitizeError(lastErrorMessage, MaxErrorMessageLength);
 
         job.Status = AIJobStatus.Pending;
-        job.RetryCount = 1;
+        job.RetryCount += 1;
         job.AvailableAt = retryAvailableAt;
         job.StartedAt = null;
         job.CompletedAt = null;

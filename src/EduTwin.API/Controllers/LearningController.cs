@@ -339,6 +339,14 @@ public sealed class LearningController : ControllerBase
                 traceId,
                 ErrorCodes.QuestionReasoningRequired)),
 
+            ErrorCodes.UploadTokenAlreadyUsed => Conflict(CreateProblemDetails(
+                StatusCodes.Status409Conflict,
+                "https://edutwin.local/problems/upload-token-already-used",
+                "Mã tải lên đã được sử dụng",
+                "Mã tải lên đính kèm đã được sử dụng cho một bài nộp khác.",
+                traceId,
+                ErrorCodes.UploadTokenAlreadyUsed)),
+
             _ => throw new InvalidOperationException($"Unexpected error code: {errorCode}")
         };
 
