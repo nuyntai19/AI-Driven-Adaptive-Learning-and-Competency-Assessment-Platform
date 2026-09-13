@@ -14,7 +14,8 @@ public sealed class AIAnalysisRequestFactory : IAIAnalysisRequestFactory
     public AnalyzeReasoningRequest Create(
         Attempt attempt,
         Question question,
-        IReadOnlyList<KnowledgeNode> allowedKnowledgeNodes)
+        IReadOnlyList<KnowledgeNode> allowedKnowledgeNodes,
+        IReadOnlyList<AnalyzeReasoningImagePart>? imageParts = null)
     {
         ArgumentNullException.ThrowIfNull(attempt);
         ArgumentNullException.ThrowIfNull(question);
@@ -47,7 +48,8 @@ public sealed class AIAnalysisRequestFactory : IAIAnalysisRequestFactory
                 ReasoningText = attempt.ReasoningText,
                 TimeSpentSeconds = attempt.TimeSpentSeconds,
                 Confidence = attempt.Confidence,
-                AnswerChanges = attempt.AnswerChanges
+                AnswerChanges = attempt.AnswerChanges,
+                ImageParts = imageParts ?? []
             },
             AllowedKnowledgeNodes = allowedKnowledgeNodes
                 .Select(node => new AnalyzeReasoningAllowedKnowledgeNode

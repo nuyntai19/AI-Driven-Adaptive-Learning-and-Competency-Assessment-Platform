@@ -52,7 +52,11 @@ public sealed record AnalyzeReasoningStudentSubmission
     public decimal Confidence { get; init; }
 
     public uint AnswerChanges { get; init; }
+
+    public IReadOnlyList<AnalyzeReasoningImagePart> ImageParts { get; init; } = [];
 }
+
+public sealed record AnalyzeReasoningImagePart(byte[] Data, string MimeType);
 
 public sealed record AnalyzeReasoningAllowedKnowledgeNode
 {

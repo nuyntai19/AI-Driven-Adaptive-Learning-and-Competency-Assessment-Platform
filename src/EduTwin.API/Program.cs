@@ -21,6 +21,7 @@ using EduTwin.BLL.Dashboards;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.API.AssessmentAndReasoning.Background;
 using EduTwin.API.AssessmentAndReasoning.AI;
+using EduTwin.API.AssessmentAndReasoning.Attachments;
 using EduTwin.API.Security;
 using EduTwin.DAL.Seeding;
 using EduTwin.BLL.Platform;
@@ -161,6 +162,7 @@ builder.Services.AddRecommendations();
 builder.Services.AddDashboards();
 builder.Services.AddPlatform(builder.Configuration);
 builder.Services.AddGeminiAI(builder.Configuration);
+builder.Services.AddAttemptAttachmentStorage(builder.Configuration);
 
 // We also need TimeProvider
 builder.Services.AddSingleton(TimeProvider.System);

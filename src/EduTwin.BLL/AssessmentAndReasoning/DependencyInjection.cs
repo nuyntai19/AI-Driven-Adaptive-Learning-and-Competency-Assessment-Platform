@@ -1,4 +1,5 @@
 using EduTwin.BLL.AssessmentAndReasoning.AttemptSummaries;
+using EduTwin.BLL.AssessmentAndReasoning.Attachments;
 using EduTwin.BLL.AssessmentAndReasoning.Evidence;
 using EduTwin.BLL.AssessmentAndReasoning.Jobs;
 using EduTwin.BLL.AssessmentAndReasoning.Override;
@@ -35,6 +36,8 @@ public static class DependencyInjection
         services.TryAddScoped<ITeacherOverrideUseCase, TeacherOverrideUseCase>();
         services.TryAddScoped<IGetAnalysisJobStatusUseCase, GetAnalysisJobStatusUseCase>();
         services.TryAddScoped<IAttemptSubmissionValidator, AttemptSubmissionValidator>();
+        services.TryAddScoped<IPrepareAttemptAttachmentUploadUseCase, PrepareAttemptAttachmentUploadUseCase>();
+        services.TryAddScoped<IGetAttemptAttachmentUseCase, GetAttemptAttachmentUseCase>();
         services.TryAddScoped<ISubmitAttemptUseCase, SubmitAttemptUseCase>();
         services.TryAddScoped<Feedback.IGetAttemptFeedbackUseCase, Feedback.GetAttemptFeedbackUseCase>();
 

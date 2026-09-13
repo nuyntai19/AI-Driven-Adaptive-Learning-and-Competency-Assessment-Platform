@@ -1,4 +1,5 @@
 using EduTwin.BLL.AssessmentAndReasoning.AI;
+using EduTwin.BLL.AssessmentAndReasoning.Attachments;
 using EduTwin.BLL.AssessmentAndReasoning.Evidence;
 using EduTwin.BLL.AssessmentAndReasoning.Jobs;
 using EduTwin.BLL.DigitalTwin;
@@ -36,6 +37,7 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
     private readonly IEvidenceConsistencyChecker _consistencyChecker;
     private readonly ITwinCompletionOrchestrator _twinCompletionOrchestrator;
     private readonly IRecommendationEngine? _recommendationEngine;
+    private readonly IAttemptAttachmentStorage? _attachmentStorage;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<AIAnalysisJobProcessor> _logger;
 
@@ -53,6 +55,7 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         ITwinCompletionOrchestrator? twinCompletionOrchestrator = null,
         IEvidenceConsistencyChecker? consistencyChecker = null,
         IRecommendationEngine? recommendationEngine = null,
+        IAttemptAttachmentStorage? attachmentStorage = null,
         ILogger<AIAnalysisJobProcessor>? logger = null)
     {
         _dbContext = dbContext;
@@ -77,6 +80,7 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             new StudentTwinUpdater(dbContext),
             _consistencyChecker);
         _recommendationEngine = recommendationEngine;
+        _attachmentStorage = attachmentStorage;
         _logger = logger ?? NullLogger<AIAnalysisJobProcessor>.Instance;
     }
 
@@ -191,10 +195,15 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         ReasoningAnalysis analysis;
         try
         {
+            var imageParts = await LoadAttachmentImagePartsAsync(
+                centerId,
+                initialAttempt.AttemptId,
+                cancellationToken);
             var request = _requestFactory.Create(
                 initialAttempt,
                 requestContext.Question,
-                requestContext.AllowedNodes);
+                requestContext.AllowedNodes,
+                imageParts);
             cancellationToken.ThrowIfCancellationRequested();
 
             var response = await _aiService.AnalyzeReasoningAsync(
@@ -569,6 +578,52 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         }
 
         return Result(initialJob.AnalysisJobId, initialAttempt.AttemptId, committedOutcome);
+    }
+
+    private async Task<IReadOnlyList<AnalyzeReasoningImagePart>> LoadAttachmentImagePartsAsync(
+        Guid centerId,
+        ulong attemptId,
+        CancellationToken cancellationToken)
+    {
+        var attachment = await _dbContext.AttemptAttachments.AsNoTracking()
+            .SingleOrDefaultAsync(candidate =>
+                candidate.CenterId == centerId && candidate.AttemptId == attemptId,
+                cancellationToken);
+        if (attachment is null)
+        {
+            return [];
+        }
+
+        if (_attachmentStorage is null)
+        {
+            throw new AttemptAttachmentStorageUnavailableException(
+                "Attempt attachment storage is not configured.");
+        }
+
+        try
+        {
+            await using var source = await _attachmentStorage.OpenPermanentReadAsync(
+                attachment.StorageKey,
+                cancellationToken);
+            await using var destination = new MemoryStream(checked((int)attachment.FileSizeBytes));
+            await source.CopyToAsync(destination, cancellationToken);
+            if (destination.Length != attachment.FileSizeBytes || destination.Length > 5_242_880)
+            {
+                throw new AttemptAttachmentStorageUnavailableException(
+                    "Stored attachment content does not match its immutable metadata.");
+            }
+
+            return [new AnalyzeReasoningImagePart(destination.ToArray(), attachment.ContentType)];
+        }
+        catch (AttemptAttachmentStorageUnavailableException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            throw new AttemptAttachmentStorageUnavailableException(
+                "Attempt attachment is temporarily unavailable.", exception);
+        }
     }
 
     private async Task<Guid> ResolveSubjectIdAfterCommitAsync(Guid centerId, ulong questionId)

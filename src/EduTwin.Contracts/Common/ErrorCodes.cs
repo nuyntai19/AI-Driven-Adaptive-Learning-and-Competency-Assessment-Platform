@@ -16,6 +16,7 @@ public static class ErrorCodes
     public const string ForbiddenResource = "FORBIDDEN_RESOURCE";
     public const string DuplicateResource = "DUPLICATE_RESOURCE";
     public const string DuplicateSubmission = "DUPLICATE_SUBMISSION";
+    public const string UploadTokenAlreadyUsed = "UPLOAD_TOKEN_ALREADY_USED";
     public const string InvalidStateTransition = "INVALID_STATE_TRANSITION";
     public const string DagCycleDetected = "DAG_CYCLE_DETECTED";
     public const string AssignmentNotAvailable = "ASSIGNMENT_NOT_AVAILABLE";

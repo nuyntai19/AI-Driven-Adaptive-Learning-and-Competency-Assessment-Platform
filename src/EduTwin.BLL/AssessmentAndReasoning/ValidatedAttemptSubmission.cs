@@ -21,6 +21,7 @@ public sealed class ValidatedAttemptSubmission
     public bool? IsCorrect { get; init; }
     public decimal? AwardedScore { get; init; }
     public string? AnswerDisplayLatex { get; init; }
+    public string? DrawingUploadToken { get; init; }
 
     /// <summary>
     /// Set when this is an idempotent replay of an already-persisted submission.

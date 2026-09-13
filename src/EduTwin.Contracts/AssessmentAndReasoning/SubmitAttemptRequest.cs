@@ -16,4 +16,5 @@ public class SubmitAttemptRequest
     public uint AnswerChanges { get; set; }
     public bool Skipped { get; set; }
     public string? AnswerDisplayLatex { get; set; }
+    public string? DrawingUploadToken { get; set; }
 }

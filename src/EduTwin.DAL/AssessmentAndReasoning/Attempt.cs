@@ -35,4 +35,5 @@ public class Attempt : ITenantAppendOnlyEntity, IHasRowVersion
     public Student Student { get; set; } = null!;
     public Question Question { get; set; } = null!;
     public Assignment? Assignment { get; set; }
+    public AttemptAttachment? Attachment { get; set; }
 }

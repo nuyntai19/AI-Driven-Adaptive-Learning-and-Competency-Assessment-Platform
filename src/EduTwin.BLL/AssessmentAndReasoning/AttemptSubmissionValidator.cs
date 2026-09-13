@@ -84,7 +84,7 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
             }
 
             return AttemptSubmissionValidationResult.Success(
-                FromExistingAttempt(existingAttempt));
+                FromExistingAttempt(existingAttempt, request.DrawingUploadToken));
         }
 
         var question = await _dbContext.Questions
@@ -157,6 +157,11 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
             return AttemptSubmissionValidationResult.Failure(ErrorCodes.ValidationFailed);
         }
 
+        if (request.DrawingUploadToken != null && request.DrawingUploadToken.Length > 8192)
+        {
+            return AttemptSubmissionValidationResult.Failure(ErrorCodes.ValidationFailed);
+        }
+
         var options = question.QuestionType == QuestionType.MultipleChoice
             ? await _dbContext.QuestionOptions
                 .AsNoTracking()
@@ -192,6 +197,7 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
             FinalAnswer = request.FinalAnswer,
             ReasoningText = request.ReasoningText,
             AnswerDisplayLatex = request.AnswerDisplayLatex,
+            DrawingUploadToken = request.DrawingUploadToken,
             TimeSpentSeconds = request.TimeSpentSeconds,
             Confidence = request.Confidence,
             AnswerChanges = request.AnswerChanges,
@@ -264,7 +270,9 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
         existingAttempt.AnswerChanges == request.AnswerChanges &&
         existingAttempt.Skipped == request.Skipped;
 
-    private static ValidatedAttemptSubmission FromExistingAttempt(Attempt attempt) => new()
+    private static ValidatedAttemptSubmission FromExistingAttempt(
+        Attempt attempt,
+        string? drawingUploadToken) => new()
     {
         CenterId = attempt.CenterId,
         StudentId = attempt.StudentId,
@@ -274,6 +282,7 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
         FinalAnswer = attempt.FinalAnswer,
         ReasoningText = attempt.ReasoningText,
         AnswerDisplayLatex = attempt.AnswerDisplayLatex,
+        DrawingUploadToken = drawingUploadToken,
         TimeSpentSeconds = attempt.TimeSpentSeconds,
         Confidence = attempt.Confidence,
         AnswerChanges = attempt.AnswerChanges,

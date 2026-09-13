@@ -6,6 +6,7 @@ import {
   submitAttempt,
   getAnalysisJobStatus,
   getAttemptFeedback,
+  prepareAttemptAttachmentUpload,
 } from "../api/learningFeedbackApi";
 import type {
   NextQuestionDataDto,
@@ -45,6 +46,8 @@ export const LearningPlayerPage = () => {
   const [showMathToolbar, setShowMathToolbar] = useState<boolean>(false);
   const [isScratchpadOpen, setIsScratchpadOpen] = useState<boolean>(false);
   const [scratchpadPngBytes, setScratchpadPngBytes] = useState<number | null>(null);
+  const [scratchpadPng, setScratchpadPng] = useState<Blob | null>(null);
+  const [drawingUploadToken, setDrawingUploadToken] = useState<string | null>(null);
   const currentUser = useAuthStore((state) => state.user);
 
   // Input refs and cursor management
@@ -205,6 +208,12 @@ export const LearningPlayerPage = () => {
     const clientSubmissionId = getClientSubmissionId();
 
     try {
+      const uploadToken = scratchpadPng
+        ? drawingUploadToken ?? (await prepareAttemptAttachmentUpload(scratchpadPng)).drawingUploadToken
+        : null;
+      if (scratchpadPng && !drawingUploadToken) {
+        setDrawingUploadToken(uploadToken);
+      }
       const submitted = await submitAttempt({
         questionId: String(question.questionId),
         finalAnswer: skipped ? "SKIPPED" : finalAnswer.trim(),
@@ -215,6 +224,7 @@ export const LearningPlayerPage = () => {
         skipped,
         clientSubmissionId,
         answerDisplayLatex: derivedDisplayLatex || (finalAnswer.trim() ? finalAnswer.trim() : null),
+        drawingUploadToken: uploadToken,
       });
 
       // A network/validation failure leaves the vector draft untouched. A 202 acceptance
@@ -231,6 +241,8 @@ export const LearningPlayerPage = () => {
         }
         if (attemptSessionScope) clearAttemptSessionId(attemptSessionScope);
         setScratchpadPngBytes(null);
+        setScratchpadPng(null);
+        setDrawingUploadToken(null);
       }
 
       const response = submitted.data;
@@ -934,7 +946,11 @@ export const LearningPlayerPage = () => {
           centerId={currentUser.centerId}
           userId={currentUser.userId}
           clientSubmissionId={clientSubmissionIdRef.current}
-          onExportPng={(png) => setScratchpadPngBytes(png.size)}
+          onExportPng={(png) => {
+            setScratchpadPngBytes(png.size);
+            setScratchpadPng(png);
+            setDrawingUploadToken(null);
+          }}
         />
       )}
     </div>

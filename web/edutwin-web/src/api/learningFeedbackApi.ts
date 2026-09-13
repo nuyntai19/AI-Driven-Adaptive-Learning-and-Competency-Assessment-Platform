@@ -21,6 +21,23 @@ export interface SubmitAttemptHttpResult {
   status: number;
 }
 
+interface PrepareAttemptAttachmentUploadDataDto {
+  drawingUploadToken: string;
+  expiresAtUtc: string;
+}
+
+export const prepareAttemptAttachmentUpload = async (
+  png: Blob
+): Promise<PrepareAttemptAttachmentUploadDataDto> => {
+  const form = new FormData();
+  form.append("file", png, "scratchpad.png");
+  const response = await httpClient.post<ApiResponse<PrepareAttemptAttachmentUploadDataDto>>(
+    "/learning/attempts/attachments/prepare-upload",
+    form
+  );
+  return response.data.data;
+};
+
 export const submitAttempt = async (
   body: SubmitAttemptRequest
 ): Promise<SubmitAttemptHttpResult> => {

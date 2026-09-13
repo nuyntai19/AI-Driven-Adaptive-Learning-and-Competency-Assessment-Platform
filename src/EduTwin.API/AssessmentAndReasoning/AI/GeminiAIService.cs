@@ -61,11 +61,20 @@ public sealed class GeminiAIService : IAIService
 
             try
             {
-                providerResult = await _client.GenerateContentAsync(
-                    model,
-                    prompt,
-                    config,
-                    linkedCancellation.Token);
+                providerResult = request.StudentSubmission.ImageParts.Count == 0
+                    ? await _client.GenerateContentAsync(
+                        model,
+                        prompt,
+                        config,
+                        linkedCancellation.Token)
+                    : await _client.GenerateContentWithImagesAsync(
+                        model,
+                        prompt,
+                        request.StudentSubmission.ImageParts
+                            .Select(image => new GeminiInlineImagePart(image.Data, image.MimeType))
+                            .ToArray(),
+                        config,
+                        linkedCancellation.Token);
                 cancellationToken.ThrowIfCancellationRequested();
 
                 if (linkedCancellation.IsCancellationRequested)

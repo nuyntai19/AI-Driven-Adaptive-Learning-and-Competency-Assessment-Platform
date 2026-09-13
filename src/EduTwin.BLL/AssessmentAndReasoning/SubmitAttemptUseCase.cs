@@ -2,6 +2,7 @@ using System.Globalization;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.Common;
+using EduTwin.BLL.AssessmentAndReasoning.Attachments;
 using EduTwin.DAL.AssessmentAndReasoning;
 using EduTwin.DAL.Assignments;
 using EduTwin.DAL.Persistence;
@@ -13,19 +14,27 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
 {
     private const string AttemptIdempotencyConstraint =
         "ux_attempts_center_id_student_id_client_submission_id";
+    private const string AttachmentNonceConstraint =
+        "ux_attempt_attachments_center_id_upload_nonce";
 
     private readonly EduTwinDbContext _dbContext;
     private readonly IAttemptSubmissionValidator _validator;
     private readonly TimeProvider _timeProvider;
+    private readonly IAttemptAttachmentTokenService? _attachmentTokens;
+    private readonly IAttemptAttachmentStorage? _attachmentStorage;
 
     public SubmitAttemptUseCase(
         EduTwinDbContext dbContext,
         IAttemptSubmissionValidator validator,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        IAttemptAttachmentTokenService? attachmentTokens = null,
+        IAttemptAttachmentStorage? attachmentStorage = null)
     {
         _dbContext = dbContext;
         _validator = validator;
         _timeProvider = timeProvider;
+        _attachmentTokens = attachmentTokens;
+        _attachmentStorage = attachmentStorage;
     }
 
     public async Task<SubmitAttemptResult> ExecuteAsync(
@@ -52,10 +61,21 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
 
         if (submission.ExistingAttemptId.HasValue)
         {
+            if (!await HasSameAttachmentPayloadAsync(submission, submission.ExistingAttemptId.Value, false, cancellationToken))
+            {
+                return SubmitAttemptResult.Failure(ErrorCodes.DuplicateSubmission);
+            }
             return await LoadReplayAsync(submission, cancellationToken);
         }
 
+        var attachmentPayload = ResolveAttachmentPayload(submission, true);
+        if (attachmentPayload is null && !string.IsNullOrWhiteSpace(submission.DrawingUploadToken))
+        {
+            return SubmitAttemptResult.Failure(ErrorCodes.ValidationFailed);
+        }
+
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+        PromotedAttemptAttachment? promotedAttachment = null;
 
         try
         {
@@ -71,6 +91,11 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
             if (boundaryAttempt is not null)
             {
                 if (!HasSamePayload(boundaryAttempt, submission))
+                {
+                    return SubmitAttemptResult.Failure(ErrorCodes.DuplicateSubmission);
+                }
+
+                if (!await HasSameAttachmentPayloadAsync(submission, boundaryAttempt.AttemptId, false, cancellationToken))
                 {
                     return SubmitAttemptResult.Failure(ErrorCodes.DuplicateSubmission);
                 }
@@ -118,6 +143,24 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
             _dbContext.AIAnalysisJobs.Add(job);
 
             await _dbContext.SaveChangesAsync(cancellationToken);
+
+            if (attachmentPayload is not null)
+            {
+                promotedAttachment = await _attachmentStorage!.PromoteToPermanentAsync(attachmentPayload, cancellationToken);
+                _dbContext.AttemptAttachments.Add(new AttemptAttachment
+                {
+                    CenterId = submission.CenterId,
+                    AttemptId = attempt.AttemptId,
+                    UploadNonce = attachmentPayload.UploadNonce,
+                    FileName = attachmentPayload.FileName,
+                    ContentType = "image/png",
+                    StorageKey = promotedAttachment.StorageKey,
+                    FileSizeBytes = attachmentPayload.FileSizeBytes,
+                    CreatedAt = now,
+                    CreatedBy = submission.StudentId
+                });
+                await _dbContext.SaveChangesAsync(cancellationToken);
+            }
             await transaction.CommitAsync(cancellationToken);
 
             return SubmitAttemptResult.Success(ToAcceptedData(attempt, job));
@@ -126,6 +169,7 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
         {
             await transaction.RollbackAsync(CancellationToken.None);
             _dbContext.ChangeTracker.Clear();
+            await DeleteNewlyPromotedAttachmentAsync(promotedAttachment);
 
             var replay = await ResolveConcurrentDuplicateAsync(submission, cancellationToken);
             if (replay is not null)
@@ -135,10 +179,18 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
 
             throw;
         }
+        catch (DbUpdateException exception) when (IsAttachmentNonceDuplicate(exception))
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            _dbContext.ChangeTracker.Clear();
+            await DeleteNewlyPromotedAttachmentAsync(promotedAttachment);
+            return SubmitAttemptResult.Failure(ErrorCodes.UploadTokenAlreadyUsed);
+        }
         catch
         {
             await transaction.RollbackAsync(CancellationToken.None);
             _dbContext.ChangeTracker.Clear();
+            await DeleteNewlyPromotedAttachmentAsync(promotedAttachment);
             throw;
         }
     }
@@ -162,6 +214,11 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
         }
 
         if (!HasSamePayload(existingAttempt, submission))
+        {
+            return SubmitAttemptResult.Failure(ErrorCodes.DuplicateSubmission);
+        }
+
+        if (!await HasSameAttachmentPayloadAsync(submission, existingAttempt.AttemptId, false, cancellationToken))
         {
             return SubmitAttemptResult.Failure(ErrorCodes.DuplicateSubmission);
         }
@@ -284,6 +341,66 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
         attempt.AnswerChanges == submission.AnswerChanges &&
         attempt.Skipped == submission.Skipped;
 
+    private AttachmentUploadTokenPayload? ResolveAttachmentPayload(
+        ValidatedAttemptSubmission submission,
+        bool enforceExpiry)
+    {
+        if (string.IsNullOrWhiteSpace(submission.DrawingUploadToken)) return null;
+        if (_attachmentTokens is null || _attachmentStorage is null ||
+            !_attachmentTokens.TryRead(submission.DrawingUploadToken, out var payload) || payload is null)
+        {
+            return null;
+        }
+
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
+        if (payload.CenterId != submission.CenterId ||
+            payload.StudentId != submission.StudentId ||
+            string.IsNullOrWhiteSpace(payload.UploadNonce) ||
+            string.IsNullOrWhiteSpace(payload.Sha256Hex) ||
+            payload.Sha256Hex.Length != 64 ||
+            !payload.Sha256Hex.All(Uri.IsHexDigit) ||
+            payload.FileSizeBytes is < 1 or > 5_242_880 ||
+            (enforceExpiry && payload.ExpiresAtUtc <= now))
+        {
+            return null;
+        }
+
+        return payload;
+    }
+
+    private async Task DeleteNewlyPromotedAttachmentAsync(PromotedAttemptAttachment? promotedAttachment)
+    {
+        if (promotedAttachment is not { WasNewlyPromoted: true } || _attachmentStorage is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _attachmentStorage.DeletePermanentAsync(promotedAttachment.StorageKey, CancellationToken.None);
+        }
+        catch
+        {
+            // The periodic orphan sweep remains the crash/retry safety net.
+        }
+    }
+
+    private async Task<bool> HasSameAttachmentPayloadAsync(
+        ValidatedAttemptSubmission submission,
+        ulong attemptId,
+        bool enforceExpiry,
+        CancellationToken cancellationToken)
+    {
+        var attachment = await _dbContext.AttemptAttachments.AsNoTracking()
+            .SingleOrDefaultAsync(candidate =>
+                candidate.CenterId == submission.CenterId && candidate.AttemptId == attemptId,
+                cancellationToken);
+        var payload = ResolveAttachmentPayload(submission, enforceExpiry);
+        return attachment is null
+            ? payload is null && string.IsNullOrWhiteSpace(submission.DrawingUploadToken)
+            : payload is not null && string.Equals(attachment.UploadNonce, payload.UploadNonce, StringComparison.Ordinal);
+    }
+
     private static string SanitizeCorrelationId(string correlationId)
     {
         if (string.IsNullOrWhiteSpace(correlationId))
@@ -315,6 +432,15 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
             }
         }
 
+        return false;
+    }
+
+    private static bool IsAttachmentNonceDuplicate(Exception exception)
+    {
+        for (var current = exception; current is not null; current = current.InnerException)
+        {
+            if (current.Message.Contains(AttachmentNonceConstraint, StringComparison.OrdinalIgnoreCase)) return true;
+        }
         return false;
     }
 }

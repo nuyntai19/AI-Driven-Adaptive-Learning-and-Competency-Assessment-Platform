@@ -52,6 +52,57 @@ public sealed class GoogleGenAIGenerateContentClient : IGeminiGenerateContentCli
         }
     }
 
+    public async Task<GeminiGenerateContentResult> GenerateContentWithImagesAsync(
+        string model,
+        string prompt,
+        IReadOnlyList<GeminiInlineImagePart> images,
+        GenerateContentConfig config,
+        CancellationToken cancellationToken)
+    {
+        if (images is null || images.Count == 0)
+        {
+            return await GenerateContentAsync(model, prompt, config, cancellationToken);
+        }
+
+        try
+        {
+            var parts = new List<Part> { new() { Text = prompt } };
+            foreach (var image in images)
+            {
+                if (image.Data is null || image.Data.Length == 0 ||
+                    !string.Equals(image.MimeType, "image/png", StringComparison.Ordinal))
+                {
+                    throw GeminiAdapterException.RequestFailed();
+                }
+                parts.Add(new Part { InlineData = new Blob { MimeType = image.MimeType, Data = image.Data } });
+            }
+
+            var response = await GetOrCreateClient().Models.GenerateContentAsync(
+                model,
+                new Content { Parts = parts },
+                config,
+                cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            return new GeminiGenerateContentResult(
+                response.Text ?? string.Empty,
+                response.UsageMetadata?.PromptTokenCount,
+                response.UsageMetadata?.CandidatesTokenCount,
+                response.UsageMetadata?.TotalTokenCount);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (GeminiAdapterException)
+        {
+            throw;
+        }
+        catch
+        {
+            throw GeminiAdapterException.RequestFailed();
+        }
+    }
+
     public void Dispose()
     {
         lock (_clientLock)

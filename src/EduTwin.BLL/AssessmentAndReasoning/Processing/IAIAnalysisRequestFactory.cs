@@ -10,5 +10,6 @@ public interface IAIAnalysisRequestFactory
     AnalyzeReasoningRequest Create(
         Attempt attempt,
         Question question,
-        IReadOnlyList<KnowledgeNode> allowedKnowledgeNodes);
+        IReadOnlyList<KnowledgeNode> allowedKnowledgeNodes,
+        IReadOnlyList<AnalyzeReasoningImagePart>? imageParts = null);
 }

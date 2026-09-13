@@ -9,6 +9,7 @@ export interface SubmitAttemptRequest {
   skipped: boolean;
   clientSubmissionId: string;
   answerDisplayLatex?: string | null;
+  drawingUploadToken?: string | null;
 }
 
 export interface SubmitAttemptDataDto {

@@ -432,7 +432,8 @@ function toPreviewStroke(
   end: ScratchpadPoint | null
 ): ScratchpadStroke | null {
   if (tool === "pen" || tool === "eraser") {
-    const committedPoints = end ? [...points, end] : points;
+    const committedPoints = [...points];
+    if (end) appendFreehandPoint(committedPoints, end);
     return committedPoints.length ? { id: "preview", tool, color, lineWidth, points: committedPoints } : null;
   }
   return start && end ? { id: "preview", tool, color, lineWidth, points: [], start, end } : null;

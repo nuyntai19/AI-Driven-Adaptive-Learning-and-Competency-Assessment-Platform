@@ -8,6 +8,8 @@ public sealed record GeminiGenerateContentResult(
     int? CandidatesTokenCount,
     int? TotalTokenCount);
 
+public sealed record GeminiInlineImagePart(byte[] Data, string MimeType);
+
 public interface IGeminiGenerateContentClient
 {
     Task<GeminiGenerateContentResult> GenerateContentAsync(
@@ -15,4 +17,12 @@ public interface IGeminiGenerateContentClient
         string prompt,
         GenerateContentConfig config,
         CancellationToken cancellationToken);
+
+    Task<GeminiGenerateContentResult> GenerateContentWithImagesAsync(
+        string model,
+        string prompt,
+        IReadOnlyList<GeminiInlineImagePart> images,
+        GenerateContentConfig config,
+        CancellationToken cancellationToken) =>
+        GenerateContentAsync(model, prompt, config, cancellationToken);
 }
