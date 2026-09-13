@@ -109,6 +109,33 @@ public class PlatformCentersController : ControllerBase
         });
     }
 
+    [HttpPatch("{centerId:guid}")]
+    [Authorize(Policy = "platform.centers.manage")]
+    public async Task<IActionResult> UpdateCenterMetadata(
+        [FromRoute] Guid centerId,
+        [FromBody] UpdateCenterMetadataRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        var result = await _platformCenterService.UpdateCenterMetadataAsync(
+            centerId, request, traceId, cancellationToken);
+
+        if (!result.IsSuccess)
+        {
+            return MapErrorToResponse(result.ErrorCode, result.ErrorMessage);
+        }
+
+        return Ok(new
+        {
+            data = result.Data,
+            meta = new
+            {
+                traceId,
+                timestamp = _timeProvider.GetUtcNow().UtcDateTime
+            }
+        });
+    }
+
     [HttpGet("{centerId:guid}/managers")]
     [Authorize(Policy = "platform.centers.read")]
     public async Task<IActionResult> ListCenterManagers(

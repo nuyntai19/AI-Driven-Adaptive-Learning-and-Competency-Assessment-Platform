@@ -20,6 +20,19 @@ public record PlatformCenterListItemDto
     public string? InitialManagerUsername { get; init; }
     public string? InitialManagerDisplayName { get; init; }
     public string? InitialManagerUserRowVersion { get; init; }
+    public int ActiveStudentCount { get; init; }
+    public int ActiveTeacherCount { get; init; }
+    public int ClassCount { get; init; }
+    public int ActiveManagerCount { get; init; }
+    public bool HasActivePrimaryManager { get; init; }
+}
+
+public record UpdateCenterMetadataRequest
+{
+    public string? CenterName { get; init; }
+    public string? Timezone { get; init; }
+    public string ExpectedRowVersion { get; init; } = string.Empty;
+    public string Reason { get; init; } = string.Empty;
 }
 
 public record CreatePlatformCenterRequest

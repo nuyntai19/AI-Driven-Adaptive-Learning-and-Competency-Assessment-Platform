@@ -26,6 +26,12 @@ public interface IPlatformCenterService
         string traceId,
         CancellationToken cancellationToken = default);
 
+    Task<PlatformResult<PlatformCenterListItemDto>> UpdateCenterMetadataAsync(
+        Guid centerId,
+        UpdateCenterMetadataRequest request,
+        string traceId,
+        CancellationToken cancellationToken = default);
+
     Task<PlatformResult<ResetCenterManagerPasswordData>> ResetCenterManagerPasswordAsync(
         Guid centerId,
         Guid managerUserId,

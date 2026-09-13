@@ -4,6 +4,7 @@ import type {
   PlatformCenterListItem,
   CreatePlatformCenterRequest,
   UpdatePlatformCenterStatusRequest,
+  UpdateCenterMetadataRequest,
   ResetCenterManagerPasswordRequest,
   ResetCenterManagerPasswordResponseData,
 } from "../types/platform";
@@ -38,6 +39,17 @@ export const platformApi = {
 
   createCenter: async (request: CreatePlatformCenterRequest): Promise<PlatformCenterListItem> => {
     const response = await httpClient.post<{ data: PlatformCenterListItem }>("/platform/centers", request);
+    return response.data.data;
+  },
+
+  updateCenterMetadata: async (
+    centerId: string,
+    request: UpdateCenterMetadataRequest
+  ): Promise<PlatformCenterListItem> => {
+    const response = await httpClient.patch<{ data: PlatformCenterListItem }>(
+      `/platform/centers/${centerId}`,
+      request
+    );
     return response.data.data;
   },
 

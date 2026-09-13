@@ -7,6 +7,7 @@ import type {
   PlatformCenterListItem,
   CreatePlatformCenterRequest,
   UpdatePlatformCenterStatusRequest,
+  UpdateCenterMetadataRequest,
   ResetCenterManagerPasswordRequest,
 } from "../types/platform";
 import type { ProblemDetails } from "../types/auth";
@@ -33,6 +34,12 @@ export const PlatformCentersPage: React.FC = () => {
   const [statusReason, setStatusReason] = useState("");
   const [resetPasswordCenter, setResetPasswordCenter] = useState<PlatformCenterListItem | null>(null);
   const [managersModalCenter, setManagersModalCenter] = useState<PlatformCenterListItem | null>(null);
+  const [editMetadataCenter, setEditMetadataCenter] = useState<PlatformCenterListItem | null>(null);
+
+  // Edit Metadata Form State
+  const [editCenterName, setEditCenterName] = useState("");
+  const [editTimezone, setEditTimezone] = useState("Asia/Bangkok");
+  const [editReason, setEditReason] = useState("");
 
   // Create Form State
   const [newCenterCode, setNewCenterCode] = useState("");
@@ -109,6 +116,36 @@ export const PlatformCentersPage: React.FC = () => {
     },
   });
 
+  const updateMetadataMutation = useMutation({
+    mutationFn: ({
+      centerId,
+      request,
+    }: {
+      centerId: string;
+      request: UpdateCenterMetadataRequest;
+    }) => platformApi.updateCenterMetadata(centerId, request),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["platform-centers"] });
+      setEditMetadataCenter(null);
+      setEditReason("");
+      setSuccessMessage("Đã cập nhật thông tin trung tâm thành công.");
+      setTimeout(() => setSuccessMessage(""), 5000);
+    },
+    onError: (error) => {
+      if (isAxiosError<ProblemDetails>(error)) {
+        const code = error.response?.data?.errorCode;
+        if (code === "CONCURRENCY_CONFLICT" || error.response?.status === 409) {
+          setErrorMessage("Dữ liệu trung tâm đã bị thay đổi bởi tác vụ khác. Vui lòng tải lại dữ liệu mới nhất.");
+          refetch();
+        } else {
+          setErrorMessage(error.response?.data?.detail || "Không thể cập nhật thông tin trung tâm.");
+        }
+      } else {
+        setErrorMessage("Không thể cập nhật thông tin trung tâm. Vui lòng thử lại.");
+      }
+    },
+  });
+
   const resetPasswordMutation = useMutation({
     mutationFn: ({
       centerId,
@@ -178,6 +215,24 @@ export const PlatformCentersPage: React.FC = () => {
         status: targetStatus,
         rowVersion: statusModalCenter.rowVersion,
         reason: statusReason.trim() || undefined,
+      },
+    });
+  };
+
+  const handleEditMetadataConfirm = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editMetadataCenter) return;
+    if (!editReason.trim()) {
+      setErrorMessage("Vui lòng nhập lý do thay đổi thông tin trung tâm.");
+      return;
+    }
+    updateMetadataMutation.mutate({
+      centerId: editMetadataCenter.centerId,
+      request: {
+        centerName: editCenterName.trim(),
+        timezone: editTimezone,
+        expectedRowVersion: editMetadataCenter.rowVersion,
+        reason: editReason.trim(),
       },
     });
   };
@@ -349,6 +404,7 @@ export const PlatformCentersPage: React.FC = () => {
                   <th className="px-6 py-3.5">Tên Trung Tâm</th>
                   <th className="px-6 py-3.5">Trạng Thái</th>
                   <th className="px-6 py-3.5">Múi Giờ</th>
+                  <th className="px-6 py-3.5">Quy Mô</th>
                   <th className="px-6 py-3.5">Quản Lý Chính</th>
                   <th className="px-6 py-3.5">Ngày Tạo</th>
                   <th className="px-6 py-3.5 text-right">Thao Tác</th>
@@ -379,14 +435,39 @@ export const PlatformCentersPage: React.FC = () => {
                     <td className="px-6 py-4 text-gray-500 dark:text-gray-400">
                       {c.timezone}
                     </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex flex-wrap gap-1.5 items-center">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" title="Học viên hoạt động">
+                          🎓 {c.activeStudentCount ?? 0}
+                        </span>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" title="Giáo viên hoạt động">
+                          👨‍🏫 {c.activeTeacherCount ?? 0}
+                        </span>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300" title="Lớp học">
+                          🏫 {c.classCount ?? 0}
+                        </span>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" title="Quản lý hoạt động">
+                          👥 {c.activeManagerCount ?? 0}
+                        </span>
+                      </div>
+                    </td>
                     <td className="px-6 py-4">
-                      {c.initialManagerUsername ? (
+                      {c.primaryManagerUsername || c.initialManagerUsername ? (
                         <div>
-                          <div className="font-medium text-gray-900 dark:text-white">
-                            {c.initialManagerDisplayName || c.initialManagerUsername}
+                          <div className="font-medium text-gray-900 dark:text-white flex items-center gap-1.5">
+                            <span>{c.primaryManagerDisplayName || c.initialManagerDisplayName || c.primaryManagerUsername || c.initialManagerUsername}</span>
+                            {c.hasActivePrimaryManager ? (
+                              <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-medium bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300">
+                                Active
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300">
+                                Chưa kích hoạt
+                              </span>
+                            )}
                           </div>
                           <div className="text-xs text-gray-500 font-mono">
-                            @{c.initialManagerUsername}
+                            @{c.primaryManagerUsername || c.initialManagerUsername}
                           </div>
                         </div>
                       ) : (
@@ -401,6 +482,20 @@ export const PlatformCentersPage: React.FC = () => {
                       })}
                     </td>
                     <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
+                      {canManageCenters && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditMetadataCenter(c);
+                            setEditCenterName(c.centerName);
+                            setEditTimezone(c.timezone);
+                            setEditReason("");
+                          }}
+                          className="px-3 py-1 text-xs font-medium text-blue-700 dark:text-blue-400 rounded-md border border-blue-300 dark:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
+                        >
+                          Sửa
+                        </button>
+                      )}
                       {canManageCenters && (
                         <button
                           type="button"
@@ -424,7 +519,7 @@ export const PlatformCentersPage: React.FC = () => {
                           Nhân sự Quản lý
                         </button>
                       )}
-                      {canManageManagers && c.initialManagerUserId && (
+                      {canManageManagers && (c.primaryManagerUserId || c.initialManagerUserId) && (
                         <button
                           type="button"
                           onClick={() => {
@@ -717,6 +812,96 @@ export const PlatformCentersPage: React.FC = () => {
             refetch();
           }}
         />
+      )}
+
+      {/* Modal: Edit Metadata */}
+      {editMetadataCenter && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl max-w-lg w-full p-6 shadow-xl border border-gray-200 dark:border-gray-700 space-y-4">
+            <div className="flex justify-between items-center border-b border-gray-200 dark:border-gray-700 pb-3">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                Sửa Thông Tin Trung Tâm
+              </h3>
+              <button onClick={() => setEditMetadataCenter(null)} className="text-gray-400 hover:text-gray-600">
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleEditMetadataConfirm} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Mã Trung Tâm (Bất biến)
+                </label>
+                <input
+                  type="text"
+                  disabled
+                  value={editMetadataCenter.centerCode}
+                  className="w-full px-3 py-2 text-sm border rounded-lg bg-gray-100 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 font-mono cursor-not-allowed"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Tên Trung Tâm *
+                </label>
+                <input
+                  type="text"
+                  required
+                  minLength={3}
+                  maxLength={200}
+                  value={editCenterName}
+                  onChange={(e) => setEditCenterName(e.target.value)}
+                  placeholder="Nhập tên trung tâm..."
+                  className="w-full px-3 py-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Múi Giờ *
+                </label>
+                <select
+                  value={editTimezone}
+                  onChange={(e) => setEditTimezone(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600"
+                >
+                  <option value="Asia/Bangkok">Asia/Bangkok (GMT+7)</option>
+                  <option value="Asia/Ho_Chi_Minh">Asia/Ho_Chi_Minh (GMT+7)</option>
+                  <option value="Asia/Singapore">Asia/Singapore (GMT+8)</option>
+                  <option value="Asia/Tokyo">Asia/Tokyo (GMT+9)</option>
+                  <option value="UTC">UTC (GMT+0)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Lý do cập nhật *
+                </label>
+                <textarea
+                  required
+                  minLength={3}
+                  value={editReason}
+                  onChange={(e) => setEditReason(e.target.value)}
+                  placeholder="Nhập lý do thay đổi thông tin theo quyết định quản trị..."
+                  rows={2}
+                  className="w-full px-3 py-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600"
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                <button
+                  type="button"
+                  onClick={() => setEditMetadataCenter(null)}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 rounded-lg"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={updateMetadataMutation.isPending}
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50"
+                >
+                  {updateMetadataMutation.isPending ? "Đang lưu..." : "Lưu thay đổi"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

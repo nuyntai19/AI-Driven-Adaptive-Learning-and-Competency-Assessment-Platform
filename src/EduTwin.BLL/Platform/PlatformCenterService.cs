@@ -175,6 +175,51 @@ public class PlatformCenterService : IPlatformCenterService
             }
         }
 
+        var targetCenterIds = pagedCenters.Select(c => c.CenterId).ToList();
+
+        var studentCounts = await _dbContext.Users
+            .IgnoreQueryFilters()
+            .Where(u => targetCenterIds.Contains(u.CenterId) && u.RoleName == UserRole.Student && u.Status == UserStatus.Active && !u.IsDeleted)
+            .GroupBy(u => u.CenterId)
+            .Select(g => new { CenterId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.CenterId, x => x.Count, cancellationToken);
+
+        var teacherCounts = await _dbContext.Users
+            .IgnoreQueryFilters()
+            .Where(u => targetCenterIds.Contains(u.CenterId) && u.RoleName == UserRole.Teacher && u.Status == UserStatus.Active && !u.IsDeleted)
+            .GroupBy(u => u.CenterId)
+            .Select(g => new { CenterId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.CenterId, x => x.Count, cancellationToken);
+
+        var activeManagerCounts = await _dbContext.Users
+            .IgnoreQueryFilters()
+            .Where(u => targetCenterIds.Contains(u.CenterId) && u.RoleName == UserRole.CenterManager && u.Status == UserStatus.Active && !u.IsDeleted)
+            .GroupBy(u => u.CenterId)
+            .Select(g => new { CenterId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.CenterId, x => x.Count, cancellationToken);
+
+        var classCounts = await _dbContext.Classes
+            .IgnoreQueryFilters()
+            .Where(cl => targetCenterIds.Contains(cl.CenterId) && !cl.IsDeleted)
+            .GroupBy(cl => cl.CenterId)
+            .Select(g => new { CenterId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.CenterId, x => x.Count, cancellationToken);
+
+        var primaryManagerIds = pagedCenters
+            .Where(c => c.PrimaryManagerUserId.HasValue)
+            .Select(c => c.PrimaryManagerUserId!.Value)
+            .Distinct()
+            .ToList();
+
+        var activePrimaryManagerUserIds = primaryManagerIds.Count > 0
+            ? (await _dbContext.Users
+                .IgnoreQueryFilters()
+                .Where(u => primaryManagerIds.Contains(u.UserId) && u.RoleName == UserRole.CenterManager && u.Status == UserStatus.Active && !u.IsDeleted)
+                .Select(u => u.UserId)
+                .ToListAsync(cancellationToken))
+                .ToHashSet()
+            : new HashSet<Guid>();
+
         var items = pagedCenters.Select(c =>
         {
             var hasManager = managerDict.TryGetValue(c.CenterId, out var manager);
@@ -194,7 +239,12 @@ public class PlatformCenterService : IPlatformCenterService
                 InitialManagerUserId = hasManager ? manager.UserId : null,
                 InitialManagerUsername = hasManager ? manager.Username : null,
                 InitialManagerDisplayName = hasManager ? manager.DisplayName : null,
-                InitialManagerUserRowVersion = hasManager ? manager.RowVersion.ToString(CultureInfo.InvariantCulture) : null
+                InitialManagerUserRowVersion = hasManager ? manager.RowVersion.ToString(CultureInfo.InvariantCulture) : null,
+                ActiveStudentCount = studentCounts.GetValueOrDefault(c.CenterId, 0),
+                ActiveTeacherCount = teacherCounts.GetValueOrDefault(c.CenterId, 0),
+                ClassCount = classCounts.GetValueOrDefault(c.CenterId, 0),
+                ActiveManagerCount = activeManagerCounts.GetValueOrDefault(c.CenterId, 0),
+                HasActivePrimaryManager = c.PrimaryManagerUserId.HasValue && activePrimaryManagerUserIds.Contains(c.PrimaryManagerUserId.Value)
             };
         }).ToList();
 
@@ -374,7 +424,12 @@ public class PlatformCenterService : IPlatformCenterService
             InitialManagerUserId = managerUser.UserId,
             InitialManagerUsername = managerUser.Username,
             InitialManagerDisplayName = managerUser.DisplayName,
-            InitialManagerUserRowVersion = managerUser.RowVersion.ToString(CultureInfo.InvariantCulture)
+            InitialManagerUserRowVersion = managerUser.RowVersion.ToString(CultureInfo.InvariantCulture),
+            ActiveStudentCount = 0,
+            ActiveTeacherCount = 0,
+            ClassCount = 0,
+            ActiveManagerCount = 1,
+            HasActivePrimaryManager = true
         });
     }
 
@@ -521,6 +576,8 @@ public class PlatformCenterService : IPlatformCenterService
             })
             .FirstOrDefaultAsync(cancellationToken);
 
+        var aggregates = await GetSafeAggregatesForCenterAsync(center.CenterId, center.PrimaryManagerUserId, cancellationToken);
+
         return PlatformResult<PlatformCenterListItemDto>.Success(new PlatformCenterListItemDto
         {
             CenterId = center.CenterId,
@@ -537,8 +594,215 @@ public class PlatformCenterService : IPlatformCenterService
             InitialManagerUserId = manager?.UserId,
             InitialManagerUsername = manager?.Username,
             InitialManagerDisplayName = manager?.DisplayName,
-            InitialManagerUserRowVersion = manager?.RowVersion.ToString(CultureInfo.InvariantCulture)
+            InitialManagerUserRowVersion = manager?.RowVersion.ToString(CultureInfo.InvariantCulture),
+            ActiveStudentCount = aggregates.StudentCount,
+            ActiveTeacherCount = aggregates.TeacherCount,
+            ClassCount = aggregates.ClassCount,
+            ActiveManagerCount = aggregates.ManagerCount,
+            HasActivePrimaryManager = aggregates.HasActivePrimary
         });
+    }
+
+    public async Task<PlatformResult<PlatformCenterListItemDto>> UpdateCenterMetadataAsync(
+        Guid centerId,
+        UpdateCenterMetadataRequest request,
+        string traceId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsAuthorizedPlatformCaller(out var callerUserId))
+        {
+            return PlatformResult<PlatformCenterListItemDto>.Failure(
+                ErrorCodes.ForbiddenResource, "Chỉ quản trị viên nền tảng mới có quyền cập nhật trung tâm.");
+        }
+
+        if (centerId == AuthorizationBootstrapper.ReservedPlatformCenterId)
+        {
+            return PlatformResult<PlatformCenterListItemDto>.Failure(
+                ErrorCodes.ForbiddenResource, "Không được sửa đổi Root Tenant PLATFORM.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length < 3)
+        {
+            return PlatformResult<PlatformCenterListItemDto>.Failure(
+                ErrorCodes.ValidationFailed, "Lý do cập nhật thông tin trung tâm là bắt buộc và phải từ 3 ký tự.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.ExpectedRowVersion) ||
+            !ulong.TryParse(request.ExpectedRowVersion, NumberStyles.None, CultureInfo.InvariantCulture, out var expectedVersion))
+        {
+            return PlatformResult<PlatformCenterListItemDto>.Failure(
+                ErrorCodes.ValidationFailed, "Mã phiên bản (expectedRowVersion) không hợp lệ.");
+        }
+
+        var center = await _dbContext.Centers
+            .IgnoreQueryFilters()
+            .SingleOrDefaultAsync(c => c.CenterId == centerId && !c.IsDeleted, cancellationToken);
+
+        if (center is null)
+        {
+            return PlatformResult<PlatformCenterListItemDto>.Failure(
+                ErrorCodes.ResourceNotFound, $"Không tìm thấy trung tâm với mã '{centerId}'.");
+        }
+
+        if (center.RowVersion != expectedVersion)
+        {
+            return PlatformResult<PlatformCenterListItemDto>.Failure(
+                ErrorCodes.ConcurrencyConflict,
+                $"Dữ liệu trung tâm đã bị thay đổi bởi phiên làm việc khác (phiên bản hiện tại: {center.RowVersion}, phiên bản yêu cầu: {expectedVersion}).");
+        }
+
+        var oldName = center.CenterName;
+        var oldTimezone = center.Timezone;
+        var oldRowVersion = center.RowVersion;
+
+        if (!string.IsNullOrWhiteSpace(request.CenterName))
+        {
+            var newName = request.CenterName.Trim();
+            if (newName.Length < 3 || newName.Length > 200)
+            {
+                return PlatformResult<PlatformCenterListItemDto>.Failure(
+                    ErrorCodes.ValidationFailed, "Tên trung tâm phải có độ dài từ 3 đến 200 ký tự.");
+            }
+            center.CenterName = newName;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Timezone))
+        {
+            var newTz = request.Timezone.Trim();
+            if (newTz.Length < 2 || newTz.Length > 64)
+            {
+                return PlatformResult<PlatformCenterListItemDto>.Failure(
+                    ErrorCodes.ValidationFailed, "Múi giờ không hợp lệ.");
+            }
+            center.Timezone = newTz;
+        }
+
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
+        center.RowVersion++;
+        center.UpdatedAt = now;
+
+        var auditLog = new AuthorizationAuditLog
+        {
+            CenterId = AuthorizationBootstrapper.ReservedPlatformCenterId,
+            TargetCenterId = center.CenterId,
+            ActorUserId = callerUserId,
+            TargetUserId = null,
+            TargetType = "Center",
+            TargetId = center.CenterId.ToString("D"),
+            ActionType = "CenterMetadataUpdated",
+            BeforeData = JsonSerializer.Serialize(new
+            {
+                CenterName = oldName,
+                Timezone = oldTimezone,
+                RowVersion = oldRowVersion
+            }),
+            AfterData = JsonSerializer.Serialize(new
+            {
+                CenterName = center.CenterName,
+                Timezone = center.Timezone,
+                RowVersion = center.RowVersion
+            }),
+            Reason = request.Reason.Trim(),
+            TraceId = string.IsNullOrWhiteSpace(traceId) ? Guid.NewGuid().ToString("N") : traceId,
+            CreatedAt = now,
+            CreatedBy = callerUserId
+        };
+
+        await using var transaction = _dbContext.Database.IsRelational()
+            ? await _dbContext.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+
+        _dbContext.AuthorizationAuditLogs.Add(auditLog);
+
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            if (transaction is not null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+            }
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return PlatformResult<PlatformCenterListItemDto>.Failure(
+                ErrorCodes.ConcurrencyConflict, "Xung đột đồng thời khi cập nhật thông tin trung tâm.");
+        }
+
+        var manager = center.PrimaryManagerUserId.HasValue
+            ? await _dbContext.Users
+                .IgnoreQueryFilters()
+                .Where(u => u.CenterId == center.CenterId && u.UserId == center.PrimaryManagerUserId.Value && !u.IsDeleted)
+                .Select(u => new
+                {
+                    u.UserId,
+                    u.Username,
+                    u.DisplayName,
+                    u.RowVersion
+                })
+                .FirstOrDefaultAsync(cancellationToken)
+            : null;
+
+        var aggregates = await GetSafeAggregatesForCenterAsync(center.CenterId, center.PrimaryManagerUserId, cancellationToken);
+
+        return PlatformResult<PlatformCenterListItemDto>.Success(new PlatformCenterListItemDto
+        {
+            CenterId = center.CenterId,
+            CenterCode = center.CenterCode,
+            CenterName = center.CenterName,
+            Status = center.Status.ToString(),
+            Timezone = center.Timezone,
+            CreatedAt = center.CreatedAt,
+            RowVersion = center.RowVersion.ToString(CultureInfo.InvariantCulture),
+            PrimaryManagerUserId = manager?.UserId,
+            PrimaryManagerUsername = manager?.Username,
+            PrimaryManagerDisplayName = manager?.DisplayName,
+            PrimaryManagerUserRowVersion = manager?.RowVersion.ToString(CultureInfo.InvariantCulture),
+            InitialManagerUserId = manager?.UserId,
+            InitialManagerUsername = manager?.Username,
+            InitialManagerDisplayName = manager?.DisplayName,
+            InitialManagerUserRowVersion = manager?.RowVersion.ToString(CultureInfo.InvariantCulture),
+            ActiveStudentCount = aggregates.StudentCount,
+            ActiveTeacherCount = aggregates.TeacherCount,
+            ClassCount = aggregates.ClassCount,
+            ActiveManagerCount = aggregates.ManagerCount,
+            HasActivePrimaryManager = aggregates.HasActivePrimary
+        });
+    }
+
+    private async Task<(int StudentCount, int TeacherCount, int ClassCount, int ManagerCount, bool HasActivePrimary)> GetSafeAggregatesForCenterAsync(
+        Guid centerId,
+        Guid? primaryManagerUserId,
+        CancellationToken cancellationToken)
+    {
+        var studentCount = await _dbContext.Users
+            .IgnoreQueryFilters()
+            .Where(u => u.CenterId == centerId && u.RoleName == UserRole.Student && u.Status == UserStatus.Active && !u.IsDeleted)
+            .CountAsync(cancellationToken);
+
+        var teacherCount = await _dbContext.Users
+            .IgnoreQueryFilters()
+            .Where(u => u.CenterId == centerId && u.RoleName == UserRole.Teacher && u.Status == UserStatus.Active && !u.IsDeleted)
+            .CountAsync(cancellationToken);
+
+        var classCount = await _dbContext.Classes
+            .IgnoreQueryFilters()
+            .Where(cl => cl.CenterId == centerId && !cl.IsDeleted)
+            .CountAsync(cancellationToken);
+
+        var managerCount = await _dbContext.Users
+            .IgnoreQueryFilters()
+            .Where(u => u.CenterId == centerId && u.RoleName == UserRole.CenterManager && u.Status == UserStatus.Active && !u.IsDeleted)
+            .CountAsync(cancellationToken);
+
+        var hasActivePrimary = false;
+        if (primaryManagerUserId.HasValue)
+        {
+            hasActivePrimary = await _dbContext.Users
+                .IgnoreQueryFilters()
+                .AnyAsync(u => u.UserId == primaryManagerUserId.Value && u.RoleName == UserRole.CenterManager && u.Status == UserStatus.Active && !u.IsDeleted, cancellationToken);
+        }
+
+        return (studentCount, teacherCount, classCount, managerCount, hasActivePrimary);
     }
 
     public async Task<PlatformResult<ResetCenterManagerPasswordData>> ResetCenterManagerPasswordAsync(

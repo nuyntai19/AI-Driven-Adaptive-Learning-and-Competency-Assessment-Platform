@@ -14,6 +14,18 @@ export interface PlatformCenterListItem {
   initialManagerUsername?: string | null;
   initialManagerDisplayName?: string | null;
   initialManagerUserRowVersion?: string | null;
+  activeStudentCount?: number;
+  activeTeacherCount?: number;
+  classCount?: number;
+  activeManagerCount?: number;
+  hasActivePrimaryManager?: boolean;
+}
+
+export interface UpdateCenterMetadataRequest {
+  centerName?: string;
+  timezone?: string;
+  expectedRowVersion?: string;
+  reason: string;
 }
 
 export interface CreatePlatformCenterRequest {
