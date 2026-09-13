@@ -64,9 +64,11 @@ test("reload draft -> scratchpad draft restored and PNG regenerated", async () =
     userId: testScope.userId,
     clientSubmissionId,
     strokes: sampleStrokes,
-    gridType: "grid",
+    gridType: "math_grid",
     canvasWidth: 1200,
     canvasHeight: 800,
+    updatedAt: 0,
+    expiresAt: 0,
   };
 
   await saveScratchpadDraft(draft);
@@ -135,14 +137,23 @@ test("FailedTerminal -> new clientSubmissionId and drawingUploadToken reset", ()
 
 test("resubmit -> invokes new prepare-upload and submits with fresh idempotency identity", async () => {
   let prepareUploadCalledCount = 0;
-  let submitAttemptPayload: Record<string, unknown> | null = null;
+  let submitAttemptPayload: {
+    clientSubmissionId?: string;
+    drawingUploadToken?: string | null;
+    finalAnswer?: string;
+  } | null = null;
 
-  const mockPrepareUpload = async () => {
+  const mockPrepareUpload = async (png?: unknown) => {
+    assert.ok(png);
     prepareUploadCalledCount++;
     return { drawingUploadToken: `token-new-${prepareUploadCalledCount}` };
   };
 
-  const mockSubmitAttempt = async (payload: Record<string, unknown>) => {
+  const mockSubmitAttempt = async (payload: {
+    clientSubmissionId: string;
+    drawingUploadToken: string | null;
+    finalAnswer: string;
+  }) => {
     submitAttemptPayload = payload;
     return { status: 202, data: { attemptId: "att-99", jobId: "job-101" } };
   };
@@ -166,8 +177,12 @@ test("resubmit -> invokes new prepare-upload and submits with fresh idempotency 
   assert.equal(prepareUploadCalledCount, 1);
   assert.equal(uploadToken, "token-new-1");
   assert.equal(result.status, 202);
-  assert.equal(submitAttemptPayload?.clientSubmissionId, freshSubmissionId);
-  assert.equal(submitAttemptPayload?.drawingUploadToken, "token-new-1");
+  const recordedPayload = submitAttemptPayload as {
+    clientSubmissionId?: string;
+    drawingUploadToken?: string | null;
+  } | null;
+  assert.equal(recordedPayload?.clientSubmissionId, freshSubmissionId);
+  assert.equal(recordedPayload?.drawingUploadToken, "token-new-1");
 });
 
 test("successful 202 retains draft until terminal success, then purges draft and session storage", async () => {
@@ -183,6 +198,8 @@ test("successful 202 retains draft until terminal success, then purges draft and
     gridType: "none",
     canvasWidth: 1200,
     canvasHeight: 800,
+    updatedAt: 0,
+    expiresAt: 0,
   });
 
   let scratchpadPng: { size: number } | null = { size: 1024 };
@@ -224,9 +241,11 @@ test("FailedTerminal -> handleResubmit migrates vector draft and preserves drawi
     userId: testScope.userId,
     clientSubmissionId: oldSubmissionId,
     strokes: sampleStrokes,
-    gridType: "grid",
+    gridType: "math_grid",
     canvasWidth: 1200,
     canvasHeight: 800,
+    updatedAt: 0,
+    expiresAt: 0,
   });
 
   const scratchpadPng: { size: number } | null = { size: 1024 };
@@ -293,9 +312,11 @@ test("failed submit -> draft and session identity retained for retry", async () 
     userId: testScope.userId,
     clientSubmissionId,
     strokes: sampleStrokes,
-    gridType: "isometric",
+    gridType: "o_ly",
     canvasWidth: 1200,
     canvasHeight: 800,
+    updatedAt: 0,
+    expiresAt: 0,
   });
 
   const scratchpadPng: { size: number } | null = { size: 1024 };
