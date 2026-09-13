@@ -11,6 +11,7 @@ import type {
 import type { ProblemDetails } from "../types/auth";
 import { useAuthStore } from "../stores/authStore";
 import { permissions } from "../auth/permissions";
+import { CenterManagersModal } from "../components/CenterManagersModal";
 
 export const PlatformCentersPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -30,6 +31,7 @@ export const PlatformCentersPage: React.FC = () => {
   const [statusModalCenter, setStatusModalCenter] = useState<PlatformCenterListItem | null>(null);
   const [statusReason, setStatusReason] = useState("");
   const [resetPasswordCenter, setResetPasswordCenter] = useState<PlatformCenterListItem | null>(null);
+  const [managersModalCenter, setManagersModalCenter] = useState<PlatformCenterListItem | null>(null);
 
   // Create Form State
   const [newCenterCode, setNewCenterCode] = useState("");
@@ -394,6 +396,17 @@ export const PlatformCentersPage: React.FC = () => {
                           {c.status === "Active" ? "Tạm ngưng" : "Kích hoạt"}
                         </button>
                       )}
+                      {canManageManagers && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setManagersModalCenter(c);
+                          }}
+                          className="px-3 py-1 text-xs font-medium text-indigo-700 dark:text-indigo-400 rounded-md border border-indigo-300 dark:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors"
+                        >
+                          Nhân sự Quản lý
+                        </button>
+                      )}
                       {canManageManagers && c.initialManagerUserId && (
                         <button
                           type="button"
@@ -675,6 +688,18 @@ export const PlatformCentersPage: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Modal: Center Managers Lifecycle */}
+      {managersModalCenter && (
+        <CenterManagersModal
+          isOpen={!!managersModalCenter}
+          onClose={() => setManagersModalCenter(null)}
+          center={managersModalCenter}
+          onCenterUpdated={() => {
+            refetch();
+          }}
+        />
       )}
     </div>
   );

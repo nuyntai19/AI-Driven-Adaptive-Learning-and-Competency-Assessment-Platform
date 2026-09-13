@@ -12,6 +12,10 @@ public record PlatformCenterListItemDto
     public string Timezone { get; init; } = string.Empty;
     public DateTime CreatedAt { get; init; }
     public string RowVersion { get; init; } = string.Empty;
+    public Guid? PrimaryManagerUserId { get; init; }
+    public string? PrimaryManagerUsername { get; init; }
+    public string? PrimaryManagerDisplayName { get; init; }
+    public string? PrimaryManagerUserRowVersion { get; init; }
     public Guid? InitialManagerUserId { get; init; }
     public string? InitialManagerUsername { get; init; }
     public string? InitialManagerDisplayName { get; init; }
@@ -42,6 +46,7 @@ public record ResetCenterManagerPasswordRequest
 {
     public string NewPassword { get; init; } = string.Empty;
     public string ExpectedUserRowVersion { get; init; } = string.Empty;
+    public string? Reason { get; init; }
 }
 
 public record ResetCenterManagerPasswordData
@@ -59,4 +64,82 @@ public record PlatformCentersListData
     public int TotalCount { get; init; }
     public int Page { get; init; }
     public int PageSize { get; init; }
+}
+
+public record PlatformCenterManagerListItemDto
+{
+    public Guid UserId { get; init; }
+    public string Username { get; init; } = string.Empty;
+    public string DisplayName { get; init; } = string.Empty;
+    public string Status { get; init; } = string.Empty;
+    public bool IsPrimary { get; init; }
+    public DateTime CreatedAt { get; init; }
+    public string RowVersion { get; init; } = string.Empty;
+    public uint AuthVersion { get; init; }
+}
+
+public record PlatformCenterManagersListData
+{
+    public IReadOnlyList<PlatformCenterManagerListItemDto> Items { get; init; } = [];
+    public int TotalCount { get; init; }
+    public Guid? PrimaryManagerUserId { get; init; }
+    public int Page { get; init; }
+    public int PageSize { get; init; }
+}
+
+public record CreateCenterManagerRequest
+{
+    public string Username { get; init; } = string.Empty;
+    public string DisplayName { get; init; } = string.Empty;
+    public string Password { get; init; } = string.Empty;
+    public string ExpectedCenterRowVersion { get; init; } = string.Empty;
+    public string Reason { get; init; } = string.Empty;
+}
+
+public record CreateCenterManagerResponseData
+{
+    public Guid UserId { get; init; }
+    public Guid CenterId { get; init; }
+    public string Username { get; init; } = string.Empty;
+    public string DisplayName { get; init; } = string.Empty;
+    public string Status { get; init; } = string.Empty;
+    public bool IsPrimary { get; init; }
+    public DateTime CreatedAt { get; init; }
+    public string RowVersion { get; init; } = string.Empty;
+    public string CenterRowVersion { get; init; } = string.Empty;
+}
+
+public record UpdateCenterManagerStatusRequest
+{
+    public string Status { get; init; } = string.Empty;
+    public string ExpectedUserRowVersion { get; init; } = string.Empty;
+    public string Reason { get; init; } = string.Empty;
+}
+
+public record UpdateCenterManagerStatusData
+{
+    public Guid UserId { get; init; }
+    public Guid CenterId { get; init; }
+    public string Status { get; init; } = string.Empty;
+    public bool IsPrimary { get; init; }
+    public string RowVersion { get; init; } = string.Empty;
+    public DateTime UpdatedAtUtc { get; init; }
+}
+
+public record MakePrimaryCenterManagerRequest
+{
+    public string ExpectedCenterRowVersion { get; init; } = string.Empty;
+    public string ExpectedManagerUserRowVersion { get; init; } = string.Empty;
+    public bool DisablePreviousPrimary { get; init; }
+    public string? ExpectedPreviousPrimaryUserRowVersion { get; init; }
+    public string Reason { get; init; } = string.Empty;
+}
+
+public record MakePrimaryCenterManagerData
+{
+    public Guid CenterId { get; init; }
+    public Guid PrimaryManagerUserId { get; init; }
+    public string NewCenterRowVersion { get; init; } = string.Empty;
+    public bool PreviousPrimaryDisabled { get; init; }
+    public DateTime UpdatedAtUtc { get; init; }
 }

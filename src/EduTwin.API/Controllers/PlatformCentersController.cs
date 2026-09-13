@@ -109,6 +109,119 @@ public class PlatformCentersController : ControllerBase
         });
     }
 
+    [HttpGet("{centerId:guid}/managers")]
+    [Authorize(Policy = "platform.centers.read")]
+    public async Task<IActionResult> ListCenterManagers(
+        [FromRoute] Guid centerId,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] string? search = null,
+        [FromQuery] string? status = null,
+        CancellationToken cancellationToken = default)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        var result = await _platformCenterService.ListCenterManagersAsync(
+            centerId, page, pageSize, search, status, traceId, cancellationToken);
+
+        if (!result.IsSuccess)
+        {
+            return MapErrorToResponse(result.ErrorCode, result.ErrorMessage);
+        }
+
+        return Ok(new
+        {
+            data = result.Data,
+            meta = new
+            {
+                traceId,
+                timestamp = _timeProvider.GetUtcNow().UtcDateTime
+            }
+        });
+    }
+
+    [HttpPost("{centerId:guid}/managers")]
+    [Authorize(Policy = "platform.managers.manage")]
+    public async Task<IActionResult> CreateCenterManager(
+        [FromRoute] Guid centerId,
+        [FromBody] CreateCenterManagerRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        var result = await _platformCenterService.CreateCenterManagerAsync(
+            centerId, request, traceId, cancellationToken);
+
+        if (!result.IsSuccess)
+        {
+            return MapErrorToResponse(result.ErrorCode, result.ErrorMessage);
+        }
+
+        return StatusCode(StatusCodes.Status201Created, new
+        {
+            data = result.Data,
+            meta = new
+            {
+                traceId,
+                timestamp = _timeProvider.GetUtcNow().UtcDateTime
+            }
+        });
+    }
+
+    [HttpPatch("{centerId:guid}/managers/{userId:guid}/status")]
+    [Authorize(Policy = "platform.managers.manage")]
+    public async Task<IActionResult> UpdateCenterManagerStatus(
+        [FromRoute] Guid centerId,
+        [FromRoute] Guid userId,
+        [FromBody] UpdateCenterManagerStatusRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        var result = await _platformCenterService.UpdateCenterManagerStatusAsync(
+            centerId, userId, request, traceId, cancellationToken);
+
+        if (!result.IsSuccess)
+        {
+            return MapErrorToResponse(result.ErrorCode, result.ErrorMessage);
+        }
+
+        return Ok(new
+        {
+            data = result.Data,
+            meta = new
+            {
+                traceId,
+                timestamp = _timeProvider.GetUtcNow().UtcDateTime
+            }
+        });
+    }
+
+    [HttpPost("{centerId:guid}/managers/{userId:guid}/make-primary")]
+    [Authorize(Policy = "platform.managers.manage")]
+    public async Task<IActionResult> MakePrimaryCenterManager(
+        [FromRoute] Guid centerId,
+        [FromRoute] Guid userId,
+        [FromBody] MakePrimaryCenterManagerRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        var result = await _platformCenterService.MakePrimaryCenterManagerAsync(
+            centerId, userId, request, traceId, cancellationToken);
+
+        if (!result.IsSuccess)
+        {
+            return MapErrorToResponse(result.ErrorCode, result.ErrorMessage);
+        }
+
+        return Ok(new
+        {
+            data = result.Data,
+            meta = new
+            {
+                traceId,
+                timestamp = _timeProvider.GetUtcNow().UtcDateTime
+            }
+        });
+    }
+
     [HttpPost("{centerId:guid}/managers/{managerUserId:guid}/reset-password")]
     [Authorize(Policy = "platform.managers.manage")]
     public async Task<IActionResult> ResetCenterManagerPassword(

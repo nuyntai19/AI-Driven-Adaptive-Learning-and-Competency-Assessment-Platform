@@ -6,6 +6,10 @@ export interface PlatformCenterListItem {
   timezone: string;
   createdAt: string;
   rowVersion: string;
+  primaryManagerUserId?: string | null;
+  primaryManagerUsername?: string | null;
+  primaryManagerDisplayName?: string | null;
+  primaryManagerUserRowVersion?: string | null;
   initialManagerUserId?: string | null;
   initialManagerUsername?: string | null;
   initialManagerDisplayName?: string | null;
@@ -30,6 +34,7 @@ export interface UpdatePlatformCenterStatusRequest {
 export interface ResetCenterManagerPasswordRequest {
   newPassword: string;
   expectedUserRowVersion: string;
+  reason?: string;
 }
 
 export interface ResetCenterManagerPasswordResponseData {
@@ -45,4 +50,74 @@ export interface PlatformCentersListData {
   totalCount: number;
   page: number;
   pageSize: number;
+}
+
+export interface PlatformCenterManagerListItem {
+  userId: string;
+  username: string;
+  displayName: string;
+  status: "Active" | "Locked" | "Disabled" | string;
+  isPrimary: boolean;
+  createdAt: string;
+  rowVersion: string;
+  authVersion: number;
+}
+
+export interface PlatformCenterManagersListData {
+  items: PlatformCenterManagerListItem[];
+  totalCount: number;
+  primaryManagerUserId?: string | null;
+  page: number;
+  pageSize: number;
+}
+
+export interface CreateCenterManagerRequest {
+  username: string;
+  displayName: string;
+  password: string;
+  expectedCenterRowVersion: string;
+  reason: string;
+}
+
+export interface CreateCenterManagerResponseData {
+  userId: string;
+  centerId: string;
+  username: string;
+  displayName: string;
+  status: string;
+  isPrimary: boolean;
+  createdAt: string;
+  rowVersion: string;
+  centerRowVersion: string;
+}
+
+export interface UpdateCenterManagerStatusRequest {
+  status: string;
+  expectedUserRowVersion: string;
+  reason: string;
+}
+
+export interface UpdateCenterManagerStatusData {
+  userId: string;
+  centerId: string;
+  status: string;
+  isPrimary: boolean;
+  rowVersion: string;
+  updatedAtUtc: string;
+}
+
+export interface MakePrimaryCenterManagerRequest {
+  expectedCenterRowVersion: string;
+  expectedManagerUserRowVersion: string;
+  disablePreviousPrimary: boolean;
+  expectedPreviousPrimaryUserRowVersion?: string;
+  reason: string;
+}
+
+export interface MakePrimaryCenterManagerData {
+  centerId: string;
+  primaryManagerUserId: string;
+  newCenterRowVersion: string;
+  previousPrimaryDisabled: boolean;
+  updatedAtUtc: string;
 }

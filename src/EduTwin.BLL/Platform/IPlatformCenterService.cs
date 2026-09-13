@@ -32,4 +32,33 @@ public interface IPlatformCenterService
         ResetCenterManagerPasswordRequest request,
         string traceId,
         CancellationToken cancellationToken = default);
+
+    Task<PlatformResult<PlatformCenterManagersListData>> ListCenterManagersAsync(
+        Guid centerId,
+        int page,
+        int pageSize,
+        string? status,
+        string? search,
+        string traceId,
+        CancellationToken cancellationToken = default);
+
+    Task<PlatformResult<CreateCenterManagerResponseData>> CreateCenterManagerAsync(
+        Guid centerId,
+        CreateCenterManagerRequest request,
+        string traceId,
+        CancellationToken cancellationToken = default);
+
+    Task<PlatformResult<UpdateCenterManagerStatusData>> UpdateCenterManagerStatusAsync(
+        Guid centerId,
+        Guid managerUserId,
+        UpdateCenterManagerStatusRequest request,
+        string traceId,
+        CancellationToken cancellationToken = default);
+
+    Task<PlatformResult<MakePrimaryCenterManagerData>> MakePrimaryCenterManagerAsync(
+        Guid centerId,
+        Guid managerUserId,
+        MakePrimaryCenterManagerRequest request,
+        string traceId,
+        CancellationToken cancellationToken = default);
 }

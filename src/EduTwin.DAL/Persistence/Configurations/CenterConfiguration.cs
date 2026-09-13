@@ -65,10 +65,26 @@ public class CenterConfiguration : IEntityTypeConfiguration<Organization.Center>
             .IsConcurrencyToken()
             .IsRequired();
 
+        builder.Property(c => c.PrimaryManagerUserId)
+            .HasColumnName("primary_manager_user_id")
+            .HasColumnType("VARCHAR(36)");
+
         // Indexes
         builder.HasIndex(c => c.CenterCode)
             .IsUnique()
             .HasDatabaseName("ux_centers_center_code");
+
+        builder.HasIndex(c => c.PrimaryManagerUserId)
+            .HasDatabaseName("ix_centers_primary_manager_user_id");
+
+        // Composite FK to users(center_id, user_id)
+        builder.HasOne(c => c.PrimaryManagerUser)
+            .WithMany()
+            .HasForeignKey(c => new { c.CenterId, c.PrimaryManagerUserId })
+            .HasPrincipalKey(u => new { u.CenterId, u.UserId })
+            .HasConstraintName("fk_centers_primary_manager_user")
+            .OnDelete(DeleteBehavior.Restrict)
+            .IsRequired(false);
 
         // CHECK Constraint
         builder.ToTable(t => t.HasCheckConstraint("ck_centers_status", "status IN ('Active', 'Suspended')"));
