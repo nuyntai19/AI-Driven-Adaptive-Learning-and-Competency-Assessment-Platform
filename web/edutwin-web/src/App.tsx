@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { AuthBootstrap } from "./auth/AuthBootstrap";
 import { ProtectedRoute } from "./routes/ProtectedRoute";
@@ -29,6 +30,7 @@ import { AccessDeniedPage } from "./pages/AccessDeniedPage";
 import { AuthorizationManagementPage } from "./pages/AuthorizationManagementPage";
 import { PlatformCentersPage } from "./pages/PlatformCentersPage";
 import { useAuthStore } from "./stores/authStore";
+import { cleanupExpiredScratchpadDrafts } from "./utils/scratchpadStorage";
 
 const FallbackRoute = () => {
   const sessionStatus = useAuthStore((state) => state.sessionStatus);
@@ -39,6 +41,11 @@ const FallbackRoute = () => {
 };
 
 function App() {
+  useEffect(() => {
+    // Expired drafts contain only local vector data, so TTL cleanup is safe before auth bootstraps.
+    void cleanupExpiredScratchpadDrafts();
+  }, []);
+
   return (
     <AuthBootstrap>
       <Routes>

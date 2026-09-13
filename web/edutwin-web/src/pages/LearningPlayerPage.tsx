@@ -20,6 +20,9 @@ import { SubjectRequiredState } from "../components/SubjectRequiredState";
 import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
 import { MathInputToolbar } from "../components/math/MathInputToolbar";
 import { ScientificCalculatorDrawer } from "../components/math/ScientificCalculatorDrawer";
+import { ScratchpadCanvasModal } from "../components/math/ScratchpadCanvasModal";
+import { deleteScratchpadDraft } from "../utils/scratchpadStorage";
+import { useAuthStore } from "../stores/authStore";
 
 export const LearningPlayerPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -35,6 +38,9 @@ export const LearningPlayerPage = () => {
   const [timeSpentSeconds, setTimeSpentSeconds] = useState<number>(0);
   const [isCalculatorOpen, setIsCalculatorOpen] = useState<boolean>(false);
   const [showMathToolbar, setShowMathToolbar] = useState<boolean>(false);
+  const [isScratchpadOpen, setIsScratchpadOpen] = useState<boolean>(false);
+  const [scratchpadPngBytes, setScratchpadPngBytes] = useState<number | null>(null);
+  const currentUser = useAuthStore((state) => state.user);
 
   // Input refs and cursor management
   const shortAnswerInputRef = useRef<HTMLInputElement>(null);
@@ -170,7 +176,7 @@ export const LearningPlayerPage = () => {
     setSubmissionError(null);
 
     try {
-      const response = await submitAttempt({
+      const submitted = await submitAttempt({
         questionId: String(question.questionId),
         finalAnswer: skipped ? "SKIPPED" : finalAnswer.trim(),
         reasoningText: reasoningText.trim() ? reasoningText.trim() : null,
@@ -182,6 +188,22 @@ export const LearningPlayerPage = () => {
         answerDisplayLatex: derivedDisplayLatex || (finalAnswer.trim() ? finalAnswer.trim() : null),
       });
 
+      // A network/validation failure leaves the vector draft untouched. A 202 acceptance
+      // (or future 200 idempotent replay) is the only point at which it may be discarded.
+      if ((submitted.status === 202 || submitted.status === 200) && currentUser) {
+        try {
+          await deleteScratchpadDraft(
+            currentUser.centerId,
+            currentUser.userId,
+            clientSubmissionIdRef.current
+          );
+        } catch {
+          // The server accepted the submission; a local cleanup failure must not invite a duplicate submission.
+        }
+        setScratchpadPngBytes(null);
+      }
+
+      const response = submitted.data;
       const activeJobId = response.analysisJobId || response.jobId || "";
       if (!activeJobId) {
         throw new Error("Máy chủ không trả về mã tiến trình phân tích.");
@@ -311,6 +333,8 @@ export const LearningPlayerPage = () => {
     setTimeSpentSeconds(0);
     setIsSubmitting(false);
     setShowMathToolbar(false);
+    setIsScratchpadOpen(false);
+    setScratchpadPngBytes(null);
     setSubmissionError(null);
     pollingAttemptRef.current = 0;
     clientSubmissionIdRef.current = crypto.randomUUID();
@@ -795,6 +819,27 @@ export const LearningPlayerPage = () => {
                 className="mt-2"
               />
             )}
+            {currentUser && (
+              <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-dashed border-indigo-200 bg-indigo-50/50 p-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-indigo-950">Bảng vẽ nháp toán học</p>
+                  <p className="text-xs text-indigo-800">
+                    Vẽ hình, hệ trục hoặc các bước tính. Nháp được lưu cục bộ theo tài khoản và tự khôi phục khi tải lại trang.
+                  </p>
+                  {scratchpadPngBytes !== null && (
+                    <p className="mt-1 text-xs font-medium text-emerald-700">Đã tạo PNG cục bộ ({Math.max(1, Math.ceil(scratchpadPngBytes / 1024))} KB).</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsScratchpadOpen(true)}
+                  disabled={isSubmitting}
+                  className="rounded-md bg-white px-3 py-2 text-sm font-semibold text-indigo-700 shadow-sm ring-1 ring-inset ring-indigo-200 hover:bg-indigo-100 disabled:opacity-50"
+                >
+                  Mở bảng nháp
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Confidence Slider */}
@@ -851,6 +896,16 @@ export const LearningPlayerPage = () => {
         onClose={() => setIsCalculatorOpen(false)}
         onInsertResult={(val) => insertTextAtCursor(val)}
       />
+      {currentUser && (
+        <ScratchpadCanvasModal
+          isOpen={isScratchpadOpen}
+          onClose={() => setIsScratchpadOpen(false)}
+          centerId={currentUser.centerId}
+          userId={currentUser.userId}
+          clientSubmissionId={clientSubmissionIdRef.current}
+          onExportPng={(png) => setScratchpadPngBytes(png.size)}
+        />
+      )}
     </div>
   );
 };

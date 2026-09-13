@@ -15,9 +15,15 @@ interface ApiResponse<T> {
   };
 }
 
+export interface SubmitAttemptHttpResult {
+  data: SubmitAttemptDataDto;
+  /** The draft can be cleared only after the server accepted or replayed submission. */
+  status: number;
+}
+
 export const submitAttempt = async (
   body: SubmitAttemptRequest
-): Promise<SubmitAttemptDataDto> => {
+): Promise<SubmitAttemptHttpResult> => {
   const payload = {
     ...body,
     questionId: String(body.questionId),
@@ -26,7 +32,7 @@ export const submitAttempt = async (
     "/learning/attempts",
     payload
   );
-  return response.data.data;
+  return { data: response.data.data, status: response.status };
 };
 
 export const getAnalysisJobStatus = async (
