@@ -24,6 +24,7 @@ public sealed class AttachmentOrphanCleanupWorker : BackgroundService
 {
     private readonly string _rootPath;
     private readonly TimeSpan _gracePeriod;
+    private readonly TimeSpan _tempGracePeriod;
     private readonly TimeSpan _interval;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly TimeProvider _timeProvider;
@@ -43,7 +44,8 @@ public sealed class AttachmentOrphanCleanupWorker : BackgroundService
         _rootPath = Path.GetFullPath(string.IsNullOrWhiteSpace(configuredRoot)
             ? Path.Combine(environment.ContentRootPath, "storage")
             : configuredRoot);
-        _gracePeriod = TimeSpan.FromHours(Math.Max(1, options.Value.GracePeriodHours));
+        _gracePeriod = TimeSpan.FromHours(Math.Max(AttachmentStorageOptions.MinimumGracePeriodHours, options.Value.GracePeriodHours));
+        _tempGracePeriod = _gracePeriod.Add(TimeSpan.FromHours(AttachmentStorageOptions.TempSafetyMarginHours));
         _interval = TimeSpan.FromMinutes(Math.Max(1, options.Value.CleanupIntervalMinutes));
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _timeProvider = timeProvider ?? TimeProvider.System;
@@ -53,9 +55,10 @@ public sealed class AttachmentOrphanCleanupWorker : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation(
-            "AttachmentOrphanCleanupWorker started with interval {Interval} and grace period {GracePeriod}.",
+            "AttachmentOrphanCleanupWorker started with interval {Interval}, permanent grace period {GracePeriod}, and temp grace period {TempGracePeriod}.",
             _interval,
-            _gracePeriod);
+            _gracePeriod,
+            _tempGracePeriod);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -155,16 +158,35 @@ public sealed class AttachmentOrphanCleanupWorker : BackgroundService
                 continue;
             }
 
-            // 1. Temporary attachments sweep (*.png in attempt-attachments-temp older than grace period)
+            // 1. Temporary attachments sweep (*.png in attempt-attachments-temp older than temp grace period)
             deletedCount += SweepDirectoryFiles(
                 tenantDir,
                 "attempt-attachments-temp",
                 rootWithSeparator,
-                shouldDelete: fileInfo => utcNow - fileInfo.LastWriteTimeUtc > _gracePeriod,
+                searchPattern: "*.png",
+                shouldDelete: fileInfo => utcNow - fileInfo.LastWriteTimeUtc > _tempGracePeriod,
                 logPrefix: "temporary",
                 cancellationToken);
 
-            // 2. Permanent attachments sweep (*.png in attempt-attachments older than grace period with no DB reference)
+            // 2. Abandoned staging files sweep (*.staging.*.tmp in attempt-attachments older than grace period)
+            deletedCount += SweepDirectoryFiles(
+                tenantDir,
+                "attempt-attachments",
+                rootWithSeparator,
+                searchPattern: "*.tmp",
+                shouldDelete: fileInfo =>
+                {
+                    if (utcNow - fileInfo.LastWriteTimeUtc <= _gracePeriod)
+                    {
+                        return false;
+                    }
+
+                    return fileInfo.Name.Contains(".staging.", StringComparison.OrdinalIgnoreCase);
+                },
+                logPrefix: "abandoned staging",
+                cancellationToken);
+
+            // 3. Permanent attachments sweep (*.png in attempt-attachments older than grace period with no DB reference)
             // Fail-closed invariant: only sweep permanent files when referencedKeys was successfully queried from DB.
             if (referencedKeys is not null)
             {
@@ -172,6 +194,7 @@ public sealed class AttachmentOrphanCleanupWorker : BackgroundService
                     tenantDir,
                     "attempt-attachments",
                     rootWithSeparator,
+                    searchPattern: "*.png",
                     shouldDelete: fileInfo =>
                     {
                         if (utcNow - fileInfo.LastWriteTimeUtc <= _gracePeriod)
@@ -199,6 +222,7 @@ public sealed class AttachmentOrphanCleanupWorker : BackgroundService
         string tenantDir,
         string subFolderName,
         string rootWithSeparator,
+        string searchPattern,
         Func<FileInfo, bool> shouldDelete,
         string logPrefix,
         CancellationToken cancellationToken)
@@ -219,7 +243,7 @@ public sealed class AttachmentOrphanCleanupWorker : BackgroundService
         string[] files;
         try
         {
-            files = Directory.GetFiles(targetDir, "*.png");
+            files = Directory.GetFiles(targetDir, searchPattern);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

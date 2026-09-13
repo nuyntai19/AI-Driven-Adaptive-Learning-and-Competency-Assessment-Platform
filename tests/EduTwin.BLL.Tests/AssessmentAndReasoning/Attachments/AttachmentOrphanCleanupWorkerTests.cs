@@ -3,6 +3,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using EduTwin.API.AssessmentAndReasoning.Attachments;
+using EduTwin.BLL.AssessmentAndReasoning.Attachments;
 using EduTwin.DAL.AssessmentAndReasoning;
 using EduTwin.DAL.Persistence;
 using Microsoft.AspNetCore.Hosting;
@@ -87,10 +88,10 @@ public sealed class AttachmentOrphanCleanupWorkerTests : IDisposable
 
         var now = DateTime.UtcNow;
 
-        // 1. Expired temp png (>24h old) -> should be deleted
+        // 1. Expired temp png (>26h old temp grace period) -> should be deleted
         var expiredTempFile = Path.Combine(tempDir, "expired.png");
         File.WriteAllBytes(expiredTempFile, [1, 2, 3]);
-        File.SetLastWriteTimeUtc(expiredTempFile, now.AddHours(-26));
+        File.SetLastWriteTimeUtc(expiredTempFile, now.AddHours(-30));
 
         // 2. Fresh temp png (<24h old) -> should be kept
         var recentTempFile = Path.Combine(tempDir, "recent.png");
@@ -281,5 +282,92 @@ public sealed class AttachmentOrphanCleanupWorkerTests : IDisposable
         Assert.Equal(1, deletedCount);
         Assert.False(File.Exists(expiredTempFile), "Temporary file cleanup should still run independently.");
         Assert.True(File.Exists(orphanPermFile), "Permanent orphan must NOT be deleted when database query fails (Fail-Closed invariant).");
+    }
+
+    [Fact]
+    public async Task SweepOrphansOnceAsync_NearExpiryPromotion_PreservesPermanentFileBeforeCommitAndPurgesAfterPromotionGrace()
+    {
+        var tenantId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
+        var nonce = Guid.NewGuid().ToString("N");
+        var tempDir = Path.Combine(_testRoot, "tenants", tenantId.ToString("D"), "attempt-attachments-temp");
+        var permDir = Path.Combine(_testRoot, "tenants", tenantId.ToString("D"), "attempt-attachments");
+        Directory.CreateDirectory(tempDir);
+        Directory.CreateDirectory(permDir);
+
+        var t0 = new DateTime(2026, 9, 10, 10, 0, 0, DateTimeKind.Utc);
+
+        // 1. Temp file created at T0
+        var tempFile = Path.Combine(tempDir, $"{nonce}.png");
+        var dummyPng = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3, 4 };
+        await File.WriteAllBytesAsync(tempFile, dummyPng);
+        File.SetLastWriteTimeUtc(tempFile, t0);
+        File.SetCreationTimeUtc(tempFile, t0);
+
+        var sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(dummyPng)).ToLowerInvariant();
+
+        // 2. Near token expiry: student submits at T0 + 23h 55m (token valid until T0 + 24h)
+        var tPromote = t0.AddHours(23).AddMinutes(55);
+        var mockTimeProvider = new Mock<TimeProvider>();
+        mockTimeProvider.Setup(tp => tp.GetUtcNow()).Returns(new DateTimeOffset(tPromote));
+
+        var storage = new FileSystemAttemptAttachmentStorage(_options, _envMock.Object, mockTimeProvider.Object);
+        var payload = new AttachmentUploadTokenPayload(
+            tenantId,
+            studentId,
+            nonce,
+            sha256,
+            "drawing.png",
+            dummyPng.Length,
+            t0.AddHours(24));
+
+        var promoted = await storage.PromoteToPermanentAsync(payload, CancellationToken.None);
+        Assert.True(promoted.WasNewlyPromoted);
+
+        var permFile = Path.Combine(permDir, $"{nonce}.png");
+        Assert.True(File.Exists(permFile), "Permanent file must exist after promotion.");
+        Assert.False(File.Exists(tempFile), "Temp file must be cleaned up after promotion.");
+
+        // 3. Sweeper runs at T_sweep = T0 + 23h 56m (1 minute after promotion, BEFORE DB commit)
+        var tSweepBeforeCommit = tPromote.AddMinutes(1);
+        var deletedCountBeforeCommit = await _worker.SweepOrphansOnceAsync(tSweepBeforeCommit, CancellationToken.None);
+
+        Assert.Equal(0, deletedCountBeforeCommit);
+        Assert.True(File.Exists(permFile), "Permanent file MUST be preserved before DB commit because its promotion timestamp is recent (zero race condition).");
+
+        // 4. Advance time past 24h grace period from promotion (simulating crash before DB commit)
+        var tSweepAfterPromotionGrace = tPromote.AddHours(25);
+        var deletedCountAfterCrash = await _worker.SweepOrphansOnceAsync(tSweepAfterPromotionGrace, CancellationToken.None);
+
+        Assert.Equal(1, deletedCountAfterCrash);
+        Assert.False(File.Exists(permFile), "Permanent file without DB reference MUST be purged once promotion grace period (24h) has elapsed.");
+    }
+
+    [Fact]
+    public async Task SweepOrphansOnceAsync_AbandonedStagingFiles_PurgesExpiredStagingAndPreservesRecentStaging()
+    {
+        var tenantId = Guid.NewGuid();
+        var permDir = Path.Combine(_testRoot, "tenants", tenantId.ToString("D"), "attempt-attachments");
+        Directory.CreateDirectory(permDir);
+
+        var now = DateTime.UtcNow;
+
+        // Expired staging file (>24h old) -> MUST BE PURGED
+        var expiredStagingFile = Path.Combine(permDir, $"{Guid.NewGuid():N}.staging.{Guid.NewGuid():N}.tmp");
+        File.WriteAllBytes(expiredStagingFile, [1, 2, 3]);
+        File.SetLastWriteTimeUtc(expiredStagingFile, now.AddHours(-30));
+
+        // Recent staging file (<24h old, e.g. 5m old) -> MUST BE PRESERVED
+        var recentStagingFile = Path.Combine(permDir, $"{Guid.NewGuid():N}.staging.{Guid.NewGuid():N}.tmp");
+        File.WriteAllBytes(recentStagingFile, [4, 5, 6]);
+        File.SetLastWriteTimeUtc(recentStagingFile, now.AddMinutes(-5));
+
+        // Act
+        var deletedCount = await _worker.SweepOrphansOnceAsync(now, CancellationToken.None);
+
+        // Assert
+        Assert.Equal(1, deletedCount);
+        Assert.False(File.Exists(expiredStagingFile), "Expired staging file must be purged.");
+        Assert.True(File.Exists(recentStagingFile), "Recent staging file must be preserved.");
     }
 }

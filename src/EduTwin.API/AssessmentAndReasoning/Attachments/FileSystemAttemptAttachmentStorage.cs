@@ -15,16 +15,19 @@ public sealed class FileSystemAttemptAttachmentStorage : IAttemptAttachmentStora
     public const long MaxFileBytes = 5_242_880;
     private static readonly byte[] PngSignature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
     private readonly string _rootPath;
+    private readonly TimeProvider _timeProvider;
 
     public FileSystemAttemptAttachmentStorage(
         IOptions<AttachmentStorageOptions> options,
-        IWebHostEnvironment environment)
+        IWebHostEnvironment environment,
+        TimeProvider? timeProvider = null)
     {
         var configuredRoot = options.Value.RootPath;
         _rootPath = Path.GetFullPath(string.IsNullOrWhiteSpace(configuredRoot)
             ? Path.Combine(environment.ContentRootPath, "storage")
             : configuredRoot);
         Directory.CreateDirectory(_rootPath);
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public async Task<StoredTemporaryAttachment> StoreTemporaryPngAsync(
@@ -79,24 +82,51 @@ public sealed class FileSystemAttemptAttachmentStorage : IAttemptAttachmentStora
         var temporaryPath = GetTenantPath(payload.CenterId, "attempt-attachments-temp", $"{payload.UploadNonce}.png");
         var storageKey = $"tenants/{payload.CenterId:D}/attempt-attachments/{payload.UploadNonce}.png";
         var permanentPath = GetSafePath(storageKey);
-        Directory.CreateDirectory(Path.GetDirectoryName(permanentPath)!);
+        var permanentDir = Path.GetDirectoryName(permanentPath)!;
+        Directory.CreateDirectory(permanentDir);
 
         if (File.Exists(permanentPath))
         {
             await EnsureMatchingHashAsync(permanentPath, payload.Sha256Hex, cancellationToken);
+            TryDelete(temporaryPath);
             return new PromotedAttemptAttachment(storageKey, false);
         }
 
         await EnsureMatchingHashAsync(temporaryPath, payload.Sha256Hex, cancellationToken);
+
+        var stagingPath = Path.Combine(permanentDir, $"{payload.UploadNonce}.staging.{Guid.NewGuid():N}.tmp");
+        var promotionTimeUtc = _timeProvider.GetUtcNow().UtcDateTime;
         var wasNewlyPromoted = false;
+
         try
         {
-            File.Move(temporaryPath, permanentPath, overwrite: false);
+            await using (var source = new FileStream(
+                temporaryPath, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024,
+                FileOptions.Asynchronous | FileOptions.SequentialScan))
+            await using (var destination = new FileStream(
+                stagingPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 64 * 1024,
+                FileOptions.Asynchronous | FileOptions.WriteThrough))
+            {
+                await source.CopyToAsync(destination, cancellationToken);
+                await destination.FlushAsync(cancellationToken);
+            }
+
+            File.SetLastWriteTimeUtc(stagingPath, promotionTimeUtc);
+            File.SetCreationTimeUtc(stagingPath, promotionTimeUtc);
+
+            File.Move(stagingPath, permanentPath, overwrite: false);
             wasNewlyPromoted = true;
+
+            TryDelete(temporaryPath);
         }
         catch (IOException) when (File.Exists(permanentPath))
         {
             await EnsureMatchingHashAsync(permanentPath, payload.Sha256Hex, cancellationToken);
+            TryDelete(temporaryPath);
+        }
+        finally
+        {
+            TryDelete(stagingPath);
         }
 
         return new PromotedAttemptAttachment(storageKey, wasNewlyPromoted);
