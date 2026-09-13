@@ -22,14 +22,16 @@ public sealed class AuthorizationBootstrapperTests
         var permissions = AuthorizationPermissionCatalog.CreatePermissions();
         var mappings = AuthorizationPermissionCatalog.CreateAccountTypeMappings();
 
-        Assert.Equal(66, permissions.Count);
-        Assert.Equal(66, permissions.Select(item => item.PermissionCode).Distinct().Count());
-        Assert.Equal(66, permissions.Select(item => item.PermissionId).Distinct().Count());
-        Assert.Equal(105, mappings.Count);
+        Assert.Equal(68, permissions.Count);
+        Assert.Equal(68, permissions.Select(item => item.PermissionCode).Distinct().Count());
+        Assert.Equal(68, permissions.Select(item => item.PermissionId).Distinct().Count());
+        Assert.Equal(107, mappings.Count);
         Assert.Contains(permissions, item => item.PermissionCode == "curriculum.questions.delete");
         Assert.Contains(permissions, item => item.PermissionCode == "twin.student.update_own");
         Assert.Contains(permissions, item => item.PermissionCode == "twin.student.update_scoped");
         Assert.Contains(permissions, item => item.PermissionCode == "recommendations.student.update_own");
+        Assert.Contains(permissions, item => item.PermissionCode == "platform.audit.read");
+        Assert.Contains(permissions, item => item.PermissionCode == "platform.account.manage_own");
         Assert.All(permissions, permission =>
         {
             Assert.Equal(

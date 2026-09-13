@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -60,6 +60,8 @@ namespace EduTwin.DAL.Persistence.Migrations
             migrationBuilder.DropIndex(
                 name: "IX_authorization_audit_logs_target_center_id",
                 table: "authorization_audit_logs");
+
+            migrationBuilder.Sql("DELETE FROM `role_permissions` WHERE `permission_id` = '4e09f21c-6af9-5e3c-96d6-61f99343de4a';");
 
             migrationBuilder.DeleteData(
                 table: "permission_account_types",

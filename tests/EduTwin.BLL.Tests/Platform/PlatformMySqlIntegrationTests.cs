@@ -324,7 +324,7 @@ public sealed class PlatformMySqlIntegrationTests
         await using var verifyContext = CreateContext(database.ConnectionString, setupTenant);
         var center = await verifyContext.Centers.IgnoreQueryFilters().SingleAsync(c => c.CenterCode == "NEW_CENTER");
         Assert.Equal("New Test Center", center.CenterName);
-        Assert.Equal(1u, center.RowVersion);
+        Assert.Equal(2u, center.RowVersion);
 
         var manager = await verifyContext.Users.IgnoreQueryFilters().SingleAsync(u => u.CenterId == center.CenterId);
         Assert.Equal("new.manager", manager.Username);
@@ -1286,7 +1286,8 @@ public sealed class PlatformMySqlIntegrationTests
         var request = new UpdatePlatformCenterStatusRequest
         {
             Status = CenterStatus.Suspended.ToString(),
-            RowVersion = "1"
+            RowVersion = "1",
+            Reason = "Suspended for operational investigation."
         };
 
         var result = await service.UpdateCenterStatusAsync(targetCenterId, request, "trace-mysql-suspend");
@@ -1352,9 +1353,9 @@ public sealed class PlatformMySqlIntegrationTests
         // Now re-apply migration forward to latest
         await migrator.MigrateAsync();
 
-        // Verify database is back at Gate 2 schema and ready
+        // Verify database is back at latest schema and ready
         var count = await context.Permissions.IgnoreQueryFilters().CountAsync();
-        Assert.Equal(66, count);
+        Assert.Equal(68, count);
     }
 
     [MySqlIntegrationFact]

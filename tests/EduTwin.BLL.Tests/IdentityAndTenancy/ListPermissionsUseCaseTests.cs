@@ -21,8 +21,8 @@ public sealed class ListPermissionsUseCaseTests
         });
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(66, result.TotalItems);
-        Assert.Equal(66, result.Data.Count);
+        Assert.Equal(68, result.TotalItems);
+        Assert.Equal(68, result.Data.Count);
         Assert.All(result.Data, permission =>
         {
             Assert.Equal(

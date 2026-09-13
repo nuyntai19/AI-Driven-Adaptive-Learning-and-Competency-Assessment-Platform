@@ -61,12 +61,9 @@ public sealed class PlatformMeService : IPlatformMeService
         }
 
         var user = await _dbContext.Users
-            .IgnoreQueryFilters()
             .FirstOrDefaultAsync(
-                u => u.CenterId == AuthorizationBootstrapper.ReservedPlatformCenterId &&
-                     u.UserId == callerUserId &&
-                     u.RoleName == UserRole.PlatformAdmin &&
-                     !u.IsDeleted,
+                u => u.UserId == callerUserId &&
+                     u.RoleName == UserRole.PlatformAdmin,
                 cancellationToken);
 
         if (user is null)
@@ -78,9 +75,7 @@ public sealed class PlatformMeService : IPlatformMeService
         var now = _timeProvider.GetUtcNow().UtcDateTime;
 
         var activeSessionCount = await _dbContext.RefreshTokens
-            .IgnoreQueryFilters()
-            .Where(rt => rt.CenterId == AuthorizationBootstrapper.ReservedPlatformCenterId &&
-                         rt.UserId == callerUserId &&
+            .Where(rt => rt.UserId == callerUserId &&
                          rt.RevokedAt == null &&
                          rt.ExpiresAt > now)
             .CountAsync(cancellationToken);
@@ -134,12 +129,9 @@ public sealed class PlatformMeService : IPlatformMeService
         }
 
         var user = await _dbContext.Users
-            .IgnoreQueryFilters()
             .FirstOrDefaultAsync(
-                u => u.CenterId == AuthorizationBootstrapper.ReservedPlatformCenterId &&
-                     u.UserId == callerUserId &&
-                     u.RoleName == UserRole.PlatformAdmin &&
-                     !u.IsDeleted,
+                u => u.UserId == callerUserId &&
+                     u.RoleName == UserRole.PlatformAdmin,
                 cancellationToken);
 
         if (user is null)
@@ -165,9 +157,7 @@ public sealed class PlatformMeService : IPlatformMeService
 
         // Bulk revoke active refresh tokens for the platform admin
         var activeTokens = await _dbContext.RefreshTokens
-            .IgnoreQueryFilters()
-            .Where(rt => rt.CenterId == AuthorizationBootstrapper.ReservedPlatformCenterId &&
-                         rt.UserId == callerUserId &&
+            .Where(rt => rt.UserId == callerUserId &&
                          rt.RevokedAt == null)
             .ToListAsync(cancellationToken);
 
@@ -233,12 +223,9 @@ public sealed class PlatformMeService : IPlatformMeService
         }
 
         var user = await _dbContext.Users
-            .IgnoreQueryFilters()
             .FirstOrDefaultAsync(
-                u => u.CenterId == AuthorizationBootstrapper.ReservedPlatformCenterId &&
-                     u.UserId == callerUserId &&
-                     u.RoleName == UserRole.PlatformAdmin &&
-                     !u.IsDeleted,
+                u => u.UserId == callerUserId &&
+                     u.RoleName == UserRole.PlatformAdmin,
                 cancellationToken);
 
         if (user is null)
@@ -259,9 +246,7 @@ public sealed class PlatformMeService : IPlatformMeService
             : request.Reason.Trim();
 
         var activeTokens = await _dbContext.RefreshTokens
-            .IgnoreQueryFilters()
-            .Where(rt => rt.CenterId == AuthorizationBootstrapper.ReservedPlatformCenterId &&
-                         rt.UserId == callerUserId &&
+            .Where(rt => rt.UserId == callerUserId &&
                          rt.RevokedAt == null)
             .ToListAsync(cancellationToken);
 

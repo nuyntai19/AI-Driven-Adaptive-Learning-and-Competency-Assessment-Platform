@@ -28,6 +28,7 @@ public class PlatformAuditController : ControllerBase
     }
 
     [HttpGet]
+    [Authorize(Policy = "platform.audit.read")]
     public async Task<IActionResult> ListAuditLogs(
         [FromQuery] PlatformAuditQuery query,
         CancellationToken cancellationToken = default)
@@ -52,6 +53,7 @@ public class PlatformAuditController : ControllerBase
     }
 
     [HttpGet("{id:long}")]
+    [Authorize(Policy = "platform.audit.read")]
     public async Task<IActionResult> GetAuditLog(
         [FromRoute] ulong id,
         CancellationToken cancellationToken = default)

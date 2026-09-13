@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -25,6 +25,8 @@ namespace EduTwin.DAL.Persistence.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.Sql("DELETE FROM `role_permissions` WHERE `permission_id` = '6fe640d3-a019-5670-875f-ef0470c8eba8';");
+
             migrationBuilder.DeleteData(
                 table: "permission_account_types",
                 keyColumns: new[] { "account_type", "permission_id" },

@@ -129,17 +129,16 @@ public class PlatformCenterService : IPlatformCenterService
             .ToListAsync(cancellationToken);
 
         var managerDict = new Dictionary<Guid, (Guid UserId, string Username, string DisplayName, ulong RowVersion)>();
+        Dictionary<Guid, int> studentCounts;
+        Dictionary<Guid, int> teacherCounts;
+        Dictionary<Guid, int> activeManagerCounts;
+        Dictionary<Guid, int> classCounts;
+        HashSet<Guid> activePrimaryManagerUserIds;
+
         if (pagedCenters.Count > 0)
         {
-            var parameter = Expression.Parameter(typeof(User), "u");
-            var property = Expression.Property(parameter, nameof(User.CenterId));
-            Expression? orBody = null;
-            foreach (var c in pagedCenters)
-            {
-                var equals = Expression.Equal(property, Expression.Constant(c.CenterId));
-                orBody = orBody == null ? equals : Expression.OrElse(orBody, equals);
-            }
-            var centerFilter = Expression.Lambda<Func<User, bool>>(orBody!, parameter);
+            var targetCenterIds = pagedCenters.Select(c => c.CenterId).Distinct().ToList();
+            var centerFilter = BuildOrEqualityFilter<User, Guid>(nameof(User.CenterId), targetCenterIds);
 
             var managers = await _dbContext.Users
                 .IgnoreQueryFilters()
@@ -173,52 +172,71 @@ public class PlatformCenterService : IPlatformCenterService
                 var chosen = primary ?? centerManagers[0];
                 managerDict[c.CenterId] = (chosen.UserId, chosen.Username, chosen.DisplayName, chosen.RowVersion);
             }
-        }
 
-        var targetCenterIds = pagedCenters.Select(c => c.CenterId).ToList();
+            var classCenterFilter = BuildOrEqualityFilter<Class, Guid>(nameof(Class.CenterId), targetCenterIds);
 
-        var studentCounts = await _dbContext.Users
-            .IgnoreQueryFilters()
-            .Where(u => targetCenterIds.Contains(u.CenterId) && u.RoleName == UserRole.Student && u.Status == UserStatus.Active && !u.IsDeleted)
-            .GroupBy(u => u.CenterId)
-            .Select(g => new { CenterId = g.Key, Count = g.Count() })
-            .ToDictionaryAsync(x => x.CenterId, x => x.Count, cancellationToken);
-
-        var teacherCounts = await _dbContext.Users
-            .IgnoreQueryFilters()
-            .Where(u => targetCenterIds.Contains(u.CenterId) && u.RoleName == UserRole.Teacher && u.Status == UserStatus.Active && !u.IsDeleted)
-            .GroupBy(u => u.CenterId)
-            .Select(g => new { CenterId = g.Key, Count = g.Count() })
-            .ToDictionaryAsync(x => x.CenterId, x => x.Count, cancellationToken);
-
-        var activeManagerCounts = await _dbContext.Users
-            .IgnoreQueryFilters()
-            .Where(u => targetCenterIds.Contains(u.CenterId) && u.RoleName == UserRole.CenterManager && u.Status == UserStatus.Active && !u.IsDeleted)
-            .GroupBy(u => u.CenterId)
-            .Select(g => new { CenterId = g.Key, Count = g.Count() })
-            .ToDictionaryAsync(x => x.CenterId, x => x.Count, cancellationToken);
-
-        var classCounts = await _dbContext.Classes
-            .IgnoreQueryFilters()
-            .Where(cl => targetCenterIds.Contains(cl.CenterId) && !cl.IsDeleted)
-            .GroupBy(cl => cl.CenterId)
-            .Select(g => new { CenterId = g.Key, Count = g.Count() })
-            .ToDictionaryAsync(x => x.CenterId, x => x.Count, cancellationToken);
-
-        var primaryManagerIds = pagedCenters
-            .Where(c => c.PrimaryManagerUserId.HasValue)
-            .Select(c => c.PrimaryManagerUserId!.Value)
-            .Distinct()
-            .ToList();
-
-        var activePrimaryManagerUserIds = primaryManagerIds.Count > 0
-            ? (await _dbContext.Users
+            studentCounts = await _dbContext.Users
                 .IgnoreQueryFilters()
-                .Where(u => primaryManagerIds.Contains(u.UserId) && u.RoleName == UserRole.CenterManager && u.Status == UserStatus.Active && !u.IsDeleted)
-                .Select(u => u.UserId)
-                .ToListAsync(cancellationToken))
-                .ToHashSet()
-            : new HashSet<Guid>();
+                .Where(centerFilter)
+                .Where(u => u.RoleName == UserRole.Student && u.Status == UserStatus.Active && !u.IsDeleted)
+                .GroupBy(u => u.CenterId)
+                .Select(g => new { CenterId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.CenterId, x => x.Count, cancellationToken);
+
+            teacherCounts = await _dbContext.Users
+                .IgnoreQueryFilters()
+                .Where(centerFilter)
+                .Where(u => u.RoleName == UserRole.Teacher && u.Status == UserStatus.Active && !u.IsDeleted)
+                .GroupBy(u => u.CenterId)
+                .Select(g => new { CenterId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.CenterId, x => x.Count, cancellationToken);
+
+            activeManagerCounts = await _dbContext.Users
+                .IgnoreQueryFilters()
+                .Where(centerFilter)
+                .Where(u => u.RoleName == UserRole.CenterManager && u.Status == UserStatus.Active && !u.IsDeleted)
+                .GroupBy(u => u.CenterId)
+                .Select(g => new { CenterId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.CenterId, x => x.Count, cancellationToken);
+
+            classCounts = await _dbContext.Classes
+                .IgnoreQueryFilters()
+                .Where(classCenterFilter)
+                .Where(cl => !cl.IsDeleted)
+                .GroupBy(cl => cl.CenterId)
+                .Select(g => new { CenterId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.CenterId, x => x.Count, cancellationToken);
+
+            var primaryManagerIds = pagedCenters
+                .Where(c => c.PrimaryManagerUserId.HasValue)
+                .Select(c => c.PrimaryManagerUserId!.Value)
+                .Distinct()
+                .ToList();
+
+            if (primaryManagerIds.Count > 0)
+            {
+                var pmFilter = BuildOrEqualityFilter<User, Guid>(nameof(User.UserId), primaryManagerIds);
+                activePrimaryManagerUserIds = (await _dbContext.Users
+                    .IgnoreQueryFilters()
+                    .Where(pmFilter)
+                    .Where(u => u.RoleName == UserRole.CenterManager && u.Status == UserStatus.Active && !u.IsDeleted)
+                    .Select(u => u.UserId)
+                    .ToListAsync(cancellationToken))
+                    .ToHashSet();
+            }
+            else
+            {
+                activePrimaryManagerUserIds = new HashSet<Guid>();
+            }
+        }
+        else
+        {
+            studentCounts = new Dictionary<Guid, int>();
+            teacherCounts = new Dictionary<Guid, int>();
+            activeManagerCounts = new Dictionary<Guid, int>();
+            classCounts = new Dictionary<Guid, int>();
+            activePrimaryManagerUserIds = new HashSet<Guid>();
+        }
 
         var items = pagedCenters.Select(c =>
         {
@@ -1519,5 +1537,20 @@ public class PlatformCenterService : IPlatformCenterService
             PreviousPrimaryDisabled = request.DisablePreviousPrimary && prevPrimaryUser is not null,
             UpdatedAtUtc = now
         });
+    }
+
+    private static Expression<Func<T, bool>> BuildOrEqualityFilter<T, TProp>(
+        string propertyName,
+        IReadOnlyList<TProp> values)
+    {
+        var parameter = Expression.Parameter(typeof(T), "e");
+        var property = Expression.Property(parameter, propertyName);
+        Expression? orBody = null;
+        foreach (var val in values)
+        {
+            var equals = Expression.Equal(property, Expression.Constant(val, typeof(TProp)));
+            orBody = orBody == null ? equals : Expression.OrElse(orBody, equals);
+        }
+        return Expression.Lambda<Func<T, bool>>(orBody!, parameter);
     }
 }

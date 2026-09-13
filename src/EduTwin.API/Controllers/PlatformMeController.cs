@@ -28,6 +28,7 @@ public class PlatformMeController : ControllerBase
     }
 
     [HttpGet("security")]
+    [Authorize(Policy = "platform.account.manage_own")]
     public async Task<IActionResult> GetSecurityProfile(CancellationToken cancellationToken = default)
     {
         var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
@@ -50,6 +51,7 @@ public class PlatformMeController : ControllerBase
     }
 
     [HttpPost("change-password")]
+    [Authorize(Policy = "platform.account.manage_own")]
     public async Task<IActionResult> ChangePassword(
         [FromBody] PlatformChangePasswordRequest request,
         CancellationToken cancellationToken = default)
@@ -74,6 +76,7 @@ public class PlatformMeController : ControllerBase
     }
 
     [HttpPost("revoke-sessions")]
+    [Authorize(Policy = "platform.account.manage_own")]
     public async Task<IActionResult> RevokeSessions(
         [FromBody] PlatformRevokeSessionsRequest? request,
         CancellationToken cancellationToken = default)
