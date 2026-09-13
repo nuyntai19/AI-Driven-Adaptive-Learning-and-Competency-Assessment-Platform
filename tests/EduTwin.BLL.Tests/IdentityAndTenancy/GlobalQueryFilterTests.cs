@@ -248,6 +248,7 @@ public class GlobalQueryFilterTests
 
         var expectedWhitelist = new[]
         {
+            "src/EduTwin.API/AssessmentAndReasoning/Attachments/AttachmentOrphanCleanupWorker.cs",
             "src/EduTwin.BLL/Platform/PlatformCenterService.cs",
             "src/EduTwin.BLL/Seeding/AuthorizationBootstrapper.cs",
             "src/EduTwin.BLL/Seeding/ManifestEvaluator.cs",
