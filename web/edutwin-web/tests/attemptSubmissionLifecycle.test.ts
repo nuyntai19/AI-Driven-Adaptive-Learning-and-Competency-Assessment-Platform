@@ -12,6 +12,7 @@ import {
   clearAttemptSessionId,
   createClientSubmissionId,
   getOrCreateAttemptSessionId,
+  setAttemptSessionId,
   type SessionStorageLike,
 } from "../src/utils/attemptSessionStorage.ts";
 import type { ScratchpadDraft, ScratchpadStroke } from "../src/types/scratchpad.ts";
@@ -231,9 +232,10 @@ test("FailedTerminal -> handleResubmit migrates vector draft and preserves drawi
   const scratchpadPng: { size: number } | null = { size: 1024 };
   let drawingUploadToken: string | null = "token-failed";
 
-  // Simulate handleResubmit when terminal failure occurs
-  clearAttemptSessionId(testScope, sessionStorage);
+  // Simulate handleResubmit when terminal failure occurs:
+  // Must persist newId to sessionStorage so that getClientSubmissionId() and reloads stay consistent!
   const newSubmissionId = createClientSubmissionId();
+  setAttemptSessionId(testScope, newSubmissionId, sessionStorage);
   drawingUploadToken = null;
 
   // Migrate draft to newSubmissionId
@@ -246,7 +248,7 @@ test("FailedTerminal -> handleResubmit migrates vector draft and preserves drawi
   });
   await deleteScratchpadDraft(testScope.centerId, testScope.userId, oldSubmissionId);
 
-  // Assert old draft is gone, new draft exists with same strokes!
+  // Assert 1: old draft is gone, new draft exists with same strokes!
   const oldDraft = await getScratchpadDraft(testScope.centerId, testScope.userId, oldSubmissionId);
   const migratedDraft = await getScratchpadDraft(testScope.centerId, testScope.userId, newSubmissionId);
 
@@ -256,6 +258,29 @@ test("FailedTerminal -> handleResubmit migrates vector draft and preserves drawi
   assert.equal(migratedDraft.strokes[0].id, "stroke-1");
   assert.ok(scratchpadPng !== null, "Drawing memory must remain available for resubmission");
   assert.equal(drawingUploadToken, null, "Upload token must be reset to force fresh prepare-upload");
+
+  // Assert 2: sessionStorage has the EXACT newSubmissionId
+  assert.equal(
+    sessionStorage.getItem(buildAttemptSessionKey(testScope)),
+    newSubmissionId,
+    "sessionStorage must hold the exact newSubmissionId after resubmit"
+  );
+
+  // Assert 3: getClientSubmissionId() (via getOrCreateAttemptSessionId) returns the exact same newSubmissionId
+  const resolvedClientSubmissionId = getOrCreateAttemptSessionId(testScope, sessionStorage);
+  assert.equal(
+    resolvedClientSubmissionId,
+    newSubmissionId,
+    "getClientSubmissionId must return the exact newSubmissionId without generating a mismatched third ID"
+  );
+
+  // Assert 4: Reload simulation: A reloaded page instance resolves the same ID and restores the migrated draft
+  const reloadedSessionId = getOrCreateAttemptSessionId(testScope, sessionStorage);
+  assert.equal(reloadedSessionId, newSubmissionId, "Reload must resolve the migrated session ID");
+  const restoredDraftOnReload = await getScratchpadDraft(testScope.centerId, testScope.userId, reloadedSessionId);
+  assert.ok(restoredDraftOnReload, "Draft must be restored on reload following resubmit");
+  assert.equal(restoredDraftOnReload.strokes.length, 1);
+  assert.equal(restoredDraftOnReload.strokes[0].id, "stroke-1");
 });
 
 test("failed submit -> draft and session identity retained for retry", async () => {

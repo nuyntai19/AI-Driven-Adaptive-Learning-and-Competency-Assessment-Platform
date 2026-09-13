@@ -28,6 +28,7 @@ import {
   clearAttemptSessionId,
   createClientSubmissionId,
   getOrCreateAttemptSessionId,
+  setAttemptSessionId,
 } from "../utils/attemptSessionStorage";
 import { useAuthStore } from "../stores/authStore";
 
@@ -435,11 +436,11 @@ export const LearningPlayerPage = () => {
   // Explicit resubmit handler when previous attempt failed terminally
   const handleResubmit = async () => {
     const oldId = clientSubmissionIdRef.current;
-    if (attemptSessionScope) {
-      clearAttemptSessionId(attemptSessionScope);
-    }
     const newId = createClientSubmissionId();
     clientSubmissionIdRef.current = newId;
+    if (attemptSessionScope) {
+      setAttemptSessionId(attemptSessionScope, newId);
+    }
 
     // Migrate existing scratchpad draft to the new submission identity so drawing is preserved
     if (currentUser) {

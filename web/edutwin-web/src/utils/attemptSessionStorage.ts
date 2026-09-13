@@ -41,6 +41,20 @@ export function getOrCreateAttemptSessionId(
   return next;
 }
 
+export function setAttemptSessionId(
+  scope: AttemptSessionScope,
+  id: string,
+  storage: SessionStorageLike | null = getBrowserSessionStorage()
+): void {
+  const normalized = id.trim();
+  if (!normalized) throw new Error("Attempt session ID must not be empty.");
+  try {
+    storage?.setItem(buildAttemptSessionKey(scope), normalized);
+  } catch {
+    // Best effort persistence when browser storage is unavailable.
+  }
+}
+
 export function clearAttemptSessionId(
   scope: AttemptSessionScope,
   storage: SessionStorageLike | null = getBrowserSessionStorage()
