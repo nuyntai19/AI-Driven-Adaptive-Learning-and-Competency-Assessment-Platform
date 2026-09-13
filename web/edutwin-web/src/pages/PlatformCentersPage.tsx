@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { isAxiosError } from "axios";
 import { platformApi } from "../api/platformApi";
@@ -219,18 +220,34 @@ export const PlatformCentersPage: React.FC = () => {
             Quản Lý Trung Tâm Đối Tác
           </h1>
         </div>
-        {canManageCenters && (
-          <button
-            type="button"
-            onClick={() => setIsCreateModalOpen(true)}
-            className="inline-flex items-center px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm shadow-sm transition-colors"
-          >
-            <svg className="w-5 h-5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Thêm trung tâm mới
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          <div className="inline-flex rounded-lg p-1 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+            <Link
+              to="/quan-tri-nen-tang/trung-tam"
+              className="px-4 py-2 text-xs font-semibold rounded-md bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm"
+            >
+              Trung tâm đối tác
+            </Link>
+            <Link
+              to="/quan-tri-nen-tang/nhat-ky"
+              className="px-4 py-2 text-xs font-semibold rounded-md text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+            >
+              Nhật ký kiểm toán
+            </Link>
+          </div>
+          {canManageCenters && (
+            <button
+              type="button"
+              onClick={() => setIsCreateModalOpen(true)}
+              className="inline-flex items-center px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm shadow-sm transition-colors"
+            >
+              <svg className="w-5 h-5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Thêm trung tâm mới
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Notifications */}

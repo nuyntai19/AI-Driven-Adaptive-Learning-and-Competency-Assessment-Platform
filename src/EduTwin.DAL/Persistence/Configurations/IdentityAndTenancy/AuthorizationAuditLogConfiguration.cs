@@ -17,6 +17,7 @@ public sealed class AuthorizationAuditLogConfiguration : IEntityTypeConfiguratio
         builder.Property(x => x.TargetType).HasColumnName("target_type").HasColumnType("varchar(64)").IsRequired();
         builder.Property(x => x.TargetId).HasColumnName("target_id").HasColumnType("varchar(128)").IsRequired();
         builder.Property(x => x.TargetUserId).HasColumnName("target_user_id").HasColumnType("varchar(36)");
+        builder.Property(x => x.TargetCenterId).HasColumnName("target_center_id").HasColumnType("varchar(36)");
         builder.Property(x => x.PermissionCode).HasColumnName("permission_code").HasColumnType("varchar(100)");
         builder.Property(x => x.BeforeData).HasColumnName("before_data").HasColumnType("json");
         builder.Property(x => x.AfterData).HasColumnName("after_data").HasColumnType("json");
@@ -32,6 +33,8 @@ public sealed class AuthorizationAuditLogConfiguration : IEntityTypeConfiguratio
             .HasDatabaseName("ix_authorization_audit_logs_center_actor_created");
         builder.HasIndex(x => new { x.CenterId, x.TargetUserId, x.CreatedAt })
             .HasDatabaseName("ix_authorization_audit_logs_center_target_created");
+        builder.HasIndex(x => new { x.CenterId, x.TargetCenterId, x.CreatedAt })
+            .HasDatabaseName("ix_auth_audit_center_target_center_created");
         builder.HasOne(x => x.ActorUser).WithMany()
             .HasForeignKey(x => new { x.CenterId, x.ActorUserId })
             .HasPrincipalKey(x => new { x.CenterId, x.UserId })
@@ -40,5 +43,11 @@ public sealed class AuthorizationAuditLogConfiguration : IEntityTypeConfiguratio
             .HasForeignKey(x => new { x.CenterId, x.TargetUserId })
             .HasPrincipalKey(x => new { x.CenterId, x.UserId })
             .OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_authorization_audit_logs_users_target");
+        builder.HasOne(x => x.TargetCenter).WithMany()
+            .HasForeignKey(x => x.TargetCenterId)
+            .HasPrincipalKey(x => x.CenterId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .IsRequired(false)
+            .HasConstraintName("fk_authorization_audit_logs_centers_target");
     }
 }

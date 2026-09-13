@@ -29,6 +29,7 @@ import { permissions, authorizationUiPermissions } from "./auth/permissions";
 import { AccessDeniedPage } from "./pages/AccessDeniedPage";
 import { AuthorizationManagementPage } from "./pages/AuthorizationManagementPage";
 import { PlatformCentersPage } from "./pages/PlatformCentersPage";
+import { PlatformAuditLogsPage } from "./pages/PlatformAuditLogsPage";
 import { useAuthStore } from "./stores/authStore";
 import { cleanupExpiredScratchpadDrafts } from "./utils/scratchpadStorage";
 
@@ -143,6 +144,9 @@ function App() {
           {/* Platform Administration */}
           <Route element={<PermissionRoute anyOf={[permissions.platformCentersRead, permissions.platformCentersManage]} accountTypes={["PlatformAdmin"]} />}>
             <Route path="/quan-tri-nen-tang/trung-tam" element={<PlatformCentersPage />} />
+          </Route>
+          <Route element={<PermissionRoute allOf={[permissions.platformAuditRead]} accountTypes={["PlatformAdmin"]} />}>
+            <Route path="/quan-tri-nen-tang/nhat-ky" element={<PlatformAuditLogsPage />} />
           </Route>
         </Route>
 

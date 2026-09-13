@@ -116,4 +116,36 @@ export const platformApi = {
     );
     return response.data.data;
   },
+
+  listAuditLogs: async (
+    query: import("../types/platform").PlatformAuditQuery = {}
+  ): Promise<import("../types/platform").PlatformAuditListData> => {
+    const queryParams: Record<string, string | number> = {};
+    if (query.page) queryParams.page = query.page;
+    if (query.pageSize) queryParams.pageSize = query.pageSize;
+    if (query.actionType?.trim()) queryParams.actionType = query.actionType.trim();
+    if (query.targetType?.trim()) queryParams.targetType = query.targetType.trim();
+    if (query.targetId?.trim()) queryParams.targetId = query.targetId.trim();
+    if (query.targetCenterId?.trim()) queryParams.targetCenterId = query.targetCenterId.trim();
+    if (query.actorUserId?.trim()) queryParams.actorUserId = query.actorUserId.trim();
+    if (query.traceId?.trim()) queryParams.traceId = query.traceId.trim();
+    if (query.fromUtc?.trim()) queryParams.fromUtc = query.fromUtc.trim();
+    if (query.toUtc?.trim()) queryParams.toUtc = query.toUtc.trim();
+    if (query.search?.trim()) queryParams.search = query.search.trim();
+
+    const response = await httpClient.get<{ data: import("../types/platform").PlatformAuditListData }>(
+      `/platform/audit-logs`,
+      { params: queryParams }
+    );
+    return response.data.data;
+  },
+
+  getAuditLog: async (
+    auditId: string
+  ): Promise<import("../types/platform").PlatformAuditItem> => {
+    const response = await httpClient.get<{ data: import("../types/platform").PlatformAuditItem }>(
+      `/platform/audit-logs/${auditId}`
+    );
+    return response.data.data;
+  },
 };

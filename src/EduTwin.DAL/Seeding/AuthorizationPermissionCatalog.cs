@@ -35,17 +35,20 @@ public static class AuthorizationPermissionCatalog
         "knowledge.edges.delete", "curriculum.curriculums.publish", "curriculum.questions.publish",
         "curriculum.questions.delete", "twin.student.update_scoped",
         "assignments.assignments.publish", "assignments.assignments.close", "twin.reasoning.override",
-        "platform.centers.read", "platform.centers.manage", "platform.managers.manage"
+        "platform.centers.read", "platform.centers.manage", "platform.managers.manage",
+        "platform.audit.read"
     ];
 
     private static readonly HashSet<string> NonDelegableCodes =
     [
-        "platform.centers.read", "platform.centers.manage", "platform.managers.manage"
+        "platform.centers.read", "platform.centers.manage", "platform.managers.manage",
+        "platform.audit.read"
     ];
 
     private static readonly string[] PlatformCodes =
     [
-        "platform.centers.read", "platform.centers.manage", "platform.managers.manage"
+        "platform.centers.read", "platform.centers.manage", "platform.managers.manage",
+        "platform.audit.read"
     ];
 
     private static readonly string[] StudentCodes =

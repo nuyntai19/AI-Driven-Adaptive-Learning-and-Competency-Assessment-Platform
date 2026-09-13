@@ -10,6 +10,7 @@ const platformAdminUser = {
     permissions.platformCentersRead,
     permissions.platformCentersManage,
     permissions.platformManagersManage,
+    permissions.platformAuditRead,
   ],
 };
 
@@ -112,4 +113,56 @@ test("platform center contracts serialize correctly", () => {
     expectedUserRowVersion: "1",
   };
   assert.equal(resetPassReq.expectedUserRowVersion, "1");
+});
+
+test("platform admin can access platform audit logs route", () => {
+  assert.equal(
+    canAccess(platformAdminUser, {
+      accountTypes: ["PlatformAdmin"],
+      allOf: [permissions.platformAuditRead],
+    }),
+    true
+  );
+});
+
+test("tenant users (CenterManager, Student) cannot access platform audit logs route", () => {
+  assert.equal(
+    canAccess(centerManagerUser, {
+      accountTypes: ["PlatformAdmin"],
+      allOf: [permissions.platformAuditRead],
+    }),
+    false
+  );
+
+  assert.equal(
+    canAccess(studentUser, {
+      accountTypes: ["PlatformAdmin"],
+      allOf: [permissions.platformAuditRead],
+    }),
+    false
+  );
+});
+
+test("platform audit contracts serialize and structure data correctly", () => {
+  const auditItem: import("../src/types/platform.ts").PlatformAuditItem = {
+    auditId: "501",
+    centerId: "00000000-0000-0000-0000-000000000001",
+    targetCenterId: "11111111-1111-1111-1111-111111111111",
+    targetCenterCode: "CENTER_TEST",
+    actorUserId: "22222222-2222-2222-2222-222222222222",
+    actorUsername: "platform_admin",
+    actionType: "CenterCreated",
+    targetType: "Center",
+    targetId: "11111111-1111-1111-1111-111111111111",
+    beforeData: null,
+    afterData: { centerCode: "CENTER_TEST", status: "Active" },
+    reason: "Platform center provisioned.",
+    traceId: "00-trace-test-01",
+    createdAt: "2026-09-13T20:30:00Z",
+  };
+
+  assert.equal(auditItem.auditId, "501");
+  assert.equal(auditItem.targetCenterCode, "CENTER_TEST");
+  assert.equal(auditItem.actionType, "CenterCreated");
+  assert.equal((auditItem.afterData as Record<string, string>).status, "Active");
 });

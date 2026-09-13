@@ -121,3 +121,41 @@ export interface MakePrimaryCenterManagerData {
   previousPrimaryDisabled: boolean;
   updatedAtUtc: string;
 }
+
+export interface PlatformAuditItem {
+  auditId: string;
+  centerId: string;
+  targetCenterId?: string | null;
+  targetCenterCode?: string | null;
+  actorUserId?: string | null;
+  actorUsername?: string | null;
+  actionType: string;
+  targetType: string;
+  targetId: string;
+  beforeData?: Record<string, unknown> | null;
+  afterData?: Record<string, unknown> | null;
+  reason: string;
+  traceId: string;
+  createdAt: string;
+}
+
+export interface PlatformAuditListData {
+  items: PlatformAuditItem[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface PlatformAuditQuery {
+  page?: number;
+  pageSize?: number;
+  actionType?: string;
+  targetType?: string;
+  targetId?: string;
+  targetCenterId?: string;
+  actorUserId?: string;
+  traceId?: string;
+  fromUtc?: string;
+  toUtc?: string;
+  search?: string;
+}

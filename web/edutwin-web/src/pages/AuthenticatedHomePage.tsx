@@ -205,6 +205,14 @@ export const AuthenticatedHomePage = () => {
                     >
                       Vào Quản Trị Trung Tâm →
                     </Link>
+                    {hasPermission(permissions.platformAuditRead) && (
+                      <Link
+                        to="/quan-tri-nen-tang/nhat-ky"
+                        className="inline-flex items-center justify-center rounded-lg bg-slate-800 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-slate-700"
+                      >
+                        Nhật Ký Kiểm Toán Nền Tảng →
+                      </Link>
+                    )}
                   </div>
                 </div>
               )}

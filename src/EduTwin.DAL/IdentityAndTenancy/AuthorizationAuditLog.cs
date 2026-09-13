@@ -1,3 +1,4 @@
+using EduTwin.DAL.Organization;
 using EduTwin.DAL.Persistence.Models;
 
 namespace EduTwin.DAL.IdentityAndTenancy;
@@ -11,6 +12,7 @@ public sealed class AuthorizationAuditLog : ITenantAppendOnlyEntity
     public string TargetType { get; set; } = null!;
     public string TargetId { get; set; } = null!;
     public Guid? TargetUserId { get; set; }
+    public Guid? TargetCenterId { get; set; }
     public string? PermissionCode { get; set; }
     public string? BeforeData { get; set; }
     public string? AfterData { get; set; }
@@ -21,4 +23,5 @@ public sealed class AuthorizationAuditLog : ITenantAppendOnlyEntity
 
     public User? ActorUser { get; set; }
     public User? TargetUser { get; set; }
+    public Center? TargetCenter { get; set; }
 }

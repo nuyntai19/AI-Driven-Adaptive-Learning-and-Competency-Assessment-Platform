@@ -291,6 +291,7 @@ public class PlatformCenterService : IPlatformCenterService
         var auditLog = new AuthorizationAuditLog
         {
             CenterId = AuthorizationBootstrapper.ReservedPlatformCenterId,
+            TargetCenterId = centerId,
             ActorUserId = callerUserId,
             TargetUserId = null, // Invariant: Cross-tenant operations MUST record target_user_id as null
             TargetType = "Center",
@@ -472,6 +473,7 @@ public class PlatformCenterService : IPlatformCenterService
         var auditLog = new AuthorizationAuditLog
         {
             CenterId = AuthorizationBootstrapper.ReservedPlatformCenterId,
+            TargetCenterId = center.CenterId,
             ActorUserId = callerUserId,
             TargetUserId = null, // Invariant: Cross-tenant operations MUST record target_user_id as null
             TargetType = "Center",
@@ -612,6 +614,7 @@ public class PlatformCenterService : IPlatformCenterService
         var auditLog = new AuthorizationAuditLog
         {
             CenterId = AuthorizationBootstrapper.ReservedPlatformCenterId,
+            TargetCenterId = centerId,
             ActorUserId = callerUserId,
             TargetUserId = null, // Invariant: Cross-tenant operations MUST record target_user_id as null
             TargetType = "CenterManager",
@@ -841,6 +844,7 @@ public class PlatformCenterService : IPlatformCenterService
         var auditLog = new AuthorizationAuditLog
         {
             CenterId = AuthorizationBootstrapper.ReservedPlatformCenterId,
+            TargetCenterId = centerId,
             ActorUserId = callerUserId,
             TargetUserId = null,
             TargetType = "User",
@@ -1019,6 +1023,7 @@ public class PlatformCenterService : IPlatformCenterService
         var auditLog = new AuthorizationAuditLog
         {
             CenterId = AuthorizationBootstrapper.ReservedPlatformCenterId,
+            TargetCenterId = centerId,
             ActorUserId = callerUserId,
             TargetUserId = null,
             TargetType = "User",
@@ -1179,6 +1184,7 @@ public class PlatformCenterService : IPlatformCenterService
         var auditLog = new AuthorizationAuditLog
         {
             CenterId = AuthorizationBootstrapper.ReservedPlatformCenterId,
+            TargetCenterId = centerId,
             ActorUserId = callerUserId,
             TargetUserId = null,
             TargetType = "Center",

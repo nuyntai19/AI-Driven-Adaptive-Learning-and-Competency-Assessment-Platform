@@ -13,6 +13,7 @@ public static class DependencyInjection
         services.AddSingleton<IValidateOptions<PlatformBootstrapOptions>, PlatformBootstrapOptionsValidator>();
 
         services.AddScoped<IPlatformCenterService, PlatformCenterService>();
+        services.AddScoped<IPlatformAuditService, PlatformAuditService>();
 
         return services;
     }

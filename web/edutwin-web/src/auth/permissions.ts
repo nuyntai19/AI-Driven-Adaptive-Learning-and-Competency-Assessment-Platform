@@ -45,6 +45,7 @@ export const permissions = {
   platformCentersRead: "platform.centers.read",
   platformCentersManage: "platform.centers.manage",
   platformManagersManage: "platform.managers.manage",
+  platformAuditRead: "platform.audit.read",
 } as const;
 
 export const authorizationUiPermissions = [
