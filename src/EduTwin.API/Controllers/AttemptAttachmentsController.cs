@@ -1,4 +1,8 @@
+using System;
 using System.Diagnostics;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using EduTwin.API.AssessmentAndReasoning.Attachments;
 using EduTwin.API.Security;
 using EduTwin.BLL.IdentityAndTenancy;
@@ -7,11 +11,30 @@ using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.Common;
 using EduTwin.Contracts.IdentityAndTenancy;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Net.Http.Headers;
 
 namespace EduTwin.API.Controllers;
+
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Method)]
+public sealed class DisableFormValueModelBindingAttribute : Attribute, IResourceFilter
+{
+    public void OnResourceExecuting(ResourceExecutingContext context)
+    {
+        var factories = context.ValueProviderFactories;
+        factories.RemoveType<FormValueProviderFactory>();
+        factories.RemoveType<FormFileValueProviderFactory>();
+        factories.RemoveType<JQueryFormValueProviderFactory>();
+    }
+
+    public void OnResourceExecuted(ResourceExecutedContext context)
+    {
+    }
+}
 
 [ApiController]
 [Route("api/v1/learning/attempts/attachments")]
@@ -36,6 +59,7 @@ public sealed class AttemptAttachmentsController : ControllerBase
     }
 
     [HttpPost("prepare-upload")]
+    [DisableFormValueModelBinding]
     [Authorize(Policy = AuthorizationPolicies.StudentOnly)]
     [Authorize(Policy = "learning.attempts.submit")]
     [RequestSizeLimit(6 * 1024 * 1024)]
@@ -82,54 +106,65 @@ public sealed class AttemptAttachmentsController : ControllerBase
         using var stream = new MemoryStream();
         var foundFile = false;
 
-        while ((section = await reader.ReadNextSectionAsync(cancellationToken)) != null)
+        try
         {
-            var hasContentDisposition = ContentDispositionHeaderValue.TryParse(
-                section.ContentDisposition, out var contentDisposition);
-
-            if (hasContentDisposition && contentDisposition != null &&
-                contentDisposition.DispositionType.Equals("form-data", StringComparison.OrdinalIgnoreCase))
+            while ((section = await reader.ReadNextSectionAsync(cancellationToken)) != null)
             {
-                var fieldName = contentDisposition.Name.Value?.Trim('"') ?? string.Empty;
-                if (fieldName.Equals("file", StringComparison.OrdinalIgnoreCase))
+                var hasContentDisposition = ContentDispositionHeaderValue.TryParse(
+                    section.ContentDisposition, out var contentDisposition);
+
+                if (hasContentDisposition && contentDisposition != null &&
+                    contentDisposition.DispositionType.Equals("form-data", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (foundFile)
+                    var fieldName = contentDisposition.Name.Value?.Trim('"') ?? string.Empty;
+                    if (fieldName.Equals("file", StringComparison.OrdinalIgnoreCase))
                     {
-                        return BadRequest(CreateProblem(
-                            StatusCodes.Status400BadRequest,
-                            "Dữ liệu không hợp lệ",
-                            "Chỉ cho phép gửi tối đa một tệp đính kèm trong trường 'file'.",
-                            traceId,
-                            ErrorCodes.ValidationFailed));
-                    }
-
-                    foundFile = true;
-                    targetFileName = contentDisposition.FileName.Value?.Trim('"')
-                        ?? contentDisposition.FileNameStar.Value?.Trim('"')
-                        ?? "drawing.png";
-
-                    var buffer = new byte[16 * 1024];
-                    int bytesRead;
-                    long totalBytes = 0;
-
-                    // Bounded buffering in memory: strictly capped at MaxFileBytes (5 MB)
-                    while ((bytesRead = await section.Body.ReadAsync(buffer, 0, buffer.Length, cancellationToken)) > 0)
-                    {
-                        totalBytes += bytesRead;
-                        if (totalBytes > FileSystemAttemptAttachmentStorage.MaxFileBytes)
+                        if (foundFile)
                         {
-                            return StatusCode(StatusCodes.Status413PayloadTooLarge, CreateProblem(
-                                StatusCodes.Status413PayloadTooLarge,
-                                "Tệp quá lớn",
-                                "Kích thước ảnh PNG không được vượt quá 5 MB.",
+                            return BadRequest(CreateProblem(
+                                StatusCodes.Status400BadRequest,
+                                "Dữ liệu không hợp lệ",
+                                "Chỉ cho phép gửi tối đa một tệp đính kèm trong trường 'file'.",
                                 traceId,
                                 ErrorCodes.ValidationFailed));
                         }
 
-                        await stream.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
+                        foundFile = true;
+                        targetFileName = contentDisposition.FileName.Value?.Trim('"')
+                            ?? contentDisposition.FileNameStar.Value?.Trim('"')
+                            ?? "drawing.png";
+
+                        var buffer = new byte[16 * 1024];
+                        int bytesRead;
+                        long totalBytes = 0;
+
+                        // Bounded buffering in memory: strictly capped at MaxFileBytes (5 MB)
+                        while ((bytesRead = await section.Body.ReadAsync(buffer, 0, buffer.Length, cancellationToken)) > 0)
+                        {
+                            totalBytes += bytesRead;
+                            if (totalBytes > FileSystemAttemptAttachmentStorage.MaxFileBytes)
+                            {
+                                return StatusCode(StatusCodes.Status413PayloadTooLarge, CreateProblem(
+                                    StatusCodes.Status413PayloadTooLarge,
+                                    "Tệp quá lớn",
+                                    "Kích thước ảnh PNG không được vượt quá 5 MB.",
+                                    traceId,
+                                    ErrorCodes.ValidationFailed));
+                            }
+
+                            await stream.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
+                        }
+
+                        // Break immediately after successfully reading the single required file
+                        // to avoid MultipartReader attempting to drain an already-exhausted Kestrel request stream.
+                        break;
                     }
                 }
             }
+        }
+        catch (IOException ex) when (foundFile && stream.Length > 0 && ex.Message.Contains("Unexpected end of Stream"))
+        {
+            // Defensive: Kestrel request body pipe reached EOF after the file content was completely read.
         }
 
         if (!foundFile || stream.Length == 0)

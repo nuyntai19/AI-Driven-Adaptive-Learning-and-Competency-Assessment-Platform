@@ -81,6 +81,39 @@ public sealed class AttemptAttachmentsControllerTests
     }
 
     [Fact]
+    public async Task PrepareUpload_PipeStreamMultipart_Returns200WithToken()
+    {
+        var boundary = "---------------------------974767299852498929531610575";
+        var dummyPng = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, (byte)'I', (byte)'H', (byte)'D', (byte)'R' };
+
+        var memoryStream = new MemoryStream();
+        var header = $"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"scratchpad.png\"\r\nContent-Type: image/png\r\n\r\n";
+        memoryStream.Write(Encoding.UTF8.GetBytes(header));
+        memoryStream.Write(dummyPng);
+        var footer = $"\r\n--{boundary}--\r\n";
+        memoryStream.Write(Encoding.UTF8.GetBytes(footer));
+
+        var pipe = new System.IO.Pipelines.Pipe();
+        await pipe.Writer.WriteAsync(memoryStream.ToArray());
+        await pipe.Writer.CompleteAsync();
+
+        var httpContext = new DefaultHttpContext();
+        httpContext.Request.ContentType = $"multipart/form-data; boundary={boundary}";
+        httpContext.Request.Body = pipe.Reader.AsStream();
+        _controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
+
+        _prepareUploadMock
+            .Setup(u => u.ExecuteAsync(It.IsAny<Stream>(), "scratchpad.png", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(PrepareAttemptAttachmentUploadResult.Success("test-token-123", FixedUtcNow.AddHours(24)));
+
+        var result = await _controller.PrepareUpload(CancellationToken.None);
+
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var response = Assert.IsType<PrepareAttemptAttachmentUploadResponse>(okResult.Value);
+        Assert.Equal("test-token-123", response.Data.DrawingUploadToken);
+    }
+
+    [Fact]
     public async Task PrepareUpload_Exceeds5Mb_Returns413PayloadTooLarge()
     {
         var boundary = "---------------------------974767299852498929531610575";
