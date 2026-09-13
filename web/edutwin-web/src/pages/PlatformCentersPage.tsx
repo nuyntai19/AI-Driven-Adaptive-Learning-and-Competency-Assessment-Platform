@@ -272,8 +272,13 @@ export const PlatformCentersPage: React.FC = () => {
       {/* Breadcrumb & Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-gray-200 dark:border-gray-700 pb-5">
         <div>
-          <nav className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
-            <span className="hover:text-gray-700 dark:hover:text-gray-200">Quản trị Nền tảng</span>
+          <nav className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1 flex items-center">
+            <Link
+              to="/quan-tri-nen-tang/trung-tam"
+              className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+            >
+              Quản trị Nền tảng
+            </Link>
             <span className="mx-2">/</span>
             <span className="text-blue-600 dark:text-blue-400">Danh sách Trung tâm Giáo dục</span>
           </nav>
