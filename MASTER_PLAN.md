@@ -2191,3 +2191,34 @@ Phần bổ sung phạm vi chính thức sau Release R08 nhằm hoàn thiện ha
 - **Gate 4:** Vector Scratchpad Canvas và Scoped IndexedDB Cache.
 - **Gate 5:** Streaming Multipart Storage, Bảng vật lý mục tiêu 40 `attempt_attachments`, Gemini Multimodal Integration, Scope Guard và Resilient Storage Fallback.
 - **Gate 6:** Kiểm thử toàn diện môi trường container hóa (clean-clone rehearsal), kiểm tra EXPLAIN execution plans, và lập hồ sơ nghiệm thu chính thức.
+
+## 133. Post-R09 Scope Amendments: Quản Trị Vận Hành Nền Tảng (POST-R09-PLATFORM-OPS)
+
+Milestone củng cố vận hành quản trị nền tảng (Platform Administration Operational Hardening) theo kế hoạch phê duyệt `docs/plans/POST-R09-PLATFORM-OPS.md` và `docs/decisions/ADR-POST-R09-PLATFORM-OPERATIONS.md`:
+
+### 133.1. Bất biến kiến trúc & Ranh giới phạm vi
+1. **PlatformAdmin ⇔ Root Tenant PLATFORM:**
+   - PlatformAdmin chỉ có quyền thuộc nhóm `platform.*` trong Root Tenant `PLATFORM` (`00000000-0000-0000-0000-000000000001`).
+   - Cấm tuyệt đối quyền đọc, sửa điểm, attempt, reasoning, attachments, Digital Twin, recommendation hoặc teacher review/override (Fail-Closed HTTP 403/404).
+2. **Phân định phạm vi triển khai:**
+   - **Triển khai chính thức (Giai đoạn A–G):**
+     - Giai đoạn A: Khóa đặc tả và tài liệu authoritative.
+     - Giai đoạn B: Ma trận bảo vệ dữ liệu học thuật (Academic Access Denial Matrix).
+     - Giai đoạn C: Vòng đời CenterManager (`primary_manager_user_id`, composite FK, list/create/status/make-primary/reset-password).
+     - Giai đoạn D: Nhật ký kiểm toán nền tảng (`target_center_id`, `platform.audit.read`, DTO redaction allow-list, UI `/quan-tri-nen-tang/nhat-ky`).
+     - Giai đoạn E: Metadata trung tâm (`PATCH /platform/centers/{centerId}`) và số liệu vận hành an toàn (Safe aggregates).
+     - Giai đoạn F: Quy trình tạm ngưng có lý do và thu hồi phiên người dùng (`auth_version` bump).
+     - Giai đoạn G: Quản lý bảo mật tài khoản PlatformAdmin (`/platform/me/*`, change-password, revoke-sessions, security info).
+   - **Hoãn triển khai (Giai đoạn H–I):**
+     - Giai đoạn H (MFA và Multi-Admin) và Giai đoạn I (Health checks nâng cao, Queue depth, Data export, Resource quota) giữ nguyên trạng thái `DESIGNED / DEFERRED`; tuyệt đối không viết mã nguồn, migration hay mock endpoints.
+
+### 133.2. Lộ trình 8 Checkpoints
+- **Checkpoint 1 (`docs(platform): specify post-r09 operational administration`):** Hoàn tất toàn bộ tài liệu authoritative, ADR, và kế hoạch.
+- **Checkpoint 2 (`test(platform): enforce education-data denial matrix`):** Tạo test suite tự động kiểm chứng từ chối truy cập dữ liệu học thuật của PlatformAdmin.
+- **Checkpoint 3 (`feat(platform): add center manager lifecycle`):** Schema migration `primary_manager_user_id`, composite FK, BLL services, APIs và UI quản lý nhân sự.
+- **Checkpoint 4 (`feat(platform): expose redacted platform audit history`):** Schema migration `target_center_id`, query service, redaction allow-list, và màn hình UI `/quan-tri-nen-tang/nhat-ky`.
+- **Checkpoint 5 (`feat(platform): update center metadata and safe aggregates`):** Endpoint PATCH metadata, query safe counts (Student, Teacher, Class, Manager), cập nhật UI.
+- **Checkpoint 6 (`feat(platform): harden suspension and platform self-security`):** Bắt buộc lý do khi tạm ngưng, thu hồi phiên toàn trung tâm, endpoints `/platform/me/*` và UI bảo mật.
+- **Checkpoint 7 (`test(platform): complete relational and browser verification`):** Chạy toàn bộ automated tests, live MySQL tests, EF drift check, và 21 kịch bản kiểm thử Chrome thực tế qua browser subagent.
+- **Checkpoint 8 (`docs(platform): publish operational enhancement closeout`):** Báo cáo nghiệm thu kỹ thuật và cập nhật theo dõi tiến độ dự án.
+

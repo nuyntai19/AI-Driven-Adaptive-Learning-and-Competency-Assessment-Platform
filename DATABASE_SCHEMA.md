@@ -235,6 +235,7 @@ erDiagram
 | center_name | VARCHAR(200) | No | Tên hiển thị chính thức của Center |
 | status | VARCHAR(32) | No | Active, Suspended |
 | timezone | VARCHAR(64) | No | Default Asia/Bangkok |
+| primary_manager_user_id | VARCHAR(36) | Yes | Composite FK (center_id, primary_manager_user_id) → users(center_id, user_id). Định danh Primary Manager của trung tâm; PLATFORM luôn NULL |
 | created_at | DATETIME(6) | No | Thời điểm UTC tạo Center |
 | updated_at | DATETIME(6) | No | Thời điểm UTC cập nhật Center gần nhất |
 | is_deleted | TINYINT(1) | No | Default 0 |
@@ -245,13 +246,17 @@ Indexes/constraints:
 
 - PK(center_id).
 - UX(center_code).
+- FK(center_id, primary_manager_user_id) → users(center_id, user_id) ON DELETE RESTRICT.
 - CHECK status IN (Active, Suspended).
 
 Invariant:
 
 - Center bị Suspended không được login/refresh hoặc tạo job mới.
-- Center chỉ được provision/khóa bằng migration, seed hoặc deployment operation có kiểm soát; course MVP không có endpoint tạo/xóa Center hoặc quản lý Center khác.
-- MVP chỉ cho CenterManager cập nhật profile Center hiện hành khi có permission.
+- Trung tâm thông thường ở trạng thái Active bắt buộc phải có đúng một Primary Manager ở trạng thái Active.
+- Cột `primary_manager_user_id` của Root Tenant `PLATFORM` luôn là `NULL`.
+- Cấm vô hiệu hóa hoặc đình chỉ Primary Manager khi chưa chuyển giao vai trò primary sang manager khác.
+- Cấm vô hiệu hóa hoặc khóa CenterManager Active cuối cùng của một trung tâm đang Active.
+- Thao tác chuyển đổi Primary Manager phải thực thi nguyên tử trong một database transaction và có kiểm soát concurrency OCC trên cả `Center.row_version` và `User.row_version`.
 
 ## 5. users [MTA]
 
@@ -1138,6 +1143,7 @@ Invariant:
 | target_type | VARCHAR(64) | No | Role, RolePermission, UserRole |
 | target_id | VARCHAR(128) | No | Canonical target identifier |
 | target_user_id | VARCHAR(36) | Yes | User chịu ảnh hưởng nếu có |
+| target_center_id | VARCHAR(36) | Yes | Center bị ảnh hưởng trong thao tác cross-tenant của PlatformAdmin; FK centers(center_id) |
 | permission_code | VARCHAR(100) | Yes | Capability liên quan nếu có |
 | before_data | JSON | Yes | Snapshot trước thay đổi, đã redaction |
 | after_data | JSON | Yes | Snapshot sau thay đổi, đã redaction |
@@ -1152,7 +1158,9 @@ Indexes/constraints:
 - IX(center_id, created_at, action_type).
 - IX(center_id, actor_user_id, created_at).
 - IX(center_id, target_user_id, created_at).
+- IX(center_id, target_center_id, created_at) — tối ưu tra cứu nhật ký kiểm toán theo trung tâm khách hàng bị tác động.
 - Tenant-safe FK actor/target user khi khác null.
+- FK(target_center_id) → centers(center_id) ON DELETE RESTRICT khi khác null.
 
 Invariant:
 
@@ -1163,6 +1171,7 @@ Invariant:
   - `center_id` bắt buộc ghi nhận là `PLATFORM` (ReservedPlatformCenterId).
   - `actor_user_id` là User ID của PlatformAdmin thực hiện thao tác.
   - `target_user_id` bắt buộc đặt là `null` đối với mọi thao tác cross-tenant. Nếu gán target_user_id của một user thuộc center khác sẽ vi phạm trực tiếp ràng buộc toàn vẹn khóa ngoại tenant-safe `FK(center_id, target_user_id) → users(center_id, user_id)`.
+  - `target_center_id` lưu Tenant ID của trung tâm bị tác động để phục vụ lọc trực tiếp, có ràng buộc FK tới `centers(center_id)`.
   - Định danh đối tượng bị tác động (Target Center ID, Target CenterManager User ID) được lưu tại `target_id` (ví dụ `{centerId}` hoặc `{centerId}:{managerUserId}`) và trong payload metadata `after_data` / `before_data` đã redacted.
   - Tuyệt đối không log mật khẩu (kể cả mật khẩu mới được đặt lại hoặc mật khẩu tạm thời), hash mật khẩu, secret, hoặc raw bearer token trong audit metadata.
 

@@ -133,6 +133,43 @@ Căn cứ phê duyệt của nhóm và hai bản ghi kiến trúc độc lập (
    - Trạng thái Attempt tuân thủ nghiêm ngặt 5 giá trị: `PendingAnalysis`, `Processing`, `Completed`, `NeedsTeacherReview`, `AnalysisFailed`.
    - Mô hình EF migration hiện hành duy trì 39 bảng vật lý; bảng thứ 40 (`attempt_attachments`) là mục tiêu triển khai tại Gate 5.
 
+### 3.4. Phạm vi nâng cấp vận hành sau R09 (Post-R09 Operational Hardening — POST-R09-PLATFORM-OPS)
+
+Căn cứ văn bản phê duyệt kế hoạch và kiến trúc tại `ADR-POST-R09-PLATFORM-OPERATIONS.md`, hệ thống hoàn thiện năng lực vận hành thực tế cho Quản trị viên Nền tảng (**PlatformAdmin**) tuân thủ các nguyên tắc cốt lõi:
+
+1. **Bất biến Cốt lõi & Ranh giới Cách ly Dữ liệu Học thuật (Academic Data Isolation):**
+   - Định danh bất biến: `PlatformAdmin ⇔ Root Tenant PLATFORM (00000000-0000-0000-0000-000000000001)`.
+   - PlatformAdmin chỉ được quản trị metadata vận hành của trung tâm và tài khoản CenterManager; **tuyệt đối không có quyền đọc/sửa dữ liệu học thuật** (điểm số, bài làm, reasoning text, ảnh nháp đính kèm, Digital Twin, khuyến nghị học tập cá nhân hóa, Teacher Review, Teacher Override).
+   - Mọi nỗ lực truy cập API học thuật từ PlatformAdmin đều bị từ chối `403 Forbidden` (Denial Matrix).
+
+2. **Vòng đời CenterManager & Người Quản Lý Chính (Primary Manager):**
+   - Bổ sung cột `primary_manager_user_id VARCHAR(36) NULL` trong bảng `centers` kèm composite FK `(center_id, primary_manager_user_id) REFERENCES users(center_id, user_id) ON DELETE RESTRICT`.
+   - `PLATFORM.primary_manager_user_id` luôn là `NULL`. Mọi trung tâm thông thường đang `Active` bắt buộc phải có một primary manager đang `Active`.
+   - Cung cấp API quản lý danh sách CenterManager, tạo manager mới, chuyển đổi primary manager, khóa/mở khóa/vô hiệu hóa và đặt lại mật khẩu với ràng buộc OCC (`ExpectedRowVersion`).
+   - Khóa cứng bất biến: Không được vô hiệu hóa primary manager nếu chưa chuyển primary; không được khóa/vô hiệu hóa manager `Active` duy nhất còn lại của một trung tâm đang `Active`.
+
+3. **Quản trị Nhật ký Kiểm toán Nền tảng (Platform Audit Logs):**
+   - Bổ sung quyền bảo mật `platform.audit.read` (`IsSensitive = true`, `IsDelegable = false`).
+   - Bổ sung trường `target_center_id VARCHAR(36) NULL` vào `authorization_audit_logs` có FK tham chiếu `centers(center_id) ON DELETE RESTRICT` để lọc theo trung tâm bị tác động mà không cần giải mã JSON.
+   - Cung cấp API tra cứu, phân trang, lọc và giao diện UI `/quan-tri-nen-tang/nhat-ky` với cơ chế DTO allow-list khử khuẩn triệt để (100% không rò rỉ password, hash, token, cookie, secret, header).
+
+4. **Hiệu chỉnh Metadata & Thống kê Vận hành An toàn (Safe Aggregates):**
+   - Cung cấp `PATCH /api/v1/platform/centers/{centerId}` cho phép sửa `CenterName`, `Timezone`, `Reason` kèm OCC; cấm sửa `CenterId`, `CenterCode`, `CreatedAt`.
+   - Mở rộng Center Summary với các trường đếm an toàn: `ActiveStudentCount`, `ActiveTeacherCount`, `ClassCount`, `ActiveManagerCount`, `HasActivePrimaryManager` sử dụng `IgnoreQueryFilters()` kèm explicit tenant ID set và phép chiếu đếm count (không materialize thực thể vào RAM).
+   - Hoãn "Thời điểm hoạt động gần nhất" (chờ telemetry/audit semantics tin cậy) và không thêm email/phone ngoài domain model.
+
+5. **Quy trình Đình chỉ & Kích hoạt Trung tâm Nghiêm ngặt (Suspension Hardening):**
+   - Trường `Reason` bắt buộc khi thay đổi trạng thái trung tâm.
+   - Khi chuyển `Suspended`: Tức thì tăng `auth_version` của toàn bộ tài khoản trong trung tâm và thu hồi toàn bộ refresh token còn hiệu lực.
+   - Khi kích hoạt lại (`Active`): Kiểm tra bắt buộc trung tâm phải có primary manager hợp lệ và đang `Active`. Không phục hồi phiên đăng nhập cũ.
+
+6. **Bảo mật Bản thân Tài khoản PlatformAdmin (Self-Security):**
+   - Cấp quyền `platform.account.manage_own` và API đổi mật khẩu cá nhân (`/platform/me/change-password`), thu hồi phiên làm việc (`/platform/me/revoke-sessions`) và xem trạng thái an ninh (`/platform/me/security`).
+   - Khóa cứng `PlatformAdminProvisioner`: Bỏ qua việc can thiệp credential nếu admin đã tồn tại.
+
+7. **Quyết định Hoãn (Deferred Milestones):**
+   - Giai đoạn H (Nhiều PlatformAdmin và MFA/TOTP) và Giai đoạn I (Health Dashboard/Queue depth/Export) bắt buộc giữ trạng thái `DESIGNED / DEFERRED`. Tuyệt đối không tạo permission, endpoint, UI hoặc migration cho các phần này trong milestone hiện tại.
+
 ## 4. Stack bắt buộc
 
 ### 4.1. Backend

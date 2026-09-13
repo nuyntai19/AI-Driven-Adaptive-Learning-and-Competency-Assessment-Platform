@@ -2315,9 +2315,380 @@ Response 200:
 }
 ~~~
 
+## 81. GET /platform/centers/{centerId}/managers
+
+Quyền: PlatformAdmin (có quyền `platform.managers.manage` hoặc `platform.centers.read`).
+
+Truy vấn danh sách người quản lý của một trung tâm cụ thể.
+
+Query parameters:
+- `status`: Lọc theo trạng thái (`Active`, `Locked`, `Disabled`), tùy chọn.
+- `search`: Tìm kiếm theo username hoặc displayName.
+- `page`: Trang (mặc định 1).
+- `pageSize`: Số bản ghi mỗi trang (mặc định 20).
+
+Response 200:
+
+~~~json
+{
+  "data": {
+    "items": [
+      {
+        "userId": "4dc67ba3-2d2f-469e-aaaa-8c90a72c55f4",
+        "username": "manager_c",
+        "displayName": "Lê Quản Trị",
+        "status": "Active",
+        "isPrimary": true,
+        "createdAt": "2026-09-12T20:30:00Z",
+        "rowVersion": "1",
+        "authVersion": 1
+      }
+    ],
+    "totalCount": 1,
+    "primaryManagerUserId": "4dc67ba3-2d2f-469e-aaaa-8c90a72c55f4"
+  },
+  "meta": {
+    "traceId": "00-abcd-1234-01",
+    "timestamp": "2026-09-13T20:30:00Z"
+  }
+}
+~~~
+
+## 82. POST /platform/centers/{centerId}/managers
+
+Quyền: PlatformAdmin (có quyền `platform.managers.manage`).
+
+Tạo tài khoản người quản lý bổ sung cho trung tâm.
+
+Quy tắc:
+- `centerId` phải là center thường tồn tại và hợp lệ (không phải `PLATFORM`).
+- Mật khẩu tuân thủ password policy (tối thiểu 8 ký tự, chữ hoa, chữ thường, số, ký tự đặc biệt).
+- Kiểm tra OCC trên thực thể Center với `expectedCenterRowVersion`.
+- Gán tài khoản với `accountType = CenterManager` và gán vai trò `CenterManager`.
+- Ghi audit log theo Platform Audit Invariant.
+
+Request:
+
+~~~json
+{
+  "username": "manager_c_secondary",
+  "displayName": "Trần Phó Quản Trị",
+  "password": "SecurePassword123!",
+  "expectedCenterRowVersion": "1",
+  "reason": "Bổ sung người quản lý phụ trách cơ sở 2"
+}
+~~~
+
+Response 201:
+
+~~~json
+{
+  "data": {
+    "userId": "5ea78cb4-3e3a-47af-bbbb-9d01b83d66a5",
+    "centerId": "3cb56a92-1c1e-458d-999e-7b89f61b44e3",
+    "username": "manager_c_secondary",
+    "displayName": "Trần Phó Quản Trị",
+    "status": "Active",
+    "isPrimary": false,
+    "createdAt": "2026-09-13T20:30:00Z",
+    "rowVersion": "1",
+    "centerRowVersion": "2"
+  },
+  "meta": {
+    "traceId": "00-abcd-1234-01",
+    "timestamp": "2026-09-13T20:30:00Z"
+  }
+}
+~~~
+
+## 83. PATCH /platform/centers/{centerId}/managers/{userId}/status
+
+Quyền: PlatformAdmin (có quyền `platform.managers.manage`).
+
+Cập nhật trạng thái hoạt động của quản lý trung tâm (`Active`, `Locked`, `Disabled`).
+
+Bảo vệ:
+- Không cho phép disable hoặc lock Primary Manager hiện hành khi chưa chuyển primary sang manager khác (HTTP 409 `PRIMARY_MANAGER_CANNOT_BE_DISABLED`).
+- Không cho phép disable hoặc lock manager Active cuối cùng của trung tâm đang Active (HTTP 409 `LAST_ACTIVE_MANAGER_REQUIRED`).
+- Khi chuyển sang `Locked` hoặc `Disabled`: tăng `auth_version` của user và thu hồi toàn bộ refresh token còn hạn.
+- Kiểm tra OCC trên `users.row_version` với `expectedUserRowVersion`.
+
+Request:
+
+~~~json
+{
+  "status": "Disabled",
+  "expectedUserRowVersion": "1",
+  "reason": "Nhân sự đã thôi việc"
+}
+~~~
+
+Response 200:
+
+~~~json
+{
+  "data": {
+    "userId": "5ea78cb4-3e3a-47af-bbbb-9d01b83d66a5",
+    "centerId": "3cb56a92-1c1e-458d-999e-7b89f61b44e3",
+    "status": "Disabled",
+    "isPrimary": false,
+    "rowVersion": "2",
+    "updatedAtUtc": "2026-09-13T20:30:00Z"
+  },
+  "meta": {
+    "traceId": "00-abcd-1234-01",
+    "timestamp": "2026-09-13T20:30:00Z"
+  }
+}
+~~~
+
+## 84. POST /platform/centers/{centerId}/managers/{userId}/make-primary
+
+Quyền: PlatformAdmin (có quyền `platform.managers.manage`).
+
+Chỉ định một CenterManager làm người quản lý chính (`primary_manager_user_id`) của trung tâm.
+
+Quy tắc:
+- Target manager phải thuộc đúng `centerId`, có `accountType = CenterManager` và trạng thái hiện tại là `Active`.
+- Nếu `disablePreviousPrimary = true`, thực hiện vô hiệu hóa tài khoản Primary Manager cũ và thu hồi phiên của họ trong cùng một database transaction.
+- Yêu cầu OCC `expectedCenterRowVersion` và `expectedManagerUserRowVersion`. Nếu có `disablePreviousPrimary = true`, yêu cầu cả `expectedPreviousPrimaryUserRowVersion`.
+
+Request:
+
+~~~json
+{
+  "expectedCenterRowVersion": "2",
+  "expectedManagerUserRowVersion": "1",
+  "disablePreviousPrimary": true,
+  "expectedPreviousPrimaryUserRowVersion": "1",
+  "reason": "Bàn giao quyền quản lý chính cơ sở"
+}
+~~~
+
+Response 200:
+
+~~~json
+{
+  "data": {
+    "centerId": "3cb56a92-1c1e-458d-999e-7b89f61b44e3",
+    "primaryManagerUserId": "5ea78cb4-3e3a-47af-bbbb-9d01b83d66a5",
+    "newCenterRowVersion": "3",
+    "previousPrimaryDisabled": true,
+    "updatedAtUtc": "2026-09-13T20:30:00Z"
+  },
+  "meta": {
+    "traceId": "00-abcd-1234-01",
+    "timestamp": "2026-09-13T20:30:00Z"
+  }
+}
+~~~
+
+## 85. PATCH /platform/centers/{centerId}
+
+Quyền: PlatformAdmin (có quyền `platform.centers.manage`).
+
+Cập nhật metadata vận hành của trung tâm.
+
+Cho phép sửa:
+- `centerName` (string, độ dài 3-200)
+- `timezone` (string, valid IANA timezone như "Asia/Bangkok", "Asia/Ho_Chi_Minh")
+
+Cấm sửa:
+- `centerId`, `centerCode`, `createdAt`.
+
+Bắt buộc gửi `expectedRowVersion` (OCC) và `reason`.
+
+Request:
+
+~~~json
+{
+  "centerName": "Trung tâm Giáo dục C - Cơ sở Đống Đa",
+  "timezone": "Asia/Ho_Chi_Minh",
+  "expectedRowVersion": "3",
+  "reason": "Cập nhật tên thương hiệu chính thức"
+}
+~~~
+
+Response 200 (bao gồm metadata và safe aggregates):
+
+~~~json
+{
+  "data": {
+    "centerId": "3cb56a92-1c1e-458d-999e-7b89f61b44e3",
+    "centerCode": "CENTER_C",
+    "centerName": "Trung tâm Giáo dục C - Cơ sở Đống Đa",
+    "status": "Active",
+    "timezone": "Asia/Ho_Chi_Minh",
+    "createdAt": "2026-09-12T20:30:00Z",
+    "rowVersion": "4",
+    "primaryManagerUserId": "5ea78cb4-3e3a-47af-bbbb-9d01b83d66a5",
+    "primaryManagerDisplayName": "Trần Phó Quản Trị",
+    "activeStudentCount": 120,
+    "activeTeacherCount": 8,
+    "classCount": 6,
+    "activeManagerCount": 2,
+    "hasActivePrimaryManager": true
+  },
+  "meta": {
+    "traceId": "00-abcd-1234-01",
+    "timestamp": "2026-09-13T20:30:00Z"
+  }
+}
+~~~
+
+## 86. GET /platform/audit-logs và GET /platform/audit-logs/{id}
+
+Quyền: PlatformAdmin (có quyền `platform.audit.read`, `isSensitive = true`, `isDelegable = false`).
+
+Truy vấn nhật ký kiểm toán quản trị nền tảng cross-tenant.
+
+Query parameters:
+- `page`: Trang (mặc định 1).
+- `pageSize`: Số bản ghi mỗi trang (mặc định 20, tối đa 100).
+- `actionType`: Loại hành động (ví dụ: `CENTER_CREATED`, `CENTER_METADATA_UPDATED`, `CENTER_STATUS_CHANGED`, `CENTER_MANAGER_CREATED`, `CENTER_MANAGER_STATUS_UPDATED`, `CENTER_PRIMARY_MANAGER_CHANGED`, `CENTER_MANAGER_PASSWORD_RESET`).
+- `targetType`: Loại tài nguyên (`Center`, `User`).
+- `targetId`: Định danh tài nguyên.
+- `targetCenterId`: Lọc theo trung tâm đích bị tác động.
+- `actorUserId`: Lọc theo người thực hiện.
+- `traceId`: Lọc theo W3C Trace ID.
+- `fromUtc`, `toUtc`: Khoảng thời gian.
+- `search`: Tìm kiếm văn bản trong reason hoặc targetId.
+
+Response 200 danh sách:
+
+~~~json
+{
+  "data": {
+    "items": [
+      {
+        "auditId": "1001",
+        "centerId": "00000000-0000-0000-0000-000000000001",
+        "targetCenterId": "3cb56a92-1c1e-458d-999e-7b89f61b44e3",
+        "targetCenterCode": "CENTER_C",
+        "actorUserId": "00000000-0000-0000-0000-000000000002",
+        "actorUsername": "platform_admin",
+        "actionType": "CENTER_STATUS_CHANGED",
+        "targetType": "Center",
+        "targetId": "3cb56a92-1c1e-458d-999e-7b89f61b44e3",
+        "beforeData": { "status": "Active" },
+        "afterData": { "status": "Suspended" },
+        "reason": "Tạm dừng theo yêu cầu thanh tra",
+        "traceId": "00-abcd-1234-01",
+        "createdAt": "2026-09-13T20:30:00Z"
+      }
+    ],
+    "totalCount": 1,
+    "page": 1,
+    "pageSize": 20
+  },
+  "meta": {
+    "traceId": "00-abcd-1234-01",
+    "timestamp": "2026-09-13T20:30:00Z"
+  }
+}
+~~~
+
+Quy tắc bảo mật:
+- Toàn bộ `beforeData` và `afterData` phải được ánh xạ qua DTO allow-list nghiêm ngặt tại server, tuyệt đối không trả mật khẩu, token, secret, Authorization header hoặc dữ liệu học tập.
+- `GET /platform/audit-logs/{id}` trả chi tiết bản ghi đơn lẻ, trả 404 nếu không tìm thấy.
+
+## 87. POST /platform/me/change-password
+
+Quyền: PlatformAdmin (thuộc Root Tenant PLATFORM, có quyền `platform.account.manage_own`).
+
+Đổi mật khẩu cho chính tài khoản PlatformAdmin đang đăng nhập.
+
+Thực hiện:
+- Xác thực `currentPassword` khớp với mật khẩu hiện hành.
+- Áp dụng Password Policy cho `newPassword`.
+- Cập nhật password hash.
+- Tăng `auth_version` của tài khoản PlatformAdmin.
+- Thu hồi (revoke) toàn bộ Refresh Tokens còn hạn của tài khoản.
+- Ghi audit log redacted tại Root Tenant `PLATFORM`.
+
+Request:
+
+~~~json
+{
+  "currentPassword": "OldAdminPassword123!",
+  "newPassword": "NewSuperSecureAdminPassword456!",
+  "expectedRowVersion": "1"
+}
+~~~
+
+Response 200:
+
+~~~json
+{
+  "data": {
+    "success": true,
+    "newRowVersion": "2",
+    "updatedAtUtc": "2026-09-13T20:30:00Z"
+  },
+  "meta": {
+    "traceId": "00-abcd-1234-01",
+    "timestamp": "2026-09-13T20:30:00Z"
+  }
+}
+~~~
+
+## 88. POST /platform/me/revoke-sessions và GET /platform/me/security
+
+Quyền: PlatformAdmin (thuộc Root Tenant PLATFORM, có quyền `platform.account.manage_own`).
+
+### POST /platform/me/revoke-sessions
+
+Thu hồi toàn bộ phiên đăng nhập của chính tài khoản PlatformAdmin.
+
+Thực hiện:
+- Tăng `auth_version` của tài khoản.
+- Thu hồi (revoke) toàn bộ active Refresh Tokens của tài khoản.
+- Buộc client logout sau phản hồi thành công.
+
+Response 200:
+
+~~~json
+{
+  "data": {
+    "revokedSessionsCount": 3,
+    "newAuthVersion": 4,
+    "success": true
+  },
+  "meta": {
+    "traceId": "00-abcd-1234-01",
+    "timestamp": "2026-09-13T20:30:00Z"
+  }
+}
+~~~
+
+### GET /platform/me/security
+
+Truy vấn thông tin trạng thái an toàn của tài khoản PlatformAdmin hiện tại.
+
+Response 200:
+
+~~~json
+{
+  "data": {
+    "userId": "00000000-0000-0000-0000-000000000002",
+    "username": "platform_admin",
+    "displayName": "Quản Trị Viên Nền Tảng",
+    "accountType": "PlatformAdmin",
+    "activeSessionCount": 1,
+    "authVersion": "4",
+    "rowVersion": "2",
+    "lastLoginAtUtc": "2026-09-13T19:00:00Z"
+  },
+  "meta": {
+    "traceId": "00-abcd-1234-01",
+    "timestamp": "2026-09-13T20:30:00Z"
+  }
+}
+~~~
+
 # Versioning và change policy
 
-## 79. Breaking change
+## 89. Breaking change
 
 Các thay đổi sau là breaking:
 
@@ -2333,10 +2704,10 @@ Breaking change cần Change Proposal và cập nhật file này trước source
 
 Thêm optional field có thể là non-breaking nhưng vẫn phải cập nhật contract và frontend owner xác nhận.
 
-## 80. Contract acceptance checklist
+## 90. Contract acceptance checklist
 
 - [ ] Tất cả endpoint dùng /api/v1.
-- [ ] Không request nào nhận centerId.
+- [ ] Không request nào nhận centerId trong body hoặc query ngoài route parameter định tuyến platform.
 - [ ] BIGINT ID trả dạng string.
 - [ ] Student DTO không lộ đáp án/lời giải trước khi submit.
 - [ ] 202 Attempt có pollUrl.
@@ -2346,11 +2717,14 @@ Thêm optional field có thể là non-breaking nhưng vẫn phải cập nhật
 - [ ] Dashboard aggregate tính cả Student chưa có evidence.
 - [ ] Cross-tenant ID trả 404.
 - [ ] Problem Details có traceId và errorCode.
-- [ ] rowVersion được dùng ở update mutable aggregate.
+- [ ] rowVersion được dùng ở update mutable aggregate dưới dạng string token.
 - [ ] API implementation khớp schema và authorization matrix.
 - [ ] Endpoint đã cutover kiểm effective permission + tenant + resource scope ở server.
 - [ ] Login/me trả authorizationVersion và effective permissions; role legacy chỉ là compatibility field.
 - [ ] Role/permission assignment cho Student/Teacher tuân isDelegable + account type; target CenterManager chặn self-elevation, over-grant và last-admin removal.
 - [ ] Mọi mutation authorization có audit cùng transaction và làm token cũ mất hiệu lực theo policy.
+- [ ] PlatformAdmin chỉ có quyền `platform.*`, không truy cập dữ liệu học thuật (403).
+- [ ] Thao tác thay đổi Center/Manager bắt buộc lý do `reason` hợp lệ và audit log redacted.
 - [ ] Evidence Gate fields là server-owned, có policyVersion/reasonCodes và fallback không đổi Knowledge Mastery.
 - [ ] API target v2 chỉ được đánh dấu IMPLEMENTED sau khi schema migration, backend và frontend tương ứng hoàn tất.
+

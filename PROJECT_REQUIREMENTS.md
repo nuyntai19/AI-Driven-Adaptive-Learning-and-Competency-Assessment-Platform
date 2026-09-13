@@ -349,6 +349,19 @@ Thiếu một điều kiện phải fail closed.
 | FR-MTH-005 | Cung cấp Bảng vẽ nháp vector (Vector Scratchpad Canvas) với đầy đủ công cụ vẽ, lưới ô ly, thước hình học, trục Oxy, lưu trữ draft scoped IndexedDB theo draft:{centerId}:{userId}:{clientSubmissionId} | Must |
 | FR-MTH-006 | Hỗ trợ streaming multipart upload ảnh nháp PNG (yêu cầu tài khoản Student và quyền learning.attempts.submit) có bounded full validation (1..5MB, IHDR, IEND CRC), Data Protection token bind SHA-256 (xác thực in-memory, không persist cột sha256_hash vào CSDL), nộp bài atomic promote no-overwrite, và lưu trữ bảng mục tiêu 40 attempt_attachments (gồm attachment_id, center_id, attempt_id, file_name, storage_key VARCHAR(512), file_size_bytes BIGINT, content_type, upload_nonce, created_at, created_by) | Must |
 
+### 7.12. Quản trị Vận hành Nền tảng Nâng cao (Platform Administration Operational Hardening — POST-R09-PLATFORM-OPS)
+
+| ID | Requirement | Priority |
+|---|---|---|
+| FR-PLT-006 | PlatformAdmin quản lý danh sách CenterManager của trung tâm: xem danh sách, tạo manager mới có kiểm tra duplicate username (bắt MySQL 1062 đúng index ux_users_center_id_username trả về 409), cập nhật trạng thái (Active/Suspended/Deactivated) kèm ExpectedUserRowVersion, tăng auth_version và revoke refresh token khi khóa/vô hiệu | Must |
+| FR-PLT-007 | Hệ thống bảo đảm tính toàn vẹn Primary Manager qua cột primary_manager_user_id VARCHAR(36) NULL trong centers: trung tâm Active bắt buộc có primary manager Active; không được vô hiệu hóa primary manager nếu chưa chuyển primary; không được khóa/vô hiệu hóa manager Active cuối cùng của trung tâm Active; PLATFORM luôn có primary_manager_user_id = null | Must |
+| FR-PLT-008 | PlatformAdmin chuyển quyền Primary Manager trong cùng một transaction duy nhất kèm tùy chọn vô hiệu hóa primary cũ; xử lý race condition OCC trên cả Center.row_version và User.row_version (stale trả về 409 ConcurrencyConflict) | Must |
+| FR-PLT-009 | PlatformAdmin tra cứu nhật ký kiểm toán nền tảng (GET /api/v1/platform/audit-logs) yêu cầu quyền platform.audit.read; hỗ trợ phân trang, lọc theo actionType, targetType, targetId, targetCenterId, actorUserId, traceId, khoảng thời gian; dữ liệu trả về qua DTO allow-list đã khử khuẩn (redacted) 100% | Must |
+| FR-PLT-010 | PlatformAdmin cập nhật metadata trung tâm (PATCH /api/v1/platform/centers/{centerId}) cho phép sửa CenterName, Timezone, Reason kèm ExpectedRowVersion; cấm sửa CenterId, CenterCode, CreatedAt | Must |
+| FR-PLT-011 | Mở rộng Center Summary với các chỉ số thống kê an toàn (Safe Aggregates: ActiveStudentCount, ActiveTeacherCount, ClassCount, ActiveManagerCount, HasActivePrimaryManager) bằng IgnoreQueryFilters() kết hợp lọc targetCenterIds tường minh và projection đếm count; tuyệt đối không load thực thể vào bộ nhớ | Must |
+| FR-PLT-012 | Thắt chặt quy trình đình chỉ trung tâm (Suspension Hardening): trường Reason bắt buộc khi đổi trạng thái (5..500 ký tự); khi Suspended tức thời tăng auth_version của toàn bộ user trong trung tâm và thu hồi toàn bộ refresh token; khi kích hoạt lại bắt buộc trung tâm có primary manager hợp lệ và đang Active | Must |
+| FR-PLT-013 | PlatformAdmin tự quản lý an ninh tài khoản (Self-Security): cấp quyền platform.account.manage_own, đổi mật khẩu cá nhân có kiểm tra mật khẩu hiện tại, thu hồi toàn bộ phiên làm việc khác, xem thông tin bảo mật tài khoản; PlatformAdminProvisioner không tự động ghi đè mật khẩu khi admin đã tồn tại | Must |
+
 ## 8. Business rules
 
 | ID | Rule |
@@ -372,8 +385,12 @@ Thiếu một điều kiện phải fail closed.
 | BR-017 | users.auth_version là authorization version duy nhất; password reset, user status, user-role và role-permission mutation phải bump version theo phạm vi ảnh hưởng |
 | BR-018 | Replay là event/history; không được lưu như evidence source hoặc trust level |
 | BR-019 | Center lifecycle ngoài profile hiện hành thuộc deployment/seed trong course MVP, không thuộc tenant-admin UI |
-| BR-020 | Quyền platform.* (gồm platform.centers.read, platform.centers.manage, platform.managers.manage) là bất khả ủy quyền (IsDelegable = false) và chỉ thuộc PlatformAdmin trong Root Tenant PLATFORM; cấm thao tác trên Root Tenant |
+| BR-020 | Quyền platform.* (gồm platform.centers.read, platform.centers.manage, platform.managers.manage, platform.audit.read, platform.account.manage_own) là bất khả ủy quyền (IsDelegable = false) và chỉ thuộc PlatformAdmin trong Root Tenant PLATFORM; cấm thao tác trên Root Tenant |
 | BR-021 | Minh chứng ảnh đính kèm chỉ được truy cập bởi học sinh sở hữu hoặc giáo viên phụ trách bài tập được giao (thông qua IAttemptTeacherReviewScopeGuard); bài tự do fail closed |
+| BR-022 | Trung tâm đối tác đang ở trạng thái Active bắt buộc phải có đúng một Primary Manager ở trạng thái Active; cấm vô hiệu hóa hoặc đình chỉ Primary Manager khi chưa chuyển quyền sang manager khác |
+| BR-023 | Cấm vô hiệu hóa hoặc đình chỉ CenterManager Active duy nhất còn lại của một trung tâm đang Active |
+| BR-024 | PlatformAdmin tuyệt đối không có quyền đọc hoặc can thiệp dữ liệu học thuật (điểm số, bài làm, reasoning, ảnh nháp, Digital Twin, khuyến nghị, teacher review/override) |
+| BR-025 | Mọi thao tác thay đổi trạng thái trung tâm hoặc thông tin quản lý phải kèm theo ExpectedRowVersion dạng string và ghi audit log có chứa trường Reason |
 
 ## 9. Security requirements
 
@@ -395,6 +412,10 @@ Thiếu một điều kiện phải fail closed.
 | SEC-014 | Chặn nâng quyền PlatformAdmin: Người dùng tenant không được tạo role PlatformAdmin, gán role PlatformAdmin hoặc gán quyền platform.*; vi phạm trả về AuthPrivilegeEscalation (HTTP 403) |
 | SEC-015 | Bảo vệ minh chứng đính kèm bằng Scope Guard thống nhất: Tải minh chứng, Review Queue và Teacher Override bắt buộc đi qua IAttemptTeacherReviewScopeGuard xác thực Attempt -> Assignment -> Class -> Teacher; bài tự do fail closed trả về 404 |
 | SEC-016 | Invariant Audit Quản trị Nền tảng: Mọi thao tác cross-tenant của PlatformAdmin phải ghi authorization_audit_logs với CenterId = PLATFORM, TargetUserId = null (bảo toàn composite tenant FK), định danh đối tượng lưu ở TargetId và metadata redacted, tuyệt đối không log password/secret |
+| SEC-017 | Rào cản Ma trận Từ chối Học thuật (Academic Data Denial Matrix): Toàn bộ API học thuật (Attempts, Feedback, Attachments, Digital Twin, Recommendations, Dashboards học tập, Teacher Queue/Override) bắt buộc từ chối PlatformAdmin với HTTP 403 Forbidden |
+| SEC-018 | Khử khuẩn Nhật ký Kiểm toán (Platform Audit Redaction): Mọi bản ghi audit log trả về qua API nền tảng hoặc lưu vào database bắt buộc loại bỏ 100% mật khẩu, password hash, token, cookie, secret, authorization header và nội dung bài làm của học sinh |
+| SEC-019 | Thu hồi phiên tức thời khi đình chỉ trung tâm: Chuyển trung tâm sang trạng thái Suspended bắt buộc tăng auth_version và revoke toàn bộ refresh token của tất cả người dùng thuộc trung tâm trong cùng database transaction |
+| SEC-020 | An toàn truy vấn Cross-Tenant Aggregates: Bắt buộc dùng IgnoreQueryFilters() kết hợp lọc targetCenterIds tường minh, !IsDeleted và count projection; cấm tải entity collections vào RAM |
 
 ## 10. Data requirements
 

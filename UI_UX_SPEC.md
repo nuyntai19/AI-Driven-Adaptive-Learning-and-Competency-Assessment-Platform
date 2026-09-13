@@ -591,3 +591,75 @@ Không dùng biểu thức role OR permission để “chạy tạm”, vì sẽ
   - Khi bài tự do gặp lỗi hạ tầng lưu trữ và hết số lần retry bền vững, trạng thái bài làm chuyển thành `AnalysisFailed`.
   - Giao diện học sinh hiển thị thông báo thân thiện: "Không thể xử lý bản vẽ nháp do sự cố hạ tầng lưu trữ. Kết quả bài nộp tạm thời chưa được phân tích."
   - Cung cấp nút hành động "Thử nộp lại" (Resubmit) tự động gán `ClientSubmissionId` mới, giúp học sinh gửi lại bài dễ dàng mà không làm ô nhiễm Hàng đợi duyệt của giáo viên.
+
+### 20.6. Đặc tả UI/UX Quản trị Nền tảng Nâng cao (Post-R09 Platform Operations Specs)
+
+#### 20.6.1. Màn hình Nhật ký Kiểm toán Nền tảng (`PlatformAuditLogsPage.tsx`)
+- **Route:** `/quan-tri-nen-tang/nhat-ky`.
+- **Yêu cầu phân quyền:** Phải có quyền `platform.audit.read` (`isSensitive = true`, `isDelegable = false`), và tài khoản thuộc Root Tenant `PLATFORM` (`AccountType === 'PlatformAdmin'`).
+- **Thành phần giao diện:**
+  - Tiêu đề & Breadcrumb: "Quản trị Nền tảng" / "Nhật ký kiểm toán hệ thống".
+  - Thanh bộ lọc nâng cao:
+    - Khoảng thời gian: Từ ngày (`fromUtc`) đến ngày (`toUtc`).
+    - Phân loại hành động (`actionType`): Dropdown lựa chọn các loại hành động (`Tạo trung tâm`, `Đổi trạng thái trung tâm`, `Cập nhật metadata`, `Tạo quản lý`, `Đổi trạng thái quản lý`, `Đổi quản lý chính`, `Đặt lại mật khẩu quản lý`).
+    - Lọc theo trung tâm đích (`targetCenterId`): Cho phép chọn trung tâm cụ thể hoặc xem tất cả.
+    - Tìm kiếm: Ô nhập tìm kiếm theo Trace ID, định danh tài nguyên hoặc nội dung lý do.
+  - Bảng dữ liệu kiểm toán:
+    - Cột Thời gian (định dạng UTC và giờ địa phương).
+    - Cột Loại hành động (kèm Badge màu sắc trực quan: Xanh dương cho Tạo mới, Vàng cam cho Cập nhật/Metadata, Đỏ cho Đổi trạng thái/Khóa, Tím cho Đặt lại mật khẩu).
+    - Cột Trung tâm ảnh hưởng (Tên trung tâm và mã trung tâm).
+    - Cột Người thực hiện (Username của PlatformAdmin).
+    - Cột Lý do thay đổi (Reason).
+    - Cột Trace ID (kèm nút copy nhanh để tiện tra cứu log hạ tầng).
+    - Nút thao tác "Xem chi tiết".
+  - Drawer / Modal Chi tiết kiểm toán:
+    - Hiển thị toàn bộ thông tin bản ghi kiểm toán.
+    - Khối dữ liệu Trước thay đổi (`beforeData`) và Sau thay đổi (`afterData`) dưới dạng trường dữ liệu rõ ràng hoặc JSON định dạng đẹp.
+    - Đảm bảo dữ liệu đã được server loại bỏ hoàn toàn mật khẩu, token và thông tin nhạy cảm (Allow-list DTO projection).
+    - Không có bất kỳ nút hay tính năng nào cho phép chỉnh sửa hoặc xóa nhật ký kiểm toán.
+  - Phân trang server-side chuẩn: Điều hướng trang và chọn kích thước trang (10, 20, 50).
+
+#### 20.6.2. Nâng cấp Quản lý Trung tâm (`PlatformCentersPage.tsx`)
+- **Thẻ số liệu tổng quan an toàn (Safe Aggregates Cards):**
+  - Hiển thị các chỉ số vận hành mức cao cho từng trung tâm hoặc trên hàng dữ liệu:
+    - Số học sinh hoạt động (`ActiveStudentCount`).
+    - Số giáo viên hoạt động (`ActiveTeacherCount`).
+    - Số lớp học (`ClassCount`).
+    - Số quản trị viên trung tâm hoạt động (`ActiveManagerCount`).
+    - Trạng thái Quản lý chính (Badge xanh `Đã có quản lý chính` / Badge đỏ cảnh báo `Chưa có quản lý chính`).
+  - Bất biến bảo mật: Tuyệt đối không hiển thị điểm số, Knowledge Mastery, phân tích AI hay bất kỳ dữ liệu học thuật nào của học sinh/giáo viên.
+- **Modal Quản lý Danh sách Quản trị viên Trung tâm (`CenterManagersModal.tsx`):**
+  - Mở từ nút "Quản lý nhân sự" tại mỗi dòng trung tâm.
+  - Hiển thị danh sách các CenterManager: Họ tên, Tên đăng nhập, Trạng thái (Active / Locked / Disabled), Huy hiệu nổi bật "Quản lý chính" (Primary Manager).
+  - Hành động trên từng quản lý:
+    - *Chỉ định làm Quản lý chính (`Make Primary`):* Mở hộp thoại xác nhận. Có checkbox "Vô hiệu hóa quản lý chính cũ đồng thời". Yêu cầu nhập lý do.
+    - *Khóa / Vô hiệu hóa:* Hộp thoại cảnh báo thu hồi phiên. Chặn vô hiệu hóa nếu là Primary Manager hiện hành; Chặn vô hiệu hóa nếu là manager Active cuối cùng của trung tâm Active. Bắt buộc nhập lý do.
+    - *Kích hoạt lại:* Mở lại tài khoản đã bị khóa/vô hiệu hóa.
+    - *Đặt lại mật khẩu:* Mở modal đặt lại mật khẩu an toàn.
+  - Nút "Thêm quản lý mới": Form nhập Username, Họ tên, Mật khẩu khởi tạo, và Lý do bổ sung nhân sự.
+- **Modal Cập nhật Thông tin Vận hành Trung tâm (`EditCenterMetadataModal.tsx`):**
+  - Cho phép chỉnh sửa Tên trung tâm (`centerName`) và Múi giờ (`timezone`).
+  - Mã trung tâm (`centerCode`) và Ngày tạo hiển thị dưới dạng chỉ đọc (Read-only).
+  - Bắt buộc nhập Lý do thay đổi (`reason`) và gửi `expectedRowVersion`.
+- **Nâng cấp Quy trình Tạm ngưng / Kích hoạt Trung tâm:**
+  - Hộp thoại cảnh báo tác động nghiêm trọng: "Khi tạm ngưng trung tâm, toàn bộ phiên đăng nhập của tất cả học sinh, giáo viên và quản lý thuộc trung tâm này sẽ lập tức bị hủy bỏ (`auth_version` bump). Mọi truy cập vào hệ thống sẽ bị chặn cho đến khi được kích hoạt lại."
+  - Bắt buộc người dùng nhập lý do (`reason`) tối thiểu 5 ký tự.
+  - Khi kích hoạt lại: Bắt buộc trung tâm phải có Quản lý chính đang hoạt động (`hasActivePrimaryManager === true`).
+
+#### 20.6.3. Quản lý Bảo mật Tài khoản PlatformAdmin (`PlatformSecurityPage.tsx`)
+- **Route:** `/quan-tri-nen-tang/bao-mat`.
+- **Yêu cầu phân quyền:** Có quyền `platform.account.manage_own`, thuộc Root Tenant `PLATFORM`.
+- **Thành phần giao diện:**
+  - Khối Thông tin An toàn:
+    - Tên đăng nhập và Họ tên Quản trị viên nền tảng.
+    - Phiên bản xác thực (`authVersion`) và Phiên bản dữ liệu (`rowVersion`).
+    - Số phiên làm việc đang duy trì (`activeSessionCount`).
+  - Form Đổi Mật khẩu:
+    - Mật khẩu hiện tại (`currentPassword`).
+    - Mật khẩu mới (`newPassword`) kèm thước đo độ mạnh mật khẩu và danh sách yêu cầu (chữ hoa, chữ thường, số, ký tự đặc biệt, độ dài tối thiểu 8).
+    - Nhập lại mật khẩu mới.
+    - Thông báo cảnh báo: "Sau khi đổi mật khẩu thành công, toàn bộ phiên đăng nhập trên các thiết bị khác sẽ bị đăng xuất."
+  - Khối Thu hồi Phiên Đăng nhập (Revoke Sessions):
+    - Nút "Đăng xuất khỏi tất cả các thiết bị khác".
+    - Hộp thoại xác nhận trước khi thực hiện thu hồi.
+
