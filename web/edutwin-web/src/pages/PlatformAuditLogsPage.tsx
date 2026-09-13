@@ -119,7 +119,7 @@ export const PlatformAuditLogsPage: React.FC = () => {
         <div>
           <nav className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1 flex items-center">
             <Link
-              to="/quan-tri-nen-tang/trung-tam"
+              to="/"
               className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
             >
               Quản trị Nền tảng
