@@ -1,7 +1,7 @@
 # EduTwin — Database Schema
 
 > Phiên bản: 2.4 (Post-R08 Scope Amendments)
-> Trạng thái: ACTIVE — 39 bảng vật lý trong EF migration model hiện hành (Bảng thứ 40: attempt_attachments là bảng mục tiêu sau Gate 5)
+> Trạng thái: ACTIVE — 40 bảng vật lý trong EF migration model hiện hành (Đã bao gồm bảng thứ 40: attempt_attachments sau Gate 5 freeze)
 > Database: MySQL 8.x / InnoDB / utf8mb4
 > ORM: Entity Framework Core 10
 > Chủ sở hữu: Data/Architecture owners; thay đổi cần nhóm phê duyệt
@@ -27,7 +27,7 @@ Schema gồm sáu module logic:
 5. Assessment & AI Reasoning.
 6. Dynamic Authorization & Evidence Governance.
 
-Hệ thống có 39 bảng vật lý trong EF migration model hiện hành, bao gồm 7 bảng ở Module 6 và bảng watermark recommendation generation (bảng thứ 39: recommendation_generation_states). Bảng lưu trữ minh chứng đính kèm (bảng thứ 40: attempt_attachments) là bảng mục tiêu được triển khai tại Gate 5. Toàn bộ mô hình tuân thủ kiểm tra live-MySQL và Global Query Filter nghiêm ngặt.
+Hệ thống có 40 bảng vật lý trong EF migration model hiện hành, bao gồm 7 bảng ở Module 6, bảng watermark recommendation generation (bảng thứ 39: recommendation_generation_states) và bảng lưu trữ minh chứng đính kèm bài làm (bảng thứ 40: attempt_attachments). Toàn bộ mô hình tuân thủ kiểm tra live-MySQL và Global Query Filter nghiêm ngặt.
 
 ## 2. Quy ước vật lý
 
@@ -155,6 +155,7 @@ erDiagram
     ASSIGNMENTS ||--o{ ASSIGNMENT_TARGETS : targets
     STUDENTS ||--o{ ATTEMPTS : submits
     QUESTIONS ||--o{ ATTEMPTS : answered
+    ATTEMPTS ||--o| ATTEMPT_ATTACHMENTS : contains
     ATTEMPTS ||--o| AI_ANALYSIS_JOBS : queues
     ATTEMPTS ||--o| REASONING_ANALYSES : produces
     STUDENTS ||--o{ KNOWLEDGE_TWINS : owns
@@ -176,9 +177,9 @@ erDiagram
     CENTERS ||--o{ AUTHORIZATION_AUDIT_LOGS : audits
 ~~~
 
-## 3.1. Danh mục 39 bảng hiện hành (và Bảng 40 mục tiêu sau Gate 5), mục đích và quan hệ chính
+## 3.1. Danh mục 40 bảng hiện hành, mục đích và quan hệ chính
 
-Đây là data dictionary cấp bảng. Các mục 4–42 bên dưới là data dictionary cấp cột của 39 bảng hiện hành và mục 43 là bảng mục tiêu thứ 40 sau Gate 5; không tạo thêm file schema song song.
+Đây là data dictionary cấp bảng. Các mục 4–43 bên dưới là data dictionary cấp cột của 40 bảng hiện hành; không tạo thêm file schema song song.
 
 | # | Table | Trạng thái | Chức năng | Quan hệ chính |
 |---:|---|---|---|---|
@@ -221,7 +222,7 @@ erDiagram
 | 37 | user_roles | Current | Role active/revoked của user | Join users–roles có account-type FK |
 | 38 | authorization_audit_logs | Current | Audit append-only của thay đổi quyền | FK actor/target users khi có |
 | 39 | evidence_assessments | Current | Quyết định policy append-only, không nhân bản analysis/mastery | FK attempts/analyses/self-supersession |
-| 40 | attempt_attachments | Target post-Gate 5 | Minh chứng ảnh nháp đính kèm Attempt | FK attempts; quan hệ 1:1, unique nonce giải quyết race condition |
+| 40 | attempt_attachments | Current | Minh chứng ảnh nháp đính kèm Attempt | FK attempts; quan hệ 1:1, unique nonce giải quyết race condition |
 
 # Module 1 — System Users & Organization
 
@@ -1213,7 +1214,7 @@ Invariant:
 - policy_version và reason_codes phải đủ để tái lập quyết định Gate.
 - Bảng chỉ lưu policy decision/provenance; không copy feedback, mastery delta hoặc calculation breakdown từ analysis/history.
 
-## 43. attempt_attachments [TA - Bảng vật lý mục tiêu thứ 40 sau Gate 5]
+## 43. attempt_attachments [TA - Bảng vật lý thứ 40]
 
 | Column | Type | Null | Constraint/Ý nghĩa |
 |---|---|---:|---|
