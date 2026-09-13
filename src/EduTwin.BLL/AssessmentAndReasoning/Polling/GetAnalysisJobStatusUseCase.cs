@@ -46,7 +46,9 @@ public sealed class GetAnalysisJobStatusUseCase : IGetAnalysisJobStatusUseCase
                 candidate.Attempt.StudentId,
                 candidate.Status,
                 candidate.RetryCount,
-                candidate.UpdatedAt))
+                candidate.UpdatedAt,
+                candidate.Attempt.Status.ToString(),
+                candidate.LastErrorCode))
             .SingleOrDefaultAsync(cancellationToken);
 
         if (job is null)
@@ -76,7 +78,9 @@ public sealed class GetAnalysisJobStatusUseCase : IGetAnalysisJobStatusUseCase
             RetryCount = job.RetryCount,
             Terminal = mapping.Terminal,
             FeedbackUrl = mapping.FeedbackUrl,
-            UpdatedAt = job.UpdatedAt
+            UpdatedAt = job.UpdatedAt,
+            AttemptStatus = job.AttemptStatus,
+            ErrorCode = job.ErrorCode
         });
     }
 
@@ -141,7 +145,9 @@ public sealed class GetAnalysisJobStatusUseCase : IGetAnalysisJobStatusUseCase
         Guid StudentId,
         AIJobStatus Status,
         byte RetryCount,
-        DateTime UpdatedAt);
+        DateTime UpdatedAt,
+        string AttemptStatus,
+        string? ErrorCode);
 
     private sealed record StatusMapping(bool Terminal, string? FeedbackUrl);
 }

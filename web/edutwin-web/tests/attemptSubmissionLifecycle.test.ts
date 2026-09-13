@@ -169,7 +169,7 @@ test("resubmit -> invokes new prepare-upload and submits with fresh idempotency 
   assert.equal(submitAttemptPayload?.drawingUploadToken, "token-new-1");
 });
 
-test("successful 202 -> draft and session storage cleared", async () => {
+test("successful 202 retains draft until terminal success, then purges draft and session storage", async () => {
   const sessionStorage = new MemorySessionStorage();
   const clientSubmissionId = getOrCreateAttemptSessionId(testScope, sessionStorage, () => "sub-success-202");
 
@@ -185,11 +185,21 @@ test("successful 202 -> draft and session storage cleared", async () => {
   });
 
   let scratchpadPng: { size: number } | null = { size: 1024 };
-  let drawingUploadToken: string | null = "token-committed";
+  let drawingUploadToken: string | null = "token-submitted";
 
-  // Simulate successful HTTP 202 response
+  // Simulate HTTP 202 response: token is cleared, but draft and drawing memory are retained!
   const responseStatus = 202;
   if (responseStatus === 202 || responseStatus === 200) {
+    drawingUploadToken = null;
+  }
+
+  const draftDuringProcessing = await getScratchpadDraft(testScope.centerId, testScope.userId, clientSubmissionId);
+  assert.ok(draftDuringProcessing, "Draft must be retained during AI processing after HTTP 202");
+  assert.ok(scratchpadPng !== null, "Drawing in memory must be retained during AI processing");
+
+  // Simulate terminal success (e.g. Completed or FallbackCompleted)
+  const jobFinishedSuccessfully = true;
+  if (jobFinishedSuccessfully) {
     await deleteScratchpadDraft(testScope.centerId, testScope.userId, clientSubmissionId);
     clearAttemptSessionId(testScope, sessionStorage);
     scratchpadPng = null;
@@ -197,10 +207,55 @@ test("successful 202 -> draft and session storage cleared", async () => {
   }
 
   const remainingDraft = await getScratchpadDraft(testScope.centerId, testScope.userId, clientSubmissionId);
-  assert.equal(remainingDraft, null, "Draft must be deleted from IndexedDB after HTTP 202");
+  assert.equal(remainingDraft, null, "Draft must be deleted from IndexedDB after terminal success");
   assert.equal(sessionStorage.getItem(buildAttemptSessionKey(testScope)), null, "Session key must be cleared");
   assert.equal(scratchpadPng, null);
   assert.equal(drawingUploadToken, null);
+});
+
+test("FailedTerminal -> handleResubmit migrates vector draft and preserves drawing evidence", async () => {
+  const sessionStorage = new MemorySessionStorage();
+  const oldSubmissionId = getOrCreateAttemptSessionId(testScope, sessionStorage, () => "sub-failed-1");
+
+  await saveScratchpadDraft({
+    storageKey: "",
+    centerId: testScope.centerId,
+    userId: testScope.userId,
+    clientSubmissionId: oldSubmissionId,
+    strokes: sampleStrokes,
+    gridType: "grid",
+    canvasWidth: 1200,
+    canvasHeight: 800,
+  });
+
+  const scratchpadPng: { size: number } | null = { size: 1024 };
+  let drawingUploadToken: string | null = "token-failed";
+
+  // Simulate handleResubmit when terminal failure occurs
+  clearAttemptSessionId(testScope, sessionStorage);
+  const newSubmissionId = createClientSubmissionId();
+  drawingUploadToken = null;
+
+  // Migrate draft to newSubmissionId
+  const existingDraft = await getScratchpadDraft(testScope.centerId, testScope.userId, oldSubmissionId);
+  assert.ok(existingDraft, "Old draft must exist before migration");
+  await saveScratchpadDraft({
+    ...existingDraft,
+    storageKey: "",
+    clientSubmissionId: newSubmissionId,
+  });
+  await deleteScratchpadDraft(testScope.centerId, testScope.userId, oldSubmissionId);
+
+  // Assert old draft is gone, new draft exists with same strokes!
+  const oldDraft = await getScratchpadDraft(testScope.centerId, testScope.userId, oldSubmissionId);
+  const migratedDraft = await getScratchpadDraft(testScope.centerId, testScope.userId, newSubmissionId);
+
+  assert.equal(oldDraft, null, "Old draft must be cleaned up after migration");
+  assert.ok(migratedDraft, "Migrated draft must exist under new submission ID");
+  assert.equal(migratedDraft.strokes.length, 1);
+  assert.equal(migratedDraft.strokes[0].id, "stroke-1");
+  assert.ok(scratchpadPng !== null, "Drawing memory must remain available for resubmission");
+  assert.equal(drawingUploadToken, null, "Upload token must be reset to force fresh prepare-upload");
 });
 
 test("failed submit -> draft and session identity retained for retry", async () => {

@@ -88,35 +88,47 @@ public sealed class AttemptAttachmentsController : ControllerBase
                 section.ContentDisposition, out var contentDisposition);
 
             if (hasContentDisposition && contentDisposition != null &&
-                contentDisposition.DispositionType.Equals("form-data", StringComparison.OrdinalIgnoreCase) &&
-                (contentDisposition.Name.Equals("file", StringComparison.OrdinalIgnoreCase) || !foundFile))
+                contentDisposition.DispositionType.Equals("form-data", StringComparison.OrdinalIgnoreCase))
             {
-                foundFile = true;
-                targetFileName = contentDisposition.FileName.Value
-                    ?? contentDisposition.FileNameStar.Value
-                    ?? "drawing.png";
-
-                var buffer = new byte[16 * 1024];
-                int bytesRead;
-                long totalBytes = 0;
-
-                while ((bytesRead = await section.Body.ReadAsync(buffer, 0, buffer.Length, cancellationToken)) > 0)
+                var fieldName = contentDisposition.Name.Value?.Trim('"') ?? string.Empty;
+                if (fieldName.Equals("file", StringComparison.OrdinalIgnoreCase))
                 {
-                    totalBytes += bytesRead;
-                    if (totalBytes > FileSystemAttemptAttachmentStorage.MaxFileBytes)
+                    if (foundFile)
                     {
-                        return StatusCode(StatusCodes.Status413PayloadTooLarge, CreateProblem(
-                            StatusCodes.Status413PayloadTooLarge,
-                            "Tệp quá lớn",
-                            "Kích thước ảnh PNG không được vượt quá 5 MB.",
+                        return BadRequest(CreateProblem(
+                            StatusCodes.Status400BadRequest,
+                            "Dữ liệu không hợp lệ",
+                            "Chỉ cho phép gửi tối đa một tệp đính kèm trong trường 'file'.",
                             traceId,
                             ErrorCodes.ValidationFailed));
                     }
 
-                    await stream.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
-                }
+                    foundFile = true;
+                    targetFileName = contentDisposition.FileName.Value?.Trim('"')
+                        ?? contentDisposition.FileNameStar.Value?.Trim('"')
+                        ?? "drawing.png";
 
-                break;
+                    var buffer = new byte[16 * 1024];
+                    int bytesRead;
+                    long totalBytes = 0;
+
+                    // Bounded buffering in memory: strictly capped at MaxFileBytes (5 MB)
+                    while ((bytesRead = await section.Body.ReadAsync(buffer, 0, buffer.Length, cancellationToken)) > 0)
+                    {
+                        totalBytes += bytesRead;
+                        if (totalBytes > FileSystemAttemptAttachmentStorage.MaxFileBytes)
+                        {
+                            return StatusCode(StatusCodes.Status413PayloadTooLarge, CreateProblem(
+                                StatusCodes.Status413PayloadTooLarge,
+                                "Tệp quá lớn",
+                                "Kích thước ảnh PNG không được vượt quá 5 MB.",
+                                traceId,
+                                ErrorCodes.ValidationFailed));
+                        }
+
+                        await stream.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
+                    }
+                }
             }
         }
 

@@ -1,3 +1,4 @@
+using EduTwin.BLL.AssessmentAndReasoning.Attachments;
 using EduTwin.BLL.AssessmentAndReasoning.Jobs;
 using EduTwin.BLL.AssessmentAndReasoning.AI;
 using EduTwin.BLL.AssessmentAndReasoning.Evidence;
@@ -5,6 +6,7 @@ using EduTwin.BLL.AssessmentAndReasoning.Processing;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.BLL.Recommendations;
 using EduTwin.Contracts.AssessmentAndReasoning;
+using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.DigitalTwin;
 using EduTwin.Contracts.IdentityAndTenancy;
@@ -12,6 +14,7 @@ using EduTwin.Contracts.KnowledgeGraph;
 using EduTwin.Contracts.Organization;
 using EduTwin.Contracts.Recommendations;
 using EduTwin.DAL.AssessmentAndReasoning;
+using EduTwin.DAL.Assignments;
 using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.DigitalTwin;
 using EduTwin.DAL.IdentityAndTenancy;
@@ -226,6 +229,306 @@ public sealed class AIAnalysisJobProcessorMySqlTests
 
             var behaviorTwin = await retryContext.BehaviorTwins.SingleAsync(b => b.CenterId == centerId);
             Assert.Equal(1u, behaviorTwin.AttemptCount); // Did NOT increment to 2!
+        }
+    }
+
+    [MySqlIntegrationFact]
+    public async Task ExecuteAsync_StorageOutagePersistedRetryChain_CyclesThroughRetriesAndPersistsTerminalStateOnMySql()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var centerId = Guid.NewGuid();
+        await SeedAsync(database.ConnectionString, centerId);
+
+        var tenant = new TenantContext();
+        using (tenant.BeginScope(centerId))
+        {
+            await using var seedContext = CreateContext(database.ConnectionString, tenant);
+            seedContext.AttemptAttachments.Add(new AttemptAttachment
+            {
+                AttachmentId = 1,
+                CenterId = centerId,
+                AttemptId = 1,
+                FileName = "drawing.png",
+                StorageKey = "tenants/center/attempts/1/drawing.png",
+                UploadNonce = Guid.NewGuid().ToString("N"),
+                FileSizeBytes = 1024,
+                ContentType = "image/png",
+                CreatedAt = UtcNow.AddMinutes(-2)
+            });
+            await seedContext.SaveChangesAsync();
+        }
+
+        var failingStorage = new FailingAttachmentStorage();
+
+        // 1. First run: RetryCount 0 -> 1 (+10s delay)
+        var step1Time = UtcNow;
+        using (tenant.BeginScope(centerId))
+        {
+            await using var context1 = CreateContext(database.ConnectionString, tenant);
+            var processor1 = CreateProcessor(
+                context1,
+                tenant,
+                timeProvider: new FixedTimeProvider(step1Time),
+                attachmentStorage: failingStorage);
+
+            var result1 = await processor1.ExecuteAsync(1, "mysql-worker", CancellationToken.None);
+            Assert.Equal(AIAnalysisJobProcessingOutcome.RetryScheduled, result1.Outcome);
+
+            var job1 = await context1.AIAnalysisJobs.SingleAsync(j => j.AnalysisJobId == 1);
+            Assert.Equal(1u, job1.RetryCount);
+            Assert.Equal(AIJobStatus.Pending, job1.Status);
+            Assert.Equal(step1Time.AddSeconds(10), job1.AvailableAt);
+            Assert.Equal("AttachmentStorageUnavailable", job1.LastErrorCode);
+
+            var attempt1 = await context1.Attempts.SingleAsync(a => a.AttemptId == 1);
+            Assert.Equal(AttemptStatus.PendingAnalysis, attempt1.Status);
+        }
+
+        // Simulate lease claim for retry #1
+        var step2Time = step1Time.AddSeconds(10);
+        using (tenant.BeginScope(centerId))
+        {
+            await using var leaseContext = CreateContext(database.ConnectionString, tenant);
+            var job = await leaseContext.AIAnalysisJobs.SingleAsync(j => j.AnalysisJobId == 1);
+            job.Status = AIJobStatus.Processing;
+            job.LeaseOwner = "mysql-worker";
+            job.LeaseUntil = step2Time.AddMinutes(5);
+            await leaseContext.SaveChangesAsync();
+        }
+
+        // 2. Second run: RetryCount 1 -> 2 (+20s delay) - Proves ck_ai_analysis_jobs_retry_count permits 2
+        using (tenant.BeginScope(centerId))
+        {
+            await using var context2 = CreateContext(database.ConnectionString, tenant);
+            var processor2 = CreateProcessor(
+                context2,
+                tenant,
+                timeProvider: new FixedTimeProvider(step2Time),
+                attachmentStorage: failingStorage);
+
+            var result2 = await processor2.ExecuteAsync(1, "mysql-worker", CancellationToken.None);
+            Assert.Equal(AIAnalysisJobProcessingOutcome.RetryScheduled, result2.Outcome);
+
+            var job2 = await context2.AIAnalysisJobs.SingleAsync(j => j.AnalysisJobId == 1);
+            Assert.Equal(2u, job2.RetryCount);
+            Assert.Equal(AIJobStatus.Pending, job2.Status);
+            Assert.Equal(step2Time.AddSeconds(20), job2.AvailableAt);
+            Assert.Equal("AttachmentStorageUnavailable", job2.LastErrorCode);
+
+            var attempt2 = await context2.Attempts.SingleAsync(a => a.AttemptId == 1);
+            Assert.Equal(AttemptStatus.PendingAnalysis, attempt2.Status);
+        }
+
+        // Simulate lease claim for retry #2
+        var step3Time = step2Time.AddSeconds(20);
+        using (tenant.BeginScope(centerId))
+        {
+            await using var leaseContext = CreateContext(database.ConnectionString, tenant);
+            var job = await leaseContext.AIAnalysisJobs.SingleAsync(j => j.AnalysisJobId == 1);
+            job.Status = AIJobStatus.Processing;
+            job.LeaseOwner = "mysql-worker";
+            job.LeaseUntil = step3Time.AddMinutes(5);
+            await leaseContext.SaveChangesAsync();
+        }
+
+        // 3. Third run: RetryCount 2 -> 3 (+40s delay) - Proves ck_ai_analysis_jobs_retry_count permits 3
+        using (tenant.BeginScope(centerId))
+        {
+            await using var context3 = CreateContext(database.ConnectionString, tenant);
+            var processor3 = CreateProcessor(
+                context3,
+                tenant,
+                timeProvider: new FixedTimeProvider(step3Time),
+                attachmentStorage: failingStorage);
+
+            var result3 = await processor3.ExecuteAsync(1, "mysql-worker", CancellationToken.None);
+            Assert.Equal(AIAnalysisJobProcessingOutcome.RetryScheduled, result3.Outcome);
+
+            var job3 = await context3.AIAnalysisJobs.SingleAsync(j => j.AnalysisJobId == 1);
+            Assert.Equal(3u, job3.RetryCount);
+            Assert.Equal(AIJobStatus.Pending, job3.Status);
+            Assert.Equal(step3Time.AddSeconds(40), job3.AvailableAt);
+            Assert.Equal("AttachmentStorageUnavailable", job3.LastErrorCode);
+
+            var attempt3 = await context3.Attempts.SingleAsync(a => a.AttemptId == 1);
+            Assert.Equal(AttemptStatus.PendingAnalysis, attempt3.Status);
+        }
+
+        // Simulate lease claim for 4th run (retries exhausted, job is at RetryCount = 3)
+        var step4Time = step3Time.AddSeconds(40);
+        using (tenant.BeginScope(centerId))
+        {
+            await using var leaseContext = CreateContext(database.ConnectionString, tenant);
+            var job = await leaseContext.AIAnalysisJobs.SingleAsync(j => j.AnalysisJobId == 1);
+            job.Status = AIJobStatus.Processing;
+            job.LeaseOwner = "mysql-worker";
+            job.LeaseUntil = step4Time.AddMinutes(5);
+            await leaseContext.SaveChangesAsync();
+        }
+
+        // 4. Fourth run: Free-practice terminal failure -> FailedTerminal + AttemptStatus.AnalysisFailed
+        // Proves ck_attempts_status permits 'AnalysisFailed' on live MySQL!
+        using (tenant.BeginScope(centerId))
+        {
+            await using var context4 = CreateContext(database.ConnectionString, tenant);
+            var processor4 = CreateProcessor(
+                context4,
+                tenant,
+                timeProvider: new FixedTimeProvider(step4Time),
+                attachmentStorage: failingStorage);
+
+            var result4 = await processor4.ExecuteAsync(1, "mysql-worker", CancellationToken.None);
+            Assert.Equal(AIAnalysisJobProcessingOutcome.FailedTerminal, result4.Outcome);
+
+            var job4 = await context4.AIAnalysisJobs.SingleAsync(j => j.AnalysisJobId == 1);
+            Assert.Equal(3u, job4.RetryCount);
+            Assert.Equal(AIJobStatus.FailedTerminal, job4.Status);
+            Assert.Equal("AttachmentStorageUnavailable", job4.LastErrorCode);
+
+            var attempt4 = await context4.Attempts.SingleAsync(a => a.AttemptId == 1);
+            Assert.Equal(AttemptStatus.AnalysisFailed, attempt4.Status);
+
+            // Invariant assertions: zero analysis, zero evidence, zero twin contamination
+            var analysesCount = await context4.ReasoningAnalyses.CountAsync(ra => ra.AttemptId == 1);
+            Assert.Equal(0, analysesCount);
+
+            var evidenceCount = await context4.EvidenceAssessments.CountAsync(ea => ea.AttemptId == 1);
+            Assert.Equal(0, evidenceCount);
+
+            var behaviorTwin = await context4.BehaviorTwins.SingleOrDefaultAsync(b => b.CenterId == centerId);
+            Assert.Null(behaviorTwin);
+
+            var knowledgeTwin = await context4.KnowledgeTwins.SingleOrDefaultAsync(kt => kt.CenterId == centerId);
+            Assert.Null(knowledgeTwin);
+        }
+    }
+
+    [MySqlIntegrationFact]
+    public async Task ExecuteAsync_StorageOutageAssignmentVariant_CompletesFallbackWithNeedsTeacherReviewAndZeroTwinContaminationOnMySql()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var centerId = Guid.NewGuid();
+        await SeedAsync(database.ConnectionString, centerId);
+
+        var tenant = new TenantContext();
+        using (tenant.BeginScope(centerId))
+        {
+            await using var prepContext = CreateContext(database.ConnectionString, tenant);
+            await prepContext.Database.OpenConnectionAsync();
+            try
+            {
+                await prepContext.Database.ExecuteSqlRawAsync("SET FOREIGN_KEY_CHECKS = 0;");
+                var assignmentId = Guid.NewGuid();
+                prepContext.Assignments.Add(new Assignment
+                {
+                    AssignmentId = assignmentId,
+                    CenterId = centerId,
+                    ClassId = Guid.NewGuid(),
+                    CreatedByTeacherId = Guid.NewGuid(),
+                    Title = "Storage Outage Fallback Assignment",
+                    Status = AssignmentStatus.Published,
+                    CreatedAt = UtcNow.AddDays(-1),
+                    UpdatedAt = UtcNow.AddDays(-1)
+                });
+
+                var attempt = await prepContext.Attempts.SingleAsync(a => a.AttemptId == 1);
+                attempt.AssignmentId = assignmentId;
+
+                prepContext.AttemptAttachments.Add(new AttemptAttachment
+                {
+                    AttachmentId = 1,
+                    CenterId = centerId,
+                    AttemptId = 1,
+                    FileName = "drawing.png",
+                    StorageKey = "tenants/center/attempts/1/drawing.png",
+                    UploadNonce = Guid.NewGuid().ToString("N"),
+                    FileSizeBytes = 1024,
+                    ContentType = "image/png",
+                    CreatedAt = UtcNow.AddMinutes(-2)
+                });
+
+                var job = await prepContext.AIAnalysisJobs.SingleAsync(j => j.AnalysisJobId == 1);
+                job.RetryCount = 3;
+                job.Status = AIJobStatus.Processing;
+                job.LeaseOwner = "mysql-worker";
+                job.LeaseUntil = UtcNow.AddMinutes(5);
+
+                await prepContext.SaveChangesAsync();
+            }
+            finally
+            {
+                await prepContext.Database.ExecuteSqlRawAsync("SET FOREIGN_KEY_CHECKS = 1;");
+                await prepContext.Database.CloseConnectionAsync();
+            }
+        }
+
+        var failingStorage = new FailingAttachmentStorage();
+        using (tenant.BeginScope(centerId))
+        {
+            await using var context = CreateContext(database.ConnectionString, tenant);
+            var processor = CreateProcessor(
+                context,
+                tenant,
+                timeProvider: new FixedTimeProvider(UtcNow),
+                attachmentStorage: failingStorage);
+
+            var result = await processor.ExecuteAsync(1, "mysql-worker", CancellationToken.None);
+            Assert.Equal(AIAnalysisJobProcessingOutcome.FallbackCompleted, result.Outcome);
+
+            var job = await context.AIAnalysisJobs.SingleAsync(j => j.AnalysisJobId == 1);
+            Assert.Equal(3u, job.RetryCount);
+            Assert.Equal(AIJobStatus.FallbackCompleted, job.Status);
+            Assert.Equal("AttachmentStorageUnavailable", job.LastErrorCode);
+
+            var attempt = await context.Attempts.SingleAsync(a => a.AttemptId == 1);
+            Assert.Equal(AttemptStatus.NeedsTeacherReview, attempt.Status);
+
+            var analysis = await context.ReasoningAnalyses.SingleAsync(ra => ra.AttemptId == 1);
+            Assert.True(analysis.IsFallback);
+            Assert.True(analysis.NeedsTeacherReview);
+
+            var evidence = await context.EvidenceAssessments.SingleAsync(ea => ea.AttemptId == 1);
+            Assert.Equal(EvidenceTrustLevel.ReviewOnly, evidence.TrustLevel);
+            Assert.Equal(0.00m, evidence.ReasoningWeight);
+
+            // Zero twin contamination
+            var behaviorTwin = await context.BehaviorTwins.SingleOrDefaultAsync(b => b.CenterId == centerId);
+            Assert.Null(behaviorTwin);
+
+            var knowledgeTwin = await context.KnowledgeTwins.SingleOrDefaultAsync(kt => kt.CenterId == centerId);
+            Assert.Null(knowledgeTwin);
+        }
+    }
+
+    [MySqlIntegrationFact]
+    public async Task RelationalCheckConstraints_StorageFailureState_EnforcesInvariantsInMySql()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var centerId = Guid.NewGuid();
+        await SeedAsync(database.ConnectionString, centerId);
+
+        var tenant = new TenantContext();
+        using (tenant.BeginScope(centerId))
+        {
+            await using var context = CreateContext(database.ConnectionString, tenant);
+
+            // 1. ck_ai_analysis_jobs_retry_count permits 0..3 and rejects 4
+            await context.Database.ExecuteSqlRawAsync(
+                "UPDATE ai_analysis_jobs SET retry_count = 3 WHERE analysis_job_id = 1;");
+
+            var retryException = await Assert.ThrowsAnyAsync<MySqlException>(() =>
+                context.Database.ExecuteSqlRawAsync(
+                    "UPDATE ai_analysis_jobs SET retry_count = 4 WHERE analysis_job_id = 1;"));
+            Assert.Contains("ck_ai_analysis_jobs_retry_count", retryException.Message, StringComparison.OrdinalIgnoreCase);
+
+            // 2. ck_attempts_status permits AnalysisFailed and rejects invalid status values
+            await context.Database.ExecuteSqlRawAsync(
+                "UPDATE attempts SET status = 'AnalysisFailed' WHERE attempt_id = 1;");
+
+            var statusException = await Assert.ThrowsAnyAsync<MySqlException>(() =>
+                context.Database.ExecuteSqlRawAsync(
+                    "UPDATE attempts SET status = 'InvalidNonExistentStatus' WHERE attempt_id = 1;"));
+            Assert.Contains("ck_attempts_status", statusException.Message, StringComparison.OrdinalIgnoreCase);
         }
     }
 
@@ -462,7 +765,8 @@ public sealed class AIAnalysisJobProcessorMySqlTests
         TenantContext tenant,
         IAIService? aiService = null,
         IRecommendationEngine? recommendationEngine = null,
-        TimeProvider? timeProvider = null) =>
+        TimeProvider? timeProvider = null,
+        IAttemptAttachmentStorage? attachmentStorage = null) =>
         new(
             context,
             tenant,
@@ -474,7 +778,8 @@ public sealed class AIAnalysisJobProcessorMySqlTests
             new EvidenceGate(),
             new EvidenceAssessmentFactory(),
             timeProvider ?? new FixedTimeProvider(UtcNow),
-            recommendationEngine: recommendationEngine);
+            recommendationEngine: recommendationEngine,
+            attachmentStorage: attachmentStorage);
 
     private static RecommendationEngine CreateRecommendationEngine(EduTwinDbContext context) =>
         new(
@@ -999,6 +1304,31 @@ public sealed class AIAnalysisJobProcessorMySqlTests
             AnalyzeReasoningRequest request,
             CancellationToken cancellationToken) =>
             throw new InvalidOperationException("Deliberate AI failure for fallback test.");
+    }
+
+    private sealed class FailingAttachmentStorage : IAttemptAttachmentStorage
+    {
+        public Task<StoredTemporaryAttachment> StoreTemporaryPngAsync(
+            Guid centerId,
+            string uploadNonce,
+            Stream content,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<PromotedAttemptAttachment> PromoteToPermanentAsync(
+            AttachmentUploadTokenPayload payload,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task DeletePermanentAsync(
+            string storageKey,
+            CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task<Stream> OpenPermanentReadAsync(
+            string storageKey,
+            CancellationToken cancellationToken) =>
+            throw new AttemptAttachmentStorageUnavailableException("Simulated permanent storage outage.");
     }
 
     private sealed class ThrowAfterSaveInterceptor : SaveChangesInterceptor

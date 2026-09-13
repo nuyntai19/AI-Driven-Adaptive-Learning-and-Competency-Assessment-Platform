@@ -49,7 +49,7 @@ public class AIAnalysisJobConfiguration : IEntityTypeConfiguration<AIAnalysisJob
 
         builder.ToTable(t =>
         {
-            t.HasCheckConstraint("ck_ai_analysis_jobs_retry_count", "`retry_count` BETWEEN 0 AND 1");
+            t.HasCheckConstraint("ck_ai_analysis_jobs_retry_count", "`retry_count` BETWEEN 0 AND 3");
             t.HasCheckConstraint("ck_ai_analysis_jobs_status", "`status` IN ('Pending', 'Processing', 'Completed', 'FallbackCompleted', 'FailedTerminal')");
         });
 

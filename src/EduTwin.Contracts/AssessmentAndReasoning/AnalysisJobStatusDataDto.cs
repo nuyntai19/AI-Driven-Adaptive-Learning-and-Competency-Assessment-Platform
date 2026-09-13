@@ -9,4 +9,6 @@ public sealed class AnalysisJobStatusDataDto
     public bool Terminal { get; set; }
     public string? FeedbackUrl { get; set; }
     public DateTime UpdatedAt { get; set; }
+    public string? AttemptStatus { get; set; }
+    public string? ErrorCode { get; set; }
 }

@@ -219,7 +219,7 @@ public sealed class LearningControllerTests
             response,
             new JsonSerializerOptions(JsonSerializerDefaults.Web));
         Assert.Equal(2, json.EnumerateObject().Count());
-        Assert.Equal(7, json.GetProperty("data").EnumerateObject().Count());
+        Assert.Equal(9, json.GetProperty("data").EnumerateObject().Count());
         Assert.Equal(2, json.GetProperty("meta").EnumerateObject().Count());
         Assert.Equal(
             "13001",
@@ -329,7 +329,7 @@ public sealed class LearningControllerTests
         }
 
         Assert.Equal(2, typeof(AnalysisJobStatusResponse).GetProperties().Length);
-        Assert.Equal(7, typeof(AnalysisJobStatusDataDto).GetProperties().Length);
+        Assert.Equal(9, typeof(AnalysisJobStatusDataDto).GetProperties().Length);
     }
 
     [Fact]

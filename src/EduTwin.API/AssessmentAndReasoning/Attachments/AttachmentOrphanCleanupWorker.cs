@@ -99,14 +99,31 @@ public sealed class AttachmentOrphanCleanupWorker : BackgroundService
 
         var deletedCount = 0;
         var tenantDirs = Directory.GetDirectories(tenantsRoot);
+        var rootWithSeparator = _rootPath.EndsWith(Path.DirectorySeparatorChar)
+            ? _rootPath
+            : _rootPath + Path.DirectorySeparatorChar;
 
         foreach (var tenantDir in tenantDirs)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
+            var tenantDirInfo = new DirectoryInfo(tenantDir);
+            if (tenantDirInfo.Attributes.HasFlag(FileAttributes.ReparsePoint) || tenantDirInfo.LinkTarget is not null)
+            {
+                _logger.LogWarning("Skipping reparse point or symlink directory: {TenantDir}", tenantDir);
+                continue;
+            }
+
             var tempDir = Path.Combine(tenantDir, "attempt-attachments-temp");
             if (!Directory.Exists(tempDir))
             {
+                continue;
+            }
+
+            var tempDirInfo = new DirectoryInfo(tempDir);
+            if (tempDirInfo.Attributes.HasFlag(FileAttributes.ReparsePoint) || tempDirInfo.LinkTarget is not null)
+            {
+                _logger.LogWarning("Skipping reparse point or symlink temp directory: {TempDir}", tempDir);
                 continue;
             }
 
@@ -130,6 +147,19 @@ public sealed class AttachmentOrphanCleanupWorker : BackgroundService
                     var fileInfo = new FileInfo(file);
                     if (!fileInfo.Exists)
                     {
+                        continue;
+                    }
+
+                    if (fileInfo.Attributes.HasFlag(FileAttributes.ReparsePoint) || fileInfo.LinkTarget is not null)
+                    {
+                        _logger.LogWarning("Skipping reparse point or symlink file: {FilePath}", file);
+                        continue;
+                    }
+
+                    var canonicalPath = Path.GetFullPath(file);
+                    if (!canonicalPath.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _logger.LogWarning("File path {FilePath} escaped storage root {RootPath}", file, _rootPath);
                         continue;
                     }
 

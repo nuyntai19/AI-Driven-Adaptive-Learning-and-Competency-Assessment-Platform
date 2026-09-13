@@ -23,7 +23,7 @@ import { MathInputToolbar } from "../components/math/MathInputToolbar";
 import { ScientificCalculatorDrawer } from "../components/math/ScientificCalculatorDrawer";
 import { ScratchpadCanvasModal } from "../components/math/ScratchpadCanvasModal";
 import { renderPng } from "../utils/scratchpadRenderer";
-import { deleteScratchpadDraft, getScratchpadDraft } from "../utils/scratchpadStorage";
+import { deleteScratchpadDraft, getScratchpadDraft, saveScratchpadDraft } from "../utils/scratchpadStorage";
 import {
   clearAttemptSessionId,
   createClientSubmissionId,
@@ -259,23 +259,10 @@ export const LearningPlayerPage = () => {
         drawingUploadToken: uploadToken,
       });
 
-      // A network/validation failure leaves the vector draft untouched. A 202 acceptance
-      // (or future 200 idempotent replay) is the only point at which it may be discarded.
-      if ((submitted.status === 202 || submitted.status === 200) && currentUser) {
-        try {
-          await deleteScratchpadDraft(
-            currentUser.centerId,
-            currentUser.userId,
-            clientSubmissionId
-          );
-        } catch {
-          // The server accepted the submission; a local cleanup failure must not invite a duplicate submission.
-        }
-        if (attemptSessionScope) clearAttemptSessionId(attemptSessionScope);
-        setScratchpadPngBytes(null);
-        setScratchpadPng(null);
-        setDrawingUploadToken(null);
-      }
+      // On 202/200 submission acceptance, do NOT delete the scratchpad draft yet.
+      // The draft and drawing memory are preserved so that if AI processing later fails with FailedTerminal,
+      // the student can resubmit without losing their drawing evidence.
+      setDrawingUploadToken(null);
 
       const response = submitted.data;
       const activeJobId = response.analysisJobId || response.jobId || "";
@@ -329,16 +316,33 @@ export const LearningPlayerPage = () => {
           next.delete("attemptId");
           return next;
         });
-        setSubmissionError(
-          "Quá trình phân tích bài làm gặp sự cố (AnalysisFailed). Bạn có thể nộp lại bài làm này."
-        );
+        const failureReason = jobStatus.errorCode === "AttachmentStorageUnavailable"
+          ? "Không thể đọc tệp đính kèm bài làm (AttachmentStorageUnavailable)."
+          : "Quá trình phân tích bài làm gặp sự cố (AnalysisFailed).";
+        setSubmissionError(`${failureReason} Bạn có thể nộp lại bài làm này.`);
         setCanResubmit(true);
         return;
       }
 
       void getAttemptFeedback(jobStatus.attemptId)
-        .then((feedback) => {
+        .then(async (feedback) => {
           setFeedbackData(feedback);
+          // Only on verified terminal success do we purge the scratchpad draft and session
+          if (currentUser) {
+            try {
+              await deleteScratchpadDraft(
+                currentUser.centerId,
+                currentUser.userId,
+                clientSubmissionIdRef.current
+              );
+            } catch {
+              // Local cleanup failure must not block feedback display.
+            }
+            if (attemptSessionScope) clearAttemptSessionId(attemptSessionScope);
+            setScratchpadPngBytes(null);
+            setScratchpadPng(null);
+            setDrawingUploadToken(null);
+          }
           setSearchParams((current) => {
             const next = new URLSearchParams(current);
             next.delete("analysisJobId");
@@ -355,7 +359,7 @@ export const LearningPlayerPage = () => {
       setIsSubmitting(false);
       setSubmissionError("Phân tích mất nhiều thời gian hơn dự kiến. Hãy thử tải kết quả lại sau.");
     }
-  }, [jobStatusQuery.data, jobStatusQuery.dataUpdatedAt, pollingJobId, setSearchParams]);
+  }, [attemptSessionScope, currentUser, jobStatusQuery.data, jobStatusQuery.dataUpdatedAt, pollingJobId, setSearchParams]);
 
   useEffect(() => {
     if (!pollingJobId || !jobStatusQuery.error) return;
@@ -429,12 +433,42 @@ export const LearningPlayerPage = () => {
   };
 
   // Explicit resubmit handler when previous attempt failed terminally
-  const handleResubmit = () => {
+  const handleResubmit = async () => {
+    const oldId = clientSubmissionIdRef.current;
     if (attemptSessionScope) {
       clearAttemptSessionId(attemptSessionScope);
     }
     const newId = createClientSubmissionId();
     clientSubmissionIdRef.current = newId;
+
+    // Migrate existing scratchpad draft to the new submission identity so drawing is preserved
+    if (currentUser) {
+      try {
+        const existingDraft = await getScratchpadDraft(currentUser.centerId, currentUser.userId, oldId);
+        if (existingDraft && existingDraft.strokes && existingDraft.strokes.length > 0) {
+          await saveScratchpadDraft({
+            ...existingDraft,
+            storageKey: "",
+            clientSubmissionId: newId,
+          });
+          await deleteScratchpadDraft(currentUser.centerId, currentUser.userId, oldId);
+
+          if (!scratchpadPng) {
+            const regenerated = await renderPng(
+              existingDraft.strokes,
+              existingDraft.gridType,
+              existingDraft.canvasWidth || 1200,
+              existingDraft.canvasHeight || 800
+            );
+            setScratchpadPng(regenerated);
+            setScratchpadPngBytes(regenerated.size);
+          }
+        }
+      } catch {
+        // Continue resubmit with in-memory drawing if storage migration encounters issues
+      }
+    }
+
     setDrawingUploadToken(null);
     setSubmissionError(null);
     setCanResubmit(false);

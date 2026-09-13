@@ -65,7 +65,7 @@ public class AttemptConfiguration : IEntityTypeConfiguration<Attempt>
             t.HasCheckConstraint("ck_attempts_confidence", "`confidence` BETWEEN 0 AND 100");
             t.HasCheckConstraint("ck_attempts_time_spent_seconds", "`time_spent_seconds` >= 0");
             t.HasCheckConstraint("ck_attempts_reasoning_language", "`reasoning_language` IN ('vi', 'en')");
-            t.HasCheckConstraint("ck_attempts_status", "`status` IN ('PendingAnalysis', 'Processing', 'Completed', 'NeedsTeacherReview')");
+            t.HasCheckConstraint("ck_attempts_status", "`status` IN ('PendingAnalysis', 'Processing', 'Completed', 'NeedsTeacherReview', 'AnalysisFailed')");
         });
 
         builder.HasOne(a => a.Student)

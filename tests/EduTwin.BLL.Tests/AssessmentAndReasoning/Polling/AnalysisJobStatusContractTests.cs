@@ -59,7 +59,9 @@ public sealed class AnalysisJobStatusContractTests
                 "retryCount",
                 "terminal",
                 "feedbackUrl",
-                "updatedAt"
+                "updatedAt",
+                "attemptStatus",
+                "errorCode"
             },
             json.GetProperty("data")
                 .EnumerateObject()

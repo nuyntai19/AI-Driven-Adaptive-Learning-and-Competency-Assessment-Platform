@@ -31,6 +31,8 @@ export interface AnalysisJobStatusDataDto {
   terminal: boolean;
   feedbackUrl?: string | null;
   updatedAt: string;
+  attemptStatus?: string | null;
+  errorCode?: string | null;
 }
 
 export interface AttemptFeedbackGradingDto {

@@ -129,6 +129,8 @@ public sealed class FileSystemAttemptAttachmentStorage : IAttemptAttachmentStora
         var isFirstChunk = true;
         var foundEnd = false;
         var hasIdat = false;
+        var hasPlte = false;
+        var finishedIdat = false;
         (uint Width, uint Height, byte BitDepth, byte ColorType) ihdrInfo = default;
         await using var idatStream = new MemoryStream();
 
@@ -159,9 +161,40 @@ public sealed class FileSystemAttemptAttachmentStorage : IAttemptAttachmentStora
             }
 
             var isIdat = type.AsSpan().SequenceEqual("IDAT"u8);
+            var isPlte = type.AsSpan().SequenceEqual("PLTE"u8);
+
+            if (isPlte)
+            {
+                if (ihdrInfo.ColorType is 0 or 4)
+                {
+                    throw new AttemptAttachmentValidationException("PLTE chunk is not permitted for grayscale PNG.");
+                }
+                if (hasIdat)
+                {
+                    throw new AttemptAttachmentValidationException("PLTE chunk must appear before IDAT chunks.");
+                }
+                if (length % 3 != 0 || length == 0 || length > 256 * 3)
+                {
+                    throw new AttemptAttachmentValidationException("PLTE chunk length must be a non-empty multiple of 3 and at most 768 bytes.");
+                }
+                hasPlte = true;
+            }
+
             if (isIdat)
             {
+                if (finishedIdat)
+                {
+                    throw new AttemptAttachmentValidationException("IDAT chunks must be contiguous.");
+                }
+                if (ihdrInfo.ColorType == 3 && !hasPlte)
+                {
+                    throw new AttemptAttachmentValidationException("PLTE chunk is required before IDAT for indexed-color PNG.");
+                }
                 hasIdat = true;
+            }
+            else if (hasIdat)
+            {
+                finishedIdat = true;
             }
 
             var crc = new PngCrc(type);
@@ -209,18 +242,24 @@ public sealed class FileSystemAttemptAttachmentStorage : IAttemptAttachmentStora
             throw new AttemptAttachmentValidationException("PNG dimensions are invalid or exceed 4096x4096.");
         }
 
-        if (compressionMethod != 0 || filterMethod != 0 || interlaceMethod > 1)
+        if (compressionMethod != 0 || filterMethod != 0)
         {
-            throw new AttemptAttachmentValidationException("PNG compression/filter/interlace values are not supported.");
+            throw new AttemptAttachmentValidationException("PNG compression/filter values are not supported.");
         }
 
+        if (interlaceMethod != 0)
+        {
+            throw new AttemptAttachmentValidationException("Interlaced PNG is not supported for scratchpad drawings.");
+        }
+
+        // Scratchpad vector drawings export standard 8-bit Truecolor/Alpha, or 1/2/4/8-bit Grayscale/Indexed
         var isValidColorMatrix = colorType switch
         {
-            0 => bitDepth is 1 or 2 or 4 or 8 or 16,
-            2 => bitDepth is 8 or 16,
+            0 => bitDepth is 1 or 2 or 4 or 8,
+            2 => bitDepth is 8,
             3 => bitDepth is 1 or 2 or 4 or 8,
-            4 => bitDepth is 8 or 16,
-            6 => bitDepth is 8 or 16,
+            4 => bitDepth is 8,
+            6 => bitDepth is 8,
             _ => false
         };
 
@@ -253,19 +292,40 @@ public sealed class FileSystemAttemptAttachmentStorage : IAttemptAttachmentStora
         var bytesPerScanline = 1 + rowBytes;
         var expectedRawBytes = (long)ihdrInfo.Height * bytesPerScanline;
 
-        // Bounded budget: allow up to 2x expected raw bytes or 1 MB minimum, capped strictly at 64 MB
-        var maxDecompressedBudget = Math.Min(64L * 1024 * 1024, Math.Max(1024L * 1024, expectedRawBytes * 2));
+        // Bounded budget: allow up to expected raw bytes + 64 KB overhead, strictly capped at 68 MB
+        var maxDecompressedBudget = Math.Min(68L * 1024 * 1024, Math.Max(1024L * 1024, expectedRawBytes + 65536));
 
         try
         {
             await using var zlib = new ZLibStream(idatStream, CompressionMode.Decompress, leaveOpen: true);
             var buffer = new byte[8192];
             long totalDecompressedBytes = 0;
+            long currentScanlineOffset = 0;
 
             while (true)
             {
                 var read = await zlib.ReadAsync(buffer.AsMemory(), cancellationToken);
                 if (read == 0) break;
+
+                // Validate filter byte of each scanline (must be 0..4: None, Sub, Up, Average, Paeth)
+                for (var i = 0; i < read; i++)
+                {
+                    if (currentScanlineOffset == 0)
+                    {
+                        var filterByte = buffer[i];
+                        if (filterByte > 4)
+                        {
+                            throw new AttemptAttachmentValidationException($"PNG scanline filter type {filterByte} is invalid (must be 0..4).");
+                        }
+                    }
+
+                    currentScanlineOffset++;
+                    if (currentScanlineOffset == bytesPerScanline)
+                    {
+                        currentScanlineOffset = 0;
+                    }
+                }
+
                 totalDecompressedBytes += read;
                 if (totalDecompressedBytes > maxDecompressedBudget)
                 {
@@ -276,6 +336,12 @@ public sealed class FileSystemAttemptAttachmentStorage : IAttemptAttachmentStora
             if (totalDecompressedBytes == 0)
             {
                 throw new AttemptAttachmentValidationException("PNG decompressed image data is empty.");
+            }
+
+            if (totalDecompressedBytes != expectedRawBytes)
+            {
+                throw new AttemptAttachmentValidationException(
+                    $"PNG decompressed payload size ({totalDecompressedBytes} bytes) does not match expected scanline dimensions ({expectedRawBytes} bytes).");
             }
         }
         catch (AttemptAttachmentValidationException)

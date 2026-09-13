@@ -24,7 +24,7 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
 {
     private const string AnalysisFailureCode = "AI_ANALYSIS_ATTEMPT_FAILED";
     private const string AnalysisFailureMessage = "AI analysis attempt failed.";
-    private const string AttachmentStorageUnavailableCode = "ATTACHMENT_STORAGE_UNAVAILABLE";
+    private const string AttachmentStorageUnavailableCode = "AttachmentStorageUnavailable";
     private const string AttachmentStorageUnavailableMessage = "Attempt attachment storage is temporarily unavailable.";
 
     private readonly EduTwinDbContext _dbContext;
