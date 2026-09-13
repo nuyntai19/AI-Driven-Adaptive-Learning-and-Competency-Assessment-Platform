@@ -22,6 +22,11 @@ import { MathInputToolbar } from "../components/math/MathInputToolbar";
 import { ScientificCalculatorDrawer } from "../components/math/ScientificCalculatorDrawer";
 import { ScratchpadCanvasModal } from "../components/math/ScratchpadCanvasModal";
 import { deleteScratchpadDraft } from "../utils/scratchpadStorage";
+import {
+  clearAttemptSessionId,
+  createClientSubmissionId,
+  getOrCreateAttemptSessionId,
+} from "../utils/attemptSessionStorage";
 import { useAuthStore } from "../stores/authStore";
 
 export const LearningPlayerPage = () => {
@@ -49,7 +54,7 @@ export const LearningPlayerPage = () => {
   const [activeInputTarget, setActiveInputTarget] = useState<"answer" | "reasoning">("answer");
 
   // Client submission token (unique per attempt session)
-  const clientSubmissionIdRef = useRef<string>(crypto.randomUUID());
+  const clientSubmissionIdRef = useRef<string>(createClientSubmissionId());
 
   // Workflow state
   const [isSubmitting, setIsSubmitting] = useState<boolean>(Boolean(persistedJobId));
@@ -79,6 +84,29 @@ export const LearningPlayerPage = () => {
     queryFn: () => getNextQuestion(subjectId),
     enabled: !!subjectId && !feedbackData && !pollingJobId && !persistedJobId,
   });
+
+  const attemptSessionScope = useMemo(() => {
+    if (!currentUser || !question) return null;
+    return {
+      centerId: currentUser.centerId,
+      userId: currentUser.userId,
+      subjectId,
+      questionId: String(question.questionId),
+    };
+  }, [currentUser, question, subjectId]);
+
+  // The same idempotency identity is restored after a reload/remount for this exact learner/question scope.
+  useEffect(() => {
+    if (!attemptSessionScope) return;
+    clientSubmissionIdRef.current = getOrCreateAttemptSessionId(attemptSessionScope);
+  }, [attemptSessionScope]);
+
+  const getClientSubmissionId = () => {
+    if (!attemptSessionScope) return clientSubmissionIdRef.current;
+    const id = getOrCreateAttemptSessionId(attemptSessionScope);
+    clientSubmissionIdRef.current = id;
+    return id;
+  };
 
   // Derive presentation LaTeX separating presentation from semantic evaluation
   const derivedDisplayLatex = useMemo(() => {
@@ -174,6 +202,7 @@ export const LearningPlayerPage = () => {
 
     setIsSubmitting(true);
     setSubmissionError(null);
+    const clientSubmissionId = getClientSubmissionId();
 
     try {
       const submitted = await submitAttempt({
@@ -184,7 +213,7 @@ export const LearningPlayerPage = () => {
         confidence,
         answerChanges,
         skipped,
-        clientSubmissionId: clientSubmissionIdRef.current,
+        clientSubmissionId,
         answerDisplayLatex: derivedDisplayLatex || (finalAnswer.trim() ? finalAnswer.trim() : null),
       });
 
@@ -195,11 +224,12 @@ export const LearningPlayerPage = () => {
           await deleteScratchpadDraft(
             currentUser.centerId,
             currentUser.userId,
-            clientSubmissionIdRef.current
+            clientSubmissionId
           );
         } catch {
           // The server accepted the submission; a local cleanup failure must not invite a duplicate submission.
         }
+        if (attemptSessionScope) clearAttemptSessionId(attemptSessionScope);
         setScratchpadPngBytes(null);
       }
 
@@ -337,7 +367,8 @@ export const LearningPlayerPage = () => {
     setScratchpadPngBytes(null);
     setSubmissionError(null);
     pollingAttemptRef.current = 0;
-    clientSubmissionIdRef.current = crypto.randomUUID();
+    if (attemptSessionScope) clearAttemptSessionId(attemptSessionScope);
+    clientSubmissionIdRef.current = createClientSubmissionId();
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
       next.delete("analysisJobId");

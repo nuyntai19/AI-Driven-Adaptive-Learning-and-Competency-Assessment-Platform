@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test, { beforeEach } from "node:test";
+import "fake-indexeddb/auto";
 import {
   buildScratchpadKey,
   saveScratchpadDraft,
@@ -7,13 +8,15 @@ import {
   deleteScratchpadDraft,
   clearUserScratchpadDrafts,
   cleanupExpiredScratchpadDrafts,
+  __closeScratchpadDatabaseForTesting,
   __resetScratchpadStorageForTesting,
   DEFAULT_TTL_MS,
+  MAX_STROKES,
 } from "../src/utils/scratchpadStorage.ts";
 import type { ScratchpadDraft } from "../src/types/scratchpad.ts";
 
-beforeEach(() => {
-  __resetScratchpadStorageForTesting();
+beforeEach(async () => {
+  await __resetScratchpadStorageForTesting();
 });
 
 test("buildScratchpadKey formats key correctly with centerId, userId, and clientSubmissionId", () => {
@@ -60,7 +63,8 @@ test("saveScratchpadDraft and getScratchpadDraft persist and retrieve scoped dra
     expiresAt: 0,
   };
 
-  await saveScratchpadDraft(sampleDraft);
+  const persistence = await saveScratchpadDraft(sampleDraft);
+  assert.equal(persistence, "durable");
 
   const retrieved = await getScratchpadDraft("center-01", "student-42", "submission-abc");
   assert.ok(retrieved !== null, "Draft should be found");
@@ -71,6 +75,80 @@ test("saveScratchpadDraft and getScratchpadDraft persist and retrieve scoped dra
   assert.equal(retrieved.gridType, "o_ly");
   assert.ok(retrieved.updatedAt > 0);
   assert.ok(retrieved.expiresAt >= retrieved.updatedAt + DEFAULT_TTL_MS - 1000);
+});
+
+test("IndexedDB draft survives a storage connection reset, proving the durable path is used", async () => {
+  await saveScratchpadDraft({
+    storageKey: "",
+    centerId: "center-indexeddb",
+    userId: "student-indexeddb",
+    clientSubmissionId: "submission-indexeddb",
+    strokes: [],
+    gridType: "math_grid",
+    canvasWidth: 500,
+    canvasHeight: 500,
+    updatedAt: Date.now(),
+    expiresAt: Date.now() + 60_000,
+  });
+
+  __closeScratchpadDatabaseForTesting();
+
+  const restored = await getScratchpadDraft(
+    "center-indexeddb",
+    "student-indexeddb",
+    "submission-indexeddb"
+  );
+  assert.ok(restored, "A real IndexedDB row must survive reopening the database connection");
+});
+
+test("saveScratchpadDraft reports volatile persistence when IndexedDB is unavailable", async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "indexedDB");
+  Object.defineProperty(globalThis, "indexedDB", { configurable: true, value: undefined });
+
+  try {
+    const persistence = await saveScratchpadDraft({
+      storageKey: "",
+      centerId: "center-volatile",
+      userId: "student-volatile",
+      clientSubmissionId: "submission-volatile",
+      strokes: [],
+      gridType: "none",
+      canvasWidth: 500,
+      canvasHeight: 500,
+      updatedAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+    });
+    assert.equal(persistence, "volatile");
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis, "indexedDB", descriptor);
+    else delete (globalThis as { indexedDB?: IDBFactory }).indexedDB;
+  }
+});
+
+test("saveScratchpadDraft enforces an upper bound for vector strokes", async () => {
+  const strokes = Array.from({ length: MAX_STROKES + 1 }, (_, index) => ({
+    id: `stroke-${index}`,
+    tool: "line" as const,
+    color: "#000000",
+    lineWidth: 2,
+    points: [],
+  }));
+
+  await assert.rejects(
+    saveScratchpadDraft({
+      storageKey: "",
+      centerId: "center-bounds",
+      userId: "student-bounds",
+      clientSubmissionId: "submission-bounds",
+      strokes,
+      gridType: "none",
+      canvasWidth: 500,
+      canvasHeight: 500,
+      updatedAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+    }),
+    /at most 400 strokes/
+  );
 });
 
 test("getScratchpadDraft strictly scopes by centerId, userId, and clientSubmissionId", async () => {

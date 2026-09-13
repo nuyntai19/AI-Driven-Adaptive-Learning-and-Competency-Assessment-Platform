@@ -9,6 +9,9 @@ import type {
 import {
   DEFAULT_TTL_MS,
   getScratchpadDraft,
+  MAX_POINTS_PER_STROKE,
+  MAX_STROKES,
+  MAX_TOTAL_POINTS,
   saveScratchpadDraft,
 } from "../../utils/scratchpadStorage";
 
@@ -91,10 +94,14 @@ export const ScratchpadCanvasModal = ({
       };
 
       try {
-        await saveScratchpadDraft(draft);
-        setSaveStatus("Đã lưu trên thiết bị");
-      } catch {
-        setSaveStatus("Không thể lưu nháp cục bộ");
+        const persistence = await saveScratchpadDraft(draft);
+        setSaveStatus(
+          persistence === "durable"
+            ? "Đã lưu trên thiết bị"
+            : "Chỉ lưu tạm trong phiên này — tải lại trang có thể mất nháp"
+        );
+      } catch (error) {
+        setSaveStatus(error instanceof Error ? error.message : "Không thể lưu nháp cục bộ");
       }
     },
     [centerId, clientSubmissionId, userId]
@@ -189,6 +196,17 @@ export const ScratchpadCanvasModal = ({
     }
 
     const previous = latestDraftRef.current.strokes;
+    if (previous.length >= MAX_STROKES) {
+      setSaveStatus(`Đã đạt giới hạn ${MAX_STROKES} thao tác; hãy xóa bớt nét vẽ.`);
+      redraw();
+      return;
+    }
+    const nextPointCount = previous.reduce((total, stroke) => total + stroke.points.length, 0) + draftStroke.points.length;
+    if (nextPointCount > MAX_TOTAL_POINTS) {
+      setSaveStatus(`Đã đạt giới hạn ${MAX_TOTAL_POINTS} điểm vẽ; hãy xóa bớt nét vẽ.`);
+      redraw();
+      return;
+    }
     const next = [...previous, { ...draftStroke, id: createStrokeId() }];
     latestDraftRef.current = { strokes: next, grid };
     setUndoHistory((history) => [previous, ...history].slice(0, MAX_HISTORY_STATES));
@@ -366,7 +384,7 @@ export const ScratchpadCanvasModal = ({
             onPointerMove={(event) => {
               if (!isDrawingRef.current) return;
               const point = toCanvasPoint(event);
-              if (tool === "pen" || tool === "eraser") currentPointsRef.current.push(point);
+              if (tool === "pen" || tool === "eraser") appendFreehandPoint(currentPointsRef.current, point);
               previewPointRef.current = point;
               redraw();
             }}
@@ -377,7 +395,7 @@ export const ScratchpadCanvasModal = ({
         </div>
 
         <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-600">
-          <span>{strokes.length} thao tác · Ctrl/Cmd+Z để hoàn tác · tối đa 30 bước</span>
+          <span>{strokes.length}/{MAX_STROKES} thao tác · Ctrl/Cmd+Z để hoàn tác · tối đa 30 bước</span>
           <span>PNG chỉ được tạo trong bộ nhớ; chưa tải lên máy chủ ở Gate 4.</span>
         </footer>
       </section>
@@ -389,6 +407,20 @@ function createStrokeId(): string {
   return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
     ? crypto.randomUUID()
     : `stroke-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+/** Keeps freehand strokes bounded and thins near-identical pointer events before persistence. */
+function appendFreehandPoint(points: ScratchpadPoint[], next: ScratchpadPoint): void {
+  const previous = points.length ? points[points.length - 1] : undefined;
+  if (previous && Math.hypot(previous.x - next.x, previous.y - next.y) < 2) return;
+
+  if (points.length < MAX_POINTS_PER_STROKE) {
+    points.push(next);
+    return;
+  }
+
+  // Preserve the latest cursor position without allowing an unbounded pointermove array.
+  points[points.length - 1] = next;
 }
 
 function toPreviewStroke(

@@ -4,6 +4,13 @@ export const DB_NAME = "edutwin_scratchpad_db";
 export const STORE_NAME = "drafts";
 export const DB_VERSION = 1;
 export const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+export const MAX_STROKES = 400;
+export const MAX_POINTS_PER_STROKE = 1_000;
+export const MAX_TOTAL_POINTS = 20_000;
+export const MAX_SERIALIZED_DRAFT_BYTES = 1_000_000;
+
+/** Whether a save survived beyond the current JavaScript process. */
+export type ScratchpadPersistence = "durable" | "volatile";
 
 export function buildScratchpadKey(centerId: string, userId: string, clientSubmissionId: string): string {
   const c = requireScopePart("centerId", centerId);
@@ -70,7 +77,7 @@ export function openDatabase(): Promise<IDBDatabase> {
   return dbOpening;
 }
 
-export async function saveScratchpadDraft(draft: ScratchpadDraft): Promise<void> {
+export async function saveScratchpadDraft(draft: ScratchpadDraft): Promise<ScratchpadPersistence> {
   const now = Date.now();
   const expectedKey = buildScratchpadKey(draft.centerId, draft.userId, draft.clientSubmissionId);
   if (draft.storageKey && draft.storageKey !== expectedKey) {
@@ -82,10 +89,11 @@ export async function saveScratchpadDraft(draft: ScratchpadDraft): Promise<void>
     updatedAt: draft.updatedAt || now,
     expiresAt: draft.expiresAt || (now + DEFAULT_TTL_MS),
   };
+  validateDraftLimits(normalized);
 
   if (!isIndexedDbAvailable()) {
     inMemoryStore.set(normalized.storageKey, normalized);
-    return;
+    return "volatile";
   }
 
   try {
@@ -99,9 +107,33 @@ export async function saveScratchpadDraft(draft: ScratchpadDraft): Promise<void>
       tx.onerror = () => reject(tx.error || new Error("Failed to save draft"));
       tx.onabort = () => reject(tx.error || new Error("Scratchpad save transaction was aborted"));
     });
+    return "durable";
   } catch {
-    // Fallback to in-memory if IndexedDB transaction fails
+    // A memory fallback preserves the current session only. Callers must never present it as durable storage.
     inMemoryStore.set(normalized.storageKey, normalized);
+    return "volatile";
+  }
+}
+
+function validateDraftLimits(draft: ScratchpadDraft): void {
+  if (draft.strokes.length > MAX_STROKES) {
+    throw new Error(`Scratchpad supports at most ${MAX_STROKES} strokes per draft.`);
+  }
+
+  let totalPoints = 0;
+  for (const stroke of draft.strokes) {
+    if (stroke.points.length > MAX_POINTS_PER_STROKE) {
+      throw new Error(`Scratchpad supports at most ${MAX_POINTS_PER_STROKE} points per stroke.`);
+    }
+    totalPoints += stroke.points.length;
+  }
+  if (totalPoints > MAX_TOTAL_POINTS) {
+    throw new Error(`Scratchpad supports at most ${MAX_TOTAL_POINTS} freehand points per draft.`);
+  }
+
+  const serializedBytes = new TextEncoder().encode(JSON.stringify(draft)).byteLength;
+  if (serializedBytes > MAX_SERIALIZED_DRAFT_BYTES) {
+    throw new Error("Scratchpad draft exceeds the 1 MB local storage limit.");
   }
 }
 
@@ -277,8 +309,26 @@ export async function cleanupExpiredScratchpadDrafts(): Promise<number> {
 }
 
 /** Test utility: reset database connection and in-memory cache */
-export function __resetScratchpadStorageForTesting(): void {
+export async function __resetScratchpadStorageForTesting(): Promise<void> {
   inMemoryStore.clear();
+  if (dbInstance) {
+    dbInstance.close();
+    dbInstance = null;
+  }
+  dbOpening = null;
+
+  if (!isIndexedDbAvailable()) return;
+
+  await new Promise<void>((resolve, reject) => {
+    const request = globalThis.indexedDB.deleteDatabase(DB_NAME);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error || new Error("Failed to reset IndexedDB"));
+    request.onblocked = () => reject(new Error("IndexedDB reset was blocked"));
+  });
+}
+
+/** Test utility: close the connection while retaining the persisted database. */
+export function __closeScratchpadDatabaseForTesting(): void {
   if (dbInstance) {
     dbInstance.close();
     dbInstance = null;
