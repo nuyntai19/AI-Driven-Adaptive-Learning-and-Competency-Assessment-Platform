@@ -171,3 +171,24 @@ export interface PlatformAuditQuery {
   toUtc?: string;
   search?: string;
 }
+
+export interface PlatformSecurityProfile {
+  userId: string;
+  username: string;
+  displayName: string;
+  roleName: string;
+  lastLoginAt?: string | null;
+  authVersion: number;
+  rowVersion: string;
+  activeSessionCount: number;
+}
+
+export interface PlatformChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
+export interface PlatformRevokeSessionsRequest {
+  reason?: string;
+}

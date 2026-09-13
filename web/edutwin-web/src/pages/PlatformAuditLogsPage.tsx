@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { platformApi } from "../api/platformApi";
 import type { PlatformAuditItem, PlatformAuditQuery } from "../types/platform";
+import { PlatformSecurityModal } from "../components/PlatformSecurityModal";
 
 export const PlatformAuditLogsPage: React.FC = () => {
   const [page, setPage] = useState<number>(1);
@@ -25,6 +26,7 @@ export const PlatformAuditLogsPage: React.FC = () => {
   // Selected item for detail view
   const [selectedAudit, setSelectedAudit] = useState<PlatformAuditItem | null>(null);
   const [copiedTraceId, setCopiedTraceId] = useState<string | null>(null);
+  const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
 
   const queryParams: PlatformAuditQuery = {
     page,
@@ -142,6 +144,13 @@ export const PlatformAuditLogsPage: React.FC = () => {
           >
             Nhật ký kiểm toán
           </Link>
+          <button
+            type="button"
+            onClick={() => setIsSecurityModalOpen(true)}
+            className="px-4 py-2 text-xs font-semibold rounded-md text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors flex items-center gap-1"
+          >
+            <span>🛡️</span> Bảo mật tài khoản
+          </button>
         </div>
       </div>
 
@@ -495,6 +504,11 @@ export const PlatformAuditLogsPage: React.FC = () => {
           </div>
         </div>
       )}
+      {/* Modal: Platform Security */}
+      <PlatformSecurityModal
+        isOpen={isSecurityModalOpen}
+        onClose={() => setIsSecurityModalOpen(false)}
+      />
     </div>
   );
 };

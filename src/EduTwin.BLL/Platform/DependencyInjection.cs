@@ -14,6 +14,7 @@ public static class DependencyInjection
 
         services.AddScoped<IPlatformCenterService, PlatformCenterService>();
         services.AddScoped<IPlatformAuditService, PlatformAuditService>();
+        services.AddScoped<IPlatformMeService, PlatformMeService>();
 
         return services;
     }

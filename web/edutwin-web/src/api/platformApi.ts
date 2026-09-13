@@ -160,4 +160,31 @@ export const platformApi = {
     );
     return response.data.data;
   },
+
+  getSecurityProfile: async (): Promise<import("../types/platform").PlatformSecurityProfile> => {
+    const response = await httpClient.get<{ data: import("../types/platform").PlatformSecurityProfile }>(
+      "/platform/me/security"
+    );
+    return response.data.data;
+  },
+
+  changePassword: async (
+    request: import("../types/platform").PlatformChangePasswordRequest
+  ): Promise<{ success: boolean; message: string }> => {
+    const response = await httpClient.post<{ data: { success: boolean; message: string } }>(
+      "/platform/me/change-password",
+      request
+    );
+    return response.data.data;
+  },
+
+  revokeSessions: async (
+    request?: import("../types/platform").PlatformRevokeSessionsRequest
+  ): Promise<{ success: boolean; message: string }> => {
+    const response = await httpClient.post<{ data: { success: boolean; message: string } }>(
+      "/platform/me/revoke-sessions",
+      request ?? {}
+    );
+    return response.data.data;
+  },
 };

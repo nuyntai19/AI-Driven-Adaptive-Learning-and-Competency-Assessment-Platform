@@ -14,6 +14,7 @@ import type { ProblemDetails } from "../types/auth";
 import { useAuthStore } from "../stores/authStore";
 import { permissions } from "../auth/permissions";
 import { CenterManagersModal } from "../components/CenterManagersModal";
+import { PlatformSecurityModal } from "../components/PlatformSecurityModal";
 
 export const PlatformCentersPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -35,6 +36,7 @@ export const PlatformCentersPage: React.FC = () => {
   const [resetPasswordCenter, setResetPasswordCenter] = useState<PlatformCenterListItem | null>(null);
   const [managersModalCenter, setManagersModalCenter] = useState<PlatformCenterListItem | null>(null);
   const [editMetadataCenter, setEditMetadataCenter] = useState<PlatformCenterListItem | null>(null);
+  const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
 
   // Edit Metadata Form State
   const [editCenterName, setEditCenterName] = useState("");
@@ -208,13 +210,17 @@ export const PlatformCentersPage: React.FC = () => {
 
   const handleToggleStatusConfirm = () => {
     if (!statusModalCenter) return;
+    if (!statusReason.trim() || statusReason.trim().length < 5) {
+      setErrorMessage("Vui lòng nhập lý do thay đổi trạng thái trung tâm (tối thiểu 5 ký tự).");
+      return;
+    }
     const targetStatus = statusModalCenter.status === "Active" ? "Suspended" : "Active";
     updateStatusMutation.mutate({
       centerId: statusModalCenter.centerId,
       request: {
         status: targetStatus,
         rowVersion: statusModalCenter.rowVersion,
-        reason: statusReason.trim() || undefined,
+        reason: statusReason.trim(),
       },
     });
   };
@@ -289,6 +295,13 @@ export const PlatformCentersPage: React.FC = () => {
             >
               Nhật ký kiểm toán
             </Link>
+            <button
+              type="button"
+              onClick={() => setIsSecurityModalOpen(true)}
+              className="px-4 py-2 text-xs font-semibold rounded-md text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors flex items-center gap-1"
+            >
+              <span>🛡️</span> Bảo mật tài khoản
+            </button>
           </div>
           {canManageCenters && (
             <button
@@ -719,14 +732,27 @@ export const PlatformCentersPage: React.FC = () => {
               </span>
               ?
             </p>
+            {statusModalCenter.status === "Active" && (
+              <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-300 text-xs border border-red-200 dark:border-red-800 space-y-1">
+                <div className="font-bold flex items-center gap-1">
+                  <span>⚠️</span> Cảnh báo tác động đình chỉ:
+                </div>
+                <div>
+                  Khi tạm ngưng trung tâm, toàn bộ phiên đăng nhập (JWT) và Refresh Token của tất cả người dùng trong trung tâm sẽ bị thu hồi ngay lập tức. Người dùng sẽ không thể truy cập nền tảng cho đến khi được kích hoạt lại.
+                </div>
+              </div>
+            )}
             <div>
               <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                Lý do thay đổi (tùy chọn)
+                Lý do thay đổi trạng thái (bắt buộc, tối thiểu 5 ký tự) *
               </label>
               <textarea
+                required
+                minLength={5}
+                maxLength={500}
                 value={statusReason}
                 onChange={(e) => setStatusReason(e.target.value)}
-                placeholder="Nhập lý do thay đổi trạng thái..."
+                placeholder="Nhập lý do thay đổi trạng thái (từ 5 đến 500 ký tự)..."
                 className="w-full px-3 py-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600"
                 rows={2}
               />
@@ -742,7 +768,7 @@ export const PlatformCentersPage: React.FC = () => {
               <button
                 type="button"
                 onClick={handleToggleStatusConfirm}
-                disabled={updateStatusMutation.isPending}
+                disabled={updateStatusMutation.isPending || statusReason.trim().length < 5}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50"
               >
                 {updateStatusMutation.isPending ? "Đang cập nhật..." : "Xác nhận"}
@@ -903,6 +929,11 @@ export const PlatformCentersPage: React.FC = () => {
           </div>
         </div>
       )}
+      {/* Modal: Platform Security */}
+      <PlatformSecurityModal
+        isOpen={isSecurityModalOpen}
+        onClose={() => setIsSecurityModalOpen(false)}
+      />
     </div>
   );
 };

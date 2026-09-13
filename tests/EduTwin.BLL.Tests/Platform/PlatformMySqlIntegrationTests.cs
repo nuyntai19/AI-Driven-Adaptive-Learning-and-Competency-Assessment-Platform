@@ -422,7 +422,8 @@ public sealed class PlatformMySqlIntegrationTests
         var updateReq = new UpdatePlatformCenterStatusRequest
         {
             Status = CenterStatus.Suspended.ToString(),
-            RowVersion = "1"
+            RowVersion = "1",
+            Reason = "Tạm ngưng phục vụ kiểm tra tích hợp MySQL"
         };
 
         // Update with service1 succeeds, bumping RowVersion from 1 to 2
@@ -587,7 +588,8 @@ public sealed class PlatformMySqlIntegrationTests
         var updateReq = new UpdatePlatformCenterStatusRequest
         {
             Status = CenterStatus.Suspended.ToString(),
-            RowVersion = "1"
+            RowVersion = "1",
+            Reason = "Tạm ngưng phục vụ kiểm tra race condition MySQL"
         };
 
         // Service executes: pre-check passes (rowVersion==1), but during SaveChangesAsync the UPDATE matches 0 rows due to race

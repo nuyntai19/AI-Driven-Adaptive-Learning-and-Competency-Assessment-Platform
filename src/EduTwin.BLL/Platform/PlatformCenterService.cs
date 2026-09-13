@@ -476,6 +476,21 @@ public class PlatformCenterService : IPlatformCenterService
                 ErrorCodes.ConcurrencyConflict, "Dữ liệu trung tâm đã bị thay đổi bởi thao tác khác.");
         }
 
+        if (newStatus != center.Status)
+        {
+            if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length < 5)
+            {
+                return PlatformResult<PlatformCenterListItemDto>.Failure(
+                    ErrorCodes.ValidationFailed, "Lý do thay đổi trạng thái trung tâm là bắt buộc (từ 5 đến 500 ký tự).");
+            }
+
+            if (request.Reason.Trim().Length > 500)
+            {
+                return PlatformResult<PlatformCenterListItemDto>.Failure(
+                    ErrorCodes.ValidationFailed, "Lý do thay đổi trạng thái trung tâm không được vượt quá 500 ký tự.");
+            }
+        }
+
         if (newStatus == CenterStatus.Active)
         {
             if (!center.PrimaryManagerUserId.HasValue)
@@ -501,12 +516,16 @@ public class PlatformCenterService : IPlatformCenterService
         center.UpdatedAt = now;
         center.RowVersion++;
 
+        var affectedUserCount = 0;
+        var revokedTokenCount = 0;
+
         if (newStatus == CenterStatus.Suspended && oldStatus != CenterStatus.Suspended.ToString())
         {
             var centerUsers = await _dbContext.Users
                 .IgnoreQueryFilters()
                 .Where(u => u.CenterId == centerId && !u.IsDeleted)
                 .ToListAsync(cancellationToken);
+            affectedUserCount = centerUsers.Count;
             foreach (var u in centerUsers)
             {
                 u.AuthVersion++;
@@ -518,12 +537,17 @@ public class PlatformCenterService : IPlatformCenterService
                 .IgnoreQueryFilters()
                 .Where(rt => rt.CenterId == centerId && rt.RevokedAt == null)
                 .ToListAsync(cancellationToken);
+            revokedTokenCount = activeTokens.Count;
             foreach (var rt in activeTokens)
             {
                 rt.RevokedAt = now;
                 rt.RevokeReason = "Center suspended by platform administrator.";
             }
         }
+
+        object afterDataPayload = newStatus == CenterStatus.Suspended
+            ? new { Status = newStatus.ToString(), AffectedUserCount = affectedUserCount, RevokedTokenCount = revokedTokenCount }
+            : new { Status = newStatus.ToString(), Reactivated = true };
 
         var auditLog = new AuthorizationAuditLog
         {
@@ -535,7 +559,7 @@ public class PlatformCenterService : IPlatformCenterService
             TargetId = center.CenterId.ToString("D"),
             ActionType = "CenterStatusUpdated",
             BeforeData = JsonSerializer.Serialize(new { Status = oldStatus }),
-            AfterData = JsonSerializer.Serialize(new { Status = newStatus.ToString() }),
+            AfterData = JsonSerializer.Serialize(afterDataPayload),
             Reason = string.IsNullOrWhiteSpace(request.Reason) ? "Platform center status updated." : request.Reason.Trim(),
             TraceId = string.IsNullOrWhiteSpace(traceId) ? Guid.NewGuid().ToString("N") : traceId,
             CreatedAt = now,

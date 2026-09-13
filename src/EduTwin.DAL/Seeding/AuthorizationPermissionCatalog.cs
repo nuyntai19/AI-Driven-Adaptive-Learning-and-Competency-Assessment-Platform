@@ -42,13 +42,13 @@ public static class AuthorizationPermissionCatalog
     private static readonly HashSet<string> NonDelegableCodes =
     [
         "platform.centers.read", "platform.centers.manage", "platform.managers.manage",
-        "platform.audit.read"
+        "platform.audit.read", "platform.account.manage_own"
     ];
 
     private static readonly string[] PlatformCodes =
     [
         "platform.centers.read", "platform.centers.manage", "platform.managers.manage",
-        "platform.audit.read"
+        "platform.audit.read", "platform.account.manage_own"
     ];
 
     private static readonly string[] StudentCodes =
