@@ -99,11 +99,7 @@ export const getNextQuestion = async (
     explanation: data.explanation,
     answerEvaluationMode:
       data.question.answerEvaluationMode ||
-      (data.question.questionType === "MultipleChoice"
-        ? "TextExact"
-        : data.question.questionType === "Essay"
-        ? "Manual"
-        : "NumericRational"),
+      (data.question.questionType === "Essay" ? "Manual" : "TextExact"),
   };
 };
 

@@ -40,8 +40,8 @@ export const QuestionEditorPage = () => {
         newMode = "Manual";
       } else if (qType === "ShortAnswer") {
         newMode = formData.answerEvaluationMode === "TextExact" || formData.answerEvaluationMode === "NumericRational" || formData.answerEvaluationMode === "Manual"
-          ? (formData.answerEvaluationMode || "NumericRational")
-          : "NumericRational";
+          ? (formData.answerEvaluationMode || "TextExact")
+          : "TextExact";
       }
       setFormData(prev => ({
         ...prev,
@@ -162,7 +162,7 @@ export const QuestionEditorPage = () => {
         estimatedTimeSeconds: q.estimatedTimeSeconds,
         reasoningRequired: q.reasoningRequired || false,
         languageCode: q.languageCode || "vi",
-        answerEvaluationMode: q.answerEvaluationMode || (q.questionType === "MultipleChoice" ? "TextExact" : q.questionType === "Essay" ? "Manual" : "NumericRational"),
+        answerEvaluationMode: q.answerEvaluationMode || (q.questionType === "MultipleChoice" ? "TextExact" : q.questionType === "Essay" ? "Manual" : "TextExact"),
         options: (q.options || []).map((opt: any) => ({
           ...opt,
           optionLabel: opt.optionLabel || opt.label,
@@ -204,7 +204,7 @@ export const QuestionEditorPage = () => {
       // For create, make sure options are cleaned up
       const createData = {
         ...formData,
-        answerEvaluationMode: formData.answerEvaluationMode || (formData.questionType === "MultipleChoice" ? "TextExact" : formData.questionType === "Essay" ? "Manual" : "NumericRational"),
+        answerEvaluationMode: formData.answerEvaluationMode || (formData.questionType === "MultipleChoice" ? "TextExact" : formData.questionType === "Essay" ? "Manual" : "TextExact"),
         options: formData.options?.map(o => ({
           optionLabel: (o as any).optionLabel || (o as any).label,
           optionText: (o as any).optionText || (o as any).text,
@@ -233,7 +233,7 @@ export const QuestionEditorPage = () => {
         estimatedTimeSeconds: formData.estimatedTimeSeconds,
         reasoningRequired: formData.reasoningRequired,
         languageCode: formData.languageCode,
-        answerEvaluationMode: formData.answerEvaluationMode || (formData.questionType === "MultipleChoice" ? "TextExact" : formData.questionType === "Essay" ? "Manual" : "NumericRational"),
+        answerEvaluationMode: formData.answerEvaluationMode || (formData.questionType === "MultipleChoice" ? "TextExact" : formData.questionType === "Essay" ? "Manual" : "TextExact"),
         options: formData.options?.map(o => ({
           optionLabel: (o as any).optionLabel || (o as any).label,
           optionText: (o as any).optionText || (o as any).text,
@@ -436,7 +436,7 @@ export const QuestionEditorPage = () => {
             ) : (
               <div>
                 <select
-                  value={formData.answerEvaluationMode || "NumericRational"}
+                  value={formData.answerEvaluationMode || "TextExact"}
                   onChange={e => handleInputChange("answerEvaluationMode", e.target.value as QuestionAnswerEvaluationMode)}
                   className="w-full border border-blue-400 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none bg-white font-medium text-slate-800"
                 >

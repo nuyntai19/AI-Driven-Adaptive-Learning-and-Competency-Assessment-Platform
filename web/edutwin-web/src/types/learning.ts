@@ -110,5 +110,5 @@ export interface NextQuestionDataDto {
     orderIndex: number;
   }>;
   explanation: string;
-  answerEvaluationMode?: string;
+  answerEvaluationMode: string;
 }
