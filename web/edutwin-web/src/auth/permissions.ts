@@ -13,6 +13,8 @@ export const permissions = {
   studentsResetPassword: "organization.students.reset_password",
   classesRead: "organization.classes.read",
   classesCreate: "organization.classes.create",
+  classesUpdate: "organization.classes.update",
+  classesManageMembers: "organization.classes.manage_members",
   subjectsRead: "knowledge.subjects.read",
   nodesRead: "knowledge.nodes.read",
   nodesCreate: "knowledge.nodes.create",

@@ -152,6 +152,35 @@ export interface CreateClassRequest {
   teacherId: string;
 }
 
+export interface UpdateClassRequest {
+  className: string;
+  teacherId: string;
+  status: ClassStatus;
+  rowVersion: string;
+}
+
+export interface AddStudentsToClassRequest {
+  studentIds: string[];
+}
+
+export interface AddStudentsToClassData {
+  classId: string;
+  addedCount: number;
+  alreadyMemberCount: number;
+}
+
+export interface AddStudentsToClassResponse {
+  data: AddStudentsToClassData;
+  meta: Meta;
+}
+
+export interface ClassStudentListParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  status?: string;
+}
+
 export interface ClassResponse {
   data: ClassDto;
   meta: Meta;

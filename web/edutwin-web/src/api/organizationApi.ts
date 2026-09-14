@@ -20,6 +20,11 @@ import type {
   ResetAccountPasswordResponse,
   SubjectListResponse,
   CreateClassRequest,
+  UpdateClassRequest,
+  AddStudentsToClassRequest,
+  AddStudentsToClassData,
+  AddStudentsToClassResponse,
+  ClassStudentListParams,
   ClassDto,
   ClassResponse,
   CenterProfileDto,
@@ -97,6 +102,47 @@ export const organizationApi = {
     };
     const response = await httpClient.post<ClassResponse>("/classes", payload);
     return response.data.data;
+  },
+
+  getClass: async (classId: string): Promise<ClassDto> => {
+    const response = await httpClient.get<ClassResponse>(`/classes/${classId}`);
+    return response.data.data;
+  },
+
+  updateClass: async (classId: string, request: UpdateClassRequest): Promise<ClassDto> => {
+    const payload = {
+      className: request.className.trim(),
+      teacherId: request.teacherId.trim(),
+      status: request.status,
+      rowVersion: request.rowVersion,
+    };
+    const response = await httpClient.patch<ClassResponse>(`/classes/${classId}`, payload);
+    return response.data.data;
+  },
+
+  getClassStudents: async (
+    classId: string,
+    params?: ClassStudentListParams
+  ): Promise<StudentListResponse> => {
+    const response = await httpClient.get<StudentListResponse>(`/classes/${classId}/students`, {
+      params,
+    });
+    return response.data;
+  },
+
+  addStudentsToClass: async (
+    classId: string,
+    request: AddStudentsToClassRequest
+  ): Promise<AddStudentsToClassData> => {
+    const response = await httpClient.post<AddStudentsToClassResponse>(
+      `/classes/${classId}/students`,
+      request
+    );
+    return response.data.data;
+  },
+
+  removeStudentFromClass: async (classId: string, studentId: string): Promise<void> => {
+    await httpClient.delete(`/classes/${classId}/students/${studentId}`);
   },
 
   listSubjects: async (isActive?: boolean): Promise<SubjectListResponse> => {
