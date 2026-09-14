@@ -61,7 +61,7 @@ CREATE TABLE `ai_analysis_jobs` (
   CONSTRAINT `fk_ai_analysis_jobs_attempts_attempt` FOREIGN KEY (`center_id`, `attempt_id`) REFERENCES `attempts` (`center_id`, `attempt_id`) ON DELETE RESTRICT,
   CONSTRAINT `ck_ai_analysis_jobs_retry_count` CHECK ((`retry_count` between 0 and 3)),
   CONSTRAINT `ck_ai_analysis_jobs_status` CHECK ((`status` in (_utf8mb4'Pending',_utf8mb4'Processing',_utf8mb4'Completed',_utf8mb4'FallbackCompleted',_utf8mb4'FailedTerminal')))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -169,7 +169,7 @@ CREATE TABLE `attempt_attachments` (
   CONSTRAINT `fk_attempt_attachments_attempts` FOREIGN KEY (`center_id`, `attempt_id`) REFERENCES `attempts` (`center_id`, `attempt_id`) ON DELETE RESTRICT,
   CONSTRAINT `ck_attempt_attachments_content_type` CHECK ((`content_type` = _utf8mb4'image/png')),
   CONSTRAINT `ck_attempt_attachments_file_size_bytes` CHECK (((`file_size_bytes` >= 1) and (`file_size_bytes` <= 5242880)))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -215,7 +215,7 @@ CREATE TABLE `attempts` (
   CONSTRAINT `ck_attempts_reasoning_language` CHECK ((`reasoning_language` in (_utf8mb4'vi',_utf8mb4'en'))),
   CONSTRAINT `ck_attempts_status` CHECK ((`status` in (_utf8mb4'PendingAnalysis',_utf8mb4'Processing',_utf8mb4'Completed',_utf8mb4'NeedsTeacherReview',_utf8mb4'AnalysisFailed'))),
   CONSTRAINT `ck_attempts_time_spent_seconds` CHECK ((`time_spent_seconds` >= 0))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -240,14 +240,18 @@ CREATE TABLE `authorization_audit_logs` (
   `trace_id` varchar(64) NOT NULL,
   `created_at` datetime(6) NOT NULL,
   `created_by` varchar(36) DEFAULT NULL,
+  `target_center_id` varchar(36) DEFAULT NULL,
   PRIMARY KEY (`authorization_audit_id`),
   UNIQUE KEY `ux_authorization_audit_logs_center_id_audit_id` (`center_id`,`authorization_audit_id`),
   KEY `ix_authorization_audit_logs_center_actor_created` (`center_id`,`actor_user_id`,`created_at`),
   KEY `ix_authorization_audit_logs_center_created_action` (`center_id`,`created_at`,`action_type`),
   KEY `ix_authorization_audit_logs_center_target_created` (`center_id`,`target_user_id`,`created_at`),
+  KEY `ix_auth_audit_center_target_center_created` (`center_id`,`target_center_id`,`created_at`),
+  KEY `IX_authorization_audit_logs_target_center_id` (`target_center_id`),
+  CONSTRAINT `fk_authorization_audit_logs_centers_target` FOREIGN KEY (`target_center_id`) REFERENCES `centers` (`center_id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_authorization_audit_logs_users_actor` FOREIGN KEY (`center_id`, `actor_user_id`) REFERENCES `users` (`center_id`, `user_id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_authorization_audit_logs_users_target` FOREIGN KEY (`center_id`, `target_user_id`) REFERENCES `users` (`center_id`, `user_id`) ON DELETE RESTRICT
-) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=73 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -306,8 +310,12 @@ CREATE TABLE `centers` (
   `is_deleted` tinyint(1) NOT NULL DEFAULT '0',
   `deleted_at` datetime(6) DEFAULT NULL,
   `row_version` bigint unsigned NOT NULL DEFAULT '1',
+  `primary_manager_user_id` varchar(36) DEFAULT NULL,
   PRIMARY KEY (`center_id`),
   UNIQUE KEY `ux_centers_center_code` (`center_code`),
+  UNIQUE KEY `ix_centers_primary_manager_user_id` (`primary_manager_user_id`),
+  KEY `IX_centers_center_id_primary_manager_user_id` (`center_id`,`primary_manager_user_id`),
+  CONSTRAINT `fk_centers_primary_manager_user` FOREIGN KEY (`center_id`, `primary_manager_user_id`) REFERENCES `users` (`center_id`, `user_id`) ON DELETE RESTRICT,
   CONSTRAINT `ck_centers_status` CHECK ((`status` in (_utf8mb4'Active',_utf8mb4'Suspended')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -482,7 +490,7 @@ CREATE TABLE `evidence_assessments` (
   CONSTRAINT `ck_evidence_assessments_reasoning_weight` CHECK ((`reasoning_weight` between 0 and 1)),
   CONSTRAINT `ck_evidence_assessments_source_type` CHECK ((`source_type` in (_utf8mb4'AI',_utf8mb4'RuleFallback',_utf8mb4'TeacherOverride'))),
   CONSTRAINT `ck_evidence_assessments_trust_level` CHECK ((`trust_level` in (_utf8mb4'Trusted',_utf8mb4'Reduced',_utf8mb4'ReviewOnly')))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!50003 SET @saved_cs_client      = @@character_set_client */ ;
 /*!50003 SET @saved_cs_results     = @@character_set_results */ ;
@@ -933,7 +941,7 @@ CREATE TABLE `reasoning_analyses` (
   CONSTRAINT `ck_reasoning_analyses_override_reasoning_quality` CHECK (((`override_reasoning_quality` is null) or (`override_reasoning_quality` between 0 and 100))),
   CONSTRAINT `ck_reasoning_analyses_provider` CHECK ((`provider` in (_utf8mb4'Gemini',_utf8mb4'RuleBased'))),
   CONSTRAINT `ck_reasoning_analyses_reasoning_quality` CHECK (((`reasoning_quality` is null) or (`reasoning_quality` between 0 and 100)))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -1038,7 +1046,7 @@ CREATE TABLE `refresh_tokens` (
   KEY `ix_refresh_tokens_center_id_user_id_expires_at` (`center_id`,`user_id`,`expires_at`),
   CONSTRAINT `fk_refresh_tokens_refresh_tokens_replaced_by` FOREIGN KEY (`center_id`, `replaced_by_token_id`) REFERENCES `refresh_tokens` (`center_id`, `refresh_token_id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_refresh_tokens_users_tenant` FOREIGN KEY (`center_id`, `user_id`) REFERENCES `users` (`center_id`, `user_id`) ON DELETE RESTRICT
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=107 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -1325,7 +1333,7 @@ CREATE TABLE `twin_update_history` (
   CONSTRAINT `ck_twin_update_history_event_source` CHECK ((`event_source` in (_utf8mb4'AIAnalysis',_utf8mb4'RuleFallback',_utf8mb4'TeacherOverride',_utf8mb4'Replay'))),
   CONSTRAINT `ck_twin_update_history_new_mastery` CHECK ((`new_mastery` between 0 and 100)),
   CONSTRAINT `ck_twin_update_history_previous_mastery` CHECK ((`previous_mastery` between 0 and 100))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -1408,4 +1416,4 @@ CREATE TABLE `users` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2026-09-13 14:38:46
+-- Dump completed on 2026-09-14  6:27:30
