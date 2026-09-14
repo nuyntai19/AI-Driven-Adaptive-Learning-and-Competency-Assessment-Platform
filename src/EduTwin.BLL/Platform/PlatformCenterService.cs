@@ -392,10 +392,10 @@ public class PlatformCenterService : IPlatformCenterService
                 ErrorCodes.ForbiddenResource, "Chỉ quản trị viên nền tảng mới có quyền tạo trung tâm.");
         }
 
-        var centerCode = NormalizeAscii(request.CenterCode, toUpper: true).Replace(" ", "-");
+        var centerCode = request.CenterCode?.Trim().ToUpperInvariant() ?? string.Empty;
         var centerName = request.CenterName?.Trim() ?? string.Empty;
         var rawTimezone = string.IsNullOrWhiteSpace(request.Timezone) ? "Asia/Ho_Chi_Minh" : request.Timezone.Trim();
-        var managerUsername = NormalizeAscii(request.InitialManagerUsername).Replace(" ", "_");
+        var managerUsername = request.InitialManagerUsername?.Trim() ?? string.Empty;
         var managerDisplayName = request.InitialManagerDisplayName?.Trim() ?? string.Empty;
         var managerPassword = request.InitialManagerPassword ?? string.Empty;
 
@@ -1120,7 +1120,7 @@ public class PlatformCenterService : IPlatformCenterService
                 ErrorCodes.ForbiddenResource, "Không được phép tạo quản lý trung tâm trong trung tâm PLATFORM.");
         }
 
-        var username = NormalizeAscii(request.Username).Replace(" ", "_");
+        var username = request.Username?.Trim() ?? string.Empty;
         var displayName = request.DisplayName?.Trim() ?? string.Empty;
         var password = request.Password ?? string.Empty;
 
@@ -1547,25 +1547,5 @@ public class PlatformCenterService : IPlatformCenterService
             orBody = orBody == null ? equals : Expression.OrElse(orBody, equals);
         }
         return Expression.Lambda<Func<T, bool>>(orBody!, parameter);
-    }
-
-    private static string NormalizeAscii(string? input, bool toUpper = false)
-    {
-        if (string.IsNullOrWhiteSpace(input)) return string.Empty;
-        var text = input.Trim();
-        var normalized = text.Normalize(NormalizationForm.FormD);
-        var sb = new StringBuilder();
-        foreach (var c in normalized)
-        {
-            var category = CharUnicodeInfo.GetUnicodeCategory(c);
-            if (category != UnicodeCategory.NonSpacingMark)
-            {
-                if (c == 'đ') sb.Append('d');
-                else if (c == 'Đ') sb.Append('D');
-                else sb.Append(c);
-            }
-        }
-        var result = sb.ToString().Normalize(NormalizationForm.FormC);
-        return toUpper ? result.ToUpperInvariant() : result;
     }
 }

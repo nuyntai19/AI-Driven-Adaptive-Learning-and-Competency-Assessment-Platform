@@ -5,6 +5,7 @@ import { isAxiosError } from "axios";
 import { platformApi } from "../api/platformApi";
 import type { PlatformAuditItem, PlatformAuditQuery } from "../types/platform";
 import { useModalAccessibility } from "../utils/useModalAccessibility";
+import { AUDIT_ACTION_MAP } from "../utils/platformPresentation";
 
 export const PlatformAuditLogsPage: React.FC = () => {
   const [page, setPage] = useState<number>(1);
@@ -84,18 +85,6 @@ export const PlatformAuditLogsPage: React.FC = () => {
     setTimeout(() => {
       setCopiedTraceId(null);
     }, 2000);
-  };
-
-  const AUDIT_ACTION_MAP: Record<string, string> = {
-    CenterCreated: "Khởi tạo trung tâm",
-    CenterStatusUpdated: "Đổi trạng thái trung tâm",
-    CenterMetadataUpdated: "Sửa thông tin trung tâm",
-    CenterManagerCreated: "Thêm quản lý mới",
-    CenterManagerStatusUpdated: "Đổi trạng thái quản lý",
-    CenterPrimaryManagerChanged: "Chuyển quản lý chính",
-    CenterManagerPasswordReset: "Đặt lại mật khẩu quản lý",
-    PlatformAdminPasswordChanged: "Admin đổi mật khẩu",
-    PlatformAdminSessionsRevoked: "Admin thu hồi phiên",
   };
 
   const getActionBadgeColor = (action: string) => {

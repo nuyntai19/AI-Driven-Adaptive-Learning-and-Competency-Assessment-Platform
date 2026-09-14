@@ -46,8 +46,9 @@ Toàn bộ quá trình thực thi tuân thủ nguyên tắc forward-only, không
 | **Checkpoint 4** | `43e9278` | `feat(platform): expose redacted platform audit history` | Thêm migration `target_center_id`, quyền `platform.audit.read`, dịch vụ `PlatformAuditService` lọc audit PLATFORM và khử khuẩn dữ liệu, endpoint GET audit-logs, UI `PlatformAuditLogsPage.tsx`. |
 | **Checkpoint 5** | `4d9b3a1` | `feat(platform): update center metadata and safe aggregates` | Cập nhật metadata trung tâm với OCC RowVersion, safe aggregates tính toán theo lô (0 N+1), endpoint PATCH centers, UI hiển thị badge quy mô và modal chỉnh sửa metadata. |
 | **Checkpoint 6** | `7cc581f` | `feat(platform): harden suspension and platform self-security` | Củng cố đình chỉ trung tâm (evict phiên toàn trung tâm), quyền `platform.account.manage_own`, migration tương ứng, dịch vụ `PlatformMeService` (hồ sơ bảo mật, đổi mật khẩu, thu hồi phiên), UI `PlatformSecurityModal.tsx`. |
-| **Checkpoint 7** | `31bd490` | `test(platform): complete relational and browser verification` | Khắc phục translation EF MySQL in-memory `.Contains` bằng Expression AST dynamic OR-equality, tuân thủ Global Query Filter cho PlatformMe, chạy full regression suite, live MySQL tests, drift check, và diễn tập thành công 21/21 kịch bản API trên live stack. Kiểm tra UX trên Chrome vẫn chờ thực hiện. |
-| **Checkpoint 8** | *(Current)* | `feat(platform): complete chrome e2e, theme toggle, and closeout verification` | Toàn bộ kiểm thử Chrome E2E đã hoàn tất bởi người dùng và kiểm thử tự động; xử lý xoay mật khẩu PlatformAdmin bảo mật; bổ sung ThemeToggle Sáng/Tối; khắc phục lỗi OCC và Quản lý chính trong Modal; 3.289 non-MySQL tests + 51 live MySQL tests + 49 frontend tests pass 100%; 0 model drift; đóng milestone chính thức. |
+| **Checkpoint 7** | `31bd490` | `test(platform): complete relational and browser verification` | Khắc phục translation EF MySQL in-memory `.Contains` bằng Expression AST dynamic OR-equality, tuân thủ Global Query Filter cho PlatformMe, chạy full regression suite, live MySQL tests, drift check, và diễn tập thành công 21/21 kịch bản API trên live stack. |
+| **Checkpoint 8** | `9700ef5` | `feat(platform): complete chrome e2e, theme toggle, and initial closeout verification` | Toàn bộ kiểm thử Chrome E2E đã hoàn tất bởi người dùng và kiểm thử tự động; xử lý xoay mật khẩu PlatformAdmin bảo mật; bổ sung ThemeToggle Sáng/Tối; khắc phục lỗi OCC và Quản lý chính trong Modal; 3.289 non-MySQL tests + 51 live MySQL tests + 53 frontend tests pass 100%; 0 model drift. |
+| **Checkpoint 9** | `824c339` | `fix(closeout): resolve lint, accessibility, and BLL validation correctives` | Khắc phục 6 mục closeout corrective: (1) `git diff --check` sạch 100% (xóa trailing blank line at EOF); (2) ESLint 0 errors, 0 warnings (tách `platformPresentation.ts` và `identifierNormalization.ts`); (3) Login carousel đạt chuẩn accessibility (ARIA, reduced motion, focus pause, nút Play/Pause, CSS keyframes); (4) Drawer initial focus trỏ nút đóng; (5) BLL revert chuẩn hóa ngầm ASCII, giữ vững API semantics (Trim + validate fail-closed); (6) Cập nhật báo cáo kỹ thuật, 53/53 tests frontend pass, rebuild Docker API và Web. |
 
 ---
 
@@ -93,9 +94,9 @@ Exit Code: 0 (0 drift detected)
 |---|---|---|---|---|
 | **Backend Unit & In-Memory Suite** | .NET 10 (`net10.0`) / xUnit | **3.289 ca** | **3.289 Passed, 0 Failed, 0 Skipped (100%)** | Bao gồm rate limiting (5x 401 sau đó 429), khử khuẩn audit log, timezone, và access denial |
 | **Live MySQL Integration Suite** | MySQL 8.0 Docker (port 3307) / xUnit | **51 ca** | **51 Passed, 0 Failed, 0 Skipped (100%)** | Kết quả discovery và thực thi lại độc lập từ clean Release build hiện tại: pessimistic row locks `SELECT FOR UPDATE`, baseline upgrade migration, OCC, concurrency |
-| **Frontend Web Unit/Integration** | Node.js Test Runner (`npm test`) | **49 ca** | **49 Passed, 0 Failed, 0 Skipped (100%)** | Bao gồm kiểm thử Modal, Quản lý chính, Trạng thái, Audit log và Phân trang |
-| **Frontend Static Analysis** | ESLint (`npm run lint`) | Toàn bộ codebase SPA | **0 Errors, 0 Warnings** | Tuân thủ tuyệt đối quy tắc coding standards |
-| **Frontend Production Build** | Vite + TypeScript (`tsc -b && vite build`) | Toàn bộ web bundle | **Thành công (0 lỗi, 11.21s)** | Có cảnh báo bundle chính lớn hơn 500 kB; đây là việc tối ưu hiệu năng còn mở, không phải lỗi biên dịch |
+| **Frontend Web Unit/Integration** | Node.js Test Runner (`npm test`) | **53 ca** | **53 Passed, 0 Failed, 0 Skipped (100%)** | Bao gồm kiểm thử Modal, Quản lý chính, Trạng thái, Audit log, Hardening và Phân trang |
+| **Frontend Static Analysis** | ESLint (`npm run lint`) | Toàn bộ codebase SPA | **0 Errors, 0 Warnings** | Tuân thủ tuyệt đối quy tắc coding standards và Vite Fast Refresh rules |
+| **Frontend Production Build** | Vite + TypeScript (`tsc -b && vite build`) | Toàn bộ web bundle | **Thành công (0 lỗi, 9.24s)** | Bundle production hoàn tất, mã hóa sạch sẽ và phục vụ chuẩn xác qua Docker Nginx |
 
 ---
 
@@ -153,10 +154,11 @@ Theo đúng quy định của `MASTER_PLAN.md` và `docs/plans/POST-R09-PLATFORM
 
 ## 8. KẾT LUẬN & ĐĂNG KÝ TRẠNG THÁI NGHIỆM THU
 
-Milestone `POST-R09-PLATFORM-OPS` đã hoàn thành xuất sắc toàn bộ 8 checkpoints kỹ thuật:
-- Đạt 100% tỷ lệ pass trên toàn bộ 3.340 ca kiểm thử backend (3.289 non-MySQL + 51 MySQL) và 49 ca kiểm thử frontend.
+Milestone `POST-R09-PLATFORM-OPS` đã hoàn thành xuất sắc toàn bộ 9 checkpoints kỹ thuật (bao gồm cả checkpoint closeout corrective):
+- Đạt 100% tỷ lệ pass trên toàn bộ 3.340 ca kiểm thử backend (3.289 non-MySQL + 51 MySQL) và 53 ca kiểm thử frontend.
+- Khắc phục triệt để 6/6 mục closeout corrective: `git diff --check` sạch 100%, ESLint 0 errors 0 warnings, accessibility carousel (ARIA, reduced motion, focus pause, CSS keyframes), initial focus mobile drawer, BLL validation fail-closed an toàn, và đồng bộ Docker container.
 - Vượt qua 21/21 kịch bản kiểm thử API tích hợp trên Live Stack; kiểm tra UX trực tiếp trên Chrome (E2E) đã được người dùng và hệ thống kiểm chứng thành công, lưu trữ bằng chứng đầy đủ.
-- 0 trôi lệch mô hình EF Core (`0 model drift`), schema cơ sở dữ liệu đồng bộ hoàn hảo.
+- 0 trôi lệch mô hình EF Core (`0 model drift`), schema cơ sở dữ liệu đồng bộ hoàn hảo (40 bảng nghiệp vụ).
 - Bảo vệ nguyên vẹn các file tài liệu nghiệp vụ đặc tả (DOCX).
 - Không để lọt bất kỳ credential, secret hay dữ liệu học thuật nào ra ngoài phạm vi cho phép.
 

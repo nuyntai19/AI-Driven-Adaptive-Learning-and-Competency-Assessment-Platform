@@ -289,4 +289,3 @@ test("mapSafeLoginError sanitizes credentials error and does not disclose accoun
   const networkErr = new Error("Network down");
   assert.equal(mapSafeLoginError(networkErr), "Không thể hoàn tất đăng nhập. Vui lòng thử lại sau.");
 });
-

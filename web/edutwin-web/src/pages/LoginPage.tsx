@@ -224,27 +224,32 @@ export const LoginPage = () => {
   const [errorMsg, setErrorMsg] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  // Carousel State: 3 seconds auto-cycle with progress track
+  // Carousel Accessibility & Motion States
   const [activeSlide, setActiveSlide] = useState(0);
-  const [progress, setProgress] = useState(0);
-  const [isPaused, setIsPaused] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+  const [isManuallyPaused, setIsManuallyPaused] = useState(false);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setPrefersReducedMotion(mediaQuery.matches);
+
+    const handler = (e: MediaQueryListEvent) => setPrefersReducedMotion(e.matches);
+    mediaQuery.addEventListener("change", handler);
+    return () => mediaQuery.removeEventListener("change", handler);
+  }, []);
+
+  const isPaused = isHovered || isFocused || isManuallyPaused || prefersReducedMotion;
 
   useEffect(() => {
     if (isPaused) return;
-    const SLIDE_DURATION = 3000;
-    const INTERVAL = 50;
     const timer = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) {
-          setActiveSlide((s) => (s + 1) % HERO_SLIDES.length);
-          return 0;
-        }
-        return prev + (100 / (SLIDE_DURATION / INTERVAL));
-      });
-    }, INTERVAL);
+      setActiveSlide((prev) => (prev + 1) % HERO_SLIDES.length);
+    }, 3000);
 
     return () => clearInterval(timer);
-  }, [isPaused, activeSlide]);
+  }, [isPaused]);
 
   if (sessionStatus === "authenticated" && !isLoading) {
     return <Navigate to="/" replace />;
@@ -297,10 +302,25 @@ export const LoginPage = () => {
 
       {/* Left Hero Panel (Desktop Split-Screen with Auto-Sliding Carousel & Ambient Morphing Background) */}
       <div
-        onMouseEnter={() => setIsPaused(true)}
-        onMouseLeave={() => setIsPaused(false)}
+        role="region"
+        aria-label="Giới thiệu kiến trúc nền tảng EduTwin"
+        aria-roledescription="carousel"
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        onFocus={() => setIsFocused(true)}
+        onBlur={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget)) {
+            setIsFocused(false);
+          }
+        }}
         className={`relative hidden lg:flex lg:w-1/2 flex-col justify-between p-10 xl:p-14 border-r border-slate-800/80 overflow-hidden select-none transition-all duration-1000 ease-in-out bg-gradient-to-br ${currentSlide.bgGradient}`}
       >
+        <style>{`
+          @keyframes heroProgress {
+            0% { width: 0%; }
+            100% { width: 100%; }
+          }
+        `}</style>
         {/* Dynamic ambient glowing orbs with smooth transition */}
         <div
           className={`absolute -top-32 -left-32 w-[34rem] h-[34rem] rounded-full blur-3xl pointer-events-none transition-all duration-1000 ease-in-out ${currentSlide.glow1}`}
@@ -332,7 +352,11 @@ export const LoginPage = () => {
             {/* Overflow-hidden track container */}
             <div className="overflow-hidden w-full">
               <div
-                className="flex transition-transform duration-700 ease-[cubic-bezier(0.2,0.8,0.2,1)]"
+                className={`flex ${
+                  prefersReducedMotion
+                    ? "transition-none"
+                    : "transition-transform duration-700 ease-[cubic-bezier(0.2,0.8,0.2,1)]"
+                }`}
                 style={{ transform: `translateX(-${activeSlide * 100}%)` }}
               >
                 {HERO_SLIDES.map((slide, idx) => {
@@ -391,9 +415,29 @@ export const LoginPage = () => {
               </div>
             </div>
 
-            {/* Stepper Indicator Track (clean dots and connector lines, no helper text note) */}
-            <div className="pt-6 w-full">
-              <div className="flex items-center w-full">
+            {/* Stepper Indicator Track with Pause/Play accessibility toggle */}
+            <div className="pt-6 w-full flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setIsManuallyPaused((prev) => !prev)}
+                aria-label={isManuallyPaused ? "Tiếp tục tự động chuyển slide" : "Tạm dừng tự động chuyển slide"}
+                aria-pressed={isManuallyPaused}
+                title={isManuallyPaused ? "Tiếp tục phát slide (Play)" : "Tạm dừng tự động chuyển (Pause)"}
+                className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800/80 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 shrink-0"
+              >
+                {isManuallyPaused ? (
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                )}
+              </button>
+
+              <div className="flex items-center flex-1" role="tablist" aria-label="Các trang giới thiệu năng lực">
                 {HERO_SLIDES.map((slide, idx) => {
                   const isCurrent = idx === activeSlide;
                   return (
@@ -401,12 +445,13 @@ export const LoginPage = () => {
                       {/* Step Dot */}
                       <button
                         type="button"
+                        role="tab"
+                        aria-selected={isCurrent}
+                        aria-label={`Trang ${idx + 1} / ${HERO_SLIDES.length}: ${slide.title}`}
                         onClick={() => {
                           setActiveSlide(idx);
-                          setProgress(0);
                         }}
-                        title={`Xem nội dung: ${slide.title}`}
-                        className={`relative z-10 w-2.5 h-2.5 rounded-full transition-all duration-300 cursor-pointer shrink-0 ${
+                        className={`relative z-10 w-2.5 h-2.5 rounded-full transition-all duration-300 cursor-pointer shrink-0 focus:outline-none focus:ring-2 focus:ring-blue-400 ${
                           isCurrent
                             ? "bg-blue-500 ring-4 ring-blue-500/30 scale-125 shadow-[0_0_12px_rgba(59,130,246,0.9)]"
                             : "bg-slate-600 hover:bg-slate-400"
@@ -416,13 +461,15 @@ export const LoginPage = () => {
                       {/* Connecting Line / Progress Bar to next step */}
                       <div className="flex-1 h-[2px] bg-slate-700/70 mx-1.5 relative overflow-hidden rounded-full">
                         <div
-                          className={`h-full transition-all duration-75 ${
+                          key={`${idx}-${activeSlide}-${isPaused}`}
+                          className={`h-full ${
                             isCurrent
                               ? "bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]"
                               : "bg-transparent"
                           }`}
                           style={{
-                            width: isCurrent ? `${progress}%` : "0%",
+                            width: isCurrent && (isPaused || prefersReducedMotion) ? "50%" : isCurrent ? "100%" : "0%",
+                            animation: isCurrent && !isPaused && !prefersReducedMotion ? "heroProgress 3000ms linear forwards" : "none",
                           }}
                         />
                       </div>

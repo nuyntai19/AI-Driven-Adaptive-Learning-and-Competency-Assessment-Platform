@@ -39,13 +39,13 @@ export const PlatformLayout: React.FC = () => {
 
   // Accessibility refs for mobile drawer
   const drawerRef = useRef<HTMLDivElement>(null);
-  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   useModalAccessibility({
     isOpen: isMobileMenuOpen,
     onClose: () => setIsMobileMenuOpen(false),
     containerRef: drawerRef,
-    initialFocusRef: drawerRef,
+    initialFocusRef: closeButtonRef,
   });
 
   const handleLogout = async () => {
@@ -253,10 +253,11 @@ export const PlatformLayout: React.FC = () => {
                 </div>
               </div>
               <button
+                ref={closeButtonRef}
                 type="button"
                 onClick={() => setIsMobileMenuOpen(false)}
                 aria-label="Đóng menu điều hướng"
-                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 ✕
               </button>
@@ -280,7 +281,6 @@ export const PlatformLayout: React.FC = () => {
         <header className="sticky top-0 z-20 h-16 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 lg:px-8 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
-              ref={menuButtonRef}
               type="button"
               onClick={() => setIsMobileMenuOpen(true)}
               aria-label="Mở menu điều hướng"

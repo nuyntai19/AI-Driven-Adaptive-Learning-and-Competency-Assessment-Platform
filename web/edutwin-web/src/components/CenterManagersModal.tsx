@@ -12,7 +12,7 @@ import type {
 } from "../types/platform";
 import type { ProblemDetails } from "../types/auth";
 import { useModalAccessibility } from "../utils/useModalAccessibility";
-import { normalizeToAscii } from "../pages/PlatformCentersPage";
+import { normalizeToAscii } from "../utils/identifierNormalization";
 
 interface CenterManagersModalProps {
   isOpen: boolean;

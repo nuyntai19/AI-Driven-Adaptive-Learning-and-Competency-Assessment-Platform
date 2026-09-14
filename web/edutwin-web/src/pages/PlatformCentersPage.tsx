@@ -14,29 +14,8 @@ import { useAuthStore } from "../stores/authStore";
 import { permissions } from "../auth/permissions";
 import { CenterManagersModal } from "../components/CenterManagersModal";
 import { useModalAccessibility } from "../utils/useModalAccessibility";
-
-export const AUDIT_ACTION_MAP: Record<string, string> = {
-  CenterCreated: "Khởi tạo trung tâm",
-  CenterStatusUpdated: "Đổi trạng thái trung tâm",
-  CenterMetadataUpdated: "Sửa thông tin trung tâm",
-  CenterManagerCreated: "Thêm quản lý mới",
-  CenterManagerStatusUpdated: "Đổi trạng thái quản lý",
-  CenterPrimaryManagerChanged: "Chuyển quản lý chính",
-  CenterManagerPasswordReset: "Đặt lại mật khẩu quản lý",
-  PlatformAdminPasswordChanged: "Admin đổi mật khẩu",
-  PlatformAdminSessionsRevoked: "Admin thu hồi phiên",
-};
-
-export const normalizeToAscii = (text: string, toUpper = false): string => {
-  if (!text) return "";
-  const normalized = text
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/đ/g, "d")
-    .replace(/Đ/g, "D")
-    .trim();
-  return toUpper ? normalized.toUpperCase() : normalized;
-};
+import { AUDIT_ACTION_MAP } from "../utils/platformPresentation";
+import { normalizeToAscii } from "../utils/identifierNormalization";
 
 export const PlatformCentersPage: React.FC = () => {
   const queryClient = useQueryClient();

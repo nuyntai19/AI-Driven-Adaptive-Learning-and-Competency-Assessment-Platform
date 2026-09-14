@@ -118,4 +118,3 @@ export function mapSafeLoginError(error: unknown): string {
 
   return "Không thể hoàn tất đăng nhập. Vui lòng thử lại sau.";
 }
-
