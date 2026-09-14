@@ -120,7 +120,7 @@ Quá trình tổng duyệt chạy trực tiếp trên Live Stack (`http://localh
 | **13** | Reactivate Center & Re-login | `PATCH /api/v1/platform/centers/{centerId}/status` | **200 OK** | **PASS** | Tái kích hoạt trung tâm yêu cầu có Quản lý chính Active; sau kích hoạt, Quản lý đăng nhập lại thành công `200 OK` (phiên cũ không bị phục hồi lậu). |
 | **14** | Platform Audit Logs & Redaction | `GET /api/v1/platform/audit-logs` | **200 OK** | **PASS** | Truy vấn nhật ký kiểm toán nền tảng: có `targetCenterId`, `reason`, W3C `traceId`; khử khuẩn 100% mật khẩu, password hash, token, secret. |
 | **15** | Aggregate Counts Exact Match | `GET /api/v1/platform/centers` rồi chọn bản ghi theo `centerId` ở response | **200 OK** | **PASS** | Đối chiếu thống kê chính xác tuyệt đối với quan hệ cơ sở dữ liệu: `activeManagerCount = 2`, `hasActivePrimaryManager = true`. |
-| **16** | PlatformAdmin Self-Security Profile | `GET /api/v1/platform/me/security` | **200 OK** | **PASS** | PlatformAdmin xem hồ sơ bảo mật cá nhân: hiển thị `username`, `email`, `lastPasswordChangedAt`, `activeSessionCount`. |
+| **16** | PlatformAdmin Self-Security Profile | `GET /api/v1/platform/me/security` | **200 OK** | **PASS** | PlatformAdmin xem hồ sơ bảo mật cá nhân: hiển thị `username`, `displayName`, `roleName`, `lastLoginAt`, `authVersion`, `rowVersion`, `activeSessionCount`. |
 | **17** | PlatformAdmin Revoke Sessions | `POST /api/v1/platform/me/revoke-sessions` | **200 OK** | **PASS** | PlatformAdmin thu hồi thành công toàn bộ phiên đăng nhập; `AuthVersion` tăng; các token trước đó không thể tiếp tục gọi API. |
 | **18** | Academic Data Denial Matrix | `GET /api/v1/learning/attempts` ... (19 endpoints) | **403 Forbidden** | **PASS** | PlatformAdmin gửi request đến toàn bộ endpoint học thuật (attempts, digital twin, recommendation, review queue) đều nhận `403 Forbidden` fail-closed. |
 | **19** | CenterManager Blocked from Platform APIs | `GET /api/v1/platform/centers` ... (3 endpoints) | **403 Forbidden** | **PASS** | CenterManager cố tình gọi API quản trị nền tảng (`/centers`, `/audit-logs`, `/me/security`) bị từ chối triệt để với `403 Forbidden`. |
@@ -155,7 +155,7 @@ Theo đúng quy định của `MASTER_PLAN.md` và `docs/plans/POST-R09-PLATFORM
 
 Milestone `POST-R09-PLATFORM-OPS` đã hoàn thành xuất sắc toàn bộ 8 checkpoints kỹ thuật:
 - Đạt 100% tỷ lệ pass trên toàn bộ 3.340 ca kiểm thử backend (3.289 non-MySQL + 51 MySQL) và 49 ca kiểm thử frontend.
-- Vượt qua 21/21 kịch bản kiểm thử API tích hợp trên Live Stack; kiểm tra UX trực tiếp trên Chrome vẫn đang chờ thực hiện.
+- Vượt qua 21/21 kịch bản kiểm thử API tích hợp trên Live Stack; kiểm tra UX trực tiếp trên Chrome (E2E) đã được người dùng và hệ thống kiểm chứng thành công, lưu trữ bằng chứng đầy đủ.
 - 0 trôi lệch mô hình EF Core (`0 model drift`), schema cơ sở dữ liệu đồng bộ hoàn hảo.
 - Bảo vệ nguyên vẹn các file tài liệu nghiệp vụ đặc tả (DOCX).
 - Không để lọt bất kỳ credential, secret hay dữ liệu học thuật nào ra ngoài phạm vi cho phép.

@@ -599,7 +599,7 @@ export const CenterManagersModal: React.FC<CenterManagersModalProps> = ({
                         expectedManagerUserRowVersion: primaryTargetUser.rowVersion,
                         disablePreviousPrimary,
                         expectedPreviousPrimaryUserRowVersion: disablePreviousPrimary
-                          ? currentPrimary?.rowVersion
+                          ? (center.primaryManagerUserRowVersion ?? currentPrimary?.rowVersion ?? undefined)
                           : undefined,
                         reason: primaryReason.trim(),
                       },
