@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { isAxiosError } from "axios";
 import { platformApi } from "../api/platformApi";
@@ -11,6 +11,8 @@ import type {
   ResetCenterManagerPasswordRequest,
 } from "../types/platform";
 import type { ProblemDetails } from "../types/auth";
+import { useModalAccessibility } from "../utils/useModalAccessibility";
+import { normalizeToAscii } from "../pages/PlatformCentersPage";
 
 interface CenterManagersModalProps {
   isOpen: boolean;
@@ -193,10 +195,38 @@ export const CenterManagersModal: React.FC<CenterManagersModalProps> = ({
     },
   });
 
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  const handleModalClose = useCallback(() => {
+    if (primaryTargetUser) {
+      setPrimaryTargetUser(null);
+      return;
+    }
+    if (statusTargetUser) {
+      setStatusTargetUser(null);
+      return;
+    }
+    if (passwordTargetUser) {
+      setPasswordTargetUser(null);
+      return;
+    }
+    onClose();
+  }, [primaryTargetUser, statusTargetUser, passwordTargetUser, onClose]);
+
+  useModalAccessibility({
+    isOpen,
+    onClose: handleModalClose,
+    containerRef: modalRef,
+  });
+
   if (!isOpen) return null;
 
   return (
     <div
+      ref={modalRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="center-managers-modal-title"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto"
       data-testid="center-managers-modal"
     >
@@ -204,7 +234,7 @@ export const CenterManagersModal: React.FC<CenterManagersModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/50">
           <div>
-            <h2 className="text-xl font-bold flex items-center gap-2">
+            <h2 id="center-managers-modal-title" className="text-xl font-bold flex items-center gap-2">
               <span>Quản lý nhân sự trung tâm</span>
               <span className="text-xs bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 px-2 py-0.5 rounded-full">
                 {center.centerCode}
@@ -442,8 +472,14 @@ export const CenterManagersModal: React.FC<CenterManagersModalProps> = ({
                   setErrorMessage("Vui lòng nhập lý do tạo quản lý trung tâm.");
                   return;
                 }
+                const rawUsername = createUsername.trim();
+                const normalizedUsername = normalizeToAscii(rawUsername).replace(/\s+/g, "_");
+                if (normalizedUsername.length < 2 || !/^[a-zA-Z0-9._-]+$/.test(normalizedUsername)) {
+                  setErrorMessage("Tên đăng nhập quản lý không hợp lệ (tối thiểu 2 ký tự, gồm chữ cái, số, dấu '.', '-' hoặc '_').");
+                  return;
+                }
                 createMutation.mutate({
-                  username: createUsername.trim(),
+                  username: normalizedUsername,
                   displayName: createDisplayName.trim(),
                   password: createPassword,
                   expectedCenterRowVersion: center.rowVersion,
@@ -456,15 +492,20 @@ export const CenterManagersModal: React.FC<CenterManagersModalProps> = ({
                 <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">
                   Tên đăng nhập *
                 </label>
-                <input
-                  type="text"
-                  required
-                  maxLength={100}
-                  value={createUsername}
-                  onChange={(e) => setCreateUsername(e.target.value)}
-                  placeholder="manager_secondary"
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"
-                />
+                  <input
+                    type="text"
+                    required
+                    maxLength={100}
+                    value={createUsername}
+                    onChange={(e) => setCreateUsername(e.target.value)}
+                    placeholder="manager_secondary"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"
+                  />
+                  {createUsername.trim() && normalizeToAscii(createUsername.trim()).replace(/\s+/g, "_") !== createUsername.trim() && (
+                    <p className="mt-1 text-[11px] text-indigo-400 font-medium">
+                      ✓ Sẽ lưu chuẩn hóa: <strong className="font-mono">{normalizeToAscii(createUsername.trim()).replace(/\s+/g, "_")}</strong>
+                    </p>
+                  )}
               </div>
 
               <div>
@@ -530,16 +571,6 @@ export const CenterManagersModal: React.FC<CenterManagersModalProps> = ({
             </form>
           )}
         </div>
-
-        {/* Footer */}
-        <div className="px-6 py-3 border-t border-slate-800 bg-slate-900/50 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition"
-          >
-            Đóng
-          </button>
-        </div>
       </div>
 
       {/* Sub-modal: Make Primary */}
@@ -565,6 +596,16 @@ export const CenterManagersModal: React.FC<CenterManagersModalProps> = ({
                 <span>Đồng thời vô hiệu hóa Quản lý chính cũ và thu hồi toàn bộ phiên làm việc</span>
               </label>
 
+              {disablePreviousPrimary && !center.primaryManagerUserRowVersion && (
+                <div className="p-3 bg-amber-500/15 border border-amber-500/40 rounded-lg text-xs text-amber-300 flex items-start gap-2">
+                  <span className="text-base leading-none">⚠️</span>
+                  <div>
+                    <span className="font-semibold">Không tìm thấy phiên bản dữ liệu (RowVersion) của Quản lý chính hiện tại từ thông tin trung tâm.</span>
+                    <p className="mt-0.5 text-amber-400/90">Vui lòng đóng modal và tải lại danh sách trung tâm để đồng bộ trạng thái mới nhất trước khi thực hiện thao tác này.</p>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">
                   Lý do thay đổi Quản lý chính *
@@ -589,9 +630,12 @@ export const CenterManagersModal: React.FC<CenterManagersModalProps> = ({
                 </button>
                 <button
                   type="button"
-                  disabled={!primaryReason.trim() || makePrimaryMutation.isPending}
+                  disabled={
+                    !primaryReason.trim() ||
+                    makePrimaryMutation.isPending ||
+                    (disablePreviousPrimary && !center.primaryManagerUserRowVersion)
+                  }
                   onClick={() => {
-                    const currentPrimary = data?.items?.find((m) => m.isPrimary);
                     makePrimaryMutation.mutate({
                       userId: primaryTargetUser.userId,
                       request: {
@@ -599,7 +643,7 @@ export const CenterManagersModal: React.FC<CenterManagersModalProps> = ({
                         expectedManagerUserRowVersion: primaryTargetUser.rowVersion,
                         disablePreviousPrimary,
                         expectedPreviousPrimaryUserRowVersion: disablePreviousPrimary
-                          ? (center.primaryManagerUserRowVersion ?? currentPrimary?.rowVersion ?? undefined)
+                          ? (center.primaryManagerUserRowVersion ?? undefined)
                           : undefined,
                         reason: primaryReason.trim(),
                       },

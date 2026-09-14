@@ -6,6 +6,10 @@ import { useAuthStore } from "../src/stores/authStore.ts";
 import {
   extractProblemDetails,
   isOverrideConflict,
+  isConcurrencyConflict,
+  isRateLimit,
+  isForbidden,
+  mapSafeLoginError,
 } from "../src/utils/problemDetails.ts";
 import {
   isTerminalStatus,
@@ -209,3 +213,80 @@ test("chart text and table fallbacks handle empty and populated series", () => {
   assert.deepEqual(populatedResult.rows[0], ["Đại số 10", "75.5%"]);
   assert.deepEqual(populatedResult.rows[1], ["Hình học 10", "45%"]);
 });
+
+test("isConcurrencyConflict detects 409 and CONCURRENCY_CONFLICT", () => {
+  const err409 = {
+    isAxiosError: true,
+    response: {
+      status: 409,
+      data: { errorCode: "CONCURRENCY_CONFLICT" },
+      headers: {},
+    },
+  };
+  assert.equal(isConcurrencyConflict(err409), true);
+  assert.equal(isConcurrencyConflict({ isAxiosError: true, response: { status: 400 } }), false);
+  assert.equal(isConcurrencyConflict(new Error("Generic")), false);
+});
+
+test("isRateLimit detects 429 status code and TOO_MANY_REQUESTS", () => {
+  const err429 = {
+    isAxiosError: true,
+    response: {
+      status: 429,
+      data: { errorCode: "TOO_MANY_REQUESTS" },
+      headers: {},
+    },
+  };
+  assert.equal(isRateLimit(err429), true);
+  assert.equal(isRateLimit({ isAxiosError: true, response: { status: 500 } }), false);
+});
+
+test("isForbidden detects 403 status code and FORBIDDEN_RESOURCE", () => {
+  const err403 = {
+    isAxiosError: true,
+    response: {
+      status: 403,
+      data: { errorCode: "FORBIDDEN_RESOURCE" },
+      headers: {},
+    },
+  };
+  assert.equal(isForbidden(err403), true);
+  assert.equal(isForbidden({ isAxiosError: true, response: { status: 200 } }), false);
+});
+
+test("mapSafeLoginError sanitizes credentials error and does not disclose account existence", () => {
+  const invalidCreds = {
+    isAxiosError: true,
+    response: {
+      status: 401,
+      data: { errorCode: "AUTH_INVALID_CREDENTIALS", detail: "Internal raw exception" },
+      headers: {},
+    },
+  };
+  const msg = mapSafeLoginError(invalidCreds);
+  assert.equal(msg, "Mã trung tâm, tên đăng nhập hoặc mật khẩu không chính xác.");
+
+  const rateLimitErr = {
+    isAxiosError: true,
+    response: {
+      status: 429,
+      data: { errorCode: "TOO_MANY_REQUESTS" },
+      headers: {},
+    },
+  };
+  assert.equal(mapSafeLoginError(rateLimitErr), "Hệ thống ghi nhận quá nhiều lượt thử. Vui lòng đợi và thử lại sau ít phút.");
+
+  const disabledErr = {
+    isAxiosError: true,
+    response: {
+      status: 403,
+      data: { errorCode: "AUTH_USER_DISABLED" },
+      headers: {},
+    },
+  };
+  assert.equal(mapSafeLoginError(disabledErr), "Tài khoản hoặc trung tâm hiện không khả dụng.");
+
+  const networkErr = new Error("Network down");
+  assert.equal(mapSafeLoginError(networkErr), "Không thể hoàn tất đăng nhập. Vui lòng thử lại sau.");
+});
+

@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { isAxiosError } from "axios";
 import { platformApi } from "../api/platformApi";
 import type { ProblemDetails } from "../types/auth";
+import { useModalAccessibility } from "../utils/useModalAccessibility";
 
 interface PlatformSecurityModalProps {
   isOpen: boolean;
@@ -14,6 +15,13 @@ export const PlatformSecurityModal: React.FC<PlatformSecurityModalProps> = ({
   onClose,
 }) => {
   const queryClient = useQueryClient();
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  useModalAccessibility({
+    isOpen,
+    onClose,
+    containerRef: modalRef,
+  });
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -101,16 +109,26 @@ export const PlatformSecurityModal: React.FC<PlatformSecurityModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+    <div
+      ref={modalRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="platform-security-modal-title"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+    >
       <div className="bg-white dark:bg-gray-800 rounded-2xl max-w-xl w-full p-6 shadow-xl border border-gray-200 dark:border-gray-700 space-y-5 max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center border-b border-gray-200 dark:border-gray-700 pb-3">
           <div className="flex items-center gap-2">
             <span className="text-xl">🛡️</span>
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+            <h3 id="platform-security-modal-title" className="text-lg font-bold text-gray-900 dark:text-white">
               Bảo Mật Tài Khoản Platform Admin
             </h3>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg">
+          <button
+            onClick={onClose}
+            aria-label="Đóng"
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+          >
             ✕
           </button>
         </div>
@@ -253,16 +271,6 @@ export const PlatformSecurityModal: React.FC<PlatformSecurityModalProps> = ({
               </button>
             </div>
           </form>
-        </div>
-
-        <div className="flex justify-end pt-2 border-t border-gray-200 dark:border-gray-700">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-          >
-            Đóng
-          </button>
         </div>
       </div>
     </div>

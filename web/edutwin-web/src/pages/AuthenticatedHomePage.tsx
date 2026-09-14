@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, Navigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { logout } from "../auth/authApi";
 import { useAuthStore } from "../stores/authStore";
@@ -29,6 +29,10 @@ export const AuthenticatedHomePage = () => {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   if (!user) return null;
+
+  if (hasAnyPermission([permissions.platformCentersRead, permissions.platformCentersManage])) {
+    return <Navigate to="/quan-tri-nen-tang/trung-tam" replace />;
+  }
 
   const handleLogout = async () => {
     setIsLoggingOut(true);

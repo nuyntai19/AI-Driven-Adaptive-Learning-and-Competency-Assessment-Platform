@@ -4,6 +4,7 @@ using System.Data;
 using System.Globalization;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -391,10 +392,10 @@ public class PlatformCenterService : IPlatformCenterService
                 ErrorCodes.ForbiddenResource, "Chỉ quản trị viên nền tảng mới có quyền tạo trung tâm.");
         }
 
-        var centerCode = request.CenterCode?.Trim().ToUpperInvariant() ?? string.Empty;
+        var centerCode = NormalizeAscii(request.CenterCode, toUpper: true).Replace(" ", "-");
         var centerName = request.CenterName?.Trim() ?? string.Empty;
         var rawTimezone = string.IsNullOrWhiteSpace(request.Timezone) ? "Asia/Ho_Chi_Minh" : request.Timezone.Trim();
-        var managerUsername = request.InitialManagerUsername?.Trim() ?? string.Empty;
+        var managerUsername = NormalizeAscii(request.InitialManagerUsername).Replace(" ", "_");
         var managerDisplayName = request.InitialManagerDisplayName?.Trim() ?? string.Empty;
         var managerPassword = request.InitialManagerPassword ?? string.Empty;
 
@@ -404,15 +405,34 @@ public class PlatformCenterService : IPlatformCenterService
                 ErrorCodes.ValidationFailed, "Múi giờ không hợp lệ. Vui lòng chọn múi giờ chuẩn IANA (ví dụ: Asia/Ho_Chi_Minh, UTC).");
         }
 
-        if (string.IsNullOrWhiteSpace(centerCode) || centerCode.Length > 32 ||
-            !Regex.IsMatch(centerCode, "^[A-Z0-9_-]+$") ||
-            string.IsNullOrWhiteSpace(centerName) || centerName.Length > 200 ||
-            string.IsNullOrWhiteSpace(managerUsername) || managerUsername.Length > 100 ||
-            string.IsNullOrWhiteSpace(managerDisplayName) || managerDisplayName.Length > 200 ||
-            string.IsNullOrWhiteSpace(managerPassword) || managerPassword.Length < 12)
+        if (string.IsNullOrWhiteSpace(centerCode) || centerCode.Length > 32 || !Regex.IsMatch(centerCode, "^[A-Z0-9_-]+$"))
         {
             return PlatformResult<PlatformCenterListItemDto>.Failure(
-                ErrorCodes.ValidationFailed, "Dữ liệu yêu cầu tạo trung tâm không hợp lệ (mật khẩu phải tối thiểu 12 ký tự).");
+                ErrorCodes.ValidationFailed, "Mã trung tâm không hợp lệ (chỉ gồm chữ in hoa không dấu A-Z, chữ số 0-9, dấu '-' hoặc '_', không chứa khoảng trắng, tối đa 32 ký tự).");
+        }
+
+        if (string.IsNullOrWhiteSpace(centerName) || centerName.Length > 200)
+        {
+            return PlatformResult<PlatformCenterListItemDto>.Failure(
+                ErrorCodes.ValidationFailed, "Tên trung tâm không được để trống và không quá 200 ký tự.");
+        }
+
+        if (string.IsNullOrWhiteSpace(managerUsername) || managerUsername.Length > 100 || !Regex.IsMatch(managerUsername, "^[a-zA-Z0-9._-]+$"))
+        {
+            return PlatformResult<PlatformCenterListItemDto>.Failure(
+                ErrorCodes.ValidationFailed, "Tên đăng nhập quản lý không hợp lệ (chỉ gồm chữ cái không dấu, chữ số, dấu '.', '-', '_', không chứa khoảng trắng hoặc ký tự có dấu, tối đa 100 ký tự).");
+        }
+
+        if (string.IsNullOrWhiteSpace(managerDisplayName) || managerDisplayName.Length > 200)
+        {
+            return PlatformResult<PlatformCenterListItemDto>.Failure(
+                ErrorCodes.ValidationFailed, "Họ và tên hiển thị quản lý không được để trống và không quá 200 ký tự.");
+        }
+
+        if (string.IsNullOrWhiteSpace(managerPassword) || managerPassword.Length < 12)
+        {
+            return PlatformResult<PlatformCenterListItemDto>.Failure(
+                ErrorCodes.ValidationFailed, "Mật khẩu quản lý ban đầu phải có tối thiểu 12 ký tự.");
         }
 
         if (centerCode == "PLATFORM")
@@ -1100,16 +1120,26 @@ public class PlatformCenterService : IPlatformCenterService
                 ErrorCodes.ForbiddenResource, "Không được phép tạo quản lý trung tâm trong trung tâm PLATFORM.");
         }
 
-        var username = request.Username?.Trim() ?? string.Empty;
+        var username = NormalizeAscii(request.Username).Replace(" ", "_");
         var displayName = request.DisplayName?.Trim() ?? string.Empty;
         var password = request.Password ?? string.Empty;
 
-        if (string.IsNullOrWhiteSpace(username) || username.Length > 100 ||
-            string.IsNullOrWhiteSpace(displayName) || displayName.Length > 200 ||
-            string.IsNullOrWhiteSpace(password) || password.Length < 12)
+        if (string.IsNullOrWhiteSpace(username) || username.Length > 100 || !Regex.IsMatch(username, "^[a-zA-Z0-9._-]+$"))
         {
             return PlatformResult<CreateCenterManagerResponseData>.Failure(
-                ErrorCodes.ValidationFailed, "Dữ liệu tạo quản lý không hợp lệ (mật khẩu phải tối thiểu 12 ký tự).");
+                ErrorCodes.ValidationFailed, "Tên đăng nhập quản lý không hợp lệ (chỉ gồm chữ cái không dấu, chữ số, dấu '.', '-', '_', tối đa 100 ký tự).");
+        }
+
+        if (string.IsNullOrWhiteSpace(displayName) || displayName.Length > 200)
+        {
+            return PlatformResult<CreateCenterManagerResponseData>.Failure(
+                ErrorCodes.ValidationFailed, "Họ và tên hiển thị quản lý không được để trống và không quá 200 ký tự.");
+        }
+
+        if (string.IsNullOrWhiteSpace(password) || password.Length < 12)
+        {
+            return PlatformResult<CreateCenterManagerResponseData>.Failure(
+                ErrorCodes.ValidationFailed, "Mật khẩu quản lý phải có tối thiểu 12 ký tự.");
         }
 
         if (!PlatformAuditSanitizer.ValidateAndSanitizeReason(request.Reason, out var sanitizedReason, out var reasonError))
@@ -1517,5 +1547,25 @@ public class PlatformCenterService : IPlatformCenterService
             orBody = orBody == null ? equals : Expression.OrElse(orBody, equals);
         }
         return Expression.Lambda<Func<T, bool>>(orBody!, parameter);
+    }
+
+    private static string NormalizeAscii(string? input, bool toUpper = false)
+    {
+        if (string.IsNullOrWhiteSpace(input)) return string.Empty;
+        var text = input.Trim();
+        var normalized = text.Normalize(NormalizationForm.FormD);
+        var sb = new StringBuilder();
+        foreach (var c in normalized)
+        {
+            var category = CharUnicodeInfo.GetUnicodeCategory(c);
+            if (category != UnicodeCategory.NonSpacingMark)
+            {
+                if (c == 'đ') sb.Append('d');
+                else if (c == 'Đ') sb.Append('D');
+                else sb.Append(c);
+            }
+        }
+        var result = sb.ToString().Normalize(NormalizationForm.FormC);
+        return toUpper ? result.ToUpperInvariant() : result;
     }
 }

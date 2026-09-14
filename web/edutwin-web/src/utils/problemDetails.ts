@@ -63,3 +63,59 @@ export function isOverrideConflict(error: unknown): boolean {
   }
   return false;
 }
+
+export function isConcurrencyConflict(error: unknown): boolean {
+  if (axios.isAxiosError(error) && error.response) {
+    const status = error.response.status;
+    const data = error.response.data as ProblemDetails | undefined;
+    return status === 409 || data?.errorCode === "CONCURRENCY_CONFLICT" || data?.errorCode === "OVERRIDE_CONFLICT";
+  }
+  return false;
+}
+
+export function isRateLimit(error: unknown): boolean {
+  if (axios.isAxiosError(error) && error.response) {
+    const status = error.response.status;
+    const data = error.response.data as ProblemDetails | undefined;
+    return status === 429 || data?.errorCode === "TOO_MANY_REQUESTS";
+  }
+  return false;
+}
+
+export function isForbidden(error: unknown): boolean {
+  if (axios.isAxiosError(error) && error.response) {
+    const status = error.response.status;
+    const data = error.response.data as ProblemDetails | undefined;
+    return status === 403 || data?.errorCode === "FORBIDDEN_RESOURCE" || data?.errorCode === "AUTH_FORBIDDEN";
+  }
+  return false;
+}
+
+export function mapSafeLoginError(error: unknown): string {
+  if (axios.isAxiosError(error) && error.response) {
+    const status = error.response.status;
+    const data = error.response.data as ProblemDetails | undefined;
+    const code = data?.errorCode;
+
+    if (status === 429 || code === "TOO_MANY_REQUESTS") {
+      return "Hệ thống ghi nhận quá nhiều lượt thử. Vui lòng đợi và thử lại sau ít phút.";
+    }
+    if (code === "AUTH_INVALID_CREDENTIALS" || status === 401) {
+      return "Mã trung tâm, tên đăng nhập hoặc mật khẩu không chính xác.";
+    }
+    if (code === "AUTH_USER_DISABLED") {
+      return "Tài khoản hoặc trung tâm hiện không khả dụng.";
+    }
+    if (status === 403 || code === "FORBIDDEN_RESOURCE") {
+      return "Bạn không có quyền truy cập không gian này.";
+    }
+
+    const traceId = data?.traceId || (error.response.headers["x-trace-id"] as string) || null;
+    if (traceId) {
+      return `Không thể hoàn tất đăng nhập. Vui lòng thử lại sau. (Mã hỗ trợ: ${traceId})`;
+    }
+  }
+
+  return "Không thể hoàn tất đăng nhập. Vui lòng thử lại sau.";
+}
+
