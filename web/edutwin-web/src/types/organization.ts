@@ -181,6 +181,12 @@ export interface ClassStudentListParams {
   status?: string;
 }
 
+export interface CandidateStudentListParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+}
+
 export interface ClassResponse {
   data: ClassDto;
   meta: Meta;

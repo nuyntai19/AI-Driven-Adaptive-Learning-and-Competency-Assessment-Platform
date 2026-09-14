@@ -25,6 +25,7 @@ import type {
   AddStudentsToClassData,
   AddStudentsToClassResponse,
   ClassStudentListParams,
+  CandidateStudentListParams,
   ClassDto,
   ClassResponse,
   CenterProfileDto,
@@ -127,6 +128,22 @@ export const organizationApi = {
     const response = await httpClient.get<StudentListResponse>(`/classes/${classId}/students`, {
       params,
     });
+    return response.data;
+  },
+
+  getClassCandidateStudents: async (
+    classId: string,
+    params?: CandidateStudentListParams
+  ): Promise<StudentListResponse> => {
+    const queryParams: Record<string, string | number> = {};
+    if (params?.page) queryParams.page = params.page;
+    if (params?.pageSize) queryParams.pageSize = params.pageSize;
+    if (params?.search?.trim()) queryParams.search = params.search.trim();
+
+    const response = await httpClient.get<StudentListResponse>(
+      `/classes/${classId}/candidate-students`,
+      { params: queryParams }
+    );
     return response.data;
   },
 

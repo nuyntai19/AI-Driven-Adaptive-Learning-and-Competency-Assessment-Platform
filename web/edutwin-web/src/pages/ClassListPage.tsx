@@ -27,8 +27,13 @@ export const ClassListPage: React.FC = () => {
     hasPermission(permissions.classesCreate) &&
     hasPermission(permissions.subjectsRead) &&
     hasPermission(permissions.teachersRead);
-  const canUpdateClass = hasPermission(permissions.classesUpdate);
-  const canManageMembers = hasPermission(permissions.classesManageMembers);
+  const canUpdateClass =
+    hasPermission(permissions.classesUpdate) &&
+    hasPermission(permissions.teachersRead);
+  const canAddMembers =
+    hasPermission(permissions.classesManageMembers) &&
+    hasPermission(permissions.studentsRead);
+  const canRemoveMembers = hasPermission(permissions.classesManageMembers);
   const canViewDashboard =
     hasPermission(permissions.dashboardsCenterRead) ||
     hasPermission(permissions.dashboardsTeacherRead);
@@ -76,7 +81,9 @@ export const ClassListPage: React.FC = () => {
   // Add students modal state
   const [isAddStudentsModalOpen, setIsAddStudentsModalOpen] = useState(false);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
-  const [addStudentsSearch, setAddStudentsSearch] = useState("");
+  const [candidatePage, setCandidatePage] = useState<number>(1);
+  const [candidateSearchInput, setCandidateSearchInput] = useState("");
+  const [candidateSearch, setCandidateSearch] = useState("");
   const [addStudentsError, setAddStudentsError] = useState<string | null>(null);
 
   // Remove student confirmation modal state
@@ -151,14 +158,22 @@ export const ClassListPage: React.FC = () => {
     enabled: !!viewingClassId,
   });
 
-  // Available students query for adding members
+  // Candidate students query for adding members
   const {
-    data: availableStudentsData,
-    isLoading: isLoadingAvailableStudents,
+    data: candidateStudentsData,
+    isLoading: isLoadingCandidates,
+    isFetching: isFetchingCandidates,
+    isError: isErrorCandidates,
+    refetch: refetchCandidates,
   } = useQuery({
-    queryKey: ["availableStudents", "active"],
-    queryFn: () => organizationApi.listStudents({ page: 1, pageSize: 100, status: "Active" }),
-    enabled: isAddStudentsModalOpen && !!viewingClassId,
+    queryKey: ["candidateStudents", viewingClassId, candidatePage, candidateSearch],
+    queryFn: () =>
+      organizationApi.getClassCandidateStudents(viewingClassId!, {
+        page: candidatePage,
+        pageSize: 10,
+        search: candidateSearch.trim() || undefined,
+      }),
+    enabled: isAddStudentsModalOpen && !!viewingClassId && canAddMembers,
   });
 
   // Mutations
@@ -222,6 +237,7 @@ export const ClassListPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ["classes"] });
       queryClient.invalidateQueries({ queryKey: ["classDetail", res.classId] });
       queryClient.invalidateQueries({ queryKey: ["classStudents", res.classId] });
+      queryClient.invalidateQueries({ queryKey: ["candidateStudents"] });
       const duplicateMsg =
         res.alreadyMemberCount > 0
           ? ` (${res.alreadyMemberCount} học sinh đã là thành viên)`
@@ -244,6 +260,7 @@ export const ClassListPage: React.FC = () => {
       if (viewingClassId) {
         queryClient.invalidateQueries({ queryKey: ["classDetail", viewingClassId] });
         queryClient.invalidateQueries({ queryKey: ["classStudents", viewingClassId] });
+        queryClient.invalidateQueries({ queryKey: ["candidateStudents"] });
       }
       showFeedback("success", "Đã xóa học sinh khỏi lớp học thành công.");
       setRemovingStudent(null);
@@ -365,15 +382,48 @@ export const ClassListPage: React.FC = () => {
 
   const handleOpenAddStudents = () => {
     setSelectedStudentIds([]);
-    setAddStudentsSearch("");
+    setCandidatePage(1);
+    setCandidateSearchInput("");
+    setCandidateSearch("");
     setAddStudentsError(null);
     setIsAddStudentsModalOpen(true);
+  };
+
+  const handleCandidateSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setCandidatePage(1);
+    setCandidateSearch(candidateSearchInput);
+  };
+
+  const handleClearCandidateSearch = () => {
+    setCandidateSearchInput("");
+    setCandidateSearch("");
+    setCandidatePage(1);
   };
 
   const handleToggleSelectStudent = (id: string) => {
     setSelectedStudentIds((prev) =>
       prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
     );
+  };
+
+  const candidateList = candidateStudentsData?.data ?? [];
+  const candidateMeta = candidateStudentsData?.meta;
+  const currentPageCandidateIds = candidateList.map((c) => c.studentId);
+  const allCurrentPageSelected =
+    currentPageCandidateIds.length > 0 &&
+    currentPageCandidateIds.every((id) => selectedStudentIds.includes(id));
+
+  const handleToggleSelectCurrentPage = () => {
+    if (allCurrentPageSelected) {
+      setSelectedStudentIds((prev) =>
+        prev.filter((id) => !currentPageCandidateIds.includes(id))
+      );
+    } else {
+      setSelectedStudentIds((prev) =>
+        Array.from(new Set([...prev, ...currentPageCandidateIds]))
+      );
+    }
   };
 
   const handleAddStudentsSubmit = (e: React.FormEvent) => {
@@ -396,21 +446,6 @@ export const ClassListPage: React.FC = () => {
       studentId: removingStudent.studentId,
     });
   };
-
-  // Filter candidates for Add Students modal
-  const existingMemberIds = new Set(
-    classStudentsData?.data.map((s) => s.studentId) ?? []
-  );
-
-  const availableCandidates = (availableStudentsData?.data ?? []).filter((s) => {
-    if (existingMemberIds.has(s.studentId)) return false;
-    if (!addStudentsSearch.trim()) return true;
-    const q = addStudentsSearch.trim().toLowerCase();
-    return (
-      s.fullName.toLowerCase().includes(q) ||
-      s.username.toLowerCase().includes(q)
-    );
-  });
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -1107,7 +1142,7 @@ export const ClassListPage: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      {canManageMembers && (
+                      {canAddMembers && (
                         <button
                           type="button"
                           id="btn-open-add-students"
@@ -1169,7 +1204,7 @@ export const ClassListPage: React.FC = () => {
                           <th scope="col" className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Trạng thái
                           </th>
-                          {canManageMembers && (
+                          {canRemoveMembers && (
                             <th scope="col" className="relative py-2.5 pl-3 pr-4 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                               Thao tác
                             </th>
@@ -1179,19 +1214,19 @@ export const ClassListPage: React.FC = () => {
                       <tbody className="divide-y divide-gray-200 bg-white">
                         {isLoadingStudents ? (
                           <tr>
-                            <td colSpan={canManageMembers ? 5 : 4} className="py-6 text-center text-sm text-gray-500">
+                            <td colSpan={canRemoveMembers ? 5 : 4} className="py-6 text-center text-sm text-gray-500">
                               Đang tải danh sách học sinh...
                             </td>
                           </tr>
                         ) : isErrorStudents ? (
                           <tr>
-                            <td colSpan={canManageMembers ? 5 : 4} className="py-6 text-center text-sm text-red-500">
+                            <td colSpan={canRemoveMembers ? 5 : 4} className="py-6 text-center text-sm text-red-500">
                               Không thể tải danh sách học sinh. Vui lòng thử lại.
                             </td>
                           </tr>
                         ) : classStudentsData?.data.length === 0 ? (
                           <tr>
-                            <td colSpan={canManageMembers ? 5 : 4} className="py-6 text-center text-sm text-gray-500">
+                            <td colSpan={canRemoveMembers ? 5 : 4} className="py-6 text-center text-sm text-gray-500">
                               Chưa có học sinh nào trong lớp học này.
                             </td>
                           </tr>
@@ -1218,7 +1253,7 @@ export const ClassListPage: React.FC = () => {
                                   {student.status === "Active" ? "Hoạt động" : student.status}
                                 </span>
                               </td>
-                              {canManageMembers && (
+                              {canRemoveMembers && (
                                 <td className="whitespace-nowrap py-3 pl-3 pr-4 text-right text-sm font-medium">
                                   <button
                                     type="button"
@@ -1278,7 +1313,7 @@ export const ClassListPage: React.FC = () => {
       )}
 
       {/* ADD STUDENTS MODAL */}
-      {isAddStudentsModalOpen && canManageMembers && viewingClassId && (
+      {isAddStudentsModalOpen && canAddMembers && viewingClassId && (
         <div className="fixed inset-0 z-30 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="modal-add-students-title">
           <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
             <div
@@ -1302,27 +1337,61 @@ export const ClassListPage: React.FC = () => {
                 )}
 
                 {/* Search input for candidates */}
-                <div className="mb-4">
+                <form onSubmit={handleCandidateSearchSubmit} className="mb-4 flex gap-2">
                   <input
                     type="text"
                     id="input-filter-candidate-students"
-                    placeholder="Lọc theo tên hoặc tên đăng nhập..."
-                    value={addStudentsSearch}
-                    onChange={(e) => setAddStudentsSearch(e.target.value)}
+                    placeholder="Tìm kiếm học sinh theo tên hoặc tên đăng nhập..."
+                    value={candidateSearchInput}
+                    onChange={(e) => setCandidateSearchInput(e.target.value)}
                     className="block w-full rounded-md border-0 py-1.5 text-sm text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600"
                   />
-                </div>
+                  <button
+                    type="submit"
+                    id="btn-search-candidate-students"
+                    className="rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+                  >
+                    Tìm
+                  </button>
+                  {candidateSearch && (
+                    <button
+                      type="button"
+                      id="btn-clear-candidate-search"
+                      onClick={handleClearCandidateSearch}
+                      className="rounded-md bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200"
+                    >
+                      Bỏ lọc
+                    </button>
+                  )}
+                </form>
 
                 {/* Candidate Selection List */}
                 <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-md divide-y divide-gray-100">
-                  {isLoadingAvailableStudents ? (
-                    <div className="p-4 text-center text-xs text-gray-500">Đang tải danh sách học sinh trung tâm...</div>
-                  ) : availableCandidates.length === 0 ? (
+                  {isErrorCandidates ? (
+                    <div className="p-6 text-center" role="alert">
+                      <p className="text-sm font-medium text-red-700 mb-2">
+                        Không thể tải danh sách học sinh khả dụng.
+                      </p>
+                      <p className="text-xs text-red-600 mb-3">
+                        Vui lòng kiểm tra quyền truy cập (yêu cầu quyền quản lý thành viên và xem học sinh) hoặc thử lại sau.
+                      </p>
+                      <button
+                        type="button"
+                        id="btn-retry-candidate-students"
+                        onClick={() => refetchCandidates()}
+                        className="inline-flex items-center rounded bg-red-100 px-3 py-1.5 text-xs font-semibold text-red-800 hover:bg-red-200"
+                      >
+                        Thử lại
+                      </button>
+                    </div>
+                  ) : isLoadingCandidates || isFetchingCandidates ? (
+                    <div className="p-4 text-center text-xs text-gray-500">Đang tải danh sách học sinh khả dụng...</div>
+                  ) : candidateList.length === 0 ? (
                     <div className="p-4 text-center text-xs text-gray-500">
-                      Không có học sinh khả dụng để thêm (tất cả đã vào lớp hoặc không khớp tìm kiếm).
+                      Không có học sinh khả dụng để thêm (tất cả học sinh hoạt động đã vào lớp hoặc không khớp tìm kiếm).
                     </div>
                   ) : (
-                    availableCandidates.map((s) => {
+                    candidateList.map((s) => {
                       const isSelected = selectedStudentIds.includes(s.studentId);
                       return (
                         <div
@@ -1337,8 +1406,12 @@ export const ClassListPage: React.FC = () => {
                               type="checkbox"
                               id={`checkbox-student-${s.studentId}`}
                               checked={isSelected}
-                              onChange={() => handleToggleSelectStudent(s.studentId)}
-                              className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
+                              onChange={() => {}}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleSelectStudent(s.studentId);
+                              }}
+                              className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 cursor-pointer"
                             />
                             <div>
                               <p className="text-sm font-medium text-gray-900">{s.fullName}</p>
@@ -1354,6 +1427,35 @@ export const ClassListPage: React.FC = () => {
                   )}
                 </div>
 
+                {/* Candidate Pagination */}
+                {candidateMeta && candidateMeta.totalPages > 1 && (
+                  <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
+                    <div>
+                      Trang {candidateMeta.page} / {candidateMeta.totalPages} (Tổng số {candidateMeta.totalItems} học sinh khả dụng)
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        id="btn-prev-candidate-page"
+                        onClick={() => setCandidatePage((p) => Math.max(1, p - 1))}
+                        disabled={candidatePage === 1 || isFetchingCandidates}
+                        className="rounded border border-gray-300 bg-white px-2 py-1 font-semibold text-gray-700 disabled:opacity-50"
+                      >
+                        Trước
+                      </button>
+                      <button
+                        type="button"
+                        id="btn-next-candidate-page"
+                        onClick={() => setCandidatePage((p) => Math.min(candidateMeta.totalPages, p + 1))}
+                        disabled={candidatePage === candidateMeta.totalPages || isFetchingCandidates}
+                        className="rounded border border-gray-300 bg-white px-2 py-1 font-semibold text-gray-700 disabled:opacity-50"
+                      >
+                        Sau
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Selected Count & Actions */}
                 <div className="mt-4 flex items-center justify-between">
                   <span className="text-xs font-medium text-gray-600">
@@ -1361,20 +1463,24 @@ export const ClassListPage: React.FC = () => {
                   </span>
 
                   <div className="flex gap-2">
-                    {availableCandidates.length > 0 && (
+                    {candidateList.length > 0 && (
                       <button
                         type="button"
                         id="btn-select-all-candidates"
-                        onClick={() => {
-                          if (selectedStudentIds.length === availableCandidates.length) {
-                            setSelectedStudentIds([]);
-                          } else {
-                            setSelectedStudentIds(availableCandidates.map((c) => c.studentId));
-                          }
-                        }}
+                        onClick={handleToggleSelectCurrentPage}
                         className="rounded bg-white px-2 py-1 text-xs font-medium text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
                       >
-                        {selectedStudentIds.length === availableCandidates.length ? "Bỏ chọn tất cả" : "Chọn tất cả"}
+                        {allCurrentPageSelected ? "Bỏ chọn trang này" : "Chọn tất cả trang này"}
+                      </button>
+                    )}
+                    {selectedStudentIds.length > 0 && (
+                      <button
+                        type="button"
+                        id="btn-clear-all-selected-candidates"
+                        onClick={() => setSelectedStudentIds([])}
+                        className="rounded bg-white px-2 py-1 text-xs font-medium text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+                      >
+                        Bỏ chọn tất cả
                       </button>
                     )}
                   </div>
@@ -1407,7 +1513,7 @@ export const ClassListPage: React.FC = () => {
       )}
 
       {/* REMOVE STUDENT CONFIRMATION MODAL */}
-      {removingStudent && canManageMembers && viewingClassId && (
+      {removingStudent && canRemoveMembers && viewingClassId && (
         <div className="fixed inset-0 z-30 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="modal-remove-title">
           <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
             <div

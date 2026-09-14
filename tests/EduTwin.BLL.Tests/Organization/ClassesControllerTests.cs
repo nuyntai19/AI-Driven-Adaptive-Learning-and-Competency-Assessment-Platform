@@ -958,4 +958,189 @@ public class ClassesControllerTests
         Assert.Equal(1, instance.Page);
         Assert.Equal(20, instance.PageSize);
     }
+
+    [Fact]
+    public void GetClassCandidateStudents_Controller_HasExactGetRoute()
+    {
+        var methodInfo = typeof(ClassesController).GetMethod(nameof(ClassesController.GetClassCandidateStudents));
+        Assert.NotNull(methodInfo);
+
+        var httpGetAttr = methodInfo.GetCustomAttributes(typeof(Microsoft.AspNetCore.Mvc.HttpGetAttribute), false)
+            .Cast<Microsoft.AspNetCore.Mvc.HttpGetAttribute>()
+            .FirstOrDefault();
+
+        Assert.NotNull(httpGetAttr);
+        Assert.Equal("{classId:guid}/candidate-students", httpGetAttr.Template);
+    }
+
+    [Fact]
+    public void GetClassCandidateStudents_Controller_RequiresBothManageMembersAndStudentsReadPermissions()
+    {
+        var methodInfo = typeof(ClassesController).GetMethod(nameof(ClassesController.GetClassCandidateStudents));
+        Assert.NotNull(methodInfo);
+
+        var authorizeAttrs = methodInfo.GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), false)
+            .Cast<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>()
+            .Select(a => a.Policy)
+            .ToList();
+
+        Assert.Contains("organization.classes.manage_members", authorizeAttrs);
+        Assert.Contains("organization.students.read", authorizeAttrs);
+    }
+
+    [Fact]
+    public void GetClassCandidateStudents_Controller_HasExact200_400_403_404_ResponseTypes()
+    {
+        var methodInfo = typeof(ClassesController).GetMethod(nameof(ClassesController.GetClassCandidateStudents));
+        Assert.NotNull(methodInfo);
+
+        var attrs = methodInfo.GetCustomAttributes(typeof(ProducesResponseTypeAttribute), false)
+            .Cast<ProducesResponseTypeAttribute>()
+            .ToList();
+
+        var statusCodes = attrs.Select(a => a.StatusCode).OrderBy(s => s).ToList();
+        Assert.Equal(new[] { 200, 400, 403, 404 }, statusCodes);
+
+        var attr200 = attrs.Single(a => a.StatusCode == 200);
+        Assert.Equal(typeof(StudentListResponse), attr200.Type);
+    }
+
+    [Fact]
+    public async Task GetClassCandidateStudents_Controller_QueryMapping_PassesExactCancellationTokenAndFilters()
+    {
+        var classId = Guid.NewGuid();
+        var query = new CandidateStudentListQuery { Page = 3, PageSize = 15, Search = "cand" };
+        var cancellationToken = new CancellationTokenSource().Token;
+
+        var mockUseCase = new Mock<IListStudentsUseCase>();
+        StudentListQuery? capturedQuery = null;
+        mockUseCase.Setup(u => u.ExecuteAsync(It.IsAny<StudentListQuery>(), cancellationToken))
+            .Callback<StudentListQuery, CancellationToken>((q, ct) => capturedQuery = q)
+            .ReturnsAsync(ListStudentsResult.Failure(ErrorCodes.ResourceNotFound));
+
+        await _controller.GetClassCandidateStudents(classId, query, mockUseCase.Object, cancellationToken);
+
+        mockUseCase.Verify(u => u.ExecuteAsync(It.IsAny<StudentListQuery>(), cancellationToken), Times.Once);
+        Assert.NotNull(capturedQuery);
+        Assert.Equal(classId, capturedQuery.ExcludeClassId);
+        Assert.Null(capturedQuery.ClassId);
+        Assert.Equal(EduTwin.Contracts.IdentityAndTenancy.UserStatus.Active, capturedQuery.Status);
+        Assert.Equal(3, capturedQuery.Page);
+        Assert.Equal(15, capturedQuery.PageSize);
+        Assert.Equal("cand", capturedQuery.Search);
+        Assert.Null(capturedQuery.GradeLevel);
+    }
+
+    [Fact]
+    public async Task GetClassCandidateStudents_Controller_Success_Returns200WithMeta()
+    {
+        var classId = Guid.NewGuid();
+        var query = new CandidateStudentListQuery();
+
+        var mockUseCase = new Mock<IListStudentsUseCase>();
+        var students = new List<StudentDto> { new StudentDto { StudentId = Guid.NewGuid(), Username = "u", FullName = "Candidate", GradeLevel = 10, Status = "Active", RowVersion = "1", ActiveClassCount = 0 } };
+        mockUseCase.Setup(u => u.ExecuteAsync(It.IsAny<StudentListQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ListStudentsResult.Success(students, 1, 1));
+
+        var result = await _controller.GetClassCandidateStudents(classId, query, mockUseCase.Object, CancellationToken.None);
+
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var response = Assert.IsType<StudentListResponse>(okResult.Value);
+
+        Assert.Equal(students, response.Data);
+        Assert.NotNull(response.Meta);
+        Assert.Equal(1, response.Meta.Page);
+        Assert.Equal(20, response.Meta.PageSize);
+        Assert.Equal(1, response.Meta.TotalItems);
+        Assert.Equal(1, response.Meta.TotalPages);
+        Assert.Equal("test-trace-id", response.Meta.TraceId);
+        Assert.Equal(new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero).UtcDateTime, response.Meta.Timestamp);
+    }
+
+    [Fact]
+    public async Task GetClassCandidateStudents_Controller_EmptyClassId_Returns404AndDoesNotCallUseCase()
+    {
+        var classId = Guid.Empty;
+        var mockUseCase = new Mock<IListStudentsUseCase>();
+
+        _controller.ControllerContext.HttpContext.Request.Path = $"/api/v1/classes/{classId}/candidate-students";
+
+        var result = await _controller.GetClassCandidateStudents(classId, new CandidateStudentListQuery(), mockUseCase.Object, CancellationToken.None);
+
+        var objectResult = Assert.IsType<NotFoundObjectResult>(result);
+        Assert.Equal(StatusCodes.Status404NotFound, objectResult.StatusCode);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(StatusCodes.Status404NotFound, problemDetails.Status);
+        Assert.Equal(ErrorCodes.ResourceNotFound, problemDetails.Extensions["errorCode"]?.ToString());
+
+        mockUseCase.Verify(u => u.ExecuteAsync(It.IsAny<StudentListQuery>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetClassCandidateStudents_Controller_ValidationFailed_Returns400()
+    {
+        var classId = Guid.NewGuid();
+        var mockUseCase = new Mock<IListStudentsUseCase>();
+        mockUseCase.Setup(u => u.ExecuteAsync(It.IsAny<StudentListQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ListStudentsResult.ValidationFailed());
+
+        _controller.ControllerContext.HttpContext.Request.Path = $"/api/v1/classes/{classId}/candidate-students";
+
+        var result = await _controller.GetClassCandidateStudents(classId, new CandidateStudentListQuery(), mockUseCase.Object, CancellationToken.None);
+
+        var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal(StatusCodes.Status400BadRequest, badRequestResult.StatusCode);
+        var problemDetails = Assert.IsType<ProblemDetails>(badRequestResult.Value);
+        Assert.Equal(StatusCodes.Status400BadRequest, problemDetails.Status);
+        Assert.Equal(ErrorCodes.ValidationFailed, problemDetails.Extensions["errorCode"]?.ToString());
+    }
+
+    [Fact]
+    public async Task GetClassCandidateStudents_Controller_ForbiddenResource_Returns403()
+    {
+        var classId = Guid.NewGuid();
+        var mockUseCase = new Mock<IListStudentsUseCase>();
+        mockUseCase.Setup(u => u.ExecuteAsync(It.IsAny<StudentListQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ListStudentsResult.Failure(ErrorCodes.ForbiddenResource));
+
+        _controller.ControllerContext.HttpContext.Request.Path = $"/api/v1/classes/{classId}/candidate-students";
+
+        var result = await _controller.GetClassCandidateStudents(classId, new CandidateStudentListQuery(), mockUseCase.Object, CancellationToken.None);
+
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(StatusCodes.Status403Forbidden, problemDetails.Status);
+        Assert.Equal(ErrorCodes.ForbiddenResource, problemDetails.Extensions["errorCode"]?.ToString());
+    }
+
+    [Fact]
+    public async Task GetClassCandidateStudents_Controller_ResourceNotFound_Returns404()
+    {
+        var classId = Guid.NewGuid();
+        var mockUseCase = new Mock<IListStudentsUseCase>();
+        mockUseCase.Setup(u => u.ExecuteAsync(It.IsAny<StudentListQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ListStudentsResult.Failure(ErrorCodes.ResourceNotFound));
+
+        _controller.ControllerContext.HttpContext.Request.Path = $"/api/v1/classes/{classId}/candidate-students";
+
+        var result = await _controller.GetClassCandidateStudents(classId, new CandidateStudentListQuery(), mockUseCase.Object, CancellationToken.None);
+
+        var objectResult = Assert.IsType<NotFoundObjectResult>(result);
+        Assert.Equal(StatusCodes.Status404NotFound, objectResult.StatusCode);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(StatusCodes.Status404NotFound, problemDetails.Status);
+        Assert.Equal(ErrorCodes.ResourceNotFound, problemDetails.Extensions["errorCode"]?.ToString());
+    }
+
+    [Fact]
+    public async Task GetClassCandidateStudents_Controller_UnknownError_Throws()
+    {
+        var classId = Guid.NewGuid();
+        var mockUseCase = new Mock<IListStudentsUseCase>();
+        mockUseCase.Setup(u => u.ExecuteAsync(It.IsAny<StudentListQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ListStudentsResult.Failure("UNKNOWN"));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _controller.GetClassCandidateStudents(classId, new CandidateStudentListQuery(), mockUseCase.Object, CancellationToken.None));
+    }
 }

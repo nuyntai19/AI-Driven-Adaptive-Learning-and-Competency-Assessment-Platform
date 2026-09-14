@@ -845,4 +845,99 @@ public class ListStudentsUseCaseTests
             System.Threading.Thread.CurrentThread.CurrentCulture = originalCulture;
         }
     }
+
+    [Fact]
+    public async Task ExcludeClassId_EmptyGuid_ReturnsValidationFailed()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var dbContext = CreateContext(dbName);
+        await SeedDataAsync(dbContext, Guid.NewGuid());
+        var sut = new ListStudentsUseCase(dbContext, _mockTenantContext.Object, _mockOwnershipGuard.Object);
+        var result = await sut.ExecuteAsync(new StudentListQuery { ExcludeClassId = Guid.Empty });
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task ExcludeClassId_NotFound_ReturnsResourceNotFound()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var dbContext = CreateContext(dbName);
+        await SeedDataAsync(dbContext, Guid.NewGuid());
+        var excludeClassId = Guid.NewGuid();
+
+        _mockOwnershipGuard.Setup(g => g.CheckClassAccessAsync(excludeClassId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OwnershipDecision.NotFound);
+
+        var sut = new ListStudentsUseCase(dbContext, _mockTenantContext.Object, _mockOwnershipGuard.Object);
+        var result = await sut.ExecuteAsync(new StudentListQuery { ExcludeClassId = excludeClassId });
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task ExcludeClassId_Forbidden_ReturnsForbiddenResource()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var dbContext = CreateContext(dbName);
+        await SeedDataAsync(dbContext, Guid.NewGuid());
+        var excludeClassId = Guid.NewGuid();
+
+        _mockOwnershipGuard.Setup(g => g.CheckClassAccessAsync(excludeClassId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OwnershipDecision.Forbidden);
+
+        var sut = new ListStudentsUseCase(dbContext, _mockTenantContext.Object, _mockOwnershipGuard.Object);
+        var result = await sut.ExecuteAsync(new StudentListQuery { ExcludeClassId = excludeClassId });
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task ExcludeClassId_FiltersOutOnlyActiveMembersOfExcludedClass()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var dbContext = CreateContext(dbName);
+        var excludeClassId = Guid.NewGuid();
+
+        _mockOwnershipGuard.Setup(g => g.CheckClassAccessAsync(excludeClassId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OwnershipDecision.Allowed);
+
+        var s1ActiveMember = Guid.NewGuid();
+        var s2RemovedMember = Guid.NewGuid();
+        var s3NonMember = Guid.NewGuid();
+
+        await SeedDataAsync(dbContext, s1ActiveMember, classId: excludeClassId, membershipStatus: ClassStudentStatus.Active);
+        await SeedDataAsync(dbContext, s2RemovedMember, classId: excludeClassId, membershipStatus: ClassStudentStatus.Removed);
+        await SeedDataAsync(dbContext, s3NonMember);
+
+        var sut = new ListStudentsUseCase(dbContext, _mockTenantContext.Object, _mockOwnershipGuard.Object);
+        var result = await sut.ExecuteAsync(new StudentListQuery { ExcludeClassId = excludeClassId });
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Data!.Count);
+        Assert.DoesNotContain(result.Data, s => s.StudentId == s1ActiveMember);
+        Assert.Contains(result.Data, s => s.StudentId == s2RemovedMember);
+        Assert.Contains(result.Data, s => s.StudentId == s3NonMember);
+    }
+
+    [Fact]
+    public async Task ExcludeClassId_PassesCancellationTokenToOwnershipGuard()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var dbContext = CreateContext(dbName);
+        var excludeClassId = Guid.NewGuid();
+        var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        _mockOwnershipGuard.Setup(g => g.CheckClassAccessAsync(excludeClassId, cts.Token))
+            .ThrowsAsync(new OperationCanceledException());
+
+        var sut = new ListStudentsUseCase(dbContext, _mockTenantContext.Object, _mockOwnershipGuard.Object);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            sut.ExecuteAsync(new StudentListQuery { ExcludeClassId = excludeClassId }, cts.Token));
+    }
 }

@@ -396,11 +396,33 @@ public class AddStudentsToClassUseCaseTests
         await Assert.ThrowsAsync<OperationCanceledException>(() => sut.ExecuteAsync(Guid.NewGuid(), new AddStudentsToClassRequest { StudentIds = new[] { Guid.NewGuid() } }, cts.Token));
     }
 
+    [Fact]
+    public async Task ActiveUserStatus_IsAccepted()
+    {
+        var centerId = _mockTenantContext.Object.CenterId!.Value;
+        var classId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
+        var context = CreateContext(Guid.NewGuid().ToString(), centerId);
+
+        await SeedBaseDataAsync(context, centerId, classId, new List<Guid> { studentId });
+        var user = await context.Users.FirstAsync(u => u.UserId == studentId);
+        user.Status = UserStatus.Active;
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        var sut = new AddStudentsToClassUseCase(context, _mockTenantContext.Object, _mockTimeProvider.Object, _mockOwnershipGuard.Object, _mockLogger.Object);
+        var result = await sut.ExecuteAsync(classId, new AddStudentsToClassRequest { StudentIds = new[] { studentId } });
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, result.Data!.AddedCount);
+        var membership = await context.ClassStudents.FirstAsync(cs => cs.StudentId == studentId);
+        Assert.Equal(ClassStudentStatus.Active, membership.Status);
+    }
+
     [Theory]
-    [InlineData(UserStatus.Active)]
     [InlineData(UserStatus.Locked)]
     [InlineData(UserStatus.Disabled)]
-    public async Task ValidDefinedUserStatuses_AreAccepted(UserStatus status)
+    public async Task NonActiveUserStatuses_ReturnResourceNotFound_NoMutation(UserStatus status)
     {
         var centerId = _mockTenantContext.Object.CenterId!.Value;
         var classId = Guid.NewGuid();
@@ -416,9 +438,9 @@ public class AddStudentsToClassUseCaseTests
         var sut = new AddStudentsToClassUseCase(context, _mockTenantContext.Object, _mockTimeProvider.Object, _mockOwnershipGuard.Object, _mockLogger.Object);
         var result = await sut.ExecuteAsync(classId, new AddStudentsToClassRequest { StudentIds = new[] { studentId } });
 
-        Assert.True(result.IsSuccess);
-        Assert.Equal(1, result.Data!.AddedCount);
-        var membership = await context.ClassStudents.FirstAsync(cs => cs.StudentId == studentId);
-        Assert.Equal(ClassStudentStatus.Active, membership.Status);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.DoesNotContain(context.ChangeTracker.Entries(), e => e.State == EntityState.Added || e.State == EntityState.Modified || e.State == EntityState.Deleted);
+        Assert.Equal(0, await context.ClassStudents.CountAsync());
     }
 }

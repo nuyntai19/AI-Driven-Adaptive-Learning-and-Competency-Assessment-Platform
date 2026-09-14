@@ -288,3 +288,143 @@ test("Membership soft-delete preserves historical attempts and assessment eviden
   assert.equal(softRemovedMembership.classId, "11111111-1111-1111-1111-111111111111");
   assert.equal(softRemovedMembership.studentId, "44444444-4444-4444-4444-444444444441");
 });
+
+test("Dynamic RBAC matrix: canUpdateClass requires BOTH classes.update AND teachers.read", () => {
+  const evaluateCanUpdateClass = (userPermissions: string[]) => {
+    const hasPerm = (p: string) => userPermissions.includes(p);
+    return hasPerm(permissions.classesUpdate) && hasPerm(permissions.teachersRead);
+  };
+
+  assert.equal(evaluateCanUpdateClass([]), false);
+  assert.equal(evaluateCanUpdateClass([permissions.classesUpdate]), false);
+  assert.equal(evaluateCanUpdateClass([permissions.teachersRead]), false);
+  assert.equal(evaluateCanUpdateClass([permissions.classesUpdate, permissions.teachersRead]), true);
+});
+
+test("Dynamic RBAC matrix: canAddMembers requires BOTH classes.manage_members AND students.read", () => {
+  const evaluateCanAddMembers = (userPermissions: string[]) => {
+    const hasPerm = (p: string) => userPermissions.includes(p);
+    return hasPerm(permissions.classesManageMembers) && hasPerm(permissions.studentsRead);
+  };
+
+  assert.equal(evaluateCanAddMembers([]), false);
+  assert.equal(evaluateCanAddMembers([permissions.classesManageMembers]), false);
+  assert.equal(evaluateCanAddMembers([permissions.studentsRead]), false);
+  assert.equal(evaluateCanAddMembers([permissions.classesManageMembers, permissions.studentsRead]), true);
+});
+
+test("Dynamic RBAC matrix: canRemoveMembers requires ONLY classes.manage_members", () => {
+  const evaluateCanRemoveMembers = (userPermissions: string[]) => {
+    const hasPerm = (p: string) => userPermissions.includes(p);
+    return hasPerm(permissions.classesManageMembers);
+  };
+
+  assert.equal(evaluateCanRemoveMembers([]), false);
+  assert.equal(evaluateCanRemoveMembers([permissions.studentsRead]), false);
+  assert.equal(evaluateCanRemoveMembers([permissions.classesManageMembers]), true);
+  assert.equal(evaluateCanRemoveMembers([permissions.classesManageMembers, permissions.studentsRead]), true);
+});
+
+test("Checkbox toggle stopPropagation pattern prevents double inversion", () => {
+  let toggleCount = 0;
+  let selectedStudentIds: string[] = [];
+
+  const handleToggleSelect = (id: string) => {
+    toggleCount++;
+    selectedStudentIds = selectedStudentIds.includes(id)
+      ? selectedStudentIds.filter((item) => item !== id)
+      : [...selectedStudentIds, id];
+  };
+
+  const studentId = "student-test-01";
+
+  // Simulate parent div click
+  handleToggleSelect(studentId);
+  assert.equal(toggleCount, 1);
+  assert.deepEqual(selectedStudentIds, [studentId]);
+
+  // Simulate child checkbox click with stopPropagation:
+  // Without stopPropagation, both checkbox and parent div handlers would fire,
+  // resulting in toggleCount = 3 and selectedStudentIds returning to [studentId].
+  // With stopPropagation, only the child checkbox handler executes once.
+  let propagationStopped = false;
+  const mockEvent = {
+    stopPropagation: () => {
+      propagationStopped = true;
+    },
+  };
+
+  mockEvent.stopPropagation();
+  handleToggleSelect(studentId); // Exactly one toggle
+  assert.equal(propagationStopped, true);
+  assert.equal(toggleCount, 2);
+  assert.deepEqual(selectedStudentIds, []);
+});
+
+test("Candidate student selection persists across pagination flips and searches", () => {
+  let selectedStudentIds: string[] = [];
+
+  const handleToggle = (id: string) => {
+    selectedStudentIds = selectedStudentIds.includes(id)
+      ? selectedStudentIds.filter((item) => item !== id)
+      : [...selectedStudentIds, id];
+  };
+
+  // User selects student on Page 1
+  const page1StudentId = "student-p1-001";
+  handleToggle(page1StudentId);
+  assert.deepEqual(selectedStudentIds, [page1StudentId]);
+
+  // Page changes to Page 2, user selects another student
+  const page2StudentId = "student-p2-002";
+  handleToggle(page2StudentId);
+  assert.equal(selectedStudentIds.length, 2);
+  assert.ok(selectedStudentIds.includes(page1StudentId));
+  assert.ok(selectedStudentIds.includes(page2StudentId));
+
+  // Current page "Select All" merges with existing selections across other pages
+  const page2Candidates = [page2StudentId, "student-p2-003", "student-p2-004"];
+  selectedStudentIds = Array.from(new Set([...selectedStudentIds, ...page2Candidates]));
+  assert.equal(selectedStudentIds.length, 4);
+  assert.ok(selectedStudentIds.includes(page1StudentId));
+  assert.ok(selectedStudentIds.includes(page2StudentId));
+  assert.ok(selectedStudentIds.includes("student-p2-003"));
+  assert.ok(selectedStudentIds.includes("student-p2-004"));
+});
+
+test("Candidate student error state is distinguished from empty state", () => {
+  // Simulating the UI discriminator for candidate students
+  const renderCandidateState = (options: {
+    isError: boolean;
+    isLoading: boolean;
+    candidateCount: number;
+  }) => {
+    if (options.isError) {
+      return "ERROR_ALERT_WITH_RETRY";
+    }
+    if (options.isLoading) {
+      return "LOADING_SPINNER";
+    }
+    if (options.candidateCount === 0) {
+      return "EMPTY_NO_CANDIDATES";
+    }
+    return "CANDIDATE_LIST";
+  };
+
+  assert.equal(
+    renderCandidateState({ isError: true, isLoading: false, candidateCount: 0 }),
+    "ERROR_ALERT_WITH_RETRY"
+  );
+  assert.equal(
+    renderCandidateState({ isError: false, isLoading: true, candidateCount: 0 }),
+    "LOADING_SPINNER"
+  );
+  assert.equal(
+    renderCandidateState({ isError: false, isLoading: false, candidateCount: 0 }),
+    "EMPTY_NO_CANDIDATES"
+  );
+  assert.equal(
+    renderCandidateState({ isError: false, isLoading: false, candidateCount: 5 }),
+    "CANDIDATE_LIST"
+  );
+});

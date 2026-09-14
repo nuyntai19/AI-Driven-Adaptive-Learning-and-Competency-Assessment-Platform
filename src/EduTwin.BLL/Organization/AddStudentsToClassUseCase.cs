@@ -114,7 +114,7 @@ public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
             .Where(s => requestedStudentIds.Contains(s.StudentId) && s.CenterId == centerId && !s.IsDeleted && !s.User.IsDeleted && s.User.RoleName == UserRole.Student)
             .ToListAsync(cancellationToken);
 
-        if (validStudents.Any(s => s.User.Status != UserStatus.Active && s.User.Status != UserStatus.Locked && s.User.Status != UserStatus.Disabled))
+        if (validStudents.Any(s => s.User.Status != UserStatus.Active))
         {
             return AddStudentsToClassResult.Failure(ErrorCodes.ResourceNotFound);
         }
