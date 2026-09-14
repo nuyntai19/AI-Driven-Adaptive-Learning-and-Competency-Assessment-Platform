@@ -289,3 +289,105 @@ test("mapSafeLoginError sanitizes credentials error and does not disclose accoun
   const networkErr = new Error("Network down");
   assert.equal(mapSafeLoginError(networkErr), "Không thể hoàn tất đăng nhập. Vui lòng thử lại sau.");
 });
+
+test("CenterManager is strictly denied from Platform Admin routes (/quan-tri-nen-tang/*)", () => {
+  const centerManagerUser = {
+    userId: "m-1",
+    centerId: "c-1",
+    centerName: "Center",
+    username: "manager",
+    displayName: "Manager",
+    accountType: "CenterManager" as const,
+    role: "CenterManager" as const,
+    roles: [],
+    permissions: [
+      permissions.dashboardsCenterRead,
+      permissions.teachersRead,
+      permissions.studentsRead,
+      permissions.classesRead,
+    ],
+    authorizationVersion: 1,
+  };
+
+  assert.equal(
+    canAccess(centerManagerUser, {
+      anyOf: [
+        permissions.platformCentersRead,
+        permissions.platformCentersManage,
+        permissions.platformAuditRead,
+      ],
+      accountTypes: ["PlatformAdmin"],
+    }),
+    false,
+    "CenterManager cannot access platform admin route layout"
+  );
+  assert.equal(
+    canAccess(centerManagerUser, {
+      allOf: [permissions.platformAuditRead],
+      accountTypes: ["PlatformAdmin"],
+    }),
+    false,
+    "CenterManager cannot access platform audit logs"
+  );
+});
+
+test("Teacher is strictly denied from Center-wide management routes", () => {
+  const teacherUser = {
+    userId: "t-1",
+    centerId: "c-1",
+    centerName: "Center",
+    username: "teacher",
+    displayName: "Teacher",
+    accountType: "Teacher" as const,
+    role: "Teacher" as const,
+    roles: [],
+    permissions: [
+      permissions.dashboardsTeacherRead,
+      permissions.twinStudentReadScoped,
+    ],
+    authorizationVersion: 1,
+  };
+
+  assert.equal(
+    canAccess(teacherUser, { allOf: [permissions.centerManage] }),
+    false,
+    "Teacher cannot access center profile edit"
+  );
+  assert.equal(
+    canAccess(teacherUser, {
+      anyOf: [permissions.rolesRead, permissions.permissionsRead, permissions.userRolesRead, permissions.auditRead],
+      accountTypes: ["CenterManager"],
+    }),
+    false,
+    "Teacher cannot access authorization management"
+  );
+  assert.equal(
+    canAccess(teacherUser, { allOf: [permissions.teachersCreate] }),
+    false,
+    "Teacher cannot create other teachers"
+  );
+});
+
+test("Restricted CenterManager role is constrained by effective permissions", () => {
+  const restrictedManager = {
+    userId: "m-2",
+    centerId: "c-1",
+    centerName: "Center",
+    username: "restricted_mgr",
+    displayName: "Restricted Manager",
+    accountType: "CenterManager" as const,
+    role: "CenterManager" as const,
+    roles: ["LimitedRole"],
+    permissions: [
+      permissions.dashboardsCenterRead,
+      permissions.teachersRead,
+      permissions.studentsRead,
+    ],
+    authorizationVersion: 1,
+  };
+
+  assert.equal(canAccess(restrictedManager, { allOf: [permissions.teachersRead] }), true);
+  assert.equal(canAccess(restrictedManager, { allOf: [permissions.teachersCreate] }), false);
+  assert.equal(canAccess(restrictedManager, { allOf: [permissions.teachersDelete] }), false);
+  assert.equal(canAccess(restrictedManager, { allOf: [permissions.centerManage] }), false);
+});
