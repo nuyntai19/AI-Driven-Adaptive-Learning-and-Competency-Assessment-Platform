@@ -1019,6 +1019,7 @@ Invariant:
 - permission_code không được đổi sau khi phát hành; dùng Deprecated và tạo code mới khi semantics thay đổi.
 - Mỗi permission phải có ít nhất một row trong permission_account_types; không lưu danh sách loại tài khoản trong JSON vì quan hệ này cần join và foreign key.
 - CenterManager chỉ được gán permission Active, is_delegable = 1 và tương thích target role. Nếu target role có account_type = CenterManager, permission mới còn phải nằm trong effective permission của actor; role Student/Teacher không áp dụng điều kiện actor-own vì CenterManager không thể sở hữu permission khác account type.
+- Post-R09 CenterManager Additions: Hệ thống bổ sung hai quyền nhạy cảm `organization.teachers.reset_password` và `organization.students.reset_password` (IsSensitive = 1, IsDelegable = 1, chỉ tương thích CenterManager), đồng thời hoàn thiện use case cho `organization.students.delete` (Soft-Delete học sinh, bảo tồn 100% bằng chứng lịch sử attempts/twins). Toàn bộ mô hình duy trì đúng 40 bảng vật lý.
 
 ## 37. permission_account_types [System catalog join, không có center_id]
 

@@ -589,3 +589,15 @@ Một implementation task chỉ Ready khi:
 - Tiêu chí chấm/format báo cáo chính thức nếu giảng viên bổ sung.
 
 Các mục này phải được cập nhật trước khi tài liệu chuyển từ draft sang FROZEN.
+
+## 19. Post-R09 Requirements: Quản trị Vận hành Trung tâm (POST-R09-CENTER-MANAGER-OPS)
+
+| ID | Yêu cầu | Loại | Trạng thái | Ghi chú |
+|---|---|---|---|---|
+| CM-FR-01 | Quản lý Hồ sơ Trung tâm: Xem và cập nhật `CenterName`, `Timezone` qua `/quan-ly/trung-tam` có kiểm soát OCC `RowVersion`; `CenterCode` và `Status` ở chế độ read-only. | FR | APPROVED | API: `GET/PATCH /api/v1/centers/me` |
+| CM-FR-02 | Giám sát Tổng quan Trung tâm: Xem chỉ số tổng hợp qua quyền `dashboards.center.read`, hỗ trợ lọc môn học, 0 N+1, có fallback trực quan. | FR | APPROVED | API: `GET /api/v1/centers/me/dashboard` |
+| CM-FR-03 | Quản trị Tài khoản Giáo viên: Xem chi tiết, cập nhật thông tin, đặt lại mật khẩu an toàn qua quyền `organization.teachers.reset_password`, chặn xóa khi còn active class. | FR | APPROVED | API: `PATCH /teachers/{id}`, `POST /teachers/{id}/reset-password` |
+| CM-FR-04 | Quản trị Tài khoản Học sinh: Xem chi tiết, cập nhật thông tin cá nhân, mục tiêu môn học, đặt lại mật khẩu an toàn qua quyền `organization.students.reset_password`. | FR | APPROVED | API: `PATCH /students/{id}`, `POST /students/{id}/reset-password` |
+| CM-FR-05 | Xóa mềm Học sinh Bảo tồn Chứng cứ: Triển khai `DELETE /api/v1/students/{id}` với quyền `organization.students.delete`; soft-delete, gỡ class membership, bảo tồn 100% attempt/twin/assignment history. | FR | APPROVED | Cấm tuyệt đối hard-delete dữ liệu học thuật |
+| CM-SEC-01 | Ranh giới Phân quyền & Tenant: CenterManager bị cấm khỏi mọi endpoint PlatformAdmin (`403 Forbidden`); truy cập tài nguyên khác tenant trả `404 Not Found` fail-closed; không có quan hệ kế thừa role. | SEC | APPROVED | Tuân thủ ADR-POST-R09-CENTER-MANAGER-OPERATIONS |
+| CM-SEC-02 | Quản trị Phiên & Kiểm toán Khử khuẩn: Mọi thay đổi mật khẩu/trạng thái/vai trò đều tăng `auth_version`, thu hồi refresh token và ghi nhật ký kiểm toán đã khử khuẩn (`authorization_audit_logs`). | SEC | APPROVED | 0 password, 0 hash, 0 secret leakage |

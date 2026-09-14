@@ -1,4 +1,4 @@
-﻿# EduTwin — API Contracts
+# EduTwin — API Contracts
 
 > Phiên bản: 2.1-draft
 > Trạng thái: COURSE REBASELINE — API v1 hiện hữu + target contract RBAC/Evidence chưa cutover
@@ -438,6 +438,43 @@ Quyền: CenterManager.
 Response 204.
 Rule: từ chối 409 nếu Teacher còn Class Active; không hard delete.
 
+## 20.1. POST /teachers/{teacherId}/reset-password
+
+Quyền: CenterManager (`organization.teachers.reset_password`).
+Sensitive mutation: Có kiểm tra OCC, AuthVersion increment, revoke refresh tokens, không ghi mật khẩu vào log.
+
+Request:
+~~~json
+{
+  "newPassword": "NewTeacherPassword123!",
+  "expectedUserRowVersion": "1",
+  "reason": "Yêu cầu cấp lại mật khẩu từ quản lý trung tâm"
+}
+~~~
+
+Response 200:
+~~~json
+{
+  "data": {
+    "userId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "username": "teacher.001",
+    "rowVersion": "2",
+    "authVersion": 2
+  },
+  "meta": {
+    "traceId": "00-abcd-1234-01",
+    "timestamp": "2026-09-14T12:00:00.000000Z"
+  }
+}
+~~~
+
+Error codes:
+- 400: VALIDATION_FAILED (mật khẩu dưới 8 ký tự hoặc thiếu reason)
+- 401: Chưa xác thực
+- 403: AUTH_PERMISSION_REQUIRED (thiếu quyền `organization.teachers.reset_password`)
+- 404: RESOURCE_NOT_FOUND (không tìm thấy teacher trong tenant hoặc sai account type)
+- 409: CONCURRENCY_CONFLICT (sai expectedUserRowVersion)
+
 # Student management và goal
 
 ## 21. Student DTO
@@ -512,6 +549,55 @@ Request:
 ~~~
 
 Response 200: Student DTO.
+
+## 25.1. DELETE /students/{studentId}
+
+Quyền: CenterManager (`organization.students.delete`).
+Hành vi: Soft-delete học sinh và tài khoản người dùng, chuyển các lớp đang tham gia sang trạng thái Removed, tăng auth_version, thu hồi toàn bộ refresh tokens. Bảo tồn 100% dữ liệu lịch sử bài làm, điểm số, Digital Twin, chỉ định bài tập. Cấm tuyệt đối Hard-Delete.
+
+Response 204 No Content.
+
+Error codes:
+- 401: Chưa xác thực
+- 403: AUTH_PERMISSION_REQUIRED (thiếu quyền `organization.students.delete`)
+- 404: RESOURCE_NOT_FOUND (không tìm thấy student trong tenant hoặc sai account type)
+
+## 25.2. POST /students/{studentId}/reset-password
+
+Quyền: CenterManager (`organization.students.reset_password`).
+Sensitive mutation: Có kiểm tra OCC, AuthVersion increment, revoke refresh tokens, không ghi mật khẩu vào log.
+
+Request:
+~~~json
+{
+  "newPassword": "NewStudentPassword123!",
+  "expectedUserRowVersion": "1",
+  "reason": "Học sinh yêu cầu cấp lại mật khẩu"
+}
+~~~
+
+Response 200:
+~~~json
+{
+  "data": {
+    "userId": "baf68743-a272-4983-a9e2-41663734a7c2",
+    "username": "student.001",
+    "rowVersion": "2",
+    "authVersion": 2
+  },
+  "meta": {
+    "traceId": "00-abcd-1234-01",
+    "timestamp": "2026-09-14T12:00:00.000000Z"
+  }
+}
+~~~
+
+Error codes:
+- 400: VALIDATION_FAILED (mật khẩu dưới 8 ký tự hoặc thiếu reason)
+- 401: Chưa xác thực
+- 403: AUTH_PERMISSION_REQUIRED (thiếu quyền `organization.students.reset_password`)
+- 404: RESOURCE_NOT_FOUND (không tìm thấy student trong tenant hoặc sai account type)
+- 409: CONCURRENCY_CONFLICT (sai expectedUserRowVersion)
 
 ## 26. PUT /students/{studentId}/goals/{subjectId}
 

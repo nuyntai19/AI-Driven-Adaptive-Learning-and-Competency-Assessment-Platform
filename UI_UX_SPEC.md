@@ -1,4 +1,4 @@
-﻿# EduTwin — UI/UX and Capability Specification
+# EduTwin — UI/UX and Capability Specification
 
 > Phiên bản: 2.1-draft
 > Trạng thái: COURSE REBASELINE — cần Figma và stakeholder validation
@@ -662,3 +662,38 @@ Không dùng biểu thức role OR permission để “chạy tạm”, vì sẽ
   - Khối Thu hồi Phiên Đăng nhập (Revoke Sessions):
     - Nút "Đăng xuất khỏi tất cả các thiết bị khác".
     - Hộp thoại xác nhận trước khi thực hiện thu hồi.
+
+### 20.7. Đặc tả UI/UX Quản trị Trung tâm Toàn diện (Post-R09 CenterManager Operations Specs)
+
+#### 20.7.1. Màn hình Hồ sơ Trung tâm (`CenterProfilePage.tsx`)
+- **Route canonical:** `/quan-ly/trung-tam`.
+- **Yêu cầu phân quyền:** Có quyền `organization.center.update` hoặc `organization.center.read`, tài khoản loại `CenterManager`.
+- **Thành phần giao diện:**
+  - Tiêu đề & Breadcrumb: "Quản trị Trung tâm" / "Thông tin Hồ sơ Trung tâm".
+  - Trường hiển thị chỉ đọc: Mã trung tâm (`centerCode`) và Trạng thái (`status` - Badge xanh `Đang hoạt động`).
+  - Form chỉnh sửa: Tên trung tâm (`centerName`), Múi giờ (`timezone` - dropdown danh sách IANA chuẩn như `Asia/Ho_Chi_Minh`, `Asia/Bangkok`).
+  - Cơ chế OCC: Gửi kèm `rowVersion`. Khi gặp HTTP 409, hiển thị cảnh báo "Dữ liệu hồ sơ đã được thay đổi bởi quản trị viên khác. Vui lòng kiểm tra lại", tự động refetch dữ liệu mới nhất.
+  - Cập nhật tức thì: Khi lưu thành công, cập nhật ngay cache React Query và state authStore mà không yêu cầu người dùng F5 tải lại trang.
+  - Trạng thái UI: Hỗ trợ đầy đủ loading skeleton, thông báo lỗi mạng có nút thử lại, và tuân thủ accessibility (nhãn form, phím Tab, Enter).
+
+#### 20.7.2. Hoàn thiện Vòng đời Tài khoản Giáo viên (`TeacherListPage.tsx` & Actions)
+- **Danh sách giáo viên:** Hiển thị Họ tên, Tên đăng nhập, Bộ môn (`department`), Trạng thái (`Active` / `Locked`), Số lớp đang phụ trách (`activeClassCount`).
+- **Thao tác quản trị:**
+  - *Xem chi tiết:* Modal hiển thị thông tin hồ sơ và danh sách các lớp học giáo viên đang giảng dạy.
+  - *Chỉnh sửa thông tin:* Sửa họ tên, bộ môn, trạng thái (Active / Locked) kèm `rowVersion`.
+  - *Đặt lại mật khẩu (`ResetPasswordModal.tsx`):* Form nhập mật khẩu mới, lý do quản trị, gửi kèm `expectedUserRowVersion`. Cảnh báo thu hồi toàn bộ phiên đăng nhập của giáo viên.
+  - *Xóa mềm (Soft-delete):* Hộp thoại xác nhận xóa mềm tài khoản. Nếu giáo viên còn lớp học đang hoạt động, hệ thống hiển thị thông báo lỗi 409 và chặn thao tác xóa nhằm bảo vệ toàn vẹn lịch sử lớp học.
+
+#### 20.7.3. Hoàn thiện Vòng đời Tài khoản Học sinh (`StudentListPage.tsx` & Actions)
+- **Danh sách học sinh:** Hiển thị Họ tên, Tên đăng nhập, Khối lớp (`gradeLevel`), Trạng thái, Số lớp đang tham gia (`activeClassCount`).
+- **Thao tác quản trị:**
+  - *Xem chi tiết & Mục tiêu:* Modal hiển thị thông tin học sinh, danh sách lớp đang học và các mục tiêu điểm theo môn (`student_subject_goals`).
+  - *Chỉnh sửa thông tin:* Sửa họ tên, khối lớp (10, 11, 12), trạng thái kèm `rowVersion`.
+  - *Đặt lại mật khẩu:* Form nhập mật khẩu mới, lý do quản trị, gửi kèm `expectedUserRowVersion`.
+  - *Xóa mềm học sinh (`DeleteStudentModal.tsx`):* Hộp thoại cảnh báo xác nhận rõ ràng: "Học sinh sẽ được chuyển sang trạng thái đã xóa và rời khỏi các lớp học hiện tại. Toàn bộ lịch sử làm bài, điểm số và hồ sơ năng lực số (Digital Twin) vẫn được bảo tồn nguyên vẹn 100% cho mục đích lưu trữ và báo cáo." Gửi `DELETE /api/v1/students/{studentId}` với quyền `organization.students.delete`.
+
+#### 20.7.4. Giám sát Báo cáo Trung tâm (`CenterDashboardPage.tsx`)
+- Thống kê chỉ số tổng quan chính xác theo tenant: Số học sinh, giáo viên, lớp học, tỷ lệ hoàn thành bài tập.
+- Bộ lọc theo Môn học (`subjectId`) và ngưỡng rủi ro (`riskThreshold`).
+- Tối ưu hóa truy vấn: Tính toán theo lô (batch aggregate), không phát sinh N+1.
+- Hiển thị trực quan: Đồ thị kèm bảng dữ liệu thay thế (table fallback) cho người dùng sử dụng thiết bị đọc màn hình (screen reader).

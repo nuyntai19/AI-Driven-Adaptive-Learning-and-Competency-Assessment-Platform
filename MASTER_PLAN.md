@@ -1,4 +1,4 @@
-﻿# EduTwin — Master Development Plan
+# EduTwin — Master Development Plan
 
 > Phiên bản: 2.1-draft
 > Trạng thái: COURSE REBASELINE — roadmap v2 đang chờ nhóm phê duyệt
@@ -2221,3 +2221,32 @@ Milestone củng cố vận hành quản trị nền tảng (Platform Administra
 - **Checkpoint 6 (`feat(platform): harden suspension and platform self-security`):** Bắt buộc lý do khi tạm ngưng, thu hồi phiên toàn trung tâm, endpoints `/platform/me/*` và UI bảo mật.
 - **Checkpoint 7 (`test(platform): complete relational and browser verification`):** Chạy toàn bộ automated tests, live MySQL tests, EF drift check, và 21 kịch bản kiểm thử Chrome thực tế qua browser subagent.
 - **Checkpoint 8 (`docs(platform): publish operational enhancement closeout`):** Báo cáo nghiệm thu kỹ thuật và cập nhật theo dõi tiến độ dự án.
+
+## 134. Post-R09 Scope Amendments: Quản Trị Vận Hành Trung Tâm Toàn Diện (POST-R09-CENTER-MANAGER-OPS)
+
+Milestone hoàn thiện toàn diện năng lực quản trị vận hành trung tâm cho CenterManager theo kế hoạch `docs/plans/POST-R09-CENTER-MANAGER-OPS.md` và `docs/decisions/ADR-POST-R09-CENTER-MANAGER-OPERATIONS.md`:
+
+### 134.1. Bất biến kiến trúc & Ranh giới phân quyền
+1. **Cấm phân cấp hình tháp kế thừa:**
+   - Không áp dụng mô hình `PlatformAdmin > CenterManager > Teacher > Student`. CenterManager không tự động kế thừa quyền của Teacher.
+   - Quyền hạn xuất phát từ effective permissions động; CenterManager bị cấm tuyệt đối khỏi toàn bộ `/api/v1/platform/*` và `/quan-tri-nen-tang/*`.
+   - Cross-tenant identifiers trả về `404 Not Found` fail-closed.
+2. **Khắc phục catalog drift & Vòng đời tài khoản:**
+   - Hoàn thiện use case xóa học sinh `organization.students.delete`: bắt buộc Soft-Delete (`is_deleted = 1`), chuyển active class membership sang `Removed`, tăng `auth_version`, thu hồi refresh token, bảo tồn 100% bằng chứng lịch sử (attempts, twins, assignments).
+   - Thêm 2 quyền nhạy cảm `organization.teachers.reset_password` và `organization.students.reset_password` kiểm soát bằng OCC `ExpectedUserRowVersion`, tăng `auth_version`, thu hồi phiên và ghi nhận audit đã khử khuẩn.
+3. **Phân kỳ thực thi hai phần:**
+   - **Phần 1 (Giai đoạn A–D):** Baseline audit & khóa đặc tả (A), Security regression tests (B), Center Profile & Dashboard UX (C), Teacher & Student Account Lifecycle (D).
+   - **Phần 2 (Giai đoạn E–I):** Class & membership (E), Subject & Knowledge Graph (F), Curriculum/Question/Assignment hardening (G), Dynamic RBAC & Audit UX (H), Navigation & Performance route-splitting (I), E2E verification.
+
+### 134.2. Lộ trình 11 Checkpoints
+- **Checkpoint 1 (`docs(center-manager): specify post-r09 operational completion`):** Khóa toàn bộ đặc tả authoritative, ADR, và kế hoạch thực thi.
+- **Checkpoint 2 (`test(center-manager): lock tenant and account-type boundaries`):** Thiết lập hàng rào kiểm thử bảo mật phân lập tenant và account-type.
+- **Checkpoint 3 (`feat(center-manager): complete center profile and dashboard UX`):** Hoàn thiện trang `/quan-ly/trung-tam` và kiểm toán Center dashboard.
+- **Checkpoint 4 (`feat(center-manager): complete teacher and student account lifecycle`):** Soft-delete học sinh bảo tồn chứng cứ, đặt lại mật khẩu an toàn Teacher/Student, hoàn thiện UI.
+- **Checkpoint 5 (`feat(center-manager): complete class and membership operations`):** Hoàn thiện quản lý lớp học và thành viên học sinh.
+- **Checkpoint 6 (`feat(center-manager): complete subject and knowledge graph operations`):** Hoàn thiện CRUD môn học và node/edge Knowledge Graph.
+- **Checkpoint 7 (`fix(center-manager): harden curriculum question and assignment flows`):** Củng cố tính bền vững và bảo vệ ranh giới sở hữu nội dung học thuật.
+- **Checkpoint 8 (`feat(center-manager): complete dynamic authorization UX and audit`):** Hoàn thiện UX phân quyền động và nhật ký kiểm toán tại `/quan-ly/phan-quyen`.
+- **Checkpoint 9 (`perf(web): split center management routes and bundles`):** Tối ưu hóa bundle kích thước lớn bằng route-level lazy loading.
+- **Checkpoint 10 (`test(center-manager): complete mysql and chrome e2e verification`):** Chạy toàn bộ automated tests, live MySQL và kịch bản Chrome E2E.
+- **Checkpoint 11 (`docs(center-manager): publish operational closeout`):** Báo cáo nghiệm thu kỹ thuật và cập nhật theo dõi tiến độ dự án.

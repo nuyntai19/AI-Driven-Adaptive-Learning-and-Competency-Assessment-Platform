@@ -170,6 +170,33 @@ Căn cứ văn bản phê duyệt kế hoạch và kiến trúc tại `ADR-POST-
 7. **Quyết định Hoãn (Deferred Milestones):**
    - Giai đoạn H (Nhiều PlatformAdmin và MFA/TOTP) và Giai đoạn I (Health Dashboard/Queue depth/Export) bắt buộc giữ trạng thái `DESIGNED / DEFERRED`. Tuyệt đối không tạo permission, endpoint, UI hoặc migration cho các phần này trong milestone hiện tại.
 
+### 3.5. Phạm vi nâng cấp quản trị trung tâm sau R09 (Post-R09 Center Operations — POST-R09-CENTER-MANAGER-OPS)
+
+Căn cứ văn bản phê duyệt kế hoạch `docs/plans/POST-R09-CENTER-MANAGER-OPS.md` và kiến trúc tại `ADR-POST-R09-CENTER-MANAGER-OPERATIONS.md`, hệ thống hoàn thiện toàn diện năng lực quản trị vận hành trung tâm cho tác nhân **CenterManager** theo các nguyên tắc bất biến:
+
+1. **Ranh giới Account Type và Cấm Phân cấp Kế thừa (Non-Inheritance):**
+   - Tuyệt đối không áp dụng mô hình phân cấp sai `PlatformAdmin > CenterManager > Teacher > Student`.
+   - `CenterManager` chỉ có phạm vi quản trị tổ chức, nội dung và giám sát trong đúng trung tâm hiện tại (`CurrentTenantId`); không tự động kế thừa vai trò hay quyền hạn của `Teacher` và bị cấm tuyệt đối khỏi toàn bộ endpoint của `PlatformAdmin` (`/api/v1/platform/*`, `/quan-tri-nen-tang/*`).
+   - `Teacher` chịu sự kiểm soát sở hữu (ownership guard); `CenterManager` chỉ có phạm vi tenant-wide khi được cấp capability cụ thể và tường minh.
+   - Không gán `dashboards.teacher.read_scoped` cho `CenterManager`; `CenterManager` sử dụng quyền chuyên biệt `dashboards.center.read`.
+
+2. **Khắc phục Drift Permission Catalog & Soft-Delete Học sinh (Student Soft-Delete):**
+   - Hiện thực hóa đầy đủ use case cho quyền hiện hành `organization.students.delete`: `DELETE /api/v1/students/{studentId}`.
+   - Bắt buộc là Soft-Delete (`is_deleted = 1`, `deleted_at = UTC`); chuyển toàn bộ bản ghi thành viên lớp đang hoạt động (`class_students.status = 'Active'`) sang `status = 'Removed'`; tăng `users.row_version` và `users.auth_version`; thu hồi toàn bộ refresh token.
+   - **Bảo tồn Bằng chứng Học thuật Bất biến (Evidence Preservation Invariant):** Giữ nguyên 100% dữ liệu lịch sử liên quan: bài làm (`attempts`), ảnh nháp (`attempt_attachments`), phân tích lý luận (`reasoning_analyses`), đánh giá minh chứng (`evidence_assessments`), hồ sơ năng lực số (`student_twins`, `knowledge_twins`, `behavior_twins`), lịch sử cập nhật twin (`twin_update_history`), chỉ định bài tập (`assignment_targets`), và tiến độ làm bài (`student_assignment_progress`). Cấm tuyệt đối Hard-Delete.
+
+3. **Đặt lại Mật khẩu Giáo viên & Học sinh (Password Reset Governance):**
+   - Bổ sung 2 quyền bảo mật chuyên biệt: `organization.teachers.reset_password` và `organization.students.reset_password` (`IsSensitive = true`, `IsDelegable = true` trong phạm vi quản lý trung tâm; chỉ tương thích `AccountType == 'CenterManager'`).
+   - Cung cấp API `POST /api/v1/teachers/{teacherId}/reset-password` và `POST /api/v1/students/{studentId}/reset-password` với `newPassword`, `expectedUserRowVersion`, `reason`, kiểm tra OCC, băm mật khẩu chuẩn, tăng `auth_version`, thu hồi toàn bộ phiên hoạt động và ghi nhật ký kiểm toán đã khử khuẩn (`authorization_audit_logs`).
+   - Ngăn chặn triệt để việc sử dụng các endpoint này để can thiệp vào tài khoản `CenterManager` hoặc `PlatformAdmin`.
+
+4. **Hồ sơ Trung tâm (Center Profile UX) & Phân quyền Động (Dynamic RBAC):**
+   - Cung cấp giao diện quản trị hồ sơ trung tâm canonical tại `/quan-ly/trung-tam` (`CenterProfilePage.tsx`) cho `GET/PATCH /api/v1/centers/me` với cơ chế OCC `RowVersion`, giữ `CenterCode` và `Status` ở chế độ read-only.
+   - Giữ nguyên route canonical `/quan-ly/phan-quyen` với 3 tab chức năng: Vai trò & Quyền hạn, Gán vai trò người dùng (bảo vệ bất biến `LastTenantAdmin`), và Nhật ký kiểm toán.
+
+5. **Duy trì Bất biến Cấu trúc Cơ sở dữ liệu:**
+   - Duy trì đúng 40 bảng nghiệp vụ trong EF Core Model Snapshot (0 model drift).
+
 ## 4. Stack bắt buộc
 
 ### 4.1. Backend
