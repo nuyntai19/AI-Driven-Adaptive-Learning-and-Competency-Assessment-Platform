@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.BLL.Organization;
 using EduTwin.Contracts.Common;
+using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.Contracts.Organization;
 
 namespace EduTwin.API.Controllers;
@@ -21,6 +22,7 @@ public class TeachersController : ControllerBase
     private readonly ICreateTeacherUseCase _createTeacherUseCase;
     private readonly IUpdateTeacherUseCase _updateTeacherUseCase;
     private readonly IDeleteTeacherUseCase _deleteTeacherUseCase;
+    private readonly IResetAccountPasswordUseCase _resetAccountPasswordUseCase;
     private readonly TimeProvider _timeProvider;
 
     public TeachersController(
@@ -30,12 +32,33 @@ public class TeachersController : ControllerBase
         IUpdateTeacherUseCase updateTeacherUseCase,
         IDeleteTeacherUseCase deleteTeacherUseCase,
         TimeProvider timeProvider)
+        : this(
+            listTeachersUseCase,
+            getTeacherUseCase,
+            createTeacherUseCase,
+            updateTeacherUseCase,
+            deleteTeacherUseCase,
+            null!,
+            timeProvider)
+    {
+    }
+
+    [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
+    public TeachersController(
+        IListTeachersUseCase listTeachersUseCase,
+        IGetTeacherUseCase getTeacherUseCase,
+        ICreateTeacherUseCase createTeacherUseCase,
+        IUpdateTeacherUseCase updateTeacherUseCase,
+        IDeleteTeacherUseCase deleteTeacherUseCase,
+        IResetAccountPasswordUseCase resetAccountPasswordUseCase,
+        TimeProvider timeProvider)
     {
         _listTeachersUseCase = listTeachersUseCase;
         _getTeacherUseCase = getTeacherUseCase;
         _createTeacherUseCase = createTeacherUseCase;
         _updateTeacherUseCase = updateTeacherUseCase;
         _deleteTeacherUseCase = deleteTeacherUseCase;
+        _resetAccountPasswordUseCase = resetAccountPasswordUseCase;
         _timeProvider = timeProvider;
     }
 
@@ -338,6 +361,92 @@ public class TeachersController : ControllerBase
                 Extensions =
                 {
                     ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    ["errorCode"] = ErrorCodes.ConcurrencyConflict
+                }
+            });
+        }
+
+        throw new InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
+    }
+
+    [HttpPost("{teacherId:guid}/reset-password")]
+    [Authorize(Policy = "organization.teachers.reset_password")]
+    public async Task<IActionResult> ResetTeacherPassword(
+        [FromRoute] Guid teacherId,
+        [FromBody] ResetAccountPasswordRequest request,
+        CancellationToken cancellationToken)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        var result = await _resetAccountPasswordUseCase.ExecuteAsync(
+            teacherId,
+            nameof(UserRole.Teacher),
+            request,
+            traceId,
+            cancellationToken);
+
+        if (result.IsSuccess)
+        {
+            return Ok(new ResetAccountPasswordResponse
+            {
+                Data = new ResetAccountPasswordData
+                {
+                    TargetUserId = result.TargetUserId!,
+                    NewRowVersion = result.NewRowVersion!
+                },
+                Meta = new MetaDto
+                {
+                    TraceId = traceId,
+                    Timestamp = _timeProvider.GetUtcNow().UtcDateTime
+                }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ValidationFailed)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.1",
+                Title = "Dữ liệu không hợp lệ",
+                Status = 400,
+                Detail = result.ErrorMessage ?? "Thông tin đặt lại mật khẩu không hợp lệ.",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = traceId,
+                    ["errorCode"] = ErrorCodes.ValidationFailed
+                }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ResourceNotFound)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.4",
+                Title = "Không tìm thấy dữ liệu",
+                Status = 404,
+                Detail = result.ErrorMessage ?? "Giáo viên không tồn tại hoặc không thuộc quyền quản lý của bạn.",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = traceId,
+                    ["errorCode"] = ErrorCodes.ResourceNotFound
+                }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ConcurrencyConflict)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.8",
+                Title = "Dữ liệu bị lỗi đồng bộ",
+                Status = 409,
+                Detail = result.ErrorMessage ?? "Dữ liệu người dùng đã bị thay đổi bởi một phiên làm việc khác. Vui lòng tải lại và thử lại.",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = traceId,
                     ["errorCode"] = ErrorCodes.ConcurrencyConflict
                 }
             });

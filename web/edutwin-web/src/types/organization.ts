@@ -17,6 +17,63 @@ export interface CreateTeacherRequest {
   department?: string;
 }
 
+export interface UpdateTeacherRequest {
+  displayName?: string;
+  department?: string | null;
+  status?: UserStatus;
+  rowVersion: string;
+}
+
+export interface UpdateStudentRequest {
+  fullName?: string;
+  gradeLevel?: number;
+  status?: UserStatus;
+  rowVersion: string;
+}
+
+export interface StudentSubjectGoalDto {
+  studentId: string;
+  subjectId: string;
+  subjectCode: string;
+  subjectName: string;
+  targetScore: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StudentDetailDto {
+  studentId: string;
+  username: string;
+  fullName: string;
+  gradeLevel: number;
+  status: UserStatus;
+  activeClassCount: number;
+  rowVersion: string;
+  classes: ClassDto[];
+  subjectGoals: StudentSubjectGoalDto[];
+}
+
+export interface StudentDetailResponse {
+  data: StudentDetailDto;
+  meta: Meta;
+}
+
+export interface ResetAccountPasswordRequest {
+  newPassword: string;
+  expectedUserRowVersion: string;
+  reason: string;
+}
+
+export interface ResetAccountPasswordData {
+  targetUserId: string;
+  newRowVersion: string;
+}
+
+export interface ResetAccountPasswordResponse {
+  data: ResetAccountPasswordData;
+  meta: Meta;
+}
+
 export interface PagedMeta {
   page: number;
   pageSize: number;

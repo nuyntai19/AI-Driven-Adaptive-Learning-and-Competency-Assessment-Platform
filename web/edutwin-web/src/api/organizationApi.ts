@@ -5,12 +5,19 @@ import type {
   ClassListParams,
   ClassListResponse,
   CreateTeacherRequest,
+  UpdateTeacherRequest,
   TeacherDto,
   StudentListParams,
   StudentListResponse,
   CreateStudentRequest,
+  UpdateStudentRequest,
   StudentDto,
   StudentResponse,
+  StudentDetailDto,
+  StudentDetailResponse,
+  ResetAccountPasswordRequest,
+  ResetAccountPasswordData,
+  ResetAccountPasswordResponse,
   SubjectListResponse,
   CreateClassRequest,
   ClassDto,
@@ -129,6 +136,56 @@ export const organizationApi = {
     };
 
     const response = await httpClient.post<StudentResponse>("/students", payload);
+    return response.data.data;
+  },
+
+  getTeacher: async (teacherId: string): Promise<TeacherDto> => {
+    const response = await httpClient.get<TeacherDto>(`/teachers/${teacherId}`);
+    return response.data;
+  },
+
+  updateTeacher: async (teacherId: string, request: UpdateTeacherRequest): Promise<TeacherDto> => {
+    const response = await httpClient.patch<TeacherDto>(`/teachers/${teacherId}`, request);
+    return response.data;
+  },
+
+  deleteTeacher: async (teacherId: string): Promise<void> => {
+    await httpClient.delete(`/teachers/${teacherId}`);
+  },
+
+  resetTeacherPassword: async (
+    teacherId: string,
+    request: ResetAccountPasswordRequest
+  ): Promise<ResetAccountPasswordData> => {
+    const response = await httpClient.post<ResetAccountPasswordResponse>(
+      `/teachers/${teacherId}/reset-password`,
+      request
+    );
+    return response.data.data;
+  },
+
+  getStudent: async (studentId: string): Promise<StudentDetailDto> => {
+    const response = await httpClient.get<StudentDetailResponse>(`/students/${studentId}`);
+    return response.data.data;
+  },
+
+  updateStudent: async (studentId: string, request: UpdateStudentRequest): Promise<StudentDto> => {
+    const response = await httpClient.patch<StudentResponse>(`/students/${studentId}`, request);
+    return response.data.data;
+  },
+
+  deleteStudent: async (studentId: string): Promise<void> => {
+    await httpClient.delete(`/students/${studentId}`);
+  },
+
+  resetStudentPassword: async (
+    studentId: string,
+    request: ResetAccountPasswordRequest
+  ): Promise<ResetAccountPasswordData> => {
+    const response = await httpClient.post<ResetAccountPasswordResponse>(
+      `/students/${studentId}/reset-password`,
+      request
+    );
     return response.data.data;
   },
 

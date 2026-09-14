@@ -30,7 +30,8 @@ public static class AuthorizationPermissionCatalog
         "authorization.roles.manage_permissions", "authorization.user_roles.assign", "authorization.audit.read",
         "organization.center.update", "organization.teachers.create", "organization.teachers.update",
         "organization.teachers.delete", "organization.students.create", "organization.students.update",
-        "organization.students.delete", "organization.classes.create", "organization.classes.update",
+        "organization.students.delete", "organization.teachers.reset_password", "organization.students.reset_password",
+        "organization.classes.create", "organization.classes.update",
         "organization.classes.manage_members", "knowledge.subjects.delete", "knowledge.nodes.delete",
         "knowledge.edges.delete", "curriculum.curriculums.publish", "curriculum.questions.publish",
         "curriculum.questions.delete", "twin.student.update_scoped",
@@ -67,6 +68,7 @@ public static class AuthorizationPermissionCatalog
         "authorization.user_roles.read", "authorization.user_roles.assign", "authorization.audit.read",
         "organization.center.read", "organization.center.update", "organization.teachers.create",
         "organization.teachers.update", "organization.teachers.delete", "organization.students.delete",
+        "organization.teachers.reset_password", "organization.students.reset_password",
         "organization.classes.create", "organization.classes.update", "knowledge.subjects.delete",
         "knowledge.nodes.delete", "curriculum.questions.delete", "dashboards.center.read"
     ];

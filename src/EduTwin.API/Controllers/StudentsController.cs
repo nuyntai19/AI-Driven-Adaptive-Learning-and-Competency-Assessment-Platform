@@ -31,6 +31,8 @@ public class StudentsController : ControllerBase
     private readonly IGetStudentDashboardUseCase _getStudentDashboardUseCase;
     private readonly IGetStudentTwinUseCase _getStudentTwinUseCase;
     private readonly IGetStudentTwinHistoryUseCase _getStudentTwinHistoryUseCase;
+    private readonly IDeleteStudentUseCase _deleteStudentUseCase;
+    private readonly IResetAccountPasswordUseCase _resetAccountPasswordUseCase;
     private readonly TimeProvider _timeProvider;
 
     public StudentsController(
@@ -51,6 +53,35 @@ public class StudentsController : ControllerBase
             null!,
             null!,
             null!,
+            null!,
+            null!,
+            timeProvider)
+    {
+    }
+
+    public StudentsController(
+        IListStudentsUseCase listStudentsUseCase,
+        IGetStudentUseCase getStudentUseCase,
+        ICreateStudentUseCase createStudentUseCase,
+        IUpdateStudentUseCase updateStudentUseCase,
+        IUpsertStudentSubjectGoalUseCase upsertStudentSubjectGoalUseCase,
+        IListStudentSubjectGoalsUseCase listStudentSubjectGoalsUseCase,
+        IGetStudentDashboardUseCase getStudentDashboardUseCase,
+        IGetStudentTwinUseCase getStudentTwinUseCase,
+        IGetStudentTwinHistoryUseCase getStudentTwinHistoryUseCase,
+        TimeProvider timeProvider)
+        : this(
+            listStudentsUseCase,
+            getStudentUseCase,
+            createStudentUseCase,
+            updateStudentUseCase,
+            upsertStudentSubjectGoalUseCase,
+            listStudentSubjectGoalsUseCase,
+            getStudentDashboardUseCase,
+            getStudentTwinUseCase,
+            getStudentTwinHistoryUseCase,
+            null!,
+            null!,
             timeProvider)
     {
     }
@@ -66,6 +97,8 @@ public class StudentsController : ControllerBase
         IGetStudentDashboardUseCase getStudentDashboardUseCase,
         IGetStudentTwinUseCase getStudentTwinUseCase,
         IGetStudentTwinHistoryUseCase getStudentTwinHistoryUseCase,
+        IDeleteStudentUseCase deleteStudentUseCase,
+        IResetAccountPasswordUseCase resetAccountPasswordUseCase,
         TimeProvider timeProvider)
     {
         _listStudentsUseCase = listStudentsUseCase;
@@ -77,6 +110,8 @@ public class StudentsController : ControllerBase
         _getStudentDashboardUseCase = getStudentDashboardUseCase;
         _getStudentTwinUseCase = getStudentTwinUseCase;
         _getStudentTwinHistoryUseCase = getStudentTwinHistoryUseCase;
+        _deleteStudentUseCase = deleteStudentUseCase;
+        _resetAccountPasswordUseCase = resetAccountPasswordUseCase;
         _timeProvider = timeProvider;
     }
 
@@ -352,6 +387,121 @@ public class StudentsController : ControllerBase
                 Detail = "Thông tin học viên đã được cập nhật bởi một người khác. Vui lòng tải lại và thử lại.",
                 Instance = HttpContext.Request.Path,
                 Extensions = { ["traceId"] = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier, ["errorCode"] = result.ErrorCode }
+            });
+        }
+
+        throw new InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
+    }
+
+    [HttpDelete("{studentId:guid}")]
+    [Authorize(Policy = "organization.students.delete")]
+    public async Task<IActionResult> DeleteStudent([FromRoute] Guid studentId, CancellationToken cancellationToken)
+    {
+        var traceId = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        var result = await _deleteStudentUseCase.ExecuteAsync(studentId, traceId, cancellationToken);
+
+        if (result.IsSuccess)
+        {
+            return NoContent();
+        }
+
+        if (result.ErrorCode == ErrorCodes.ResourceNotFound)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.5",
+                Title = "Không tìm thấy dữ liệu.",
+                Status = StatusCodes.Status404NotFound,
+                Detail = "Học viên không tồn tại hoặc không thuộc quyền quản lý của bạn.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = traceId, ["errorCode"] = ErrorCodes.ResourceNotFound }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ConcurrencyConflict)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.10",
+                Title = "Dữ liệu bị lỗi đồng bộ.",
+                Status = StatusCodes.Status409Conflict,
+                Detail = "Dữ liệu học viên đã bị thay đổi bởi một phiên làm việc khác. Vui lòng tải lại và thử lại.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = traceId, ["errorCode"] = ErrorCodes.ConcurrencyConflict }
+            });
+        }
+
+        throw new InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
+    }
+
+    [HttpPost("{studentId:guid}/reset-password")]
+    [Authorize(Policy = "organization.students.reset_password")]
+    public async Task<IActionResult> ResetStudentPassword(
+        [FromRoute] Guid studentId,
+        [FromBody] ResetAccountPasswordRequest request,
+        CancellationToken cancellationToken)
+    {
+        var traceId = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        var result = await _resetAccountPasswordUseCase.ExecuteAsync(
+            studentId,
+            nameof(UserRole.Student),
+            request,
+            traceId,
+            cancellationToken);
+
+        if (result.IsSuccess)
+        {
+            return Ok(new ResetAccountPasswordResponse
+            {
+                Data = new ResetAccountPasswordData
+                {
+                    TargetUserId = result.TargetUserId!,
+                    NewRowVersion = result.NewRowVersion!
+                },
+                Meta = new MetaDto
+                {
+                    TraceId = traceId,
+                    Timestamp = _timeProvider.GetUtcNow().UtcDateTime
+                }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ValidationFailed)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.1",
+                Title = "Dữ liệu không hợp lệ.",
+                Status = StatusCodes.Status400BadRequest,
+                Detail = result.ErrorMessage ?? "Thông tin đặt lại mật khẩu không hợp lệ.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = traceId, ["errorCode"] = ErrorCodes.ValidationFailed }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ResourceNotFound)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.5",
+                Title = "Không tìm thấy dữ liệu.",
+                Status = StatusCodes.Status404NotFound,
+                Detail = result.ErrorMessage ?? "Học viên không tồn tại hoặc không thuộc quyền quản lý của bạn.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = traceId, ["errorCode"] = ErrorCodes.ResourceNotFound }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ConcurrencyConflict)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.10",
+                Title = "Dữ liệu bị lỗi đồng bộ.",
+                Status = StatusCodes.Status409Conflict,
+                Detail = result.ErrorMessage ?? "Dữ liệu người dùng đã bị thay đổi bởi một phiên làm việc khác. Vui lòng tải lại và thử lại.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = traceId, ["errorCode"] = ErrorCodes.ConcurrencyConflict }
             });
         }
 
