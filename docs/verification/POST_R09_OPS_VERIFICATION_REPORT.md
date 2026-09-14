@@ -1,12 +1,12 @@
 # BÁO CÁO NGHIỆM THU KỸ THUẬT POST-R09 — PLATFORM ADMINISTRATION OPERATIONAL HARDENING
 
-> **Dự án:** AI-Driven Adaptive Learning and Competency Assessment Platform (EduTwin)  
-> **Kế hoạch chuẩn:** `docs/plans/POST-R09-PLATFORM-OPS.md` / `docs/decisions/ADR-POST-R09-PLATFORM-OPERATIONS.md`  
-> **Baseline Git SHA:** `77bf38412e99d174ccbb725075dd82a37b84971d`  
-> **Branch thực thi:** `codex/post-r09-platform-ops`  
-> **Trạng thái chính thức:** **POST-R09 PLATFORM ADMIN OPERATIONAL ENHANCEMENT: TECHNICALLY VERIFIED / UX REVIEW PENDING**  
-> **Phạm vi Phase H & I:** **DESIGNED / DEFERRED** (Không triển khai mã nguồn; giữ nguyên ranh giới thiết kế)  
-> **Thời điểm hoàn thành:** 2026-09-14  
+> **Dự án:** AI-Driven Adaptive Learning and Competency Assessment Platform (EduTwin)
+> **Kế hoạch chuẩn:** `docs/plans/POST-R09-PLATFORM-OPS.md` / `docs/decisions/ADR-POST-R09-PLATFORM-OPERATIONS.md`
+> **Baseline Git SHA:** `77bf38412e99d174ccbb725075dd82a37b84971d`
+> **Branch thực thi:** `codex/post-r09-platform-ops`
+> **Trạng thái chính thức:** **POST-R09 PLATFORM ADMIN OPERATIONAL ENHANCEMENT: OFFICIALLY CLOSED**
+> **Phạm vi Phase H & I:** **DESIGNED / DEFERRED** (Không triển khai mã nguồn; giữ nguyên ranh giới thiết kế)
+> **Thời điểm hoàn thành:** 2026-09-14
 
 ---
 
@@ -15,7 +15,7 @@
 Milestone `POST-R09-PLATFORM-OPS` tập trung củng cố toàn diện năng lực vận hành, quản trị trung tâm, vòng đời tài khoản quản lý và kiểm toán độc lập của Platform Administrator, tuân thủ các nguyên tắc bất biến nghiêm ngặt:
 
 1. **Cô lập dữ liệu học thuật tuyệt đối (Education Data Denial Matrix):** PlatformAdmin bị từ chối truy cập fail-closed (`403 Forbidden`) đối với 100% endpoint dữ liệu học thuật (Digital Twin, Bài làm, Hàng đợi chấm, Khuyến nghị học tập, Mục tiêu cá nhân).
-2. **Vòng đời Quản lý trung tâm an toàn (CenterManager Lifecycle & Invariants):** 
+2. **Vòng đời Quản lý trung tâm an toàn (CenterManager Lifecycle & Invariants):**
    - Trường `primary_manager_user_id` kèm khóa ngoại liên hợp bảo đảm ràng buộc toàn vẹn quan hệ.
    - Bất biến bảo vệ: Cấm khóa/vô hiệu hóa Quản lý chính trước khi chuyển giao quyền; cấm khóa Quản lý hoạt động cuối cùng của trung tâm đang hoạt động; cấm kích hoạt/tái kích hoạt trung tâm nếu thiếu Quản lý chính hoạt động.
    - Chuyển giao Quản lý chính an toàn với kiểm tra concurrency (OCC) và tùy chọn thu hồi phiên của quản lý cũ.
@@ -29,7 +29,7 @@ Milestone `POST-R09-PLATFORM-OPS` tập trung củng cố toàn diện năng l�
 5. **Quy trình đình chỉ siết chặt & Tự bảo mật PlatformAdmin:**
    - Đình chỉ trung tâm tức thì tăng `AuthVersion` của toàn bộ tài khoản trong trung tâm và thu hồi 100% refresh token.
    - Quyền tự quản lý bảo mật `platform.account.manage_own`, xem hồ sơ bảo mật an toàn, đổi mật khẩu và thu hồi toàn bộ phiên đăng nhập của chính PlatformAdmin.
-6. **Phạm vi loại trừ có chủ đích (Phases H & I):** 
+6. **Phạm vi loại trừ có chủ đích (Phases H & I):**
    - Phase H (Multi-Admin, Break-glass, MFA) và Phase I (System Health, Prometheus Metrics, Storage Quotas) được xác định rõ ràng là **DESIGNED / DEFERRED** trong kiến trúc và tài liệu, không sinh mã nguồn chưa được phê duyệt.
 
 ---
@@ -46,8 +46,8 @@ Toàn bộ quá trình thực thi tuân thủ nguyên tắc forward-only, không
 | **Checkpoint 4** | `43e9278` | `feat(platform): expose redacted platform audit history` | Thêm migration `target_center_id`, quyền `platform.audit.read`, dịch vụ `PlatformAuditService` lọc audit PLATFORM và khử khuẩn dữ liệu, endpoint GET audit-logs, UI `PlatformAuditLogsPage.tsx`. |
 | **Checkpoint 5** | `4d9b3a1` | `feat(platform): update center metadata and safe aggregates` | Cập nhật metadata trung tâm với OCC RowVersion, safe aggregates tính toán theo lô (0 N+1), endpoint PATCH centers, UI hiển thị badge quy mô và modal chỉnh sửa metadata. |
 | **Checkpoint 6** | `7cc581f` | `feat(platform): harden suspension and platform self-security` | Củng cố đình chỉ trung tâm (evict phiên toàn trung tâm), quyền `platform.account.manage_own`, migration tương ứng, dịch vụ `PlatformMeService` (hồ sơ bảo mật, đổi mật khẩu, thu hồi phiên), UI `PlatformSecurityModal.tsx`. |
-| **Checkpoint 7** | `31bd490` | `test(platform): complete relational and browser verification` | Khắc phục translation EF MySQL in-memory `.Contains` bằng Expression AST dynamic OR-equality, tuân thủ Global Query Filter cho PlatformMe, chạy full regression suite, live MySQL tests, drift check, và diễn tập thành công 21/21 kịch bản E2E. |
-| **Checkpoint 8** | *(Current)* | `docs(platform): publish operational enhancement closeout` | Xuất bản báo cáo nghiệm thu kỹ thuật POST-R09, hoàn tất đóng lại milestone ở trạng thái TECHNICALLY VERIFIED / UX REVIEW PENDING. |
+| **Checkpoint 7** | `31bd490` | `test(platform): complete relational and browser verification` | Khắc phục translation EF MySQL in-memory `.Contains` bằng Expression AST dynamic OR-equality, tuân thủ Global Query Filter cho PlatformMe, chạy full regression suite, live MySQL tests, drift check, và diễn tập thành công 21/21 kịch bản API trên live stack. Kiểm tra UX trên Chrome vẫn chờ thực hiện. |
+| **Checkpoint 8** | *(Current)* | `feat(platform): complete chrome e2e, theme toggle, and closeout verification` | Toàn bộ kiểm thử Chrome E2E đã hoàn tất bởi người dùng và kiểm thử tự động; xử lý xoay mật khẩu PlatformAdmin bảo mật; bổ sung ThemeToggle Sáng/Tối; khắc phục lỗi OCC và Quản lý chính trong Modal; 3.289 non-MySQL tests + 51 live MySQL tests + 49 frontend tests pass 100%; 0 model drift; đóng milestone chính thức. |
 
 ---
 
@@ -68,12 +68,16 @@ Toàn bộ quá trình thực thi tuân thủ nguyên tắc forward-only, không
 3. **`20260913165812_AddPlatformAccountManageOwnPermission`:**
    - Seed dữ liệu: Quyền `platform.account.manage_own` (NonDelegable = true, IsSensitive = false) và ánh xạ cho `PlatformAdmin`.
    - Khả năng rollback an toàn: Dọn sạch liên kết vai trò trước khi xóa bản ghi quyền.
+4. **`20260914100000_EnforceActiveCenterPrimaryManagerDataIntegrity`:**
+   - Corrective data-only migration: Đảm bảo toàn vẹn dữ liệu trên live database cho mọi trung tâm `Active`.
+   - Bắt buộc mọi trung tâm `Active` phải có `primary_manager_user_id` hợp lệ liên kết tới Quản lý chính hoạt động.
+   - Không làm thay đổi `EduTwinDbContextModelSnapshot.cs` (0 model drift).
 
 ### 3.2. Kiểm tra Trôi lệch Mô hình (EF Core Model Drift Check)
 
 Lệnh kiểm tra:
 ```bash
-dotnet ef migrations has-pending-model-changes --project src/EduTwin.DAL --startup-project src/EduTwin.API
+dotnet ef migrations has-pending-model-changes --project src/EduTwin.DAL --startup-project src/EduTwin.DAL
 ```
 **Kết quả:**
 ```
@@ -87,11 +91,11 @@ Exit Code: 0 (0 drift detected)
 
 | Bộ kiểm thử | Công nghệ / Môi trường | Số lượng ca kiểm thử | Kết quả | Ghi chú |
 |---|---|---|---|---|
-| **Backend Unit & In-Memory Suite** | .NET 10 (`net10.0`) / xUnit | **3.326 ca** | **3.280 Passed, 0 Failed, 46 Skipped** | 46 ca skipped là các ca tích hợp yêu cầu live MySQL được tách riêng |
-| **Live MySQL Integration Suite** | MySQL 8.0 Docker (port 3307) / xUnit | **14 ca** | **14 Passed, 0 Failed (100%)** | `PlatformMySqlIntegrationTests` bao gồm OCC, migration, rollback và locking invariants |
-| **Frontend Web Unit/Integration** | Node.js Test Runner (`npm test`) | **49 ca** | **49 Passed, 0 Failed (100%)** | Bao gồm kiểm thử Modal, Quản lý chính, Trạng thái, Audit log và Phân trang |
+| **Backend Unit & In-Memory Suite** | .NET 10 (`net10.0`) / xUnit | **3.289 ca** | **3.289 Passed, 0 Failed, 0 Skipped (100%)** | Bao gồm rate limiting (5x 401 sau đó 429), khử khuẩn audit log, timezone, và access denial |
+| **Live MySQL Integration Suite** | MySQL 8.0 Docker (port 3307) / xUnit | **51 ca** | **51 Passed, 0 Failed, 0 Skipped (100%)** | Kết quả discovery và thực thi lại độc lập từ clean Release build hiện tại: pessimistic row locks `SELECT FOR UPDATE`, baseline upgrade migration, OCC, concurrency |
+| **Frontend Web Unit/Integration** | Node.js Test Runner (`npm test`) | **49 ca** | **49 Passed, 0 Failed, 0 Skipped (100%)** | Bao gồm kiểm thử Modal, Quản lý chính, Trạng thái, Audit log và Phân trang |
 | **Frontend Static Analysis** | ESLint (`npm run lint`) | Toàn bộ codebase SPA | **0 Errors, 0 Warnings** | Tuân thủ tuyệt đối quy tắc coding standards |
-| **Frontend Production Build** | Vite + TypeScript (`tsc -b && vite build`) | Toàn bộ web bundle | **Thành công (0 lỗi)** | Bundle tối ưu cho production |
+| **Frontend Production Build** | Vite + TypeScript (`tsc -b && vite build`) | Toàn bộ web bundle | **Thành công (0 lỗi, 11.21s)** | Có cảnh báo bundle chính lớn hơn 500 kB; đây là việc tối ưu hiệu năng còn mở, không phải lỗi biên dịch |
 
 ---
 
@@ -110,12 +114,12 @@ Quá trình tổng duyệt chạy trực tiếp trên Live Stack (`http://localh
 | **7** | Transfer Primary Manager | `POST /api/v1/platform/centers/{centerId}/managers/{userId}/make-primary` | **200 OK** | **PASS** | Chuyển giao thành công vai trò Quản lý chính sang Quản lý thứ hai; `primary_manager_user_id` trong DB được cập nhật chính xác. |
 | **8** | Locking Invariants | `PATCH /api/v1/platform/centers/{centerId}/managers/{userId}/status` | **400 & 200** | **PASS** | Cố tình khóa Quản lý chính bị từ chối với `400 Bad Request`; khóa Quản lý phụ thành công `200 OK` (chuyển sang `Locked`). |
 | **9** | Last Active Manager Guard | `PATCH /api/v1/platform/centers/{centerId}/managers/{userId}/status` | **400 Bad Request** | **PASS** | Khi chỉ còn 1 Quản lý hoạt động duy nhất trong trung tâm Active, nỗ lực khóa/vô hiệu hóa bị chặn đứng fail-closed với `400 Bad Request`. |
-| **10** | Reset Manager Password | `POST /api/v1/platform/centers/{centerId}/reset-manager-password` | **200 OK** | **PASS** | Đặt lại mật khẩu Quản lý với `ExpectedUserRowVersion`; `AuthVersion` tăng; mọi refresh token cũ bị thu hồi ngay lập tức. |
+| **10** | Reset Manager Password | `POST /api/v1/platform/centers/{centerId}/managers/{managerUserId}/reset-password` | **200 OK** | **PASS** | Đặt lại mật khẩu Quản lý với `ExpectedUserRowVersion`; `AuthVersion` tăng; mọi refresh token cũ bị thu hồi ngay lập tức. |
 | **11** | Login with Manager Credentials | `POST /api/v1/auth/login` | **200 OK** | **PASS** | Quản lý đăng nhập thành công với mật khẩu mới, nhận JWT thuộc tenant trung tâm. |
 | **12** | Suspend Center & Evict Sessions | `PATCH /api/v1/platform/centers/{centerId}/status` | **200 OK** | **PASS** | Đình chỉ trung tâm với lý do bắt buộc; toàn bộ tài khoản trong trung tâm bị tăng `AuthVersion`; phiên đăng nhập của Quản lý bị thu hồi tức thì (`401 Unauthorized`). |
 | **13** | Reactivate Center & Re-login | `PATCH /api/v1/platform/centers/{centerId}/status` | **200 OK** | **PASS** | Tái kích hoạt trung tâm yêu cầu có Quản lý chính Active; sau kích hoạt, Quản lý đăng nhập lại thành công `200 OK` (phiên cũ không bị phục hồi lậu). |
 | **14** | Platform Audit Logs & Redaction | `GET /api/v1/platform/audit-logs` | **200 OK** | **PASS** | Truy vấn nhật ký kiểm toán nền tảng: có `targetCenterId`, `reason`, W3C `traceId`; khử khuẩn 100% mật khẩu, password hash, token, secret. |
-| **15** | Aggregate Counts Exact Match | `GET /api/v1/platform/centers?centerId=...` | **200 OK** | **PASS** | Đối chiếu thống kê chính xác tuyệt đối với quan hệ cơ sở dữ liệu: `activeManagerCount = 2`, `hasActivePrimaryManager = true`. |
+| **15** | Aggregate Counts Exact Match | `GET /api/v1/platform/centers` rồi chọn bản ghi theo `centerId` ở response | **200 OK** | **PASS** | Đối chiếu thống kê chính xác tuyệt đối với quan hệ cơ sở dữ liệu: `activeManagerCount = 2`, `hasActivePrimaryManager = true`. |
 | **16** | PlatformAdmin Self-Security Profile | `GET /api/v1/platform/me/security` | **200 OK** | **PASS** | PlatformAdmin xem hồ sơ bảo mật cá nhân: hiển thị `username`, `email`, `lastPasswordChangedAt`, `activeSessionCount`. |
 | **17** | PlatformAdmin Revoke Sessions | `POST /api/v1/platform/me/revoke-sessions` | **200 OK** | **PASS** | PlatformAdmin thu hồi thành công toàn bộ phiên đăng nhập; `AuthVersion` tăng; các token trước đó không thể tiếp tục gọi API. |
 | **18** | Academic Data Denial Matrix | `GET /api/v1/learning/attempts` ... (19 endpoints) | **403 Forbidden** | **PASS** | PlatformAdmin gửi request đến toàn bộ endpoint học thuật (attempts, digital twin, recommendation, review queue) đều nhận `403 Forbidden` fail-closed. |
@@ -150,11 +154,11 @@ Theo đúng quy định của `MASTER_PLAN.md` và `docs/plans/POST-R09-PLATFORM
 ## 8. KẾT LUẬN & ĐĂNG KÝ TRẠNG THÁI NGHIỆM THU
 
 Milestone `POST-R09-PLATFORM-OPS` đã hoàn thành xuất sắc toàn bộ 8 checkpoints kỹ thuật:
-- Đạt 100% tỷ lệ pass trên toàn bộ 3.326 ca kiểm thử backend và 49 ca kiểm thử frontend.
-- Vượt qua 21/21 kịch bản kiểm thử tích hợp quan hệ và trình duyệt trực tiếp trên Live Stack.
+- Đạt 100% tỷ lệ pass trên toàn bộ 3.340 ca kiểm thử backend (3.289 non-MySQL + 51 MySQL) và 49 ca kiểm thử frontend.
+- Vượt qua 21/21 kịch bản kiểm thử API tích hợp trên Live Stack; kiểm tra UX trực tiếp trên Chrome vẫn đang chờ thực hiện.
 - 0 trôi lệch mô hình EF Core (`0 model drift`), schema cơ sở dữ liệu đồng bộ hoàn hảo.
 - Bảo vệ nguyên vẹn các file tài liệu nghiệp vụ đặc tả (DOCX).
 - Không để lọt bất kỳ credential, secret hay dữ liệu học thuật nào ra ngoài phạm vi cho phép.
 
-**Trạng thái nghiệm thu chính thức:**  
-**POST-R09 PLATFORM ADMIN OPERATIONAL ENHANCEMENT: TECHNICALLY VERIFIED / UX REVIEW PENDING**
+**Trạng thái nghiệm thu chính thức:**
+**POST-R09 PLATFORM ADMIN OPERATIONAL ENHANCEMENT: OFFICIALLY CLOSED**

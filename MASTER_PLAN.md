@@ -1,4 +1,4 @@
-# EduTwin — Master Development Plan
+﻿# EduTwin — Master Development Plan
 
 > Phiên bản: 2.1-draft
 > Trạng thái: COURSE REBASELINE — roadmap v2 đang chờ nhóm phê duyệt
@@ -2221,4 +2221,3 @@ Milestone củng cố vận hành quản trị nền tảng (Platform Administra
 - **Checkpoint 6 (`feat(platform): harden suspension and platform self-security`):** Bắt buộc lý do khi tạm ngưng, thu hồi phiên toàn trung tâm, endpoints `/platform/me/*` và UI bảo mật.
 - **Checkpoint 7 (`test(platform): complete relational and browser verification`):** Chạy toàn bộ automated tests, live MySQL tests, EF drift check, và 21 kịch bản kiểm thử Chrome thực tế qua browser subagent.
 - **Checkpoint 8 (`docs(platform): publish operational enhancement closeout`):** Báo cáo nghiệm thu kỹ thuật và cập nhật theo dõi tiến độ dự án.
-

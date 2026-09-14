@@ -10,6 +10,29 @@ namespace EduTwin.DAL.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            // Preflight fail-closed check: Ensure active centers have at least one active manager before modifying schema.
+            // Uses an ephemeral MySQL temporary table with CHECK (1 = 0) constraint to avoid permanent procedure artifacts.
+            migrationBuilder.Sql(@"
+DROP TEMPORARY TABLE IF EXISTS __preflight_check;
+CREATE TEMPORARY TABLE __preflight_check (
+    center_id VARCHAR(36) NOT NULL,
+    CONSTRAINT chk_preflight_active_center_must_have_manager CHECK (1 = 0)
+);
+INSERT INTO __preflight_check (center_id)
+SELECT c.center_id
+FROM centers c
+WHERE c.center_id != '00000000-0000-0000-0000-000000000001'
+  AND c.status = 'Active'
+  AND NOT EXISTS (
+      SELECT 1 FROM users u
+      WHERE u.center_id = c.center_id
+        AND u.role_name = 'CenterManager'
+        AND u.status = 'Active'
+        AND u.is_deleted = 0
+  );
+DROP TEMPORARY TABLE IF EXISTS __preflight_check;
+");
+
             migrationBuilder.AddColumn<string>(
                 name: "primary_manager_user_id",
                 table: "centers",

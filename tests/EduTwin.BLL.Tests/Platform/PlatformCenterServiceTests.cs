@@ -357,7 +357,8 @@ public class PlatformCenterServiceTests : IDisposable
         var request = new ResetCenterManagerPasswordRequest
         {
             NewPassword = "BrandNewSuperSecret123!",
-            ExpectedUserRowVersion = "1"
+            ExpectedUserRowVersion = "1",
+            Reason = "Periodic security password rotation"
         };
 
         var result = await _sut.ResetCenterManagerPasswordAsync(centerId, managerId, request, "trace-7");
@@ -386,5 +387,219 @@ public class PlatformCenterServiceTests : IDisposable
         Assert.Null(audit.TargetUserId); // Cross-tenant target isolation
         Assert.Equal($"{centerId:D}:{managerId:D}", audit.TargetId);
         Assert.DoesNotContain("BrandNewSuperSecret123!", audit.AfterData ?? string.Empty);
+    }
+
+    [Fact]
+    public async Task CreateCenterAsync_WithInvalidTimezone_ReturnsValidationFailed()
+    {
+        var request = new CreatePlatformCenterRequest
+        {
+            CenterCode = "TEST_TZ",
+            CenterName = "Test Timezone Center",
+            Timezone = "xx-invalid-timezone",
+            InitialManagerUsername = "tzmanager",
+            InitialManagerDisplayName = "TZ Manager",
+            InitialManagerPassword = "ValidPassword123!"
+        };
+
+        var result = await _sut.CreateCenterAsync(request, "trace-invalid-tz");
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+        Assert.Contains("Múi giờ", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task UpdateCenterMetadataAsync_WithCredentialInReason_ReturnsValidationFailed()
+    {
+        var centerId = Guid.NewGuid();
+        var center = new Center
+        {
+            CenterId = centerId,
+            CenterCode = "METADATA_TEST",
+            CenterName = "Original Center Name",
+            Status = CenterStatus.Active,
+            Timezone = "Asia/Bangkok",
+            RowVersion = 1,
+            CreatedAt = FixedUtcNow,
+            UpdatedAt = FixedUtcNow
+        };
+        _dbContext.Centers.Add(center);
+        await _dbContext.SaveChangesAsync();
+
+        var request = new UpdateCenterMetadataRequest
+        {
+            CenterName = "Updated Center Name",
+            Timezone = "Asia/Bangkok",
+            ExpectedRowVersion = "1",
+            Reason = "Administrative update: password=SuperSecretPassword123!"
+        };
+
+        var result = await _sut.UpdateCenterMetadataAsync(centerId, request, "trace-cred-reason");
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+        Assert.Contains("nhạy cảm", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task MakePrimaryCenterManagerAsync_WhenPreviousPrimaryExistsAndNoExpectedRowVersion_ReturnsValidationFailed()
+    {
+        var centerId = Guid.NewGuid();
+        var prevPrimaryId = Guid.NewGuid();
+        var newPrimaryId = Guid.NewGuid();
+
+        var center = new Center
+        {
+            CenterId = centerId,
+            CenterCode = "PRIMARY_TEST",
+            CenterName = "Primary Test Center",
+            Status = CenterStatus.Active,
+            Timezone = "Asia/Bangkok",
+            PrimaryManagerUserId = prevPrimaryId,
+            RowVersion = 1,
+            CreatedAt = FixedUtcNow,
+            UpdatedAt = FixedUtcNow
+        };
+        _dbContext.Centers.Add(center);
+
+        var prevPrimary = new User
+        {
+            UserId = prevPrimaryId,
+            CenterId = centerId,
+            Username = "prev_primary",
+            DisplayName = "Previous Primary",
+            RoleName = UserRole.CenterManager,
+            Status = UserStatus.Active,
+            AuthVersion = 1,
+            PasswordHash = "hash",
+            RowVersion = 1,
+            CreatedAt = FixedUtcNow,
+            UpdatedAt = FixedUtcNow
+        };
+
+        var newPrimary = new User
+        {
+            UserId = newPrimaryId,
+            CenterId = centerId,
+            Username = "new_primary",
+            DisplayName = "New Primary",
+            RoleName = UserRole.CenterManager,
+            Status = UserStatus.Active,
+            AuthVersion = 1,
+            PasswordHash = "hash",
+            RowVersion = 1,
+            CreatedAt = FixedUtcNow,
+            UpdatedAt = FixedUtcNow
+        };
+
+        _dbContext.Users.AddRange(prevPrimary, newPrimary);
+        await _dbContext.SaveChangesAsync();
+
+        var request = new MakePrimaryCenterManagerRequest
+        {
+            ExpectedCenterRowVersion = "1",
+            ExpectedManagerUserRowVersion = "1",
+            DisablePreviousPrimary = true,
+            ExpectedPreviousPrimaryUserRowVersion = null, // Missing previous primary version
+            Reason = "Transferring primary manager role"
+        };
+
+        var result = await _sut.MakePrimaryCenterManagerAsync(centerId, newPrimaryId, request, "trace-missing-prev");
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+        Assert.Contains("ExpectedPreviousPrimaryUserRowVersion", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task UpdateCenterStatusAsync_SanitizesHighEntropyTokenInAuditReason()
+    {
+        var centerId = Guid.NewGuid();
+        var managerId = Guid.NewGuid();
+
+        var center = new Center
+        {
+            CenterId = centerId,
+            CenterCode = "AUDIT_SAN",
+            CenterName = "Audit Sanitize Center",
+            Status = CenterStatus.Active,
+            Timezone = "Asia/Bangkok",
+            PrimaryManagerUserId = managerId,
+            RowVersion = 1,
+            CreatedAt = FixedUtcNow,
+            UpdatedAt = FixedUtcNow
+        };
+        _dbContext.Centers.Add(center);
+
+        var manager = new User
+        {
+            UserId = managerId,
+            CenterId = centerId,
+            Username = "audit_mgr",
+            DisplayName = "Audit Manager",
+            RoleName = UserRole.CenterManager,
+            Status = UserStatus.Active,
+            AuthVersion = 1,
+            PasswordHash = "hash",
+            RowVersion = 1,
+            CreatedAt = FixedUtcNow,
+            UpdatedAt = FixedUtcNow
+        };
+        _dbContext.Users.Add(manager);
+        await _dbContext.SaveChangesAsync();
+
+        var request = new UpdatePlatformCenterStatusRequest
+        {
+            Status = CenterStatus.Suspended.ToString(),
+            RowVersion = "1",
+            Reason = "Suspension ticket incident ID 1234567890abcdef1234567890abcdef"
+        };
+
+        var result = await _sut.UpdateCenterStatusAsync(centerId, request, "trace-audit-san");
+
+        Assert.True(result.IsSuccess);
+
+        var audit = await _dbContext.AuthorizationAuditLogs
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(a => a.TargetId == centerId.ToString());
+
+        Assert.NotNull(audit);
+        Assert.Contains("[REDACTED]", audit.Reason);
+        Assert.DoesNotContain("1234567890abcdef1234567890abcdef", audit.Reason);
+    }
+
+    [Fact]
+    public async Task ResetCenterManagerPasswordAsync_WhenReasonMissing_ReturnsValidationFailed()
+    {
+        var request = new ResetCenterManagerPasswordRequest
+        {
+            NewPassword = "ValidPassword123!",
+            ExpectedUserRowVersion = "1",
+            Reason = "" // Missing reason
+        };
+
+        var result = await _sut.ResetCenterManagerPasswordAsync(Guid.NewGuid(), Guid.NewGuid(), request, "trace-no-reason");
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+        Assert.Contains("Lý do đặt lại mật khẩu là bắt buộc", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task ResetCenterManagerPasswordAsync_WhenReasonContainsTokenKeyword_ReturnsValidationFailed()
+    {
+        var request = new ResetCenterManagerPasswordRequest
+        {
+            NewPassword = "ValidPassword123!",
+            ExpectedUserRowVersion = "1",
+            Reason = "Resetting due to exposed token: my_secret_token_123"
+        };
+
+        var result = await _sut.ResetCenterManagerPasswordAsync(Guid.NewGuid(), Guid.NewGuid(), request, "trace-token-keyword");
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+        Assert.Contains("thông tin nhạy cảm", result.ErrorMessage);
     }
 }

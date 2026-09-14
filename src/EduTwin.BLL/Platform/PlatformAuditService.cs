@@ -153,7 +153,7 @@ public sealed class PlatformAuditService(
             TargetId = a.TargetId,
             BeforeData = SanitizeAuditJson(a.BeforeData),
             AfterData = SanitizeAuditJson(a.AfterData),
-            Reason = a.Reason,
+            Reason = PlatformAuditSanitizer.SanitizeReason(a.Reason),
             TraceId = a.TraceId,
             CreatedAt = a.CreatedAt
         }).ToList();
@@ -223,7 +223,7 @@ public sealed class PlatformAuditService(
             TargetId = audit.TargetId,
             BeforeData = SanitizeAuditJson(audit.BeforeData),
             AfterData = SanitizeAuditJson(audit.AfterData),
-            Reason = audit.Reason,
+            Reason = PlatformAuditSanitizer.SanitizeReason(audit.Reason),
             TraceId = audit.TraceId,
             CreatedAt = audit.CreatedAt
         });

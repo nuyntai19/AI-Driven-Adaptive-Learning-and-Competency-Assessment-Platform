@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using EduTwin.BLL.Platform;
 using EduTwin.Contracts.Common;
 using EduTwin.Contracts.Platform;
@@ -251,6 +252,7 @@ public class PlatformCentersController : ControllerBase
 
     [HttpPost("{centerId:guid}/managers/{managerUserId:guid}/reset-password")]
     [Authorize(Policy = "platform.managers.manage")]
+    [EnableRateLimiting("PlatformSecurityPolicy")]
     public async Task<IActionResult> ResetCenterManagerPassword(
         [FromRoute] Guid centerId,
         [FromRoute] Guid managerUserId,

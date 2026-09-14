@@ -700,7 +700,8 @@ public sealed class PlatformMySqlIntegrationTests
         var resetReq = new ResetCenterManagerPasswordRequest
         {
             NewPassword = "NewSecretPassword123!",
-            ExpectedUserRowVersion = "1"
+            ExpectedUserRowVersion = "1",
+            Reason = "Password reset race test operation"
         };
 
         // Service executes: pre-check passes (rowVersion==1), but during SaveChangesAsync the UPDATE matches 0 rows due to race
@@ -980,7 +981,8 @@ public sealed class PlatformMySqlIntegrationTests
             new ResetCenterManagerPasswordRequest
             {
                 NewPassword = "FirstNewPassword123!",
-                ExpectedUserRowVersion = "1"
+                ExpectedUserRowVersion = "1",
+                Reason = "First manager password reset"
             },
             "trace-reset-1");
         Assert.True(reset1.IsSuccess, reset1.ErrorMessage);
@@ -999,7 +1001,8 @@ public sealed class PlatformMySqlIntegrationTests
             new ResetCenterManagerPasswordRequest
             {
                 NewPassword = "SecondNewPassword456!",
-                ExpectedUserRowVersion = reset1.Data!.NewUserRowVersion // "2"
+                ExpectedUserRowVersion = reset1.Data!.NewUserRowVersion, // "2"
+                Reason = "Second manager password reset"
             },
             "trace-reset-2");
         Assert.True(reset2.IsSuccess, reset2.ErrorMessage);
@@ -1012,7 +1015,8 @@ public sealed class PlatformMySqlIntegrationTests
             new ResetCenterManagerPasswordRequest
             {
                 NewPassword = "StalePasswordAttempt789!",
-                ExpectedUserRowVersion = "1"
+                ExpectedUserRowVersion = "1",
+                Reason = "Stale attempt 1 password reset"
             },
             "trace-stale-1");
         Assert.False(staleReset1.IsSuccess);
@@ -1025,7 +1029,8 @@ public sealed class PlatformMySqlIntegrationTests
             new ResetCenterManagerPasswordRequest
             {
                 NewPassword = "StalePasswordAttempt789!",
-                ExpectedUserRowVersion = "2"
+                ExpectedUserRowVersion = "2",
+                Reason = "Stale attempt 2 password reset"
             },
             "trace-stale-2");
         Assert.False(staleReset2.IsSuccess);
@@ -1048,10 +1053,36 @@ public sealed class PlatformMySqlIntegrationTests
         var platformAdminUserId = Guid.NewGuid();
         var centerAId = Guid.NewGuid();
         var centerBId = Guid.NewGuid();
+        var managerAlphaId = Guid.NewGuid();
+        var managerBetaId = Guid.NewGuid();
 
         var setupTenant = new TenantContext();
         await using (var setupContext = CreateContext(database.ConnectionString, setupTenant))
         {
+            var centerA = new Center
+            {
+                CenterId = centerAId,
+                CenterCode = "CENTER_ALPHA",
+                CenterName = "Alpha Academy",
+                Status = CenterStatus.Active,
+                Timezone = "Asia/Ho_Chi_Minh",
+                PrimaryManagerUserId = null,
+                RowVersion = 1,
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow
+            };
+            var centerB = new Center
+            {
+                CenterId = centerBId,
+                CenterCode = "CENTER_BETA",
+                CenterName = "Beta Institute",
+                Status = CenterStatus.Active,
+                Timezone = "Asia/Ho_Chi_Minh",
+                PrimaryManagerUserId = null,
+                RowVersion = 1,
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow
+            };
             setupContext.Centers.AddRange(
                 new Center
                 {
@@ -1063,28 +1094,8 @@ public sealed class PlatformMySqlIntegrationTests
                     CreatedAt = FixedUtcNow,
                     UpdatedAt = FixedUtcNow
                 },
-                new Center
-                {
-                    CenterId = centerAId,
-                    CenterCode = "CENTER_ALPHA",
-                    CenterName = "Alpha Academy",
-                    Status = CenterStatus.Active,
-                    Timezone = "Asia/Ho_Chi_Minh",
-                    RowVersion = 1,
-                    CreatedAt = FixedUtcNow,
-                    UpdatedAt = FixedUtcNow
-                },
-                new Center
-                {
-                    CenterId = centerBId,
-                    CenterCode = "CENTER_BETA",
-                    CenterName = "Beta Institute",
-                    Status = CenterStatus.Active,
-                    Timezone = "Asia/Ho_Chi_Minh",
-                    RowVersion = 1,
-                    CreatedAt = FixedUtcNow,
-                    UpdatedAt = FixedUtcNow
-                }
+                centerA,
+                centerB
             );
             setupContext.Users.AddRange(
                 new User
@@ -1102,7 +1113,7 @@ public sealed class PlatformMySqlIntegrationTests
                 },
                 new User
                 {
-                    UserId = Guid.NewGuid(),
+                    UserId = managerAlphaId,
                     CenterId = centerAId,
                     Username = "unique_manager_alpha",
                     DisplayName = "Nguyen Van Manager Alpha",
@@ -1116,7 +1127,7 @@ public sealed class PlatformMySqlIntegrationTests
                 },
                 new User
                 {
-                    UserId = Guid.NewGuid(),
+                    UserId = managerBetaId,
                     CenterId = centerBId,
                     Username = "unique_manager_beta",
                     DisplayName = "Tran Thi Manager Beta",
@@ -1130,6 +1141,12 @@ public sealed class PlatformMySqlIntegrationTests
                 }
             );
             await setupContext.SaveChangesAsync();
+            await setupContext.Database.ExecuteSqlRawAsync(
+                "UPDATE centers SET primary_manager_user_id = {0}, row_version = 1 WHERE center_id = {1};",
+                managerAlphaId, centerAId);
+            await setupContext.Database.ExecuteSqlRawAsync(
+                "UPDATE centers SET primary_manager_user_id = {0}, row_version = 1 WHERE center_id = {1};",
+                managerBetaId, centerBId);
         }
 
         var callerContext = new TenantContext();
@@ -1147,13 +1164,23 @@ public sealed class PlatformMySqlIntegrationTests
         var searchUserRes = await service.ListCentersAsync(1, 20, "unique_manager_alpha", null, "trace-s1");
         Assert.True(searchUserRes.IsSuccess);
         Assert.Single(searchUserRes.Data!.Items);
-        Assert.Equal("CENTER_ALPHA", searchUserRes.Data.Items[0].CenterCode);
+        var itemA = searchUserRes.Data.Items[0];
+        Assert.Equal("CENTER_ALPHA", itemA.CenterCode);
+        Assert.Equal(managerAlphaId, itemA.PrimaryManagerUserId);
+        Assert.Equal("unique_manager_alpha", itemA.PrimaryManagerUsername);
+        Assert.Equal("Nguyen Van Manager Alpha", itemA.PrimaryManagerDisplayName);
+        Assert.Equal("1", itemA.PrimaryManagerUserRowVersion);
 
         // Search by manager display name
         var searchDisplayRes = await service.ListCentersAsync(1, 20, "Tran Thi Manager Beta", null, "trace-s2");
         Assert.True(searchDisplayRes.IsSuccess);
         Assert.Single(searchDisplayRes.Data!.Items);
-        Assert.Equal("CENTER_BETA", searchDisplayRes.Data.Items[0].CenterCode);
+        var itemB = searchDisplayRes.Data.Items[0];
+        Assert.Equal("CENTER_BETA", itemB.CenterCode);
+        Assert.Equal(managerBetaId, itemB.PrimaryManagerUserId);
+        Assert.Equal("unique_manager_beta", itemB.PrimaryManagerUsername);
+        Assert.Equal("Tran Thi Manager Beta", itemB.PrimaryManagerDisplayName);
+        Assert.Equal("1", itemB.PrimaryManagerUserRowVersion);
 
         // Search non-existent
         var searchNoneRes = await service.ListCentersAsync(1, 20, "NonExistentPerson", null, "trace-s3");
@@ -1402,6 +1429,419 @@ public sealed class PlatformMySqlIntegrationTests
         Assert.Contains("malformed state", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    [MySqlIntegrationFact]
+    public async Task ExecuteInCenterLockAsync_ConcurrentOperationsOnSameCenter_AreSerializedViaPessimisticRowLock()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var platformCenterId = AuthorizationBootstrapper.ReservedPlatformCenterId;
+        var platformAdminUserId = Guid.NewGuid();
+        var testCenterId = Guid.NewGuid();
+        var managerId = Guid.NewGuid();
+        var secondManagerId = Guid.NewGuid();
+
+        var setupTenant = new TenantContext();
+        await using (var setupContext = CreateContext(database.ConnectionString, setupTenant))
+        {
+            var testCenter = new Center
+            {
+                CenterId = testCenterId,
+                CenterCode = "LOCK_TEST",
+                CenterName = "Lock Test Center",
+                Status = CenterStatus.Active,
+                Timezone = "Asia/Ho_Chi_Minh",
+                PrimaryManagerUserId = null,
+                RowVersion = 1,
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow
+            };
+            setupContext.Centers.AddRange(
+                new Center
+                {
+                    CenterId = platformCenterId,
+                    CenterCode = "PLATFORM",
+                    CenterName = "Root Tenant",
+                    Status = CenterStatus.Active,
+                    Timezone = "Asia/Ho_Chi_Minh",
+                    CreatedAt = FixedUtcNow,
+                    UpdatedAt = FixedUtcNow
+                },
+                testCenter
+            );
+            setupContext.Users.AddRange(
+                new User
+                {
+                    UserId = platformAdminUserId,
+                    CenterId = platformCenterId,
+                    Username = "root.admin",
+                    DisplayName = "Root Admin",
+                    PasswordHash = "hash",
+                    RoleName = UserRole.PlatformAdmin,
+                    Status = UserStatus.Active,
+                    AuthVersion = 1,
+                    CreatedAt = FixedUtcNow,
+                    UpdatedAt = FixedUtcNow
+                },
+                new User
+                {
+                    UserId = managerId,
+                    CenterId = testCenterId,
+                    Username = "lock_mgr_1",
+                    DisplayName = "Lock Manager 1",
+                    PasswordHash = "hash",
+                    RoleName = UserRole.CenterManager,
+                    Status = UserStatus.Active,
+                    AuthVersion = 1,
+                    RowVersion = 1,
+                    CreatedAt = FixedUtcNow,
+                    UpdatedAt = FixedUtcNow
+                },
+                new User
+                {
+                    UserId = secondManagerId,
+                    CenterId = testCenterId,
+                    Username = "lock_mgr_2",
+                    DisplayName = "Lock Manager 2",
+                    PasswordHash = "hash",
+                    RoleName = UserRole.CenterManager,
+                    Status = UserStatus.Active,
+                    AuthVersion = 1,
+                    RowVersion = 1,
+                    CreatedAt = FixedUtcNow,
+                    UpdatedAt = FixedUtcNow
+                }
+            );
+            await setupContext.SaveChangesAsync();
+            await setupContext.Database.ExecuteSqlRawAsync(
+                "UPDATE centers SET primary_manager_user_id = {0}, row_version = 1 WHERE center_id = {1};",
+                managerId, testCenterId);
+        }
+
+        var callerContext1 = new TenantContext();
+        callerContext1.Initialize(platformCenterId, platformAdminUserId, nameof(UserRole.PlatformAdmin), 1);
+        await using var context1 = CreateContext(database.ConnectionString, callerContext1);
+        var service1 = new PlatformCenterService(
+            context1,
+            callerContext1,
+            new PasswordHasher<User>(),
+            new AuthorizationBootstrapper(context1, _mockTimeProvider.Object),
+            _mockTimeProvider.Object);
+
+        var callerContext2 = new TenantContext();
+        callerContext2.Initialize(platformCenterId, platformAdminUserId, nameof(UserRole.PlatformAdmin), 1);
+        await using var context2 = CreateContext(database.ConnectionString, callerContext2);
+        var service2 = new PlatformCenterService(
+            context2,
+            callerContext2,
+            new PasswordHasher<User>(),
+            new AuthorizationBootstrapper(context2, _mockTimeProvider.Object),
+            _mockTimeProvider.Object);
+
+        var callerContext3 = new TenantContext();
+        callerContext3.Initialize(platformCenterId, platformAdminUserId, nameof(UserRole.PlatformAdmin), 1);
+        await using var context3 = CreateContext(database.ConnectionString, callerContext3);
+        var service3 = new PlatformCenterService(
+            context3,
+            callerContext3,
+            new PasswordHasher<User>(),
+            new AuthorizationBootstrapper(context3, _mockTimeProvider.Object),
+            _mockTimeProvider.Object);
+
+        // Three distinct operations target the same center concurrently, all requiring expected row version "1":
+        // 1. Status mutation (Suspend center)
+        var req1 = new UpdatePlatformCenterStatusRequest
+        {
+            Status = CenterStatus.Suspended.ToString(),
+            RowVersion = "1",
+            Reason = "Operation A: Suspend center for concurrency testing"
+        };
+        // 2. Metadata mutation (Rename center)
+        var req2 = new UpdateCenterMetadataRequest
+        {
+            CenterName = "Concurrent Mutated Name",
+            Timezone = "Asia/Ho_Chi_Minh",
+            ExpectedRowVersion = "1",
+            Reason = "Operation B: Rename center concurrently"
+        };
+        // 3. Manager lifecycle mutation (Promote second manager to primary)
+        var req3 = new MakePrimaryCenterManagerRequest
+        {
+            ExpectedCenterRowVersion = "1",
+            ExpectedPreviousPrimaryUserRowVersion = "1",
+            ExpectedManagerUserRowVersion = "1",
+            DisablePreviousPrimary = false,
+            Reason = "Operation C: Promote secondary manager concurrently"
+        };
+
+        // Execute all three mutations concurrently
+        var task1 = service1.UpdateCenterStatusAsync(testCenterId, req1, "trace-conc-1");
+        var task2 = service2.UpdateCenterMetadataAsync(testCenterId, req2, "trace-conc-2");
+        var task3 = service3.MakePrimaryCenterManagerAsync(testCenterId, secondManagerId, req3, "trace-conc-3");
+
+        await Task.WhenAll(task1, task2, task3);
+        var res1 = await task1;
+        var res2 = await task2;
+        var res3 = await task3;
+
+        // Pessimistic row locking ensures all three operations serialize across the relational wire.
+        // The first operation acquires lock, increments rowVersion from 1 to 2, and commits.
+        // The remaining two operations wait for the lock, reload the center within transaction, detect rowVersion mismatch, and fail with ConcurrencyConflict!
+        var successCount = (res1.IsSuccess ? 1 : 0) + (res2.IsSuccess ? 1 : 0) + (res3.IsSuccess ? 1 : 0);
+        var conflictCount = ((!res1.IsSuccess && res1.ErrorCode == ErrorCodes.ConcurrencyConflict) ? 1 : 0) +
+                            ((!res2.IsSuccess && res2.ErrorCode == ErrorCodes.ConcurrencyConflict) ? 1 : 0) +
+                            ((!res3.IsSuccess && res3.ErrorCode == ErrorCodes.ConcurrencyConflict) ? 1 : 0);
+
+        Assert.Equal(1, successCount);
+        Assert.Equal(2, conflictCount);
+
+        // Verify live database integrity: row version is exactly 2
+        await using var verifyContext = CreateContext(database.ConnectionString, setupTenant);
+        var centerInDb = await verifyContext.Centers.IgnoreQueryFilters().SingleAsync(c => c.CenterId == testCenterId);
+        Assert.Equal(2ul, centerInDb.RowVersion);
+    }
+
+    [MySqlIntegrationFact]
+    public async Task PlatformCenter_CanonicalPrimaryManagerFields_AreCorrectlyPopulatedAndTransferred()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var platformCenterId = AuthorizationBootstrapper.ReservedPlatformCenterId;
+        var platformAdminUserId = Guid.NewGuid();
+        var testCenterId = Guid.NewGuid();
+        var primaryManagerId = Guid.NewGuid();
+        var secondManagerId = Guid.NewGuid();
+
+        var setupTenant = new TenantContext();
+        await using (var setupContext = CreateContext(database.ConnectionString, setupTenant))
+        {
+            var testCenter = new Center
+            {
+                CenterId = testCenterId,
+                CenterCode = "CANONICAL_CTR",
+                CenterName = "Canonical Center",
+                Status = CenterStatus.Active,
+                Timezone = "Asia/Ho_Chi_Minh",
+                PrimaryManagerUserId = null,
+                RowVersion = 1,
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow
+            };
+            setupContext.Centers.AddRange(
+                new Center
+                {
+                    CenterId = platformCenterId,
+                    CenterCode = "PLATFORM",
+                    CenterName = "Root Tenant",
+                    Status = CenterStatus.Active,
+                    Timezone = "Asia/Ho_Chi_Minh",
+                    CreatedAt = FixedUtcNow,
+                    UpdatedAt = FixedUtcNow
+                },
+                testCenter
+            );
+            setupContext.Users.AddRange(
+                new User
+                {
+                    UserId = platformAdminUserId,
+                    CenterId = platformCenterId,
+                    Username = "root.admin",
+                    DisplayName = "Root Admin",
+                    PasswordHash = "hash",
+                    RoleName = UserRole.PlatformAdmin,
+                    Status = UserStatus.Active,
+                    AuthVersion = 1,
+                    CreatedAt = FixedUtcNow,
+                    UpdatedAt = FixedUtcNow
+                },
+                new User
+                {
+                    UserId = primaryManagerId,
+                    CenterId = testCenterId,
+                    Username = "primary_mgr_orig",
+                    DisplayName = "Primary Manager Original",
+                    PasswordHash = "hash",
+                    RoleName = UserRole.CenterManager,
+                    Status = UserStatus.Active,
+                    AuthVersion = 1,
+                    RowVersion = 1,
+                    CreatedAt = FixedUtcNow,
+                    UpdatedAt = FixedUtcNow
+                },
+                new User
+                {
+                    UserId = secondManagerId,
+                    CenterId = testCenterId,
+                    Username = "second_mgr_successor",
+                    DisplayName = "Second Manager Successor",
+                    PasswordHash = "hash",
+                    RoleName = UserRole.CenterManager,
+                    Status = UserStatus.Active,
+                    AuthVersion = 1,
+                    RowVersion = 1,
+                    CreatedAt = FixedUtcNow,
+                    UpdatedAt = FixedUtcNow
+                }
+            );
+            await setupContext.SaveChangesAsync();
+            await setupContext.Database.ExecuteSqlRawAsync(
+                "UPDATE centers SET primary_manager_user_id = {0}, row_version = 1 WHERE center_id = {1};",
+                primaryManagerId, testCenterId);
+        }
+
+        var callerContext = new TenantContext();
+        callerContext.Initialize(platformCenterId, platformAdminUserId, nameof(UserRole.PlatformAdmin), 1);
+        await using var context = CreateContext(database.ConnectionString, callerContext);
+        var service = new PlatformCenterService(
+            context,
+            callerContext,
+            new PasswordHasher<User>(),
+            new AuthorizationBootstrapper(context, _mockTimeProvider.Object),
+            _mockTimeProvider.Object);
+
+        // 1. Query center and assert canonical PrimaryManager* fields
+        var listRes = await service.ListCentersAsync(1, 20, "CANONICAL_CTR", null, "trace-canon-1");
+        Assert.True(listRes.IsSuccess);
+        Assert.Single(listRes.Data!.Items);
+        var item1 = listRes.Data.Items[0];
+        Assert.Equal(primaryManagerId, item1.PrimaryManagerUserId);
+        Assert.Equal("primary_mgr_orig", item1.PrimaryManagerUsername);
+        Assert.Equal("Primary Manager Original", item1.PrimaryManagerDisplayName);
+        Assert.Equal("1", item1.PrimaryManagerUserRowVersion);
+
+        // 2. Transfer primary role to successor
+        var transferReq = new MakePrimaryCenterManagerRequest
+        {
+            ExpectedCenterRowVersion = "1",
+            ExpectedPreviousPrimaryUserRowVersion = "1",
+            ExpectedManagerUserRowVersion = "1",
+            DisablePreviousPrimary = false,
+            Reason = "Transferring primary leadership to successor"
+        };
+        var transferRes = await service.MakePrimaryCenterManagerAsync(testCenterId, secondManagerId, transferReq, "trace-transfer");
+        Assert.True(transferRes.IsSuccess);
+        Assert.Equal(secondManagerId, transferRes.Data!.PrimaryManagerUserId);
+
+        // 3. Query again and assert canonical PrimaryManager* fields now reflect the new primary manager
+        var listRes2 = await service.ListCentersAsync(1, 20, "CANONICAL_CTR", null, "trace-canon-2");
+        Assert.True(listRes2.IsSuccess);
+        Assert.Single(listRes2.Data!.Items);
+        var item2 = listRes2.Data.Items[0];
+        Assert.Equal(secondManagerId, item2.PrimaryManagerUserId);
+        Assert.Equal("second_mgr_successor", item2.PrimaryManagerUsername);
+        Assert.Equal("Second Manager Successor", item2.PrimaryManagerDisplayName);
+        Assert.Equal("1", item2.PrimaryManagerUserRowVersion);
+    }
+
+    [MySqlIntegrationFact]
+    public async Task Migration_EnforceActiveCenterPrimaryManagerDataIntegrity_SucceedsOnFreshDatabase()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var tenant = new TenantContext();
+        await using var context = CreateContext(database.ConnectionString, tenant);
+
+        // Verify that the database successfully applied all migrations up to the latest
+        var appliedMigrations = await context.Database.GetAppliedMigrationsAsync();
+        Assert.Contains(
+            appliedMigrations,
+            m => m.Contains("EnforceActiveCenterPrimaryManagerDataIntegrity"));
+    }
+
+    [MySqlIntegrationFact]
+    public async Task Migration_AddPrimaryManagerToCenters_FailsBeforeDDL_WhenActiveCenterLacksActiveManager()
+    {
+        const string baselineMigration = "20260913095744_ExpandGate5StorageFailureStateConstraints";
+        await using var database = await MySqlTestDatabase.CreateToMigrationAsync(baselineMigration);
+        var tenant = new TenantContext();
+        var centerId = Guid.NewGuid();
+
+        // 1. Seed an Active center without any manager
+        await using (var seedContext = CreateContext(database.ConnectionString, tenant))
+        {
+            await seedContext.Database.OpenConnectionAsync();
+            try
+            {
+                await seedContext.Database.ExecuteSqlRawAsync("SET FOREIGN_KEY_CHECKS = 0;");
+                await seedContext.Database.ExecuteSqlRawAsync(
+                    @"INSERT INTO centers (center_id, center_code, center_name, status, timezone, is_deleted, created_at, updated_at, row_version)
+                      VALUES ({0}, 'ACTIVE_NO_MGR', 'Active No Manager Center', 'Active', 'UTC', 0, NOW(), NOW(), 1);",
+                    centerId);
+            }
+            finally
+            {
+                await seedContext.Database.ExecuteSqlRawAsync("SET FOREIGN_KEY_CHECKS = 1;");
+            }
+        }
+
+        // 2. Attempt forward migration to 20260913161857_AddPrimaryManagerToCenters -> MUST FAIL
+        await using (var migrationContext = CreateContext(database.ConnectionString, tenant))
+        {
+            var migrator = migrationContext.Database.GetService<IMigrator>()!;
+            var ex = await Assert.ThrowsAnyAsync<Exception>(() => migrator.MigrateAsync("20260913161857_AddPrimaryManagerToCenters"));
+            Assert.Contains("chk_preflight_active_center_must_have_manager", ex.ToString(), StringComparison.OrdinalIgnoreCase);
+        }
+
+        // 3. Verify fail-closed DDL state: column primary_manager_user_id was NOT added to centers table
+        await using (var verifyContext = CreateContext(database.ConnectionString, tenant))
+        {
+            var columnCount = await verifyContext.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS Value FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'centers' AND column_name = 'primary_manager_user_id'")
+                .SingleAsync();
+            Assert.Equal(0, columnCount);
+
+            // Verify temporary table __preflight_check does not remain as a permanent table
+            var tempTableCount = await verifyContext.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS Value FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = '__preflight_check'")
+                .SingleAsync();
+            Assert.Equal(0, tempTableCount);
+        }
+    }
+
+    [MySqlIntegrationFact]
+    public async Task Migration_EnforceActiveCenterPrimaryManagerDataIntegrity_Fails_WhenActiveCenterHasNullOrInvalidPrimaryManager()
+    {
+        const string baselineMigration = "20260913165812_AddPlatformAccountManageOwnPermission";
+        await using var database = await MySqlTestDatabase.CreateToMigrationAsync(baselineMigration);
+        var tenant = new TenantContext();
+        var centerId = Guid.NewGuid();
+
+        // 1. Seed an Active center with NULL primary_manager_user_id (simulating legacy bad data)
+        await using (var seedContext = CreateContext(database.ConnectionString, tenant))
+        {
+            await seedContext.Database.OpenConnectionAsync();
+            try
+            {
+                await seedContext.Database.ExecuteSqlRawAsync("SET FOREIGN_KEY_CHECKS = 0;");
+                await seedContext.Database.ExecuteSqlRawAsync(
+                    @"INSERT INTO centers (center_id, center_code, center_name, status, timezone, primary_manager_user_id, is_deleted, created_at, updated_at, row_version)
+                      VALUES ({0}, 'ACTIVE_NULL_PM', 'Active Center With Null PM', 'Active', 'UTC', NULL, 0, NOW(), NOW(), 1);",
+                    centerId);
+            }
+            finally
+            {
+                await seedContext.Database.ExecuteSqlRawAsync("SET FOREIGN_KEY_CHECKS = 1;");
+            }
+        }
+
+        // 2. Attempt corrective migration to 20260914100000_EnforceActiveCenterPrimaryManagerDataIntegrity -> MUST FAIL
+        await using (var migrationContext = CreateContext(database.ConnectionString, tenant))
+        {
+            var migrator = migrationContext.Database.GetService<IMigrator>()!;
+            var ex = await Assert.ThrowsAnyAsync<Exception>(() => migrator.MigrateAsync("20260914100000_EnforceActiveCenterPrimaryManagerDataIntegrity"));
+            Assert.Contains("chk_active_center_must_have_valid_primary_manager", ex.ToString(), StringComparison.OrdinalIgnoreCase);
+        }
+
+        // 3. Verify migration was NOT marked as applied
+        await using (var verifyContext = CreateContext(database.ConnectionString, tenant))
+        {
+            var applied = await verifyContext.Database.GetAppliedMigrationsAsync();
+            Assert.DoesNotContain(applied, m => m.Contains("EnforceActiveCenterPrimaryManagerDataIntegrity"));
+
+            // Verify temporary table __active_center_integrity_check does not remain
+            var tempTableCount = await verifyContext.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS Value FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = '__active_center_integrity_check'")
+                .SingleAsync();
+            Assert.Equal(0, tempTableCount);
+        }
+    }
+
     private static EduTwinDbContext CreateContext(
         string connectionString,
         ITenantIdAccessor tenant,
@@ -1486,7 +1926,9 @@ public sealed class PlatformMySqlIntegrationTests
 
         public string ConnectionString { get; }
 
-        public static async Task<MySqlTestDatabase> CreateAsync()
+        public static Task<MySqlTestDatabase> CreateAsync() => CreateToMigrationAsync(null);
+
+        public static async Task<MySqlTestDatabase> CreateToMigrationAsync(string? targetMigration)
         {
             var configuredConnection = Environment.GetEnvironmentVariable(AdminConnectionVariable)
                 ?? throw new InvalidOperationException($"{AdminConnectionVariable} is required.");
@@ -1517,7 +1959,17 @@ public sealed class PlatformMySqlIntegrationTests
             {
                 var tenant = new TenantContext();
                 await using var context = CreateContext(database.ConnectionString, tenant);
-                await context.Database.MigrateAsync();
+                var migrator = context.Database.GetService<IMigrator>()
+                    ?? throw new InvalidOperationException("IMigrator service is not available.");
+
+                if (string.IsNullOrWhiteSpace(targetMigration))
+                {
+                    await migrator.MigrateAsync();
+                }
+                else
+                {
+                    await migrator.MigrateAsync(targetMigration);
+                }
                 return database;
             }
             catch

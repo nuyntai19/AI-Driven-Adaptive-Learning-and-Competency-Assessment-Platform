@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Globalization;
 using System.Linq;
 using System.Linq.Expressions;
@@ -9,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.BLL.Seeding;
 using EduTwin.Contracts.Common;
@@ -58,6 +60,109 @@ public class PlatformCenterService : IPlatformCenterService
 
         callerUserId = _tenantContext.UserId.Value;
         return true;
+    }
+
+    private void RecordPlatformAudit(
+        Guid targetCenterId,
+        Guid actorUserId,
+        string targetType,
+        string targetId,
+        string actionType,
+        object? beforeData,
+        object? afterData,
+        string sanitizedReason,
+        string traceId,
+        DateTime now)
+    {
+        var auditLog = new AuthorizationAuditLog
+        {
+            CenterId = AuthorizationBootstrapper.ReservedPlatformCenterId,
+            TargetCenterId = targetCenterId,
+            ActorUserId = actorUserId,
+            TargetUserId = null, // Invariant: Cross-tenant operations MUST record target_user_id as null
+            TargetType = targetType,
+            TargetId = targetId,
+            ActionType = actionType,
+            BeforeData = beforeData is null ? null : JsonSerializer.Serialize(beforeData),
+            AfterData = afterData is null ? null : JsonSerializer.Serialize(afterData),
+            Reason = sanitizedReason,
+            TraceId = string.IsNullOrWhiteSpace(traceId) ? Guid.NewGuid().ToString("N") : traceId,
+            CreatedAt = now,
+            CreatedBy = actorUserId
+        };
+        _dbContext.AuthorizationAuditLogs.Add(auditLog);
+    }
+
+    private async Task<PlatformResult<T>> ExecuteInCenterLockAsync<T>(
+        Guid centerId,
+        Func<Center, IDbContextTransaction?, CancellationToken, Task<PlatformResult<T>>> operation,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = _dbContext.Database.CurrentTransaction is null && _dbContext.Database.IsRelational()
+            ? await _dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+
+        if (_dbContext.Database.IsRelational())
+        {
+            // Materialize SELECT ... FOR UPDATE query across the wire to acquire pessimistic row lock
+            await _dbContext.Database.SqlQueryRaw<Guid>(
+                "SELECT center_id FROM centers WHERE center_id = {0} FOR UPDATE;", centerId)
+                .ToListAsync(cancellationToken);
+        }
+
+        // Reload center within transaction after acquiring lock
+        var center = await _dbContext.Centers
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(c => c.CenterId == centerId && !c.IsDeleted, cancellationToken);
+
+        if (center is null)
+        {
+            if (transaction is not null)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+            }
+            return PlatformResult<T>.Failure(
+                ErrorCodes.ResourceNotFound, $"Không tìm thấy trung tâm với ID '{centerId}'.");
+        }
+
+        try
+        {
+            var result = await operation(center, transaction, cancellationToken);
+            if (!result.IsSuccess)
+            {
+                if (transaction is not null)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                }
+                return result;
+            }
+
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            if (transaction is not null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+            }
+
+            return result;
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (transaction is not null)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+            }
+            return PlatformResult<T>.Failure(
+                ErrorCodes.ConcurrencyConflict, "Dữ liệu trung tâm đã bị thay đổi bởi thao tác khác. Vui lòng tải lại.");
+        }
+        catch (Exception)
+        {
+            if (transaction is not null)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+            }
+            throw;
+        }
     }
 
     public async Task<PlatformResult<PlatformCentersListData>> ListCentersAsync(
@@ -288,10 +393,16 @@ public class PlatformCenterService : IPlatformCenterService
 
         var centerCode = request.CenterCode?.Trim().ToUpperInvariant() ?? string.Empty;
         var centerName = request.CenterName?.Trim() ?? string.Empty;
-        var timezone = string.IsNullOrWhiteSpace(request.Timezone) ? "Asia/Ho_Chi_Minh" : request.Timezone.Trim();
+        var rawTimezone = string.IsNullOrWhiteSpace(request.Timezone) ? "Asia/Ho_Chi_Minh" : request.Timezone.Trim();
         var managerUsername = request.InitialManagerUsername?.Trim() ?? string.Empty;
         var managerDisplayName = request.InitialManagerDisplayName?.Trim() ?? string.Empty;
         var managerPassword = request.InitialManagerPassword ?? string.Empty;
+
+        if (!PlatformTimezoneValidator.IsValid(rawTimezone, out var timezone))
+        {
+            return PlatformResult<PlatformCenterListItemDto>.Failure(
+                ErrorCodes.ValidationFailed, "Múi giờ không hợp lệ. Vui lòng chọn múi giờ chuẩn IANA (ví dụ: Asia/Ho_Chi_Minh, UTC).");
+        }
 
         if (string.IsNullOrWhiteSpace(centerCode) || centerCode.Length > 32 ||
             !Regex.IsMatch(centerCode, "^[A-Z0-9_-]+$") ||
@@ -356,17 +467,14 @@ public class PlatformCenterService : IPlatformCenterService
 
         managerUser.PasswordHash = _passwordHasher.HashPassword(managerUser, managerPassword);
 
-        var auditLog = new AuthorizationAuditLog
-        {
-            CenterId = AuthorizationBootstrapper.ReservedPlatformCenterId,
-            TargetCenterId = centerId,
-            ActorUserId = callerUserId,
-            TargetUserId = null, // Invariant: Cross-tenant operations MUST record target_user_id as null
-            TargetType = "Center",
-            TargetId = centerId.ToString("D"),
-            ActionType = "CenterCreated",
-            BeforeData = null,
-            AfterData = JsonSerializer.Serialize(new
+        RecordPlatformAudit(
+            centerId,
+            callerUserId,
+            "Center",
+            centerId.ToString("D"),
+            "CenterCreated",
+            null,
+            new
             {
                 CenterId = centerId,
                 CenterCode = centerCode,
@@ -375,12 +483,10 @@ public class PlatformCenterService : IPlatformCenterService
                 InitialManagerUserId = managerUserId,
                 InitialManagerUsername = managerUsername,
                 PrimaryManagerUserId = managerUserId
-            }),
-            Reason = "Platform center provisioned.",
-            TraceId = string.IsNullOrWhiteSpace(traceId) ? Guid.NewGuid().ToString("N") : traceId,
-            CreatedAt = now,
-            CreatedBy = callerUserId
-        };
+            },
+            "Platform center provisioned.",
+            traceId,
+            now);
 
         await using var transaction = _dbContext.Database.IsRelational()
             ? await _dbContext.Database.BeginTransactionAsync(cancellationToken)
@@ -388,7 +494,6 @@ public class PlatformCenterService : IPlatformCenterService
 
         _dbContext.Centers.Add(center);
         _dbContext.Users.Add(managerUser);
-        _dbContext.AuthorizationAuditLogs.Add(auditLog);
 
         try
         {
@@ -478,171 +583,142 @@ public class PlatformCenterService : IPlatformCenterService
                 ErrorCodes.ValidationFailed, "Dữ liệu cập nhật trạng thái trung tâm không hợp lệ.");
         }
 
-        var center = await _dbContext.Centers
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(c => c.CenterId == centerId && !c.IsDeleted, cancellationToken);
-
-        if (center is null)
+        return await ExecuteInCenterLockAsync(centerId, async (center, transaction, ct) =>
         {
-            return PlatformResult<PlatformCenterListItemDto>.Failure(
-                ErrorCodes.ResourceNotFound, $"Không tìm thấy trung tâm với ID '{centerId}'.");
-        }
-
-        if (center.RowVersion != expectedVersion)
-        {
-            return PlatformResult<PlatformCenterListItemDto>.Failure(
-                ErrorCodes.ConcurrencyConflict, "Dữ liệu trung tâm đã bị thay đổi bởi thao tác khác.");
-        }
-
-        if (newStatus != center.Status)
-        {
-            if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length < 5)
+            if (center.RowVersion != expectedVersion)
             {
                 return PlatformResult<PlatformCenterListItemDto>.Failure(
-                    ErrorCodes.ValidationFailed, "Lý do thay đổi trạng thái trung tâm là bắt buộc (từ 5 đến 500 ký tự).");
+                    ErrorCodes.ConcurrencyConflict, "Dữ liệu trung tâm đã bị thay đổi bởi thao tác khác.");
             }
 
-            if (request.Reason.Trim().Length > 500)
+            var oldStatus = center.Status.ToString();
+            if (newStatus == center.Status)
             {
                 return PlatformResult<PlatformCenterListItemDto>.Failure(
-                    ErrorCodes.ValidationFailed, "Lý do thay đổi trạng thái trung tâm không được vượt quá 500 ký tự.");
-            }
-        }
-
-        if (newStatus == CenterStatus.Active)
-        {
-            if (!center.PrimaryManagerUserId.HasValue)
-            {
-                return PlatformResult<PlatformCenterListItemDto>.Failure(
-                    ErrorCodes.ValidationFailed, "Trung tâm không thể kích hoạt do chưa có Quản lý chính (Primary Manager).");
+                    ErrorCodes.ValidationFailed, $"Trung tâm đã ở trạng thái {newStatus}.");
             }
 
-            var primaryManager = await _dbContext.Users
-                .IgnoreQueryFilters()
-                .FirstOrDefaultAsync(u => u.CenterId == centerId && u.UserId == center.PrimaryManagerUserId.Value && !u.IsDeleted, cancellationToken);
-
-            if (primaryManager is null || primaryManager.RoleName != UserRole.CenterManager || primaryManager.Status != UserStatus.Active)
+            string sanitizedReason = "Platform center status updated.";
+            if (newStatus != center.Status)
             {
-                return PlatformResult<PlatformCenterListItemDto>.Failure(
-                    ErrorCodes.ValidationFailed, "Trung tâm không thể kích hoạt do Quản lý chính không ở trạng thái hoạt động (Active).");
-            }
-        }
-
-        var now = _timeProvider.GetUtcNow().UtcDateTime;
-        var oldStatus = center.Status.ToString();
-        center.Status = newStatus;
-        center.UpdatedAt = now;
-        center.RowVersion++;
-
-        var affectedUserCount = 0;
-        var revokedTokenCount = 0;
-
-        if (newStatus == CenterStatus.Suspended && oldStatus != CenterStatus.Suspended.ToString())
-        {
-            var centerUsers = await _dbContext.Users
-                .IgnoreQueryFilters()
-                .Where(u => u.CenterId == centerId && !u.IsDeleted)
-                .ToListAsync(cancellationToken);
-            affectedUserCount = centerUsers.Count;
-            foreach (var u in centerUsers)
-            {
-                u.AuthVersion++;
-                u.UpdatedAt = now;
-                u.UpdatedBy = callerUserId;
+                if (string.IsNullOrWhiteSpace(request.Reason) || !PlatformAuditSanitizer.ValidateAndSanitizeReason(request.Reason, out sanitizedReason, out var reasonError, minLength: 5))
+                {
+                    return PlatformResult<PlatformCenterListItemDto>.Failure(
+                        ErrorCodes.ValidationFailed, "Lý do thay đổi trạng thái trung tâm là bắt buộc (từ 5 đến 500 ký tự).");
+                }
             }
 
-            var activeTokens = await _dbContext.RefreshTokens
-                .IgnoreQueryFilters()
-                .Where(rt => rt.CenterId == centerId && rt.RevokedAt == null)
-                .ToListAsync(cancellationToken);
-            revokedTokenCount = activeTokens.Count;
-            foreach (var rt in activeTokens)
+            if (newStatus == CenterStatus.Active)
             {
-                rt.RevokedAt = now;
-                rt.RevokeReason = "Center suspended by platform administrator.";
+                if (!center.PrimaryManagerUserId.HasValue)
+                {
+                    return PlatformResult<PlatformCenterListItemDto>.Failure(
+                        ErrorCodes.ValidationFailed, "Trung tâm không thể kích hoạt do chưa có Quản lý chính (Primary Manager).");
+                }
+
+                var primaryManager = await _dbContext.Users
+                    .IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(u => u.CenterId == centerId && u.UserId == center.PrimaryManagerUserId.Value && !u.IsDeleted, ct);
+
+                if (primaryManager is null || primaryManager.RoleName != UserRole.CenterManager || primaryManager.Status != UserStatus.Active)
+                {
+                    return PlatformResult<PlatformCenterListItemDto>.Failure(
+                        ErrorCodes.ValidationFailed, "Trung tâm không thể kích hoạt do Quản lý chính không ở trạng thái hoạt động (Active).");
+                }
             }
-        }
 
-        object afterDataPayload = newStatus == CenterStatus.Suspended
-            ? new { Status = newStatus.ToString(), AffectedUserCount = affectedUserCount, RevokedTokenCount = revokedTokenCount }
-            : new { Status = newStatus.ToString(), Reactivated = true };
+            var now = _timeProvider.GetUtcNow().UtcDateTime;
+            center.Status = newStatus;
+            center.UpdatedAt = now;
+            center.RowVersion++;
 
-        var auditLog = new AuthorizationAuditLog
-        {
-            CenterId = AuthorizationBootstrapper.ReservedPlatformCenterId,
-            TargetCenterId = center.CenterId,
-            ActorUserId = callerUserId,
-            TargetUserId = null, // Invariant: Cross-tenant operations MUST record target_user_id as null
-            TargetType = "Center",
-            TargetId = center.CenterId.ToString("D"),
-            ActionType = "CenterStatusUpdated",
-            BeforeData = JsonSerializer.Serialize(new { Status = oldStatus }),
-            AfterData = JsonSerializer.Serialize(afterDataPayload),
-            Reason = string.IsNullOrWhiteSpace(request.Reason) ? "Platform center status updated." : request.Reason.Trim(),
-            TraceId = string.IsNullOrWhiteSpace(traceId) ? Guid.NewGuid().ToString("N") : traceId,
-            CreatedAt = now,
-            CreatedBy = callerUserId
-        };
+            var affectedUserCount = 0;
+            var revokedTokenCount = 0;
 
-        await using var transaction = _dbContext.Database.IsRelational()
-            ? await _dbContext.Database.BeginTransactionAsync(cancellationToken)
-            : null;
-
-        _dbContext.AuthorizationAuditLogs.Add(auditLog);
-
-        try
-        {
-            await _dbContext.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            return PlatformResult<PlatformCenterListItemDto>.Failure(
-                ErrorCodes.ConcurrencyConflict, "Dữ liệu trung tâm đã bị thay đổi bởi thao tác khác.");
-        }
-
-        if (transaction is not null)
-        {
-            await transaction.CommitAsync(cancellationToken);
-        }
-
-        var manager = await _dbContext.Users
-            .IgnoreQueryFilters()
-            .Where(u => u.CenterId == centerId && u.RoleName == UserRole.CenterManager && !u.IsDeleted)
-            .OrderBy(u => u.CreatedAt)
-            .Select(u => new
+            if (newStatus == CenterStatus.Suspended && oldStatus != CenterStatus.Suspended.ToString())
             {
-                u.UserId,
-                u.Username,
-                u.DisplayName,
-                u.RowVersion
-            })
-            .FirstOrDefaultAsync(cancellationToken);
+                var centerUsers = await _dbContext.Users
+                    .IgnoreQueryFilters()
+                    .Where(u => u.CenterId == centerId && !u.IsDeleted)
+                    .ToListAsync(ct);
+                affectedUserCount = centerUsers.Count;
+                foreach (var u in centerUsers)
+                {
+                    u.AuthVersion++;
+                    u.UpdatedAt = now;
+                    u.UpdatedBy = callerUserId;
+                }
 
-        var aggregates = await GetSafeAggregatesForCenterAsync(center.CenterId, center.PrimaryManagerUserId, cancellationToken);
+                var activeTokens = await _dbContext.RefreshTokens
+                    .IgnoreQueryFilters()
+                    .Where(rt => rt.CenterId == centerId && rt.RevokedAt == null)
+                    .ToListAsync(ct);
+                revokedTokenCount = activeTokens.Count;
+                foreach (var rt in activeTokens)
+                {
+                    rt.RevokedAt = now;
+                    rt.RevokeReason = "Center suspended by platform administrator.";
+                }
+            }
 
-        return PlatformResult<PlatformCenterListItemDto>.Success(new PlatformCenterListItemDto
-        {
-            CenterId = center.CenterId,
-            CenterCode = center.CenterCode,
-            CenterName = center.CenterName,
-            Status = center.Status.ToString(),
-            Timezone = center.Timezone,
-            CreatedAt = center.CreatedAt,
-            RowVersion = center.RowVersion.ToString(CultureInfo.InvariantCulture),
-            PrimaryManagerUserId = manager?.UserId,
-            PrimaryManagerUsername = manager?.Username,
-            PrimaryManagerDisplayName = manager?.DisplayName,
-            PrimaryManagerUserRowVersion = manager?.RowVersion.ToString(CultureInfo.InvariantCulture),
-            InitialManagerUserId = manager?.UserId,
-            InitialManagerUsername = manager?.Username,
-            InitialManagerDisplayName = manager?.DisplayName,
-            InitialManagerUserRowVersion = manager?.RowVersion.ToString(CultureInfo.InvariantCulture),
-            ActiveStudentCount = aggregates.StudentCount,
-            ActiveTeacherCount = aggregates.TeacherCount,
-            ClassCount = aggregates.ClassCount,
-            ActiveManagerCount = aggregates.ManagerCount,
-            HasActivePrimaryManager = aggregates.HasActivePrimary
-        });
+            object afterDataPayload = newStatus == CenterStatus.Suspended
+                ? new { Status = newStatus.ToString(), AffectedUserCount = affectedUserCount, RevokedTokenCount = revokedTokenCount }
+                : new { Status = newStatus.ToString(), Reactivated = true };
+
+            RecordPlatformAudit(
+                center.CenterId,
+                callerUserId,
+                "Center",
+                center.CenterId.ToString("D"),
+                "CenterStatusUpdated",
+                new { Status = oldStatus },
+                afterDataPayload,
+                sanitizedReason,
+                traceId,
+                now);
+
+            // Canonical query: Find current primary manager by center.PrimaryManagerUserId
+            var primaryId = center.PrimaryManagerUserId;
+            var manager = primaryId.HasValue
+                ? await _dbContext.Users
+                    .IgnoreQueryFilters()
+                    .Where(u => u.CenterId == centerId && u.UserId == primaryId.Value && !u.IsDeleted)
+                    .Select(u => new
+                    {
+                        u.UserId,
+                        u.Username,
+                        u.DisplayName,
+                        u.RowVersion
+                    })
+                    .FirstOrDefaultAsync(ct)
+                : null;
+
+            var aggregates = await GetSafeAggregatesForCenterAsync(center.CenterId, center.PrimaryManagerUserId, ct);
+
+            return PlatformResult<PlatformCenterListItemDto>.Success(new PlatformCenterListItemDto
+            {
+                CenterId = center.CenterId,
+                CenterCode = center.CenterCode,
+                CenterName = center.CenterName,
+                Status = center.Status.ToString(),
+                Timezone = center.Timezone,
+                CreatedAt = center.CreatedAt,
+                RowVersion = center.RowVersion.ToString(CultureInfo.InvariantCulture),
+                PrimaryManagerUserId = manager?.UserId,
+                PrimaryManagerUsername = manager?.Username,
+                PrimaryManagerDisplayName = manager?.DisplayName,
+                PrimaryManagerUserRowVersion = manager?.RowVersion.ToString(CultureInfo.InvariantCulture),
+                InitialManagerUserId = manager?.UserId,
+                InitialManagerUsername = manager?.Username,
+                InitialManagerDisplayName = manager?.DisplayName,
+                InitialManagerUserRowVersion = manager?.RowVersion.ToString(CultureInfo.InvariantCulture),
+                ActiveStudentCount = aggregates.StudentCount,
+                ActiveTeacherCount = aggregates.TeacherCount,
+                ClassCount = aggregates.ClassCount,
+                ActiveManagerCount = aggregates.ManagerCount,
+                HasActivePrimaryManager = aggregates.HasActivePrimary
+            });
+        }, cancellationToken);
     }
 
     public async Task<PlatformResult<PlatformCenterListItemDto>> UpdateCenterMetadataAsync(
@@ -663,10 +739,10 @@ public class PlatformCenterService : IPlatformCenterService
                 ErrorCodes.ForbiddenResource, "Không được sửa đổi Root Tenant PLATFORM.");
         }
 
-        if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length < 3)
+        if (!PlatformAuditSanitizer.ValidateAndSanitizeReason(request.Reason, out var sanitizedReason, out var reasonError))
         {
             return PlatformResult<PlatformCenterListItemDto>.Failure(
-                ErrorCodes.ValidationFailed, "Lý do cập nhật thông tin trung tâm là bắt buộc và phải từ 3 ký tự.");
+                ErrorCodes.ValidationFailed, reasonError ?? "Lý do cập nhật thông tin trung tâm không hợp lệ.");
         }
 
         if (string.IsNullOrWhiteSpace(request.ExpectedRowVersion) ||
@@ -676,139 +752,111 @@ public class PlatformCenterService : IPlatformCenterService
                 ErrorCodes.ValidationFailed, "Mã phiên bản (expectedRowVersion) không hợp lệ.");
         }
 
-        var center = await _dbContext.Centers
-            .IgnoreQueryFilters()
-            .SingleOrDefaultAsync(c => c.CenterId == centerId && !c.IsDeleted, cancellationToken);
-
-        if (center is null)
-        {
-            return PlatformResult<PlatformCenterListItemDto>.Failure(
-                ErrorCodes.ResourceNotFound, $"Không tìm thấy trung tâm với mã '{centerId}'.");
-        }
-
-        if (center.RowVersion != expectedVersion)
-        {
-            return PlatformResult<PlatformCenterListItemDto>.Failure(
-                ErrorCodes.ConcurrencyConflict,
-                $"Dữ liệu trung tâm đã bị thay đổi bởi phiên làm việc khác (phiên bản hiện tại: {center.RowVersion}, phiên bản yêu cầu: {expectedVersion}).");
-        }
-
-        var oldName = center.CenterName;
-        var oldTimezone = center.Timezone;
-        var oldRowVersion = center.RowVersion;
-
-        if (!string.IsNullOrWhiteSpace(request.CenterName))
-        {
-            var newName = request.CenterName.Trim();
-            if (newName.Length < 3 || newName.Length > 200)
-            {
-                return PlatformResult<PlatformCenterListItemDto>.Failure(
-                    ErrorCodes.ValidationFailed, "Tên trung tâm phải có độ dài từ 3 đến 200 ký tự.");
-            }
-            center.CenterName = newName;
-        }
-
+        string? normalizedTimezone = null;
         if (!string.IsNullOrWhiteSpace(request.Timezone))
         {
-            var newTz = request.Timezone.Trim();
-            if (newTz.Length < 2 || newTz.Length > 64)
+            if (!PlatformTimezoneValidator.IsValid(request.Timezone, out normalizedTimezone))
             {
                 return PlatformResult<PlatformCenterListItemDto>.Failure(
-                    ErrorCodes.ValidationFailed, "Múi giờ không hợp lệ.");
-            }
-            center.Timezone = newTz;
-        }
-
-        var now = _timeProvider.GetUtcNow().UtcDateTime;
-        center.RowVersion++;
-        center.UpdatedAt = now;
-
-        var auditLog = new AuthorizationAuditLog
-        {
-            CenterId = AuthorizationBootstrapper.ReservedPlatformCenterId,
-            TargetCenterId = center.CenterId,
-            ActorUserId = callerUserId,
-            TargetUserId = null,
-            TargetType = "Center",
-            TargetId = center.CenterId.ToString("D"),
-            ActionType = "CenterMetadataUpdated",
-            BeforeData = JsonSerializer.Serialize(new
-            {
-                CenterName = oldName,
-                Timezone = oldTimezone,
-                RowVersion = oldRowVersion
-            }),
-            AfterData = JsonSerializer.Serialize(new
-            {
-                CenterName = center.CenterName,
-                Timezone = center.Timezone,
-                RowVersion = center.RowVersion
-            }),
-            Reason = request.Reason.Trim(),
-            TraceId = string.IsNullOrWhiteSpace(traceId) ? Guid.NewGuid().ToString("N") : traceId,
-            CreatedAt = now,
-            CreatedBy = callerUserId
-        };
-
-        await using var transaction = _dbContext.Database.IsRelational()
-            ? await _dbContext.Database.BeginTransactionAsync(cancellationToken)
-            : null;
-
-        _dbContext.AuthorizationAuditLogs.Add(auditLog);
-
-        try
-        {
-            await _dbContext.SaveChangesAsync(cancellationToken);
-            if (transaction is not null)
-            {
-                await transaction.CommitAsync(cancellationToken);
+                    ErrorCodes.ValidationFailed, "Múi giờ không hợp lệ. Vui lòng chọn múi giờ chuẩn IANA (ví dụ: Asia/Ho_Chi_Minh, UTC).");
             }
         }
-        catch (DbUpdateConcurrencyException)
-        {
-            return PlatformResult<PlatformCenterListItemDto>.Failure(
-                ErrorCodes.ConcurrencyConflict, "Xung đột đồng thời khi cập nhật thông tin trung tâm.");
-        }
 
-        var manager = center.PrimaryManagerUserId.HasValue
-            ? await _dbContext.Users
-                .IgnoreQueryFilters()
-                .Where(u => u.CenterId == center.CenterId && u.UserId == center.PrimaryManagerUserId.Value && !u.IsDeleted)
-                .Select(u => new
+        return await ExecuteInCenterLockAsync(centerId, async (center, transaction, ct) =>
+        {
+            if (center.RowVersion != expectedVersion)
+            {
+                return PlatformResult<PlatformCenterListItemDto>.Failure(
+                    ErrorCodes.ConcurrencyConflict,
+                    $"Dữ liệu trung tâm đã bị thay đổi bởi phiên làm việc khác (phiên bản hiện tại: {center.RowVersion}, phiên bản yêu cầu: {expectedVersion}).");
+            }
+
+            var oldName = center.CenterName;
+            var oldTimezone = center.Timezone;
+            var oldRowVersion = center.RowVersion;
+
+            if (!string.IsNullOrWhiteSpace(request.CenterName))
+            {
+                var newName = request.CenterName.Trim();
+                if (newName.Length < 3 || newName.Length > 200)
                 {
-                    u.UserId,
-                    u.Username,
-                    u.DisplayName,
-                    u.RowVersion
-                })
-                .FirstOrDefaultAsync(cancellationToken)
-            : null;
+                    return PlatformResult<PlatformCenterListItemDto>.Failure(
+                        ErrorCodes.ValidationFailed, "Tên trung tâm phải có độ dài từ 3 đến 200 ký tự.");
+                }
+                center.CenterName = newName;
+            }
 
-        var aggregates = await GetSafeAggregatesForCenterAsync(center.CenterId, center.PrimaryManagerUserId, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(normalizedTimezone))
+            {
+                center.Timezone = normalizedTimezone;
+            }
 
-        return PlatformResult<PlatformCenterListItemDto>.Success(new PlatformCenterListItemDto
-        {
-            CenterId = center.CenterId,
-            CenterCode = center.CenterCode,
-            CenterName = center.CenterName,
-            Status = center.Status.ToString(),
-            Timezone = center.Timezone,
-            CreatedAt = center.CreatedAt,
-            RowVersion = center.RowVersion.ToString(CultureInfo.InvariantCulture),
-            PrimaryManagerUserId = manager?.UserId,
-            PrimaryManagerUsername = manager?.Username,
-            PrimaryManagerDisplayName = manager?.DisplayName,
-            PrimaryManagerUserRowVersion = manager?.RowVersion.ToString(CultureInfo.InvariantCulture),
-            InitialManagerUserId = manager?.UserId,
-            InitialManagerUsername = manager?.Username,
-            InitialManagerDisplayName = manager?.DisplayName,
-            InitialManagerUserRowVersion = manager?.RowVersion.ToString(CultureInfo.InvariantCulture),
-            ActiveStudentCount = aggregates.StudentCount,
-            ActiveTeacherCount = aggregates.TeacherCount,
-            ClassCount = aggregates.ClassCount,
-            ActiveManagerCount = aggregates.ManagerCount,
-            HasActivePrimaryManager = aggregates.HasActivePrimary
-        });
+            var now = _timeProvider.GetUtcNow().UtcDateTime;
+            center.RowVersion++;
+            center.UpdatedAt = now;
+
+            RecordPlatformAudit(
+                center.CenterId,
+                callerUserId,
+                "Center",
+                center.CenterId.ToString("D"),
+                "CenterMetadataUpdated",
+                new
+                {
+                    CenterName = oldName,
+                    Timezone = oldTimezone,
+                    RowVersion = oldRowVersion
+                },
+                new
+                {
+                    CenterName = center.CenterName,
+                    Timezone = center.Timezone,
+                    RowVersion = center.RowVersion
+                },
+                sanitizedReason,
+                traceId,
+                now);
+
+            var manager = center.PrimaryManagerUserId.HasValue
+                ? await _dbContext.Users
+                    .IgnoreQueryFilters()
+                    .Where(u => u.CenterId == center.CenterId && u.UserId == center.PrimaryManagerUserId.Value && !u.IsDeleted)
+                    .Select(u => new
+                    {
+                        u.UserId,
+                        u.Username,
+                        u.DisplayName,
+                        u.RowVersion
+                    })
+                    .FirstOrDefaultAsync(ct)
+                : null;
+
+            var aggregates = await GetSafeAggregatesForCenterAsync(center.CenterId, center.PrimaryManagerUserId, ct);
+
+            return PlatformResult<PlatformCenterListItemDto>.Success(new PlatformCenterListItemDto
+            {
+                CenterId = center.CenterId,
+                CenterCode = center.CenterCode,
+                CenterName = center.CenterName,
+                Status = center.Status.ToString(),
+                Timezone = center.Timezone,
+                CreatedAt = center.CreatedAt,
+                RowVersion = center.RowVersion.ToString(CultureInfo.InvariantCulture),
+                PrimaryManagerUserId = manager?.UserId,
+                PrimaryManagerUsername = manager?.Username,
+                PrimaryManagerDisplayName = manager?.DisplayName,
+                PrimaryManagerUserRowVersion = manager?.RowVersion.ToString(CultureInfo.InvariantCulture),
+                InitialManagerUserId = manager?.UserId,
+                InitialManagerUsername = manager?.Username,
+                InitialManagerDisplayName = manager?.DisplayName,
+                InitialManagerUserRowVersion = manager?.RowVersion.ToString(CultureInfo.InvariantCulture),
+                ActiveStudentCount = aggregates.StudentCount,
+                ActiveTeacherCount = aggregates.TeacherCount,
+                ClassCount = aggregates.ClassCount,
+                ActiveManagerCount = aggregates.ManagerCount,
+                HasActivePrimaryManager = aggregates.HasActivePrimary
+            });
+        }, cancellationToken);
     }
 
     private async Task<(int StudentCount, int TeacherCount, int ClassCount, int ManagerCount, bool HasActivePrimary)> GetSafeAggregatesForCenterAsync(
@@ -874,100 +922,84 @@ public class PlatformCenterService : IPlatformCenterService
                 ErrorCodes.ValidationFailed, "Dữ liệu đặt lại mật khẩu quản lý không hợp lệ (mật khẩu phải tối thiểu 12 ký tự).");
         }
 
-        var user = await _dbContext.Users
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(u => u.CenterId == centerId && u.UserId == managerUserId && !u.IsDeleted, cancellationToken);
-
-        if (user is null)
+        string? reasonError = null;
+        if (string.IsNullOrWhiteSpace(request.Reason) ||
+            !PlatformAuditSanitizer.ValidateAndSanitizeReason(request.Reason, out var sanitizedReason, out reasonError, minLength: 5))
         {
             return PlatformResult<ResetCenterManagerPasswordData>.Failure(
-                ErrorCodes.ResourceNotFound, $"Không tìm thấy người dùng với ID '{managerUserId}' thuộc trung tâm '{centerId}'.");
+                ErrorCodes.ValidationFailed, reasonError ?? "Lý do đặt lại mật khẩu là bắt buộc (từ 5 đến 500 ký tự).");
         }
 
-        if (user.RoleName != UserRole.CenterManager)
+        return await ExecuteInCenterLockAsync(centerId, async (center, transaction, ct) =>
         {
-            return PlatformResult<ResetCenterManagerPasswordData>.Failure(
-                ErrorCodes.ValidationFailed, "Người dùng được chọn không phải là Quản lý trung tâm (CenterManager).");
-        }
+            var user = await _dbContext.Users
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(u => u.CenterId == centerId && u.UserId == managerUserId && !u.IsDeleted, ct);
 
-        if (user.RowVersion != expectedVersion)
-        {
-            return PlatformResult<ResetCenterManagerPasswordData>.Failure(
-                ErrorCodes.ConcurrencyConflict, "Dữ liệu người dùng đã bị thay đổi bởi thao tác khác.");
-        }
+            // Fail-closed non-manager: Return ResourceNotFound (404) if user is not found OR not a CenterManager
+            // to prevent probing / account enumeration of students or teachers
+            if (user is null || user.RoleName != UserRole.CenterManager)
+            {
+                return PlatformResult<ResetCenterManagerPasswordData>.Failure(
+                    ErrorCodes.ResourceNotFound, $"Không tìm thấy quản lý trung tâm với ID '{managerUserId}' thuộc trung tâm '{centerId}'.");
+            }
 
-        var now = _timeProvider.GetUtcNow().UtcDateTime;
+            if (user.RowVersion != expectedVersion)
+            {
+                return PlatformResult<ResetCenterManagerPasswordData>.Failure(
+                    ErrorCodes.ConcurrencyConflict, "Dữ liệu người dùng đã bị thay đổi bởi thao tác khác.");
+            }
 
-        user.PasswordHash = _passwordHasher.HashPassword(user, request.NewPassword);
-        user.RowVersion++;
-        user.AuthVersion++; // Invalidate active JWT sessions
-        user.UpdatedAt = now;
-        user.UpdatedBy = callerUserId;
+            var now = _timeProvider.GetUtcNow().UtcDateTime;
 
-        // Bulk revoke active refresh tokens for the user
-        var refreshTokens = await _dbContext.RefreshTokens
-            .IgnoreQueryFilters()
-            .Where(rt => rt.CenterId == centerId && rt.UserId == managerUserId && rt.RevokedAt == null)
-            .ToListAsync(cancellationToken);
+            user.PasswordHash = _passwordHasher.HashPassword(user, request.NewPassword);
+            user.RowVersion++;
+            user.AuthVersion++; // Invalidate active JWT sessions
+            user.UpdatedAt = now;
+            user.UpdatedBy = callerUserId;
 
-        foreach (var token in refreshTokens)
-        {
-            token.RevokedAt = now;
-            token.RevokeReason = "Password reset by platform administrator.";
-        }
+            // Bulk revoke active refresh tokens for the user
+            var refreshTokens = await _dbContext.RefreshTokens
+                .IgnoreQueryFilters()
+                .Where(rt => rt.CenterId == centerId && rt.UserId == managerUserId && rt.RevokedAt == null)
+                .ToListAsync(ct);
 
-        // Platform Audit Invariant: CenterId = PLATFORM, target_user_id = null, zero credentials logged
-        var auditLog = new AuthorizationAuditLog
-        {
-            CenterId = AuthorizationBootstrapper.ReservedPlatformCenterId,
-            TargetCenterId = centerId,
-            ActorUserId = callerUserId,
-            TargetUserId = null, // Invariant: Cross-tenant operations MUST record target_user_id as null
-            TargetType = "CenterManager",
-            TargetId = $"{centerId:D}:{managerUserId:D}",
-            ActionType = "CenterManagerPasswordReset",
-            BeforeData = null, // Zero passwords / hashes logged!
-            AfterData = JsonSerializer.Serialize(new
+            foreach (var token in refreshTokens)
+            {
+                token.RevokedAt = now;
+                token.RevokeReason = "Password reset by platform administrator.";
+            }
+
+            center.RowVersion++;
+            center.UpdatedAt = now;
+
+            // Platform Audit Invariant: CenterId = PLATFORM, target_user_id = null, zero credentials logged
+            RecordPlatformAudit(
+                centerId,
+                callerUserId,
+                "CenterManager",
+                $"{centerId:D}:{managerUserId:D}",
+                "CenterManagerPasswordReset",
+                null, // Zero passwords / hashes logged!
+                new
+                {
+                    CenterId = centerId,
+                    ManagerUserId = managerUserId,
+                    AuthVersion = user.AuthVersion
+                },
+                sanitizedReason,
+                traceId,
+                now);
+
+            return PlatformResult<ResetCenterManagerPasswordData>.Success(new ResetCenterManagerPasswordData
             {
                 CenterId = centerId,
                 ManagerUserId = managerUserId,
-                AuthVersion = user.AuthVersion
-            }),
-            Reason = string.IsNullOrWhiteSpace(request.Reason) ? "Platform administrator reset manager password." : request.Reason.Trim(),
-            TraceId = string.IsNullOrWhiteSpace(traceId) ? Guid.NewGuid().ToString("N") : traceId,
-            CreatedAt = now,
-            CreatedBy = callerUserId
-        };
-
-        await using var transaction = _dbContext.Database.IsRelational()
-            ? await _dbContext.Database.BeginTransactionAsync(cancellationToken)
-            : null;
-
-        _dbContext.AuthorizationAuditLogs.Add(auditLog);
-
-        try
-        {
-            await _dbContext.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            return PlatformResult<ResetCenterManagerPasswordData>.Failure(
-                ErrorCodes.ConcurrencyConflict, "Dữ liệu người dùng đã bị thay đổi bởi thao tác khác.");
-        }
-
-        if (transaction is not null)
-        {
-            await transaction.CommitAsync(cancellationToken);
-        }
-
-        return PlatformResult<ResetCenterManagerPasswordData>.Success(new ResetCenterManagerPasswordData
-        {
-            CenterId = centerId,
-            ManagerUserId = managerUserId,
-            NewUserRowVersion = user.RowVersion.ToString(CultureInfo.InvariantCulture),
-            ResetAtUtc = now,
-            Success = true
-        });
+                NewUserRowVersion = user.RowVersion.ToString(CultureInfo.InvariantCulture),
+                ResetAtUtc = now,
+                Success = true
+            });
+        }, cancellationToken);
     }
 
     public async Task<PlatformResult<PlatformCenterManagersListData>> ListCenterManagersAsync(
@@ -1071,15 +1103,19 @@ public class PlatformCenterService : IPlatformCenterService
         var username = request.Username?.Trim() ?? string.Empty;
         var displayName = request.DisplayName?.Trim() ?? string.Empty;
         var password = request.Password ?? string.Empty;
-        var reason = request.Reason?.Trim() ?? string.Empty;
 
         if (string.IsNullOrWhiteSpace(username) || username.Length > 100 ||
             string.IsNullOrWhiteSpace(displayName) || displayName.Length > 200 ||
-            string.IsNullOrWhiteSpace(password) || password.Length < 12 ||
-            string.IsNullOrWhiteSpace(reason))
+            string.IsNullOrWhiteSpace(password) || password.Length < 12)
         {
             return PlatformResult<CreateCenterManagerResponseData>.Failure(
-                ErrorCodes.ValidationFailed, "Dữ liệu tạo quản lý không hợp lệ (mật khẩu phải tối thiểu 12 ký tự, bắt buộc nhập lý do).");
+                ErrorCodes.ValidationFailed, "Dữ liệu tạo quản lý không hợp lệ (mật khẩu phải tối thiểu 12 ký tự).");
+        }
+
+        if (!PlatformAuditSanitizer.ValidateAndSanitizeReason(request.Reason, out var sanitizedReason, out var reasonError))
+        {
+            return PlatformResult<CreateCenterManagerResponseData>.Failure(
+                ErrorCodes.ValidationFailed, reasonError ?? "Lý do tạo quản lý không hợp lệ.");
         }
 
         if (!ulong.TryParse(request.ExpectedCenterRowVersion, NumberStyles.None, CultureInfo.InvariantCulture, out var expectedCenterVersion) ||
@@ -1089,141 +1125,119 @@ public class PlatformCenterService : IPlatformCenterService
                 ErrorCodes.ValidationFailed, "Phiên bản dữ liệu trung tâm (ExpectedCenterRowVersion) không hợp lệ.");
         }
 
-        var center = await _dbContext.Centers
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(c => c.CenterId == centerId && !c.IsDeleted, cancellationToken);
-
-        if (center is null)
+        return await ExecuteInCenterLockAsync(centerId, async (center, transaction, ct) =>
         {
-            return PlatformResult<CreateCenterManagerResponseData>.Failure(
-                ErrorCodes.ResourceNotFound, $"Không tìm thấy trung tâm với ID '{centerId}'.");
-        }
-
-        if (center.RowVersion != expectedCenterVersion)
-        {
-            return PlatformResult<CreateCenterManagerResponseData>.Failure(
-                ErrorCodes.ConcurrencyConflict, "Dữ liệu trung tâm đã bị thay đổi bởi thao tác khác. Vui lòng tải lại.");
-        }
-
-        var usernameExists = await _dbContext.Users
-            .IgnoreQueryFilters()
-            .AnyAsync(u => u.CenterId == centerId && u.Username == username && !u.IsDeleted, cancellationToken);
-
-        if (usernameExists)
-        {
-            return PlatformResult<CreateCenterManagerResponseData>.Failure(
-                ErrorCodes.DuplicateResource, $"Tên người dùng '{username}' đã tồn tại trong trung tâm này.");
-        }
-
-        var now = _timeProvider.GetUtcNow().UtcDateTime;
-        var newManagerUserId = Guid.NewGuid();
-
-        var newManager = new User
-        {
-            UserId = newManagerUserId,
-            CenterId = centerId,
-            Username = username,
-            DisplayName = displayName,
-            RoleName = UserRole.CenterManager,
-            Status = UserStatus.Active,
-            AuthVersion = 1,
-            CreatedAt = now,
-            CreatedBy = callerUserId,
-            UpdatedAt = now,
-            UpdatedBy = callerUserId,
-            IsDeleted = false,
-            RowVersion = 1
-        };
-
-        newManager.PasswordHash = _passwordHasher.HashPassword(newManager, password);
-
-        var isPrimary = false;
-        if (!center.PrimaryManagerUserId.HasValue)
-        {
-            center.PrimaryManagerUserId = newManagerUserId;
-            isPrimary = true;
-        }
-
-        center.RowVersion++;
-        center.UpdatedAt = now;
-
-        var auditLog = new AuthorizationAuditLog
-        {
-            CenterId = AuthorizationBootstrapper.ReservedPlatformCenterId,
-            TargetCenterId = centerId,
-            ActorUserId = callerUserId,
-            TargetUserId = null,
-            TargetType = "User",
-            TargetId = $"{centerId:D}:{newManagerUserId:D}",
-            ActionType = "CenterManagerCreated",
-            BeforeData = null,
-            AfterData = JsonSerializer.Serialize(new
+            if (center.RowVersion != expectedCenterVersion)
             {
-                CenterId = centerId,
+                return PlatformResult<CreateCenterManagerResponseData>.Failure(
+                    ErrorCodes.ConcurrencyConflict, "Dữ liệu trung tâm đã bị thay đổi bởi thao tác khác. Vui lòng tải lại.");
+            }
+
+            var usernameExists = await _dbContext.Users
+                .IgnoreQueryFilters()
+                .AnyAsync(u => u.CenterId == centerId && u.Username == username && !u.IsDeleted, ct);
+
+            if (usernameExists)
+            {
+                return PlatformResult<CreateCenterManagerResponseData>.Failure(
+                    ErrorCodes.DuplicateResource, $"Tên người dùng '{username}' đã tồn tại trong trung tâm này.");
+            }
+
+            var now = _timeProvider.GetUtcNow().UtcDateTime;
+            var newManagerUserId = Guid.NewGuid();
+
+            var newManager = new User
+            {
                 UserId = newManagerUserId,
+                CenterId = centerId,
                 Username = username,
                 DisplayName = displayName,
-                IsPrimary = isPrimary
-            }),
-            Reason = reason,
-            TraceId = string.IsNullOrWhiteSpace(traceId) ? Guid.NewGuid().ToString("N") : traceId,
-            CreatedAt = now,
-            CreatedBy = callerUserId
-        };
+                RoleName = UserRole.CenterManager,
+                Status = UserStatus.Active,
+                AuthVersion = 1,
+                CreatedAt = now,
+                CreatedBy = callerUserId,
+                UpdatedAt = now,
+                UpdatedBy = callerUserId,
+                IsDeleted = false,
+                RowVersion = 1
+            };
 
-        await using var transaction = _dbContext.Database.IsRelational()
-            ? await _dbContext.Database.BeginTransactionAsync(cancellationToken)
-            : null;
+            newManager.PasswordHash = _passwordHasher.HashPassword(newManager, password);
 
-        _dbContext.Users.Add(newManager);
-        _dbContext.AuthorizationAuditLogs.Add(auditLog);
-
-        try
-        {
-            await _dbContext.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateException dbEx)
-        {
-            var mysql = (dbEx.GetBaseException() as MySql.Data.MySqlClient.MySqlException)
-                        ?? (dbEx.InnerException as MySql.Data.MySqlClient.MySqlException);
-
-            if (mysql?.Number == 1062 &&
-                mysql.Message.Contains("ux_users_center_id_username", StringComparison.OrdinalIgnoreCase))
+            var isPrimary = false;
+            if (!center.PrimaryManagerUserId.HasValue)
             {
-                return PlatformResult<CreateCenterManagerResponseData>.Failure(
-                    ErrorCodes.DuplicateResource, $"Tên người dùng '{username}' đã tồn tại trong trung tâm.");
+                center.PrimaryManagerUserId = newManagerUserId;
+                isPrimary = true;
             }
 
-            var message = dbEx.GetBaseException()?.Message ?? dbEx.InnerException?.Message ?? string.Empty;
-            if (message.Contains("1062", StringComparison.OrdinalIgnoreCase) &&
-                message.Contains("ux_users_center_id_username", StringComparison.OrdinalIgnoreCase))
+            center.RowVersion++;
+            center.UpdatedAt = now;
+
+            _dbContext.Users.Add(newManager);
+
+            RecordPlatformAudit(
+                centerId,
+                callerUserId,
+                "User",
+                $"{centerId:D}:{newManagerUserId:D}",
+                "CenterManagerCreated",
+                null,
+                new
+                {
+                    CenterId = centerId,
+                    UserId = newManagerUserId,
+                    Username = username,
+                    DisplayName = displayName,
+                    IsPrimary = isPrimary
+                },
+                sanitizedReason,
+                traceId,
+                now);
+
+            try
             {
-                return PlatformResult<CreateCenterManagerResponseData>.Failure(
-                    ErrorCodes.DuplicateResource, $"Tên người dùng '{username}' đã tồn tại trong trung tâm.");
+                await _dbContext.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException dbEx)
+            {
+                var mysql = (dbEx.GetBaseException() as MySql.Data.MySqlClient.MySqlException)
+                            ?? (dbEx.InnerException as MySql.Data.MySqlClient.MySqlException);
+
+                if (mysql?.Number == 1062 &&
+                    mysql.Message.Contains("ux_users_center_id_username", StringComparison.OrdinalIgnoreCase))
+                {
+                    return PlatformResult<CreateCenterManagerResponseData>.Failure(
+                        ErrorCodes.DuplicateResource, $"Tên người dùng '{username}' đã tồn tại trong trung tâm.");
+                }
+
+                var message = dbEx.GetBaseException()?.Message ?? dbEx.InnerException?.Message ?? string.Empty;
+                if (message.Contains("1062", StringComparison.OrdinalIgnoreCase) &&
+                    message.Contains("ux_users_center_id_username", StringComparison.OrdinalIgnoreCase))
+                {
+                    return PlatformResult<CreateCenterManagerResponseData>.Failure(
+                        ErrorCodes.DuplicateResource, $"Tên người dùng '{username}' đã tồn tại trong trung tâm.");
+                }
+
+                throw;
             }
 
-            throw;
-        }
+            await _authorizationBootstrapper.EnsureCenterAsync(centerId, cancellationToken: ct);
 
-        await _authorizationBootstrapper.EnsureCenterAsync(centerId, cancellationToken: cancellationToken);
-
-        if (transaction is not null)
-        {
-            await transaction.CommitAsync(cancellationToken);
-        }
-
-        return PlatformResult<CreateCenterManagerResponseData>.Success(new CreateCenterManagerResponseData
-        {
-            UserId = newManager.UserId,
-            CenterId = centerId,
-            Username = newManager.Username,
-            DisplayName = newManager.DisplayName,
-            Status = newManager.Status.ToString(),
-            IsPrimary = isPrimary,
-            CreatedAt = newManager.CreatedAt,
-            RowVersion = newManager.RowVersion.ToString(CultureInfo.InvariantCulture),
-            CenterRowVersion = center.RowVersion.ToString(CultureInfo.InvariantCulture)
-        });
+            return PlatformResult<CreateCenterManagerResponseData>.Success(new CreateCenterManagerResponseData
+            {
+                UserId = newManager.UserId,
+                CenterId = centerId,
+                Username = newManager.Username,
+                DisplayName = newManager.DisplayName,
+                Status = newManager.Status.ToString(),
+                IsPrimary = isPrimary,
+                CreatedAt = newManager.CreatedAt,
+                RowVersion = newManager.RowVersion.ToString(CultureInfo.InvariantCulture),
+                CenterRowVersion = center.RowVersion.ToString(CultureInfo.InvariantCulture)
+            });
+        }, cancellationToken);
     }
 
     public async Task<PlatformResult<UpdateCenterManagerStatusData>> UpdateCenterManagerStatusAsync(
@@ -1248,131 +1262,106 @@ public class PlatformCenterService : IPlatformCenterService
         if (string.IsNullOrWhiteSpace(request.Status) ||
             !Enum.TryParse<UserStatus>(request.Status, true, out var newStatus) ||
             !ulong.TryParse(request.ExpectedUserRowVersion, NumberStyles.None, CultureInfo.InvariantCulture, out var expectedVersion) ||
-            expectedVersion == 0 ||
-            string.IsNullOrWhiteSpace(request.Reason))
+            expectedVersion == 0)
         {
             return PlatformResult<UpdateCenterManagerStatusData>.Failure(
-                ErrorCodes.ValidationFailed, "Dữ liệu cập nhật trạng thái không hợp lệ (bắt buộc trạng thái hợp lệ, row version và lý do).");
+                ErrorCodes.ValidationFailed, "Dữ liệu cập nhật trạng thái không hợp lệ (bắt buộc trạng thái hợp lệ và row version).");
         }
 
-        var center = await _dbContext.Centers
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(c => c.CenterId == centerId && !c.IsDeleted, cancellationToken);
-
-        if (center is null)
+        if (!PlatformAuditSanitizer.ValidateAndSanitizeReason(request.Reason, out var sanitizedReason, out var reasonError))
         {
             return PlatformResult<UpdateCenterManagerStatusData>.Failure(
-                ErrorCodes.ResourceNotFound, $"Không tìm thấy trung tâm với ID '{centerId}'.");
+                ErrorCodes.ValidationFailed, reasonError ?? "Lý do cập nhật trạng thái không hợp lệ.");
         }
 
-        var user = await _dbContext.Users
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(u => u.CenterId == centerId && u.UserId == userId && !u.IsDeleted, cancellationToken);
-
-        if (user is null || user.RoleName != UserRole.CenterManager)
+        return await ExecuteInCenterLockAsync(centerId, async (center, transaction, ct) =>
         {
-            return PlatformResult<UpdateCenterManagerStatusData>.Failure(
-                ErrorCodes.ResourceNotFound, "Không tìm thấy quản lý trung tâm hoặc người dùng không thuộc trung tâm này.");
-        }
-
-        if (user.RowVersion != expectedVersion)
-        {
-            return PlatformResult<UpdateCenterManagerStatusData>.Failure(
-                ErrorCodes.ConcurrencyConflict, "Dữ liệu người dùng đã bị thay đổi bởi thao tác khác. Vui lòng tải lại.");
-        }
-
-        var oldStatus = user.Status;
-
-        // Invariant 1: Cannot lock/disable primary manager without transfer
-        if (center.PrimaryManagerUserId == userId && newStatus != UserStatus.Active)
-        {
-            return PlatformResult<UpdateCenterManagerStatusData>.Failure(
-                ErrorCodes.ValidationFailed, "Không thể khóa hoặc vô hiệu hóa Quản lý chính (Primary Manager). Vui lòng chỉ định Quản lý chính mới trước khi khóa/vô hiệu hóa.");
-        }
-
-        // Invariant 2: Cannot lock/disable last active manager of an active center
-        if (center.Status == CenterStatus.Active && oldStatus == UserStatus.Active && newStatus != UserStatus.Active)
-        {
-            var activeCount = await _dbContext.Users
+            var user = await _dbContext.Users
                 .IgnoreQueryFilters()
-                .CountAsync(u => u.CenterId == centerId && u.RoleName == UserRole.CenterManager && u.Status == UserStatus.Active && !u.IsDeleted, cancellationToken);
+                .FirstOrDefaultAsync(u => u.CenterId == centerId && u.UserId == userId && !u.IsDeleted, ct);
 
-            if (activeCount <= 1)
+            if (user is null || user.RoleName != UserRole.CenterManager)
             {
                 return PlatformResult<UpdateCenterManagerStatusData>.Failure(
-                    ErrorCodes.ValidationFailed, "Không thể khóa hoặc vô hiệu hóa quản lý đang hoạt động cuối cùng của trung tâm.");
+                    ErrorCodes.ResourceNotFound, "Không tìm thấy quản lý trung tâm hoặc người dùng không thuộc trung tâm này.");
             }
-        }
 
-        var now = _timeProvider.GetUtcNow().UtcDateTime;
-        user.Status = newStatus;
-        user.RowVersion++;
-        user.UpdatedAt = now;
-        user.UpdatedBy = callerUserId;
-
-        if (newStatus == UserStatus.Locked || newStatus == UserStatus.Disabled)
-        {
-            user.AuthVersion++; // Invalidate active JWT sessions
-
-            var refreshTokens = await _dbContext.RefreshTokens
-                .IgnoreQueryFilters()
-                .Where(rt => rt.CenterId == centerId && rt.UserId == userId && rt.RevokedAt == null)
-                .ToListAsync(cancellationToken);
-
-            foreach (var token in refreshTokens)
+            if (user.RowVersion != expectedVersion)
             {
-                token.RevokedAt = now;
-                token.RevokeReason = $"Manager status changed to {newStatus} by platform administrator.";
+                return PlatformResult<UpdateCenterManagerStatusData>.Failure(
+                    ErrorCodes.ConcurrencyConflict, "Dữ liệu người dùng đã bị thay đổi bởi thao tác khác. Vui lòng tải lại.");
             }
-        }
 
-        var auditLog = new AuthorizationAuditLog
-        {
-            CenterId = AuthorizationBootstrapper.ReservedPlatformCenterId,
-            TargetCenterId = centerId,
-            ActorUserId = callerUserId,
-            TargetUserId = null,
-            TargetType = "User",
-            TargetId = $"{centerId:D}:{userId:D}",
-            ActionType = $"CenterManagerStatusChanged:{newStatus}",
-            BeforeData = JsonSerializer.Serialize(new { Status = oldStatus.ToString(), RowVersion = expectedVersion }),
-            AfterData = JsonSerializer.Serialize(new { Status = newStatus.ToString(), RowVersion = user.RowVersion }),
-            Reason = request.Reason.Trim(),
-            TraceId = string.IsNullOrWhiteSpace(traceId) ? Guid.NewGuid().ToString("N") : traceId,
-            CreatedAt = now,
-            CreatedBy = callerUserId
-        };
+            var oldStatus = user.Status;
 
-        await using var transaction = _dbContext.Database.IsRelational()
-            ? await _dbContext.Database.BeginTransactionAsync(cancellationToken)
-            : null;
+            // Invariant 1: Cannot lock/disable primary manager without prior transfer
+            if (center.PrimaryManagerUserId == userId && newStatus != UserStatus.Active)
+            {
+                return PlatformResult<UpdateCenterManagerStatusData>.Failure(
+                    ErrorCodes.ValidationFailed, "Không thể khóa hoặc vô hiệu hóa Quản lý chính (Primary Manager). Vui lòng chỉ định Quản lý chính mới trước khi khóa/vô hiệu hóa.");
+            }
 
-        _dbContext.AuthorizationAuditLogs.Add(auditLog);
+            // Invariant 2: Cannot lock/disable last active manager of an active center
+            if (center.Status == CenterStatus.Active && oldStatus == UserStatus.Active && newStatus != UserStatus.Active)
+            {
+                var activeCount = await _dbContext.Users
+                    .IgnoreQueryFilters()
+                    .CountAsync(u => u.CenterId == centerId && u.RoleName == UserRole.CenterManager && u.Status == UserStatus.Active && !u.IsDeleted, ct);
 
-        try
-        {
-            await _dbContext.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            return PlatformResult<UpdateCenterManagerStatusData>.Failure(
-                ErrorCodes.ConcurrencyConflict, "Dữ liệu người dùng đã bị thay đổi bởi thao tác khác. Vui lòng tải lại.");
-        }
+                if (activeCount <= 1)
+                {
+                    return PlatformResult<UpdateCenterManagerStatusData>.Failure(
+                        ErrorCodes.ValidationFailed, "Không thể khóa hoặc vô hiệu hóa quản lý đang hoạt động cuối cùng của trung tâm.");
+                }
+            }
 
-        if (transaction is not null)
-        {
-            await transaction.CommitAsync(cancellationToken);
-        }
+            var now = _timeProvider.GetUtcNow().UtcDateTime;
+            user.Status = newStatus;
+            user.RowVersion++;
+            user.UpdatedAt = now;
+            user.UpdatedBy = callerUserId;
 
-        return PlatformResult<UpdateCenterManagerStatusData>.Success(new UpdateCenterManagerStatusData
-        {
-            UserId = user.UserId,
-            CenterId = centerId,
-            Status = user.Status.ToString(),
-            IsPrimary = center.PrimaryManagerUserId == user.UserId,
-            RowVersion = user.RowVersion.ToString(CultureInfo.InvariantCulture),
-            UpdatedAtUtc = now
-        });
+            if (newStatus == UserStatus.Locked || newStatus == UserStatus.Disabled)
+            {
+                user.AuthVersion++; // Invalidate active JWT sessions
+
+                var refreshTokens = await _dbContext.RefreshTokens
+                    .IgnoreQueryFilters()
+                    .Where(rt => rt.CenterId == centerId && rt.UserId == userId && rt.RevokedAt == null)
+                    .ToListAsync(ct);
+
+                foreach (var token in refreshTokens)
+                {
+                    token.RevokedAt = now;
+                    token.RevokeReason = $"Manager status changed to {newStatus} by platform administrator.";
+                }
+            }
+
+            center.RowVersion++;
+            center.UpdatedAt = now;
+
+            RecordPlatformAudit(
+                centerId,
+                callerUserId,
+                "User",
+                $"{centerId:D}:{userId:D}",
+                $"CenterManagerStatusChanged:{newStatus}",
+                new { Status = oldStatus.ToString(), RowVersion = expectedVersion },
+                new { Status = newStatus.ToString(), RowVersion = user.RowVersion },
+                sanitizedReason,
+                traceId,
+                now);
+
+            return PlatformResult<UpdateCenterManagerStatusData>.Success(new UpdateCenterManagerStatusData
+            {
+                UserId = user.UserId,
+                CenterId = centerId,
+                Status = user.Status.ToString(),
+                IsPrimary = center.PrimaryManagerUserId == user.UserId,
+                RowVersion = user.RowVersion.ToString(CultureInfo.InvariantCulture),
+                UpdatedAtUtc = now
+            });
+        }, cancellationToken);
     }
 
     public async Task<PlatformResult<MakePrimaryCenterManagerData>> MakePrimaryCenterManagerAsync(
@@ -1397,146 +1386,122 @@ public class PlatformCenterService : IPlatformCenterService
         if (!ulong.TryParse(request.ExpectedCenterRowVersion, NumberStyles.None, CultureInfo.InvariantCulture, out var expectedCenterVer) ||
             expectedCenterVer == 0 ||
             !ulong.TryParse(request.ExpectedManagerUserRowVersion, NumberStyles.None, CultureInfo.InvariantCulture, out var expectedManagerVer) ||
-            expectedManagerVer == 0 ||
-            string.IsNullOrWhiteSpace(request.Reason))
+            expectedManagerVer == 0)
         {
             return PlatformResult<MakePrimaryCenterManagerData>.Failure(
-                ErrorCodes.ValidationFailed, "Dữ liệu chỉ định Quản lý chính không hợp lệ (bắt buộc row versions và lý do).");
+                ErrorCodes.ValidationFailed, "Dữ liệu chỉ định Quản lý chính không hợp lệ (bắt buộc row versions).");
         }
 
-        var center = await _dbContext.Centers
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(c => c.CenterId == centerId && !c.IsDeleted, cancellationToken);
-
-        if (center is null)
+        if (!PlatformAuditSanitizer.ValidateAndSanitizeReason(request.Reason, out var sanitizedReason, out var reasonError))
         {
             return PlatformResult<MakePrimaryCenterManagerData>.Failure(
-                ErrorCodes.ResourceNotFound, $"Không tìm thấy trung tâm với ID '{centerId}'.");
+                ErrorCodes.ValidationFailed, reasonError ?? "Lý do chỉ định Quản lý chính không hợp lệ.");
         }
 
-        if (center.RowVersion != expectedCenterVer)
+        return await ExecuteInCenterLockAsync(centerId, async (center, transaction, ct) =>
         {
-            return PlatformResult<MakePrimaryCenterManagerData>.Failure(
-                ErrorCodes.ConcurrencyConflict, "Dữ liệu trung tâm đã bị thay đổi bởi thao tác khác. Vui lòng tải lại.");
-        }
-
-        var targetUser = await _dbContext.Users
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(u => u.CenterId == centerId && u.UserId == userId && !u.IsDeleted, cancellationToken);
-
-        if (targetUser is null || targetUser.RoleName != UserRole.CenterManager)
-        {
-            return PlatformResult<MakePrimaryCenterManagerData>.Failure(
-                ErrorCodes.ResourceNotFound, "Không tìm thấy quản lý trung tâm hoặc người dùng không thuộc trung tâm này.");
-        }
-
-        if (targetUser.RowVersion != expectedManagerVer)
-        {
-            return PlatformResult<MakePrimaryCenterManagerData>.Failure(
-                ErrorCodes.ConcurrencyConflict, "Dữ liệu người dùng quản lý đã bị thay đổi bởi thao tác khác. Vui lòng tải lại.");
-        }
-
-        if (targetUser.Status != UserStatus.Active)
-        {
-            return PlatformResult<MakePrimaryCenterManagerData>.Failure(
-                ErrorCodes.ValidationFailed, "Chỉ quản lý đang hoạt động (Active) mới có thể được chỉ định làm Quản lý chính.");
-        }
-
-        var oldPrimaryUserId = center.PrimaryManagerUserId;
-        var now = _timeProvider.GetUtcNow().UtcDateTime;
-
-        User? prevPrimaryUser = null;
-        if (request.DisablePreviousPrimary && oldPrimaryUserId.HasValue && oldPrimaryUserId.Value != userId)
-        {
-            prevPrimaryUser = await _dbContext.Users
-                .IgnoreQueryFilters()
-                .FirstOrDefaultAsync(u => u.CenterId == centerId && u.UserId == oldPrimaryUserId.Value && !u.IsDeleted, cancellationToken);
-
-            if (prevPrimaryUser is not null)
+            if (center.RowVersion != expectedCenterVer)
             {
-                if (!string.IsNullOrWhiteSpace(request.ExpectedPreviousPrimaryUserRowVersion))
+                return PlatformResult<MakePrimaryCenterManagerData>.Failure(
+                    ErrorCodes.ConcurrencyConflict, "Dữ liệu trung tâm đã bị thay đổi bởi thao tác khác. Vui lòng tải lại.");
+            }
+
+            var targetUser = await _dbContext.Users
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(u => u.CenterId == centerId && u.UserId == userId && !u.IsDeleted, ct);
+
+            if (targetUser is null || targetUser.RoleName != UserRole.CenterManager)
+            {
+                return PlatformResult<MakePrimaryCenterManagerData>.Failure(
+                    ErrorCodes.ResourceNotFound, "Không tìm thấy quản lý trung tâm hoặc người dùng không thuộc trung tâm này.");
+            }
+
+            if (targetUser.RowVersion != expectedManagerVer)
+            {
+                return PlatformResult<MakePrimaryCenterManagerData>.Failure(
+                    ErrorCodes.ConcurrencyConflict, "Dữ liệu người dùng quản lý đã bị thay đổi bởi thao tác khác. Vui lòng tải lại.");
+            }
+
+            if (targetUser.Status != UserStatus.Active)
+            {
+                return PlatformResult<MakePrimaryCenterManagerData>.Failure(
+                    ErrorCodes.ValidationFailed, "Chỉ quản lý đang hoạt động (Active) mới có thể được chỉ định làm Quản lý chính.");
+            }
+
+            var oldPrimaryUserId = center.PrimaryManagerUserId;
+            var now = _timeProvider.GetUtcNow().UtcDateTime;
+
+            User? prevPrimaryUser = null;
+            if (request.DisablePreviousPrimary && oldPrimaryUserId.HasValue && oldPrimaryUserId.Value != userId)
+            {
+                prevPrimaryUser = await _dbContext.Users
+                    .IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(u => u.CenterId == centerId && u.UserId == oldPrimaryUserId.Value && !u.IsDeleted, ct);
+
+                if (prevPrimaryUser is not null)
                 {
-                    if (!ulong.TryParse(request.ExpectedPreviousPrimaryUserRowVersion, NumberStyles.None, CultureInfo.InvariantCulture, out var expectedPrevVer) ||
-                        prevPrimaryUser.RowVersion != expectedPrevVer)
+                    // Enforce mandatory ExpectedPreviousPrimaryUserRowVersion when disabling previous primary
+                    if (string.IsNullOrWhiteSpace(request.ExpectedPreviousPrimaryUserRowVersion) ||
+                        !ulong.TryParse(request.ExpectedPreviousPrimaryUserRowVersion, NumberStyles.None, CultureInfo.InvariantCulture, out var expectedPrevVer))
+                    {
+                        return PlatformResult<MakePrimaryCenterManagerData>.Failure(
+                            ErrorCodes.ValidationFailed, "ExpectedPreviousPrimaryUserRowVersion là bắt buộc khi vô hiệu hóa Quản lý chính trước đó.");
+                    }
+
+                    if (prevPrimaryUser.RowVersion != expectedPrevVer)
                     {
                         return PlatformResult<MakePrimaryCenterManagerData>.Failure(
                             ErrorCodes.ConcurrencyConflict, "Dữ liệu quản lý chính trước đó đã bị thay đổi bởi thao tác khác. Vui lòng tải lại.");
                     }
-                }
 
-                prevPrimaryUser.Status = UserStatus.Disabled;
-                prevPrimaryUser.RowVersion++;
-                prevPrimaryUser.AuthVersion++;
-                prevPrimaryUser.UpdatedAt = now;
-                prevPrimaryUser.UpdatedBy = callerUserId;
+                    prevPrimaryUser.Status = UserStatus.Disabled;
+                    prevPrimaryUser.RowVersion++;
+                    prevPrimaryUser.AuthVersion++;
+                    prevPrimaryUser.UpdatedAt = now;
+                    prevPrimaryUser.UpdatedBy = callerUserId;
 
-                var prevTokens = await _dbContext.RefreshTokens
-                    .IgnoreQueryFilters()
-                    .Where(rt => rt.CenterId == centerId && rt.UserId == prevPrimaryUser.UserId && rt.RevokedAt == null)
-                    .ToListAsync(cancellationToken);
+                    var prevTokens = await _dbContext.RefreshTokens
+                        .IgnoreQueryFilters()
+                        .Where(rt => rt.CenterId == centerId && rt.UserId == prevPrimaryUser.UserId && rt.RevokedAt == null)
+                        .ToListAsync(ct);
 
-                foreach (var t in prevTokens)
-                {
-                    t.RevokedAt = now;
-                    t.RevokeReason = "Disabled after transferring primary manager.";
+                    foreach (var t in prevTokens)
+                    {
+                        t.RevokedAt = now;
+                        t.RevokeReason = "Disabled after transferring primary manager.";
+                    }
                 }
             }
-        }
 
-        center.PrimaryManagerUserId = userId;
-        center.RowVersion++;
-        center.UpdatedAt = now;
+            center.PrimaryManagerUserId = userId;
+            center.RowVersion++;
+            center.UpdatedAt = now;
 
-        var auditLog = new AuthorizationAuditLog
-        {
-            CenterId = AuthorizationBootstrapper.ReservedPlatformCenterId,
-            TargetCenterId = centerId,
-            ActorUserId = callerUserId,
-            TargetUserId = null,
-            TargetType = "Center",
-            TargetId = centerId.ToString("D"),
-            ActionType = "CenterPrimaryManagerChanged",
-            BeforeData = JsonSerializer.Serialize(new { PrimaryManagerUserId = oldPrimaryUserId }),
-            AfterData = JsonSerializer.Serialize(new
+            RecordPlatformAudit(
+                centerId,
+                callerUserId,
+                "Center",
+                centerId.ToString("D"),
+                "CenterPrimaryManagerChanged",
+                new { PrimaryManagerUserId = oldPrimaryUserId },
+                new
+                {
+                    PrimaryManagerUserId = userId,
+                    PreviousPrimaryDisabled = request.DisablePreviousPrimary && prevPrimaryUser is not null
+                },
+                sanitizedReason,
+                traceId,
+                now);
+
+            return PlatformResult<MakePrimaryCenterManagerData>.Success(new MakePrimaryCenterManagerData
             {
+                CenterId = centerId,
                 PrimaryManagerUserId = userId,
-                PreviousPrimaryDisabled = request.DisablePreviousPrimary && prevPrimaryUser is not null
-            }),
-            Reason = request.Reason.Trim(),
-            TraceId = string.IsNullOrWhiteSpace(traceId) ? Guid.NewGuid().ToString("N") : traceId,
-            CreatedAt = now,
-            CreatedBy = callerUserId
-        };
-
-        await using var transaction = _dbContext.Database.IsRelational()
-            ? await _dbContext.Database.BeginTransactionAsync(cancellationToken)
-            : null;
-
-        _dbContext.AuthorizationAuditLogs.Add(auditLog);
-
-        try
-        {
-            await _dbContext.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            return PlatformResult<MakePrimaryCenterManagerData>.Failure(
-                ErrorCodes.ConcurrencyConflict, "Dữ liệu trung tâm hoặc người dùng đã bị thay đổi bởi thao tác khác. Vui lòng tải lại.");
-        }
-
-        if (transaction is not null)
-        {
-            await transaction.CommitAsync(cancellationToken);
-        }
-
-        return PlatformResult<MakePrimaryCenterManagerData>.Success(new MakePrimaryCenterManagerData
-        {
-            CenterId = centerId,
-            PrimaryManagerUserId = userId,
-            NewCenterRowVersion = center.RowVersion.ToString(CultureInfo.InvariantCulture),
-            PreviousPrimaryDisabled = request.DisablePreviousPrimary && prevPrimaryUser is not null,
-            UpdatedAtUtc = now
-        });
+                NewCenterRowVersion = center.RowVersion.ToString(CultureInfo.InvariantCulture),
+                PreviousPrimaryDisabled = request.DisablePreviousPrimary && prevPrimaryUser is not null,
+                UpdatedAtUtc = now
+            });
+        }, cancellationToken);
     }
 
     private static Expression<Func<T, bool>> BuildOrEqualityFilter<T, TProp>(

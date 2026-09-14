@@ -8,6 +8,7 @@ using EduTwin.Contracts.Platform;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace EduTwin.API.Controllers;
 
@@ -52,6 +53,7 @@ public class PlatformMeController : ControllerBase
 
     [HttpPost("change-password")]
     [Authorize(Policy = "platform.account.manage_own")]
+    [EnableRateLimiting("PlatformSecurityPolicy")]
     public async Task<IActionResult> ChangePassword(
         [FromBody] PlatformChangePasswordRequest request,
         CancellationToken cancellationToken = default)
@@ -77,6 +79,7 @@ public class PlatformMeController : ControllerBase
 
     [HttpPost("revoke-sessions")]
     [Authorize(Policy = "platform.account.manage_own")]
+    [EnableRateLimiting("PlatformSecurityPolicy")]
     public async Task<IActionResult> RevokeSessions(
         [FromBody] PlatformRevokeSessionsRequest? request,
         CancellationToken cancellationToken = default)

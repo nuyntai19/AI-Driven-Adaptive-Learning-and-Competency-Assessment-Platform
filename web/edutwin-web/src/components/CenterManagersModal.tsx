@@ -591,12 +591,16 @@ export const CenterManagersModal: React.FC<CenterManagersModalProps> = ({
                   type="button"
                   disabled={!primaryReason.trim() || makePrimaryMutation.isPending}
                   onClick={() => {
+                    const currentPrimary = data?.items?.find((m) => m.isPrimary);
                     makePrimaryMutation.mutate({
                       userId: primaryTargetUser.userId,
                       request: {
                         expectedCenterRowVersion: center.rowVersion,
                         expectedManagerUserRowVersion: primaryTargetUser.rowVersion,
                         disablePreviousPrimary,
+                        expectedPreviousPrimaryUserRowVersion: disablePreviousPrimary
+                          ? currentPrimary?.rowVersion
+                          : undefined,
                         reason: primaryReason.trim(),
                       },
                     });

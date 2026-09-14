@@ -351,4 +351,25 @@ public sealed class PlatformMeServiceTests
             Assert.Equal("Phát hiện thiết bị lạ đăng nhập, chủ động thu hồi tất cả phiên.", audit.Reason);
         }
     }
+
+    [Fact]
+    public async Task RevokeSessionsAsync_WhenReasonContainsTokenOrPassword_ReturnsValidationFailed()
+    {
+        var (db, service, _) = CreateContext();
+        using (db)
+        {
+            await SeedPlatformAdminUserAsync(db, PlatformAdminUserId);
+
+            var request = new PlatformRevokeSessionsRequest
+            {
+                Reason = "Revoking sessions due to leaked token: abc123def456"
+            };
+
+            var result = await service.RevokeSessionsAsync(request, "trace-revoke-secret");
+
+            Assert.False(result.IsSuccess);
+            Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+            Assert.Contains("thông tin nhạy cảm", result.ErrorMessage);
+        }
+    }
 }

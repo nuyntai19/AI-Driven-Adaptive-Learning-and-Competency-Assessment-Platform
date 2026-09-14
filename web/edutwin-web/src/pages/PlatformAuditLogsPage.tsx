@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { platformApi } from "../api/platformApi";
 import type { PlatformAuditItem, PlatformAuditQuery } from "../types/platform";
 import { PlatformSecurityModal } from "../components/PlatformSecurityModal";
+import { ThemeToggle } from "../components/ThemeToggle";
 
 export const PlatformAuditLogsPage: React.FC = () => {
   const [page, setPage] = useState<number>(1);
@@ -136,26 +137,29 @@ export const PlatformAuditLogsPage: React.FC = () => {
         </div>
 
         {/* Navigation Tabs */}
-        <div className="inline-flex rounded-lg p-1 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-          <Link
-            to="/quan-tri-nen-tang/trung-tam"
-            className="px-4 py-2 text-xs font-semibold rounded-md text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
-          >
-            Trung tâm đối tác
-          </Link>
-          <Link
-            to="/quan-tri-nen-tang/nhat-ky"
-            className="px-4 py-2 text-xs font-semibold rounded-md bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm"
-          >
-            Nhật ký kiểm toán
-          </Link>
-          <button
-            type="button"
-            onClick={() => setIsSecurityModalOpen(true)}
-            className="px-4 py-2 text-xs font-semibold rounded-md text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors flex items-center gap-1"
-          >
-            <span>🛡️</span> Bảo mật tài khoản
-          </button>
+        <div className="flex items-center gap-3">
+          <div className="inline-flex rounded-lg p-1 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+            <Link
+              to="/quan-tri-nen-tang/trung-tam"
+              className="px-4 py-2 text-xs font-semibold rounded-md text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+            >
+              Trung tâm đối tác
+            </Link>
+            <Link
+              to="/quan-tri-nen-tang/nhat-ky"
+              className="px-4 py-2 text-xs font-semibold rounded-md bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm"
+            >
+              Nhật ký kiểm toán
+            </Link>
+            <button
+              type="button"
+              onClick={() => setIsSecurityModalOpen(true)}
+              className="px-4 py-2 text-xs font-semibold rounded-md text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors flex items-center gap-1"
+            >
+              <span>🛡️</span> Bảo mật tài khoản
+            </button>
+          </div>
+          <ThemeToggle />
         </div>
       </div>
 

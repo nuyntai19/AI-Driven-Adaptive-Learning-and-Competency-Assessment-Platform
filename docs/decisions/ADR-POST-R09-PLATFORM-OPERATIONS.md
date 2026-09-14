@@ -1,11 +1,11 @@
-# ADR-POST-R09-PLATFORM-OPERATIONS: Platform Administration Operational Hardening, Manager Lifecycle, and Audit Governance
+﻿# ADR-POST-R09-PLATFORM-OPERATIONS: Platform Administration Operational Hardening, Manager Lifecycle, and Audit Governance
 
-**Status:** APPROVED  
-**Date:** 2026-09-13  
-**Scope:** Post-R09 Operational Enhancement (`POST-R09-PLATFORM-OPS`)  
-**Author:** EduTwin Architecture Team & Codex Review  
-**Baseline Git Freeze SHA:** `77bf38412e99d174ccbb725075dd82a37b84971d`  
-**Branch:** `codex/post-r09-platform-ops`  
+**Status:** APPROVED
+**Date:** 2026-09-13
+**Scope:** Post-R09 Operational Enhancement (`POST-R09-PLATFORM-OPS`)
+**Author:** EduTwin Architecture Team & Codex Review
+**Baseline Git Freeze SHA:** `77bf38412e99d174ccbb725075dd82a37b84971d`
+**Branch:** `codex/post-r09-platform-ops`
 
 ---
 

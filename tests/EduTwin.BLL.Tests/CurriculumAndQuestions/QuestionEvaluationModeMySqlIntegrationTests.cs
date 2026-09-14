@@ -51,30 +51,42 @@ public sealed class QuestionEvaluationModeMySqlIntegrationTests
             {
                 await seedContext.Database.ExecuteSqlRawAsync("SET FOREIGN_KEY_CHECKS = 0;");
 
-                seedContext.Centers.Add(new Center
-                {
-                    CenterId = centerId,
-                    CenterCode = $"C-{centerId:N}"[..10],
-                    CenterName = "Upgrade Test Center",
-                    Status = CenterStatus.Active,
-                    Timezone = "UTC",
-                    CreatedAt = UtcNow,
-                    UpdatedAt = UtcNow
-                });
+                // Use raw insert for centers because at migration baseline 20260912173142_AddEvaluationModeAndDisplayLatex,
+                // the centers table schema did not yet contain primary_manager_user_id.
+                await seedContext.Database.ExecuteSqlRawAsync(
+                    @"INSERT INTO centers (center_id, center_code, center_name, status, timezone, is_deleted, created_at, updated_at, row_version)
+                      VALUES ({0}, {1}, {2}, 'Active', 'UTC', 0, {3}, {3}, 1);",
+                    centerId, $"C-{centerId:N}"[..10], "Upgrade Test Center", UtcNow);
 
-                seedContext.Users.Add(new User
-                {
-                    CenterId = centerId,
-                    UserId = teacherId,
-                    Username = $"teacher-{teacherId:N}",
-                    PasswordHash = "hash",
-                    DisplayName = "Teacher Upgrade",
-                    RoleName = UserRole.Teacher,
-                    Status = UserStatus.Active,
-                    AuthVersion = 1,
-                    CreatedAt = UtcNow,
-                    UpdatedAt = UtcNow
-                });
+                var managerId = Guid.NewGuid();
+                seedContext.Users.AddRange(
+                    new User
+                    {
+                        CenterId = centerId,
+                        UserId = managerId,
+                        Username = $"manager-{managerId:N}",
+                        PasswordHash = "hash",
+                        DisplayName = "Manager Upgrade",
+                        RoleName = UserRole.CenterManager,
+                        Status = UserStatus.Active,
+                        AuthVersion = 1,
+                        CreatedAt = UtcNow,
+                        UpdatedAt = UtcNow
+                    },
+                    new User
+                    {
+                        CenterId = centerId,
+                        UserId = teacherId,
+                        Username = $"teacher-{teacherId:N}",
+                        PasswordHash = "hash",
+                        DisplayName = "Teacher Upgrade",
+                        RoleName = UserRole.Teacher,
+                        Status = UserStatus.Active,
+                        AuthVersion = 1,
+                        CreatedAt = UtcNow,
+                        UpdatedAt = UtcNow
+                    }
+                );
 
                 seedContext.Teachers.Add(new Teacher
                 {

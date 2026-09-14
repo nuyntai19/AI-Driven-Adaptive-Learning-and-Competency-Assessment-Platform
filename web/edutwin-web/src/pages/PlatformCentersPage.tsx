@@ -8,13 +8,13 @@ import type {
   CreatePlatformCenterRequest,
   UpdatePlatformCenterStatusRequest,
   UpdateCenterMetadataRequest,
-  ResetCenterManagerPasswordRequest,
 } from "../types/platform";
 import type { ProblemDetails } from "../types/auth";
 import { useAuthStore } from "../stores/authStore";
 import { permissions } from "../auth/permissions";
 import { CenterManagersModal } from "../components/CenterManagersModal";
 import { PlatformSecurityModal } from "../components/PlatformSecurityModal";
+import { ThemeToggle } from "../components/ThemeToggle";
 
 export const PlatformCentersPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -33,7 +33,6 @@ export const PlatformCentersPage: React.FC = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [statusModalCenter, setStatusModalCenter] = useState<PlatformCenterListItem | null>(null);
   const [statusReason, setStatusReason] = useState("");
-  const [resetPasswordCenter, setResetPasswordCenter] = useState<PlatformCenterListItem | null>(null);
   const [managersModalCenter, setManagersModalCenter] = useState<PlatformCenterListItem | null>(null);
   const [editMetadataCenter, setEditMetadataCenter] = useState<PlatformCenterListItem | null>(null);
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
@@ -50,9 +49,6 @@ export const PlatformCentersPage: React.FC = () => {
   const [newManagerUsername, setNewManagerUsername] = useState("");
   const [newManagerDisplayName, setNewManagerDisplayName] = useState("");
   const [newManagerPassword, setNewManagerPassword] = useState("");
-
-  // Reset Password Form State
-  const [newPassword, setNewPassword] = useState("");
 
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -148,50 +144,6 @@ export const PlatformCentersPage: React.FC = () => {
     },
   });
 
-  const resetPasswordMutation = useMutation({
-    mutationFn: ({
-      centerId,
-      managerUserId,
-      request,
-    }: {
-      centerId: string;
-      managerUserId: string;
-      request: ResetCenterManagerPasswordRequest;
-    }) => platformApi.resetCenterManagerPassword(centerId, managerUserId, request),
-    onSuccess: (res) => {
-      // Optimistically update the cached list item with the new row version if available
-      queryClient.setQueriesData({ queryKey: ["platform-centers"] }, (old: any) => {
-        if (!old || !old.items) return old;
-        return {
-          ...old,
-          items: old.items.map((item: PlatformCenterListItem) =>
-            item.centerId === resetPasswordCenter?.centerId
-              ? { ...item, initialManagerUserRowVersion: res.newUserRowVersion }
-              : item
-          ),
-        };
-      });
-      queryClient.invalidateQueries({ queryKey: ["platform-centers"] });
-      setResetPasswordCenter(null);
-      setNewPassword("");
-      setSuccessMessage("Đã đặt lại mật khẩu cho tài khoản quản lý thành công. Tất cả phiên cũ đã bị thu hồi.");
-      setTimeout(() => setSuccessMessage(""), 6000);
-    },
-    onError: (error) => {
-      if (isAxiosError<ProblemDetails>(error)) {
-        const code = error.response?.data?.errorCode;
-        if (code === "CONCURRENCY_CONFLICT" || error.response?.status === 409) {
-          setErrorMessage("Dữ liệu người dùng đã bị thay đổi bởi tác vụ khác. Vui lòng tải lại trang.");
-          refetch();
-        } else {
-          setErrorMessage(error.response?.data?.detail || "Không thể đặt lại mật khẩu quản lý.");
-        }
-      } else {
-        setErrorMessage("Không thể đặt lại mật khẩu. Vui lòng thử lại.");
-      }
-    },
-  });
-
   const resetCreateForm = () => {
     setNewCenterCode("");
     setNewCenterName("");
@@ -243,26 +195,6 @@ export const PlatformCentersPage: React.FC = () => {
     });
   };
 
-  const handleResetPasswordConfirm = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!resetPasswordCenter || !resetPasswordCenter.initialManagerUserId) return;
-
-    if (!resetPasswordCenter.initialManagerUserRowVersion) {
-      setErrorMessage("Không có phiên bản dữ liệu quản lý hiện hành. Vui lòng tải lại danh sách.");
-      refetch();
-      return;
-    }
-
-    resetPasswordMutation.mutate({
-      centerId: resetPasswordCenter.centerId,
-      managerUserId: resetPasswordCenter.initialManagerUserId,
-      request: {
-        newPassword,
-        expectedUserRowVersion: resetPasswordCenter.initialManagerUserRowVersion,
-      },
-    });
-  };
-
   const centers = data?.items || [];
   const totalCount = data?.totalCount || 0;
   const totalPages = Math.ceil(totalCount / pageSize) || 1;
@@ -308,6 +240,7 @@ export const PlatformCentersPage: React.FC = () => {
               <span>🛡️</span> Bảo mật tài khoản
             </button>
           </div>
+          <ThemeToggle />
           {canManageCenters && (
             <button
               type="button"
@@ -535,18 +468,6 @@ export const PlatformCentersPage: React.FC = () => {
                           className="px-3 py-1 text-xs font-medium text-indigo-700 dark:text-indigo-400 rounded-md border border-indigo-300 dark:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors"
                         >
                           Nhân sự Quản lý
-                        </button>
-                      )}
-                      {canManageManagers && (c.primaryManagerUserId || c.initialManagerUserId) && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setResetPasswordCenter(c);
-                            setNewPassword("");
-                          }}
-                          className="px-3 py-1 text-xs font-medium text-amber-700 dark:text-amber-400 rounded-md border border-amber-300 dark:border-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/30 transition-colors"
-                        >
-                          Đổi mật khẩu
                         </button>
                       )}
                     </td>
@@ -783,62 +704,12 @@ export const PlatformCentersPage: React.FC = () => {
         </div>
       )}
 
-      {/* Modal: Reset Password */}
-      {resetPasswordCenter && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl max-w-md w-full p-6 shadow-xl border border-gray-200 dark:border-gray-700 space-y-4">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-              Đặt Lại Mật Khẩu Quản Lý
-            </h3>
-            <p className="text-sm text-gray-600 dark:text-gray-300">
-              Đặt lại mật khẩu cho tài khoản quản trị <strong>@{resetPasswordCenter.initialManagerUsername}</strong>{" "}
-              thuộc trung tâm <strong>{resetPasswordCenter.centerName}</strong>.
-            </p>
-            <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 text-xs border border-amber-200 dark:border-amber-800">
-              ⚠️ <strong>Cảnh báo bảo mật:</strong> Sau khi đặt lại mật khẩu thành công, toàn bộ phiên đăng nhập (JWT và Refresh Token) của người dùng này sẽ lập tức bị thu hồi và buộc phải đăng nhập lại bằng mật khẩu mới.
-            </div>
-            <form onSubmit={handleResetPasswordConfirm} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  Mật Khẩu Mới (tối thiểu 12 ký tự) *
-                </label>
-                <input
-                  type="password"
-                  required
-                  minLength={12}
-                  placeholder="Nhập mật khẩu mới (tối thiểu 12 ký tự)..."
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600"
-                />
-              </div>
-              <div className="flex justify-end gap-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-                <button
-                  type="button"
-                  onClick={() => setResetPasswordCenter(null)}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 rounded-lg"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  disabled={resetPasswordMutation.isPending}
-                  className="px-4 py-2 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-lg disabled:opacity-50"
-                >
-                  {resetPasswordMutation.isPending ? "Đang xử lý..." : "Đặt lại mật khẩu"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {/* Modal: Center Managers Lifecycle */}
       {managersModalCenter && (
         <CenterManagersModal
           isOpen={!!managersModalCenter}
           onClose={() => setManagersModalCenter(null)}
-          center={managersModalCenter}
+          center={centers.find((c) => c.centerId === managersModalCenter.centerId) || managersModalCenter}
           onCenterUpdated={() => {
             refetch();
           }}

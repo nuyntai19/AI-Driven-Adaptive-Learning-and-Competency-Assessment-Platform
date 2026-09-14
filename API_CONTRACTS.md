@@ -1,4 +1,4 @@
-# EduTwin — API Contracts
+﻿# EduTwin — API Contracts
 
 > Phiên bản: 2.1-draft
 > Trạng thái: COURSE REBASELINE — API v1 hiện hữu + target contract RBAC/Evidence chưa cutover
@@ -2727,4 +2727,3 @@ Thêm optional field có thể là non-breaking nhưng vẫn phải cập nhật
 - [ ] Thao tác thay đổi Center/Manager bắt buộc lý do `reason` hợp lệ và audit log redacted.
 - [ ] Evidence Gate fields là server-owned, có policyVersion/reasonCodes và fallback không đổi Knowledge Mastery.
 - [ ] API target v2 chỉ được đánh dấu IMPLEMENTED sau khi schema migration, backend và frontend tương ứng hoàn tất.
-

@@ -168,6 +168,34 @@ builder.Services.AddAttemptAttachmentStorage(builder.Configuration);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddAIAnalysisJobBackgroundWorker();
 
+// --- Rate Limiting (Single-Instance Ingress Defense) ---
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("PlatformSecurityPolicy", httpContext =>
+    {
+        var userId = httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                     ?? httpContext.User.FindFirst("sub")?.Value;
+
+        var endpoint = httpContext.GetEndpoint() as RouteEndpoint;
+        var routePattern = endpoint?.RoutePattern.RawText ?? httpContext.Request.Path.Value ?? string.Empty;
+        var httpMethod = httpContext.Request.Method;
+
+        var partitionKey = !string.IsNullOrEmpty(userId)
+            ? $"user_{userId}_{httpMethod}_{routePattern}"
+            : $"ip_{httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown"}_{httpMethod}_{routePattern}";
+
+        return System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey,
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            });
+    });
+});
+
 var app = builder.Build();
 
 // --- Initialization ---
@@ -188,6 +216,7 @@ app.UseAuthentication();
 app.UseMiddleware<EduTwin.API.Middleware.TenantContextMiddleware>();
 app.UseMiddleware<EduTwin.API.Middleware.AuthorizationVersionMiddleware>();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.MapControllers();
 

@@ -443,7 +443,8 @@ public sealed class PlatformAdminAcademicAccessDenialTests : IDisposable
         var request = new ResetCenterManagerPasswordRequest
         {
             NewPassword = "NewValidSecurePassword123!",
-            ExpectedUserRowVersion = "1"
+            ExpectedUserRowVersion = "1",
+            Reason = "Operational password rotation reason"
         };
 
         // Attempting to use reset-manager endpoint on PLATFORM root tenant MUST return ForbiddenResource
@@ -517,10 +518,11 @@ public sealed class PlatformAdminAcademicAccessDenialTests : IDisposable
         var request = new ResetCenterManagerPasswordRequest
         {
             NewPassword = "NewValidSecurePassword123!",
-            ExpectedUserRowVersion = "1"
+            ExpectedUserRowVersion = "1",
+            Reason = "Operational password rotation reason"
         };
 
-        // Reset password on a non-CenterManager user MUST fail validation
+        // Reset password on a non-CenterManager user MUST fail with ResourceNotFound
         var result = await service.ResetCenterManagerPasswordAsync(
             customerCenterId,
             teacherUserId,
@@ -528,7 +530,7 @@ public sealed class PlatformAdminAcademicAccessDenialTests : IDisposable
             "trace-2");
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
     }
 
     [Fact]

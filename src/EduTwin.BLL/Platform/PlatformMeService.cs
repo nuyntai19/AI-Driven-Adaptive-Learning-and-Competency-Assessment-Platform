@@ -234,16 +234,22 @@ public sealed class PlatformMeService : IPlatformMeService
                 ErrorCodes.ResourceNotFound, "Không tìm thấy hồ sơ quản trị viên nền tảng hợp lệ.");
         }
 
+        string sanitizedReason = "Platform administrator manually revoked all active sessions.";
+        if (!string.IsNullOrWhiteSpace(request?.Reason))
+        {
+            if (!PlatformAuditSanitizer.ValidateAndSanitizeReason(request.Reason, out sanitizedReason, out var reasonError, minLength: 3))
+            {
+                return PlatformResult<bool>.Failure(
+                    ErrorCodes.ValidationFailed, reasonError ?? "Lý do thu hồi phiên đăng nhập không hợp lệ.");
+            }
+        }
+
         var now = _timeProvider.GetUtcNow().UtcDateTime;
 
         user.AuthVersion++;
         user.RowVersion++;
         user.UpdatedAt = now;
         user.UpdatedBy = callerUserId;
-
-        var reason = string.IsNullOrWhiteSpace(request?.Reason)
-            ? "Platform administrator manually revoked all active sessions."
-            : request.Reason.Trim();
 
         var activeTokens = await _dbContext.RefreshTokens
             .Where(rt => rt.UserId == callerUserId &&
@@ -253,7 +259,7 @@ public sealed class PlatformMeService : IPlatformMeService
         foreach (var token in activeTokens)
         {
             token.RevokedAt = now;
-            token.RevokeReason = reason;
+            token.RevokeReason = sanitizedReason;
         }
 
         var auditLog = new AuthorizationAuditLog
@@ -271,7 +277,7 @@ public sealed class PlatformMeService : IPlatformMeService
                 AuthVersion = user.AuthVersion,
                 RevokedTokenCount = activeTokens.Count
             }),
-            Reason = reason,
+            Reason = sanitizedReason,
             TraceId = string.IsNullOrWhiteSpace(traceId) ? Guid.NewGuid().ToString("N") : traceId,
             CreatedAt = now,
             CreatedBy = callerUserId

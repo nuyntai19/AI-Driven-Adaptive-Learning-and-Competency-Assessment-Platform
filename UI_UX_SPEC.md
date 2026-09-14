@@ -1,4 +1,4 @@
-# EduTwin — UI/UX and Capability Specification
+﻿# EduTwin — UI/UX and Capability Specification
 
 > Phiên bản: 2.1-draft
 > Trạng thái: COURSE REBASELINE — cần Figma và stakeholder validation
@@ -662,4 +662,3 @@ Không dùng biểu thức role OR permission để “chạy tạm”, vì sẽ
   - Khối Thu hồi Phiên Đăng nhập (Revoke Sessions):
     - Nút "Đăng xuất khỏi tất cả các thiết bị khác".
     - Hộp thoại xác nhận trước khi thực hiện thu hồi.
-
