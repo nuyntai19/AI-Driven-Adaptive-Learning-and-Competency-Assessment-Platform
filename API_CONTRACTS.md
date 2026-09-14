@@ -456,10 +456,8 @@ Response 200:
 ~~~json
 {
   "data": {
-    "userId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-    "username": "teacher.001",
-    "rowVersion": "2",
-    "authVersion": 2
+    "targetUserId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "newRowVersion": "2"
   },
   "meta": {
     "traceId": "00-abcd-1234-01",
@@ -469,7 +467,7 @@ Response 200:
 ~~~
 
 Error codes:
-- 400: VALIDATION_FAILED (mật khẩu dưới 8 ký tự hoặc thiếu reason)
+- 400: VALIDATION_FAILED (mật khẩu ngoài khoảng 12–200 ký tự, thiếu expectedUserRowVersion hoặc reason ngoài khoảng 5–500 ký tự)
 - 401: Chưa xác thực
 - 403: AUTH_PERMISSION_REQUIRED (thiếu quyền `organization.teachers.reset_password`)
 - 404: RESOURCE_NOT_FOUND (không tìm thấy teacher trong tenant hoặc sai account type)
@@ -580,10 +578,8 @@ Response 200:
 ~~~json
 {
   "data": {
-    "userId": "baf68743-a272-4983-a9e2-41663734a7c2",
-    "username": "student.001",
-    "rowVersion": "2",
-    "authVersion": 2
+    "targetUserId": "baf68743-a272-4983-a9e2-41663734a7c2",
+    "newRowVersion": "2"
   },
   "meta": {
     "traceId": "00-abcd-1234-01",
@@ -593,7 +589,7 @@ Response 200:
 ~~~
 
 Error codes:
-- 400: VALIDATION_FAILED (mật khẩu dưới 8 ký tự hoặc thiếu reason)
+- 400: VALIDATION_FAILED (mật khẩu ngoài khoảng 12–200 ký tự, thiếu expectedUserRowVersion hoặc reason ngoài khoảng 5–500 ký tự)
 - 401: Chưa xác thực
 - 403: AUTH_PERMISSION_REQUIRED (thiếu quyền `organization.students.reset_password`)
 - 404: RESOURCE_NOT_FOUND (không tìm thấy student trong tenant hoặc sai account type)

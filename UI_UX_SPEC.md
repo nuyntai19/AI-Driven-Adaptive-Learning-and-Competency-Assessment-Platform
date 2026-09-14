@@ -677,9 +677,9 @@ Không dùng biểu thức role OR permission để “chạy tạm”, vì sẽ
   - Trạng thái UI: Hỗ trợ đầy đủ loading skeleton, thông báo lỗi mạng có nút thử lại, và tuân thủ accessibility (nhãn form, phím Tab, Enter).
 
 #### 20.7.2. Hoàn thiện Vòng đời Tài khoản Giáo viên (`TeacherListPage.tsx` & Actions)
-- **Danh sách giáo viên:** Hiển thị Họ tên, Tên đăng nhập, Bộ môn (`department`), Trạng thái (`Active` / `Locked`), Số lớp đang phụ trách (`activeClassCount`).
+- **Danh sách giáo viên:** Hiển thị Họ tên, Tên đăng nhập, Bộ môn (`department`), Trạng thái (`Active` / `Locked`), Số lớp đang phụ trách (`classCount`).
 - **Thao tác quản trị:**
-  - *Xem chi tiết:* Modal hiển thị thông tin hồ sơ và danh sách các lớp học giáo viên đang giảng dạy.
+  - *Xem chi tiết:* Nút và Modal hiển thị thông tin hồ sơ chi tiết giáo viên (Mã định danh, Tên đăng nhập, Họ và tên, Bộ môn, Trạng thái, Số lớp đang phụ trách `classCount`, Phiên bản dữ liệu `rowVersion`) được tải từ `organizationApi.getTeacher()`.
   - *Chỉnh sửa thông tin:* Sửa họ tên, bộ môn, trạng thái (Active / Locked) kèm `rowVersion`.
   - *Đặt lại mật khẩu (`ResetPasswordModal.tsx`):* Form nhập mật khẩu mới, lý do quản trị, gửi kèm `expectedUserRowVersion`. Cảnh báo thu hồi toàn bộ phiên đăng nhập của giáo viên.
   - *Xóa mềm (Soft-delete):* Hộp thoại xác nhận xóa mềm tài khoản. Nếu giáo viên còn lớp học đang hoạt động, hệ thống hiển thị thông báo lỗi 409 và chặn thao tác xóa nhằm bảo vệ toàn vẹn lịch sử lớp học.

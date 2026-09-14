@@ -1,11 +1,11 @@
 # ADR-POST-R09-CENTER-MANAGER-OPERATIONS: Center Administration End-to-End Completion, Account Lifecycle Governance, and Tenant-Scoped Authority
 
-**Status:** APPROVED  
-**Date:** 2026-09-14  
-**Scope:** Post-R09 Center Operations Milestone (`POST-R09-CENTER-MANAGER-OPS`)  
-**Author:** EduTwin Architecture Team & Codex Review  
-**Baseline Git Freeze SHA:** `222e7bbf728c27a6437be18ac860e4f04a5b7c5d` (kế thừa `1f1cb9cccaf102f489f29b3296ee92744e5ad401`)  
-**Branch:** `codex/post-r09-center-manager-ops`  
+**Status:** APPROVED<br />
+**Date:** 2026-09-14<br />
+**Scope:** Post-R09 Center Operations Milestone (`POST-R09-CENTER-MANAGER-OPS`)<br />
+**Author:** EduTwin Architecture Team & Codex Review<br />
+**Baseline Git Freeze SHA:** `222e7bbf728c27a6437be18ac860e4f04a5b7c5d` (kế thừa `1f1cb9cccaf102f489f29b3296ee92744e5ad401`)<br />
+**Branch:** `codex/post-r09-center-manager-ops`
 
 ---
 

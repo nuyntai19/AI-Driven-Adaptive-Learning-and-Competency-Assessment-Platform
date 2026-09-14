@@ -206,6 +206,26 @@ test("Teacher contract models serialize and validate expected OCC rowVersion and
   assert.equal(canDeleteTeacher, false, "Teacher with assigned classes must block deletion");
 });
 
+test("Teacher detail contract validates canonical classCount and profile fields from getTeacher", () => {
+  const teacherDetail: TeacherDto = {
+    teacherId: "00000000-0000-0000-0000-000000000010",
+    username: "teacher.nguyen",
+    displayName: "Nguyễn Văn Thầy",
+    department: "Tổ Toán học",
+    status: "Active",
+    classCount: 3,
+    rowVersion: "1005",
+  };
+
+  assert.equal(teacherDetail.teacherId, "00000000-0000-0000-0000-000000000010");
+  assert.equal(teacherDetail.username, "teacher.nguyen");
+  assert.equal(teacherDetail.displayName, "Nguyễn Văn Thầy");
+  assert.equal(teacherDetail.department, "Tổ Toán học");
+  assert.equal(teacherDetail.status, "Active");
+  assert.equal(teacherDetail.classCount, 3);
+  assert.equal(teacherDetail.rowVersion, "1005");
+});
+
 test("Student contract models serialize and validate detail with subject goals and active classes", () => {
   const studentDetail: StudentDetailDto = {
     studentId: "00000000-0000-0000-0000-000000000020",

@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using EduTwin.BLL.IdentityAndTenancy;
@@ -417,6 +418,11 @@ public class ResetAccountPasswordUseCaseTests
         Assert.DoesNotContain("SuperSecurePassword123!", audit.AfterData);
         Assert.DoesNotContain("hashed_new_password_123", audit.BeforeData);
         Assert.DoesNotContain("hashed_new_password_123", audit.AfterData);
+
+        Assert.NotNull(audit.AfterData);
+        using var teacherAfterDoc = JsonDocument.Parse(audit.AfterData!);
+        var teacherAuditRowVersion = teacherAfterDoc.RootElement.GetProperty("RowVersion").GetInt64().ToString();
+        Assert.Equal(result.NewRowVersion, teacherAuditRowVersion);
     }
 
     [Fact]
@@ -483,5 +489,10 @@ public class ResetAccountPasswordUseCaseTests
         Assert.Equal("trace-student-pwd", audit.TraceId);
         Assert.DoesNotContain("StudentNewPassword123!", audit.BeforeData);
         Assert.DoesNotContain("StudentNewPassword123!", audit.AfterData);
+
+        Assert.NotNull(audit.AfterData);
+        using var studentAfterDoc = JsonDocument.Parse(audit.AfterData!);
+        var studentAuditRowVersion = studentAfterDoc.RootElement.GetProperty("RowVersion").GetInt64().ToString();
+        Assert.Equal(result.NewRowVersion, studentAuditRowVersion);
     }
 }

@@ -24,6 +24,7 @@ export const TeacherListPage: React.FC = () => {
   const queryClient = useQueryClient();
   const hasPermission = useAuthStore((state) => state.hasPermission);
 
+  const canReadTeacher = hasPermission(permissions.teachersRead);
   const canCreateTeacher = hasPermission(permissions.teachersCreate);
   const canUpdateTeacher = hasPermission(permissions.teachersUpdate);
   const canDeleteTeacher = hasPermission(permissions.teachersDelete);
@@ -60,6 +61,9 @@ export const TeacherListPage: React.FC = () => {
   // Delete modal state
   const [deletingTeacher, setDeletingTeacher] = useState<TeacherDto | null>(null);
 
+  // Detail modal state
+  const [viewingTeacherId, setViewingTeacherId] = useState<string | null>(null);
+
   // Notifications
   const [feedback, setFeedback] = useState<{ type: "success" | "error" | "conflict"; message: string } | null>(null);
 
@@ -80,6 +84,12 @@ export const TeacherListPage: React.FC = () => {
   const { data, isLoading, isFetching, isError: isListError, refetch } = useQuery({
     queryKey: ["teachers", queryParams.page, queryParams.pageSize, queryParams.search, queryParams.status],
     queryFn: () => organizationApi.listTeachers(queryParams),
+  });
+
+  const { data: teacherDetail, isLoading: isDetailLoading } = useQuery<TeacherDto>({
+    queryKey: ["teacherDetail", viewingTeacherId],
+    queryFn: () => organizationApi.getTeacher(viewingTeacherId!),
+    enabled: !!viewingTeacherId,
   });
 
   // Create mutation
@@ -429,6 +439,75 @@ export const TeacherListPage: React.FC = () => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Teacher Detail Modal */}
+        {viewingTeacherId && canReadTeacher && (
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-view-teacher-title">
+            <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+              <h2 id="modal-view-teacher-title" className="text-lg font-bold text-gray-900 mb-4">
+                Hồ sơ chi tiết giáo viên
+              </h2>
+
+              {isDetailLoading ? (
+                <div className="py-8 text-center text-sm text-gray-500">Đang tải thông tin giáo viên...</div>
+              ) : teacherDetail ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-md text-sm border border-gray-100">
+                    <div>
+                      <span className="text-xs text-gray-500 block">Mã giáo viên</span>
+                      <span className="font-mono text-xs text-gray-800 break-all">{teacherDetail.teacherId}</span>
+                    </div>
+                    <div>
+                      <span className="text-xs text-gray-500 block">Tên đăng nhập</span>
+                      <span className="font-semibold text-gray-900">{teacherDetail.username}</span>
+                    </div>
+                    <div>
+                      <span className="text-xs text-gray-500 block">Họ và tên</span>
+                      <span className="font-medium text-gray-900">{teacherDetail.displayName}</span>
+                    </div>
+                    <div>
+                      <span className="text-xs text-gray-500 block">Tổ / Bộ môn</span>
+                      <span className="text-gray-800">{teacherDetail.department || "Chưa phân tổ bộ môn"}</span>
+                    </div>
+                    <div>
+                      <span className="text-xs text-gray-500 block">Trạng thái tài khoản</span>
+                      <span
+                        className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${
+                          teacherDetail.status === "Active"
+                            ? "bg-green-50 text-green-700 ring-green-600/20"
+                            : teacherDetail.status === "Locked"
+                            ? "bg-yellow-50 text-yellow-800 ring-yellow-600/20"
+                            : "bg-red-50 text-red-700 ring-red-600/10"
+                        }`}
+                      >
+                        {STATUS_LABELS[teacherDetail.status] || teacherDetail.status}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-xs text-gray-500 block">Số lớp phụ trách</span>
+                      <span className="font-semibold text-indigo-600">{teacherDetail.classCount} lớp</span>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="text-xs text-gray-500 block">Phiên bản dữ liệu (RowVersion)</span>
+                      <span className="font-mono text-xs text-gray-600">{teacherDetail.rowVersion}</span>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="flex justify-end pt-4 mt-4 border-t border-gray-200">
+                <button
+                  type="button"
+                  id="btn-close-teacher-detail"
+                  onClick={() => setViewingTeacherId(null)}
+                  className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+                >
+                  Đóng
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -802,6 +881,16 @@ export const TeacherListPage: React.FC = () => {
                         {teacher.classCount}
                       </td>
                       <td className="whitespace-nowrap py-4 pl-3 pr-4 sm:pr-6 text-right text-sm font-medium space-x-2">
+                        {canReadTeacher && (
+                          <button
+                            type="button"
+                            id={`btn-view-teacher-${teacher.teacherId}`}
+                            onClick={() => setViewingTeacherId(teacher.teacherId)}
+                            className="text-teal-600 hover:text-teal-900 text-xs font-semibold px-2 py-1 rounded hover:bg-teal-50"
+                          >
+                            Chi tiết
+                          </button>
+                        )}
                         {canUpdateTeacher && (
                           <button
                             type="button"

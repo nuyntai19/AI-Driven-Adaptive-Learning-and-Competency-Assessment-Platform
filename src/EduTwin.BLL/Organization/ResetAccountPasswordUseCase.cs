@@ -168,6 +168,8 @@ public class ResetAccountPasswordUseCase : IResetAccountPasswordUseCase
         user.UpdatedBy = managerId;
         _dbContext.Entry(user).Property(item => item.RowVersion).OriginalValue = expectedVersion;
 
+        var newRowVersion = checked(expectedVersion + 1);
+
         // Revoke active refresh tokens
         var refreshTokens = await _dbContext.RefreshTokens
             .Where(rt => rt.CenterId == centerId && rt.UserId == user.UserId && rt.RevokedAt == null)
@@ -191,7 +193,7 @@ public class ResetAccountPasswordUseCase : IResetAccountPasswordUseCase
             TargetId = user.UserId.ToString("D"),
             TargetUserId = user.UserId,
             BeforeData = JsonSerializer.Serialize(new { RowVersion = expectedVersion, AuthVersion = user.AuthVersion - 1 }),
-            AfterData = JsonSerializer.Serialize(new { RowVersion = user.RowVersion, AuthVersion = user.AuthVersion }),
+            AfterData = JsonSerializer.Serialize(new { RowVersion = newRowVersion, AuthVersion = user.AuthVersion }),
             Reason = request.Reason.Trim(),
             TraceId = traceId ?? string.Empty,
             CreatedAt = now,

@@ -1,10 +1,10 @@
 # KẾ HOẠCH NÂNG CẤP CENTERMANAGER — POST-R09-CENTER-MANAGER-OPS
 
-> **Tên milestone:** `POST-R09-CENTER-MANAGER-OPS` — Center Administration End-to-End Completion  
-> **Thời điểm lập kế hoạch:** 2026-09-14 (+07:00)  
-> **Trạng thái:** IMPLEMENTATION-READY — USER APPROVAL REQUIRED  
-> **Căn cứ:** Source audit trực tiếp sau closeout PlatformAdmin và yêu cầu Product Owner  
-> **Git base freeze SHA:** `222e7bbf728c27a6437be18ac860e4f04a5b7c5d` (kế thừa trực tiếp `1f1cb9cccaf102f489f29b3296ee92744e5ad401`)  
+> **Tên milestone:** `POST-R09-CENTER-MANAGER-OPS` — Center Administration End-to-End Completion<br />
+> **Thời điểm lập kế hoạch:** 2026-09-14 (+07:00)<br />
+> **Trạng thái:** IMPLEMENTATION-READY — USER APPROVAL REQUIRED<br />
+> **Căn cứ:** Source audit trực tiếp sau closeout PlatformAdmin và yêu cầu Product Owner<br />
+> **Git base freeze SHA:** `222e7bbf728c27a6437be18ac860e4f04a5b7c5d` (kế thừa trực tiếp `1f1cb9cccaf102f489f29b3296ee92744e5ad401`)<br />
 > **Nhánh dự kiến:** `codex/post-r09-center-manager-ops`
 
 ---
