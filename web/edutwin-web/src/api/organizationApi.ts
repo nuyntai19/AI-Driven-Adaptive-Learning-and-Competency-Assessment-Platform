@@ -1,5 +1,24 @@
 import { httpClient } from "./httpClient";
-import type { TeacherListParams, TeacherListResponse, ClassListParams, ClassListResponse, CreateTeacherRequest, TeacherDto, StudentListParams, StudentListResponse, CreateStudentRequest, StudentDto, StudentResponse, SubjectListResponse, CreateClassRequest, ClassDto, ClassResponse } from "../types/organization";
+import type {
+  TeacherListParams,
+  TeacherListResponse,
+  ClassListParams,
+  ClassListResponse,
+  CreateTeacherRequest,
+  TeacherDto,
+  StudentListParams,
+  StudentListResponse,
+  CreateStudentRequest,
+  StudentDto,
+  StudentResponse,
+  SubjectListResponse,
+  CreateClassRequest,
+  ClassDto,
+  ClassResponse,
+  CenterProfileDto,
+  CenterProfileResponse,
+  UpdateCenterProfileRequest,
+} from "../types/organization";
 
 export const organizationApi = {
   listTeachers: async (params: TeacherListParams): Promise<TeacherListResponse> => {
@@ -110,6 +129,21 @@ export const organizationApi = {
     };
 
     const response = await httpClient.post<StudentResponse>("/students", payload);
+    return response.data.data;
+  },
+
+  getCurrentCenter: async (): Promise<CenterProfileDto> => {
+    const response = await httpClient.get<CenterProfileResponse>("/centers/me");
+    return response.data.data;
+  },
+
+  updateCurrentCenter: async (request: UpdateCenterProfileRequest): Promise<CenterProfileDto> => {
+    const payload = {
+      centerName: request.centerName.trim(),
+      timezone: request.timezone.trim(),
+      rowVersion: request.rowVersion,
+    };
+    const response = await httpClient.patch<CenterProfileResponse>("/centers/me", payload);
     return response.data.data;
   },
 };

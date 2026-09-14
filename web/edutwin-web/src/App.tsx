@@ -24,6 +24,7 @@ import { TeacherClassDashboardPage } from "./pages/TeacherClassDashboardPage";
 import { ReviewQueuePage } from "./pages/ReviewQueuePage";
 import { TeacherStudentTwinPage } from "./pages/TeacherStudentTwinPage";
 import { CenterDashboardPage } from "./pages/CenterDashboardPage";
+import { CenterProfilePage } from "./pages/CenterProfilePage";
 import { PermissionRoute } from "./routes/PermissionRoute";
 import { permissions, authorizationUiPermissions } from "./auth/permissions";
 import { AccessDeniedPage } from "./pages/AccessDeniedPage";
@@ -81,7 +82,11 @@ function App() {
             <Route path="/quan-ly/hoc-sinh/:studentId/nang-luc" element={<TeacherStudentTwinPage />} />
           </Route>
 
-          {/* Center Manager R08 Experiences */}
+          {/* Center Manager Profile & Dashboards */}
+          <Route element={<PermissionRoute anyOf={[permissions.centerRead, permissions.centerManage]} accountTypes={["CenterManager"]} />}>
+            <Route path="/quan-ly/trung-tam" element={<CenterProfilePage />} />
+          </Route>
+
           <Route element={<PermissionRoute allOf={[permissions.dashboardsCenterRead]} />}>
             <Route path="/quan-ly/tong-quan-trung-tam" element={<CenterDashboardPage />} />
           </Route>

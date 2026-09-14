@@ -2,9 +2,13 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getCenterDashboard } from "../api/dashboardsApi";
 import { organizationApi } from "../api/organizationApi";
+import { useAuthStore } from "../stores/authStore";
+import { permissions } from "../auth/permissions";
+import { extractProblemDetails } from "../utils/problemDetails";
 import type { CenterDashboardDataDto } from "../types/dashboards";
 
 export const CenterDashboardPage = () => {
+  const user = useAuthStore((state) => state.user);
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedSubjectId = searchParams.get("subjectId") || "";
   const subjectsQuery = useQuery({
@@ -44,6 +48,8 @@ export const CenterDashboardPage = () => {
 
           <div className="flex items-center gap-3">
             <nav className="hidden items-center gap-2 lg:flex" aria-label="Quản lý trung tâm">
+              <Link to="/quan-ly/trung-tam" className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50">Hồ sơ trung tâm</Link>
+              <Link to="/quan-ly/tong-quan-trung-tam" className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white shadow-sm" aria-current="page">Dashboard</Link>
               <Link to="/quan-ly/giao-vien" className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50">Giáo viên</Link>
               <Link to="/quan-ly/lop-hoc" className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50">Lớp học</Link>
               <Link to="/quan-ly/hoc-sinh" className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50">Học sinh</Link>
@@ -89,7 +95,7 @@ export const CenterDashboardPage = () => {
           <div className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-200">
             <h2 className="text-lg font-bold text-red-600">Không thể tải dữ liệu Trung tâm</h2>
             <p className="mt-2 text-sm text-slate-500">
-              {(error as Error)?.message || "Vui lòng kiểm tra lại kết nối hoặc quyền hạn quản lý."}
+              {extractProblemDetails(error).message || "Vui lòng kiểm tra lại kết nối hoặc quyền hạn quản lý."}
             </p>
             <button
               onClick={() => refetch()}
@@ -259,12 +265,18 @@ export const CenterDashboardPage = () => {
                             </span>
                           </td>
                           <td className="py-3 text-right whitespace-nowrap">
-                            <Link
-                              to={`/quan-ly/lop-hoc/${c.classId}/tong-quan`}
-                              className="rounded bg-indigo-50 px-2.5 py-1 font-bold text-indigo-700 hover:bg-indigo-100"
-                            >
-                              Chi tiết lớp →
-                            </Link>
+                            {user?.permissions.includes(permissions.classesRead) ||
+                            user?.permissions.includes(permissions.dashboardsTeacherRead) ||
+                            user?.accountType === "CenterManager" ? (
+                              <Link
+                                to={`/quan-ly/lop-hoc/${c.classId}/tong-quan`}
+                                className="rounded bg-indigo-50 px-2.5 py-1 font-bold text-indigo-700 hover:bg-indigo-100"
+                              >
+                                Chi tiết lớp →
+                              </Link>
+                            ) : (
+                              <span className="text-slate-400 font-medium">--</span>
+                            )}
                           </td>
                         </tr>
                       ))}

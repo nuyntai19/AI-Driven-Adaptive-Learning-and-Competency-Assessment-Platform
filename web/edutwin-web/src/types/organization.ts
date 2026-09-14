@@ -136,3 +136,23 @@ export interface CreateStudentRequest {
   gradeLevel: number;
   classIds: string[];
 }
+
+export interface CenterProfileDto {
+  centerId: string;
+  centerCode: string;
+  centerName: string;
+  status: string;
+  timezone: string;
+  rowVersion: string;
+}
+
+export interface CenterProfileResponse {
+  data: CenterProfileDto;
+  meta: Meta;
+}
+
+export interface UpdateCenterProfileRequest {
+  centerName: string;
+  timezone: string;
+  rowVersion: string;
+}
