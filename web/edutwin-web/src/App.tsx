@@ -37,6 +37,7 @@ const CenterProfilePage = lazy(() => import("./pages/CenterProfilePage").then((m
 const AuthorizationManagementPage = lazy(() => import("./pages/AuthorizationManagementPage").then((module) => ({ default: module.AuthorizationManagementPage })));
 const PlatformCentersPage = lazy(() => import("./pages/PlatformCentersPage").then((module) => ({ default: module.PlatformCentersPage })));
 const PlatformAuditLogsPage = lazy(() => import("./pages/PlatformAuditLogsPage").then((module) => ({ default: module.PlatformAuditLogsPage })));
+const CenterManagerLayoutBoundary = lazy(() => import("./layouts/CenterManagerLayout").then((module) => ({ default: module.CenterManagerLayoutBoundary })));
 
 const FallbackRoute = () => {
   const sessionStatus = useAuthStore((state) => state.sessionStatus);
@@ -75,6 +76,7 @@ function App() {
             <Route path="/hoc-tap/luyen-tap/:questionId" element={<LearningPlayerPage />} />
           </Route>
 
+          <Route element={<CenterManagerLayoutBoundary />}>
           {/* Teacher & Center Manager Class Dashboard (Composite Policy) */}
           <Route element={<PermissionRoute anyOf={[permissions.dashboardsTeacherRead, permissions.dashboardsCenterRead]} />}>
             <Route path="/quan-ly/tong-quan-lop-hoc" element={<TeacherClassDashboardPage />} />
@@ -153,6 +155,7 @@ function App() {
 
           <Route element={<PermissionRoute anyOf={authorizationUiPermissions} accountTypes={["CenterManager"]} />}>
             <Route path="/quan-ly/phan-quyen" element={<AuthorizationManagementPage />} />
+          </Route>
           </Route>
 
           {/* Platform Administration */}
