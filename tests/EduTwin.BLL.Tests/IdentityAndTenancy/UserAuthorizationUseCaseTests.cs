@@ -31,6 +31,7 @@ public sealed class UserAuthorizationUseCaseTests
         Assert.Single(result.Data.Roles,
             role => role.AssignmentStatus == nameof(UserRoleAssignmentStatus.Active));
         Assert.Contains("authorization.user_roles.assign", result.Data.Permissions);
+        Assert.Contains("authorization.user_roles.assign", result.Data.Roles[0].PermissionCodes);
 
         var crossTenant = await sut.ExecuteAsync(Guid.NewGuid());
         Assert.False(crossTenant.IsSuccess);
@@ -256,7 +257,35 @@ public sealed class UserAuthorizationUseCaseTests
             Reason = "Lý do 2",
             CreatedAt = now
         };
-        fixture.Context.AuthorizationAuditLogs.AddRange(audit1, audit2);
+        var audit3 = new AuthorizationAuditLog
+        {
+            CenterId = fixture.TenantContext.CenterId!.Value,
+            ActorUserId = fixture.ManagerId,
+            ActionType = "RolePermissionsReplaced",
+            TargetType = "RolePermission",
+            TargetId = "ROLE_TARGET_3",
+            PermissionCode = null,
+            BeforeData = null,
+            AfterData = "{\"PermissionCodes\":[\"assignments.assignments.create_extended\"]}",
+            TraceId = "trace-3",
+            Reason = "Lý do 3",
+            CreatedAt = now
+        };
+        var audit4 = new AuthorizationAuditLog
+        {
+            CenterId = fixture.TenantContext.CenterId!.Value,
+            ActorUserId = fixture.ManagerId,
+            ActionType = "RolePermissionsReplaced",
+            TargetType = "RolePermission",
+            TargetId = "ROLE_TARGET_4",
+            PermissionCode = null,
+            BeforeData = null,
+            AfterData = "{\"PermissionCodes\":[\"prefix_assignments.assignments.create\"]}",
+            TraceId = "trace-4",
+            Reason = "Lý do 4",
+            CreatedAt = now
+        };
+        fixture.Context.AuthorizationAuditLogs.AddRange(audit1, audit2, audit3, audit4);
         await fixture.Context.SaveChangesAsync();
 
         var sut = new ListAuthorizationAuditUseCase(fixture.Context, fixture.TenantContext);
@@ -267,11 +296,23 @@ public sealed class UserAuthorizationUseCaseTests
         Assert.Single(targetResult.Data);
         Assert.Equal("ROLE_TARGET_1", targetResult.Data[0].TargetId);
 
-        // Filter by PermissionCode matching AfterData array in real mutation producer
+        // Filter by PermissionCode: must match exact code in AfterData and NOT match substring/prefix collision (audit3, audit4)
         var permResult = await sut.ExecuteAsync(new AuthorizationAuditQuery { PermissionCode = "assignments.assignments.create" });
         Assert.True(permResult.IsSuccess);
         Assert.Single(permResult.Data);
         Assert.Equal("ROLE_TARGET_2", permResult.Data[0].TargetId);
+
+        // Filter by suffix-extended code matches audit3
+        var extResult = await sut.ExecuteAsync(new AuthorizationAuditQuery { PermissionCode = "assignments.assignments.create_extended" });
+        Assert.True(extResult.IsSuccess);
+        Assert.Single(extResult.Data);
+        Assert.Equal("ROLE_TARGET_3", extResult.Data[0].TargetId);
+
+        // Filter by prefix-prepended code matches audit4
+        var preResult = await sut.ExecuteAsync(new AuthorizationAuditQuery { PermissionCode = "prefix_assignments.assignments.create" });
+        Assert.True(preResult.IsSuccess);
+        Assert.Single(preResult.Data);
+        Assert.Equal("ROLE_TARGET_4", preResult.Data[0].TargetId);
     }
 
     [Fact]

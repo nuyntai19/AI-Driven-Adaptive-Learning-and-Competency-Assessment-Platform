@@ -12,6 +12,7 @@ import type {
   ReplaceRolePermissionsRequest,
   ReplaceUserRolesRequest,
   PermissionDto,
+  UserAuthorizationDto,
 } from "../src/types/authorization.ts";
 import type { ProblemDetails } from "../src/types/auth.ts";
 import {
@@ -783,4 +784,177 @@ test("28. Compatible roles pagination supports >100 roles with server-side pagin
   assert.equal(resolvedRoles.length, 2);
   assert.equal(resolvedRoles[0].roleName, "Vai trò số 1");
   assert.equal(resolvedRoles[1].roleName, "Vai trò số 145");
+});
+
+test("29. Initial load with assigned role outside page 1 hydrates knownRoles and retains full effective permissions and source attribution", () => {
+  // Scenario: Operator opens UserRolePanel. listRoles has ONLY returned Page 1 (roles 1-10).
+  // Operator has NEVER opened Page 8.
+  const page1Roles: AuthorizationRoleDto[] = Array.from({ length: 10 }, (_, i) => ({
+    roleId: `role-${i + 1}`,
+    roleCode: `ROLE_${i + 1}`,
+    roleName: `Vai trò số ${i + 1}`,
+    accountType: "Teacher" as const,
+    description: null,
+    isSystemRole: false,
+    status: "Active" as const,
+    permissionCodes: [`perm.code.${i + 1}`],
+    activeUserCount: 1,
+    rowVersion: "1",
+  }));
+
+  const knownRoles = new Map<string, AuthorizationRoleDto>();
+  for (const r of page1Roles) {
+    knownRoles.set(r.roleId, r);
+  }
+
+  // Target user has an assigned role on unvisited page 8 (role-145)
+  const userAuth: UserAuthorizationDto = {
+    userId: "target-user-1",
+    accountType: "Teacher",
+    roles: [
+      {
+        roleId: "role-1",
+        roleCode: "ROLE_1",
+        roleName: "Vai trò số 1",
+        accountType: "Teacher",
+        assignmentStatus: "Active",
+        permissionCodes: ["perm.code.1"],
+        assignedAt: "2026-09-01T00:00:00Z",
+        revokedAt: null,
+      },
+      {
+        roleId: "role-145",
+        roleCode: "ROLE_145",
+        roleName: "Trưởng Ban Chuyên Môn (Trang 8)",
+        accountType: "Teacher",
+        assignmentStatus: "Active",
+        permissionCodes: ["curriculum.curriculums.export", "assessments.exams.finalize"],
+        assignedAt: "2026-09-01T00:00:00Z",
+        revokedAt: null,
+      },
+    ],
+    permissions: ["perm.code.1", "curriculum.curriculums.export", "assessments.exams.finalize"],
+    rowVersion: "1",
+    authorizationVersion: 1,
+  };
+
+  // UserRolePanel hydration effect runs upon receiving userAuth
+  const activeIds = userAuth.roles
+    .filter((r) => r.assignmentStatus === "Active")
+    .map((r) => r.roleId);
+
+  for (const r of userAuth.roles) {
+    const existing = knownRoles.get(r.roleId);
+    if (!existing) {
+      knownRoles.set(r.roleId, {
+        roleId: r.roleId,
+        roleCode: r.roleCode,
+        roleName: r.roleName,
+        accountType: r.accountType,
+        description: null,
+        isSystemRole: false,
+        status: "Active",
+        permissionCodes: r.permissionCodes ?? [],
+        activeUserCount: 1,
+        rowVersion: "1",
+      });
+    } else if (r.permissionCodes && r.permissionCodes.length > 0 && existing.permissionCodes.length === 0) {
+      knownRoles.set(r.roleId, {
+        ...existing,
+        permissionCodes: r.permissionCodes,
+      });
+    }
+  }
+
+  // Compute effective permissions breakdown as done in UserRolePanel
+  const selectedRoles = activeIds
+    .map((id) => knownRoles.get(id))
+    .filter((r): r is AuthorizationRoleDto => r !== undefined);
+
+  const permissionSources: Record<string, string[]> = {};
+  for (const role of selectedRoles) {
+    for (const code of role.permissionCodes) {
+      (permissionSources[code] ??= []).push(role.roleName);
+    }
+  }
+
+  // Verify that permissions from role-145 (on unvisited page 8) are fully retained
+  assert.ok(permissionSources["curriculum.curriculums.export"]);
+  assert.deepEqual(permissionSources["curriculum.curriculums.export"], ["Trưởng Ban Chuyên Môn (Trang 8)"]);
+  assert.ok(permissionSources["assessments.exams.finalize"]);
+  assert.deepEqual(permissionSources["assessments.exams.finalize"], ["Trưởng Ban Chuyên Môn (Trang 8)"]);
+  assert.ok(permissionSources["perm.code.1"]);
+  assert.deepEqual(permissionSources["perm.code.1"], ["Vai trò số 1"]);
+});
+
+test("30. Selected role missing from knownRoles triggers canonical fetch and hydrates effective permissions", async () => {
+  // Scenario: A selected role ID (e.g. assigned or selected programmatically) is not in knownRoles cache
+  const knownRoles = new Map<string, AuthorizationRoleDto>();
+
+  // Page 1 roles in knownRoles
+  knownRoles.set("role-1", {
+    roleId: "role-1",
+    roleCode: "ROLE_1",
+    roleName: "Vai trò số 1",
+    accountType: "Teacher",
+    description: null,
+    isSystemRole: false,
+    status: "Active",
+    permissionCodes: ["perm.code.1"],
+    activeUserCount: 1,
+    rowVersion: "1",
+  });
+
+  const selectedRoleIds = ["role-1", "role-unvisited-external"];
+
+  // Mock canonical role fetcher (authorizationApi.getRole)
+  const canonicalRoleStore: Record<string, AuthorizationRoleDto> = {
+    "role-unvisited-external": {
+      roleId: "role-unvisited-external",
+      roleCode: "ROLE_EXTERNAL",
+      roleName: "Vai trò Đặc Biệt Ngoài Trang",
+      accountType: "Teacher",
+      description: "Vai trò được nạp canonical",
+      isSystemRole: false,
+      status: "Active",
+      permissionCodes: ["special.external.permission"],
+      activeUserCount: 1,
+      rowVersion: "2",
+    },
+  };
+
+  const mockGetRole = async (id: string) => {
+    const data = canonicalRoleStore[id];
+    if (!data) throw new Error("Not found");
+    return { data, meta: { traceId: "test-trace", timestamp: new Date().toISOString() } };
+  };
+
+  // Component hook behavior: detects missing IDs and fetches canonical details
+  const missingRoleIds = selectedRoleIds.filter((id) => {
+    const r = knownRoles.get(id);
+    return !r || r.permissionCodes.length === 0;
+  });
+
+  assert.deepEqual(missingRoleIds, ["role-unvisited-external"]);
+
+  for (const missingId of missingRoleIds) {
+    const res = await mockGetRole(missingId);
+    knownRoles.set(missingId, res.data);
+  }
+
+  // After canonical fetch, verify effective permissions table includes permissions and source
+  const selectedRoles = selectedRoleIds
+    .map((id) => knownRoles.get(id))
+    .filter((r): r is AuthorizationRoleDto => r !== undefined);
+
+  const permissionSources: Record<string, string[]> = {};
+  for (const role of selectedRoles) {
+    for (const code of role.permissionCodes) {
+      (permissionSources[code] ??= []).push(role.roleName);
+    }
+  }
+
+  assert.equal(selectedRoles.length, 2);
+  assert.deepEqual(permissionSources["special.external.permission"], ["Vai trò Đặc Biệt Ngoài Trang"]);
+  assert.deepEqual(permissionSources["perm.code.1"], ["Vai trò số 1"]);
 });

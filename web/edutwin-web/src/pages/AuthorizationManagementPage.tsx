@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { authorizationApi } from "../api/authorizationApi";
@@ -1088,6 +1088,8 @@ const UserRolePanel = ({
 
   const userAuth = authorizationQuery.data?.data;
 
+  const fetchedMissingRolesRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     if (userAuth) {
       const activeIds = userAuth.roles
@@ -1095,8 +1097,71 @@ const UserRolePanel = ({
         .map((r) => r.roleId);
       setSelectedRoleIds(activeIds);
       setReason("");
+
+      // Automatically register all assigned roles into knownRoles
+      setKnownRoles((prev) => {
+        const next = new Map(prev);
+        for (const r of userAuth.roles) {
+          const existing = next.get(r.roleId);
+          if (!existing) {
+            next.set(r.roleId, {
+              roleId: r.roleId,
+              roleCode: r.roleCode,
+              roleName: r.roleName,
+              accountType: r.accountType,
+              description: null,
+              isSystemRole: false,
+              status: "Active",
+              permissionCodes: r.permissionCodes ?? [],
+              activeUserCount: 1,
+              rowVersion: "1",
+            });
+          } else if (r.permissionCodes && r.permissionCodes.length > 0 && existing.permissionCodes.length === 0) {
+            next.set(r.roleId, {
+              ...existing,
+              permissionCodes: r.permissionCodes,
+            });
+          }
+        }
+        return next;
+      });
     }
   }, [userAuth]);
+
+  // Fetch canonical role details for any selected role ID that is missing from knownRoles or lacks permissions
+  useEffect(() => {
+    const missingRoleIds = selectedRoleIds.filter((id) => {
+      const r = knownRoles.get(id);
+      return (!r || r.permissionCodes.length === 0) && !fetchedMissingRolesRef.current.has(id);
+    });
+    if (missingRoleIds.length === 0) return;
+
+    for (const missingId of missingRoleIds) {
+      fetchedMissingRolesRef.current.add(missingId);
+    }
+
+    let isMounted = true;
+    for (const missingId of missingRoleIds) {
+      authorizationApi
+        .getRole(missingId)
+        .then((res) => {
+          if (isMounted && res?.data) {
+            setKnownRoles((prev) => {
+              const next = new Map(prev);
+              next.set(missingId, res.data);
+              return next;
+            });
+          }
+        })
+        .catch(() => {
+          // Ignore if role cannot be fetched (e.g. mock test or network)
+        });
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedRoleIds, knownRoles]);
 
   const replaceMutation = useMutation({
     mutationFn: () =>

@@ -44,6 +44,13 @@ export const authorizationApi = {
     return response.data;
   },
 
+  getRole: async (roleId: string): Promise<AuthorizationRoleResponse> => {
+    const response = await httpClient.get<AuthorizationRoleResponse>(
+      `/authorization/roles/${roleId}`,
+    );
+    return response.data;
+  },
+
   createRole: async (
     request: CreateAuthorizationRoleRequest,
   ): Promise<AuthorizationRoleResponse> => {

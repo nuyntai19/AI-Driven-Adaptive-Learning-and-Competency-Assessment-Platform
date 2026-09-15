@@ -227,6 +227,9 @@ public sealed class ReplaceUserRolesUseCase(
             .AsNoTracking()
             .Where(assignment => assignment.UserId == user.UserId)
             .Include(assignment => assignment.Role)
+                .ThenInclude(role => role.RolePermissions)
+                    .ThenInclude(mapping => mapping.PermissionAccountType)
+                        .ThenInclude(mapping => mapping.Permission)
             .OrderBy(assignment => assignment.Status)
             .ThenBy(assignment => assignment.Role.RoleCode)
             .ToArrayAsync(cancellationToken);
@@ -244,6 +247,12 @@ public sealed class ReplaceUserRolesUseCase(
                 RoleName = assignment.Role.RoleName,
                 AccountType = assignment.AccountType.ToString(),
                 AssignmentStatus = assignment.Status.ToString(),
+                PermissionCodes = assignment.Role.RolePermissions?
+                    .Select(mapping => mapping.PermissionAccountType?.Permission?.PermissionCode)
+                    .Where(code => !string.IsNullOrEmpty(code))
+                    .Select(code => code!)
+                    .Order(StringComparer.Ordinal)
+                    .ToArray() ?? [],
                 AssignedAt = assignment.AssignedAt,
                 RevokedAt = assignment.RevokedAt
             }).ToArray(),

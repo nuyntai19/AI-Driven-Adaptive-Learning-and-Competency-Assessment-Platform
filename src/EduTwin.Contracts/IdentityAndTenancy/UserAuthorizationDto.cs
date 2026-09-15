@@ -7,6 +7,7 @@ public sealed class AssignedAuthorizationRoleDto
     public string RoleName { get; set; } = string.Empty;
     public string AccountType { get; set; } = string.Empty;
     public string AssignmentStatus { get; set; } = string.Empty;
+    public IReadOnlyList<string> PermissionCodes { get; set; } = [];
     public DateTime AssignedAt { get; set; }
     public DateTime? RevokedAt { get; set; }
 }

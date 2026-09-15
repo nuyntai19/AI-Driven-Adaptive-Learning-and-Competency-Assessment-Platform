@@ -41,6 +41,7 @@ export interface AssignedAuthorizationRoleDto {
   roleName: string;
   accountType: AccountType;
   assignmentStatus: "Active" | "Revoked";
+  permissionCodes?: string[];
   assignedAt: string;
   revokedAt: string | null;
 }

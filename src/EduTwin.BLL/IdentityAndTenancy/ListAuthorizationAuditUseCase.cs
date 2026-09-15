@@ -58,9 +58,10 @@ public sealed class ListAuthorizationAuditUseCase(
         if (!string.IsNullOrWhiteSpace(query.PermissionCode))
         {
             var permCode = query.PermissionCode.Trim();
+            var quotedPerm = $"\"{permCode}\"";
             audits = audits.Where(audit => audit.PermissionCode == permCode
-                || (audit.AfterData != null && audit.AfterData.Contains(permCode))
-                || (audit.BeforeData != null && audit.BeforeData.Contains(permCode)));
+                || (audit.AfterData != null && audit.AfterData.Contains(quotedPerm))
+                || (audit.BeforeData != null && audit.BeforeData.Contains(quotedPerm)));
         }
         if (actionType is not null)
         {

@@ -2182,7 +2182,8 @@ Response 200:
         "roleId": "171bdf0d-bd77-4956-b575-449742199a2d",
         "roleCode": "ACADEMIC_COORDINATOR",
         "roleName": "Điều phối học thuật",
-        "accountType": "Teacher"
+        "accountType": "Teacher",
+        "permissionCodes": ["knowledge.nodes.update"]
       }
     ],
     "permissions": ["knowledge.nodes.update"],

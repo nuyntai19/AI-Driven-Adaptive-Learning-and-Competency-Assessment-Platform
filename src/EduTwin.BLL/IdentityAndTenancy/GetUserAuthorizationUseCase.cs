@@ -24,6 +24,9 @@ public sealed class GetUserAuthorizationUseCase(
             .AsNoTracking()
             .Include(item => item.RoleAssignments)
                 .ThenInclude(assignment => assignment.Role)
+                    .ThenInclude(role => role.RolePermissions)
+                        .ThenInclude(mapping => mapping.PermissionAccountType)
+                            .ThenInclude(mapping => mapping.Permission)
             .SingleOrDefaultAsync(item => item.UserId == userId, cancellationToken);
         if (user is null)
         {
@@ -45,6 +48,12 @@ public sealed class GetUserAuthorizationUseCase(
                     RoleName = assignment.Role.RoleName,
                     AccountType = assignment.AccountType.ToString(),
                     AssignmentStatus = assignment.Status.ToString(),
+                    PermissionCodes = assignment.Role.RolePermissions?
+                        .Select(mapping => mapping.PermissionAccountType?.Permission?.PermissionCode)
+                        .Where(code => !string.IsNullOrEmpty(code))
+                        .Select(code => code!)
+                        .Order(StringComparer.Ordinal)
+                        .ToArray() ?? [],
                     AssignedAt = assignment.AssignedAt,
                     RevokedAt = assignment.RevokedAt
                 })
