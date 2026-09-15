@@ -249,6 +249,9 @@ graph TD
 ---
 
 ### Checkpoint 4: Dashboard & Center Profile Reskin
+* **Trạng thái:** **HOÀN THÀNH — GATE 4 PASS (AUTOMATED)**
+* **Evidence commit:** `2a2a605` (`feat(ux-center): reskin dashboard and center profile`).
+* **Kết quả xác minh:** 136/136 frontend tests pass, ESLint 0 lỗi/0 cảnh báo, production build pass; Dashboard chỉ dùng DTO canonical và Hồ sơ trung tâm giữ nguyên OCC/safe-error contract.
 * **Mục tiêu:** Thay giao diện mới cho trang Dashboard (`/quan-ly/tong-quan-trung-tam`) và Hồ sơ trung tâm (`/quan-ly/trung-tam`).
 * **Chi tiết công việc:**
   1. `CenterDashboardPage` (Canonical route: `/quan-ly/tong-quan-trung-tam`):
