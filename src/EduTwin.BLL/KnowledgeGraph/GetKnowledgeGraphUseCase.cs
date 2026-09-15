@@ -72,11 +72,18 @@ public class GetKnowledgeGraphUseCase : IGetKnowledgeGraphUseCase
             .Select(n => new KnowledgeGraphNodeDto
             {
                 NodeId = n.NodeId.ToString(CultureInfo.InvariantCulture),
+                ParentNodeId = n.ParentNodeId.HasValue
+                    ? n.ParentNodeId.Value.ToString(CultureInfo.InvariantCulture)
+                    : null,
                 NodeType = n.NodeType.ToString(),
                 NodeCode = n.NodeCode,
                 NodeName = n.NodeName,
+                Description = n.Description,
                 OrderIndex = n.OrderIndex,
-                ExamImportance = n.ExamImportance
+                ExamImportance = n.ExamImportance,
+                EstimatedLearningMinutes = n.EstimatedLearningMinutes,
+                IsActive = n.IsActive,
+                RowVersion = n.RowVersion.ToString(CultureInfo.InvariantCulture)
             })
             .ToListAsync(cancellationToken);
 
@@ -95,7 +102,8 @@ public class GetKnowledgeGraphUseCase : IGetKnowledgeGraphUseCase
                 SourceNodeId = e.SourceNodeId.ToString(CultureInfo.InvariantCulture),
                 TargetNodeId = e.TargetNodeId.ToString(CultureInfo.InvariantCulture),
                 RelationType = e.RelationType.ToString(),
-                Weight = e.Weight
+                Weight = e.Weight,
+                RowVersion = e.RowVersion.ToString(CultureInfo.InvariantCulture)
             })
             .ToListAsync(cancellationToken);
 

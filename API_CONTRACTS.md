@@ -772,9 +772,9 @@ Quy tắc nghiệp vụ và ràng buộc bất biến:
 
 Responses:
 - `200 OK`: Trả về collection `StudentListResponse` gồm `data` (danh sách `StudentDto`) và `meta` (`PagedMetaDto` với `page`, `pageSize`, `totalItems`, `totalPages`, `traceId`, `timestamp`).
-- `400 Bad Request`: Khi `classId` rỗng, `page < 1`, `pageSize < 1`, `pageSize > 100`, hoặc `search > 200 ký tự`. ErrorCode: `VALIDATION_FAILED`.
+- `400 Bad Request`: Khi `page < 1`, `pageSize < 1`, `pageSize > 100`, hoặc `search > 200 ký tự`. ErrorCode: `VALIDATION_FAILED`.
 - `403 Forbidden`: Khi actor thiếu quyền `organization.classes.manage_members` hoặc `organization.students.read`, hoặc Teacher không phải chủ nhiệm lớp. ErrorCode: `AUTH_PERMISSION_REQUIRED` hoặc `FORBIDDEN_RESOURCE`.
-- `404 Not Found`: Khi `classId` không tồn tại hoặc thuộc trung tâm khác (cross-tenant fail-closed). ErrorCode: `RESOURCE_NOT_FOUND`.
+- `404 Not Found`: Khi `classId` rỗng (`Guid.Empty`), không tồn tại hoặc thuộc trung tâm khác (cross-tenant fail-closed). ErrorCode: `RESOURCE_NOT_FOUND`.
 
 # Subjects và Knowledge Graph
 
@@ -920,11 +920,16 @@ Graph response:
     "nodes": [
       {
         "nodeId": "101",
+        "parentNodeId": "90",
         "nodeType": "Topic",
         "nodeCode": "MATH.LOG",
         "nodeName": "Mũ và Logarit",
+        "description": "Các kiến thức về hàm mũ và logarit",
         "orderIndex": 2,
-        "examImportance": 20
+        "examImportance": 20,
+        "estimatedLearningMinutes": 180,
+        "isActive": true,
+        "rowVersion": "1"
       }
     ],
     "edges": [
@@ -933,7 +938,8 @@ Graph response:
         "sourceNodeId": "100",
         "targetNodeId": "101",
         "relationType": "PrerequisiteOf",
-        "weight": 1
+        "weight": 1,
+        "rowVersion": "1"
       }
     ]
   },
@@ -943,6 +949,8 @@ Graph response:
   }
 }
 ~~~
+
+`rowVersion` và các trường có thể chỉnh sửa trong graph response là dữ liệu OCC canonical cho giao diện lifecycle; client không được tự suy đoán hoặc thay bằng giá trị mặc định.
 
 # Curriculum
 

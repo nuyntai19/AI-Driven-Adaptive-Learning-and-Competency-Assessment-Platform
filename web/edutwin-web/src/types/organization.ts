@@ -109,6 +109,25 @@ export interface SubjectListResponse {
   meta: Meta;
 }
 
+export interface SubjectResponse {
+  data: SubjectDto;
+  meta: Meta;
+}
+
+export interface CreateSubjectRequest {
+  subjectCode: string;
+  subjectName: string;
+  description?: string | null;
+}
+
+export interface UpdateSubjectRequest {
+  subjectCode: string;
+  subjectName: string;
+  description?: string | null;
+  isActive: boolean;
+  rowVersion: string;
+}
+
 export type ClassStatus = "Active" | "Archived";
 
 export interface ClassSubjectDto {

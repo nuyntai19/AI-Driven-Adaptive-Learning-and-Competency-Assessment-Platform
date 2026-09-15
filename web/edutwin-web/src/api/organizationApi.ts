@@ -18,7 +18,11 @@ import type {
   ResetAccountPasswordRequest,
   ResetAccountPasswordData,
   ResetAccountPasswordResponse,
+  SubjectDto,
   SubjectListResponse,
+  SubjectResponse,
+  CreateSubjectRequest,
+  UpdateSubjectRequest,
   CreateClassRequest,
   UpdateClassRequest,
   AddStudentsToClassRequest,
@@ -171,6 +175,43 @@ export const organizationApi = {
       params: queryParams,
     });
     return response.data;
+  },
+
+  getSubject: async (subjectId: string): Promise<SubjectDto> => {
+    const response = await httpClient.get<SubjectResponse>(`/subjects/${subjectId}`);
+    return response.data.data;
+  },
+
+  createSubject: async (request: CreateSubjectRequest): Promise<SubjectDto> => {
+    const payload = {
+      subjectCode: request.subjectCode.trim(),
+      subjectName: request.subjectName.trim(),
+      description: request.description?.trim() || null,
+    };
+    const response = await httpClient.post<SubjectResponse>("/subjects", payload);
+    return response.data.data;
+  },
+
+  updateSubject: async (
+    subjectId: string,
+    request: UpdateSubjectRequest
+  ): Promise<SubjectDto> => {
+    const payload = {
+      subjectCode: request.subjectCode.trim(),
+      subjectName: request.subjectName.trim(),
+      description: request.description?.trim() || null,
+      isActive: request.isActive,
+      rowVersion: request.rowVersion,
+    };
+    const response = await httpClient.patch<SubjectResponse>(
+      `/subjects/${subjectId}`,
+      payload
+    );
+    return response.data.data;
+  },
+
+  deleteSubject: async (subjectId: string): Promise<void> => {
+    await httpClient.delete(`/subjects/${subjectId}`);
   },
 
   listStudents: async (params: StudentListParams): Promise<StudentListResponse> => {

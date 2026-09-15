@@ -109,17 +109,21 @@ public class GetKnowledgeGraphUseCaseTests
     }
 
     [Fact]
-    public void ExecuteAsync_ExactFrozenDtoProjection_NoExtraFieldsInDtoContracts()
+    public void ExecuteAsync_ExactLifecycleDtoProjection_ContainsConcurrencyAndEditableFields()
     {
         var nodeProps = typeof(KnowledgeGraphNodeDto).GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Select(p => p.Name).OrderBy(x => x).ToList();
-        var expectedNodeProps = new[] { "NodeId", "NodeType", "NodeCode", "NodeName", "OrderIndex", "ExamImportance" }
+        var expectedNodeProps = new[]
+        {
+            "NodeId", "ParentNodeId", "NodeType", "NodeCode", "NodeName", "Description",
+            "OrderIndex", "ExamImportance", "EstimatedLearningMinutes", "IsActive", "RowVersion"
+        }
             .OrderBy(x => x).ToList();
         Assert.Equal(expectedNodeProps, nodeProps);
 
         var edgeProps = typeof(KnowledgeGraphEdgeDto).GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Select(p => p.Name).OrderBy(x => x).ToList();
-        var expectedEdgeProps = new[] { "EdgeId", "SourceNodeId", "TargetNodeId", "RelationType", "Weight" }
+        var expectedEdgeProps = new[] { "EdgeId", "SourceNodeId", "TargetNodeId", "RelationType", "Weight", "RowVersion" }
             .OrderBy(x => x).ToList();
         Assert.Equal(expectedEdgeProps, edgeProps);
 
@@ -287,6 +291,61 @@ public class GetKnowledgeGraphUseCaseTests
         Assert.NotNull(result.Data.Edges);
         Assert.Empty(result.Data.Nodes);
         Assert.Empty(result.Data.Edges);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_LifecycleProjection_ReturnsEditableFieldsAndCanonicalRowVersions()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        using var dbContext = CreateDbContext(dbName);
+        await SeedBaseDataAsync(dbContext);
+
+        dbContext.KnowledgeNodes.Add(new KnowledgeNode
+        {
+            NodeId = 101,
+            CenterId = _centerId,
+            SubjectId = _subjectId,
+            NodeType = NodeType.Topic,
+            NodeCode = "MATH.LOG",
+            NodeName = "Mũ và Logarit",
+            Description = "Nội dung kiểm thử",
+            OrderIndex = 2,
+            ExamImportance = 20,
+            EstimatedLearningMinutes = 180,
+            IsActive = true,
+            RowVersion = 7,
+            IsDeleted = false,
+            CreatedAt = _utcNow,
+            UpdatedAt = _utcNow
+        });
+        dbContext.KnowledgeEdges.Add(new KnowledgeEdge
+        {
+            EdgeId = 501,
+            CenterId = _centerId,
+            SubjectId = _subjectId,
+            SourceNodeId = 100,
+            TargetNodeId = 101,
+            RelationType = RelationType.PrerequisiteOf,
+            Weight = 0.8m,
+            RowVersion = 9,
+            IsDeleted = false,
+            CreatedAt = _utcNow,
+            UpdatedAt = _utcNow
+        });
+        await dbContext.SaveChangesAsync();
+
+        var result = await new GetKnowledgeGraphUseCase(dbContext, _tenantContextMock.Object)
+            .ExecuteAsync(_subjectId);
+
+        Assert.True(result.IsSuccess);
+        var node = Assert.Single(result.Data!.Nodes);
+        Assert.Equal("Nội dung kiểm thử", node.Description);
+        Assert.Equal((uint)180, node.EstimatedLearningMinutes);
+        Assert.True(node.IsActive);
+        Assert.Equal("1", node.RowVersion);
+
+        var edge = Assert.Single(result.Data.Edges);
+        Assert.Equal("1", edge.RowVersion);
     }
 
     [Fact]

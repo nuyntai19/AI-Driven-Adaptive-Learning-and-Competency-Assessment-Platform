@@ -238,6 +238,15 @@ export const AuthenticatedHomePage = () => {
             </h2>
 
             <div className="flex flex-wrap gap-3">
+              {hasPermission(permissions.subjectsRead) && (
+                <Link
+                  to="/quan-ly/mon-hoc"
+                  className="rounded-lg bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50"
+                >
+                  Quản lý môn học
+                </Link>
+              )}
+
               {hasPermission(permissions.subjectsRead) && hasPermission(permissions.nodesRead) && hasPermission(permissions.edgesRead) && (
                 <Link
                   to="/kien-thuc/do-thi"

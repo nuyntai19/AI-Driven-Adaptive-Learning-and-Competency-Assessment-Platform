@@ -7,6 +7,7 @@ import { AuthenticatedHomePage } from "./pages/AuthenticatedHomePage";
 import { TeacherListPage } from "./pages/TeacherListPage";
 import { ClassListPage } from "./pages/ClassListPage";
 import { StudentListPage } from "./pages/StudentListPage";
+import { SubjectListPage } from "./pages/SubjectListPage";
 import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
 import { CurriculumListPage } from "./pages/CurriculumListPage";
 import { QuestionBankPage } from "./pages/QuestionBankPage";
@@ -92,6 +93,9 @@ function App() {
           </Route>
 
           {/* Knowledge Graph */}
+          <Route element={<PermissionRoute allOf={[permissions.subjectsRead]} />}>
+            <Route path="/quan-ly/mon-hoc" element={<SubjectListPage />} />
+          </Route>
           <Route element={<PermissionRoute allOf={[permissions.subjectsRead, permissions.nodesRead, permissions.edgesRead]} />}>
             <Route path="/kien-thuc/do-thi" element={<KnowledgeGraphPage />} />
           </Route>

@@ -406,7 +406,7 @@ public sealed class RecommendationMySqlConcurrencyTests
     }
 
     [MySqlIntegrationFact]
-    public async Task FreshMigration_Catalog_Contains68PermissionsAnd107Mappings()
+    public async Task FreshMigration_Catalog_Contains70PermissionsAnd109Mappings()
     {
         await using var database = await MySqlTestDatabase.CreateAsync();
         var tenant = new TenantContext();
@@ -415,8 +415,8 @@ public sealed class RecommendationMySqlConcurrencyTests
         var permissionCount = await context.Permissions.CountAsync();
         var mappingCount = await context.PermissionAccountTypes.CountAsync();
 
-        Assert.Equal(68, permissionCount);
-        Assert.Equal(107, mappingCount);
+        Assert.Equal(70, permissionCount);
+        Assert.Equal(109, mappingCount);
     }
 
     [MySqlIntegrationFact]

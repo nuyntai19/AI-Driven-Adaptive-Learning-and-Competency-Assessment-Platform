@@ -20,6 +20,11 @@ export interface KnowledgeGraphNodeDto {
   nodeName: string;
   orderIndex: number;
   examImportance: number;
+  rowVersion: string;
+  description: string | null;
+  estimatedLearningMinutes: number;
+  isActive: boolean;
+  parentNodeId: string | null;
 }
 
 export interface KnowledgeGraphEdgeDto {
@@ -28,6 +33,7 @@ export interface KnowledgeGraphEdgeDto {
   targetNodeId: string;
   relationType: KnowledgeRelationType;
   weight: number;
+  rowVersion: string;
 }
 
 export interface KnowledgeGraphDto {
@@ -100,4 +106,20 @@ export interface CreateKnowledgeEdgeRequest {
   targetNodeId: string;
   relationType: KnowledgeRelationType;
   weight: number;
+}
+
+export interface UpdateKnowledgeNodeRequest {
+  parentNodeId?: string | null;
+  nodeName: string;
+  description?: string | null;
+  orderIndex: number;
+  examImportance: number;
+  estimatedLearningMinutes: number;
+  isActive: boolean;
+  rowVersion: string;
+}
+
+export interface UpdateKnowledgeEdgeRequest {
+  weight: number;
+  rowVersion: string;
 }

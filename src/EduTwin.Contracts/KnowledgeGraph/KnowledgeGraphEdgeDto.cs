@@ -7,4 +7,5 @@ public class KnowledgeGraphEdgeDto
     public string TargetNodeId { get; set; } = string.Empty;
     public string RelationType { get; set; } = string.Empty;
     public decimal Weight { get; set; }
+    public string RowVersion { get; set; } = string.Empty;
 }
