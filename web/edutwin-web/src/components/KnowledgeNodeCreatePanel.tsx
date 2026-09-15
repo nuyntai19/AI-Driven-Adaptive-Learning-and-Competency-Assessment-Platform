@@ -8,6 +8,7 @@ import type {
   CreateKnowledgeNodeRequest,
 } from "../types/knowledgeGraph";
 import type { ProblemDetails } from "../types/auth";
+import { mapSafeOperationalError } from "../utils/problemDetails";
 
 interface KnowledgeNodeCreatePanelProps {
   subjectId: string;
@@ -141,9 +142,11 @@ export const KnowledgeNodeCreatePanel: React.FC<KnowledgeNodeCreatePanelProps> =
         message = "Mã node đã tồn tại trong môn học.";
       } else if (errorCode === "DAG_CYCLE_DETECTED") {
         message = "Không thể tạo quan hệ vì thao tác này sẽ tạo chu trình trong đồ thị.";
-      } else if (detail) {
-        message = detail;
+      } else {
+        message = mapSafeOperationalError(err, "Không thể tạo nút kiến thức. Vui lòng thử lại.");
       }
+    } else {
+      message = mapSafeOperationalError(err, "Không thể tạo nút kiến thức. Vui lòng thử lại.");
     }
 
     return (

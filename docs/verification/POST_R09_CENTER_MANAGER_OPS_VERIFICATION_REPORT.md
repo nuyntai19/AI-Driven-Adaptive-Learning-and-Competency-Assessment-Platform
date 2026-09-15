@@ -1,12 +1,12 @@
 # BÁO CÁO NGHIỆM THU KỸ THUẬT POST-R09 — CENTER MANAGER OPERATIONAL COMPLETION
 
-> **Dự án:** AI-Driven Adaptive Learning and Competency Assessment Platform (EduTwin)  
-> **Kế hoạch chuẩn:** [POST-R09-CENTER-MANAGER-OPS.md](file:///d:/AI-Driven%20Adaptive%20Learning%20and%20Competency%20Assessment%20Platform/docs/plans/POST-R09-CENTER-MANAGER-OPS.md) / [ADR-POST-R09-CENTER-MANAGER-OPERATIONS.md](file:///d:/AI-Driven%20Adaptive%20Learning%20and%20Competency%20Assessment%20Platform/docs/decisions/ADR-POST-R09-CENTER-MANAGER-OPERATIONS.md)  
-> **Baseline Git SHA:** `222e7bb` / `a57c5b4`  
-> **Branch thực thi:** `codex/post-r09-center-manager-ops`  
-> **Trạng thái chính thức:** **POST-R09 CENTER MANAGER END-TO-END COMPLETION: TECHNICALLY VERIFIED / CHROME E2E PASS / UX ACCEPTANCE PENDING**  
-> **Phạm vi Lovable Redesign:** Tách thành milestone riêng tiếp theo sau khi đóng kỹ thuật CenterManager  
-> **Thời điểm nghiệm thu:** 2026-09-15  
+> **Dự án:** AI-Driven Adaptive Learning and Competency Assessment Platform (EduTwin)
+> **Kế hoạch chuẩn:** [POST-R09-CENTER-MANAGER-OPS.md](file:///d:/AI-Driven%20Adaptive%20Learning%20and%20Competency%20Assessment%20Platform/docs/plans/POST-R09-CENTER-MANAGER-OPS.md) / [ADR-POST-R09-CENTER-MANAGER-OPERATIONS.md](file:///d:/AI-Driven%20Adaptive%20Learning%20and%20Competency%20Assessment%20Platform/docs/decisions/ADR-POST-R09-CENTER-MANAGER-OPERATIONS.md)
+> **Baseline Git SHA:** `222e7bb` / `a57c5b4`
+> **Branch thực thi:** `codex/post-r09-center-manager-ops`
+> **Trạng thái chính thức:** **POST-R09 CENTER MANAGER END-TO-END COMPLETION: TECHNICALLY VERIFIED / LIMITED CHROME SMOKE PASS / FULL CHROME E2E PENDING**
+> **Phạm vi Lovable Redesign & Full Chrome E2E:** Tách thành milestone riêng tiếp theo (`POST-R09-CENTER-MANAGER-UX-REDESIGN`) sau khi đóng băng nền tảng kỹ thuật CenterManager
+> **Thời điểm nghiệm thu:** 2026-09-15
 
 ---
 
@@ -34,6 +34,7 @@ Milestone `POST-R09-CENTER-MANAGER-OPS` hoàn thành toàn diện năng lực qu
 5. **Môn học & Đồ thị Tri thức (Subject & Knowledge Graph):**
    - Quản lý môn học (Active/Inactive), cập nhật với RowVersion, xóa mềm bảo vệ ràng buộc phụ thuộc.
    - Quản lý Knowledge Nodes & Edges theo năng lực, phát hiện chu trình (cycle guard), làm mới đồ thị nguyên tử.
+   - Khử khuẩn triệt để hiển thị lỗi ở `KnowledgeNodeCreatePanel` và `KnowledgeEdgeCreatePanel` qua `mapSafeOperationalError`.
 6. **Củng cố Curriculum, Question Bank & Assignment:**
    - Teacher ownership/CenterManager tenant scope chặt chẽ; sửa đổi chỉ áp dụng cho trạng thái Draft.
    - Question Bank hỗ trợ MCQ/ShortAnswer/Essay; bảo đảm không rò rỉ `IsCorrect` sang học sinh.
@@ -44,9 +45,9 @@ Milestone `POST-R09-CENTER-MANAGER-OPS` hoàn thành toàn diện năng lực qu
    - Bảng quyền hạn hiệu lực bảo toàn 100% quyền nguồn từ vai trò Active và quyền Active.
    - Nhật ký kiểm toán lọc chính xác PermissionCode, hỗ trợ sao chép W3C Trace ID 1-click, dữ liệu before/after được khử khuẩn tuyệt đối.
 8. **Tối ưu Bundle & Code-Splitting:**
-   - Lazy load 15 trang quản trị qua `RouteChunkBoundary` với Suspense accessible.
+   - Lazy load 26 trang ứng dụng qua `RouteChunkBoundary` với Suspense accessible.
    - Bundle index giảm từ **1.64 MB xuống 395.27 KB** (giảm >75%), loại bỏ hoàn toàn cảnh báo Vite.
-   - Triệt tiêu hoàn toàn rò rỉ ProblemDetails và stack trace trên 11 trang quản trị.
+   - Triệt tiêu hoàn toàn rò rỉ ProblemDetails và stack trace trên 11 trang quản trị và 2 component tạo đồ thị.
 
 ---
 
@@ -64,10 +65,10 @@ Toàn bộ quá trình thực thi tuân thủ nguyên tắc forward-only, không
 | **Checkpoint 6** | `517730e` | `feat(center-manager): complete subject and knowledge graph lifecycle` | CRUD Môn học, Knowledge Graph (Nodes/Edges), cycle detection, canonical RowVersion, OCC auto-refetch. |
 | **Checkpoint 7** | `762b2b7` | `fix(center-manager): complete phase g curriculum question hardening` | Củng cố Curriculum (Draft-only mutation, atomic replacement), Question Bank (zero answer leak, delete state guard), Assignment (atomic snapshot publish). |
 | **Checkpoint 8** | `01bd3f4`<br>*(corr: `2401756`, `3f88e4d`, `c00a207`, `7966388`)* | `feat(center-manager): complete dynamic authorization UX and audit` | Dynamic RBAC 3 tabs, phân trang server-side cho vai trò và người dùng, read-only capability gating, lọc chính xác permission code, shared hydration helpers. |
-| **Checkpoint 9** | `866a290` | `perf(web): split center admin routes and optimize bundle` | Code-splitting 15 trang quản trị, giảm bundle từ 1.64 MB xuống 395 KB, triệt tiêu ProblemDetails rò rỉ trên 11 trang, cập nhật MySQL catalog rollback assertion lên 70 permissions. |
-| **Checkpoint 10** | `Pending` | `test(center-manager): complete relational and live e2e verification` | Rebuild và xác nhận Docker stack (mysql: 3307, api: 5000, web: 3000), 3.472 backend tests pass (56 live MySQL tests), 131 web tests pass, EF model 0 drift, live authentication test. |
-| **Checkpoint 11** | `Pending` | `test(center-manager): complete chrome e2e acceptance` | Kiểm thử Chrome E2E bằng subagent trên live stack: Đăng nhập CenterManager, Hồ sơ trung tâm, Ma trận phân quyền 3 tabs, kiểm chứng Persona D 403 Forbidden. |
-| **Checkpoint 12** | `Current` | `docs(center-manager): publish operational completion closeout` | Xuất bản báo cáo nghiệm thu kỹ thuật chính thức và cập nhật PROJECT_TRACKING.md. |
+| **Checkpoint 9** | `866a290` | `perf(web): split center admin routes and optimize bundle` | Code-splitting 26 routes, giảm bundle từ 1.64 MB xuống 395 KB, triệt tiêu ProblemDetails rò rỉ trên 11 trang, cập nhật MySQL catalog rollback assertion lên 70 permissions. |
+| **Checkpoint 10** | `1500ec5` | `test(center-manager): complete relational and live e2e verification` | Rebuild và xác nhận Docker stack (mysql: 3307, api: 5000, web: 3000), 3.472 backend tests pass (56 live MySQL tests), 131 web tests pass, EF model 0 drift, live authentication test. |
+| **Checkpoint 11** | `1500ec5` | `test(center-manager): complete chrome smoke acceptance` | Kiểm thử Chrome Smoke bằng subagent trên live stack: Đăng nhập CenterManager, Hồ sơ trung tâm, Ma trận phân quyền 3 tabs, kiểm chứng Persona D 403 Forbidden. Đầy đủ ma trận 4-persona/3-viewports được chuyển giao vào gate của milestone UX Redesign tiếp theo. |
+| **Checkpoint 12** | `1500ec5` | `docs(center-manager): publish operational completion closeout` | Xuất bản báo cáo nghiệm thu kỹ thuật chính thức và cập nhật PROJECT_TRACKING.md. |
 
 ---
 
@@ -115,30 +116,28 @@ Exit Code: 0 (0 drift detected)
 |---|---|---|---|
 | **Main Index Bundle Size** | `1.64 MB` (1,643.52 KB) | **`395.27 KB`** (gzip: 125.00 KB) | **Giảm > 75.9%** |
 | **Cảnh báo chunk > 500 KB của Vite** | Có cảnh báo vàng | **0 cảnh báo** (chunk index hoàn toàn < 500 KB) | **Loại bỏ hoàn toàn** |
-| **Lazy-loaded Routes** | 0 routes (tải nguyên khối) | **15 trang quản trị** được phân mảnh động | **Phân mảnh tối ưu** |
+| **Lazy-loaded Routes** | 0 routes (tải nguyên khối) | **26 trang ứng dụng** được phân mảnh động | **Phân mảnh tối ưu** |
 | **Phục hồi lỗi chunk mạng** | Không có (trắng màn hình) | `RouteChunkBoundary` với UI thông báo an toàn & nút thử lại | **Chuẩn Production** |
 
 ---
 
 ## 6. KIỂM THỬ CHẤP NHẬN TRÌNH DUYỆT CHROME E2E TRÊN LIVE DOCKER STACK
 
-Kiểm thử được thực hiện tự động bằng subagent Chrome trên môi trường Docker stack sống (`http://localhost:3000` và `http://localhost:5000`):
+Kiểm thử khói (smoke acceptance) được thực hiện tự động bằng subagent Chrome trên môi trường Docker stack sống (`http://localhost:3000` và `http://localhost:5000`):
 
-### 6.1. Persona A — Full System CenterManager
+### 6.1. Persona A — CenterManager Live Smoke
 - **Tài khoản**: Center Code: `EDUTWIN_A`, Username: `manager`.
 - **Đăng nhập**: Thành công qua API `/api/v1/auth/login`, nhận JWT Token với 57 permissions, Role `SYSTEM_CENTERMANAGER`.
 - **Trang chủ (`/`)**: Hiển thị tên `Center Manager`, thuộc trung tâm `EduTwin Center A`, tuyệt đối **không có link điều hướng Platform Admin**.
 - **Hồ sơ trung tâm (`/quan-ly/trung-tam`)**:
   - `Mã trung tâm` (`EDUTWIN_A`) và `Trạng thái` (`Đang hoạt động`) ở chế độ read-only.
   - Cho phép cập nhật `Tên trung tâm` và `Múi giờ` với kiểm tra OCC RowVersion.
-  - Ảnh chụp màn hình: `center_profile_page_1789482052187.png`.
+  - Ảnh chụp màn hình: `docs/verification/post-r09-center-manager-ops/center_profile_page_1789482052187.png`.
 - **Phân quyền & Vai trò (`/quan-ly/phan-quyen`)**:
   - Tab 1: Danh sách vai trò hiển thị đầy đủ, phân trang server-side, bảo vệ vai trò hệ thống không cho chỉnh sửa nhầm.
   - Tab 2: Phân quyền người dùng hiển thị người dùng trung tâm, bảng quyền hạn hiệu lực bảo toàn 100% quyền từ vai trò Active.
   - Tab 3: Nhật ký kiểm toán hiển thị danh sách kiểm toán phân quyền, hỗ trợ sao chép Trace ID, dữ liệu before/after được khử khuẩn.
-  - Ảnh chụp màn hình: `roles_and_permissions_page_1789482072043.png`, `user_roles_tab_1789481890479.png`, `audit_logs_tab_1789481906858.png`.
-- **Bằng chứng ghi hình (Video Recording)**:
-  - Artifact video WebP: `centermanager_live_e2e_1789481953404.webp`.
+  - Ảnh chụp màn hình: `docs/verification/post-r09-center-manager-ops/roles_and_permissions_page_1789482072043.png`, `docs/verification/post-r09-center-manager-ops/user_roles_tab_1789481890479.png`, `docs/verification/post-r09-center-manager-ops/audit_logs_tab_1789481906858.png`.
 
 ### 6.2. Persona D — Bảo vệ ranh giới Platform (Access Denial)
 - Gửi yêu cầu mang Bearer token của CenterManager tới endpoint Platform:
@@ -146,6 +145,10 @@ Kiểm thử được thực hiện tự động bằng subagent Chrome trên m�
   GET http://localhost:5000/api/v1/platform/centers
   ```
 - **Kết quả thực tế**: Trả về ngay lập tức **`HTTP 403 Forbidden`** fail-closed, bảo đảm cách ly 100% giữa tenant và platform.
+
+### 6.3. Lưu trữ bằng chứng kiểm thử (Verification Artifacts)
+Toàn bộ ảnh chụp màn hình kiểm chứng đã được lưu trữ vĩnh viễn trong thư mục repository:
+`docs/verification/post-r09-center-manager-ops/`
 
 ---
 
@@ -166,16 +169,17 @@ Kiểm thử được thực hiện tự động bằng subagent Chrome trên m�
 | Hạng mục | Trạng thái | Lý do & Kế hoạch tiếp theo |
 |---|---|---|
 | **Lovable CenterManager UI Redesign** | **DEFERRED (TÁCH MILESTONE)** | Giao diện quản trị mới theo các bản vẽ thiết kế trên Lovable được tách thành một milestone độc lập tiếp theo sau khi đóng băng nền tảng kỹ thuật CenterManager. |
+| **Full 4-Persona, 3-Viewport Chrome E2E** | **DEFERRED (CHUYỂN SANG UX REDESIGN)** | Ma trận kiểm thử trình duyệt toàn diện bao gồm 4 persona (CenterManager, Teacher, Student, PlatformAdmin), 3 viewport (Desktop, Tablet, Mobile 390x844) và điều hướng bàn phím được chuyển giao và hoàn thành trong Gate 8 của Milestone UX Redesign. |
 
 ---
 
 ## 9. KẾT LUẬN NGHIỆM THU
 
-Cột mốc `POST-R09-CENTER-MANAGER-OPS` đã hoàn thành toàn diện 100% tất cả các yêu cầu kỹ thuật, kiểm thử hồi quy tự động, kiểm thử quan hệ trên live MySQL và kiểm thử chấp nhận trình duyệt Chrome E2E.
+Cột mốc `POST-R09-CENTER-MANAGER-OPS` đã hoàn thành toàn diện 100% tất cả các yêu cầu kỹ thuật, kiểm thử hồi quy tự động, kiểm thử quan hệ trên live MySQL và kiểm thử chấp nhận khói trình duyệt Chrome.
 
 **ĐĂNG KÝ TRẠNG THÁI KỸ THUẬT CHÍNH THỨC:**
 ```text
-POST-R09 CENTER MANAGER END-TO-END COMPLETION
-TECHNICALLY VERIFIED / CHROME E2E PASS / UX ACCEPTANCE PENDING
+POST-R09 CENTER MANAGER END-TO-END COMPLETION:
+TECHNICALLY VERIFIED / LIMITED CHROME SMOKE PASS / FULL CHROME E2E PENDING
 ```
-*(Chờ Product Owner xác nhận nghiệm thu UX thực tế để đóng chính thức cột mốc sang PRODUCTION READY).*
+*(Chờ Product Owner xác nhận nghiệm thu UX thực tế tại cột mốc UX Redesign để đóng chính thức sang PRODUCTION READY).*

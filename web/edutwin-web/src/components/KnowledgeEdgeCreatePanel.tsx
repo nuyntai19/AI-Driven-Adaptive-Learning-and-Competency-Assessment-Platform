@@ -8,6 +8,7 @@ import type {
   CreateKnowledgeEdgeRequest,
 } from "../types/knowledgeGraph";
 import type { ProblemDetails } from "../types/auth";
+import { mapSafeOperationalError } from "../utils/problemDetails";
 
 interface KnowledgeEdgeCreatePanelProps {
   subjectId: string;
@@ -109,9 +110,11 @@ export const KnowledgeEdgeCreatePanel: React.FC<KnowledgeEdgeCreatePanelProps> =
         message = "Quan hệ giữa hai node đã tồn tại.";
       } else if (errorCode === "DAG_CYCLE_DETECTED") {
         message = "Không thể tạo quan hệ vì thao tác này sẽ tạo chu trình trong đồ thị.";
-      } else if (detail) {
-        message = detail;
+      } else {
+        message = mapSafeOperationalError(err, "Không thể tạo liên kết kiến thức. Vui lòng thử lại.");
       }
+    } else {
+      message = mapSafeOperationalError(err, "Không thể tạo liên kết kiến thức. Vui lòng thử lại.");
     }
 
     return (
