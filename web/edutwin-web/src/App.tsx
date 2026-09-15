@@ -1,40 +1,42 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { AuthBootstrap } from "./auth/AuthBootstrap";
 import { ProtectedRoute } from "./routes/ProtectedRoute";
 import { LoginPage } from "./pages/LoginPage";
-import { AuthenticatedHomePage } from "./pages/AuthenticatedHomePage";
-import { TeacherListPage } from "./pages/TeacherListPage";
-import { ClassListPage } from "./pages/ClassListPage";
-import { StudentListPage } from "./pages/StudentListPage";
-import { SubjectListPage } from "./pages/SubjectListPage";
-import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
-import { CurriculumListPage } from "./pages/CurriculumListPage";
-import { QuestionBankPage } from "./pages/QuestionBankPage";
-import { QuestionEditorPage } from "./pages/QuestionEditorPage";
-import { CurriculumEditorPage } from "./pages/CurriculumEditorPage";
-import { AssignmentListPage } from "./pages/AssignmentListPage";
-import { AssignmentEditorPage } from "./pages/AssignmentEditorPage";
-import { AssignmentProgressPage } from "./pages/AssignmentProgressPage";
-import { StudentAssignmentsPage } from "./pages/StudentAssignmentsPage";
-import { StudentAssignmentDetailPage } from "./pages/StudentAssignmentDetailPage";
-import { StudentDashboardPage } from "./pages/StudentDashboardPage";
-import { StudentTwinPage } from "./pages/StudentTwinPage";
-import { LearningPlayerPage } from "./pages/LearningPlayerPage";
-import { TeacherClassDashboardPage } from "./pages/TeacherClassDashboardPage";
-import { ReviewQueuePage } from "./pages/ReviewQueuePage";
-import { TeacherStudentTwinPage } from "./pages/TeacherStudentTwinPage";
-import { CenterDashboardPage } from "./pages/CenterDashboardPage";
-import { CenterProfilePage } from "./pages/CenterProfilePage";
 import { PermissionRoute } from "./routes/PermissionRoute";
 import { permissions, authorizationUiPermissions } from "./auth/permissions";
 import { AccessDeniedPage } from "./pages/AccessDeniedPage";
-import { AuthorizationManagementPage } from "./pages/AuthorizationManagementPage";
-import { PlatformCentersPage } from "./pages/PlatformCentersPage";
-import { PlatformAuditLogsPage } from "./pages/PlatformAuditLogsPage";
 import { PlatformLayout } from "./layouts/PlatformLayout";
+import { RouteChunkBoundary, RouteLoadingFallback } from "./routes/RouteChunkBoundary";
 import { useAuthStore } from "./stores/authStore";
 import { cleanupExpiredScratchpadDrafts } from "./utils/scratchpadStorage";
+
+const AuthenticatedHomePage = lazy(() => import("./pages/AuthenticatedHomePage").then((module) => ({ default: module.AuthenticatedHomePage })));
+const TeacherListPage = lazy(() => import("./pages/TeacherListPage").then((module) => ({ default: module.TeacherListPage })));
+const ClassListPage = lazy(() => import("./pages/ClassListPage").then((module) => ({ default: module.ClassListPage })));
+const StudentListPage = lazy(() => import("./pages/StudentListPage").then((module) => ({ default: module.StudentListPage })));
+const SubjectListPage = lazy(() => import("./pages/SubjectListPage").then((module) => ({ default: module.SubjectListPage })));
+const KnowledgeGraphPage = lazy(() => import("./pages/KnowledgeGraphPage").then((module) => ({ default: module.KnowledgeGraphPage })));
+const CurriculumListPage = lazy(() => import("./pages/CurriculumListPage").then((module) => ({ default: module.CurriculumListPage })));
+const CurriculumEditorPage = lazy(() => import("./pages/CurriculumEditorPage").then((module) => ({ default: module.CurriculumEditorPage })));
+const QuestionBankPage = lazy(() => import("./pages/QuestionBankPage").then((module) => ({ default: module.QuestionBankPage })));
+const QuestionEditorPage = lazy(() => import("./pages/QuestionEditorPage").then((module) => ({ default: module.QuestionEditorPage })));
+const AssignmentListPage = lazy(() => import("./pages/AssignmentListPage").then((module) => ({ default: module.AssignmentListPage })));
+const AssignmentEditorPage = lazy(() => import("./pages/AssignmentEditorPage").then((module) => ({ default: module.AssignmentEditorPage })));
+const AssignmentProgressPage = lazy(() => import("./pages/AssignmentProgressPage").then((module) => ({ default: module.AssignmentProgressPage })));
+const StudentAssignmentsPage = lazy(() => import("./pages/StudentAssignmentsPage").then((module) => ({ default: module.StudentAssignmentsPage })));
+const StudentAssignmentDetailPage = lazy(() => import("./pages/StudentAssignmentDetailPage").then((module) => ({ default: module.StudentAssignmentDetailPage })));
+const StudentDashboardPage = lazy(() => import("./pages/StudentDashboardPage").then((module) => ({ default: module.StudentDashboardPage })));
+const StudentTwinPage = lazy(() => import("./pages/StudentTwinPage").then((module) => ({ default: module.StudentTwinPage })));
+const LearningPlayerPage = lazy(() => import("./pages/LearningPlayerPage").then((module) => ({ default: module.LearningPlayerPage })));
+const TeacherClassDashboardPage = lazy(() => import("./pages/TeacherClassDashboardPage").then((module) => ({ default: module.TeacherClassDashboardPage })));
+const ReviewQueuePage = lazy(() => import("./pages/ReviewQueuePage").then((module) => ({ default: module.ReviewQueuePage })));
+const TeacherStudentTwinPage = lazy(() => import("./pages/TeacherStudentTwinPage").then((module) => ({ default: module.TeacherStudentTwinPage })));
+const CenterDashboardPage = lazy(() => import("./pages/CenterDashboardPage").then((module) => ({ default: module.CenterDashboardPage })));
+const CenterProfilePage = lazy(() => import("./pages/CenterProfilePage").then((module) => ({ default: module.CenterProfilePage })));
+const AuthorizationManagementPage = lazy(() => import("./pages/AuthorizationManagementPage").then((module) => ({ default: module.AuthorizationManagementPage })));
+const PlatformCentersPage = lazy(() => import("./pages/PlatformCentersPage").then((module) => ({ default: module.PlatformCentersPage })));
+const PlatformAuditLogsPage = lazy(() => import("./pages/PlatformAuditLogsPage").then((module) => ({ default: module.PlatformAuditLogsPage })));
 
 const FallbackRoute = () => {
   const sessionStatus = useAuthStore((state) => state.sessionStatus);
@@ -52,7 +54,9 @@ function App() {
 
   return (
     <AuthBootstrap>
-      <Routes>
+      <RouteChunkBoundary>
+        <Suspense fallback={<RouteLoadingFallback />}>
+          <Routes>
         <Route path="/dang-nhap" element={<LoginPage />} />
 
         <Route element={<ProtectedRoute />}>
@@ -166,7 +170,9 @@ function App() {
         </Route>
 
         <Route path="*" element={<FallbackRoute />} />
-      </Routes>
+          </Routes>
+        </Suspense>
+      </RouteChunkBoundary>
     </AuthBootstrap>
   );
 }

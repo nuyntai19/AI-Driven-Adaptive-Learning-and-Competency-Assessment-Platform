@@ -1,17 +1,9 @@
 import { useParams, Link } from "react-router-dom";
-import { isAxiosError } from "axios";
 import { useAssignment } from "../features/assignments/useAssignment";
 import { useAssignmentProgress } from "../features/assignments/useAssignmentProgress";
+import { mapSafeOperationalError } from "../utils/problemDetails";
 
-const progressErrorMessage = (error: unknown) => {
-  if (isAxiosError(error)) {
-    if (error.response?.status === 404) {
-      return "Không tìm thấy dữ liệu tiến độ hoặc bạn không còn quyền truy cập bài tập này.";
-    }
-    return error.response?.data?.detail || error.message;
-  }
-  return error instanceof Error ? error.message : "Không thể tải tiến độ bài tập.";
-};
+const progressErrorMessage = (error: unknown) => mapSafeOperationalError(error, "Không thể tải tiến độ bài tập.");
 
 export const AssignmentProgressPage = () => {
   const { id } = useParams<{ id: string }>();

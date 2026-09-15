@@ -3,6 +3,7 @@ import { useQuestions, useActivateQuestion, useArchiveQuestion } from "../featur
 import type { QuestionFilter } from "../types/questions";
 import { useAuthStore } from "../stores/authStore";
 import { permissions } from "../auth/permissions";
+import { mapSafeOperationalError } from "../utils/problemDetails";
 
 export const QuestionBankPage = () => {
   const [filter, setFilter] = useState<QuestionFilter>({});
@@ -21,7 +22,7 @@ export const QuestionBankPage = () => {
       { id: questionId, data: { rowVersion } },
       {
         onSuccess: () => alert("Kích hoạt câu hỏi thành công!"),
-        onError: (err: any) => alert("Lỗi: " + (err.response?.data?.detail || err.message))
+        onError: (err: unknown) => alert(mapSafeOperationalError(err, "Không thể kích hoạt câu hỏi."))
       }
     );
   };
@@ -32,7 +33,7 @@ export const QuestionBankPage = () => {
       { id: questionId, data: { rowVersion } },
       {
         onSuccess: () => alert("Lưu trữ câu hỏi thành công!"),
-        onError: (err: any) => alert("Lỗi: " + (err.response?.data?.detail || err.message))
+        onError: (err: unknown) => alert(mapSafeOperationalError(err, "Không thể lưu trữ câu hỏi."))
       }
     );
   };
@@ -118,7 +119,7 @@ export const QuestionBankPage = () => {
 
       {isError && (
         <div className="bg-red-50 text-red-600 p-4 rounded-lg border border-red-100">
-          Đã có lỗi xảy ra: {(error as any)?.response?.data?.detail || error.message}
+          {mapSafeOperationalError(error, "Không thể tải ngân hàng câu hỏi.")}
         </div>
       )}
 

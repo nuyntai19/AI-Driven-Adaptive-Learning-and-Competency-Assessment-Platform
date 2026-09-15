@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { isAxiosError } from "axios";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useAssignment } from "../features/assignments/useAssignment";
 import { useCloseAssignment } from "../features/assignments/useCloseAssignment";
@@ -12,15 +11,11 @@ import {
   useAssignmentClassStudents,
 } from "../features/assignments/useAssignmentWizardOptions";
 import type { CreateAssignmentRequest, TargetMode, UpdateAssignmentRequest } from "../types/assignments";
+import { mapSafeOperationalError } from "../utils/problemDetails";
 
 const wizardSteps = ["Lớp học", "Câu hỏi", "Đối tượng", "Xem lại"] as const;
 
-const getErrorMessage = (error: unknown, fallback: string) => {
-  if (isAxiosError(error)) {
-    return error.response?.data?.detail || error.message || fallback;
-  }
-  return error instanceof Error ? error.message : fallback;
-};
+const getErrorMessage = (error: unknown, fallback: string) => mapSafeOperationalError(error, fallback);
 
 const toLocalDateTime = (value: string | null) => {
   if (!value) return "";

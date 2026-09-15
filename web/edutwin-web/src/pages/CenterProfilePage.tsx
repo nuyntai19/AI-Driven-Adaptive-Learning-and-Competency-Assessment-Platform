@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { organizationApi } from "../api/organizationApi";
 import { useAuthStore } from "../stores/authStore";
-import { extractProblemDetails, isConcurrencyConflict, isForbidden } from "../utils/problemDetails";
+import { extractProblemDetails, isConcurrencyConflict, isForbidden, mapSafeOperationalError } from "../utils/problemDetails";
 import type { CenterProfileDto, UpdateCenterProfileRequest } from "../types/organization";
 
 const TIMEZONE_OPTIONS = [
@@ -94,7 +94,7 @@ export const CenterProfilePage: React.FC = () => {
         const details = extractProblemDetails(err);
         setStatusMessage({
           type: "error",
-          text: details.message || "Đã xảy ra lỗi khi cập nhật thông tin trung tâm. Vui lòng thử lại.",
+          text: mapSafeOperationalError(err, "Đã xảy ra lỗi khi cập nhật thông tin trung tâm. Vui lòng thử lại."),
           traceId: details.traceId ?? undefined,
         });
       }

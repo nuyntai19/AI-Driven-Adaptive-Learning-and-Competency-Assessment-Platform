@@ -10,6 +10,7 @@ import {
   isRateLimit,
   isForbidden,
   mapSafeLoginError,
+  mapSafeOperationalError,
 } from "../src/utils/problemDetails.ts";
 import {
   isTerminalStatus,
@@ -135,6 +136,26 @@ test("403 Forbidden ProblemDetails extracts traceId for support and audit", () =
   assert.equal(details.traceId, "TRACE-403-CLASS-DENIED");
   assert.match(details.message, /User does not own this class/);
   assert.match(details.message, /TRACE-403-CLASS-DENIED/);
+});
+
+test("operational error mapping never exposes raw ProblemDetails", () => {
+  const error = {
+    isAxiosError: true,
+    response: {
+      status: 500,
+      data: {
+        title: "Database failure",
+        detail: "Server=internal-db;Password=must-not-leak",
+        traceId: "TRACE-SAFE-500",
+      },
+      headers: {},
+    },
+  };
+
+  const message = mapSafeOperationalError(error, "Không thể lưu dữ liệu.");
+  assert.match(message, /Không thể lưu dữ liệu/);
+  assert.match(message, /TRACE-SAFE-500/);
+  assert.doesNotMatch(message, /internal-db|Password|Database failure/);
 });
 
 test("terminal-based polling recognizes completed, failed, and in-progress jobs", () => {

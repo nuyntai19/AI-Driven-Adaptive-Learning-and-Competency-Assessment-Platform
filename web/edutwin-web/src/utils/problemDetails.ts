@@ -91,6 +91,32 @@ export function isForbidden(error: unknown): boolean {
   return false;
 }
 
+export function mapSafeOperationalError(
+  error: unknown,
+  fallback = "Không thể hoàn tất thao tác. Vui lòng thử lại.",
+): string {
+  const details = extractProblemDetails(error);
+  const messages: Record<string, string> = {
+    VALIDATION_FAILED: "Dữ liệu nhập vào chưa hợp lệ. Vui lòng kiểm tra lại các trường bắt buộc.",
+    RESOURCE_NOT_FOUND: "Không tìm thấy dữ liệu trong phạm vi được phép truy cập.",
+    FORBIDDEN_RESOURCE: "Bạn không có quyền thực hiện thao tác này.",
+    AUTH_PERMISSION_REQUIRED: "Bạn không có quyền thực hiện thao tác này.",
+    CONCURRENCY_CONFLICT: "Dữ liệu đã được thay đổi ở phiên khác. Vui lòng tải lại dữ liệu mới nhất.",
+    DUPLICATE_RESOURCE: "Dữ liệu này đã tồn tại. Vui lòng kiểm tra và chọn giá trị khác.",
+    INVALID_STATE_TRANSITION: "Không thể thực hiện thao tác ở trạng thái hiện tại.",
+    DAG_CYCLE_DETECTED: "Liên kết này sẽ tạo chu trình phụ thuộc nên không thể lưu.",
+  };
+
+  let message = (details.errorCode && messages[details.errorCode]) || fallback;
+  if (details.status === 401) message = "Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại.";
+  if (details.status === 403) message = messages.FORBIDDEN_RESOURCE;
+  if (details.status === 404) message = messages.RESOURCE_NOT_FOUND;
+  if (details.status === 409 && !details.errorCode) message = messages.CONCURRENCY_CONFLICT;
+  if (details.status === 429) message = "Bạn thao tác quá nhanh. Vui lòng đợi một lúc rồi thử lại.";
+  if (details.traceId) message = `${message} (Mã theo dõi: ${details.traceId})`;
+  return message;
+}
+
 export function mapSafeLoginError(error: unknown): string {
   if (axios.isAxiosError(error) && error.response) {
     const status = error.response.status;

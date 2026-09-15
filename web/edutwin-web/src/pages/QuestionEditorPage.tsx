@@ -9,6 +9,7 @@ import { MathInputToolbar } from "../components/math/MathInputToolbar";
 import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
 import { useAuthStore } from "../stores/authStore";
 import { permissions } from "../auth/permissions";
+import { mapSafeOperationalError } from "../utils/problemDetails";
 
 export const QuestionEditorPage = () => {
   const questionTextRef = useRef<HTMLTextAreaElement>(null);
@@ -123,7 +124,7 @@ export const QuestionEditorPage = () => {
           alert("Kích hoạt câu hỏi thành công!");
           navigate("/quan-ly/cau-hoi");
         },
-        onError: (err: any) => alert("Lỗi: " + (err.response?.data?.detail || err.message))
+        onError: (err: unknown) => alert(mapSafeOperationalError(err, "Không thể kích hoạt câu hỏi."))
       }
     );
   };
@@ -138,7 +139,7 @@ export const QuestionEditorPage = () => {
           alert("Lưu trữ câu hỏi thành công!");
           navigate("/quan-ly/cau-hoi");
         },
-        onError: (err: any) => alert("Lỗi: " + (err.response?.data?.detail || err.message))
+        onError: (err: unknown) => alert(mapSafeOperationalError(err, "Không thể lưu trữ câu hỏi."))
       }
     );
   };

@@ -17,7 +17,7 @@ import type {
   UpdateKnowledgeEdgeRequest,
 } from "../types/knowledgeGraph";
 import type { ProblemDetails } from "../types/auth";
-import { extractProblemDetails, isConcurrencyConflict } from "../utils/problemDetails";
+import { isConcurrencyConflict, mapSafeOperationalError } from "../utils/problemDetails";
 
 const nodeTypeLabels: Record<KnowledgeNodeType, string> = {
   Subject: "Môn học",
@@ -153,7 +153,6 @@ export const KnowledgeGraphPage: React.FC = () => {
     },
     onError: async (err) => {
       if (isAxiosError<ProblemDetails>(err)) {
-        const details = extractProblemDetails(err);
         if (isConcurrencyConflict(err)) {
           const refreshed = await refetchGraph();
           const latestNode = refreshed.data?.nodes.find(
@@ -166,12 +165,10 @@ export const KnowledgeGraphPage: React.FC = () => {
           return;
         }
         if (err.response?.status === 409) {
-          setEditNodeError(
-            details?.detail || "Không thể cập nhật nút do xung đột ràng buộc hoặc chu trình phụ thuộc."
-          );
+          setEditNodeError(mapSafeOperationalError(err, "Không thể cập nhật nút do xung đột ràng buộc hoặc chu trình phụ thuộc."));
           return;
         }
-        setEditNodeError(details?.detail || "Không thể cập nhật nút kiến thức. Vui lòng thử lại.");
+        setEditNodeError(mapSafeOperationalError(err, "Không thể cập nhật nút kiến thức. Vui lòng thử lại."));
         return;
       }
       setEditNodeError("Đã xảy ra lỗi khi cập nhật nút kiến thức.");
@@ -188,15 +185,11 @@ export const KnowledgeGraphPage: React.FC = () => {
     },
     onError: (err) => {
       if (isAxiosError<ProblemDetails>(err)) {
-        const details = extractProblemDetails(err);
         if (err.response?.status === 409) {
-          setDeleteNodeError(
-            details?.detail ||
-              "Không thể xóa nút kiến thức vì đang có dữ liệu hoặc quan hệ liên kết trong hệ thống."
-          );
+          setDeleteNodeError(mapSafeOperationalError(err, "Không thể xóa nút kiến thức vì đang có dữ liệu hoặc quan hệ liên kết trong hệ thống."));
           return;
         }
-        setDeleteNodeError(details?.detail || "Không thể xóa nút kiến thức. Vui lòng thử lại.");
+        setDeleteNodeError(mapSafeOperationalError(err, "Không thể xóa nút kiến thức. Vui lòng thử lại."));
         return;
       }
       setDeleteNodeError("Đã xảy ra lỗi khi xóa nút kiến thức.");
@@ -215,7 +208,6 @@ export const KnowledgeGraphPage: React.FC = () => {
     },
     onError: async (err) => {
       if (isAxiosError<ProblemDetails>(err)) {
-        const details = extractProblemDetails(err);
         if (isConcurrencyConflict(err)) {
           const refreshed = await refetchGraph();
           const latestEdge = refreshed.data?.edges.find(
@@ -227,7 +219,7 @@ export const KnowledgeGraphPage: React.FC = () => {
           );
           return;
         }
-        setEditEdgeError(details?.detail || "Không thể cập nhật liên kết. Vui lòng thử lại.");
+        setEditEdgeError(mapSafeOperationalError(err, "Không thể cập nhật liên kết. Vui lòng thử lại."));
         return;
       }
       setEditEdgeError("Đã xảy ra lỗi khi cập nhật liên kết.");
@@ -244,8 +236,7 @@ export const KnowledgeGraphPage: React.FC = () => {
     },
     onError: (err) => {
       if (isAxiosError<ProblemDetails>(err)) {
-        const details = extractProblemDetails(err);
-        setDeleteEdgeError(details?.detail || "Không thể xóa liên kết. Vui lòng thử lại.");
+        setDeleteEdgeError(mapSafeOperationalError(err, "Không thể xóa liên kết. Vui lòng thử lại."));
         return;
       }
       setDeleteEdgeError("Đã xảy ra lỗi khi xóa liên kết.");

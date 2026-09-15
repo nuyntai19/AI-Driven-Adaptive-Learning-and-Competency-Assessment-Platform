@@ -20,6 +20,7 @@ import {
   buildUpdateCurriculumPayload,
   isConcurrencyConflictError
 } from "./curriculumEditorHelpers";
+import { mapSafeOperationalError } from "../utils/problemDetails";
 
 export const CurriculumEditorPage = () => {
   const { id } = useParams<{ id: string }>();
@@ -107,7 +108,7 @@ export const CurriculumEditorPage = () => {
             navigate(`/quan-ly/giao-trinh/${res.data.curriculumId}`);
           },
           onError: (err: any) => {
-            alert("Lỗi: " + (err.response?.data?.detail || err.message));
+            alert(mapSafeOperationalError(err, "Không thể lưu giáo trình."));
           }
         }
       );
@@ -131,7 +132,7 @@ export const CurriculumEditorPage = () => {
               alert("Xung đột phiên bản (409): Dữ liệu lộ trình đã được cập nhật bởi phiên khác. Đang tải lại dữ liệu mới nhất...");
               refetchCurriculum();
             } else {
-              alert("Lỗi: " + (err.response?.data?.detail || err.message));
+              alert(mapSafeOperationalError(err, "Không thể cập nhật lớp của giáo trình."));
             }
           }
         }
@@ -159,7 +160,7 @@ export const CurriculumEditorPage = () => {
             alert("Xung đột phiên bản (409): Dữ liệu lộ trình đã được cập nhật bởi phiên khác. Đang tải lại dữ liệu mới nhất...");
             refetchCurriculum();
           } else {
-            alert("Lỗi: " + (err.response?.data?.detail || err.message));
+            alert(mapSafeOperationalError(err, "Không thể cập nhật nút kiến thức của giáo trình."));
           }
         }
       }
@@ -186,7 +187,7 @@ export const CurriculumEditorPage = () => {
             alert("Xung đột phiên bản (409): Dữ liệu lộ trình đã được cập nhật bởi phiên khác. Đang tải lại dữ liệu mới nhất...");
             refetchCurriculum();
           } else {
-            alert("Lỗi: " + (err.response?.data?.detail || err.message));
+            alert(mapSafeOperationalError(err, "Không thể xuất bản giáo trình."));
           }
         }
       }
@@ -211,7 +212,7 @@ export const CurriculumEditorPage = () => {
               alert("Xung đột phiên bản (409): Lộ trình đã được thay đổi trước khi xuất bản. Đang tải lại dữ liệu mới nhất...");
               refetchCurriculum();
             } else {
-              alert("Lỗi: " + (err.response?.data?.detail || err.message));
+              alert(mapSafeOperationalError(err, "Không thể cập nhật giáo trình."));
             }
           }
         }

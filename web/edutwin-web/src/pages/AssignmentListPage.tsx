@@ -1,15 +1,12 @@
 import { useState } from "react";
-import { isAxiosError } from "axios";
 import { Link } from "react-router-dom";
 import { useAssignments } from "../features/assignments/useAssignments";
 import type { AssignmentStatus } from "../types/assignments";
 import { useAuthStore } from "../stores/authStore";
 import { permissions } from "../auth/permissions";
+import { mapSafeOperationalError } from "../utils/problemDetails";
 
-const getListError = (error: unknown) => {
-  if (isAxiosError(error)) return error.response?.data?.detail || error.message;
-  return error instanceof Error ? error.message : "Không thể tải danh sách bài tập.";
-};
+const getListError = (error: unknown) => mapSafeOperationalError(error, "Không thể tải danh sách bài tập.");
 
 export const AssignmentListPage = () => {
   const [classId, setClassId] = useState<string>("");

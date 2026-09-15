@@ -30,8 +30,13 @@ export const AuthenticatedHomePage = () => {
 
   if (!user) return null;
 
-  if (hasAnyPermission([permissions.platformCentersRead, permissions.platformCentersManage])) {
-    return <Navigate to="/quan-tri-nen-tang/trung-tam" replace />;
+  if (user.accountType === "PlatformAdmin") {
+    if (hasAnyPermission([permissions.platformCentersRead, permissions.platformCentersManage])) {
+      return <Navigate to="/quan-tri-nen-tang/trung-tam" replace />;
+    }
+    if (hasPermission(permissions.platformAuditRead)) {
+      return <Navigate to="/quan-tri-nen-tang/nhat-ky" replace />;
+    }
   }
 
   const handleLogout = async () => {
@@ -164,7 +169,12 @@ export const AuthenticatedHomePage = () => {
               )}
 
               {/* Center Manager Experience */}
-              {hasPermission(permissions.dashboardsCenterRead) && (
+              {user.accountType === "CenterManager" && hasAnyPermission([
+                permissions.dashboardsCenterRead,
+                permissions.centerRead,
+                permissions.centerManage,
+                ...authorizationUiPermissions,
+              ]) && (
                 <div className="rounded-xl border border-purple-100 bg-gradient-to-br from-purple-50/60 to-pink-50/60 p-5 flex flex-col justify-between">
                   <div>
                     <span className="text-xs font-bold uppercase tracking-wider text-purple-700">
@@ -178,12 +188,14 @@ export const AuthenticatedHomePage = () => {
                     </p>
                   </div>
                   <div className="mt-4 flex flex-col gap-2">
-                    <Link
-                      to="/quan-ly/tong-quan-trung-tam"
-                      className="inline-flex items-center justify-center rounded-lg bg-purple-700 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-purple-600"
-                    >
-                      Xem Dashboard Trung tâm →
-                    </Link>
+                    {hasPermission(permissions.dashboardsCenterRead) && (
+                      <Link
+                        to="/quan-ly/tong-quan-trung-tam"
+                        className="inline-flex items-center justify-center rounded-lg bg-purple-700 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-purple-600"
+                      >
+                        Xem Dashboard Trung tâm →
+                      </Link>
+                    )}
                     {(hasPermission(permissions.centerRead) || hasPermission(permissions.centerManage)) && (
                       <Link
                         to="/quan-ly/trung-tam"
@@ -205,7 +217,11 @@ export const AuthenticatedHomePage = () => {
               )}
 
               {/* Platform Administration Experience */}
-              {(hasPermission(permissions.platformCentersRead) || hasPermission(permissions.platformCentersManage)) && (
+              {user.accountType === "PlatformAdmin" && hasAnyPermission([
+                permissions.platformCentersRead,
+                permissions.platformCentersManage,
+                permissions.platformAuditRead,
+              ]) && (
                 <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-blue-50/60 to-cyan-50/60 p-5 flex flex-col justify-between">
                   <div>
                     <span className="text-xs font-bold uppercase tracking-wider text-blue-700">
@@ -219,12 +235,14 @@ export const AuthenticatedHomePage = () => {
                     </p>
                   </div>
                   <div className="mt-4 flex flex-col gap-2">
-                    <Link
-                      to="/quan-tri-nen-tang/trung-tam"
-                      className="inline-flex items-center justify-center rounded-lg bg-blue-700 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-600"
-                    >
-                      Vào Quản Trị Trung Tâm →
-                    </Link>
+                    {hasAnyPermission([permissions.platformCentersRead, permissions.platformCentersManage]) && (
+                      <Link
+                        to="/quan-tri-nen-tang/trung-tam"
+                        className="inline-flex items-center justify-center rounded-lg bg-blue-700 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-600"
+                      >
+                        Vào Quản Trị Trung Tâm →
+                      </Link>
+                    )}
                     {hasPermission(permissions.platformAuditRead) && (
                       <Link
                         to="/quan-tri-nen-tang/nhat-ky"
@@ -327,7 +345,7 @@ export const AuthenticatedHomePage = () => {
                 </Link>
               )}
 
-              {hasAnyPermission(authorizationUiPermissions) && (
+              {user.accountType === "CenterManager" && hasAnyPermission(authorizationUiPermissions) && (
                 <Link
                   to="/quan-ly/phan-quyen"
                   className="rounded-lg bg-amber-50 px-3.5 py-2 text-xs font-semibold text-amber-800 ring-1 ring-inset ring-amber-300 hover:bg-amber-100"

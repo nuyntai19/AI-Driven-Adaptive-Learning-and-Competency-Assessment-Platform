@@ -3,6 +3,7 @@ import { useCurriculums } from "../features/curriculum/useCurriculums";
 import type { ReviewStatus } from "../types/curriculum";
 import { useAuthStore } from "../stores/authStore";
 import { permissions } from "../auth/permissions";
+import { mapSafeOperationalError } from "../utils/problemDetails";
 
 export const CurriculumListPage = () => {
   const [subjectId, setSubjectId] = useState<string>("");
@@ -61,7 +62,7 @@ export const CurriculumListPage = () => {
 
       {isError && (
         <div className="bg-red-50 text-red-600 p-4 rounded-lg border border-red-100">
-          Đã có lỗi xảy ra: {(error as any)?.response?.data?.detail || error.message}
+          {mapSafeOperationalError(error, "Không thể tải danh sách giáo trình.")}
         </div>
       )}
 

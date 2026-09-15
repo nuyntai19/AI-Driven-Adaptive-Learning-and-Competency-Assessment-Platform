@@ -1382,7 +1382,9 @@ public sealed class PlatformMySqlIntegrationTests
 
         // Verify database is back at latest schema and ready
         var count = await context.Permissions.IgnoreQueryFilters().CountAsync();
-        Assert.Equal(68, count);
+        // The forward CenterManager lifecycle migration adds the two canonical
+        // teacher/student reset-password permissions after the Platform baseline.
+        Assert.Equal(70, count);
     }
 
     [MySqlIntegrationFact]

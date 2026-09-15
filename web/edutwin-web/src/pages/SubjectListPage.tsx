@@ -11,7 +11,7 @@ import type {
 import type { ProblemDetails } from "../types/auth";
 import { useAuthStore } from "../stores/authStore";
 import { permissions } from "../auth/permissions";
-import { extractProblemDetails, isConcurrencyConflict } from "../utils/problemDetails";
+import { isConcurrencyConflict, mapSafeOperationalError } from "../utils/problemDetails";
 
 export const SubjectListPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -93,14 +93,11 @@ export const SubjectListPage: React.FC = () => {
     },
     onError: (err) => {
       if (isAxiosError<ProblemDetails>(err)) {
-        const details = extractProblemDetails(err);
         if (err.response?.status === 409) {
-          setCreateError(
-            details?.detail || "Mã môn học này đã tồn tại trong trung tâm. Vui lòng chọn mã khác."
-          );
+          setCreateError(mapSafeOperationalError(err, "Mã môn học này đã tồn tại trong trung tâm. Vui lòng chọn mã khác."));
           return;
         }
-        setCreateError(details?.detail || "Không thể tạo môn học. Vui lòng kiểm tra lại thông tin.");
+        setCreateError(mapSafeOperationalError(err, "Không thể tạo môn học. Vui lòng kiểm tra lại thông tin."));
         return;
       }
       setCreateError("Đã xảy ra lỗi không mong muốn khi tạo môn học.");
@@ -119,7 +116,6 @@ export const SubjectListPage: React.FC = () => {
     },
     onError: async (err) => {
       if (isAxiosError<ProblemDetails>(err)) {
-        const details = extractProblemDetails(err);
         if (isConcurrencyConflict(err)) {
           await invalidateAllSubjectQueries();
           if (editingSubject) {
@@ -135,7 +131,7 @@ export const SubjectListPage: React.FC = () => {
           );
           return;
         }
-        setEditError(details?.detail || "Không thể cập nhật môn học. Vui lòng thử lại.");
+        setEditError(mapSafeOperationalError(err, "Không thể cập nhật môn học. Vui lòng thử lại."));
         return;
       }
       setEditError("Đã xảy ra lỗi khi cập nhật môn học.");
@@ -153,15 +149,11 @@ export const SubjectListPage: React.FC = () => {
     },
     onError: (err) => {
       if (isAxiosError<ProblemDetails>(err)) {
-        const details = extractProblemDetails(err);
         if (err.response?.status === 409) {
-          setDeleteError(
-            details?.detail ||
-              "Không thể xóa môn học này do đang có dữ liệu liên kết (lớp học, giáo trình, mục tiêu học tập, hoặc dữ liệu phân tích)."
-          );
+          setDeleteError(mapSafeOperationalError(err, "Không thể xóa môn học này do đang có dữ liệu liên kết (lớp học, giáo trình, mục tiêu học tập, hoặc dữ liệu phân tích)."));
           return;
         }
-        setDeleteError(details?.detail || "Không thể xóa môn học. Vui lòng thử lại.");
+        setDeleteError(mapSafeOperationalError(err, "Không thể xóa môn học. Vui lòng thử lại."));
         return;
       }
       setDeleteError("Đã xảy ra lỗi khi xóa môn học.");
@@ -183,8 +175,7 @@ export const SubjectListPage: React.FC = () => {
     try {
       setDetailSubject(await organizationApi.getSubject(subject.subjectId));
     } catch (err) {
-      const details = isAxiosError<ProblemDetails>(err) ? extractProblemDetails(err) : null;
-      setDetailError(details?.detail || "Không thể tải chi tiết môn học mới nhất.");
+      setDetailError(mapSafeOperationalError(err, "Không thể tải chi tiết môn học mới nhất."));
     } finally {
       setIsDetailLoading(false);
     }
@@ -235,14 +226,13 @@ export const SubjectListPage: React.FC = () => {
       setEditDescription(latest.description || "");
       setEditIsActive(latest.isActive);
     } catch (err) {
-      const details = isAxiosError<ProblemDetails>(err) ? extractProblemDetails(err) : null;
       setGlobalSuccessMessage(null);
       setEditingSubject(subject);
       setEditCode(subject.subjectCode);
       setEditName(subject.subjectName);
       setEditDescription(subject.description || "");
       setEditIsActive(subject.isActive);
-      setEditError(details?.detail || "Không thể tải phiên bản môn học mới nhất để chỉnh sửa.");
+      setEditError(mapSafeOperationalError(err, "Không thể tải phiên bản môn học mới nhất để chỉnh sửa."));
     }
   };
 
