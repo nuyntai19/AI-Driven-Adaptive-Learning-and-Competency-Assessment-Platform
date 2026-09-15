@@ -1,299 +1,187 @@
-import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { Link, useSearchParams } from "react-router-dom";
 import { getCenterDashboard } from "../api/dashboardsApi";
 import { organizationApi } from "../api/organizationApi";
-import { useAuthStore } from "../stores/authStore";
-import { permissions } from "../auth/permissions";
-import { mapSafeOperationalError } from "../utils/problemDetails";
+import { MetricCard, PageHeader, SafeErrorPanel, Skeleton, StatusBadge } from "../components/centerManager";
 import type { CenterDashboardDataDto } from "../types/dashboards";
 
+const clampPercentage = (value: number) => Math.min(100, Math.max(0, value));
+
+const formatGeneratedAt = (value: string) => {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "Không xác định"
+    : new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short" }).format(date);
+};
+
+function DashboardSkeleton() {
+  return (
+    <div aria-label="Đang tải tổng quan trung tâm" role="status" className="space-y-6">
+      <span className="sr-only">Đang tải tổng quan trung tâm</span>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} decorative className="h-32 w-full rounded-2xl" />)}
+      </div>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(22rem,0.8fr)]">
+        <Skeleton decorative className="h-80 w-full rounded-2xl" />
+        <Skeleton decorative className="h-80 w-full rounded-2xl" />
+      </div>
+    </div>
+  );
+}
+
 export const CenterDashboardPage = () => {
-  const user = useAuthStore((state) => state.user);
-  const hasPermission = useAuthStore((state) => state.hasPermission);
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedSubjectId = searchParams.get("subjectId") || "";
   const subjectsQuery = useQuery({
     queryKey: ["subjects", "center-dashboard", "active"],
     queryFn: () => organizationApi.listSubjects(true),
   });
-
-  const {
-    data: dashboard,
-    isLoading,
-    isError,
-    error,
-    refetch,
-  } = useQuery<CenterDashboardDataDto>({
+  const dashboardQuery = useQuery<CenterDashboardDataDto>({
     queryKey: ["centerDashboard", selectedSubjectId],
     queryFn: () => getCenterDashboard(selectedSubjectId || undefined),
   });
+  const dashboard = dashboardQuery.data;
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
-      <div className="mx-auto max-w-7xl space-y-6">
-        {/* Header Breadcrumbs */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
-          <div>
-            <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 mb-1">
-              <Link to="/" className="hover:text-indigo-600">Trang chủ</Link>
-              <span>/</span>
-              <span className="text-slate-900">Dashboard Quản lý Trung tâm</span>
-            </div>
-            <h1 className="text-2xl font-bold text-slate-900">
-              Tổng Quan Năng Lực Toàn Trung Tâm
-            </h1>
-            <p className="mt-1 text-sm text-slate-500">
-              Giám sát tình trạng học thuật, xếp hạng các lớp học và thống kê học sinh nguy cơ cao theo lớp.
+    <div className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+      <div className="mx-auto max-w-[96rem] space-y-6">
+        <PageHeader
+          eyebrow="Center overview"
+          title="Tổng quan trung tâm"
+          description="Theo dõi quy mô, mức độ thành thạo và các lớp cần ưu tiên trong phạm vi trung tâm hiện tại."
+          actions={dashboard && (
+            <p className="text-xs text-[var(--cm-text-muted)]">
+              Dữ liệu lúc <time dateTime={dashboard.generatedAt}>{formatGeneratedAt(dashboard.generatedAt)}</time>
             </p>
-          </div>
+          )}
+        />
 
-          <div className="flex items-center gap-3">
-            <nav className="hidden items-center gap-2 lg:flex" aria-label="Quản lý trung tâm">
-              {(hasPermission(permissions.centerRead) || hasPermission(permissions.centerManage)) && (
-                <Link to="/quan-ly/trung-tam" className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50">Hồ sơ trung tâm</Link>
-              )}
-              <Link to="/quan-ly/tong-quan-trung-tam" className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white shadow-sm" aria-current="page">Dashboard</Link>
-              {hasPermission(permissions.teachersRead) && (
-                <Link to="/quan-ly/giao-vien" className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50">Giáo viên</Link>
-              )}
-              {hasPermission(permissions.classesRead) && (
-                <Link to="/quan-ly/lop-hoc" className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50">Lớp học</Link>
-              )}
-              {hasPermission(permissions.studentsRead) && (
-                <Link to="/quan-ly/hoc-sinh" className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50">Học sinh</Link>
-              )}
-            </nav>
-            <label className="text-xs font-semibold text-slate-600">
-              Môn học
-              <select
-                value={selectedSubjectId}
-                onChange={(event) => {
-                  const subjectId = event.target.value;
-                  setSearchParams(subjectId ? { subjectId } : {});
-                }}
-                disabled={subjectsQuery.isLoading}
-                className="ml-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
-              >
-                <option value="">Tất cả môn học</option>
-                {subjectsQuery.data?.data.map((subject) => (
-                  <option key={subject.subjectId} value={subject.subjectId}>
-                    {subject.subjectName}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button
-              onClick={() => refetch()}
-              className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50"
+        <section aria-label="Bộ lọc tổng quan" className="cm-surface flex flex-col gap-3 p-4 sm:flex-row sm:items-end sm:justify-between">
+          <label className="text-xs font-semibold text-[var(--cm-text-secondary)]">
+            Môn học
+            <select
+              value={selectedSubjectId}
+              onChange={(event) => setSearchParams(event.target.value ? { subjectId: event.target.value } : {})}
+              disabled={subjectsQuery.isLoading || subjectsQuery.isError}
+              className="cm-field mt-1 block min-w-64 px-3"
             >
-              Làm mới
-            </button>
-          </div>
-        </div>
+              <option value="">Tất cả môn học</option>
+              {subjectsQuery.data?.data.map((subject) => (
+                <option key={subject.subjectId} value={subject.subjectId}>{subject.subjectName}</option>
+              ))}
+            </select>
+          </label>
+          <button type="button" className="cm-secondary-button" onClick={() => dashboardQuery.refetch()} disabled={dashboardQuery.isFetching}>
+            {dashboardQuery.isFetching ? "Đang làm mới…" : "Làm mới dữ liệu"}
+          </button>
+        </section>
 
-        {/* Loading / Error states */}
-        {isLoading && (
-          <div className="flex items-center justify-center rounded-2xl bg-white p-12 shadow-sm ring-1 ring-slate-200">
-            <span className="font-medium text-indigo-600 animate-pulse">
-              Đang tải dữ liệu Trung tâm...
-            </span>
-          </div>
-        )}
+        {subjectsQuery.isError && <SafeErrorPanel error={subjectsQuery.error} fallback="Không thể tải danh sách môn học." onRetry={() => subjectsQuery.refetch()} />}
+        {dashboardQuery.isLoading && <DashboardSkeleton />}
+        {dashboardQuery.isError && <SafeErrorPanel error={dashboardQuery.error} fallback="Không thể tải dữ liệu tổng quan trung tâm." onRetry={() => dashboardQuery.refetch()} />}
 
-        {isError && (
-          <div className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-200">
-            <h2 className="text-lg font-bold text-red-600">Không thể tải dữ liệu Trung tâm</h2>
-            <p className="mt-2 text-sm text-slate-500">
-              {mapSafeOperationalError(error, "Vui lòng kiểm tra lại kết nối hoặc quyền hạn quản lý.")}
-            </p>
-            <button
-              onClick={() => refetch()}
-              className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
-            >
-              Thử lại
-            </button>
-          </div>
-        )}
-
-        {!isLoading && !isError && dashboard && (
+        {!dashboardQuery.isLoading && !dashboardQuery.isError && dashboard && (
           <>
-            {/* KPI Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                  Tổng số lớp học
-                </span>
-                <div className="mt-2 flex items-baseline gap-2">
-                  <span className="text-3xl font-black text-slate-900">
-                    {dashboard.summary.classCount}
-                  </span>
-                  <span className="text-xs text-slate-500">lớp</span>
+            <section aria-label="Chỉ số quy mô trung tâm" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <MetricCard label="Giáo viên" value={dashboard.summary.teacherCount} supportingText="Tổng số hồ sơ trong dữ liệu tổng hợp" icon={<span aria-hidden="true">GV</span>} />
+              <MetricCard label="Học sinh" value={dashboard.summary.studentCount} supportingText="Tổng số hồ sơ trong dữ liệu tổng hợp" icon={<span aria-hidden="true">HS</span>} />
+              <MetricCard label="Lớp học" value={dashboard.summary.classCount} supportingText="Tổng số lớp trong dữ liệu tổng hợp" icon={<span aria-hidden="true">LH</span>} />
+              <MetricCard label="Môn học được đo lường" value={dashboard.masteryBySubject.length} supportingText="Có dữ liệu mastery trong phản hồi hiện tại" icon={<span aria-hidden="true">MH</span>} />
+            </section>
+
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(22rem,0.9fr)]">
+              <section className="cm-surface p-5 sm:p-6" aria-labelledby="mastery-heading">
+                <div className="border-b border-[var(--cm-border-subtle)] pb-4">
+                  <h2 id="mastery-heading" className="text-base font-semibold text-[var(--cm-text)]">Mức độ thành thạo theo môn</h2>
+                  <p className="mt-1 text-xs text-[var(--cm-text-secondary)]">Giá trị trung bình từ dữ liệu học tập đã ghi nhận.</p>
                 </div>
-                <p className="mt-1 text-xs text-slate-500">Đang hoạt động trong trung tâm</p>
-              </div>
-
-              <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                  Tổng số học sinh
-                </span>
-                <div className="mt-2 flex items-baseline gap-2">
-                  <span className="text-3xl font-black text-slate-900">
-                    {dashboard.summary.studentCount}
-                  </span>
-                  <span className="text-xs text-slate-500">em</span>
-                </div>
-                <p className="mt-1 text-xs text-slate-500">Đã kích hoạt hồ sơ năng lực</p>
-              </div>
-
-              <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                  Đội ngũ giáo viên
-                </span>
-                <div className="mt-2 flex items-baseline gap-2">
-                  <span className="text-3xl font-black text-slate-900">
-                    {dashboard.summary.teacherCount}
-                  </span>
-                  <span className="text-xs text-slate-500">thầy cô</span>
-                </div>
-                <p className="mt-1 text-xs text-slate-500">Phụ trách giảng dạy</p>
-              </div>
-
-              <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                  Số môn học đang đào tạo
-                </span>
-                <div className="mt-2 flex items-baseline gap-2">
-                  <span className="text-3xl font-black text-indigo-600">
-                    {dashboard.masteryBySubject.length}
-                  </span>
-                  <span className="text-xs text-slate-500">môn</span>
-                </div>
-                <p className="mt-1 text-xs text-slate-500">Tích hợp mô hình Digital Twin</p>
-              </div>
-            </div>
-
-            {/* Subject Mastery and Class Rankings Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Subject Mastery Breakdown (1 col) */}
-              <div className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-                <h2 className="text-base font-bold text-slate-900 mb-1">
-                  Năng Lực Theo Môn Học
-                </h2>
-                <p className="text-xs text-slate-500 mb-4 border-b border-slate-100 pb-3">
-                  Độ thuần thục trung bình của học sinh ở từng môn.
-                </p>
-
                 {dashboard.masteryBySubject.length === 0 ? (
-                  <p className="text-xs text-slate-500 py-4 text-center">Chưa có dữ liệu môn học.</p>
+                  <p className="py-12 text-center text-sm text-[var(--cm-text-muted)]">Chưa có dữ liệu mastery cho bộ lọc hiện tại.</p>
                 ) : (
-                  <div className="space-y-4">
-                    {dashboard.masteryBySubject.map((sm) => (
-                      <div key={sm.subjectId} className="space-y-1.5">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="font-semibold text-slate-800">{sm.subjectName}</span>
-                          <span className="font-bold text-indigo-600">
-                            {sm.averageMastery.toFixed(1)}%
-                          </span>
+                  <div className="mt-5 space-y-5">
+                    {dashboard.masteryBySubject.map((subject) => {
+                      const percentage = clampPercentage(subject.averageMastery);
+                      return (
+                        <div key={subject.subjectId}>
+                          <div className="mb-2 flex items-center justify-between gap-4 text-sm">
+                            <span className="truncate font-medium text-[var(--cm-text)]">{subject.subjectName}</span>
+                            <span className="font-semibold text-cyan-300">{subject.averageMastery.toFixed(1)}%</span>
+                          </div>
+                          <div className="h-2 overflow-hidden rounded-full bg-slate-800" role="progressbar" aria-label={`Mastery ${subject.subjectName}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percentage}>
+                            <div className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-cyan-400" style={{ width: `${percentage}%` }} />
+                          </div>
                         </div>
-                        <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden">
-                          <div
-                            className={`h-full rounded-full ${
-                              sm.averageMastery >= 75
-                                ? "bg-emerald-500"
-                                : sm.averageMastery >= 50
-                                ? "bg-indigo-500"
-                                : "bg-amber-500"
-                            }`}
-                            style={{ width: `${Math.min(100, Math.max(0, sm.averageMastery))}%` }}
-                          />
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
-              </div>
+              </section>
 
-              {/* Class Rankings (2 cols) */}
-              <div className="lg:col-span-2 rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-                <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
-                  <div>
-                    <h2 className="text-base font-bold text-slate-900">
-                      Bảng Xếp Hạng & Tình Hình Các Lớp
-                    </h2>
-                    <p className="text-xs text-slate-500">
-                      Sắp xếp theo thứ hạng năng lực và tỷ lệ hoàn thành bài tập.
-                    </p>
-                  </div>
-                  <span className="text-xs font-semibold text-slate-500">
-                    {dashboard.classRanking.length} lớp
-                  </span>
+              <section className="cm-surface p-5 sm:p-6" aria-labelledby="risk-heading">
+                <div className="border-b border-[var(--cm-border-subtle)] pb-4">
+                  <h2 id="risk-heading" className="text-base font-semibold text-[var(--cm-text)]">Lớp cần chú ý</h2>
+                  <p className="mt-1 text-xs text-[var(--cm-text-secondary)]">Số học sinh nguy cơ cao theo dữ liệu tổng hợp.</p>
                 </div>
+                {dashboard.highRiskByClass.length === 0 ? (
+                  <p className="py-12 text-center text-sm text-[var(--cm-text-muted)]">Chưa ghi nhận lớp có dữ liệu nguy cơ.</p>
+                ) : (
+                  <ul className="mt-3 divide-y divide-[var(--cm-border-subtle)]">
+                    {[...dashboard.highRiskByClass].sort((a, b) => b.highRiskStudentCount - a.highRiskStudentCount).map((item) => (
+                      <li key={item.classId} className="flex items-center justify-between gap-4 py-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-[var(--cm-text)]">{item.className}</p>
+                          <p className="text-xs text-[var(--cm-text-muted)]">Tổng số {item.totalStudentCount} học sinh</p>
+                        </div>
+                        <StatusBadge status={item.highRiskStudentCount > 0 ? "warning" : "active"} label={`${item.highRiskStudentCount} nguy cơ`} tone={item.highRiskStudentCount > 0 ? "warning" : "success"} />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            </div>
 
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-slate-200 text-left text-xs">
-                    <thead className="text-slate-400 font-bold uppercase">
+            <section className="cm-surface overflow-hidden" aria-labelledby="ranking-heading">
+              <div className="flex flex-col gap-1 border-b border-[var(--cm-border-subtle)] p-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                <div>
+                  <h2 id="ranking-heading" className="text-base font-semibold text-[var(--cm-text)]">Xếp hạng lớp</h2>
+                  <p className="mt-1 text-xs text-[var(--cm-text-secondary)]">Mastery và tiến độ hoàn thành theo phản hồi API.</p>
+                </div>
+                <span className="text-xs text-[var(--cm-text-muted)]">{dashboard.classRanking.length} lớp</span>
+              </div>
+              {dashboard.classRanking.length === 0 ? (
+                <p className="p-10 text-center text-sm text-[var(--cm-text-muted)]">Chưa có dữ liệu xếp hạng lớp.</p>
+              ) : (
+                <div className="cm-table-scroll overflow-x-auto">
+                  <table className="min-w-full text-left text-sm">
+                    <caption className="sr-only">Bảng xếp hạng lớp trong trung tâm</caption>
+                    <thead className="bg-white/[0.025] text-xs uppercase tracking-wide text-[var(--cm-text-muted)]">
                       <tr>
-                        <th className="py-2.5">Hạng</th>
-                        <th className="py-2.5">Lớp học</th>
-                        <th className="py-2.5">Môn</th>
-                        <th className="py-2.5">Năng lực TB</th>
-                        <th className="py-2.5">Tỷ lệ hoàn thành</th>
-                        <th className="py-2.5">Nguy cơ cao</th>
-                        <th className="py-2.5 text-right">Hành động</th>
+                        <th scope="col" className="px-5 py-3">Hạng</th>
+                        <th scope="col" className="px-5 py-3">Lớp học</th>
+                        <th scope="col" className="px-5 py-3">Môn học</th>
+                        <th scope="col" className="px-5 py-3">Mastery</th>
+                        <th scope="col" className="px-5 py-3">Hoàn thành</th>
+                        <th scope="col" className="px-5 py-3 text-right">Thao tác</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {dashboard.classRanking.map((c) => (
-                        <tr key={c.classId} className="hover:bg-slate-50">
-                          <td className="py-3 font-black text-slate-900 whitespace-nowrap">
-                            #{c.rank}
-                          </td>
-                          <td className="py-3 font-semibold text-slate-900 whitespace-nowrap">
-                            {c.className}
-                          </td>
-                          <td className="py-3 text-slate-600 whitespace-nowrap">
-                            {c.subjectName}
-                          </td>
-                          <td className="py-3 whitespace-nowrap">
-                            <span className="font-bold text-indigo-600">
-                              {c.averageMastery.toFixed(1)}%
-                            </span>
-                          </td>
-                          <td className="py-3 text-slate-700 whitespace-nowrap">
-                            {c.assignmentCompletionRate.toFixed(0)}%
-                          </td>
-                          <td className="py-3 whitespace-nowrap">
-                            <span
-                              className={`rounded px-2 py-0.5 font-bold ${
-                                (dashboard.highRiskByClass.find((item) => item.classId === c.classId)?.highRiskStudentCount ?? 0) > 0
-                                  ? "bg-red-100 text-red-800"
-                                  : "bg-emerald-100 text-emerald-800"
-                              }`}
-                            >
-                              {dashboard.highRiskByClass.find((item) => item.classId === c.classId)?.highRiskStudentCount ?? 0} em
-                            </span>
-                          </td>
-                          <td className="py-3 text-right whitespace-nowrap">
-                            {user?.permissions.includes(permissions.classesRead) ||
-                            user?.permissions.includes(permissions.dashboardsTeacherRead) ||
-                            user?.accountType === "CenterManager" ? (
-                              <Link
-                                to={`/quan-ly/lop-hoc/${c.classId}/tong-quan`}
-                                className="rounded bg-indigo-50 px-2.5 py-1 font-bold text-indigo-700 hover:bg-indigo-100"
-                              >
-                                Chi tiết lớp →
-                              </Link>
-                            ) : (
-                              <span className="text-slate-400 font-medium">--</span>
-                            )}
+                    <tbody className="divide-y divide-[var(--cm-border-subtle)]">
+                      {dashboard.classRanking.map((item) => (
+                        <tr key={item.classId} className="hover:bg-white/[0.025]">
+                          <td className="px-5 py-4 font-semibold text-cyan-300">#{item.rank}</td>
+                          <td className="px-5 py-4 font-semibold text-[var(--cm-text)]">{item.className}</td>
+                          <td className="px-5 py-4 text-[var(--cm-text-secondary)]">{item.subjectName}</td>
+                          <td className="px-5 py-4 text-[var(--cm-text)]">{item.averageMastery.toFixed(1)}%</td>
+                          <td className="px-5 py-4 text-[var(--cm-text)]">{item.assignmentCompletionRate.toFixed(1)}%</td>
+                          <td className="px-5 py-4 text-right">
+                            <Link className="cm-focus-ring rounded-lg text-sm font-semibold text-cyan-300 hover:text-cyan-200" to={`/quan-ly/lop-hoc/${item.classId}/tong-quan`}>Xem lớp →</Link>
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-              </div>
-            </div>
+              )}
+            </section>
           </>
         )}
       </div>

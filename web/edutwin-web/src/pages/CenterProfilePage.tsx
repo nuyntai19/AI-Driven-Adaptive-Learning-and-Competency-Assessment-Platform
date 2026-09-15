@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState, type FormEvent } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { organizationApi } from "../api/organizationApi";
+import { permissions } from "../auth/permissions";
+import { ConcurrencyBanner, PageHeader, SafeErrorPanel, Skeleton, StatusBadge } from "../components/centerManager";
 import { useAuthStore } from "../stores/authStore";
-import { extractProblemDetails, isConcurrencyConflict, isForbidden, mapSafeOperationalError } from "../utils/problemDetails";
 import type { CenterProfileDto, UpdateCenterProfileRequest } from "../types/organization";
+import { extractProblemDetails, isConcurrencyConflict, isForbidden, mapSafeOperationalError } from "../utils/problemDetails";
+
+const CENTER_PROFILE_QUERY_KEY = ["center-profile"] as const;
 
 const TIMEZONE_OPTIONS = [
   { value: "Asia/Ho_Chi_Minh", label: "Asia/Ho_Chi_Minh (GMT+7 - Việt Nam)" },
@@ -19,386 +22,188 @@ const TIMEZONE_OPTIONS = [
   { value: "America/Los_Angeles", label: "America/Los_Angeles (GMT-8/-7 - Los Angeles)" },
 ];
 
-export const CenterProfilePage: React.FC = () => {
-  const queryClient = useQueryClient();
+type Feedback = { type: "success" | "error" | "conflict"; text: string; traceId?: string };
 
-  // Form states
+const statusPresentation = (status: string) => {
+  switch (status.toLowerCase()) {
+    case "active": return { label: "Đang hoạt động", tone: "success" as const };
+    case "suspended": return { label: "Tạm ngưng", tone: "danger" as const };
+    case "pendingverification": return { label: "Chờ xác thực", tone: "warning" as const };
+    default: return { label: status, tone: "neutral" as const };
+  }
+};
+
+export const CenterProfilePage = () => {
+  const queryClient = useQueryClient();
+  const canManage = useAuthStore((state) => state.hasPermission(permissions.centerManage));
   const [centerName, setCenterName] = useState("");
   const [timezone, setTimezone] = useState("Asia/Ho_Chi_Minh");
   const [rowVersion, setRowVersion] = useState("");
-  const [statusMessage, setStatusMessage] = useState<{ type: "success" | "error" | "conflict"; text: string; traceId?: string } | null>(null);
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
 
-  const {
-    data: center,
-    isLoading,
-    isError,
-    error,
-    refetch,
-  } = useQuery<CenterProfileDto>({
-    queryKey: ["currentCenter"],
+  const centerQuery = useQuery<CenterProfileDto>({
+    queryKey: CENTER_PROFILE_QUERY_KEY,
     queryFn: organizationApi.getCurrentCenter,
   });
 
-  // Sync form state when data is loaded/updated
   useEffect(() => {
-    if (center) {
-      setCenterName(center.centerName);
-      setTimezone(center.timezone || "Asia/Ho_Chi_Minh");
-      setRowVersion(center.rowVersion);
-    }
-  }, [center]);
+    if (!centerQuery.data) return;
+    setCenterName(centerQuery.data.centerName);
+    setTimezone(centerQuery.data.timezone || "Asia/Ho_Chi_Minh");
+    setRowVersion(centerQuery.data.rowVersion);
+  }, [centerQuery.data]);
 
   const updateMutation = useMutation({
-    mutationFn: (req: UpdateCenterProfileRequest) => organizationApi.updateCurrentCenter(req),
+    mutationFn: (request: UpdateCenterProfileRequest) => organizationApi.updateCurrentCenter(request),
     onSuccess: (updated) => {
-      // Immediate cache sync
-      queryClient.setQueryData(["currentCenter"], updated);
-      setCenterName(updated.centerName);
-      setTimezone(updated.timezone);
-      setRowVersion(updated.rowVersion);
-
-      // Update authStore user centerName so navbar/breadcrumbs update immediately without F5
+      queryClient.setQueryData(CENTER_PROFILE_QUERY_KEY, updated);
       const currentUser = useAuthStore.getState().user;
       if (currentUser && currentUser.centerName !== updated.centerName) {
-        useAuthStore.setState({
-          user: {
-            ...currentUser,
-            centerName: updated.centerName,
-          },
-        });
+        useAuthStore.getState().updateCurrentUser({ ...currentUser, centerName: updated.centerName });
       }
-
-      setStatusMessage({
-        type: "success",
-        text: "Cập nhật thông tin trung tâm thành công!",
-      });
+      setFeedback({ type: "success", text: "Đã cập nhật thông tin vận hành của trung tâm." });
     },
-    onError: (err: unknown) => {
-      if (isConcurrencyConflict(err)) {
-        const details = extractProblemDetails(err);
-        setStatusMessage({
+    onError: (error: unknown) => {
+      const details = extractProblemDetails(error);
+      if (isConcurrencyConflict(error)) {
+        setFeedback({
           type: "conflict",
-          text: "Dữ liệu trung tâm đã bị thay đổi bởi phiên làm việc khác. Hệ thống đang tự động tải lại dữ liệu mới nhất...",
+          text: "Dữ liệu đã được cập nhật ở phiên khác. Hãy tải bản mới nhất trước khi tiếp tục.",
           traceId: details.traceId ?? undefined,
         });
-        // Invalidate and refetch immediately
-        queryClient.invalidateQueries({ queryKey: ["currentCenter"] });
-      } else if (isForbidden(err)) {
-        const details = extractProblemDetails(err);
-        setStatusMessage({
-          type: "error",
-          text: "Bạn không có quyền quản lý thông tin trung tâm (yêu cầu quyền organization.center.update).",
-          traceId: details.traceId ?? undefined,
-        });
-      } else {
-        const details = extractProblemDetails(err);
-        setStatusMessage({
-          type: "error",
-          text: mapSafeOperationalError(err, "Đã xảy ra lỗi khi cập nhật thông tin trung tâm. Vui lòng thử lại."),
-          traceId: details.traceId ?? undefined,
-        });
+        return;
       }
+      setFeedback({
+        type: "error",
+        text: isForbidden(error)
+          ? "Bạn không có quyền cập nhật hồ sơ trung tâm."
+          : mapSafeOperationalError(error, "Không thể cập nhật hồ sơ trung tâm. Vui lòng thử lại."),
+        traceId: details.traceId ?? undefined,
+      });
     },
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setStatusMessage(null);
+  const resetForm = () => {
+    const center = centerQuery.data;
+    if (!center) return;
+    setCenterName(center.centerName);
+    setTimezone(center.timezone || "Asia/Ho_Chi_Minh");
+    setRowVersion(center.rowVersion);
+    setFeedback(null);
+  };
 
+  const reloadAfterConflict = async () => {
+    await centerQuery.refetch();
+    setFeedback(null);
+  };
+
+  const handleSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    setFeedback(null);
+    if (!canManage) {
+      setFeedback({ type: "error", text: "Bạn chỉ có quyền xem hồ sơ trung tâm." });
+      return;
+    }
     const trimmedName = centerName.trim();
-    if (!trimmedName) {
-      setStatusMessage({
-        type: "error",
-        text: "Tên trung tâm không được để trống.",
-      });
+    if (!trimmedName || trimmedName.length > 200) {
+      setFeedback({ type: "error", text: "Tên trung tâm phải có từ 1 đến 200 ký tự." });
       return;
     }
-    if (trimmedName.length > 200) {
-      setStatusMessage({
-        type: "error",
-        text: "Tên trung tâm không được vượt quá 200 ký tự.",
-      });
-      return;
-    }
-
-    updateMutation.mutate({
-      centerName: trimmedName,
-      timezone,
-      rowVersion,
-    });
+    updateMutation.mutate({ centerName: trimmedName, timezone, rowVersion });
   };
 
-  const getStatusBadge = (statusStr: string) => {
-    switch (statusStr.toLowerCase()) {
-      case "active":
-        return (
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
-            Đang hoạt động
-          </span>
-        );
-      case "suspended":
-        return (
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 ring-1 ring-inset ring-red-600/20">
-            <span className="h-1.5 w-1.5 rounded-full bg-red-600" />
-            Tạm ngưng
-          </span>
-        );
-      case "pendingverification":
-        return (
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 ring-1 ring-inset ring-amber-600/20">
-            <span className="h-1.5 w-1.5 rounded-full bg-amber-600" />
-            Chờ xác thực
-          </span>
-        );
-      default:
-        return (
-          <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-            {statusStr}
-          </span>
-        );
-    }
-  };
+  const center = centerQuery.data;
+  const status = center ? statusPresentation(center.status) : null;
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
-      <div className="mx-auto max-w-5xl space-y-6">
-        {/* Header and Breadcrumbs */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
-          <div>
-            <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 mb-1">
-              <Link to="/" className="hover:text-indigo-600">Trang chủ</Link>
-              <span>/</span>
-              <span className="text-slate-500">Quản lý</span>
-              <span>/</span>
-              <span className="text-slate-900">Hồ sơ Trung tâm</span>
-            </div>
-            <h1 className="text-2xl font-bold text-slate-900">
-              Hồ Sơ & Cấu Hình Trung Tâm
-            </h1>
-            <p className="mt-1 text-sm text-slate-500">
-              Quản lý thông tin định danh, tên đại diện pháp lý và múi giờ vận hành của trung tâm.
-            </p>
-          </div>
+    <div className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+      <div className="mx-auto max-w-6xl space-y-6">
+        <PageHeader
+          eyebrow="Center profile"
+          title="Hồ sơ trung tâm"
+          description="Thông tin định danh và cấu hình thời gian áp dụng trong phạm vi trung tâm hiện tại."
+        />
 
-          {/* Navigation Links */}
-          <nav className="flex flex-wrap items-center gap-2" aria-label="Điều hướng quản trị trung tâm">
-            <Link
-              to="/quan-ly/trung-tam"
-              className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white shadow-sm"
-              aria-current="page"
-            >
-              Hồ sơ trung tâm
-            </Link>
-            <Link
-              to="/quan-ly/tong-quan-trung-tam"
-              className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50"
-            >
-              Dashboard
-            </Link>
-            <Link
-              to="/quan-ly/giao-vien"
-              className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50"
-            >
-              Giáo viên
-            </Link>
-            <Link
-              to="/quan-ly/lop-hoc"
-              className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50"
-            >
-              Lớp học
-            </Link>
-            <Link
-              to="/quan-ly/hoc-sinh"
-              className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50"
-            >
-              Học sinh
-            </Link>
-          </nav>
-        </div>
-
-        {/* Loading State */}
-        {isLoading && (
-          <div className="flex items-center justify-center rounded-2xl bg-white p-12 shadow-sm ring-1 ring-slate-200">
-            <div className="flex flex-col items-center gap-3">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent" />
-              <span className="text-sm font-medium text-slate-600">Đang tải thông tin hồ sơ trung tâm...</span>
-            </div>
+        {centerQuery.isLoading && (
+          <div role="status" aria-label="Đang tải hồ sơ trung tâm" className="grid gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]">
+            <Skeleton decorative className="h-72 w-full rounded-2xl" />
+            <Skeleton decorative className="h-96 w-full rounded-2xl" />
+            <span className="sr-only">Đang tải hồ sơ trung tâm</span>
           </div>
         )}
-
-        {/* Error State */}
-        {isError && (
-          <div className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-red-200" role="alert">
-            <h2 className="text-lg font-bold text-red-600">Không thể tải thông tin trung tâm</h2>
-            <p className="mt-2 text-sm text-slate-600">
-              {(error as Error)?.message || "Vui lòng kiểm tra lại kết nối hoặc quyền truy cập."}
-            </p>
-            <button
-              onClick={() => refetch()}
-              className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
-            >
-              Thử lại
-            </button>
-          </div>
+        {centerQuery.isError && (
+          <SafeErrorPanel error={centerQuery.error} fallback="Không thể tải hồ sơ trung tâm." onRetry={() => centerQuery.refetch()} />
         )}
 
-        {/* Main Content Form */}
-        {!isLoading && !isError && center && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Left Column: Summary Card */}
-            <div className="space-y-6">
-              <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-                <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                    Trạng thái vận hành
-                  </span>
-                  {getStatusBadge(center.status)}
-                </div>
-
-                <div className="mt-4 space-y-4 text-sm">
-                  <div>
-                    <span className="text-xs font-medium text-slate-500">Mã trung tâm (Read-only)</span>
-                    <div className="mt-1 flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 ring-1 ring-slate-200 font-mono text-xs font-bold text-slate-800">
-                      <span>{center.centerCode}</span>
-                      <span className="text-slate-400 text-xs" title="Mã trung tâm không thể thay đổi">🔒 Khóa</span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <span className="text-xs font-medium text-slate-500">Mã định danh ID</span>
-                    <div className="mt-1 font-mono text-xs text-slate-500 break-all">
-                      {center.centerId}
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg bg-amber-50/80 p-3 text-xs text-amber-800 ring-1 ring-amber-200">
-                    <strong>Lưu ý quản trị:</strong> Mã trung tâm và Trạng thái do Ban Quản trị Nền tảng kiểm soát nhằm bảo đảm tính toàn vẹn dữ liệu hợp đồng đối tác.
-                  </div>
-                </div>
+        {!centerQuery.isLoading && !centerQuery.isError && center && status && (
+          <div className="grid gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]">
+            <aside className="cm-surface self-start p-5 sm:p-6" aria-labelledby="center-identity-heading">
+              <div className="flex items-center justify-between gap-3 border-b border-[var(--cm-border-subtle)] pb-4">
+                <h2 id="center-identity-heading" className="text-sm font-semibold text-[var(--cm-text)]">Định danh trung tâm</h2>
+                <StatusBadge status={center.status} label={status.label} tone={status.tone} />
               </div>
-            </div>
+              <dl className="mt-5 space-y-5">
+                <div>
+                  <dt className="text-xs font-medium text-[var(--cm-text-muted)]">Mã trung tâm</dt>
+                  <dd className="mt-1 rounded-lg border border-[var(--cm-border-subtle)] bg-slate-950/35 px-3 py-2 font-mono text-sm font-semibold text-[var(--cm-text)]">{center.centerCode}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-medium text-[var(--cm-text-muted)]">Mã định danh</dt>
+                  <dd className="mt-1 break-all font-mono text-xs text-[var(--cm-text-secondary)]">{center.centerId}</dd>
+                </div>
+              </dl>
+              <p className="mt-6 rounded-xl border border-amber-400/25 bg-amber-400/10 p-3 text-xs leading-5 text-amber-100/80">
+                Mã và trạng thái trung tâm do Quản trị viên nền tảng kiểm soát và chỉ được hiển thị tại đây.
+              </p>
+            </aside>
 
-            {/* Right Column: Edit Profile Form */}
-            <div className="lg:col-span-2">
-              <div className="rounded-2xl bg-white p-8 shadow-sm ring-1 ring-slate-200">
-                <h2 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-4">
-                  Cập Nhật Thông Tin Vận Hành
-                </h2>
+            <section className="cm-surface p-5 sm:p-7" aria-labelledby="center-settings-heading">
+              <div className="border-b border-[var(--cm-border-subtle)] pb-4">
+                <h2 id="center-settings-heading" className="text-lg font-semibold text-[var(--cm-text)]">Thông tin vận hành</h2>
+                <p className="mt-1 text-sm text-[var(--cm-text-secondary)]">
+                  {canManage ? "Các thay đổi được bảo vệ bằng phiên bản dữ liệu hiện tại." : "Tài khoản hiện tại chỉ có quyền xem."}
+                </p>
+              </div>
 
-                {/* Status Banners */}
-                {statusMessage && (
-                  <div
-                    className={`mt-4 rounded-xl p-4 text-sm font-medium ${
-                      statusMessage.type === "success"
-                        ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200"
-                        : statusMessage.type === "conflict"
-                        ? "bg-amber-50 text-amber-800 ring-1 ring-amber-200"
-                        : "bg-red-50 text-red-800 ring-1 ring-red-200"
-                    }`}
-                    role="alert"
-                    aria-live="polite"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p>{statusMessage.text}</p>
-                        {statusMessage.traceId && (
-                          <p className="mt-1 font-mono text-xs opacity-75">
-                            Trace ID: {statusMessage.traceId}
-                          </p>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setStatusMessage(null)}
-                        className="text-xs underline ml-4 hover:opacity-75"
-                      >
-                        Đóng
-                      </button>
-                    </div>
+              {feedback?.type === "conflict" && (
+                <div className="mt-5">
+                  <ConcurrencyBanner onReload={reloadAfterConflict} isReloading={centerQuery.isFetching} message={feedback.text} />
+                  {feedback.traceId && <p className="mt-2 break-all font-mono text-xs text-[var(--cm-text-muted)]">Trace ID: {feedback.traceId}</p>}
+                </div>
+              )}
+              {feedback && feedback.type !== "conflict" && (
+                <div role="status" aria-live="polite" className={`mt-5 rounded-xl border p-4 text-sm ${feedback.type === "success" ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-100" : "border-rose-400/30 bg-rose-400/10 text-rose-100"}`}>
+                  <p>{feedback.text}</p>
+                  {feedback.traceId && <p className="mt-2 break-all font-mono text-xs opacity-70">Trace ID: {feedback.traceId}</p>}
+                </div>
+              )}
+
+              <form onSubmit={handleSubmit} className="mt-6 space-y-6">
+                <label className="block text-sm font-semibold text-[var(--cm-text)]" htmlFor="center-name">
+                  Tên trung tâm
+                  <input id="center-name" className="cm-field mt-2 w-full px-4" value={centerName} onChange={(event) => setCenterName(event.target.value)} maxLength={200} required disabled={!canManage || updateMutation.isPending} />
+                  <span className="mt-1 flex justify-between gap-4 text-xs font-normal text-[var(--cm-text-muted)]">
+                    <span>Tên hiển thị trong không gian của trung tâm.</span>
+                    <span>{centerName.length}/200</span>
+                  </span>
+                </label>
+
+                <label className="block text-sm font-semibold text-[var(--cm-text)]" htmlFor="center-timezone">
+                  Múi giờ vận hành
+                  <select id="center-timezone" className="cm-field mt-2 w-full px-4" value={timezone} onChange={(event) => setTimezone(event.target.value)} required disabled={!canManage || updateMutation.isPending}>
+                    {TIMEZONE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                  <span className="mt-1 block text-xs font-normal text-[var(--cm-text-muted)]">Dùng cho hạn nộp bài, báo cáo và nhật ký.</span>
+                </label>
+
+                {canManage && (
+                  <div className="flex flex-col-reverse gap-3 border-t border-[var(--cm-border-subtle)] pt-5 sm:flex-row sm:justify-end">
+                    <button type="button" className="cm-secondary-button" onClick={resetForm} disabled={updateMutation.isPending}>Hủy thay đổi</button>
+                    <button type="submit" className="cm-primary-button" disabled={updateMutation.isPending}>{updateMutation.isPending ? "Đang lưu…" : "Lưu thay đổi"}</button>
                   </div>
                 )}
-
-                <form onSubmit={handleSubmit} className="mt-6 space-y-6">
-                  <div>
-                    <label htmlFor="centerName" className="block text-sm font-semibold text-slate-800">
-                      Tên trung tâm <span className="text-red-500">*</span>
-                    </label>
-                    <div className="mt-1.5">
-                      <input
-                        type="text"
-                        id="centerName"
-                        value={centerName}
-                        onChange={(e) => setCenterName(e.target.value)}
-                        maxLength={200}
-                        required
-                        className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                        placeholder="Nhập tên đại diện của trung tâm..."
-                      />
-                    </div>
-                    <div className="mt-1 flex justify-between text-xs text-slate-500">
-                      <span>Tên hiển thị chính thức trên toàn hệ thống học tập</span>
-                      <span>{centerName.length}/200 ký tự</span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label htmlFor="timezone" className="block text-sm font-semibold text-slate-800">
-                      Múi giờ vận hành <span className="text-red-500">*</span>
-                    </label>
-                    <div className="mt-1.5">
-                      <select
-                        id="timezone"
-                        value={timezone}
-                        onChange={(e) => setTimezone(e.target.value)}
-                        required
-                        className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                      >
-                        {TIMEZONE_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <p className="mt-1 text-xs text-slate-500">
-                      Múi giờ chuẩn xác định hạn nộp bài tập, thống kê học tập và nhật ký kiểm toán.
-                    </p>
-                  </div>
-
-                  <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-6">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (center) {
-                          setCenterName(center.centerName);
-                          setTimezone(center.timezone || "Asia/Ho_Chi_Minh");
-                          setStatusMessage(null);
-                        }
-                      }}
-                      disabled={updateMutation.isPending}
-                      className="rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50 disabled:opacity-50"
-                    >
-                      Hủy thay đổi
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={updateMutation.isPending}
-                      className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-6 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50"
-                    >
-                      {updateMutation.isPending ? (
-                        <>
-                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                          <span>Đang lưu...</span>
-                        </>
-                      ) : (
-                        <span>Lưu thay đổi</span>
-                      )}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
+              </form>
+            </section>
           </div>
         )}
       </div>

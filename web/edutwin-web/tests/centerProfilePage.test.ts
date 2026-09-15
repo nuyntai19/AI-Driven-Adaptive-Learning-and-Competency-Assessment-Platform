@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { canAccess } from "../src/auth/capabilities.ts";
 import { permissions } from "../src/auth/permissions.ts";
 import { isConcurrencyConflict, extractProblemDetails } from "../src/utils/problemDetails.ts";
 import type { CenterProfileDto, UpdateCenterProfileRequest } from "../src/types/organization.ts";
+
+const profilePageSource = readFileSync(new URL("../src/pages/CenterProfilePage.tsx", import.meta.url), "utf8");
+const dashboardPageSource = readFileSync(new URL("../src/pages/CenterDashboardPage.tsx", import.meta.url), "utf8");
 
 const centerManagerUser = {
   accountType: "CenterManager" as const,
@@ -123,4 +127,19 @@ test("CenterProfile update 409 conflict detection extracts traceId for user supp
   assert.equal(details.status, 409);
   assert.equal(details.errorCode, "CONCURRENCY_CONFLICT");
   assert.equal(details.traceId, "0HN4OCC_CENTER_01");
+});
+
+test("CenterManager dashboard and profile use the scoped design system without fake operational KPIs", () => {
+  assert.match(profilePageSource, /CENTER_PROFILE_QUERY_KEY = \["center-profile"\]/);
+  assert.match(profilePageSource, /hasPermission\(permissions\.centerManage\)/);
+  assert.match(profilePageSource, /<ConcurrencyBanner/);
+  assert.match(profilePageSource, /<SafeErrorPanel/);
+  assert.doesNotMatch(profilePageSource, /\(error as Error\)\?\.message/);
+
+  assert.match(dashboardPageSource, /dashboard\.summary\.teacherCount/);
+  assert.match(dashboardPageSource, /dashboard\.summary\.studentCount/);
+  assert.match(dashboardPageSource, /dashboard\.summary\.classCount/);
+  assert.match(dashboardPageSource, /dashboard\.masteryBySubject\.length/);
+  assert.match(dashboardPageSource, /dashboard\.generatedAt/);
+  assert.doesNotMatch(dashboardPageSource, /86,4%|1\.248 bài tập|32 học sinh cần hỗ trợ|246 evidence/i);
 });

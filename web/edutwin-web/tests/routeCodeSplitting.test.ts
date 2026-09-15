@@ -5,7 +5,7 @@ import test from "node:test";
 const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
 const boundarySource = readFileSync(new URL("../src/routes/RouteChunkBoundary.tsx", import.meta.url), "utf8");
 const homeSource = readFileSync(new URL("../src/pages/AuthenticatedHomePage.tsx", import.meta.url), "utf8");
-const centerDashboardSource = readFileSync(new URL("../src/pages/CenterDashboardPage.tsx", import.meta.url), "utf8");
+const centerManagerLayoutSource = readFileSync(new URL("../src/layouts/CenterManagerLayout.tsx", import.meta.url), "utf8");
 
 test("heavy management routes use lazy imports and an accessible suspense fallback", () => {
   for (const page of [
@@ -38,7 +38,8 @@ test("home navigation combines capabilities with account-type boundaries", () =>
   assert.match(homeSource, /user\.accountType === "CenterManager" && hasAnyPermission/);
   assert.match(homeSource, /permissions\.centerRead/);
   assert.match(homeSource, /permissions\.platformAuditRead/);
-  assert.match(centerDashboardSource, /hasPermission\(permissions\.teachersRead\)/);
-  assert.match(centerDashboardSource, /hasPermission\(permissions\.classesRead\)/);
-  assert.match(centerDashboardSource, /hasPermission\(permissions\.studentsRead\)/);
+  assert.match(centerManagerLayoutSource, /permissions\.teachersRead/);
+  assert.match(centerManagerLayoutSource, /permissions\.classesRead/);
+  assert.match(centerManagerLayoutSource, /permissions\.studentsRead/);
+  assert.match(centerManagerLayoutSource, /hasAllPermissions\(item\.permissions\)/);
 });
