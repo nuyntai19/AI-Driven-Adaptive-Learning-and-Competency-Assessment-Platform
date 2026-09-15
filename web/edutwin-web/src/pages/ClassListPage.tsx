@@ -11,8 +11,15 @@ import type {
   StudentDto,
 } from "../types/organization";
 import { useAuthStore } from "../stores/authStore";
-import { permissions } from "../auth/permissions";
 import { extractProblemDetails, isConcurrencyConflict } from "../utils/problemDetails";
+
+import {
+  evaluateClassCapabilities,
+  toggleStudentSelection,
+  mergePageSelection,
+  unmergePageSelection,
+  getCandidateListState,
+} from "./classListHelpers";
 
 const STATUS_LABELS: Record<ClassStatus, string> = {
   Active: "Hoạt động",
@@ -21,22 +28,15 @@ const STATUS_LABELS: Record<ClassStatus, string> = {
 
 export const ClassListPage: React.FC = () => {
   const queryClient = useQueryClient();
-  const hasPermission = useAuthStore((state) => state.hasPermission);
+  const user = useAuthStore((state) => state.user);
 
-  const canCreateClass =
-    hasPermission(permissions.classesCreate) &&
-    hasPermission(permissions.subjectsRead) &&
-    hasPermission(permissions.teachersRead);
-  const canUpdateClass =
-    hasPermission(permissions.classesUpdate) &&
-    hasPermission(permissions.teachersRead);
-  const canAddMembers =
-    hasPermission(permissions.classesManageMembers) &&
-    hasPermission(permissions.studentsRead);
-  const canRemoveMembers = hasPermission(permissions.classesManageMembers);
-  const canViewDashboard =
-    hasPermission(permissions.dashboardsCenterRead) ||
-    hasPermission(permissions.dashboardsTeacherRead);
+  const {
+    canCreateClass,
+    canUpdateClass,
+    canAddMembers,
+    canRemoveMembers,
+    canViewDashboard,
+  } = evaluateClassCapabilities(user);
 
   // List filter state
   const [page, setPage] = useState<number>(1);
@@ -402,9 +402,7 @@ export const ClassListPage: React.FC = () => {
   };
 
   const handleToggleSelectStudent = (id: string) => {
-    setSelectedStudentIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
-    );
+    setSelectedStudentIds((prev) => toggleStudentSelection(prev, id));
   };
 
   const candidateList = candidateStudentsData?.data ?? [];
@@ -416,13 +414,9 @@ export const ClassListPage: React.FC = () => {
 
   const handleToggleSelectCurrentPage = () => {
     if (allCurrentPageSelected) {
-      setSelectedStudentIds((prev) =>
-        prev.filter((id) => !currentPageCandidateIds.includes(id))
-      );
+      setSelectedStudentIds((prev) => unmergePageSelection(prev, currentPageCandidateIds));
     } else {
-      setSelectedStudentIds((prev) =>
-        Array.from(new Set([...prev, ...currentPageCandidateIds]))
-      );
+      setSelectedStudentIds((prev) => mergePageSelection(prev, currentPageCandidateIds));
     }
   };
 
@@ -1367,31 +1361,50 @@ export const ClassListPage: React.FC = () => {
 
                 {/* Candidate Selection List */}
                 <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-md divide-y divide-gray-100">
-                  {isErrorCandidates ? (
-                    <div className="p-6 text-center" role="alert">
-                      <p className="text-sm font-medium text-red-700 mb-2">
-                        Không thể tải danh sách học sinh khả dụng.
-                      </p>
-                      <p className="text-xs text-red-600 mb-3">
-                        Vui lòng kiểm tra quyền truy cập (yêu cầu quyền quản lý thành viên và xem học sinh) hoặc thử lại sau.
-                      </p>
-                      <button
-                        type="button"
-                        id="btn-retry-candidate-students"
-                        onClick={() => refetchCandidates()}
-                        className="inline-flex items-center rounded bg-red-100 px-3 py-1.5 text-xs font-semibold text-red-800 hover:bg-red-200"
-                      >
-                        Thử lại
-                      </button>
-                    </div>
-                  ) : isLoadingCandidates || isFetchingCandidates ? (
-                    <div className="p-4 text-center text-xs text-gray-500">Đang tải danh sách học sinh khả dụng...</div>
-                  ) : candidateList.length === 0 ? (
-                    <div className="p-4 text-center text-xs text-gray-500">
-                      Không có học sinh khả dụng để thêm (tất cả học sinh hoạt động đã vào lớp hoặc không khớp tìm kiếm).
-                    </div>
-                  ) : (
-                    candidateList.map((s) => {
+                  {(() => {
+                    const candidateState = getCandidateListState({
+                      isError: isErrorCandidates,
+                      isLoading: isLoadingCandidates,
+                      isFetching: isFetchingCandidates,
+                      candidateCount: candidateList.length,
+                    });
+
+                    if (candidateState === "error") {
+                      return (
+                        <div className="p-6 text-center" role="alert">
+                          <p className="text-sm font-medium text-red-700 mb-2">
+                            Không thể tải danh sách học sinh khả dụng.
+                          </p>
+                          <p className="text-xs text-red-600 mb-3">
+                            Vui lòng kiểm tra quyền truy cập (yêu cầu quyền quản lý thành viên và xem học sinh) hoặc thử lại sau.
+                          </p>
+                          <button
+                            type="button"
+                            id="btn-retry-candidate-students"
+                            onClick={() => refetchCandidates()}
+                            className="inline-flex items-center rounded bg-red-100 px-3 py-1.5 text-xs font-semibold text-red-800 hover:bg-red-200"
+                          >
+                            Thử lại
+                          </button>
+                        </div>
+                      );
+                    }
+
+                    if (candidateState === "loading") {
+                      return (
+                        <div className="p-4 text-center text-xs text-gray-500">Đang tải danh sách học sinh khả dụng...</div>
+                      );
+                    }
+
+                    if (candidateState === "empty") {
+                      return (
+                        <div className="p-4 text-center text-xs text-gray-500">
+                          Không có học sinh khả dụng để thêm (tất cả học sinh hoạt động đã vào lớp hoặc không khớp tìm kiếm).
+                        </div>
+                      );
+                    }
+
+                    return candidateList.map((s) => {
                       const isSelected = selectedStudentIds.includes(s.studentId);
                       return (
                         <div
@@ -1423,8 +1436,8 @@ export const ClassListPage: React.FC = () => {
                           </span>
                         </div>
                       );
-                    })
-                  )}
+                    });
+                  })()}
                 </div>
 
                 {/* Candidate Pagination */}

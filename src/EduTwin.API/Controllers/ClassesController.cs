@@ -472,7 +472,7 @@ public class ClassesController : ControllerBase
     public async Task<IActionResult> GetClassCandidateStudents(
         [FromRoute] Guid classId,
         [FromQuery] CandidateStudentListQuery query,
-        [FromServices] IListStudentsUseCase useCase,
+        [FromServices] IListClassCandidateStudentsUseCase useCase,
         CancellationToken cancellationToken)
     {
         ListStudentsResult result;
@@ -482,16 +482,7 @@ public class ClassesController : ControllerBase
         }
         else
         {
-            var internalQuery = new StudentListQuery
-            {
-                ExcludeClassId = classId,
-                Status = UserStatus.Active,
-                Page = query.Page,
-                PageSize = query.PageSize,
-                Search = query.Search
-            };
-
-            result = await useCase.ExecuteAsync(internalQuery, cancellationToken);
+            result = await useCase.ExecuteAsync(classId, query, cancellationToken);
         }
 
         if (result.IsSuccess)

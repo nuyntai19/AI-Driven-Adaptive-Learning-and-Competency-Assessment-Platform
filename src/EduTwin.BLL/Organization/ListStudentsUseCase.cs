@@ -59,8 +59,7 @@ public class ListStudentsUseCase : IListStudentsUseCase
             (query.Search != null && query.Search.Length > 200) ||
             (query.Status.HasValue && !Enum.IsDefined(typeof(UserStatus), query.Status.Value)) ||
             (query.GradeLevel.HasValue && (query.GradeLevel.Value < 10 || query.GradeLevel.Value > 12)) ||
-            (query.ClassId.HasValue && query.ClassId.Value == Guid.Empty) ||
-            (query.ExcludeClassId.HasValue && query.ExcludeClassId.Value == Guid.Empty))
+            (query.ClassId.HasValue && query.ClassId.Value == Guid.Empty))
         {
             return ListStudentsResult.ValidationFailed();
         }
@@ -74,17 +73,6 @@ public class ListStudentsUseCase : IListStudentsUseCase
         if (query.ClassId.HasValue)
         {
             var ownership = await _classOwnershipGuard.CheckClassAccessAsync(query.ClassId.Value, cancellationToken);
-            if (ownership == OwnershipDecision.NotFound)
-                return ListStudentsResult.Failure(ErrorCodes.ResourceNotFound);
-            if (ownership == OwnershipDecision.Forbidden)
-                return ListStudentsResult.Failure(ErrorCodes.ForbiddenResource);
-            if (ownership != OwnershipDecision.Allowed)
-                return ListStudentsResult.Failure(ErrorCodes.ResourceNotFound);
-        }
-
-        if (query.ExcludeClassId.HasValue)
-        {
-            var ownership = await _classOwnershipGuard.CheckClassAccessAsync(query.ExcludeClassId.Value, cancellationToken);
             if (ownership == OwnershipDecision.NotFound)
                 return ListStudentsResult.Failure(ErrorCodes.ResourceNotFound);
             if (ownership == OwnershipDecision.Forbidden)
@@ -113,16 +101,6 @@ public class ListStudentsUseCase : IListStudentsUseCase
         if (query.GradeLevel.HasValue)
         {
             studentQuery = studentQuery.Where(s => s.GradeLevel == query.GradeLevel.Value);
-        }
-
-        if (query.ExcludeClassId.HasValue)
-        {
-            var excludeId = query.ExcludeClassId.Value;
-            studentQuery = studentQuery.Where(s => !_dbContext.ClassStudents.Any(cs =>
-                cs.CenterId == centerId &&
-                cs.StudentId == s.StudentId &&
-                cs.ClassId == excludeId &&
-                cs.Status == ClassStudentStatus.Active));
         }
 
         if (!isManager)

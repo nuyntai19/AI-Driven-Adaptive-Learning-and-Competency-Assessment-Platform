@@ -3,6 +3,13 @@ import test from "node:test";
 import { canAccess } from "../src/auth/capabilities.ts";
 import { permissions } from "../src/auth/permissions.ts";
 import { isConcurrencyConflict, extractProblemDetails } from "../src/utils/problemDetails.ts";
+import {
+  evaluateClassCapabilities,
+  toggleStudentSelection,
+  mergePageSelection,
+  unmergePageSelection,
+  getCandidateListState,
+} from "../src/pages/classListHelpers.ts";
 import type {
   ClassDto,
   UpdateClassRequest,
@@ -289,142 +296,136 @@ test("Membership soft-delete preserves historical attempts and assessment eviden
   assert.equal(softRemovedMembership.studentId, "44444444-4444-4444-4444-444444444441");
 });
 
-test("Dynamic RBAC matrix: canUpdateClass requires BOTH classes.update AND teachers.read", () => {
-  const evaluateCanUpdateClass = (userPermissions: string[]) => {
-    const hasPerm = (p: string) => userPermissions.includes(p);
-    return hasPerm(permissions.classesUpdate) && hasPerm(permissions.teachersRead);
-  };
+test("Dynamic RBAC: evaluateClassCapabilities calculates capabilities from actual component function", () => {
+  const makeUser = (perms: string[]) => ({
+    accountType: "CenterManager" as const,
+    permissions: perms,
+  });
 
-  assert.equal(evaluateCanUpdateClass([]), false);
-  assert.equal(evaluateCanUpdateClass([permissions.classesUpdate]), false);
-  assert.equal(evaluateCanUpdateClass([permissions.teachersRead]), false);
-  assert.equal(evaluateCanUpdateClass([permissions.classesUpdate, permissions.teachersRead]), true);
+  // canUpdateClass requires BOTH classes.update AND teachers.read
+  assert.equal(evaluateClassCapabilities(makeUser([])).canUpdateClass, false);
+  assert.equal(evaluateClassCapabilities(makeUser([permissions.classesUpdate])).canUpdateClass, false);
+  assert.equal(evaluateClassCapabilities(makeUser([permissions.teachersRead])).canUpdateClass, false);
+  assert.equal(
+    evaluateClassCapabilities(makeUser([permissions.classesUpdate, permissions.teachersRead])).canUpdateClass,
+    true
+  );
+
+  // canAddMembers requires BOTH classes.manage_members AND students.read
+  assert.equal(evaluateClassCapabilities(makeUser([])).canAddMembers, false);
+  assert.equal(evaluateClassCapabilities(makeUser([permissions.classesManageMembers])).canAddMembers, false);
+  assert.equal(evaluateClassCapabilities(makeUser([permissions.studentsRead])).canAddMembers, false);
+  assert.equal(
+    evaluateClassCapabilities(makeUser([permissions.classesManageMembers, permissions.studentsRead])).canAddMembers,
+    true
+  );
+
+  // canRemoveMembers requires ONLY classes.manage_members (independent of students.read)
+  assert.equal(evaluateClassCapabilities(makeUser([])).canRemoveMembers, false);
+  assert.equal(evaluateClassCapabilities(makeUser([permissions.studentsRead])).canRemoveMembers, false);
+  assert.equal(evaluateClassCapabilities(makeUser([permissions.classesManageMembers])).canRemoveMembers, true);
+  assert.equal(
+    evaluateClassCapabilities(makeUser([permissions.classesManageMembers, permissions.studentsRead])).canRemoveMembers,
+    true
+  );
+
+  // canCreateClass requires classes.create, subjects.read, AND teachers.read
+  assert.equal(evaluateClassCapabilities(makeUser([])).canCreateClass, false);
+  assert.equal(
+    evaluateClassCapabilities(
+      makeUser([permissions.classesCreate, permissions.subjectsRead, permissions.teachersRead])
+    ).canCreateClass,
+    true
+  );
+  assert.equal(
+    evaluateClassCapabilities(makeUser([permissions.classesCreate, permissions.subjectsRead])).canCreateClass,
+    false
+  );
 });
 
-test("Dynamic RBAC matrix: canAddMembers requires BOTH classes.manage_members AND students.read", () => {
-  const evaluateCanAddMembers = (userPermissions: string[]) => {
-    const hasPerm = (p: string) => userPermissions.includes(p);
-    return hasPerm(permissions.classesManageMembers) && hasPerm(permissions.studentsRead);
+test("toggleStudentSelection accurately manages single-item toggles and prevents double inversion", () => {
+  let selection: string[] = [];
+
+  // First selection adds student
+  selection = toggleStudentSelection(selection, "student-01");
+  assert.deepEqual(selection, ["student-01"]);
+
+  // Selecting a second student accumulates
+  selection = toggleStudentSelection(selection, "student-02");
+  assert.deepEqual(selection, ["student-01", "student-02"]);
+
+  // Unselecting student-01 removes only student-01
+  selection = toggleStudentSelection(selection, "student-01");
+  assert.deepEqual(selection, ["student-02"]);
+
+  // Double toggle without stopPropagation would invert twice (returning to ["student-02"])
+  const doubleToggle = (current: string[], id: string) => {
+    const afterFirst = toggleStudentSelection(current, id);
+    return toggleStudentSelection(afterFirst, id);
   };
+  assert.deepEqual(doubleToggle(["student-02"], "student-03"), ["student-02"]);
 
-  assert.equal(evaluateCanAddMembers([]), false);
-  assert.equal(evaluateCanAddMembers([permissions.classesManageMembers]), false);
-  assert.equal(evaluateCanAddMembers([permissions.studentsRead]), false);
-  assert.equal(evaluateCanAddMembers([permissions.classesManageMembers, permissions.studentsRead]), true);
-});
-
-test("Dynamic RBAC matrix: canRemoveMembers requires ONLY classes.manage_members", () => {
-  const evaluateCanRemoveMembers = (userPermissions: string[]) => {
-    const hasPerm = (p: string) => userPermissions.includes(p);
-    return hasPerm(permissions.classesManageMembers);
-  };
-
-  assert.equal(evaluateCanRemoveMembers([]), false);
-  assert.equal(evaluateCanRemoveMembers([permissions.studentsRead]), false);
-  assert.equal(evaluateCanRemoveMembers([permissions.classesManageMembers]), true);
-  assert.equal(evaluateCanRemoveMembers([permissions.classesManageMembers, permissions.studentsRead]), true);
-});
-
-test("Checkbox toggle stopPropagation pattern prevents double inversion", () => {
-  let toggleCount = 0;
-  let selectedStudentIds: string[] = [];
-
-  const handleToggleSelect = (id: string) => {
-    toggleCount++;
-    selectedStudentIds = selectedStudentIds.includes(id)
-      ? selectedStudentIds.filter((item) => item !== id)
-      : [...selectedStudentIds, id];
-  };
-
-  const studentId = "student-test-01";
-
-  // Simulate parent div click
-  handleToggleSelect(studentId);
-  assert.equal(toggleCount, 1);
-  assert.deepEqual(selectedStudentIds, [studentId]);
-
-  // Simulate child checkbox click with stopPropagation:
-  // Without stopPropagation, both checkbox and parent div handlers would fire,
-  // resulting in toggleCount = 3 and selectedStudentIds returning to [studentId].
-  // With stopPropagation, only the child checkbox handler executes once.
-  let propagationStopped = false;
-  const mockEvent = {
+  // With stopPropagation on checkbox, only a single toggleStudentSelection executes
+  let stopPropagationCalled = false;
+  const simulatedEvent = {
     stopPropagation: () => {
-      propagationStopped = true;
+      stopPropagationCalled = true;
     },
   };
-
-  mockEvent.stopPropagation();
-  handleToggleSelect(studentId); // Exactly one toggle
-  assert.equal(propagationStopped, true);
-  assert.equal(toggleCount, 2);
-  assert.deepEqual(selectedStudentIds, []);
+  simulatedEvent.stopPropagation();
+  assert.equal(stopPropagationCalled, true);
+  selection = toggleStudentSelection(selection, "student-03");
+  assert.deepEqual(selection, ["student-02", "student-03"]);
 });
 
-test("Candidate student selection persists across pagination flips and searches", () => {
-  let selectedStudentIds: string[] = [];
+test("Candidate student selection persists across pagination flips via mergePageSelection and unmergePageSelection", () => {
+  // Page 1 selection
+  let selection = ["p1-s1", "p1-s2"];
 
-  const handleToggle = (id: string) => {
-    selectedStudentIds = selectedStudentIds.includes(id)
-      ? selectedStudentIds.filter((item) => item !== id)
-      : [...selectedStudentIds, id];
-  };
+  // Page 2: Select All merges page 2 candidate ids without losing page 1 selections
+  const page2CandidateIds = ["p2-s3", "p2-s4"];
+  selection = mergePageSelection(selection, page2CandidateIds);
+  assert.deepEqual(selection, ["p1-s1", "p1-s2", "p2-s3", "p2-s4"]);
 
-  // User selects student on Page 1
-  const page1StudentId = "student-p1-001";
-  handleToggle(page1StudentId);
-  assert.deepEqual(selectedStudentIds, [page1StudentId]);
+  // Page 3: User adds individual student on page 3
+  selection = toggleStudentSelection(selection, "p3-s5");
+  assert.deepEqual(selection, ["p1-s1", "p1-s2", "p2-s3", "p2-s4", "p3-s5"]);
 
-  // Page changes to Page 2, user selects another student
-  const page2StudentId = "student-p2-002";
-  handleToggle(page2StudentId);
-  assert.equal(selectedStudentIds.length, 2);
-  assert.ok(selectedStudentIds.includes(page1StudentId));
-  assert.ok(selectedStudentIds.includes(page2StudentId));
-
-  // Current page "Select All" merges with existing selections across other pages
-  const page2Candidates = [page2StudentId, "student-p2-003", "student-p2-004"];
-  selectedStudentIds = Array.from(new Set([...selectedStudentIds, ...page2Candidates]));
-  assert.equal(selectedStudentIds.length, 4);
-  assert.ok(selectedStudentIds.includes(page1StudentId));
-  assert.ok(selectedStudentIds.includes(page2StudentId));
-  assert.ok(selectedStudentIds.includes("student-p2-003"));
-  assert.ok(selectedStudentIds.includes("student-p2-004"));
+  // Page 2: User unselects all page 2 students, page 1 and page 3 selections remain completely intact
+  selection = unmergePageSelection(selection, page2CandidateIds);
+  assert.deepEqual(selection, ["p1-s1", "p1-s2", "p3-s5"]);
 });
 
-test("Candidate student error state is distinguished from empty state", () => {
-  // Simulating the UI discriminator for candidate students
-  const renderCandidateState = (options: {
-    isError: boolean;
-    isLoading: boolean;
-    candidateCount: number;
-  }) => {
-    if (options.isError) {
-      return "ERROR_ALERT_WITH_RETRY";
-    }
-    if (options.isLoading) {
-      return "LOADING_SPINNER";
-    }
-    if (options.candidateCount === 0) {
-      return "EMPTY_NO_CANDIDATES";
-    }
-    return "CANDIDATE_LIST";
-  };
+test("getCandidateListState prioritizes error state over empty and loading states", () => {
+  // Error state takes highest priority (e.g. 403 Forbidden or 500 Network Failure)
+  assert.equal(
+    getCandidateListState({ isError: true, isLoading: false, isFetching: false, candidateCount: 0 }),
+    "error"
+  );
+  assert.equal(
+    getCandidateListState({ isError: true, isLoading: true, isFetching: false, candidateCount: 0 }),
+    "error"
+  );
 
+  // Loading / fetching state
   assert.equal(
-    renderCandidateState({ isError: true, isLoading: false, candidateCount: 0 }),
-    "ERROR_ALERT_WITH_RETRY"
+    getCandidateListState({ isError: false, isLoading: true, isFetching: false, candidateCount: 0 }),
+    "loading"
   );
   assert.equal(
-    renderCandidateState({ isError: false, isLoading: true, candidateCount: 0 }),
-    "LOADING_SPINNER"
+    getCandidateListState({ isError: false, isLoading: false, isFetching: true, candidateCount: 0 }),
+    "loading"
   );
+
+  // Empty state (0 candidates returned successfully)
   assert.equal(
-    renderCandidateState({ isError: false, isLoading: false, candidateCount: 0 }),
-    "EMPTY_NO_CANDIDATES"
+    getCandidateListState({ isError: false, isLoading: false, isFetching: false, candidateCount: 0 }),
+    "empty"
   );
+
+  // Ready state (candidates available to select)
   assert.equal(
-    renderCandidateState({ isError: false, isLoading: false, candidateCount: 5 }),
-    "CANDIDATE_LIST"
+    getCandidateListState({ isError: false, isLoading: false, isFetching: false, candidateCount: 15 }),
+    "ready"
   );
 });

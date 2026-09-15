@@ -700,23 +700,24 @@ Không dùng biểu thức role OR permission để “chạy tạm”, vì sẽ
 
 #### 20.7.5. Quản lý Lớp học và Thành viên Lớp (`ClassListPage.tsx` & Membership Actions)
 - **Route canonical:** `/quan-ly/lop-hoc`.
-- **Yêu cầu phân quyền capability-first:**
-  - `organization.classes.read`: Xem danh sách lớp học, phân trang, lọc theo trạng thái (`Active` / `Archived`), xem chi tiết thông tin lớp và danh sách thành viên.
-  - `organization.classes.create`: Mở modal thêm lớp học mới (kết hợp `organization.subjects.read` và `organization.teachers.read` để tải danh mục môn học và giáo viên phụ trách).
-  - `organization.classes.update`: Cho phép chỉnh sửa thông tin lớp học (tên lớp, giáo viên phụ trách, trạng thái hoạt động/lưu trữ) kèm cơ chế OCC RowVersion.
-  - `organization.classes.manage_members`: Cho phép thêm học sinh từ trung tâm vào lớp và xóa học sinh khỏi lớp.
+- **Yêu cầu phân quyền capability-first & dynamic dependency gating:**
+  - `organization.classes.read`: Xem danh sách lớp học, phân trang, lọc theo trạng thái (`Active` / `Archived`), xem chi tiết thông tin lớp và danh sách thành viên hiện tại.
+  - `canCreateClass`: Yêu cầu đồng thời 3 quyền `organization.classes.create`, `organization.subjects.read` và `organization.teachers.read` để mở modal tạo lớp và nạp danh mục phụ thuộc.
+  - `canUpdateClass`: Yêu cầu đồng thời `organization.classes.update` VÀ `organization.teachers.read` để tải danh mục giáo viên khi chỉnh sửa lớp học (kèm cơ chế OCC RowVersion).
+  - `canAddMembers`: Yêu cầu đồng thời `organization.classes.manage_members` VÀ `organization.students.read` để truy vấn ứng viên và thêm học sinh vào lớp.
+  - `canRemoveMembers`: Chỉ yêu cầu duy nhất quyền `organization.classes.manage_members`, độc lập hoàn toàn với `students.read` khi xóa thành viên khỏi lớp.
   - `dashboards.center.read` hoặc `dashboards.teacher.read_scoped`: Hiển thị liên kết truy cập nhanh tới Class Dashboard (`/quan-ly/lop-hoc/:classId/tong-quan`).
 - **Thành phần giao diện danh sách:**
   - Bảng danh sách lớp: Tên lớp, Năm học, Môn học, Giáo viên phụ trách, Số học sinh hiện tại, Trạng thái (Huy hiệu Active xanh / Archived vàng), và cột Thao tác.
-  - Cột thao tác: Nút "Chi tiết" (`btn-view-class-{id}`), nút "Sửa" (`btn-edit-class-{id}` khi có quyền update), và nút "Dashboard" (`link-class-dashboard-{id}` khi có quyền xem dashboard).
+  - Cột thao tác: Nút "Chi tiết" (`btn-view-class-{id}`), nút "Sửa" (`btn-edit-class-{id}` khi `canUpdateClass = true`), và nút "Dashboard" (`link-class-dashboard-{id}` khi có quyền xem dashboard).
   - Thanh bộ lọc trạng thái lớp và điều hướng phân trang mượt mà.
 - **Modal Chi tiết Lớp học & Danh sách Thành viên (`ClassDetailModal`):**
   - Khối thuộc tính tổng quan: Tên lớp, năm học, môn học (kèm ghi chú cố định môn học theo Contract 32), giáo viên phụ trách, số lượng học sinh hiện tại, phiên bản dữ liệu RowVersion và nút dẫn trực tiếp tới Class Dashboard.
   - Khối quản lý thành viên:
     - Bảng danh sách học sinh: Họ tên, Tên đăng nhập, Khối lớp, Trạng thái tài khoản.
     - Thanh tìm kiếm học sinh trong lớp theo họ tên hoặc username kèm phân trang danh sách thành viên.
-    - Nút "+ Thêm học sinh" (`btn-open-add-students`): Mở modal tuyển chọn học sinh vào lớp khi người dùng có quyền `classesManageMembers`.
-    - Nút "Xóa khỏi lớp" (`btn-remove-student-{id}`): Mở hộp thoại xác nhận xóa mềm thành viên.
+    - Nút "+ Thêm học sinh" (`btn-open-add-students`): Mở modal tuyển chọn học sinh vào lớp khi `canAddMembers = true`.
+    - Nút "Xóa khỏi lớp" (`btn-remove-student-{id}`): Mở hộp thoại xác nhận xóa mềm thành viên khi `canRemoveMembers = true`.
 - **Modal Chỉnh sửa Lớp học (`EditClassModal`):**
   - Cho phép sửa: Tên lớp học (`className` tối đa 150 ký tự), Chọn giáo viên phụ trách từ danh sách giáo viên hoạt động của trung tâm, và Trạng thái lớp (`Active` / `Archived`).
   - Trường chỉ đọc: Môn học và Năm học hiển thị dạng read-only với giải thích bảo toàn tính toàn vẹn dữ liệu bài tập và tiến trình học tập.
@@ -724,10 +725,15 @@ Không dùng biểu thức role OR permission để “chạy tạm”, vì sẽ
     - Xử lý mã lỗi `DUPLICATE_RESOURCE`: Cảnh báo tên lớp và năm học đã tồn tại trong trung tâm.
     - Xử lý mã lỗi `CONCURRENCY_CONFLICT` (HTTP 409): Cảnh báo dữ liệu đã bị sửa đổi ở phiên làm việc khác, đóng modal và tự động tải lại dữ liệu mới nhất.
 - **Modal Thêm Học sinh vào Lớp (`AddStudentsModal`):**
-  - Tải danh sách học sinh đang hoạt động trong trung tâm, tự động lọc bỏ các học sinh đã là thành viên hiện tại của lớp.
-  - Thanh lọc học sinh ứng viên theo tên hoặc tên đăng nhập.
-  - Hỗ trợ chọn/bỏ chọn từng học sinh qua checkbox hoặc nút "Chọn tất cả" / "Bỏ chọn tất cả".
-  - Hiển thị số lượng học sinh đã chọn và nút xác nhận thực thi theo lô (`POST /api/v1/classes/{classId}/students`).
+  - Tải danh sách ứng viên qua endpoint chuyên dụng `GET /api/v1/classes/{classId}/candidate-students`:
+    - Loại trừ triệt để ở tầng cơ sở dữ liệu toàn bộ học sinh đã là thành viên của lớp (Active ClassStudent) qua anti-join, không bị giới hạn bởi số thành viên hiển thị trên trang hiện tại.
+    - Hỗ trợ tìm kiếm ứng viên phía máy chủ (`search`) và phân trang phía máy chủ (`page`, `pageSize = 20`), loại bỏ triệt để giới hạn 100 học sinh trước đây.
+    - Áp dụng nghiêm ngặt quy tắc chỉ tuyển học sinh `Active` (loại trừ tài khoản `Locked`, `Disabled` hoặc `SoftDeleted`).
+    - Bảo toàn trạng thái tuyển chọn (`selectedStudentIds`) xuyên suốt qua các lần đổi trang hoặc tìm kiếm từ khóa khác nhau.
+    - Phân biệt rõ ràng trạng thái lỗi (hiển thị banner cảnh báo kèm nút thử lại "Thử lại") với trạng thái rỗng (không có ứng viên phù hợp).
+    - Triệt tiêu lỗi nhảy checkbox hai lần (double toggle) bằng `event.stopPropagation()` trên input phần tử con.
+  - Hỗ trợ chọn/bỏ chọn từng học sinh hoặc chọn/bỏ chọn tất cả học sinh trong trang hiện tại.
+  - Hiển thị số lượng học sinh đã chọn trên toàn bộ các trang và nút xác nhận thực thi theo lô (`POST /api/v1/classes/{classId}/students`).
 - **Modal Xác nhận Xóa Học sinh khỏi Lớp (`RemoveStudentModal`):**
   - Hộp thoại cảnh báo với biểu tượng nguy hiểm màu đỏ.
   - Ghi chú bảo toàn dữ liệu rõ ràng: "Hành động này sẽ chuyển trạng thái tham gia lớp của học sinh sang Removed. Toàn bộ lịch sử bài làm (Attempts), điểm số và evidence học tập trước đó vẫn được bảo toàn nguyên vẹn."

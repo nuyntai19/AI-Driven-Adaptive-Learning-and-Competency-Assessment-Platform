@@ -1006,29 +1006,19 @@ public class ClassesControllerTests
     }
 
     [Fact]
-    public async Task GetClassCandidateStudents_Controller_QueryMapping_PassesExactCancellationTokenAndFilters()
+    public async Task GetClassCandidateStudents_Controller_QueryMapping_PassesExactCancellationTokenAndParameters()
     {
         var classId = Guid.NewGuid();
         var query = new CandidateStudentListQuery { Page = 3, PageSize = 15, Search = "cand" };
         var cancellationToken = new CancellationTokenSource().Token;
 
-        var mockUseCase = new Mock<IListStudentsUseCase>();
-        StudentListQuery? capturedQuery = null;
-        mockUseCase.Setup(u => u.ExecuteAsync(It.IsAny<StudentListQuery>(), cancellationToken))
-            .Callback<StudentListQuery, CancellationToken>((q, ct) => capturedQuery = q)
+        var mockUseCase = new Mock<IListClassCandidateStudentsUseCase>();
+        mockUseCase.Setup(u => u.ExecuteAsync(classId, query, cancellationToken))
             .ReturnsAsync(ListStudentsResult.Failure(ErrorCodes.ResourceNotFound));
 
         await _controller.GetClassCandidateStudents(classId, query, mockUseCase.Object, cancellationToken);
 
-        mockUseCase.Verify(u => u.ExecuteAsync(It.IsAny<StudentListQuery>(), cancellationToken), Times.Once);
-        Assert.NotNull(capturedQuery);
-        Assert.Equal(classId, capturedQuery.ExcludeClassId);
-        Assert.Null(capturedQuery.ClassId);
-        Assert.Equal(EduTwin.Contracts.IdentityAndTenancy.UserStatus.Active, capturedQuery.Status);
-        Assert.Equal(3, capturedQuery.Page);
-        Assert.Equal(15, capturedQuery.PageSize);
-        Assert.Equal("cand", capturedQuery.Search);
-        Assert.Null(capturedQuery.GradeLevel);
+        mockUseCase.Verify(u => u.ExecuteAsync(classId, query, cancellationToken), Times.Once);
     }
 
     [Fact]
@@ -1037,9 +1027,9 @@ public class ClassesControllerTests
         var classId = Guid.NewGuid();
         var query = new CandidateStudentListQuery();
 
-        var mockUseCase = new Mock<IListStudentsUseCase>();
+        var mockUseCase = new Mock<IListClassCandidateStudentsUseCase>();
         var students = new List<StudentDto> { new StudentDto { StudentId = Guid.NewGuid(), Username = "u", FullName = "Candidate", GradeLevel = 10, Status = "Active", RowVersion = "1", ActiveClassCount = 0 } };
-        mockUseCase.Setup(u => u.ExecuteAsync(It.IsAny<StudentListQuery>(), It.IsAny<CancellationToken>()))
+        mockUseCase.Setup(u => u.ExecuteAsync(classId, query, It.IsAny<CancellationToken>()))
             .ReturnsAsync(ListStudentsResult.Success(students, 1, 1));
 
         var result = await _controller.GetClassCandidateStudents(classId, query, mockUseCase.Object, CancellationToken.None);
@@ -1061,7 +1051,7 @@ public class ClassesControllerTests
     public async Task GetClassCandidateStudents_Controller_EmptyClassId_Returns404AndDoesNotCallUseCase()
     {
         var classId = Guid.Empty;
-        var mockUseCase = new Mock<IListStudentsUseCase>();
+        var mockUseCase = new Mock<IListClassCandidateStudentsUseCase>();
 
         _controller.ControllerContext.HttpContext.Request.Path = $"/api/v1/classes/{classId}/candidate-students";
 
@@ -1073,20 +1063,21 @@ public class ClassesControllerTests
         Assert.Equal(StatusCodes.Status404NotFound, problemDetails.Status);
         Assert.Equal(ErrorCodes.ResourceNotFound, problemDetails.Extensions["errorCode"]?.ToString());
 
-        mockUseCase.Verify(u => u.ExecuteAsync(It.IsAny<StudentListQuery>(), It.IsAny<CancellationToken>()), Times.Never);
+        mockUseCase.Verify(u => u.ExecuteAsync(It.IsAny<Guid>(), It.IsAny<CandidateStudentListQuery>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
     public async Task GetClassCandidateStudents_Controller_ValidationFailed_Returns400()
     {
         var classId = Guid.NewGuid();
-        var mockUseCase = new Mock<IListStudentsUseCase>();
-        mockUseCase.Setup(u => u.ExecuteAsync(It.IsAny<StudentListQuery>(), It.IsAny<CancellationToken>()))
+        var query = new CandidateStudentListQuery();
+        var mockUseCase = new Mock<IListClassCandidateStudentsUseCase>();
+        mockUseCase.Setup(u => u.ExecuteAsync(classId, query, It.IsAny<CancellationToken>()))
             .ReturnsAsync(ListStudentsResult.ValidationFailed());
 
         _controller.ControllerContext.HttpContext.Request.Path = $"/api/v1/classes/{classId}/candidate-students";
 
-        var result = await _controller.GetClassCandidateStudents(classId, new CandidateStudentListQuery(), mockUseCase.Object, CancellationToken.None);
+        var result = await _controller.GetClassCandidateStudents(classId, query, mockUseCase.Object, CancellationToken.None);
 
         var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
         Assert.Equal(StatusCodes.Status400BadRequest, badRequestResult.StatusCode);
@@ -1099,13 +1090,14 @@ public class ClassesControllerTests
     public async Task GetClassCandidateStudents_Controller_ForbiddenResource_Returns403()
     {
         var classId = Guid.NewGuid();
-        var mockUseCase = new Mock<IListStudentsUseCase>();
-        mockUseCase.Setup(u => u.ExecuteAsync(It.IsAny<StudentListQuery>(), It.IsAny<CancellationToken>()))
+        var query = new CandidateStudentListQuery();
+        var mockUseCase = new Mock<IListClassCandidateStudentsUseCase>();
+        mockUseCase.Setup(u => u.ExecuteAsync(classId, query, It.IsAny<CancellationToken>()))
             .ReturnsAsync(ListStudentsResult.Failure(ErrorCodes.ForbiddenResource));
 
         _controller.ControllerContext.HttpContext.Request.Path = $"/api/v1/classes/{classId}/candidate-students";
 
-        var result = await _controller.GetClassCandidateStudents(classId, new CandidateStudentListQuery(), mockUseCase.Object, CancellationToken.None);
+        var result = await _controller.GetClassCandidateStudents(classId, query, mockUseCase.Object, CancellationToken.None);
 
         var objectResult = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);
@@ -1118,13 +1110,14 @@ public class ClassesControllerTests
     public async Task GetClassCandidateStudents_Controller_ResourceNotFound_Returns404()
     {
         var classId = Guid.NewGuid();
-        var mockUseCase = new Mock<IListStudentsUseCase>();
-        mockUseCase.Setup(u => u.ExecuteAsync(It.IsAny<StudentListQuery>(), It.IsAny<CancellationToken>()))
+        var query = new CandidateStudentListQuery();
+        var mockUseCase = new Mock<IListClassCandidateStudentsUseCase>();
+        mockUseCase.Setup(u => u.ExecuteAsync(classId, query, It.IsAny<CancellationToken>()))
             .ReturnsAsync(ListStudentsResult.Failure(ErrorCodes.ResourceNotFound));
 
         _controller.ControllerContext.HttpContext.Request.Path = $"/api/v1/classes/{classId}/candidate-students";
 
-        var result = await _controller.GetClassCandidateStudents(classId, new CandidateStudentListQuery(), mockUseCase.Object, CancellationToken.None);
+        var result = await _controller.GetClassCandidateStudents(classId, query, mockUseCase.Object, CancellationToken.None);
 
         var objectResult = Assert.IsType<NotFoundObjectResult>(result);
         Assert.Equal(StatusCodes.Status404NotFound, objectResult.StatusCode);
@@ -1137,10 +1130,11 @@ public class ClassesControllerTests
     public async Task GetClassCandidateStudents_Controller_UnknownError_Throws()
     {
         var classId = Guid.NewGuid();
-        var mockUseCase = new Mock<IListStudentsUseCase>();
-        mockUseCase.Setup(u => u.ExecuteAsync(It.IsAny<StudentListQuery>(), It.IsAny<CancellationToken>()))
+        var query = new CandidateStudentListQuery();
+        var mockUseCase = new Mock<IListClassCandidateStudentsUseCase>();
+        mockUseCase.Setup(u => u.ExecuteAsync(classId, query, It.IsAny<CancellationToken>()))
             .ReturnsAsync(ListStudentsResult.Failure("UNKNOWN"));
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => _controller.GetClassCandidateStudents(classId, new CandidateStudentListQuery(), mockUseCase.Object, CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _controller.GetClassCandidateStudents(classId, query, mockUseCase.Object, CancellationToken.None));
     }
 }

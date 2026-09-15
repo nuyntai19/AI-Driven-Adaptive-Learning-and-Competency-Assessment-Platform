@@ -11,5 +11,4 @@ public class StudentListQuery
     public UserStatus? Status { get; set; }
     public byte? GradeLevel { get; set; }
     public Guid? ClassId { get; set; }
-    public Guid? ExcludeClassId { get; set; }
 }

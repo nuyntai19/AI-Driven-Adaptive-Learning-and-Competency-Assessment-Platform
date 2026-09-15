@@ -750,6 +750,32 @@ Quyền: Teacher owner hoặc CenterManager.
 Query: status, search, page, pageSize.
 Response 200: collection Student DTO.
 
+## 35.1. GET /classes/{classId}/candidate-students
+
+Quyền: Bắt buộc đồng thời cả 2 effective permissions:
+- `organization.classes.manage_members`
+- `organization.students.read`
+
+Mục đích: Cung cấp danh sách học sinh đủ điều kiện để thêm vào lớp học phục vụ giao diện quản lý thành viên.
+
+Query parameters:
+- `page`: integer, mặc định 1, tối thiểu 1.
+- `pageSize`: integer, mặc định 20, tối thiểu 1, tối đa 100.
+- `search`: string tùy chọn, tối đa 200 ký tự (tìm kiếm theo `Username` hoặc `FullName`).
+
+Quy tắc nghiệp vụ và ràng buộc bất biến:
+1. **Tenant Isolation**: Chỉ trả học sinh thuộc cùng `CenterId` của caller; không bao giờ trả dữ liệu cross-tenant.
+2. **Active-only**: Chỉ trả các tài khoản học sinh đang ở trạng thái `Active` (`User.Status == Active`). Các tài khoản `Locked`, `Disabled` hoặc bị xóa (`IsDeleted == true`) không đủ điều kiện làm ứng viên và bị loại bỏ hoàn toàn khỏi kết quả.
+3. **Class Membership Exclusion**: Tự động loại trừ tất cả học sinh đang có quan hệ thành viên hoạt động (`ClassStudent.Status == Active`) trong lớp `classId`. Học sinh từng bị xóa khỏi lớp (`Status == Removed`) hoặc chưa từng tham gia lớp đều là ứng viên hợp lệ.
+4. **Ownership Guard**: Kiểm tra quyền sở hữu lớp (`IClassOwnershipGuard`). Teacher chỉ có thể truy vấn ứng viên cho lớp mà mình phụ trách (`TeacherId == callerUserId`). CenterManager có thể truy vấn mọi lớp trong trung tâm.
+5. **Deterministic Ordering**: Sắp xếp mặc định theo `FullName` tăng dần, sau đó theo `StudentId`.
+
+Responses:
+- `200 OK`: Trả về collection `StudentListResponse` gồm `data` (danh sách `StudentDto`) và `meta` (`PagedMetaDto` với `page`, `pageSize`, `totalItems`, `totalPages`, `traceId`, `timestamp`).
+- `400 Bad Request`: Khi `classId` rỗng, `page < 1`, `pageSize < 1`, `pageSize > 100`, hoặc `search > 200 ký tự`. ErrorCode: `VALIDATION_FAILED`.
+- `403 Forbidden`: Khi actor thiếu quyền `organization.classes.manage_members` hoặc `organization.students.read`, hoặc Teacher không phải chủ nhiệm lớp. ErrorCode: `AUTH_PERMISSION_REQUIRED` hoặc `FORBIDDEN_RESOURCE`.
+- `404 Not Found`: Khi `classId` không tồn tại hoặc thuộc trung tâm khác (cross-tenant fail-closed). ErrorCode: `RESOURCE_NOT_FOUND`.
+
 # Subjects và Knowledge Graph
 
 ## 36. Subject DTO
