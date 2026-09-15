@@ -129,7 +129,9 @@ export const buildAuditQueryParams = (
   }
   if (filters.to) {
     const toDate = new Date(filters.to);
-    toDate.setHours(23, 59, 59, 999);
+    if (!filters.to.includes("T")) {
+      toDate.setHours(23, 59, 59, 999);
+    }
     query.to = toDate.toISOString();
   }
   if (filters.actorUserId?.trim()) {
@@ -173,6 +175,7 @@ export const validateRoleCreation = (
   roleCode: string,
   roleName: string,
   accountType: string,
+  description?: string,
 ): { valid: boolean; error?: string } => {
   const trimmedCode = roleCode.trim();
   const trimmedName = roleName.trim();
@@ -180,17 +183,20 @@ export const validateRoleCreation = (
   if (!trimmedCode) {
     return { valid: false, error: "Mã vai trò không được để trống." };
   }
-  if (!/^[A-Z0-9_]{3,32}$/.test(trimmedCode)) {
+  if (trimmedCode.length > 64 || !/^[A-Z][A-Z0-9_]*$/.test(trimmedCode)) {
     return {
       valid: false,
-      error: "Mã vai trò chỉ gồm 3-32 ký tự chữ in hoa, chữ số và dấu gạch dưới.",
+      error: "Mã vai trò phải từ 1-64 ký tự, bắt đầu bằng chữ in hoa và chỉ chứa chữ in hoa, chữ số hoặc dấu gạch dưới.",
     };
   }
   if (!trimmedName) {
     return { valid: false, error: "Tên vai trò không được để trống." };
   }
-  if (trimmedName.length > 100) {
-    return { valid: false, error: "Tên vai trò không được vượt quá 100 ký tự." };
+  if (trimmedName.length > 150) {
+    return { valid: false, error: "Tên vai trò không được vượt quá 150 ký tự." };
+  }
+  if (description && description.length > 500) {
+    return { valid: false, error: "Mô tả vai trò không được vượt quá 500 ký tự." };
   }
   if (!["Teacher", "Student", "CenterManager"].includes(accountType)) {
     return { valid: false, error: "Loại tài khoản không hợp lệ." };

@@ -2076,7 +2076,12 @@ Role response:
 }
 ~~~
 
-roleCode và accountType immutable sau khi tạo. Archive role system được bảo vệ hoặc role đang cần để duy trì tenant administrator cuối cùng trả 409.
+Quy tắc validation & lifecycle:
+- `roleCode`: 1–64 ký tự, bắt đầu bằng chữ cái in hoa (`^[A-Z][A-Z0-9_]*$`), immutable sau khi tạo.
+- `roleName`: 1–150 ký tự.
+- `description`: Tối đa 500 ký tự.
+- `accountType`: Bắt buộc (`CenterManager`, `Teacher`, `Student`), immutable sau khi tạo.
+- Archive role system được bảo vệ hoặc role đang cần để duy trì tenant administrator cuối cùng trả 409.
 
 ## 69. PUT /authorization/roles/{roleId}/permissions
 

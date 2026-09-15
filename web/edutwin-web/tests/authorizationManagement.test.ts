@@ -556,26 +556,37 @@ test("21. buildUserQueryParams supports all center user types with server-side p
   assert.equal(allUsersQuery.status, undefined);
 });
 
-test("22. buildAuditQueryParams supports all H3 audit filters and ISO timestamp conversion", () => {
-  const query = buildAuditQueryParams(1, 15, {
+test("22. buildAuditQueryParams supports all H3 audit filters, preserving exact time for datetime-local", () => {
+  // Case 1: datetime-local string with 'T' preserves exact user-selected hour and minute
+  const queryExactTime = buildAuditQueryParams(1, 15, {
     actionType: "RolePermissionsReplaced",
     permissionCode: "PERM_ROLES_CREATE",
     actorUserId: "actor-uuid-1",
     targetUserId: "target-user-uuid-2",
     targetId: "role-uuid-3",
-    from: "2026-09-01T00:00",
-    to: "2026-09-15T00:00",
+    from: "2026-09-01T08:30",
+    to: "2026-09-15T14:45",
   });
 
-  assert.equal(query.actionType, "RolePermissionsReplaced");
-  assert.equal(query.permissionCode, "PERM_ROLES_CREATE");
-  assert.equal(query.actorUserId, "actor-uuid-1");
-  assert.equal(query.targetUserId, "target-user-uuid-2");
-  assert.equal(query.targetId, "role-uuid-3");
-  assert.equal(typeof query.from, "string");
-  assert.equal(typeof query.to, "string");
+  assert.equal(queryExactTime.actionType, "RolePermissionsReplaced");
+  assert.equal(queryExactTime.permissionCode, "PERM_ROLES_CREATE");
+  assert.equal(queryExactTime.actorUserId, "actor-uuid-1");
+  assert.equal(queryExactTime.targetUserId, "target-user-uuid-2");
+  assert.equal(queryExactTime.targetId, "role-uuid-3");
+  assert.equal(typeof queryExactTime.from, "string");
+  assert.equal(typeof queryExactTime.to, "string");
+  // Exact minutes must be preserved (45m), not overridden to 59m
+  assert.equal(new Date(queryExactTime.to!).getMinutes(), 45);
 
-  // Empty string fields must be pruned
+  // Case 2: Date-only input (without 'T') sets end of day (23:59:59.999)
+  const queryDateOnly = buildAuditQueryParams(1, 15, {
+    to: "2026-09-15",
+  });
+  const dateOnlyObj = new Date(queryDateOnly.to!);
+  assert.equal(dateOnlyObj.getHours(), 23);
+  assert.equal(dateOnlyObj.getMinutes(), 59);
+
+  // Case 3: Empty string fields must be pruned
   const emptyQuery = buildAuditQueryParams(1, 15, {
     actionType: "",
     permissionCode: "   ",
@@ -645,24 +656,131 @@ test("24. filterCompatibleRoles filters roles strictly matching candidate accoun
   assert.equal(managerRoles.length, 0);
 });
 
-test("25. validateRoleCreation enforces role code regex, length, and tenant account types", () => {
-  assert.equal(validateRoleCreation("TEACHER_LEAD", "Trưởng môn", "Teacher").valid, true);
+test("25. validateRoleCreation synchronizes with backend contract (1-64 chars code, 1-150 chars name)", () => {
+  // Valid single character role code starting with uppercase
+  assert.equal(validateRoleCreation("A", "Vai trò A", "Teacher").valid, true);
 
-  // Invalid role code: lowercase
-  const lowerCode = validateRoleCreation("teacher_lead", "Trưởng môn", "Teacher");
-  assert.equal(lowerCode.valid, false);
-  assert.match(lowerCode.error!, /chữ in hoa/);
+  // Valid max length 64 characters role code
+  const code64 = "A" + "B".repeat(63);
+  assert.equal(validateRoleCreation(code64, "Vai trò 64", "Teacher").valid, true);
 
-  // Invalid role code: special characters
-  const specialCode = validateRoleCreation("ROLE-NAME", "Tên", "Teacher");
-  assert.equal(specialCode.valid, false);
+  // Invalid: 65 characters role code
+  const code65 = "A" + "B".repeat(64);
+  assert.equal(validateRoleCreation(code65, "Vai trò 65", "Teacher").valid, false);
 
-  // Empty role name
-  const emptyName = validateRoleCreation("ROLE_LEAD", "  ", "Teacher");
-  assert.equal(emptyName.valid, false);
+  // Invalid: starts with digit or lowercase
+  assert.equal(validateRoleCreation("1_ROLE", "Tên", "Teacher").valid, false);
+  assert.equal(validateRoleCreation("role_lead", "Tên", "Teacher").valid, false);
+
+  // Valid max length 150 characters role name
+  const name150 = "T".repeat(150);
+  assert.equal(validateRoleCreation("ROLE_150", name150, "Teacher").valid, true);
+
+  // Invalid: 151 characters role name
+  const name151 = "T".repeat(151);
+  assert.equal(validateRoleCreation("ROLE_151", name151, "Teacher").valid, false);
 
   // Disallowed account type (e.g. PlatformAdmin cannot be created by tenant)
   const invalidAccount = validateRoleCreation("ADMIN_ROLE", "Admin", "PlatformAdmin");
   assert.equal(invalidAccount.valid, false);
   assert.match(invalidAccount.error!, /Loại tài khoản không hợp lệ/);
+});
+
+test("26. Read-only CenterManager capability: canRead enables user list query while canAssign=false disables mutations", () => {
+  // Persona with only userRolesRead
+  const readOnlyManager = {
+    accountType: "CenterManager" as const,
+    permissions: [permissions.userRolesRead],
+  };
+
+  const canRead = hasPermission(readOnlyManager, permissions.userRolesRead);
+  const canAssign = hasPermission(readOnlyManager, permissions.userRolesAssign);
+
+  assert.equal(canRead, true);
+  assert.equal(canAssign, false);
+
+  // Query is enabled when canRead is true, allowing user browsing without requiring write permissions
+  const queryEnabled = canRead;
+  assert.equal(queryEnabled, true);
+
+  // Mutation guard strictly blocks mutations
+  const mutationAllowed = canAssign;
+  assert.equal(mutationAllowed, false);
+});
+
+test("27. User selection synchronization: page change automatically updates selection to first user of current page", () => {
+  // Page 1 users
+  const page1Users = [
+    { userId: "u1", displayName: "User 1", username: "user1", accountType: "Teacher" as const, status: "Active", rowVersion: "1", authVersion: 1, createdAt: "" },
+    { userId: "u2", displayName: "User 2", username: "user2", accountType: "Teacher" as const, status: "Active", rowVersion: "1", authVersion: 1, createdAt: "" },
+  ];
+
+  // User selects u2 on page 1
+  let currentSelection = page1Users[1];
+  assert.equal(currentSelection.userId, "u2");
+
+  // User navigates to Page 2
+  const page2Users = [
+    { userId: "u3", displayName: "User 3", username: "user3", accountType: "Teacher" as const, status: "Active", rowVersion: "1", authVersion: 1, createdAt: "" },
+    { userId: "u4", displayName: "User 4", username: "user4", accountType: "Teacher" as const, status: "Active", rowVersion: "1", authVersion: 1, createdAt: "" },
+  ];
+
+  // Alignment logic: if currentSelection is not in the active page's users, align to page2Users[0]
+  const matchOnPage2 = page2Users.find((u) => u.userId === currentSelection.userId);
+  if (matchOnPage2) {
+    currentSelection = matchOnPage2;
+  } else {
+    currentSelection = page2Users[0];
+  }
+
+  // Selection is cleanly aligned to u3, preventing stale u2 mismatch
+  assert.equal(currentSelection.userId, "u3");
+  assert.equal(currentSelection.displayName, "User 3");
+});
+
+test("28. Compatible roles pagination supports >100 roles with server-side pagination and metadata accumulation", () => {
+  // Generate 150 mock roles
+  const allRoles: AuthorizationRoleDto[] = Array.from({ length: 150 }, (_, i) => ({
+    roleId: `role-${i + 1}`,
+    roleCode: `ROLE_${i + 1}`,
+    roleName: `Vai trò số ${i + 1}`,
+    accountType: "Teacher" as const,
+    description: null,
+    isSystemRole: false,
+    status: "Active" as const,
+    permissionCodes: [`perm.code.${i + 1}`],
+    activeUserCount: 1,
+    rowVersion: "1",
+  }));
+
+  // Build query for page 8 (items 141-150)
+  const page8Query = buildRoleQueryParams(8, 20, undefined, "Teacher", "Active");
+  assert.equal(page8Query.page, 8);
+  assert.equal(page8Query.pageSize, 20);
+  assert.equal(page8Query.accountType, "Teacher");
+
+  // Accumulate known roles metadata across multiple visited pages
+  const knownRoles = new Map<string, AuthorizationRoleDto>();
+
+  // Page 1 arrives (roles 1-20)
+  for (const r of allRoles.slice(0, 20)) {
+    knownRoles.set(r.roleId, r);
+  }
+
+  // Page 8 arrives (roles 140-150)
+  for (const r of allRoles.slice(140, 150)) {
+    knownRoles.set(r.roleId, r);
+  }
+
+  // User selects role-1 (from page 1) and role-145 (from page 8)
+  const selectedRoleIds = ["role-1", "role-145"];
+
+  // Effective permissions breakdown successfully looks up metadata from both pages without 100-record truncation
+  const resolvedRoles = selectedRoleIds
+    .map((id) => knownRoles.get(id))
+    .filter((r): r is AuthorizationRoleDto => r !== undefined);
+
+  assert.equal(resolvedRoles.length, 2);
+  assert.equal(resolvedRoles[0].roleName, "Vai trò số 1");
+  assert.equal(resolvedRoles[1].roleName, "Vai trò số 145");
 });

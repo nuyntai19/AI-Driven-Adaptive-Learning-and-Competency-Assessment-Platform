@@ -10,6 +10,8 @@ import type {
   AuthorizationAuditDto,
   AuthorizationRoleDto,
   AuthorizationRoleStatus,
+  AuthorizationUserItem,
+  AuthorizationUserOption,
   PermissionDto,
 } from "../types/authorization";
 import {
@@ -195,6 +197,7 @@ export const AuthorizationManagementPage = () => {
             }}
             actorPermissions={user.permissions}
             catalog={permissionQuery.data?.data ?? []}
+            canRead={canReadUserRoles}
             canAssign={canAssignUserRoles}
             onSuccess={async (message, changedUserId) => {
               await queryClient.invalidateQueries({ queryKey: ["authorization"] });
@@ -963,6 +966,7 @@ interface UserRolePanelProps {
   };
   actorPermissions: string[];
   catalog: PermissionDto[];
+  canRead: boolean;
   canAssign: boolean;
   onSuccess: (message: string, changedUserId: string) => Promise<void>;
   onError: (error: unknown) => void;
@@ -972,17 +976,22 @@ const UserRolePanel = ({
   currentUser,
   actorPermissions,
   catalog,
+  canRead,
   canAssign,
   onSuccess,
   onError,
 }: UserRolePanelProps) => {
-  const [selectedUserId, setSelectedUserId] = useState(currentUser.userId);
+  const [selectedUser, setSelectedUser] = useState<AuthorizationUserItem | AuthorizationUserOption>(currentUser);
+  const selectedUserId = selectedUser.userId;
   const [userSearch, setUserSearch] = useState("");
   const [userAccountTypeFilter, setUserAccountTypeFilter] = useState<string>("All");
   const [userStatusFilter, setUserStatusFilter] = useState<string>("All");
   const [userPage, setUserPage] = useState(1);
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
   const [reason, setReason] = useState("");
+  const [roleSearch, setRoleSearch] = useState("");
+  const [rolePage, setRolePage] = useState(1);
+  const [knownRoles, setKnownRoles] = useState<Map<string, AuthorizationRoleDto>>(new Map());
 
   const usersQuery = useQuery({
     queryKey: [
@@ -1003,38 +1012,78 @@ const UserRolePanel = ({
           userStatusFilter === "All" ? undefined : userStatusFilter,
         ),
       ),
-    enabled: canAssign,
+    enabled: canRead,
   });
 
   const users = useMemo(() => usersQuery.data?.data ?? [], [usersQuery.data?.data]);
   const usersMeta = usersQuery.data?.meta;
   const userLoading = usersQuery.isLoading;
 
-  const selectedUser = useMemo(() => {
-    return users.find((item) => item.userId === selectedUserId) ?? currentUser;
-  }, [currentUser, selectedUserId, users]);
+  // Ensure selection remains synchronized and never points to an outdated or unaligned user
+  useEffect(() => {
+    if (users.length > 0) {
+      const match = users.find((item) => item.userId === selectedUser.userId);
+      if (match) {
+        setSelectedUser(match);
+      } else {
+        // When page changes or active user leaves current dataset, automatically align selection to the first user
+        setSelectedUser(users[0]);
+      }
+    }
+  }, [users, selectedUser.userId]);
 
-  // Load all active roles compatible with selected user's account type
+  // Reset role pagination when target user account type changes
+  useEffect(() => {
+    setRolePage(1);
+    setRoleSearch("");
+  }, [selectedUser.accountType]);
+
+  // Load active roles compatible with selected user's account type with server-side pagination & search
   const rolesQuery = useQuery({
-    queryKey: ["authorization", "roles-for-user", selectedUser.accountType],
+    queryKey: [
+      "authorization",
+      "roles-for-user",
+      selectedUser.accountType,
+      roleSearch,
+      rolePage,
+    ],
     queryFn: () =>
-      authorizationApi.listRoles({
-        accountType: selectedUser.accountType,
-        status: "Active",
-        page: 1,
-        pageSize: 100,
-      }),
-    enabled: Boolean(selectedUser.accountType),
+      authorizationApi.listRoles(
+        buildRoleQueryParams(
+          rolePage,
+          10,
+          roleSearch,
+          selectedUser.accountType,
+          "Active",
+        ),
+      ),
+    enabled: canRead && Boolean(selectedUser.accountType),
   });
 
+  const roles = useMemo(() => rolesQuery.data?.data ?? [], [rolesQuery.data?.data]);
+  const rolesMeta = rolesQuery.data?.meta;
+
+  // Accumulate known roles metadata across pages so selected roles and effective permissions retain attribution
+  useEffect(() => {
+    if (roles.length > 0) {
+      setKnownRoles((prev) => {
+        const next = new Map(prev);
+        for (const r of roles) {
+          next.set(r.roleId, r);
+        }
+        return next;
+      });
+    }
+  }, [roles]);
+
   const compatibleRoles = useMemo(() => {
-    return filterCompatibleRoles(rolesQuery.data?.data ?? [], selectedUser.accountType);
-  }, [rolesQuery.data?.data, selectedUser.accountType]);
+    return filterCompatibleRoles(roles, selectedUser.accountType);
+  }, [roles, selectedUser.accountType]);
 
   const authorizationQuery = useQuery({
     queryKey: ["authorization", "user", selectedUserId],
     queryFn: () => authorizationApi.getUserAuthorization(selectedUserId),
-    enabled: Boolean(selectedUserId),
+    enabled: canRead && Boolean(selectedUserId),
   });
 
   const userAuth = authorizationQuery.data?.data;
@@ -1070,9 +1119,11 @@ const UserRolePanel = ({
     },
   });
 
-  // Compute effective permissions with source role attribution
+  // Compute effective permissions with source role attribution using known roles cache
   const effectivePermissionsBreakdown = useMemo(() => {
-    const selectedRoles = compatibleRoles.filter((r) => selectedRoleIds.includes(r.roleId));
+    const selectedRoles = selectedRoleIds
+      .map((id) => knownRoles.get(id))
+      .filter((r): r is AuthorizationRoleDto => r !== undefined);
     const permissionSources: Record<string, string[]> = {};
 
     for (const role of selectedRoles) {
@@ -1092,7 +1143,7 @@ const UserRolePanel = ({
         sourceRoles,
       }))
       .sort((a, b) => a.code.localeCompare(b.code));
-  }, [catalog, compatibleRoles, selectedRoleIds]);
+  }, [catalog, knownRoles, selectedRoleIds]);
 
   const actorPermSet = useMemo(() => new Set(actorPermissions), [actorPermissions]);
 
@@ -1175,7 +1226,7 @@ const UserRolePanel = ({
                 key={u.userId}
                 type="button"
                 id={`user-item-${u.userId}`}
-                onClick={() => setSelectedUserId(u.userId)}
+                onClick={() => setSelectedUser(u)}
                 className={`w-full rounded-lg p-2.5 text-left transition-all ${
                   selectedUserId === u.userId
                     ? "bg-indigo-50 ring-2 ring-indigo-500"
@@ -1272,14 +1323,39 @@ const UserRolePanel = ({
           <div className="mt-6 space-y-6">
             {/* Roles Selection Section */}
             <div>
-              <h3 className="font-bold text-slate-900 text-sm">
-                Vai trò tương thích đang hoạt động ({compatibleRoles.length})
-              </h3>
-              <p className="text-xs text-slate-500">
-                Chọn các vai trò áp dụng cho {accountTypeLabels[selectedUser.accountType]}.
-              </p>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">
+                    Vai trò tương thích đang hoạt động ({rolesMeta?.totalItems ?? compatibleRoles.length})
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Chọn các vai trò áp dụng cho {accountTypeLabels[selectedUser.accountType]}.
+                  </p>
+                </div>
+              </div>
 
-              <div className="mt-3 space-y-2">
+              {!canAssign && (
+                <div className="mt-3 rounded-lg border border-slate-200 bg-slate-100 p-3 text-xs text-slate-700">
+                  ℹ️ <strong>Chế độ chỉ đọc (Read-only):</strong> Bạn chỉ có quyền xem vai trò người dùng (<code>authorization.user_roles.read</code>), không có quyền gán hay thay đổi vai trò (<code>authorization.user_roles.assign</code>).
+                </div>
+              )}
+
+              {/* Role Search Filter */}
+              <div className="mt-3 mb-2">
+                <input
+                  type="text"
+                  placeholder="Tìm vai trò theo tên hoặc mã..."
+                  aria-label="Tìm kiếm vai trò tương thích"
+                  value={roleSearch}
+                  onChange={(e) => {
+                    setRoleSearch(e.target.value);
+                    setRolePage(1);
+                  }}
+                  className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs"
+                />
+              </div>
+
+              <div className="space-y-2">
                 {compatibleRoles.map((role) => {
                   const outOfScope = isRoleOutOfScopeForActor(role);
                   const isChecked = selectedRoleIds.includes(role.roleId);
@@ -1338,6 +1414,33 @@ const UserRolePanel = ({
                   </p>
                 )}
               </div>
+
+              {/* Role Pagination Controls */}
+              {rolesMeta && rolesMeta.totalPages > 1 && (
+                <div className="mt-3 flex items-center justify-between border-t border-slate-200 pt-2 text-xs text-slate-600">
+                  <span>
+                    Trang {rolesMeta.page} / {rolesMeta.totalPages} ({rolesMeta.totalItems} vai trò)
+                  </span>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      disabled={rolePage <= 1}
+                      onClick={() => setRolePage((p) => Math.max(1, p - 1))}
+                      className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      Trước
+                    </button>
+                    <button
+                      type="button"
+                      disabled={rolePage >= rolesMeta.totalPages}
+                      onClick={() => setRolePage((p) => Math.min(rolesMeta.totalPages, p + 1))}
+                      className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      Sau
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Effective Permissions Breakdown (Spec Requirement 7 & 564) */}

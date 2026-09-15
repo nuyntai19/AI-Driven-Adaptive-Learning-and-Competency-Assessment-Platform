@@ -247,9 +247,11 @@ public sealed class UserAuthorizationUseCaseTests
             CenterId = fixture.TenantContext.CenterId!.Value,
             ActorUserId = fixture.ManagerId,
             ActionType = "RolePermissionsReplaced",
-            TargetType = "Role",
+            TargetType = "RolePermission",
             TargetId = "ROLE_TARGET_2",
-            PermissionCode = "assignments.assignments.create",
+            PermissionCode = null, // Real mutation producer leaves column null and records in AfterData JSON
+            BeforeData = "{\"PermissionCodes\":[\"curriculum.curriculums.read\"]}",
+            AfterData = "{\"PermissionCodes\":[\"assignments.assignments.create\",\"assignments.assignments.read\"]}",
             TraceId = "trace-2",
             Reason = "Lý do 2",
             CreatedAt = now
@@ -265,11 +267,11 @@ public sealed class UserAuthorizationUseCaseTests
         Assert.Single(targetResult.Data);
         Assert.Equal("ROLE_TARGET_1", targetResult.Data[0].TargetId);
 
-        // Filter by PermissionCode
+        // Filter by PermissionCode matching AfterData array in real mutation producer
         var permResult = await sut.ExecuteAsync(new AuthorizationAuditQuery { PermissionCode = "assignments.assignments.create" });
         Assert.True(permResult.IsSuccess);
         Assert.Single(permResult.Data);
-        Assert.Equal("assignments.assignments.create", permResult.Data[0].PermissionCode);
+        Assert.Equal("ROLE_TARGET_2", permResult.Data[0].TargetId);
     }
 
     [Fact]
