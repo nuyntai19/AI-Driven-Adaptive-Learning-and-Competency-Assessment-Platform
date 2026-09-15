@@ -48,12 +48,15 @@ public sealed class GetUserAuthorizationUseCase(
                     RoleName = assignment.Role.RoleName,
                     AccountType = assignment.AccountType.ToString(),
                     AssignmentStatus = assignment.Status.ToString(),
-                    PermissionCodes = assignment.Role.RolePermissions?
-                        .Select(mapping => mapping.PermissionAccountType?.Permission?.PermissionCode)
-                        .Where(code => !string.IsNullOrEmpty(code))
-                        .Select(code => code!)
-                        .Order(StringComparer.Ordinal)
-                        .ToArray() ?? [],
+                    PermissionCodes = assignment.Role.Status == AuthorizationRoleStatus.Active
+                        ? (assignment.Role.RolePermissions?
+                            .Where(mapping => mapping.PermissionAccountType?.Permission?.Status == PermissionStatus.Active)
+                            .Select(mapping => mapping.PermissionAccountType?.Permission?.PermissionCode)
+                            .Where(code => !string.IsNullOrEmpty(code))
+                            .Select(code => code!)
+                            .Order(StringComparer.Ordinal)
+                            .ToArray() ?? [])
+                        : [],
                     AssignedAt = assignment.AssignedAt,
                     RevokedAt = assignment.RevokedAt
                 })

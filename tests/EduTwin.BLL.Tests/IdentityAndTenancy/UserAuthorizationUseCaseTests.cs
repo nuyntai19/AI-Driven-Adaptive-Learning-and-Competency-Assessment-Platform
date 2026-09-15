@@ -379,6 +379,227 @@ public sealed class UserAuthorizationUseCaseTests
         Assert.Equal("Archived", result.Data[0].After!.Value.GetProperty("status").GetString());
     }
 
+    [Fact]
+    public async Task GetUserAuthorization_ActiveRolePermissionBreakdownUnion_EqualsAuthoritativePermissions()
+    {
+        await using var fixture = await CreateFixtureAsync();
+        var now = DateTime.UtcNow;
+        var centerId = fixture.TenantContext.CenterId!.Value;
+
+        var teacher = new User
+        {
+            UserId = Guid.NewGuid(),
+            CenterId = centerId,
+            Username = "teacher-union-test",
+            PasswordHash = "hash",
+            RoleName = UserRole.Teacher,
+            DisplayName = "Teacher Union Test",
+            Status = UserStatus.Active,
+            AuthVersion = 1,
+            CreatedAt = now,
+            UpdatedAt = now,
+            RowVersion = 1
+        };
+        fixture.Context.Users.Add(teacher);
+
+        // Role 1: Active, has 2 active permissions and 1 deprecated/inactive permission
+        var activePerm1 = await fixture.Context.Permissions.SingleAsync(p => p.PermissionCode == "knowledge.nodes.update");
+        var activePerm2 = await fixture.Context.Permissions.SingleAsync(p => p.PermissionCode == "curriculum.curriculums.publish");
+        var deprecatedPerm = new Permission
+        {
+            PermissionId = Guid.NewGuid(),
+            PermissionCode = "deprecated.permission.test",
+            ModuleName = "Test",
+            ResourceName = "TestResource",
+            ActionName = "Test",
+            Description = "Deprecated test permission",
+            Status = PermissionStatus.Deprecated,
+            IsDelegable = true,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        var deprecatedPermAccountType = new PermissionAccountType
+        {
+            PermissionId = deprecatedPerm.PermissionId,
+            AccountType = UserRole.Teacher,
+            CreatedAt = now
+        };
+        fixture.Context.Permissions.Add(deprecatedPerm);
+        fixture.Context.PermissionAccountTypes.Add(deprecatedPermAccountType);
+
+        var activeRole1 = new AuthorizationRole
+        {
+            RoleId = Guid.NewGuid(),
+            CenterId = centerId,
+            RoleCode = "TEACHER_ROLE_ACTIVE_1",
+            RoleName = "Active Role 1",
+            AccountType = UserRole.Teacher,
+            Status = AuthorizationRoleStatus.Active,
+            CreatedAt = now,
+            UpdatedAt = now,
+            RowVersion = 1
+        };
+        fixture.Context.AuthorizationRoles.Add(activeRole1);
+
+        fixture.Context.RolePermissions.AddRange(
+            new RolePermission
+            {
+                CenterId = centerId,
+                RoleId = activeRole1.RoleId,
+                PermissionId = activePerm1.PermissionId,
+                AccountType = UserRole.Teacher,
+                GrantedAt = now,
+                GrantedByUserId = fixture.ManagerId
+            },
+            new RolePermission
+            {
+                CenterId = centerId,
+                RoleId = activeRole1.RoleId,
+                PermissionId = activePerm2.PermissionId,
+                AccountType = UserRole.Teacher,
+                GrantedAt = now,
+                GrantedByUserId = fixture.ManagerId
+            },
+            new RolePermission
+            {
+                CenterId = centerId,
+                RoleId = activeRole1.RoleId,
+                PermissionId = deprecatedPerm.PermissionId,
+                AccountType = UserRole.Teacher,
+                GrantedAt = now,
+                GrantedByUserId = fixture.ManagerId
+            }
+        );
+
+        // Role 2: Active, has another active permission
+        var activePerm3 = await fixture.Context.Permissions.SingleAsync(p => p.PermissionCode == "curriculum.questions.create");
+        var activeRole2 = new AuthorizationRole
+        {
+            RoleId = Guid.NewGuid(),
+            CenterId = centerId,
+            RoleCode = "TEACHER_ROLE_ACTIVE_2",
+            RoleName = "Active Role 2",
+            AccountType = UserRole.Teacher,
+            Status = AuthorizationRoleStatus.Active,
+            CreatedAt = now,
+            UpdatedAt = now,
+            RowVersion = 1
+        };
+        fixture.Context.AuthorizationRoles.Add(activeRole2);
+        fixture.Context.RolePermissions.Add(new RolePermission
+        {
+            CenterId = centerId,
+            RoleId = activeRole2.RoleId,
+            PermissionId = activePerm3.PermissionId,
+            AccountType = UserRole.Teacher,
+            GrantedAt = now,
+            GrantedByUserId = fixture.ManagerId
+        });
+
+        // Role 3: Disabled/Archived role, has active permission
+        var archivedRole = new AuthorizationRole
+        {
+            RoleId = Guid.NewGuid(),
+            CenterId = centerId,
+            RoleCode = "TEACHER_ROLE_ARCHIVED",
+            RoleName = "Archived Role",
+            AccountType = UserRole.Teacher,
+            Status = AuthorizationRoleStatus.Archived,
+            CreatedAt = now,
+            UpdatedAt = now,
+            RowVersion = 1
+        };
+        fixture.Context.AuthorizationRoles.Add(archivedRole);
+        fixture.Context.RolePermissions.Add(new RolePermission
+        {
+            CenterId = centerId,
+            RoleId = archivedRole.RoleId,
+            PermissionId = activePerm1.PermissionId,
+            AccountType = UserRole.Teacher,
+            GrantedAt = now,
+            GrantedByUserId = fixture.ManagerId
+        });
+
+        // Assign Role 1, Role 2, Role 3 to teacher
+        fixture.Context.UserRoleAssignments.AddRange(
+            new UserRoleAssignment
+            {
+                CenterId = centerId,
+                UserId = teacher.UserId,
+                RoleId = activeRole1.RoleId,
+                AccountType = UserRole.Teacher,
+                Status = UserRoleAssignmentStatus.Active,
+                AssignedAt = now,
+                AssignedByUserId = fixture.ManagerId,
+                RowVersion = 1
+            },
+            new UserRoleAssignment
+            {
+                CenterId = centerId,
+                UserId = teacher.UserId,
+                RoleId = activeRole2.RoleId,
+                AccountType = UserRole.Teacher,
+                Status = UserRoleAssignmentStatus.Active,
+                AssignedAt = now,
+                AssignedByUserId = fixture.ManagerId,
+                RowVersion = 1
+            },
+            new UserRoleAssignment
+            {
+                CenterId = centerId,
+                UserId = teacher.UserId,
+                RoleId = archivedRole.RoleId,
+                AccountType = UserRole.Teacher,
+                Status = UserRoleAssignmentStatus.Active,
+                AssignedAt = now,
+                AssignedByUserId = fixture.ManagerId,
+                RowVersion = 1
+            }
+        );
+        await fixture.Context.SaveChangesAsync();
+
+        var sut = new GetUserAuthorizationUseCase(
+            fixture.Context,
+            fixture.TenantContext,
+            new AuthorizationSnapshotReader(fixture.Context));
+
+        var result = await sut.ExecuteAsync(teacher.UserId);
+
+        Assert.True(result.IsSuccess);
+        var authDto = result.Data!;
+
+        // Deprecated/Inactive permission is NOT in the authoritative Permissions collection
+        Assert.DoesNotContain("deprecated.permission.test", authDto.Permissions);
+
+        // Deprecated/Inactive permission is NOT in Role 1's PermissionCodes
+        var role1Dto = authDto.Roles.Single(r => r.RoleId == activeRole1.RoleId);
+        Assert.DoesNotContain("deprecated.permission.test", role1Dto.PermissionCodes);
+        Assert.Equal(["curriculum.curriculums.publish", "knowledge.nodes.update"], role1Dto.PermissionCodes);
+
+        // Role 2 has only its active permission
+        var role2Dto = authDto.Roles.Single(r => r.RoleId == activeRole2.RoleId);
+        Assert.Equal(["curriculum.questions.create"], role2Dto.PermissionCodes);
+
+        // Archived role has empty PermissionCodes
+        var archivedRoleDto = authDto.Roles.Single(r => r.RoleId == archivedRole.RoleId);
+        Assert.Empty(archivedRoleDto.PermissionCodes);
+
+        // The union of PermissionCodes from active role assignments exactly equals authoritative Permissions
+        var activeRoleAssignments = authDto.Roles
+            .Where(r => r.AssignmentStatus == nameof(UserRoleAssignmentStatus.Active));
+        var unionOfActiveRolePermissions = activeRoleAssignments
+            .SelectMany(r => r.PermissionCodes)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        var authoritativePermissions = authDto.Permissions
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(authoritativePermissions, unionOfActiveRolePermissions);
+    }
+
     private static async Task<Fixture> CreateFixtureAsync()
     {
         var centerId = Guid.NewGuid();

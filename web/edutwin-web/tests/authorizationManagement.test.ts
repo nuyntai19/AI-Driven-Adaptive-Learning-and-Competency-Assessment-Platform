@@ -23,6 +23,9 @@ import {
   isSelfUser,
   filterCompatibleRoles,
   validateRoleCreation,
+  hydrateKnownRolesFromUserAuth,
+  computeEffectivePermissionsBreakdown,
+  getMissingCanonicalRoleIds,
 } from "../src/pages/authorizationManagementHelpers.ts";
 
 // ==========================================
@@ -786,28 +789,19 @@ test("28. Compatible roles pagination supports >100 roles with server-side pagin
   assert.equal(resolvedRoles[1].roleName, "Vai trò số 145");
 });
 
-test("29. Initial load with assigned role outside page 1 hydrates knownRoles and retains full effective permissions and source attribution", () => {
-  // Scenario: Operator opens UserRolePanel. listRoles has ONLY returned Page 1 (roles 1-10).
-  // Operator has NEVER opened Page 8.
-  const page1Roles: AuthorizationRoleDto[] = Array.from({ length: 10 }, (_, i) => ({
-    roleId: `role-${i + 1}`,
-    roleCode: `ROLE_${i + 1}`,
-    roleName: `Vai trò số ${i + 1}`,
-    accountType: "Teacher" as const,
-    description: null,
-    isSystemRole: false,
-    status: "Active" as const,
-    permissionCodes: [`perm.code.${i + 1}`],
-    activeUserCount: 1,
-    rowVersion: "1",
-  }));
+test("29. Read-only user_roles viewer does not call listRoles, hydrates knownRoles from userAuth, and displays effective permissions for role outside page 1", () => {
+  // Scenario: Actor only has authorization.user_roles.read (canRead = true), but NOT authorization.roles.read (canReadRoles = false)
+  const canReadUserRoles = true;
+  const canReadRoles = false;
 
-  const knownRoles = new Map<string, AuthorizationRoleDto>();
-  for (const r of page1Roles) {
-    knownRoles.set(r.roleId, r);
-  }
+  // rolesQuery is strictly gated by canReadRoles: when false, listRoles query is disabled (never called)
+  const isRolesQueryEnabled = canReadUserRoles && canReadRoles;
+  assert.equal(isRolesQueryEnabled, false, "listRoles query must be disabled for read-only user-roles viewer");
 
-  // Target user has an assigned role on unvisited page 8 (role-145)
+  // listRoles was NOT called, so initial knownRoles is empty
+  let knownRoles = new Map<string, AuthorizationRoleDto>();
+
+  // Target user has an assigned role on page 8 (outside page 1)
   const userAuth: UserAuthorizationDto = {
     userId: "target-user-1",
     accountType: "Teacher",
@@ -838,60 +832,72 @@ test("29. Initial load with assigned role outside page 1 hydrates knownRoles and
     authorizationVersion: 1,
   };
 
-  // UserRolePanel hydration effect runs upon receiving userAuth
+  // Shared production helper runs when userAuth arrives
+  knownRoles = hydrateKnownRolesFromUserAuth(knownRoles, userAuth.roles);
+
+  // Active assigned role IDs
   const activeIds = userAuth.roles
     .filter((r) => r.assignmentStatus === "Active")
     .map((r) => r.roleId);
 
-  for (const r of userAuth.roles) {
-    const existing = knownRoles.get(r.roleId);
-    if (!existing) {
-      knownRoles.set(r.roleId, {
-        roleId: r.roleId,
-        roleCode: r.roleCode,
-        roleName: r.roleName,
-        accountType: r.accountType,
-        description: null,
-        isSystemRole: false,
-        status: "Active",
-        permissionCodes: r.permissionCodes ?? [],
-        activeUserCount: 1,
-        rowVersion: "1",
-      });
-    } else if (r.permissionCodes && r.permissionCodes.length > 0 && existing.permissionCodes.length === 0) {
-      knownRoles.set(r.roleId, {
-        ...existing,
-        permissionCodes: r.permissionCodes,
-      });
-    }
-  }
+  // Compute breakdown using shared production helper
+  const breakdown = computeEffectivePermissionsBreakdown(activeIds, knownRoles, [
+    {
+      permissionCode: "curriculum.curriculums.export",
+      module: "Curriculum",
+      resource: "Curriculums",
+      action: "Export",
+      description: "Xuất khung chương trình",
+      status: "Active",
+      isSensitive: false,
+      isDelegable: true,
+      allowedAccountTypes: ["Teacher"],
+    },
+    {
+      permissionCode: "assessments.exams.finalize",
+      module: "Assessments",
+      resource: "Exams",
+      action: "Finalize",
+      description: "Phê duyệt đề thi",
+      status: "Active",
+      isSensitive: false,
+      isDelegable: true,
+      allowedAccountTypes: ["Teacher"],
+    },
+    {
+      permissionCode: "perm.code.1",
+      module: "General",
+      resource: "General",
+      action: "Read",
+      description: "Quyền cơ bản 1",
+      status: "Active",
+      isSensitive: false,
+      isDelegable: true,
+      allowedAccountTypes: ["Teacher"],
+    },
+  ]);
 
-  // Compute effective permissions breakdown as done in UserRolePanel
-  const selectedRoles = activeIds
-    .map((id) => knownRoles.get(id))
-    .filter((r): r is AuthorizationRoleDto => r !== undefined);
+  // Assert all permissions and source attribution are fully present despite listRoles not being called
+  assert.equal(breakdown.length, 3);
+  const exportPerm = breakdown.find((b) => b.code === "curriculum.curriculums.export");
+  assert.ok(exportPerm);
+  assert.deepEqual(exportPerm.sourceRoles, ["Trưởng Ban Chuyên Môn (Trang 8)"]);
+  assert.equal(exportPerm.description, "Xuất khung chương trình");
 
-  const permissionSources: Record<string, string[]> = {};
-  for (const role of selectedRoles) {
-    for (const code of role.permissionCodes) {
-      (permissionSources[code] ??= []).push(role.roleName);
-    }
-  }
+  const finalizePerm = breakdown.find((b) => b.code === "assessments.exams.finalize");
+  assert.ok(finalizePerm);
+  assert.deepEqual(finalizePerm.sourceRoles, ["Trưởng Ban Chuyên Môn (Trang 8)"]);
 
-  // Verify that permissions from role-145 (on unvisited page 8) are fully retained
-  assert.ok(permissionSources["curriculum.curriculums.export"]);
-  assert.deepEqual(permissionSources["curriculum.curriculums.export"], ["Trưởng Ban Chuyên Môn (Trang 8)"]);
-  assert.ok(permissionSources["assessments.exams.finalize"]);
-  assert.deepEqual(permissionSources["assessments.exams.finalize"], ["Trưởng Ban Chuyên Môn (Trang 8)"]);
-  assert.ok(permissionSources["perm.code.1"]);
-  assert.deepEqual(permissionSources["perm.code.1"], ["Vai trò số 1"]);
+  const code1Perm = breakdown.find((b) => b.code === "perm.code.1");
+  assert.ok(code1Perm);
+  assert.deepEqual(code1Perm.sourceRoles, ["Vai trò số 1"]);
 });
 
 test("30. Selected role missing from knownRoles triggers canonical fetch and hydrates effective permissions", async () => {
   // Scenario: A selected role ID (e.g. assigned or selected programmatically) is not in knownRoles cache
   const knownRoles = new Map<string, AuthorizationRoleDto>();
 
-  // Page 1 roles in knownRoles
+  // Page 1 role in knownRoles
   knownRoles.set("role-1", {
     roleId: "role-1",
     roleCode: "ROLE_1",
@@ -906,8 +912,13 @@ test("30. Selected role missing from knownRoles triggers canonical fetch and hyd
   });
 
   const selectedRoleIds = ["role-1", "role-unvisited-external"];
+  const fetchedIds = new Set<string>();
 
-  // Mock canonical role fetcher (authorizationApi.getRole)
+  // Shared production helper identifies missing canonical role IDs
+  const missingRoleIds = getMissingCanonicalRoleIds(selectedRoleIds, knownRoles, fetchedIds);
+  assert.deepEqual(missingRoleIds, ["role-unvisited-external"]);
+
+  // Mock canonical role fetcher
   const canonicalRoleStore: Record<string, AuthorizationRoleDto> = {
     "role-unvisited-external": {
       roleId: "role-unvisited-external",
@@ -929,32 +940,30 @@ test("30. Selected role missing from knownRoles triggers canonical fetch and hyd
     return { data, meta: { traceId: "test-trace", timestamp: new Date().toISOString() } };
   };
 
-  // Component hook behavior: detects missing IDs and fetches canonical details
-  const missingRoleIds = selectedRoleIds.filter((id) => {
-    const r = knownRoles.get(id);
-    return !r || r.permissionCodes.length === 0;
-  });
-
-  assert.deepEqual(missingRoleIds, ["role-unvisited-external"]);
-
   for (const missingId of missingRoleIds) {
+    fetchedIds.add(missingId);
     const res = await mockGetRole(missingId);
     knownRoles.set(missingId, res.data);
   }
 
-  // After canonical fetch, verify effective permissions table includes permissions and source
-  const selectedRoles = selectedRoleIds
-    .map((id) => knownRoles.get(id))
-    .filter((r): r is AuthorizationRoleDto => r !== undefined);
+  // After canonical fetch, shared production helper computes breakdown
+  const breakdown = computeEffectivePermissionsBreakdown(selectedRoleIds, knownRoles, [
+    {
+      permissionCode: "special.external.permission",
+      module: "Special",
+      resource: "External",
+      action: "Special",
+      description: "Quyền đặc biệt ngoài trang",
+      status: "Active",
+      isSensitive: false,
+      isDelegable: true,
+      allowedAccountTypes: ["Teacher"],
+    },
+  ]);
 
-  const permissionSources: Record<string, string[]> = {};
-  for (const role of selectedRoles) {
-    for (const code of role.permissionCodes) {
-      (permissionSources[code] ??= []).push(role.roleName);
-    }
-  }
-
-  assert.equal(selectedRoles.length, 2);
-  assert.deepEqual(permissionSources["special.external.permission"], ["Vai trò Đặc Biệt Ngoài Trang"]);
-  assert.deepEqual(permissionSources["perm.code.1"], ["Vai trò số 1"]);
+  assert.equal(breakdown.length, 2);
+  const extPerm = breakdown.find((b) => b.code === "special.external.permission");
+  assert.ok(extPerm);
+  assert.deepEqual(extPerm.sourceRoles, ["Vai trò Đặc Biệt Ngoài Trang"]);
+  assert.equal(extPerm.description, "Quyền đặc biệt ngoài trang");
 });

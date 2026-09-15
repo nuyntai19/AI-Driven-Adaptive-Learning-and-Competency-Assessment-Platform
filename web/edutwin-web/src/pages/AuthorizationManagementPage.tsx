@@ -21,6 +21,9 @@ import {
   buildAuditQueryParams,
   filterCompatibleRoles,
   isSelfUser,
+  hydrateKnownRolesFromUserAuth,
+  computeEffectivePermissionsBreakdown,
+  getMissingCanonicalRoleIds,
   type ParsedSafeError,
 } from "./authorizationManagementHelpers";
 
@@ -198,6 +201,7 @@ export const AuthorizationManagementPage = () => {
             actorPermissions={user.permissions}
             catalog={permissionQuery.data?.data ?? []}
             canRead={canReadUserRoles}
+            canReadRoles={canReadRoles}
             canAssign={canAssignUserRoles}
             onSuccess={async (message, changedUserId) => {
               await queryClient.invalidateQueries({ queryKey: ["authorization"] });
@@ -967,6 +971,7 @@ interface UserRolePanelProps {
   actorPermissions: string[];
   catalog: PermissionDto[];
   canRead: boolean;
+  canReadRoles: boolean;
   canAssign: boolean;
   onSuccess: (message: string, changedUserId: string) => Promise<void>;
   onError: (error: unknown) => void;
@@ -977,6 +982,7 @@ const UserRolePanel = ({
   actorPermissions,
   catalog,
   canRead,
+  canReadRoles,
   canAssign,
   onSuccess,
   onError,
@@ -1057,7 +1063,7 @@ const UserRolePanel = ({
           "Active",
         ),
       ),
-    enabled: canRead && Boolean(selectedUser.accountType),
+    enabled: canRead && canReadRoles && Boolean(selectedUser.accountType),
   });
 
   const roles = useMemo(() => rolesQuery.data?.data ?? [], [rolesQuery.data?.data]);
@@ -1098,42 +1104,19 @@ const UserRolePanel = ({
       setSelectedRoleIds(activeIds);
       setReason("");
 
-      // Automatically register all assigned roles into knownRoles
-      setKnownRoles((prev) => {
-        const next = new Map(prev);
-        for (const r of userAuth.roles) {
-          const existing = next.get(r.roleId);
-          if (!existing) {
-            next.set(r.roleId, {
-              roleId: r.roleId,
-              roleCode: r.roleCode,
-              roleName: r.roleName,
-              accountType: r.accountType,
-              description: null,
-              isSystemRole: false,
-              status: "Active",
-              permissionCodes: r.permissionCodes ?? [],
-              activeUserCount: 1,
-              rowVersion: "1",
-            });
-          } else if (r.permissionCodes && r.permissionCodes.length > 0 && existing.permissionCodes.length === 0) {
-            next.set(r.roleId, {
-              ...existing,
-              permissionCodes: r.permissionCodes,
-            });
-          }
-        }
-        return next;
-      });
+      // Automatically register all assigned roles into knownRoles using shared helper
+      setKnownRoles((prev) => hydrateKnownRolesFromUserAuth(prev, userAuth.roles));
     }
   }, [userAuth]);
 
   // Fetch canonical role details for any selected role ID that is missing from knownRoles or lacks permissions
   useEffect(() => {
-    const missingRoleIds = selectedRoleIds.filter((id) => {
-      const r = knownRoles.get(id);
-      return (!r || r.permissionCodes.length === 0) && !fetchedMissingRolesRef.current.has(id);
-    });
+    if (!canReadRoles) return;
+    const missingRoleIds = getMissingCanonicalRoleIds(
+      selectedRoleIds,
+      knownRoles,
+      fetchedMissingRolesRef.current,
+    );
     if (missingRoleIds.length === 0) return;
 
     for (const missingId of missingRoleIds) {
@@ -1161,7 +1144,7 @@ const UserRolePanel = ({
     return () => {
       isMounted = false;
     };
-  }, [selectedRoleIds, knownRoles]);
+  }, [selectedRoleIds, knownRoles, canReadRoles]);
 
   const replaceMutation = useMutation({
     mutationFn: () =>
@@ -1184,30 +1167,9 @@ const UserRolePanel = ({
     },
   });
 
-  // Compute effective permissions with source role attribution using known roles cache
+  // Compute effective permissions with source role attribution using shared helper
   const effectivePermissionsBreakdown = useMemo(() => {
-    const selectedRoles = selectedRoleIds
-      .map((id) => knownRoles.get(id))
-      .filter((r): r is AuthorizationRoleDto => r !== undefined);
-    const permissionSources: Record<string, string[]> = {};
-
-    for (const role of selectedRoles) {
-      for (const code of role.permissionCodes) {
-        (permissionSources[code] ??= []).push(role.roleName);
-      }
-    }
-
-    const permissionDescriptions = new Map(
-      catalog.map((p) => [p.permissionCode, p.description]),
-    );
-
-    return Object.entries(permissionSources)
-      .map(([code, sourceRoles]) => ({
-        code,
-        description: permissionDescriptions.get(code) ?? "Quyền vận hành",
-        sourceRoles,
-      }))
-      .sort((a, b) => a.code.localeCompare(b.code));
+    return computeEffectivePermissionsBreakdown(selectedRoleIds, knownRoles, catalog);
   }, [catalog, knownRoles, selectedRoleIds]);
 
   const actorPermSet = useMemo(() => new Set(actorPermissions), [actorPermissions]);
@@ -1391,120 +1353,173 @@ const UserRolePanel = ({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h3 className="font-bold text-slate-900 text-sm">
-                    Vai trò tương thích đang hoạt động ({rolesMeta?.totalItems ?? compatibleRoles.length})
+                    {canReadRoles
+                      ? `Vai trò tương thích đang hoạt động (${rolesMeta?.totalItems ?? compatibleRoles.length})`
+                      : `Các vai trò đang được gán (${userAuth?.roles.length ?? 0})`}
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Chọn các vai trò áp dụng cho {accountTypeLabels[selectedUser.accountType]}.
+                    {canReadRoles
+                      ? `Chọn các vai trò áp dụng cho ${accountTypeLabels[selectedUser.accountType]}.`
+                      : `Danh sách vai trò hiện đang được phân công cho người dùng này.`}
                   </p>
                 </div>
               </div>
 
-              {!canAssign && (
-                <div className="mt-3 rounded-lg border border-slate-200 bg-slate-100 p-3 text-xs text-slate-700">
-                  ℹ️ <strong>Chế độ chỉ đọc (Read-only):</strong> Bạn chỉ có quyền xem vai trò người dùng (<code>authorization.user_roles.read</code>), không có quyền gán hay thay đổi vai trò (<code>authorization.user_roles.assign</code>).
-                </div>
-              )}
-
-              {/* Role Search Filter */}
-              <div className="mt-3 mb-2">
-                <input
-                  type="text"
-                  placeholder="Tìm vai trò theo tên hoặc mã..."
-                  aria-label="Tìm kiếm vai trò tương thích"
-                  value={roleSearch}
-                  onChange={(e) => {
-                    setRoleSearch(e.target.value);
-                    setRolePage(1);
-                  }}
-                  className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs"
-                />
-              </div>
-
-              <div className="space-y-2">
-                {compatibleRoles.map((role) => {
-                  const outOfScope = isRoleOutOfScopeForActor(role);
-                  const isChecked = selectedRoleIds.includes(role.roleId);
-                  const checkboxId = `role-chk-${role.roleId}`;
-
-                  return (
-                    <label
-                      key={role.roleId}
-                      htmlFor={checkboxId}
-                      className={`flex items-start gap-3 rounded-lg border p-3 text-xs transition-colors ${
-                        isChecked
-                          ? "border-indigo-300 bg-indigo-50/60"
-                          : "border-slate-200 bg-white hover:bg-slate-50"
-                      } ${!canAssign || outOfScope ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}`}
-                    >
-                      <input
-                        type="checkbox"
-                        id={checkboxId}
-                        disabled={!canAssign || outOfScope}
-                        checked={isChecked}
-                        onChange={() =>
-                          setSelectedRoleIds((current) =>
-                            current.includes(role.roleId)
-                              ? current.filter((id) => id !== role.roleId)
-                              : [...current, role.roleId],
-                          )
-                        }
-                        className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 disabled:opacity-50"
-                      />
-                      <div className="flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-semibold text-slate-900 text-sm">{role.roleName}</span>
-                          <span className="font-mono text-slate-600 text-[11px]">{role.roleCode}</span>
-                          {role.isSystemRole && (
-                            <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">
-                              Hệ thống
-                            </span>
-                          )}
-                        </div>
-                        <p className="mt-1 text-slate-500">{role.description || "Không có mô tả chi tiết."}</p>
-                        <p className="mt-0.5 text-[11px] text-slate-400">
-                          {role.permissionCodes.length} permissions · {role.activeUserCount} người đang dùng
-                        </p>
-                        {outOfScope && (
-                          <span className="mt-1 inline-block font-semibold text-red-600 text-[10px]">
-                            ✕ Chứa quyền vượt thẩm quyền của bạn (Không thể gán vai trò này cho Quản lý khác)
+              {!canReadRoles ? (
+                <div className="mt-3 space-y-3">
+                  <div className="rounded-lg border border-slate-200 bg-slate-100 p-3 text-xs text-slate-700">
+                    ℹ️ <strong>Chế độ chỉ đọc vai trò người dùng (Read-only):</strong> Bạn có quyền xem phân công vai trò (<code>authorization.user_roles.read</code>), không có quyền đọc danh mục vai trò hệ thống (<code>authorization.roles.read</code>). Dưới đây là danh sách các vai trò đang được gán cho người dùng này.
+                  </div>
+                  <div className="space-y-2">
+                    {userAuth?.roles && userAuth.roles.length > 0 ? (
+                      userAuth.roles.map((role) => (
+                        <div
+                          key={role.roleId}
+                          className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 text-xs shadow-sm"
+                        >
+                          <span
+                            className={`mt-0.5 rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                              role.assignmentStatus === "Active"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-slate-200 text-slate-600"
+                            }`}
+                          >
+                            {role.assignmentStatus === "Active" ? "Đang hoạt động" : "Đã thu hồi"}
                           </span>
-                        )}
-                      </div>
-                    </label>
-                  );
-                })}
-                {compatibleRoles.length === 0 && (
-                  <p className="rounded-lg bg-slate-50 p-4 text-center text-xs text-slate-500">
-                    Không có vai trò Active nào tương thích với loại tài khoản {accountTypeLabels[selectedUser.accountType]}.
-                  </p>
-                )}
-              </div>
-
-              {/* Role Pagination Controls */}
-              {rolesMeta && rolesMeta.totalPages > 1 && (
-                <div className="mt-3 flex items-center justify-between border-t border-slate-200 pt-2 text-xs text-slate-600">
-                  <span>
-                    Trang {rolesMeta.page} / {rolesMeta.totalPages} ({rolesMeta.totalItems} vai trò)
-                  </span>
-                  <div className="flex gap-1">
-                    <button
-                      type="button"
-                      disabled={rolePage <= 1}
-                      onClick={() => setRolePage((p) => Math.max(1, p - 1))}
-                      className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-50 disabled:opacity-50"
-                    >
-                      Trước
-                    </button>
-                    <button
-                      type="button"
-                      disabled={rolePage >= rolesMeta.totalPages}
-                      onClick={() => setRolePage((p) => Math.min(rolesMeta.totalPages, p + 1))}
-                      className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-50 disabled:opacity-50"
-                    >
-                      Sau
-                    </button>
+                          <div className="flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-semibold text-slate-900 text-sm">{role.roleName}</span>
+                              <span className="font-mono text-slate-600 text-[11px]">{role.roleCode}</span>
+                            </div>
+                            <p className="mt-1 text-[11px] text-slate-500">
+                              Gán lúc: {new Date(role.assignedAt).toLocaleString("vi-VN")}
+                              {role.revokedAt && ` · Thu hồi: ${new Date(role.revokedAt).toLocaleString("vi-VN")}`}
+                            </p>
+                            {role.permissionCodes && role.permissionCodes.length > 0 && (
+                              <p className="mt-0.5 text-[11px] font-medium text-indigo-700">
+                                {role.permissionCodes.length} quyền vận hành
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="rounded-lg bg-slate-50 p-4 text-center text-xs text-slate-500">
+                        Người dùng này chưa được gán vai trò nào.
+                      </p>
+                    )}
                   </div>
                 </div>
+              ) : (
+                <>
+                  {!canAssign && (
+                    <div className="mt-3 rounded-lg border border-slate-200 bg-slate-100 p-3 text-xs text-slate-700">
+                      ℹ️ <strong>Chế độ chỉ đọc (Read-only):</strong> Bạn chỉ có quyền xem vai trò người dùng (<code>authorization.user_roles.read</code>), không có quyền gán hay thay đổi vai trò (<code>authorization.user_roles.assign</code>).
+                    </div>
+                  )}
+
+                  {/* Role Search Filter */}
+                  <div className="mt-3 mb-2">
+                    <input
+                      type="text"
+                      placeholder="Tìm vai trò theo tên hoặc mã..."
+                      aria-label="Tìm kiếm vai trò tương thích"
+                      value={roleSearch}
+                      onChange={(e) => {
+                        setRoleSearch(e.target.value);
+                        setRolePage(1);
+                      }}
+                      className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    {compatibleRoles.map((role) => {
+                      const outOfScope = isRoleOutOfScopeForActor(role);
+                      const isChecked = selectedRoleIds.includes(role.roleId);
+                      const checkboxId = `role-chk-${role.roleId}`;
+
+                      return (
+                        <label
+                          key={role.roleId}
+                          htmlFor={checkboxId}
+                          className={`flex items-start gap-3 rounded-lg border p-3 text-xs transition-colors ${
+                            isChecked
+                              ? "border-indigo-300 bg-indigo-50/60"
+                              : "border-slate-200 bg-white hover:bg-slate-50"
+                          } ${!canAssign || outOfScope ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}`}
+                        >
+                          <input
+                            type="checkbox"
+                            id={checkboxId}
+                            disabled={!canAssign || outOfScope}
+                            checked={isChecked}
+                            onChange={() =>
+                              setSelectedRoleIds((current) =>
+                                current.includes(role.roleId)
+                                  ? current.filter((id) => id !== role.roleId)
+                                  : [...current, role.roleId],
+                              )
+                            }
+                            className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 disabled:opacity-50"
+                          />
+                          <div className="flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-semibold text-slate-900 text-sm">{role.roleName}</span>
+                              <span className="font-mono text-slate-600 text-[11px]">{role.roleCode}</span>
+                              {role.isSystemRole && (
+                                <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">
+                                  Hệ thống
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-1 text-slate-500">{role.description || "Không có mô tả chi tiết."}</p>
+                            <p className="mt-0.5 text-[11px] text-slate-400">
+                              {role.permissionCodes.length} permissions · {role.activeUserCount} người đang dùng
+                            </p>
+                            {outOfScope && (
+                              <span className="mt-1 inline-block font-semibold text-red-600 text-[10px]">
+                                ✕ Chứa quyền vượt thẩm quyền của bạn (Không thể gán vai trò này cho Quản lý khác)
+                              </span>
+                            )}
+                          </div>
+                        </label>
+                      );
+                    })}
+                    {compatibleRoles.length === 0 && (
+                      <p className="rounded-lg bg-slate-50 p-4 text-center text-xs text-slate-500">
+                        Không có vai trò Active nào tương thích với loại tài khoản {accountTypeLabels[selectedUser.accountType]}.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Role Pagination Controls */}
+                  {rolesMeta && rolesMeta.totalPages > 1 && (
+                    <div className="mt-3 flex items-center justify-between border-t border-slate-200 pt-2 text-xs text-slate-600">
+                      <span>
+                        Trang {rolesMeta.page} / {rolesMeta.totalPages} ({rolesMeta.totalItems} vai trò)
+                      </span>
+                      <div className="flex gap-1">
+                        <button
+                          type="button"
+                          disabled={rolePage <= 1}
+                          onClick={() => setRolePage((p) => Math.max(1, p - 1))}
+                          className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-50 disabled:opacity-50"
+                        >
+                          Trước
+                        </button>
+                        <button
+                          type="button"
+                          disabled={rolePage >= rolesMeta.totalPages}
+                          onClick={() => setRolePage((p) => Math.min(rolesMeta.totalPages, p + 1))}
+                          className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-50 disabled:opacity-50"
+                        >
+                          Sau
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
@@ -1551,7 +1566,7 @@ const UserRolePanel = ({
             </div>
 
             {/* Mutation Execution Footer */}
-            {canAssign && (
+            {canAssign && canReadRoles && (
               <div className="rounded-lg bg-slate-50 p-4 border border-slate-200 space-y-3">
                 <label className="block text-xs font-bold text-slate-700">
                   Lý do thay đổi vai trò người dùng <span className="text-red-500">*</span>

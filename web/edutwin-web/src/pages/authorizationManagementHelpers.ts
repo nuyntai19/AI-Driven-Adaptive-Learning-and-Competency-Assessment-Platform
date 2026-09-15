@@ -7,6 +7,8 @@ import type {
   AuthorizationRoleQueryParams,
   AuthorizationRoleStatus,
   AuthorizationUserQueryParams,
+  AssignedAuthorizationRoleDto,
+  PermissionDto,
 } from "../types/authorization";
 
 export interface ParsedSafeError {
@@ -203,3 +205,79 @@ export const validateRoleCreation = (
   }
   return { valid: true };
 };
+
+export interface EffectivePermissionItem {
+  code: string;
+  description: string;
+  sourceRoles: string[];
+}
+
+export function hydrateKnownRolesFromUserAuth(
+  prevKnownRoles: Map<string, AuthorizationRoleDto>,
+  assignedRoles: AssignedAuthorizationRoleDto[],
+): Map<string, AuthorizationRoleDto> {
+  const next = new Map(prevKnownRoles);
+  for (const r of assignedRoles) {
+    const existing = next.get(r.roleId);
+    if (!existing) {
+      next.set(r.roleId, {
+        roleId: r.roleId,
+        roleCode: r.roleCode,
+        roleName: r.roleName,
+        accountType: r.accountType,
+        description: null,
+        isSystemRole: false,
+        status: "Active",
+        permissionCodes: r.permissionCodes ?? [],
+        activeUserCount: 1,
+        rowVersion: "1",
+      });
+    } else if (r.permissionCodes && r.permissionCodes.length > 0 && existing.permissionCodes.length === 0) {
+      next.set(r.roleId, {
+        ...existing,
+        permissionCodes: r.permissionCodes,
+      });
+    }
+  }
+  return next;
+}
+
+export function computeEffectivePermissionsBreakdown(
+  selectedRoleIds: string[],
+  knownRoles: Map<string, AuthorizationRoleDto>,
+  catalog: PermissionDto[],
+): EffectivePermissionItem[] {
+  const selectedRoles = selectedRoleIds
+    .map((id) => knownRoles.get(id))
+    .filter((r): r is AuthorizationRoleDto => r !== undefined);
+  const permissionSources: Record<string, string[]> = {};
+
+  for (const role of selectedRoles) {
+    for (const code of role.permissionCodes) {
+      (permissionSources[code] ??= []).push(role.roleName);
+    }
+  }
+
+  const permissionDescriptions = new Map(
+    catalog.map((p) => [p.permissionCode, p.description]),
+  );
+
+  return Object.entries(permissionSources)
+    .map(([code, sourceRoles]) => ({
+      code,
+      description: permissionDescriptions.get(code) ?? "Quyền vận hành",
+      sourceRoles,
+    }))
+    .sort((a, b) => a.code.localeCompare(b.code));
+}
+
+export function getMissingCanonicalRoleIds(
+  selectedRoleIds: string[],
+  knownRoles: Map<string, AuthorizationRoleDto>,
+  fetchedRoleIds: Set<string>,
+): string[] {
+  return selectedRoleIds.filter((id) => {
+    const r = knownRoles.get(id);
+    return (!r || r.permissionCodes.length === 0) && !fetchedRoleIds.has(id);
+  });
+}
