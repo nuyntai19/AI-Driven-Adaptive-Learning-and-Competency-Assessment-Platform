@@ -46,7 +46,6 @@ export function Drawer({ isOpen, title, description, onClose, children, footer }
     document.body,
   );
 }
-
 interface ConfirmDialogProps {
   isOpen: boolean;
   title: string;
@@ -100,4 +99,3 @@ export function ConfirmDialog({
     document.body,
   );
 }
-

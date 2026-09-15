@@ -13,4 +13,3 @@ export function CenterManagerThemeScope({ children, className = "" }: CenterMana
     </div>
   );
 }
-
