@@ -3,8 +3,8 @@
 
 > **Dự án:** AI-Driven Adaptive Learning and Competency Assessment Platform (EduTwin)
 > **Kế hoạch nền tảng:** `docs/plans/POST-R09-CENTER-MANAGER-OPS.md`
-> **Baseline Git SHA:** `1500ec56c7484a567ebc35a24c0857271efa8e70` (Khóa bất biến)
-> **Branch thực thi chuyên biệt:** `codex/post-r09-center-manager-ux-redesign` (Tách nhánh độc lập từ baseline, không trộn vào branch technical-closeout)
+> **Baseline Git SHA:** Latest clean HEAD sau đợt corrective closeout (sẽ được ghi nhận và khóa chính xác tại Gate 1)
+> **Branch thực thi chuyên biệt:** `codex/post-r09-center-manager-ux-redesign` (Tách nhánh độc lập từ latest clean HEAD sau corrective pass, chứa đầy đủ safe-error correctives, smoke evidence, báo cáo cập nhật và tài liệu redesign này)
 > **Nguồn ảnh thiết kế mẫu:** `C:\Users\ACER\OneDrive\Pictures\Screenshots` (18 ảnh chụp màn hình Lovable)
 > **Visual Anchor (Tiêu chuẩn mỹ thuật):** **Ảnh 18 (`Screenshot 2026-09-15 160355.png`)**
 > **Định phong cách (Design Tone):** **Dark Enterprise SaaS + Restrained AI Accent** (Không lạm dụng glassmorphism/glow; ưu tiên spacing, hierarchy, surface layers, typography và density chuẩn enterprise)
@@ -114,7 +114,7 @@ graph TD
   1. Trang riêng của CenterManager: Áp dụng trực tiếp theme mới.
   2. Trang dùng chung với Teacher: Áp dụng `data-actor="center-manager"` hoặc tách view độc lập để bảo toàn 100% giao diện Teacher hiện tại.
   3. Bảng đối chiếu DTO thực tế vs mockup Lovable: Đánh dấu các trường giả để loại bỏ hoàn toàn.
-* **Tiêu chí nghiệm thu (Gate 1):** Bảng inventory hoàn tất; xác nhận baseline SHA `1500ec5` sạch; tách branch `codex/post-r09-center-manager-ux-redesign`; zero backend code change.
+* **Tiêu chí nghiệm thu (Gate 1):** Bảng inventory hoàn tất; xác nhận latest clean HEAD sau corrective và ghi nhận SHA chính thức làm baseline; tách branch `codex/post-r09-center-manager-ux-redesign`; zero backend code change.
 
 ---
 

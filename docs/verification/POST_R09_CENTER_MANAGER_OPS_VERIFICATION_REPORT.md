@@ -55,7 +55,7 @@ Milestone `POST-R09-CENTER-MANAGER-OPS` hoàn thành toàn diện năng lực qu
 
 Toàn bộ quá trình thực thi tuân thủ nguyên tắc forward-only, không rebase, không merge, không force-push:
 
-| Checkpoint | Commit SHA | Tiêu đề Commit | Nội dung thực thi |
+| Checkpoint | Commit SHA (Evidence) | Tiêu đề Commit Gốc | Nội dung thực thi |
 |---|---|---|---|
 | **Checkpoint 1** | `a57c5b4` | `docs(center-manager): specify post-r09 operational completion` | Khóa đặc tả kỹ thuật authoritative: ADR, CONSTITUTION, PROJECT_REQUIREMENTS, DATABASE_SCHEMA, API_CONTRACTS, UI_UX_SPEC, MASTER_PLAN, PROJECT_TRACKING. 0 file mã nguồn sửa đổi; bảo toàn nguyên vẹn file DOCX. |
 | **Checkpoint 2** | `5c05478` | `test(center-manager): lock tenant and account-type boundaries` | Bổ sung bộ kiểm thử bảo mật `CenterManagerSecurityBoundaryTests.cs` (27/27 pass) và frontend `hardening.test.ts` (56/56 pass) khóa ranh giới tenant, chặn CenterManager khỏi Platform API và Teacher khỏi Center-wide API. |
@@ -66,9 +66,9 @@ Toàn bộ quá trình thực thi tuân thủ nguyên tắc forward-only, không
 | **Checkpoint 7** | `762b2b7` | `fix(center-manager): complete phase g curriculum question hardening` | Củng cố Curriculum (Draft-only mutation, atomic replacement), Question Bank (zero answer leak, delete state guard), Assignment (atomic snapshot publish). |
 | **Checkpoint 8** | `01bd3f4`<br>*(corr: `2401756`, `3f88e4d`, `c00a207`, `7966388`)* | `feat(center-manager): complete dynamic authorization UX and audit` | Dynamic RBAC 3 tabs, phân trang server-side cho vai trò và người dùng, read-only capability gating, lọc chính xác permission code, shared hydration helpers. |
 | **Checkpoint 9** | `866a290` | `perf(web): split center admin routes and optimize bundle` | Code-splitting 26 routes, giảm bundle từ 1.64 MB xuống 395 KB, triệt tiêu ProblemDetails rò rỉ trên 11 trang, cập nhật MySQL catalog rollback assertion lên 70 permissions. |
-| **Checkpoint 10** | `1500ec5` | `test(center-manager): complete relational and live e2e verification` | Rebuild và xác nhận Docker stack (mysql: 3307, api: 5000, web: 3000), 3.472 backend tests pass (56 live MySQL tests), 131 web tests pass, EF model 0 drift, live authentication test. |
-| **Checkpoint 11** | `1500ec5` | `test(center-manager): complete chrome smoke acceptance` | Kiểm thử Chrome Smoke bằng subagent trên live stack: Đăng nhập CenterManager, Hồ sơ trung tâm, Ma trận phân quyền 3 tabs, kiểm chứng Persona D 403 Forbidden. Đầy đủ ma trận 4-persona/3-viewports được chuyển giao vào gate của milestone UX Redesign tiếp theo. |
-| **Checkpoint 12** | `1500ec5` | `docs(center-manager): publish operational completion closeout` | Xuất bản báo cáo nghiệm thu kỹ thuật chính thức và cập nhật PROJECT_TRACKING.md. |
+| **Checkpoint 10** | `1500ec5` *(tổng hợp)* | `docs(center-manager): publish operational completion closeout` | Xác nhận kiểm thử quan hệ và live stack (rebuild Docker Web :3000, API :5000, MySQL :3307), 3.472 backend tests pass (56 live MySQL tests), 131 web tests pass, EF model 0 drift, live authentication test. |
+| **Checkpoint 11** | `1500ec5`<br>*(corr: `aa37ecf`)* | `docs(center-manager): publish operational completion closeout` | Kiểm thử Chrome Smoke bằng subagent trên live stack: Đăng nhập CenterManager, Hồ sơ trung tâm, Ma trận phân quyền 3 tabs, kiểm chứng Persona D 403 Forbidden. Toàn bộ ảnh chụp màn hình bằng chứng được commit vào `docs/verification/post-r09-center-manager-ops/`. Đầy đủ ma trận 4-persona/3-viewports được chuyển giao vào gate của milestone UX Redesign tiếp theo. |
+| **Checkpoint 12** | `1500ec5`<br>*(corr: `aa37ecf`)* | `docs(center-manager): publish operational completion closeout` | Xuất bản báo cáo nghiệm thu kỹ thuật chính thức và cập nhật PROJECT_TRACKING.md; đợt forward corrective `aa37ecf` xử lý triệt để an toàn lỗi Knowledge Graph panels, lưu trữ ảnh E2E và làm sạch whitespace. |
 
 ---
 

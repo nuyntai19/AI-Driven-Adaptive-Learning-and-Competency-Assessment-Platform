@@ -100,7 +100,6 @@ export const KnowledgeEdgeCreatePanel: React.FC<KnowledgeEdgeCreatePanelProps> =
 
     if (isAxiosError<ProblemDetails>(err)) {
       const errorCode = err.response?.data?.errorCode;
-      const detail = err.response?.data?.detail;
 
       if (errorCode === "VALIDATION_FAILED") {
         message = "Dữ liệu nhập chưa hợp lệ. Vui lòng kiểm tra lại.";
