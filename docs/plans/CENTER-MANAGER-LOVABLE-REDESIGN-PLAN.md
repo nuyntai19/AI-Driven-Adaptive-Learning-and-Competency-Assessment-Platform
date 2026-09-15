@@ -3,8 +3,8 @@
 
 > **Dự án:** AI-Driven Adaptive Learning and Competency Assessment Platform (EduTwin)
 > **Kế hoạch nền tảng:** `docs/plans/POST-R09-CENTER-MANAGER-OPS.md`
-> **Baseline Git SHA:** Latest clean HEAD sau đợt corrective closeout (sẽ được ghi nhận và khóa chính xác tại Gate 1)
-> **Branch thực thi chuyên biệt:** `codex/post-r09-center-manager-ux-redesign` (Tách nhánh độc lập từ latest clean HEAD sau corrective pass, chứa đầy đủ safe-error correctives, smoke evidence, báo cáo cập nhật và tài liệu redesign này)
+> **Baseline Git SHA:** `d62a310dc2b2d710236b4461fee76b1ab5012471` (Short: `d62a310`) — Commit hoàn tất khắc phục safe error panels, làm sạch whitespace, loại bỏ biến thừa, kiểm định 131/131 frontend tests, 0 lint error/warnings, clean build 395.27 KB
+> **Branch thực thi chuyên biệt:** `codex/post-r09-center-manager-ux-redesign` (Tách nhánh độc lập trực tiếp từ baseline `d62a310`)
 > **Nguồn ảnh thiết kế mẫu:** `C:\Users\ACER\OneDrive\Pictures\Screenshots` (18 ảnh chụp màn hình Lovable)
 > **Visual Anchor (Tiêu chuẩn mỹ thuật):** **Ảnh 18 (`Screenshot 2026-09-15 160355.png`)**
 > **Định phong cách (Design Tone):** **Dark Enterprise SaaS + Restrained AI Accent** (Không lạm dụng glassmorphism/glow; ưu tiên spacing, hierarchy, surface layers, typography và density chuẩn enterprise)
@@ -104,17 +104,103 @@ graph TD
 ---
 
 ### Checkpoint 1: UX Contract Freeze & Inventory
-* **Mục tiêu:** Khóa bất biến baseline `1500ec5`, lập bảng inventory toàn diện tất cả các route/component mà CenterManager có thể truy cập tại baseline SHA (không giả định trước số lượng).
-* **Nội dung kiểm kê bắt buộc:**
-  Lập bảng ánh xạ với đầy đủ các cột:
-  ```text
-  Route | Component | Accessible Account Types | Shared? | CenterManager Presentation Strategy
-  ```
-  Phân định rõ:
-  1. Trang riêng của CenterManager: Áp dụng trực tiếp theme mới.
-  2. Trang dùng chung với Teacher: Áp dụng `data-actor="center-manager"` hoặc tách view độc lập để bảo toàn 100% giao diện Teacher hiện tại.
-  3. Bảng đối chiếu DTO thực tế vs mockup Lovable: Đánh dấu các trường giả để loại bỏ hoàn toàn.
-* **Tiêu chí nghiệm thu (Gate 1):** Bảng inventory hoàn tất; xác nhận latest clean HEAD sau corrective và ghi nhận SHA chính thức làm baseline; tách branch `codex/post-r09-center-manager-ux-redesign`; zero backend code change.
+* **Trạng thái:** **HOÀN THÀNH — SẴN SÀNG REVIEW (GATE 1 PASS / AWAITING PO APPROVAL)**
+* **Baseline Git SHA:** `d62a310dc2b2d710236b4461fee76b1ab5012471` (Branch: `codex/post-r09-center-manager-ux-redesign`)
+* **Mục tiêu:** Khóa bất biến baseline kỹ thuật `d62a310`, lập bảng kiểm kê toàn diện tất cả các route/component/DTO mà CenterManager có thể truy cập, phân định ranh giới Actor Isolation và loại bỏ triệt để các trường dữ liệu giả mạo.
+
+#### 1. Bảng kiểm kê Route & Component toàn diện của CenterManager (19 route patterns / 16 distinct pages)
+
+| STT | Route Pattern | Component File | Account Types được phép | Dùng chung (Shared)? | Quyền yêu cầu (Permissions) | Nghiệp vụ / Mutations / Modals | Ràng buộc OCC (RowVersion)? | Chiến lược hiển thị CenterManager (Actor Isolation) |
+|---|---|---|---|---|---|---|---|---|
+| 1 | `/` | `src/pages/AuthenticatedHomePage.tsx` | All authenticated | **Có** (Shared Portal) | Đã đăng nhập (`sessionStatus === 'authenticated'`) | Điều hướng portal theo quyền hiệu lực | Không | Giữ nguyên logic điều hướng; nếu là CenterManager, hiển thị scoped quick-links sang `/quan-ly/tong-quan-trung-tam` |
+| 2 | `/quan-ly/trung-tam` | `src/pages/CenterProfilePage.tsx` | `CenterManager` | **Không** (Độc quyền CenterManager) | `center.read` \| `center.manage` | Xem thông tin trung tâm, cập nhật Tên & Múi giờ | **Có** (`updateCenterProfile` gửi `rowVersion`, hiển thị `ConcurrencyBanner` khi 409) | **Direct Reskin:** Dark Enterprise SaaS, card chỉ đọc cho mã/trạng thái, form sửa tên/múi giờ |
+| 3 | `/quan-ly/tong-quan-trung-tam` | `src/pages/CenterDashboardPage.tsx` | Any có quyền (CenterManager) | **Không** (Độc quyền CenterManager) | `dashboards.center.read` | Lọc theo môn học (`subjectId`), làm mới dữ liệu | Không (Read-only query) | **Direct Reskin (Canonical Route):** Bố cục lưới Ảnh 18, 4 thẻ KPI thật, biểu đồ năng lực theo môn, bảng nguy cơ theo lớp |
+| 4 | `/quan-ly/giao-vien` | `src/pages/TeacherListPage.tsx` | Any có quyền (CenterManager) | **Không** (Độc quyền CenterManager) | `teachers.read` (`teachers.create`, `teachers.update`, `teachers.delete`) | CRUD giáo viên, `TeacherDetailModal`, `PasswordResetModal`, xóa mềm với 409 dependency guard | **Có** (`RowVersion` trên form sửa giáo viên) | **Direct Reskin:** Dark table theo Ảnh 4, reskin toàn bộ modals & forms |
+| 5 | `/quan-ly/lop-hoc` | `src/pages/ClassListPage.tsx` | Any có quyền (CenterManager) | **Không** (Độc quyền CenterManager) | `classes.read` (`classes.create`, `classes.update`, `classes.students.manage`) | CRUD lớp học, `ClassDetailModal`, `AddStudentsModal` (SQL anti-join, server paging), `RemoveStudentModal` | **Có** (`RowVersion` trên form sửa lớp) | **Direct Reskin:** Dark table theo Ảnh 6, reskin modals thêm/rút học sinh |
+| 6 | `/quan-ly/hoc-sinh` | `src/pages/StudentListPage.tsx` | Any có quyền (CenterManager) | **Không** (Độc quyền CenterManager) | `students.read` (`students.create`, `students.update`, `students.delete`) | CRUD học sinh, `StudentDetailModal`, `SubjectGoalsModal` (twin goals), `PasswordResetModal`, xóa mềm | **Có** (`RowVersion` trên form sửa học sinh) | **Direct Reskin:** Dark table theo Ảnh 5, reskin SubjectGoalsModal & reset pass |
+| 7 | `/quan-ly/mon-hoc` | `src/pages/SubjectListPage.tsx` | Any có quyền (CenterManager) | **Không** (Độc quyền CenterManager) | `subjects.read` (`subjects.create`, `subjects.update`, `subjects.delete`) | CRUD môn học, liên kết sang Knowledge Graph | **Có** (`RowVersion` trên form sửa môn học) | **Direct Reskin:** Dark table theo Ảnh 7, modal sửa môn học |
+| 8 | `/quan-ly/phan-quyen` | `src/pages/AuthorizationManagementPage.tsx` | `CenterManager` | **Không** (Độc quyền CenterManager) | `authorizationUiPermissions` (`roles.read`, `user_roles.read`, `audit.read`) | Tab 1 (Vai trò & Ma trận 70 quyền, badge sensitive), Tab 2 (Gán vai trò & Effective attribution), Tab 3 (Nhật ký kiểm toán đã khử khuẩn, trace ID copy) | **Có** (`RowVersion` trên cập nhật vai trò/quyền) | **Direct Reskin:** Dark Enterprise SaaS, cấu trúc 3 Tabs, phân trang server-side, 0 fake permissions |
+| 9 | `/quan-ly/tong-quan-lop-hoc`<br/>`/quan-ly/lop-hoc/:classId/tong-quan` | `src/pages/TeacherClassDashboardPage.tsx` | Any có quyền (Teacher, CenterManager) | **Có** (Shared Teacher / CenterManager) | `dashboards.teacher.read` \| `dashboards.center.read` | Giám sát lớp học, danh sách học sinh nguy cơ cao, chủ đề yếu, gap groups | Không (Read-only query) | **Actor Scoped:** Bọc container `data-actor="center-manager"` khi user là CenterManager; bảo toàn nguyên vẹn giao diện Teacher |
+| 10 | `/quan-ly/duyet-bai` | `src/pages/ReviewQueuePage.tsx` | Any có quyền (Teacher, CenterManager) | **Có** (Shared Teacher / CenterManager) | `reviews.read` (`reviews.override`) | Bố cục Master/Detail: đối chiếu bài làm + AI observation + rule-based score, ghi đè điểm với lý do bắt buộc, Scratchpad Canvas drawer. **Loại bỏ nút prototype "Mô phỏng 409"** | **Có** (`RowVersion` bắt buộc khi gửi review override) | **Actor Scoped:** Bọc container `data-actor="center-manager"` khi user là CenterManager; bảo toàn nguyên vẹn giao diện Teacher |
+| 11 | `/quan-ly/hoc-sinh/:studentId/nang-luc` | `src/pages/TeacherStudentTwinPage.tsx` | Any có quyền (Teacher, CenterManager) | **Có** (Shared Teacher / CenterManager) | `twin.student.read.scoped` | Radar năng lực chủ đề học sinh, đường tiến độ học tập, hành động khuyến nghị | Không (Read-only query) | **Actor Scoped:** Áp dụng dark theme khi `data-actor="center-manager"`; giữ nguyên Teacher view |
+| 12 | `/kien-thuc/do-thi` | `src/pages/KnowledgeGraphPage.tsx` | Any có quyền (Teacher, CenterManager) | **Có** (Shared Teacher / CenterManager) | `subjects.read`, `knowledge.nodes.read`, `knowledge.edges.read` | Canvas đồ thị tri thức, Right Inspector Panel xem/sửa Node & Edge, bắt lỗi chu trình (Cycle detection) an toàn. **KHÔNG drag/drop lưu tọa độ** (không có API schema) | **Có** (`RowVersion` trên Node và Edge mutations) | **Actor Scoped:** Canvas Dark tone và Inspector panel cho CenterManager; giữ nguyên Teacher graph canvas |
+| 13 | `/quan-ly/giao-trinh` | `src/pages/CurriculumListPage.tsx` | Any có quyền (Teacher, CenterManager) | **Có** (Shared Teacher / CenterManager) | `curriculums.read` | Danh sách giáo trình theo trạng thái (Draft, Published, Archived), chuyển trạng thái | Không (Query & state actions) | **Actor Scoped:** Scoped dark table cho CenterManager; giữ nguyên Teacher view |
+| 14 | `/quan-ly/giao-trinh/tao-moi`<br/>`/quan-ly/giao-trinh/:id` | `src/pages/CurriculumEditorPage.tsx` | Any có quyền (Teacher, CenterManager) | **Có** (Shared Teacher / CenterManager) | `curriculums.create` / `curriculums.update` | Trình soạn giáo trình: chọn thứ tự Knowledge Nodes, liên kết lớp học nguyên tử, xác nhận Publish | **Có** (`RowVersion` khi cập nhật giáo trình) | **Actor Scoped:** Scoped Dark Editor cho CenterManager; giữ nguyên Teacher editor |
+| 15 | `/quan-ly/cau-hoi` | `src/pages/QuestionBankPage.tsx` | Any có quyền (Teacher, CenterManager) | **Có** (Shared Teacher / CenterManager) | `questions.read` | Danh sách câu hỏi, bộ lọc môn học/độ khó/dạng câu hỏi | Không (Query & state actions) | **Actor Scoped:** Scoped dark list cho CenterManager; giữ nguyên Teacher view |
+| 16 | `/quan-ly/cau-hoi/tao-moi`<br/>`/quan-ly/cau-hoi/:id` | `src/pages/QuestionEditorPage.tsx` | Any có quyền (Teacher, CenterManager) | **Có** (Shared Teacher / CenterManager) | `questions.create` / `questions.update` | Soạn thảo KaTeX, chuẩn hóa `QuestionAnswerEvaluationMode` (`"TextExact"`, `"NumericRational"`, `"Manual"`), `reasoningRequired`, chuyển trạng thái Draft/Active/Archived | **Có** (`RowVersion` khi cập nhật câu hỏi) | **Actor Scoped:** Scoped Dark Editor cho CenterManager; giữ nguyên Teacher editor |
+| 17 | `/quan-ly/bai-tap` | `src/pages/AssignmentListPage.tsx` | `CenterManager`, `Teacher` | **Có** (Shared Teacher / CenterManager) | `assignments.read` | Danh sách bài tập, bộ lọc lớp, trạng thái Draft/Published/Archived | Không (Query & state actions) | **Actor Scoped:** Scoped dark list cho CenterManager; giữ nguyên Teacher view |
+| 18 | `/quan-ly/bai-tap/tao-moi`<br/>`/quan-ly/bai-tap/:id` | `src/pages/AssignmentEditorPage.tsx` | `CenterManager`, `Teacher` | **Có** (Shared Teacher / CenterManager) | `assignments.create` / `assignments.update` | Chọn câu hỏi, gán lớp, xem trước Target Summary, Publish bài tập | **Có** (`RowVersion` khi cập nhật bài tập) | **Actor Scoped:** Scoped Dark Editor cho CenterManager; giữ nguyên Teacher editor |
+| 19 | `/quan-ly/bai-tap/:id/tien-do` | `src/pages/AssignmentProgressPage.tsx` | `CenterManager`, `Teacher` | **Có** (Shared Teacher / CenterManager) | `assignments.read` | Theo dõi tiến độ bài tập theo học sinh (`studentId`, `fullName`, `status`, `completedQuestionCount`/`totalQuestionCount`). **LOẠI BỎ ĐIỂM SỐ AGGREGATE THEO LỚP** | Không (Read-only query) | **Actor Scoped:** Scoped Dark progress list cho CenterManager; giữ nguyên Teacher view |
+
+---
+
+#### 2. Phân loại 2 nhóm hiển thị phục vụ Actor Isolation
+
+1. **Nhóm 1 — Màn hình Độc quyền của CenterManager (7 trang):**
+   - Hồ sơ trung tâm (`/quan-ly/trung-tam`)
+   - Dashboard Trung tâm (`/quan-ly/tong-quan-trung-tam`)
+   - Quản lý Giáo viên (`/quan-ly/giao-vien`)
+   - Quản lý Lớp học (`/quan-ly/lop-hoc`)
+   - Quản lý Học sinh (`/quan-ly/hoc-sinh`)
+   - Quản lý Môn học (`/quan-ly/mon-hoc`)
+   - Quản lý Phân quyền (`/quan-ly/phan-quyen`)
+   *→ Áp dụng trực tiếp App Shell và Theme Dark Enterprise SaaS mới.*
+
+2. **Nhóm 2 — Màn hình Dùng chung với Teacher / Actor khác (9 trang / 12 route patterns):**
+   - Portal chung (`/`)
+   - Dashboard Lớp học (`/quan-ly/tong-quan-lop-hoc`, `/quan-ly/lop-hoc/:classId/tong-quan`)
+   - Hàng đợi xem xét bài tập (`/quan-ly/duyet-bai`)
+   - Năng lực học sinh (`/quan-ly/hoc-sinh/:studentId/nang-luc`)
+   - Đồ thị tri thức (`/kien-thuc/do-thi`)
+   - Giáo trình (`/quan-ly/giao-trinh`, `/tao-moi`, `/:id`)
+   - Ngân hàng câu hỏi (`/quan-ly/cau-hoi`, `/tao-moi`, `/:id`)
+   - Bài tập (`/quan-ly/bai-tap`, `/tao-moi`, `/:id`, `/:id/tien-do`)
+   *→ Bắt buộc dùng `data-actor="center-manager"` hoặc tách view độc lập để bảo toàn 100% UI Teacher.*
+
+---
+
+#### 3. Bảng đối chiếu DTO Hợp đồng & Loại bỏ các trường giả mạo (Fake Fields Elimination)
+
+| Module / Màn hình | DTO / Contract thực tế | Trường dữ liệu thực tế (100% Ground Truth) | Trường giả lập trong Lovable (BẮT BUỘC LOẠI BỎ) | Xử lý giao diện chuẩn xác |
+|---|---|---|---|---|
+| **Center Dashboard** | `CenterDashboardDataDto` | - `summary`: `studentCount`, `classCount`, `teacherCount`<br/>- `masteryBySubject`: `subjectId`, `subjectName`, `averageMastery`<br/>- `highRiskByClass`: `classId`, `className`, `highRiskStudentCount`, `totalStudentCount`<br/>- `classRanking`: `rank`, `classId`, `className`, `subjectName`, `averageMastery`, `assignmentCompletionRate`<br/>- `generatedAt`: ISO string | - "86,4% hoàn thành tuần này"<br/>- "1.248 bài tập đã tạo"<br/>- "32 học sinh cần hỗ trợ ngay"<br/>- "246 evidence mới trong 24h"<br/>- "Cập nhật 10 phút trước" | Hiển thị 4 thẻ KPI dựa trên DTO thật: Giáo viên (`summary.teacherCount`), Học sinh (`summary.studentCount`), Lớp học (`summary.classCount`), Môn học đo lường (`masteryBySubject.length`). Thời điểm lấy từ `generatedAt`. Không tính toán aggregate giả. |
+| **Center Context Card** (Góc Sidebar) | Session / `GET /api/v1/centers/me` | - `centerName`: tên trung tâm hiện tại<br/>- `centerCode`: mã trung tâm (ví dụ `CN-HCM-01`)<br/>- `status`: trạng thái (`Active`) | - Dropdown chuyển đổi trung tâm / tenant switch<br/>- Danh sách tenant chi nhánh khác | Thẻ thông tin **ĐỘNG CHỈ ĐỌC (Read-only)**: Hiển thị tên trung tâm và nhãn `{centerCode} · Đang hoạt động`. Không có dropdown chọn tenant. |
+| **Question Bank / Editor** | `QuestionAnswerEvaluationMode` | `"TextExact"` \| `"NumericRational"` \| `"Manual"`<br/>Thuộc tính phụ trợ: `reasoningRequired` (boolean) | - Mode "AI Reasoning" giả mạo biến thành evaluation mode | Dropdown chế độ chấm hiển thị đúng 3 giá trị contract. Checkbox riêng cho "Yêu cầu suy luận AI" (`reasoningRequired`). |
+| **Assignment Progress** | `AssignmentProgressItemDto` | - `studentId`: string<br/>- `fullName`: string<br/>- `status`: ProgressStatus<br/>- `completedQuestionCount`: number<br/>- `totalQuestionCount`: number | - "Điểm số trung bình cả lớp"<br/>- "Điểm số từng học sinh"<br/>- Phân phối điểm số theo thang điểm 10 | Bảng tiến độ chỉ hiển thị trạng thái và tiến độ câu hỏi (`{completedQuestionCount}/{totalQuestionCount}`). Loại bỏ hoàn toàn cột điểm số cho đến khi API hỗ trợ. |
+| **Knowledge Graph** | `KnowledgeNodeDto`, `KnowledgeEdgeDto` | - Canonical node / edge attributes<br/>- `RowVersion`<br/>- Cycle detection guard | - Drag & drop lưu tọa độ cố định (X, Y) | Bố cục Canvas dùng thuật toán tự động (client-side auto-layout / force simulation). Không thêm payload tọa độ vào mutations vì backend không có schema lưu trữ. |
+| **Review Queue** | `TeacherReviewItemDto`, `OverrideScoreRequest` | - Bài làm gốc của học sinh<br/>- Quan sát / giải trình của AI<br/>- Điểm số chấm theo quy tắc<br/>- `overrideScore`, `overrideReason` (bắt buộc)<br/>- `RowVersion` | - Nút prototype/debug "Mô phỏng 409" | Bố cục Master/Detail. Xóa sạch nút debug "Mô phỏng 409". Xử lý xung đột OCC qua `ConcurrencyBanner` chuẩn sản xuất. |
+| **Phân quyền RBAC** | `PermissionDto`, `RoleDto` | - 70 permissions phân loại theo module<br/>- Tập giao: Active $\cap$ Compatible $\cap$ Delegable $\cap$ Actor's Effective<br/>- Cờ `IsSensitive` | - 70 checkbox phẳng không phân nhóm<br/>- Tùy ý gán quyền không tương thích | Ma trận quyền hiển thị theo 6 nhóm tính năng, làm nổi bật nhãn cảnh báo đỏ cho quyền `IsSensitive = true`. 3 tabs tách biệt, phân trang server-side. |
+
+---
+
+#### 4. Quy tắc bảo vệ OCC & Error Handling an toàn (Production Grade)
+
+1. **Bắt buộc gửi `RowVersion` trên mọi Mutation:**
+   - Cập nhật hồ sơ trung tâm (`CenterProfilePage`)
+   - Cập nhật môn học (`SubjectListPage`)
+   - Cập nhật Node / Edge (`KnowledgeGraphPage`)
+   - Cập nhật & Publish giáo trình (`CurriculumEditorPage`)
+   - Cập nhật câu hỏi (`QuestionEditorPage`)
+   - Cập nhật & Publish bài tập (`AssignmentEditorPage`)
+   - Ghi đè điểm xem xét (`ReviewQueuePage`)
+   - Cập nhật vai trò & phân quyền (`AuthorizationManagementPage`)
+2. **Xử lý xung đột đồng thời HTTP 409:**
+   - Hiển thị component `ConcurrencyBanner` với thông điệp: *"Dữ liệu đã được cập nhật bởi quản trị viên khác. Vui lòng tải lại dữ liệu mới nhất trước khi tiếp tục."*
+   - Cung cấp nút "Tải lại dữ liệu" để đồng bộ `RowVersion` mới nhất từ server.
+3. **Safe Error Mapping (Khử khuẩn thông báo lỗi):**
+   - Mọi lỗi hiển thị trên giao diện người dùng bắt buộc phải đi qua `mapSafeOperationalError` (từ `src/utils/problemDetails.ts`).
+   - Tuyệt đối không render trực tiếp thuộc tính thô `detail` hoặc `title` từ response backend ra UI để tránh lộ thông tin nội bộ hệ thống.
+   - Khi có `traceId`, hiển thị nhãn mã theo dõi hỗ trợ (ví dụ: `Mã theo dõi: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01`).
+
+---
+
+#### 5. Điều kiện dừng nghiêm ngặt sau Gate 1
+
+> [!IMPORTANT]
+> **GATE 1 CHECKPOINT STOP:**
+> Toàn bộ bảng kiểm kê Route, Component, DTO Mapping và phân lập Actor Isolation trên đây đã được lập tại baseline chính thức `d62a310`.
+> **DỪNG LẠI TẠI ĐÂY.** Không được phép viết mã nguồn cho Checkpoint 2 (Design System Foundation) hoặc các Checkpoint tiếp theo cho đến khi Product Owner và Codex kiểm tra, phản biện và phê duyệt hoàn toàn bảng kiểm kê Gate 1 này.
+
 
 ---
 
