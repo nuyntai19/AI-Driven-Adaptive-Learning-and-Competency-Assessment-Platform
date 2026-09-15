@@ -228,6 +228,9 @@ graph TD
 ---
 
 ### Checkpoint 3: Shell & Capability-First Navigation
+* **Trạng thái:** **HOÀN THÀNH — GATE 3 PASS**
+* **Evidence commit:** `b74ca41` (`feat(ux-center): add capability-aware center manager shell`).
+* **Kết quả xác minh:** 135/135 frontend tests pass, ESLint 0 lỗi/0 cảnh báo, production build pass; `CenterManagerLayout` được tách thành chunk 9.90 KB (gzip 3.51 KB), không chunk nào vượt 500 KB.
 * **Mục tiêu:** Tái cấu trúc App Shell hoàn chỉnh theo ngôn ngữ Ảnh 18 cho CenterManager, liên kết chặt chẽ với hệ thống phân quyền của người dùng.
 * **Chi tiết công việc:**
   1. `Sidebar` chuẩn Ảnh 18:
@@ -241,6 +244,7 @@ graph TD
      - Tenant/Center badge tĩnh lấy động từ API.
      - User profile dropdown: Tên hiển thị, vai trò (`SYSTEM_CENTERMANAGER` hoặc tên custom role), nút Đăng xuất.
 * **Tiêu chí nghiệm thu (Gate 3):** Navigation mượt mà; 1 route = 1 active state; sidebar tự co giãn trên desktop/tablet/mobile; URL trực tiếp vẫn tuân thủ route guard.
+* **Ghi chú nghiệm thu trực quan:** Kiểm tra source, test và build đã hoàn tất. Browser E2E sau đăng nhập được giữ cho Checkpoint 8; không tuyên bố Chrome pass khi chưa có phiên CenterManager hợp lệ.
 
 ---
 
