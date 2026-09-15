@@ -25,12 +25,10 @@ public class GetCurriculumUseCase : IGetCurriculumUseCase
 
     public async Task<GetCurriculumResult> ExecuteAsync(GetCurriculumRequest request, CancellationToken cancellationToken = default)
     {
-        if (!_tenantContext.IsResolved || !_tenantContext.CenterId.HasValue)
+        if (!CurriculumGuards.TryResolveActor(_tenantContext, out var centerId, out var actorId, out var isTeacher))
         {
             return GetCurriculumResult.Failure(ErrorCodes.ResourceNotFound);
         }
-
-        var centerId = _tenantContext.CenterId.Value;
 
         var curriculum = await _dbContext.Curriculums
             .AsNoTracking()
@@ -39,6 +37,11 @@ public class GetCurriculumUseCase : IGetCurriculumUseCase
                                       !c.IsDeleted, cancellationToken);
 
         if (curriculum == null)
+        {
+            return GetCurriculumResult.Failure(ErrorCodes.ResourceNotFound);
+        }
+
+        if (!CurriculumGuards.CanAccess(curriculum, actorId, isTeacher))
         {
             return GetCurriculumResult.Failure(ErrorCodes.ResourceNotFound);
         }

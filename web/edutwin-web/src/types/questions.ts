@@ -45,6 +45,7 @@ export interface Question {
 }
 
 export interface CreateQuestionRequest {
+  teacherId?: string | null;
   subjectId: string;
   primaryTopicNodeId: string;
   questionType: QuestionType;

@@ -156,69 +156,8 @@ public class PublishAssignmentUseCase : IPublishAssignmentUseCase
                 return PublishAssignmentResult.Failure(ErrorCodes.ValidationFailed);
         }
 
-        // ── 9. Xác định danh sách Target Students ───────────────────────────────
-        // Đọc target mode từ Draft: nếu có SelectedStudents records trong AssignmentTargets
-        // thì dùng SelectedStudents; nếu không (hoặc rỗng) => WholeClass.
-        // NOTE: P10-T01 lưu TargetMode thông qua AssignmentTargets records ở Draft.
-        // Theo thiết kế hiện tại, Draft không có AssignmentTargets (chúng được materialize khi publish).
-        // Do đó cần đọc lại từ Draft context:
-        // - CreateAssignment lưu TargetMode qua CreateAssignmentRequest.TargetMode
-        //   nhưng Assignment entity không lưu TargetMode string (chỉ lưu sau khi publish).
-        //
-        // Kiểm tra thực tế: Assignment entity không có TargetMode field.
-        // Thay vào đó, khi create (WholeClass): không lưu targets ngay;
-        // khi create (SelectedStudents): không lưu targets ngay — chờ publish.
-        //
-        // Vậy làm sao biết mode? Nhìn lại CreateAssignmentUseCase:
-        //   - Nó KHÔNG persist AssignmentTargets ở Draft phase.
-        //   - TargetMode/StudentIds chỉ validate lúc create, không lưu.
-        // => Vậy publish cần đọc từ một nguồn khác.
-        //
-        // ⚠️ MÂU THUẪN PHÁT HIỆN: Assignment entity không có TargetMode column.
-        // DATABASE_SCHEMA §20 (assignments table) không có target_mode column.
-        // Nhưng DATABASE_SCHEMA §22 (assignment_targets) có target_source column.
-        // CreateAssignmentUseCase chưa tạo assignment_targets khi Draft.
-        //
-        // => Publish cần dùng thông tin từ Assignment creation context.
-        //    Giải pháp: Assignment phải lưu TargetMode hoặc phải có một cách
-        //    để biết ai là target khi publish.
-        //
-        // Tham chiếu API_CONTRACTS.md §50:
-        //   targetMode: WholeClass hoặc SelectedStudents
-        //   studentIds: list student IDs (khi SelectedStudents)
-        //
-        // MASTER_PLAN P10-T02 §67:
-        //   "Target WholeClass lấy active membership tại thời điểm publish."
-        //   "SelectedStudents phải thuộc Class."
-        //
-        // Kết luận: Vì Assignment không lưu TargetMode + StudentIds,
-        // publish sẽ lấy active membership của Class (WholeClass behavior)
-        // trừ khi có AssignmentTargets Draft records (SelectedStudents behavior).
-        //
-        // NOTE: Cần xem lại xem CreateAssignmentUseCase có lưu Draft targets không.
-        // Nhìn lại CreateAssignmentUseCase: KHÔNG lưu AssignmentTargets khi create.
-        // Vậy, về mặt nghiệp vụ thuần túy:
-        //
-        // Cách tiếp cận được approve:
-        //   - Xem Draft AssignmentTargets:
-        //     * Nếu KHÔNG có records => WholeClass (lấy active class members tại publish time)
-        //     * Nếu CÓ records => SelectedStudents (đã được lưu trước khi publish)
-        //
-        // Tuy nhiên CreateAssignmentUseCase không lưu AssignmentTargets!
-        // => Cần thêm bước cho UpdateAssignment để lưu Draft targets,
-        //    hoặc Publish phải nhận thêm thông tin targetMode + studentIds.
-        //
-        // Tham chiếu API_CONTRACTS.md §51 Publish request: CHỈ CÓ rowVersion.
-        // => Publish không nhận thêm thông tin target.
-        //
-        // => Publish hoạt động theo logic:
-        //   - Nếu AssignmentTargets (Draft records) đã tồn tại → dùng danh sách đó
-        //   - Nếu không có → lấy toàn bộ active class members (WholeClass)
-        //
-        // Đây là thiết kế hợp lệ: Teacher có thể Update assignment để thêm Draft targets,
-        // hoặc không thêm gì (WholeClass là default).
-
-        // Đọc các Draft targets đã lưu (nếu có)
+        // SelectedStudents are persisted as draft targets by create/update.
+        // No draft targets means WholeClass, materialized from active membership at publish time.
         var existingDraftTargets = await _dbContext.AssignmentTargets
             .AsNoTracking()
             .Where(at => at.AssignmentId == assignmentId)

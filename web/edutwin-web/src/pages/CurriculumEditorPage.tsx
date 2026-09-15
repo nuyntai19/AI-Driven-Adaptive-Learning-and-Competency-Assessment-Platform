@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { organizationApi } from "../api/organizationApi";
+import { useAuthStore } from "../stores/authStore";
+import { permissions } from "../auth/permissions";
 import {
   useCurriculum,
   useCreateCurriculum,
@@ -11,16 +13,28 @@ import {
   usePublishCurriculum
 } from "../features/curriculum/useCurriculums";
 import type { CreateCurriculumRequest, UpdateCurriculumRequest } from "../types/curriculum";
+import {
+  shouldDisplayTeacherSelector,
+  validateCurriculumForm,
+  buildCreateCurriculumPayload,
+  buildUpdateCurriculumPayload,
+  isConcurrencyConflictError
+} from "./curriculumEditorHelpers";
 
 export const CurriculumEditorPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const isEditMode = !!id;
 
+  const user = useAuthStore((state) => state.user);
+  const isCenterManager = user?.accountType === "CenterManager";
+  const canReadTeachers = useAuthStore((state) => state.hasPermission(permissions.teachersRead));
+
   const [formData, setFormData] = useState<Partial<CreateCurriculumRequest & UpdateCurriculumRequest & { classIds: string[], rowVersion: string, reviewStatus: string }>>({
     title: "",
     description: "",
     subjectId: "",
+    teacherId: "",
     nodeIds: [],
     classIds: [],
     rowVersion: "0",
@@ -29,7 +43,7 @@ export const CurriculumEditorPage = () => {
 
   const [activeTab, setActiveTab] = useState<"info" | "nodes" | "classes">("info");
 
-  const { data: curriculumData, isLoading: isLoadingCurriculum } = useCurriculum(id || "");
+  const { data: curriculumData, isLoading: isLoadingCurriculum, refetch: refetchCurriculum } = useCurriculum(id || "");
 
   const createMutation = useCreateCurriculum();
   const updateMutation = useUpdateCurriculum();
@@ -42,6 +56,12 @@ export const CurriculumEditorPage = () => {
     queryFn: () => organizationApi.listSubjects(true),
   });
 
+  const { data: teachersData, isLoading: isLoadingTeachers } = useQuery({
+    queryKey: ["teachers", "active"],
+    queryFn: () => organizationApi.listTeachers({ page: 1, pageSize: 100, status: "Active" }),
+    enabled: isCenterManager && canReadTeachers,
+  });
+
   useEffect(() => {
     if (isEditMode && curriculumData?.data) {
       const c = curriculumData.data;
@@ -49,6 +69,7 @@ export const CurriculumEditorPage = () => {
         title: c.title,
         description: c.description || "",
         subjectId: c.subjectId,
+        teacherId: c.teacherId || "",
         nodeIds: c.nodeIds || [],
         classIds: c.classIds || [],
         rowVersion: c.rowVersion,
@@ -62,14 +83,24 @@ export const CurriculumEditorPage = () => {
   };
 
   const handleSaveInfo = () => {
+    const validation = validateCurriculumForm(formData, { isEditMode, isCenterManager });
+    if (!validation.isValid) {
+      alert(validation.errorMessage!);
+      return;
+    }
+
     if (!isEditMode) {
       createMutation.mutate(
-        {
-          title: formData.title!,
-          description: formData.description,
-          subjectId: formData.subjectId!,
-          nodeIds: formData.nodeIds || []
-        },
+        buildCreateCurriculumPayload(
+          {
+            title: formData.title!,
+            description: formData.description,
+            subjectId: formData.subjectId!,
+            teacherId: formData.teacherId,
+            nodeIds: formData.nodeIds || []
+          },
+          isCenterManager
+        ),
         {
           onSuccess: (res) => {
             alert("Tạo lộ trình thành công!");
@@ -84,11 +115,11 @@ export const CurriculumEditorPage = () => {
       updateMutation.mutate(
         {
           id: id!,
-          data: {
+          data: buildUpdateCurriculumPayload({
             title: formData.title!,
             description: formData.description,
             rowVersion: formData.rowVersion!
-          }
+          })
         },
         {
           onSuccess: (res) => {
@@ -96,7 +127,12 @@ export const CurriculumEditorPage = () => {
             setFormData(prev => ({ ...prev, rowVersion: res.data.rowVersion }));
           },
           onError: (err: any) => {
-            alert("Lỗi: " + (err.response?.data?.detail || err.message));
+            if (isConcurrencyConflictError(err)) {
+              alert("Xung đột phiên bản (409): Dữ liệu lộ trình đã được cập nhật bởi phiên khác. Đang tải lại dữ liệu mới nhất...");
+              refetchCurriculum();
+            } else {
+              alert("Lỗi: " + (err.response?.data?.detail || err.message));
+            }
           }
         }
       );
@@ -119,7 +155,12 @@ export const CurriculumEditorPage = () => {
           setFormData(prev => ({ ...prev, rowVersion: res.data.rowVersion }));
         },
         onError: (err: any) => {
-          alert("Lỗi: " + (err.response?.data?.detail || err.message));
+          if (err.response?.status === 409) {
+            alert("Xung đột phiên bản (409): Dữ liệu lộ trình đã được cập nhật bởi phiên khác. Đang tải lại dữ liệu mới nhất...");
+            refetchCurriculum();
+          } else {
+            alert("Lỗi: " + (err.response?.data?.detail || err.message));
+          }
         }
       }
     );
@@ -141,7 +182,12 @@ export const CurriculumEditorPage = () => {
           setFormData(prev => ({ ...prev, rowVersion: res.data.rowVersion }));
         },
         onError: (err: any) => {
-          alert("Lỗi: " + (err.response?.data?.detail || err.message));
+          if (err.response?.status === 409) {
+            alert("Xung đột phiên bản (409): Dữ liệu lộ trình đã được cập nhật bởi phiên khác. Đang tải lại dữ liệu mới nhất...");
+            refetchCurriculum();
+          } else {
+            alert("Lỗi: " + (err.response?.data?.detail || err.message));
+          }
         }
       }
     );
@@ -161,7 +207,12 @@ export const CurriculumEditorPage = () => {
             setFormData(prev => ({ ...prev, rowVersion: res.data.rowVersion, reviewStatus: res.data.reviewStatus }));
           },
           onError: (err: any) => {
-            alert("Lỗi: " + (err.response?.data?.detail || err.message));
+            if (err.response?.status === 409) {
+              alert("Xung đột phiên bản (409): Lộ trình đã được thay đổi trước khi xuất bản. Đang tải lại dữ liệu mới nhất...");
+              refetchCurriculum();
+            } else {
+              alert("Lỗi: " + (err.response?.data?.detail || err.message));
+            }
           }
         }
       );
@@ -265,6 +316,48 @@ export const CurriculumEditorPage = () => {
                   </select>
                 )}
               </div>
+
+              {shouldDisplayTeacherSelector({ isEditMode, isCenterManager }) && (
+                <div>
+                  <label htmlFor="curriculum-teacher-select" className="block text-sm font-medium text-slate-700 mb-1">
+                    Giáo viên phụ trách <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    id="curriculum-teacher-select"
+                    data-testid="curriculum-teacher-select"
+                    value={formData.teacherId || ""}
+                    onChange={e => handleInputChange("teacherId", e.target.value)}
+                    disabled={isLoadingTeachers || !canReadTeachers}
+                    className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none bg-white disabled:bg-slate-100"
+                  >
+                    <option value="">-- Chọn giáo viên phụ trách --</option>
+                    {teachersData?.data?.map((teacher: any) => (
+                      <option key={teacher.teacherId} value={teacher.teacherId}>
+                        {teacher.displayName} (@{teacher.username})
+                      </option>
+                    ))}
+                  </select>
+                  <p className={`text-xs mt-1 ${canReadTeachers ? "text-slate-500" : "text-amber-700"}`}>
+                    {canReadTeachers
+                      ? "Lộ trình học bắt buộc phải do một giáo viên trong trung tâm phụ trách."
+                      : "Bạn cần quyền xem giáo viên để chọn người phụ trách lộ trình."}
+                  </p>
+                </div>
+              )}
+
+              {isEditMode && isCenterManager && formData.teacherId && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Giáo viên phụ trách</label>
+                  <input
+                    type="text"
+                    value={teachersData?.data?.find((t: any) => t.teacherId === formData.teacherId)
+                      ? `${teachersData?.data?.find((t: any) => t.teacherId === formData.teacherId)?.displayName} (@${teachersData?.data?.find((t: any) => t.teacherId === formData.teacherId)?.username})`
+                      : formData.teacherId}
+                    disabled
+                    className="w-full border border-slate-300 rounded-lg px-4 py-2 outline-none bg-slate-100 text-slate-500 text-sm"
+                  />
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Mô tả chi tiết</label>

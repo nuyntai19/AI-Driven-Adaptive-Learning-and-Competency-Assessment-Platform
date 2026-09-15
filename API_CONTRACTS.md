@@ -1222,7 +1222,7 @@ Student-facing Question DTO không bao gồm correctAnswer, solution, expectedRe
 
 Quyền: Teacher hoặc CenterManager.
 
-Request: Question DTO bỏ IDs, status mặc định Draft, rowVersion.
+Request: Question DTO bỏ IDs, status mặc định Draft, rowVersion. Trường `teacherId` tuân theo ownership contract giống Curriculum: Teacher phải bỏ qua hoặc gửi `null` và server tự gán chính mình; CenterManager bắt buộc chọn một Teacher active, chưa xóa, cùng Center. Server không tự chọn Teacher đầu tiên và không dùng CenterManager UserId làm `CreatedByTeacherId`.
 Response 201: Teacher-facing Question DTO.
 
 ## 48. Question endpoints

@@ -21,7 +21,7 @@ public class AssignCurriculumNodesUseCase : IAssignCurriculumNodesUseCase
     private readonly TimeProvider _timeProvider;
 
     public AssignCurriculumNodesUseCase(
-        EduTwinDbContext dbContext, 
+        EduTwinDbContext dbContext,
         ITenantContext tenantContext,
         TimeProvider timeProvider)
     {
@@ -32,15 +32,12 @@ public class AssignCurriculumNodesUseCase : IAssignCurriculumNodesUseCase
 
     public async Task<AssignCurriculumNodesResult> ExecuteAsync(Guid curriculumId, AssignCurriculumNodesRequest request, CancellationToken cancellationToken = default)
     {
-        if (!_tenantContext.IsResolved || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
+        if (!CurriculumGuards.TryResolveActor(_tenantContext, out var centerId, out var actorId, out var isTeacher))
         {
             return AssignCurriculumNodesResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
-        var centerId = _tenantContext.CenterId.Value;
-        var actorId = _tenantContext.UserId.Value;
-
-        if (request.NodeIds == null || string.IsNullOrWhiteSpace(request.RowVersion) || !ulong.TryParse(request.RowVersion, out var rowVersion))
+        if (request.NodeIds == null || !CurriculumGuards.TryParseRowVersion(request.RowVersion, out var rowVersion))
         {
             return AssignCurriculumNodesResult.Failure(ErrorCodes.ValidationFailed);
         }
@@ -54,8 +51,8 @@ public class AssignCurriculumNodesUseCase : IAssignCurriculumNodesUseCase
         }
 
         var curriculum = await _dbContext.Curriculums
-            .FirstOrDefaultAsync(c => c.CurriculumId == curriculumId && 
-                                      c.CenterId == centerId && 
+            .FirstOrDefaultAsync(c => c.CurriculumId == curriculumId &&
+                                      c.CenterId == centerId &&
                                       !c.IsDeleted, cancellationToken);
 
         if (curriculum == null)
@@ -63,19 +60,34 @@ public class AssignCurriculumNodesUseCase : IAssignCurriculumNodesUseCase
             return AssignCurriculumNodesResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
-        if (curriculum.RowVersion != rowVersion || curriculum.ReviewStatus != ReviewStatus.Draft)
+        if (!CurriculumGuards.CanAccess(curriculum, actorId, isTeacher))
         {
-            return AssignCurriculumNodesResult.Failure(ErrorCodes.ValidationFailed); 
+            return AssignCurriculumNodesResult.Failure(ErrorCodes.ResourceNotFound);
+        }
+
+        if (curriculum.RowVersion != rowVersion)
+        {
+            return AssignCurriculumNodesResult.Failure(ErrorCodes.ConcurrencyConflict);
+        }
+
+        if (curriculum.ReviewStatus != ReviewStatus.Draft)
+        {
+            return AssignCurriculumNodesResult.Failure(ErrorCodes.InvalidStateTransition);
+        }
+
+        if (parsedNodeIds.Distinct().Count() != parsedNodeIds.Count)
+        {
+            return AssignCurriculumNodesResult.Failure(ErrorCodes.ValidationFailed);
         }
 
         if (parsedNodeIds.Count > 0)
         {
             var distinctNodeIds = parsedNodeIds.Distinct().ToList();
             var dbNodesCount = await _dbContext.KnowledgeNodes
-                .Where(n => n.CenterId == centerId && 
-                            n.SubjectId == curriculum.SubjectId && 
-                            n.IsActive && 
-                            !n.IsDeleted && 
+                .Where(n => n.CenterId == centerId &&
+                            n.SubjectId == curriculum.SubjectId &&
+                            n.IsActive &&
+                            !n.IsDeleted &&
                             distinctNodeIds.Contains(n.NodeId))
                 .CountAsync(cancellationToken);
 
@@ -120,6 +132,11 @@ public class AssignCurriculumNodesUseCase : IAssignCurriculumNodesUseCase
 
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return AssignCurriculumNodesResult.Failure(ErrorCodes.ConcurrencyConflict);
         }
         catch
         {

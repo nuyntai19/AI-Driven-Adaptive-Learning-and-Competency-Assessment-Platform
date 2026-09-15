@@ -8,6 +8,7 @@ using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.Common;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.IdentityAndTenancy;
+using EduTwin.Contracts.Organization;
 using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -21,7 +22,7 @@ public class AssignCurriculumClassesUseCase : IAssignCurriculumClassesUseCase
     private readonly TimeProvider _timeProvider;
 
     public AssignCurriculumClassesUseCase(
-        EduTwinDbContext dbContext, 
+        EduTwinDbContext dbContext,
         ITenantContext tenantContext,
         TimeProvider timeProvider)
     {
@@ -32,22 +33,19 @@ public class AssignCurriculumClassesUseCase : IAssignCurriculumClassesUseCase
 
     public async Task<AssignCurriculumClassesResult> ExecuteAsync(Guid curriculumId, AssignCurriculumClassesRequest request, CancellationToken cancellationToken = default)
     {
-        if (!_tenantContext.IsResolved || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
+        if (!CurriculumGuards.TryResolveActor(_tenantContext, out var centerId, out var actorId, out var isTeacher))
         {
             return AssignCurriculumClassesResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
-        var centerId = _tenantContext.CenterId.Value;
-        var actorId = _tenantContext.UserId.Value;
-
-        if (request.ClassIds == null || string.IsNullOrWhiteSpace(request.RowVersion) || !ulong.TryParse(request.RowVersion, out var rowVersion))
+        if (request.ClassIds == null || !CurriculumGuards.TryParseRowVersion(request.RowVersion, out var rowVersion))
         {
             return AssignCurriculumClassesResult.Failure(ErrorCodes.ValidationFailed);
         }
 
         var curriculum = await _dbContext.Curriculums
-            .FirstOrDefaultAsync(c => c.CurriculumId == curriculumId && 
-                                      c.CenterId == centerId && 
+            .FirstOrDefaultAsync(c => c.CurriculumId == curriculumId &&
+                                      c.CenterId == centerId &&
                                       !c.IsDeleted, cancellationToken);
 
         if (curriculum == null)
@@ -55,17 +53,35 @@ public class AssignCurriculumClassesUseCase : IAssignCurriculumClassesUseCase
             return AssignCurriculumClassesResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
-        if (curriculum.RowVersion != rowVersion || curriculum.ReviewStatus != ReviewStatus.Draft)
+        if (!CurriculumGuards.CanAccess(curriculum, actorId, isTeacher))
         {
-            return AssignCurriculumClassesResult.Failure(ErrorCodes.ValidationFailed); 
+            return AssignCurriculumClassesResult.Failure(ErrorCodes.ResourceNotFound);
+        }
+
+        if (curriculum.RowVersion != rowVersion)
+        {
+            return AssignCurriculumClassesResult.Failure(ErrorCodes.ConcurrencyConflict);
+        }
+
+        if (curriculum.ReviewStatus != ReviewStatus.Draft)
+        {
+            return AssignCurriculumClassesResult.Failure(ErrorCodes.InvalidStateTransition);
         }
 
         var distinctClassIds = request.ClassIds.Distinct().ToList();
+        if (distinctClassIds.Count != request.ClassIds.Count)
+        {
+            return AssignCurriculumClassesResult.Failure(ErrorCodes.ValidationFailed);
+        }
 
         if (distinctClassIds.Count > 0)
         {
             var dbClassesCount = await _dbContext.Classes
-                .Where(c => c.CenterId == centerId && !c.IsDeleted && distinctClassIds.Contains(c.ClassId))
+                .Where(c => c.CenterId == centerId &&
+                            c.SubjectId == curriculum.SubjectId &&
+                            c.Status == ClassStatus.Active &&
+                            !c.IsDeleted &&
+                            distinctClassIds.Contains(c.ClassId))
                 .CountAsync(cancellationToken);
 
             if (dbClassesCount != distinctClassIds.Count)
@@ -89,7 +105,9 @@ public class AssignCurriculumClassesUseCase : IAssignCurriculumClassesUseCase
             {
                 CenterId = centerId,
                 CurriculumId = curriculumId,
-                ClassId = classId
+                ClassId = classId,
+                AssignedAt = now,
+                AssignedBy = actorId
             }).ToList();
 
             _dbContext.CurriculumClasses.AddRange(newClasses);
@@ -100,6 +118,11 @@ public class AssignCurriculumClassesUseCase : IAssignCurriculumClassesUseCase
 
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return AssignCurriculumClassesResult.Failure(ErrorCodes.ConcurrencyConflict);
         }
         catch
         {
@@ -123,7 +146,7 @@ public class AssignCurriculumClassesUseCase : IAssignCurriculumClassesUseCase
             Description = curriculum.Description,
             SourceFile = curriculum.SourceFile,
             ReviewStatus = curriculum.ReviewStatus.ToString(),
-            ClassIds = distinctClassIds.Select(id => id.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant()).ToList(),
+            ClassIds = distinctClassIds.OrderBy(id => id).Select(id => id.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant()).ToList(),
             NodeIds = nodes.Select(id => id.ToString(CultureInfo.InvariantCulture)).ToList(),
             RowVersion = curriculum.RowVersion.ToString(CultureInfo.InvariantCulture)
         };

@@ -5,6 +5,7 @@ namespace EduTwin.Contracts.CurriculumAndQuestions;
 
 public class CreateQuestionRequest
 {
+    public string? TeacherId { get; set; }
     public Guid SubjectId { get; set; }
     public string PrimaryTopicNodeId { get; set; } = null!;
     public string QuestionType { get; set; } = null!;

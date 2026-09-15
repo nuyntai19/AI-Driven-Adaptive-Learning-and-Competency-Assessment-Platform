@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Moq;
 using Xunit;
 using EduTwin.BLL.AssessmentAndReasoning.PreliminaryGrading;
@@ -38,6 +39,7 @@ public class QuestionEvaluationModeCrudTests : IDisposable
     {
         var options = new DbContextOptionsBuilder<EduTwinDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
             .Options;
 
         _tenantContextMock = new Mock<ITenantContext>();
@@ -90,6 +92,7 @@ public class QuestionEvaluationModeCrudTests : IDisposable
             CenterId = _centerId,
             SubjectCode = "MATH",
             SubjectName = "Mathematics",
+            IsActive = true,
             CreatedAt = _fixedTime.UtcDateTime,
             UpdatedAt = _fixedTime.UtcDateTime
         };

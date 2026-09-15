@@ -145,27 +145,40 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
         Guid effectiveTeacherId = actorId;
         if (isTeacher)
         {
+            if (request.TeacherId != null)
+                return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+
             var teacher = await _dbContext.Teachers
                 .AsNoTracking()
                 .Include(t => t.User)
                 .FirstOrDefaultAsync(t => t.TeacherId == actorId && t.CenterId == centerId && !t.IsDeleted, cancellationToken);
 
             if (teacher == null || teacher.User == null || teacher.User.IsDeleted ||
-                teacher.User.CenterId != centerId || teacher.User.Status != UserStatus.Active)
+                teacher.User.CenterId != centerId || teacher.User.RoleName != UserRole.Teacher ||
+                teacher.User.Status != UserStatus.Active)
                 return CreateQuestionResult.Failure(ErrorCodes.ResourceNotFound);
         }
         else
         {
-            // CenterManager creates question -> attribute to the first active teacher in center
-            var firstTeacher = await _dbContext.Teachers
-                .AsNoTracking()
-                .FirstOrDefaultAsync(t => t.CenterId == centerId && !t.IsDeleted, cancellationToken);
-                
-            if (firstTeacher != null)
+            if (string.IsNullOrWhiteSpace(request.TeacherId) ||
+                !Guid.TryParse(request.TeacherId, out effectiveTeacherId) ||
+                effectiveTeacherId == Guid.Empty)
             {
-                effectiveTeacherId = firstTeacher.TeacherId;
+                return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
             }
-            else
+
+            var selectedTeacher = await _dbContext.Teachers
+                .AsNoTracking()
+                .Include(t => t.User)
+                .FirstOrDefaultAsync(
+                    t => t.TeacherId == effectiveTeacherId && t.CenterId == centerId && !t.IsDeleted,
+                    cancellationToken);
+
+            if (selectedTeacher == null || selectedTeacher.User == null ||
+                selectedTeacher.User.CenterId != centerId ||
+                selectedTeacher.User.IsDeleted ||
+                selectedTeacher.User.RoleName != UserRole.Teacher ||
+                selectedTeacher.User.Status != UserStatus.Active)
             {
                 return CreateQuestionResult.Failure(ErrorCodes.ResourceNotFound);
             }
@@ -174,7 +187,7 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
         // 4. Subject validation
         var subject = await _dbContext.Subjects
             .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.SubjectId == request.SubjectId && s.CenterId == centerId && !s.IsDeleted, cancellationToken);
+            .FirstOrDefaultAsync(s => s.SubjectId == request.SubjectId && s.CenterId == centerId && s.IsActive && !s.IsDeleted, cancellationToken);
 
         if (subject == null)
             return CreateQuestionResult.Failure(ErrorCodes.ResourceNotFound);
@@ -235,55 +248,64 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
             UpdatedBy = actorId
         };
 
-        _dbContext.Questions.Add(question);
-        await _dbContext.SaveChangesAsync(cancellationToken);
-
-        // Persist options
         var savedOptions = new List<QuestionOption>();
-        if (request.Options != null && request.Options.Count > 0)
-        {
-            foreach (var optInput in request.Options)
-            {
-                var opt = new QuestionOption
-                {
-                    OptionId = question.QuestionId * 1000 + (ulong)savedOptions.Count + 1, // deterministic unique per question
-                    CenterId = centerId,
-                    QuestionId = question.QuestionId,
-                    OptionLabel = optInput.OptionLabel,
-                    OptionText = optInput.OptionText,
-                    IsCorrect = optInput.IsCorrect,
-                    OrderIndex = optInput.OrderIndex,
-                    CreatedAt = now,
-                    CreatedBy = actorId,
-                    UpdatedAt = now,
-                    UpdatedBy = actorId
-                };
-                _dbContext.QuestionOptions.Add(opt);
-                savedOptions.Add(opt);
-            }
-            await _dbContext.SaveChangesAsync(cancellationToken);
-        }
-
-        // Persist knowledge mappings
         var savedMappings = new List<QuestionKnowledgeNode>();
-        if (request.KnowledgeMappings != null && request.KnowledgeMappings.Count > 0)
+
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+        try
         {
-            foreach (var km in request.KnowledgeMappings)
-            {
-                ulong.TryParse(km.NodeId, NumberStyles.None, CultureInfo.InvariantCulture, out var kmNodeId);
-                Enum.TryParse<MappingRole>(km.MappingRole, out var mr);
-                var mapping = new QuestionKnowledgeNode
-                {
-                    CenterId = centerId,
-                    QuestionId = question.QuestionId,
-                    NodeId = kmNodeId,
-                    MappingRole = mr,
-                    CreatedAt = now
-                };
-                _dbContext.QuestionKnowledgeNodes.Add(mapping);
-                savedMappings.Add(mapping);
-            }
+            _dbContext.Questions.Add(question);
             await _dbContext.SaveChangesAsync(cancellationToken);
+
+            if (request.Options != null)
+            {
+                foreach (var optInput in request.Options)
+                {
+                    var opt = new QuestionOption
+                    {
+                        OptionId = question.QuestionId * 1000 + (ulong)savedOptions.Count + 1,
+                        CenterId = centerId,
+                        QuestionId = question.QuestionId,
+                        OptionLabel = optInput.OptionLabel,
+                        OptionText = optInput.OptionText,
+                        IsCorrect = optInput.IsCorrect,
+                        OrderIndex = optInput.OrderIndex,
+                        CreatedAt = now,
+                        CreatedBy = actorId,
+                        UpdatedAt = now,
+                        UpdatedBy = actorId
+                    };
+                    _dbContext.QuestionOptions.Add(opt);
+                    savedOptions.Add(opt);
+                }
+            }
+
+            if (request.KnowledgeMappings != null)
+            {
+                foreach (var km in request.KnowledgeMappings)
+                {
+                    ulong.TryParse(km.NodeId, NumberStyles.None, CultureInfo.InvariantCulture, out var kmNodeId);
+                    Enum.TryParse<MappingRole>(km.MappingRole, out var mr);
+                    var mapping = new QuestionKnowledgeNode
+                    {
+                        CenterId = centerId,
+                        QuestionId = question.QuestionId,
+                        NodeId = kmNodeId,
+                        MappingRole = mr,
+                        CreatedAt = now
+                    };
+                    _dbContext.QuestionKnowledgeNodes.Add(mapping);
+                    savedMappings.Add(mapping);
+                }
+            }
+
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
         }
 
         var dto = QuestionProjection.ToDto(question, savedOptions, savedMappings);

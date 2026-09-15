@@ -582,7 +582,7 @@ public class CreateCurriculumUseCaseTests
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
     }
 
     [Fact]
@@ -1141,6 +1141,152 @@ public class CreateCurriculumUseCaseTests
 
         var content = File.ReadAllText(sourcePath);
         Assert.DoesNotContain("IgnoreQueryFilters", content);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_CenterManager_WithoutTeacherId_FailsValidation()
+    {
+        var centerId = Guid.NewGuid();
+        var managerId = Guid.NewGuid();
+        SetupTenant(centerId, managerId, nameof(UserRole.CenterManager));
+        var seed = await SeedBasicEntitiesAsync(centerId);
+
+        var request = new CreateCurriculumRequest
+        {
+            SubjectId = seed.Subject.SubjectId,
+            Title = "Manager Curriculum",
+            TeacherId = null,
+            NodeIds = new List<string>()
+        };
+
+        var result = await _sut.ExecuteAsync(request);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("not-a-guid")]
+    [InlineData("00000000-0000-0000-0000-000000000000")]
+    public async Task ExecuteAsync_CenterManager_WithInvalidTeacherId_FailsValidation(string invalidTeacherId)
+    {
+        var centerId = Guid.NewGuid();
+        var managerId = Guid.NewGuid();
+        SetupTenant(centerId, managerId, nameof(UserRole.CenterManager));
+        var seed = await SeedBasicEntitiesAsync(centerId);
+
+        var request = new CreateCurriculumRequest
+        {
+            SubjectId = seed.Subject.SubjectId,
+            Title = "Manager Curriculum",
+            TeacherId = invalidTeacherId,
+            NodeIds = new List<string>()
+        };
+
+        var result = await _sut.ExecuteAsync(request);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_CenterManager_WithNonExistentTeacher_FailsResourceNotFound()
+    {
+        var centerId = Guid.NewGuid();
+        var managerId = Guid.NewGuid();
+        SetupTenant(centerId, managerId, nameof(UserRole.CenterManager));
+        var seed = await SeedBasicEntitiesAsync(centerId);
+
+        var request = new CreateCurriculumRequest
+        {
+            SubjectId = seed.Subject.SubjectId,
+            Title = "Manager Curriculum",
+            TeacherId = Guid.NewGuid().ToString(),
+            NodeIds = new List<string>()
+        };
+
+        var result = await _sut.ExecuteAsync(request);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_CenterManager_WithDeletedOrInactiveTeacher_FailsResourceNotFound()
+    {
+        var centerId = Guid.NewGuid();
+        var managerId = Guid.NewGuid();
+        SetupTenant(centerId, managerId, nameof(UserRole.CenterManager));
+        var seed = await SeedBasicEntitiesAsync(centerId);
+
+        seed.Teacher.IsDeleted = true;
+        await _dbContext.SaveChangesAsync();
+
+        var request = new CreateCurriculumRequest
+        {
+            SubjectId = seed.Subject.SubjectId,
+            Title = "Manager Curriculum",
+            TeacherId = seed.Teacher.TeacherId.ToString(),
+            NodeIds = new List<string>()
+        };
+
+        var result = await _sut.ExecuteAsync(request);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_CenterManager_WithValidTeacher_Succeeds_AndSetsOwnerTeacherId()
+    {
+        var centerId = Guid.NewGuid();
+        var managerId = Guid.NewGuid();
+        SetupTenant(centerId, managerId, nameof(UserRole.CenterManager));
+        var seed = await SeedBasicEntitiesAsync(centerId);
+
+        var request = new CreateCurriculumRequest
+        {
+            SubjectId = seed.Subject.SubjectId,
+            Title = "Manager-Created Curriculum",
+            Description = "Curriculum assigned to teacher",
+            TeacherId = seed.Teacher.TeacherId.ToString(),
+            NodeIds = new List<string>()
+        };
+
+        var result = await _sut.ExecuteAsync(request);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Data);
+        Assert.Equal(seed.Teacher.TeacherId.ToString(), result.Data.TeacherId);
+        Assert.NotEqual(managerId.ToString(), result.Data.TeacherId);
+
+        var savedInDb = await _dbContext.Curriculums.SingleAsync(c => c.CurriculumId == Guid.Parse(result.Data.CurriculumId));
+        Assert.Equal(seed.Teacher.TeacherId, savedInDb.TeacherId);
+        Assert.Equal(managerId, savedInDb.CreatedBy);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_Teacher_ProvidingExplicitTeacherId_FailsValidation()
+    {
+        var centerId = Guid.NewGuid();
+        var teacherId = Guid.NewGuid();
+        SetupTenant(centerId, teacherId, nameof(UserRole.Teacher));
+        var seed = await SeedBasicEntitiesAsync(centerId, teacherId);
+
+        var request = new CreateCurriculumRequest
+        {
+            SubjectId = seed.Subject.SubjectId,
+            Title = "Teacher Curriculum",
+            TeacherId = Guid.NewGuid().ToString(),
+            NodeIds = new List<string>()
+        };
+
+        var result = await _sut.ExecuteAsync(request);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
     }
 
     private class FaultyDbContext : EduTwinDbContext

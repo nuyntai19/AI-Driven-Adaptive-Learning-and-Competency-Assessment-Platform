@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Moq;
 using Xunit;
 using EduTwin.BLL.CurriculumAndQuestions;
@@ -37,6 +38,7 @@ public class CreateQuestionUseCaseTests : IDisposable
     {
         var options = new DbContextOptionsBuilder<EduTwinDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
             .Options;
 
         _tenantContextMock = new Mock<ITenantContext>();
@@ -70,10 +72,11 @@ public class CreateQuestionUseCaseTests : IDisposable
             UpdatedAt = now,
             Username = "test_teacher",
             DisplayName = "Test Teacher",
-            PasswordHash = "hash"
+            PasswordHash = "hash",
+            RoleName = UserRole.Teacher
         };
         var teacher = new Teacher { CenterId = _centerId, TeacherId = _teacherId, User = user, CreatedAt = now, UpdatedAt = now };
-        var subject = new Subject { CenterId = _centerId, SubjectId = _subjectId, SubjectCode = "S1", SubjectName = "S1", CreatedAt = now, UpdatedAt = now };
+        var subject = new Subject { CenterId = _centerId, SubjectId = _subjectId, SubjectCode = "S1", SubjectName = "S1", IsActive = true, CreatedAt = now, UpdatedAt = now };
 
         _dbContext.Users.Add(user);
         _dbContext.Teachers.Add(teacher);
@@ -322,6 +325,62 @@ public class CreateQuestionUseCaseTests : IDisposable
         Assert.Single(result.Data.GradingCriteria.RequiredIdeas);
         Assert.Equal("Idea 1", result.Data.GradingCriteria.RequiredIdeas[0]);
     }
+
+    [Fact]
+    public async Task Create_CenterManagerWithoutTeacherId_ReturnsValidationFailed()
+    {
+        await SeedDataAsync();
+        _tenantContextMock.Setup(t => t.UserId).Returns(Guid.NewGuid());
+        _tenantContextMock.Setup(t => t.Role).Returns(nameof(UserRole.CenterManager));
+
+        var result = await _sut.ExecuteAsync(ValidShortAnswerRequest());
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task Create_CenterManagerWithActiveTeacher_PersistsSelectedOwner()
+    {
+        await SeedDataAsync();
+        _tenantContextMock.Setup(t => t.UserId).Returns(Guid.NewGuid());
+        _tenantContextMock.Setup(t => t.Role).Returns(nameof(UserRole.CenterManager));
+        var request = ValidShortAnswerRequest();
+        request.TeacherId = _teacherId.ToString();
+
+        var result = await _sut.ExecuteAsync(request);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(_teacherId.ToString("D"), result.Data!.CreatedByTeacherId);
+        Assert.Equal(_teacherId, (await _dbContext.Questions.SingleAsync()).CreatedByTeacherId);
+    }
+
+    [Fact]
+    public async Task Create_TeacherWithExplicitTeacherId_ReturnsValidationFailed()
+    {
+        await SeedDataAsync();
+        var request = ValidShortAnswerRequest();
+        request.TeacherId = _teacherId.ToString();
+
+        var result = await _sut.ExecuteAsync(request);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
+
+    private CreateQuestionRequest ValidShortAnswerRequest() => new()
+    {
+        SubjectId = _subjectId,
+        PrimaryTopicNodeId = "1",
+        QuestionType = "ShortAnswer",
+        Difficulty = 3,
+        QuestionText = "Text",
+        CorrectAnswer = "Ans",
+        Solution = "Sol",
+        MaxScore = 1,
+        EstimatedTimeSeconds = 60,
+        LanguageCode = "vi"
+    };
 
     public void Dispose()
     {

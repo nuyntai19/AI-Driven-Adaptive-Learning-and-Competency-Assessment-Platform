@@ -7,10 +7,13 @@ import { useQuestion, useCreateQuestion, useUpdateQuestion, useActivateQuestion,
 import type { QuestionType, QuestionAnswerEvaluationMode, CreateQuestionRequest, QuestionOption } from "../types/questions";
 import { MathInputToolbar } from "../components/math/MathInputToolbar";
 import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
+import { useAuthStore } from "../stores/authStore";
+import { permissions } from "../auth/permissions";
 
 export const QuestionEditorPage = () => {
   const questionTextRef = useRef<HTMLTextAreaElement>(null);
   const [formData, setFormData] = useState<CreateQuestionRequest>({
+    teacherId: null,
     subjectId: "",
     primaryTopicNodeId: "",
     questionType: "MultipleChoice",
@@ -98,6 +101,9 @@ export const QuestionEditorPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const isEditMode = !!id;
+  const accountType = useAuthStore((state) => state.user?.accountType);
+  const isCenterManager = accountType === "CenterManager";
+  const canReadTeachers = useAuthStore((state) => state.hasPermission(permissions.teachersRead));
 
   const { data: questionData } = useQuestion(id || "");
   const createMutation = useCreateQuestion();
@@ -142,6 +148,12 @@ export const QuestionEditorPage = () => {
     queryFn: () => organizationApi.listSubjects(true),
   });
 
+  const { data: teachersData, isLoading: isLoadingTeachers } = useQuery({
+    queryKey: ["teachers", "active", "question-owner"],
+    queryFn: () => organizationApi.listTeachers({ page: 1, pageSize: 100, status: "Active" }),
+    enabled: isCenterManager && canReadTeachers && !isEditMode,
+  });
+
   const { data: nodesData, isLoading: isLoadingNodes } = useQuery({
     queryKey: ["knowledge-nodes", formData.subjectId],
     queryFn: () => knowledgeGraphApi.listNodes(formData.subjectId),
@@ -176,28 +188,24 @@ export const QuestionEditorPage = () => {
   }, [isEditMode, questionData]);
 
   const handleSave = () => {
-    // Log payload để debug
-    console.log("[QuestionEditor] Submitting payload:", JSON.stringify(formData, null, 2));
+    if (!isEditMode && isCenterManager && !formData.teacherId) {
+      alert("Vui lòng chọn giáo viên phụ trách câu hỏi.");
+      return;
+    }
 
     const onError = (err: any) => {
-      console.error("[QuestionEditor] API Error:", err);
-      console.error("[QuestionEditor] Response data:", err.response?.data);
-      console.error("[QuestionEditor] Response status:", err.response?.status);
-      
-      const serverDetail = err.response?.data?.detail;
-      const serverTitle = err.response?.data?.title;
-      const serverErrors = err.response?.data?.errors;
-      const errorCode = err.response?.data?.extensions?.errorCode;
-      
-      let msg = "Lỗi không xác định.";
-      if (serverDetail) msg = serverDetail;
-      else if (serverTitle) msg = serverTitle;
-      else if (serverErrors) msg = JSON.stringify(serverErrors);
-      else if (err.message) msg = err.message;
-      
-      if (errorCode) msg += `\n[ErrorCode: ${errorCode}]`;
-      
-      alert(`Lỗi (${err.response?.status ?? "?"}): ${msg}\n\nXem Console (F12) để biết chi tiết.`);
+      const status = err?.response?.status;
+      const traceId = err?.response?.data?.traceId ?? err?.response?.data?.extensions?.traceId;
+      const message = status === 409
+        ? "Dữ liệu đã được thay đổi bởi phiên khác. Hãy tải lại trước khi tiếp tục."
+        : status === 403
+          ? "Bạn không có quyền thực hiện thao tác này."
+          : status === 404
+            ? "Không tìm thấy dữ liệu hoặc dữ liệu nằm ngoài phạm vi được phép."
+            : status === 422
+              ? "Trạng thái câu hỏi hiện tại không cho phép thao tác này."
+              : "Không thể lưu câu hỏi. Vui lòng thử lại.";
+      alert(traceId ? `${message}\nMã truy vết: ${traceId}` : message);
     };
 
     if (!isEditMode) {
@@ -296,6 +304,32 @@ export const QuestionEditorPage = () => {
           <h2 className="text-lg font-semibold text-slate-800">Thông tin chung</h2>
         </div>
         <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+          {!isEditMode && isCenterManager && (
+            <div className="col-span-2">
+              <label htmlFor="question-teacher" className="block text-sm font-medium text-slate-700 mb-2">
+                Giáo viên phụ trách <span className="text-red-500">*</span>
+              </label>
+              <select
+                id="question-teacher"
+                value={formData.teacherId || ""}
+                onChange={(event) => handleInputChange("teacherId", event.target.value)}
+                disabled={isLoadingTeachers || !canReadTeachers}
+                className="w-full border border-slate-300 rounded-lg px-4 py-2 bg-white disabled:bg-slate-100"
+              >
+                <option value="">-- Chọn giáo viên phụ trách --</option>
+                {teachersData?.data.map((teacher) => (
+                  <option key={teacher.teacherId} value={teacher.teacherId}>
+                    {teacher.displayName} (@{teacher.username})
+                  </option>
+                ))}
+              </select>
+              {!canReadTeachers && (
+                <p className="mt-1 text-xs text-amber-700">
+                  Bạn cần quyền xem giáo viên để chọn người phụ trách câu hỏi.
+                </p>
+              )}
+            </div>
+          )}
           <div className="col-span-2">
             <div className="flex items-center justify-between mb-2">
               <label className="block text-sm font-medium text-slate-700">

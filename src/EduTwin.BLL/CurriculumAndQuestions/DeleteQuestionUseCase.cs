@@ -64,15 +64,20 @@ public class DeleteQuestionUseCase : IDeleteQuestionUseCase
         if (question.Status != QuestionStatus.Draft)
             return DeleteQuestionResult.Failure(ErrorCodes.InvalidStateTransition);
 
-        // 5. Check attempts
+        // 5. Check attempts and assignment dependencies
         var hasAttempts = await _dbContext.Attempts
             .AnyAsync(a => a.QuestionId == qId && a.CenterId == centerId, cancellationToken);
         if (hasAttempts)
             return DeleteQuestionResult.Failure(ErrorCodes.InvalidStateTransition);
 
+        var hasAssignments = await _dbContext.AssignmentQuestions
+            .AnyAsync(aq => aq.QuestionId == qId && aq.CenterId == centerId, cancellationToken);
+        if (hasAssignments)
+            return DeleteQuestionResult.Failure(ErrorCodes.InvalidStateTransition);
+
         // 6. Delete (Soft delete for MTA)
         var now = _timeProvider.GetUtcNow().UtcDateTime;
-        
+
         question.IsDeleted = true;
         question.DeletedAt = now;
         question.DeletedBy = actorId;
@@ -81,7 +86,7 @@ public class DeleteQuestionUseCase : IDeleteQuestionUseCase
         var options = await _dbContext.QuestionOptions
             .Where(o => o.QuestionId == qId && o.CenterId == centerId && !o.IsDeleted)
             .ToListAsync(cancellationToken);
-        
+
         foreach(var opt in options)
         {
             opt.IsDeleted = true;
@@ -93,7 +98,7 @@ public class DeleteQuestionUseCase : IDeleteQuestionUseCase
         var mappings = await _dbContext.QuestionKnowledgeNodes
             .Where(m => m.QuestionId == qId && m.CenterId == centerId)
             .ToListAsync(cancellationToken);
-        
+
         _dbContext.QuestionKnowledgeNodes.RemoveRange(mappings);
 
         await _dbContext.SaveChangesAsync(cancellationToken);

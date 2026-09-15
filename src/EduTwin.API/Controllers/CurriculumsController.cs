@@ -72,41 +72,7 @@ public class CurriculumsController : ControllerBase
             return Created(string.Empty, response);
         }
 
-        if (result.ErrorCode == ErrorCodes.ValidationFailed)
-        {
-            return BadRequest(new ProblemDetails
-            {
-                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.1",
-                Title = "Dữ liệu không hợp lệ",
-                Status = StatusCodes.Status400BadRequest,
-                Detail = "Dữ liệu gửi lên không đúng định dạng hoặc thiếu thông tin.",
-                Instance = HttpContext.Request.Path,
-                Extensions =
-                {
-                    ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
-                    ["errorCode"] = ErrorCodes.ValidationFailed
-                }
-            });
-        }
-
-        if (result.ErrorCode == ErrorCodes.ResourceNotFound)
-        {
-            return NotFound(new ProblemDetails
-            {
-                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.4",
-                Title = "Không tìm thấy dữ liệu",
-                Status = StatusCodes.Status404NotFound,
-                Detail = "Dữ liệu liên quan không tồn tại hoặc bạn không có quyền truy cập.",
-                Instance = HttpContext.Request.Path,
-                Extensions =
-                {
-                    ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
-                    ["errorCode"] = ErrorCodes.ResourceNotFound
-                }
-            });
-        }
-
-        throw new InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
+        return MapError(result.ErrorCode!);
     }
 
     [HttpGet]
@@ -134,41 +100,7 @@ public class CurriculumsController : ControllerBase
             return Ok(response);
         }
 
-        if (result.ErrorCode == ErrorCodes.ValidationFailed)
-        {
-            return BadRequest(new ProblemDetails
-            {
-                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.1",
-                Title = "Dữ liệu không hợp lệ",
-                Status = StatusCodes.Status400BadRequest,
-                Detail = "Dữ liệu gửi lên không đúng định dạng hoặc thiếu thông tin.",
-                Instance = HttpContext.Request.Path,
-                Extensions =
-                {
-                    ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
-                    ["errorCode"] = ErrorCodes.ValidationFailed
-                }
-            });
-        }
-
-        if (result.ErrorCode == ErrorCodes.ResourceNotFound)
-        {
-            return NotFound(new ProblemDetails
-            {
-                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.4",
-                Title = "Không tìm thấy dữ liệu",
-                Status = StatusCodes.Status404NotFound,
-                Detail = "Dữ liệu liên quan không tồn tại hoặc bạn không có quyền truy cập.",
-                Instance = HttpContext.Request.Path,
-                Extensions =
-                {
-                    ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
-                    ["errorCode"] = ErrorCodes.ResourceNotFound
-                }
-            });
-        }
-
-        throw new InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
+        return MapError(result.ErrorCode!);
     }
 
     [HttpGet("{id}")]
@@ -197,6 +129,7 @@ public class CurriculumsController : ControllerBase
     [ProducesResponseType(typeof(CurriculumResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> UpdateCurriculum(
         [FromRoute] Guid id,
         [FromBody] UpdateCurriculumRequest request,
@@ -212,8 +145,7 @@ public class CurriculumsController : ControllerBase
             };
             return Ok(response);
         }
-        if (result.ErrorCode == ErrorCodes.ResourceNotFound) return NotFound();
-        return BadRequest(new ProblemDetails { Status = StatusCodes.Status400BadRequest, Detail = "Invalid update." });
+        return MapError(result.ErrorCode!);
     }
 
     [HttpPut("{id}/classes")]
@@ -221,6 +153,7 @@ public class CurriculumsController : ControllerBase
     [ProducesResponseType(typeof(CurriculumResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> AssignCurriculumClasses(
         [FromRoute] Guid id,
         [FromBody] AssignCurriculumClassesRequest request,
@@ -236,8 +169,7 @@ public class CurriculumsController : ControllerBase
             };
             return Ok(response);
         }
-        if (result.ErrorCode == ErrorCodes.ResourceNotFound) return NotFound();
-        return BadRequest(new ProblemDetails { Status = StatusCodes.Status400BadRequest, Detail = "Invalid classes assignment." });
+        return MapError(result.ErrorCode!);
     }
 
     [HttpPut("{id}/nodes")]
@@ -245,6 +177,7 @@ public class CurriculumsController : ControllerBase
     [ProducesResponseType(typeof(CurriculumResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> AssignCurriculumNodes(
         [FromRoute] Guid id,
         [FromBody] AssignCurriculumNodesRequest request,
@@ -260,8 +193,7 @@ public class CurriculumsController : ControllerBase
             };
             return Ok(response);
         }
-        if (result.ErrorCode == ErrorCodes.ResourceNotFound) return NotFound();
-        return BadRequest(new ProblemDetails { Status = StatusCodes.Status400BadRequest, Detail = "Invalid nodes assignment." });
+        return MapError(result.ErrorCode!);
     }
 
     [HttpPost("{id}/publish")]
@@ -269,6 +201,7 @@ public class CurriculumsController : ControllerBase
     [ProducesResponseType(typeof(CurriculumResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> PublishCurriculum(
         [FromRoute] Guid id,
         [FromBody] PublishCurriculumRequest request,
@@ -284,7 +217,53 @@ public class CurriculumsController : ControllerBase
             };
             return Ok(response);
         }
-        if (result.ErrorCode == ErrorCodes.ResourceNotFound) return NotFound();
-        return BadRequest(new ProblemDetails { Status = StatusCodes.Status400BadRequest, Detail = "Invalid publish action." });
+        return MapError(result.ErrorCode!);
+    }
+
+    private IActionResult MapError(string errorCode)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        var path = HttpContext.Request.Path;
+
+        return errorCode switch
+        {
+            ErrorCodes.ResourceNotFound => NotFound(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.4",
+                Title = "Không tìm thấy dữ liệu",
+                Status = StatusCodes.Status404NotFound,
+                Detail = "Dữ liệu liên quan không tồn tại hoặc bạn không có quyền truy cập.",
+                Instance = path,
+                Extensions = { ["traceId"] = traceId, ["errorCode"] = errorCode }
+            }),
+            ErrorCodes.ValidationFailed => BadRequest(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.1",
+                Title = "Dữ liệu không hợp lệ",
+                Status = StatusCodes.Status400BadRequest,
+                Detail = "Dữ liệu gửi lên không đúng định dạng hoặc thiếu thông tin.",
+                Instance = path,
+                Extensions = { ["traceId"] = traceId, ["errorCode"] = errorCode }
+            }),
+            ErrorCodes.ConcurrencyConflict => Conflict(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.8",
+                Title = "Xung đột dữ liệu",
+                Status = StatusCodes.Status409Conflict,
+                Detail = "Dữ liệu đã bị thay đổi bởi người khác, vui lòng thử lại.",
+                Instance = path,
+                Extensions = { ["traceId"] = traceId, ["errorCode"] = errorCode }
+            }),
+            ErrorCodes.InvalidStateTransition => Conflict(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.8",
+                Title = "Trạng thái không hợp lệ",
+                Status = StatusCodes.Status409Conflict,
+                Detail = "Không thể thực hiện hành động do sai trạng thái.",
+                Instance = path,
+                Extensions = { ["traceId"] = traceId, ["errorCode"] = errorCode }
+            }),
+            _ => throw new InvalidOperationException($"Unexpected error code: {errorCode}")
+        };
     }
 }

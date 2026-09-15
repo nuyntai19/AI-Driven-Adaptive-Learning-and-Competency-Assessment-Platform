@@ -20,7 +20,7 @@ public class PublishCurriculumUseCase : IPublishCurriculumUseCase
     private readonly TimeProvider _timeProvider;
 
     public PublishCurriculumUseCase(
-        EduTwinDbContext dbContext, 
+        EduTwinDbContext dbContext,
         ITenantContext tenantContext,
         TimeProvider timeProvider)
     {
@@ -31,22 +31,19 @@ public class PublishCurriculumUseCase : IPublishCurriculumUseCase
 
     public async Task<PublishCurriculumResult> ExecuteAsync(Guid curriculumId, PublishCurriculumRequest request, CancellationToken cancellationToken = default)
     {
-        if (!_tenantContext.IsResolved || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
+        if (!CurriculumGuards.TryResolveActor(_tenantContext, out var centerId, out var actorId, out var isTeacher))
         {
             return PublishCurriculumResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
-        var centerId = _tenantContext.CenterId.Value;
-        var actorId = _tenantContext.UserId.Value;
-
-        if (string.IsNullOrWhiteSpace(request.RowVersion) || !ulong.TryParse(request.RowVersion, out var rowVersion))
+        if (!CurriculumGuards.TryParseRowVersion(request.RowVersion, out var rowVersion))
         {
             return PublishCurriculumResult.Failure(ErrorCodes.ValidationFailed);
         }
 
         var curriculum = await _dbContext.Curriculums
-            .FirstOrDefaultAsync(c => c.CurriculumId == curriculumId && 
-                                      c.CenterId == centerId && 
+            .FirstOrDefaultAsync(c => c.CurriculumId == curriculumId &&
+                                      c.CenterId == centerId &&
                                       !c.IsDeleted, cancellationToken);
 
         if (curriculum == null)
@@ -54,9 +51,19 @@ public class PublishCurriculumUseCase : IPublishCurriculumUseCase
             return PublishCurriculumResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
-        if (curriculum.RowVersion != rowVersion || curriculum.ReviewStatus != ReviewStatus.Draft)
+        if (!CurriculumGuards.CanAccess(curriculum, actorId, isTeacher))
         {
-            return PublishCurriculumResult.Failure(ErrorCodes.ValidationFailed); 
+            return PublishCurriculumResult.Failure(ErrorCodes.ResourceNotFound);
+        }
+
+        if (curriculum.RowVersion != rowVersion)
+        {
+            return PublishCurriculumResult.Failure(ErrorCodes.ConcurrencyConflict);
+        }
+
+        if (curriculum.ReviewStatus != ReviewStatus.Draft)
+        {
+            return PublishCurriculumResult.Failure(ErrorCodes.InvalidStateTransition);
         }
 
         curriculum.ReviewStatus = ReviewStatus.Published;
@@ -64,7 +71,14 @@ public class PublishCurriculumUseCase : IPublishCurriculumUseCase
         curriculum.UpdatedBy = actorId;
         curriculum.RowVersion++;
 
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return PublishCurriculumResult.Failure(ErrorCodes.ConcurrencyConflict);
+        }
 
         var nodes = await _dbContext.CurriculumNodes
             .AsNoTracking()
