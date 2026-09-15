@@ -5,6 +5,8 @@ import type {
   AuthorizationRoleListResponse,
   AuthorizationRoleQueryParams,
   AuthorizationRoleResponse,
+  AuthorizationUserListResponse,
+  AuthorizationUserQueryParams,
   CreateAuthorizationRoleRequest,
   PermissionListResponse,
   ReplaceRolePermissionsRequest,
@@ -27,7 +29,17 @@ export const authorizationApi = {
   ): Promise<AuthorizationRoleListResponse> => {
     const response = await httpClient.get<AuthorizationRoleListResponse>(
       "/authorization/roles",
-      { params: { page: 1, pageSize: 100, ...params } },
+      { params: { page: 1, pageSize: 20, ...params } },
+    );
+    return response.data;
+  },
+
+  listUsers: async (
+    params?: AuthorizationUserQueryParams,
+  ): Promise<AuthorizationUserListResponse> => {
+    const response = await httpClient.get<AuthorizationUserListResponse>(
+      "/authorization/users",
+      { params: { page: 1, pageSize: 20, ...params } },
     );
     return response.data;
   },

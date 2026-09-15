@@ -114,10 +114,30 @@ public sealed class AuthorizationControllerTests
             source.Token), Times.Once);
     }
 
+    [Fact]
+    public async Task GetUsers_Success_ReturnsPagedUsers()
+    {
+        var useCase = new Mock<IListAuthorizationUsersUseCase>();
+        var query = new AuthorizationUserListQuery { Page = 1, PageSize = 20 };
+        useCase.Setup(item => item.ExecuteAsync(query, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ListAuthorizationUsersResult.Success([new AuthorizationUserDto { Username = "user1" }], 1, 1));
+        var controller = CreateController(users: useCase.Object);
+        using var source = new CancellationTokenSource();
+
+        var action = await controller.GetUsers(query, source.Token);
+
+        var ok = Assert.IsType<OkObjectResult>(action);
+        var response = Assert.IsType<AuthorizationUserListResponse>(ok.Value);
+        Assert.Single(response.Data);
+        Assert.Equal("user1", response.Data[0].Username);
+        useCase.Verify(item => item.ExecuteAsync(query, source.Token), Times.Once);
+    }
+
     private static AuthorizationController CreateController(
         IListPermissionsUseCase? permissions = null,
         IListAuthorizationRolesUseCase? roles = null,
-        IReplaceUserRolesUseCase? replaceUserRoles = null)
+        IReplaceUserRolesUseCase? replaceUserRoles = null,
+        IListAuthorizationUsersUseCase? users = null)
     {
         return new AuthorizationController(
             permissions ?? Mock.Of<IListPermissionsUseCase>(),
@@ -128,6 +148,7 @@ public sealed class AuthorizationControllerTests
             Mock.Of<IReplaceRolePermissionsUseCase>(),
             Mock.Of<IGetUserAuthorizationUseCase>(),
             replaceUserRoles ?? Mock.Of<IReplaceUserRolesUseCase>(),
+            users ?? Mock.Of<IListAuthorizationUsersUseCase>(),
             Mock.Of<IListAuthorizationAuditUseCase>(),
             TimeProvider.System)
         {

@@ -29,3 +29,19 @@ public sealed record ListAuthorizationAuditResult(
     public static ListAuthorizationAuditResult Failure(string errorCode) =>
         new(false, errorCode, [], 0, 0);
 }
+
+public sealed record ListAuthorizationUsersResult(
+    bool IsSuccess,
+    string? ErrorCode,
+    IReadOnlyList<AuthorizationUserDto> Data,
+    long TotalItems,
+    int TotalPages)
+{
+    public static ListAuthorizationUsersResult Success(
+        IReadOnlyList<AuthorizationUserDto> data,
+        long totalItems,
+        int totalPages) => new(true, null, data, totalItems, totalPages);
+
+    public static ListAuthorizationUsersResult Failure(string errorCode) =>
+        new(false, errorCode, [], 0, 0);
+}

@@ -14,6 +14,15 @@ import type {
   PermissionDto,
 } from "../src/types/authorization.ts";
 import type { ProblemDetails } from "../src/types/auth.ts";
+import {
+  parseSafeError,
+  buildRoleQueryParams,
+  buildUserQueryParams,
+  buildAuditQueryParams,
+  isSelfUser,
+  filterCompatibleRoles,
+  validateRoleCreation,
+} from "../src/pages/authorizationManagementHelpers.ts";
 
 // ==========================================
 // Test Personas
@@ -444,4 +453,216 @@ test("16. Self-change detection correctly identifies when actor edits their own 
 
   assert.equal(actorUserId === targetUserSelf, true);
   assert.equal(actorUserId === targetUserOther, false);
+});
+
+test("17. parseSafeError maps known backend error codes to localized messages and extracts traceId", () => {
+  const axiosError = {
+    isAxiosError: true,
+    response: {
+      status: 409,
+      data: {
+        errorCode: "CONCURRENCY_CONFLICT",
+        traceId: "00-test-occ-trace",
+        detail: "RowVersion mismatch on entity Role 123",
+        title: "Conflict",
+      },
+    },
+  };
+
+  const parsed = parseSafeError(axiosError);
+  assert.equal(parsed.code, "CONCURRENCY_CONFLICT");
+  assert.equal(parsed.traceId, "00-test-occ-trace");
+  assert.match(parsed.message, /Dữ liệu đã được cập nhật bởi một phiên làm việc khác/);
+  // Must NOT be the raw backend string
+  assert.notEqual(parsed.message, "RowVersion mismatch on entity Role 123");
+});
+
+test("18. parseSafeError strictly hides raw ProblemDetails internal detail and title for unknown error codes", () => {
+  const rawSensitiveLeak = "SELECT password_hash FROM Users WHERE center_id = 'leak'; Connection timed out";
+  const axiosError = {
+    isAxiosError: true,
+    response: {
+      status: 500,
+      data: {
+        errorCode: "UNKNOWN_INTERNAL_CRASH",
+        traceId: "00-crash-trace-999",
+        detail: rawSensitiveLeak,
+        title: "Internal Database Exception",
+      },
+    },
+  };
+
+  const parsed = parseSafeError(axiosError);
+  assert.equal(parsed.code, "UNKNOWN_INTERNAL_CRASH");
+  assert.equal(parsed.traceId, "00-crash-trace-999");
+  // CRITICAL: Raw detail or title must NEVER appear in the user-facing message
+  assert.equal(parsed.message.includes(rawSensitiveLeak), false);
+  assert.equal(parsed.message.includes("Internal Database Exception"), false);
+  assert.match(parsed.message, /Không thể hoàn tất thao tác do lỗi hệ thống/);
+});
+
+test("19. parseSafeError gracefully handles non-Axios exceptions without throwing", () => {
+  const genericError = new Error("Network connection lost");
+  const parsed = parseSafeError(genericError);
+  assert.match(parsed.message, /Vui lòng kiểm tra kết nối mạng và thử lại/);
+  assert.equal(parsed.traceId, undefined);
+
+  const nullError = parseSafeError(null);
+  assert.match(nullError.message, /Vui lòng kiểm tra kết nối mạng và thử lại/);
+});
+
+test("20. buildRoleQueryParams enforces server-side pagination, search trimming, and enum filtering", () => {
+  // Test 1: Full options with untrimmed search
+  const query1 = buildRoleQueryParams(2, 25, "  TEACHER  ", "Teacher", "Active");
+  assert.deepEqual(query1, {
+    page: 2,
+    pageSize: 25,
+    search: "TEACHER",
+    accountType: "Teacher",
+    status: "Active",
+  });
+
+  // Test 2: Omits "all" and whitespace-only search
+  const query2 = buildRoleQueryParams(1, 10, "   ", "all", "all");
+  assert.deepEqual(query2, {
+    page: 1,
+    pageSize: 10,
+  });
+
+  // Test 3: Pagination beyond page 1 prevents 100-record truncation
+  const queryPage5 = buildRoleQueryParams(5, 50);
+  assert.equal(queryPage5.page, 5);
+  assert.equal(queryPage5.pageSize, 50);
+});
+
+test("21. buildUserQueryParams supports all center user types with server-side pagination and search", () => {
+  // CenterManager search
+  const managerQuery = buildUserQueryParams(1, 20, "manager", "CenterManager", "Active");
+  assert.equal(managerQuery.accountType, "CenterManager");
+  assert.equal(managerQuery.search, "manager");
+
+  // Teacher search
+  const teacherQuery = buildUserQueryParams(3, 15, "toan", "Teacher", "Active");
+  assert.equal(teacherQuery.accountType, "Teacher");
+  assert.equal(teacherQuery.page, 3);
+
+  // Student search
+  const studentQuery = buildUserQueryParams(1, 50, "nguyen", "Student", "Active");
+  assert.equal(studentQuery.accountType, "Student");
+
+  // "all" accounts search
+  const allUsersQuery = buildUserQueryParams(1, 25, undefined, "all", "all");
+  assert.equal(allUsersQuery.accountType, undefined);
+  assert.equal(allUsersQuery.status, undefined);
+});
+
+test("22. buildAuditQueryParams supports all H3 audit filters and ISO timestamp conversion", () => {
+  const query = buildAuditQueryParams(1, 15, {
+    actionType: "RolePermissionsReplaced",
+    permissionCode: "PERM_ROLES_CREATE",
+    actorUserId: "actor-uuid-1",
+    targetUserId: "target-user-uuid-2",
+    targetId: "role-uuid-3",
+    from: "2026-09-01T00:00",
+    to: "2026-09-15T00:00",
+  });
+
+  assert.equal(query.actionType, "RolePermissionsReplaced");
+  assert.equal(query.permissionCode, "PERM_ROLES_CREATE");
+  assert.equal(query.actorUserId, "actor-uuid-1");
+  assert.equal(query.targetUserId, "target-user-uuid-2");
+  assert.equal(query.targetId, "role-uuid-3");
+  assert.equal(typeof query.from, "string");
+  assert.equal(typeof query.to, "string");
+
+  // Empty string fields must be pruned
+  const emptyQuery = buildAuditQueryParams(1, 15, {
+    actionType: "",
+    permissionCode: "   ",
+    actorUserId: undefined,
+  });
+  assert.equal(emptyQuery.actionType, undefined);
+  assert.equal(emptyQuery.permissionCode, undefined);
+  assert.equal(emptyQuery.actorUserId, undefined);
+});
+
+test("23. isSelfUser accurately identifies case-insensitive self-change and avoids false positives", () => {
+  assert.equal(isSelfUser("USER-ABC-123", "user-abc-123"), true);
+  assert.equal(isSelfUser("user-1", "user-2"), false);
+  assert.equal(isSelfUser(undefined, "user-1"), false);
+  assert.equal(isSelfUser("user-1", undefined), false);
+});
+
+test("24. filterCompatibleRoles filters roles strictly matching candidate accountType and Active status", () => {
+  const roles: AuthorizationRoleDto[] = [
+    {
+      roleId: "r1",
+      roleCode: "TEACHER_MATH",
+      roleName: "Giáo viên Toán",
+      accountType: "Teacher",
+      description: null,
+      isSystemRole: false,
+      status: "Active",
+      permissionCodes: [],
+      activeUserCount: 1,
+      rowVersion: "1",
+    },
+    {
+      roleId: "r2",
+      roleCode: "TEACHER_ARCHIVED",
+      roleName: "Giáo viên lưu trữ",
+      accountType: "Teacher",
+      description: null,
+      isSystemRole: false,
+      status: "Archived",
+      permissionCodes: [],
+      activeUserCount: 0,
+      rowVersion: "1",
+    },
+    {
+      roleId: "r3",
+      roleCode: "STUDENT_MONITOR",
+      roleName: "Lớp trưởng",
+      accountType: "Student",
+      description: null,
+      isSystemRole: false,
+      status: "Active",
+      permissionCodes: [],
+      activeUserCount: 2,
+      rowVersion: "1",
+    },
+  ];
+
+  const teacherRoles = filterCompatibleRoles(roles, "Teacher");
+  assert.equal(teacherRoles.length, 1);
+  assert.equal(teacherRoles[0].roleId, "r1");
+
+  const studentRoles = filterCompatibleRoles(roles, "Student");
+  assert.equal(studentRoles.length, 1);
+  assert.equal(studentRoles[0].roleId, "r3");
+
+  const managerRoles = filterCompatibleRoles(roles, "CenterManager");
+  assert.equal(managerRoles.length, 0);
+});
+
+test("25. validateRoleCreation enforces role code regex, length, and tenant account types", () => {
+  assert.equal(validateRoleCreation("TEACHER_LEAD", "Trưởng môn", "Teacher").valid, true);
+
+  // Invalid role code: lowercase
+  const lowerCode = validateRoleCreation("teacher_lead", "Trưởng môn", "Teacher");
+  assert.equal(lowerCode.valid, false);
+  assert.match(lowerCode.error!, /chữ in hoa/);
+
+  // Invalid role code: special characters
+  const specialCode = validateRoleCreation("ROLE-NAME", "Tên", "Teacher");
+  assert.equal(specialCode.valid, false);
+
+  // Empty role name
+  const emptyName = validateRoleCreation("ROLE_LEAD", "  ", "Teacher");
+  assert.equal(emptyName.valid, false);
+
+  // Disallowed account type (e.g. PlatformAdmin cannot be created by tenant)
+  const invalidAccount = validateRoleCreation("ADMIN_ROLE", "Admin", "PlatformAdmin");
+  assert.equal(invalidAccount.valid, false);
+  assert.match(invalidAccount.error!, /Loại tài khoản không hợp lệ/);
 });

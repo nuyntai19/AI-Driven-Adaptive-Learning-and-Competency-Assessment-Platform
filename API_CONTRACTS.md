@@ -2114,9 +2114,44 @@ Rules:
 
 | Method | Path | Permission | Kết quả |
 |---|---|---|---|
+| GET | /authorization/users | authorization.user_roles.read | Danh sách người dùng trong Center (CenterManager, Teacher, Student) hỗ trợ tìm kiếm & phân trang |
 | GET | /authorization/users/{userId}/roles | authorization.user_roles.read | Role active/revoked của user cùng Center |
 | PUT | /authorization/users/{userId}/roles | authorization.user_roles.assign | Replace atomic active role set |
 | GET | /authorization/audit | authorization.audit.read | Audit collection chỉ trong Center |
+
+### GET /authorization/users
+
+Query parameters:
+- `search`: Tìm kiếm theo username hoặc displayName.
+- `accountType`: Lọc theo loại tài khoản (`CenterManager`, `Teacher`, `Student`), tùy chọn.
+- `status`: Lọc theo trạng thái tài khoản (`Active`, `Disabled`, ...), tùy chọn.
+- `page`: Trang truy vấn (mặc định 1).
+- `pageSize`: Số lượng bản ghi mỗi trang (mặc định 20, tối đa 100).
+
+Response 200:
+
+~~~json
+{
+  "data": [
+    {
+      "userId": "4bd79f57-55bb-4f08-a69b-47ee532343f1",
+      "username": "teacher_nguyen",
+      "displayName": "Nguyễn Văn Giáo Viên",
+      "accountType": "Teacher",
+      "status": "Active",
+      "rowVersion": "2",
+      "authVersion": 1,
+      "createdAt": "2026-09-08T09:00:00Z"
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "pageSize": 20,
+    "totalItems": 1,
+    "totalPages": 1
+  }
+}
+~~~
 
 PUT request:
 
@@ -2167,7 +2202,7 @@ Rules:
 - Request rowVersion là concurrency token của target User; stale rowVersion trả 409 CONCURRENCY_CONFLICT. Client không gửi expected authorizationVersion cho mutation này.
 - Replace assignment, audit log, users.auth_version increment và refresh-token invalidation policy phải atomic.
 - Sau commit thành công, response trả rowVersion mới và authorizationVersion mới. authorizationVersion chỉ là security invalidation counter của target User, không thay rowVersion.
-- Audit query hỗ trợ from, to, actorUserId, targetUserId, actionType, page/pageSize; không trả before/after JSON chứa secret.
+- Audit query hỗ trợ đầy đủ bộ lọc H3: `from`, `to`, `actorUserId`, `targetUserId`, `targetId`, `permissionCode`, `actionType`, `page`/`pageSize`; không trả before/after JSON chứa secret (redacted).
 
 ## 71. Evidence Gate contract
 

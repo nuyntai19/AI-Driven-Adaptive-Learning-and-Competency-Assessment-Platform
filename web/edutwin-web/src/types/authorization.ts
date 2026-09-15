@@ -129,6 +129,30 @@ export interface AuthorizationUserOption {
   status?: string;
 }
 
+export interface AuthorizationUserQueryParams {
+  search?: string;
+  accountType?: AccountType;
+  status?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface AuthorizationUserItem {
+  userId: string;
+  username: string;
+  displayName: string;
+  accountType: AccountType;
+  status: string;
+  rowVersion: string;
+  authVersion: number;
+  createdAt: string;
+}
+
+export interface AuthorizationUserListResponse {
+  data: AuthorizationUserItem[];
+  meta: PagedMeta;
+}
+
 export interface AuthorizationRoleQueryParams {
   search?: string;
   accountType?: AccountType;
@@ -142,6 +166,8 @@ export interface AuthorizationAuditQueryParams {
   to?: string;
   actorUserId?: string;
   targetUserId?: string;
+  targetId?: string;
+  permissionCode?: string;
   actionType?: string;
   page?: number;
   pageSize?: number;

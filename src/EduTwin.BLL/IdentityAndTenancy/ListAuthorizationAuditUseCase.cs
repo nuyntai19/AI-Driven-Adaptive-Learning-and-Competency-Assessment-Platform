@@ -22,6 +22,8 @@ public sealed class ListAuthorizationAuditUseCase(
         }
         if (query.Page < 1 || query.PageSize is < 1 or > 100 ||
             query.ActionType?.Length > 64 ||
+            query.TargetId?.Length > 100 ||
+            query.PermissionCode?.Length > 100 ||
             query.From.HasValue && query.To.HasValue && query.From > query.To ||
             query.ActorUserId == Guid.Empty || query.TargetUserId == Guid.Empty)
         {
@@ -47,6 +49,16 @@ public sealed class ListAuthorizationAuditUseCase(
         if (query.TargetUserId.HasValue)
         {
             audits = audits.Where(audit => audit.TargetUserId == query.TargetUserId.Value);
+        }
+        if (!string.IsNullOrWhiteSpace(query.TargetId))
+        {
+            var targetId = query.TargetId.Trim();
+            audits = audits.Where(audit => audit.TargetId == targetId);
+        }
+        if (!string.IsNullOrWhiteSpace(query.PermissionCode))
+        {
+            var permCode = query.PermissionCode.Trim();
+            audits = audits.Where(audit => audit.PermissionCode == permCode);
         }
         if (actionType is not null)
         {

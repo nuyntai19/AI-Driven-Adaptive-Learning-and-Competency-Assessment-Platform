@@ -24,3 +24,10 @@ public interface IListAuthorizationAuditUseCase
         AuthorizationAuditQuery query,
         CancellationToken cancellationToken = default);
 }
+
+public interface IListAuthorizationUsersUseCase
+{
+    Task<ListAuthorizationUsersResult> ExecuteAsync(
+        AuthorizationUserListQuery query,
+        CancellationToken cancellationToken = default);
+}

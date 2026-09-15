@@ -26,6 +26,7 @@ public static class DependencyInjection
         services.AddScoped<IReplaceRolePermissionsUseCase, ReplaceRolePermissionsUseCase>();
         services.AddScoped<IGetUserAuthorizationUseCase, GetUserAuthorizationUseCase>();
         services.AddScoped<IReplaceUserRolesUseCase, ReplaceUserRolesUseCase>();
+        services.AddScoped<IListAuthorizationUsersUseCase, ListAuthorizationUsersUseCase>();
         services.AddScoped<IListAuthorizationAuditUseCase, ListAuthorizationAuditUseCase>();
 
         services.AddScoped<ILoginUseCase, LoginUseCase>();

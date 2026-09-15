@@ -19,6 +19,7 @@ public sealed class AuthorizationController(
     IReplaceRolePermissionsUseCase replaceRolePermissionsUseCase,
     IGetUserAuthorizationUseCase getUserAuthorizationUseCase,
     IReplaceUserRolesUseCase replaceUserRolesUseCase,
+    IListAuthorizationUsersUseCase listUsersUseCase,
     IListAuthorizationAuditUseCase listAuditUseCase,
     TimeProvider timeProvider) : ControllerBase
 {
@@ -169,6 +170,33 @@ public sealed class AuthorizationController(
         return result.IsSuccess
             ? Ok(RoleResponse(result.Data!))
             : MapRoleFailure(result.ErrorCode!);
+    }
+
+    [HttpGet("users")]
+    [Authorize(Policy = "authorization.user_roles.read")]
+    public async Task<IActionResult> GetUsers(
+        [FromQuery] AuthorizationUserListQuery query,
+        CancellationToken cancellationToken)
+    {
+        var result = await listUsersUseCase.ExecuteAsync(query, cancellationToken);
+        if (!result.IsSuccess)
+        {
+            return MapRoleFailure(result.ErrorCode!);
+        }
+
+        return Ok(new AuthorizationUserListResponse
+        {
+            Data = result.Data,
+            Meta = new PagedMetaDto
+            {
+                Page = query.Page,
+                PageSize = query.PageSize,
+                TotalItems = result.TotalItems,
+                TotalPages = result.TotalPages,
+                TraceId = CurrentTraceId(),
+                Timestamp = timeProvider.GetUtcNow().UtcDateTime
+            }
+        });
     }
 
     [HttpGet("users/{userId:guid}/roles")]

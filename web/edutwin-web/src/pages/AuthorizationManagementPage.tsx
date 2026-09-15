@@ -1,20 +1,26 @@
 import { useEffect, useMemo, useState } from "react";
-import { isAxiosError } from "axios";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { authorizationApi } from "../api/authorizationApi";
-import { organizationApi } from "../api/organizationApi";
 import { getCurrentUser } from "../auth/authApi";
 import { permissions } from "../auth/permissions";
 import { useAuthStore } from "../stores/authStore";
-import type { ProblemDetails } from "../types/auth";
 import type { AccountType } from "../types/auth";
 import type {
   AuthorizationAuditDto,
   AuthorizationRoleDto,
-  AuthorizationUserOption,
+  AuthorizationRoleStatus,
   PermissionDto,
 } from "../types/authorization";
+import {
+  parseSafeError,
+  buildRoleQueryParams,
+  buildUserQueryParams,
+  buildAuditQueryParams,
+  filterCompatibleRoles,
+  isSelfUser,
+  type ParsedSafeError,
+} from "./authorizationManagementHelpers";
 
 type Tab = "roles" | "users" | "audit";
 
@@ -23,35 +29,6 @@ const accountTypeLabels: Record<AccountType, string> = {
   Teacher: "Giáo viên",
   Student: "Học sinh",
   PlatformAdmin: "Quản trị viên nền tảng",
-};
-
-interface ParsedError {
-  message: string;
-  traceId?: string;
-  code?: string;
-}
-
-const parseError = (error: unknown): ParsedError => {
-  if (!isAxiosError<ProblemDetails>(error)) {
-    return { message: "Không thể hoàn tất thao tác. Vui lòng thử lại." };
-  }
-
-  const data = error.response?.data;
-  const code = data?.errorCode;
-  const traceId = data?.traceId;
-  const messages: Record<string, string> = {
-    AUTH_PRIVILEGE_ESCALATION: "Không thể cấp quyền cao hơn quyền hiện có của bạn hoặc gán quyền nền tảng.",
-    ROLE_ACCOUNT_TYPE_MISMATCH: "Role hoặc permission không tương thích với loại tài khoản.",
-    LAST_TENANT_ADMIN: "Phải giữ lại ít nhất một quản lý trung tâm có đủ quyền quản trị hợp lệ.",
-    CONCURRENCY_CONFLICT: "Dữ liệu đã được cập nhật bởi một phiên làm việc khác (OCC Concurrency Conflict). Hệ thống đã tự động nạp lại dữ liệu mới nhất.",
-    INVALID_STATE_TRANSITION: "Không thể thay đổi trạng thái role hệ thống hoặc chuyển trạng thái không hợp lệ.",
-    VALIDATION_FAILED: "Dữ liệu chưa hợp lệ. Vui lòng kiểm tra lại các trường bắt buộc và định dạng.",
-    RESOURCE_NOT_FOUND: "Không tìm thấy dữ liệu yêu cầu trong trung tâm hiện tại (Fail-closed).",
-    DUPLICATE_RESOURCE: "Mã role đã tồn tại trong trung tâm. Vui lòng chọn mã khác.",
-  };
-
-  const message = (code && messages[code]) || data?.detail || data?.title || "Không thể hoàn tất thao tác.";
-  return { message, traceId, code };
 };
 
 const arraysEqual = (a: string[], b: string[]) => {
@@ -66,7 +43,7 @@ export const AuthorizationManagementPage = () => {
   const hasPermission = useAuthStore((state) => state.hasPermission);
   const [tab, setTab] = useState<Tab>("roles");
   const [notice, setNotice] = useState("");
-  const [failure, setFailure] = useState<ParsedError | null>(null);
+  const [failure, setFailure] = useState<ParsedSafeError | null>(null);
 
   const canReadRoles = hasPermission(permissions.rolesRead);
   const canCreateRoles = hasPermission(permissions.rolesCreate);
@@ -92,12 +69,6 @@ export const AuthorizationManagementPage = () => {
     }
   }, [availableTabs, tab]);
 
-  const rolesQuery = useQuery({
-    queryKey: ["authorization", "roles"],
-    queryFn: () => authorizationApi.listRoles({ page: 1, pageSize: 100 }),
-    enabled: canReadRoles || canReadUserRoles,
-  });
-
   const permissionQuery = useQuery({
     queryKey: ["authorization", "permissions"],
     queryFn: authorizationApi.listPermissions,
@@ -111,7 +82,7 @@ export const AuthorizationManagementPage = () => {
 
   const showError = (error: unknown) => {
     setNotice("");
-    setFailure(parseError(error));
+    setFailure(parseSafeError(error));
   };
 
   const copyToClipboard = (text: string) => {
@@ -201,8 +172,6 @@ export const AuthorizationManagementPage = () => {
         {tab === "roles" && (
           <RolePermissionPanel
             currentUser={user}
-            roles={rolesQuery.data?.data ?? []}
-            roleLoading={rolesQuery.isLoading}
             catalog={permissionQuery.data?.data ?? []}
             catalogLoading={permissionQuery.isLoading}
             canCreate={canCreateRoles}
@@ -225,11 +194,8 @@ export const AuthorizationManagementPage = () => {
               status: user.status,
             }}
             actorPermissions={user.permissions}
-            roles={rolesQuery.data?.data ?? []}
             catalog={permissionQuery.data?.data ?? []}
             canAssign={canAssignUserRoles}
-            canReadTeachers={hasPermission(permissions.teachersRead)}
-            canReadStudents={hasPermission(permissions.studentsRead)}
             onSuccess={async (message, changedUserId) => {
               await queryClient.invalidateQueries({ queryKey: ["authorization"] });
               if (changedUserId === user.userId) {
@@ -258,8 +224,6 @@ export const AuthorizationManagementPage = () => {
 
 interface RolePermissionPanelProps {
   currentUser: { permissions: string[]; accountType: AccountType } | null;
-  roles: AuthorizationRoleDto[];
-  roleLoading: boolean;
   catalog: PermissionDto[];
   catalogLoading: boolean;
   canCreate: boolean;
@@ -273,8 +237,6 @@ interface RolePermissionPanelProps {
 
 const RolePermissionPanel = ({
   currentUser,
-  roles,
-  roleLoading,
   catalog,
   catalogLoading,
   canCreate,
@@ -287,9 +249,35 @@ const RolePermissionPanel = ({
 }: RolePermissionPanelProps) => {
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState("");
+  const [rolePage, setRolePage] = useState(1);
   const [searchRole, setSearchRole] = useState("");
   const [filterAccountType, setFilterAccountType] = useState<string>("All");
   const [filterStatus, setFilterStatus] = useState<string>("All");
+
+  const rolesQuery = useQuery({
+    queryKey: [
+      "authorization",
+      "roles-list",
+      searchRole,
+      filterAccountType,
+      filterStatus,
+      rolePage,
+    ],
+    queryFn: () =>
+      authorizationApi.listRoles(
+        buildRoleQueryParams(
+          rolePage,
+          10,
+          searchRole,
+          filterAccountType === "All" ? undefined : (filterAccountType as AccountType),
+          filterStatus === "All" ? undefined : (filterStatus as AuthorizationRoleStatus),
+        ),
+      ),
+  });
+
+  const roles = useMemo(() => rolesQuery.data?.data ?? [], [rolesQuery.data?.data]);
+  const rolesMeta = rolesQuery.data?.meta;
+  const roleLoading = rolesQuery.isLoading;
 
   // Form states for selected role
   const [roleName, setRoleName] = useState("");
@@ -305,21 +293,9 @@ const RolePermissionPanel = ({
   const [createName, setCreateName] = useState("");
   const [createType, setCreateType] = useState<AccountType>("Teacher");
   const [createDescription, setCreateDescription] = useState("");
-
-  const filteredRoles = useMemo(() => {
-    return roles.filter((role) => {
-      const matchesSearch =
-        role.roleName.toLowerCase().includes(searchRole.toLowerCase()) ||
-        role.roleCode.toLowerCase().includes(searchRole.toLowerCase());
-      const matchesType = filterAccountType === "All" || role.accountType === filterAccountType;
-      const matchesStatus = filterStatus === "All" || role.status === filterStatus;
-      return matchesSearch && matchesType && matchesStatus;
-    });
-  }, [filterAccountType, filterStatus, roles, searchRole]);
-
   const selected = useMemo(() => {
-    return roles.find((role) => role.roleId === selectedId) ?? filteredRoles[0] ?? roles[0];
-  }, [filteredRoles, roles, selectedId]);
+    return roles.find((role) => role.roleId === selectedId) ?? roles[0];
+  }, [roles, selectedId]);
 
   useEffect(() => {
     if (!selected) return;
@@ -474,7 +450,7 @@ const RolePermissionPanel = ({
         <div className="mb-3 flex items-center justify-between">
           <div>
             <h2 className="font-bold text-slate-900">Danh sách vai trò</h2>
-            <p className="text-xs text-slate-500">{filteredRoles.length} vai trò trong trung tâm</p>
+            <p className="text-xs text-slate-500">{rolesMeta?.totalItems ?? roles.length} vai trò trong trung tâm</p>
           </div>
           {canCreate && (
             <button
@@ -570,15 +546,21 @@ const RolePermissionPanel = ({
             type="search"
             placeholder="Tìm theo mã hoặc tên vai trò..."
             value={searchRole}
-            onChange={(e) => setSearchRole(e.target.value)}
+            onChange={(e) => {
+              setSearchRole(e.target.value);
+              setRolePage(1);
+            }}
             className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-xs"
           />
           <div className="grid grid-cols-2 gap-2">
             <select
               aria-label="Lọc theo loại tài khoản"
               value={filterAccountType}
-              onChange={(e) => setFilterAccountType(e.target.value)}
-              className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+              onChange={(e) => {
+                setFilterAccountType(e.target.value);
+                setRolePage(1);
+              }}
+              className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium"
             >
               <option value="All">Tất cả tài khoản</option>
               <option value="CenterManager">Quản lý trung tâm</option>
@@ -588,7 +570,10 @@ const RolePermissionPanel = ({
             <select
               aria-label="Lọc theo trạng thái vai trò"
               value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
+              onChange={(e) => {
+                setFilterStatus(e.target.value);
+                setRolePage(1);
+              }}
               className="rounded-md border border-slate-300 px-2 py-1 text-xs"
             >
               <option value="All">Tất cả trạng thái</option>
@@ -601,11 +586,11 @@ const RolePermissionPanel = ({
         {/* Role Items */}
         {roleLoading ? (
           <p className="py-6 text-center text-xs text-slate-500">Đang tải danh sách vai trò...</p>
-        ) : filteredRoles.length === 0 ? (
+        ) : roles.length === 0 ? (
           <p className="py-6 text-center text-xs text-slate-500">Không tìm thấy vai trò phù hợp bộ lọc.</p>
         ) : (
           <div className="max-h-[34rem] space-y-2 overflow-y-auto pr-1">
-            {filteredRoles.map((role) => (
+            {roles.map((role) => (
               <button
                 key={role.roleId}
                 type="button"
@@ -639,6 +624,33 @@ const RolePermissionPanel = ({
                 </div>
               </button>
             ))}
+          </div>
+        )}
+
+        {/* Role Pagination Controls */}
+        {rolesMeta && rolesMeta.totalPages > 1 && (
+          <div className="mt-3 flex items-center justify-between border-t border-slate-200 pt-3 text-xs text-slate-600">
+            <span>
+              Trang {rolesMeta.page} / {rolesMeta.totalPages} ({rolesMeta.totalItems} vai trò)
+            </span>
+            <div className="flex gap-1">
+              <button
+                type="button"
+                disabled={rolePage <= 1}
+                onClick={() => setRolePage((p) => Math.max(1, p - 1))}
+                className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Trước
+              </button>
+              <button
+                type="button"
+                disabled={rolePage >= rolesMeta.totalPages}
+                onClick={() => setRolePage((p) => Math.min(rolesMeta.totalPages, p + 1))}
+                className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Sau
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -942,13 +954,16 @@ const RolePermissionPanel = ({
 // ==========================================
 
 interface UserRolePanelProps {
-  currentUser: AuthorizationUserOption;
+  currentUser: {
+    userId: string;
+    displayName: string;
+    username: string;
+    accountType: AccountType;
+    status?: string;
+  };
   actorPermissions: string[];
-  roles: AuthorizationRoleDto[];
   catalog: PermissionDto[];
   canAssign: boolean;
-  canReadTeachers: boolean;
-  canReadStudents: boolean;
   onSuccess: (message: string, changedUserId: string) => Promise<void>;
   onError: (error: unknown) => void;
 }
@@ -956,69 +971,65 @@ interface UserRolePanelProps {
 const UserRolePanel = ({
   currentUser,
   actorPermissions,
-  roles,
   catalog,
   canAssign,
-  canReadTeachers,
-  canReadStudents,
   onSuccess,
   onError,
 }: UserRolePanelProps) => {
   const [selectedUserId, setSelectedUserId] = useState(currentUser.userId);
   const [userSearch, setUserSearch] = useState("");
   const [userAccountTypeFilter, setUserAccountTypeFilter] = useState<string>("All");
+  const [userStatusFilter, setUserStatusFilter] = useState<string>("All");
+  const [userPage, setUserPage] = useState(1);
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
   const [reason, setReason] = useState("");
 
-  const teachersQuery = useQuery({
-    queryKey: ["authorization", "teacher-options"],
-    queryFn: () => organizationApi.listTeachers({ page: 1, pageSize: 100 }),
-    enabled: canReadTeachers,
+  const usersQuery = useQuery({
+    queryKey: [
+      "authorization",
+      "users-list",
+      userSearch,
+      userAccountTypeFilter,
+      userStatusFilter,
+      userPage,
+    ],
+    queryFn: () =>
+      authorizationApi.listUsers(
+        buildUserQueryParams(
+          userPage,
+          10,
+          userSearch,
+          userAccountTypeFilter === "All" ? undefined : (userAccountTypeFilter as AccountType),
+          userStatusFilter === "All" ? undefined : userStatusFilter,
+        ),
+      ),
+    enabled: canAssign,
   });
 
-  const studentsQuery = useQuery({
-    queryKey: ["authorization", "student-options"],
-    queryFn: () => organizationApi.listStudents({ page: 1, pageSize: 100 }),
-    enabled: canReadStudents,
-  });
-
-  const users = useMemo<AuthorizationUserOption[]>(() => {
-    const result = [currentUser];
-    for (const teacher of teachersQuery.data?.data ?? []) {
-      result.push({
-        userId: teacher.teacherId,
-        displayName: teacher.displayName,
-        username: teacher.username,
-        accountType: "Teacher",
-        status: teacher.status,
-      });
-    }
-    for (const student of studentsQuery.data?.data ?? []) {
-      result.push({
-        userId: student.studentId,
-        displayName: student.fullName,
-        username: student.username,
-        accountType: "Student",
-        status: student.status,
-      });
-    }
-    return Array.from(new Map(result.map((item) => [item.userId, item])).values());
-  }, [currentUser, studentsQuery.data?.data, teachersQuery.data?.data]);
-
-  const filteredUsers = useMemo(() => {
-    return users.filter((u) => {
-      const matchesSearch =
-        u.displayName.toLowerCase().includes(userSearch.toLowerCase()) ||
-        u.username.toLowerCase().includes(userSearch.toLowerCase());
-      const matchesType =
-        userAccountTypeFilter === "All" || u.accountType === userAccountTypeFilter;
-      return matchesSearch && matchesType;
-    });
-  }, [users, userAccountTypeFilter, userSearch]);
+  const users = useMemo(() => usersQuery.data?.data ?? [], [usersQuery.data?.data]);
+  const usersMeta = usersQuery.data?.meta;
+  const userLoading = usersQuery.isLoading;
 
   const selectedUser = useMemo(() => {
     return users.find((item) => item.userId === selectedUserId) ?? currentUser;
   }, [currentUser, selectedUserId, users]);
+
+  // Load all active roles compatible with selected user's account type
+  const rolesQuery = useQuery({
+    queryKey: ["authorization", "roles-for-user", selectedUser.accountType],
+    queryFn: () =>
+      authorizationApi.listRoles({
+        accountType: selectedUser.accountType,
+        status: "Active",
+        page: 1,
+        pageSize: 100,
+      }),
+    enabled: Boolean(selectedUser.accountType),
+  });
+
+  const compatibleRoles = useMemo(() => {
+    return filterCompatibleRoles(rolesQuery.data?.data ?? [], selectedUser.accountType);
+  }, [rolesQuery.data?.data, selectedUser.accountType]);
 
   const authorizationQuery = useQuery({
     queryKey: ["authorization", "user", selectedUserId],
@@ -1059,16 +1070,9 @@ const UserRolePanel = ({
     },
   });
 
-  // Only active roles compatible with selected user's account type
-  const compatibleRoles = useMemo(() => {
-    return roles.filter(
-      (role) => role.accountType === selectedUser.accountType && role.status === "Active",
-    );
-  }, [roles, selectedUser.accountType]);
-
   // Compute effective permissions with source role attribution
   const effectivePermissionsBreakdown = useMemo(() => {
-    const selectedRoles = roles.filter((r) => selectedRoleIds.includes(r.roleId));
+    const selectedRoles = compatibleRoles.filter((r) => selectedRoleIds.includes(r.roleId));
     const permissionSources: Record<string, string[]> = {};
 
     for (const role of selectedRoles) {
@@ -1088,7 +1092,7 @@ const UserRolePanel = ({
         sourceRoles,
       }))
       .sort((a, b) => a.code.localeCompare(b.code));
-  }, [catalog, roles, selectedRoleIds]);
+  }, [catalog, compatibleRoles, selectedRoleIds]);
 
   const actorPermSet = useMemo(() => new Set(actorPermissions), [actorPermissions]);
 
@@ -1108,7 +1112,7 @@ const UserRolePanel = ({
 
   const rolesUnchanged = arraysEqual(selectedRoleIds, initialRoleIds);
   const reasonValid = reason.trim().length >= 3 && reason.trim().length <= 1000;
-  const isSelfChange = selectedUserId === currentUser.userId;
+  const isSelfChange = isSelfUser(currentUser.userId, selectedUserId);
 
   return (
     <section className="grid gap-6 lg:grid-cols-[22rem_1fr]">
@@ -1122,58 +1126,104 @@ const UserRolePanel = ({
             type="search"
             placeholder="Tìm theo tên hoặc username..."
             value={userSearch}
-            onChange={(e) => setUserSearch(e.target.value)}
+            onChange={(e) => {
+              setUserSearch(e.target.value);
+              setUserPage(1);
+            }}
             className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-xs"
           />
-          <select
-            aria-label="Lọc theo loại tài khoản người dùng"
-            value={userAccountTypeFilter}
-            onChange={(e) => setUserAccountTypeFilter(e.target.value)}
-            className="w-full rounded-md border border-slate-300 px-2 py-1 text-xs"
-          >
-            <option value="All">Tất cả tài khoản</option>
-            <option value="CenterManager">Quản lý trung tâm</option>
-            <option value="Teacher">Giáo viên</option>
-            <option value="Student">Học sinh</option>
-          </select>
+          <div className="grid grid-cols-2 gap-2">
+            <select
+              aria-label="Lọc theo loại tài khoản người dùng"
+              value={userAccountTypeFilter}
+              onChange={(e) => {
+                setUserAccountTypeFilter(e.target.value);
+                setUserPage(1);
+              }}
+              className="w-full rounded-md border border-slate-300 px-2 py-1 text-xs"
+            >
+              <option value="All">Tất cả tài khoản</option>
+              <option value="CenterManager">Quản lý trung tâm</option>
+              <option value="Teacher">Giáo viên</option>
+              <option value="Student">Học sinh</option>
+            </select>
+            <select
+              aria-label="Lọc theo trạng thái người dùng"
+              value={userStatusFilter}
+              onChange={(e) => {
+                setUserStatusFilter(e.target.value);
+                setUserPage(1);
+              }}
+              className="w-full rounded-md border border-slate-300 px-2 py-1 text-xs"
+            >
+              <option value="All">Tất cả trạng thái</option>
+              <option value="Active">Đang hoạt động</option>
+              <option value="Locked">Bị khóa</option>
+              <option value="Disabled">Vô hiệu hóa</option>
+            </select>
+          </div>
         </div>
 
         <div className="mt-3 max-h-[34rem] space-y-1.5 overflow-y-auto pr-1">
-          {filteredUsers.map((u) => (
-            <button
-              key={u.userId}
-              type="button"
-              id={`user-item-${u.userId}`}
-              onClick={() => setSelectedUserId(u.userId)}
-              className={`w-full rounded-lg p-2.5 text-left transition-all ${
-                selectedUserId === u.userId
-                  ? "bg-indigo-50 ring-2 ring-indigo-500"
-                  : "bg-slate-50 hover:bg-slate-100 ring-1 ring-slate-200"
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-slate-900 text-xs">{u.displayName}</span>
-                {u.userId === currentUser.userId && (
-                  <span className="rounded bg-indigo-100 px-1 py-0.2 text-[9px] font-bold text-indigo-700">
-                    Chính bạn
-                  </span>
-                )}
-              </div>
-              <div className="mt-0.5 flex items-center justify-between text-[11px] text-slate-500">
-                <span>{u.username}</span>
-                <span className="font-medium text-slate-600">{accountTypeLabels[u.accountType]}</span>
-              </div>
-            </button>
-          ))}
-          {filteredUsers.length === 0 && (
+          {userLoading ? (
+            <p className="py-6 text-center text-xs text-slate-500">Đang tải danh sách người dùng...</p>
+          ) : users.length === 0 ? (
             <p className="py-6 text-center text-xs text-slate-500">Không tìm thấy người dùng phù hợp.</p>
+          ) : (
+            users.map((u) => (
+              <button
+                key={u.userId}
+                type="button"
+                id={`user-item-${u.userId}`}
+                onClick={() => setSelectedUserId(u.userId)}
+                className={`w-full rounded-lg p-2.5 text-left transition-all ${
+                  selectedUserId === u.userId
+                    ? "bg-indigo-50 ring-2 ring-indigo-500"
+                    : "bg-slate-50 hover:bg-slate-100 ring-1 ring-slate-200"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-slate-900 text-xs">{u.displayName}</span>
+                  {isSelfUser(currentUser.userId, u.userId) && (
+                    <span className="rounded bg-indigo-100 px-1 py-0.2 text-[9px] font-bold text-indigo-700">
+                      Chính bạn
+                    </span>
+                  )}
+                </div>
+                <div className="mt-0.5 flex items-center justify-between text-[11px] text-slate-500">
+                  <span>{u.username}</span>
+                  <span className="font-medium text-slate-600">{accountTypeLabels[u.accountType]}</span>
+                </div>
+              </button>
+            ))
           )}
         </div>
 
-        {(!canReadTeachers || !canReadStudents) && (
-          <p className="mt-3 rounded bg-amber-50 p-2 text-[11px] text-amber-800">
-            Danh sách phụ thuộc vào quyền đọc: {canReadTeachers ? "✓ Giáo viên" : "✕ Chưa đọc được giáo viên"} · {canReadStudents ? "✓ Học sinh" : "✕ Chưa đọc được học sinh"}.
-          </p>
+        {/* User Pagination Controls */}
+        {usersMeta && usersMeta.totalPages > 1 && (
+          <div className="mt-3 flex items-center justify-between border-t border-slate-200 pt-3 text-xs text-slate-600">
+            <span>
+              Trang {usersMeta.page} / {usersMeta.totalPages} ({usersMeta.totalItems} người)
+            </span>
+            <div className="flex gap-1">
+              <button
+                type="button"
+                disabled={userPage <= 1}
+                onClick={() => setUserPage((p) => Math.max(1, p - 1))}
+                className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Trước
+              </button>
+              <button
+                type="button"
+                disabled={userPage >= usersMeta.totalPages}
+                onClick={() => setUserPage((p) => Math.min(usersMeta.totalPages, p + 1))}
+                className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Sau
+              </button>
+            </div>
+          </div>
         )}
       </div>
 
@@ -1400,20 +1450,36 @@ const AuditPanel = ({ canReadAudit }: AuditPanelProps) => {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(15);
   const [filterActionType, setFilterActionType] = useState<string>("");
+  const [filterPermissionCode, setFilterPermissionCode] = useState<string>("");
+  const [filterActorUserId, setFilterActorUserId] = useState<string>("");
+  const [filterTargetUserId, setFilterTargetUserId] = useState<string>("");
+  const [filterTargetId, setFilterTargetId] = useState<string>("");
   const [filterFrom, setFilterFrom] = useState<string>("");
   const [filterTo, setFilterTo] = useState<string>("");
   const [selectedAudit, setSelectedAudit] = useState<AuthorizationAuditDto | null>(null);
   const [copiedTraceId, setCopiedTraceId] = useState<string | null>(null);
 
   const queryParams = useMemo(() => {
-    return {
-      page,
-      pageSize,
-      actionType: filterActionType || undefined,
-      from: filterFrom ? new Date(filterFrom).toISOString() : undefined,
-      to: filterTo ? new Date(filterTo).toISOString() : undefined,
-    };
-  }, [filterActionType, filterFrom, filterTo, page, pageSize]);
+    return buildAuditQueryParams(page, pageSize, {
+      actionType: filterActionType,
+      permissionCode: filterPermissionCode,
+      actorUserId: filterActorUserId,
+      targetUserId: filterTargetUserId,
+      targetId: filterTargetId,
+      from: filterFrom,
+      to: filterTo,
+    });
+  }, [
+    filterActionType,
+    filterPermissionCode,
+    filterActorUserId,
+    filterTargetUserId,
+    filterTargetId,
+    filterFrom,
+    filterTo,
+    page,
+    pageSize,
+  ]);
 
   const auditQuery = useQuery({
     queryKey: ["authorization", "audit", queryParams],
@@ -1427,6 +1493,17 @@ const AuditPanel = ({ canReadAudit }: AuditPanelProps) => {
       setCopiedTraceId(traceId);
       setTimeout(() => setCopiedTraceId(null), 2000);
     }
+  };
+
+  const resetFilters = () => {
+    setFilterActionType("");
+    setFilterPermissionCode("");
+    setFilterActorUserId("");
+    setFilterTargetUserId("");
+    setFilterTargetId("");
+    setFilterFrom("");
+    setFilterTo("");
+    setPage(1);
   };
 
   const entries = auditQuery.data?.data ?? [];
@@ -1449,7 +1526,7 @@ const AuditPanel = ({ canReadAudit }: AuditPanelProps) => {
         </div>
 
         {/* Filter Toolbar */}
-        <div className="mt-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-4">
           <div>
             <label className="block text-[11px] font-semibold text-slate-700">Loại hành động</label>
             <select
@@ -1473,9 +1550,70 @@ const AuditPanel = ({ canReadAudit }: AuditPanelProps) => {
           </div>
 
           <div>
+            <label className="block text-[11px] font-semibold text-slate-700">Mã quyền hạn</label>
+            <input
+              type="text"
+              placeholder="VD: PERM_ROLES_CREATE"
+              aria-label="Lọc theo mã quyền hạn"
+              value={filterPermissionCode}
+              onChange={(e) => {
+                setFilterPermissionCode(e.target.value);
+                setPage(1);
+              }}
+              className="mt-1 w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-mono"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-700">Người thực hiện (Actor ID)</label>
+            <input
+              type="text"
+              placeholder="Actor User ID"
+              aria-label="Lọc theo người thực hiện"
+              value={filterActorUserId}
+              onChange={(e) => {
+                setFilterActorUserId(e.target.value);
+                setPage(1);
+              }}
+              className="mt-1 w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-mono"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-700">Người dùng đích (Target User)</label>
+            <input
+              type="text"
+              placeholder="Target User ID"
+              aria-label="Lọc theo người dùng đích"
+              value={filterTargetUserId}
+              onChange={(e) => {
+                setFilterTargetUserId(e.target.value);
+                setPage(1);
+              }}
+              className="mt-1 w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-mono"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-700">Đối tượng đích (Target ID)</label>
+            <input
+              type="text"
+              placeholder="Role ID hoặc User ID"
+              aria-label="Lọc theo đối tượng đích"
+              value={filterTargetId}
+              onChange={(e) => {
+                setFilterTargetId(e.target.value);
+                setPage(1);
+              }}
+              className="mt-1 w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-mono"
+            />
+          </div>
+
+          <div>
             <label className="block text-[11px] font-semibold text-slate-700">Từ thời điểm</label>
             <input
               type="datetime-local"
+              aria-label="Lọc từ thời điểm"
               value={filterFrom}
               onChange={(e) => {
                 setFilterFrom(e.target.value);
@@ -1489,6 +1627,7 @@ const AuditPanel = ({ canReadAudit }: AuditPanelProps) => {
             <label className="block text-[11px] font-semibold text-slate-700">Đến thời điểm</label>
             <input
               type="datetime-local"
+              aria-label="Lọc đến thời điểm"
               value={filterTo}
               onChange={(e) => {
                 setFilterTo(e.target.value);
@@ -1501,12 +1640,7 @@ const AuditPanel = ({ canReadAudit }: AuditPanelProps) => {
           <div className="flex items-end">
             <button
               type="button"
-              onClick={() => {
-                setFilterActionType("");
-                setFilterFrom("");
-                setFilterTo("");
-                setPage(1);
-              }}
+              onClick={resetFilters}
               className="w-full rounded-md border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
             >
               Đặt lại bộ lọc

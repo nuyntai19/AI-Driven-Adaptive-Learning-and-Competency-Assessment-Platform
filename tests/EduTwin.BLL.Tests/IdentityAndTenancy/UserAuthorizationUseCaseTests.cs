@@ -144,6 +144,135 @@ public sealed class UserAuthorizationUseCaseTests
     }
 
     [Fact]
+    public async Task ListAuthorizationUsers_ReturnsAllCenterUsersAndSupportsSearchFilterAndPagination()
+    {
+        await using var fixture = await CreateFixtureAsync();
+        var (teacher, _, _) = await SeedTeacherRolesAsync(fixture);
+        var now = DateTime.UtcNow;
+
+        var secondManager = new User
+        {
+            UserId = Guid.NewGuid(),
+            CenterId = fixture.TenantContext.CenterId!.Value,
+            Username = "mgr.second",
+            DisplayName = "Second Manager",
+            PasswordHash = "hash",
+            RoleName = UserRole.CenterManager,
+            Status = UserStatus.Active,
+            RowVersion = 1,
+            AuthVersion = 1,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        var student = new User
+        {
+            UserId = Guid.NewGuid(),
+            CenterId = fixture.TenantContext.CenterId!.Value,
+            Username = "student.01",
+            DisplayName = "Student Alpha",
+            PasswordHash = "hash",
+            RoleName = UserRole.Student,
+            Status = UserStatus.Active,
+            RowVersion = 1,
+            AuthVersion = 1,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        var crossTenantUser = new User
+        {
+            UserId = Guid.NewGuid(),
+            CenterId = Guid.NewGuid(),
+            Username = "other.manager",
+            DisplayName = "Other Manager",
+            PasswordHash = "hash",
+            RoleName = UserRole.CenterManager,
+            Status = UserStatus.Active,
+            RowVersion = 1,
+            AuthVersion = 1,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        fixture.Context.Users.AddRange(secondManager, student, crossTenantUser);
+        await fixture.Context.SaveChangesAsync();
+
+        var sut = new ListAuthorizationUsersUseCase(fixture.Context, fixture.TenantContext);
+
+        // 1. List all users in center (cross-tenant hidden)
+        var allResult = await sut.ExecuteAsync(new AuthorizationUserListQuery { Page = 1, PageSize = 20 });
+        Assert.True(allResult.IsSuccess);
+        Assert.DoesNotContain(allResult.Data, u => u.Username == "other.manager");
+        Assert.Contains(allResult.Data, u => u.Username == "mgr.second");
+        Assert.Contains(allResult.Data, u => u.Username == teacher.Username);
+        Assert.Contains(allResult.Data, u => u.Username == "student.01");
+
+        // 2. Filter by AccountType
+        var mgrResult = await sut.ExecuteAsync(new AuthorizationUserListQuery { AccountType = UserRole.CenterManager });
+        Assert.True(mgrResult.IsSuccess);
+        Assert.All(mgrResult.Data, u => Assert.Equal(UserRole.CenterManager, u.AccountType));
+        Assert.Contains(mgrResult.Data, u => u.Username == "mgr.second");
+        Assert.DoesNotContain(mgrResult.Data, u => u.Username == teacher.Username);
+
+        // 3. Search by username or display name
+        var searchResult = await sut.ExecuteAsync(new AuthorizationUserListQuery { Search = "Alpha" });
+        Assert.True(searchResult.IsSuccess);
+        Assert.Single(searchResult.Data);
+        Assert.Equal("student.01", searchResult.Data[0].Username);
+
+        // 4. Pagination
+        var pagedResult = await sut.ExecuteAsync(new AuthorizationUserListQuery { Page = 1, PageSize = 2 });
+        Assert.True(pagedResult.IsSuccess);
+        Assert.Equal(2, pagedResult.Data.Count);
+        Assert.True(pagedResult.TotalItems >= 4);
+    }
+
+    [Fact]
+    public async Task ListAuthorizationAudit_SupportsTargetIdAndPermissionCodeFilters()
+    {
+        await using var fixture = await CreateFixtureAsync();
+        var now = DateTime.UtcNow;
+        var audit1 = new AuthorizationAuditLog
+        {
+            CenterId = fixture.TenantContext.CenterId!.Value,
+            ActorUserId = fixture.ManagerId,
+            ActionType = "RoleCreated",
+            TargetType = "Role",
+            TargetId = "ROLE_TARGET_1",
+            PermissionCode = "curriculum.curriculums.read",
+            TraceId = "trace-1",
+            Reason = "Lý do 1",
+            CreatedAt = now
+        };
+        var audit2 = new AuthorizationAuditLog
+        {
+            CenterId = fixture.TenantContext.CenterId!.Value,
+            ActorUserId = fixture.ManagerId,
+            ActionType = "RolePermissionsReplaced",
+            TargetType = "Role",
+            TargetId = "ROLE_TARGET_2",
+            PermissionCode = "assignments.assignments.create",
+            TraceId = "trace-2",
+            Reason = "Lý do 2",
+            CreatedAt = now
+        };
+        fixture.Context.AuthorizationAuditLogs.AddRange(audit1, audit2);
+        await fixture.Context.SaveChangesAsync();
+
+        var sut = new ListAuthorizationAuditUseCase(fixture.Context, fixture.TenantContext);
+
+        // Filter by TargetId
+        var targetResult = await sut.ExecuteAsync(new AuthorizationAuditQuery { TargetId = "ROLE_TARGET_1" });
+        Assert.True(targetResult.IsSuccess);
+        Assert.Single(targetResult.Data);
+        Assert.Equal("ROLE_TARGET_1", targetResult.Data[0].TargetId);
+
+        // Filter by PermissionCode
+        var permResult = await sut.ExecuteAsync(new AuthorizationAuditQuery { PermissionCode = "assignments.assignments.create" });
+        Assert.True(permResult.IsSuccess);
+        Assert.Single(permResult.Data);
+        Assert.Equal("assignments.assignments.create", permResult.Data[0].PermissionCode);
+    }
+
+    [Fact]
     public async Task TenantAdministratorGuard_SimulatesRoleArchive()
     {
         await using var fixture = await CreateFixtureAsync();
