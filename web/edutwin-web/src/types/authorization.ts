@@ -128,3 +128,21 @@ export interface AuthorizationUserOption {
   accountType: AccountType;
   status?: string;
 }
+
+export interface AuthorizationRoleQueryParams {
+  search?: string;
+  accountType?: AccountType;
+  status?: AuthorizationRoleStatus;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface AuthorizationAuditQueryParams {
+  from?: string;
+  to?: string;
+  actorUserId?: string;
+  targetUserId?: string;
+  actionType?: string;
+  page?: number;
+  pageSize?: number;
+}

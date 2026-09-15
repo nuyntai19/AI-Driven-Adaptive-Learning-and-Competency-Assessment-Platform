@@ -1,7 +1,9 @@
 import { httpClient } from "./httpClient";
 import type {
+  AuthorizationAuditQueryParams,
   AuthorizationAuditResponse,
   AuthorizationRoleListResponse,
+  AuthorizationRoleQueryParams,
   AuthorizationRoleResponse,
   CreateAuthorizationRoleRequest,
   PermissionListResponse,
@@ -20,10 +22,12 @@ export const authorizationApi = {
     return response.data;
   },
 
-  listRoles: async (): Promise<AuthorizationRoleListResponse> => {
+  listRoles: async (
+    params?: AuthorizationRoleQueryParams,
+  ): Promise<AuthorizationRoleListResponse> => {
     const response = await httpClient.get<AuthorizationRoleListResponse>(
       "/authorization/roles",
-      { params: { page: 1, pageSize: 100 } },
+      { params: { page: 1, pageSize: 100, ...params } },
     );
     return response.data;
   },
@@ -80,10 +84,12 @@ export const authorizationApi = {
     return response.data;
   },
 
-  listAudit: async (): Promise<AuthorizationAuditResponse> => {
+  listAudit: async (
+    params?: AuthorizationAuditQueryParams,
+  ): Promise<AuthorizationAuditResponse> => {
     const response = await httpClient.get<AuthorizationAuditResponse>(
       "/authorization/audit",
-      { params: { page: 1, pageSize: 50 } },
+      { params: { page: 1, pageSize: 20, ...params } },
     );
     return response.data;
   },

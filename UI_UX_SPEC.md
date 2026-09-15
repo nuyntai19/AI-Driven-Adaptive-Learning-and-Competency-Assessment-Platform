@@ -738,3 +738,35 @@ Không dùng biểu thức role OR permission để “chạy tạm”, vì sẽ
   - Hộp thoại cảnh báo với biểu tượng nguy hiểm màu đỏ.
   - Ghi chú bảo toàn dữ liệu rõ ràng: "Hành động này sẽ chuyển trạng thái tham gia lớp của học sinh sang Removed. Toàn bộ lịch sử bài làm (Attempts), điểm số và evidence học tập trước đó vẫn được bảo toàn nguyên vẹn."
   - Gửi yêu cầu xóa mềm `DELETE /api/v1/classes/{classId}/students/{studentId}` và tự động làm mới danh sách thành viên sau khi xóa thành công.
+
+#### 20.7.6. Quản trị Phân quyền Động và Ma trận Quyền hạn (`AuthorizationManagementPage.tsx`)
+- **Route canonical:** `/quan-ly/phan-quyen`.
+- **Yêu cầu phân quyền & capability-first gating:**
+  - `authorization.roles.read`: Xem danh mục vai trò và ma trận quyền hạn tương ứng.
+  - `authorization.roles.manage`: Tạo vai trò tùy chỉnh mới và cập nhật/thay thế ma trận quyền Canonical của vai trò.
+  - `authorization.users.assign_roles`: Gán/gỡ vai trò người dùng trong phạm vi trung tâm hiện tại.
+  - `authorization.audit.read`: Xem lịch sử và chi tiết nhật ký kiểm toán phân quyền.
+- **3 Tab chức năng chính:**
+  1. **Tab 1: Vai trò & Ma trận quyền (`tab-roles-matrix`):**
+     - *Danh mục vai trò:* Danh sách cuộn với bộ lọc Loại tài khoản (`Teacher`, `Student`, `CenterManager`) và Trạng thái (`Active` / `Inactive`).
+     - *Bảo vệ vai trò hệ thống (System Roles):* Vai trò hệ thống (`SYSTEM_CENTERMANAGER`, `SYSTEM_TEACHER`, `SYSTEM_STUDENT`) hiển thị huy hiệu "Hệ thống" nổi bật, banner thông báo bảo vệ vai trò chuẩn mực và khóa chế độ chỉnh sửa (Read-only lock).
+     - *Modal Tạo vai trò mới (`btn-open-create-role`):* Cho phép nhập Mã vai trò (`RoleCode` - tự động chuyển chữ hoa, số và gạch dưới), Tên vai trò hiển thị, Loại tài khoản tương thích, Mô tả nhiệm vụ.
+     - *Ma trận quyền hạn phân nhóm theo Module:* Phân cụm trực quan theo tiền tố module (`assignments`, `curriculum`, `organization`, `reports`...).
+     - *Công cụ chọn nhanh theo nhóm:* Nút "Chọn tất cả" và "Bỏ chọn" cho từng module riêng biệt.
+     - *Huy hiệu quyền hạn trực quan (Granular Badges):*
+       - `Bạn có`: Đánh dấu quyền hạn mà người thực hiện hiện đang sở hữu.
+       - `Nhạy cảm`: Cảnh báo quyền hạn có rủi ro bảo mật hoặc tác động diện rộng.
+       - `Không tương thích`: Đánh dấu quyền không tương thích với loại tài khoản của vai trò (khóa không cho chọn).
+       - `Không thể ủy quyền`: Đánh dấu quyền vượt quá thẩm quyền của người thực hiện hiện tại.
+     - *Lưu ma trận quyền Canonical:* Trường bắt buộc nhập Lý do (`reason` tối thiểu 3 ký tự), nút `Thay thế permission (Canonical)`, cơ chế No-op guard (vô hiệu nút lưu khi ma trận chưa thay đổi), và bắt lỗi OCC Concurrency Conflict (HTTP 409).
+  2. **Tab 2: Gán vai trò người dùng (`tab-user-assignments`):**
+     - *Danh sách người dùng:* Lọc theo loại tài khoản và tìm kiếm theo tên hoặc tên đăng nhập.
+     - *Lựa chọn vai trò tương thích:* Chỉ hiển thị các vai trò đang kích hoạt (`Active`) có loại tài khoản tương thích với người dùng được chọn.
+     - *Cảnh báo Tự thay đổi vai trò (Self-change Warning):* Khi người dùng được chọn trùng với tài khoản hiện tại (`selectedUserId === currentUser.userId`), giao diện kích hoạt banner cảnh báo màu vàng/đỏ nổi bật: `⚠️ Cảnh báo tự thay đổi vai trò (Self-change Warning): Thao tác gỡ bỏ vai trò quản trị có thể khiến bạn mất quyền truy cập vào các chức năng quản lý ngay lập tức`.
+     - *Bảng Quyền hạn hiệu lực (Effective Permissions):* Hiển thị bảng tổng hợp toàn bộ quyền hạn mà người dùng nhận được từ các vai trò được gán kèm nhãn nguồn gốc đóng góp (`← Tên vai trò`).
+     - *Bắt buộc nhập lý do quản trị và xử lý cập nhật tức thì (AuthVersion increment).*
+  3. **Tab 3: Nhật ký kiểm toán phân quyền (`tab-audit-logs`):**
+     - *Bảng lịch sử kiểm toán:* Hiển thị thời gian thực hiện, loại hành động (`RoleCreated`, `RolePermissionsReplaced`, `UserRolesReplaced`...), người thực hiện, đối tượng tác động, mã vết theo dõi W3C (`Trace ID`), và lý do quản trị.
+     - *Bộ lọc nâng cao:* Lọc theo Loại hành động (`ActionType`), Khoảng thời gian (Từ ngày - Đến ngày), và điều hướng phân trang phía máy chủ.
+     - *Sao chép Trace ID:* Nút sao chép 1-click để phục vụ đối soát kỹ thuật và điều tra sự cố.
+     - *Modal So sánh Before/After (`AuditDetailModal`):* Mở cửa sổ xem chi tiết hiển thị đầy đủ ngữ cảnh truy vết (Actor, Target, Trace ID, Reason) và hai cột so sánh JSON Dữ liệu trước (Before Data) và Dữ liệu sau (After Data) với định dạng trực quan.
