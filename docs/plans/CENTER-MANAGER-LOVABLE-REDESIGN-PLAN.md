@@ -205,6 +205,9 @@ graph TD
 ---
 
 ### Checkpoint 2: Design System Foundation
+* **Trạng thái:** **HOÀN THÀNH — GATE 2 PASS**
+* **Evidence commits:** `a6e982a` (implementation), `cb9569c` (forward whitespace corrective).
+* **Kết quả xác minh:** 134/134 frontend tests pass, ESLint 0 lỗi/0 cảnh báo, production build pass; main bundle 395.27 KB và không chunk nào vượt 500 KB.
 * **Mục tiêu:** Xây dựng hệ thống Design Tokens và thư viện Atomic Components theo chuẩn Ảnh 18 (Dark Enterprise SaaS), đóng gói trong phạm vi actor CenterManager.
 * **Chi tiết công việc:**
   1. Thiết lập CSS Variables / Scoped Tokens dưới selector `[data-actor="center-manager"]` hoặc `CenterManagerLayout`:
