@@ -46,6 +46,73 @@ export function Drawer({ isOpen, title, description, onClose, children, footer }
     document.body,
   );
 }
+
+interface ModalProps {
+  isOpen: boolean;
+  title: string;
+  description?: string;
+  onClose: () => void;
+  children: ReactNode;
+  footer?: ReactNode;
+  maxWidth?: string;
+}
+
+export function Modal({
+  isOpen,
+  title,
+  description,
+  onClose,
+  children,
+  footer,
+  maxWidth = "max-w-lg",
+}: ModalProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const titleId = useId();
+  const descriptionId = useId();
+
+  useModalAccessibility({ isOpen, onClose, containerRef, initialFocusRef: closeButtonRef });
+
+  if (!isOpen || typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      data-actor="center-manager"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/70 p-4"
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+    >
+      <div
+        ref={containerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={description ? descriptionId : undefined}
+        tabIndex={-1}
+        className={`cm-surface flex max-h-[90vh] w-full ${maxWidth} flex-col shadow-2xl`}
+      >
+        <header className="flex items-start justify-between gap-4 border-b border-[var(--cm-border-subtle)] p-5">
+          <div>
+            <h2 id={titleId} className="text-lg font-semibold text-[var(--cm-text)]">{title}</h2>
+            {description && <p id={descriptionId} className="mt-1 text-sm text-[var(--cm-text-secondary)]">{description}</p>}
+          </div>
+          <button
+            ref={closeButtonRef}
+            type="button"
+            className="cm-icon-button h-10 w-10 border border-[var(--cm-border)]"
+            aria-label="Đóng hộp thoại"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
+        {footer && <footer className="border-t border-[var(--cm-border-subtle)] p-5">{footer}</footer>}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 interface ConfirmDialogProps {
   isOpen: boolean;
   title: string;

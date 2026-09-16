@@ -11,8 +11,7 @@ import type {
   StudentDto,
 } from "../types/organization";
 import { useAuthStore } from "../stores/authStore";
-import { extractProblemDetails, isConcurrencyConflict } from "../utils/problemDetails";
-
+import { extractProblemDetails, isConcurrencyConflict, mapSafeOperationalError } from "../utils/problemDetails";
 import {
   evaluateClassCapabilities,
   toggleStudentSelection,
@@ -20,13 +19,28 @@ import {
   unmergePageSelection,
   getCandidateListState,
 } from "./classListHelpers";
+import {
+  CenterManagerThemeScope,
+  PageHeader,
+  FilterBar,
+  DataTable,
+  type DataTableColumn,
+  StatusBadge,
+  Modal,
+  Drawer,
+  ConcurrencyBanner,
+  SafeErrorPanel,
+} from "../components/centerManager";
 
 const STATUS_LABELS: Record<ClassStatus, string> = {
   Active: "Hoạt động",
   Archived: "Đã lưu trữ",
 };
 
-export const ClassListPage: React.FC = () => {
+/**
+ * Modern CenterManager Dark Enterprise SaaS view for ClassListPage
+ */
+const CenterManagerClassListView: React.FC = () => {
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
 
@@ -38,7 +52,7 @@ export const ClassListPage: React.FC = () => {
     canViewDashboard,
   } = evaluateClassCapabilities(user);
 
-  // List filter state
+  // Primary list state
   const [page, setPage] = useState<number>(1);
   const pageSize = 10;
   const [status, setStatus] = useState<ClassStatus | "">("");
@@ -48,10 +62,11 @@ export const ClassListPage: React.FC = () => {
   const [feedback, setFeedback] = useState<{
     type: "success" | "error" | "conflict";
     message: string;
+    traceId?: string;
   } | null>(null);
 
-  const showFeedback = (type: "success" | "error" | "conflict", message: string) => {
-    setFeedback({ type, message });
+  const showFeedback = (type: "success" | "error" | "conflict", message: string, traceId?: string | null) => {
+    setFeedback({ type, message, traceId: traceId ?? undefined });
     if (type === "success") {
       setTimeout(() => setFeedback(null), 5000);
     }
@@ -72,13 +87,13 @@ export const ClassListPage: React.FC = () => {
   const [editStatus, setEditStatus] = useState<ClassStatus>("Active");
   const [editError, setEditError] = useState<string | null>(null);
 
-  // Detail modal state
+  // Detail modal/drawer state
   const [viewingClassId, setViewingClassId] = useState<string | null>(null);
   const [memberPage, setMemberPage] = useState<number>(1);
   const [memberSearchInput, setMemberSearchInput] = useState("");
   const [memberSearch, setMemberSearch] = useState("");
 
-  // Add students modal state
+  // Add students modal state (SQL anti-join candidate list)
   const [isAddStudentsModalOpen, setIsAddStudentsModalOpen] = useState(false);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [candidatePage, setCandidatePage] = useState<number>(1);
@@ -100,18 +115,13 @@ export const ClassListPage: React.FC = () => {
     status: status !== "" ? status : undefined,
   };
 
-  const { data, isLoading, isFetching, isError, refetch } = useQuery({
+  const { data, isLoading, isFetching, isError, error: listError, refetch } = useQuery({
     queryKey: ["classes", queryParams.page, queryParams.pageSize, queryParams.status],
     queryFn: () => organizationApi.listClasses(queryParams),
   });
 
   // Subjects query for create modal
-  const {
-    data: subjectsData,
-    isLoading: isLoadingSubjects,
-    isFetching: isFetchingSubjects,
-    isError: isErrorSubjects,
-  } = useQuery({
+  const { data: subjectsData, isLoading: isLoadingSubjects } = useQuery({
     queryKey: ["subjects", "active"],
     queryFn: () => organizationApi.listSubjects(true),
     enabled: isCreateModalOpen && canCreateClass,
@@ -121,33 +131,20 @@ export const ClassListPage: React.FC = () => {
   const shouldFetchTeachers =
     (isCreateModalOpen && canCreateClass) || (!!editingClass && canUpdateClass);
 
-  const {
-    data: teachersData,
-    isLoading: isLoadingTeachers,
-    isFetching: isFetchingTeachers,
-    isError: isErrorTeachers,
-  } = useQuery({
+  const { data: teachersData, isLoading: isLoadingTeachers } = useQuery({
     queryKey: ["teachers", "active"],
     queryFn: () => organizationApi.listTeachers({ page: 1, pageSize: 100, status: "Active" }),
     enabled: shouldFetchTeachers,
   });
 
   // Detail queries
-  const {
-    data: classDetail,
-    isLoading: isDetailLoading,
-    isError: isDetailError,
-  } = useQuery({
+  const { data: classDetail, isLoading: isDetailLoading } = useQuery({
     queryKey: ["classDetail", viewingClassId],
     queryFn: () => organizationApi.getClass(viewingClassId!),
     enabled: !!viewingClassId,
   });
 
-  const {
-    data: classStudentsData,
-    isLoading: isLoadingStudents,
-    isError: isErrorStudents,
-  } = useQuery({
+  const { data: classStudentsData, isLoading: isLoadingStudents } = useQuery({
     queryKey: ["classStudents", viewingClassId, memberPage, memberSearch],
     queryFn: () =>
       organizationApi.getClassStudents(viewingClassId!, {
@@ -158,7 +155,7 @@ export const ClassListPage: React.FC = () => {
     enabled: !!viewingClassId,
   });
 
-  // Candidate students query for adding members
+  // Candidate students query (SQL anti-join server pagination)
   const {
     data: candidateStudentsData,
     isLoading: isLoadingCandidates,
@@ -177,6 +174,1175 @@ export const ClassListPage: React.FC = () => {
   });
 
   // Mutations
+  const createClassMutation = useMutation({
+    mutationFn: (req: CreateClassRequest) => organizationApi.createClass(req),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["classes"] });
+      showFeedback("success", "Tạo lớp học thành công!");
+      resetCreateForm();
+      setIsCreateModalOpen(false);
+    },
+    onError: (error: unknown) => {
+      const details = extractProblemDetails(error);
+      if (details.errorCode === "DUPLICATE_RESOURCE") {
+        setCreateError("Tên lớp và năm học này đã tồn tại trong trung tâm.");
+      } else if (details.errorCode === "VALIDATION_FAILED") {
+        setCreateError("Thông tin lớp học không hợp lệ.");
+      } else if (details.errorCode === "RESOURCE_NOT_FOUND") {
+        setCreateError("Giáo viên hoặc môn học đã chọn không tồn tại hoặc không còn khả dụng.");
+      } else {
+        setCreateError(mapSafeOperationalError(error, "Không thể tạo lớp học. Vui lòng thử lại."));
+      }
+    },
+  });
+
+  const updateClassMutation = useMutation({
+    mutationFn: ({ classId, request }: { classId: string; request: UpdateClassRequest }) =>
+      organizationApi.updateClass(classId, request),
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ["classes"] });
+      queryClient.invalidateQueries({ queryKey: ["classDetail", updated.classId] });
+      showFeedback("success", `Đã cập nhật lớp "${updated.className}" thành công!`);
+      setEditingClass(null);
+    },
+    onError: (error: unknown) => {
+      const details = extractProblemDetails(error);
+      if (details.errorCode === "DUPLICATE_RESOURCE") {
+        setEditError("Tên lớp và năm học này đã tồn tại trong trung tâm.");
+      } else if (details.errorCode === "CONCURRENCY_CONFLICT" || isConcurrencyConflict(error)) {
+        showFeedback(
+          "conflict",
+          "Dữ liệu lớp học đã bị thay đổi bởi phiên làm việc khác. Vui lòng nạp lại dữ liệu mới nhất.",
+          details.traceId
+        );
+        refetch();
+        if (viewingClassId) {
+          queryClient.invalidateQueries({ queryKey: ["classDetail", viewingClassId] });
+        }
+        setEditingClass(null);
+      } else if (details.errorCode === "VALIDATION_FAILED") {
+        setEditError("Thông tin cập nhật không hợp lệ.");
+      } else {
+        setEditError(mapSafeOperationalError(error, "Không thể cập nhật lớp học. Vui lòng thử lại."));
+      }
+    },
+  });
+
+  const addStudentsMutation = useMutation({
+    mutationFn: ({ classId, studentIds }: { classId: string; studentIds: string[] }) =>
+      organizationApi.addStudentsToClass(classId, { studentIds }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["classes"] });
+      queryClient.invalidateQueries({ queryKey: ["classDetail", res.classId] });
+      queryClient.invalidateQueries({ queryKey: ["classStudents", res.classId] });
+      queryClient.invalidateQueries({ queryKey: ["candidateStudents"] });
+      const duplicateMsg =
+        res.alreadyMemberCount > 0
+          ? ` (${res.alreadyMemberCount} học sinh đã là thành viên)`
+          : "";
+      showFeedback("success", `Đã thêm ${res.addedCount} học sinh vào lớp học${duplicateMsg}.`);
+      setIsAddStudentsModalOpen(false);
+      setSelectedStudentIds([]);
+    },
+    onError: (error: unknown) => {
+      setAddStudentsError(mapSafeOperationalError(error, "Không thể thêm học sinh vào lớp. Vui lòng thử lại."));
+    },
+  });
+
+  const removeStudentMutation = useMutation({
+    mutationFn: ({ classId, studentId }: { classId: string; studentId: string }) =>
+      organizationApi.removeStudentFromClass(classId, studentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["classes"] });
+      if (viewingClassId) {
+        queryClient.invalidateQueries({ queryKey: ["classDetail", viewingClassId] });
+        queryClient.invalidateQueries({ queryKey: ["classStudents", viewingClassId] });
+        queryClient.invalidateQueries({ queryKey: ["candidateStudents"] });
+      }
+      showFeedback("success", "Đã rút học sinh khỏi lớp học thành công. Bằng chứng làm bài được giữ nguyên vẹn.");
+      setRemovingStudent(null);
+    },
+    onError: (error: unknown) => {
+      if (isConcurrencyConflict(error)) {
+        showFeedback(
+          "conflict",
+          "Dữ liệu thành viên đã thay đổi. Đang tải lại danh sách mới nhất..."
+        );
+        if (viewingClassId) {
+          queryClient.invalidateQueries({ queryKey: ["classStudents", viewingClassId] });
+        }
+        setRemovingStudent(null);
+      } else {
+        setRemoveError(mapSafeOperationalError(error, "Không thể rút học sinh khỏi lớp. Vui lòng thử lại."));
+      }
+    },
+  });
+
+  const resetCreateForm = () => {
+    setClassName("");
+    setAcademicYear("");
+    setSubjectId("");
+    setTeacherId("");
+    setCreateError(null);
+  };
+
+  const handleCancelCreate = () => {
+    setIsCreateModalOpen(false);
+    resetCreateForm();
+  };
+
+  const handleOpenEdit = (cls: ClassDto) => {
+    setEditingClass(cls);
+    setEditClassName(cls.className);
+    setEditTeacherId(cls.teacher.teacherId);
+    setEditStatus(cls.status);
+    setEditError(null);
+  };
+
+  const handleOpenDetail = (classId: string) => {
+    setViewingClassId(classId);
+    setMemberPage(1);
+    setMemberSearchInput("");
+    setMemberSearch("");
+  };
+
+  const handleMemberSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setMemberSearch(memberSearchInput);
+    setMemberPage(1);
+  };
+
+  const handleFilter = (e: React.FormEvent) => {
+    e.preventDefault();
+    setStatus(statusInput);
+    setPage(1);
+  };
+
+  const handleCreateSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreateError(null);
+
+    const normClassName = className.trim();
+    const normAcademicYear = academicYear.trim();
+    const normSubjectId = subjectId.trim();
+    const normTeacherId = teacherId.trim();
+
+    if (
+      !normClassName ||
+      normClassName.length > 150 ||
+      !normAcademicYear ||
+      normAcademicYear.length > 20 ||
+      !normSubjectId ||
+      !normTeacherId
+    ) {
+      setCreateError("Vui lòng điền đầy đủ và chính xác các thông tin bắt buộc.");
+      return;
+    }
+
+    createClassMutation.mutate({
+      className: normClassName,
+      academicYear: normAcademicYear,
+      subjectId: normSubjectId,
+      teacherId: normTeacherId,
+    });
+  };
+
+  const handleEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingClass) return;
+    setEditError(null);
+
+    const normClassName = editClassName.trim();
+    const normTeacherId = editTeacherId.trim();
+
+    if (!normClassName || normClassName.length > 150) {
+      setEditError("Tên lớp học không được để trống và không vượt quá 150 ký tự.");
+      return;
+    }
+    if (!normTeacherId) {
+      setEditError("Vui lòng chọn giáo viên phụ trách.");
+      return;
+    }
+
+    updateClassMutation.mutate({
+      classId: editingClass.classId,
+      request: {
+        className: normClassName,
+        teacherId: normTeacherId,
+        status: editStatus,
+        rowVersion: editingClass.rowVersion,
+      },
+    });
+  };
+
+  const handleOpenAddStudents = () => {
+    setSelectedStudentIds([]);
+    setCandidatePage(1);
+    setCandidateSearchInput("");
+    setCandidateSearch("");
+    setAddStudentsError(null);
+    setIsAddStudentsModalOpen(true);
+  };
+
+  const handleCandidateSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setCandidatePage(1);
+    setCandidateSearch(candidateSearchInput);
+  };
+
+  const handleClearCandidateSearch = () => {
+    setCandidateSearchInput("");
+    setCandidateSearch("");
+    setCandidatePage(1);
+  };
+
+  const handleToggleSelectStudent = (id: string) => {
+    setSelectedStudentIds((prev) => toggleStudentSelection(prev, id));
+  };
+
+  const candidateList = candidateStudentsData?.data ?? [];
+  const candidateMeta = candidateStudentsData?.meta;
+  const currentPageCandidateIds = candidateList.map((c) => c.studentId);
+  const allCurrentPageSelected =
+    currentPageCandidateIds.length > 0 &&
+    currentPageCandidateIds.every((id) => selectedStudentIds.includes(id));
+
+  const handleToggleSelectCurrentPage = () => {
+    if (allCurrentPageSelected) {
+      setSelectedStudentIds((prev) => unmergePageSelection(prev, currentPageCandidateIds));
+    } else {
+      setSelectedStudentIds((prev) => mergePageSelection(prev, currentPageCandidateIds));
+    }
+  };
+
+  const candidateState = getCandidateListState({
+    isError: isErrorCandidates,
+    isLoading: isLoadingCandidates,
+    isFetching: isFetchingCandidates,
+    candidateCount: candidateList.length,
+  });
+
+  const handleAddStudentsSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!viewingClassId || selectedStudentIds.length === 0) return;
+    setAddStudentsError(null);
+
+    addStudentsMutation.mutate({
+      classId: viewingClassId,
+      studentIds: selectedStudentIds,
+    });
+  };
+
+  const handleConfirmRemoveStudent = () => {
+    if (!viewingClassId || !removingStudent) return;
+    setRemoveError(null);
+
+    removeStudentMutation.mutate({
+      classId: viewingClassId,
+      studentId: removingStudent.studentId,
+    });
+  };
+
+  const columns: DataTableColumn<ClassDto>[] = [
+    {
+      id: "className",
+      header: "Tên lớp học",
+      render: (cls) => (
+        <div>
+          <span className="font-semibold text-[var(--cm-text)]">{cls.className}</span>
+          <span className="block text-xs text-[var(--cm-text-secondary)]">{cls.academicYear}</span>
+        </div>
+      ),
+    },
+    {
+      id: "subject",
+      header: "Môn học",
+      render: (cls) => (
+        <span className="font-medium text-[var(--cm-text)]">
+          {cls.subject.subjectName}
+        </span>
+      ),
+    },
+    {
+      id: "teacher",
+      header: "Giáo viên phụ trách",
+      render: (cls) => (
+        <span className="text-[var(--cm-text-secondary)]">
+          {cls.teacher?.displayName || "Chưa phân công"}
+        </span>
+      ),
+    },
+    {
+      id: "studentCount",
+      header: "Sĩ số",
+      align: "center",
+      render: (cls) => (
+        <span className="font-semibold text-[var(--cm-text-secondary)]">
+          {cls.studentCount} học sinh
+        </span>
+      ),
+    },
+    {
+      id: "status",
+      header: "Trạng thái",
+      render: (cls) => (
+        <StatusBadge
+          status={cls.status}
+          label={STATUS_LABELS[cls.status] || cls.status}
+        />
+      ),
+    },
+    {
+      id: "actions",
+      header: "Thao tác",
+      align: "right",
+      render: (cls) => (
+        <div className="flex items-center justify-end gap-1.5">
+          {canViewDashboard && (
+            <Link
+              to={`/quan-ly/lop-hoc/${cls.classId}/tong-quan`}
+              className="cm-secondary-button h-8 px-2.5 py-1 text-xs text-indigo-300 hover:text-white"
+            >
+              Báo cáo lớp
+            </Link>
+          )}
+          <button
+            type="button"
+            id={`btn-view-class-${cls.classId}`}
+            onClick={() => handleOpenDetail(cls.classId)}
+            className="cm-secondary-button h-8 px-2.5 py-1 text-xs"
+          >
+            Chi tiết
+          </button>
+          {canUpdateClass && (
+            <button
+              type="button"
+              id={`btn-edit-class-${cls.classId}`}
+              onClick={() => handleOpenEdit(cls)}
+              className="cm-secondary-button h-8 px-2.5 py-1 text-xs"
+            >
+              Sửa
+            </button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <CenterManagerThemeScope>
+      <div className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <div className="mx-auto max-w-[96rem] space-y-6">
+          <PageHeader
+            eyebrow="Quản trị lớp học"
+            title="Danh sách Lớp học"
+            description="Tổ chức lớp học theo môn và năm học, chỉ định giáo viên phụ trách và quản lý thành viên học viên."
+            actions={
+              canCreateClass && (
+                <button
+                  type="button"
+                  id="btn-open-create-class"
+                  onClick={() => setIsCreateModalOpen(true)}
+                  className="cm-primary-button"
+                >
+                  + Thêm lớp học
+                </button>
+              )
+            }
+          />
+
+          {feedback?.type === "conflict" && (
+            <ConcurrencyBanner
+              onReload={() => {
+                refetch();
+                setFeedback(null);
+              }}
+              isReloading={isFetching}
+            />
+          )}
+
+          {feedback && feedback.type !== "conflict" && (
+            <div
+              id="class-feedback-alert"
+              role="alert"
+              className={`flex items-start justify-between rounded-xl border p-4 text-sm ${
+                feedback.type === "success"
+                  ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"
+                  : "border-rose-400/30 bg-rose-400/10 text-rose-200"
+              }`}
+            >
+              <div>
+                <p className="font-semibold">{feedback.message}</p>
+                {feedback.traceId && (
+                  <p className="mt-1 font-mono text-xs opacity-75">Trace ID: {feedback.traceId}</p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setFeedback(null)}
+                className="text-slate-400 hover:text-white"
+                aria-label="Đóng thông báo"
+              >
+                ×
+              </button>
+            </div>
+          )}
+
+          <FilterBar
+            filters={
+              <div className="flex items-center gap-2">
+                <label htmlFor="filter-class-status" className="text-xs text-[var(--cm-text-secondary)]">
+                  Trạng thái:
+                </label>
+                <select
+                  id="filter-class-status"
+                  value={statusInput}
+                  onChange={(e) => setStatusInput(e.target.value as ClassStatus | "")}
+                  className="cm-field px-3 py-1.5 text-xs"
+                >
+                  <option value="">Tất cả trạng thái</option>
+                  <option value="Active">Hoạt động</option>
+                  <option value="Archived">Đã lưu trữ</option>
+                </select>
+              </div>
+            }
+            actions={
+              <button
+                type="button"
+                id="btn-filter-classes"
+                onClick={handleFilter}
+                disabled={isFetching}
+                className="cm-secondary-button text-xs"
+              >
+                Lọc danh sách
+              </button>
+            }
+          />
+
+          {isError && (
+            <SafeErrorPanel
+              error={listError}
+              fallback="Không thể tải danh sách lớp học. Vui lòng thử lại."
+              onRetry={() => refetch()}
+            />
+          )}
+
+          <DataTable<ClassDto>
+            caption="Danh sách lớp học trung tâm"
+            columns={columns}
+            rows={data?.data ?? []}
+            rowKey={(cls) => cls.classId}
+            isLoading={isLoading}
+            emptyTitle="Không tìm thấy lớp học nào"
+            emptyDescription="Chưa có lớp học phù hợp với bộ lọc hiện tại."
+            page={page}
+            totalPages={data?.meta?.totalPages ?? 1}
+            totalItems={data?.meta?.totalItems}
+            onPageChange={setPage}
+          />
+
+          {/* Create Class Modal */}
+          {isCreateModalOpen && canCreateClass && (
+            <Modal
+              isOpen={isCreateModalOpen}
+              title="Thêm lớp học mới"
+              description="Tạo mới lớp học, phân công môn học và giáo viên phụ trách."
+              onClose={handleCancelCreate}
+            >
+              {createError && (
+                <div id="create-class-error" role="alert" className="mb-4 rounded-xl border border-rose-400/30 bg-rose-400/10 p-3 text-xs text-rose-200">
+                  {createError}
+                </div>
+              )}
+
+              <form onSubmit={handleCreateSubmit} className="space-y-4">
+                <div>
+                  <label htmlFor="input-class-name" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
+                    Tên lớp học <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="input-class-name"
+                    value={className}
+                    onChange={(e) => setClassName(e.target.value)}
+                    required
+                    maxLength={150}
+                    placeholder="Ví dụ: 12A1 - Toán Nâng Cao"
+                    disabled={createClassMutation.isPending}
+                    className="cm-field mt-1 w-full px-3 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="input-academic-year" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
+                    Năm học <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="input-academic-year"
+                    value={academicYear}
+                    onChange={(e) => setAcademicYear(e.target.value)}
+                    required
+                    maxLength={20}
+                    placeholder="Ví dụ: 2026-2027"
+                    disabled={createClassMutation.isPending}
+                    className="cm-field mt-1 w-full px-3 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="select-subject" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
+                    Môn học <span className="text-rose-400">*</span>
+                  </label>
+                  <select
+                    id="select-subject"
+                    value={subjectId}
+                    onChange={(e) => setSubjectId(e.target.value)}
+                    required
+                    disabled={isLoadingSubjects || createClassMutation.isPending}
+                    className="cm-field mt-1 w-full px-3 text-sm"
+                  >
+                    <option value="">-- Chọn môn học --</option>
+                    {subjectsData?.data.map((s) => (
+                      <option key={s.subjectId} value={s.subjectId}>
+                        {s.subjectName} ({s.subjectCode})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="select-teacher" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
+                    Giáo viên phụ trách <span className="text-rose-400">*</span>
+                  </label>
+                  <select
+                    id="select-teacher"
+                    value={teacherId}
+                    onChange={(e) => setTeacherId(e.target.value)}
+                    required
+                    disabled={isLoadingTeachers || createClassMutation.isPending}
+                    className="cm-field mt-1 w-full px-3 text-sm"
+                  >
+                    <option value="">-- Chọn giáo viên --</option>
+                    {teachersData?.data.map((t) => (
+                      <option key={t.teacherId} value={t.teacherId}>
+                        {t.displayName} ({t.username})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={handleCancelCreate}
+                    disabled={createClassMutation.isPending}
+                    className="cm-secondary-button text-sm"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    id="btn-submit-create-class"
+                    disabled={createClassMutation.isPending}
+                    className="cm-primary-button text-sm"
+                  >
+                    {createClassMutation.isPending ? "Đang tạo..." : "Tạo lớp học"}
+                  </button>
+                </div>
+              </form>
+            </Modal>
+          )}
+
+          {/* Edit Class Modal */}
+          {editingClass && canUpdateClass && (
+            <Modal
+              isOpen={!!editingClass}
+              title="Chỉnh sửa lớp học"
+              description={`Cập nhật thông tin cho lớp ${editingClass.className}`}
+              onClose={() => setEditingClass(null)}
+            >
+              {editError && (
+                <div id="edit-class-error" role="alert" className="mb-4 rounded-xl border border-rose-400/30 bg-rose-400/10 p-3 text-xs text-rose-200">
+                  {editError}
+                </div>
+              )}
+
+              <form onSubmit={handleEditSubmit} className="space-y-4">
+                <div>
+                  <label htmlFor="input-edit-class-name" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
+                    Tên lớp học <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="input-edit-class-name"
+                    value={editClassName}
+                    onChange={(e) => setEditClassName(e.target.value)}
+                    required
+                    maxLength={150}
+                    disabled={updateClassMutation.isPending}
+                    className="cm-field mt-1 w-full px-3 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="select-edit-teacher" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
+                    Giáo viên phụ trách <span className="text-rose-400">*</span>
+                  </label>
+                  <select
+                    id="select-edit-teacher"
+                    value={editTeacherId}
+                    onChange={(e) => setEditTeacherId(e.target.value)}
+                    required
+                    disabled={isLoadingTeachers || updateClassMutation.isPending}
+                    className="cm-field mt-1 w-full px-3 text-sm"
+                  >
+                    {teachersData?.data.map((t) => (
+                      <option key={t.teacherId} value={t.teacherId}>
+                        {t.displayName} ({t.username})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="select-edit-status" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
+                    Trạng thái
+                  </label>
+                  <select
+                    id="select-edit-status"
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value as ClassStatus)}
+                    disabled={updateClassMutation.isPending}
+                    className="cm-field mt-1 w-full px-3 text-sm"
+                  >
+                    <option value="Active">Hoạt động</option>
+                    <option value="Archived">Đã lưu trữ</option>
+                  </select>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setEditingClass(null)}
+                    disabled={updateClassMutation.isPending}
+                    className="cm-secondary-button text-sm"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    id="btn-save-edit-class"
+                    disabled={updateClassMutation.isPending}
+                    className="cm-primary-button text-sm"
+                  >
+                    {updateClassMutation.isPending ? "Đang lưu..." : "Lưu thay đổi"}
+                  </button>
+                </div>
+              </form>
+            </Modal>
+          )}
+
+          {/* Class Detail Drawer (Enrolled Students & Class Info) */}
+          {viewingClassId && (
+            <Drawer
+              isOpen={!!viewingClassId}
+              title={classDetail ? `Lớp ${classDetail.className}` : "Chi tiết lớp học"}
+              description={classDetail ? `Môn: ${classDetail.subject.subjectName} · Niên khóa: ${classDetail.academicYear}` : undefined}
+              onClose={() => setViewingClassId(null)}
+              footer={
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setViewingClassId(null)}
+                    className="cm-secondary-button text-sm"
+                  >
+                    Đóng
+                  </button>
+                </div>
+              }
+            >
+              {isDetailLoading ? (
+                <div className="py-12 text-center text-sm text-[var(--cm-text-muted)]">
+                  Đang tải thông tin lớp học...
+                </div>
+              ) : classDetail ? (
+                <div className="space-y-6 text-sm">
+                  {/* Summary card */}
+                  <div className="grid grid-cols-2 gap-4 rounded-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-raised)] p-4">
+                    <div>
+                      <span className="block text-xs text-[var(--cm-text-muted)]">Giáo viên phụ trách</span>
+                      <span className="font-semibold text-[var(--cm-text)]">
+                        {classDetail.teacher?.displayName || "Chưa phân công"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="block text-xs text-[var(--cm-text-muted)]">Trạng thái</span>
+                      <StatusBadge
+                        status={classDetail.status}
+                        label={STATUS_LABELS[classDetail.status] || classDetail.status}
+                      />
+                    </div>
+                    <div>
+                      <span className="block text-xs text-[var(--cm-text-muted)]">Sĩ số hiện tại</span>
+                      <span className="font-bold text-indigo-400">{classDetail.studentCount} học sinh</span>
+                    </div>
+                    <div>
+                      <span className="block text-xs text-[var(--cm-text-muted)]">Phiên bản (RowVersion)</span>
+                      <span className="font-mono text-xs text-[var(--cm-text-secondary)]">{classDetail.rowVersion}</span>
+                    </div>
+                  </div>
+
+                  {/* Enrolled students */}
+                  <div>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-3">
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-secondary)]">
+                        Danh sách học sinh trong lớp ({classStudentsData?.meta?.totalItems ?? 0})
+                      </h3>
+                      {canAddMembers && classDetail.status === "Active" && (
+                        <button
+                          type="button"
+                          id="btn-open-add-students"
+                          onClick={handleOpenAddStudents}
+                          className="cm-primary-button h-8 px-3 text-xs"
+                        >
+                          + Thêm học sinh vào lớp
+                        </button>
+                      )}
+                    </div>
+
+                    <form onSubmit={handleMemberSearchSubmit} className="flex gap-2 mb-3">
+                      <input
+                        type="search"
+                        placeholder="Tìm học sinh trong lớp..."
+                        value={memberSearchInput}
+                        onChange={(e) => setMemberSearchInput(e.target.value)}
+                        className="cm-field flex-1 px-3 text-xs"
+                      />
+                      <button
+                        type="submit"
+                        id="btn-search-members"
+                        className="cm-secondary-button text-xs"
+                      >
+                        Tìm
+                      </button>
+                    </form>
+
+                    {isLoadingStudents ? (
+                      <div className="py-8 text-center text-xs text-[var(--cm-text-muted)]">Đang tải danh sách...</div>
+                    ) : !classStudentsData?.data || classStudentsData.data.length === 0 ? (
+                      <p className="py-6 text-center text-xs italic text-[var(--cm-text-muted)]">
+                        {memberSearch ? "Không tìm thấy học sinh phù hợp." : "Lớp chưa có học sinh nào."}
+                      </p>
+                    ) : (
+                      <div className="divide-y divide-[var(--cm-border-subtle)] rounded-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-raised)]">
+                        {classStudentsData.data.map((student: StudentDto) => (
+                          <div key={student.studentId} className="flex items-center justify-between p-3 text-xs">
+                            <div>
+                              <span className="font-medium text-[var(--cm-text)]">{student.fullName}</span>
+                              <span className="ml-2 font-mono text-[var(--cm-cyan)]">@{student.username}</span>
+                              <span className="ml-2 text-[var(--cm-text-muted)]">· Khối {student.gradeLevel}</span>
+                            </div>
+                            {canRemoveMembers && classDetail.status === "Active" && (
+                              <button
+                                type="button"
+                                id={`btn-remove-student-${student.studentId}`}
+                                onClick={() => setRemovingStudent({ studentId: student.studentId, fullName: student.fullName })}
+                                className="cm-danger-button h-7 px-2 text-xs"
+                              >
+                                Rút khỏi lớp
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Member pagination */}
+                    {classStudentsData?.meta && classStudentsData.meta.totalPages > 1 && (
+                      <div className="flex items-center justify-between pt-3 text-xs text-[var(--cm-text-secondary)]">
+                        <span>Trang {memberPage} / {classStudentsData.meta.totalPages}</span>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            disabled={memberPage <= 1}
+                            onClick={() => setMemberPage((p) => p - 1)}
+                            className="cm-secondary-button h-7 px-2 text-xs"
+                          >
+                            Trước
+                          </button>
+                          <button
+                            type="button"
+                            disabled={memberPage >= classStudentsData.meta.totalPages}
+                            onClick={() => setMemberPage((p) => p + 1)}
+                            className="cm-secondary-button h-7 px-2 text-xs"
+                          >
+                            Sau
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </Drawer>
+          )}
+
+          {/* Add Students Modal (SQL anti-join server pagination preserved) */}
+          {isAddStudentsModalOpen && viewingClassId && canAddMembers && (
+            <Modal
+              isOpen={isAddStudentsModalOpen}
+              title="Thêm học sinh vào lớp học"
+              description="Chọn học sinh từ danh sách ứng viên (chưa tham gia lớp học này)."
+              onClose={() => setIsAddStudentsModalOpen(false)}
+              maxWidth="max-w-2xl"
+            >
+              {addStudentsError && (
+                <div id="add-students-error" role="alert" className="mb-4 rounded-xl border border-rose-400/30 bg-rose-400/10 p-3 text-xs text-rose-200">
+                  {addStudentsError}
+                </div>
+              )}
+
+              <form onSubmit={handleCandidateSearchSubmit} className="flex gap-2 mb-4">
+                <input
+                  type="search"
+                  placeholder="Tìm theo tên đăng nhập hoặc họ tên học sinh..."
+                  value={candidateSearchInput}
+                  onChange={(e) => setCandidateSearchInput(e.target.value)}
+                  className="cm-field flex-1 px-3 text-xs"
+                />
+                <button
+                  type="submit"
+                  id="btn-search-candidates"
+                  className="cm-secondary-button text-xs"
+                >
+                  Tìm kiếm
+                </button>
+                {candidateSearch && (
+                  <button
+                    type="button"
+                    onClick={handleClearCandidateSearch}
+                    className="cm-secondary-button text-xs"
+                  >
+                    Xóa tìm
+                  </button>
+                )}
+              </form>
+
+              {/* Multi-page selection indicator */}
+              <div className="flex items-center justify-between rounded-lg bg-indigo-500/10 p-2.5 mb-3 text-xs text-indigo-300 border border-indigo-400/20">
+                <span>Đã chọn: <strong className="text-white">{selectedStudentIds.length}</strong> học sinh</span>
+                {candidateList.length > 0 && (
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      id="checkbox-select-all-candidates"
+                      checked={allCurrentPageSelected}
+                      onChange={handleToggleSelectCurrentPage}
+                      className="rounded border-[var(--cm-border)] text-indigo-500"
+                    />
+                    <span>Chọn tất cả trang này</span>
+                  </label>
+                )}
+              </div>
+
+              {candidateState === "loading" && (
+                <div className="py-12 text-center text-xs text-[var(--cm-text-muted)]">Đang tải danh sách ứng viên...</div>
+              )}
+              {candidateState === "error" && (
+                <div className="py-8 text-center text-xs text-rose-300">
+                  Không thể tải ứng viên.{" "}
+                  <button
+                    type="button"
+                    onClick={() => refetchCandidates()}
+                    className="underline font-semibold hover:text-white"
+                  >
+                    Thử lại
+                  </button>
+                </div>
+              )}
+              {candidateState === "empty" && (
+                <div className="py-8 text-center text-xs text-[var(--cm-text-muted)]">
+                  {candidateSearch ? "Không có ứng viên nào khớp với từ khóa." : "Tất cả học sinh hợp lệ đã có mặt trong lớp này."}
+                </div>
+              )}
+
+              {candidateState === "ready" && (
+                <div className="max-h-60 overflow-y-auto divide-y divide-[var(--cm-border-subtle)] rounded-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-raised)]">
+                  {candidateList.map((c) => {
+                    const isSelected = selectedStudentIds.includes(c.studentId);
+                    return (
+                      <label
+                        key={c.studentId}
+                        className={`flex items-center justify-between p-3 text-xs cursor-pointer hover:bg-white/5 transition-colors ${
+                          isSelected ? "bg-indigo-500/10" : ""
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="checkbox"
+                            id={`candidate-checkbox-${c.studentId}`}
+                            checked={isSelected}
+                            onChange={() => handleToggleSelectStudent(c.studentId)}
+                            className="rounded border-[var(--cm-border)] text-indigo-500"
+                          />
+                          <div>
+                            <span className="font-semibold text-[var(--cm-text)]">{c.fullName}</span>
+                            <span className="ml-2 font-mono text-[var(--cm-cyan)]">@{c.username}</span>
+                          </div>
+                        </div>
+                        <span className="text-[var(--cm-text-muted)]">Khối {c.gradeLevel}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Candidate pagination */}
+              {candidateMeta && candidateMeta.totalPages > 1 && (
+                <div className="flex items-center justify-between pt-3 text-xs text-[var(--cm-text-secondary)]">
+                  <span>Trang {candidatePage} / {candidateMeta.totalPages} ({candidateMeta.totalItems} học sinh)</span>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      id="btn-prev-candidates"
+                      disabled={candidatePage <= 1 || isFetchingCandidates}
+                      onClick={() => setCandidatePage((p) => p - 1)}
+                      className="cm-secondary-button h-7 px-2 text-xs"
+                    >
+                      Trước
+                    </button>
+                    <button
+                      type="button"
+                      id="btn-next-candidates"
+                      disabled={candidatePage >= candidateMeta.totalPages || isFetchingCandidates}
+                      onClick={() => setCandidatePage((p) => p + 1)}
+                      className="cm-secondary-button h-7 px-2 text-xs"
+                    >
+                      Sau
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-[var(--cm-border-subtle)] mt-4">
+                <button
+                  type="button"
+                  onClick={() => setIsAddStudentsModalOpen(false)}
+                  disabled={addStudentsMutation.isPending}
+                  className="cm-secondary-button text-sm"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  id="btn-submit-add-students"
+                  onClick={handleAddStudentsSubmit}
+                  disabled={selectedStudentIds.length === 0 || addStudentsMutation.isPending}
+                  className="cm-primary-button text-sm"
+                >
+                  {addStudentsMutation.isPending ? "Đang thêm..." : `Thêm (${selectedStudentIds.length}) học sinh`}
+                </button>
+              </div>
+            </Modal>
+          )}
+
+          {/* Remove Student Confirmation Modal */}
+          {removingStudent && canRemoveMembers && (
+            <Modal
+              isOpen={!!removingStudent}
+              title="Rút học sinh khỏi lớp"
+              onClose={() => setRemovingStudent(null)}
+            >
+              {removeError && (
+                <div id="remove-student-error" role="alert" className="mb-4 rounded-xl border border-rose-400/30 bg-rose-400/10 p-3 text-xs text-rose-200">
+                  {removeError}
+                </div>
+              )}
+
+              <div className="space-y-4 text-sm">
+                <p className="text-[var(--cm-text-secondary)]">
+                  Bạn có chắc chắn muốn rút học sinh{" "}
+                  <strong className="text-[var(--cm-text)]">{removingStudent.fullName}</strong> khỏi lớp học này?
+                </p>
+
+                <div className="rounded-xl border border-cyan-400/30 bg-cyan-400/10 p-3 text-xs text-cyan-200 space-y-1">
+                  <p className="font-bold">BẢO TOÀN LỊCH SỬ HỌC TẬP:</p>
+                  <p>• Trạng thái của học sinh trong lớp sẽ được chuyển sang &quot;Đã rút&quot; (Removed).</p>
+                  <p>• Lịch sử làm bài tập, bài kiểm tra và điểm số đã hoàn thành vẫn được bảo toàn trọn vẹn.</p>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setRemovingStudent(null)}
+                    disabled={removeStudentMutation.isPending}
+                    className="cm-secondary-button text-sm"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    id="btn-confirm-remove-student"
+                    onClick={handleConfirmRemoveStudent}
+                    disabled={removeStudentMutation.isPending}
+                    className="cm-danger-button text-sm"
+                  >
+                    {removeStudentMutation.isPending ? "Đang xử lý..." : "Xác nhận rút khỏi lớp"}
+                  </button>
+                </div>
+              </div>
+            </Modal>
+          )}
+        </div>
+      </div>
+    </CenterManagerThemeScope>
+  );
+};
+
+export const ClassListPage: React.FC = () => {
+  const user = useAuthStore((state) => state.user);
+  return user?.accountType === "CenterManager" ? (
+    <CenterManagerClassListView />
+  ) : (
+    <LegacyClassListPage />
+  );
+};
+
+/**
+ * Legacy ClassListPage implementation preserved for non-CenterManager users
+ */
+const LegacyClassListPage: React.FC = () => {
+  const queryClient = useQueryClient();
+  const user = useAuthStore((state) => state.user);
+
+  const {
+    canCreateClass,
+    canUpdateClass,
+    canAddMembers,
+    canRemoveMembers,
+    canViewDashboard,
+  } = evaluateClassCapabilities(user);
+
+  const [page, setPage] = useState<number>(1);
+  const pageSize = 10;
+  const [status, setStatus] = useState<ClassStatus | "">("");
+  const [statusInput, setStatusInput] = useState<ClassStatus | "">("");
+
+  const [feedback, setFeedback] = useState<{
+    type: "success" | "error" | "conflict";
+    message: string;
+  } | null>(null);
+
+  const showFeedback = (type: "success" | "error" | "conflict", message: string) => {
+    setFeedback({ type, message });
+    if (type === "success") {
+      setTimeout(() => setFeedback(null), 5000);
+    }
+  };
+
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [className, setClassName] = useState("");
+  const [academicYear, setAcademicYear] = useState("");
+  const [subjectId, setSubjectId] = useState("");
+  const [teacherId, setTeacherId] = useState("");
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  const [editingClass, setEditingClass] = useState<ClassDto | null>(null);
+  const [editClassName, setEditClassName] = useState("");
+  const [editTeacherId, setEditTeacherId] = useState("");
+  const [editStatus, setEditStatus] = useState<ClassStatus>("Active");
+  const [editError, setEditError] = useState<string | null>(null);
+
+  const [viewingClassId, setViewingClassId] = useState<string | null>(null);
+  const [memberPage, setMemberPage] = useState<number>(1);
+  const [memberSearchInput, setMemberSearchInput] = useState("");
+  const [memberSearch, setMemberSearch] = useState("");
+
+  const [isAddStudentsModalOpen, setIsAddStudentsModalOpen] = useState(false);
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
+  const [candidatePage, setCandidatePage] = useState<number>(1);
+  const [candidateSearchInput, setCandidateSearchInput] = useState("");
+  const [candidateSearch, setCandidateSearch] = useState("");
+  const [addStudentsError, setAddStudentsError] = useState<string | null>(null);
+
+  const [removingStudent, setRemovingStudent] = useState<{
+    studentId: string;
+    fullName: string;
+  } | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+
+  const queryParams: ClassListParams = {
+    page,
+    pageSize,
+    status: status !== "" ? status : undefined,
+  };
+
+  const { data, isLoading, isFetching, isError, refetch } = useQuery({
+    queryKey: ["classes", queryParams.page, queryParams.pageSize, queryParams.status],
+    queryFn: () => organizationApi.listClasses(queryParams),
+  });
+
+  const {
+    data: subjectsData,
+    isLoading: isLoadingSubjects,
+  } = useQuery({
+    queryKey: ["subjects", "active"],
+    queryFn: () => organizationApi.listSubjects(true),
+    enabled: isCreateModalOpen && canCreateClass,
+  });
+
+  const shouldFetchTeachers =
+    (isCreateModalOpen && canCreateClass) || (!!editingClass && canUpdateClass);
+
+  const {
+    data: teachersData,
+    isLoading: isLoadingTeachers,
+  } = useQuery({
+    queryKey: ["teachers", "active"],
+    queryFn: () => organizationApi.listTeachers({ page: 1, pageSize: 100, status: "Active" }),
+    enabled: shouldFetchTeachers,
+  });
+
+  const {
+    data: classDetail,
+  } = useQuery({
+    queryKey: ["classDetail", viewingClassId],
+    queryFn: () => organizationApi.getClass(viewingClassId!),
+    enabled: !!viewingClassId,
+  });
+
+  const {
+    data: classStudentsData,
+    isLoading: isLoadingStudents,
+  } = useQuery({
+    queryKey: ["classStudents", viewingClassId, memberPage, memberSearch],
+    queryFn: () =>
+      organizationApi.getClassStudents(viewingClassId!, {
+        page: memberPage,
+        pageSize: 10,
+        search: memberSearch.trim() || undefined,
+      }),
+    enabled: !!viewingClassId,
+  });
+
+  const {
+    data: candidateStudentsData,
+    isLoading: isLoadingCandidates,
+    isFetching: isFetchingCandidates,
+    isError: isErrorCandidates,
+    refetch: refetchCandidates,
+  } = useQuery({
+    queryKey: ["candidateStudents", viewingClassId, candidatePage, candidateSearch],
+    queryFn: () =>
+      organizationApi.getClassCandidateStudents(viewingClassId!, {
+        page: candidatePage,
+        pageSize: 10,
+        search: candidateSearch.trim() || undefined,
+      }),
+    enabled: isAddStudentsModalOpen && !!viewingClassId && canAddMembers,
+  });
+
   const createClassMutation = useMutation({
     mutationFn: (req: CreateClassRequest) => organizationApi.createClass(req),
     onSuccess: () => {
@@ -282,7 +1448,6 @@ export const ClassListPage: React.FC = () => {
     },
   });
 
-  // Form helpers
   const resetCreateForm = () => {
     setClassName("");
     setAcademicYear("");
@@ -420,6 +1585,13 @@ export const ClassListPage: React.FC = () => {
     }
   };
 
+  const candidateState = getCandidateListState({
+    isError: isErrorCandidates,
+    isLoading: isLoadingCandidates,
+    isFetching: isFetchingCandidates,
+    candidateCount: candidateList.length,
+  });
+
   const handleAddStudentsSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!viewingClassId || selectedStudentIds.length === 0) return;
@@ -444,7 +1616,6 @@ export const ClassListPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        {/* Page Header */}
         <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold leading-7 text-gray-900 sm:truncate sm:text-3xl sm:tracking-tight">
@@ -474,7 +1645,6 @@ export const ClassListPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Global Feedback Banner */}
         {feedback && (
           <div
             className={`mb-6 rounded-md p-4 transition-all duration-300 ${
@@ -503,91 +1673,75 @@ export const ClassListPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setFeedback(null)}
-                className="text-xs font-semibold text-gray-500 hover:text-gray-700"
+                className="text-gray-400 hover:text-gray-500 focus:outline-none"
               >
-                Đóng
+                <span className="sr-only">Đóng</span>
+                <span className="text-lg">×</span>
               </button>
             </div>
           </div>
         )}
 
-        {/* Filter Toolbar */}
-        <div className="mb-8 overflow-hidden rounded-lg bg-white shadow">
-          <div className="p-6">
-            <form onSubmit={handleFilter} className="flex flex-col gap-4 sm:flex-row sm:items-end">
-              <div className="w-full sm:max-w-xs">
-                <label htmlFor="status-filter" className="block text-sm font-medium leading-6 text-gray-900">
-                  Trạng thái
-                </label>
-                <div className="mt-2">
-                  <select
-                    id="status-filter"
-                    name="status"
-                    value={statusInput}
-                    onChange={(e) => setStatusInput(e.target.value as ClassStatus | "")}
-                    disabled={isFetching}
-                    className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <option value="">Tất cả trạng thái</option>
-                    <option value="Active">Hoạt động</option>
-                    <option value="Archived">Đã lưu trữ</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <button
-                  type="submit"
-                  id="btn-filter-classes"
-                  disabled={isFetching}
-                  className="inline-flex w-full items-center justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:bg-indigo-400 sm:w-auto"
-                >
-                  Lọc
-                </button>
-              </div>
-            </form>
-          </div>
+        <div className="mb-6 rounded-lg bg-white p-4 shadow-sm border border-gray-100">
+          <form onSubmit={handleFilter} className="flex flex-wrap items-end gap-4">
+            <div className="min-w-[200px]">
+              <label htmlFor="select-filter-status" className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
+                Trạng thái lớp
+              </label>
+              <select
+                id="select-filter-status"
+                value={statusInput}
+                onChange={(e) => setStatusInput(e.target.value as ClassStatus | "")}
+                className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              >
+                <option value="">Tất cả trạng thái</option>
+                <option value="Active">Hoạt động (Active)</option>
+                <option value="Archived">Đã lưu trữ (Archived)</option>
+              </select>
+            </div>
+            <button
+              type="submit"
+              id="btn-apply-filter"
+              disabled={isFetching}
+              className="inline-flex items-center rounded-md bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-200 focus:outline-none disabled:opacity-50"
+            >
+              Lọc danh sách
+            </button>
+          </form>
         </div>
 
-        {/* Error Alert */}
         {isError && (
-          <div className="mb-6 rounded-md bg-red-50 p-4 border border-red-200" role="alert">
-            <div className="flex">
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-red-800">Đã xảy ra lỗi</h3>
-                <div className="mt-2 text-sm text-red-700">
-                  <p>Không thể tải danh sách lớp học. Vui lòng kiểm tra lại kết nối và thử lại sau.</p>
-                </div>
-              </div>
-            </div>
+          <div className="mb-6 rounded-md bg-red-50 p-4 border border-red-200">
+            <p className="text-sm font-medium text-red-800">
+              Không thể tải danh sách lớp học. Vui lòng kiểm tra lại kết nối mạng hoặc thử lại.
+            </p>
           </div>
         )}
 
-        {/* Main Class Table */}
-        <div className="overflow-hidden bg-white shadow sm:rounded-lg">
+        <div className="overflow-hidden rounded-lg bg-white shadow">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-300" id="table-classes">
+            <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6">
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                     Tên lớp
                   </th>
-                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                    Năm học
-                  </th>
-                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                     Môn học
                   </th>
-                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                    Giáo viên
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                    Giáo viên phụ trách
                   </th>
-                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                    Số học sinh
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                    Năm học
                   </th>
-                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                    Sĩ số
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                     Trạng thái
                   </th>
-                  <th scope="col" className="relative py-3.5 pl-3 pr-4 sm:pr-6 text-right text-sm font-semibold text-gray-900">
+                  <th scope="col" className="relative px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
                     Thao tác
                   </th>
                 </tr>
@@ -595,79 +1749,72 @@ export const ClassListPage: React.FC = () => {
               <tbody className="divide-y divide-gray-200 bg-white">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={7} className="py-10 text-center text-sm text-gray-500">
-                      Đang tải danh sách lớp học...
+                    <td colSpan={7} className="px-6 py-10 text-center text-sm text-gray-500">
+                      Đang tải dữ liệu lớp học...
                     </td>
                   </tr>
-                ) : data?.data.length === 0 ? (
+                ) : !data || data.data.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-10 text-center text-sm text-gray-500">
-                      Không tìm thấy lớp học nào phù hợp.
+                    <td colSpan={7} className="px-6 py-10 text-center text-sm text-gray-500">
+                      Không có lớp học nào phù hợp với bộ lọc hiện tại.
                     </td>
                   </tr>
                 ) : (
-                  data?.data.map((cls) => (
-                    <tr key={cls.classId} className="hover:bg-gray-50 transition-colors">
-                      <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-6">
+                  data.data.map((cls) => (
+                    <tr key={cls.classId} className="hover:bg-gray-50">
+                      <td className="whitespace-nowrap px-6 py-4 text-sm font-bold text-gray-900">
                         {cls.className}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                        {cls.academicYear}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                      <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">
                         {cls.subject.subjectName}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                      <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">
                         {cls.teacher.displayName}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                        <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
-                          {cls.studentCount} học sinh
-                        </span>
+                      <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500 font-mono">
+                        {cls.academicYear}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm">
+                      <td className="whitespace-nowrap px-6 py-4 text-sm font-semibold text-gray-900">
+                        {cls.studentCount}
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-4 text-sm">
                         <span
-                          className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${
+                          className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
                             cls.status === "Active"
-                              ? "bg-green-50 text-green-700 ring-green-600/20"
-                              : "bg-yellow-50 text-yellow-800 ring-yellow-600/20"
+                              ? "bg-green-100 text-green-800"
+                              : "bg-gray-100 text-gray-800"
                           }`}
                         >
-                          {STATUS_LABELS[cls.status] || cls.status}
+                          {STATUS_LABELS[cls.status]}
                         </span>
                       </td>
-                      <td className="whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-                        <div className="flex justify-end gap-2 items-center">
+                      <td className="whitespace-nowrap px-6 py-4 text-right text-sm font-medium space-x-2">
+                        {canViewDashboard && (
+                          <Link
+                            to={`/quan-ly/lop-hoc/${cls.classId}/tong-quan`}
+                            className="inline-flex items-center text-xs font-semibold text-indigo-600 hover:text-indigo-900 mr-2"
+                          >
+                            Báo cáo lớp
+                          </Link>
+                        )}
+                        <button
+                          type="button"
+                          id={`btn-view-class-${cls.classId}`}
+                          onClick={() => handleOpenDetail(cls.classId)}
+                          className="text-xs font-semibold text-teal-600 hover:text-teal-900"
+                        >
+                          Chi tiết & Thành viên
+                        </button>
+                        {canUpdateClass && (
                           <button
                             type="button"
-                            id={`btn-view-class-${cls.classId}`}
-                            onClick={() => handleOpenDetail(cls.classId)}
-                            className="text-indigo-600 hover:text-indigo-900 text-xs font-semibold px-2 py-1 rounded hover:bg-indigo-50"
+                            id={`btn-edit-class-${cls.classId}`}
+                            onClick={() => handleOpenEdit(cls)}
+                            className="text-xs font-semibold text-blue-600 hover:text-blue-900"
                           >
-                            Chi tiết
+                            Sửa
                           </button>
-
-                          {canUpdateClass && (
-                            <button
-                              type="button"
-                              id={`btn-edit-class-${cls.classId}`}
-                              onClick={() => handleOpenEdit(cls)}
-                              className="text-slate-600 hover:text-slate-900 text-xs font-semibold px-2 py-1 rounded hover:bg-slate-100"
-                            >
-                              Sửa
-                            </button>
-                          )}
-
-                          {canViewDashboard && (
-                            <Link
-                              to={`/quan-ly/lop-hoc/${cls.classId}/tong-quan`}
-                              id={`link-class-dashboard-${cls.classId}`}
-                              className="text-teal-600 hover:text-teal-900 text-xs font-semibold px-2 py-1 rounded hover:bg-teal-50"
-                            >
-                              Dashboard
-                            </Link>
-                          )}
-                        </div>
+                        )}
                       </td>
                     </tr>
                   ))
@@ -676,916 +1823,629 @@ export const ClassListPage: React.FC = () => {
             </table>
           </div>
 
-          {/* Pagination */}
           {data?.meta && data.meta.totalPages > 1 && (
             <div className="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6">
-              <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-sm text-gray-700">
-                    Hiển thị trang <span className="font-medium">{data.meta.page}</span> /{" "}
-                    <span className="font-medium">{data.meta.totalPages}</span> (Tổng số{" "}
-                    <span className="font-medium">{data.meta.totalItems}</span> lớp học)
-                  </p>
-                </div>
-                <div>
-                  <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Phân trang">
-                    <button
-                      type="button"
-                      id="btn-prev-page"
-                      onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      disabled={page === 1 || isFetching}
-                      className="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <span className="sr-only">Trang trước</span>
-                      <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                        <path
-                          fillRule="evenodd"
-                          d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                    </button>
-                    <button
-                      type="button"
-                      id="btn-next-page"
-                      onClick={() => setPage((p) => Math.min(data.meta.totalPages, p + 1))}
-                      disabled={page === data.meta.totalPages || isFetching}
-                      className="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <span className="sr-only">Trang sau</span>
-                      <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                        <path
-                          fillRule="evenodd"
-                          d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                    </button>
-                  </nav>
-                </div>
-              </div>
               <div className="flex flex-1 justify-between sm:hidden">
                 <button
                   type="button"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page === 1 || isFetching}
+                  onClick={() => setPage((p) => Math.max(p - 1, 1))}
+                  disabled={page === 1}
                   className="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                 >
                   Trước
                 </button>
                 <button
                   type="button"
-                  onClick={() => setPage((p) => Math.min(data.meta.totalPages, p + 1))}
-                  disabled={page === data.meta.totalPages || isFetching}
+                  onClick={() => setPage((p) => Math.min(p + 1, data.meta.totalPages))}
+                  disabled={page === data.meta.totalPages}
                   className="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                 >
                   Sau
                 </button>
               </div>
+              <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm text-gray-700">
+                    Hiển thị trang <span className="font-medium">{page}</span> trên{" "}
+                    <span className="font-medium">{data.meta.totalPages}</span> trang (Tổng cộng{" "}
+                    <span className="font-medium">{data.meta.totalItems}</span> lớp)
+                  </p>
+                </div>
+                <div>
+                  <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                    <button
+                      type="button"
+                      id="btn-prev-page"
+                      onClick={() => setPage((p) => Math.max(p - 1, 1))}
+                      disabled={page === 1}
+                      className="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50"
+                    >
+                      ‹
+                    </button>
+                    <button
+                      type="button"
+                      id="btn-next-page"
+                      onClick={() => setPage((p) => Math.min(p + 1, data.meta.totalPages))}
+                      disabled={page === data.meta.totalPages}
+                      className="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50"
+                    >
+                      ›
+                    </button>
+                  </nav>
+                </div>
+              </div>
             </div>
           )}
         </div>
-      </div>
 
-      {/* CREATE CLASS MODAL */}
-      {isCreateModalOpen && canCreateClass && (
-        <div className="fixed inset-0 z-20 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="modal-create-title">
-          <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
-            <div
-              className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
-              onClick={createClassMutation.isPending ? undefined : handleCancelCreate}
-            />
-
+        {isCreateModalOpen && (
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-center justify-center p-4">
             <div className="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6">
-              <div>
-                <h3 id="modal-create-title" className="text-lg font-semibold leading-6 text-gray-900 mb-5">
-                  Thêm lớp học mới
-                </h3>
-
-                {createError && (
-                  <div className="mb-4 rounded-md bg-red-50 p-4 border border-red-200" role="alert">
-                    <p className="text-sm font-medium text-red-800">{createError}</p>
-                  </div>
-                )}
-
-                <form onSubmit={handleCreateSubmit} className="space-y-4">
-                  <div>
-                    <label htmlFor="create-className" className="block text-sm font-medium leading-6 text-gray-900">
-                      Tên lớp <span className="text-red-500">*</span>
-                    </label>
-                    <div className="mt-2">
-                      <input
-                        type="text"
-                        id="create-className"
-                        required
-                        maxLength={150}
-                        value={className}
-                        onChange={(e) => setClassName(e.target.value)}
-                        disabled={createClassMutation.isPending}
-                        className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 disabled:opacity-50 disabled:bg-gray-100"
-                        placeholder="VD: Toán 12A"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label htmlFor="create-academicYear" className="block text-sm font-medium leading-6 text-gray-900">
-                      Năm học <span className="text-red-500">*</span>
-                    </label>
-                    <div className="mt-2">
-                      <input
-                        type="text"
-                        id="create-academicYear"
-                        required
-                        maxLength={20}
-                        value={academicYear}
-                        onChange={(e) => setAcademicYear(e.target.value)}
-                        disabled={createClassMutation.isPending}
-                        className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 disabled:opacity-50 disabled:bg-gray-100"
-                        placeholder="VD: 2026-2027"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label htmlFor="create-subjectId" className="block text-sm font-medium leading-6 text-gray-900">
-                      Môn học <span className="text-red-500">*</span>
-                    </label>
-                    <div className="mt-2">
-                      <select
-                        id="create-subjectId"
-                        required
-                        value={subjectId}
-                        onChange={(e) => setSubjectId(e.target.value)}
-                        disabled={createClassMutation.isPending || isLoadingSubjects || isFetchingSubjects || isErrorSubjects}
-                        className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 disabled:opacity-50 disabled:bg-gray-100"
-                      >
-                        <option value="">Chọn môn học</option>
-                        {(isLoadingSubjects || isFetchingSubjects) && (
-                          <option value="" disabled>Đang tải môn học...</option>
-                        )}
-                        {isErrorSubjects && !isLoadingSubjects && !isFetchingSubjects && (
-                          <option value="" disabled>Lỗi tải môn học</option>
-                        )}
-                        {!isLoadingSubjects &&
-                          !isFetchingSubjects &&
-                          !isErrorSubjects &&
-                          (subjectsData?.data?.length ?? 0) === 0 && (
-                            <option value="" disabled>Không có môn học hoạt động</option>
-                          )}
-                        {subjectsData?.data?.map((sub) => (
-                          <option key={sub.subjectId} value={sub.subjectId}>
-                            {sub.subjectCode} - {sub.subjectName}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <p className="mt-1 text-xs text-gray-500">
-                      Lưu ý: Môn học không thể thay đổi sau khi tạo để bảo toàn lịch sử giao bài và làm bài.
-                    </p>
-                  </div>
-
-                  <div>
-                    <label htmlFor="create-teacherId" className="block text-sm font-medium leading-6 text-gray-900">
-                      Giáo viên <span className="text-red-500">*</span>
-                    </label>
-                    <div className="mt-2">
-                      <select
-                        id="create-teacherId"
-                        required
-                        value={teacherId}
-                        onChange={(e) => setTeacherId(e.target.value)}
-                        disabled={createClassMutation.isPending || isLoadingTeachers || isFetchingTeachers || isErrorTeachers}
-                        className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 disabled:opacity-50 disabled:bg-gray-100"
-                      >
-                        <option value="">Chọn giáo viên</option>
-                        {(isLoadingTeachers || isFetchingTeachers) && (
-                          <option value="" disabled>Đang tải giáo viên...</option>
-                        )}
-                        {isErrorTeachers && !isLoadingTeachers && !isFetchingTeachers && (
-                          <option value="" disabled>Lỗi tải giáo viên</option>
-                        )}
-                        {!isLoadingTeachers &&
-                          !isFetchingTeachers &&
-                          !isErrorTeachers &&
-                          (teachersData?.data?.length ?? 0) === 0 && (
-                            <option value="" disabled>Không có giáo viên hoạt động</option>
-                          )}
-                        {teachersData?.data?.map((teacher) => (
-                          <option key={teacher.teacherId} value={teacher.teacherId}>
-                            {teacher.displayName} ({teacher.username})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="mt-5 sm:mt-6 sm:grid sm:grid-flow-row-dense sm:grid-cols-2 sm:gap-3">
-                    <button
-                      type="submit"
-                      id="btn-submit-create-class"
-                      disabled={createClassMutation.isPending}
-                      className="inline-flex w-full justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 sm:col-start-2 disabled:bg-indigo-400 disabled:cursor-not-allowed"
-                    >
-                      {createClassMutation.isPending ? "Đang tạo..." : "Lưu lớp học"}
-                    </button>
-                    <button
-                      type="button"
-                      id="btn-cancel-create-class"
-                      onClick={handleCancelCreate}
-                      disabled={createClassMutation.isPending}
-                      className="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:col-start-1 sm:mt-0 disabled:opacity-50"
-                    >
-                      Hủy
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* EDIT CLASS MODAL */}
-      {editingClass && canUpdateClass && (
-        <div className="fixed inset-0 z-20 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="modal-edit-title">
-          <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
-            <div
-              className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
-              onClick={updateClassMutation.isPending ? undefined : () => setEditingClass(null)}
-            />
-
-            <div className="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6">
-              <div>
-                <h3 id="modal-edit-title" className="text-lg font-semibold leading-6 text-gray-900 mb-5">
-                  Cập nhật thông tin lớp học
-                </h3>
-
-                {editError && (
-                  <div className="mb-4 rounded-md bg-red-50 p-4 border border-red-200" role="alert">
-                    <p className="text-sm font-medium text-red-800">{editError}</p>
-                  </div>
-                )}
-
-                <form onSubmit={handleEditSubmit} className="space-y-4">
-                  <div>
-                    <label htmlFor="edit-className" className="block text-sm font-medium leading-6 text-gray-900">
-                      Tên lớp <span className="text-red-500">*</span>
-                    </label>
-                    <div className="mt-2">
-                      <input
-                        type="text"
-                        id="edit-className"
-                        required
-                        maxLength={150}
-                        value={editClassName}
-                        onChange={(e) => setEditClassName(e.target.value)}
-                        disabled={updateClassMutation.isPending}
-                        className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 disabled:opacity-50 disabled:bg-gray-100"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium leading-6 text-gray-500">
-                      Năm học (cố định)
-                    </label>
-                    <div className="mt-2">
-                      <input
-                        type="text"
-                        disabled
-                        value={editingClass.academicYear}
-                        className="block w-full rounded-md border-0 py-1.5 text-gray-500 bg-gray-100 shadow-sm ring-1 ring-inset ring-gray-200 sm:text-sm sm:leading-6 cursor-not-allowed"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium leading-6 text-gray-500">
-                      Môn học (bất biến theo Contract 32)
-                    </label>
-                    <div className="mt-2">
-                      <input
-                        type="text"
-                        disabled
-                        value={editingClass.subject.subjectName}
-                        className="block w-full rounded-md border-0 py-1.5 text-gray-500 bg-gray-100 shadow-sm ring-1 ring-inset ring-gray-200 sm:text-sm sm:leading-6 cursor-not-allowed"
-                      />
-                    </div>
-                    <p className="mt-1 text-xs text-gray-500">
-                      Môn học không thể thay đổi sau khi tạo để bảo toàn lịch sử giao bài và evidence.
-                    </p>
-                  </div>
-
-                  <div>
-                    <label htmlFor="edit-teacherId" className="block text-sm font-medium leading-6 text-gray-900">
-                      Giáo viên phụ trách <span className="text-red-500">*</span>
-                    </label>
-                    <div className="mt-2">
-                      <select
-                        id="edit-teacherId"
-                        required
-                        value={editTeacherId}
-                        onChange={(e) => setEditTeacherId(e.target.value)}
-                        disabled={updateClassMutation.isPending || isLoadingTeachers}
-                        className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 disabled:opacity-50 disabled:bg-gray-100"
-                      >
-                        {isLoadingTeachers && <option value="" disabled>Đang tải giáo viên...</option>}
-                        {teachersData?.data?.map((teacher) => (
-                          <option key={teacher.teacherId} value={teacher.teacherId}>
-                            {teacher.displayName} ({teacher.username})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label htmlFor="edit-status" className="block text-sm font-medium leading-6 text-gray-900">
-                      Trạng thái lớp học <span className="text-red-500">*</span>
-                    </label>
-                    <div className="mt-2">
-                      <select
-                        id="edit-status"
-                        required
-                        value={editStatus}
-                        onChange={(e) => setEditStatus(e.target.value as ClassStatus)}
-                        disabled={updateClassMutation.isPending}
-                        className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 disabled:opacity-50 disabled:bg-gray-100"
-                      >
-                        <option value="Active">Hoạt động (Active)</option>
-                        <option value="Archived">Đã lưu trữ (Archived)</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="mt-5 sm:mt-6 sm:grid sm:grid-flow-row-dense sm:grid-cols-2 sm:gap-3">
-                    <button
-                      type="submit"
-                      id="btn-submit-edit-class"
-                      disabled={updateClassMutation.isPending}
-                      className="inline-flex w-full justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 sm:col-start-2 disabled:bg-indigo-400 disabled:cursor-not-allowed"
-                    >
-                      {updateClassMutation.isPending ? "Đang lưu..." : "Cập nhật"}
-                    </button>
-                    <button
-                      type="button"
-                      id="btn-cancel-edit-class"
-                      onClick={() => setEditingClass(null)}
-                      disabled={updateClassMutation.isPending}
-                      className="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:col-start-1 sm:mt-0 disabled:opacity-50"
-                    >
-                      Hủy
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* CLASS DETAIL & MEMBERS MODAL */}
-      {viewingClassId && (
-        <div className="fixed inset-0 z-20 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="modal-detail-title">
-          <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
-            <div
-              className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
-              onClick={() => setViewingClassId(null)}
-            />
-
-            <div className="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-4xl sm:p-6">
-              {isDetailLoading ? (
-                <div className="py-12 text-center text-sm text-gray-500">
-                  Đang tải thông tin chi tiết lớp học...
-                </div>
-              ) : isDetailError || !classDetail ? (
-                <div className="py-8 text-center text-sm text-red-600">
-                  Không thể tải thông tin lớp học. Vui lòng thử lại.
-                </div>
-              ) : (
-                <div>
-                  {/* Header & Badges */}
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-gray-200 pb-4 mb-5 gap-3">
-                    <div>
-                      <div className="flex items-center gap-3">
-                        <h3 id="modal-detail-title" className="text-xl font-bold leading-6 text-gray-900">
-                          {classDetail.className}
-                        </h3>
-                        <span
-                          className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${
-                            classDetail.status === "Active"
-                              ? "bg-green-50 text-green-700 ring-green-600/20"
-                              : "bg-yellow-50 text-yellow-800 ring-yellow-600/20"
-                          }`}
-                        >
-                          {STATUS_LABELS[classDetail.status] || classDetail.status}
-                        </span>
-                      </div>
-                      <p className="mt-1 text-sm text-gray-500">
-                        Năm học: {classDetail.academicYear} | Môn: {classDetail.subject.subjectName}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      {canViewDashboard && (
-                        <Link
-                          to={`/quan-ly/lop-hoc/${classDetail.classId}/tong-quan`}
-                          id="btn-detail-view-dashboard"
-                          className="inline-flex items-center rounded-md bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-700 ring-1 ring-inset ring-teal-600/20 hover:bg-teal-100"
-                        >
-                          Xem Dashboard lớp
-                        </Link>
-                      )}
-                      <button
-                        type="button"
-                        id="btn-close-class-detail"
-                        onClick={() => setViewingClassId(null)}
-                        className="rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
-                      >
-                        Đóng
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Summary Properties Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200 mb-6">
-                    <div>
-                      <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Giáo viên phụ trách</span>
-                      <p className="mt-1 text-sm font-semibold text-slate-900">{classDetail.teacher.displayName}</p>
-                    </div>
-                    <div>
-                      <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Số lượng học sinh</span>
-                      <p className="mt-1 text-sm font-semibold text-slate-900">{classDetail.studentCount} học sinh</p>
-                    </div>
-                    <div>
-                      <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Phiên bản dữ liệu (RowVersion)</span>
-                      <p className="mt-1 text-xs font-mono text-slate-600 truncate">{classDetail.rowVersion}</p>
-                    </div>
-                  </div>
-
-                  {/* Members Section Header */}
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3">
-                    <div>
-                      <h4 className="text-base font-semibold text-gray-900">
-                        Danh sách Học sinh trong Lớp
-                      </h4>
-                      <p className="text-xs text-gray-500">
-                        Thành viên được quản lý và bảo toàn lịch sử làm bài, chấm điểm và đánh giá năng lực.
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      {canAddMembers && (
-                        <button
-                          type="button"
-                          id="btn-open-add-students"
-                          onClick={handleOpenAddStudents}
-                          className="inline-flex items-center rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-500"
-                        >
-                          + Thêm học sinh
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Member Search Form */}
-                  <form onSubmit={handleMemberSearchSubmit} className="mb-4 flex gap-2">
-                    <input
-                      type="text"
-                      id="input-search-class-member"
-                      placeholder="Tìm kiếm học sinh theo họ tên hoặc tên đăng nhập..."
-                      value={memberSearchInput}
-                      onChange={(e) => setMemberSearchInput(e.target.value)}
-                      className="block w-full rounded-md border-0 py-1.5 text-sm text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600"
-                    />
-                    <button
-                      type="submit"
-                      id="btn-search-class-member"
-                      className="rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
-                    >
-                      Tìm
-                    </button>
-                    {memberSearch && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMemberSearchInput("");
-                          setMemberSearch("");
-                          setMemberPage(1);
-                        }}
-                        className="rounded-md bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200"
-                      >
-                        Bỏ lọc
-                      </button>
-                    )}
-                  </form>
-
-                  {/* Class Students Table */}
-                  <div className="overflow-hidden border border-gray-200 rounded-lg">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th scope="col" className="py-2.5 pl-4 pr-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Họ và tên
-                          </th>
-                          <th scope="col" className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Tên đăng nhập
-                          </th>
-                          <th scope="col" className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Khối lớp
-                          </th>
-                          <th scope="col" className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Trạng thái
-                          </th>
-                          {canRemoveMembers && (
-                            <th scope="col" className="relative py-2.5 pl-3 pr-4 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Thao tác
-                            </th>
-                          )}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200 bg-white">
-                        {isLoadingStudents ? (
-                          <tr>
-                            <td colSpan={canRemoveMembers ? 5 : 4} className="py-6 text-center text-sm text-gray-500">
-                              Đang tải danh sách học sinh...
-                            </td>
-                          </tr>
-                        ) : isErrorStudents ? (
-                          <tr>
-                            <td colSpan={canRemoveMembers ? 5 : 4} className="py-6 text-center text-sm text-red-500">
-                              Không thể tải danh sách học sinh. Vui lòng thử lại.
-                            </td>
-                          </tr>
-                        ) : classStudentsData?.data.length === 0 ? (
-                          <tr>
-                            <td colSpan={canRemoveMembers ? 5 : 4} className="py-6 text-center text-sm text-gray-500">
-                              Chưa có học sinh nào trong lớp học này.
-                            </td>
-                          </tr>
-                        ) : (
-                          classStudentsData?.data.map((student: StudentDto) => (
-                            <tr key={student.studentId} className="hover:bg-gray-50">
-                              <td className="whitespace-nowrap py-3 pl-4 pr-3 text-sm font-medium text-gray-900">
-                                {student.fullName}
-                              </td>
-                              <td className="whitespace-nowrap px-3 py-3 text-sm text-gray-500">
-                                {student.username}
-                              </td>
-                              <td className="whitespace-nowrap px-3 py-3 text-sm text-gray-500">
-                                Khối {student.gradeLevel}
-                              </td>
-                              <td className="whitespace-nowrap px-3 py-3 text-sm">
-                                <span
-                                  className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${
-                                    student.status === "Active"
-                                      ? "bg-green-50 text-green-700 ring-green-600/20"
-                                      : "bg-gray-50 text-gray-700 ring-gray-600/20"
-                                  }`}
-                                >
-                                  {student.status === "Active" ? "Hoạt động" : student.status}
-                                </span>
-                              </td>
-                              {canRemoveMembers && (
-                                <td className="whitespace-nowrap py-3 pl-3 pr-4 text-right text-sm font-medium">
-                                  <button
-                                    type="button"
-                                    id={`btn-remove-student-${student.studentId}`}
-                                    onClick={() =>
-                                      setRemovingStudent({
-                                        studentId: student.studentId,
-                                        fullName: student.fullName,
-                                      })
-                                    }
-                                    className="text-xs font-semibold text-red-600 hover:text-red-900 px-2 py-1 rounded hover:bg-red-50"
-                                  >
-                                    Xóa khỏi lớp
-                                  </button>
-                                </td>
-                              )}
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Member Pagination */}
-                  {classStudentsData?.meta && classStudentsData.meta.totalPages > 1 && (
-                    <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
-                      <div>
-                        Trang {classStudentsData.meta.page} / {classStudentsData.meta.totalPages} (Tổng số {classStudentsData.meta.totalItems} học sinh)
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          id="btn-prev-member-page"
-                          onClick={() => setMemberPage((p) => Math.max(1, p - 1))}
-                          disabled={memberPage === 1}
-                          className="rounded border border-gray-300 bg-white px-2 py-1 font-semibold text-gray-700 disabled:opacity-50"
-                        >
-                          Trước
-                        </button>
-                        <button
-                          type="button"
-                          id="btn-next-member-page"
-                          onClick={() => setMemberPage((p) => Math.min(classStudentsData.meta.totalPages, p + 1))}
-                          disabled={memberPage === classStudentsData.meta.totalPages}
-                          className="rounded border border-gray-300 bg-white px-2 py-1 font-semibold text-gray-700 disabled:opacity-50"
-                        >
-                          Sau
-                        </button>
-                      </div>
-                    </div>
-                  )}
+              <h3 className="text-base font-semibold leading-6 text-gray-900 mb-4">
+                Tạo lớp học mới
+              </h3>
+              {createError && (
+                <div id="create-class-error" className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
+                  {createError}
                 </div>
               )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ADD STUDENTS MODAL */}
-      {isAddStudentsModalOpen && canAddMembers && viewingClassId && (
-        <div className="fixed inset-0 z-30 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="modal-add-students-title">
-          <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
-            <div
-              className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
-              onClick={addStudentsMutation.isPending ? undefined : () => setIsAddStudentsModalOpen(false)}
-            />
-
-            <div className="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-2xl sm:p-6">
-              <div>
-                <h3 id="modal-add-students-title" className="text-lg font-semibold leading-6 text-gray-900 mb-2">
-                  Thêm học sinh vào lớp học
-                </h3>
-                <p className="text-xs text-gray-500 mb-4">
-                  Chọn học sinh đang hoạt động trong trung tâm để thêm vào danh sách lớp.
-                </p>
-
-                {addStudentsError && (
-                  <div className="mb-4 rounded-md bg-red-50 p-3 border border-red-200" role="alert">
-                    <p className="text-xs font-medium text-red-800">{addStudentsError}</p>
-                  </div>
-                )}
-
-                {/* Search input for candidates */}
-                <form onSubmit={handleCandidateSearchSubmit} className="mb-4 flex gap-2">
+              <form onSubmit={handleCreateSubmit} className="space-y-4">
+                <div>
+                  <label htmlFor="input-class-name" className="block text-sm font-medium text-gray-700">
+                    Tên lớp học <span className="text-red-500">*</span>
+                  </label>
                   <input
                     type="text"
-                    id="input-filter-candidate-students"
-                    placeholder="Tìm kiếm học sinh theo tên hoặc tên đăng nhập..."
-                    value={candidateSearchInput}
-                    onChange={(e) => setCandidateSearchInput(e.target.value)}
-                    className="block w-full rounded-md border-0 py-1.5 text-sm text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600"
+                    id="input-class-name"
+                    required
+                    maxLength={150}
+                    value={className}
+                    onChange={(e) => setClassName(e.target.value)}
+                    placeholder="Ví dụ: 12A1 - Toán Nâng Cao"
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="input-academic-year" className="block text-sm font-medium text-gray-700">
+                    Năm học <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="input-academic-year"
+                    required
+                    maxLength={20}
+                    value={academicYear}
+                    onChange={(e) => setAcademicYear(e.target.value)}
+                    placeholder="Ví dụ: 2026-2027"
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="select-subject" className="block text-sm font-medium text-gray-700">
+                    Môn học <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    id="select-subject"
+                    required
+                    value={subjectId}
+                    onChange={(e) => setSubjectId(e.target.value)}
+                    disabled={isLoadingSubjects}
+                    className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  >
+                    <option value="">-- Chọn môn học --</option>
+                    {subjectsData?.data.map((s) => (
+                      <option key={s.subjectId} value={s.subjectId}>
+                        {s.subjectName} ({s.subjectCode})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="select-teacher" className="block text-sm font-medium text-gray-700">
+                    Giáo viên phụ trách <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    id="select-teacher"
+                    required
+                    value={teacherId}
+                    onChange={(e) => setTeacherId(e.target.value)}
+                    disabled={isLoadingTeachers}
+                    className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  >
+                    <option value="">-- Chọn giáo viên --</option>
+                    {teachersData?.data.map((t) => (
+                      <option key={t.teacherId} value={t.teacherId}>
+                        {t.displayName} ({t.username})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="mt-5 sm:mt-6 flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={handleCancelCreate}
+                    className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm hover:bg-gray-50"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    id="btn-submit-create-class"
+                    disabled={createClassMutation.isPending}
+                    className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50"
+                  >
+                    {createClassMutation.isPending ? "Đang xử lý..." : "Tạo lớp học"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {editingClass && (
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-center justify-center p-4">
+            <div className="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6">
+              <h3 className="text-base font-semibold leading-6 text-gray-900 mb-4">
+                Chỉnh sửa lớp học
+              </h3>
+              {editError && (
+                <div id="edit-class-error" className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
+                  {editError}
+                </div>
+              )}
+              <form onSubmit={handleEditSubmit} className="space-y-4">
+                <div>
+                  <label htmlFor="input-edit-class-name" className="block text-sm font-medium text-gray-700">
+                    Tên lớp học <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="input-edit-class-name"
+                    required
+                    maxLength={150}
+                    value={editClassName}
+                    onChange={(e) => setEditClassName(e.target.value)}
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="select-edit-teacher" className="block text-sm font-medium text-gray-700">
+                    Giáo viên phụ trách <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    id="select-edit-teacher"
+                    required
+                    value={editTeacherId}
+                    onChange={(e) => setEditTeacherId(e.target.value)}
+                    disabled={isLoadingTeachers}
+                    className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  >
+                    {teachersData?.data.map((t) => (
+                      <option key={t.teacherId} value={t.teacherId}>
+                        {t.displayName} ({t.username})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="select-edit-status" className="block text-sm font-medium text-gray-700">
+                    Trạng thái
+                  </label>
+                  <select
+                    id="select-edit-status"
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value as ClassStatus)}
+                    className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  >
+                    <option value="Active">Hoạt động (Active)</option>
+                    <option value="Archived">Đã lưu trữ (Archived)</option>
+                  </select>
+                </div>
+                <div className="mt-5 sm:mt-6 flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setEditingClass(null)}
+                    className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm hover:bg-gray-50"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    id="btn-save-edit-class"
+                    disabled={updateClassMutation.isPending}
+                    className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50"
+                  >
+                    {updateClassMutation.isPending ? "Đang lưu..." : "Lưu thay đổi"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {viewingClassId && (
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-center justify-center p-4">
+            <div className="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-4xl sm:p-6">
+              <div className="flex justify-between items-start mb-4 border-b pb-3">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">
+                    {classDetail ? `Lớp: ${classDetail.className}` : "Chi tiết lớp học"}
+                  </h3>
+                  {classDetail && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Môn học: <span className="font-semibold">{classDetail.subject.subjectName}</span> | Giáo viên:{" "}
+                      <span className="font-semibold">{classDetail.teacher.displayName}</span> | Năm học:{" "}
+                      <span className="font-semibold">{classDetail.academicYear}</span>
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setViewingClassId(null)}
+                  className="text-gray-400 hover:text-gray-500 text-2xl font-bold leading-none"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
+                <form onSubmit={handleMemberSearchSubmit} className="flex gap-2 w-full sm:w-auto">
+                  <input
+                    type="text"
+                    placeholder="Tìm theo tên học sinh..."
+                    value={memberSearchInput}
+                    onChange={(e) => setMemberSearchInput(e.target.value)}
+                    className="rounded-md border border-gray-300 px-3 py-1.5 text-xs focus:border-indigo-500 focus:outline-none w-full sm:w-60"
                   />
                   <button
                     type="submit"
-                    id="btn-search-candidate-students"
-                    className="rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+                    id="btn-search-members"
+                    className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200"
                   >
                     Tìm
                   </button>
-                  {candidateSearch && (
-                    <button
-                      type="button"
-                      id="btn-clear-candidate-search"
-                      onClick={handleClearCandidateSearch}
-                      className="rounded-md bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200"
-                    >
-                      Bỏ lọc
-                    </button>
-                  )}
                 </form>
 
-                {/* Candidate Selection List */}
-                <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-md divide-y divide-gray-100">
-                  {(() => {
-                    const candidateState = getCandidateListState({
-                      isError: isErrorCandidates,
-                      isLoading: isLoadingCandidates,
-                      isFetching: isFetchingCandidates,
-                      candidateCount: candidateList.length,
-                    });
-
-                    if (candidateState === "error") {
-                      return (
-                        <div className="p-6 text-center" role="alert">
-                          <p className="text-sm font-medium text-red-700 mb-2">
-                            Không thể tải danh sách học sinh khả dụng.
-                          </p>
-                          <p className="text-xs text-red-600 mb-3">
-                            Vui lòng kiểm tra quyền truy cập (yêu cầu quyền quản lý thành viên và xem học sinh) hoặc thử lại sau.
-                          </p>
-                          <button
-                            type="button"
-                            id="btn-retry-candidate-students"
-                            onClick={() => refetchCandidates()}
-                            className="inline-flex items-center rounded bg-red-100 px-3 py-1.5 text-xs font-semibold text-red-800 hover:bg-red-200"
-                          >
-                            Thử lại
-                          </button>
-                        </div>
-                      );
-                    }
-
-                    if (candidateState === "loading") {
-                      return (
-                        <div className="p-4 text-center text-xs text-gray-500">Đang tải danh sách học sinh khả dụng...</div>
-                      );
-                    }
-
-                    if (candidateState === "empty") {
-                      return (
-                        <div className="p-4 text-center text-xs text-gray-500">
-                          Không có học sinh khả dụng để thêm (tất cả học sinh hoạt động đã vào lớp hoặc không khớp tìm kiếm).
-                        </div>
-                      );
-                    }
-
-                    return candidateList.map((s) => {
-                      const isSelected = selectedStudentIds.includes(s.studentId);
-                      return (
-                        <div
-                          key={s.studentId}
-                          onClick={() => handleToggleSelectStudent(s.studentId)}
-                          className={`flex items-center justify-between p-3 cursor-pointer transition-colors ${
-                            isSelected ? "bg-indigo-50" : "hover:bg-gray-50"
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <input
-                              type="checkbox"
-                              id={`checkbox-student-${s.studentId}`}
-                              checked={isSelected}
-                              onChange={() => {}}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleToggleSelectStudent(s.studentId);
-                              }}
-                              className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 cursor-pointer"
-                            />
-                            <div>
-                              <p className="text-sm font-medium text-gray-900">{s.fullName}</p>
-                              <p className="text-xs text-gray-500">@{s.username} • Khối {s.gradeLevel}</p>
-                            </div>
-                          </div>
-                          <span className="text-xs text-slate-500">
-                            {s.activeClassCount} lớp đang học
-                          </span>
-                        </div>
-                      );
-                    });
-                  })()}
-                </div>
-
-                {/* Candidate Pagination */}
-                {candidateMeta && candidateMeta.totalPages > 1 && (
-                  <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
-                    <div>
-                      Trang {candidateMeta.page} / {candidateMeta.totalPages} (Tổng số {candidateMeta.totalItems} học sinh khả dụng)
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        id="btn-prev-candidate-page"
-                        onClick={() => setCandidatePage((p) => Math.max(1, p - 1))}
-                        disabled={candidatePage === 1 || isFetchingCandidates}
-                        className="rounded border border-gray-300 bg-white px-2 py-1 font-semibold text-gray-700 disabled:opacity-50"
-                      >
-                        Trước
-                      </button>
-                      <button
-                        type="button"
-                        id="btn-next-candidate-page"
-                        onClick={() => setCandidatePage((p) => Math.min(candidateMeta.totalPages, p + 1))}
-                        disabled={candidatePage === candidateMeta.totalPages || isFetchingCandidates}
-                        className="rounded border border-gray-300 bg-white px-2 py-1 font-semibold text-gray-700 disabled:opacity-50"
-                      >
-                        Sau
-                      </button>
-                    </div>
-                  </div>
+                {canAddMembers && classDetail?.status === "Active" && (
+                  <button
+                    type="button"
+                    id="btn-open-add-students"
+                    onClick={handleOpenAddStudents}
+                    className="inline-flex items-center rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-500 w-full sm:w-auto justify-center"
+                  >
+                    + Thêm học sinh vào lớp
+                  </button>
                 )}
+              </div>
 
-                {/* Selected Count & Actions */}
-                <div className="mt-4 flex items-center justify-between">
-                  <span className="text-xs font-medium text-gray-600">
-                    Đã chọn: <span className="text-indigo-600 font-bold">{selectedStudentIds.length}</span> học sinh
+              <div className="border rounded-md overflow-hidden mb-4">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th scope="col" className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">
+                        Tên đăng nhập
+                      </th>
+                      <th scope="col" className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">
+                        Họ và tên
+                      </th>
+                      <th scope="col" className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">
+                        Khối
+                      </th>
+                      <th scope="col" className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">
+                        Trạng thái
+                      </th>
+                      <th scope="col" className="relative px-4 py-2 text-right text-xs font-medium uppercase text-gray-500">
+                        Thao tác
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 bg-white">
+                    {isLoadingStudents ? (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-6 text-center text-xs text-gray-500">
+                          Đang tải danh sách học sinh...
+                        </td>
+                      </tr>
+                    ) : !classStudentsData || classStudentsData.data.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-6 text-center text-xs text-gray-500">
+                          {memberSearch
+                            ? "Không tìm thấy học sinh phù hợp với từ khóa."
+                            : "Lớp học chưa có học sinh nào."}
+                        </td>
+                      </tr>
+                    ) : (
+                      classStudentsData.data.map((student: StudentDto) => (
+                        <tr key={student.studentId} className="hover:bg-gray-50">
+                          <td className="px-4 py-2.5 text-xs font-mono font-medium text-gray-900">
+                            {student.username}
+                          </td>
+                          <td className="px-4 py-2.5 text-xs font-medium text-gray-900">
+                            {student.fullName}
+                          </td>
+                          <td className="px-4 py-2.5 text-xs text-gray-500">
+                            Khối {student.gradeLevel}
+                          </td>
+                          <td className="px-4 py-2.5 text-xs">
+                            <span className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium bg-green-100 text-green-800">
+                              {student.status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2.5 text-right text-xs">
+                            {canRemoveMembers && classDetail?.status === "Active" && (
+                              <button
+                                type="button"
+                                id={`btn-remove-student-${student.studentId}`}
+                                onClick={() =>
+                                  setRemovingStudent({
+                                    studentId: student.studentId,
+                                    fullName: student.fullName,
+                                  })
+                                }
+                                className="text-red-600 hover:text-red-900 font-medium"
+                              >
+                                Xóa khỏi lớp
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {classStudentsData?.meta && classStudentsData.meta.totalPages > 1 && (
+                <div className="flex items-center justify-between text-xs text-gray-600 mb-4">
+                  <span>
+                    Trang {memberPage} / {classStudentsData.meta.totalPages} (Tổng {classStudentsData.meta.totalItems} học sinh)
                   </span>
-
-                  <div className="flex gap-2">
-                    {candidateList.length > 0 && (
-                      <button
-                        type="button"
-                        id="btn-select-all-candidates"
-                        onClick={handleToggleSelectCurrentPage}
-                        className="rounded bg-white px-2 py-1 text-xs font-medium text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
-                      >
-                        {allCurrentPageSelected ? "Bỏ chọn trang này" : "Chọn tất cả trang này"}
-                      </button>
-                    )}
-                    {selectedStudentIds.length > 0 && (
-                      <button
-                        type="button"
-                        id="btn-clear-all-selected-candidates"
-                        onClick={() => setSelectedStudentIds([])}
-                        className="rounded bg-white px-2 py-1 text-xs font-medium text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
-                      >
-                        Bỏ chọn tất cả
-                      </button>
-                    )}
+                  <div className="space-x-1">
+                    <button
+                      type="button"
+                      disabled={memberPage <= 1}
+                      onClick={() => setMemberPage((p) => p - 1)}
+                      className="px-2.5 py-1 border rounded bg-white hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Trước
+                    </button>
+                    <button
+                      type="button"
+                      disabled={memberPage >= classStudentsData.meta.totalPages}
+                      onClick={() => setMemberPage((p) => p + 1)}
+                      className="px-2.5 py-1 border rounded bg-white hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Sau
+                    </button>
                   </div>
                 </div>
+              )}
 
-                <div className="mt-5 sm:mt-6 sm:grid sm:grid-flow-row-dense sm:grid-cols-2 sm:gap-3">
-                  <button
-                    type="button"
-                    id="btn-confirm-add-students"
-                    disabled={selectedStudentIds.length === 0 || addStudentsMutation.isPending}
-                    onClick={handleAddStudentsSubmit}
-                    className="inline-flex w-full justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 sm:col-start-2 disabled:bg-indigo-400 disabled:cursor-not-allowed"
-                  >
-                    {addStudentsMutation.isPending ? "Đang thêm..." : `Xác nhận thêm (${selectedStudentIds.length})`}
-                  </button>
-                  <button
-                    type="button"
-                    id="btn-cancel-add-students"
-                    disabled={addStudentsMutation.isPending}
-                    onClick={() => setIsAddStudentsModalOpen(false)}
-                    className="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:col-start-1 sm:mt-0 disabled:opacity-50"
-                  >
-                    Hủy
-                  </button>
-                </div>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setViewingClassId(null)}
+                  className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Đóng
+                </button>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* REMOVE STUDENT CONFIRMATION MODAL */}
-      {removingStudent && canRemoveMembers && viewingClassId && (
-        <div className="fixed inset-0 z-30 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="modal-remove-title">
-          <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
-            <div
-              className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
-              onClick={removeStudentMutation.isPending ? undefined : () => setRemovingStudent(null)}
-            />
+        {isAddStudentsModalOpen && viewingClassId && (
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-center justify-center p-4">
+            <div className="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-2xl sm:p-6">
+              <h3 className="text-base font-semibold leading-6 text-gray-900 mb-2">
+                Thêm học sinh vào lớp học
+              </h3>
+              <p className="text-xs text-gray-500 mb-4">
+                Chỉ hiển thị các học sinh đang hoạt động trong trung tâm và chưa tham gia lớp học này.
+              </p>
 
-            <div className="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-md sm:p-6">
-              <div>
-                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
-                  <svg className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                  </svg>
+              {addStudentsError && (
+                <div id="add-students-error" className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
+                  {addStudentsError}
                 </div>
-                <div className="mt-3 text-center sm:mt-5">
-                  <h3 id="modal-remove-title" className="text-base font-semibold leading-6 text-gray-900">
-                    Xác nhận xóa học sinh khỏi lớp
-                  </h3>
-                  <div className="mt-2 text-left bg-amber-50 p-3 rounded border border-amber-200">
-                    <p className="text-xs text-amber-800">
-                      Bạn có chắc chắn muốn xóa học sinh <span className="font-bold">{removingStudent.fullName}</span> khỏi lớp này?
-                    </p>
-                    <p className="mt-2 text-xs text-amber-700">
-                      Hành động này sẽ chuyển trạng thái tham gia lớp sang <span className="font-semibold">Removed</span>. Toàn bộ lịch sử bài làm (Attempts), điểm số và evidence học tập trước đó vẫn được bảo toàn nguyên vẹn.
-                    </p>
-                  </div>
-                </div>
+              )}
 
-                {removeError && (
-                  <div className="mt-3 rounded-md bg-red-50 p-2 border border-red-200" role="alert">
-                    <p className="text-xs font-medium text-red-800">{removeError}</p>
+              <form onSubmit={handleCandidateSearchSubmit} className="flex gap-2 mb-3">
+                <input
+                  type="text"
+                  placeholder="Tìm học sinh theo họ tên hoặc username..."
+                  value={candidateSearchInput}
+                  onChange={(e) => setCandidateSearchInput(e.target.value)}
+                  className="rounded-md border border-gray-300 px-3 py-1.5 text-xs focus:border-indigo-500 focus:outline-none flex-1"
+                />
+                <button
+                  type="submit"
+                  id="btn-search-candidates"
+                  className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200"
+                >
+                  Tìm kiếm
+                </button>
+                {candidateSearch && (
+                  <button
+                    type="button"
+                    onClick={handleClearCandidateSearch}
+                    className="rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
+                  >
+                    Xóa tìm kiếm
+                  </button>
+                )}
+              </form>
+
+              <div className="flex items-center justify-between text-xs text-gray-600 bg-indigo-50 p-2 rounded mb-3">
+                <span>
+                  Đã chọn: <strong className="text-indigo-700">{selectedStudentIds.length}</strong> học sinh
+                </span>
+                {candidateList.length > 0 && (
+                  <label className="flex items-center gap-1 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      id="checkbox-select-all-candidates"
+                      checked={allCurrentPageSelected}
+                      onChange={handleToggleSelectCurrentPage}
+                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                    />
+                    <span>Chọn tất cả trang này</span>
+                  </label>
+                )}
+              </div>
+
+              <div className="border rounded-md overflow-hidden max-h-60 overflow-y-auto mb-3">
+                {candidateState === "loading" && (
+                  <div className="py-8 text-center text-xs text-gray-500">Đang tải danh sách học sinh...</div>
+                )}
+                {candidateState === "error" && (
+                  <div className="py-8 text-center text-xs text-red-600">
+                    Lỗi tải dữ liệu.{" "}
+                    <button type="button" onClick={() => refetchCandidates()} className="underline font-semibold">
+                      Thử lại
+                    </button>
                   </div>
                 )}
+                {candidateState === "empty" && (
+                  <div className="py-8 text-center text-xs text-gray-500">
+                    {candidateSearch
+                      ? "Không tìm thấy học sinh nào phù hợp với từ khóa."
+                      : "Tất cả học sinh trong trung tâm đã có mặt trong lớp này."}
+                  </div>
+                )}
+                {candidateState === "ready" && (
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50 sticky top-0">
+                      <tr>
+                        <th scope="col" className="w-8 px-3 py-2"></th>
+                        <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">
+                          Tên đăng nhập
+                        </th>
+                        <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">
+                          Họ và tên
+                        </th>
+                        <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">
+                          Khối
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 bg-white">
+                      {candidateList.map((c) => {
+                        const isSelected = selectedStudentIds.includes(c.studentId);
+                        return (
+                          <tr
+                            key={c.studentId}
+                            onClick={() => handleToggleSelectStudent(c.studentId)}
+                            className={`cursor-pointer transition-colors ${
+                              isSelected ? "bg-indigo-50" : "hover:bg-gray-50"
+                            }`}
+                          >
+                            <td className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                id={`candidate-checkbox-${c.studentId}`}
+                                checked={isSelected}
+                                onChange={() => handleToggleSelectStudent(c.studentId)}
+                                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                              />
+                            </td>
+                            <td className="px-3 py-2 text-xs font-mono font-medium text-gray-900">{c.username}</td>
+                            <td className="px-3 py-2 text-xs text-gray-900 font-medium">{c.fullName}</td>
+                            <td className="px-3 py-2 text-xs text-gray-500">Khối {c.gradeLevel}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
 
-                <div className="mt-5 sm:mt-6 sm:grid sm:grid-flow-row-dense sm:grid-cols-2 sm:gap-3">
-                  <button
-                    type="button"
-                    id="btn-confirm-remove-student"
-                    disabled={removeStudentMutation.isPending}
-                    onClick={handleConfirmRemoveStudent}
-                    className="inline-flex w-full justify-center rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 sm:col-start-2 disabled:bg-red-400"
-                  >
-                    {removeStudentMutation.isPending ? "Đang xóa..." : "Xác nhận xóa"}
-                  </button>
-                  <button
-                    type="button"
-                    id="btn-cancel-remove-student"
-                    disabled={removeStudentMutation.isPending}
-                    onClick={() => setRemovingStudent(null)}
-                    className="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:col-start-1 sm:mt-0 disabled:opacity-50"
-                  >
-                    Hủy
-                  </button>
+              {candidateMeta && candidateMeta.totalPages > 1 && (
+                <div className="flex items-center justify-between text-xs text-gray-600 mb-4">
+                  <span>
+                    Trang {candidatePage} / {candidateMeta.totalPages} ({candidateMeta.totalItems} học sinh khả dụng)
+                  </span>
+                  <div className="space-x-1">
+                    <button
+                      type="button"
+                      disabled={candidatePage <= 1 || isFetchingCandidates}
+                      onClick={() => setCandidatePage((p) => p - 1)}
+                      className="px-2.5 py-1 border rounded bg-white hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Trước
+                    </button>
+                    <button
+                      type="button"
+                      disabled={candidatePage >= candidateMeta.totalPages || isFetchingCandidates}
+                      onClick={() => setCandidatePage((p) => p + 1)}
+                      className="px-2.5 py-1 border rounded bg-white hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Sau
+                    </button>
+                  </div>
                 </div>
+              )}
+
+              <div className="flex justify-end gap-3 pt-3 border-t">
+                <button
+                  type="button"
+                  onClick={() => setIsAddStudentsModalOpen(false)}
+                  className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  id="btn-submit-add-students"
+                  onClick={handleAddStudentsSubmit}
+                  disabled={selectedStudentIds.length === 0 || addStudentsMutation.isPending}
+                  className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+                >
+                  {addStudentsMutation.isPending
+                    ? "Đang thêm..."
+                    : `Thêm (${selectedStudentIds.length}) học sinh`}
+                </button>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {removingStudent && (
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-center justify-center p-4">
+            <div className="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-md sm:p-6">
+              <h3 className="text-base font-semibold leading-6 text-gray-900 mb-2">
+                Xác nhận xóa học sinh khỏi lớp
+              </h3>
+              <p className="text-sm text-gray-500 mb-4">
+                Bạn có chắc chắn muốn xóa học sinh <span className="font-bold text-gray-900">{removingStudent.fullName}</span> khỏi lớp học này?
+              </p>
+              {removeError && (
+                <div id="remove-student-error" className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
+                  {removeError}
+                </div>
+              )}
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setRemovingStudent(null)}
+                  className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  id="btn-confirm-remove-student"
+                  onClick={handleConfirmRemoveStudent}
+                  disabled={removeStudentMutation.isPending}
+                  className="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50"
+                >
+                  {removeStudentMutation.isPending ? "Đang xóa..." : "Xác nhận xóa"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

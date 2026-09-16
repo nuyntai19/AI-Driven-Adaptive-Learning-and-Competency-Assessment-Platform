@@ -75,6 +75,32 @@
   background: var(--cm-surface-muted);
 }
 
+[data-actor="center-manager"] .cm-danger-button {
+  display: inline-flex;
+  min-height: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: var(--cm-radius-md);
+  font-weight: 600;
+  border: 1px solid rgba(251, 113, 133, 0.4);
+  background: rgba(251, 113, 133, 0.15);
+  color: #fecdd3;
+  padding: 0.625rem 1rem;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+[data-actor="center-manager"] .cm-danger-button:hover:not(:disabled) {
+  background: rgba(251, 113, 133, 0.28);
+  border-color: rgba(251, 113, 133, 0.6);
+  color: #ffffff;
+}
+
+[data-actor="center-manager"] .cm-danger-button:focus-visible {
+  outline: 2px solid var(--cm-focus);
+  outline-offset: 2px;
+}
+
 [data-actor="center-manager"] button:disabled {
   cursor: not-allowed;
   opacity: 0.55;

@@ -13,7 +13,20 @@ import type {
 } from "../types/organization";
 import { useAuthStore } from "../stores/authStore";
 import { permissions } from "../auth/permissions";
-import { extractProblemDetails, isConcurrencyConflict } from "../utils/problemDetails";
+import { extractProblemDetails, isConcurrencyConflict, mapSafeOperationalError } from "../utils/problemDetails";
+import {
+  CenterManagerThemeScope,
+  PageHeader,
+  FilterBar,
+  DataTable,
+  type DataTableColumn,
+  StatusBadge,
+  Modal,
+  Drawer,
+  ConcurrencyBanner,
+  SafeErrorPanel,
+  SubjectGoalsModal,
+} from "../components/centerManager";
 
 const STATUS_LABELS: Record<string, string> = {
   Active: "Hoạt động",
@@ -21,7 +34,10 @@ const STATUS_LABELS: Record<string, string> = {
   Disabled: "Vô hiệu hóa",
 };
 
-export const StudentListPage: React.FC = () => {
+/**
+ * Modern CenterManager Dark Enterprise SaaS view for StudentListPage
+ */
+const CenterManagerStudentListView: React.FC = () => {
   const queryClient = useQueryClient();
   const hasPermission = useAuthStore((state) => state.hasPermission);
 
@@ -34,11 +50,11 @@ export const StudentListPage: React.FC = () => {
   const pageSize = 20;
 
   // Filter state
-  const [search, setSearch] = useState<string>("");
+  const [search, setSearch] = useState<string>("" );
   const [status, setStatus] = useState<UserStatus | "">("");
   const [gradeLevel, setGradeLevel] = useState<number | "">("");
 
-  // Input states before form submit
+  // Input states before search submit
   const [searchInput, setSearchInput] = useState<string>("");
   const [statusInput, setStatusInput] = useState<UserStatus | "">("");
   const [gradeLevelInput, setGradeLevelInput] = useState<number | "">("");
@@ -51,8 +67,11 @@ export const StudentListPage: React.FC = () => {
   const [createGradeLevel, setCreateGradeLevel] = useState<10 | 11 | 12>(10);
   const [createClassIds, setCreateClassIds] = useState<string[]>([]);
 
-  // Detail modal state
+  // Detail drawer state
   const [viewingStudentId, setViewingStudentId] = useState<string | null>(null);
+
+  // Subject goals modal state
+  const [goalStudent, setGoalStudent] = useState<StudentDetailDto | null>(null);
 
   // Edit modal state
   const [editingStudent, setEditingStudent] = useState<StudentDto | null>(null);
@@ -70,10 +89,14 @@ export const StudentListPage: React.FC = () => {
   const [deletingStudent, setDeletingStudent] = useState<StudentDto | null>(null);
 
   // Notifications
-  const [feedback, setFeedback] = useState<{ type: "success" | "error" | "conflict"; message: string } | null>(null);
+  const [feedback, setFeedback] = useState<{
+    type: "success" | "error" | "conflict";
+    message: string;
+    traceId?: string;
+  } | null>(null);
 
-  const showFeedback = (type: "success" | "error" | "conflict", message: string) => {
-    setFeedback({ type, message });
+  const showFeedback = (type: "success" | "error" | "conflict", message: string, traceId?: string | null) => {
+    setFeedback({ type, message, traceId: traceId ?? undefined });
     if (type === "success") {
       setTimeout(() => setFeedback(null), 5000);
     }
@@ -87,7 +110,7 @@ export const StudentListPage: React.FC = () => {
     gradeLevel: gradeLevel !== "" ? gradeLevel : undefined,
   };
 
-  const { data, isLoading, isFetching, isError: isListError, refetch } = useQuery({
+  const { data, isLoading, isFetching, isError: isListError, error: listError, refetch } = useQuery({
     queryKey: ["students", queryParams.page, queryParams.pageSize, queryParams.search, queryParams.status, queryParams.gradeLevel],
     queryFn: () => organizationApi.listStudents(queryParams),
   });
@@ -126,9 +149,9 @@ export const StudentListPage: React.FC = () => {
     onError: (error) => {
       const details = extractProblemDetails(error);
       if (details.errorCode === "DUPLICATE_RESOURCE") {
-        showFeedback("error", "Tên đăng nhập đã tồn tại trong trung tâm.");
+        showFeedback("error", "Tên đăng nhập đã tồn tại trong trung tâm.", details.traceId);
       } else {
-        showFeedback("error", details.message || "Không thể tạo học viên.");
+        showFeedback("error", mapSafeOperationalError(error, "Không thể tạo học viên."), details.traceId);
       }
     },
   });
@@ -145,11 +168,10 @@ export const StudentListPage: React.FC = () => {
     },
     onError: (error) => {
       if (isConcurrencyConflict(error)) {
-        showFeedback("conflict", "Dữ liệu học viên đã bị thay đổi bởi phiên làm việc khác. Đang tải lại dữ liệu mới nhất...");
-        refetch();
+        showFeedback("conflict", "Dữ liệu học viên đã bị thay đổi bởi phiên làm việc khác. Vui lòng tải lại dữ liệu mới nhất.");
       } else {
         const details = extractProblemDetails(error);
-        showFeedback("error", details.message || "Không thể cập nhật học viên.");
+        showFeedback("error", mapSafeOperationalError(error, "Không thể cập nhật học viên."), details.traceId);
       }
     },
   });
@@ -174,7 +196,1000 @@ export const StudentListPage: React.FC = () => {
     onError: (error) => {
       if (isConcurrencyConflict(error)) {
         showFeedback("conflict", "Dữ liệu người dùng đã bị thay đổi bởi phiên làm việc khác. Vui lòng tải lại.");
+      } else {
+        const details = extractProblemDetails(error);
+        showFeedback("error", mapSafeOperationalError(error, "Không thể đặt lại mật khẩu học viên."), details.traceId);
+      }
+    },
+  });
+
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (studentId: string) => {
+      return await organizationApi.deleteStudent(studentId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["students"] });
+      setDeletingStudent(null);
+      showFeedback("success", "Đã xóa học viên thành công. Toàn bộ bằng chứng học tập và Digital Twin được bảo toàn.");
+    },
+    onError: (error) => {
+      const details = extractProblemDetails(error);
+      showFeedback("error", mapSafeOperationalError(error, "Không thể xóa học viên. Vui lòng thử lại."), details.traceId);
+    },
+  });
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    setSearch(searchInput);
+    setStatus(statusInput);
+    setGradeLevel(gradeLevelInput);
+    setPage(1);
+  };
+
+  const openEditModal = (student: StudentDto) => {
+    setEditingStudent(student);
+    setEditFullName(student.fullName);
+    setEditGradeLevel(student.gradeLevel);
+    setEditStatus(student.status);
+    setFeedback(null);
+  };
+
+  const handleEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingStudent) return;
+
+    const trimmed = editFullName.trim();
+    if (!trimmed) {
+      showFeedback("error", "Họ tên học viên không được để trống.");
+      return;
+    }
+
+    updateMutation.mutate({
+      studentId: editingStudent.studentId,
+      request: {
+        fullName: trimmed,
+        gradeLevel: editGradeLevel,
+        status: editStatus,
+        rowVersion: editingStudent.rowVersion,
+      },
+    });
+  };
+
+  const openResetPasswordModal = (student: StudentDto) => {
+    setResetStudent(student);
+    setNewPassword("");
+    setConfirmPassword("");
+    setResetReason("");
+    setFeedback(null);
+  };
+
+  const handleResetPasswordSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetStudent) return;
+
+    if (newPassword.length < 12 || newPassword.length > 200) {
+      showFeedback("error", "Mật khẩu mới phải từ 12 đến 200 ký tự.");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      showFeedback("error", "Mật khẩu xác nhận không khớp.");
+      return;
+    }
+
+    if (resetReason.trim().length < 5 || resetReason.trim().length > 500) {
+      showFeedback("error", "Lý do đặt lại mật khẩu là bắt buộc (từ 5 đến 500 ký tự).");
+      return;
+    }
+
+    resetPasswordMutation.mutate({
+      studentId: resetStudent.studentId,
+      request: {
+        newPassword,
+        expectedUserRowVersion: resetStudent.rowVersion,
+        reason: resetReason.trim(),
+      },
+    });
+  };
+
+  const openDeleteModal = (student: StudentDto) => {
+    setDeletingStudent(student);
+    setFeedback(null);
+  };
+
+  const handleDeleteSubmit = () => {
+    if (!deletingStudent) return;
+    deleteMutation.mutate(deletingStudent.studentId);
+  };
+
+  // Open Subject Goals modal directly by fetching student detail if needed
+  const handleOpenSubjectGoals = async (studentId: string) => {
+    try {
+      const detail = await organizationApi.getStudent(studentId);
+      setGoalStudent(detail);
+    } catch (err) {
+      showFeedback("error", mapSafeOperationalError(err, "Không thể tải dữ liệu mục tiêu học sinh."));
+    }
+  };
+
+  const columns: DataTableColumn<StudentDto>[] = [
+    {
+      id: "username",
+      header: "Tên đăng nhập",
+      render: (student) => (
+        <span className="font-mono font-medium text-[var(--cm-cyan)]">
+          {student.username}
+        </span>
+      ),
+    },
+    {
+      id: "fullName",
+      header: "Họ và tên",
+      render: (student) => (
+        <span className="font-medium text-[var(--cm-text)]">
+          {student.fullName}
+        </span>
+      ),
+    },
+    {
+      id: "gradeLevel",
+      header: "Khối lớp",
+      render: (student) => (
+        <span className="text-[var(--cm-text-secondary)]">
+          Khối {student.gradeLevel}
+        </span>
+      ),
+    },
+    {
+      id: "activeClassCount",
+      header: "Số lớp",
+      align: "center",
+      render: (student) => (
+        <span className="font-semibold text-[var(--cm-text-secondary)]">
+          {student.activeClassCount}
+        </span>
+      ),
+    },
+    {
+      id: "status",
+      header: "Trạng thái",
+      render: (student) => (
+        <StatusBadge
+          status={student.status}
+          label={STATUS_LABELS[student.status] || student.status}
+        />
+      ),
+    },
+    {
+      id: "actions",
+      header: "Thao tác",
+      align: "right",
+      render: (student) => (
+        <div className="flex items-center justify-end gap-1.5">
+          <button
+            type="button"
+            id={`btn-view-student-${student.studentId}`}
+            onClick={() => setViewingStudentId(student.studentId)}
+            className="cm-secondary-button h-8 px-2.5 py-1 text-xs"
+          >
+            Chi tiết
+          </button>
+          <button
+            type="button"
+            id={`btn-goals-student-${student.studentId}`}
+            onClick={() => handleOpenSubjectGoals(student.studentId)}
+            className="cm-secondary-button h-8 px-2.5 py-1 text-xs text-cyan-300 hover:text-cyan-200"
+            title="Mục tiêu môn học (Digital Twin)"
+          >
+            Mục tiêu
+          </button>
+          {canUpdateStudent && (
+            <button
+              type="button"
+              id={`btn-edit-student-${student.studentId}`}
+              onClick={() => openEditModal(student)}
+              className="cm-secondary-button h-8 px-2.5 py-1 text-xs"
+            >
+              Sửa
+            </button>
+          )}
+          {canResetPassword && (
+            <button
+              type="button"
+              id={`btn-reset-password-student-${student.studentId}`}
+              onClick={() => openResetPasswordModal(student)}
+              className="cm-secondary-button h-8 px-2.5 py-1 text-xs"
+            >
+              Đổi MK
+            </button>
+          )}
+          {canDeleteStudent && (
+            <button
+              type="button"
+              id={`btn-delete-student-${student.studentId}`}
+              onClick={() => openDeleteModal(student)}
+              className="cm-danger-button h-8 px-2.5 py-1 text-xs"
+            >
+              Xóa
+            </button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <CenterManagerThemeScope>
+      <div className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <div className="mx-auto max-w-[96rem] space-y-6">
+          <PageHeader
+            eyebrow="Quản trị học viên"
+            title="Quản lý Học viên"
+            description="Quản lý hồ sơ học viên, phân khối lớp, trạng thái tài khoản và mục tiêu điểm số môn học (Digital Twin)."
+            actions={
+              canCreateStudent && (
+                <button
+                  type="button"
+                  id="btn-create-student"
+                  onClick={() => {
+                    setIsCreating(true);
+                    setFeedback(null);
+                  }}
+                  className="cm-primary-button"
+                >
+                  + Thêm học viên
+                </button>
+              )
+            }
+          />
+
+          {feedback?.type === "conflict" && (
+            <ConcurrencyBanner
+              onReload={() => {
+                refetch();
+                setFeedback(null);
+              }}
+              isReloading={isFetching}
+            />
+          )}
+
+          {feedback && feedback.type !== "conflict" && (
+            <div
+              id="student-feedback-alert"
+              role="alert"
+              className={`flex items-start justify-between rounded-xl border p-4 text-sm ${
+                feedback.type === "success"
+                  ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"
+                  : "border-rose-400/30 bg-rose-400/10 text-rose-200"
+              }`}
+            >
+              <div>
+                <p className="font-semibold">{feedback.message}</p>
+                {feedback.traceId && (
+                  <p className="mt-1 font-mono text-xs opacity-75">Trace ID: {feedback.traceId}</p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setFeedback(null)}
+                className="text-slate-400 hover:text-white"
+                aria-label="Đóng thông báo"
+              >
+                ×
+              </button>
+            </div>
+          )}
+
+          <FilterBar
+            searchValue={searchInput}
+            searchLabel="Tìm kiếm học viên"
+            searchPlaceholder="Tìm theo tên đăng nhập hoặc họ tên…"
+            onSearchChange={setSearchInput}
+            filters={
+              <div className="flex flex-wrap items-center gap-2">
+                <label htmlFor="filter-grade" className="sr-only">Khối lớp</label>
+                <select
+                  id="filter-grade"
+                  value={gradeLevelInput}
+                  onChange={(e) => setGradeLevelInput(e.target.value === "" ? "" : Number(e.target.value))}
+                  className="cm-field px-3 py-1.5 text-xs"
+                >
+                  <option value="">Tất cả khối</option>
+                  <option value="10">Khối 10</option>
+                  <option value="11">Khối 11</option>
+                  <option value="12">Khối 12</option>
+                </select>
+
+                <label htmlFor="filter-status" className="sr-only">Trạng thái học viên</label>
+                <select
+                  id="filter-status"
+                  value={statusInput}
+                  onChange={(e) => setStatusInput(e.target.value as UserStatus | "")}
+                  className="cm-field px-3 py-1.5 text-xs"
+                >
+                  <option value="">Tất cả trạng thái</option>
+                  <option value="Active">Hoạt động</option>
+                  <option value="Locked">Bị khóa</option>
+                  <option value="Disabled">Vô hiệu hóa</option>
+                </select>
+              </div>
+            }
+            actions={
+              <button
+                type="button"
+                id="btn-search-students"
+                onClick={handleSearch}
+                disabled={isFetching}
+                className="cm-secondary-button text-xs"
+              >
+                Tìm kiếm
+              </button>
+            }
+          />
+
+          {isListError && (
+            <SafeErrorPanel
+              error={listError}
+              fallback="Không thể tải danh sách học viên. Vui lòng thử lại."
+              onRetry={() => refetch()}
+            />
+          )}
+
+          <DataTable<StudentDto>
+            caption="Danh sách học viên trung tâm"
+            columns={columns}
+            rows={data?.data ?? []}
+            rowKey={(student) => student.studentId}
+            isLoading={isLoading}
+            emptyTitle="Không tìm thấy học viên nào"
+            emptyDescription="Chưa có hồ sơ học viên phù hợp với bộ lọc tìm kiếm hiện tại."
+            page={page}
+            totalPages={data?.meta?.totalPages ?? 1}
+            totalItems={data?.meta?.totalItems}
+            onPageChange={setPage}
+          />
+
+          {/* Create Modal */}
+          {isCreating && canCreateStudent && (
+            <Modal
+              isOpen={isCreating}
+              title="Thêm học viên mới"
+              description="Tạo tài khoản học viên, xếp khối và gán vào các lớp học ban đầu."
+              onClose={() => setIsCreating(false)}
+            >
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  createMutation.mutate({
+                    username: createUsername.trim(),
+                    temporaryPassword: createPassword,
+                    fullName: createFullName.trim(),
+                    gradeLevel: createGradeLevel,
+                    classIds: createClassIds,
+                  });
+                }}
+                className="space-y-4"
+              >
+                <div>
+                  <label htmlFor="student-username" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
+                    Tên đăng nhập <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="student-username"
+                    value={createUsername}
+                    onChange={(e) => setCreateUsername(e.target.value)}
+                    required
+                    maxLength={100}
+                    disabled={createMutation.isPending}
+                    className="cm-field mt-1 w-full px-3 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="student-password" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
+                    Mật khẩu tạm thời (tối thiểu 12 ký tự) <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    id="student-password"
+                    autoComplete="new-password"
+                    value={createPassword}
+                    onChange={(e) => setCreatePassword(e.target.value)}
+                    required
+                    minLength={12}
+                    maxLength={200}
+                    disabled={createMutation.isPending}
+                    className="cm-field mt-1 w-full px-3 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="student-fullname" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
+                    Họ và tên <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="student-fullname"
+                    value={createFullName}
+                    onChange={(e) => setCreateFullName(e.target.value)}
+                    required
+                    maxLength={200}
+                    disabled={createMutation.isPending}
+                    className="cm-field mt-1 w-full px-3 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="student-grade" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
+                    Khối lớp <span className="text-rose-400">*</span>
+                  </label>
+                  <select
+                    id="student-grade"
+                    value={createGradeLevel}
+                    onChange={(e) => setCreateGradeLevel(Number(e.target.value) as 10 | 11 | 12)}
+                    disabled={createMutation.isPending}
+                    className="cm-field mt-1 w-full px-3 text-sm"
+                  >
+                    <option value={10}>Khối 10</option>
+                    <option value={11}>Khối 11</option>
+                    <option value={12}>Khối 12</option>
+                  </select>
+                </div>
+
+                {classesData?.data && classesData.data.length > 0 && (
+                  <div>
+                    <label className="block text-xs font-medium text-[var(--cm-text-secondary)] mb-1">
+                      Gán vào lớp học ban đầu
+                    </label>
+                    <div className="max-h-36 overflow-y-auto rounded-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-raised)] p-2 space-y-1">
+                      {classesData.data.map((c) => (
+                        <label key={c.classId} className="flex items-center text-xs text-[var(--cm-text)] gap-2 cursor-pointer hover:bg-white/5 p-1 rounded">
+                          <input
+                            type="checkbox"
+                            checked={createClassIds.includes(c.classId)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setCreateClassIds((prev) => [...prev, c.classId]);
+                              } else {
+                                setCreateClassIds((prev) => prev.filter((id) => id !== c.classId));
+                              }
+                            }}
+                            className="rounded border-[var(--cm-border)] text-indigo-500"
+                          />
+                          <span>{c.className} ({c.subject.subjectName})</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setIsCreating(false)}
+                    disabled={createMutation.isPending}
+                    className="cm-secondary-button text-sm"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    id="btn-submit-create-student"
+                    disabled={createMutation.isPending}
+                    className="cm-primary-button text-sm"
+                  >
+                    {createMutation.isPending ? "Đang tạo..." : "Tạo học viên"}
+                  </button>
+                </div>
+              </form>
+            </Modal>
+          )}
+
+          {/* Student Detail Drawer */}
+          {viewingStudentId && (
+            <Drawer
+              isOpen={!!viewingStudentId}
+              title="Hồ sơ chi tiết học viên"
+              description="Thông tin tài khoản, danh sách lớp học và hồ sơ năng lực theo môn."
+              onClose={() => setViewingStudentId(null)}
+              footer={
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    id="btn-close-student-detail"
+                    onClick={() => setViewingStudentId(null)}
+                    className="cm-secondary-button text-sm"
+                  >
+                    Đóng
+                  </button>
+                </div>
+              }
+            >
+              {isDetailLoading ? (
+                <div className="py-12 text-center text-sm text-[var(--cm-text-muted)]">
+                  Đang tải thông tin chi tiết học viên...
+                </div>
+              ) : studentDetail ? (
+                <div className="space-y-6 text-sm">
+                  {/* Basic info */}
+                  <div className="grid grid-cols-2 gap-4 rounded-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-raised)] p-4">
+                    <div>
+                      <span className="block text-xs text-[var(--cm-text-muted)]">Họ và tên</span>
+                      <span className="font-semibold text-[var(--cm-text)]">{studentDetail.fullName}</span>
+                    </div>
+                    <div>
+                      <span className="block text-xs text-[var(--cm-text-muted)]">Tên đăng nhập</span>
+                      <span className="font-mono text-[var(--cm-cyan)]">{studentDetail.username}</span>
+                    </div>
+                    <div>
+                      <span className="block text-xs text-[var(--cm-text-muted)]">Khối lớp</span>
+                      <span className="font-medium text-[var(--cm-text)]">Khối {studentDetail.gradeLevel}</span>
+                    </div>
+                    <div>
+                      <span className="block text-xs text-[var(--cm-text-muted)]">Trạng thái</span>
+                      <StatusBadge
+                        status={studentDetail.status}
+                        label={STATUS_LABELS[studentDetail.status] || studentDetail.status}
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <span className="block text-xs text-[var(--cm-text-muted)]">Phiên bản dữ liệu (RowVersion)</span>
+                      <span className="font-mono text-xs text-[var(--cm-text-secondary)]">{studentDetail.rowVersion}</span>
+                    </div>
+                  </div>
+
+                  {/* Classes */}
+                  <div>
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-secondary)] mb-2">
+                      Lớp học đang tham gia ({studentDetail.classes?.length || 0})
+                    </h3>
+                    {!studentDetail.classes || studentDetail.classes.length === 0 ? (
+                      <p className="text-xs italic text-[var(--cm-text-muted)]">Chưa tham gia lớp học nào.</p>
+                    ) : (
+                      <div className="divide-y divide-[var(--cm-border-subtle)] rounded-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-raised)]">
+                        {studentDetail.classes.map((cls) => (
+                          <div key={cls.classId} className="flex items-center justify-between p-3 text-xs">
+                            <div>
+                              <span className="font-medium text-[var(--cm-text)]">{cls.className}</span>
+                              <span className="ml-2 text-[var(--cm-text-secondary)]">({cls.subject?.subjectName})</span>
+                            </div>
+                            <span className="text-[var(--cm-text-muted)]">
+                              GV: {cls.teacher?.displayName || "Chưa phân công"}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Subject Goals (Digital Twin) */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--cm-cyan)]">
+                        Mục tiêu điểm số môn học (Digital Twin) ({studentDetail.subjectGoals?.length || 0})
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => setGoalStudent(studentDetail)}
+                        className="cm-secondary-button h-7 px-2 text-xs text-cyan-300 hover:text-cyan-200"
+                      >
+                        Thiết lập mục tiêu
+                      </button>
+                    </div>
+
+                    {!studentDetail.subjectGoals || studentDetail.subjectGoals.length === 0 ? (
+                      <p className="text-xs italic text-[var(--cm-text-muted)]">Chưa thiết lập mục tiêu môn học nào.</p>
+                    ) : (
+                      <div className="divide-y divide-[var(--cm-border-subtle)] rounded-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-raised)]">
+                        {studentDetail.subjectGoals.map((goal) => (
+                          <div key={goal.subjectId} className="flex items-center justify-between p-3 text-xs">
+                            <div>
+                              <span className="font-semibold text-[var(--cm-text)]">
+                                {goal.subjectName || goal.subjectCode || goal.subjectId}
+                              </span>
+                              {goal.remainingDays !== undefined && (
+                                <span className="ml-2 text-[var(--cm-text-muted)]">· Còn {goal.remainingDays} ngày</span>
+                              )}
+                              {goal.currentPredictedScore !== undefined && (
+                                <span className="ml-2 text-indigo-300">· Dự báo: {goal.currentPredictedScore}</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-[var(--cm-cyan)]">
+                                {goal.targetScore} / 10
+                              </span>
+                              <span className="text-[10px] text-[var(--cm-text-muted)]">
+                                {goal.updatedAt ? new Date(goal.updatedAt).toLocaleDateString("vi-VN") : ""}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </Drawer>
+          )}
+
+          {/* Subject Goals Modal */}
+          {goalStudent && (
+            <SubjectGoalsModal
+              isOpen={!!goalStudent}
+              student={goalStudent}
+              onClose={() => setGoalStudent(null)}
+              onSuccess={() => {
+                // If student detail drawer is open, it will auto-update via invalidated query
+              }}
+            />
+          )}
+
+          {/* Edit Student Modal */}
+          {editingStudent && canUpdateStudent && (
+            <Modal
+              isOpen={!!editingStudent}
+              title="Chỉnh sửa thông tin học viên"
+              description={`Tài khoản: ${editingStudent.username}`}
+              onClose={() => setEditingStudent(null)}
+            >
+              <form onSubmit={handleEditSubmit} className="space-y-4">
+                <div>
+                  <label htmlFor="edit-student-fullname" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
+                    Họ và tên <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="edit-student-fullname"
+                    value={editFullName}
+                    onChange={(e) => setEditFullName(e.target.value)}
+                    required
+                    maxLength={200}
+                    disabled={updateMutation.isPending}
+                    className="cm-field mt-1 w-full px-3 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="edit-student-grade" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
+                    Khối lớp <span className="text-rose-400">*</span>
+                  </label>
+                  <select
+                    id="edit-student-grade"
+                    value={editGradeLevel}
+                    onChange={(e) => setEditGradeLevel(Number(e.target.value))}
+                    disabled={updateMutation.isPending}
+                    className="cm-field mt-1 w-full px-3 text-sm"
+                  >
+                    <option value={10}>Khối 10</option>
+                    <option value={11}>Khối 11</option>
+                    <option value={12}>Khối 12</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="edit-student-status" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
+                    Trạng thái tài khoản
+                  </label>
+                  <select
+                    id="edit-student-status"
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value as UserStatus)}
+                    disabled={updateMutation.isPending}
+                    className="cm-field mt-1 w-full px-3 text-sm"
+                  >
+                    <option value="Active">Hoạt động</option>
+                    <option value="Locked">Bị khóa</option>
+                    <option value="Disabled">Vô hiệu hóa</option>
+                  </select>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setEditingStudent(null)}
+                    disabled={updateMutation.isPending}
+                    className="cm-secondary-button text-sm"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    id="btn-save-edit-student"
+                    disabled={updateMutation.isPending}
+                    className="cm-primary-button text-sm"
+                  >
+                    {updateMutation.isPending ? "Đang lưu..." : "Lưu thay đổi"}
+                  </button>
+                </div>
+              </form>
+            </Modal>
+          )}
+
+          {/* Reset Password Modal */}
+          {resetStudent && canResetPassword && (
+            <Modal
+              isOpen={!!resetStudent}
+              title="Đặt lại mật khẩu học viên"
+              description={`Học viên: ${resetStudent.fullName} (@${resetStudent.username})`}
+              onClose={() => setResetStudent(null)}
+            >
+              <div className="mb-4 rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-xs text-amber-200">
+                Lưu ý an toàn: Đặt lại mật khẩu sẽ lập tức thu hồi mọi phiên đăng nhập và refresh token đang hoạt động của học viên.
+              </div>
+
+              <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
+                <div>
+                  <label htmlFor="reset-student-new-password" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
+                    Mật khẩu mới (tối thiểu 12 ký tự) <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    id="reset-student-new-password"
+                    autoComplete="new-password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    required
+                    minLength={12}
+                    maxLength={200}
+                    disabled={resetPasswordMutation.isPending}
+                    className="cm-field mt-1 w-full px-3 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="reset-student-confirm-password" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
+                    Xác nhận mật khẩu mới <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    id="reset-student-confirm-password"
+                    autoComplete="new-password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    minLength={12}
+                    maxLength={200}
+                    disabled={resetPasswordMutation.isPending}
+                    className="cm-field mt-1 w-full px-3 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="reset-student-reason" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
+                    Lý do đặt lại mật khẩu <span className="text-rose-400">*</span>
+                  </label>
+                  <textarea
+                    id="reset-student-reason"
+                    rows={3}
+                    value={resetReason}
+                    onChange={(e) => setResetReason(e.target.value)}
+                    required
+                    minLength={5}
+                    maxLength={500}
+                    placeholder="Ví dụ: Học viên yêu cầu cấp lại mật khẩu do quên"
+                    disabled={resetPasswordMutation.isPending}
+                    className="cm-field mt-1 w-full p-3 text-sm"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setResetStudent(null)}
+                    disabled={resetPasswordMutation.isPending}
+                    className="cm-secondary-button text-sm"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    id="btn-submit-reset-student-password"
+                    disabled={resetPasswordMutation.isPending}
+                    className="cm-primary-button text-sm"
+                  >
+                    {resetPasswordMutation.isPending ? "Đang xử lý..." : "Xác nhận đặt lại"}
+                  </button>
+                </div>
+              </form>
+            </Modal>
+          )}
+
+          {/* Delete Confirmation Modal */}
+          {deletingStudent && canDeleteStudent && (
+            <Modal
+              isOpen={!!deletingStudent}
+              title="Xóa học viên"
+              onClose={() => setDeletingStudent(null)}
+            >
+              <div className="space-y-4 text-sm">
+                <p className="text-[var(--cm-text-secondary)]">
+                  Bạn có chắc chắn muốn xóa học viên{" "}
+                  <span className="font-semibold text-[var(--cm-text)]">{deletingStudent.fullName}</span> (
+                  {deletingStudent.username})?
+                </p>
+
+                <div className="rounded-xl border border-cyan-400/30 bg-cyan-400/10 p-3 text-xs text-cyan-200 space-y-1">
+                  <p className="font-bold">BẢO TOÀN DỮ LIỆU HỌC TẬP (100% EVIDENCE PRESERVATION):</p>
+                  <p>• Tài khoản sẽ được chuyển sang trạng thái đã xóa và vô hiệu hóa.</p>
+                  <p>• Học viên sẽ được gỡ khỏi danh sách thành viên các lớp học đang hoạt động.</p>
+                  <p>• Mọi lịch sử bài tập, bằng chứng năng lực, điểm số và Digital Twin được giữ nguyên vẹn để phục vụ báo cáo.</p>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setDeletingStudent(null)}
+                    disabled={deleteMutation.isPending}
+                    className="cm-secondary-button text-sm"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    id="btn-confirm-delete-student"
+                    onClick={handleDeleteSubmit}
+                    disabled={deleteMutation.isPending}
+                    className="cm-danger-button text-sm"
+                  >
+                    {deleteMutation.isPending ? "Đang xóa..." : "Xác nhận xóa"}
+                  </button>
+                </div>
+              </div>
+            </Modal>
+          )}
+        </div>
+      </div>
+    </CenterManagerThemeScope>
+  );
+};
+
+/**
+ * Legacy StudentListPage component preserved for non-CenterManager users
+ */
+const LegacyStudentListPage: React.FC = () => {
+  const queryClient = useQueryClient();
+  const hasPermission = useAuthStore((state) => state.hasPermission);
+
+  const canCreateStudent = hasPermission(permissions.studentsCreate);
+  const canUpdateStudent = hasPermission(permissions.studentsUpdate);
+  const canDeleteStudent = hasPermission(permissions.studentsDelete);
+  const canResetPassword = hasPermission(permissions.studentsResetPassword);
+
+  const [page, setPage] = useState<number>(1);
+  const pageSize = 20;
+
+  const [search, setSearch] = useState<string>("");
+  const [status, setStatus] = useState<UserStatus | "">("");
+  const [gradeLevel, setGradeLevel] = useState<number | "">("");
+
+  const [searchInput, setSearchInput] = useState<string>("");
+  const [statusInput, setStatusInput] = useState<UserStatus | "">("");
+  const [gradeLevelInput, setGradeLevelInput] = useState<number | "">("");
+
+  const [isCreating, setIsCreating] = useState(false);
+  const [createUsername, setCreateUsername] = useState("");
+  const [createPassword, setCreatePassword] = useState("");
+  const [createFullName, setCreateFullName] = useState("");
+  const [createGradeLevel, setCreateGradeLevel] = useState<10 | 11 | 12>(10);
+  const [createClassIds, setCreateClassIds] = useState<string[]>([]);
+
+  const [viewingStudentId, setViewingStudentId] = useState<string | null>(null);
+
+  const [editingStudent, setEditingStudent] = useState<StudentDto | null>(null);
+  const [editFullName, setEditFullName] = useState("");
+  const [editGradeLevel, setEditGradeLevel] = useState<number>(10);
+  const [editStatus, setEditStatus] = useState<UserStatus>("Active");
+
+  const [resetStudent, setResetStudent] = useState<StudentDto | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [resetReason, setResetReason] = useState("");
+
+  const [deletingStudent, setDeletingStudent] = useState<StudentDto | null>(null);
+
+  const [feedback, setFeedback] = useState<{ type: "success" | "error" | "conflict"; message: string } | null>(null);
+
+  const showFeedback = (type: "success" | "error" | "conflict", message: string) => {
+    setFeedback({ type, message });
+    if (type === "success") {
+      setTimeout(() => setFeedback(null), 5000);
+    }
+  };
+
+  const queryParams: StudentListParams = {
+    page,
+    pageSize,
+    search: search.trim() !== "" ? search.trim() : undefined,
+    status: status !== "" ? status : undefined,
+    gradeLevel: gradeLevel !== "" ? gradeLevel : undefined,
+  };
+
+  const { data, isLoading, isFetching, isError: isListError, refetch } = useQuery({
+    queryKey: ["students", queryParams.page, queryParams.pageSize, queryParams.search, queryParams.status, queryParams.gradeLevel],
+    queryFn: () => organizationApi.listStudents(queryParams),
+  });
+
+  const { data: classesData } = useQuery({
+    queryKey: ["classes", "active-for-student-create"],
+    queryFn: () => organizationApi.listClasses({ page: 1, pageSize: 100, status: "Active" }),
+    enabled: isCreating,
+  });
+
+  const { data: studentDetail, isLoading: isDetailLoading } = useQuery<StudentDetailDto>({
+    queryKey: ["studentDetail", viewingStudentId],
+    queryFn: () => organizationApi.getStudent(viewingStudentId!),
+    enabled: !!viewingStudentId,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (request: CreateStudentRequest) => {
+      try {
+        return await organizationApi.createStudent(request);
+      } finally {
+        request.temporaryPassword = "";
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["students"] });
+      setIsCreating(false);
+      setCreateUsername("");
+      setCreatePassword("");
+      setCreateFullName("");
+      setCreateGradeLevel(10);
+      setCreateClassIds([]);
+      showFeedback("success", "Đã tạo tài khoản học viên thành công.");
+    },
+    onError: (error) => {
+      const details = extractProblemDetails(error);
+      if (details.errorCode === "DUPLICATE_RESOURCE") {
+        showFeedback("error", "Tên đăng nhập đã tồn tại trong trung tâm.");
+      } else {
+        showFeedback("error", details.message || "Không thể tạo học viên.");
+      }
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ studentId, request }: { studentId: string; request: UpdateStudentRequest }) => {
+      return await organizationApi.updateStudent(studentId, request);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["students"] });
+      setEditingStudent(null);
+      showFeedback("success", "Đã cập nhật thông tin học viên thành công.");
+    },
+    onError: (error) => {
+      if (isConcurrencyConflict(error)) {
+        showFeedback("conflict", "Dữ liệu học viên đã bị thay đổi bởi phiên làm việc khác. Đang tải lại dữ liệu mới nhất...");
         refetch();
+      } else {
+        const details = extractProblemDetails(error);
+        showFeedback("error", details.message || "Không thể cập nhật học viên.");
+      }
+    },
+  });
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: async ({ studentId, request }: { studentId: string; request: ResetAccountPasswordRequest }) => {
+      try {
+        return await organizationApi.resetStudentPassword(studentId, request);
+      } finally {
+        request.newPassword = "";
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["students"] });
+      setResetStudent(null);
+      setNewPassword("");
+      setConfirmPassword("");
+      setResetReason("");
+      showFeedback("success", "Đã đặt lại mật khẩu học viên thành công. Mọi phiên đăng nhập cũ đã được thu hồi.");
+    },
+    onError: (error) => {
+      if (isConcurrencyConflict(error)) {
+        showFeedback("conflict", "Dữ liệu người dùng đã bị thay đổi bởi phiên làm việc khác. Vui lòng tải lại.");
       } else {
         const details = extractProblemDetails(error);
         showFeedback("error", details.message || "Không thể đặt lại mật khẩu học viên.");
@@ -182,7 +1197,6 @@ export const StudentListPage: React.FC = () => {
     },
   });
 
-  // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (studentId: string) => {
       return await organizationApi.deleteStudent(studentId);
@@ -285,7 +1299,6 @@ export const StudentListPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        {/* Header */}
         <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold leading-7 text-gray-900 sm:truncate sm:text-3xl sm:tracking-tight">
@@ -318,7 +1331,6 @@ export const StudentListPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Global Feedback Banner */}
         {feedback && (
           <div
             id="student-feedback-alert"
@@ -343,7 +1355,6 @@ export const StudentListPage: React.FC = () => {
           </div>
         )}
 
-        {/* Create Modal */}
         {isCreating && canCreateStudent && (
           <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-create-student-title">
             <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
@@ -478,7 +1489,6 @@ export const StudentListPage: React.FC = () => {
           </div>
         )}
 
-        {/* Student Detail Modal */}
         {viewingStudentId && (
           <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-student-detail-title">
             <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6">
@@ -500,7 +1510,6 @@ export const StudentListPage: React.FC = () => {
                 <div className="py-8 text-center text-sm text-gray-500">Đang tải thông tin chi tiết...</div>
               ) : studentDetail ? (
                 <div className="space-y-6">
-                  {/* Basic info */}
                   <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-md">
                     <div>
                       <span className="text-xs text-gray-500 block">Họ và tên</span>
@@ -530,7 +1539,6 @@ export const StudentListPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Classes */}
                   <div>
                     <h3 className="text-sm font-semibold text-gray-900 mb-2">
                       Lớp học đang tham gia ({studentDetail.classes?.length || 0})
@@ -561,7 +1569,6 @@ export const StudentListPage: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Subject Goals */}
                   <div>
                     <h3 className="text-sm font-semibold text-gray-900 mb-2">
                       Mục tiêu điểm số theo môn ({studentDetail.subjectGoals?.length || 0})
@@ -583,7 +1590,7 @@ export const StudentListPage: React.FC = () => {
                               <tr key={goal.subjectId}>
                                 <td className="px-3 py-2 font-medium text-gray-900">{goal.subjectName}</td>
                                 <td className="px-3 py-2 font-bold text-indigo-600">{goal.targetScore} đ</td>
-                                <td className="px-3 py-2 text-gray-500">{new Date(goal.updatedAt).toLocaleDateString("vi-VN")}</td>
+                                <td className="px-3 py-2 text-gray-500">{goal.updatedAt ? new Date(goal.updatedAt).toLocaleDateString("vi-VN") : ""}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -607,7 +1614,6 @@ export const StudentListPage: React.FC = () => {
           </div>
         )}
 
-        {/* Edit Student Modal */}
         {editingStudent && canUpdateStudent && (
           <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-edit-student-title">
             <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
@@ -692,7 +1698,6 @@ export const StudentListPage: React.FC = () => {
           </div>
         )}
 
-        {/* Reset Password Modal */}
         {resetStudent && canResetPassword && (
           <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-reset-student-password-title">
             <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
@@ -785,7 +1790,6 @@ export const StudentListPage: React.FC = () => {
           </div>
         )}
 
-        {/* Delete Confirmation Modal */}
         {deletingStudent && canDeleteStudent && (
           <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-delete-student-title">
             <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
@@ -826,7 +1830,6 @@ export const StudentListPage: React.FC = () => {
           </div>
         )}
 
-        {/* Filter Card */}
         <div className="mb-8 overflow-hidden rounded-lg bg-white shadow">
           <div className="p-6">
             <form onSubmit={handleSearch} className="flex flex-col gap-4 sm:flex-row sm:items-end">
@@ -898,7 +1901,6 @@ export const StudentListPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Error Alert */}
         {isListError && (
           <div className="mb-6 rounded-md bg-red-50 p-4 border border-red-200" role="alert">
             <h3 className="text-sm font-medium text-red-800">Không thể tải danh sách học viên</h3>
@@ -906,7 +1908,6 @@ export const StudentListPage: React.FC = () => {
           </div>
         )}
 
-        {/* Students Table */}
         <div className="overflow-hidden bg-white shadow sm:rounded-lg">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-300">
@@ -1020,7 +2021,6 @@ export const StudentListPage: React.FC = () => {
             </table>
           </div>
 
-          {/* Pagination */}
           {data?.meta && data.meta.totalPages > 1 && (
             <div className="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6">
               <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
@@ -1059,5 +2059,14 @@ export const StudentListPage: React.FC = () => {
         </div>
       </div>
     </div>
+  );
+};
+
+export const StudentListPage: React.FC = () => {
+  const user = useAuthStore((state) => state.user);
+  return user?.accountType === "CenterManager" ? (
+    <CenterManagerStudentListView />
+  ) : (
+    <LegacyStudentListPage />
   );
 };

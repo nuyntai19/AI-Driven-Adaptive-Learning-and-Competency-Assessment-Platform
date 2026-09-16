@@ -12,7 +12,19 @@ import type {
 } from "../types/organization";
 import { useAuthStore } from "../stores/authStore";
 import { permissions } from "../auth/permissions";
-import { extractProblemDetails, isConcurrencyConflict } from "../utils/problemDetails";
+import { extractProblemDetails, isConcurrencyConflict, mapSafeOperationalError } from "../utils/problemDetails";
+import {
+  CenterManagerThemeScope,
+  PageHeader,
+  FilterBar,
+  DataTable,
+  type DataTableColumn,
+  StatusBadge,
+  Modal,
+  Drawer,
+  ConcurrencyBanner,
+  SafeErrorPanel,
+} from "../components/centerManager";
 
 const STATUS_LABELS: Record<string, string> = {
   Active: "Hoạt động",
@@ -20,7 +32,10 @@ const STATUS_LABELS: Record<string, string> = {
   Disabled: "Vô hiệu hóa",
 };
 
-export const TeacherListPage: React.FC = () => {
+/**
+ * Modern CenterManager Dark Enterprise SaaS view for TeacherListPage
+ */
+const CenterManagerTeacherListView: React.FC = () => {
   const queryClient = useQueryClient();
   const hasPermission = useAuthStore((state) => state.hasPermission);
 
@@ -35,7 +50,7 @@ export const TeacherListPage: React.FC = () => {
   const [search, setSearch] = useState<string>("");
   const [status, setStatus] = useState<UserStatus | "">("");
 
-  // Search input state
+  // Input states
   const [searchInput, setSearchInput] = useState<string>("");
   const [statusInput, setStatusInput] = useState<UserStatus | "">("");
 
@@ -61,14 +76,18 @@ export const TeacherListPage: React.FC = () => {
   // Delete modal state
   const [deletingTeacher, setDeletingTeacher] = useState<TeacherDto | null>(null);
 
-  // Detail modal state
+  // Detail drawer state
   const [viewingTeacherId, setViewingTeacherId] = useState<string | null>(null);
 
   // Notifications
-  const [feedback, setFeedback] = useState<{ type: "success" | "error" | "conflict"; message: string } | null>(null);
+  const [feedback, setFeedback] = useState<{
+    type: "success" | "error" | "conflict";
+    message: string;
+    traceId?: string;
+  } | null>(null);
 
-  const showFeedback = (type: "success" | "error" | "conflict", message: string) => {
-    setFeedback({ type, message });
+  const showFeedback = (type: "success" | "error" | "conflict", message: string, traceId?: string | null) => {
+    setFeedback({ type, message, traceId: traceId ?? undefined });
     if (type === "success") {
       setTimeout(() => setFeedback(null), 5000);
     }
@@ -81,7 +100,7 @@ export const TeacherListPage: React.FC = () => {
     status: status !== "" ? status : undefined,
   };
 
-  const { data, isLoading, isFetching, isError: isListError, refetch } = useQuery({
+  const { data, isLoading, isFetching, isError: isListError, error: listError, refetch } = useQuery({
     queryKey: ["teachers", queryParams.page, queryParams.pageSize, queryParams.search, queryParams.status],
     queryFn: () => organizationApi.listTeachers(queryParams),
   });
@@ -113,6 +132,878 @@ export const TeacherListPage: React.FC = () => {
     onError: (error) => {
       const details = extractProblemDetails(error);
       if (details.errorCode === "DUPLICATE_RESOURCE") {
+        showFeedback("error", "Tên đăng nhập đã tồn tại trong trung tâm. Vui lòng chọn tên khác.", details.traceId);
+      } else if (details.errorCode === "VALIDATION_FAILED") {
+        showFeedback("error", details.message || "Dữ liệu giáo viên không hợp lệ.", details.traceId);
+      } else {
+        showFeedback("error", mapSafeOperationalError(error, "Không thể tạo giáo viên. Vui lòng thử lại."), details.traceId);
+      }
+    },
+  });
+
+  // Update mutation
+  const updateMutation = useMutation({
+    mutationFn: async ({ teacherId, request }: { teacherId: string; request: UpdateTeacherRequest }) => {
+      return await organizationApi.updateTeacher(teacherId, request);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["teachers"] });
+      setEditingTeacher(null);
+      showFeedback("success", "Đã cập nhật thông tin giáo viên thành công.");
+    },
+    onError: (error) => {
+      if (isConcurrencyConflict(error)) {
+        showFeedback("conflict", "Dữ liệu giáo viên đã bị thay đổi bởi một phiên làm việc khác. Vui lòng nạp lại dữ liệu.");
+      } else {
+        const details = extractProblemDetails(error);
+        showFeedback("error", mapSafeOperationalError(error, "Không thể cập nhật thông tin giáo viên."), details.traceId);
+      }
+    },
+  });
+
+  // Reset password mutation
+  const resetPasswordMutation = useMutation({
+    mutationFn: async ({ teacherId, request }: { teacherId: string; request: ResetAccountPasswordRequest }) => {
+      try {
+        return await organizationApi.resetTeacherPassword(teacherId, request);
+      } finally {
+        request.newPassword = "";
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["teachers"] });
+      setResetTeacher(null);
+      setNewPassword("");
+      setConfirmPassword("");
+      setResetReason("");
+      showFeedback("success", "Đã đặt lại mật khẩu giáo viên thành công. Mọi phiên đăng nhập cũ đã được thu hồi.");
+    },
+    onError: (error) => {
+      if (isConcurrencyConflict(error)) {
+        showFeedback("conflict", "Dữ liệu người dùng đã bị thay đổi bởi một phiên làm việc khác. Vui lòng tải lại.");
+      } else {
+        const details = extractProblemDetails(error);
+        showFeedback("error", mapSafeOperationalError(error, "Không thể đặt lại mật khẩu."), details.traceId);
+      }
+    },
+  });
+
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (teacherId: string) => {
+      return await organizationApi.deleteTeacher(teacherId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["teachers"] });
+      setDeletingTeacher(null);
+      showFeedback("success", "Đã xóa giáo viên thành công. Dữ liệu lịch sử được bảo toàn an toàn.");
+    },
+    onError: (error) => {
+      const details = extractProblemDetails(error);
+      if (details.errorCode === "INVALID_STATE_TRANSITION" || details.status === 409) {
+        showFeedback("error", "Không thể xóa: Giáo viên hiện vẫn còn lớp học đang hoạt động.", details.traceId);
+      } else {
+        showFeedback("error", mapSafeOperationalError(error, "Không thể xóa giáo viên. Vui lòng thử lại."), details.traceId);
+      }
+    },
+  });
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    setSearch(searchInput);
+    setStatus(statusInput);
+    setPage(1);
+  };
+
+  const openEditModal = (teacher: TeacherDto) => {
+    setEditingTeacher(teacher);
+    setEditDisplayName(teacher.displayName);
+    setEditDepartment(teacher.department || "");
+    setEditStatus(teacher.status);
+    setFeedback(null);
+  };
+
+  const handleEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTeacher) return;
+
+    const trimmedName = editDisplayName.trim();
+    if (!trimmedName) {
+      showFeedback("error", "Họ tên giáo viên không được để trống.");
+      return;
+    }
+
+    updateMutation.mutate({
+      teacherId: editingTeacher.teacherId,
+      request: {
+        displayName: trimmedName,
+        department: editDepartment.trim() || null,
+        status: editStatus,
+        rowVersion: editingTeacher.rowVersion,
+      },
+    });
+  };
+
+  const openResetPasswordModal = (teacher: TeacherDto) => {
+    setResetTeacher(teacher);
+    setNewPassword("");
+    setConfirmPassword("");
+    setResetReason("");
+    setFeedback(null);
+  };
+
+  const handleResetPasswordSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetTeacher) return;
+
+    if (newPassword.length < 12 || newPassword.length > 200) {
+      showFeedback("error", "Mật khẩu mới phải từ 12 đến 200 ký tự.");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      showFeedback("error", "Mật khẩu xác nhận không khớp.");
+      return;
+    }
+
+    if (resetReason.trim().length < 5 || resetReason.trim().length > 500) {
+      showFeedback("error", "Lý do đặt lại mật khẩu là bắt buộc (từ 5 đến 500 ký tự).");
+      return;
+    }
+
+    resetPasswordMutation.mutate({
+      teacherId: resetTeacher.teacherId,
+      request: {
+        newPassword,
+        expectedUserRowVersion: resetTeacher.rowVersion,
+        reason: resetReason.trim(),
+      },
+    });
+  };
+
+  const openDeleteModal = (teacher: TeacherDto) => {
+    setDeletingTeacher(teacher);
+    setFeedback(null);
+  };
+
+  const handleDeleteSubmit = () => {
+    if (!deletingTeacher) return;
+    deleteMutation.mutate(deletingTeacher.teacherId);
+  };
+
+  const columns: DataTableColumn<TeacherDto>[] = [
+    {
+      id: "username",
+      header: "Tên đăng nhập",
+      render: (teacher) => (
+        <span className="font-mono font-medium text-[var(--cm-cyan)]">
+          {teacher.username}
+        </span>
+      ),
+    },
+    {
+      id: "displayName",
+      header: "Họ và tên",
+      render: (teacher) => (
+        <span className="font-medium text-[var(--cm-text)]">
+          {teacher.displayName}
+        </span>
+      ),
+    },
+    {
+      id: "department",
+      header: "Tổ / Bộ môn",
+      render: (teacher) => (
+        <span className="text-[var(--cm-text-secondary)]">
+          {teacher.department || "—"}
+        </span>
+      ),
+    },
+    {
+      id: "status",
+      header: "Trạng thái",
+      render: (teacher) => (
+        <StatusBadge
+          status={teacher.status}
+          label={STATUS_LABELS[teacher.status] || teacher.status}
+        />
+      ),
+    },
+    {
+      id: "classCount",
+      header: "Lớp phụ trách",
+      align: "center",
+      render: (teacher) => (
+        <span className="font-semibold text-[var(--cm-text-secondary)]">
+          {teacher.classCount} lớp
+        </span>
+      ),
+    },
+    {
+      id: "actions",
+      header: "Thao tác",
+      align: "right",
+      render: (teacher) => (
+        <div className="flex items-center justify-end gap-1.5">
+          {canReadTeacher && (
+            <button
+              type="button"
+              id={`btn-view-teacher-${teacher.teacherId}`}
+              onClick={() => setViewingTeacherId(teacher.teacherId)}
+              className="cm-secondary-button h-8 px-2.5 py-1 text-xs"
+            >
+              Chi tiết
+            </button>
+          )}
+          {canUpdateTeacher && (
+            <button
+              type="button"
+              id={`btn-edit-teacher-${teacher.teacherId}`}
+              onClick={() => openEditModal(teacher)}
+              className="cm-secondary-button h-8 px-2.5 py-1 text-xs"
+            >
+              Sửa
+            </button>
+          )}
+          {canResetPassword && (
+            <button
+              type="button"
+              id={`btn-reset-password-${teacher.teacherId}`}
+              onClick={() => openResetPasswordModal(teacher)}
+              className="cm-secondary-button h-8 px-2.5 py-1 text-xs"
+            >
+              Đổi mật khẩu
+            </button>
+          )}
+          {canDeleteTeacher && (
+            <button
+              type="button"
+              id={`btn-delete-teacher-${teacher.teacherId}`}
+              onClick={() => openDeleteModal(teacher)}
+              className="cm-danger-button h-8 px-2.5 py-1 text-xs"
+            >
+              Xóa
+            </button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <CenterManagerThemeScope>
+      <div className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <div className="mx-auto max-w-[96rem] space-y-6">
+          <PageHeader
+            eyebrow="Quản trị nhân sự"
+            title="Quản lý Giáo viên"
+            description="Quản lý hồ sơ giáo viên, trạng thái tài khoản và phân công giảng dạy trong phạm vi trung tâm."
+            actions={
+              canCreateTeacher && (
+                <button
+                  type="button"
+                  id="btn-create-teacher"
+                  onClick={() => {
+                    setIsCreating(true);
+                    setFeedback(null);
+                  }}
+                  className="cm-primary-button"
+                >
+                  + Thêm giáo viên
+                </button>
+              )
+            }
+          />
+
+          {feedback?.type === "conflict" && (
+            <ConcurrencyBanner
+              onReload={() => {
+                refetch();
+                setFeedback(null);
+              }}
+              isReloading={isFetching}
+            />
+          )}
+
+          {feedback && feedback.type !== "conflict" && (
+            <div
+              id="teacher-feedback-alert"
+              role="alert"
+              className={`flex items-start justify-between rounded-xl border p-4 text-sm ${
+                feedback.type === "success"
+                  ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"
+                  : "border-rose-400/30 bg-rose-400/10 text-rose-200"
+              }`}
+            >
+              <div>
+                <p className="font-semibold">{feedback.message}</p>
+                {feedback.traceId && (
+                  <p className="mt-1 font-mono text-xs opacity-75">Trace ID: {feedback.traceId}</p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setFeedback(null)}
+                className="text-slate-400 hover:text-white"
+                aria-label="Đóng thông báo"
+              >
+                ×
+              </button>
+            </div>
+          )}
+
+          <FilterBar
+            searchValue={searchInput}
+            searchLabel="Tìm kiếm giáo viên"
+            searchPlaceholder="Tìm theo tên đăng nhập hoặc họ tên…"
+            onSearchChange={setSearchInput}
+            filters={
+              <label htmlFor="status-teacher" className="sr-only">Trạng thái giáo viên</label>
+            }
+            actions={
+              <div className="flex items-center gap-2">
+                <select
+                  id="status-teacher"
+                  value={statusInput}
+                  onChange={(e) => setStatusInput(e.target.value as UserStatus | "")}
+                  className="cm-field px-3 py-1.5 text-xs"
+                >
+                  <option value="">Tất cả trạng thái</option>
+                  <option value="Active">Hoạt động</option>
+                  <option value="Locked">Bị khóa</option>
+                  <option value="Disabled">Vô hiệu hóa</option>
+                </select>
+                <button
+                  type="button"
+                  id="btn-search-teachers"
+                  onClick={handleSearch}
+                  disabled={isFetching}
+                  className="cm-secondary-button text-xs"
+                >
+                  Tìm kiếm
+                </button>
+              </div>
+            }
+          />
+
+          {isListError && (
+            <SafeErrorPanel
+              error={listError}
+              fallback="Không thể tải danh sách giáo viên. Vui lòng thử lại."
+              onRetry={() => refetch()}
+            />
+          )}
+
+          <DataTable<TeacherDto>
+            caption="Danh sách giáo viên trung tâm"
+            columns={columns}
+            rows={data?.data ?? []}
+            rowKey={(teacher) => teacher.teacherId}
+            isLoading={isLoading}
+            emptyTitle="Không tìm thấy giáo viên nào"
+            emptyDescription="Chưa có hồ sơ giáo viên nào phù hợp với bộ lọc tìm kiếm hiện tại."
+            page={page}
+            totalPages={data?.meta?.totalPages ?? 1}
+            totalItems={data?.meta?.totalItems}
+            onPageChange={setPage}
+          />
+
+          {/* Create Modal */}
+          {isCreating && canCreateTeacher && (
+            <Modal
+              isOpen={isCreating}
+              title="Thêm giáo viên mới"
+              description="Tạo tài khoản và thông tin công tác cho giáo viên thuộc trung tâm."
+              onClose={() => setIsCreating(false)}
+            >
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  createMutation.mutate({
+                    username: createUsername.trim(),
+                    temporaryPassword: createPassword,
+                    displayName: createDisplayName.trim(),
+                    department: createDepartment.trim() || undefined,
+                  });
+                }}
+                className="space-y-4"
+              >
+                <div>
+                  <label htmlFor="create-username" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
+                    Tên đăng nhập <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="create-username"
+                    value={createUsername}
+                    onChange={(e) => setCreateUsername(e.target.value)}
+                    required
+                    maxLength={100}
+                    disabled={createMutation.isPending}
+                    className="cm-field mt-1 w-full px-3 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="create-password" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
+                    Mật khẩu tạm thời (tối thiểu 12 ký tự) <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    id="create-password"
+                    autoComplete="new-password"
+                    value={createPassword}
+                    onChange={(e) => setCreatePassword(e.target.value)}
+                    required
+                    minLength={12}
+                    maxLength={200}
+                    disabled={createMutation.isPending}
+                    className="cm-field mt-1 w-full px-3 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="create-display-name" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
+                    Họ tên giáo viên <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="create-display-name"
+                    value={createDisplayName}
+                    onChange={(e) => setCreateDisplayName(e.target.value)}
+                    required
+                    maxLength={200}
+                    disabled={createMutation.isPending}
+                    className="cm-field mt-1 w-full px-3 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="create-department" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
+                    Bộ môn / Phòng ban
+                  </label>
+                  <input
+                    type="text"
+                    id="create-department"
+                    value={createDepartment}
+                    onChange={(e) => setCreateDepartment(e.target.value)}
+                    maxLength={150}
+                    disabled={createMutation.isPending}
+                    placeholder="Ví dụ: Tổ Toán - Tin"
+                    className="cm-field mt-1 w-full px-3 text-sm"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setIsCreating(false)}
+                    disabled={createMutation.isPending}
+                    className="cm-secondary-button text-sm"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    id="btn-submit-create-teacher"
+                    disabled={createMutation.isPending}
+                    className="cm-primary-button text-sm"
+                  >
+                    {createMutation.isPending ? "Đang tạo..." : "Tạo giáo viên"}
+                  </button>
+                </div>
+              </form>
+            </Modal>
+          )}
+
+          {/* Teacher Detail Drawer */}
+          {viewingTeacherId && canReadTeacher && (
+            <Drawer
+              isOpen={!!viewingTeacherId}
+              title="Hồ sơ chi tiết giáo viên"
+              description="Thông tin tài khoản, đơn vị công tác và số lượng lớp học phụ trách."
+              onClose={() => setViewingTeacherId(null)}
+              footer={
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    id="btn-close-teacher-detail"
+                    onClick={() => setViewingTeacherId(null)}
+                    className="cm-secondary-button text-sm"
+                  >
+                    Đóng
+                  </button>
+                </div>
+              }
+            >
+              {isDetailLoading ? (
+                <div className="py-12 text-center text-sm text-[var(--cm-text-muted)]">
+                  Đang tải thông tin giáo viên...
+                </div>
+              ) : teacherDetail ? (
+                <div className="space-y-4 text-sm">
+                  <div className="grid grid-cols-2 gap-4 rounded-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-raised)] p-4">
+                    <div>
+                      <span className="block text-xs text-[var(--cm-text-muted)]">Mã giáo viên</span>
+                      <span className="font-mono text-xs text-[var(--cm-text)] break-all">{teacherDetail.teacherId}</span>
+                    </div>
+                    <div>
+                      <span className="block text-xs text-[var(--cm-text-muted)]">Tên đăng nhập</span>
+                      <span className="font-semibold text-[var(--cm-cyan)]">{teacherDetail.username}</span>
+                    </div>
+                    <div>
+                      <span className="block text-xs text-[var(--cm-text-muted)]">Họ và tên</span>
+                      <span className="font-medium text-[var(--cm-text)]">{teacherDetail.displayName}</span>
+                    </div>
+                    <div>
+                      <span className="block text-xs text-[var(--cm-text-muted)]">Tổ / Bộ môn</span>
+                      <span className="text-[var(--cm-text-secondary)]">{teacherDetail.department || "Chưa phân tổ"}</span>
+                    </div>
+                    <div>
+                      <span className="block text-xs text-[var(--cm-text-muted)]">Trạng thái</span>
+                      <StatusBadge
+                        status={teacherDetail.status}
+                        label={STATUS_LABELS[teacherDetail.status] || teacherDetail.status}
+                      />
+                    </div>
+                    <div>
+                      <span className="block text-xs text-[var(--cm-text-muted)]">Số lớp phụ trách</span>
+                      <span className="font-semibold text-indigo-400">{teacherDetail.classCount} lớp</span>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="block text-xs text-[var(--cm-text-muted)]">Phiên bản dữ liệu (RowVersion)</span>
+                      <span className="font-mono text-xs text-[var(--cm-text-secondary)]">{teacherDetail.rowVersion}</span>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </Drawer>
+          )}
+
+          {/* Edit Teacher Modal */}
+          {editingTeacher && canUpdateTeacher && (
+            <Modal
+              isOpen={!!editingTeacher}
+              title="Chỉnh sửa thông tin giáo viên"
+              description={`Cập nhật thông tin cho tài khoản ${editingTeacher.username}`}
+              onClose={() => setEditingTeacher(null)}
+            >
+              <form onSubmit={handleEditSubmit} className="space-y-4">
+                <div>
+                  <label htmlFor="edit-display-name" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
+                    Họ tên <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="edit-display-name"
+                    value={editDisplayName}
+                    onChange={(e) => setEditDisplayName(e.target.value)}
+                    required
+                    maxLength={200}
+                    disabled={updateMutation.isPending}
+                    className="cm-field mt-1 w-full px-3 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="edit-department" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
+                    Bộ môn / Phòng ban
+                  </label>
+                  <input
+                    type="text"
+                    id="edit-department"
+                    value={editDepartment}
+                    onChange={(e) => setEditDepartment(e.target.value)}
+                    maxLength={150}
+                    disabled={updateMutation.isPending}
+                    className="cm-field mt-1 w-full px-3 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="edit-status" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
+                    Trạng thái tài khoản
+                  </label>
+                  <select
+                    id="edit-status"
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value as UserStatus)}
+                    disabled={updateMutation.isPending}
+                    className="cm-field mt-1 w-full px-3 text-sm"
+                  >
+                    <option value="Active">Hoạt động</option>
+                    <option value="Locked">Bị khóa</option>
+                    <option value="Disabled">Vô hiệu hóa</option>
+                  </select>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setEditingTeacher(null)}
+                    disabled={updateMutation.isPending}
+                    className="cm-secondary-button text-sm"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    id="btn-save-edit-teacher"
+                    disabled={updateMutation.isPending}
+                    className="cm-primary-button text-sm"
+                  >
+                    {updateMutation.isPending ? "Đang lưu..." : "Lưu thay đổi"}
+                  </button>
+                </div>
+              </form>
+            </Modal>
+          )}
+
+          {/* Reset Password Modal */}
+          {resetTeacher && canResetPassword && (
+            <Modal
+              isOpen={!!resetTeacher}
+              title="Đặt lại mật khẩu giáo viên"
+              description={`Tài khoản: ${resetTeacher.displayName} (@${resetTeacher.username})`}
+              onClose={() => setResetTeacher(null)}
+            >
+              <div className="mb-4 rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-xs text-amber-200">
+                Lưu ý an toàn: Đặt lại mật khẩu sẽ lập tức thu hồi mọi phiên đăng nhập và token đang hoạt động của giáo viên.
+              </div>
+
+              <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
+                <div>
+                  <label htmlFor="reset-new-password" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
+                    Mật khẩu mới (tối thiểu 12 ký tự) <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    id="reset-new-password"
+                    autoComplete="new-password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    required
+                    minLength={12}
+                    maxLength={200}
+                    disabled={resetPasswordMutation.isPending}
+                    className="cm-field mt-1 w-full px-3 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="reset-confirm-password" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
+                    Xác nhận mật khẩu mới <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    id="reset-confirm-password"
+                    autoComplete="new-password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    minLength={12}
+                    maxLength={200}
+                    disabled={resetPasswordMutation.isPending}
+                    className="cm-field mt-1 w-full px-3 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="reset-reason" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
+                    Lý do đặt lại mật khẩu <span className="text-rose-400">*</span>
+                  </label>
+                  <textarea
+                    id="reset-reason"
+                    rows={3}
+                    value={resetReason}
+                    onChange={(e) => setResetReason(e.target.value)}
+                    required
+                    minLength={5}
+                    maxLength={500}
+                    placeholder="Ví dụ: Giáo viên yêu cầu cấp lại mật khẩu do quên"
+                    disabled={resetPasswordMutation.isPending}
+                    className="cm-field mt-1 w-full p-3 text-sm"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setResetTeacher(null)}
+                    disabled={resetPasswordMutation.isPending}
+                    className="cm-secondary-button text-sm"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    id="btn-submit-reset-teacher-password"
+                    disabled={resetPasswordMutation.isPending}
+                    className="cm-primary-button text-sm"
+                  >
+                    {resetPasswordMutation.isPending ? "Đang xử lý..." : "Xác nhận đặt lại"}
+                  </button>
+                </div>
+              </form>
+            </Modal>
+          )}
+
+          {/* Delete Confirmation Modal */}
+          {deletingTeacher && canDeleteTeacher && (
+            <Modal
+              isOpen={!!deletingTeacher}
+              title="Xóa giáo viên"
+              onClose={() => setDeletingTeacher(null)}
+            >
+              {deletingTeacher.classCount > 0 ? (
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-rose-400/30 bg-rose-400/10 p-4 text-sm text-rose-200">
+                    <p className="font-semibold">Không thể xóa giáo viên này!</p>
+                    <p className="mt-1 text-xs">
+                      Giáo viên <span className="font-bold">{deletingTeacher.displayName}</span> hiện đang phụ trách{" "}
+                      <span className="font-bold">{deletingTeacher.classCount}</span> lớp học đang hoạt động.
+                    </p>
+                    <p className="mt-2 text-xs text-rose-300/80">
+                      Vui lòng chuyển giao người phụ trách hoặc đóng các lớp học tương ứng trước khi thực hiện xóa.
+                    </p>
+                  </div>
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      id="btn-close-delete-blocked"
+                      onClick={() => setDeletingTeacher(null)}
+                      className="cm-secondary-button text-sm"
+                    >
+                      Đã hiểu
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4 text-sm">
+                  <p className="text-[var(--cm-text-secondary)]">
+                    Bạn có chắc chắn muốn xóa giáo viên{" "}
+                    <span className="font-semibold text-[var(--cm-text)]">{deletingTeacher.displayName}</span> (
+                    {deletingTeacher.username})?
+                  </p>
+                  <div className="rounded-xl border border-cyan-400/30 bg-cyan-400/10 p-3 text-xs text-cyan-200">
+                    Chính sách bảo toàn dữ liệu: Tài khoản giáo viên sẽ được chuyển sang trạng thái đã xóa. Lịch sử phân quyền và hoạt động học thuật vẫn được lưu trữ toàn vẹn.
+                  </div>
+                  <div className="flex justify-end gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setDeletingTeacher(null)}
+                      disabled={deleteMutation.isPending}
+                      className="cm-secondary-button text-sm"
+                    >
+                      Hủy
+                    </button>
+                    <button
+                      type="button"
+                      id="btn-confirm-delete-teacher"
+                      onClick={handleDeleteSubmit}
+                      disabled={deleteMutation.isPending}
+                      className="cm-danger-button text-sm"
+                    >
+                      {deleteMutation.isPending ? "Đang xóa..." : "Xác nhận xóa"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </Modal>
+          )}
+        </div>
+      </div>
+    </CenterManagerThemeScope>
+  );
+};
+
+/**
+ * Legacy TeacherListPage component preserved for non-CenterManager users
+ */
+const LegacyTeacherListPage: React.FC = () => {
+  const queryClient = useQueryClient();
+  const hasPermission = useAuthStore((state) => state.hasPermission);
+
+  const canReadTeacher = hasPermission(permissions.teachersRead);
+  const canCreateTeacher = hasPermission(permissions.teachersCreate);
+  const canUpdateTeacher = hasPermission(permissions.teachersUpdate);
+  const canDeleteTeacher = hasPermission(permissions.teachersDelete);
+  const canResetPassword = hasPermission(permissions.teachersResetPassword);
+
+  const [page, setPage] = useState<number>(1);
+  const pageSize = 20;
+  const [search, setSearch] = useState<string>("");
+  const [status, setStatus] = useState<UserStatus | "">("");
+
+  const [searchInput, setSearchInput] = useState<string>("");
+  const [statusInput, setStatusInput] = useState<UserStatus | "">("");
+
+  const [isCreating, setIsCreating] = useState(false);
+  const [createUsername, setCreateUsername] = useState("");
+  const [createPassword, setCreatePassword] = useState("");
+  const [createDisplayName, setCreateDisplayName] = useState("");
+  const [createDepartment, setCreateDepartment] = useState("");
+
+  const [editingTeacher, setEditingTeacher] = useState<TeacherDto | null>(null);
+  const [editDisplayName, setEditDisplayName] = useState("");
+  const [editDepartment, setEditDepartment] = useState("");
+  const [editStatus, setEditStatus] = useState<UserStatus>("Active");
+
+  const [resetTeacher, setResetTeacher] = useState<TeacherDto | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [resetReason, setResetReason] = useState("");
+
+  const [deletingTeacher, setDeletingTeacher] = useState<TeacherDto | null>(null);
+  const [viewingTeacherId, setViewingTeacherId] = useState<string | null>(null);
+
+  const [feedback, setFeedback] = useState<{ type: "success" | "error" | "conflict"; message: string } | null>(null);
+
+  const showFeedback = (type: "success" | "error" | "conflict", message: string) => {
+    setFeedback({ type, message });
+    if (type === "success") {
+      setTimeout(() => setFeedback(null), 5000);
+    }
+  };
+
+  const queryParams: TeacherListParams = {
+    page,
+    pageSize,
+    search: search.trim() !== "" ? search.trim() : undefined,
+    status: status !== "" ? status : undefined,
+  };
+
+  const { data, isLoading, isFetching, isError: isListError, refetch } = useQuery({
+    queryKey: ["teachers", queryParams.page, queryParams.pageSize, queryParams.search, queryParams.status],
+    queryFn: () => organizationApi.listTeachers(queryParams),
+  });
+
+  const { data: teacherDetail, isLoading: isDetailLoading } = useQuery<TeacherDto>({
+    queryKey: ["teacherDetail", viewingTeacherId],
+    queryFn: () => organizationApi.getTeacher(viewingTeacherId!),
+    enabled: !!viewingTeacherId,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (request: CreateTeacherRequest) => {
+      try {
+        return await organizationApi.createTeacher(request);
+      } finally {
+        request.temporaryPassword = "";
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["teachers"] });
+      setIsCreating(false);
+      setCreateUsername("");
+      setCreatePassword("");
+      setCreateDisplayName("");
+      setCreateDepartment("");
+      showFeedback("success", "Đã tạo tài khoản giáo viên thành công.");
+    },
+    onError: (error) => {
+      const details = extractProblemDetails(error);
+      if (details.errorCode === "DUPLICATE_RESOURCE") {
         showFeedback("error", "Tên đăng nhập đã tồn tại trong trung tâm. Vui lòng chọn tên khác.");
       } else if (details.errorCode === "VALIDATION_FAILED") {
         showFeedback("error", details.message || "Dữ liệu giáo viên không hợp lệ.");
@@ -122,7 +1013,6 @@ export const TeacherListPage: React.FC = () => {
     },
   });
 
-  // Update mutation
   const updateMutation = useMutation({
     mutationFn: async ({ teacherId, request }: { teacherId: string; request: UpdateTeacherRequest }) => {
       return await organizationApi.updateTeacher(teacherId, request);
@@ -143,7 +1033,6 @@ export const TeacherListPage: React.FC = () => {
     },
   });
 
-  // Reset password mutation
   const resetPasswordMutation = useMutation({
     mutationFn: async ({ teacherId, request }: { teacherId: string; request: ResetAccountPasswordRequest }) => {
       try {
@@ -171,7 +1060,6 @@ export const TeacherListPage: React.FC = () => {
     },
   });
 
-  // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (teacherId: string) => {
       return await organizationApi.deleteTeacher(teacherId);
@@ -277,7 +1165,6 @@ export const TeacherListPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        {/* Header */}
         <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold leading-7 text-gray-900 sm:truncate sm:text-3xl sm:tracking-tight">
@@ -310,7 +1197,6 @@ export const TeacherListPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Global Feedback Banner */}
         {feedback && (
           <div
             id="teacher-feedback-alert"
@@ -335,7 +1221,6 @@ export const TeacherListPage: React.FC = () => {
           </div>
         )}
 
-        {/* Create Modal */}
         {isCreating && canCreateTeacher && (
           <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-create-teacher-title">
             <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
@@ -443,7 +1328,6 @@ export const TeacherListPage: React.FC = () => {
           </div>
         )}
 
-        {/* Teacher Detail Modal */}
         {viewingTeacherId && canReadTeacher && (
           <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-view-teacher-title">
             <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
@@ -512,7 +1396,6 @@ export const TeacherListPage: React.FC = () => {
           </div>
         )}
 
-        {/* Edit Teacher Modal */}
         {editingTeacher && canUpdateTeacher && (
           <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-edit-teacher-title">
             <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
@@ -595,7 +1478,6 @@ export const TeacherListPage: React.FC = () => {
           </div>
         )}
 
-        {/* Reset Password Modal */}
         {resetTeacher && canResetPassword && (
           <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-reset-teacher-password-title">
             <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
@@ -688,7 +1570,6 @@ export const TeacherListPage: React.FC = () => {
           </div>
         )}
 
-        {/* Delete Confirmation Modal */}
         {deletingTeacher && canDeleteTeacher && (
           <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-delete-teacher-title">
             <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
@@ -752,7 +1633,6 @@ export const TeacherListPage: React.FC = () => {
           </div>
         )}
 
-        {/* Filter Card */}
         <div className="mb-8 overflow-hidden rounded-lg bg-white shadow">
           <div className="p-6">
             <form onSubmit={handleSearch} className="flex flex-col gap-4 sm:flex-row sm:items-end">
@@ -805,7 +1685,6 @@ export const TeacherListPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Error Alert */}
         {isListError && (
           <div className="mb-6 rounded-md bg-red-50 p-4 border border-red-200" role="alert">
             <h3 className="text-sm font-medium text-red-800">Không thể tải danh sách giáo viên</h3>
@@ -813,7 +1692,6 @@ export const TeacherListPage: React.FC = () => {
           </div>
         )}
 
-        {/* Teachers Table */}
         <div className="overflow-hidden bg-white shadow sm:rounded-lg">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-300">
@@ -929,7 +1807,6 @@ export const TeacherListPage: React.FC = () => {
             </table>
           </div>
 
-          {/* Pagination */}
           {data?.meta && data.meta.totalPages > 1 && (
             <div className="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6">
               <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
@@ -968,5 +1845,14 @@ export const TeacherListPage: React.FC = () => {
         </div>
       </div>
     </div>
+  );
+};
+
+export const TeacherListPage: React.FC = () => {
+  const user = useAuthStore((state) => state.user);
+  return user?.accountType === "CenterManager" ? (
+    <CenterManagerTeacherListView />
+  ) : (
+    <LegacyTeacherListPage />
   );
 };

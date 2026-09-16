@@ -34,12 +34,34 @@ export interface UpdateStudentRequest {
 export interface StudentSubjectGoalDto {
   studentId: string;
   subjectId: string;
-  subjectCode: string;
-  subjectName: string;
+  subjectCode?: string;
+  subjectName?: string;
   targetScore: number;
-  createdAt: string;
-  updatedAt: string;
+  goalId?: string;
+  remainingDays?: number;
+  currentPredictedScore?: number;
+  riskScore?: number;
+  rowVersion?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
+
+export interface UpsertStudentSubjectGoalRequest {
+  targetScore: number;
+  remainingDays: number;
+  rowVersion?: string;
+}
+
+export interface StudentSubjectGoalResponse {
+  data: StudentSubjectGoalDto;
+  meta: Meta;
+}
+
+export interface StudentSubjectGoalListResponse {
+  data: StudentSubjectGoalDto[];
+  meta: Meta;
+}
+
 
 export interface StudentDetailDto {
   studentId: string;
