@@ -6,6 +6,7 @@ import type { StudentTwinDataDto } from "../types/digitalTwin";
 import { SubjectRequiredState } from "../components/SubjectRequiredState";
 import { useAuthStore } from "../stores/authStore";
 import { CenterManagerThemeScope } from "../components/centerManager/CenterManagerThemeScope";
+import { resolveStudentTwinViewMode } from "../utils/reviewQueueHelpers";
 
 // ============================================================================
 // 1. CENTER MANAGER MODERN VIEW (DARK ENTERPRISE SaaS & SINGLE-SUBJECT KPI)
@@ -657,7 +658,8 @@ const TeacherStudentTwinLegacyView: React.FC = () => {
 // ============================================================================
 export const TeacherStudentTwinPage: React.FC = () => {
   const user = useAuthStore((state) => state.user);
-  return user?.accountType === "CenterManager" ? (
+  const mode = resolveStudentTwinViewMode(user?.accountType);
+  return mode === "CenterManager" ? (
     <CenterManagerStudentTwinView />
   ) : (
     <TeacherStudentTwinLegacyView />

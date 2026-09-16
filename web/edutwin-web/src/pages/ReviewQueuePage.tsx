@@ -10,6 +10,12 @@ import type { TeacherReviewQueueItemDto } from "../types/reviews";
 import { useAuthStore } from "../stores/authStore";
 import { permissions } from "../auth/permissions";
 import { CenterManagerThemeScope } from "../components/centerManager/CenterManagerThemeScope";
+import {
+  resolveReviewQueueViewMode,
+  isValidOccVersion,
+  formatOccVersionLabel,
+  executeOccRefetchWrapper,
+} from "../utils/reviewQueueHelpers";
 
 // ============================================================================
 // 1. CENTER MANAGER MODERN VIEW (MASTER/DETAIL + 3-SOURCE RECONCILIATION)
@@ -114,6 +120,17 @@ const CenterManagerReviewQueueView: React.FC = () => {
 
   const handleOverrideSuccess = () => {
     refetch();
+  };
+
+  const handleReviewRefetch = async (): Promise<boolean> => {
+    const res = await executeOccRefetchWrapper(() => refetch({ throwOnError: true }));
+    if (res?.data && res.data.length > 0) {
+      const currentId = selectedReview?.attemptId;
+      const updated = res.data.find((item) => item.attemptId === currentId) ?? res.data[0];
+      setSelectedReview(updated);
+      return isValidOccVersion(updated.evidence?.analysisOverrideVersion);
+    }
+    return false;
   };
 
   // Combine current query results with selected cached class if outside current page
@@ -525,7 +542,7 @@ const CenterManagerReviewQueueView: React.FC = () => {
                             <h3 className="text-sm font-bold text-slate-900">Can thiệp chuyên môn & Quyết định cuối</h3>
                           </div>
                           <span className="text-xs font-semibold text-slate-500">
-                            Phiên bản OCC: #{selectedReview.evidence?.analysisOverrideVersion ?? 0}
+                            Phiên bản OCC: {formatOccVersionLabel(selectedReview.evidence?.analysisOverrideVersion)}
                           </span>
                         </div>
 
@@ -537,8 +554,14 @@ const CenterManagerReviewQueueView: React.FC = () => {
                           {canOverride && (
                             <button
                               type="button"
+                              disabled={!isValidOccVersion(selectedReview.evidence?.analysisOverrideVersion)}
                               onClick={() => handleOpenOverride(selectedReview)}
-                              className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-indigo-500 transition-colors whitespace-nowrap"
+                              title={!isValidOccVersion(selectedReview.evidence?.analysisOverrideVersion) ? "Phiên bản OCC không khả dụng, không thể can thiệp" : undefined}
+                              className={`rounded-lg px-4 py-2 text-xs font-bold shadow-sm transition-colors whitespace-nowrap ${
+                                isValidOccVersion(selectedReview.evidence?.analysisOverrideVersion)
+                                  ? "bg-indigo-600 text-white hover:bg-indigo-500"
+                                  : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                              }`}
                             >
                               Ghi đè điểm số ngay
                             </button>
@@ -573,7 +596,7 @@ const CenterManagerReviewQueueView: React.FC = () => {
             isOpen={isOverrideModalOpen}
             onClose={() => setIsOverrideModalOpen(false)}
             onSuccess={handleOverrideSuccess}
-            onRefetch={refetch}
+            onRefetch={handleReviewRefetch}
           />
         )}
       </div>
@@ -631,6 +654,17 @@ const TeacherReviewQueueLegacyView: React.FC = () => {
 
   const handleOverrideSuccess = () => {
     refetch();
+  };
+
+  const handleLegacyRefetch = async (): Promise<boolean> => {
+    const res = await executeOccRefetchWrapper(() => refetch({ throwOnError: true }));
+    if (res?.data && res.data.length > 0) {
+      const currentId = selectedReview?.attemptId;
+      const updated = res.data.find((item) => item.attemptId === currentId) ?? null;
+      setSelectedReview(updated);
+      return updated ? isValidOccVersion(updated.evidence?.analysisOverrideVersion) : true;
+    }
+    return true;
   };
 
   return (
@@ -822,7 +856,7 @@ const TeacherReviewQueueLegacyView: React.FC = () => {
             setSelectedReview(null);
           }}
           onSuccess={handleOverrideSuccess}
-          onRefetch={refetch}
+          onRefetch={handleLegacyRefetch}
         />
       )}
     </div>
@@ -834,7 +868,8 @@ const TeacherReviewQueueLegacyView: React.FC = () => {
 // ============================================================================
 export const ReviewQueuePage: React.FC = () => {
   const user = useAuthStore((state) => state.user);
-  return user?.accountType === "CenterManager" ? (
+  const mode = resolveReviewQueueViewMode(user?.accountType);
+  return mode === "CenterManager" ? (
     <CenterManagerReviewQueueView />
   ) : (
     <TeacherReviewQueueLegacyView />

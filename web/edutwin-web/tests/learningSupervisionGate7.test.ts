@@ -6,6 +6,13 @@ import type { EvidenceDecisionDto, TeacherReviewQueueItemDto, TeacherOverrideReq
 import type { PermissionDto, AuthorizationRoleDto } from "../src/types/authorization.ts";
 import type { ClassDto, ClassListParams } from "../src/types/organization.ts";
 import { extractProblemDetails, isOverrideConflict } from "../src/utils/problemDetails.ts";
+import {
+  isValidOccVersion,
+  formatOccVersionLabel,
+  resolveReviewQueueViewMode,
+  resolveStudentTwinViewMode,
+  executeOccRefetchWrapper,
+} from "../src/utils/reviewQueueHelpers.ts";
 
 const centerManagerUser = (grants: string[] = []) => ({
   accountType: "CenterManager" as const,
@@ -470,115 +477,77 @@ test("12. Digital Twin Single-Subject KPI: Average mastery strictly bounded to s
 });
 
 // ============================================================================
-// 13. ACTOR ISOLATION: REVIEW QUEUE PAGE SEPARATION
+// 13. ACTOR ISOLATION: REVIEW QUEUE VIEW MODE RESOLUTION
 // ============================================================================
-test("13. Actor Isolation: ReviewQueuePage renders CenterManager modern view vs Teacher legacy table view", () => {
-  const resolveViewForActor = (accountType: "CenterManager" | "Teacher") => {
-    if (accountType === "CenterManager") {
-      return {
-        viewType: "CenterManagerReviewQueueView",
-        layout: "MasterDetail",
-        hasThemeScope: true,
-        hasScratchpadDrawer: true,
-        hasClassSearch: true,
-      };
-    }
-    return {
-      viewType: "TeacherReviewQueueLegacyView",
-      layout: "SimpleTable",
-      hasThemeScope: false,
-      hasScratchpadDrawer: false,
-      hasClassSearch: false,
-    };
-  };
+test("13. Actor Isolation: ReviewQueuePage uses resolveReviewQueueViewMode for strict actor view separation", () => {
+  // CenterManager receives dedicated modern Master/Detail view
+  assert.equal(resolveReviewQueueViewMode("CenterManager"), "CenterManager");
 
-  const cmView = resolveViewForActor("CenterManager");
-  assert.equal(cmView.viewType, "CenterManagerReviewQueueView");
-  assert.equal(cmView.layout, "MasterDetail");
-  assert.equal(cmView.hasThemeScope, true);
-  assert.equal(cmView.hasScratchpadDrawer, true);
-
-  const teacherView = resolveViewForActor("Teacher");
-  assert.equal(teacherView.viewType, "TeacherReviewQueueLegacyView");
-  assert.equal(teacherView.layout, "SimpleTable");
-  assert.equal(teacherView.hasThemeScope, false);
-  assert.equal(teacherView.hasScratchpadDrawer, false);
-  assert.equal(teacherView.hasClassSearch, false);
+  // All other actors (Teacher, Student, PlatformAdmin, null, undefined) strictly receive legacy view
+  assert.equal(resolveReviewQueueViewMode("Teacher"), "Teacher");
+  assert.equal(resolveReviewQueueViewMode("Student"), "Teacher");
+  assert.equal(resolveReviewQueueViewMode("PlatformAdmin"), "Teacher");
+  assert.equal(resolveReviewQueueViewMode(null), "Teacher");
+  assert.equal(resolveReviewQueueViewMode(undefined), "Teacher");
 });
 
 // ============================================================================
-// 14. ACTOR ISOLATION: STUDENT DIGITAL TWIN PAGE SEPARATION
+// 14. ACTOR ISOLATION: STUDENT DIGITAL TWIN VIEW MODE RESOLUTION
 // ============================================================================
-test("14. Actor Isolation: TeacherStudentTwinPage separates CenterManager single-subject KPI from Teacher legacy view", () => {
-  const resolveTwinViewForActor = (accountType: "CenterManager" | "Teacher") => {
-    if (accountType === "CenterManager") {
-      return {
-        viewType: "CenterManagerStudentTwinView",
-        kpiLabel: "Độ thuần thục trung bình trong môn đang chọn",
-        backLink: "/quan-ly/hoc-sinh",
-        hasThemeScope: true,
-      };
-    }
-    return {
-      viewType: "TeacherStudentTwinLegacyView",
-      kpiLabel: "Độ thuần thục tổng thể",
-      backLink: "/quan-ly/tong-quan-lop-hoc",
-      hasThemeScope: false,
-    };
-  };
+test("14. Actor Isolation: TeacherStudentTwinPage uses resolveStudentTwinViewMode for strict KPI separation", () => {
+  // CenterManager receives dedicated bounded single-subject view
+  assert.equal(resolveStudentTwinViewMode("CenterManager"), "CenterManager");
 
-  const cmTwin = resolveTwinViewForActor("CenterManager");
-  assert.equal(cmTwin.viewType, "CenterManagerStudentTwinView");
-  assert.equal(cmTwin.kpiLabel, "Độ thuần thục trung bình trong môn đang chọn");
-  assert.equal(cmTwin.hasThemeScope, true);
-
-  const teacherTwin = resolveTwinViewForActor("Teacher");
-  assert.equal(teacherTwin.viewType, "TeacherStudentTwinLegacyView");
-  assert.equal(teacherTwin.kpiLabel, "Độ thuần thục tổng thể");
-  assert.equal(teacherTwin.hasThemeScope, false);
-  assert.equal(teacherTwin.backLink, "/quan-ly/tong-quan-lop-hoc");
+  // Teacher and all other actors strictly receive legacy view
+  assert.equal(resolveStudentTwinViewMode("Teacher"), "Teacher");
+  assert.equal(resolveStudentTwinViewMode("Student"), "Teacher");
+  assert.equal(resolveStudentTwinViewMode("PlatformAdmin"), "Teacher");
+  assert.equal(resolveStudentTwinViewMode(null), "Teacher");
+  assert.equal(resolveStudentTwinViewMode(undefined), "Teacher");
 });
 
 // ============================================================================
-// 15. OCC FAIL-CLOSED: MISSING OR INVALID TOKEN LOCKS SUBMISSION
+// 15. OCC FAIL-CLOSED: CANONICAL UINT32 TOKEN VALIDATION & LABEL FORMATTING
 // ============================================================================
-test("15. OCC Fail-Closed: Missing or non-integer analysisOverrideVersion blocks submission", () => {
-  const validateOccToken = (rawVersion: unknown): number | null => {
-    if (typeof rawVersion === "number" && Number.isInteger(rawVersion)) {
-      return rawVersion;
-    }
-    return null;
-  };
+test("15. OCC Fail-Closed: Canonical isValidOccVersion strictly rejects negative, float, out-of-range, and non-numeric tokens", () => {
+  // 1. Valid uint32 tokens (range: 0 to 4294967295)
+  assert.equal(isValidOccVersion(0), true, "Version 0 is a valid uint32");
+  assert.equal(isValidOccVersion(1), true, "Version 1 is a valid uint32");
+  assert.equal(isValidOccVersion(100), true, "Version 100 is a valid uint32");
+  assert.equal(isValidOccVersion(4294967295), true, "Max uint32 (4294967295) is valid");
 
-  // Valid tokens
-  assert.equal(validateOccToken(0), 0);
-  assert.equal(validateOccToken(4), 4);
+  // 2. Invalid tokens: negative numbers, floats, overflow, and non-numbers MUST fail closed
+  assert.equal(isValidOccVersion(-1), false, "Negative token -1 must be rejected");
+  assert.equal(isValidOccVersion(-100), false, "Negative token -100 must be rejected");
+  assert.equal(isValidOccVersion(1.5), false, "Float token 1.5 must be rejected");
+  assert.equal(isValidOccVersion(4294967296), false, "uint32 overflow (4294967296) must be rejected");
+  assert.equal(isValidOccVersion(NaN), false, "NaN must be rejected");
+  assert.equal(isValidOccVersion(Infinity), false, "Infinity must be rejected");
+  assert.equal(isValidOccVersion(undefined), false, "Undefined must be rejected");
+  assert.equal(isValidOccVersion(null), false, "Null must be rejected");
+  assert.equal(isValidOccVersion("1"), false, "String number must be rejected");
+  assert.equal(isValidOccVersion({}), false, "Object must be rejected");
+  assert.equal(isValidOccVersion([]), false, "Array must be rejected");
 
-  // Invalid tokens -> MUST FAIL CLOSED (null), NOT fallback to 0
-  assert.equal(validateOccToken(undefined), null, "Undefined token must be null");
-  assert.equal(validateOccToken(null), null, "Null token must be null");
-  assert.equal(validateOccToken("1"), null, "String token must be null");
-  assert.equal(validateOccToken(3.14), null, "Float token must be null");
-
-  // Form submission guard
-  const canSubmit = (token: number | null, isSubmitting: boolean, isConflict: boolean) => {
-    return !isSubmitting && token !== null && !isConflict;
-  };
-
-  assert.equal(canSubmit(2, false, false), true, "Valid token allows submission");
-  assert.equal(canSubmit(null, false, false), false, "Missing token strictly locks submission (Fail-Closed)");
-  assert.equal(canSubmit(2, true, false), false, "Submitting in flight locks submission");
-  assert.equal(canSubmit(2, false, true), false, "Conflict state locks submission");
+  // 3. formatOccVersionLabel formatting
+  assert.equal(formatOccVersionLabel(0), "#0");
+  assert.equal(formatOccVersionLabel(7), "#7");
+  assert.equal(formatOccVersionLabel(-1), "Không khả dụng");
+  assert.equal(formatOccVersionLabel(null), "Không khả dụng");
+  assert.equal(formatOccVersionLabel(undefined), "Không khả dụng");
+  assert.equal(formatOccVersionLabel(3.14), "Không khả dụng");
+  assert.equal(formatOccVersionLabel("42"), "Không khả dụng");
 });
 
 // ============================================================================
-// 16. OCC CONCURRENCY CONFLICT (409) REFETCH RECOVERY WORKFLOW
+// 16. OCC 409 CONCURRENCY CONFLICT & REFETCH RECOVERY (SUCCESS AND FAILURE)
 // ============================================================================
-test("16. OCC 409 Workflow: Conflict enables refetch, updates token, and clears conflict state", async () => {
+test("16. OCC 409 Workflow: Conflict enables refetch, refetch failure keeps conflict locked, success synchronizes token", async () => {
   const serverVersion = 5;
   let clientOverrideVersion: number | null = 4;
   let isConflict = false;
   let conflictDetails: { message: string; traceId?: string } | null = null;
+  let errorMessage: string | null = null;
 
   // Mock submit producing 409 conflict
   const attemptSubmit = (version: number) => {
@@ -600,28 +569,60 @@ test("16. OCC 409 Workflow: Conflict enables refetch, updates token, and clears 
     return true;
   };
 
-  // 1. Submit with stale version 4 -> Fails with 409
-  const success = attemptSubmit(clientOverrideVersion!);
-  assert.equal(success, false);
+  // 1. Submit with stale version 4 -> Fails with 409 conflict
+  const initialSubmitSuccess = attemptSubmit(clientOverrideVersion!);
+  assert.equal(initialSubmitSuccess, false);
   assert.equal(isConflict, true);
   assert.equal((conflictDetails as { message: string; traceId?: string } | null)?.traceId, "trace-occ-409-refetch-check");
 
-  // 2. User clicks Refetch button
-  const handleRefetch = async () => {
-    // Simulates server fetch returning newest version
-    clientOverrideVersion = serverVersion;
-    isConflict = false;
-    conflictDetails = null;
+  // 2. Branch A: Refetch failure (Network error or server unavailable)
+  // Must FAIL CLOSED: conflict remains active, submit remains locked
+  const handleFailingRefetch = async () => {
+    try {
+      await executeOccRefetchWrapper(async () => {
+        return { isError: true, error: new Error("Network timeout") };
+      });
+      isConflict = false;
+    } catch (err) {
+      errorMessage = (err as Error).message;
+      // Conflict remains true!
+    }
   };
 
-  await handleRefetch();
+  await handleFailingRefetch();
+  assert.equal(isConflict, true, "isConflict must remain true when refetch fails");
+  assert.ok(conflictDetails !== null, "conflictDetails must be preserved when refetch fails");
+  assert.equal(clientOverrideVersion, 4, "client token must NOT be updated when refetch fails");
+  assert.equal(errorMessage, "Network timeout");
 
-  // 3. Post-refetch state: Conflict cleared, client has synchronized version 5
-  assert.equal(isConflict, false);
-  assert.equal(conflictDetails, null);
-  assert.equal(clientOverrideVersion, 5);
+  // Submit button remains locked during refetch failure
+  const isSubmitDisabledDuringFailure = clientOverrideVersion === null || !isValidOccVersion(clientOverrideVersion) || isConflict;
+  assert.equal(isSubmitDisabledDuringFailure, true, "Submit button strictly disabled during conflict and refetch failure");
 
-  // 4. Retry submission with updated version -> Succeeds
+  // 3. Branch B: Refetch success (Server returns updated analysis with version 5)
+  const handleSuccessfulRefetch = async () => {
+    try {
+      const data = await executeOccRefetchWrapper(async () => {
+        return { isError: false, data: { newVersion: serverVersion } };
+      });
+      if (isValidOccVersion(data.newVersion)) {
+        clientOverrideVersion = data.newVersion;
+        isConflict = false;
+        conflictDetails = null;
+        errorMessage = null;
+      }
+    } catch (err) {
+      errorMessage = (err as Error).message;
+    }
+  };
+
+  await handleSuccessfulRefetch();
+  assert.equal(isConflict, false, "isConflict cleared after successful refetch");
+  assert.equal(conflictDetails, null, "conflictDetails cleared after successful refetch");
+  assert.equal(clientOverrideVersion, 5, "clientOverrideVersion updated to 5");
+  assert.equal(errorMessage, null);
+
+  // 4. Retry submission with synchronized version 5 -> Succeeds!
   const retrySuccess = attemptSubmit(clientOverrideVersion!);
   assert.equal(retrySuccess, true);
   assert.equal(isConflict, false);

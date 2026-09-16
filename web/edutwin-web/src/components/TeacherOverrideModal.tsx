@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { overrideReasoningAnalysis } from "../api/teacherReviewsApi";
 import type { TeacherReviewQueueItemDto, ErrorType, TeacherOverrideRequest } from "../types/reviews";
 import { extractProblemDetails, isOverrideConflict } from "../utils/problemDetails";
+import { isValidOccVersion, formatOccVersionLabel } from "../utils/reviewQueueHelpers";
 
 interface TeacherOverrideModalProps {
   review: TeacherReviewQueueItemDto | null;
@@ -50,7 +51,7 @@ export const TeacherOverrideModal = ({
       setReason("");
 
       const rawVersion = review.evidence?.analysisOverrideVersion;
-      if (typeof rawVersion === "number" && Number.isInteger(rawVersion)) {
+      if (isValidOccVersion(rawVersion)) {
         setOverrideVersion(rawVersion);
       } else {
         setOverrideVersion(null);
@@ -106,13 +107,18 @@ export const TeacherOverrideModal = ({
   const handleRefetch = async () => {
     if (!onRefetch) return;
     setIsRefetching(true);
+    setErrorMessage(null);
     try {
-      await onRefetch();
+      const result = await onRefetch();
+      if (result === false) {
+        throw new Error("Không thể tải lại dữ liệu mới hoặc phiên bản OCC không hợp lệ.");
+      }
       setIsConflict(false);
       setConflictDetails(null);
       setErrorMessage(null);
-    } catch {
-      setErrorMessage("Không thể làm mới dữ liệu từ máy chủ. Vui lòng thử lại.");
+    } catch (err: unknown) {
+      const errorInfo = extractProblemDetails(err);
+      setErrorMessage(errorInfo.message || "Không thể làm mới dữ liệu từ máy chủ. Vui lòng thử lại.");
     } finally {
       setIsRefetching(false);
     }
@@ -125,8 +131,13 @@ export const TeacherOverrideModal = ({
       return;
     }
 
-    if (overrideVersion === null) {
+    if (overrideVersion === null || !isValidOccVersion(overrideVersion)) {
       setErrorMessage("Không thể xác định phiên bản đồng thời hợp lệ. Vui lòng tải lại dữ liệu trước khi can thiệp.");
+      return;
+    }
+
+    if (isConflict) {
+      setErrorMessage("Dữ liệu đang gặp xung đột phiên bản (409 Conflict). Vui lòng đồng bộ lại trước khi gửi.");
       return;
     }
 
@@ -203,7 +214,10 @@ export const TeacherOverrideModal = ({
         <div className="mt-4 rounded-xl bg-slate-50 p-4 text-sm space-y-3">
           <div className="flex items-center justify-between">
             <span className="font-semibold text-slate-900">Học sinh: {review.studentName}</span>
-            <span className="text-xs text-slate-500">Mã lượt làm: #{review.attemptId}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-500">Mã lượt làm: #{review.attemptId}</span>
+              <span className="text-xs font-mono text-slate-500">· Phiên bản OCC: {formatOccVersionLabel(overrideVersion)}</span>
+            </div>
           </div>
 
           <div>
@@ -427,7 +441,7 @@ export const TeacherOverrideModal = ({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting || overrideVersion === null || isConflict}
+              disabled={isSubmitting || overrideVersion === null || !isValidOccVersion(overrideVersion) || isConflict}
               className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-bold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50"
             >
               {isSubmitting ? "Đang áp dụng..." : "Xác nhận & Cập nhật Twin"}

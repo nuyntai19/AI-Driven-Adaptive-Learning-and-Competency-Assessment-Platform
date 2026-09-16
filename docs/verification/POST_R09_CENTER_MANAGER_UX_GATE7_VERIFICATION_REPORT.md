@@ -26,20 +26,22 @@ Cột mốc Gate 7 (Learning Supervision & Dynamic RBAC Reskin) hoàn tất vi�
    - **`ReviewQueuePage`:**
      - `CenterManager`: Sử dụng giao diện hiện đại Master/Detail (`CenterManagerReviewQueueView`), tích hợp bộ chọn lớp phân trang và tìm kiếm server-side, đối chiếu 3 nguồn dữ liệu, và ngăn kéo xem bản vẽ nháp vector.
      - `Teacher`: Giữ nguyên 100% giao diện legacy (`TeacherReviewQueueLegacyView`) từ commit `51d1d19` trước Gate 7 (bảng danh sách đơn giản, không áp theme CenterManager, không thay đổi markup hay trải nghiệm của giáo viên).
+     - Điều hướng phân giải chế độ xem chuẩn hóa qua helper hàm `resolveReviewQueueViewMode`.
    - **`TeacherStudentTwinPage`:**
-     - `CenterManager`: Sử dụng giao diện hiện đại (`CenterManagerStudentTwinView`) với nhãn KPI giới hạn đơn môn *"Độ thuần thục đơn môn"*, bọc trong `<CenterManagerThemeScope>`.
+     - `CenterManager`: Sử dụng giao diện hiện đại (`CenterManagerStudentTwinView`) với nhãn KPI giới hạn đơn môn *"Độ thuần thục trung bình trong môn đang chọn"*, bọc trong `<CenterManagerThemeScope>`.
      - `Teacher`: Giữ nguyên 100% giao diện legacy (`TeacherStudentTwinLegacyView`) từ commit `51d1d19` với nhãn KPI *"Độ thuần thục tổng thể"*, điều hướng về Dashboard lớp học, và không bị bọc theme CenterManager.
+     - Điều hướng phân giải chế độ xem chuẩn hóa qua helper hàm `resolveStudentTwinViewMode`.
 
-2. **Cơ chế OCC Fail-Closed & Xử lý Xung đột 409 Tự động:**
-   - **Loại bỏ hoàn toàn fallback giả `?? 0`:** Giá trị token `analysisOverrideVersion` được kiểm tra nghiêm ngặt là số nguyên hợp lệ (`typeof rawVersion === "number" && Number.isInteger(rawVersion)`).
-   - **Khóa an toàn (Fail-Closed):** Nếu token bị thiếu hoặc không hợp lệ, modal lập tức khóa form submit, vô hiệu hóa nút gửi, hiển thị cảnh báo `SafeError` và cung cấp nút refetch dữ liệu.
-   - **Xử lý xung đột HTTP 409:** Khi API trả về 409 Concurrency Conflict, modal tự động hiển thị `ConcurrencyBanner` với `traceId` và nút refetch. Việc refetch sẽ đồng bộ dữ liệu mới nhất từ máy chủ, cập nhật token phiên bản mới và chỉ cho phép gửi lại sau khi dữ liệu đã đồng bộ.
+2. **Cơ chế OCC Fail-Closed, Validation uint32 & Xử lý Refetch Failure:**
+   - **Loại bỏ hoàn toàn fallback giả `?? 0`:** Giá trị token `analysisOverrideVersion` được kiểm tra nghiêm ngặt bằng validator canonical `isValidOccVersion` (`typeof v === "number" && Number.isSafeInteger(v) && v >= 0 && v <= 4294967295`). Các giá trị âm, float, overflow (> 4294967295) hoặc non-numeric đều bị từ chối fail-closed.
+   - **Giao diện hiển thị chuẩn xác:** Sử dụng `formatOccVersionLabel`, hiển thị `Phiên bản OCC: #<token>` khi hợp lệ và `Phiên bản OCC: Không khả dụng` khi token thiếu hoặc không hợp lệ. Nút mở Override trên trang chi tiết bị khóa (`disabled`) khi token không phải uint hợp lệ.
+   - **Xử lý xung đột HTTP 409 & Refetch Failure An toàn:** Khi gặp lỗi 409, modal hiển thị `ConcurrencyBanner` kèm `traceId` và nút refetch. Hàm refetch được bọc an toàn qua `executeOccRefetchWrapper` (`throwOnError: true`). Nếu refetch thất bại (mạng lỗi, server lỗi hoặc không có dữ liệu), trạng thái `isConflict` được **giữ nguyên**, submit form tiếp tục bị **khóa chặt**. Chỉ khi refetch thành công và token mới được xác nhận hợp lệ thì mới xóa cờ xung đột và mở khóa form.
 
 3. **Tìm kiếm Lớp học Chuẩn Server-Side (`Search` Param):**
    - Bổ sung trường canonical `Search` (giới hạn `[MaxLength(100)]`) vào `ClassListQuery.cs`.
    - BLL `ListClassesUseCase.cs` lọc trực tiếp trên cơ sở dữ liệu (`c.ClassName.Contains(search)`).
    - Frontend `ClassListParams` và `organizationApi.listClasses` truyền tham số `search`.
-   - `ReviewQueuePage` đưa `classSearchTerm` vào queryKey `["centerClassesList", classPage, classSearchTerm]`, đồng thời duy trì bộ đệm `classCache` dạng Map để lưu trữ danh sách lớp qua các trang và kết quả tìm kiếm.
+   - `ReviewQueuePage` đưa `classSearchTerm` vào queryKey `["reviewQueueClasses", classSearchTerm, classPage]`, đồng thời duy trì bộ đệm `classCache` dạng Map để lưu trữ danh sách lớp qua các trang và kết quả tìm kiếm.
 
 4. **Làm sạch Hợp đồng DTO (DTO Cleanup):**
    - Xóa bỏ hoàn toàn trường thừa `mode?: string` khỏi `EvidenceDecisionDto` trong `types/reviews.ts`.
@@ -68,8 +70,8 @@ Cột mốc Gate 7 (Learning Supervision & Dynamic RBAC Reskin) hoàn tất vi�
 | Hạng mục | Trạng thái | Ghi chú kỹ thuật |
 |---|:---:|---|
 | **Actor Isolation: Review Queue** | **ĐẠT** | CenterManager: Master/Detail + Drawer; Teacher: 100% legacy table từ commit 51d1d19 |
-| **Actor Isolation: Student Twin** | **ĐẠT** | CenterManager: Single-subject KPI + Dark Theme; Teacher: 100% legacy view (KPI tổng thể) |
-| **OCC Fail-Closed & 409 Refetch** | **ĐẠT** | Xóa `?? 0`; token thiếu khóa submit; 409 render ConcurrencyBanner và refetch đồng bộ |
+| **Actor Isolation: Student Twin** | **ĐẠT** | CenterManager: KPI "Độ thuần thục trung bình trong môn đang chọn"; Teacher: 100% legacy view |
+| **OCC Fail-Closed & 409 Refetch** | **ĐẠT** | uint32 validation; token thiếu/sai format khóa submit; refetch thất bại giữ nguyên conflict |
 | **Server-Side Class Search** | **ĐẠT** | Bổ sung `Search` vào `ClassListQuery`, BLL filter, API query, và cache tích lũy Map |
 | **DTO Cleanup** | **ĐẠT** | Xóa `mode?: string`, xóa fallback `evidence.mode` và dữ liệu giả "Rule-based" |
 | **Dual Scope Review Queue (BLL)** | **ĐẠT** | Teacher giới hạn theo lớp phụ trách; CenterManager xem toàn trung tâm; Actor khác 404 |
@@ -114,30 +116,32 @@ Cột mốc Gate 7 (Learning Supervision & Dynamic RBAC Reskin) hoàn tất vi�
   - Seed target user tách biệt với actor user để kiểm thử leo thang đặc quyền mà không vướng guardrail tự sửa vai trò.
 
 ### 3.2. Frontend TypeScript / React
+- `web/edutwin-web/src/utils/reviewQueueHelpers.ts`:
+  - Tách các hàm helper canonical dùng chung giữa components và tests: `isValidOccVersion` (uint32 range), `formatOccVersionLabel`, `resolveReviewQueueViewMode`, `resolveStudentTwinViewMode`, và `executeOccRefetchWrapper`.
 - `web/edutwin-web/src/types/organization.ts` & `src/api/organizationApi.ts`:
   - Bổ sung tham số `search?: string;` vào `ClassListParams` và truyền trong query params của `organizationApi.listClasses`.
 - `web/edutwin-web/src/types/reviews.ts`:
   - Xóa bỏ trường legacy `mode?: string;` khỏi `EvidenceDecisionDto`.
   - Hợp đồng DTO đầy đủ các trường chuẩn: `decisionMode`, `reasoningWeight`, `reasonCodes`, `policyVersion`, và `analysisOverrideVersion`.
 - `web/edutwin-web/src/components/TeacherOverrideModal.tsx`:
-  - Loại bỏ hoàn toàn fallback `?? 0`.
-  - Kiểm tra token nguyên vẹn (`Number.isInteger`); nếu thiếu thì khóa form submit (fail-closed) và hiện nút refetch.
-  - Bắt lỗi HTTP 409, render `ConcurrencyBanner` với `traceId`, và cung cấp nút refetch dữ liệu thật.
+  - Sử dụng `isValidOccVersion` để kiểm tra token uint32 an toàn.
+  - Sử dụng `formatOccVersionLabel` để hiển thị nhãn phiên bản OCC thay cho fallback giả.
+  - Xử lý `handleRefetch` với khả năng giữ nguyên `isConflict` khi refetch thất bại. Khóa nút submit nếu token thiếu hoặc không hợp lệ.
 - `web/edutwin-web/src/components/ScratchpadAttachmentDrawer.tsx`:
   - Component ngăn kéo xem bản vẽ nháp vector, kiểm tra quyền `learning.attempts.read_scoped`, quản lý blob URL với `URL.revokeObjectURL`, zoom controls (+/-/reset), và phân biệt các lỗi HTTP 404, 503, 403.
 - `web/edutwin-web/src/pages/ReviewQueuePage.tsx`:
-  - Tách bạch 2 view độc lập hoàn toàn:
-    - `CenterManagerReviewQueueView`: Master/Detail với cột trái danh sách bài duyệt và cột phải đối chiếu 3 nguồn dữ liệu, Scratchpad drawer, phân trang và tìm kiếm lớp server-side, bộ đệm Map `classCache`.
+  - Tách bạch 2 view độc lập hoàn toàn với `resolveReviewQueueViewMode`:
+    - `CenterManagerReviewQueueView`: Master/Detail với cột trái danh sách bài duyệt và cột phải đối chiếu 3 nguồn dữ liệu, Scratchpad drawer, queryKey `["reviewQueueClasses", classSearchTerm, classPage]`, bộ đệm Map `classCache`, hiển thị nhãn phiên bản chuẩn và khóa nút override khi token không hợp lệ. Bọc refetch qua `executeOccRefetchWrapper`.
     - `TeacherReviewQueueLegacyView`: Giữ nguyên 100% giao diện legacy dạng bảng trước Gate 7.
 - `web/edutwin-web/src/pages/TeacherStudentTwinPage.tsx`:
-  - Tách bạch 2 view độc lập hoàn toàn:
-    - `CenterManagerStudentTwinView`: Giao diện hiện đại, nhãn KPI *"Độ thuần thục đơn môn"*, bọc trong `<CenterManagerThemeScope>`.
+  - Tách bạch 2 view độc lập hoàn toàn với `resolveStudentTwinViewMode`:
+    - `CenterManagerStudentTwinView`: Giao diện hiện đại, nhãn KPI *"Độ thuần thục trung bình trong môn đang chọn"*, bọc trong `<CenterManagerThemeScope>`.
     - `TeacherStudentTwinLegacyView`: Giữ nguyên 100% giao diện legacy dạng bảng trước Gate 7 với nhãn KPI *"Độ thuần thục tổng thể"* và liên kết Dashboard lớp học.
 - `web/edutwin-web/src/pages/AuthorizationManagementPage.tsx`:
   - Bọc trong `<CenterManagerThemeScope data-actor="center-manager">`.
   - Triển khai Guardrail 2 ma trận quyền: Chỉ cho phép toggle trên tập giao $\text{Active} \cap \text{Compatible} \cap \text{Delegable} \cap \text{Actor's Effective Permissions}$. Các quyền đã được gán trước đó nằm ngoài tập giao được hiển thị read-only (locked) và bảo lưu nguyên vẹn trong payload lưu.
 - `web/edutwin-web/tests/learningSupervisionGate7.test.ts`:
-  - 16 bài kiểm thử tự động toàn diện:
+  - 16 bài kiểm thử tự động toàn diện kiểm thử trực tiếp mã nguồn sản phẩm:
     1. CenterManager nhận toàn bộ bài duyệt của trung tâm qua phạm vi centerId.
     2. Teacher chỉ nhận bài duyệt thuộc các lớp do chính mình phụ trách.
     3. Unauthorized actor (Student/Parent) bị từ chối truy cập review queue (fail-closed).
@@ -149,11 +153,11 @@ Cột mốc Gate 7 (Learning Supervision & Dynamic RBAC Reskin) hoàn tất vi�
     9. Bộ chọn lớp hỗ trợ tìm kiếm server-side với query param `search`.
     10. Bắt buộc nhập lý do ghi đè tối thiểu 3 ký tự trước khi gửi can thiệp.
     11. Hợp đồng DTO không chứa trường thừa `mode` và không sử dụng fallback giả mạo.
-    12. Actor isolation: ReviewQueuePage hiển thị Master/Detail cho CenterManager và giữ nguyên legacy view cho Teacher.
-    13. Actor isolation: TeacherStudentTwinPage hiển thị KPI đơn môn cho CenterManager và giữ nguyên KPI tổng thể cho Teacher.
-    14. OCC Fail-Closed: Khóa submit khi thiếu `analysisOverrideVersion` hợp lệ.
-    15. Guardrail 2: Ma trận quyền chỉ cho phép chỉnh sửa trên tập giao delegable, bảo toàn quyền locked.
-    16. OCC 409 Workflow: Khi gặp xung đột 409, kích hoạt refetch dữ liệu thật, cập nhật token mới và xóa cờ conflict.
+    12. Bó hẹp năng lực và nhãn KPI trên môn học đang chọn.
+    13. Actor isolation: `resolveReviewQueueViewMode` phân tách CenterManager modern view và Teacher legacy view.
+    14. Actor isolation: `resolveStudentTwinViewMode` phân tách CenterManager single-subject KPI view và Teacher legacy view.
+    15. OCC Fail-Closed: `isValidOccVersion` kiểm tra uint32 chuẩn xác, từ chối số âm, số thực, overflow, và non-numeric; `formatOccVersionLabel` hiển thị "Không khả dụng" khi token sai/thiếu.
+    16. OCC 409 Workflow: Kiểm thử nhánh refetch thất bại (giữ nguyên cờ conflict và khóa submit) và nhánh refetch thành công (đồng bộ token mới và cho phép submit lại).
 
 ---
 
@@ -178,7 +182,7 @@ Passed!  - Failed: 0, Passed: 3, Skipped: 0, Total: 3, Duration: 3 s - EduTwin.B
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 2636.9456
+# duration_ms 2593.3357
 ```
 - Tăng từ 182 tests (Gate 6) lên **198 tests** (Gate 7: 16 bài kiểm thử mở rộng). 100% passed.
 
@@ -214,12 +218,11 @@ dist/assets/AuthorizationManagementPage-0m2p7Jnl.js    58.51 kB │ gzip:  13.50
 
 ## 6. KẾT LUẬN
 
-Gate 7 đã được chỉnh sửa toàn diện theo đúng phản biện của Codex:
-- Đã khôi phục actor isolation 100% cho cả `ReviewQueuePage` và `TeacherStudentTwinPage`.
-- Đã triển khai cơ chế OCC fail-closed nghiêm ngặt và refetch thật khi gặp mã 409.
-- Đã bổ sung tìm kiếm lớp chuẩn server-side qua tham số canonical `Search`.
-- Đã xóa sạch các trường DTO lỗi thời và dữ liệu fallback giả.
-- Đã hoàn thành đủ 16 bài test Gate 7 (tổng 198 frontend tests passed).
-- Làm sạch hoàn toàn lỗi trailing whitespace trên báo cáo nghiệm thu.
+Gate 7 đã hoàn thành trọn vẹn toàn bộ các điểm phản biện vòng cuối của Codex:
+- Đã sửa hàm OCC refetch qua `executeOccRefetchWrapper`, xử lý cả 2 nhánh refetch thất bại (giữ nguyên conflict) và thành công.
+- Đã xóa triệt để fallback `?? 0` trên giao diện, áp dụng validator canonical uint32 (`Number.isSafeInteger(v) && v >= 0 && v <= 4294967295`), khóa nút Override ngay từ trang chi tiết khi token không hợp lệ.
+- Nâng cao chất lượng test bằng cách kiểm thử trực tiếp các helper hàm sản phẩm (`reviewQueueHelpers.ts`), bao phủ test token âm/float/overflow và test refetch failure.
+- Cập nhật chuẩn xác queryKey `["reviewQueueClasses", classSearchTerm, classPage]` và nhãn KPI *"Độ thuần thục trung bình trong môn đang chọn"* trên báo cáo nghiệm thu.
+- Làm sạch hoàn toàn trailing whitespace.
 
-Mã nguồn sẵn sàng cho vòng review tiếp theo của Codex mà **không push** lên remote repository.
+Mã nguồn sẵn sàng cho vòng nghiệm thu của Codex mà **không push** lên remote repository.
