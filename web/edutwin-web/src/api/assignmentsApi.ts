@@ -61,23 +61,65 @@ export const getAssignmentProgress = async (id: string) => {
   return data;
 };
 
-export const getAssignmentClasses = async () => {
+export interface GetAssignmentClassesParams {
+  status?: string;
+  subjectId?: string;
+  teacherId?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export const getAssignmentClasses = async (params: GetAssignmentClassesParams = {}) => {
   const { data } = await httpClient.get<ApiCollectionResponse<ClassDto>>('/classes', {
-    params: { status: 'Active', page: 1, pageSize: 100 },
+    params: { status: 'Active', page: 1, pageSize: 20, ...params },
   });
   return data;
 };
 
-export const getAssignableQuestions = async (subjectId: string) => {
+export interface GetAssignableQuestionsParams {
+  subjectId: string;
+  topicId?: string;
+  difficulty?: number;
+  type?: Question['questionType'];
+  page?: number;
+  pageSize?: number;
+}
+
+export const getAssignableQuestions = async (
+  subjectIdOrParams: string | GetAssignableQuestionsParams,
+  optionalParams?: Omit<GetAssignableQuestionsParams, 'subjectId'>
+) => {
+  const params: GetAssignableQuestionsParams =
+    typeof subjectIdOrParams === 'string'
+      ? { subjectId: subjectIdOrParams, ...optionalParams }
+      : subjectIdOrParams;
+
   const { data } = await httpClient.get<ApiCollectionResponse<Question>>('/questions', {
-    params: { subjectId, status: 'Active', page: 1, pageSize: 100 },
+    params: { status: 'Active', page: 1, pageSize: 20, ...params },
   });
   return data;
 };
 
-export const getAssignmentClassStudents = async (classId: string) => {
+export interface GetAssignmentClassStudentsParams {
+  classId: string;
+  status?: string;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export const getAssignmentClassStudents = async (
+  classIdOrParams: string | GetAssignmentClassStudentsParams,
+  optionalParams?: Omit<GetAssignmentClassStudentsParams, 'classId'>
+) => {
+  const params: GetAssignmentClassStudentsParams =
+    typeof classIdOrParams === 'string'
+      ? { classId: classIdOrParams, ...optionalParams }
+      : classIdOrParams;
+
+  const { classId, ...queryParams } = params;
   const { data } = await httpClient.get<ApiCollectionResponse<StudentDto>>(`/classes/${classId}/students`, {
-    params: { status: 'Active', page: 1, pageSize: 100 },
+    params: { status: 'Active', page: 1, pageSize: 20, ...queryParams },
   });
   return data;
 };

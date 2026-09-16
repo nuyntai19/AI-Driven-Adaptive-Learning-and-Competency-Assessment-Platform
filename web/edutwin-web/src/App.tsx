@@ -132,7 +132,7 @@ function App() {
           <Route element={<PermissionRoute allOf={[permissions.questionsCreate]} />}>
             <Route path="/quan-ly/cau-hoi/tao-moi" element={<QuestionEditorPage />} />
           </Route>
-          <Route element={<PermissionRoute allOf={[permissions.questionsUpdate]} />}>
+          <Route element={<PermissionRoute allOf={[permissions.questionsRead]} />}>
             <Route path="/quan-ly/cau-hoi/:id" element={<QuestionEditorPage />} />
           </Route>
           <Route element={<PermissionRoute allOf={[permissions.assignmentsRead]} accountTypes={["CenterManager", "Teacher"]} />}>
@@ -141,7 +141,7 @@ function App() {
           <Route element={<PermissionRoute allOf={[permissions.assignmentsCreate]} accountTypes={["CenterManager", "Teacher"]} />}>
             <Route path="/quan-ly/bai-tap/tao-moi" element={<AssignmentEditorPage />} />
           </Route>
-          <Route element={<PermissionRoute allOf={[permissions.assignmentsUpdate]} accountTypes={["CenterManager", "Teacher"]} />}>
+          <Route element={<PermissionRoute allOf={[permissions.assignmentsRead]} accountTypes={["CenterManager", "Teacher"]} />}>
             <Route path="/quan-ly/bai-tap/:id" element={<AssignmentEditorPage />} />
           </Route>
           <Route element={<PermissionRoute allOf={[permissions.assignmentsRead]} accountTypes={["CenterManager", "Teacher"]} />}>
