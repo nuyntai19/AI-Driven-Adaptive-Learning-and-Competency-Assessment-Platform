@@ -8,6 +8,7 @@ interface TeacherOverrideModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  onRefetch?: () => Promise<unknown> | void;
 }
 
 export const TeacherOverrideModal = ({
@@ -15,6 +16,7 @@ export const TeacherOverrideModal = ({
   isOpen,
   onClose,
   onSuccess,
+  onRefetch,
 }: TeacherOverrideModalProps) => {
   const [isCorrect, setIsCorrect] = useState<boolean>(true);
   const [reasoningQuality, setReasoningQuality] = useState<number>(80);
@@ -22,7 +24,10 @@ export const TeacherOverrideModal = ({
   const [awardedScore, setAwardedScore] = useState<number | "">("");
   const [feedback, setFeedback] = useState<string>("");
   const [reason, setReason] = useState<string>("");
-  const [overrideVersion, setOverrideVersion] = useState<number>(0);
+  const [overrideVersion, setOverrideVersion] = useState<number | null>(null);
+  const [isConflict, setIsConflict] = useState<boolean>(false);
+  const [conflictDetails, setConflictDetails] = useState<{ message: string; traceId?: string } | null>(null);
+  const [isRefetching, setIsRefetching] = useState<boolean>(false);
 
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -43,7 +48,16 @@ export const TeacherOverrideModal = ({
       setAwardedScore("");
       setFeedback(review.analysisFeedback || "");
       setReason("");
-      setOverrideVersion(review.evidence?.analysisOverrideVersion ?? 0);
+
+      const rawVersion = review.evidence?.analysisOverrideVersion;
+      if (typeof rawVersion === "number" && Number.isInteger(rawVersion)) {
+        setOverrideVersion(rawVersion);
+      } else {
+        setOverrideVersion(null);
+      }
+
+      setIsConflict(false);
+      setConflictDetails(null);
       setErrorMessage(null);
       setSuccessInfo(null);
     }
@@ -89,10 +103,30 @@ export const TeacherOverrideModal = ({
 
   if (!isOpen || !review) return null;
 
+  const handleRefetch = async () => {
+    if (!onRefetch) return;
+    setIsRefetching(true);
+    try {
+      await onRefetch();
+      setIsConflict(false);
+      setConflictDetails(null);
+      setErrorMessage(null);
+    } catch {
+      setErrorMessage("Không thể làm mới dữ liệu từ máy chủ. Vui lòng thử lại.");
+    } finally {
+      setIsRefetching(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reason.trim()) {
       setErrorMessage("Vui lòng cung cấp lý do điều chỉnh (bắt buộc theo quy định kiểm toán).");
+      return;
+    }
+
+    if (overrideVersion === null) {
+      setErrorMessage("Không thể xác định phiên bản đồng thời hợp lệ. Vui lòng tải lại dữ liệu trước khi can thiệp.");
       return;
     }
 
@@ -121,9 +155,11 @@ export const TeacherOverrideModal = ({
     } catch (err: unknown) {
       if (isOverrideConflict(err)) {
         const errorInfo = extractProblemDetails(err);
-        setErrorMessage(
-          `Xung đột phiên bản (409 Conflict): Lượt phân tích này đã được điều chỉnh bởi một phiên khác. Vui lòng làm mới danh sách.${errorInfo.traceId ? ` (Mã theo dõi: ${errorInfo.traceId})` : ""}`
-        );
+        setIsConflict(true);
+        setConflictDetails({
+          message: "Lượt phân tích đã được cập nhật bởi một phiên làm việc khác.",
+          traceId: errorInfo.traceId ?? undefined,
+        });
       } else {
         const errorInfo = extractProblemDetails(err);
         setErrorMessage(errorInfo.message);
@@ -207,8 +243,63 @@ export const TeacherOverrideModal = ({
           )}
         </div>
 
+        {/* Concurrency Conflict Banner (409) */}
+        {isConflict && conflictDetails && (
+          <div role="alert" aria-live="assertive" className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 flex items-start gap-3">
+            <span className="text-xl leading-none">⚠️</span>
+            <div className="flex-1">
+              <p className="font-bold">Xung đột phiên bản dữ liệu đồng thời (409 Conflict)</p>
+              <p className="mt-1 text-xs text-amber-800 leading-relaxed">
+                {conflictDetails.message}
+                {conflictDetails.traceId && (
+                  <span className="block mt-1 font-mono text-[11px] text-amber-700">
+                    W3C Trace ID: {conflictDetails.traceId}
+                  </span>
+                )}
+              </p>
+              {onRefetch && (
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={handleRefetch}
+                    disabled={isRefetching}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-amber-700 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-amber-600 disabled:opacity-50 transition-colors"
+                  >
+                    {isRefetching ? "Đang đồng bộ dữ liệu..." : "Tải lại dữ liệu mới nhất (Refetch)"}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Missing / Invalid OCC Token Warning (Fail-Closed) */}
+        {overrideVersion === null && !isConflict && (
+          <div role="alert" aria-live="assertive" className="mt-4 rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-900 flex items-start gap-3">
+            <span className="text-xl leading-none">🚫</span>
+            <div className="flex-1">
+              <p className="font-bold">Thiếu mã phiên bản kiểm soát đồng thời (analysisOverrideVersion)</p>
+              <p className="mt-1 text-xs text-rose-800 leading-relaxed">
+                Bản ghi không chứa phiên bản phân tích hợp lệ. Biểu mẫu can thiệp tạm thời bị khóa an toàn (Fail-Closed) để tránh ghi đè sai lệch dữ liệu.
+              </p>
+              {onRefetch && (
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={handleRefetch}
+                    disabled={isRefetching}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-rose-700 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-rose-600 disabled:opacity-50 transition-colors"
+                  >
+                    {isRefetching ? "Đang tải lại..." : "Tải lại dữ liệu (Refetch)"}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Feedback / error alerts */}
-        {errorMessage && (
+        {errorMessage && !isConflict && (
           <div role="alert" aria-live="assertive" className="mt-4 rounded-lg bg-red-50 p-3 text-sm font-medium text-red-800 ring-1 ring-red-200">
             {errorMessage}
           </div>
@@ -336,7 +427,7 @@ export const TeacherOverrideModal = ({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || overrideVersion === null || isConflict}
               className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-bold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50"
             >
               {isSubmitting ? "Đang áp dụng..." : "Xác nhận & Cập nhật Twin"}

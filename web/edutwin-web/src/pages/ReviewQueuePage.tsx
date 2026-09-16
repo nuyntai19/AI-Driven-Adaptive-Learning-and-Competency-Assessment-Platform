@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { listTeacherReviewQueue } from "../api/teacherReviewsApi";
@@ -11,7 +11,10 @@ import { useAuthStore } from "../stores/authStore";
 import { permissions } from "../auth/permissions";
 import { CenterManagerThemeScope } from "../components/centerManager/CenterManagerThemeScope";
 
-export const ReviewQueuePage: React.FC = () => {
+// ============================================================================
+// 1. CENTER MANAGER MODERN VIEW (MASTER/DETAIL + 3-SOURCE RECONCILIATION)
+// ============================================================================
+const CenterManagerReviewQueueView: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedClassId = searchParams.get("classId") || "";
   const [page, setPage] = useState<number>(1);
@@ -25,8 +28,6 @@ export const ReviewQueuePage: React.FC = () => {
   const [classPage, setClassPage] = useState<number>(1);
   const [classCache, setClassCache] = useState<Map<string, ClassDto>>(new Map());
 
-  const user = useAuthStore((state) => state.user);
-  const isCenterManager = user?.accountType === "CenterManager";
   const hasPermission = useAuthStore((state) => state.hasPermission);
   const canOverride = hasPermission(permissions.teacherReviewsOverride);
   const canReadScratchpad = hasPermission(permissions.learningAttemptsReadScoped);
@@ -40,17 +41,18 @@ export const ReviewQueuePage: React.FC = () => {
     return () => clearTimeout(handler);
   }, [classSearchInput]);
 
-  // Query classes with server-side pagination (pageSize: 20)
+  // Query classes with true server-side pagination (pageSize: 20) and search
   const { data: classesData, isLoading: isLoadingClasses } = useQuery({
-    queryKey: ["reviewQueueClasses", classPage],
+    queryKey: ["reviewQueueClasses", classSearchTerm, classPage],
     queryFn: () =>
       organizationApi.listClasses({
         page: classPage,
         pageSize: 20,
+        search: classSearchTerm.trim() || undefined,
       }),
   });
 
-  // Accumulate loaded classes into the cache to guarantee selected class never disappears
+  // Accumulate loaded classes into the cache to guarantee selected class never disappears across pages or queries
   useEffect(() => {
     if (classesData?.data) {
       setClassCache((prev) => {
@@ -63,7 +65,7 @@ export const ReviewQueuePage: React.FC = () => {
     }
   }, [classesData]);
 
-  // Query review queue items
+  // Query review queue items for the center
   const {
     data: reviewData,
     isLoading,
@@ -71,7 +73,7 @@ export const ReviewQueuePage: React.FC = () => {
     error,
     refetch,
   } = useQuery({
-    queryKey: ["teacherReviewQueue", selectedClassId, page],
+    queryKey: ["centerManagerReviewQueue", selectedClassId, page],
     queryFn: () =>
       listTeacherReviewQueue({
         classId: selectedClassId || undefined,
@@ -114,329 +116,337 @@ export const ReviewQueuePage: React.FC = () => {
     refetch();
   };
 
-  // Combine cached classes for selection options, filtered by classSearchTerm if present
-  const classOptions = Array.from(classCache.values()).filter((c) => {
-    if (!classSearchTerm.trim()) return true;
-    return c.className.toLowerCase().includes(classSearchTerm.trim().toLowerCase());
-  });
+  // Combine current query results with selected cached class if outside current page
+  const classOptions = useMemo(() => {
+    const list = classesData?.data ? [...classesData.data] : [];
+    if (selectedClassId && !list.some((c) => c.classId === selectedClassId)) {
+      const cached = classCache.get(selectedClassId);
+      if (cached) {
+        list.unshift(cached);
+      }
+    }
+    return list;
+  }, [classesData, selectedClassId, classCache]);
 
-  const pageContent = (
-    <div className="min-h-screen bg-slate-50 p-6">
-      <div className="mx-auto max-w-7xl space-y-6">
-        {/* Header Breadcrumb & Actions */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
-          <div>
-            <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 mb-1">
-              <Link to="/" className="hover:text-indigo-600">Trang chủ</Link>
-              <span>/</span>
-              <span className="text-slate-900">Hàng đợi duyệt bài</span>
-              {isCenterManager && (
+  return (
+    <CenterManagerThemeScope data-actor="center-manager">
+      <div className="min-h-screen bg-slate-50 p-6">
+        <div className="mx-auto max-w-7xl space-y-6">
+          {/* Header Breadcrumb & Actions */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 mb-1">
+                <Link to="/" className="hover:text-indigo-600">Trang chủ</Link>
+                <span>/</span>
+                <span className="text-slate-900">Hàng đợi duyệt bài</span>
                 <span className="ml-2 inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 ring-1 ring-inset ring-indigo-600/20">
                   Phạm vi toàn Trung tâm
                 </span>
+              </div>
+              <h1 className="text-2xl font-bold text-slate-900">
+                Hàng Đợi Duyệt Đánh Giá Suy Luận (Review Queue)
+              </h1>
+              <p className="mt-1 text-sm text-slate-500">
+                Đối chiếu 3 nguồn: Bài làm gốc học sinh, AI Observation, và Can thiệp chuyên môn (Deterministic Fallback).
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => refetch()}
+                className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50 transition-colors"
+              >
+                Làm mới danh sách
+              </button>
+            </div>
+          </div>
+
+          {/* Server-side Paginated & Searchable Class Selector */}
+          <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="flex-1 w-full md:w-auto">
+                <label htmlFor="review-class-select" className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
+                  Lọc theo lớp học (Toàn bộ lớp trung tâm)
+                </label>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    placeholder="Tìm kiếm tên lớp (máy chủ)..."
+                    value={classSearchInput}
+                    onChange={(e) => setClassSearchInput(e.target.value)}
+                    className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-900 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 min-w-[200px]"
+                  />
+                  <select
+                    id="review-class-select"
+                    value={selectedClassId}
+                    onChange={(e) => handleClassChange(e.target.value)}
+                    className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 shadow-sm focus:border-indigo-500 focus:outline-none"
+                  >
+                    <option value="">Tất cả các lớp trong trung tâm</option>
+                    {classOptions.map((c) => (
+                      <option key={c.classId} value={c.classId}>
+                        {c.className} {c.academicYear ? `(${c.academicYear})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Classes Pagination Controls */}
+              {classesData && classesData.meta && classesData.meta.totalPages > 1 && (
+                <div className="flex items-center gap-2 self-end md:self-center text-xs text-slate-500">
+                  <span>Lớp trang {classesData.meta.page}/{classesData.meta.totalPages}</span>
+                  <button
+                    type="button"
+                    onClick={() => setClassPage((p) => Math.max(1, p - 1))}
+                    disabled={classPage <= 1 || isLoadingClasses}
+                    className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                  >
+                    Trước
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setClassPage((p) => Math.min(classesData.meta.totalPages, p + 1))}
+                    disabled={classPage >= classesData.meta.totalPages || isLoadingClasses}
+                    className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                  >
+                    Sau
+                  </button>
+                </div>
               )}
             </div>
-            <h1 className="text-2xl font-bold text-slate-900">
-              Hàng Đợi Duyệt Đánh Giá Suy Luận (Review Queue)
-            </h1>
-            <p className="mt-1 text-sm text-slate-500">
-              Đối chiếu 3 nguồn: Bài làm gốc học sinh, AI Observation, và Can thiệp chuyên môn (Deterministic Fallback).
-            </p>
           </div>
 
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => refetch()}
-              className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50 transition-colors"
-            >
-              Làm mới danh sách
-            </button>
-          </div>
-        </div>
-
-        {/* Server-side Paginated & Searchable Class Selector */}
-        <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div className="flex-1 w-full md:w-auto">
-              <label htmlFor="review-class-select" className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
-                Lọc theo lớp học ({isCenterManager ? "Toàn bộ lớp trung tâm" : "Các lớp phụ trách"})
-              </label>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <input
-                  type="text"
-                  placeholder="Tìm kiếm tên lớp..."
-                  value={classSearchInput}
-                  onChange={(e) => setClassSearchInput(e.target.value)}
-                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-900 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 min-w-[200px]"
-                />
-                <select
-                  id="review-class-select"
-                  value={selectedClassId}
-                  onChange={(e) => handleClassChange(e.target.value)}
-                  className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 shadow-sm focus:border-indigo-500 focus:outline-none"
-                >
-                  <option value="">
-                    {isCenterManager ? "Tất cả các lớp trong trung tâm" : "Tất cả các lớp phụ trách"}
-                  </option>
-                  {classOptions.map((c) => (
-                    <option key={c.classId} value={c.classId}>
-                      {c.className} {c.academicYear ? `(${c.academicYear})` : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
+          {/* Loading State */}
+          {isLoading && (
+            <div className="flex items-center justify-center rounded-2xl bg-white p-12 shadow-sm ring-1 ring-slate-200">
+              <span className="font-medium text-indigo-600 animate-pulse">Đang nạp hàng đợi duyệt bài trung tâm...</span>
             </div>
+          )}
 
-            {/* Classes Pagination Controls */}
-            {classesData && classesData.meta && classesData.meta.totalPages > 1 && (
-              <div className="flex items-center gap-2 self-end md:self-center text-xs text-slate-500">
-                <span>Lớp trang {classesData.meta.page}/{classesData.meta.totalPages}</span>
-                <button
-                  type="button"
-                  onClick={() => setClassPage((p) => Math.max(1, p - 1))}
-                  disabled={classPage <= 1 || isLoadingClasses}
-                  className="rounded border border-slate-300 px-2 py-1 text-slate-600 hover:bg-slate-100 disabled:opacity-40"
-                >
-                  ◀
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setClassPage((p) => Math.min(classesData.meta.totalPages, p + 1))}
-                  disabled={classPage >= classesData.meta.totalPages || isLoadingClasses}
-                  className="rounded border border-slate-300 px-2 py-1 text-slate-600 hover:bg-slate-100 disabled:opacity-40"
-                >
-                  ▶
-                </button>
+          {/* Error State */}
+          {isError && (
+            <div className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-200">
+              <h2 className="text-lg font-bold text-red-600">Không thể tải hàng đợi duyệt bài</h2>
+              <p className="mt-2 text-sm text-slate-500">
+                {(error as Error)?.message || "Vui lòng kiểm tra lại quyền hạn hoặc kết nối mạng."}
+              </p>
+              <button
+                type="button"
+                onClick={() => refetch()}
+                className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
+              >
+                Thử lại
+              </button>
+            </div>
+          )}
+
+          {/* Empty State */}
+          {!isLoading && !isError && reviewData && reviewData.data.length === 0 && (
+            <div className="rounded-2xl bg-white p-12 text-center shadow-sm ring-1 ring-slate-200">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-2xl text-emerald-600">
+                ✓
               </div>
-            )}
-          </div>
-        </div>
+              <h3 className="mt-4 text-lg font-bold text-slate-900">
+                Hàng đợi duyệt bài hiện đang trống!
+              </h3>
+              <p className="mt-1 text-sm text-slate-500 max-w-md mx-auto">
+                Không có bài nộp nào yêu cầu can thiệp hoặc có mức độ không chắc chắn cao trong phạm vi đã chọn.
+              </p>
+            </div>
+          )}
 
-        {/* Loading / Error States */}
-        {isLoading && (
-          <div className="flex items-center justify-center rounded-2xl bg-white p-12 shadow-sm ring-1 ring-slate-200">
-            <span className="font-medium text-indigo-600 animate-pulse">Đang tải hàng đợi duyệt bài...</span>
-          </div>
-        )}
-
-        {isError && (
-          <div className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-200">
-            <h2 className="text-lg font-bold text-red-600">Không thể tải hàng đợi duyệt bài</h2>
-            <p className="mt-2 text-sm text-slate-500">
-              {(error as Error)?.message || "Vui lòng kiểm tra lại quyền truy cập hoặc kết nối mạng."}
-            </p>
-            <button
-              type="button"
-              onClick={() => refetch()}
-              className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
-            >
-              Thử lại
-            </button>
-          </div>
-        )}
-
-        {/* Master / Detail Layout */}
-        {!isLoading && !isError && reviewData && (
-          <>
-            {reviewData.data.length === 0 ? (
-              <div className="rounded-2xl bg-white p-12 text-center shadow-sm ring-1 ring-slate-200">
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-2xl text-emerald-600">
-                  ✓
+          {/* Master / Detail Grid Layout (Ảnh 13 Inspiration) */}
+          {!isLoading && !isError && reviewData && reviewData.data.length > 0 && (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              {/* MASTER PANEL (Left Column - List of Items) */}
+              <div className="lg:col-span-5 rounded-xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden flex flex-col">
+                <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                  <h2 className="text-sm font-bold uppercase tracking-wider text-slate-700">
+                    Danh sách bài chờ duyệt ({reviewData.meta.totalItems})
+                  </h2>
+                  <span className="text-xs text-slate-500">
+                    Trang {reviewData.meta.page}/{reviewData.meta.totalPages}
+                  </span>
                 </div>
-                <h3 className="mt-4 text-lg font-bold text-slate-900">
-                  Hàng đợi hiện đang trống!
-                </h3>
-                <p className="mt-1 text-sm text-slate-500">
-                  Tất cả các bài giải cần can thiệp hoặc có mức độ không chắc chắn cao đã được xử lý hoàn tất.
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                {/* Left Panel: Master List (5 cols) */}
-                <div className="lg:col-span-5 space-y-4">
-                  <div className="rounded-xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
-                    <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 flex items-center justify-between">
-                      <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                        Danh sách chờ duyệt ({reviewData.meta.totalItems})
-                      </span>
-                      <span className="text-xs text-slate-500">
-                        Trang {reviewData.meta.page}/{reviewData.meta.totalPages}
-                      </span>
-                    </div>
 
-                    <div className="divide-y divide-slate-100 max-h-[calc(100vh-280px)] overflow-y-auto">
-                      {reviewData.data.map((item) => {
-                        const isSelected = selectedReview?.attemptId === item.attemptId;
-                        return (
-                          <div
-                            key={item.attemptId}
-                            onClick={() => setSelectedReview(item)}
-                            className={`p-4 cursor-pointer transition-colors ${
-                              isSelected
-                                ? "bg-indigo-50/70 border-l-4 border-indigo-600"
-                                : "hover:bg-slate-50 border-l-4 border-transparent"
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="font-semibold text-slate-900 text-sm">
-                                {item.studentName}
-                              </div>
-                              <span className="text-[11px] font-mono text-slate-400 shrink-0">
-                                #{item.attemptId}
-                              </span>
-                            </div>
-
-                            <p className="mt-1 text-xs text-slate-600 line-clamp-2 leading-relaxed">
-                              {item.questionText}
-                            </p>
-
-                            <div className="mt-2 flex flex-wrap items-center gap-2">
-                              <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700">
-                                Chất lượng: <strong className="text-slate-900">{item.reasoningQuality ?? "N/A"}%</strong>
-                              </span>
-
-                              {item.isFallback && (
-                                <span className="rounded bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
-                                  Dự phòng (Fallback)
-                                </span>
-                              )}
-
-                              <span className="text-[10px] text-slate-400 ml-auto">
-                                {new Date(item.submittedAt).toLocaleTimeString("vi-VN", {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
-                              </span>
-                            </div>
+                <div className="divide-y divide-slate-100 max-h-[680px] overflow-y-auto">
+                  {reviewData.data.map((item) => {
+                    const isSelected = selectedReview?.attemptId === item.attemptId;
+                    return (
+                      <div
+                        key={item.attemptId}
+                        onClick={() => setSelectedReview(item)}
+                        className={`p-4 cursor-pointer transition-all ${
+                          isSelected
+                            ? "bg-indigo-50/80 border-l-4 border-indigo-600 shadow-sm"
+                            : "hover:bg-slate-50/80 border-l-4 border-transparent"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <span className="text-sm font-bold text-slate-900">{item.studentName}</span>
+                            <span className="ml-2 text-xs text-slate-400">#{item.attemptId.slice(0, 8)}</span>
                           </div>
-                        );
-                      })}
-                    </div>
+                          <span className="text-[11px] text-slate-400 whitespace-nowrap">
+                            {new Date(item.submittedAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                        </div>
 
-                    {/* Pagination Footer */}
-                    {reviewData.meta.totalPages > 1 && (
-                      <div className="flex items-center justify-between border-t border-slate-200 bg-white px-4 py-2.5">
-                        <button
-                          type="button"
-                          onClick={() => setPage((p) => Math.max(1, p - 1))}
-                          disabled={page <= 1}
-                          className="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
-                        >
-                          Trước
-                        </button>
-                        <span className="text-xs text-slate-500">
-                          {page} / {reviewData.meta.totalPages}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setPage((p) => Math.min(reviewData.meta.totalPages, p + 1))}
-                          disabled={page >= reviewData.meta.totalPages}
-                          className="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
-                        >
-                          Sau
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                        <p className="mt-1 text-xs text-slate-600 line-clamp-1">
+                          {item.questionText}
+                        </p>
 
-                {/* Right Panel: 3-Source Reconciliation Detail (7 cols) */}
-                <div className="lg:col-span-7 space-y-4">
-                  {selectedReview ? (
-                    <div className="space-y-4">
-                      {/* Panel 1: Original Student Work & Scratchpad */}
-                      <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-                        <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-3">
-                          <div className="flex items-center gap-2">
-                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-700">
-                              1
+                        <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+                          <span className={`inline-flex items-center rounded px-2 py-0.5 text-[11px] font-bold ${
+                            (item.reasoningQuality ?? 0) >= 80
+                              ? "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/20"
+                              : (item.reasoningQuality ?? 0) >= 50
+                              ? "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/20"
+                              : "bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-600/20"
+                          }`}>
+                            Chất lượng: {item.reasoningQuality ?? "N/A"}%
+                          </span>
+
+                          {item.analysisConfidence !== null && item.analysisConfidence !== undefined && (
+                            <span className="text-[11px] text-slate-500">
+                              Tin cậy: {item.analysisConfidence.toFixed(0)}%
                             </span>
-                            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
-                              Bài làm gốc của học sinh
-                            </h3>
+                          )}
+
+                          {item.isFallback && (
+                            <span className="inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
+                              Fallback
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Left Panel Pagination Footer */}
+                {reviewData.meta.totalPages > 1 && (
+                  <div className="p-3 border-t border-slate-100 bg-slate-50 flex items-center justify-between text-xs text-slate-600">
+                    <span>Trang {reviewData.meta.page}/{reviewData.meta.totalPages}</span>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        disabled={page <= 1}
+                        className="rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-40"
+                      >
+                        Trước
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPage((p) => Math.min(reviewData.meta.totalPages, p + 1))}
+                        disabled={page >= reviewData.meta.totalPages}
+                        className="rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-40"
+                      >
+                        Sau
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* DETAIL PANEL (Right Column - 3-Source Reconciliation) */}
+              <div className="lg:col-span-7 space-y-6">
+                {selectedReview ? (
+                  <>
+                    {/* Header of Detail Card */}
+                    <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg font-bold text-slate-900">{selectedReview.studentName}</span>
+                            <Link
+                              to={`/quan-ly/hoc-sinh/${selectedReview.studentId}/nang-luc?subjectId=${selectedReview.subjectId}`}
+                              className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 underline"
+                            >
+                              Hồ sơ năng lực (Twin)
+                            </Link>
                           </div>
+                          <span className="text-xs text-slate-400">
+                            Lượt làm #{selectedReview.attemptId} · Nộp lúc: {new Date(selectedReview.submittedAt).toLocaleString("vi-VN")}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {canOverride && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenOverride(selectedReview)}
+                              className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-indigo-500 transition-colors"
+                            >
+                              Điều chỉnh điểm số (Override)
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Question Content */}
+                      <div className="mt-4">
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                          Nội dung câu hỏi
+                        </span>
+                        <div className="rounded-lg bg-slate-50 p-3.5 text-sm text-slate-800 border border-slate-200 leading-relaxed font-medium">
+                          {selectedReview.questionText}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 3-SOURCE RECONCILIATION CARDS */}
+                    <div className="space-y-4">
+                      {/* SOURCE 1: Original Student Work & Reasoning */}
+                      <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+                        <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">1</span>
+                            <h3 className="text-sm font-bold text-slate-900">Bài làm gốc của học sinh (Student Submission)</h3>
+                          </div>
+
                           {canReadScratchpad && (
                             <button
                               type="button"
                               onClick={() => setIsScratchpadOpen(true)}
-                              className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-700 hover:bg-indigo-100 transition-colors"
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50/60 px-3 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100/70 transition-colors"
                             >
-                              <span>🎨 Mở nháp vẽ (Scratchpad)</span>
+                              <span>✏️</span> Xem tệp nháp vẽ (Scratchpad)
                             </button>
                           )}
                         </div>
 
                         <div className="space-y-3 text-sm">
-                          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                            <div>
-                              Học sinh:{" "}
-                              <Link
-                                to={`/quan-ly/hoc-sinh/${selectedReview.studentId}/nang-luc?subjectId=${selectedReview.subjectId}`}
-                                className="font-bold text-indigo-600 hover:underline"
-                              >
-                                {selectedReview.studentName}
-                              </Link>
-                            </div>
-                            <span className="text-slate-400">
-                              Nộp lúc: {new Date(selectedReview.submittedAt).toLocaleString("vi-VN")}
-                            </span>
+                          <div>
+                            <span className="text-xs font-bold text-slate-500">Đáp án nộp cuối cùng:</span>
+                            <p className="mt-0.5 font-mono text-sm font-bold text-slate-900 bg-slate-50 p-2.5 rounded border border-slate-200">
+                              {selectedReview.finalAnswer || "(Học sinh không nhập đáp án chữ)"}
+                            </p>
                           </div>
 
                           <div>
-                            <span className="text-xs font-bold text-slate-500 block mb-1">
-                              Đề bài câu hỏi:
-                            </span>
-                            <div className="rounded-lg bg-slate-50 p-3 text-slate-800 text-sm leading-relaxed border border-slate-200">
-                              {selectedReview.questionText}
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div>
-                              <span className="text-xs font-bold text-slate-500 block mb-1">
-                                Đáp án học sinh chọn:
-                              </span>
-                              <div className="rounded-lg bg-slate-100 px-3 py-2 font-mono font-bold text-slate-900 border border-slate-200">
-                                {selectedReview.finalAnswer || "(Trống)"}
-                              </div>
-                            </div>
-
-                            <div>
-                              <span className="text-xs font-bold text-slate-500 block mb-1">
-                                Trạng thái nháp:
-                              </span>
-                              <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 border border-slate-200 flex items-center justify-between">
-                                <span>{selectedReview.reasoningText ? "Có ghi chú lời giải" : "Không có ghi chú"}</span>
-                                {canReadScratchpad ? (
-                                  <span className="text-emerald-600 font-medium">Đã kích hoạt drawer</span>
-                                ) : (
-                                  <span className="text-slate-400">Yêu cầu quyền nháp</span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-
-                          {selectedReview.reasoningText && (
-                            <div>
-                              <span className="text-xs font-bold text-slate-500 block mb-1">
-                                Ghi chú các bước giải của học sinh:
-                              </span>
-                              <p className="rounded-lg bg-slate-50 p-3 font-mono text-xs text-slate-700 whitespace-pre-wrap border border-slate-200">
+                            <span className="text-xs font-bold text-slate-500">Các bước suy luận (Reasoning Steps):</span>
+                            {selectedReview.reasoningText ? (
+                              <pre className="mt-1 whitespace-pre-wrap font-mono text-xs text-slate-700 bg-slate-50 p-3 rounded border border-slate-200 max-h-48 overflow-y-auto">
                                 {selectedReview.reasoningText}
+                              </pre>
+                            ) : (
+                              <p className="mt-1 text-xs italic text-slate-400 bg-slate-50 p-3 rounded border border-slate-200">
+                                Không có bước giải thích suy luận chi tiết đi kèm.
                               </p>
-                            </div>
-                          )}
+                            )}
+                          </div>
                         </div>
                       </div>
 
-                      {/* Panel 2: AI Observation & Reasoning Analysis */}
+                      {/* SOURCE 2: AI Observation & Evaluation */}
                       <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-                        <div className="flex items-center gap-2 border-b border-slate-100 pb-3 mb-3">
-                          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-purple-100 text-xs font-bold text-purple-700">
-                            2
-                          </span>
-                          <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+                        <div className="flex items-center gap-2 mb-3 border-b border-slate-100 pb-2">
+                          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-purple-100 text-xs font-bold text-purple-700">2</span>
+                          <h3 className="text-sm font-bold text-slate-900">
                             AI Observation & Phân tích suy luận
                           </h3>
                         </div>
@@ -462,14 +472,14 @@ export const ReviewQueuePage: React.FC = () => {
                             <div className="rounded-lg bg-slate-50 p-2.5 border border-slate-200">
                               <span className="text-[10px] uppercase font-bold text-slate-400 block">Phương thức</span>
                               <span className="text-xs font-bold text-slate-800 block truncate mt-1">
-                                {selectedReview.evidence?.decisionMode || selectedReview.evidence?.mode || "Rule-based"}
+                                {selectedReview.evidence?.decisionMode || "Chưa xác định"}
                               </span>
                             </div>
 
                             <div className="rounded-lg bg-slate-50 p-2.5 border border-slate-200">
                               <span className="text-[10px] uppercase font-bold text-slate-400 block">Mức tin cậy</span>
                               <span className="text-xs font-bold text-slate-800 block truncate mt-1">
-                                {selectedReview.evidence?.trustLevel || "Standard"}
+                                {selectedReview.evidence?.trustLevel || "Chưa xác định"}
                               </span>
                             </div>
                           </div>
@@ -478,128 +488,355 @@ export const ReviewQueuePage: React.FC = () => {
                             <div className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800 border border-amber-200 flex items-start gap-2">
                               <span className="text-base leading-none">⚠️</span>
                               <div>
-                                <strong>Kích hoạt thuật toán dự phòng (Fallback): </strong>
-                                Lượt làm này được đánh giá dựa trên luật xác định do AI confidence thấp hoặc không chắc chắn về các bước suy luận.
-                              </div>
-                            </div>
-                          )}
-
-                          {selectedReview.evidence?.reasonCodes && selectedReview.evidence.reasonCodes.length > 0 && (
-                            <div>
-                              <span className="text-xs font-bold text-slate-500 block mb-1">
-                                Mã lý do phát hiện (Reason Codes):
-                              </span>
-                              <div className="flex flex-wrap gap-1.5">
-                                {selectedReview.evidence.reasonCodes.map((code) => (
-                                  <span
-                                    key={code}
-                                    className="rounded bg-slate-100 px-2 py-0.5 font-mono text-[11px] font-semibold text-slate-700 border border-slate-200"
-                                  >
-                                    {code}
-                                  </span>
-                                ))}
+                                <span className="font-bold">Kích hoạt thuật toán dự phòng (Rule Fallback):</span> AI có độ tự tin thấp hoặc bước giải có dấu hiệu bất thường, hệ thống đã chuyển sang đối chiếu quy tắc xác định.
                               </div>
                             </div>
                           )}
 
                           {selectedReview.analysisFeedback && (
                             <div>
-                              <span className="text-xs font-bold text-slate-500 block mb-1">
-                                Nhận xét tự động của AI:
-                              </span>
-                              <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-700 border border-slate-200 leading-relaxed">
+                              <span className="text-xs font-bold text-slate-500">Phản hồi từ AI Engine:</span>
+                              <p className="mt-1 rounded bg-slate-50 p-3 text-xs text-slate-700 border border-slate-200">
                                 {selectedReview.analysisFeedback}
                               </p>
+                            </div>
+                          )}
+
+                          {selectedReview.evidence?.reasonCodes && selectedReview.evidence.reasonCodes.length > 0 && (
+                            <div>
+                              <span className="text-xs font-bold text-slate-500">Mã lý do đánh giá (Reason Codes):</span>
+                              <div className="mt-1 flex flex-wrap gap-1.5">
+                                {selectedReview.evidence.reasonCodes.map((rc, idx) => (
+                                  <span key={idx} className="rounded bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-700 border border-slate-200">
+                                    {rc}
+                                  </span>
+                                ))}
+                              </div>
                             </div>
                           )}
                         </div>
                       </div>
 
-                      {/* Panel 3: Deterministic Fallback & Human Governance Panel */}
+                      {/* SOURCE 3: Deterministic Fallback & Intervention Action */}
                       <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-                        <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-3">
+                        <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
                           <div className="flex items-center gap-2">
-                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-700">
-                              3
-                            </span>
-                            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
-                              Can thiệp & Điều chỉnh chuyên môn
-                            </h3>
+                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-700">3</span>
+                            <h3 className="text-sm font-bold text-slate-900">Can thiệp chuyên môn & Quyết định cuối</h3>
                           </div>
-
-                          <div className="text-xs font-mono font-medium text-slate-500">
-                            Phiên bản OCC:{" "}
-                            <span className="font-bold text-slate-800">
-                              {selectedReview.evidence?.analysisOverrideVersion ?? 0}
-                            </span>
-                          </div>
+                          <span className="text-xs font-semibold text-slate-500">
+                            Phiên bản OCC: #{selectedReview.evidence?.analysisOverrideVersion ?? 0}
+                          </span>
                         </div>
 
-                        <div className="space-y-3">
-                          <p className="text-xs text-slate-600 leading-relaxed">
-                            Quyền điều chỉnh chuyên môn cho phép cập nhật tính đúng/sai, thang đo suy luận và nhận xét trực tiếp vào Hồ sơ Năng lực (Digital Twin) của học sinh với đầy đủ dấu vết kiểm toán.
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm">
+                          <p className="text-xs text-slate-500">
+                            Quản lý trung tâm có thể đánh giá lại chất lượng tư duy, sửa đổi kết quả và cập nhật Digital Twin của học sinh có lưu vết kiểm toán.
                           </p>
 
-                          <div className="flex items-center justify-between pt-2">
-                            <span className="text-xs text-slate-500">
-                              Mã phân tích: <strong className="font-mono text-slate-700">{selectedReview.analysisId}</strong>
-                            </span>
-
-                            {canOverride ? (
-                              <button
-                                type="button"
-                                onClick={() => handleOpenOverride(selectedReview)}
-                                className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-indigo-500 transition-colors"
-                              >
-                                Đánh giá & Điều chỉnh (Override)
-                              </button>
-                            ) : (
-                              <span className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs text-slate-500 font-medium">
-                                Chế độ chỉ xem (Thiếu quyền can thiệp)
-                              </span>
-                            )}
-                          </div>
+                          {canOverride && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenOverride(selectedReview)}
+                              className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-indigo-500 transition-colors whitespace-nowrap"
+                            >
+                              Ghi đè điểm số ngay
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
-                  ) : (
-                    <div className="rounded-xl bg-white p-12 text-center shadow-sm ring-1 ring-slate-200 text-slate-400">
-                      Chọn một bài làm từ danh sách bên trái để đối chiếu 3 nguồn dữ liệu.
-                    </div>
-                  )}
+                  </>
+                ) : (
+                  <div className="rounded-xl bg-white p-12 text-center shadow-sm ring-1 ring-slate-200">
+                    <p className="text-sm font-medium text-slate-400">Chọn một bài làm từ cột bên trái để xem đối chiếu chi tiết 3 nguồn.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Scratchpad Attachment Drawer */}
+        <ScratchpadAttachmentDrawer
+          attemptId={selectedReview?.attemptId ?? null}
+          isOpen={isScratchpadOpen}
+          onClose={() => setIsScratchpadOpen(false)}
+          studentName={selectedReview?.studentName}
+          questionText={selectedReview?.questionText}
+        />
+
+        {/* Teacher Override Modal */}
+        {canOverride && (
+          <TeacherOverrideModal
+            review={selectedReview}
+            isOpen={isOverrideModalOpen}
+            onClose={() => setIsOverrideModalOpen(false)}
+            onSuccess={handleOverrideSuccess}
+            onRefetch={refetch}
+          />
+        )}
+      </div>
+    </CenterManagerThemeScope>
+  );
+};
+
+// ============================================================================
+// 2. TEACHER LEGACY VIEW (100% PRESERVED LEGACY LAYOUT BEFORE GATE 7)
+// ============================================================================
+const TeacherReviewQueueLegacyView: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedClassId = searchParams.get("classId") || "";
+  const [page, setPage] = useState<number>(1);
+  const [selectedReview, setSelectedReview] = useState<TeacherReviewQueueItemDto | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const canOverride = useAuthStore((state) => state.hasPermission)(permissions.teacherReviewsOverride);
+
+  // Load teacher classes for filtering
+  const { data: classesData } = useQuery({
+    queryKey: ["teacherClassesList"],
+    queryFn: () => organizationApi.listClasses({ page: 1, pageSize: 50 }),
+  });
+
+  // Load review queue items
+  const {
+    data: reviewData,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ["teacherReviewQueue", selectedClassId, page],
+    queryFn: () =>
+      listTeacherReviewQueue({
+        classId: selectedClassId || undefined,
+        page,
+        pageSize: 15,
+      }),
+  });
+
+  const handleClassChange = (newClassId: string) => {
+    setPage(1);
+    if (newClassId) {
+      setSearchParams({ classId: newClassId });
+    } else {
+      setSearchParams({});
+    }
+  };
+
+  const handleOpenOverride = (review: TeacherReviewQueueItemDto) => {
+    setSelectedReview(review);
+    setIsModalOpen(true);
+  };
+
+  const handleOverrideSuccess = () => {
+    refetch();
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 p-6">
+      <div className="mx-auto max-w-7xl space-y-6">
+        {/* Header Breadcrumb & Actions */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+          <div>
+            <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 mb-1">
+              <Link to="/" className="hover:text-indigo-600">Trang chủ</Link>
+              <span>/</span>
+              <span className="text-slate-900">Hàng đợi duyệt bài</span>
+            </div>
+            <h1 className="text-2xl font-bold text-slate-900">
+              Hàng Đợi Duyệt Đánh Giá Suy Luận (Review Queue)
+            </h1>
+            <p className="mt-1 text-sm text-slate-500">
+              Xem xét các lượt giải bài của học sinh có AI confidence thấp hoặc thuật toán kích hoạt dự phòng (Fallback).
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {/* Filter by class */}
+            <select
+              value={selectedClassId}
+              onChange={(e) => handleClassChange(e.target.value)}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-indigo-500 focus:outline-none"
+            >
+              <option value="">Tất cả các lớp phụ trách</option>
+              {classesData?.data.map((c) => (
+                <option key={c.classId} value={c.classId}>
+                  {c.className}
+                </option>
+              ))}
+            </select>
+
+            <button
+              onClick={() => refetch()}
+              className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50"
+            >
+              Làm mới
+            </button>
+          </div>
+        </div>
+
+        {/* Content Section */}
+        {isLoading && (
+          <div className="flex items-center justify-center rounded-2xl bg-white p-12 shadow-sm ring-1 ring-slate-200">
+            <span className="font-medium text-indigo-600 animate-pulse">Đang tải danh sách chờ duyệt...</span>
+          </div>
+        )}
+
+        {isError && (
+          <div className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-200">
+            <h2 className="text-lg font-bold text-red-600">Không thể tải hàng đợi duyệt bài</h2>
+            <p className="mt-2 text-sm text-slate-500">
+              {(error as Error)?.message || "Vui lòng kiểm tra lại quyền truy cập hoặc kết nối mạng."}
+            </p>
+            <button
+              onClick={() => refetch()}
+              className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
+            >
+              Thử lại
+            </button>
+          </div>
+        )}
+
+        {!isLoading && !isError && reviewData && (
+          <>
+            {reviewData.data.length === 0 ? (
+              <div className="rounded-2xl bg-white p-12 text-center shadow-sm ring-1 ring-slate-200">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-2xl text-emerald-600">
+                  ✓
                 </div>
+                <h3 className="mt-4 text-lg font-bold text-slate-900">
+                  Hàng đợi hiện đang trống!
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Tất cả các bài giải cần can thiệp hoặc có mức độ không chắc chắn cao đã được xử lý hoàn tất.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                    <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wider text-slate-500">
+                      <tr>
+                        <th className="px-6 py-3.5">Học sinh</th>
+                        <th className="px-6 py-3.5">Câu hỏi & Đáp án</th>
+                        <th className="px-6 py-3.5">AI Đánh giá</th>
+                        <th className="px-6 py-3.5">Thời gian nộp</th>
+                        <th className="px-6 py-3.5 text-right">Thao tác</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {reviewData.data.map((item) => (
+                        <tr key={item.attemptId} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="px-6 py-4 font-semibold text-slate-900 whitespace-nowrap">
+                            <Link
+                              to={`/quan-ly/hoc-sinh/${item.studentId}/nang-luc?subjectId=${item.subjectId}`}
+                              className="text-indigo-600 hover:underline"
+                            >
+                              {item.studentName}
+                            </Link>
+                          </td>
+                          <td className="px-6 py-4 max-w-md">
+                            <p className="text-slate-800 line-clamp-1 font-medium">{item.questionText}</p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              Đáp án: <span className="font-mono font-semibold text-slate-700">{item.finalAnswer || "(Trống)"}</span>
+                            </p>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-slate-600">
+                                  Chất lượng: <strong className="text-slate-900">{item.reasoningQuality ?? "N/A"}%</strong>
+                                </span>
+                                {item.analysisConfidence !== null && item.analysisConfidence !== undefined && (
+                                  <span className="text-xs text-slate-400">
+                                    (Tin cậy: {item.analysisConfidence.toFixed(0)}%)
+                                  </span>
+                                )}
+                              </div>
+                              {item.isFallback && (
+                                <span className="inline-flex w-fit items-center rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                                  Thuật toán dự phòng (Fallback)
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-xs text-slate-500 whitespace-nowrap">
+                            {new Date(item.submittedAt).toLocaleString("vi-VN")}
+                          </td>
+                          <td className="px-6 py-4 text-right whitespace-nowrap">
+                            {canOverride ? (
+                              <button
+                                onClick={() => handleOpenOverride(item)}
+                                className="rounded-lg bg-indigo-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-500"
+                              >
+                                Đánh giá & Điều chỉnh
+                              </button>
+                            ) : (
+                              <span className="text-xs text-slate-400">Chỉ xem</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Pagination footer */}
+                {reviewData.meta.totalPages > 1 && (
+                  <div className="flex items-center justify-between border-t border-slate-200 bg-white px-6 py-3">
+                    <span className="text-xs text-slate-500">
+                      Hiển thị trang {reviewData.meta.page} / {reviewData.meta.totalPages} (Tổng {reviewData.meta.totalItems} lượt chờ duyệt)
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        disabled={page <= 1}
+                        className="rounded-md border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        Trước
+                      </button>
+                      <button
+                        onClick={() => setPage((p) => Math.min(reviewData.meta.totalPages, p + 1))}
+                        disabled={page >= reviewData.meta.totalPages}
+                        className="rounded-md border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        Sau
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </>
         )}
       </div>
 
-      {/* Scratchpad Attachment Drawer */}
-      <ScratchpadAttachmentDrawer
-        attemptId={selectedReview?.attemptId ?? null}
-        isOpen={isScratchpadOpen}
-        onClose={() => setIsScratchpadOpen(false)}
-        studentName={selectedReview?.studentName}
-        questionText={selectedReview?.questionText}
-      />
-
       {/* Teacher Override Modal */}
       {canOverride && (
         <TeacherOverrideModal
           review={selectedReview}
-          isOpen={isOverrideModalOpen}
+          isOpen={isModalOpen}
           onClose={() => {
-            setIsOverrideModalOpen(false);
+            setIsModalOpen(false);
+            setSelectedReview(null);
           }}
           onSuccess={handleOverrideSuccess}
+          onRefetch={refetch}
         />
       )}
     </div>
   );
+};
 
-  if (isCenterManager) {
-    return <CenterManagerThemeScope data-actor="center-manager">{pageContent}</CenterManagerThemeScope>;
-  }
-
-  return pageContent;
+// ============================================================================
+// 3. CANONICAL EXPORT WITH STRICT ACTOR ISOLATION
+// ============================================================================
+export const ReviewQueuePage: React.FC = () => {
+  const user = useAuthStore((state) => state.user);
+  return user?.accountType === "CenterManager" ? (
+    <CenterManagerReviewQueueView />
+  ) : (
+    <TeacherReviewQueueLegacyView />
+  );
 };

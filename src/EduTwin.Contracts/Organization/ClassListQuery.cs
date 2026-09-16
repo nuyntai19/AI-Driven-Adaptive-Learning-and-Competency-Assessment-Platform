@@ -16,6 +16,9 @@ public class ClassListQuery : IValidatableObject
     [Range(1, 100, ErrorMessage = "PageSize must be between 1 and 100.")]
     public int PageSize { get; set; } = 10;
 
+    [MaxLength(100, ErrorMessage = "Search term cannot exceed 100 characters.")]
+    public string? Search { get; set; }
+
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
         if (TeacherId == Guid.Empty)

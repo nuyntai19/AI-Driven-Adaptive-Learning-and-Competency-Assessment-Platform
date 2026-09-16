@@ -95,6 +95,11 @@ export const organizationApi = {
       queryParams.status = params.status;
     }
 
+    const search = params.search?.trim();
+    if (search) {
+      queryParams.search = search;
+    }
+
     const response = await httpClient.get<ClassListResponse>("/classes", {
       params: queryParams,
     });

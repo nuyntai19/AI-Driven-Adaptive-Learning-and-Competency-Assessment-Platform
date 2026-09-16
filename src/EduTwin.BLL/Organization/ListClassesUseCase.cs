@@ -93,6 +93,12 @@ public class ListClassesUseCase : IListClassesUseCase
             dbQuery = dbQuery.Where(c => c.Status == query.Status.Value);
         }
 
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            var search = query.Search.Trim();
+            dbQuery = dbQuery.Where(c => c.ClassName.Contains(search));
+        }
+
         var totalItems = await dbQuery.CountAsync(cancellationToken);
         var totalPages = totalItems == 0 ? 0 : (int)Math.Ceiling(totalItems / (double)query.PageSize);
 

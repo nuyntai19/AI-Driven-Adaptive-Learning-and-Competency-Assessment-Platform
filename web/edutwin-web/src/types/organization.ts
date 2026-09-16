@@ -175,6 +175,7 @@ export interface ClassListParams {
   teacherId?: string;
   subjectId?: string;
   status?: ClassStatus;
+  search?: string;
 }
 
 export interface CreateClassRequest {

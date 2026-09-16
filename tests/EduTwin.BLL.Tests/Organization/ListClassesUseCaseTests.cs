@@ -561,4 +561,30 @@ public class ListClassesUseCaseTests
         Assert.True(result.IsSuccess);
         Assert.Equal(1, result.Data![0].StudentCount);
     }
+
+    [Fact]
+    public async Task CenterManager_SearchFilter_MatchesClassName()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var context = CreateContext(dbName);
+        var c1 = Guid.NewGuid();
+        var c2 = Guid.NewGuid();
+
+        await SeedDataAsync(context, c1);
+        var class1 = await context.Classes.FindAsync(c1);
+        class1!.ClassName = "Lớp 10 Chuyên Toán";
+
+        await SeedDataAsync(context, c2);
+        var class2 = await context.Classes.FindAsync(c2);
+        class2!.ClassName = "Lớp 11 Cơ Bản Văn";
+        await context.SaveChangesAsync();
+
+        var sut = new ListClassesUseCase(context, _mockTenantContext.Object, _mockLogger.Object);
+        var result = await sut.ExecuteAsync(new ClassListQuery { Search = "Chuyên Toán" });
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Data!);
+        Assert.Equal(c1.ToString("D").ToLowerInvariant(), result.Data![0].ClassId);
+        Assert.Equal("Lớp 10 Chuyên Toán", result.Data![0].ClassName);
+    }
 }

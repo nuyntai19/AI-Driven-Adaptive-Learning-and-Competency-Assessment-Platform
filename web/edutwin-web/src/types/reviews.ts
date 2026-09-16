@@ -18,7 +18,6 @@ export interface EvidenceDecisionDto {
   policyVersion: string;
   analysisOverrideVersion: number;
   evaluatedAt: string;
-  mode?: string;
 }
 
 export interface TeacherReviewQueueItemDto {

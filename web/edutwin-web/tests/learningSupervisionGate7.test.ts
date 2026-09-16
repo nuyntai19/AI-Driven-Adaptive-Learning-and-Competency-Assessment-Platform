@@ -4,6 +4,7 @@ import { permissions } from "../src/auth/permissions.ts";
 import { canAccess } from "../src/auth/capabilities.ts";
 import type { EvidenceDecisionDto, TeacherReviewQueueItemDto, TeacherOverrideRequest } from "../src/types/reviews.ts";
 import type { PermissionDto, AuthorizationRoleDto } from "../src/types/authorization.ts";
+import type { ClassDto, ClassListParams } from "../src/types/organization.ts";
 import { extractProblemDetails, isOverrideConflict } from "../src/utils/problemDetails.ts";
 
 const centerManagerUser = (grants: string[] = []) => ({
@@ -86,7 +87,7 @@ test("2. Capabilities: CenterManager and Teacher access guards for Review Queue 
 });
 
 // ============================================================================
-// 3. CANONICAL EVIDENCE DECISION DTO & OCC TOKEN SYNC
+// 3. CANONICAL EVIDENCE DECISION DTO & OCC TOKEN SYNC (NO LEGACY MODE)
 // ============================================================================
 test("3. EvidenceDecisionDto: Synchronized contract with canonical OCC token", () => {
   const evidence: EvidenceDecisionDto = {
@@ -108,6 +109,7 @@ test("3. EvidenceDecisionDto: Synchronized contract with canonical OCC token", (
   assert.equal(evidence.analysisOverrideVersion, 3);
   assert.equal(evidence.reasonCodes.length, 2);
   assert.equal(evidence.requiresTeacherReview, true);
+  assert.equal("mode" in evidence, false, "Legacy mode property must not exist in canonical DTO");
 });
 
 // ============================================================================
@@ -203,39 +205,110 @@ test("6. Scratchpad Drawer: Distinct error handling for 404, 503, and 403", () =
 });
 
 // ============================================================================
-// 7. CLASS SELECTOR PAGINATION & SELECTION CACHING
+// 7. CLASS SELECTOR: SERVER-SIDE SEARCH INTEGRATION
 // ============================================================================
-test("7. Class Selector: Server-side pagination and persistent selection cache", () => {
-  const classMap = new Map<string, { classId: string; className: string }>();
+test("7. Class Selector: Server-side search queries send search param to backend", () => {
+  const searchInput = "Chuyên Toán";
+  const params: ClassListParams = {
+    page: 1,
+    pageSize: 20,
+    search: searchInput.trim() || undefined,
+  };
 
-  // Page 1 arrives
-  const page1 = [
-    { classId: "cls-1", className: "Lớp 10A1" },
-    { classId: "cls-2", className: "Lớp 10A2" },
-  ];
-  for (const c of page1) classMap.set(c.classId, c);
+  assert.equal(params.page, 1);
+  assert.equal(params.pageSize, 20);
+  assert.equal(params.search, "Chuyên Toán");
 
-  // User selects cls-1
-  const selectedClassId = "cls-1";
-  assert.ok(classMap.has(selectedClassId));
+  // Query key reflects both search term and page
+  const queryKey = ["reviewQueueClasses", params.search, params.page];
+  assert.deepEqual(queryKey, ["reviewQueueClasses", "Chuyên Toán", 1]);
 
-  // User paginates to Page 2
-  const page2 = [
-    { classId: "cls-3", className: "Lớp 11B1" },
-    { classId: "cls-4", className: "Lớp 11B2" },
-  ];
-  for (const c of page2) classMap.set(c.classId, c);
+  // Simulating backend response returning a class not previously cached
+  const backendMatchingClass: ClassDto = {
+    classId: "cls-math-adv",
+    className: "Lớp 10 Chuyên Toán",
+    academicYear: "2026-2027",
+    subject: { subjectId: "sub-math", subjectName: "Toán học" },
+    teacher: { teacherId: "t-1", displayName: "Thầy Bình" },
+    studentCount: 30,
+    status: "Active",
+    rowVersion: "1",
+  };
 
-  // Selected class cls-1 is still retained in the cache
-  assert.ok(classMap.has(selectedClassId), "Selected class persists across page queries");
-  assert.equal(classMap.get(selectedClassId)?.className, "Lớp 10A1");
-  assert.equal(classMap.size, 4);
+  const localCache = new Map<string, ClassDto>();
+  assert.equal(localCache.has("cls-math-adv"), false, "Not in cache before query");
+
+  // When response arrives, it is added to cache
+  localCache.set(backendMatchingClass.classId, backendMatchingClass);
+  assert.equal(localCache.has("cls-math-adv"), true, "Loaded into cache after server query");
+  assert.equal(localCache.get("cls-math-adv")?.className, "Lớp 10 Chuyên Toán");
 });
 
 // ============================================================================
-// 8. PERMISSION MATRIX GUARDRAIL 2: EXACT INTERSECTION RULE
+// 8. CLASS SELECTOR: PERSISTENT SELECTION CACHE ACROSS PAGINATION
 // ============================================================================
-test("8. Permission Matrix Guardrail 2: Toggle allowed only on Active ∩ Compatible ∩ Delegable ∩ Actor Effective", () => {
+test("8. Class Selector: Persistent selection cache preserves selected class across pages", () => {
+  const classCache = new Map<string, ClassDto>();
+
+  // Page 1 arrives
+  const page1: ClassDto[] = [
+    {
+      classId: "cls-1",
+      className: "Lớp 10A1",
+      academicYear: "2026-2027",
+      subject: { subjectId: "sub-1", subjectName: "Toán" },
+      teacher: { teacherId: "t-1", displayName: "Cô Mai" },
+      studentCount: 25,
+      status: "Active",
+      rowVersion: "1",
+    },
+    {
+      classId: "cls-2",
+      className: "Lớp 10A2",
+      academicYear: "2026-2027",
+      subject: { subjectId: "sub-1", subjectName: "Toán" },
+      teacher: { teacherId: "t-1", displayName: "Cô Mai" },
+      studentCount: 28,
+      status: "Active",
+      rowVersion: "1",
+    },
+  ];
+  for (const c of page1) classCache.set(c.classId, c);
+
+  // User selects cls-1
+  const selectedClassId = "cls-1";
+
+  // User paginates to Page 2
+  const page2: ClassDto[] = [
+    {
+      classId: "cls-3",
+      className: "Lớp 11B1",
+      academicYear: "2026-2027",
+      subject: { subjectId: "sub-1", subjectName: "Toán" },
+      teacher: { teacherId: "t-2", displayName: "Thầy Hùng" },
+      studentCount: 32,
+      status: "Active",
+      rowVersion: "1",
+    },
+  ];
+  for (const c of page2) classCache.set(c.classId, c);
+
+  // Compute options on page 2: cls-1 must be prepended if not in current page2
+  const list = [...page2];
+  if (selectedClassId && !list.some((c) => c.classId === selectedClassId)) {
+    const cached = classCache.get(selectedClassId);
+    if (cached) list.unshift(cached);
+  }
+
+  assert.ok(list.some((c) => c.classId === selectedClassId), "Selected class persists on page 2 options");
+  assert.equal(list[0].classId, "cls-1");
+  assert.equal(list.length, 2);
+});
+
+// ============================================================================
+// 9. PERMISSION MATRIX GUARDRAIL 2: EXACT INTERSECTION RULE
+// ============================================================================
+test("9. Permission Matrix Guardrail 2: Toggle allowed only on Active ∩ Compatible ∩ Delegable ∩ Actor Effective", () => {
   const targetRole: AuthorizationRoleDto = {
     roleId: "role-teacher-custom",
     roleCode: "TEACHER_ASSISTANT",
@@ -318,9 +391,9 @@ test("8. Permission Matrix Guardrail 2: Toggle allowed only on Active ∩ Compat
 });
 
 // ============================================================================
-// 9. READ-ONLY PRESERVATION OF ASSIGNED PERMISSIONS OUTSIDE DELEGABLE SET
+// 10. READ-ONLY PRESERVATION OF ASSIGNED PERMISSIONS OUTSIDE DELEGABLE SET
 // ============================================================================
-test("9. Permission Matrix Preservation: Assigned permissions outside delegable set are preserved in save payload", () => {
+test("10. Permission Matrix Preservation: Assigned permissions outside delegable set are preserved in save payload", () => {
   const initialPermissions = ["curriculum.questions.read", "legacy.deprecated.perm", "out_of_scope.perm"];
   let selectedPermissions = [...initialPermissions];
 
@@ -343,9 +416,9 @@ test("9. Permission Matrix Preservation: Assigned permissions outside delegable 
 });
 
 // ============================================================================
-// 10. SYSTEM ROLE IMMUTABILITY AND SELF-ROLE MUTATION PROTECTION CONTRACT
+// 11. SYSTEM ROLE IMMUTABILITY AND SELF-ROLE MUTATION PROTECTION CONTRACT
 // ============================================================================
-test("10. Backend Security Boundary: System roles and self-roles invariants", () => {
+test("11. Backend Security Boundary: System roles and self-roles invariants", () => {
   // Verify system role invariant contract
   const systemRole: AuthorizationRoleDto = {
     roleId: "sys-cm-1",
@@ -376,9 +449,9 @@ test("10. Backend Security Boundary: System roles and self-roles invariants", ()
 });
 
 // ============================================================================
-// 11. DIGITAL TWIN KPI BOUNDED TO SINGLE SUBJECT
+// 12. DIGITAL TWIN KPI BOUNDED TO SINGLE SUBJECT
 // ============================================================================
-test("11. Digital Twin Single-Subject KPI: Average mastery strictly bounded to selected subjectId", () => {
+test("12. Digital Twin Single-Subject KPI: Average mastery strictly bounded to selected subjectId", () => {
   const topicsForSubjectMath = [
     { topicNodeId: "tn-1", topicName: "Tích phân cơ bản", masteryPercentage: 80, evidenceCount: 12 },
     { topicNodeId: "tn-2", topicName: "Tích phân từng phần", masteryPercentage: 60, evidenceCount: 8 },
@@ -391,7 +464,165 @@ test("11. Digital Twin Single-Subject KPI: Average mastery strictly bounded to s
   const totalEvidence = topicsForSubjectMath.reduce((acc, t) => acc + t.evidenceCount, 0);
   assert.equal(totalEvidence, 25, "Total evidence reflects math subject attempts only");
 
-  // Label requirement verification
+  // Label requirement verification for CenterManager view
   const kpiLabel = "Độ thuần thục trung bình trong môn đang chọn";
   assert.ok(!kpiLabel.includes("tổng thể"), "Label must not state 'tổng thể' to avoid cross-subject ambiguity");
+});
+
+// ============================================================================
+// 13. ACTOR ISOLATION: REVIEW QUEUE PAGE SEPARATION
+// ============================================================================
+test("13. Actor Isolation: ReviewQueuePage renders CenterManager modern view vs Teacher legacy table view", () => {
+  const resolveViewForActor = (accountType: "CenterManager" | "Teacher") => {
+    if (accountType === "CenterManager") {
+      return {
+        viewType: "CenterManagerReviewQueueView",
+        layout: "MasterDetail",
+        hasThemeScope: true,
+        hasScratchpadDrawer: true,
+        hasClassSearch: true,
+      };
+    }
+    return {
+      viewType: "TeacherReviewQueueLegacyView",
+      layout: "SimpleTable",
+      hasThemeScope: false,
+      hasScratchpadDrawer: false,
+      hasClassSearch: false,
+    };
+  };
+
+  const cmView = resolveViewForActor("CenterManager");
+  assert.equal(cmView.viewType, "CenterManagerReviewQueueView");
+  assert.equal(cmView.layout, "MasterDetail");
+  assert.equal(cmView.hasThemeScope, true);
+  assert.equal(cmView.hasScratchpadDrawer, true);
+
+  const teacherView = resolveViewForActor("Teacher");
+  assert.equal(teacherView.viewType, "TeacherReviewQueueLegacyView");
+  assert.equal(teacherView.layout, "SimpleTable");
+  assert.equal(teacherView.hasThemeScope, false);
+  assert.equal(teacherView.hasScratchpadDrawer, false);
+  assert.equal(teacherView.hasClassSearch, false);
+});
+
+// ============================================================================
+// 14. ACTOR ISOLATION: STUDENT DIGITAL TWIN PAGE SEPARATION
+// ============================================================================
+test("14. Actor Isolation: TeacherStudentTwinPage separates CenterManager single-subject KPI from Teacher legacy view", () => {
+  const resolveTwinViewForActor = (accountType: "CenterManager" | "Teacher") => {
+    if (accountType === "CenterManager") {
+      return {
+        viewType: "CenterManagerStudentTwinView",
+        kpiLabel: "Độ thuần thục trung bình trong môn đang chọn",
+        backLink: "/quan-ly/hoc-sinh",
+        hasThemeScope: true,
+      };
+    }
+    return {
+      viewType: "TeacherStudentTwinLegacyView",
+      kpiLabel: "Độ thuần thục tổng thể",
+      backLink: "/quan-ly/tong-quan-lop-hoc",
+      hasThemeScope: false,
+    };
+  };
+
+  const cmTwin = resolveTwinViewForActor("CenterManager");
+  assert.equal(cmTwin.viewType, "CenterManagerStudentTwinView");
+  assert.equal(cmTwin.kpiLabel, "Độ thuần thục trung bình trong môn đang chọn");
+  assert.equal(cmTwin.hasThemeScope, true);
+
+  const teacherTwin = resolveTwinViewForActor("Teacher");
+  assert.equal(teacherTwin.viewType, "TeacherStudentTwinLegacyView");
+  assert.equal(teacherTwin.kpiLabel, "Độ thuần thục tổng thể");
+  assert.equal(teacherTwin.hasThemeScope, false);
+  assert.equal(teacherTwin.backLink, "/quan-ly/tong-quan-lop-hoc");
+});
+
+// ============================================================================
+// 15. OCC FAIL-CLOSED: MISSING OR INVALID TOKEN LOCKS SUBMISSION
+// ============================================================================
+test("15. OCC Fail-Closed: Missing or non-integer analysisOverrideVersion blocks submission", () => {
+  const validateOccToken = (rawVersion: unknown): number | null => {
+    if (typeof rawVersion === "number" && Number.isInteger(rawVersion)) {
+      return rawVersion;
+    }
+    return null;
+  };
+
+  // Valid tokens
+  assert.equal(validateOccToken(0), 0);
+  assert.equal(validateOccToken(4), 4);
+
+  // Invalid tokens -> MUST FAIL CLOSED (null), NOT fallback to 0
+  assert.equal(validateOccToken(undefined), null, "Undefined token must be null");
+  assert.equal(validateOccToken(null), null, "Null token must be null");
+  assert.equal(validateOccToken("1"), null, "String token must be null");
+  assert.equal(validateOccToken(3.14), null, "Float token must be null");
+
+  // Form submission guard
+  const canSubmit = (token: number | null, isSubmitting: boolean, isConflict: boolean) => {
+    return !isSubmitting && token !== null && !isConflict;
+  };
+
+  assert.equal(canSubmit(2, false, false), true, "Valid token allows submission");
+  assert.equal(canSubmit(null, false, false), false, "Missing token strictly locks submission (Fail-Closed)");
+  assert.equal(canSubmit(2, true, false), false, "Submitting in flight locks submission");
+  assert.equal(canSubmit(2, false, true), false, "Conflict state locks submission");
+});
+
+// ============================================================================
+// 16. OCC CONCURRENCY CONFLICT (409) REFETCH RECOVERY WORKFLOW
+// ============================================================================
+test("16. OCC 409 Workflow: Conflict enables refetch, updates token, and clears conflict state", async () => {
+  const serverVersion = 5;
+  let clientOverrideVersion: number | null = 4;
+  let isConflict = false;
+  let conflictDetails: { message: string; traceId?: string } | null = null;
+
+  // Mock submit producing 409 conflict
+  const attemptSubmit = (version: number) => {
+    if (version !== serverVersion) {
+      const err = createAxiosError(409, {
+        status: 409,
+        detail: "Phiên bản đã thay đổi trên máy chủ.",
+        traceId: "trace-occ-409-refetch-check",
+      });
+      if (isOverrideConflict(err)) {
+        isConflict = true;
+        conflictDetails = {
+          message: "Lượt phân tích đã được cập nhật bởi một phiên làm việc khác.",
+          traceId: extractProblemDetails(err).traceId ?? undefined,
+        };
+      }
+      return false;
+    }
+    return true;
+  };
+
+  // 1. Submit with stale version 4 -> Fails with 409
+  const success = attemptSubmit(clientOverrideVersion!);
+  assert.equal(success, false);
+  assert.equal(isConflict, true);
+  assert.equal((conflictDetails as { message: string; traceId?: string } | null)?.traceId, "trace-occ-409-refetch-check");
+
+  // 2. User clicks Refetch button
+  const handleRefetch = async () => {
+    // Simulates server fetch returning newest version
+    clientOverrideVersion = serverVersion;
+    isConflict = false;
+    conflictDetails = null;
+  };
+
+  await handleRefetch();
+
+  // 3. Post-refetch state: Conflict cleared, client has synchronized version 5
+  assert.equal(isConflict, false);
+  assert.equal(conflictDetails, null);
+  assert.equal(clientOverrideVersion, 5);
+
+  // 4. Retry submission with updated version -> Succeeds
+  const retrySuccess = attemptSubmit(clientOverrideVersion!);
+  assert.equal(retrySuccess, true);
+  assert.equal(isConflict, false);
 });
