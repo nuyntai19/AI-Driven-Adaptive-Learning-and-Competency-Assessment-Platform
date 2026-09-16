@@ -320,9 +320,48 @@ test("7. Subject Goals adhere to Digital Twin backend contract, capability gatin
   assert.equal((goal as unknown as Record<string, unknown>).createdAt, undefined);
   assert.equal((goal as unknown as Record<string, unknown>).updatedAt, undefined);
 
-  // 2. Capability gating: requires twin.student.update_scoped
-  assert.equal(hasPermission(fullCenterManagerUser, permissions.twinStudentUpdateScoped), true);
-  assert.equal(hasPermission(restrictedCenterManagerUser, permissions.twinStudentUpdateScoped), false);
+  // 2. Composite Capability gating: requires BOTH twin.student.update_scoped AND knowledge.subjects.read
+  const evaluateSubjectGoalsCapability = (user: { accountType: "CenterManager"; permissions: string[] }) => {
+    const canUpdateTwinScoped = hasPermission(user, permissions.twinStudentUpdateScoped);
+    const canReadSubjects = hasPermission(user, permissions.subjectsRead);
+    return {
+      canReadSubjects,
+      canUpdateTwinScoped,
+      canManageSubjectGoals: canUpdateTwinScoped && canReadSubjects,
+    };
+  };
+
+  // Full CenterManager has both permissions -> can manage goals
+  const fullCaps = evaluateSubjectGoalsCapability(fullCenterManagerUser);
+  assert.equal(fullCaps.canReadSubjects, true);
+  assert.equal(fullCaps.canUpdateTwinScoped, true);
+  assert.equal(fullCaps.canManageSubjectGoals, true);
+
+  // Restricted CenterManager has subjectsRead but NOT twinStudentUpdateScoped -> cannot mutate goals
+  const restrictedCaps = evaluateSubjectGoalsCapability(restrictedCenterManagerUser);
+  assert.equal(restrictedCaps.canReadSubjects, true);
+  assert.equal(restrictedCaps.canUpdateTwinScoped, false);
+  assert.equal(restrictedCaps.canManageSubjectGoals, false);
+
+  // User with ONLY studentsRead (e.g. read-only student viewer): neither twin mutation nor subject query
+  const studentReadOnlyUser = {
+    accountType: "CenterManager" as const,
+    permissions: [permissions.studentsRead],
+  };
+  const readOnlyCaps = evaluateSubjectGoalsCapability(studentReadOnlyUser);
+  assert.equal(readOnlyCaps.canReadSubjects, false); // /subjects query is disabled, preventing 403
+  assert.equal(readOnlyCaps.canUpdateTwinScoped, false);
+  assert.equal(readOnlyCaps.canManageSubjectGoals, false);
+
+  // User with twin update but lacking knowledge.subjects.read
+  const twinOnlyUser = {
+    accountType: "CenterManager" as const,
+    permissions: [permissions.studentsRead, permissions.twinStudentUpdateScoped],
+  };
+  const twinOnlyCaps = evaluateSubjectGoalsCapability(twinOnlyUser);
+  assert.equal(twinOnlyCaps.canReadSubjects, false);
+  assert.equal(twinOnlyCaps.canUpdateTwinScoped, true);
+  assert.equal(twinOnlyCaps.canManageSubjectGoals, false); // cannot manage goals without subjects list
 
   // 3. Validation bounds: targetScore 0-10, remainingDays 0-3650 (matching backend UpsertStudentSubjectGoalRequest.cs)
   const upsertReq1: UpsertStudentSubjectGoalRequest = {
@@ -359,6 +398,99 @@ test("7. Subject Goals adhere to Digital Twin backend contract, capability gatin
   };
   assert.equal(secondUpsertReq.rowVersion, "0x0000000000000304");
   assert.notEqual(secondUpsertReq.rowVersion, goal.rowVersion);
+
+  // 5. Fail-closed state in SubjectGoalsModal:
+  // Form submission and inputs are disabled when studentDetail or subjects query fails or is loading
+  const computeIsFormDisabled = (state: {
+    isPending: boolean;
+    isLoadingStudent: boolean;
+    isLoadingSubjects: boolean;
+    isStudentError: boolean;
+    isSubjectsError: boolean;
+    hasStudentDetail: boolean;
+    subjectsCount: number;
+  }) => {
+    return (
+      state.isPending ||
+      state.isLoadingStudent ||
+      state.isLoadingSubjects ||
+      state.isStudentError ||
+      state.isSubjectsError ||
+      !state.hasStudentDetail ||
+      state.subjectsCount === 0
+    );
+  };
+
+  // Happy path
+  assert.equal(
+    computeIsFormDisabled({
+      isPending: false,
+      isLoadingStudent: false,
+      isLoadingSubjects: false,
+      isStudentError: false,
+      isSubjectsError: false,
+      hasStudentDetail: true,
+      subjectsCount: 3,
+    }),
+    false
+  );
+
+  // Failure cases fail-closed:
+  // 1. studentDetail query error
+  assert.equal(
+    computeIsFormDisabled({
+      isPending: false,
+      isLoadingStudent: false,
+      isLoadingSubjects: false,
+      isStudentError: true,
+      isSubjectsError: false,
+      hasStudentDetail: false,
+      subjectsCount: 3,
+    }),
+    true
+  );
+
+  // 2. subjects query error
+  assert.equal(
+    computeIsFormDisabled({
+      isPending: false,
+      isLoadingStudent: false,
+      isLoadingSubjects: false,
+      isStudentError: false,
+      isSubjectsError: true,
+      hasStudentDetail: true,
+      subjectsCount: 0,
+    }),
+    true
+  );
+
+  // 3. loading student
+  assert.equal(
+    computeIsFormDisabled({
+      isPending: false,
+      isLoadingStudent: true,
+      isLoadingSubjects: false,
+      isStudentError: false,
+      isSubjectsError: false,
+      hasStudentDetail: false,
+      subjectsCount: 3,
+    }),
+    true
+  );
+
+  // 4. empty subjects list
+  assert.equal(
+    computeIsFormDisabled({
+      isPending: false,
+      isLoadingStudent: false,
+      isLoadingSubjects: false,
+      isStudentError: false,
+      isSubjectsError: false,
+      hasStudentDetail: true,
+      subjectsCount: 0,
+    }),
+    true
+  );
 });
 
 // 8. Class candidate pagination / anti-join không bị thay bằng client filtering

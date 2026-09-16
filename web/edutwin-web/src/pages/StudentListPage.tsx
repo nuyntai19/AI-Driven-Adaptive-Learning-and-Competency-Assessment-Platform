@@ -45,7 +45,9 @@ const CenterManagerStudentListView: React.FC = () => {
   const canUpdateStudent = hasPermission(permissions.studentsUpdate);
   const canDeleteStudent = hasPermission(permissions.studentsDelete);
   const canResetPassword = hasPermission(permissions.studentsResetPassword);
+  const canReadSubjects = hasPermission(permissions.subjectsRead);
   const canUpdateTwinScoped = hasPermission(permissions.twinStudentUpdateScoped);
+  const canManageSubjectGoals = canUpdateTwinScoped && canReadSubjects;
 
   const [page, setPage] = useState<number>(1);
   const pageSize = 20;
@@ -75,10 +77,11 @@ const CenterManagerStudentListView: React.FC = () => {
   const [goalStudentId, setGoalStudentId] = useState<string | null>(null);
   const [goalStudentName, setGoalStudentName] = useState<string>("");
 
-  // Query active subjects for resolving subjectId into subjectName in drawer and modal
+  // Query active subjects for resolving subjectId into subjectName in drawer and modal (only if permitted)
   const { data: subjectsData } = useQuery({
     queryKey: ["subjects", "active-for-student-list"],
     queryFn: () => organizationApi.listSubjects(true),
+    enabled: canReadSubjects,
   });
 
   const subjectsMap = useMemo(() => {
@@ -387,7 +390,7 @@ const CenterManagerStudentListView: React.FC = () => {
           >
             Chi tiết
           </button>
-          {canUpdateTwinScoped && (
+          {canManageSubjectGoals && (
             <button
               type="button"
               id={`btn-goals-student-${student.studentId}`}
@@ -784,7 +787,7 @@ const CenterManagerStudentListView: React.FC = () => {
                       <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--cm-cyan)]">
                         Mục tiêu điểm số môn học (Digital Twin) ({studentDetail.subjectGoals?.length || 0})
                       </h3>
-                      {canUpdateTwinScoped && (
+                      {canManageSubjectGoals && (
                         <button
                           type="button"
                           onClick={() => {
@@ -803,7 +806,7 @@ const CenterManagerStudentListView: React.FC = () => {
                     ) : (
                       <div className="divide-y divide-[var(--cm-border-subtle)] rounded-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-raised)]">
                         {studentDetail.subjectGoals.map((goal) => {
-                          const subjectLabel = subjectsMap.get(goal.subjectId) || goal.subjectId;
+                          const subjectLabel = subjectsMap.get(goal.subjectId) || `Môn học (#${goal.subjectId.slice(0, 8)})`;
                           return (
                             <div key={goal.subjectId} className="flex items-center justify-between p-3 text-xs">
                               <div>
@@ -830,7 +833,7 @@ const CenterManagerStudentListView: React.FC = () => {
           )}
 
           {/* Subject Goals Modal */}
-          {goalStudentId && canUpdateTwinScoped && (
+          {goalStudentId && canManageSubjectGoals && (
             <SubjectGoalsModal
               isOpen={!!goalStudentId}
               studentId={goalStudentId}
@@ -1072,6 +1075,7 @@ const LegacyStudentListPage: React.FC = () => {
   const canUpdateStudent = hasPermission(permissions.studentsUpdate);
   const canDeleteStudent = hasPermission(permissions.studentsDelete);
   const canResetPassword = hasPermission(permissions.studentsResetPassword);
+  const canReadSubjects = hasPermission(permissions.subjectsRead);
 
   const [page, setPage] = useState<number>(1);
   const pageSize = 20;
@@ -1136,7 +1140,7 @@ const LegacyStudentListPage: React.FC = () => {
   const { data: legacySubjectsData } = useQuery({
     queryKey: ["subjects", "for-legacy-student-detail"],
     queryFn: () => organizationApi.listSubjects(true),
-    enabled: !!viewingStudentId,
+    enabled: !!viewingStudentId && canReadSubjects,
   });
 
   const legacySubjectsMap = useMemo(() => {
@@ -1619,7 +1623,7 @@ const LegacyStudentListPage: React.FC = () => {
                             {studentDetail.subjectGoals.map((goal) => (
                               <tr key={goal.subjectId}>
                                 <td className="px-3 py-2 font-medium text-gray-900">
-                                  {legacySubjectsMap.get(goal.subjectId) || goal.subjectId}
+                                  {legacySubjectsMap.get(goal.subjectId) || `Môn học (#${goal.subjectId.slice(0, 8)})`}
                                 </td>
                                 <td className="px-3 py-2 font-bold text-indigo-600">{goal.targetScore} đ</td>
                                 <td className="px-3 py-2 text-gray-500">Còn {goal.remainingDays} ngày</td>

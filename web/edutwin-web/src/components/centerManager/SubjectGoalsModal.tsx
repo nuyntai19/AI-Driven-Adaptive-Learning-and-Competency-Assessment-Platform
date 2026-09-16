@@ -8,7 +8,7 @@ import type {
   UpsertStudentSubjectGoalRequest,
 } from "../../types/organization";
 import { extractProblemDetails, isConcurrencyConflict, mapSafeOperationalError } from "../../utils/problemDetails";
-import { ConcurrencyBanner } from "./CenterManagerPrimitives";
+import { ConcurrencyBanner, SafeErrorPanel, Skeleton } from "./CenterManagerPrimitives";
 import { Modal } from "./CenterManagerOverlays";
 
 interface SubjectGoalsModalProps {
@@ -41,6 +41,8 @@ export const SubjectGoalsModal: React.FC<SubjectGoalsModalProps> = ({
   const {
     data: studentDetail,
     isLoading: isLoadingStudent,
+    isError: isStudentError,
+    error: studentError,
     refetch: refetchStudent,
   } = useQuery({
     queryKey: ["studentDetail", studentId],
@@ -59,7 +61,13 @@ export const SubjectGoalsModal: React.FC<SubjectGoalsModalProps> = ({
   }, [studentDetail?.subjectGoals]);
 
   // Fetch active subjects list for selector and name lookup
-  const { data: subjectsData, isLoading: isLoadingSubjects } = useQuery({
+  const {
+    data: subjectsData,
+    isLoading: isLoadingSubjects,
+    isError: isSubjectsError,
+    error: subjectsError,
+    refetch: refetchSubjects,
+  } = useQuery({
     queryKey: ["subjects", "active-for-goals"],
     queryFn: () => organizationApi.listSubjects(true),
     enabled: isOpen,
@@ -171,9 +179,18 @@ export const SubjectGoalsModal: React.FC<SubjectGoalsModalProps> = ({
     },
   });
 
+  const isFormDisabled =
+    upsertMutation.isPending ||
+    isLoadingStudent ||
+    isLoadingSubjects ||
+    isStudentError ||
+    isSubjectsError ||
+    !studentDetail ||
+    subjects.length === 0;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!studentId || !selectedSubjectId) return;
+    if (isFormDisabled || !studentId || !selectedSubjectId || !studentDetail) return;
 
     const score = parseFloat(targetScore);
     if (Number.isNaN(score) || score < 0 || score > 10) {
@@ -226,6 +243,39 @@ export const SubjectGoalsModal: React.FC<SubjectGoalsModalProps> = ({
           <ConcurrencyBanner onReload={handleReload} isReloading={isLoadingStudent || upsertMutation.isPending} />
         )}
 
+        {/* Student detail query error */}
+        {isStudentError && (
+          <SafeErrorPanel
+            error={studentError}
+            fallback="Không thể tải thông tin chi tiết học sinh và danh sách mục tiêu."
+            onRetry={() => refetchStudent()}
+          />
+        )}
+
+        {/* Subjects list query error */}
+        {isSubjectsError && (
+          <SafeErrorPanel
+            error={subjectsError}
+            fallback="Không thể tải danh sách môn học hoạt động."
+            onRetry={() => refetchSubjects()}
+          />
+        )}
+
+        {/* Loading skeleton state */}
+        {(isLoadingStudent || isLoadingSubjects) && (
+          <div className="space-y-2 py-1" role="status" aria-label="Đang tải dữ liệu mục tiêu">
+            <Skeleton className="h-4 w-1/3" />
+            <Skeleton className="h-8 w-full" />
+          </div>
+        )}
+
+        {/* Empty subjects warning */}
+        {!isLoadingSubjects && !isSubjectsError && subjects.length === 0 && (
+          <div role="status" className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-xs text-amber-200">
+            Không tìm thấy môn học nào đang hoạt động trong trung tâm để thiết lập mục tiêu.
+          </div>
+        )}
+
         {feedback && feedback.type !== "conflict" && (
           <div
             role="alert"
@@ -242,8 +292,8 @@ export const SubjectGoalsModal: React.FC<SubjectGoalsModalProps> = ({
           </div>
         )}
 
-        {/* Existing Goals Overview */}
-        {goals.length > 0 && (
+        {/* Existing Goals Overview (only if student detail loaded successfully) */}
+        {!isStudentError && goals.length > 0 && (
           <div>
             <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-secondary)]">
               Mục tiêu hiện có ({goals.length})
@@ -251,7 +301,7 @@ export const SubjectGoalsModal: React.FC<SubjectGoalsModalProps> = ({
             <div className="mt-2 divide-y divide-[var(--cm-border-subtle)] rounded-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-raised)]">
               {goals.map((goal) => {
                 const sub = subjectsMap.get(goal.subjectId);
-                const label = sub ? `${sub.subjectName} (${sub.subjectCode})` : goal.subjectId;
+                const label = sub ? `${sub.subjectName} (${sub.subjectCode})` : `Môn học (#${goal.subjectId.slice(0, 8)})`;
                 return (
                   <div
                     key={goal.subjectId}
@@ -277,7 +327,8 @@ export const SubjectGoalsModal: React.FC<SubjectGoalsModalProps> = ({
                       <button
                         type="button"
                         onClick={() => setSelectedSubjectId(goal.subjectId)}
-                        className="text-xs text-indigo-400 hover:text-indigo-300 underline"
+                        disabled={isFormDisabled}
+                        className="text-xs text-indigo-400 hover:text-indigo-300 underline disabled:opacity-50"
                       >
                         Chọn sửa
                       </button>
@@ -303,15 +354,19 @@ export const SubjectGoalsModal: React.FC<SubjectGoalsModalProps> = ({
               id="goal-subject-select"
               value={selectedSubjectId}
               onChange={(e) => setSelectedSubjectId(e.target.value)}
-              disabled={isLoadingSubjects || upsertMutation.isPending}
-              className="cm-field mt-1 w-full px-3 text-sm"
+              disabled={isFormDisabled}
+              className="cm-field mt-1 w-full px-3 text-sm disabled:opacity-50"
               required
             >
-              {subjects.map((sub) => (
-                <option key={sub.subjectId} value={sub.subjectId}>
-                  {sub.subjectName} ({sub.subjectCode})
-                </option>
-              ))}
+              {subjects.length === 0 ? (
+                <option value="">(Không có môn học khả dụng)</option>
+              ) : (
+                subjects.map((sub) => (
+                  <option key={sub.subjectId} value={sub.subjectId}>
+                    {sub.subjectName} ({sub.subjectCode})
+                  </option>
+                ))
+              )}
             </select>
           </div>
 
@@ -328,8 +383,8 @@ export const SubjectGoalsModal: React.FC<SubjectGoalsModalProps> = ({
                 max="10"
                 value={targetScore}
                 onChange={(e) => setTargetScore(e.target.value)}
-                disabled={upsertMutation.isPending}
-                className="cm-field mt-1 w-full px-3 text-sm"
+                disabled={isFormDisabled}
+                className="cm-field mt-1 w-full px-3 text-sm disabled:opacity-50"
                 required
               />
               <p className="mt-1 text-[11px] text-[var(--cm-text-muted)]">Thang điểm 10, tối đa 2 chữ số thập phân.</p>
@@ -347,8 +402,8 @@ export const SubjectGoalsModal: React.FC<SubjectGoalsModalProps> = ({
                 max="3650"
                 value={remainingDays}
                 onChange={(e) => setRemainingDays(e.target.value)}
-                disabled={upsertMutation.isPending}
-                className="cm-field mt-1 w-full px-3 text-sm"
+                disabled={isFormDisabled}
+                className="cm-field mt-1 w-full px-3 text-sm disabled:opacity-50"
                 required
               />
               <p className="mt-1 text-[11px] text-[var(--cm-text-muted)]">Số ngày trước kỳ đánh giá (tối đa 10 năm).</p>
@@ -373,8 +428,8 @@ export const SubjectGoalsModal: React.FC<SubjectGoalsModalProps> = ({
             <button
               type="submit"
               id="btn-submit-subject-goal"
-              disabled={upsertMutation.isPending || isLoadingStudent}
-              className="cm-primary-button text-sm"
+              disabled={isFormDisabled}
+              className="cm-primary-button text-sm disabled:opacity-50"
             >
               {upsertMutation.isPending ? "Đang lưu..." : currentGoal ? "Cập nhật mục tiêu" : "Thiết lập mục tiêu"}
             </button>
