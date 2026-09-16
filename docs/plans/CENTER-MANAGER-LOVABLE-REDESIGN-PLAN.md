@@ -277,7 +277,7 @@ graph TD
 * **Evidence commits:**
   - `021461e`: `feat(ux-center): reskin organization management workspace` (Reskin 4 pages, modals, overlays, test suite Gate 5).
   - `59f2c0d`: `fix(ux-center): harden subject goals capability gating and canonical rowversion propagation` (Khắc phục phản biện P1/P2: capability-first gating với `twin.student.update_scoped`, lan truyền RowVersion tươi tức thì chống 409 khi sửa liên tiếp, chuẩn hóa validation `remainingDays` 0–3650 theo `UpsertStudentSubjectGoalRequest.cs`, và đồng bộ canonical DTO `StudentSubjectGoalDto`).
-  - `[Pending Commit]`: `fix(ux-center): require subjectsRead capability and enforce fail-closed state on subject goals modal` (Khắc phục phản biện P1/P2 vòng 2: capability tổng hợp `canManageSubjectGoals = twin.student.update_scoped && knowledge.subjects.read`, guard `enabled: canReadSubjects` cho query môn học ở cả modern & legacy view chống 403 khi role chỉ có quyền đọc học sinh; tích hợp `SafeErrorPanel` kèm nút retry và cơ chế fail-closed vô hiệu hóa form khi query thất bại hoặc danh sách môn trống).
+  - `1823e02`: `fix(ux-center): require subjectsRead capability and enforce fail-closed state on subject goals modal` (Khắc phục phản biện P1/P2 vòng 2: capability tổng hợp `canManageSubjectGoals = twin.student.update_scoped && knowledge.subjects.read`, guard `enabled: canReadSubjects` cho query môn học ở cả modern & legacy view chống 403 khi role chỉ có quyền đọc học sinh; tích hợp `SafeErrorPanel` kèm nút retry và cơ chế fail-closed vô hiệu hóa form khi query thất bại hoặc danh sách môn trống).
 * **Kết quả xác minh:**
   - 148/148 frontend tests pass (0 fail, 0 skipped, 0 cancelled).
   - ESLint: 0 errors, 0 warnings.
