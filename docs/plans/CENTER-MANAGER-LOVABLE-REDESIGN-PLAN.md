@@ -324,49 +324,69 @@ graph TD
 ---
 
 ### Checkpoint 6: Academic Content Reskin (Khối Nội dung học thuật)
-* **Trạng thái:** **GATE 6A — AUTOMATED PASS (HARDENED R2)** *(Gate 6B: Question Bank & Assignments CHƯA THỰC HIỆN; chưa tuyên bố hoàn tất toàn bộ Gate 6)*
+* **Trạng thái:** **HOÀN THÀNH VỀ MÃ NGUỒN & TEST TỰ ĐỘNG — GATE 6 (6A & 6B) PASS** *(Remote push: PASS; Chờ xác nhận Chrome E2E Runtime để đóng nghiệm thu chính thức)*
 * **Evidence commits:**
-  - `31aa627` (`feat(ux-center): reskin knowledge graph and curriculum workspace (gate 6a)`)
-  - `3c817bf` (`fix(ux-center): harden curriculum capabilities, canonical selectors and mutation error trace ids`)
-  - `02d7061` (`docs(ux): record gate 6a corrective hardening`)
-  - `fix(ux-center): resolve codex review findings for gate 6a node api, uuid removal, detail route, teacher capability and pagination`
-* **Chrome E2E:** `Pending Manual / Chrome E2E Confirmation` (Toàn bộ kiểm thử tự động pass, sẵn sàng cho phiên kiểm tra trực quan tương tác Chrome).
+  - **Gate 6A (Knowledge Graph & Curriculum):**
+    - `31aa627` (`feat(ux-center): reskin knowledge graph and curriculum workspace (gate 6a)`)
+    - `3c817bf` (`fix(ux-center): harden curriculum capabilities, canonical selectors and mutation error trace ids`)
+    - `02d7061` (`docs(ux): record gate 6a corrective hardening`)
+    - `8985f1e` (`docs(ux): record gate 6a r2 hardening for capabilities and selectors`)
+  - **Gate 6B (Question Bank & Assignments):**
+    - `046a599` (`feat(ux-center): reskin question bank and question editor with state machine and katex (gate 6b)`)
+    - `66819b9` (`feat(ux-center): reskin assignment workspace, wizard and progress item tracking (gate 6b)`)
+    - `017928e` (`test(ux-center): verify academic content gate 6b contracts and capabilities`)
+    - `3782d87` (`fix(ux-center): harden gate 6b occ fail-closed, class pagination, capability queries and teacher resolution`)
+    - `2de78d8` (`fix(ux-center): permit read-only assignment viewing and strict non-null createdByTeacherId`)
+* **Chrome E2E:** `Pending Manual / Chrome E2E Confirmation` (Toàn bộ kiểm thử tự động, lint, build đã pass 100%, sẵn sàng cho phiên kiểm tra trực quan tương tác Chrome).
 * **Kết quả xác minh kỹ thuật:**
-  - 166/166 frontend tests pass (18 tests trong suite `tests/academicContentGate6A.test.ts`, 0 fail, 0 skipped).
+  - 182/182 frontend tests pass (18 tests trong `tests/academicContentGate6A.test.ts`, 16 tests trong `tests/academicContentGate6B.test.ts`, 0 fail, 0 skipped, thời gian 3.32s).
   - ESLint: 0 errors, 0 warnings.
-  - Production build: Thành công; bundle chính đạt ~396.0 KB (gzip ~125.3 KB), nằm chặt chẽ trong ngân sách baseline `395 KB + 10%` (~434.5 KB); các chunk route phân tách rõ ràng: `KnowledgeGraphPage` (92.27 KB), `CurriculumEditorPage` (42.37 KB), `CurriculumListPage` (10.39 KB); không chunk nào vượt 500 KB.
+  - TypeScript: 0 compile errors (`npx tsc -b`).
+  - Production build: Thành công trong 9.40s; main bundle `dist/assets/index-De4Wm4Vu.js` đạt 396.48 KB (gzip: 125.39 KB), nằm chặt chẽ trong ngân sách baseline `395 KB + 10%` (~434.5 KB); KaTeX được cô lập tại dynamic chunk `dist/assets/MathFormulaPreview-DSQQNLpk.js` (262.60 KB, chỉ tải khi xem công thức); các chunk route phân tách rõ ràng: `QuestionBankPage` (20.60 KB), `QuestionEditorPage` (34.29 KB), `AssignmentListPage` (16.39 KB), `AssignmentEditorPage` (32.08 KB), `AssignmentProgressPage` (12.56 KB); không chunk nào vượt 500 KB.
   - `git diff --check`: sạch hoàn toàn (0 warning, 0 trailing whitespace).
-  - 7 tiêu chí cốt lõi được bảo đảm trọn vẹn, cùng 5 điểm gia cố qua 2 vòng review của Codex:
+  - Các tiêu chí cốt lõi được bảo đảm trọn vẹn:
     1. **Phân lập Actor (Actor Isolation):** Áp dụng logic chuẩn `user?.accountType === "CenterManager"`. CenterManager được phục vụ giao diện Dark Enterprise SaaS mới trong phạm vi `<CenterManagerThemeScope data-actor="center-manager">`; Teacher và các vai trò khác giữ nguyên view legacy không thay đổi.
     2. **Phân quyền năng lực (Capability-first & Fail-closed):**
-       - Toàn bộ thao tác thêm, sửa, xóa, publish được bảo vệ bởi capability guards (`nodesCreate`, `nodesUpdate`, `nodesDelete`, `edgesCreate`, `edgesUpdate`, `edgesDelete`, `curriculumsCreate`, `curriculumsUpdate`, `curriculumsPublish`, `teachersRead`, `subjectsRead`).
-       - **Gia cố query môn học & giáo viên luồng tạo:** Gating query `listSubjects` với `enabled: canReadSubjects` (`knowledge.subjects.read`). Trong create mode của CenterManager, bắt buộc `canReadTeachers` (`userManagement.teachers.read`) để chỉ định giáo viên phụ trách. Nếu thiếu quyền hoặc API lỗi, hệ thống áp dụng cơ chế fail-closed với `SafeErrorPanel` và nút thử lại.
-       - **Quyền truy cập route chi tiết chuẩn xác:** Route `/quan-ly/giao-trinh/:id` trong `App.tsx` sử dụng `allOf: [permissions.curriculumsRead]`. User chỉ có quyền đọc xem được chi tiết giáo trình ở chế độ view-only (banner amber, vô hiệu hóa mutation), user thiếu quyền đọc bị chặn fail-closed ngay từ route (không bị lỗi 403 trên GET).
+       - Toàn bộ thao tác thêm, sửa, xóa, publish được bảo vệ bởi capability guards (`nodesCreate`, `nodesUpdate`, `nodesDelete`, `edgesCreate`, `edgesUpdate`, `edgesDelete`, `curriculumsCreate`, `curriculumsUpdate`, `curriculumsPublish`, `teachersRead`, `subjectsRead`, `questionsRead`, `questionsCreate`, `questionsUpdate`, `questionsDelete`, `assignmentsRead`, `assignmentsCreate`, `assignmentsUpdate`, `assignmentsDelete`).
+       - Gating query phụ trợ: `useAssignmentClasses`, `useAssignableQuestions`, `useAssignmentClassStudents` đều bọc tham số `{ enabled: canRead* }` để không gây lỗi HTTP 403 không mong muốn.
+       - Route chi tiết bài tập `/quan-ly/bai-tap/:id` cho phép tài khoản chỉ có `assignments.assignments.read` xem ở chế độ read-only mà không bị over-gate bởi các quyền lớp/câu hỏi; chế độ tạo mới hoặc sửa Draft vẫn bắt buộc đủ các quyền hỗ trợ.
     3. **Đồ thị tri thức (Knowledge Graph):**
        - Bố cục Canvas tương tác trung tâm + Inspector Sidebar (desktop) / Drawer (mobile) bên phải.
        - Tự động tính toán vị trí SVG theo mô hình phân tầng hình thái học (topological layout) dựa trên `nodeType` và `orderIndex` hoàn toàn phía client.
-       - **Tuyệt đối 0 trường tọa độ giả:** Không lưu, không phát sinh trường `x`, `y`, `position` nào trong DTO hay mutation request.
+       - Tuyệt đối 0 trường tọa độ giả: Không lưu, không phát sinh trường `x`, `y`, `position` nào trong DTO hay mutation request.
        - Bảo toàn đầy đủ canonical enums: `NodeType` (`Subject`, `Chapter`, `Topic`, `Skill`, `Concept`) và `RelationType` (`PrerequisiteOf`, `RelatedTo`, `PartOf`, `CausesErrorIn`).
        - Toàn bộ mutation gửi kèm `RowVersion` chuẩn xác; xung đột chu trình (`ErrorCodes.DagCycleDetected`) và concurrency conflict (409) được map an toàn qua `mapSafeOperationalError`.
        - Lỗi mutation tách biệt rõ ràng thông báo vận hành tiếng Việt và `traceId` chẩn đoán qua badge `font-mono`.
     4. **Giáo trình & Lộ trình học (Curriculum Workspace):**
        - Trạng thái canonical: `Draft`, `Published`, `Archived`.
-       - **Endpoint cập nhật chuẩn xác:** Sử dụng `PATCH /api/v1/curriculums/{id}` (thông qua `curriculumApi.updateCurriculum(id, payload)`), gửi atomic OCC `rowVersion`.
-       - **Bộ chọn Canonical Knowledge Nodes:** Gọi `knowledgeGraphApi.listNodes(subjectId)`, khớp chính xác capability `knowledge.nodes.read` (không đòi hỏi `edges.read` như `getGraph`). Hiển thị thẻ trực quan, hỗ trợ điều chỉnh thứ tự nút (▲, ▼) bảo toàn chuỗi sequence nguyên tử.
-       - **Bộ chọn Canonical Classes:** Gọi `organizationApi.listClasses(...)`, hỗ trợ toggle lọc theo môn học của giáo trình, hiển thị mã lớp, tên lớp, niên khóa và giáo viên phụ trách.
-       - **Loại bỏ 100% ô nhập UUID thủ công:** Xóa bỏ hoàn toàn 2 textarea raw input cho Node IDs và Class IDs; ngăn chặn triệt để nguy cơ bypass selector bằng ID đoán/cũ.
-       - **Tìm kiếm & Phân trang Server-side:** Hỗ trợ tìm kiếm và phân trang cho cả giáo viên và lớp học. Sử dụng cache tích lũy (`cachedTeachers`, `cachedClasses`) bảo toàn nguyên vẹn mọi lựa chọn khi chuyển trang hoặc đổi bộ lọc tìm kiếm.
-       - Bước Publish có Modal xác nhận trực quan dễ tiếp cận (thay thế hoàn toàn `window.confirm` và `window.alert`), gửi `rowVersion` mới nhất.
-       - Sau mỗi mutation thành công (lưu thông tin, lưu nodes, lưu classes), `rowVersion` được cập nhật ngay vào state và React Query cache để các thao tác liên tiếp trong cùng phiên không bị lỗi 409 giả.
-       - Lỗi 409 thực tế kích hoạt `ConcurrencyBanner` với nút tải lại dữ liệu mới từ backend.
-       - Khi lộ trình đã ở trạng thái `Published`, giao diện tự động chuyển chế độ chỉ đọc (read-only) và vô hiệu hóa các nút mutation.
-    5. **Xử lý lỗi an toàn & Trace ID:** 100% lỗi từ backend đi qua `mapSafeOperationalError` và hiển thị `SafeErrorPanel`. Trích xuất chuẩn xác `traceId` từ ProblemDetails hoặc header `x-trace-id` qua `extractProblemDetails(err)` và hiển thị riêng biệt trong badge monospace; không render raw ProblemDetails hoặc rò rỉ SQL exception / stack trace ra UI.
-    6. **Tính chân thực DTO:** Không phát sinh bất kỳ số liệu hay KPI mẫu giả định nào.
-    7. **Bảo toàn Teacher view:** Giữ nguyên view và logic nghiệp vụ cũ cho Teacher (ví dụ ràng buộc giáo viên ngầm định khi tạo giáo trình).
+       - Endpoint cập nhật chuẩn xác: Sử dụng `PATCH /api/v1/curriculums/{id}` (thông qua `curriculumApi.updateCurriculum(id, payload)`), gửi atomic OCC `rowVersion`.
+       - Bộ chọn Canonical Knowledge Nodes qua `knowledgeGraphApi.listNodes(subjectId)`, khớp chính xác capability `knowledge.nodes.read`.
+       - Bộ chọn Canonical Classes qua `organizationApi.listClasses(...)`, hỗ trợ toggle lọc theo môn học, hiển thị mã lớp, tên lớp, niên khóa và giáo viên.
+       - Loại bỏ 100% ô nhập UUID thủ công (raw textareas).
+       - Tìm kiếm & Phân trang Server-side cho giáo viên và lớp học, bảo toàn lựa chọn qua `cachedTeachers` và `cachedClasses`.
+       - Bước Publish có Modal xác nhận trực quan, gửi `rowVersion` mới nhất.
+       - Cập nhật `rowVersion` tươi sau mỗi mutation để tránh lỗi 409 giả.
+       - Khi lộ trình đã ở trạng thái `Published`, giao diện tự động chuyển chế độ chỉ đọc (read-only).
+    5. **Ngân hàng câu hỏi (Question Bank Workspace — Gate 6B):**
+       - Danh sách câu hỏi lọc theo môn học, mức độ khó, loại câu hỏi (`MultipleChoice`, `ShortAnswer`, `Essay`).
+       - State machine chuẩn: `Draft` → `Active` → `Archived`.
+       - Editor cấu hình câu hỏi hỗ trợ soạn thảo KaTeX với toolbar toán học trực quan (tải lazy không phình bundle).
+       - Chế độ chấm chuẩn xác theo contract backend (`QuestionAnswerEvaluationMode`): `"TextExact"`, `"NumericRational"`, `"Manual"`.
+       - Thuộc tính suy luận AI reasoning là cấu hình độc lập `reasoningRequired`, không biến thành mode giả.
+       - Hợp đồng `QuestionDto` chuẩn xác: `createdByTeacherId: string` bắt buộc (non-null), resolve tên giáo viên thật qua `organizationApi.getTeacher(createdByTeacherId)` khi có quyền `canReadTeachers`.
+       - OCC Fail-Closed: Tuyệt đối không sinh fallback `"1"`, chặn mutation và tự động refetch khi thiếu `rowVersion`.
+    6. **Quản lý Bài tập & Tiến độ (Assignment Workspace — Gate 6B):**
+       - Danh sách bài tập phân trang server-side kèm bộ lọc lớp học có phân trang và cache (`filterClassPage`, `cachedClasses`).
+       - Wizard tạo bài tập 3 bước: Thông tin chung & Lớp học (hỗ trợ phân trang lớp học `pageSize: 20`, lưu cache `cachedClasses`, trong edit mode tự động resolve lớp bằng `organizationApi.getClass(assignment.classId)`), Chọn câu hỏi (phân trang + lọc môn/độ khó/loại), Tóm tắt mục tiêu (Target Summary) trước khi phát hành.
+       - OCC Fail-Closed: Xóa bỏ hoàn toàn fallback `"1"`, chặn mutation và tự động refetch khi thiếu `rowVersion`.
+       - Màn hình tiến độ (`AssignmentProgressPage`): Render danh sách học sinh từ `AssignmentProgressItemDto`, hiển thị tiến độ làm bài thực tế; khi query lỗi, dừng hoàn toàn việc render metric cards, không sinh các con số 0 giả lập (Zero Fake 0 KPIs).
+    7. **Xử lý lỗi an toàn & Trace ID:** 100% lỗi từ backend đi qua `mapSafeOperationalError` và hiển thị `SafeErrorPanel`. Trích xuất chuẩn xác `traceId` từ ProblemDetails hoặc header `x-trace-id` qua `extractProblemDetails(err)` và hiển thị riêng biệt trong badge monospace; không render raw ProblemDetails hoặc rò rỉ SQL exception / stack trace ra UI.
+    8. **Tính chân thực DTO:** Không phát sinh bất kỳ số liệu hay KPI mẫu giả định nào.
+    9. **Bảo toàn Teacher view:** Giữ nguyên view và logic nghiệp vụ cũ cho Teacher trên toàn bộ các route này.
 * **Mục tiêu:** Reskin 4 module nội dung học thuật lớn: Knowledge Graph, Curriculum, Question Bank, và Assignments theo đúng Actor Isolation Rule.
 * **Chi tiết công việc:**
   1. `KnowledgeGraphPage` (ĐÃ HOÀN THÀNH Ở GATE 6A):
-     - Bố cục Canvas + Right Inspector Panel bên phải theo ý tưởng Ảnh 8 (chỉ áp dụng trong CenterManager context).
+     - Bố cục Canvas + Right Inspector Panel bên phải (chỉ áp dụng trong CenterManager context).
      - Inspector panel hiển thị thông tin Node hoặc Edge được chọn với dữ liệu canonical và `RowVersion`.
      - Form thêm/sửa Node; form liên kết Edge (mối quan hệ tiên quyết Prerequisite, relationType, weight).
      - Cảnh báo lỗi chu trình đồ thị (Cycle detection) hiển thị trên giao diện an toàn qua `mapSafeOperationalError`.
@@ -382,23 +402,23 @@ graph TD
      - Tìm kiếm và phân trang cho giáo viên và lớp học, bảo toàn lựa chọn qua `cachedTeachers` và `cachedClasses`.
      - Nút Publish kèm bước xác nhận và gửi `RowVersion`.
      - Hiển thị tách biệt `traceId` cho mutation error.
-  3. `QuestionBankPage` & `QuestionEditorPage` (GATE 6B — CHƯA THỰC HIỆN):
+  3. `QuestionBankPage` & `QuestionEditorPage` (ĐÃ HOÀN THÀNH Ở GATE 6B):
      - Danh sách câu hỏi lọc theo môn học, mức độ khó, loại câu hỏi (MCQ, Short Answer, Essay).
      - Editor cấu hình câu hỏi:
-       * Soạn thảo công thức Toán KaTeX.
-       * **Chế độ chấm chuẩn xác theo contract hiện hành (`QuestionAnswerEvaluationMode`):**
-         - `"TextExact"`: So khớp văn bản chính xác.
-         - `"NumericRational"`: Đánh giá số / phân số hữu tỉ.
-         - `"Manual"`: Giáo viên chấm thủ công.
-         *(Lưu ý: Yêu cầu suy luận AI reasoning là thuộc tính cấu hình độc lập `reasoningRequired`, không biến thành evaluation mode giả).*
+       * Soạn thảo công thức Toán KaTeX với toolbar toán học chuyên dụng.
+       * Chế độ chấm chuẩn xác theo contract backend (`QuestionAnswerEvaluationMode`): `"TextExact"`, `"NumericRational"`, `"Manual"`.
        * Quy trình chuyển đổi trạng thái: `Draft` → `Active` → `Archived`.
-  4. `AssignmentListPage`, `AssignmentEditorPage` & `AssignmentProgressPage` (GATE 6B — CHƯA THỰC HIỆN):
-     - Phân lập view cho CenterManager (không làm đổi giao diện Teacher).
-     - Editor tạo bài tập: Chọn câu hỏi, chọn lớp giao bài, xem trước **Tóm tắt mục tiêu (Target Summary)** trước khi Publish.
-     - **Màn hình tiến độ (`AssignmentProgressPage`):**
-       * Hiển thị danh sách học sinh, trạng thái làm bài (`status`), và số câu đã hoàn thành / tổng số câu (`completedQuestionCount` / `totalQuestionCount`).
-       * **Tuyệt đối không hứa hẹn hoặc hiển thị "điểm số aggregate theo lớp"** vì API hiện tại chưa hỗ trợ trường này trong `AssignmentProgressItemDto`. Chỉ hiển thị aggregate khi backend chính thức cung cấp.
-* **Tiêu chí nghiệm thu (Gate 6):** Canvas đồ thị và inspector hoạt động ổn định; contract enum chuẩn xác; quy trình Draft/Publish/Archive bảo toàn 100% ranh giới tenant và OCC; Teacher view trên các route này không bị xáo trộn.
+       * Thắt chặt hợp đồng bắt buộc `createdByTeacherId: string`, resolve tên giáo viên thật qua `organizationApi.getTeacher(createdByTeacherId)`.
+       * Cơ chế OCC Fail-Closed triệt tiêu hoàn toàn fallback token `"1"`.
+  4. `AssignmentListPage`, `AssignmentEditorPage` & `AssignmentProgressPage` (ĐÃ HOÀN THÀNH Ở GATE 6B):
+     - Phân lập view Dark Enterprise SaaS cho CenterManager (không làm đổi giao diện Teacher).
+     - Danh sách bài tập phân trang server-side kèm bộ lọc lớp học có phân trang và cache.
+     - Wizard tạo bài tập: Bộ chọn lớp học phân trang server-side (`pageSize: 20`) và cache; chế độ sửa tự động resolve lớp theo ID qua `organizationApi.getClass(assignment.classId)`.
+     - Capability-first query gating: `useAssignmentClasses`, `useAssignableQuestions`, `useAssignmentClassStudents` đều bọc `{ enabled: canRead* }`.
+     - Chế độ xem chi tiết read-only chỉ cần `assignments.assignments.read` (không bị over-gate bởi quyền lớp hay câu hỏi); chế độ tạo mới hoặc sửa Draft yêu cầu đầy đủ các quyền hỗ trợ.
+     - Cơ chế OCC Fail-Closed: Xóa hoàn toàn token `"1"`, chặn mutation và tự động refetch khi thiếu `rowVersion`.
+     - Màn hình tiến độ (`AssignmentProgressPage`): Hiển thị danh sách học sinh từ `AssignmentProgressItemDto`; khi API lỗi, dừng render metrics, không hiển thị các con số 0 giả lập (Zero Fake 0 KPIs).
+* **Tiêu chí nghiệm thu (Gate 6):** Cả Gate 6A và Gate 6B đã hoàn thành trọn vẹn về mặt mã nguồn, hợp đồng DTO, capability gating, phân trang, OCC fail-closed và kiểm thử tự động. Trạng thái: `GATE 6 — TECHNICALLY COMPLETE / AUTOMATED VERIFICATION & REMOTE PUSH PASS / FORMAL CLOSEOUT PENDING CHROME E2E CONFIRMATION`.
 
 ---
 
