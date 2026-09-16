@@ -324,19 +324,46 @@ graph TD
 ---
 
 ### Checkpoint 6: Academic Content Reskin (Khối Nội dung học thuật)
+* **Trạng thái:** **GATE 6A — AUTOMATED PASS** *(Gate 6B: Question Bank & Assignments CHƯA THỰC HIỆN; chưa tuyên bố hoàn tất toàn bộ Gate 6)*
+* **Evidence commit:** `31aa627` (`feat(ux-center): reskin knowledge graph and curriculum workspace (gate 6a)`).
+* **Chrome E2E:** `Pending Manual / Chrome E2E Confirmation` (Toàn bộ kiểm thử tự động pass, sẵn sàng cho phiên kiểm tra trực quan tương tác Chrome).
+* **Kết quả xác minh kỹ thuật:**
+  - 158/158 frontend tests pass (10 new tests trong suite `tests/academicContentGate6A.test.ts`, 0 fail, 0 skipped).
+  - ESLint: 0 errors, 0 warnings.
+  - Production build: Thành công trong 13.96s; bundle chính `dist/assets/index-BY_mhG2H.js` đạt 396.00 KB (gzip 125.24 KB), nằm chặt chẽ trong ngân sách baseline `395 KB + 10%` (~434.5 KB); các chunk route phân tách rõ ràng: `KnowledgeGraphPage` (90.61 KB), `CurriculumEditorPage` (33.02 KB), `CurriculumListPage` (10.39 KB); không chunk nào vượt 500 KB.
+  - `git diff --check`: sạch hoàn toàn.
+  - 7 tiêu chí cốt lõi được bảo đảm trọn vẹn:
+    1. **Phân lập Actor (Actor Isolation):** Áp dụng logic chuẩn `user?.accountType === "CenterManager"`. CenterManager được phục vụ giao diện Dark Enterprise SaaS mới trong phạm vi `<CenterManagerThemeScope data-actor="center-manager">`; Teacher và các vai trò khác giữ nguyên view legacy không thay đổi.
+    2. **Phân quyền năng lực (Capability-first):** Toàn bộ thao tác thêm, sửa, xóa, publish được bảo vệ bởi capability guards (`nodesCreate`, `nodesUpdate`, `nodesDelete`, `edgesCreate`, `edgesUpdate`, `edgesDelete`, `curriculumsCreate`, `curriculumsUpdate`, `curriculumsPublish`, `teachersRead`, `subjectsRead`). Tài khoản thiếu quyền không thể nhìn thấy nút hoặc gửi mutation.
+    3. **Đồ thị tri thức (Knowledge Graph):**
+       - Bố cục Canvas tương tác trung tâm + Inspector Sidebar (desktop) / Drawer (mobile) bên phải.
+       - Tự động tính toán vị trí SVG theo mô hình phân tầng hình thái học (topological layout) dựa trên `nodeType` và `orderIndex` hoàn toàn phía client.
+       - **Tuyệt đối 0 trường tọa độ giả:** Không lưu, không phát sinh trường `x`, `y`, `position` nào trong DTO hay mutation request.
+       - Bảo toàn đầy đủ canonical enums: `NodeType` (`Subject`, `Chapter`, `Topic`, `Skill`, `Concept`) và `RelationType` (`PrerequisiteOf`, `RelatedTo`, `PartOf`, `CausesErrorIn`).
+       - Toàn bộ mutation gửi kèm `RowVersion` chuẩn xác; xung đột chu trình (`ErrorCodes.DagCycleDetected`) và concurrency conflict (409) được map an toàn qua `mapSafeOperationalError`.
+    4. **Giáo trình & Lộ trình học (Curriculum Workspace):**
+       - Trạng thái canonical: `Draft`, `Published`, `Archived`.
+       - Thứ tự chuỗi nút kiến thức (node ordering) và phân bổ lớp học (class assignments) được bảo toàn nguyên vẹn, hỗ trợ di chuyển lên/xuống và nhập hàng loạt.
+       - Bước Publish có Modal xác nhận trực quan dễ tiếp cận (thay thế hoàn toàn `window.confirm` và `window.alert`), gửi `rowVersion` mới nhất.
+       - Sau mỗi mutation thành công (lưu thông tin, lưu nodes, lưu classes), `rowVersion` được cập nhật ngay vào state và React Query cache để các thao tác liên tiếp trong cùng phiên không bị lỗi 409 giả.
+       - Lỗi 409 thực tế kích hoạt `ConcurrencyBanner` với nút tải lại dữ liệu mới từ backend.
+       - Khi lộ trình đã ở trạng thái `Published`, giao diện tự động chuyển chế độ chỉ đọc (read-only) và vô hiệu hóa các nút mutation.
+    5. **Xử lý lỗi an toàn:** 100% lỗi từ backend đi qua `mapSafeOperationalError` và hiển thị `SafeErrorPanel`, tách biệt `traceId` an toàn; không render raw ProblemDetails hoặc rò rỉ SQL exception / stack trace ra UI.
+    6. **Tính chân thực DTO:** Không phát sinh bất kỳ số liệu hay KPI mẫu giả định nào.
+    7. **Bảo toàn Teacher view:** Giữ nguyên view và logic nghiệp vụ cũ cho Teacher (ví dụ ràng buộc giáo viên ngầm định khi tạo giáo trình).
 * **Mục tiêu:** Reskin 4 module nội dung học thuật lớn: Knowledge Graph, Curriculum, Question Bank, và Assignments theo đúng Actor Isolation Rule.
 * **Chi tiết công việc:**
-  1. `KnowledgeGraphPage`:
+  1. `KnowledgeGraphPage` (ĐÃ HOÀN THÀNH Ở GATE 6A):
      - Bố cục Canvas + Right Inspector Panel bên phải theo ý tưởng Ảnh 8 (chỉ áp dụng trong CenterManager context).
      - Inspector panel hiển thị thông tin Node hoặc Edge được chọn với dữ liệu canonical và `RowVersion`.
      - Form thêm/sửa Node; form liên kết Edge (mối quan hệ tiên quyết Prerequisite, relationType, weight).
      - Cảnh báo lỗi chu trình đồ thị (Cycle detection) hiển thị trên giao diện an toàn qua `mapSafeOperationalError`.
      - Tuyệt đối không thiết kế drag/drop lưu tọa độ nếu backend không có schema lưu tọa độ.
-  2. `CurriculumListPage` & `CurriculumEditorPage`:
+  2. `CurriculumListPage` & `CurriculumEditorPage` (ĐÃ HOÀN THÀNH Ở GATE 6A):
      - Bảng danh sách giáo trình theo trạng thái (Draft, Published, Archived).
      - Editor tạo/sửa giáo trình: Chọn thứ tự Knowledge Nodes và liên kết Lớp học nguyên tử.
      - Nút Publish kèm bước xác nhận và gửi `RowVersion`.
-  3. `QuestionBankPage` & `QuestionEditorPage`:
+  3. `QuestionBankPage` & `QuestionEditorPage` (GATE 6B — CHƯA THỰC HIỆN):
      - Danh sách câu hỏi lọc theo môn học, mức độ khó, loại câu hỏi (MCQ, Short Answer, Essay).
      - Editor cấu hình câu hỏi:
        * Soạn thảo công thức Toán KaTeX.
@@ -346,7 +373,7 @@ graph TD
          - `"Manual"`: Giáo viên chấm thủ công.
          *(Lưu ý: Yêu cầu suy luận AI reasoning là thuộc tính cấu hình độc lập `reasoningRequired`, không biến thành evaluation mode giả).*
        * Quy trình chuyển đổi trạng thái: `Draft` → `Active` → `Archived`.
-  4. `AssignmentListPage`, `AssignmentEditorPage` & `AssignmentProgressPage`:
+  4. `AssignmentListPage`, `AssignmentEditorPage` & `AssignmentProgressPage` (GATE 6B — CHƯA THỰC HIỆN):
      - Phân lập view cho CenterManager (không làm đổi giao diện Teacher).
      - Editor tạo bài tập: Chọn câu hỏi, chọn lớp giao bài, xem trước **Tóm tắt mục tiêu (Target Summary)** trước khi Publish.
      - **Màn hình tiến độ (`AssignmentProgressPage`):**
