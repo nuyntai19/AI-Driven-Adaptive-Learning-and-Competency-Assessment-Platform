@@ -273,6 +273,21 @@ graph TD
 ---
 
 ### Checkpoint 5: Organization Management Reskin (Khối Tổ chức)
+* **Trạng thái:** **HOÀN THÀNH — GATE 5 PASS (AUTOMATED)**
+* **Evidence commit:** `021461e` (`feat(ux-center): reskin organization management workspace`).
+* **Kết quả xác minh:**
+  - 148/148 frontend tests pass (0 fail, 0 skipped, 0 cancelled).
+  - ESLint: 0 errors, 0 warnings.
+  - Production build: thành công trong 9.48s; bundle chính `dist/assets/index-Cx0dsRUm.js` đạt 395.81 KB (gzip 125.20 KB), không chunk nào vượt 500 KB.
+  - `git diff --check` và `git diff --cached --check`: sạch hoàn toàn.
+  - Phân lập Actor (Actor Isolation): Kiểm tra `user?.accountType === "CenterManager"`. CenterManager nhận giao diện Dark Enterprise SaaS mới trong phạm vi `<CenterManagerThemeScope data-actor="center-manager">`; các tài khoản khác (Teacher/Student/PlatformAdmin) giữ nguyên view legacy không thay đổi.
+  - Toàn bộ nghiệp vụ bảo tồn:
+    * `TeacherListPage`: CRUD với OCC RowVersion, Reset Password với `expectedUserRowVersion`, xác nhận xóa mềm với guard kiểm tra số lớp đang phụ trách (`classCount > 0`).
+    * `StudentListPage`: CRUD với OCC RowVersion, Reset Password, xóa mềm bảo toàn lịch sử học tập, và **SubjectGoalsModal** được giữ nguyên và làm nổi bật theo hợp đồng Digital Twin backend (`PUT /api/v1/students/{studentId}/goals/{subjectId}`), đầy đủ validation `targetScore` (0-10) và `remainingDays` (1-365).
+    * `ClassListPage`: CRUD lớp học với OCC RowVersion, đổi giáo viên, xem chi tiết và danh sách thành viên, **AddStudentsModal** tuân thủ 100% SQL anti-join endpoint `getClassCandidateStudents` kết hợp phân trang server-side và lưu trữ danh sách chọn đa trang, **RemoveStudentModal** giữ nguyên bài tập và lịch sử kiểm tra (không hard-delete).
+    * `SubjectListPage`: CRUD môn học với OCC RowVersion, kiểm tra dependency khi xóa, liên kết nhanh sang Knowledge Graph theo đúng contract route `/kien-thuc/do-thi?subjectId={subjectId}`.
+    * Xử lý lỗi an toàn: 100% lỗi vận hành đi qua `mapSafeOperationalError` và hiển thị tách biệt `traceId`; không rò rỉ thuộc tính thô từ ProblemDetails ra UI.
+* **Ghi chú nghiệm thu trực quan:** Automated tests, lint và production build đã pass hoàn toàn. Tương tự Checkpoint 3–4, chưa tuyên bố Chrome E2E PASS khi chưa có phiên kiểm thử tương tác thực tế với Chrome; trạng thái trực quan được giữ ở mức **Pending Manual / Chrome E2E Confirmation**.
 * **Mục tiêu:** Reskin toàn diện các trang Giáo viên, Học sinh, Lớp học, Môn học, bảo tồn toàn bộ các luồng thao tác nghiệp vụ sâu và modal đã kiểm chứng.
 * **Chi tiết công việc:**
   1. `TeacherListPage`:
