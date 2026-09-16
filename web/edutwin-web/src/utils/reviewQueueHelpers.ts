@@ -1,3 +1,5 @@
+import type { TeacherReviewQueueItemDto } from "../types/reviews";
+
 /**
  * Canonical helper utilities for Review Queue, Digital Twin & OCC versioning.
  * Shared between production components (ReviewQueuePage, TeacherStudentTwinPage, TeacherOverrideModal)
@@ -61,4 +63,32 @@ export const executeOccRefetchWrapper = async <T>(
     throw new Error(errorMsg);
   }
   return result.data;
+};
+
+/**
+ * Reconciles an active attempt from a fresh review queue list after OCC refetch.
+ * - Strictly matches by attemptId.
+ * - Absolute ZERO fallback to index 0.
+ * - Throws if attempt is missing or if queue is empty.
+ * - Validates and returns the canonical fresh OCC version number.
+ */
+export const reconcileAttemptOccVersion = (
+  currentAttemptId: string | null | undefined,
+  freshItems: TeacherReviewQueueItemDto[] | undefined | null
+): { updatedItem: TeacherReviewQueueItemDto; freshVersion: number } => {
+  if (!currentAttemptId) {
+    throw new Error("Không xác định được lượt làm hiện tại.");
+  }
+  if (!freshItems || freshItems.length === 0) {
+    throw new Error("Hàng đợi hiện không còn bài làm nào cần duyệt.");
+  }
+  const found = freshItems.find((item) => item.attemptId === currentAttemptId);
+  if (!found) {
+    throw new Error("Lượt làm này đã được xử lý bởi một phiên làm việc khác và không còn trong hàng đợi.");
+  }
+  const version = found.evidence?.analysisOverrideVersion;
+  if (!isValidOccVersion(version)) {
+    throw new Error("Phiên bản OCC mới của lượt làm không hợp lệ.");
+  }
+  return { updatedItem: found, freshVersion: version };
 };

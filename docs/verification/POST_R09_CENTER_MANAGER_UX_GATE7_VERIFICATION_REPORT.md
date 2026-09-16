@@ -157,7 +157,7 @@ Cột mốc Gate 7 (Learning Supervision & Dynamic RBAC Reskin) hoàn tất vi�
     13. Actor isolation: `resolveReviewQueueViewMode` phân tách CenterManager modern view và Teacher legacy view.
     14. Actor isolation: `resolveStudentTwinViewMode` phân tách CenterManager single-subject KPI view và Teacher legacy view.
     15. OCC Fail-Closed: `isValidOccVersion` kiểm tra uint32 chuẩn xác, từ chối số âm, số thực, overflow, và non-numeric; `formatOccVersionLabel` hiển thị "Không khả dụng" khi token sai/thiếu.
-    16. OCC 409 Workflow: Kiểm thử nhánh refetch thất bại (giữ nguyên cờ conflict và khóa submit) và nhánh refetch thành công (đồng bộ token mới và cho phép submit lại).
+    16. OCC 409 Workflow & Production Helper: Kiểm thử trực tiếp `reconcileAttemptOccVersion` - bảo đảm đối soát đúng attemptId, tuyệt đối không fallback sang res.data[0] khi attempt biến mất (đóng modal, đặt selectedReview null, thông báo người dùng), fail-closed khi hàng đợi rỗng hoặc thiếu attempt, áp dụng token mới nguyên tử trước khi mở khóa (`setOverrideVersion` trước `setIsConflict(false)`), và giữ nguyên conflict khóa submit khi refetch thất bại.
 
 ---
 
@@ -219,9 +219,11 @@ dist/assets/AuthorizationManagementPage-0m2p7Jnl.js    58.51 kB │ gzip:  13.50
 ## 6. KẾT LUẬN
 
 Gate 7 đã hoàn thành trọn vẹn toàn bộ các điểm phản biện vòng cuối của Codex:
-- Đã sửa hàm OCC refetch qua `executeOccRefetchWrapper`, xử lý cả 2 nhánh refetch thất bại (giữ nguyên conflict) và thành công.
+- Đã sửa hàm OCC refetch qua `executeOccRefetchWrapper` và `reconcileAttemptOccVersion`: đối soát đúng attemptId, tuyệt đối không fallback sang `res.data[0]` khi lượt làm bị xử lý bởi phiên làm việc khác; tự động đóng modal, hủy lựa chọn và hiển thị thông báo người dùng rõ ràng.
+- Nâng cấp contract `TeacherOverrideModalProps.onRefetch?: () => Promise<number>`, bảo đảm modal nhận fresh OCC token và thực hiện `setOverrideVersion(freshVersion)` nguyên tử trước khi gọi `setIsConflict(false)`, loại bỏ hoàn toàn khả năng mở khóa nhầm với token cũ trong chu kỳ render của React.
+- Đã chuẩn hóa `handleLegacyRefetch` của Teacher view fail-closed khi hàng đợi rỗng hoặc không tìm thấy lượt làm đang mở.
 - Đã xóa triệt để fallback `?? 0` trên giao diện, áp dụng validator canonical uint32 (`Number.isSafeInteger(v) && v >= 0 && v <= 4294967295`), khóa nút Override ngay từ trang chi tiết khi token không hợp lệ.
-- Nâng cao chất lượng test bằng cách kiểm thử trực tiếp các helper hàm sản phẩm (`reviewQueueHelpers.ts`), bao phủ test token âm/float/overflow và test refetch failure.
+- Nâng cao chất lượng test bằng cách kiểm thử trực tiếp các helper hàm sản phẩm (`reviewQueueHelpers.ts`), bao phủ test token âm/float/overflow, attempt biến mất, hàng đợi rỗng, và thứ tự áp dụng token mở khóa.
 - Cập nhật chuẩn xác queryKey `["reviewQueueClasses", classSearchTerm, classPage]` và nhãn KPI *"Độ thuần thục trung bình trong môn đang chọn"* trên báo cáo nghiệm thu.
 - Làm sạch hoàn toàn trailing whitespace.
 

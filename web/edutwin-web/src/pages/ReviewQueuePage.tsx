@@ -15,6 +15,7 @@ import {
   isValidOccVersion,
   formatOccVersionLabel,
   executeOccRefetchWrapper,
+  reconcileAttemptOccVersion,
 } from "../utils/reviewQueueHelpers";
 
 // ============================================================================
@@ -37,6 +38,8 @@ const CenterManagerReviewQueueView: React.FC = () => {
   const hasPermission = useAuthStore((state) => state.hasPermission);
   const canOverride = hasPermission(permissions.teacherReviewsOverride);
   const canReadScratchpad = hasPermission(permissions.learningAttemptsReadScoped);
+
+  const [notification, setNotification] = useState<string | null>(null);
 
   // Debounce class search input
   useEffect(() => {
@@ -122,15 +125,22 @@ const CenterManagerReviewQueueView: React.FC = () => {
     refetch();
   };
 
-  const handleReviewRefetch = async (): Promise<boolean> => {
+  const handleReviewRefetch = async (): Promise<number> => {
     const res = await executeOccRefetchWrapper(() => refetch({ throwOnError: true }));
-    if (res?.data && res.data.length > 0) {
-      const currentId = selectedReview?.attemptId;
-      const updated = res.data.find((item) => item.attemptId === currentId) ?? res.data[0];
-      setSelectedReview(updated);
-      return isValidOccVersion(updated.evidence?.analysisOverrideVersion);
+    try {
+      const { updatedItem, freshVersion } = reconcileAttemptOccVersion(
+        selectedReview?.attemptId,
+        res?.data
+      );
+      setSelectedReview(updatedItem);
+      return freshVersion;
+    } catch (err) {
+      setSelectedReview(null);
+      setIsOverrideModalOpen(false);
+      const msg = err instanceof Error ? err.message : "Lượt làm này không còn trong hàng đợi.";
+      setNotification(msg);
+      throw err;
     }
-    return false;
   };
 
   // Combine current query results with selected cached class if outside current page
@@ -178,6 +188,27 @@ const CenterManagerReviewQueueView: React.FC = () => {
               </button>
             </div>
           </div>
+
+          {/* Notification Banner */}
+          {notification && (
+            <div
+              role="alert"
+              className="flex items-center justify-between rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm font-medium text-amber-900 shadow-sm"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-base">⚠️</span>
+                <span>{notification}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setNotification(null)}
+                className="rounded p-1 text-amber-700 hover:bg-amber-100"
+                aria-label="Đóng thông báo"
+              >
+                ✕
+              </button>
+            </div>
+          )}
 
           {/* Server-side Paginated & Searchable Class Selector */}
           <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
@@ -613,6 +644,7 @@ const TeacherReviewQueueLegacyView: React.FC = () => {
   const [page, setPage] = useState<number>(1);
   const [selectedReview, setSelectedReview] = useState<TeacherReviewQueueItemDto | null>(null);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [notification, setNotification] = useState<string | null>(null);
   const canOverride = useAuthStore((state) => state.hasPermission)(permissions.teacherReviewsOverride);
 
   // Load teacher classes for filtering
@@ -656,15 +688,22 @@ const TeacherReviewQueueLegacyView: React.FC = () => {
     refetch();
   };
 
-  const handleLegacyRefetch = async (): Promise<boolean> => {
+  const handleLegacyRefetch = async (): Promise<number> => {
     const res = await executeOccRefetchWrapper(() => refetch({ throwOnError: true }));
-    if (res?.data && res.data.length > 0) {
-      const currentId = selectedReview?.attemptId;
-      const updated = res.data.find((item) => item.attemptId === currentId) ?? null;
-      setSelectedReview(updated);
-      return updated ? isValidOccVersion(updated.evidence?.analysisOverrideVersion) : true;
+    try {
+      const { updatedItem, freshVersion } = reconcileAttemptOccVersion(
+        selectedReview?.attemptId,
+        res?.data
+      );
+      setSelectedReview(updatedItem);
+      return freshVersion;
+    } catch (err) {
+      setSelectedReview(null);
+      setIsModalOpen(false);
+      const msg = err instanceof Error ? err.message : "Lượt làm này không còn trong hàng đợi.";
+      setNotification(msg);
+      throw err;
     }
-    return true;
   };
 
   return (
@@ -709,6 +748,27 @@ const TeacherReviewQueueLegacyView: React.FC = () => {
             </button>
           </div>
         </div>
+
+        {/* Notification Banner */}
+        {notification && (
+          <div
+            role="alert"
+            className="flex items-center justify-between rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm font-medium text-amber-900 shadow-sm"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-base">⚠️</span>
+              <span>{notification}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setNotification(null)}
+              className="rounded p-1 text-amber-700 hover:bg-amber-100"
+              aria-label="Đóng thông báo"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* Content Section */}
         {isLoading && (

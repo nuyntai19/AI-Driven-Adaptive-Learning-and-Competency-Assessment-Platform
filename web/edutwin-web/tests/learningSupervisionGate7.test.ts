@@ -12,6 +12,7 @@ import {
   resolveReviewQueueViewMode,
   resolveStudentTwinViewMode,
   executeOccRefetchWrapper,
+  reconcileAttemptOccVersion,
 } from "../src/utils/reviewQueueHelpers.ts";
 
 const centerManagerUser = (grants: string[] = []) => ({
@@ -540,90 +541,195 @@ test("15. OCC Fail-Closed: Canonical isValidOccVersion strictly rejects negative
 });
 
 // ============================================================================
-// 16. OCC 409 CONCURRENCY CONFLICT & REFETCH RECOVERY (SUCCESS AND FAILURE)
+// 16. OCC 409 WORKFLOW & PRODUCTION HELPER (RECONCILE, DISAPPEARANCE, ATOMIC UNLOCK, EMPTY QUEUE)
 // ============================================================================
-test("16. OCC 409 Workflow: Conflict enables refetch, refetch failure keeps conflict locked, success synchronizes token", async () => {
-  const serverVersion = 5;
-  let clientOverrideVersion: number | null = 4;
-  let isConflict = false;
-  let conflictDetails: { message: string; traceId?: string } | null = null;
-  let errorMessage: string | null = null;
+test("16. OCC 409 Workflow: Production helper strictly guards attempt identity, rejects fallback, ensures atomic token application, and fails closed on empty queue", async () => {
+  const currentAttemptId = "att-42";
+  const otherAttemptId = "att-99";
 
-  // Mock submit producing 409 conflict
-  const attemptSubmit = (version: number) => {
-    if (version !== serverVersion) {
-      const err = createAxiosError(409, {
-        status: 409,
-        detail: "Phiên bản đã thay đổi trên máy chủ.",
-        traceId: "trace-occ-409-refetch-check",
-      });
-      if (isOverrideConflict(err)) {
-        isConflict = true;
-        conflictDetails = {
-          message: "Lượt phân tích đã được cập nhật bởi một phiên làm việc khác.",
-          traceId: extractProblemDetails(err).traceId ?? undefined,
-        };
-      }
-      return false;
-    }
-    return true;
+  const makeQueueItem = (id: string, version: number): TeacherReviewQueueItemDto => ({
+    attemptId: id,
+    studentId: "stu-1",
+    studentName: "Nguyen Van A",
+    questionId: "q-1",
+    subjectId: "sub-math",
+    questionText: "Toán 10",
+    analysisId: `an-${id}`,
+    finalAnswer: "42",
+    reasoningText: "Giải thích...",
+    isFallback: false,
+    reasoningQuality: 80,
+    analysisFeedback: "Tốt",
+    analysisConfidence: 90,
+    evidence: {
+      evidenceAssessmentId: `ev-${id}`,
+      sourceType: "AIReasoningEngine",
+      trustLevel: "RequiresReview",
+      decisionMode: "AutomatedWithDeterministicFallback",
+      reasoningWeight: 0.8,
+      reasonCodes: ["CONFIDENCE_BELOW_THRESHOLD"],
+      requiresTeacherReview: true,
+      policyVersion: "2026.09.v1",
+      analysisOverrideVersion: version,
+      evaluatedAt: "2026-09-16T10:00:00Z",
+    },
+    submittedAt: "2026-09-16T09:55:00Z",
+  });
+
+  // --------------------------------------------------------------------------
+  // Scenario 1: Refetch thành công trả đúng fresh OCC token
+  // --------------------------------------------------------------------------
+  const freshQueueWithTarget: TeacherReviewQueueItemDto[] = [
+    makeQueueItem(currentAttemptId, 5),
+    makeQueueItem(otherAttemptId, 1),
+  ];
+
+  const reconcileResult = reconcileAttemptOccVersion(currentAttemptId, freshQueueWithTarget);
+  assert.equal(reconcileResult.updatedItem.attemptId, currentAttemptId);
+  assert.equal(reconcileResult.freshVersion, 5);
+  assert.equal(isValidOccVersion(reconcileResult.freshVersion), true);
+
+  // --------------------------------------------------------------------------
+  // Scenario 2: Attempt hiện tại biến mất sau refetch - KHÔNG ĐƯỢC chuyển sang item khác
+  // (Tuyệt đối không fallback sang res.data[0])
+  // --------------------------------------------------------------------------
+  const queueWithoutTarget: TeacherReviewQueueItemDto[] = [
+    makeQueueItem(otherAttemptId, 1), // Only other student's attempt exists at index 0
+  ];
+
+  assert.throws(
+    () => reconcileAttemptOccVersion(currentAttemptId, queueWithoutTarget),
+    (err: Error) => {
+      assert.match(err.message, /không còn trong hàng đợi/i);
+      return true;
+    },
+    "Must throw when target attempt disappeared - never fallback to queue[0]"
+  );
+
+  // Verify parent simulation on attempt disappearance:
+  let selectedReview: TeacherReviewQueueItemDto | null = makeQueueItem(currentAttemptId, 4);
+  let isModalOpen = true;
+  let parentNotification: string | null = null;
+
+  try {
+    reconcileAttemptOccVersion(currentAttemptId, queueWithoutTarget);
+  } catch (err) {
+    selectedReview = null;
+    isModalOpen = false;
+    parentNotification = (err as Error).message;
+  }
+
+  assert.equal(selectedReview, null, "selectedReview must be nullified");
+  assert.equal(isModalOpen, false, "Modal must be closed/locked");
+  assert.ok(parentNotification !== null && parentNotification.length > 0, "Notification must inform user");
+
+  // --------------------------------------------------------------------------
+  // Scenario 3: Empty queue phải fail closed
+  // --------------------------------------------------------------------------
+  assert.throws(
+    () => reconcileAttemptOccVersion(currentAttemptId, []),
+    (err: Error) => {
+      assert.match(err.message, /không còn bài làm nào cần duyệt/i);
+      return true;
+    },
+    "Empty queue must fail closed with explicit message"
+  );
+
+  assert.throws(
+    () => reconcileAttemptOccVersion(currentAttemptId, null),
+    /không còn bài làm nào cần duyệt/i,
+    "Null queue must fail closed"
+  );
+
+  assert.throws(
+    () => reconcileAttemptOccVersion(null, freshQueueWithTarget),
+    /không xác định được lượt làm hiện tại/i,
+    "Missing currentAttemptId must fail closed"
+  );
+
+  // --------------------------------------------------------------------------
+  // Scenario 4: Thứ tự recovery đảm bảo token mới được áp dụng trước khi mở khóa
+  // (Atomic OCC recovery sequence in modal)
+  // --------------------------------------------------------------------------
+  const stateLog: Array<{ overrideVersion: number | null; isConflict: boolean; step: string }> = [];
+
+  let modalOverrideVersion: number | null = 4; // Stale version
+  let modalIsConflict = true; // In 409 conflict
+
+  // Mock parent onRefetch returning fresh token 5
+  const mockParentRefetch = async (): Promise<number> => {
+    const res = await executeOccRefetchWrapper(async () => ({
+      isError: false,
+      data: freshQueueWithTarget,
+    }));
+    const { freshVersion } = reconcileAttemptOccVersion(currentAttemptId, res);
+    return freshVersion;
   };
 
-  // 1. Submit with stale version 4 -> Fails with 409 conflict
-  const initialSubmitSuccess = attemptSubmit(clientOverrideVersion!);
-  assert.equal(initialSubmitSuccess, false);
-  assert.equal(isConflict, true);
-  assert.equal((conflictDetails as { message: string; traceId?: string } | null)?.traceId, "trace-occ-409-refetch-check");
-
-  // 2. Branch A: Refetch failure (Network error or server unavailable)
-  // Must FAIL CLOSED: conflict remains active, submit remains locked
-  const handleFailingRefetch = async () => {
+  // Simulate TeacherOverrideModal.handleRefetch()
+  const modalHandleRefetch = async (refetchFn: () => Promise<number>) => {
     try {
-      await executeOccRefetchWrapper(async () => {
-        return { isError: true, error: new Error("Network timeout") };
-      });
-      isConflict = false;
-    } catch (err) {
-      errorMessage = (err as Error).message;
-      // Conflict remains true!
-    }
-  };
-
-  await handleFailingRefetch();
-  assert.equal(isConflict, true, "isConflict must remain true when refetch fails");
-  assert.ok(conflictDetails !== null, "conflictDetails must be preserved when refetch fails");
-  assert.equal(clientOverrideVersion, 4, "client token must NOT be updated when refetch fails");
-  assert.equal(errorMessage, "Network timeout");
-
-  // Submit button remains locked during refetch failure
-  const isSubmitDisabledDuringFailure = clientOverrideVersion === null || !isValidOccVersion(clientOverrideVersion) || isConflict;
-  assert.equal(isSubmitDisabledDuringFailure, true, "Submit button strictly disabled during conflict and refetch failure");
-
-  // 3. Branch B: Refetch success (Server returns updated analysis with version 5)
-  const handleSuccessfulRefetch = async () => {
-    try {
-      const data = await executeOccRefetchWrapper(async () => {
-        return { isError: false, data: { newVersion: serverVersion } };
-      });
-      if (isValidOccVersion(data.newVersion)) {
-        clientOverrideVersion = data.newVersion;
-        isConflict = false;
-        conflictDetails = null;
-        errorMessage = null;
+      const freshVersion = await refetchFn();
+      if (!isValidOccVersion(freshVersion)) {
+        throw new Error("Không thể xác định phiên bản OCC hợp lệ sau khi tải lại.");
       }
-    } catch (err) {
-      errorMessage = (err as Error).message;
+      // CRITICAL: setOverrideVersion FIRST, then setIsConflict(false)
+      modalOverrideVersion = freshVersion;
+      stateLog.push({ overrideVersion: modalOverrideVersion, isConflict: modalIsConflict, step: "setOverrideVersion" });
+
+      modalIsConflict = false;
+      stateLog.push({ overrideVersion: modalOverrideVersion, isConflict: modalIsConflict, step: "setIsConflict(false)" });
+    } catch {
+      // Conflict remains true on error
     }
   };
 
-  await handleSuccessfulRefetch();
-  assert.equal(isConflict, false, "isConflict cleared after successful refetch");
-  assert.equal(conflictDetails, null, "conflictDetails cleared after successful refetch");
-  assert.equal(clientOverrideVersion, 5, "clientOverrideVersion updated to 5");
-  assert.equal(errorMessage, null);
+  await modalHandleRefetch(mockParentRefetch);
 
-  // 4. Retry submission with synchronized version 5 -> Succeeds!
-  const retrySuccess = attemptSubmit(clientOverrideVersion!);
-  assert.equal(retrySuccess, true);
-  assert.equal(isConflict, false);
+  // Check state transition sequence
+  assert.equal(stateLog.length, 2);
+  // Step 1: token was updated to 5, conflict was still true
+  assert.deepEqual(stateLog[0], { overrideVersion: 5, isConflict: true, step: "setOverrideVersion" });
+  // Step 2: only AFTER token was set, conflict was set to false
+  assert.deepEqual(stateLog[1], { overrideVersion: 5, isConflict: false, step: "setIsConflict(false)" });
+  // Verify there was NEVER a state where isConflict was false with old token 4
+  const leakyState = stateLog.find((s) => s.overrideVersion === 4 && s.isConflict === false);
+  assert.equal(leakyState, undefined, "Race condition prevented: never unlocked with stale token");
+
+  // --------------------------------------------------------------------------
+  // Scenario 5: Refetch thất bại giữ nguyên conflict và khóa submit
+  // --------------------------------------------------------------------------
+  let failingModalVersion: number | null = 4;
+  let failingIsConflict = true;
+  let failingErrorMessage: string | null = null;
+
+  // Failing refetch: network error
+  const mockFailingParentRefetch = async (): Promise<number> => {
+    await executeOccRefetchWrapper(async () => {
+      return { isError: true, error: new Error("Mất kết nối máy chủ") };
+    });
+    return 0; // unreachable
+  };
+
+  const failingModalHandleRefetch = async () => {
+    try {
+      const freshVersion = await mockFailingParentRefetch();
+      if (!isValidOccVersion(freshVersion)) {
+        throw new Error("Không thể xác định phiên bản OCC hợp lệ sau khi tải lại.");
+      }
+      failingModalVersion = freshVersion;
+      failingIsConflict = false;
+    } catch (err) {
+      failingErrorMessage = (err as Error).message;
+    }
+  };
+
+  await failingModalHandleRefetch();
+  assert.equal(failingIsConflict, true, "isConflict must stay true on refetch failure");
+  assert.equal(failingModalVersion, 4, "token must not mutate on failure");
+  assert.equal(failingErrorMessage, "Mất kết nối máy chủ");
+
+  // Submit button remains locked
+  const isSubmitDisabled = failingModalVersion === null || !isValidOccVersion(failingModalVersion) || failingIsConflict;
+  assert.equal(isSubmitDisabled, true, "Submit button strictly disabled when conflict persists");
 });

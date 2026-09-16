@@ -9,7 +9,7 @@ interface TeacherOverrideModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  onRefetch?: () => Promise<unknown> | void;
+  onRefetch?: () => Promise<number>;
 }
 
 export const TeacherOverrideModal = ({
@@ -109,10 +109,11 @@ export const TeacherOverrideModal = ({
     setIsRefetching(true);
     setErrorMessage(null);
     try {
-      const result = await onRefetch();
-      if (result === false) {
-        throw new Error("Không thể tải lại dữ liệu mới hoặc phiên bản OCC không hợp lệ.");
+      const freshVersion = await onRefetch();
+      if (!isValidOccVersion(freshVersion)) {
+        throw new Error("Không thể xác định phiên bản OCC hợp lệ sau khi tải lại.");
       }
+      setOverrideVersion(freshVersion);
       setIsConflict(false);
       setConflictDetails(null);
       setErrorMessage(null);
