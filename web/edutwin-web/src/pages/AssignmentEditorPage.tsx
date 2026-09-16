@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { organizationApi } from "../api/organizationApi";
 import { useAssignment } from "../features/assignments/useAssignment";
 import { useCreateAssignment } from "../features/assignments/useCreateAssignment";
 import { useUpdateAssignment } from "../features/assignments/useUpdateAssignment";
@@ -16,7 +17,7 @@ import type {
   UpdateAssignmentRequest,
 } from "../types/assignments";
 import type { Question } from "../types/questions";
-import type { StudentDto } from "../types/organization";
+import type { ClassDto, StudentDto } from "../types/organization";
 import { useAuthStore } from "../stores/authStore";
 import { permissions } from "../auth/permissions";
 import {
@@ -102,18 +103,61 @@ function CenterManagerAssignmentEditorView() {
   const [questionPage, setQuestionPage] = useState(1);
   const [questionDifficulty, setQuestionDifficulty] = useState<number | "">("");
 
+  // Filter & Pagination for Class Selector
+  const [classPage, setClassPage] = useState(1);
+  const [cachedClasses, setCachedClasses] = useState<Map<string, ClassDto>>(new Map());
+
   // Filter & Pagination for Student Selector (matching backend ClassStudentListQuery: has search param)
   const [studentPage, setStudentPage] = useState(1);
   const [studentSearch, setStudentSearch] = useState("");
 
-  // Classes Query
-  const classesQuery = useAssignmentClasses({ status: "Active", page: 1, pageSize: 100 });
-  const selectedClass = useMemo(
-    () => classesQuery.data?.data.find((c) => c.classId === classId),
-    [classId, classesQuery.data?.data]
+  // In edit mode: resolve specific class by ID regardless of page
+  const classDetailQuery = useQuery({
+    queryKey: ["class-detail-for-assignment", classId],
+    queryFn: () => organizationApi.getClass(classId),
+    enabled: canReadClasses && Boolean(classId),
+    staleTime: 60_000,
+  });
+
+  // Classes Query - guarded with canReadClasses
+  const classesQuery = useAssignmentClasses(
+    { status: "Active", page: classPage, pageSize: 20 },
+    { enabled: canReadClasses }
   );
 
-  // Questions Query for the subject of the selected class
+  // Accumulate loaded classes into cache
+  useEffect(() => {
+    if (classesQuery.data?.data) {
+      setCachedClasses((prev) => {
+        const next = new Map(prev);
+        for (const c of classesQuery.data.data) {
+          next.set(c.classId, c);
+        }
+        return next;
+      });
+    }
+  }, [classesQuery.data?.data]);
+
+  const classList = useMemo(() => {
+    const map = new Map(cachedClasses);
+    if (classesQuery.data?.data) {
+      for (const c of classesQuery.data.data) {
+        map.set(c.classId, c);
+      }
+    }
+    if (classDetailQuery.data) {
+      map.set(classDetailQuery.data.classId, classDetailQuery.data);
+    }
+    return Array.from(map.values());
+  }, [cachedClasses, classesQuery.data?.data, classDetailQuery.data]);
+
+  const selectedClass = useMemo(() => {
+    if (classDetailQuery.data) return classDetailQuery.data;
+    if (classId && cachedClasses.has(classId)) return cachedClasses.get(classId);
+    return classesQuery.data?.data.find((c) => c.classId === classId);
+  }, [classId, classDetailQuery.data, cachedClasses, classesQuery.data?.data]);
+
+  // Questions Query for the subject of the selected class - guarded with canReadQuestions
   const questionsQuery = useAssignableQuestions(
     selectedClass?.subject?.subjectId
       ? {
@@ -122,10 +166,11 @@ function CenterManagerAssignmentEditorView() {
           pageSize: 10,
           difficulty: questionDifficulty !== "" ? Number(questionDifficulty) : undefined,
         }
-      : undefined
+      : undefined,
+    { enabled: canReadQuestions && Boolean(selectedClass?.subject?.subjectId) }
   );
 
-  // Students Query for the selected class
+  // Students Query for the selected class - guarded with canReadClasses
   const studentsQuery = useAssignmentClassStudents(
     classId
       ? {
@@ -135,7 +180,8 @@ function CenterManagerAssignmentEditorView() {
           search: studentSearch.trim() || undefined,
           status: "Active",
         }
-      : undefined
+      : undefined,
+    { enabled: canReadClasses && Boolean(classId) }
   );
 
   // Accumulate questions into cache
@@ -273,6 +319,14 @@ function CenterManagerAssignmentEditorView() {
         },
       });
     } else {
+      if (!assignment?.rowVersion) {
+        setFormError({
+          message: "Không thể xác định phiên bản đồng thời (RowVersion) của bài tập. Vui lòng làm mới trang để thử lại.",
+        });
+        assignmentQuery.refetch();
+        return;
+      }
+
       const updatePayload: UpdateAssignmentRequest = {
         title: title.trim(),
         instructions: instructions.trim() || null,
@@ -280,7 +334,7 @@ function CenterManagerAssignmentEditorView() {
         questionIds,
         targetMode,
         studentIds: targetMode === "SelectedStudents" ? studentIds : undefined,
-        rowVersion: assignment?.rowVersion || "1",
+        rowVersion: assignment.rowVersion,
       };
 
       updateMutation.mutate(
@@ -572,20 +626,45 @@ function CenterManagerAssignmentEditorView() {
                     className="cm-input w-full text-sm opacity-70 cursor-not-allowed bg-[var(--cm-surface-subtle)]"
                   />
                 ) : (
-                  <select
-                    id="assignment-class-select"
-                    disabled={isReadOnly || classesQuery.isLoading}
-                    value={classId}
-                    onChange={(e) => handleClassChange(e.target.value)}
-                    className="cm-select w-full text-sm"
-                  >
-                    <option value="">-- Chọn lớp học --</option>
-                    {classesQuery.data?.data?.map((c) => (
-                      <option key={c.classId} value={c.classId}>
-                        {c.className} ({c.academicYear}) - Môn: {c.subject?.subjectName}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="space-y-1.5">
+                    <select
+                      id="assignment-class-select"
+                      disabled={isReadOnly || classesQuery.isLoading}
+                      value={classId}
+                      onChange={(e) => handleClassChange(e.target.value)}
+                      className="cm-select w-full text-sm"
+                    >
+                      <option value="">-- Chọn lớp học --</option>
+                      {classList.map((c) => (
+                        <option key={c.classId} value={c.classId}>
+                          {c.className} ({c.academicYear}) - Môn: {c.subject?.subjectName}
+                        </option>
+                      ))}
+                    </select>
+                    {classesQuery.data?.meta?.totalPages && classesQuery.data.meta.totalPages > 1 && (
+                      <div className="flex items-center justify-between text-xs text-[var(--cm-text-muted)] pt-1">
+                        <span>Trang {classPage} / {classesQuery.data.meta.totalPages} ({classesQuery.data.meta.totalItems} lớp)</span>
+                        <div className="flex gap-1">
+                          <button
+                            type="button"
+                            disabled={classPage <= 1 || classesQuery.isLoading}
+                            onClick={() => setClassPage((p) => Math.max(1, p - 1))}
+                            className="cm-secondary-button text-xs py-0.5 px-2"
+                          >
+                            ← Trước
+                          </button>
+                          <button
+                            type="button"
+                            disabled={classPage >= (classesQuery.data.meta.totalPages || 1) || classesQuery.isLoading}
+                            onClick={() => setClassPage((p) => Math.min(classesQuery.data!.meta!.totalPages || 1, p + 1))}
+                            className="cm-secondary-button text-xs py-0.5 px-2"
+                          >
+                            Sau →
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
                 {selectedClass?.subject && (
                   <p className="mt-1 text-xs text-[var(--cm-cyan)]">
@@ -1173,6 +1252,10 @@ function LegacyAssignmentEditorPage() {
         }
       );
     } else {
+      if (!assignment?.rowVersion) {
+        alert("Không thể xác định phiên bản đồng thời (RowVersion). Vui lòng làm mới trang.");
+        return;
+      }
       updateMutation.mutate(
         {
           id: id!,
@@ -1183,7 +1266,7 @@ function LegacyAssignmentEditorPage() {
             questionIds,
             targetMode,
             studentIds: targetMode === "SelectedStudents" ? studentIds : undefined,
-            rowVersion: assignment?.rowVersion || "1",
+            rowVersion: assignment.rowVersion,
           },
         },
         {

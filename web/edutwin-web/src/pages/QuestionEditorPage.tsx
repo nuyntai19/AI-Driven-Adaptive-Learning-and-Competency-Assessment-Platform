@@ -117,7 +117,7 @@ function CenterManagerQuestionEditorView() {
     if (isEditMode && questionData?.data) {
       const q = questionData.data;
       setFormData({
-        teacherId: (q as any).teacherId || null,
+        teacherId: q.createdByTeacherId || null,
         subjectId: q.subjectId,
         primaryTopicNodeId: q.primaryTopicNodeId || "",
         questionType: q.questionType,
@@ -224,6 +224,15 @@ function CenterManagerQuestionEditorView() {
     }
     return Array.from(map.values());
   }, [cachedTeachers, teachersData?.data]);
+
+  // In edit mode: resolve teacher details from createdByTeacherId if available
+  const createdByTeacherId = questionData?.data?.createdByTeacherId;
+  const { data: teacherDetailData } = useQuery({
+    queryKey: ["teacher-detail-for-question", createdByTeacherId],
+    queryFn: () => organizationApi.getTeacher(createdByTeacherId!),
+    enabled: isEditMode && canReadTeachers && !!createdByTeacherId,
+    staleTime: 60_000,
+  });
 
   // State machine & Read-only determination
   const currentStatus = questionData?.data?.status ?? "Draft";
@@ -444,14 +453,22 @@ function CenterManagerQuestionEditorView() {
       });
     } else {
       // Update Mode: Strict contract - NEVER send teacherId or subjectId!
+      if (!questionData?.data?.rowVersion) {
+        setFormError({
+          message: "Không thể xác định phiên bản đồng thời (RowVersion) của câu hỏi. Vui lòng làm mới trang để thử lại.",
+        });
+        refetchQuestion();
+        return;
+      }
+
       const updatePayload: UpdateQuestionRequest = {
         primaryTopicNodeId: formData.primaryTopicNodeId,
         questionType: formData.questionType,
         difficulty: formData.difficulty,
-        questionText: formData.questionText,
-        correctAnswer: formData.questionType === "Essay" ? undefined : formData.correctAnswer,
-        solution: formData.solution,
-        expectedReasoning: formData.expectedReasoning,
+        questionText: formData.questionText.trim(),
+        correctAnswer: formData.correctAnswer?.trim() || undefined,
+        solution: formData.solution?.trim() || undefined,
+        expectedReasoning: formData.expectedReasoning?.trim() || undefined,
         gradingCriteria: formData.gradingCriteria,
         maxScore: formData.maxScore,
         estimatedTimeSeconds: formData.estimatedTimeSeconds,
@@ -468,7 +485,7 @@ function CenterManagerQuestionEditorView() {
               }))
             : undefined,
         knowledgeMappings: questionData?.data?.knowledgeMappings,
-        rowVersion: questionData?.data?.rowVersion || "1",
+        rowVersion: questionData.data.rowVersion,
       };
 
       updateMutation.mutate(
@@ -835,9 +852,11 @@ function CenterManagerQuestionEditorView() {
                   type="text"
                   disabled
                   value={
-                    formData.teacherId
-                      ? `${teacherList.find((t) => t.teacherId === formData.teacherId)?.displayName || formData.teacherId}`
-                      : "Giáo viên mặc định"
+                    createdByTeacherId
+                      ? teacherDetailData?.displayName
+                        ? `${teacherDetailData.displayName} (${teacherDetailData.username})`
+                        : `Mã GV: ${createdByTeacherId}`
+                      : "Không xác định"
                   }
                   className="cm-input w-full text-sm opacity-70 cursor-not-allowed bg-[var(--cm-surface-subtle)]"
                 />
@@ -1385,6 +1404,10 @@ function LegacyQuestionEditorPage() {
         onError: (err: unknown) => alert(mapSafeOperationalError(err, "Không thể tạo câu hỏi.")),
       });
     } else {
+      if (!questionData?.data?.rowVersion) {
+        alert("Không thể xác định phiên bản đồng thời (RowVersion). Vui lòng làm mới trang.");
+        return;
+      }
       const updateData: UpdateQuestionRequest = {
         primaryTopicNodeId: formData.primaryTopicNodeId,
         questionType: formData.questionType,
@@ -1400,7 +1423,7 @@ function LegacyQuestionEditorPage() {
         languageCode: formData.languageCode,
         answerEvaluationMode: formData.answerEvaluationMode,
         options: formData.options,
-        rowVersion: questionData?.data?.rowVersion || "1",
+        rowVersion: questionData.data.rowVersion,
       };
       updateMutation.mutate(
         { id: id!, data: updateData },

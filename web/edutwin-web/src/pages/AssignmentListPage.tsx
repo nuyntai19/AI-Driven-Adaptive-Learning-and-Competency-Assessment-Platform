@@ -1,10 +1,11 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAssignments } from "../features/assignments/useAssignments";
 import { usePublishAssignment } from "../features/assignments/usePublishAssignment";
 import { useCloseAssignment } from "../features/assignments/useCloseAssignment";
 import { useAssignmentClasses } from "../features/assignments/useAssignmentWizardOptions";
 import type { AssignmentDto, AssignmentStatus } from "../types/assignments";
+import type { ClassDto } from "../types/organization";
 import { useAuthStore } from "../stores/authStore";
 import { permissions } from "../auth/permissions";
 import {
@@ -48,22 +49,48 @@ function CenterManagerAssignmentListView() {
   const [targetAssignment, setTargetAssignment] = useState<AssignmentDto | null>(null);
   const [dialogAction, setDialogAction] = useState<"publish" | "close" | null>(null);
 
-  // Canonical classes query for filter selector
-  const { data: classesData, isLoading: isLoadingClasses } = useAssignmentClasses({
-    status: "Active",
-    page: 1,
-    pageSize: 100,
-  });
+  const [filterClassPage, setFilterClassPage] = useState(1);
+  const [cachedClasses, setCachedClasses] = useState<Map<string, ClassDto>>(new Map());
+
+  // Canonical classes query for filter selector - guarded with canReadClasses
+  const { data: classesData, isLoading: isLoadingClasses } = useAssignmentClasses(
+    {
+      status: "Active",
+      page: filterClassPage,
+      pageSize: 20,
+    },
+    { enabled: canReadClasses }
+  );
+
+  useEffect(() => {
+    if (classesData?.data) {
+      setCachedClasses((prev) => {
+        const next = new Map(prev);
+        for (const c of classesData.data) {
+          next.set(c.classId, c);
+        }
+        return next;
+      });
+    }
+  }, [classesData?.data]);
+
+  const classList = useMemo(() => {
+    const map = new Map(cachedClasses);
+    if (classesData?.data) {
+      for (const c of classesData.data) {
+        map.set(c.classId, c);
+      }
+    }
+    return Array.from(map.values());
+  }, [cachedClasses, classesData?.data]);
 
   const classMap = useMemo(() => {
     const map = new Map<string, string>();
-    if (classesData?.data) {
-      for (const c of classesData.data) {
-        map.set(c.classId, `${c.className} (${c.academicYear})`);
-      }
+    for (const c of classList) {
+      map.set(c.classId, `${c.className} (${c.academicYear})`);
     }
     return map;
-  }, [classesData?.data]);
+  }, [classList]);
 
   // Assignments query with server-side pagination & canonical filters
   const queryParams = useMemo(
@@ -240,20 +267,45 @@ function CenterManagerAssignmentListView() {
                   Cần quyền đọc lớp học (organization.classes.read)
                 </div>
               ) : (
-                <select
-                  id="filter-class"
-                  value={selectedClassId}
-                  onChange={(e) => handleFilterChange(setSelectedClassId, e.target.value)}
-                  disabled={isLoadingClasses}
-                  className="cm-select w-full text-sm"
-                >
-                  <option value="">-- Tất cả lớp học --</option>
-                  {classesData?.data?.map((c) => (
-                    <option key={c.classId} value={c.classId}>
-                      {c.className} ({c.academicYear})
-                    </option>
-                  ))}
-                </select>
+                <div className="space-y-1">
+                  <select
+                    id="filter-class"
+                    value={selectedClassId}
+                    onChange={(e) => handleFilterChange(setSelectedClassId, e.target.value)}
+                    disabled={isLoadingClasses}
+                    className="cm-select w-full text-sm"
+                  >
+                    <option value="">-- Tất cả lớp học --</option>
+                    {classList.map((c) => (
+                      <option key={c.classId} value={c.classId}>
+                        {c.className} ({c.academicYear})
+                      </option>
+                    ))}
+                  </select>
+                  {classesData?.meta?.totalPages && classesData.meta.totalPages > 1 && (
+                    <div className="flex items-center justify-between text-[10px] text-[var(--cm-text-muted)] pt-0.5">
+                      <span>Lớp tr. {filterClassPage}/{classesData.meta.totalPages}</span>
+                      <div className="flex gap-1">
+                        <button
+                          type="button"
+                          disabled={filterClassPage <= 1 || isLoadingClasses}
+                          onClick={() => setFilterClassPage((p) => Math.max(1, p - 1))}
+                          className="px-1.5 py-0.5 rounded bg-[var(--cm-surface)] border border-[var(--cm-border)] disabled:opacity-40"
+                        >
+                          ‹
+                        </button>
+                        <button
+                          type="button"
+                          disabled={filterClassPage >= (classesData.meta.totalPages || 1) || isLoadingClasses}
+                          onClick={() => setFilterClassPage((p) => Math.min(classesData?.meta?.totalPages || 1, p + 1))}
+                          className="px-1.5 py-0.5 rounded bg-[var(--cm-surface)] border border-[var(--cm-border)] disabled:opacity-40"
+                        >
+                          ›
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 

@@ -186,150 +186,162 @@ function CenterManagerAssignmentProgressView() {
           </div>
         )}
 
-        {/* Progress Error State */}
-        {progressQuery.isError && (
+        {/* Progress State: Fail-closed on error (Zero Fake 0 KPIs) */}
+        {progressQuery.isError ? (
           <SafeErrorPanel
             error={progressQuery.error}
             fallback="Không thể tải danh sách tiến độ học sinh."
             onRetry={() => progressQuery.refetch()}
           />
-        )}
-
-        {/* Strict Metric Cards derived purely from DTO (Zero Simulated Class Averages) */}
-        <section aria-label="Tổng quan tiến độ" className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <MetricCard
-            label="Tổng học sinh nhận bài"
-            value={totalStudents}
-            supportingText={`Trạng thái bài tập: ${assignment.status}`}
-          />
-          <MetricCard
-            label="Đã hoàn thành"
-            value={completedCount}
-            supportingText={totalStudents > 0 ? `${Math.round((completedCount / totalStudents) * 100)}% tổng số học sinh` : "0%"}
-            trend={{ label: "Completed", tone: "positive" }}
-          />
-          <MetricCard
-            label="Đang làm bài"
-            value={inProgressCount}
-            supportingText="Đang thực hiện các câu hỏi"
-            trend={{ label: "InProgress", tone: "neutral" }}
-          />
-          <MetricCard
-            label="Chưa bắt đầu / Quá hạn"
-            value={notStartedCount + overdueCount}
-            supportingText={`${notStartedCount} chưa làm, ${overdueCount} quá hạn`}
-            trend={{ label: overdueCount > 0 ? "Cần nhắc nhở" : "NotStarted", tone: overdueCount > 0 ? "negative" : "neutral" }}
-          />
-        </section>
-
-        {/* Main Table Card */}
-        <div className="rounded-2xl border border-[var(--cm-border)] bg-[var(--cm-surface)] p-5 lg:p-6 space-y-4 shadow-xl">
-          {/* Table Filters */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[var(--cm-border-subtle)] pb-4">
-            <div className="w-full sm:w-72">
-              <input
-                type="text"
-                placeholder="Tìm học sinh theo tên hoặc mã..."
-                value={searchFilter}
-                onChange={(e) => setSearchFilter(e.target.value)}
-                className="cm-input w-full text-xs"
-              />
+        ) : progressQuery.isLoading ? (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Skeleton className="h-24 w-full" />
+              <Skeleton className="h-24 w-full" />
+              <Skeleton className="h-24 w-full" />
+              <Skeleton className="h-24 w-full" />
             </div>
-
-            <div className="flex items-center gap-2">
-              <label htmlFor="progress-status-filter" className="text-xs text-[var(--cm-text-muted)] whitespace-nowrap">
-                Lọc trạng thái:
-              </label>
-              <select
-                id="progress-status-filter"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as ProgressStatus | "")}
-                className="cm-select text-xs py-1.5"
-              >
-                <option value="">Tất cả trạng thái</option>
-                <option value="NotStarted">Chưa bắt đầu (NotStarted)</option>
-                <option value="InProgress">Đang làm bài (InProgress)</option>
-                <option value="Completed">Đã hoàn thành (Completed)</option>
-                <option value="Overdue">Quá hạn (Overdue)</option>
-              </select>
-            </div>
+            <Skeleton className="h-64 w-full" />
           </div>
+        ) : (
+          <>
+            {/* Strict Metric Cards derived purely from DTO (Zero Simulated Class Averages) */}
+            <section aria-label="Tổng quan tiến độ" className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <MetricCard
+                label="Tổng học sinh nhận bài"
+                value={totalStudents}
+                supportingText={`Trạng thái bài tập: ${assignment.status}`}
+              />
+              <MetricCard
+                label="Đã hoàn thành"
+                value={completedCount}
+                supportingText={totalStudents > 0 ? `${Math.round((completedCount / totalStudents) * 100)}% tổng số học sinh` : "0%"}
+                trend={{ label: "Completed", tone: "positive" }}
+              />
+              <MetricCard
+                label="Đang làm bài"
+                value={inProgressCount}
+                supportingText="Đang thực hiện các câu hỏi"
+                trend={{ label: "InProgress", tone: "neutral" }}
+              />
+              <MetricCard
+                label="Chưa bắt đầu / Quá hạn"
+                value={notStartedCount + overdueCount}
+                supportingText={`${notStartedCount} chưa làm, ${overdueCount} quá hạn`}
+                trend={{ label: overdueCount > 0 ? "Cần nhắc nhở" : "NotStarted", tone: overdueCount > 0 ? "negative" : "neutral" }}
+              />
+            </section>
 
-          {/* Table Content */}
-          {filteredList.length === 0 ? (
-            <div className="p-8 text-center text-xs text-[var(--cm-text-muted)]">
-              Không tìm thấy học sinh nào phù hợp với điều kiện tìm kiếm.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-[var(--cm-surface-subtle)] border-b border-[var(--cm-border-subtle)] text-[var(--cm-text-muted)] uppercase tracking-wider">
-                  <tr>
-                    <th className="p-3">Học sinh</th>
-                    <th className="p-3">Trạng thái</th>
-                    <th className="p-3">Số câu hoàn thành</th>
-                    <th className="p-3 min-w-[180px]">Tiến độ làm bài</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--cm-border-subtle)]">
-                  {filteredList.map((item) => {
-                    const percent =
-                      item.totalQuestionCount > 0
-                        ? Math.round((item.completedQuestionCount / item.totalQuestionCount) * 100)
-                        : 0;
+            {/* Main Table Card */}
+            <div className="rounded-2xl border border-[var(--cm-border)] bg-[var(--cm-surface)] p-5 lg:p-6 space-y-4 shadow-xl">
+              {/* Table Filters */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[var(--cm-border-subtle)] pb-4">
+                <div className="w-full sm:w-72">
+                  <input
+                    type="text"
+                    placeholder="Tìm học sinh theo tên hoặc mã..."
+                    value={searchFilter}
+                    onChange={(e) => setSearchFilter(e.target.value)}
+                    className="cm-input w-full text-xs"
+                  />
+                </div>
 
-                    const statusTone =
-                      item.status === "Completed"
-                        ? "success"
-                        : item.status === "InProgress"
-                        ? "info"
-                        : item.status === "Overdue"
-                        ? "danger"
-                        : "neutral";
+                <div className="flex items-center gap-2">
+                  <label htmlFor="progress-status-filter" className="text-xs text-[var(--cm-text-muted)] whitespace-nowrap">
+                    Lọc trạng thái:
+                  </label>
+                  <select
+                    id="progress-status-filter"
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value as ProgressStatus | "")}
+                    className="cm-select text-xs py-1.5"
+                  >
+                    <option value="">Tất cả trạng thái</option>
+                    <option value="NotStarted">Chưa bắt đầu (NotStarted)</option>
+                    <option value="InProgress">Đang làm bài (InProgress)</option>
+                    <option value="Completed">Đã hoàn thành (Completed)</option>
+                    <option value="Overdue">Quá hạn (Overdue)</option>
+                  </select>
+                </div>
+              </div>
 
-                    return (
-                      <tr key={item.studentId} className="hover:bg-white/5 transition">
-                        <td className="p-3">
-                          <p className="font-semibold text-[var(--cm-text)]">{item.fullName}</p>
-                          <p className="font-mono text-[11px] text-[var(--cm-text-muted)]">{item.studentId}</p>
-                        </td>
-                        <td className="p-3">
-                          <StatusBadge status={item.status} tone={statusTone} />
-                        </td>
-                        <td className="p-3 font-medium text-[var(--cm-text)]">
-                          <span className="text-sm font-bold text-[var(--cm-cyan)]">{item.completedQuestionCount}</span>
-                          <span className="text-[var(--cm-text-muted)]"> / {item.totalQuestionCount} câu</span>
-                        </td>
-                        <td className="p-3">
-                          <div className="space-y-1">
-                            <div className="flex justify-between text-[11px] text-[var(--cm-text-muted)]">
-                              <span>{percent}%</span>
-                              <span>{item.completedQuestionCount}/{item.totalQuestionCount}</span>
-                            </div>
-                            <div className="h-2 w-full rounded-full bg-[var(--cm-surface-subtle)] border border-[var(--cm-border-subtle)] overflow-hidden">
-                              <div
-                                className={`h-full transition-all duration-300 ${
-                                  item.status === "Completed"
-                                    ? "bg-emerald-400"
-                                    : item.status === "InProgress"
-                                    ? "bg-[var(--cm-cyan)]"
-                                    : item.status === "Overdue"
-                                    ? "bg-rose-400"
-                                    : "bg-slate-500"
-                                }`}
-                                style={{ width: `${percent}%` }}
-                              />
-                            </div>
-                          </div>
-                        </td>
+              {/* Table Content */}
+              {filteredList.length === 0 ? (
+                <div className="p-8 text-center text-xs text-[var(--cm-text-muted)]">
+                  Không tìm thấy học sinh nào phù hợp với điều kiện tìm kiếm.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-[var(--cm-surface-subtle)] border-b border-[var(--cm-border-subtle)] text-[var(--cm-text-muted)] uppercase tracking-wider">
+                      <tr>
+                        <th className="p-3">Học sinh</th>
+                        <th className="p-3">Trạng thái</th>
+                        <th className="p-3">Số câu hoàn thành</th>
+                        <th className="p-3 min-w-[180px]">Tiến độ làm bài</th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--cm-border-subtle)]">
+                      {filteredList.map((item) => {
+                        const percent =
+                          item.totalQuestionCount > 0
+                            ? Math.round((item.completedQuestionCount / item.totalQuestionCount) * 100)
+                            : 0;
+
+                        const statusTone =
+                          item.status === "Completed"
+                            ? "success"
+                            : item.status === "InProgress"
+                            ? "info"
+                            : item.status === "Overdue"
+                            ? "danger"
+                            : "neutral";
+
+                        return (
+                          <tr key={item.studentId} className="hover:bg-white/5 transition">
+                            <td className="p-3">
+                              <p className="font-semibold text-[var(--cm-text)]">{item.fullName}</p>
+                              <p className="font-mono text-[11px] text-[var(--cm-text-muted)]">{item.studentId}</p>
+                            </td>
+                            <td className="p-3">
+                              <StatusBadge status={item.status} tone={statusTone} />
+                            </td>
+                            <td className="p-3 font-medium text-[var(--cm-text)]">
+                              <span className="text-sm font-bold text-[var(--cm-cyan)]">{item.completedQuestionCount}</span>
+                              <span className="text-[var(--cm-text-muted)]"> / {item.totalQuestionCount} câu</span>
+                            </td>
+                            <td className="p-3">
+                              <div className="space-y-1">
+                                <div className="flex justify-between text-[11px] text-[var(--cm-text-muted)]">
+                                  <span>{percent}%</span>
+                                  <span>{item.completedQuestionCount}/{item.totalQuestionCount}</span>
+                                </div>
+                                <div className="h-2 w-full rounded-full bg-[var(--cm-surface-subtle)] border border-[var(--cm-border-subtle)] overflow-hidden">
+                                  <div
+                                    className={`h-full transition-all duration-300 ${
+                                      item.status === "Completed"
+                                        ? "bg-emerald-400"
+                                        : item.status === "InProgress"
+                                        ? "bg-[var(--cm-cyan)]"
+                                        : item.status === "Overdue"
+                                        ? "bg-rose-400"
+                                        : "bg-slate-500"
+                                    }`}
+                                    style={{ width: `${percent}%` }}
+                                  />
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </>
+        )}
 
         {/* Close Dialog */}
         <ConfirmDialog

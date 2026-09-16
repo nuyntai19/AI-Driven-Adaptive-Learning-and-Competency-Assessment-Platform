@@ -41,6 +41,7 @@ export interface Question {
   answerEvaluationMode?: QuestionAnswerEvaluationMode;
   options?: QuestionOption[];
   knowledgeMappings: KnowledgeMapping[];
+  createdByTeacherId?: string;
   rowVersion: string;
 }
 

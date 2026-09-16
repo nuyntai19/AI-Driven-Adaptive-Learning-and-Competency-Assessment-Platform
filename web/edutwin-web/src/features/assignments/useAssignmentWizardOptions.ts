@@ -10,15 +10,24 @@ import type {
   GetAssignmentClassStudentsParams,
 } from '../../api/assignmentsApi';
 
-export const useAssignmentClasses = (params?: GetAssignmentClassesParams) =>
+export interface WizardQueryOptions {
+  enabled?: boolean;
+}
+
+export const useAssignmentClasses = (
+  params?: GetAssignmentClassesParams,
+  options?: WizardQueryOptions
+) =>
   useQuery({
     queryKey: ['assignment-options', 'classes', params],
     queryFn: () => getAssignmentClasses(params),
+    enabled: options?.enabled ?? true,
     staleTime: 30_000,
   });
 
 export const useAssignableQuestions = (
-  paramsOrSubjectId: string | GetAssignableQuestionsParams | undefined
+  paramsOrSubjectId: string | GetAssignableQuestionsParams | undefined,
+  options?: WizardQueryOptions
 ) => {
   const subjectId =
     typeof paramsOrSubjectId === 'string'
@@ -28,13 +37,14 @@ export const useAssignableQuestions = (
   return useQuery({
     queryKey: ['assignment-options', 'questions', paramsOrSubjectId],
     queryFn: () => getAssignableQuestions(paramsOrSubjectId!),
-    enabled: !!subjectId,
+    enabled: (options?.enabled ?? true) && !!subjectId,
     staleTime: 30_000,
   });
 };
 
 export const useAssignmentClassStudents = (
-  paramsOrClassId: string | GetAssignmentClassStudentsParams | undefined
+  paramsOrClassId: string | GetAssignmentClassStudentsParams | undefined,
+  options?: WizardQueryOptions
 ) => {
   const classId =
     typeof paramsOrClassId === 'string'
@@ -44,7 +54,7 @@ export const useAssignmentClassStudents = (
   return useQuery({
     queryKey: ['assignment-options', 'students', paramsOrClassId],
     queryFn: () => getAssignmentClassStudents(paramsOrClassId!),
-    enabled: !!classId,
+    enabled: (options?.enabled ?? true) && !!classId,
     staleTime: 30_000,
   });
 };

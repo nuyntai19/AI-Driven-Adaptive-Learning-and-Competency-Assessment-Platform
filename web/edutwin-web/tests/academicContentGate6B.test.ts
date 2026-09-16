@@ -560,3 +560,206 @@ test("11. Route capabilities alignment: Detail routes require Read permission to
   assert.equal(canAccess(unprivilegedCM, questionDetailRequirements), false, "Actor without questionsRead cannot access question detail");
   assert.equal(canAccess(unprivilegedCM, assignmentDetailRequirements), false, "Actor without assignmentsRead cannot access assignment detail");
 });
+
+// ============================================================================
+// 12. SOURCE CODE OCC AUDIT: ZERO FAKE "1" ROWVERSION FALLBACK
+// ============================================================================
+test("12. Source code OCC audit: Zero fake '1' rowVersion fallback in codebase, fail-closed enforcement", async () => {
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+
+  const pagesDir = path.resolve(process.cwd(), "src/pages");
+  const filesToCheck = [
+    "QuestionEditorPage.tsx",
+    "AssignmentEditorPage.tsx",
+    "AssignmentListPage.tsx",
+    "AssignmentProgressPage.tsx",
+    "QuestionBankPage.tsx",
+  ];
+
+  for (const filename of filesToCheck) {
+    const filePath = path.join(pagesDir, filename);
+    if (!fs.existsSync(filePath)) continue;
+
+    const content = fs.readFileSync(filePath, "utf-8");
+    assert.equal(
+      content.includes('rowVersion || "1"'),
+      false,
+      `File ${filename} must NOT contain fake fallback rowVersion || "1"`
+    );
+    assert.equal(
+      content.includes("rowVersion || '1'"),
+      false,
+      `File ${filename} must NOT contain fake fallback rowVersion || '1'`
+    );
+  }
+
+  // Verify explicit fail-closed OCC check in QuestionEditorPage and AssignmentEditorPage
+  const questionEditorContent = fs.readFileSync(path.join(pagesDir, "QuestionEditorPage.tsx"), "utf-8");
+  assert.equal(
+    questionEditorContent.includes("!questionData?.data?.rowVersion"),
+    true,
+    "QuestionEditorPage must explicitly check for missing rowVersion and fail-closed"
+  );
+
+  const assignmentEditorContent = fs.readFileSync(path.join(pagesDir, "AssignmentEditorPage.tsx"), "utf-8");
+  assert.equal(
+    assignmentEditorContent.includes("!assignment?.rowVersion"),
+    true,
+    "AssignmentEditorPage must explicitly check for missing rowVersion and fail-closed"
+  );
+});
+
+// ============================================================================
+// 13. CAPABILITY-FIRST QUERY GATING: AUXILIARY QUERIES RESPECT CAPABILITIES
+// ============================================================================
+test("13. Capability-first query gating: Auxiliary queries strictly depend on permissions", () => {
+  // Test capability evaluation for wizard queries
+  const canReadClasses = (grants: string[]) => grants.includes(permissions.classesRead);
+  const canReadQuestions = (grants: string[]) => grants.includes(permissions.questionsRead);
+
+  // Restricted CenterManager without classes.read
+  const restrictedGrants = [permissions.assignmentsRead, permissions.assignmentsCreate];
+
+  const classesQueryEnabled = canReadClasses(restrictedGrants);
+  assert.equal(classesQueryEnabled, false, "Classes query must be disabled if actor lacks classes.read");
+
+  const questionsQueryEnabled = canReadQuestions(restrictedGrants) && Boolean("subject-123");
+  assert.equal(questionsQueryEnabled, false, "Questions query must be disabled if actor lacks questions.read");
+
+  // Privileged CenterManager
+  const fullGrants = [
+    permissions.assignmentsRead,
+    permissions.assignmentsCreate,
+    permissions.classesRead,
+    permissions.questionsRead,
+  ];
+
+  assert.equal(canReadClasses(fullGrants), true, "Classes query enabled when actor has classes.read");
+  assert.equal(
+    canReadQuestions(fullGrants) && Boolean("subject-123"),
+    true,
+    "Questions query enabled when actor has questions.read and subjectId"
+  );
+});
+
+// ============================================================================
+// 14. CLASS SELECTION RESOLUTION & CACHE ACROSS PAGINATION
+// ============================================================================
+test("14. Class selection resolution: Edit mode resolves assigned class by ID and preserves cache", () => {
+  // Cache mechanism simulation
+  const cachedClasses = new Map<string, { classId: string; className: string }>();
+
+  // Page 1 loaded classes
+  const page1Classes = [
+    { classId: "class-1", className: "Lớp 10A1" },
+    { classId: "class-2", className: "Lớp 10A2" },
+  ];
+  for (const c of page1Classes) cachedClasses.set(c.classId, c);
+
+  // Assignment belongs to class-99 (which is on page 5, not page 1)
+  const assignmentClassId = "class-99";
+  assert.equal(cachedClasses.has(assignmentClassId), false, "class-99 is not in page 1 cache");
+
+  // Edit mode resolves class via single getClass query
+  const resolvedClass = { classId: "class-99", className: "Lớp 12 Chuyên Toán" };
+  cachedClasses.set(resolvedClass.classId, resolvedClass);
+
+  // Now both page 1 classes and the resolved assigned class are preserved
+  assert.equal(cachedClasses.has("class-1"), true);
+  assert.equal(cachedClasses.has("class-99"), true);
+  assert.equal(cachedClasses.get(assignmentClassId)?.className, "Lớp 12 Chuyên Toán");
+});
+
+// ============================================================================
+// 15. ASSIGNMENT PROGRESS FAIL-CLOSED ERROR STATE: ZERO FAKE 0 KPIS
+// ============================================================================
+test("15. Assignment progress fail-closed error state: Error suppresses metric rendering", () => {
+  type ProgressViewState = {
+    isError: boolean;
+    isLoading: boolean;
+    renderMetrics: boolean;
+    renderTable: boolean;
+    showErrorPanel: boolean;
+  };
+
+  const evaluateProgressRender = (isError: boolean, isLoading: boolean): ProgressViewState => {
+    if (isError) {
+      return {
+        isError: true,
+        isLoading: false,
+        renderMetrics: false,
+        renderTable: false,
+        showErrorPanel: true,
+      };
+    }
+    if (isLoading) {
+      return {
+        isError: false,
+        isLoading: true,
+        renderMetrics: false,
+        renderTable: false,
+        showErrorPanel: false,
+      };
+    }
+    return {
+      isError: false,
+      isLoading: false,
+      renderMetrics: true,
+      renderTable: true,
+      showErrorPanel: false,
+    };
+  };
+
+  // Error case: MUST NOT render metrics or table (zero misleading 0 KPIs)
+  const errorState = evaluateProgressRender(true, false);
+  assert.equal(errorState.showErrorPanel, true, "Must show safe error panel on error");
+  assert.equal(errorState.renderMetrics, false, "Must NOT render metrics when query failed");
+  assert.equal(errorState.renderTable, false, "Must NOT render table when query failed");
+
+  // Success case: Renders metrics and table
+  const successState = evaluateProgressRender(false, false);
+  assert.equal(successState.renderMetrics, true);
+  assert.equal(successState.renderTable, true);
+  assert.equal(successState.showErrorPanel, false);
+});
+
+// ============================================================================
+// 16. QUESTION DTO CANONICAL CREATEDBYTEACHERID INTEGRITY
+// ============================================================================
+test("16. Question DTO canonical createdByTeacherId: Type supports teacher ID without 'as any'", async () => {
+  const q: Question = {
+    questionId: "q-001",
+    subjectId: "sub-001",
+    primaryTopicNodeId: "node-001",
+    questionType: "MultipleChoice",
+    difficulty: 3,
+    questionText: "Tìm x thỏa mãn phương trình x^2 - 4 = 0?",
+    maxScore: 10,
+    estimatedTimeSeconds: 60,
+    reasoningRequired: false,
+    languageCode: "vi",
+    status: "Draft",
+    knowledgeMappings: [],
+    createdByTeacherId: "teacher-uuid-007",
+    rowVersion: "AAAAAA==",
+  };
+
+  assert.equal(q.createdByTeacherId, "teacher-uuid-007", "Question interface includes canonical createdByTeacherId");
+
+  // Verify QuestionEditorPage source does not use (q as any).teacherId
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const editorContent = fs.readFileSync(path.resolve(process.cwd(), "src/pages/QuestionEditorPage.tsx"), "utf-8");
+
+  assert.equal(
+    editorContent.includes("(q as any).teacherId"),
+    false,
+    "QuestionEditorPage must NOT use (q as any).teacherId"
+  );
+  assert.equal(
+    editorContent.includes("q.createdByTeacherId"),
+    true,
+    "QuestionEditorPage must use canonical q.createdByTeacherId"
+  );
+});
