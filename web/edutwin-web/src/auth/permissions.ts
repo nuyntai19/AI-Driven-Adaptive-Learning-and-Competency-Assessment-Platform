@@ -30,6 +30,7 @@ export const permissions = {
   curriculumsRead: "curriculum.curriculums.read",
   curriculumsCreate: "curriculum.curriculums.create",
   curriculumsUpdate: "curriculum.curriculums.update",
+  curriculumsPublish: "curriculum.curriculums.publish",
   questionsRead: "curriculum.questions.read",
   questionsCreate: "curriculum.questions.create",
   questionsUpdate: "curriculum.questions.update",
