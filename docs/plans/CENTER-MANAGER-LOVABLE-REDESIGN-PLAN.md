@@ -273,17 +273,25 @@ graph TD
 ---
 
 ### Checkpoint 5: Organization Management Reskin (Khối Tổ chức)
-* **Trạng thái:** **HOÀN THÀNH — GATE 5 PASS (AUTOMATED)**
-* **Evidence commit:** `021461e` (`feat(ux-center): reskin organization management workspace`).
+* **Trạng thái:** **HOÀN THÀNH — GATE 5 PASS (AUTOMATED & HARDENED)**
+* **Evidence commits:**
+  - `021461e`: `feat(ux-center): reskin organization management workspace` (Reskin 4 pages, modals, overlays, test suite Gate 5).
+  - `59f2c0d`: `fix(ux-center): harden subject goals capability gating and canonical rowversion propagation` (Khắc phục 4 phản biện P1/P2 của Codex: capability-first gating với `twin.student.update_scoped`, lan truyền RowVersion tươi tức thì chống 409 khi sửa liên tiếp, chuẩn hóa validation `remainingDays` 0–3650 theo `UpsertStudentSubjectGoalRequest.cs`, và đồng bộ canonical DTO `StudentSubjectGoalDto` không trường giả/không endpoint giả).
 * **Kết quả xác minh:**
   - 148/148 frontend tests pass (0 fail, 0 skipped, 0 cancelled).
   - ESLint: 0 errors, 0 warnings.
-  - Production build: thành công trong 9.48s; bundle chính `dist/assets/index-Cx0dsRUm.js` đạt 395.81 KB (gzip 125.20 KB), không chunk nào vượt 500 KB.
+  - Production build: thành công trong 9.38s; bundle chính `dist/assets/index-CxL8zxUi.js` đạt 395.86 KB (gzip 125.22 KB), không chunk nào vượt 500 KB.
   - `git diff --check` và `git diff --cached --check`: sạch hoàn toàn.
   - Phân lập Actor (Actor Isolation): Kiểm tra `user?.accountType === "CenterManager"`. CenterManager nhận giao diện Dark Enterprise SaaS mới trong phạm vi `<CenterManagerThemeScope data-actor="center-manager">`; các tài khoản khác (Teacher/Student/PlatformAdmin) giữ nguyên view legacy không thay đổi.
-  - Toàn bộ nghiệp vụ bảo tồn:
+  - Toàn bộ nghiệp vụ bảo tồn & hoàn thiện:
     * `TeacherListPage`: CRUD với OCC RowVersion, Reset Password với `expectedUserRowVersion`, xác nhận xóa mềm với guard kiểm tra số lớp đang phụ trách (`classCount > 0`).
-    * `StudentListPage`: CRUD với OCC RowVersion, Reset Password, xóa mềm bảo toàn lịch sử học tập, và **SubjectGoalsModal** được giữ nguyên và làm nổi bật theo hợp đồng Digital Twin backend (`PUT /api/v1/students/{studentId}/goals/{subjectId}`), đầy đủ validation `targetScore` (0-10) và `remainingDays` (1-365).
+    * `StudentListPage`: CRUD với OCC RowVersion, Reset Password, xóa mềm bảo toàn lịch sử học tập.
+    * `SubjectGoalsModal`:
+      - Đã bổ sung mã quyền canonical `twinStudentUpdateScoped: "twin.student.update_scoped"` vào `permissions.ts`. Cả nút "Mục tiêu" ở bảng và nút "Thiết lập mục tiêu" trong Drawer đều được bọc capability check `canUpdateTwinScoped` (tài khoản không có quyền không thể mở modal và không bị 403).
+      - Modal truy vấn `studentDetail` trực tiếp từ query canonical; khi mutation thành công, cập nhật ngay lập tức `RowVersion` mới vào local state và React Query cache, cho phép chỉnh sửa liên tiếp trong cùng phiên mở modal mà không gặp 409 ConcurrencyConflict.
+      - Nút "Tải lại dữ liệu" trên `ConcurrencyBanner` kích hoạt refetch dữ liệu thật từ backend.
+      - Validation `remainingDays` chuẩn hóa theo backend contract: chấp nhận từ `0` đến `3650` ngày (thay vì giới hạn 1–365).
+      - `StudentSubjectGoalDto` tuân thủ 100% canonical backend: bắt buộc đầy đủ `goalId`, `studentId`, `subjectId`, `targetScore`, `remainingDays`, `currentPredictedScore`, `riskScore`, `rowVersion`; loại bỏ hoàn toàn các trường giả (`subjectCode`, `subjectName`, `createdAt`, `updatedAt`). Tên môn học được resolve linh hoạt phía client bằng cách join với danh sách `subjectsData`.
     * `ClassListPage`: CRUD lớp học với OCC RowVersion, đổi giáo viên, xem chi tiết và danh sách thành viên, **AddStudentsModal** tuân thủ 100% SQL anti-join endpoint `getClassCandidateStudents` kết hợp phân trang server-side và lưu trữ danh sách chọn đa trang, **RemoveStudentModal** giữ nguyên bài tập và lịch sử kiểm tra (không hard-delete).
     * `SubjectListPage`: CRUD môn học với OCC RowVersion, kiểm tra dependency khi xóa, liên kết nhanh sang Knowledge Graph theo đúng contract route `/kien-thuc/do-thi?subjectId={subjectId}`.
     * Xử lý lỗi an toàn: 100% lỗi vận hành đi qua `mapSafeOperationalError` và hiển thị tách biệt `traceId`; không rò rỉ thuộc tính thô từ ProblemDetails ra UI.
