@@ -324,22 +324,24 @@ graph TD
 ---
 
 ### Checkpoint 6: Academic Content Reskin (Khối Nội dung học thuật)
-* **Trạng thái:** **GATE 6A — AUTOMATED PASS (HARDENED)** *(Gate 6B: Question Bank & Assignments CHƯA THỰC HIỆN; chưa tuyên bố hoàn tất toàn bộ Gate 6)*
+* **Trạng thái:** **GATE 6A — AUTOMATED PASS (HARDENED R2)** *(Gate 6B: Question Bank & Assignments CHƯA THỰC HIỆN; chưa tuyên bố hoàn tất toàn bộ Gate 6)*
 * **Evidence commits:**
   - `31aa627` (`feat(ux-center): reskin knowledge graph and curriculum workspace (gate 6a)`)
-  - `fix(ux-center): harden curriculum capabilities, canonical selectors and mutation error trace ids`
+  - `3c817bf` (`fix(ux-center): harden curriculum capabilities, canonical selectors and mutation error trace ids`)
+  - `02d7061` (`docs(ux): record gate 6a corrective hardening`)
+  - `fix(ux-center): resolve codex review findings for gate 6a node api, uuid removal, detail route, teacher capability and pagination`
 * **Chrome E2E:** `Pending Manual / Chrome E2E Confirmation` (Toàn bộ kiểm thử tự động pass, sẵn sàng cho phiên kiểm tra trực quan tương tác Chrome).
 * **Kết quả xác minh kỹ thuật:**
-  - 163/163 frontend tests pass (15 tests trong suite `tests/academicContentGate6A.test.ts`, 0 fail, 0 skipped).
+  - 166/166 frontend tests pass (18 tests trong suite `tests/academicContentGate6A.test.ts`, 0 fail, 0 skipped).
   - ESLint: 0 errors, 0 warnings.
-  - Production build: Thành công; bundle chính đạt ~396.1 KB (gzip ~125.3 KB), nằm chặt chẽ trong ngân sách baseline `395 KB + 10%` (~434.5 KB); các chunk route phân tách rõ ràng: `KnowledgeGraphPage` (90.72 KB), `CurriculumEditorPage` (36.05 KB), `CurriculumListPage` (10.39 KB); không chunk nào vượt 500 KB.
+  - Production build: Thành công; bundle chính đạt ~396.0 KB (gzip ~125.3 KB), nằm chặt chẽ trong ngân sách baseline `395 KB + 10%` (~434.5 KB); các chunk route phân tách rõ ràng: `KnowledgeGraphPage` (92.27 KB), `CurriculumEditorPage` (42.37 KB), `CurriculumListPage` (10.39 KB); không chunk nào vượt 500 KB.
   - `git diff --check`: sạch hoàn toàn (0 warning, 0 trailing whitespace).
-  - 7 tiêu chí cốt lõi được bảo đảm trọn vẹn, cùng 4 điểm gia cố sau review:
+  - 7 tiêu chí cốt lõi được bảo đảm trọn vẹn, cùng 5 điểm gia cố qua 2 vòng review của Codex:
     1. **Phân lập Actor (Actor Isolation):** Áp dụng logic chuẩn `user?.accountType === "CenterManager"`. CenterManager được phục vụ giao diện Dark Enterprise SaaS mới trong phạm vi `<CenterManagerThemeScope data-actor="center-manager">`; Teacher và các vai trò khác giữ nguyên view legacy không thay đổi.
     2. **Phân quyền năng lực (Capability-first & Fail-closed):**
        - Toàn bộ thao tác thêm, sửa, xóa, publish được bảo vệ bởi capability guards (`nodesCreate`, `nodesUpdate`, `nodesDelete`, `edgesCreate`, `edgesUpdate`, `edgesDelete`, `curriculumsCreate`, `curriculumsUpdate`, `curriculumsPublish`, `teachersRead`, `subjectsRead`).
-       - **Gia cố query môn học:** Gating query `listSubjects` với `enabled: canReadSubjects` (`knowledge.subjects.read`). Trong create mode, nếu thiếu quyền đọc môn học (`!canReadSubjects`) hoặc API lỗi, hệ thống áp dụng cơ chế fail-closed với `SafeErrorPanel` và nút thử lại, không để form bị treo 403 hoặc crash.
-       - **Quyền truy cập route chỉ đọc:** Route `/quan-ly/giao-trinh/:id` trong `App.tsx` sử dụng `anyOf: [curriculumsRead, curriculumsUpdate]`. User chỉ có quyền đọc (`curriculumsRead`) vẫn xem được chi tiết giáo trình; `CurriculumEditorPage` hiển thị banner chỉ đọc (amber) và vô hiệu hóa tất cả thao tác chỉnh sửa/lưu/publish.
+       - **Gia cố query môn học & giáo viên luồng tạo:** Gating query `listSubjects` với `enabled: canReadSubjects` (`knowledge.subjects.read`). Trong create mode của CenterManager, bắt buộc `canReadTeachers` (`userManagement.teachers.read`) để chỉ định giáo viên phụ trách. Nếu thiếu quyền hoặc API lỗi, hệ thống áp dụng cơ chế fail-closed với `SafeErrorPanel` và nút thử lại.
+       - **Quyền truy cập route chi tiết chuẩn xác:** Route `/quan-ly/giao-trinh/:id` trong `App.tsx` sử dụng `allOf: [permissions.curriculumsRead]`. User chỉ có quyền đọc xem được chi tiết giáo trình ở chế độ view-only (banner amber, vô hiệu hóa mutation), user thiếu quyền đọc bị chặn fail-closed ngay từ route (không bị lỗi 403 trên GET).
     3. **Đồ thị tri thức (Knowledge Graph):**
        - Bố cục Canvas tương tác trung tâm + Inspector Sidebar (desktop) / Drawer (mobile) bên phải.
        - Tự động tính toán vị trí SVG theo mô hình phân tầng hình thái học (topological layout) dựa trên `nodeType` và `orderIndex` hoàn toàn phía client.
@@ -350,7 +352,10 @@ graph TD
     4. **Giáo trình & Lộ trình học (Curriculum Workspace):**
        - Trạng thái canonical: `Draft`, `Published`, `Archived`.
        - **Endpoint cập nhật chuẩn xác:** Sử dụng `PATCH /api/v1/curriculums/{id}` (thông qua `curriculumApi.updateCurriculum(id, payload)`), gửi atomic OCC `rowVersion`.
-       - **Bộ chọn Canonical cho Knowledge Nodes & Classes:** Loại bỏ hoàn toàn ô nhập UUID thủ công thô sơ. Tích hợp selector đồ thị tri thức `knowledgeGraphApi.getGraph(subjectId)` và `organizationApi.listClasses(...)`. Hiển thị thẻ thông tin trực quan kèm mã, tên, niên khóa; hỗ trợ chọn nhiều lớp và điều chỉnh thứ tự nút (▲, ▼) bảo toàn chuỗi sequence nguyên tử.
+       - **Bộ chọn Canonical Knowledge Nodes:** Gọi `knowledgeGraphApi.listNodes(subjectId)`, khớp chính xác capability `knowledge.nodes.read` (không đòi hỏi `edges.read` như `getGraph`). Hiển thị thẻ trực quan, hỗ trợ điều chỉnh thứ tự nút (▲, ▼) bảo toàn chuỗi sequence nguyên tử.
+       - **Bộ chọn Canonical Classes:** Gọi `organizationApi.listClasses(...)`, hỗ trợ toggle lọc theo môn học của giáo trình, hiển thị mã lớp, tên lớp, niên khóa và giáo viên phụ trách.
+       - **Loại bỏ 100% ô nhập UUID thủ công:** Xóa bỏ hoàn toàn 2 textarea raw input cho Node IDs và Class IDs; ngăn chặn triệt để nguy cơ bypass selector bằng ID đoán/cũ.
+       - **Tìm kiếm & Phân trang Server-side:** Hỗ trợ tìm kiếm và phân trang cho cả giáo viên và lớp học. Sử dụng cache tích lũy (`cachedTeachers`, `cachedClasses`) bảo toàn nguyên vẹn mọi lựa chọn khi chuyển trang hoặc đổi bộ lọc tìm kiếm.
        - Bước Publish có Modal xác nhận trực quan dễ tiếp cận (thay thế hoàn toàn `window.confirm` và `window.alert`), gửi `rowVersion` mới nhất.
        - Sau mỗi mutation thành công (lưu thông tin, lưu nodes, lưu classes), `rowVersion` được cập nhật ngay vào state và React Query cache để các thao tác liên tiếp trong cùng phiên không bị lỗi 409 giả.
        - Lỗi 409 thực tế kích hoạt `ConcurrencyBanner` với nút tải lại dữ liệu mới từ backend.
@@ -370,9 +375,11 @@ graph TD
   2. `CurriculumListPage` & `CurriculumEditorPage` (ĐÃ HOÀN THÀNH Ở GATE 6A):
      - Bảng danh sách giáo trình theo trạng thái (Draft, Published, Archived).
      - Editor tạo/sửa giáo trình: Cập nhật qua `PATCH /api/v1/curriculums/{id}`.
-     - Bộ chọn canonical Knowledge Nodes (lấy từ đồ thị tri thức môn học) và Lớp học (lấy từ danh sách lớp của trung tâm), cho phép sắp xếp thứ tự và lưu atomic kèm `RowVersion`.
+     - Bộ chọn canonical Knowledge Nodes qua `listNodes` (chỉ cần `nodes.read`) và Lớp học (lấy từ danh sách lớp của trung tâm), cho phép sắp xếp thứ tự và lưu atomic kèm `RowVersion`.
+     - Xóa bỏ 100% ô nhập ID thủ công (raw textareas).
      - Chế độ chỉ đọc cho tài khoản chỉ có quyền read (`curriculumsRead`) hoặc giáo trình đã `Published`.
-     - Gating môn học an toàn với `knowledge.subjects.read` và xử lý fail-closed.
+     - Gating môn học và giáo viên an toàn với `knowledge.subjects.read` và `userManagement.teachers.read`, xử lý fail-closed.
+     - Tìm kiếm và phân trang cho giáo viên và lớp học, bảo toàn lựa chọn qua `cachedTeachers` và `cachedClasses`.
      - Nút Publish kèm bước xác nhận và gửi `RowVersion`.
      - Hiển thị tách biệt `traceId` cho mutation error.
   3. `QuestionBankPage` & `QuestionEditorPage` (GATE 6B — CHƯA THỰC HIỆN):
