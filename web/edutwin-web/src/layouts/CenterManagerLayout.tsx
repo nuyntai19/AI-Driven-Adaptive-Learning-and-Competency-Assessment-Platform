@@ -5,6 +5,7 @@ import { organizationApi } from "../api/organizationApi";
 import { logout } from "../auth/authApi";
 import { permissions } from "../auth/permissions";
 import { CenterManagerThemeScope } from "../components/centerManager";
+import { ThemeToggle } from "../components/ThemeToggle";
 import { useAuthStore } from "../stores/authStore";
 import { useModalAccessibility } from "../utils/useModalAccessibility";
 
@@ -104,11 +105,11 @@ function Navigation({ groups, pathname, onNavigate }: { groups: NavigationGroup[
 
 function ShellSidebar({ children, centerContext }: { children: ReactNode; centerContext: ReactNode }) {
   return (
-    <div className="flex h-full flex-col bg-[#0f172a]">
+    <div className="flex h-full flex-col bg-[var(--cm-surface)] border-r border-[var(--cm-border-subtle)]">
       <div className="flex h-[4.5rem] items-center gap-3 border-b border-[var(--cm-border-subtle)] px-5">
         <span aria-hidden="true" className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-cyan-400 to-indigo-500 text-lg font-black text-white">E</span>
         <div>
-          <p className="font-semibold text-white">EduTwin</p>
+          <p className="font-semibold text-[var(--cm-text)]">EduTwin</p>
           <p className="text-[10px] uppercase tracking-[0.15em] text-cyan-300">Center workspace</p>
         </div>
       </div>
@@ -198,7 +199,7 @@ export function CenterManagerLayout() {
   const centerContext = (
     <div className="mx-3 mt-4 rounded-xl border border-[var(--cm-border-subtle)] bg-white/[0.04] p-3">
       <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-300">Phạm vi hiện tại</p>
-      <p className="truncate text-sm font-semibold text-white" title={centerName}>{centerName}</p>
+      <p className="truncate text-sm font-semibold text-[var(--cm-text)]" title={centerName}>{centerName}</p>
       <p className="mt-1 truncate text-xs text-[var(--cm-text-muted)]" title={centerMeta}>{centerMeta}</p>
     </div>
   );
@@ -225,35 +226,45 @@ export function CenterManagerLayout() {
         )}
 
         <div className="min-w-0 lg:col-start-2">
-          <header className="sticky top-0 z-20 flex h-[4.5rem] items-center justify-between gap-4 border-b border-[var(--cm-border-subtle)] bg-[#0f172a]/95 px-4 backdrop-blur sm:px-6">
+          <header className="sticky top-0 z-20 flex h-[4.5rem] items-center justify-between gap-4 border-b border-[var(--cm-border-subtle)] bg-[var(--cm-surface)]/95 px-4 backdrop-blur sm:px-6">
             <div className="flex min-w-0 items-center gap-3">
               <button type="button" className="cm-icon-button h-10 w-10 border border-[var(--cm-border)] lg:hidden" aria-label="Mở menu điều hướng" onClick={() => setMobileOpen(true)}>☰</button>
               <div className="min-w-0">
                 <p className="text-xs text-[var(--cm-text-muted)]">CenterManager /</p>
-                <p className="truncate text-sm font-semibold text-white">{activeItem?.label ?? "Không gian trung tâm"}</p>
+                <p className="truncate text-sm font-semibold text-[var(--cm-text)]">{activeItem?.label ?? "Không gian trung tâm"}</p>
               </div>
             </div>
 
-            <div className="relative">
-              <button ref={profileButtonRef} type="button" aria-expanded={profileOpen} aria-haspopup="menu" className="cm-focus-ring flex items-center gap-3 rounded-xl p-1.5 text-left hover:bg-white/5" onClick={() => setProfileOpen((value) => !value)}>
-                <span className="grid h-9 w-9 place-items-center rounded-full bg-indigo-400 text-xs font-bold text-slate-950">{initials(user?.displayName, user?.username)}</span>
-                <span className="hidden sm:block">
-                  <span className="block max-w-44 truncate text-sm font-semibold text-white">{user?.displayName ?? user?.username}</span>
-                  <span className="block text-xs text-[var(--cm-text-secondary)]">Center Manager</span>
-                </span>
-              </button>
-              {profileOpen && (
-                <div ref={profileMenuRef} role="menu" className="cm-surface absolute right-0 mt-2 w-64 p-2">
-                  <div className="border-b border-[var(--cm-border-subtle)] px-3 py-2">
-                    <p className="truncate text-sm font-semibold text-white">{user?.displayName}</p>
-                    <p className="truncate text-xs text-[var(--cm-text-muted)]">@{user?.username}</p>
-                    <p className="mt-1 truncate text-xs text-cyan-300">{user?.roles[0]?.roleName ?? "Quản lý trung tâm"}</p>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <ThemeToggle />
+              <div className="relative">
+                <button
+                  ref={profileButtonRef}
+                  type="button"
+                  aria-expanded={profileOpen}
+                  aria-haspopup="menu"
+                  className="cm-focus-ring flex items-center gap-3 rounded-xl p-1.5 text-left hover:bg-[var(--cm-surface-muted)]"
+                  onClick={() => setProfileOpen((value) => !value)}
+                >
+                  <span className="grid h-9 w-9 place-items-center rounded-full bg-indigo-400 text-xs font-bold text-slate-950">{initials(user?.displayName, user?.username)}</span>
+                  <span className="hidden sm:block">
+                    <span className="block max-w-44 truncate text-sm font-semibold text-[var(--cm-text)]">{user?.displayName ?? user?.username}</span>
+                    <span className="block text-xs text-[var(--cm-text-secondary)]">Center Manager</span>
+                  </span>
+                </button>
+                {profileOpen && (
+                  <div ref={profileMenuRef} role="menu" className="cm-surface absolute right-0 mt-2 w-64 p-2 shadow-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface)]">
+                    <div className="border-b border-[var(--cm-border-subtle)] px-3 py-2">
+                      <p className="truncate text-sm font-semibold text-[var(--cm-text)]">{user?.displayName}</p>
+                      <p className="truncate text-xs text-[var(--cm-text-muted)]">@{user?.username}</p>
+                      <p className="mt-1 truncate text-xs text-cyan-500 dark:text-cyan-300">{user?.roles[0]?.roleName ?? "Quản lý trung tâm"}</p>
+                    </div>
+                    <button role="menuitem" type="button" className="cm-focus-ring mt-1 w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--cm-text-secondary)] hover:bg-[var(--cm-surface-muted)] hover:text-[var(--cm-text)]" onClick={handleLogout} disabled={loggingOut}>
+                      {loggingOut ? "Đang đăng xuất…" : "Đăng xuất"}
+                    </button>
                   </div>
-                  <button role="menuitem" type="button" className="cm-focus-ring mt-1 w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--cm-text-secondary)] hover:bg-white/5 hover:text-white" onClick={handleLogout} disabled={loggingOut}>
-                    {loggingOut ? "Đang đăng xuất…" : "Đăng xuất"}
-                  </button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </header>
 

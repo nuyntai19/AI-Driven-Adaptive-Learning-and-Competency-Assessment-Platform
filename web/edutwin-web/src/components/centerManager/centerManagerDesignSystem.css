@@ -23,6 +23,33 @@
   color-scheme: dark;
 }
 
+[data-actor="center-manager"][data-theme="light"],
+[data-theme="light"] [data-actor="center-manager"] {
+  --cm-bg: #f8fafc;
+  --cm-surface: #ffffff;
+  --cm-surface-raised: #ffffff;
+  --cm-surface-muted: #f1f5f9;
+  --cm-surface-subtle: #f8fafc;
+  --cm-border: #e2e8f0;
+  --cm-border-subtle: rgba(148, 163, 184, 0.35);
+  --cm-text: #0f172a;
+  --cm-text-secondary: #334155;
+  --cm-text-muted: #64748b;
+  --cm-cyan: #0891b2;
+  --cm-indigo: #4f46e5;
+  --cm-violet: #7c3aed;
+  --cm-success: #059669;
+  --cm-warning: #d97706;
+  --cm-danger: #e11d48;
+  --cm-focus: #06b6d4;
+  --cm-radius-md: 0.75rem;
+  --cm-radius-lg: 1rem;
+  --cm-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 8px 10px -6px rgba(15, 23, 42, 0.04);
+
+  color: var(--cm-text);
+  color-scheme: light;
+}
+
 [data-actor="center-manager"] .cm-focus-ring:focus-visible,
 [data-actor="center-manager"] .cm-icon-button:focus-visible,
 [data-actor="center-manager"] .cm-primary-button:focus-visible,
@@ -106,19 +133,61 @@
   opacity: 0.55;
 }
 
-[data-actor="center-manager"] .cm-field {
+[data-actor="center-manager"] .cm-field,
+[data-actor="center-manager"] .cm-input {
   min-height: 2.5rem;
   border: 1px solid var(--cm-border);
   border-radius: var(--cm-radius-md);
-  background: #0f172a;
+  background: var(--cm-surface-raised);
   color: var(--cm-text);
+  padding: 0.5rem 0.75rem;
 }
 
-[data-actor="center-manager"] .cm-field::placeholder {
+[data-actor="center-manager"] .cm-select,
+[data-actor="center-manager"] select.cm-field,
+[data-actor="center-manager"] select {
+  min-height: 2.5rem;
+  border: 1px solid var(--cm-border);
+  border-radius: var(--cm-radius-md);
+  background-color: var(--cm-surface-raised);
+  color: var(--cm-text);
+  padding: 0.5rem 2.25rem 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 1rem 1rem;
+}
+
+[data-actor="center-manager"][data-theme="light"] .cm-select,
+[data-actor="center-manager"][data-theme="light"] select.cm-field,
+[data-actor="center-manager"][data-theme="light"] select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23475569'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+}
+
+/* Scoped option rules guaranteeing strong contrast on native OS popups */
+[data-actor="center-manager"] option {
+  background-color: #1e293b;
+  color: #f8fafc;
+  padding: 0.5rem;
+}
+
+[data-actor="center-manager"][data-theme="light"] option,
+[data-theme="light"] [data-actor="center-manager"] option {
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
+[data-actor="center-manager"] .cm-field::placeholder,
+[data-actor="center-manager"] .cm-input::placeholder {
   color: var(--cm-text-muted);
 }
 
-[data-actor="center-manager"] .cm-field:focus-visible {
+[data-actor="center-manager"] .cm-field:focus-visible,
+[data-actor="center-manager"] .cm-input:focus-visible,
+[data-actor="center-manager"] .cm-select:focus-visible,
+[data-actor="center-manager"] select:focus-visible {
   border-color: var(--cm-cyan);
   outline: 2px solid rgba(103, 232, 249, 0.38);
   outline-offset: 1px;

@@ -20,6 +20,7 @@ import type {
 } from "../types/knowledgeGraph";
 import type { ProblemDetails } from "../types/auth";
 import { isConcurrencyConflict, mapSafeOperationalError, extractProblemDetails } from "../utils/problemDetails";
+import { computeDeterministicDagLayout, computeEdgePath } from "../utils/knowledgeGraphLayout";
 import {
   CenterManagerThemeScope,
   PageHeader,
@@ -42,14 +43,6 @@ const relationTypeLabels: Record<KnowledgeRelationType, string> = {
   RelatedTo: "Liên quan đến",
   PartOf: "Thuộc về",
   CausesErrorIn: "Gây lỗi trong",
-};
-
-const nodeTypeLayerOrder: Record<KnowledgeNodeType, number> = {
-  Subject: 0,
-  Chapter: 1,
-  Topic: 2,
-  Skill: 3,
-  Concept: 4,
 };
 
 const nodeTypeBadgeStyles: Record<KnowledgeNodeType, string> = {
@@ -613,49 +606,8 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
   // Purely deterministic client-side topological SVG layout calculation
   // NEVER creates, stores, or mutates any fake coordinate fields
   const layout = useMemo(() => {
-    if (nodes.length === 0) return { positions: new Map<string, { x: number; y: number }>(), width: 800, height: 600 };
-
-    // Group nodes by layer: Subject(0), Chapter(1), Topic(2), Skill(3), Concept(4)
-    const layers: KnowledgeGraphNodeDto[][] = [[], [], [], [], []];
-    for (const node of nodes) {
-      const layerIdx = nodeTypeLayerOrder[node.nodeType] ?? 2;
-      layers[layerIdx].push(node);
-    }
-
-    // Sort nodes in each layer by orderIndex
-    for (const layer of layers) {
-      layer.sort((a, b) => a.orderIndex - b.orderIndex);
-    }
-
-    const columnWidth = 240;
-    const rowHeight = 110;
-    const startX = 60;
-    const startY = 60;
-
-    let maxNodesInLayer = 1;
-    for (const layer of layers) {
-      if (layer.length > maxNodesInLayer) maxNodesInLayer = layer.length;
-    }
-
-    const positions = new Map<string, { x: number; y: number }>();
-
-    // Position each node deterministically
-    layers.forEach((layer, layerIndex) => {
-      const x = startX + layerIndex * columnWidth;
-      const totalLayerHeight = layer.length * rowHeight;
-      const baseOffsetY = startY + Math.max(0, ((maxNodesInLayer * rowHeight) - totalLayerHeight) / 4);
-
-      layer.forEach((node, nodeIndex) => {
-        const y = baseOffsetY + nodeIndex * rowHeight;
-        positions.set(node.nodeId, { x, y });
-      });
-    });
-
-    const totalWidth = Math.max(1000, startX + 5 * columnWidth + 80);
-    const totalHeight = Math.max(650, startY + maxNodesInLayer * rowHeight + 120);
-
-    return { positions, width: totalWidth, height: totalHeight };
-  }, [nodes]);
+    return computeDeterministicDagLayout(nodes, edges);
+  }, [nodes, edges]);
 
   // Render Inspector Content
   const renderInspectorContent = () => {
@@ -982,27 +934,6 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
             })}
           </div>
         </div>
-
-        <div className="pt-4 border-t border-[var(--cm-border-subtle)] flex flex-col gap-2">
-          {canCreateNodes && (
-            <button
-              type="button"
-              onClick={() => setIsCreateNodeOpen(true)}
-              className="cm-secondary-button text-xs justify-center"
-            >
-              + Tạo nút kiến thức mới
-            </button>
-          )}
-          {canCreateEdges && nodes.length >= 2 && (
-            <button
-              type="button"
-              onClick={() => setIsCreateEdgeOpen(true)}
-              className="cm-secondary-button text-xs justify-center"
-            >
-              + Tạo liên kết mới
-            </button>
-          )}
-        </div>
       </div>
     );
   };
@@ -1306,22 +1237,9 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
                             const targetPos = layout.positions.get(edge.targetNodeId);
                             if (!sourcePos || !targetPos) return null;
 
-                            // Card dimensions
-                            const cardW = 190;
-                            const cardH = 75;
-
-                            const startX = sourcePos.x + cardW;
-                            const startY = sourcePos.y + cardH / 2;
-                            const endX = targetPos.x;
-                            const endY = targetPos.y + cardH / 2;
-
                             const isSelected = selectedEdgeId === edge.edgeId;
                             const strokeColor = relationTypeColors[edge.relationType] || "#64748b";
-                            const midX = (startX + endX) / 2;
-                            const midY = (startY + endY) / 2;
-
-                            // Smooth bezier curve
-                            const pathData = `M ${startX} ${startY} C ${startX + 50} ${startY}, ${endX - 50} ${endY}, ${endX} ${endY}`;
+                            const { d: pathData, midX, midY } = computeEdgePath(sourcePos, targetPos, 190, 75);
 
                             return (
                               <g
@@ -1359,7 +1277,7 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
                                   width={36}
                                   height={18}
                                   rx={4}
-                                  fill="#0f172a"
+                                  fill="var(--cm-surface)"
                                   stroke={strokeColor}
                                   strokeWidth={isSelected ? 1.5 : 1}
                                 />
@@ -1403,8 +1321,8 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
                                   width={cardW}
                                   height={cardH}
                                   rx={10}
-                                  fill="#1e293b"
-                                  stroke={isSelected ? "#06b6d4" : "#334155"}
+                                  fill="var(--cm-surface)"
+                                  stroke={isSelected ? "var(--cm-cyan)" : "var(--cm-border)"}
                                   strokeWidth={isSelected ? 2 : 1}
                                   className="transition-all duration-150"
                                   style={{
@@ -1433,7 +1351,7 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
                                 />
 
                                 {/* Node Type & Code */}
-                                <text x={12} y={22} fontSize={10} fontWeight="bold" fill="#06b6d4" fontFamily="monospace">
+                                <text x={12} y={22} fontSize={10} fontWeight="bold" fill="var(--cm-cyan)" fontFamily="monospace">
                                   {node.nodeCode}
                                 </text>
                                 <text
@@ -1441,7 +1359,7 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
                                   y={22}
                                   textAnchor="end"
                                   fontSize={9}
-                                  fill="#94a3b8"
+                                  fill="var(--cm-text-secondary)"
                                   fontWeight="600"
                                 >
                                   {nodeTypeLabels[node.nodeType] ?? node.nodeType}
@@ -1453,7 +1371,7 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
                                   y={44}
                                   fontSize={12}
                                   fontWeight="600"
-                                  fill="#f8fafc"
+                                  fill="var(--cm-text)"
                                   className="truncate"
                                 >
                                   {node.nodeName.length > 20
@@ -1462,7 +1380,7 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
                                 </text>
 
                                 {/* Node Footer Info */}
-                                <text x={12} y={63} fontSize={9} fill="#64748b">
+                                <text x={12} y={63} fontSize={9} fill="var(--cm-text-muted)">
                                   #{node.orderIndex} • Thi: {node.examImportance}% • {node.estimatedLearningMinutes}p
                                 </text>
                               </g>
