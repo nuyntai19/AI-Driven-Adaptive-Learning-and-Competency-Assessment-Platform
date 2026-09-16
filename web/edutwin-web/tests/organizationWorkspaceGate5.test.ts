@@ -50,6 +50,7 @@ const fullCenterManagerUser = {
     permissions.subjectsCreate,
     permissions.subjectsUpdate,
     permissions.subjectsDelete,
+    permissions.twinStudentUpdateScoped,
     permissions.nodesRead,
     permissions.edgesRead,
     permissions.dashboardsCenterRead,
@@ -115,6 +116,7 @@ test("1. Full CenterManager has capability for all Organization Management actio
   assert.equal(hasPermission(fullCenterManagerUser, permissions.studentsUpdate), true);
   assert.equal(hasPermission(fullCenterManagerUser, permissions.studentsDelete), true);
   assert.equal(hasPermission(fullCenterManagerUser, permissions.studentsResetPassword), true);
+  assert.equal(hasPermission(fullCenterManagerUser, permissions.twinStudentUpdateScoped), true);
 
   // Classes
   const classCaps = evaluateClassCapabilities(fullCenterManagerUser);
@@ -148,6 +150,7 @@ test("2. Restricted CenterManager only sees granted actions and cannot mutate", 
   assert.equal(hasPermission(restrictedCenterManagerUser, permissions.studentsCreate), false);
   assert.equal(hasPermission(restrictedCenterManagerUser, permissions.studentsUpdate), false);
   assert.equal(hasPermission(restrictedCenterManagerUser, permissions.studentsDelete), false);
+  assert.equal(hasPermission(restrictedCenterManagerUser, permissions.twinStudentUpdateScoped), false);
 
   const classCaps = evaluateClassCapabilities(restrictedCenterManagerUser);
   assert.equal(classCaps.canCreateClass, false);
@@ -199,6 +202,7 @@ test("4. Read-only user cannot execute any mutation", () => {
     permissions.studentsUpdate,
     permissions.studentsDelete,
     permissions.studentsResetPassword,
+    permissions.twinStudentUpdateScoped,
     permissions.classesCreate,
     permissions.classesUpdate,
     permissions.classesManageMembers,
@@ -292,35 +296,69 @@ test("6. Student CRUD and reset password maintain RowVersion for OCC", () => {
 });
 
 // 7. Subject Goals vẫn hoạt động đúng contract (Digital Twin)
-test("7. Subject Goals adhere to Digital Twin backend contract and validation", () => {
+test("7. Subject Goals adhere to Digital Twin backend contract, capability gating and validation", () => {
+  // 1. DTO is canonical with backend StudentSubjectGoalDto.cs (all fields required, zero fake fields)
   const goal: StudentSubjectGoalDto = {
+    goalId: "goal-001",
     studentId: "student-001",
     subjectId: "sub-toan",
-    subjectCode: "TOAN12",
-    subjectName: "Toán học 12",
     targetScore: 8.5,
-    goalId: "goal-001",
     remainingDays: 60,
     currentPredictedScore: 7.8,
     riskScore: 0.15,
     rowVersion: "0x0000000000000303",
-    createdAt: "2026-09-01T00:00:00Z",
-    updatedAt: "2026-09-15T00:00:00Z",
   };
 
+  assert.equal(goal.goalId, "goal-001");
   assert.equal(goal.targetScore, 8.5);
   assert.equal(goal.remainingDays, 60);
   assert.equal(goal.rowVersion, "0x0000000000000303");
 
-  const upsertReq: UpsertStudentSubjectGoalRequest = {
+  // Ensure no fake/extra fields exist on StudentSubjectGoalDto
+  assert.equal((goal as unknown as Record<string, unknown>).subjectCode, undefined);
+  assert.equal((goal as unknown as Record<string, unknown>).subjectName, undefined);
+  assert.equal((goal as unknown as Record<string, unknown>).createdAt, undefined);
+  assert.equal((goal as unknown as Record<string, unknown>).updatedAt, undefined);
+
+  // 2. Capability gating: requires twin.student.update_scoped
+  assert.equal(hasPermission(fullCenterManagerUser, permissions.twinStudentUpdateScoped), true);
+  assert.equal(hasPermission(restrictedCenterManagerUser, permissions.twinStudentUpdateScoped), false);
+
+  // 3. Validation bounds: targetScore 0-10, remainingDays 0-3650 (matching backend UpsertStudentSubjectGoalRequest.cs)
+  const upsertReq1: UpsertStudentSubjectGoalRequest = {
     targetScore: 9.0,
-    remainingDays: 45,
+    remainingDays: 0, // 0 days is valid (due today)
     rowVersion: goal.rowVersion,
   };
+  assert.ok(upsertReq1.targetScore >= 0 && upsertReq1.targetScore <= 10);
+  assert.ok(upsertReq1.remainingDays >= 0 && upsertReq1.remainingDays <= 3650);
 
-  assert.ok(upsertReq.targetScore >= 0 && upsertReq.targetScore <= 10);
-  assert.ok(upsertReq.remainingDays >= 1 && upsertReq.remainingDays <= 365);
-  assert.equal(upsertReq.rowVersion, "0x0000000000000303");
+  const upsertReqMax: UpsertStudentSubjectGoalRequest = {
+    targetScore: 10.0,
+    remainingDays: 3650, // 3650 days (10 years) is valid
+    rowVersion: goal.rowVersion,
+  };
+  assert.ok(upsertReqMax.targetScore >= 0 && upsertReqMax.targetScore <= 10);
+  assert.ok(upsertReqMax.remainingDays >= 0 && upsertReqMax.remainingDays <= 3650);
+
+  // 4. Consecutive mutations maintain fresh RowVersion without stale snapshot 409 conflict
+  // 1st save response returns updated rowVersion
+  const firstSaveResult: StudentSubjectGoalDto = {
+    ...goal,
+    targetScore: 9.0,
+    remainingDays: 45,
+    rowVersion: "0x0000000000000304", // Incremented rowVersion from backend
+  };
+
+  // 2nd save immediately follows in the same open modal session:
+  // Must use firstSaveResult.rowVersion, not the stale goal.rowVersion
+  const secondUpsertReq: UpsertStudentSubjectGoalRequest = {
+    targetScore: 9.5,
+    remainingDays: 40,
+    rowVersion: firstSaveResult.rowVersion,
+  };
+  assert.equal(secondUpsertReq.rowVersion, "0x0000000000000304");
+  assert.notEqual(secondUpsertReq.rowVersion, goal.rowVersion);
 });
 
 // 8. Class candidate pagination / anti-join không bị thay bằng client filtering

@@ -32,18 +32,14 @@ export interface UpdateStudentRequest {
 }
 
 export interface StudentSubjectGoalDto {
+  goalId: string;
   studentId: string;
   subjectId: string;
-  subjectCode?: string;
-  subjectName?: string;
   targetScore: number;
-  goalId?: string;
-  remainingDays?: number;
-  currentPredictedScore?: number;
-  riskScore?: number;
-  rowVersion?: string;
-  createdAt?: string;
-  updatedAt?: string;
+  remainingDays: number;
+  currentPredictedScore: number;
+  riskScore: number;
+  rowVersion: string;
 }
 
 export interface UpsertStudentSubjectGoalRequest {
@@ -54,11 +50,6 @@ export interface UpsertStudentSubjectGoalRequest {
 
 export interface StudentSubjectGoalResponse {
   data: StudentSubjectGoalDto;
-  meta: Meta;
-}
-
-export interface StudentSubjectGoalListResponse {
-  data: StudentSubjectGoalDto[];
   meta: Meta;
 }
 

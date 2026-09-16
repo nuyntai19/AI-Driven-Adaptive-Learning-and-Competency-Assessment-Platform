@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { organizationApi } from "../api/organizationApi";
@@ -45,12 +45,13 @@ const CenterManagerStudentListView: React.FC = () => {
   const canUpdateStudent = hasPermission(permissions.studentsUpdate);
   const canDeleteStudent = hasPermission(permissions.studentsDelete);
   const canResetPassword = hasPermission(permissions.studentsResetPassword);
+  const canUpdateTwinScoped = hasPermission(permissions.twinStudentUpdateScoped);
 
   const [page, setPage] = useState<number>(1);
   const pageSize = 20;
 
   // Filter state
-  const [search, setSearch] = useState<string>("" );
+  const [search, setSearch] = useState<string>("");
   const [status, setStatus] = useState<UserStatus | "">("");
   const [gradeLevel, setGradeLevel] = useState<number | "">("");
 
@@ -71,7 +72,22 @@ const CenterManagerStudentListView: React.FC = () => {
   const [viewingStudentId, setViewingStudentId] = useState<string | null>(null);
 
   // Subject goals modal state
-  const [goalStudent, setGoalStudent] = useState<StudentDetailDto | null>(null);
+  const [goalStudentId, setGoalStudentId] = useState<string | null>(null);
+  const [goalStudentName, setGoalStudentName] = useState<string>("");
+
+  // Query active subjects for resolving subjectId into subjectName in drawer and modal
+  const { data: subjectsData } = useQuery({
+    queryKey: ["subjects", "active-for-student-list"],
+    queryFn: () => organizationApi.listSubjects(true),
+  });
+
+  const subjectsMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const sub of subjectsData?.data ?? []) {
+      map.set(sub.subjectId, `${sub.subjectName} (${sub.subjectCode})`);
+    }
+    return map;
+  }, [subjectsData?.data]);
 
   // Edit modal state
   const [editingStudent, setEditingStudent] = useState<StudentDto | null>(null);
@@ -303,14 +319,10 @@ const CenterManagerStudentListView: React.FC = () => {
     deleteMutation.mutate(deletingStudent.studentId);
   };
 
-  // Open Subject Goals modal directly by fetching student detail if needed
-  const handleOpenSubjectGoals = async (studentId: string) => {
-    try {
-      const detail = await organizationApi.getStudent(studentId);
-      setGoalStudent(detail);
-    } catch (err) {
-      showFeedback("error", mapSafeOperationalError(err, "Không thể tải dữ liệu mục tiêu học sinh."));
-    }
+  // Open Subject Goals modal directly
+  const handleOpenSubjectGoals = (student: StudentDto) => {
+    setGoalStudentId(student.studentId);
+    setGoalStudentName(`${student.fullName} (@${student.username})`);
   };
 
   const columns: DataTableColumn<StudentDto>[] = [
@@ -375,15 +387,17 @@ const CenterManagerStudentListView: React.FC = () => {
           >
             Chi tiết
           </button>
-          <button
-            type="button"
-            id={`btn-goals-student-${student.studentId}`}
-            onClick={() => handleOpenSubjectGoals(student.studentId)}
-            className="cm-secondary-button h-8 px-2.5 py-1 text-xs text-cyan-300 hover:text-cyan-200"
-            title="Mục tiêu môn học (Digital Twin)"
-          >
-            Mục tiêu
-          </button>
+          {canUpdateTwinScoped && (
+            <button
+              type="button"
+              id={`btn-goals-student-${student.studentId}`}
+              onClick={() => handleOpenSubjectGoals(student)}
+              className="cm-secondary-button h-8 px-2.5 py-1 text-xs text-cyan-300 hover:text-cyan-200"
+              title="Mục tiêu môn học (Digital Twin)"
+            >
+              Mục tiêu
+            </button>
+          )}
           {canUpdateStudent && (
             <button
               type="button"
@@ -770,42 +784,43 @@ const CenterManagerStudentListView: React.FC = () => {
                       <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--cm-cyan)]">
                         Mục tiêu điểm số môn học (Digital Twin) ({studentDetail.subjectGoals?.length || 0})
                       </h3>
-                      <button
-                        type="button"
-                        onClick={() => setGoalStudent(studentDetail)}
-                        className="cm-secondary-button h-7 px-2 text-xs text-cyan-300 hover:text-cyan-200"
-                      >
-                        Thiết lập mục tiêu
-                      </button>
+                      {canUpdateTwinScoped && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setGoalStudentId(studentDetail.studentId);
+                            setGoalStudentName(`${studentDetail.fullName} (@${studentDetail.username})`);
+                          }}
+                          className="cm-secondary-button h-7 px-2 text-xs text-cyan-300 hover:text-cyan-200"
+                        >
+                          Thiết lập mục tiêu
+                        </button>
+                      )}
                     </div>
 
                     {!studentDetail.subjectGoals || studentDetail.subjectGoals.length === 0 ? (
                       <p className="text-xs italic text-[var(--cm-text-muted)]">Chưa thiết lập mục tiêu môn học nào.</p>
                     ) : (
                       <div className="divide-y divide-[var(--cm-border-subtle)] rounded-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-raised)]">
-                        {studentDetail.subjectGoals.map((goal) => (
-                          <div key={goal.subjectId} className="flex items-center justify-between p-3 text-xs">
-                            <div>
-                              <span className="font-semibold text-[var(--cm-text)]">
-                                {goal.subjectName || goal.subjectCode || goal.subjectId}
-                              </span>
-                              {goal.remainingDays !== undefined && (
+                        {studentDetail.subjectGoals.map((goal) => {
+                          const subjectLabel = subjectsMap.get(goal.subjectId) || goal.subjectId;
+                          return (
+                            <div key={goal.subjectId} className="flex items-center justify-between p-3 text-xs">
+                              <div>
+                                <span className="font-semibold text-[var(--cm-text)]">
+                                  {subjectLabel}
+                                </span>
                                 <span className="ml-2 text-[var(--cm-text-muted)]">· Còn {goal.remainingDays} ngày</span>
-                              )}
-                              {goal.currentPredictedScore !== undefined && (
                                 <span className="ml-2 text-indigo-300">· Dự báo: {goal.currentPredictedScore}</span>
-                              )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-[var(--cm-cyan)]">
+                                  {goal.targetScore} / 10
+                                </span>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-[var(--cm-cyan)]">
-                                {goal.targetScore} / 10
-                              </span>
-                              <span className="text-[10px] text-[var(--cm-text-muted)]">
-                                {goal.updatedAt ? new Date(goal.updatedAt).toLocaleDateString("vi-VN") : ""}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -815,13 +830,14 @@ const CenterManagerStudentListView: React.FC = () => {
           )}
 
           {/* Subject Goals Modal */}
-          {goalStudent && (
+          {goalStudentId && canUpdateTwinScoped && (
             <SubjectGoalsModal
-              isOpen={!!goalStudent}
-              student={goalStudent}
-              onClose={() => setGoalStudent(null)}
+              isOpen={!!goalStudentId}
+              studentId={goalStudentId}
+              studentName={goalStudentName}
+              onClose={() => setGoalStudentId(null)}
               onSuccess={() => {
-                // If student detail drawer is open, it will auto-update via invalidated query
+                queryClient.invalidateQueries({ queryKey: ["studentDetail", goalStudentId] });
               }}
             />
           )}
@@ -1116,6 +1132,20 @@ const LegacyStudentListPage: React.FC = () => {
     queryFn: () => organizationApi.listClasses({ page: 1, pageSize: 100, status: "Active" }),
     enabled: isCreating,
   });
+
+  const { data: legacySubjectsData } = useQuery({
+    queryKey: ["subjects", "for-legacy-student-detail"],
+    queryFn: () => organizationApi.listSubjects(true),
+    enabled: !!viewingStudentId,
+  });
+
+  const legacySubjectsMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const sub of legacySubjectsData?.data ?? []) {
+      map.set(sub.subjectId, sub.subjectName);
+    }
+    return map;
+  }, [legacySubjectsData?.data]);
 
   const { data: studentDetail, isLoading: isDetailLoading } = useQuery<StudentDetailDto>({
     queryKey: ["studentDetail", viewingStudentId],
@@ -1582,15 +1612,17 @@ const LegacyStudentListPage: React.FC = () => {
                             <tr>
                               <th className="px-3 py-2 text-left font-medium text-gray-700">Môn học</th>
                               <th className="px-3 py-2 text-left font-medium text-gray-700">Mục tiêu</th>
-                              <th className="px-3 py-2 text-left font-medium text-gray-700">Cập nhật</th>
+                              <th className="px-3 py-2 text-left font-medium text-gray-700">Thời hạn</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-200">
                             {studentDetail.subjectGoals.map((goal) => (
                               <tr key={goal.subjectId}>
-                                <td className="px-3 py-2 font-medium text-gray-900">{goal.subjectName}</td>
+                                <td className="px-3 py-2 font-medium text-gray-900">
+                                  {legacySubjectsMap.get(goal.subjectId) || goal.subjectId}
+                                </td>
                                 <td className="px-3 py-2 font-bold text-indigo-600">{goal.targetScore} đ</td>
-                                <td className="px-3 py-2 text-gray-500">{goal.updatedAt ? new Date(goal.updatedAt).toLocaleDateString("vi-VN") : ""}</td>
+                                <td className="px-3 py-2 text-gray-500">Còn {goal.remainingDays} ngày</td>
                               </tr>
                             ))}
                           </tbody>

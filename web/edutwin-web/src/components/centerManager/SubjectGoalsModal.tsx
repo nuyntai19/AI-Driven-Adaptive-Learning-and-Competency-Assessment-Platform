@@ -4,6 +4,7 @@ import { organizationApi } from "../../api/organizationApi";
 import type {
   StudentDetailDto,
   StudentSubjectGoalDto,
+  SubjectDto,
   UpsertStudentSubjectGoalRequest,
 } from "../../types/organization";
 import { extractProblemDetails, isConcurrencyConflict, mapSafeOperationalError } from "../../utils/problemDetails";
@@ -12,14 +13,16 @@ import { Modal } from "./CenterManagerOverlays";
 
 interface SubjectGoalsModalProps {
   isOpen: boolean;
-  student: StudentDetailDto | null;
+  studentId: string | null;
+  studentName?: string;
   onClose: () => void;
   onSuccess?: () => void;
 }
 
 export const SubjectGoalsModal: React.FC<SubjectGoalsModalProps> = ({
   isOpen,
-  student,
+  studentId,
+  studentName,
   onClose,
   onSuccess,
 }) => {
@@ -34,7 +37,28 @@ export const SubjectGoalsModal: React.FC<SubjectGoalsModalProps> = ({
     traceId?: string;
   } | null>(null);
 
-  // Fetch subjects list for selector
+  // Canonical query for student details (including latest subjectGoals)
+  const {
+    data: studentDetail,
+    isLoading: isLoadingStudent,
+    refetch: refetchStudent,
+  } = useQuery({
+    queryKey: ["studentDetail", studentId],
+    queryFn: () => organizationApi.getStudent(studentId!),
+    enabled: isOpen && !!studentId,
+  });
+
+  // Local goals state that is immediately updated on mutation success
+  // to guarantee RowVersion is never stale across consecutive edits
+  const [goals, setGoals] = useState<StudentSubjectGoalDto[]>([]);
+
+  useEffect(() => {
+    if (studentDetail?.subjectGoals) {
+      setGoals(studentDetail.subjectGoals);
+    }
+  }, [studentDetail?.subjectGoals]);
+
+  // Fetch active subjects list for selector and name lookup
   const { data: subjectsData, isLoading: isLoadingSubjects } = useQuery({
     queryKey: ["subjects", "active-for-goals"],
     queryFn: () => organizationApi.listSubjects(true),
@@ -43,17 +67,25 @@ export const SubjectGoalsModal: React.FC<SubjectGoalsModalProps> = ({
 
   const subjects = useMemo(() => subjectsData?.data ?? [], [subjectsData?.data]);
 
+  const subjectsMap = useMemo(() => {
+    const map = new Map<string, SubjectDto>();
+    for (const sub of subjects) {
+      map.set(sub.subjectId, sub);
+    }
+    return map;
+  }, [subjects]);
+
   // Find if student already has a goal for selected subject
   const currentGoal: StudentSubjectGoalDto | undefined = useMemo(() => {
-    if (!student?.subjectGoals || !selectedSubjectId) return undefined;
-    return student.subjectGoals.find((g) => g.subjectId === selectedSubjectId);
-  }, [student?.subjectGoals, selectedSubjectId]);
+    if (!selectedSubjectId) return undefined;
+    return goals.find((g) => g.subjectId === selectedSubjectId);
+  }, [goals, selectedSubjectId]);
 
   // When selectedSubjectId changes or modal opens, update form inputs
   useEffect(() => {
     if (currentGoal) {
       setTargetScore(currentGoal.targetScore.toString());
-      setRemainingDays(currentGoal.remainingDays?.toString() ?? "30");
+      setRemainingDays(currentGoal.remainingDays.toString());
     } else {
       setTargetScore("8.0");
       setRemainingDays("30");
@@ -76,22 +108,49 @@ export const SubjectGoalsModal: React.FC<SubjectGoalsModalProps> = ({
 
   const upsertMutation = useMutation({
     mutationFn: async ({
-      studentId,
+      targetStudentId,
       subjectId,
       request,
     }: {
-      studentId: string;
+      targetStudentId: string;
       subjectId: string;
       request: UpsertStudentSubjectGoalRequest;
     }) => {
-      return await organizationApi.upsertStudentSubjectGoal(studentId, subjectId, request);
+      return await organizationApi.upsertStudentSubjectGoal(targetStudentId, subjectId, request);
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["studentDetail", student?.studentId] });
-      await queryClient.invalidateQueries({ queryKey: ["students"] });
+    onSuccess: (updatedGoal: StudentSubjectGoalDto) => {
+      // 1. Immediately update local goals in modal so subsequent edits use the new RowVersion
+      setGoals((prev) => {
+        const index = prev.findIndex((g) => g.subjectId === updatedGoal.subjectId);
+        if (index >= 0) {
+          const next = [...prev];
+          next[index] = updatedGoal;
+          return next;
+        }
+        return [...prev, updatedGoal];
+      });
+
+      // 2. Immediately update the React Query cache for ["studentDetail", studentId]
+      queryClient.setQueryData<StudentDetailDto>(["studentDetail", studentId], (old) => {
+        if (!old) return old;
+        const existing = old.subjectGoals || [];
+        const index = existing.findIndex((g) => g.subjectId === updatedGoal.subjectId);
+        const nextGoals = index >= 0
+          ? existing.map((g, i) => (i === index ? updatedGoal : g))
+          : [...existing, updatedGoal];
+        return {
+          ...old,
+          subjectGoals: nextGoals,
+        };
+      });
+
+      // 3. Invalidate queries in background
+      queryClient.invalidateQueries({ queryKey: ["studentDetail", studentId] });
+      queryClient.invalidateQueries({ queryKey: ["students"] });
+
       setFeedback({
         type: "success",
-        message: "Đã cập nhật mục tiêu môn học thành công. Dữ liệu Digital Twin đã được đồng bộ.",
+        message: "Đã lưu mục tiêu môn học thành công. Phiên bản dữ liệu và mô hình Digital Twin đã được đồng bộ.",
       });
       onSuccess?.();
     },
@@ -114,7 +173,7 @@ export const SubjectGoalsModal: React.FC<SubjectGoalsModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!student || !selectedSubjectId) return;
+    if (!studentId || !selectedSubjectId) return;
 
     const score = parseFloat(targetScore);
     if (Number.isNaN(score) || score < 0 || score > 10) {
@@ -125,45 +184,46 @@ export const SubjectGoalsModal: React.FC<SubjectGoalsModalProps> = ({
       return;
     }
 
+    // Backend contract: Range 0 to 3650 days (UpsertStudentSubjectGoalRequest.cs)
     const days = parseInt(remainingDays, 10);
-    if (Number.isNaN(days) || days < 1 || days > 365) {
+    if (Number.isNaN(days) || days < 0 || days > 3650) {
       setFeedback({
         type: "error",
-        message: "Thời gian còn lại phải từ 1 đến 365 ngày.",
+        message: "Thời hạn phải là số nguyên từ 0 đến 3650 ngày (tối đa 10 năm).",
       });
       return;
     }
 
     setFeedback(null);
     upsertMutation.mutate({
-      studentId: student.studentId,
+      targetStudentId: studentId,
       subjectId: selectedSubjectId,
       request: {
         targetScore: score,
         remainingDays: days,
-        rowVersion: currentGoal?.rowVersion,
+        rowVersion: currentGoal ? currentGoal.rowVersion : undefined,
       },
     });
   };
 
   const handleReload = async () => {
-    if (student) {
-      await queryClient.invalidateQueries({ queryKey: ["studentDetail", student.studentId] });
-      setFeedback(null);
-    }
+    await refetchStudent();
+    setFeedback(null);
   };
+
+  const displayName = studentName || studentDetail?.fullName || "học viên";
 
   return (
     <Modal
       isOpen={isOpen}
       title="Mục tiêu môn học (Digital Twin)"
-      description={student ? `Thiết lập mục tiêu điểm số và thời hạn cho học sinh ${student.fullName} (@${student.username})` : undefined}
+      description={`Thiết lập mục tiêu điểm số và thời hạn năng lực cho ${displayName}`}
       onClose={onClose}
       maxWidth="max-w-xl"
     >
       <div className="space-y-5">
         {feedback?.type === "conflict" && (
-          <ConcurrencyBanner onReload={handleReload} isReloading={upsertMutation.isPending} />
+          <ConcurrencyBanner onReload={handleReload} isReloading={isLoadingStudent || upsertMutation.isPending} />
         )}
 
         {feedback && feedback.type !== "conflict" && (
@@ -177,52 +237,54 @@ export const SubjectGoalsModal: React.FC<SubjectGoalsModalProps> = ({
           >
             <p className="font-semibold">{feedback.message}</p>
             {feedback.traceId && (
-              <p className="mt-1 font-mono text-xs opacity-75">Mã lỗi: {feedback.traceId}</p>
+              <p className="mt-1 font-mono text-xs opacity-75">Mã theo dõi: {feedback.traceId}</p>
             )}
           </div>
         )}
 
         {/* Existing Goals Overview */}
-        {student?.subjectGoals && student.subjectGoals.length > 0 && (
+        {goals.length > 0 && (
           <div>
             <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-secondary)]">
-              Mục tiêu hiện có ({student.subjectGoals.length})
+              Mục tiêu hiện có ({goals.length})
             </h3>
             <div className="mt-2 divide-y divide-[var(--cm-border-subtle)] rounded-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-raised)]">
-              {student.subjectGoals.map((goal) => (
-                <div
-                  key={goal.subjectId}
-                  className="flex items-center justify-between p-3 text-sm"
-                >
-                  <div>
-                    <span className="font-medium text-[var(--cm-text)]">
-                      {goal.subjectName || goal.subjectCode || goal.subjectId}
-                    </span>
-                    {goal.remainingDays !== undefined && (
+              {goals.map((goal) => {
+                const sub = subjectsMap.get(goal.subjectId);
+                const label = sub ? `${sub.subjectName} (${sub.subjectCode})` : goal.subjectId;
+                return (
+                  <div
+                    key={goal.subjectId}
+                    className="flex items-center justify-between p-3 text-sm"
+                  >
+                    <div>
+                      <span className="font-medium text-[var(--cm-text)]">
+                        {label}
+                      </span>
                       <span className="ml-2 text-xs text-[var(--cm-text-muted)]">
                         · Còn {goal.remainingDays} ngày
                       </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="font-bold text-[var(--cm-cyan)]">
-                      {goal.targetScore} / 10
-                    </span>
-                    {goal.currentPredictedScore !== undefined && (
-                      <span className="text-xs text-[var(--cm-text-secondary)]">
-                        (Dự báo: {goal.currentPredictedScore})
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="font-bold text-[var(--cm-cyan)]">
+                        {goal.targetScore} / 10
                       </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setSelectedSubjectId(goal.subjectId)}
-                      className="text-xs text-indigo-400 hover:text-indigo-300"
-                    >
-                      Chọn
-                    </button>
+                      {goal.currentPredictedScore !== undefined && (
+                        <span className="text-xs text-[var(--cm-text-secondary)]">
+                          (Dự báo: {goal.currentPredictedScore})
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSubjectId(goal.subjectId)}
+                        className="text-xs text-indigo-400 hover:text-indigo-300 underline"
+                      >
+                        Chọn sửa
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -230,7 +292,7 @@ export const SubjectGoalsModal: React.FC<SubjectGoalsModalProps> = ({
         {/* Upsert Form */}
         <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-raised)] p-4">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-secondary)]">
-            {currentGoal ? "Cập nhật mục tiêu môn đã chọn" : "Thêm mục tiêu môn mới"}
+            {currentGoal ? "Cập nhật mục tiêu môn đã chọn" : "Thiết lập mục tiêu môn mới"}
           </h3>
 
           <div>
@@ -256,12 +318,12 @@ export const SubjectGoalsModal: React.FC<SubjectGoalsModalProps> = ({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label htmlFor="goal-target-score" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
-                Điểm mục tiêu (0.0 - 10.0) <span className="text-rose-400">*</span>
+                Điểm mục tiêu (0.00 – 10.00) <span className="text-rose-400">*</span>
               </label>
               <input
                 type="number"
                 id="goal-target-score"
-                step="0.1"
+                step="0.01"
                 min="0"
                 max="10"
                 value={targetScore}
@@ -270,29 +332,32 @@ export const SubjectGoalsModal: React.FC<SubjectGoalsModalProps> = ({
                 className="cm-field mt-1 w-full px-3 text-sm"
                 required
               />
+              <p className="mt-1 text-[11px] text-[var(--cm-text-muted)]">Thang điểm 10, tối đa 2 chữ số thập phân.</p>
             </div>
 
             <div>
               <label htmlFor="goal-remaining-days" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
-                Thời hạn (ngày) <span className="text-rose-400">*</span>
+                Thời hạn còn lại (0 – 3650 ngày) <span className="text-rose-400">*</span>
               </label>
               <input
                 type="number"
                 id="goal-remaining-days"
-                min="1"
-                max="365"
+                step="1"
+                min="0"
+                max="3650"
                 value={remainingDays}
                 onChange={(e) => setRemainingDays(e.target.value)}
                 disabled={upsertMutation.isPending}
                 className="cm-field mt-1 w-full px-3 text-sm"
                 required
               />
+              <p className="mt-1 text-[11px] text-[var(--cm-text-muted)]">Số ngày trước kỳ đánh giá (tối đa 10 năm).</p>
             </div>
           </div>
 
           {currentGoal?.rowVersion && (
             <p className="text-[11px] font-mono text-[var(--cm-text-muted)]">
-              Phiên bản dữ liệu (RowVersion): {currentGoal.rowVersion}
+              Phiên bản đồng thời (RowVersion): {currentGoal.rowVersion}
             </p>
           )}
 
@@ -308,7 +373,7 @@ export const SubjectGoalsModal: React.FC<SubjectGoalsModalProps> = ({
             <button
               type="submit"
               id="btn-submit-subject-goal"
-              disabled={upsertMutation.isPending}
+              disabled={upsertMutation.isPending || isLoadingStudent}
               className="cm-primary-button text-sm"
             >
               {upsertMutation.isPending ? "Đang lưu..." : currentGoal ? "Cập nhật mục tiêu" : "Thiết lập mục tiêu"}

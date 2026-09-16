@@ -255,13 +255,14 @@ test("Student contract models serialize and validate detail with subject goals a
     ],
     subjectGoals: [
       {
+        goalId: "00000000-0000-0000-0000-000000000050",
         studentId: "00000000-0000-0000-0000-000000000020",
         subjectId: "00000000-0000-0000-0000-000000000040",
-        subjectCode: "MATH10",
-        subjectName: "Toán học",
         targetScore: 8.5,
-        createdAt: "2026-09-01T00:00:00Z",
-        updatedAt: "2026-09-01T00:00:00Z",
+        remainingDays: 30,
+        currentPredictedScore: 8.0,
+        riskScore: 0.1,
+        rowVersion: "4001",
       },
     ],
   };

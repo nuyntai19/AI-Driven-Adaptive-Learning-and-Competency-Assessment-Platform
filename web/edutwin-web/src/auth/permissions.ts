@@ -51,6 +51,7 @@ export const permissions = {
   dashboardsCenterRead: "dashboards.center.read",
   twinStudentReadOwn: "twin.student.read_own",
   twinStudentReadScoped: "twin.student.read_scoped",
+  twinStudentUpdateScoped: "twin.student.update_scoped",
   learningAttemptsReadOwn: "learning.attempts.read_own",
   learningAttemptsReadScoped: "learning.attempts.read_scoped",
   learningAttemptsSubmit: "learning.attempts.submit",
