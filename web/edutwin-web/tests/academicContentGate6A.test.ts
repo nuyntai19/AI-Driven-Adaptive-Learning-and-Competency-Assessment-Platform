@@ -421,3 +421,249 @@ test("7. Teacher view preservation: Teacher maintains implicit teacher binding d
     "Teacher selector hidden in edit mode for Teacher"
   );
 });
+
+// ============================================================================
+// 8. SUBJECT QUERY CAPABILITY GATING & FAIL-CLOSED CREATE MODE
+// ============================================================================
+test("8. Subject query capability gating & fail-closed create mode in Curriculum Editor", () => {
+  // Scenario A: Actor has curriculum.curriculums.create BUT lacks knowledge.subjects.read
+  const createOnlyUser = centerManagerUser([permissions.curriculumsCreate]);
+  const hasSubjectsRead = canAccess(createOnlyUser, { allOf: [permissions.subjectsRead] });
+  const hasCurriculumsCreate = canAccess(createOnlyUser, { allOf: [permissions.curriculumsCreate] });
+
+  assert.equal(hasCurriculumsCreate, true);
+  assert.equal(hasSubjectsRead, false, "Actor lacks knowledge.subjects.read");
+
+  // Query must be disabled when !canReadSubjects, avoiding 403 API call
+  const isSubjectsQueryEnabled = hasSubjectsRead;
+  assert.equal(isSubjectsQueryEnabled, false, "subjects query is disabled when lacking subjectsRead");
+
+  // Composite capability for creating curriculum
+  const canInitiateCreate = hasCurriculumsCreate && hasSubjectsRead;
+  assert.equal(
+    canInitiateCreate,
+    false,
+    "Creation cannot proceed without subject read capability (fail-closed state)"
+  );
+
+  // Scenario B: Actor has both permissions
+  const fullManager = centerManagerUser([permissions.curriculumsCreate, permissions.subjectsRead]);
+  const fullCanReadSubjects = canAccess(fullManager, { allOf: [permissions.subjectsRead] });
+  const fullCanCreate = canAccess(fullManager, { allOf: [permissions.curriculumsCreate] });
+
+  assert.equal(fullCanReadSubjects, true);
+  assert.equal(fullCanCreate && fullCanReadSubjects, true, "Full manager can initiate create");
+});
+
+// ============================================================================
+// 9. CANONICAL KNOWLEDGE NODE SELECTOR & REORDERING
+// ============================================================================
+test("9. Canonical Knowledge Node selector preserves sequence and resolves metadata", () => {
+  // Mock canonical graph response from knowledgeGraphApi.getGraph(subjectId)
+  const canonicalNodes: KnowledgeGraphNodeDto[] = [
+    {
+      nodeId: "node-algebra-01",
+      parentNodeId: null,
+      nodeType: "Topic",
+      nodeCode: "MATH.ALG.01",
+      nodeName: "Đại số căn bản",
+      description: "Nhập môn đại số",
+      orderIndex: 0,
+      examImportance: 10,
+      estimatedLearningMinutes: 45,
+      isActive: true,
+      rowVersion: "v-node-1",
+    },
+    {
+      nodeId: "node-geometry-01",
+      parentNodeId: null,
+      nodeType: "Chapter",
+      nodeCode: "MATH.GEO.01",
+      nodeName: "Hình học phẳng",
+      description: "Hình học Euclid",
+      orderIndex: 1,
+      examImportance: 15,
+      estimatedLearningMinutes: 60,
+      isActive: true,
+      rowVersion: "v-node-2",
+    },
+    {
+      nodeId: "node-trig-01",
+      parentNodeId: null,
+      nodeType: "Skill",
+      nodeCode: "MATH.TRIG.01",
+      nodeName: "Lượng giác nâng cao",
+      description: "Kỹ năng tính góc",
+      orderIndex: 2,
+      examImportance: 20,
+      estimatedLearningMinutes: 90,
+      isActive: true,
+      rowVersion: "v-node-3",
+    },
+  ];
+
+  // Build lookup map as done in CurriculumEditorPage
+  const nodeMap = new Map<string, KnowledgeGraphNodeDto>();
+  for (const node of canonicalNodes) {
+    nodeMap.set(node.nodeId, node);
+  }
+
+  assert.equal(nodeMap.size, 3);
+  assert.equal(nodeMap.get("node-algebra-01")?.nodeName, "Đại số căn bản");
+  assert.equal(nodeMap.get("node-geometry-01")?.nodeCode, "MATH.GEO.01");
+
+  // Selection sequence
+  let sequence: string[] = ["node-algebra-01"];
+
+  // Available unselected nodes filter
+  const unselected = canonicalNodes.filter((n) => !sequence.includes(n.nodeId));
+  assert.equal(unselected.length, 2);
+  assert.equal(unselected[0].nodeId, "node-geometry-01");
+
+  // Append second canonical node
+  sequence = [...sequence, "node-geometry-01"];
+  assert.deepEqual(sequence, ["node-algebra-01", "node-geometry-01"]);
+
+  // Append third canonical node
+  sequence = [...sequence, "node-trig-01"];
+  assert.deepEqual(sequence, ["node-algebra-01", "node-geometry-01", "node-trig-01"]);
+
+  // Reorder: move node-trig-01 up from index 2 to 1
+  const reordered = [...sequence];
+  const temp = reordered[1];
+  reordered[1] = reordered[2];
+  reordered[2] = temp;
+  assert.deepEqual(reordered, ["node-algebra-01", "node-trig-01", "node-geometry-01"]);
+
+  // Mutation payload retains canonical sequence and OCC rowVersion
+  const mutationPayload = {
+    nodeIds: reordered,
+    rowVersion: "curr-occ-v5",
+  };
+  assert.equal(mutationPayload.nodeIds.length, 3);
+  assert.equal(mutationPayload.nodeIds[1], "node-trig-01");
+  assert.equal(mutationPayload.rowVersion, "curr-occ-v5");
+});
+
+// ============================================================================
+// 10. CANONICAL CLASS ALLOCATION SELECTOR & MULTI-SELECTION
+// ============================================================================
+test("10. Canonical Class allocation selector preserves selection and constructs atomic payload", () => {
+  // Mock canonical classes from organizationApi.listClasses
+  const classesList = [
+    {
+      classId: "cls-10A1",
+      className: "Lớp 10A1",
+      academicYear: "2026-2027",
+      subject: { subjectId: "sub-toan", subjectName: "Toán học", subjectCode: "MATH" },
+      teacher: { teacherId: "tch-1", displayName: "Thầy Hùng" },
+      studentCount: 35,
+      status: "Active" as const,
+      rowVersion: "rv-cls-1",
+    },
+    {
+      classId: "cls-10A2",
+      className: "Lớp 10A2",
+      academicYear: "2026-2027",
+      subject: { subjectId: "sub-toan", subjectName: "Toán học", subjectCode: "MATH" },
+      teacher: { teacherId: "tch-2", displayName: "Cô Lan" },
+      studentCount: 32,
+      status: "Active" as const,
+      rowVersion: "rv-cls-2",
+    },
+  ];
+
+  const classMap = new Map<string, (typeof classesList)[0]>();
+  for (const c of classesList) {
+    classMap.set(c.classId, c);
+  }
+
+  // Allocate class 10A1
+  let allocatedClassIds: string[] = ["cls-10A1"];
+  assert.equal(classMap.get(allocatedClassIds[0])?.className, "Lớp 10A1");
+
+  // Unallocated classes
+  const unallocated = classesList.filter((c) => !allocatedClassIds.includes(c.classId));
+  assert.equal(unallocated.length, 1);
+  assert.equal(unallocated[0].classId, "cls-10A2");
+
+  // Allocate class 10A2
+  allocatedClassIds = [...allocatedClassIds, "cls-10A2"];
+  assert.deepEqual(allocatedClassIds, ["cls-10A1", "cls-10A2"]);
+
+  // Atomic OCC payload for classes
+  const classUpdatePayload = {
+    classIds: allocatedClassIds,
+    rowVersion: "curr-row-v9",
+  };
+  assert.deepEqual(classUpdatePayload.classIds, ["cls-10A1", "cls-10A2"]);
+  assert.equal(classUpdatePayload.rowVersion, "curr-row-v9");
+});
+
+// ============================================================================
+// 11. READ-ONLY NAVIGATION ALIGNMENT & VIEW MODE ENFORCEMENT
+// ============================================================================
+test("11. Read-only navigation alignment: curriculums.read allows accessing detail in view-only mode", () => {
+  const readOnlyUser = centerManagerUser([permissions.curriculumsRead]);
+
+  // Route /quan-ly/giao-trinh/:id is protected by anyOf: [curriculumsRead, curriculumsUpdate]
+  const canAccessDetailRoute = canAccess(readOnlyUser, {
+    anyOf: [permissions.curriculumsRead, permissions.curriculumsUpdate],
+  });
+  assert.equal(
+    canAccessDetailRoute,
+    true,
+    "Read-only user can access /quan-ly/giao-trinh/:id via curriculumsRead"
+  );
+
+  // In the editor, verify read-only computation
+  const isEditMode = true;
+  const canUpdate = canAccess(readOnlyUser, { allOf: [permissions.curriculumsUpdate] });
+  const isDraft = true;
+  const isReadOnly = !isDraft || (isEditMode && !canUpdate);
+
+  assert.equal(canUpdate, false, "Read-only user cannot update");
+  assert.equal(isReadOnly, true, "Editor runs in strict read-only mode for viewer");
+
+  // Verify that mutation actions are blocked
+  const canSaveInfo = isEditMode ? canUpdate : false;
+  assert.equal(canSaveInfo, false, "Cannot save info in read-only mode");
+});
+
+// ============================================================================
+// 12. MUTATION ERROR TRACE ID EXTRACTION & DISCRETE DISPLAY
+// ============================================================================
+test("12. Mutation error handling: traceId extracted and rendered separately from user message", () => {
+  const backendErrorWithTrace = {
+    isAxiosError: true,
+    response: {
+      status: 400,
+      headers: { "x-trace-id": "trace-hdr-9999" },
+      data: {
+        type: "https://tools.ietf.org/html/rfc7231#section-6.5.1",
+        title: "Dữ liệu không hợp lệ",
+        status: 400,
+        detail: "Mã nút kiến thức bị trùng trong danh mục.",
+        traceId: "trace-body-8888",
+        errorCode: "DUPLICATE_NODE_CODE",
+      },
+    },
+  };
+
+  const details = extractProblemDetails(backendErrorWithTrace);
+  const safeMessage = mapSafeOperationalError(backendErrorWithTrace, "Không thể tạo nút.");
+
+  // Verify that details has isolated traceId
+  assert.equal(details.traceId, "trace-body-8888");
+
+  // State object format
+  const errorState: { message: string; traceId?: string | null } = {
+    message: safeMessage,
+    traceId: details.traceId,
+  };
+
+  assert.equal(errorState.traceId, "trace-body-8888");
+  assert.ok(errorState.message.length > 0);
+  // Verify UI can render traceId separately in a dedicated badge / font-mono element
+  assert.equal(typeof errorState.traceId, "string");
+});

@@ -19,7 +19,7 @@ import type {
   UpdateKnowledgeEdgeRequest,
 } from "../types/knowledgeGraph";
 import type { ProblemDetails } from "../types/auth";
-import { isConcurrencyConflict, mapSafeOperationalError } from "../utils/problemDetails";
+import { isConcurrencyConflict, mapSafeOperationalError, extractProblemDetails } from "../utils/problemDetails";
 import {
   CenterManagerThemeScope,
   PageHeader,
@@ -68,7 +68,7 @@ const relationTypeColors: Record<KnowledgeRelationType, string> = {
 };
 
 /**
- * Modern Dark Enterprise SaaS view for CenterManager on KnowledgeGraphPage
+ * Modern CenterManager Dark Enterprise SaaS view for KnowledgeGraphPage
  */
 const CenterManagerKnowledgeGraphView: React.FC = () => {
   const queryClient = useQueryClient();
@@ -82,9 +82,11 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
 
   // Permission flags
   const canReadSubjects = hasPermission(permissions.subjectsRead);
+  const canReadNodes = hasPermission(permissions.nodesRead);
   const canCreateNodes = hasPermission(permissions.nodesCreate);
   const canUpdateNodes = hasPermission(permissions.nodesUpdate);
   const canDeleteNodes = hasPermission(permissions.nodesDelete);
+  const canReadEdges = hasPermission(permissions.edgesRead);
   const canCreateEdges = hasPermission(permissions.edgesCreate);
   const canUpdateEdges = hasPermission(permissions.edgesUpdate);
   const canDeleteEdges = hasPermission(permissions.edgesDelete);
@@ -107,14 +109,14 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
   const [createNodeExamImportance, setCreateNodeExamImportance] = useState<string>("0");
   const [createNodeEstimatedMinutes, setCreateNodeEstimatedMinutes] = useState<string>("30");
   const [createNodeIsActive, setCreateNodeIsActive] = useState<boolean>(true);
-  const [createNodeError, setCreateNodeError] = useState<string | null>(null);
+  const [createNodeError, setCreateNodeError] = useState<{ message: string; traceId?: string | null } | null>(null);
 
   const [isCreateEdgeOpen, setIsCreateEdgeOpen] = useState(false);
   const [createEdgeSourceId, setCreateEdgeSourceId] = useState<string>("");
   const [createEdgeTargetId, setCreateEdgeTargetId] = useState<string>("");
   const [createEdgeRelationType, setCreateEdgeRelationType] = useState<KnowledgeRelationType>("PrerequisiteOf");
   const [createEdgeWeight, setCreateEdgeWeight] = useState<string>("1.0");
-  const [createEdgeError, setCreateEdgeError] = useState<string | null>(null);
+  const [createEdgeError, setCreateEdgeError] = useState<{ message: string; traceId?: string | null } | null>(null);
 
   // Node Edit State (in Inspector)
   const [editNodeName, setEditNodeName] = useState("");
@@ -124,19 +126,19 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
   const [editNodeExamImportance, setEditNodeExamImportance] = useState("0");
   const [editNodeEstimatedMinutes, setEditNodeEstimatedMinutes] = useState("30");
   const [editNodeIsActive, setEditNodeIsActive] = useState(true);
-  const [editNodeError, setEditNodeError] = useState<string | null>(null);
+  const [editNodeError, setEditNodeError] = useState<{ message: string; traceId?: string | null } | null>(null);
 
   // Node Delete Modal
   const [deletingNode, setDeletingNode] = useState<KnowledgeGraphNodeDto | null>(null);
-  const [deleteNodeError, setDeleteNodeError] = useState<string | null>(null);
+  const [deleteNodeError, setDeleteNodeError] = useState<{ message: string; traceId?: string | null } | null>(null);
 
   // Edge Edit State (in Inspector)
   const [editEdgeWeight, setEditEdgeWeight] = useState("1.0");
-  const [editEdgeError, setEditEdgeError] = useState<string | null>(null);
+  const [editEdgeError, setEditEdgeError] = useState<{ message: string; traceId?: string | null } | null>(null);
 
   // Edge Delete Modal
   const [deletingEdge, setDeletingEdge] = useState<KnowledgeGraphEdgeDto | null>(null);
-  const [deleteEdgeError, setDeleteEdgeError] = useState<string | null>(null);
+  const [deleteEdgeError, setDeleteEdgeError] = useState<{ message: string; traceId?: string | null } | null>(null);
 
   const [globalSuccessMessage, setGlobalSuccessMessage] = useState<string | null>(null);
 
@@ -187,7 +189,7 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
   } = useQuery({
     queryKey: ["knowledge-graph", user?.centerId, selectedSubjectId],
     queryFn: () => knowledgeGraphApi.getGraph(selectedSubjectId),
-    enabled: Boolean(user?.centerId && selectedSubjectId.trim()),
+    enabled: Boolean(user?.centerId && selectedSubjectId.trim() && canReadNodes && canReadEdges),
   });
 
   const nodes = useMemo(() => graphData?.nodes ?? [], [graphData?.nodes]);
@@ -251,6 +253,7 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
       setGlobalSuccessMessage("Cập nhật nút kiến thức thành công!");
     },
     onError: async (err) => {
+      const details = extractProblemDetails(err);
       if (isAxiosError<ProblemDetails>(err)) {
         if (isConcurrencyConflict(err)) {
           const refreshed = await refetchGraph();
@@ -264,24 +267,32 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
             setEditNodeEstimatedMinutes(String(latestNode.estimatedLearningMinutes ?? 30));
             setEditNodeIsActive(latestNode.isActive ?? true);
           }
-          setEditNodeError(
-            "Dữ liệu nút vừa thay đổi bởi người dùng khác. Hệ thống đã nạp RowVersion mới nhất; vui lòng kiểm tra lại rồi gửi lại."
-          );
+          setEditNodeError({
+            message: "Dữ liệu nút vừa thay đổi bởi người dùng khác. Hệ thống đã nạp RowVersion mới nhất; vui lòng kiểm tra lại rồi gửi lại.",
+            traceId: details.traceId,
+          });
           return;
         }
         if (err.response?.status === 409) {
-          setEditNodeError(
-            mapSafeOperationalError(
+          setEditNodeError({
+            message: mapSafeOperationalError(
               err,
               "Không thể cập nhật nút do xung đột ràng buộc hoặc chu trình phụ thuộc."
-            )
-          );
+            ),
+            traceId: details.traceId,
+          });
           return;
         }
-        setEditNodeError(mapSafeOperationalError(err, "Không thể cập nhật nút kiến thức. Vui lòng thử lại."));
+        setEditNodeError({
+          message: mapSafeOperationalError(err, "Không thể cập nhật nút kiến thức. Vui lòng thử lại."),
+          traceId: details.traceId,
+        });
         return;
       }
-      setEditNodeError("Đã xảy ra lỗi khi cập nhật nút kiến thức.");
+      setEditNodeError({
+        message: "Đã xảy ra lỗi khi cập nhật nút kiến thức.",
+        traceId: details.traceId,
+      });
     },
   });
 
@@ -296,20 +307,28 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
       setGlobalSuccessMessage("Đã xóa nút kiến thức thành công!");
     },
     onError: (err) => {
+      const details = extractProblemDetails(err);
       if (isAxiosError<ProblemDetails>(err)) {
         if (err.response?.status === 409) {
-          setDeleteNodeError(
-            mapSafeOperationalError(
+          setDeleteNodeError({
+            message: mapSafeOperationalError(
               err,
               "Không thể xóa nút kiến thức vì đang có dữ liệu hoặc quan hệ liên kết trong hệ thống."
-            )
-          );
+            ),
+            traceId: details.traceId,
+          });
           return;
         }
-        setDeleteNodeError(mapSafeOperationalError(err, "Không thể xóa nút kiến thức. Vui lòng thử lại."));
+        setDeleteNodeError({
+          message: mapSafeOperationalError(err, "Không thể xóa nút kiến thức. Vui lòng thử lại."),
+          traceId: details.traceId,
+        });
         return;
       }
-      setDeleteNodeError("Đã xảy ra lỗi khi xóa nút kiến thức.");
+      setDeleteNodeError({
+        message: "Đã xảy ra lỗi khi xóa nút kiến thức.",
+        traceId: details.traceId,
+      });
     },
   });
 
@@ -329,11 +348,18 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
       setGlobalSuccessMessage("Tạo nút kiến thức mới thành công!");
     },
     onError: (err) => {
+      const details = extractProblemDetails(err);
       if (isAxiosError<ProblemDetails>(err)) {
-        setCreateNodeError(mapSafeOperationalError(err, "Không thể tạo nút kiến thức. Vui lòng thử lại."));
+        setCreateNodeError({
+          message: mapSafeOperationalError(err, "Không thể tạo nút kiến thức. Vui lòng thử lại."),
+          traceId: details.traceId,
+        });
         return;
       }
-      setCreateNodeError("Đã xảy ra lỗi khi tạo nút kiến thức.");
+      setCreateNodeError({
+        message: "Đã xảy ra lỗi khi tạo nút kiến thức.",
+        traceId: details.traceId,
+      });
     },
   });
 
@@ -347,6 +373,7 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
       setGlobalSuccessMessage("Cập nhật liên kết thành công!");
     },
     onError: async (err) => {
+      const details = extractProblemDetails(err);
       if (isAxiosError<ProblemDetails>(err)) {
         if (isConcurrencyConflict(err)) {
           const refreshed = await refetchGraph();
@@ -354,15 +381,22 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
           if (latestEdge) {
             setEditEdgeWeight(String(latestEdge.weight ?? 1.0));
           }
-          setEditEdgeError(
-            "Dữ liệu liên kết vừa thay đổi bởi người dùng khác. Hệ thống đã nạp RowVersion mới nhất; vui lòng kiểm tra lại rồi gửi lại."
-          );
+          setEditEdgeError({
+            message: "Dữ liệu liên kết vừa thay đổi bởi người dùng khác. Hệ thống đã nạp RowVersion mới nhất; vui lòng kiểm tra lại rồi gửi lại.",
+            traceId: details.traceId,
+          });
           return;
         }
-        setEditEdgeError(mapSafeOperationalError(err, "Không thể cập nhật liên kết. Vui lòng thử lại."));
+        setEditEdgeError({
+          message: mapSafeOperationalError(err, "Không thể cập nhật liên kết. Vui lòng thử lại."),
+          traceId: details.traceId,
+        });
         return;
       }
-      setEditEdgeError("Đã xảy ra lỗi khi cập nhật liên kết.");
+      setEditEdgeError({
+        message: "Đã xảy ra lỗi khi cập nhật liên kết.",
+        traceId: details.traceId,
+      });
     },
   });
 
@@ -377,11 +411,18 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
       setGlobalSuccessMessage("Đã xóa liên kết thành công!");
     },
     onError: (err) => {
+      const details = extractProblemDetails(err);
       if (isAxiosError<ProblemDetails>(err)) {
-        setDeleteEdgeError(mapSafeOperationalError(err, "Không thể xóa liên kết. Vui lòng thử lại."));
+        setDeleteEdgeError({
+          message: mapSafeOperationalError(err, "Không thể xóa liên kết. Vui lòng thử lại."),
+          traceId: details.traceId,
+        });
         return;
       }
-      setDeleteEdgeError("Đã xảy ra lỗi khi xóa liên kết.");
+      setDeleteEdgeError({
+        message: "Đã xảy ra lỗi khi xóa liên kết.",
+        traceId: details.traceId,
+      });
     },
   });
 
@@ -397,20 +438,28 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
       setGlobalSuccessMessage("Tạo liên kết kiến thức mới thành công!");
     },
     onError: (err) => {
+      const details = extractProblemDetails(err);
       if (isAxiosError<ProblemDetails>(err)) {
         if (err.response?.status === 409) {
-          setCreateEdgeError(
-            mapSafeOperationalError(
+          setCreateEdgeError({
+            message: mapSafeOperationalError(
               err,
               "Không thể tạo liên kết vì sẽ tạo chu trình phụ thuộc (DAG cycle) hoặc trùng lặp liên kết."
-            )
-          );
+            ),
+            traceId: details.traceId,
+          });
           return;
         }
-        setCreateEdgeError(mapSafeOperationalError(err, "Không thể tạo liên kết kiến thức. Vui lòng thử lại."));
+        setCreateEdgeError({
+          message: mapSafeOperationalError(err, "Không thể tạo liên kết kiến thức. Vui lòng thử lại."),
+          traceId: details.traceId,
+        });
         return;
       }
-      setCreateEdgeError("Đã xảy ra lỗi khi tạo liên kết kiến thức.");
+      setCreateEdgeError({
+        message: "Đã xảy ra lỗi khi tạo liên kết kiến thức.",
+        traceId: details.traceId,
+      });
     },
   });
 
@@ -422,25 +471,25 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
 
     const trimmedName = editNodeName.trim();
     if (!trimmedName) {
-      setEditNodeError("Tên nút không được để trống.");
+      setEditNodeError({ message: "Tên nút không được để trống." });
       return;
     }
 
     const orderIdx = parseInt(editNodeOrderIndex, 10);
     if (isNaN(orderIdx) || orderIdx < 0) {
-      setEditNodeError("Thứ tự phải là số nguyên không âm.");
+      setEditNodeError({ message: "Thứ tự phải là số nguyên không âm." });
       return;
     }
 
     const importance = parseFloat(editNodeExamImportance);
     if (isNaN(importance) || importance < 0 || importance > 100) {
-      setEditNodeError("Mức quan trọng thi phải nằm trong khoảng từ 0 đến 100.");
+      setEditNodeError({ message: "Mức quan trọng thi phải nằm trong khoảng từ 0 đến 100." });
       return;
     }
 
     const minutes = parseInt(editNodeEstimatedMinutes, 10);
     if (isNaN(minutes) || minutes < 1) {
-      setEditNodeError("Thời gian học ước tính phải là số nguyên dương (tối thiểu 1 phút).");
+      setEditNodeError({ message: "Thời gian học ước tính phải là số nguyên dương (tối thiểu 1 phút)." });
       return;
     }
 
@@ -466,7 +515,7 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
 
     const weight = parseFloat(editEdgeWeight);
     if (isNaN(weight) || weight < 0 || weight > 1.0) {
-      setEditEdgeError("Trọng số phải nằm trong khoảng từ 0.0 đến 1.0.");
+      setEditEdgeError({ message: "Trọng số phải nằm trong khoảng từ 0.0 đến 1.0." });
       return;
     }
 
@@ -485,31 +534,31 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
 
     const code = createNodeCode.trim();
     if (!code) {
-      setCreateNodeError("Mã nút không được để trống.");
+      setCreateNodeError({ message: "Mã nút không được để trống." });
       return;
     }
 
     const name = createNodeName.trim();
     if (!name) {
-      setCreateNodeError("Tên nút không được để trống.");
+      setCreateNodeError({ message: "Tên nút không được để trống." });
       return;
     }
 
     const orderIdx = parseInt(createNodeOrderIndex, 10);
     if (isNaN(orderIdx) || orderIdx < 0) {
-      setCreateNodeError("Thứ tự phải là số nguyên không âm.");
+      setCreateNodeError({ message: "Thứ tự phải là số nguyên không âm." });
       return;
     }
 
     const importance = parseFloat(createNodeExamImportance);
     if (isNaN(importance) || importance < 0 || importance > 100) {
-      setCreateNodeError("Mức quan trọng thi phải nằm trong khoảng từ 0 đến 100.");
+      setCreateNodeError({ message: "Mức quan trọng thi phải nằm trong khoảng từ 0 đến 100." });
       return;
     }
 
     const minutes = parseInt(createNodeEstimatedMinutes, 10);
     if (isNaN(minutes) || minutes < 1) {
-      setCreateNodeError("Thời gian học ước tính phải là số nguyên dương (tối thiểu 1 phút).");
+      setCreateNodeError({ message: "Thời gian học ước tính phải là số nguyên dương (tối thiểu 1 phút)." });
       return;
     }
 
@@ -532,23 +581,23 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
     setCreateEdgeError(null);
 
     if (!createEdgeSourceId.trim()) {
-      setCreateEdgeError("Vui lòng chọn nút nguồn.");
+      setCreateEdgeError({ message: "Vui lòng chọn nút nguồn." });
       return;
     }
 
     if (!createEdgeTargetId.trim()) {
-      setCreateEdgeError("Vui lòng chọn nút đích.");
+      setCreateEdgeError({ message: "Vui lòng chọn nút đích." });
       return;
     }
 
     if (createEdgeSourceId === createEdgeTargetId) {
-      setCreateEdgeError("Nút nguồn và nút đích không được trùng nhau.");
+      setCreateEdgeError({ message: "Nút nguồn và nút đích không được trùng nhau." });
       return;
     }
 
     const weight = parseFloat(createEdgeWeight);
     if (isNaN(weight) || weight < 0 || weight > 1.0) {
-      setCreateEdgeError("Trọng số phải nằm trong khoảng từ 0.0 đến 1.0.");
+      setCreateEdgeError({ message: "Trọng số phải nằm trong khoảng từ 0.0 đến 1.0." });
       return;
     }
 
@@ -657,7 +706,10 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
 
               {editNodeError && (
                 <div className="rounded-lg bg-rose-500/10 p-3 border border-rose-500/30 text-xs font-medium text-rose-300">
-                  {editNodeError}
+                  <p>{editNodeError.message}</p>
+                  {editNodeError.traceId && (
+                    <p className="mt-1 font-mono text-[11px] text-rose-200/80">Trace ID: {editNodeError.traceId}</p>
+                  )}
                 </div>
               )}
 
@@ -835,7 +887,10 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
 
               {editEdgeError && (
                 <div className="rounded-lg bg-rose-500/10 p-3 border border-rose-500/30 text-xs font-medium text-rose-300">
-                  {editEdgeError}
+                  <p>{editEdgeError.message}</p>
+                  {editEdgeError.traceId && (
+                    <p className="mt-1 font-mono text-[11px] text-rose-200/80">Trace ID: {editEdgeError.traceId}</p>
+                  )}
                 </div>
               )}
 
@@ -1603,7 +1658,10 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
         >
           {createNodeError && (
             <div className="mb-4 rounded-lg bg-rose-500/10 p-3 border border-rose-500/30 text-xs font-medium text-rose-300">
-              {createNodeError}
+              <p>{createNodeError.message}</p>
+              {createNodeError.traceId && (
+                <p className="mt-1 font-mono text-[11px] text-rose-200/80">Trace ID: {createNodeError.traceId}</p>
+              )}
             </div>
           )}
 
@@ -1761,7 +1819,10 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
         >
           {createEdgeError && (
             <div className="mb-4 rounded-lg bg-rose-500/10 p-3 border border-rose-500/30 text-xs font-medium text-rose-300">
-              {createEdgeError}
+              <p>{createEdgeError.message}</p>
+              {createEdgeError.traceId && (
+                <p className="mt-1 font-mono text-[11px] text-rose-200/80">Trace ID: {createEdgeError.traceId}</p>
+              )}
             </div>
           )}
 
@@ -1870,7 +1931,10 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
         >
           {deleteNodeError && (
             <div className="mb-4 rounded-lg bg-rose-500/10 p-3 border border-rose-500/30 text-xs font-medium text-rose-300">
-              {deleteNodeError}
+              <p>{deleteNodeError.message}</p>
+              {deleteNodeError.traceId && (
+                <p className="mt-1 font-mono text-[11px] text-rose-200/80">Trace ID: {deleteNodeError.traceId}</p>
+              )}
             </div>
           )}
 
@@ -1916,7 +1980,10 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
         >
           {deleteEdgeError && (
             <div className="mb-4 rounded-lg bg-rose-500/10 p-3 border border-rose-500/30 text-xs font-medium text-rose-300">
-              {deleteEdgeError}
+              <p>{deleteEdgeError.message}</p>
+              {deleteEdgeError.traceId && (
+                <p className="mt-1 font-mono text-[11px] text-rose-200/80">Trace ID: {deleteEdgeError.traceId}</p>
+              )}
             </div>
           )}
 

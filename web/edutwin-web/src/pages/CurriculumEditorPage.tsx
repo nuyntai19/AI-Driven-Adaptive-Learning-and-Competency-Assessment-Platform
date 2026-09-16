@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { organizationApi } from "../api/organizationApi";
+import { knowledgeGraphApi } from "../api/knowledgeGraphApi";
 import { useAuthStore } from "../stores/authStore";
 import { permissions } from "../auth/permissions";
 import {
@@ -13,6 +14,8 @@ import {
   usePublishCurriculum,
 } from "../features/curriculum/useCurriculums";
 import type { CreateCurriculumRequest, UpdateCurriculumRequest, ReviewStatus } from "../types/curriculum";
+import type { KnowledgeGraphNodeDto } from "../types/knowledgeGraph";
+import type { ClassDto } from "../types/organization";
 import {
   shouldDisplayTeacherSelector,
   validateCurriculumForm,
@@ -20,7 +23,7 @@ import {
   buildUpdateCurriculumPayload,
   isConcurrencyConflictError,
 } from "./curriculumEditorHelpers";
-import { mapSafeOperationalError } from "../utils/problemDetails";
+import { mapSafeOperationalError, extractProblemDetails } from "../utils/problemDetails";
 import {
   CenterManagerThemeScope,
   PageHeader,
@@ -44,12 +47,17 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
   const hasPermission = useAuthStore((state) => state.hasPermission);
 
   const isCenterManager = user?.accountType === "CenterManager";
+  const canReadSubjects = hasPermission(permissions.subjectsRead);
   const canReadTeachers = hasPermission(permissions.teachersRead);
+  const canReadNodes = hasPermission(permissions.nodesRead);
+  const canReadClasses = hasPermission(permissions.classesRead);
   const canCreateCurriculums = hasPermission(permissions.curriculumsCreate);
   const canUpdateCurriculums = hasPermission(permissions.curriculumsUpdate);
   const canPublishCurriculums = hasPermission(permissions.curriculumsPublish);
 
-  const canSaveInfo = isEditMode ? canUpdateCurriculums : canCreateCurriculums;
+  // In create mode, manager needs both curriculums.create and subjects.read (composite capability)
+  const canInitiateCreate = !isEditMode && canCreateCurriculums && canReadSubjects;
+  const canSaveInfo = isEditMode ? canUpdateCurriculums : canInitiateCreate;
 
   const [formData, setFormData] = useState<{
     title: string;
@@ -73,18 +81,18 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<"info" | "nodes" | "classes">("info");
 
-  // Input states for adding new node ID or class ID
-  const [newNodeIdInput, setNewNodeIdInput] = useState("");
-  const [newClassIdInput, setNewClassIdInput] = useState("");
+  // Selection states for canonical node & class selectors
+  const [selectedNodeToAdd, setSelectedNodeToAdd] = useState("");
+  const [selectedClassToAdd, setSelectedClassToAdd] = useState("");
 
-  // Operational feedback states
+  // Operational feedback states with traceId support
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [formError, setFormError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<{ message: string; traceId?: string | null } | null>(null);
   const [concurrencyConflict, setConcurrencyConflict] = useState<boolean>(false);
 
   // Publish Modal State
   const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
-  const [publishError, setPublishError] = useState<string | null>(null);
+  const [publishError, setPublishError] = useState<{ message: string; traceId?: string | null } | null>(null);
 
   const {
     data: curriculumData,
@@ -100,9 +108,17 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
   const updateNodesMutation = useUpdateCurriculumNodes();
   const publishMutation = usePublishCurriculum();
 
-  const { data: subjectsData, isLoading: isLoadingSubjects } = useQuery({
+  // Subject Query with explicit capability guard
+  const {
+    data: subjectsData,
+    isLoading: isLoadingSubjects,
+    isError: isErrorSubjects,
+    error: subjectsError,
+    refetch: refetchSubjects,
+  } = useQuery({
     queryKey: ["subjects", "active-for-curriculum-editor"],
     queryFn: () => organizationApi.listSubjects(true),
+    enabled: canReadSubjects,
   });
 
   const { data: teachersData, isLoading: isLoadingTeachers } = useQuery({
@@ -110,6 +126,50 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
     queryFn: () => organizationApi.listTeachers({ page: 1, pageSize: 100, status: "Active" }),
     enabled: isCenterManager && canReadTeachers,
   });
+
+  // Canonical Knowledge Graph Query for current subject
+  const {
+    data: graphData,
+    isLoading: isLoadingGraph,
+    isError: isErrorGraph,
+    error: graphError,
+    refetch: refetchGraph,
+  } = useQuery({
+    queryKey: ["knowledge-graph-for-curriculum", formData.subjectId],
+    queryFn: () => knowledgeGraphApi.getGraph(formData.subjectId),
+    enabled: Boolean(formData.subjectId && canReadNodes),
+  });
+
+  // Map of canonical nodes for display lookup
+  const nodeMap = useMemo(() => {
+    const map = new Map<string, KnowledgeGraphNodeDto>();
+    for (const node of graphData?.nodes || []) {
+      map.set(node.nodeId, node);
+    }
+    return map;
+  }, [graphData?.nodes]);
+
+  // Canonical Classes Query for CenterManager
+  const {
+    data: classesData,
+    isLoading: isLoadingClasses,
+    isError: isErrorClasses,
+    error: classesError,
+    refetch: refetchClasses,
+  } = useQuery({
+    queryKey: ["classes-for-curriculum-assignment"],
+    queryFn: () => organizationApi.listClasses({ page: 1, pageSize: 100, status: "Active" }),
+    enabled: isCenterManager && canReadClasses,
+  });
+
+  // Map of canonical classes for display lookup
+  const classMap = useMemo(() => {
+    const map = new Map<string, ClassDto>();
+    for (const cls of classesData?.data || []) {
+      map.set(cls.classId, cls);
+    }
+    return map;
+  }, [classesData?.data]);
 
   // Sync loaded curriculum data into form state
   useEffect(() => {
@@ -160,9 +220,16 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
     setFormError(null);
     setSuccessMessage(null);
 
+    if (!isEditMode && !canReadSubjects) {
+      setFormError({
+        message: "Bạn không có quyền đọc danh mục môn học (knowledge.subjects.read) để tạo mới lộ trình.",
+      });
+      return;
+    }
+
     const validation = validateCurriculumForm(formData, { isEditMode, isCenterManager });
     if (!validation.isValid) {
-      setFormError(validation.errorMessage || "Dữ liệu biểu mẫu không hợp lệ.");
+      setFormError({ message: validation.errorMessage || "Dữ liệu biểu mẫu không hợp lệ." });
       return;
     }
 
@@ -183,7 +250,11 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
             navigate(`/quan-ly/giao-trinh/${res.data.curriculumId}`);
           },
           onError: (err: any) => {
-            setFormError(mapSafeOperationalError(err, "Không thể tạo lộ trình học. Vui lòng thử lại."));
+            const details = extractProblemDetails(err);
+            setFormError({
+              message: mapSafeOperationalError(err, "Không thể tạo lộ trình học. Vui lòng thử lại."),
+              traceId: details.traceId,
+            });
           },
         }
       );
@@ -204,10 +275,14 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
             setSuccessMessage("Cập nhật thông tin chung thành công!");
           },
           onError: (err: any) => {
+            const details = extractProblemDetails(err);
             if (isConcurrencyConflictError(err)) {
               setConcurrencyConflict(true);
             } else {
-              setFormError(mapSafeOperationalError(err, "Không thể cập nhật lộ trình học."));
+              setFormError({
+                message: mapSafeOperationalError(err, "Không thể cập nhật lộ trình học."),
+                traceId: details.traceId,
+              });
             }
           },
         }
@@ -236,10 +311,14 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
           setSuccessMessage("Cập nhật danh sách nút kiến thức thành công!");
         },
         onError: (err: any) => {
+          const details = extractProblemDetails(err);
           if (isConcurrencyConflictError(err)) {
             setConcurrencyConflict(true);
           } else {
-            setFormError(mapSafeOperationalError(err, "Không thể cập nhật danh sách nút kiến thức."));
+            setFormError({
+              message: mapSafeOperationalError(err, "Không thể cập nhật danh sách nút kiến thức."),
+              traceId: details.traceId,
+            });
           }
         },
       }
@@ -267,10 +346,14 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
           setSuccessMessage("Cập nhật phân bổ lớp học thành công!");
         },
         onError: (err: any) => {
+          const details = extractProblemDetails(err);
           if (isConcurrencyConflictError(err)) {
             setConcurrencyConflict(true);
           } else {
-            setFormError(mapSafeOperationalError(err, "Không thể cập nhật phân bổ lớp học."));
+            setFormError({
+              message: mapSafeOperationalError(err, "Không thể cập nhật phân bổ lớp học."),
+              traceId: details.traceId,
+            });
           }
         },
       }
@@ -299,11 +382,15 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
           setSuccessMessage("Xuất bản lộ trình học thành công! Trạng thái hiện tại: Published.");
         },
         onError: (err: any) => {
+          const details = extractProblemDetails(err);
           if (isConcurrencyConflictError(err)) {
             setIsPublishModalOpen(false);
             setConcurrencyConflict(true);
           } else {
-            setPublishError(mapSafeOperationalError(err, "Không thể xuất bản lộ trình học."));
+            setPublishError({
+              message: mapSafeOperationalError(err, "Không thể xuất bản lộ trình học."),
+              traceId: details.traceId,
+            });
           }
         },
       }
@@ -311,15 +398,15 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
   };
 
   // Node array helpers
-  const handleAddNodeId = () => {
-    const trimmed = newNodeIdInput.trim();
+  const handleAddCanonicalNode = (nodeId: string) => {
+    const trimmed = nodeId.trim();
     if (!trimmed) return;
     if (formData.nodeIds.includes(trimmed)) {
-      setFormError("Nút kiến thức này đã tồn tại trong danh sách.");
+      setFormError({ message: "Nút kiến thức này đã tồn tại trong danh sách." });
       return;
     }
     setFormData((prev) => ({ ...prev, nodeIds: [...prev.nodeIds, trimmed] }));
-    setNewNodeIdInput("");
+    setSelectedNodeToAdd("");
     setFormError(null);
   };
 
@@ -341,15 +428,15 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
   };
 
   // Class array helpers
-  const handleAddClassId = () => {
-    const trimmed = newClassIdInput.trim();
+  const handleAddCanonicalClass = (classId: string) => {
+    const trimmed = classId.trim();
     if (!trimmed) return;
     if (formData.classIds.includes(trimmed)) {
-      setFormError("Mã lớp này đã tồn tại trong danh sách.");
+      setFormError({ message: "Lớp học này đã có trong danh sách phân bổ." });
       return;
     }
     setFormData((prev) => ({ ...prev, classIds: [...prev.classIds, trimmed] }));
-    setNewClassIdInput("");
+    setSelectedClassToAdd("");
     setFormError(null);
   };
 
@@ -361,7 +448,7 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
   };
 
   const isDraft = formData.reviewStatus === "Draft";
-  const isReadOnly = !isDraft;
+  const isReadOnly = !isDraft || (isEditMode && !canUpdateCurriculums);
 
   if (isEditMode && isLoadingCurriculum) {
     return (
@@ -460,20 +547,46 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
 
         {/* Form Error Alert */}
         {formError && (
-          <div className="flex items-center justify-between rounded-xl bg-rose-500/10 p-4 border border-rose-500/30 text-sm font-medium text-rose-300">
-            <span>{formError}</span>
+          <div
+            role="alert"
+            className="flex items-start justify-between rounded-xl bg-rose-500/10 p-4 border border-rose-500/30 text-sm font-medium text-rose-300"
+          >
+            <div>
+              <p>{formError.message}</p>
+              {formError.traceId && (
+                <p className="mt-1 font-mono text-xs text-rose-200/80">Trace ID: {formError.traceId}</p>
+              )}
+            </div>
             <button
               type="button"
               onClick={() => setFormError(null)}
-              className="text-xs font-semibold text-rose-400 hover:text-rose-200"
+              className="text-xs font-semibold text-rose-400 hover:text-rose-200 ml-4 shrink-0"
             >
               Đóng
             </button>
           </div>
         )}
 
-        {/* Published / Read-only notice */}
-        {isReadOnly && isEditMode && (
+        {/* Read-only notice */}
+        {isEditMode && !canUpdateCurriculums && (
+          <div
+            role="status"
+            className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs font-medium text-amber-200 flex items-center justify-between"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-base">👁</span>
+              <span>
+                <strong>Chế độ chỉ xem:</strong> Bạn có quyền xem chi tiết lộ trình học này nhưng không có quyền chỉnh sửa hoặc phân bổ (yêu cầu quyền <code className="font-mono text-amber-300">curriculum.curriculums.update</code>).
+              </span>
+            </div>
+            <span className="rounded-md bg-amber-500/20 px-2 py-0.5 text-[11px] font-semibold text-amber-300">
+              Chỉ xem
+            </span>
+          </div>
+        )}
+
+        {/* Published locked notice */}
+        {isEditMode && canUpdateCurriculums && !isDraft && (
           <div className="rounded-xl bg-blue-500/10 p-4 border border-blue-500/30 text-xs font-medium text-blue-300">
             Lộ trình học đã ở trạng thái <strong>{formData.reviewStatus}</strong>. Chế độ chỉ đọc: không thể sửa đổi nội dung hoặc phân bổ lớp học.
           </div>
@@ -559,6 +672,21 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
                       }
                       className="cm-input w-full text-sm opacity-70 cursor-not-allowed bg-[var(--cm-surface-subtle)]"
                     />
+                  ) : !canReadSubjects ? (
+                    <div className="mt-1">
+                      <SafeErrorPanel
+                        error={new Error("Thiếu quyền đọc môn học (knowledge.subjects.read).")}
+                        fallback="Bạn cần quyền xem danh mục môn học (knowledge.subjects.read) để tạo mới lộ trình học."
+                      />
+                    </div>
+                  ) : isErrorSubjects ? (
+                    <div className="mt-1">
+                      <SafeErrorPanel
+                        error={subjectsError}
+                        fallback="Không thể tải danh mục môn học. Vui lòng thử lại."
+                        onRetry={() => refetchSubjects()}
+                      />
+                    </div>
                   ) : (
                     <select
                       id="curriculum-subject-select"
@@ -671,89 +799,144 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
                   </p>
                 </div>
 
-                {/* Interactive Add Node Bar */}
-                {isDraft && canUpdateCurriculums && (
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={newNodeIdInput}
-                      onChange={(e) => setNewNodeIdInput(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleAddNodeId())}
-                      placeholder="Nhập mã nút kiến thức (Node ID) để thêm vào chuỗi..."
-                      className="cm-input flex-1 text-sm font-mono"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddNodeId}
-                      className="cm-secondary-button text-sm px-4 shrink-0"
-                    >
-                      + Thêm vào lộ trình
-                    </button>
+                {!formData.subjectId && (
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-200">
+                    Vui lòng chọn môn học ở tab <strong>Thông tin chung</strong> để tải danh mục nút kiến thức chuẩn.
+                  </div>
+                )}
+
+                {formData.subjectId && !canReadNodes && (
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-200">
+                    Bạn không có quyền đọc đồ thị kiến thức (<code>knowledge.nodes.read</code>) để chọn nút từ đồ thị.
+                  </div>
+                )}
+
+                {formData.subjectId && canReadNodes && isErrorGraph && (
+                  <SafeErrorPanel
+                    error={graphError}
+                    fallback="Không thể tải đồ thị nút kiến thức của môn học."
+                    onRetry={() => refetchGraph()}
+                  />
+                )}
+
+                {/* Canonical Node Selector */}
+                {isDraft && canUpdateCurriculums && formData.subjectId && canReadNodes && (
+                  <div className="rounded-xl border border-[var(--cm-border)] bg-[var(--cm-surface-subtle)] p-4 space-y-3">
+                    <label htmlFor="curriculum-node-selector" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)]">
+                      Chọn nút kiến thức từ đồ thị môn học
+                    </label>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <select
+                        id="curriculum-node-selector"
+                        aria-label="Chọn nút kiến thức"
+                        value={selectedNodeToAdd}
+                        disabled={isLoadingGraph}
+                        onChange={(e) => setSelectedNodeToAdd(e.target.value)}
+                        className="cm-select flex-1 text-sm"
+                      >
+                        <option value="">
+                          {isLoadingGraph ? "Đang tải danh mục nút..." : "-- Chọn nút kiến thức để thêm vào lộ trình --"}
+                        </option>
+                        {(graphData?.nodes || [])
+                          .filter((node) => !formData.nodeIds.includes(node.nodeId))
+                          .map((node) => (
+                            <option key={node.nodeId} value={node.nodeId}>
+                              [{node.nodeCode}] {node.nodeName} ({node.nodeType})
+                            </option>
+                          ))}
+                      </select>
+                      <button
+                        type="button"
+                        id="btn-add-curriculum-node"
+                        disabled={!selectedNodeToAdd || isLoadingGraph}
+                        onClick={() => handleAddCanonicalNode(selectedNodeToAdd)}
+                        className="cm-secondary-button text-sm px-4 shrink-0 disabled:opacity-40"
+                      >
+                        + Thêm vào lộ trình
+                      </button>
+                    </div>
                   </div>
                 )}
 
                 {/* Node List View */}
                 {formData.nodeIds.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-[var(--cm-border)] p-8 text-center text-xs text-[var(--cm-text-muted)]">
-                    Chưa có nút kiến thức nào trong lộ trình này.
+                    Chưa có nút kiến thức nào trong lộ trình này. Hãy chọn các nút từ đồ thị môn học ở trên.
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {formData.nodeIds.map((nodeId, index) => (
-                      <div
-                        key={`${nodeId}-${index}`}
-                        className="flex items-center justify-between rounded-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-subtle)] p-3 text-xs"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--cm-indigo)]/20 font-bold text-[var(--cm-cyan)] shrink-0">
-                            {index + 1}
-                          </span>
-                          <span className="font-mono font-medium text-[var(--cm-text)] truncate">{nodeId}</span>
-                        </div>
-
-                        {isDraft && canUpdateCurriculums && (
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <button
-                              type="button"
-                              disabled={index === 0}
-                              onClick={() => handleMoveNode(index, "up")}
-                              className="cm-icon-button h-7 w-7 text-xs border border-[var(--cm-border)] disabled:opacity-30"
-                              title="Di chuyển lên"
-                            >
-                              ▲
-                            </button>
-                            <button
-                              type="button"
-                              disabled={index === formData.nodeIds.length - 1}
-                              onClick={() => handleMoveNode(index, "down")}
-                              className="cm-icon-button h-7 w-7 text-xs border border-[var(--cm-border)] disabled:opacity-30"
-                              title="Di chuyển xuống"
-                            >
-                              ▼
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveNodeId(index)}
-                              className="cm-icon-button h-7 w-7 text-xs border border-[var(--cm-border)] text-rose-400 hover:text-rose-300"
-                              title="Xóa khỏi danh sách"
-                            >
-                              ✕
-                            </button>
+                    {formData.nodeIds.map((nodeId, index) => {
+                      const node = nodeMap.get(nodeId);
+                      return (
+                        <div
+                          key={`${nodeId}-${index}`}
+                          className="flex items-center justify-between rounded-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-subtle)] p-3 text-xs"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--cm-indigo)]/20 font-bold text-[var(--cm-cyan)] shrink-0">
+                              {index + 1}
+                            </span>
+                            <div className="min-w-0">
+                              {node ? (
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-mono font-semibold text-[var(--cm-cyan)] bg-[var(--cm-surface)] px-1.5 py-0.5 rounded border border-[var(--cm-border-subtle)]">
+                                    {node.nodeCode}
+                                  </span>
+                                  <span className="font-medium text-[var(--cm-text)] truncate">{node.nodeName}</span>
+                                  <span className="rounded bg-[var(--cm-surface)] px-1.5 py-0.5 text-[10px] text-[var(--cm-text-muted)] border border-[var(--cm-border-subtle)]">
+                                    {node.nodeType}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="font-mono font-medium text-[var(--cm-text)] truncate">{nodeId}</span>
+                              )}
+                            </div>
                           </div>
-                        )}
-                      </div>
-                    ))}
+
+                          {isDraft && canUpdateCurriculums && (
+                            <div className="flex items-center gap-1.5 shrink-0 ml-3">
+                              <button
+                                type="button"
+                                disabled={index === 0}
+                                onClick={() => handleMoveNode(index, "up")}
+                                className="cm-icon-button h-7 w-7 text-xs border border-[var(--cm-border)] disabled:opacity-30"
+                                title="Di chuyển lên"
+                              >
+                                ▲
+                              </button>
+                              <button
+                                type="button"
+                                disabled={index === formData.nodeIds.length - 1}
+                                onClick={() => handleMoveNode(index, "down")}
+                                className="cm-icon-button h-7 w-7 text-xs border border-[var(--cm-border)] disabled:opacity-30"
+                                title="Di chuyển xuống"
+                              >
+                                ▼
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveNodeId(index)}
+                                className="cm-icon-button h-7 w-7 text-xs border border-[var(--cm-border)] text-rose-400 hover:text-rose-300"
+                                title="Xóa khỏi danh sách"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
 
                 {/* Raw ID Editor Fallback / Bulk Input */}
                 <div className="pt-4 border-t border-[var(--cm-border-subtle)]">
                   <label htmlFor="curriculum-raw-nodes-input" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mb-1">
-                    Nhập nhanh hàng loạt (cách nhau bởi dấu phẩy)
+                    Nhập nhanh mã ID nút (tùy chọn nâng cao, cách nhau bởi dấu phẩy)
                   </label>
                   <textarea
                     id="curriculum-raw-nodes-input"
-                    rows={3}
+                    rows={2}
                     disabled={isReadOnly}
                     value={formData.nodeIds.join(", ")}
                     onChange={(e) =>
@@ -765,7 +948,7 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
                           .filter((s) => s)
                       )
                     }
-                    placeholder="VD: 101, 102, 103"
+                    placeholder="VD: node-uuid-1, node-uuid-2"
                     className="cm-input w-full text-xs font-mono"
                   />
                 </div>
@@ -798,69 +981,121 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
                   </p>
                 </div>
 
-                {/* Interactive Add Class Bar */}
-                {isDraft && canUpdateCurriculums && (
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={newClassIdInput}
-                      onChange={(e) => setNewClassIdInput(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleAddClassId())}
-                      placeholder="Nhập mã lớp học (Class ID / UUID) để phân bổ..."
-                      className="cm-input flex-1 text-sm font-mono"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddClassId}
-                      className="cm-secondary-button text-sm px-4 shrink-0"
-                    >
-                      + Phân bổ lớp
-                    </button>
+                {!canReadClasses && (
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-200">
+                    Bạn không có quyền đọc danh sách lớp học (<code>organization.classes.read</code>) để phân bổ lộ trình.
+                  </div>
+                )}
+
+                {canReadClasses && isErrorClasses && (
+                  <SafeErrorPanel
+                    error={classesError}
+                    fallback="Không thể tải danh sách lớp học của trung tâm."
+                    onRetry={() => refetchClasses()}
+                  />
+                )}
+
+                {/* Canonical Class Selector */}
+                {isDraft && canUpdateCurriculums && canReadClasses && (
+                  <div className="rounded-xl border border-[var(--cm-border)] bg-[var(--cm-surface-subtle)] p-4 space-y-3">
+                    <label htmlFor="curriculum-class-selector" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)]">
+                      Chọn lớp học từ trung tâm để phân bổ
+                    </label>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <select
+                        id="curriculum-class-selector"
+                        aria-label="Chọn lớp học"
+                        value={selectedClassToAdd}
+                        disabled={isLoadingClasses}
+                        onChange={(e) => setSelectedClassToAdd(e.target.value)}
+                        className="cm-select flex-1 text-sm"
+                      >
+                        <option value="">
+                          {isLoadingClasses ? "Đang tải danh sách lớp..." : "-- Chọn lớp học để phân bổ lộ trình --"}
+                        </option>
+                        {(classesData?.data || [])
+                          .filter((cls) => !formData.classIds.includes(cls.classId))
+                          .map((cls) => (
+                            <option key={cls.classId} value={cls.classId}>
+                              {cls.className} ({cls.academicYear}) - GV: {cls.teacher?.displayName || "Chưa phân công"} - Môn: {cls.subject?.subjectName}
+                            </option>
+                          ))}
+                      </select>
+                      <button
+                        type="button"
+                        id="btn-add-curriculum-class"
+                        disabled={!selectedClassToAdd || isLoadingClasses}
+                        onClick={() => handleAddCanonicalClass(selectedClassToAdd)}
+                        className="cm-secondary-button text-sm px-4 shrink-0 disabled:opacity-40"
+                      >
+                        + Phân bổ lớp
+                      </button>
+                    </div>
                   </div>
                 )}
 
                 {/* Class List View */}
                 {formData.classIds.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-[var(--cm-border)] p-8 text-center text-xs text-[var(--cm-text-muted)]">
-                    Chưa có lớp học nào được phân bổ lộ trình này.
+                    Chưa có lớp học nào được phân bổ lộ trình này. Hãy chọn lớp từ danh sách trung tâm ở trên.
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {formData.classIds.map((classId, index) => (
-                      <div
-                        key={`${classId}-${index}`}
-                        className="flex items-center justify-between rounded-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-subtle)] p-3 text-xs"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--cm-indigo)]/20 font-bold text-[var(--cm-cyan)] shrink-0">
-                            {index + 1}
-                          </span>
-                          <span className="font-mono font-medium text-[var(--cm-text)] truncate">{classId}</span>
-                        </div>
+                    {formData.classIds.map((classId, index) => {
+                      const cls = classMap.get(classId);
+                      return (
+                        <div
+                          key={`${classId}-${index}`}
+                          className="flex items-center justify-between rounded-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-subtle)] p-3 text-xs"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--cm-indigo)]/20 font-bold text-[var(--cm-cyan)] shrink-0">
+                              {index + 1}
+                            </span>
+                            <div className="min-w-0">
+                              {cls ? (
+                                <div className="space-y-0.5">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-semibold text-[var(--cm-text)]">{cls.className}</span>
+                                    <span className="text-[var(--cm-text-muted)]">({cls.academicYear})</span>
+                                    <span className="rounded bg-[var(--cm-surface)] px-1.5 py-0.5 text-[10px] text-[var(--cm-cyan)] border border-[var(--cm-border-subtle)]">
+                                      {cls.subject?.subjectName || "Môn học"}
+                                    </span>
+                                  </div>
+                                  <p className="text-[11px] text-[var(--cm-text-secondary)]">
+                                    GV phụ trách: {cls.teacher?.displayName || "Chưa phân công"} · Sĩ số: {cls.studentCount ?? 0} học sinh
+                                  </p>
+                                </div>
+                              ) : (
+                                <span className="font-mono font-medium text-[var(--cm-text)] truncate">{classId}</span>
+                              )}
+                            </div>
+                          </div>
 
-                        {isDraft && canUpdateCurriculums && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveClassId(index)}
-                            className="cm-icon-button h-7 w-7 text-xs border border-[var(--cm-border)] text-rose-400 hover:text-rose-300"
-                            title="Xóa khỏi phân bổ"
-                          >
-                            ✕
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                          {isDraft && canUpdateCurriculums && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveClassId(index)}
+                              className="cm-icon-button h-7 w-7 text-xs border border-[var(--cm-border)] text-rose-400 hover:text-rose-300 shrink-0 ml-3"
+                              title="Hủy phân bổ lớp này"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
 
                 {/* Raw Class ID Editor / Bulk Input */}
                 <div className="pt-4 border-t border-[var(--cm-border-subtle)]">
                   <label htmlFor="curriculum-raw-classes-input" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mb-1">
-                    Nhập nhanh danh sách lớp (cách nhau bởi dấu phẩy)
+                    Nhập nhanh mã ID lớp (tùy chọn nâng cao, cách nhau bởi dấu phẩy)
                   </label>
                   <textarea
                     id="curriculum-raw-classes-input"
-                    rows={3}
+                    rows={2}
                     disabled={isReadOnly}
                     value={formData.classIds.join(", ")}
                     onChange={(e) =>
@@ -872,7 +1107,7 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
                           .filter((s) => s)
                       )
                     }
-                    placeholder="VD: 440939eb-..., ed712b7a-..."
+                    placeholder="VD: class-uuid-1, class-uuid-2"
                     className="cm-input w-full text-xs font-mono"
                   />
                 </div>
@@ -904,7 +1139,10 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
         >
           {publishError && (
             <div className="mb-4 rounded-lg bg-rose-500/10 p-3 border border-rose-500/30 text-xs font-medium text-rose-300">
-              {publishError}
+              <p>{publishError.message}</p>
+              {publishError.traceId && (
+                <p className="mt-1 font-mono text-[11px] text-rose-200/80">Trace ID: {publishError.traceId}</p>
+              )}
             </div>
           )}
 
@@ -965,6 +1203,7 @@ const LegacyCurriculumEditorPage = () => {
 
   const user = useAuthStore((state) => state.user);
   const isCenterManager = user?.accountType === "CenterManager";
+  const canReadSubjects = useAuthStore((state) => state.hasPermission(permissions.subjectsRead));
   const canReadTeachers = useAuthStore((state) => state.hasPermission(permissions.teachersRead));
 
   const [formData, setFormData] = useState<
@@ -998,6 +1237,7 @@ const LegacyCurriculumEditorPage = () => {
   const { data: subjectsData, isLoading: isLoadingSubjects } = useQuery({
     queryKey: ["subjects", "active"],
     queryFn: () => organizationApi.listSubjects(true),
+    enabled: canReadSubjects,
   });
 
   const { data: teachersData, isLoading: isLoadingTeachers } = useQuery({
