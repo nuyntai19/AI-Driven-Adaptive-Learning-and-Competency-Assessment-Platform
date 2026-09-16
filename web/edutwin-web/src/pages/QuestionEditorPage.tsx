@@ -852,11 +852,11 @@ function CenterManagerQuestionEditorView() {
                   type="text"
                   disabled
                   value={
-                    createdByTeacherId
-                      ? teacherDetailData?.displayName
-                        ? `${teacherDetailData.displayName} (${teacherDetailData.username})`
-                        : `Mã GV: ${createdByTeacherId}`
-                      : "Không xác định"
+                    teacherDetailData?.displayName
+                      ? `${teacherDetailData.displayName} (${teacherDetailData.username})`
+                      : createdByTeacherId
+                      ? `Mã GV: ${createdByTeacherId}`
+                      : ""
                   }
                   className="cm-input w-full text-sm opacity-70 cursor-not-allowed bg-[var(--cm-surface-subtle)]"
                 />

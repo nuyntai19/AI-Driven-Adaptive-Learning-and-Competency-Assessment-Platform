@@ -229,14 +229,24 @@ function CenterManagerAssignmentEditorView() {
   const isReadOnly = isEditing && (assignment?.status !== "Draft" || !canUpdate);
 
   // Composite Capability Fail-Closed Guard
+  // In read-only view mode: assignments.read is sufficient to inspect the assignment record.
+  // In create mode or writable edit mode: require editor supporting capabilities.
   const missingCapabilities = useMemo(() => {
     const missing: string[] = [];
-    if (!isEditing && !canCreate) missing.push("assignments.assignments.create");
-    if (isEditing && !canReadAssignments) missing.push("assignments.assignments.read");
-    if (!canReadClasses) missing.push("organization.classes.read");
-    if (!canReadQuestions) missing.push("curriculum.questions.read");
+    if (!isEditing) {
+      if (!canCreate) missing.push("assignments.assignments.create");
+      if (!canReadClasses) missing.push("organization.classes.read");
+      if (!canReadQuestions) missing.push("curriculum.questions.read");
+    } else {
+      if (!canReadAssignments) missing.push("assignments.assignments.read");
+      if (!isReadOnly) {
+        if (!canUpdate) missing.push("assignments.assignments.update");
+        if (!canReadClasses) missing.push("organization.classes.read");
+        if (!canReadQuestions) missing.push("curriculum.questions.read");
+      }
+    }
     return missing;
-  }, [isEditing, canCreate, canReadAssignments, canReadClasses, canReadQuestions]);
+  }, [isEditing, isReadOnly, canCreate, canReadAssignments, canUpdate, canReadClasses, canReadQuestions]);
 
   // Toggle question selection
   const toggleQuestion = (q: Question) => {

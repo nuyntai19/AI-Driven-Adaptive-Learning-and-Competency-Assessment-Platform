@@ -352,6 +352,7 @@ test("7. Selection cache preservation: Selections are preserved when user pagina
       languageCode: "vi",
       status: "Active",
       knowledgeMappings: [],
+      createdByTeacherId: "teacher-1",
       rowVersion: "1",
     },
   ];
@@ -377,6 +378,7 @@ test("7. Selection cache preservation: Selections are preserved when user pagina
       languageCode: "vi",
       status: "Active",
       knowledgeMappings: [],
+      createdByTeacherId: "teacher-2",
       rowVersion: "1",
     },
   ];
@@ -559,6 +561,68 @@ test("11. Route capabilities alignment: Detail routes require Read permission to
   const unprivilegedCM = centerManagerUser([]);
   assert.equal(canAccess(unprivilegedCM, questionDetailRequirements), false, "Actor without questionsRead cannot access question detail");
   assert.equal(canAccess(unprivilegedCM, assignmentDetailRequirements), false, "Actor without assignmentsRead cannot access assignment detail");
+
+  // In-page capability evaluation: Read-only detail must NOT be over-gated
+  const evaluateAssignmentEditorMissingCaps = (
+    isEditing: boolean,
+    isReadOnly: boolean,
+    canCreate: boolean,
+    canReadAssignments: boolean,
+    canUpdate: boolean,
+    canReadClasses: boolean,
+    canReadQuestions: boolean
+  ): string[] => {
+    const missing: string[] = [];
+    if (!isEditing) {
+      if (!canCreate) missing.push("assignments.assignments.create");
+      if (!canReadClasses) missing.push("organization.classes.read");
+      if (!canReadQuestions) missing.push("curriculum.questions.read");
+    } else {
+      if (!canReadAssignments) missing.push("assignments.assignments.read");
+      if (!isReadOnly) {
+        if (!canUpdate) missing.push("assignments.assignments.update");
+        if (!canReadClasses) missing.push("organization.classes.read");
+        if (!canReadQuestions) missing.push("curriculum.questions.read");
+      }
+    }
+    return missing;
+  };
+
+  // Restricted CenterManager with ONLY assignmentsRead viewing detail:
+  const readOnlyCaps = evaluateAssignmentEditorMissingCaps(
+    true,  // isEditing
+    true,  // isReadOnly
+    false, // canCreate
+    true,  // canReadAssignments
+    false, // canUpdate
+    false, // canReadClasses (lacking)
+    false  // canReadQuestions (lacking)
+  );
+  assert.deepEqual(readOnlyCaps, [], "Read-only view mode must not be over-gated by classes.read or questions.read");
+
+  // Create mode lacking classes:
+  const createCaps = evaluateAssignmentEditorMissingCaps(
+    false, // isEditing
+    false, // isReadOnly
+    true,  // canCreate
+    false, // canReadAssignments
+    false, // canUpdate
+    false, // canReadClasses (lacking)
+    true   // canReadQuestions
+  );
+  assert.deepEqual(createCaps, ["organization.classes.read"], "Create mode must require classes.read");
+
+  // Writable Draft mode lacking questions:
+  const draftCaps = evaluateAssignmentEditorMissingCaps(
+    true,  // isEditing
+    false, // isReadOnly (Draft with canUpdate)
+    false, // canCreate
+    true,  // canReadAssignments
+    true,  // canUpdate
+    true,  // canReadClasses
+    false  // canReadQuestions (lacking)
+  );
+  assert.deepEqual(draftCaps, ["curriculum.questions.read"], "Writable draft mode must require questions.read");
 });
 
 // ============================================================================
@@ -746,6 +810,11 @@ test("16. Question DTO canonical createdByTeacherId: Type supports teacher ID wi
   };
 
   assert.equal(q.createdByTeacherId, "teacher-uuid-007", "Question interface includes canonical createdByTeacherId");
+
+  // Compile-time assertion that createdByTeacherId is required string, not optional
+  type AssertRequired<T, K extends keyof T> = undefined extends T[K] ? false : true;
+  const isRequiredTeacherId: AssertRequired<Question, "createdByTeacherId"> = true;
+  assert.equal(isRequiredTeacherId, true, "createdByTeacherId must be strictly required, not optional");
 
   // Verify QuestionEditorPage source does not use (q as any).teacherId
   const fs = await import("node:fs");
