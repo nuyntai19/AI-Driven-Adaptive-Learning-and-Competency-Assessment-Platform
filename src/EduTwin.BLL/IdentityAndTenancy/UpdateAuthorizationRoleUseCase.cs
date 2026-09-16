@@ -53,6 +53,10 @@ public sealed class UpdateAuthorizationRoleUseCase(
         {
             return AuthorizationRoleResult.Failure(ErrorCodes.ResourceNotFound);
         }
+        if (role.IsSystemRole)
+        {
+            return AuthorizationRoleResult.Failure(ErrorCodes.InvalidStateTransition);
+        }
         if (role.RowVersion != expectedVersion)
         {
             return AuthorizationRoleResult.Failure(ErrorCodes.ConcurrencyConflict);

@@ -123,6 +123,21 @@ public class PlatformPrivilegeEscalationTests : IDisposable
             UpdatedAt = FixedUtcNow,
             RowVersion = 1
         };
+        var targetUserId = Guid.NewGuid();
+        _dbContext.Users.Add(new User
+        {
+            UserId = targetUserId,
+            CenterId = _customerCenterId,
+            Username = "staff.member",
+            DisplayName = "Staff Member",
+            RoleName = UserRole.Teacher,
+            Status = UserStatus.Active,
+            AuthVersion = 1,
+            PasswordHash = "hashed_pass",
+            RowVersion = 1,
+            CreatedAt = FixedUtcNow,
+            UpdatedAt = FixedUtcNow
+        });
         _dbContext.AuthorizationRoles.Add(platformRole);
         await _dbContext.SaveChangesAsync();
 
@@ -133,7 +148,7 @@ public class PlatformPrivilegeEscalationTests : IDisposable
             Reason = "Attempting to assign platform role"
         };
 
-        var result = await sut.ExecuteAsync(_managerUserId, request, "trace-test-2");
+        var result = await sut.ExecuteAsync(targetUserId, request, "trace-test-2");
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ErrorCodes.AuthPrivilegeEscalation, result.ErrorCode);

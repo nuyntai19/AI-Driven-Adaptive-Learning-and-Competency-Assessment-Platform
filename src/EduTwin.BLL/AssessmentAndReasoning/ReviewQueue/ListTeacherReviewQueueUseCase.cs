@@ -36,14 +36,20 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
 
         if (!_tenantContext.IsResolved ||
             _tenantContext.CenterId is not { } centerId || centerId == Guid.Empty ||
-            _tenantContext.UserId is not { } teacherId || teacherId == Guid.Empty ||
-            _tenantContext.Role != nameof(UserRole.Teacher))
+            _tenantContext.UserId is not { } actorId || actorId == Guid.Empty)
         {
             return ListTeacherReviewQueueResult.NotFound();
         }
 
-        if (!await _dbContext.Teachers.AsNoTracking().AnyAsync(
-                teacher => teacher.CenterId == centerId && teacher.TeacherId == teacherId,
+        var isTeacher = _tenantContext.Role == nameof(UserRole.Teacher);
+        var isCenterManager = _tenantContext.Role == nameof(UserRole.CenterManager);
+        if (!isTeacher && !isCenterManager)
+        {
+            return ListTeacherReviewQueueResult.NotFound();
+        }
+
+        if (isTeacher && !await _dbContext.Teachers.AsNoTracking().AnyAsync(
+                teacher => teacher.CenterId == centerId && teacher.TeacherId == actorId,
                 cancellationToken))
         {
             return ListTeacherReviewQueueResult.NotFound();
@@ -88,7 +94,7 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
                     target.StudentId == evidence.Attempt.StudentId &&
                     target.Assignment != null &&
                     target.Assignment.Class != null &&
-                    target.Assignment.Class.TeacherId == teacherId &&
+                    (!isTeacher || target.Assignment.Class.TeacherId == actorId) &&
                     (!query.ClassId.HasValue || target.Assignment.ClassId == query.ClassId.Value)));
 
         var totalItems = await reviewItems.LongCountAsync(cancellationToken);

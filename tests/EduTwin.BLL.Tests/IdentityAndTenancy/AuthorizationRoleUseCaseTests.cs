@@ -234,6 +234,39 @@ public sealed class AuthorizationRoleUseCaseTests
     }
 
     [Fact]
+    public async Task UpdateSystemRole_NameOrDescription_IsProtected()
+    {
+        await using var fixture = await CreateFixtureAsync();
+        var role = await fixture.Context.AuthorizationRoles.SingleAsync(
+            item => item.IsSystemRole && item.AccountType == UserRole.CenterManager);
+        var evaluator = new Mock<IPermissionEvaluator>();
+        evaluator.Setup(item => item.HasPermissionAsync(
+                "authorization.roles.update",
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        var sut = new UpdateAuthorizationRoleUseCase(
+            fixture.Context,
+            fixture.TenantContext,
+            Mock.Of<ITenantAdministratorGuard>(),
+            evaluator.Object,
+            TimeProvider.System);
+
+        var result = await sut.ExecuteAsync(role.RoleId,
+            new UpdateAuthorizationRoleRequest
+            {
+                RoleName = "New Name",
+                Description = "New Description",
+                Status = AuthorizationRoleStatus.Active,
+                RowVersion = role.RowVersion.ToString(),
+                Reason = "Update attempt"
+            },
+            "trace-system-name");
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.InvalidStateTransition, result.ErrorCode);
+    }
+
+    [Fact]
     public async Task ReplaceRolePermissions_IsAtomicAndInvalidatesAffectedSessions()
     {
         await using var fixture = await CreateFixtureAsync();
@@ -414,6 +447,32 @@ public sealed class AuthorizationRoleUseCaseTests
             },
             "trace-last-admin");
         Assert.Equal(ErrorCodes.LastTenantAdmin, lastAdmin.ErrorCode);
+    }
+
+    [Fact]
+    public async Task ReplaceRolePermissions_SystemRole_ReturnsInvalidStateTransition()
+    {
+        await using var fixture = await CreateFixtureAsync();
+        var role = await fixture.Context.AuthorizationRoles.SingleAsync(
+            item => item.IsSystemRole && item.AccountType == UserRole.Teacher);
+        var sut = new ReplaceRolePermissionsUseCase(
+            fixture.Context,
+            fixture.TenantContext,
+            Mock.Of<IAuthorizationSnapshotReader>(),
+            Mock.Of<ITenantAdministratorGuard>(),
+            TimeProvider.System);
+
+        var result = await sut.ExecuteAsync(role.RoleId,
+            new ReplaceRolePermissionsRequest
+            {
+                PermissionCodes = ["curriculum.questions.read"],
+                RowVersion = role.RowVersion.ToString(),
+                Reason = "Attempt to replace system role permissions"
+            },
+            "trace-system-perm");
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.InvalidStateTransition, result.ErrorCode);
     }
 
     private static async Task<Fixture> CreateFixtureAsync()

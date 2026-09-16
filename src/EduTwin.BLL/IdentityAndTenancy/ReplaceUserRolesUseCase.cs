@@ -28,6 +28,11 @@ public sealed class ReplaceUserRolesUseCase(
             return UserAuthorizationResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
+        if (actorId == userId)
+        {
+            return UserAuthorizationResult.Failure(ErrorCodes.InvalidStateTransition);
+        }
+
         var reason = request.Reason.Trim();
         if (!ulong.TryParse(request.RowVersion, NumberStyles.None,
                 CultureInfo.InvariantCulture, out var expectedVersion) ||

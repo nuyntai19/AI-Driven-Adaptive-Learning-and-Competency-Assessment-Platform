@@ -112,12 +112,53 @@ public sealed class UserAuthorizationUseCaseTests
     }
 
     [Fact]
+    public async Task ReplaceUserRoles_SelfModification_ReturnsInvalidStateTransition()
+    {
+        await using var fixture = await CreateFixtureAsync();
+        var sut = new ReplaceUserRolesUseCase(
+            fixture.Context,
+            fixture.TenantContext,
+            new AuthorizationSnapshotReader(fixture.Context),
+            Mock.Of<ITenantAdministratorGuard>(),
+            TimeProvider.System);
+
+        var result = await sut.ExecuteAsync(fixture.ManagerId,
+            new ReplaceUserRolesRequest
+            {
+                RoleIds = [],
+                RowVersion = "1",
+                Reason = "Self update attempt"
+            },
+            "trace-self");
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.InvalidStateTransition, result.ErrorCode);
+    }
+
+    [Fact]
     public async Task ReplaceCenterManagerRoles_PreservesLastAdministrator()
     {
         await using var fixture = await CreateFixtureAsync();
+        var secondManager = new User
+        {
+            UserId = Guid.NewGuid(),
+            CenterId = fixture.TenantContext.CenterId!.Value,
+            Username = "second-manager",
+            PasswordHash = "not-used",
+            RoleName = UserRole.CenterManager,
+            DisplayName = "Second Manager",
+            Status = UserStatus.Active,
+            AuthVersion = 1,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            RowVersion = 1
+        };
+        fixture.Context.Users.Add(secondManager);
+        await fixture.Context.SaveChangesAsync();
+
         var guard = new Mock<ITenantAdministratorGuard>();
         guard.Setup(item => item.HasAdministratorAfterAsync(
-                null, null, null, fixture.ManagerId,
+                null, null, null, secondManager.UserId,
                 It.IsAny<IReadOnlyCollection<Guid>>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
@@ -127,21 +168,19 @@ public sealed class UserAuthorizationUseCaseTests
             new AuthorizationSnapshotReader(fixture.Context),
             guard.Object,
             TimeProvider.System);
-        var manager = await fixture.Context.Users.SingleAsync(
-            user => user.UserId == fixture.ManagerId);
 
-        var result = await sut.ExecuteAsync(manager.UserId,
+        var result = await sut.ExecuteAsync(secondManager.UserId,
             new ReplaceUserRolesRequest
             {
                 RoleIds = [],
-                RowVersion = manager.RowVersion.ToString(),
+                RowVersion = secondManager.RowVersion.ToString(),
                 Reason = "Không hợp lệ"
             },
             "trace-last-admin");
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ErrorCodes.LastTenantAdmin, result.ErrorCode);
-        Assert.Equal(1u, manager.AuthVersion);
+        Assert.Equal(1u, secondManager.AuthVersion);
     }
 
     [Fact]

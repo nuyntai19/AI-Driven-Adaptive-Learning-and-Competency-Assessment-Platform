@@ -52,6 +52,10 @@ public sealed class ReplaceRolePermissionsUseCase(
         {
             return AuthorizationRoleResult.Failure(ErrorCodes.ResourceNotFound);
         }
+        if (role.IsSystemRole)
+        {
+            return AuthorizationRoleResult.Failure(ErrorCodes.InvalidStateTransition);
+        }
         if (role.Status != AuthorizationRoleStatus.Active)
         {
             return AuthorizationRoleResult.Failure(ErrorCodes.InvalidStateTransition);

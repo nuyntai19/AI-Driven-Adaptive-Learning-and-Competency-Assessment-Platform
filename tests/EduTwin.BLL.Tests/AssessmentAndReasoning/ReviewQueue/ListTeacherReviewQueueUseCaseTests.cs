@@ -64,9 +64,28 @@ public sealed class ListTeacherReviewQueueUseCaseTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_CenterManagerRole_FailsClosed()
+    public async Task ExecuteAsync_CenterManagerRole_ReturnsAllCenterItems()
     {
         var fixture = await CreateFixtureAsync(UserRole.CenterManager);
+        await using var context = fixture.Context;
+        var sut = new ListTeacherReviewQueueUseCase(
+            context,
+            fixture.Tenant,
+            new StubClassOwnershipGuard(OwnershipDecision.Allowed));
+
+        var result = await sut.ExecuteAsync(new TeacherReviewQueueQuery(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.TotalItems);
+        Assert.Equal(2, result.Data!.Count);
+        Assert.Contains(result.Data!, item => item.AttemptId == "1");
+        Assert.Contains(result.Data!, item => item.AttemptId == "3");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_StudentRole_FailsClosed()
+    {
+        var fixture = await CreateFixtureAsync(UserRole.Student);
         await using var context = fixture.Context;
         var sut = new ListTeacherReviewQueueUseCase(
             context,
