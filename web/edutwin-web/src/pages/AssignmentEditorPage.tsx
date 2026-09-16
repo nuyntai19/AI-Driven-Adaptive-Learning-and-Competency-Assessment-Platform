@@ -590,7 +590,7 @@ function CenterManagerAssignmentEditorView() {
                     onClick={() => setStep(s.id)}
                     className={`w-full py-2.5 px-3 rounded-xl text-left text-xs font-medium transition border ${
                       isActive
-                        ? "border-[var(--cm-cyan)] bg-cyan-950/40 text-[var(--cm-cyan)] shadow-sm"
+                        ? "border-[var(--cm-cyan)] bg-cyan-500/15 text-cyan-700 dark:bg-cyan-950/40 dark:text-[var(--cm-cyan)] font-semibold shadow-sm"
                         : isPast
                         ? "border-[var(--cm-border-subtle)] bg-[var(--cm-surface-subtle)] text-[var(--cm-text)]"
                         : "border-transparent text-[var(--cm-text-muted)] hover:text-[var(--cm-text)]"
@@ -791,7 +791,7 @@ function CenterManagerAssignmentEditorView() {
                         onClick={() => toggleQuestion(q)}
                         className={`p-4 rounded-xl border transition flex items-start gap-4 cursor-pointer select-none ${
                           isSelected
-                            ? "border-[var(--cm-cyan)] bg-cyan-950/20"
+                            ? "border-[var(--cm-cyan)] bg-cyan-500/10 dark:bg-cyan-950/30"
                             : "border-[var(--cm-border-subtle)] bg-[var(--cm-surface-subtle)] hover:border-[var(--cm-cyan)]/40"
                         }`}
                       >
@@ -810,7 +810,7 @@ function CenterManagerAssignmentEditorView() {
                             <span className="text-xs text-[var(--cm-text-muted)]">Độ khó: {q.difficulty}/5</span>
                             <span className="text-xs text-[var(--cm-text-muted)]">Điểm: {q.maxScore}</span>
                             {q.answerEvaluationMode && (
-                              <span className="text-[10px] font-mono text-cyan-300 px-1.5 py-0.5 rounded bg-cyan-950/50">
+                              <span className="text-[10px] font-mono text-cyan-700 dark:text-cyan-300 px-1.5 py-0.5 rounded bg-cyan-500/15 dark:bg-cyan-950/50">
                                 {q.answerEvaluationMode}
                               </span>
                             )}
@@ -894,7 +894,7 @@ function CenterManagerAssignmentEditorView() {
                     }}
                     className={`p-4 rounded-xl border cursor-pointer select-none transition ${
                       targetMode === "WholeClass"
-                        ? "border-[var(--cm-cyan)] bg-cyan-950/20 shadow-md"
+                        ? "border-[var(--cm-cyan)] bg-cyan-500/10 dark:bg-cyan-950/30 shadow-md"
                         : "border-[var(--cm-border-subtle)] bg-[var(--cm-surface-subtle)] hover:border-[var(--cm-border)]"
                     }`}
                   >
@@ -920,7 +920,7 @@ function CenterManagerAssignmentEditorView() {
                     }}
                     className={`p-4 rounded-xl border cursor-pointer select-none transition ${
                       targetMode === "SelectedStudents"
-                        ? "border-[var(--cm-cyan)] bg-cyan-950/20 shadow-md"
+                        ? "border-[var(--cm-cyan)] bg-cyan-500/10 dark:bg-cyan-950/30 shadow-md"
                         : "border-[var(--cm-border-subtle)] bg-[var(--cm-surface-subtle)] hover:border-[var(--cm-border)]"
                     }`}
                   >
@@ -1004,8 +1004,8 @@ function CenterManagerAssignmentEditorView() {
                               <tr
                                 key={s.studentId}
                                 onClick={() => toggleStudent(s)}
-                                className={`cursor-pointer hover:bg-white/5 transition ${
-                                  isSelected ? "bg-cyan-950/20" : ""
+                                className={`cursor-pointer hover:bg-[var(--cm-surface-muted)] transition ${
+                                  isSelected ? "bg-cyan-500/10 dark:bg-cyan-950/30" : ""
                                 }`}
                               >
                                 <td className="p-3">

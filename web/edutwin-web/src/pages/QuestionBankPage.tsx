@@ -446,12 +446,12 @@ function CenterManagerQuestionBankView() {
                         {q.estimatedTimeSeconds}s
                       </span>
                       {q.answerEvaluationMode && (
-                        <span className="rounded bg-cyan-950/40 text-cyan-300 px-2 py-0.5 border border-cyan-500/20 text-[10px] font-mono">
+                        <span className="rounded bg-cyan-500/10 text-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-300 px-2 py-0.5 border border-cyan-500/20 text-[10px] font-mono font-medium">
                           {q.answerEvaluationMode}
                         </span>
                       )}
                       {q.reasoningRequired && (
-                        <span className="rounded bg-amber-950/40 text-amber-300 px-2 py-0.5 border border-amber-500/20 text-[10px]">
+                        <span className="rounded bg-amber-500/10 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 px-2 py-0.5 border border-amber-500/20 text-[10px] font-medium">
                           ⚡ Yêu cầu lập luận
                         </span>
                       )}

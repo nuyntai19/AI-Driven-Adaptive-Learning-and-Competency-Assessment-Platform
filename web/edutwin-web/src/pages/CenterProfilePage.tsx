@@ -145,14 +145,14 @@ export const CenterProfilePage = () => {
               <dl className="mt-5 space-y-5">
                 <div>
                   <dt className="text-xs font-medium text-[var(--cm-text-muted)]">Mã trung tâm</dt>
-                  <dd className="mt-1 rounded-lg border border-[var(--cm-border-subtle)] bg-slate-950/35 px-3 py-2 font-mono text-sm font-semibold text-[var(--cm-text)]">{center.centerCode}</dd>
+                  <dd className="mt-1 rounded-lg border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-subtle)] px-3 py-2 font-mono text-sm font-semibold text-[var(--cm-text)]">{center.centerCode}</dd>
                 </div>
                 <div>
                   <dt className="text-xs font-medium text-[var(--cm-text-muted)]">Mã định danh</dt>
                   <dd className="mt-1 break-all font-mono text-xs text-[var(--cm-text-secondary)]">{center.centerId}</dd>
                 </div>
               </dl>
-              <p className="mt-6 rounded-xl border border-amber-400/25 bg-amber-400/10 p-3 text-xs leading-5 text-amber-100/80">
+              <p className="mt-6 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-5 text-amber-900 dark:text-amber-200">
                 Mã và trạng thái trung tâm do Quản trị viên nền tảng kiểm soát và chỉ được hiển thị tại đây.
               </p>
             </aside>
@@ -172,7 +172,7 @@ export const CenterProfilePage = () => {
                 </div>
               )}
               {feedback && feedback.type !== "conflict" && (
-                <div role="status" aria-live="polite" className={`mt-5 rounded-xl border p-4 text-sm ${feedback.type === "success" ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-100" : "border-rose-400/30 bg-rose-400/10 text-rose-100"}`}>
+                <div role="status" aria-live="polite" className={`mt-5 rounded-xl border p-4 text-sm ${feedback.type === "success" ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-900 dark:text-emerald-100" : "border-rose-400/30 bg-rose-400/10 text-rose-900 dark:text-rose-100"}`}>
                   <p>{feedback.text}</p>
                   {feedback.traceId && <p className="mt-2 break-all font-mono text-xs opacity-70">Trace ID: {feedback.traceId}</p>}
                 </div>

@@ -88,7 +88,11 @@ function Navigation({ groups, pathname, onNavigate }: { groups: NavigationGroup[
                     to={item.to}
                     aria-current={active ? "page" : undefined}
                     onClick={onNavigate}
-                    className={`cm-focus-ring flex min-h-10 items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors ${active ? "bg-indigo-500/20 text-white ring-1 ring-inset ring-indigo-400/30" : "text-[var(--cm-text-secondary)] hover:bg-white/5 hover:text-white"}`}
+                    className={`cm-focus-ring flex min-h-10 items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors ${
+                      active
+                        ? "bg-indigo-500/15 text-indigo-700 dark:bg-indigo-500/20 dark:text-cyan-300 ring-1 ring-inset ring-indigo-400/30 font-semibold"
+                        : "text-[var(--cm-text-secondary)] hover:bg-[var(--cm-surface-subtle)] hover:text-[var(--cm-text)]"
+                    }`}
                   >
                     <span aria-hidden="true" className={`h-2 w-2 rounded-full ${active ? "bg-[var(--cm-cyan)]" : "bg-[var(--cm-text-muted)]"}`} />
                     {item.label}
@@ -110,7 +114,7 @@ function ShellSidebar({ children, centerContext }: { children: ReactNode; center
         <span aria-hidden="true" className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-cyan-400 to-indigo-500 text-lg font-black text-white">E</span>
         <div>
           <p className="font-semibold text-[var(--cm-text)]">EduTwin</p>
-          <p className="text-[10px] uppercase tracking-[0.15em] text-cyan-300">Center workspace</p>
+          <p className="text-[10px] uppercase tracking-[0.15em] text-cyan-700 dark:text-cyan-300 font-semibold">Center workspace</p>
         </div>
       </div>
       {centerContext}
@@ -197,8 +201,8 @@ export function CenterManagerLayout() {
   };
 
   const centerContext = (
-    <div className="mx-3 mt-4 rounded-xl border border-[var(--cm-border-subtle)] bg-white/[0.04] p-3">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-300">Phạm vi hiện tại</p>
+    <div className="mx-3 mt-4 rounded-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-subtle)] p-3">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-700 dark:text-cyan-300">Phạm vi hiện tại</p>
       <p className="truncate text-sm font-semibold text-[var(--cm-text)]" title={centerName}>{centerName}</p>
       <p className="mt-1 truncate text-xs text-[var(--cm-text-muted)]" title={centerMeta}>{centerMeta}</p>
     </div>

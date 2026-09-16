@@ -135,7 +135,7 @@ test("DAG Layout: RelatedTo edges are lateral and do NOT advance topological ran
   assert.notEqual(posA.y, posB.y, "Nodes are vertically spaced in row order");
 });
 
-test("DAG Layout: dependency edges (PartOf, CausesErrorIn) properly advance rank", () => {
+test("DAG Layout: dependency edges (PartOf) advance rank while non-DAG edges (CausesErrorIn) do NOT", () => {
   const nodes = [makeTestNode("Parent"), makeTestNode("Child"), makeTestNode("ErrorTarget")];
   const edges = [
     makeTestEdge("e1", "Parent", "Child", "PartOf"),
@@ -145,8 +145,12 @@ test("DAG Layout: dependency edges (PartOf, CausesErrorIn) properly advance rank
   const result = computeDeterministicDagLayout(nodes, edges);
 
   assert.equal(result.positions.get("Parent")?.rank, 0);
-  assert.equal(result.positions.get("Child")?.rank, 1);
-  assert.equal(result.positions.get("ErrorTarget")?.rank, 2);
+  assert.equal(result.positions.get("Child")?.rank, 1, "PartOf must advance rank");
+  assert.equal(
+    result.positions.get("ErrorTarget")?.rank,
+    0,
+    "CausesErrorIn is not a DAG dependency in KnowledgeGraphValidator and must NOT advance rank"
+  );
 });
 
 test("DAG Layout: disconnected nodes without edges are placed at rank 0 without crashing", () => {
@@ -330,5 +334,15 @@ test("Theme Integration: ThemeToggle, CenterManagerThemeScope, and CenterManager
     layoutSource,
     /className=".*bg-#0f172a.*"/,
     "CenterManagerLayout must not hardcode dark hex in layout shell"
+  );
+  assert.doesNotMatch(
+    layoutSource,
+    /hover:text-white/,
+    "CenterManagerLayout navigation links must not use hover:text-white to avoid white-on-white text in Light mode"
+  );
+  assert.doesNotMatch(
+    layoutSource,
+    /bg-white\/\[0\.04\]/,
+    "CenterManagerLayout context card must use theme token rather than bg-white/[0.04]"
   );
 });

@@ -47,9 +47,10 @@ const nodeTypeLayerOrder: Record<KnowledgeNodeType, number> = {
  * Computes a deterministic DAG topological layout based on nodes and edges.
  *
  * Requirements:
- * 1. Kahn / longest-path topological ranking on DAG.
- * 2. Dependency edges (PrerequisiteOf, PartOf, CausesErrorIn) advance rank: rank(v) >= rank(u) + 1.
- * 3. RelatedTo edges are lateral semantic relationships and DO NOT advance topological rank.
+ * 1. Kahn / longest-path topological ranking on DAG in true O(V + E) time.
+ * 2. Only dependency edges (PrerequisiteOf, PartOf) advance rank: rank(v) >= rank(u) + 1,
+ *    aligning with backend KnowledgeGraphValidator.
+ * 3. RelatedTo and CausesErrorIn edges DO NOT advance topological rank.
  * 4. Deterministic fail-closed cycle handling in O(V + E): cycle nodes are assigned fallback rank (maxRank + 1)
  *    and sorted deterministically to prevent infinite loops.
  * 5. Deterministic sorting within each column/rank.
@@ -79,14 +80,10 @@ export function computeDeterministicDagLayout(
   }
 
   const validNodeIds = new Set(nodes.map((n) => n.nodeId));
-  const nodeMap = new Map<string, KnowledgeGraphNodeDto>();
-  for (const node of nodes) {
-    nodeMap.set(node.nodeId, node);
-  }
 
   // Build graph for rank calculation:
-  // Only dependency edges advance topological rank (PrerequisiteOf, PartOf, CausesErrorIn).
-  // RelatedTo is excluded from rank advancement.
+  // Only PrerequisiteOf and PartOf are DAG dependency edges that advance topological rank,
+  // matching backend KnowledgeGraphValidator.cs.
   const inDegree = new Map<string, number>();
   const outAdj = new Map<string, string[]>();
 
@@ -103,13 +100,18 @@ export function computeDeterministicDagLayout(
       continue; // Ignore self-loops for rank computation
     }
 
-    // Explicitly exclude "RelatedTo" from advancing rank
-    if (edge.relationType === "RelatedTo") {
+    // Only PrerequisiteOf and PartOf form DAG dependency hierarchy
+    if (edge.relationType !== "PrerequisiteOf" && edge.relationType !== "PartOf") {
       continue;
     }
 
     inDegree.set(edge.targetNodeId, (inDegree.get(edge.targetNodeId) ?? 0) + 1);
     outAdj.get(edge.sourceNodeId)!.push(edge.targetNodeId);
+  }
+
+  // Pre-sort adjacency lists for deterministic traversal
+  for (const neighbors of outAdj.values()) {
+    neighbors.sort((a, b) => a.localeCompare(b));
   }
 
   // Topological ranking with longest-path tracking
@@ -119,16 +121,18 @@ export function computeDeterministicDagLayout(
   }
 
   const currentInDegree = new Map(inDegree);
-  // Deterministic initial queue
+  // Deterministic initial queue sorted once
   const queue: string[] = nodes
     .filter((n) => currentInDegree.get(n.nodeId) === 0)
     .map((n) => n.nodeId)
     .sort((a, b) => a.localeCompare(b));
 
+  let head = 0;
   let visitedCount = 0;
 
-  while (queue.length > 0) {
-    const u = queue.shift()!;
+  // True O(V + E) traversal using queue index without expensive array shifts or inner sorting
+  while (head < queue.length) {
+    const u = queue[head++];
     visitedCount++;
     const uRank = rankMap.get(u) ?? 0;
     const neighbors = outAdj.get(u) ?? [];
@@ -144,8 +148,6 @@ export function computeDeterministicDagLayout(
         queue.push(v);
       }
     }
-    // Maintain deterministic processing order
-    queue.sort((a, b) => a.localeCompare(b));
   }
 
   // Fail-closed cycle handling:
