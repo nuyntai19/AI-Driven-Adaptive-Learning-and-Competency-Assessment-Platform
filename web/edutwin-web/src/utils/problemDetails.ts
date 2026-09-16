@@ -73,6 +73,10 @@ export function isConcurrencyConflict(error: unknown): boolean {
   return false;
 }
 
+export function isConcurrencyConflictError(error: any): boolean {
+  return error?.response?.status === 409 || error?.status === 409 || isConcurrencyConflict(error);
+}
+
 export function isRateLimit(error: unknown): boolean {
   if (axios.isAxiosError(error) && error.response) {
     const status = error.response.status;

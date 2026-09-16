@@ -64,7 +64,22 @@ export interface CreateQuestionRequest {
   knowledgeMappings?: KnowledgeMapping[];
 }
 
-export interface UpdateQuestionRequest extends CreateQuestionRequest {
+export interface UpdateQuestionRequest {
+  primaryTopicNodeId: string;
+  questionType: QuestionType;
+  difficulty: number;
+  questionText: string;
+  correctAnswer?: string;
+  solution?: string;
+  expectedReasoning?: string;
+  gradingCriteria?: GradingCriteria;
+  maxScore: number;
+  estimatedTimeSeconds: number;
+  reasoningRequired: boolean;
+  languageCode: string;
+  answerEvaluationMode?: QuestionAnswerEvaluationMode;
+  options?: { optionLabel: string; optionText: string; isCorrect: boolean; orderIndex: number }[];
+  knowledgeMappings?: KnowledgeMapping[];
   rowVersion: string;
 }
 
@@ -82,4 +97,6 @@ export interface QuestionFilter {
   type?: QuestionType;
   difficulty?: number;
   status?: QuestionStatus;
+  page?: number;
+  pageSize?: number;
 }
