@@ -123,7 +123,7 @@ function App() {
           <Route element={<PermissionRoute allOf={[permissions.curriculumsCreate]} />}>
             <Route path="/quan-ly/giao-trinh/tao-moi" element={<CurriculumEditorPage />} />
           </Route>
-          <Route element={<PermissionRoute anyOf={[permissions.curriculumsRead, permissions.curriculumsUpdate]} />}>
+          <Route element={<PermissionRoute allOf={[permissions.curriculumsRead]} />}>
             <Route path="/quan-ly/giao-trinh/:id" element={<CurriculumEditorPage />} />
           </Route>
           <Route element={<PermissionRoute allOf={[permissions.questionsRead]} />}>

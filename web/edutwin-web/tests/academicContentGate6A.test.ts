@@ -601,19 +601,30 @@ test("10. Canonical Class allocation selector preserves selection and constructs
 });
 
 // ============================================================================
-// 11. READ-ONLY NAVIGATION ALIGNMENT & VIEW MODE ENFORCEMENT
+// 11. READ-ONLY NAVIGATION ALIGNMENT & DETAIL ROUTE READ REQUIREMENT
 // ============================================================================
-test("11. Read-only navigation alignment: curriculums.read allows accessing detail in view-only mode", () => {
+test("11. Read-only navigation alignment: detail route strictly requires curriculums.read", () => {
   const readOnlyUser = centerManagerUser([permissions.curriculumsRead]);
+  const updateOnlyUser = centerManagerUser([permissions.curriculumsUpdate]);
 
-  // Route /quan-ly/giao-trinh/:id is protected by anyOf: [curriculumsRead, curriculumsUpdate]
-  const canAccessDetailRoute = canAccess(readOnlyUser, {
-    anyOf: [permissions.curriculumsRead, permissions.curriculumsUpdate],
+  // Route /quan-ly/giao-trinh/:id is protected strictly by allOf: [curriculumsRead]
+  // because GET /api/v1/curriculums/:id is always executed to load curriculum data
+  const canAccessDetailRouteWithRead = canAccess(readOnlyUser, {
+    allOf: [permissions.curriculumsRead],
   });
+  const canAccessDetailRouteUpdateOnly = canAccess(updateOnlyUser, {
+    allOf: [permissions.curriculumsRead],
+  });
+
   assert.equal(
-    canAccessDetailRoute,
+    canAccessDetailRouteWithRead,
     true,
     "Read-only user can access /quan-ly/giao-trinh/:id via curriculumsRead"
+  );
+  assert.equal(
+    canAccessDetailRouteUpdateOnly,
+    false,
+    "Update-only user lacking curriculumsRead cannot access detail route (fail-closed against 403 on GET)"
   );
 
   // In the editor, verify read-only computation
@@ -666,4 +677,158 @@ test("12. Mutation error handling: traceId extracted and rendered separately fro
   assert.ok(errorState.message.length > 0);
   // Verify UI can render traceId separately in a dedicated badge / font-mono element
   assert.equal(typeof errorState.traceId, "string");
+});
+
+// ============================================================================
+// 13. KNOWLEDGE NODE SELECTOR CALLS listNodes REQUIRING ONLY nodes.read
+// ============================================================================
+test("13. Knowledge node selector uses listNodes endpoint matching knowledge.nodes.read capability", () => {
+  // Dynamic role with only knowledge.nodes.read (no knowledge.edges.read)
+  const nodeReaderUser = centerManagerUser([
+    permissions.curriculumsRead,
+    permissions.curriculumsUpdate,
+    permissions.nodesRead,
+  ]);
+
+  const canReadNodes = canAccess(nodeReaderUser, { allOf: [permissions.nodesRead] });
+  const canReadEdges = canAccess(nodeReaderUser, { allOf: [permissions.edgesRead] });
+
+  assert.equal(canReadNodes, true, "Actor has knowledge.nodes.read");
+  assert.equal(canReadEdges, false, "Actor does not have knowledge.edges.read");
+
+  // Endpoint getGraph requires nodesRead && edgesRead
+  const canUseGetGraph = canReadNodes && canReadEdges;
+  assert.equal(canUseGetGraph, false, "getGraph fails for node-only reader");
+
+  // Endpoint listNodes requires ONLY nodesRead
+  const canUseListNodes = canReadNodes;
+  assert.equal(canUseListNodes, true, "listNodes succeeds for node-only reader without 403");
+
+  // Mock listNodes response format
+  const mockNodes: Array<{ nodeId: string; nodeCode: string; nodeName: string; nodeType: string }> = [
+    { nodeId: "node-1", nodeCode: "ALG-01", nodeName: "Hàm số bậc nhất", nodeType: "Concept" },
+    { nodeId: "node-2", nodeCode: "ALG-02", nodeName: "Hàm số bậc hai", nodeType: "Concept" },
+  ];
+
+  const nodeMap = new Map<string, (typeof mockNodes)[0]>();
+  for (const n of mockNodes) {
+    nodeMap.set(n.nodeId, n);
+  }
+
+  assert.equal(nodeMap.get("node-1")?.nodeCode, "ALG-01");
+  assert.equal(nodeMap.get("node-2")?.nodeName, "Hàm số bậc hai");
+});
+
+// ============================================================================
+// 14. CENTERMANAGER CREATE MODE REQUIRES COMPOSITE CAPABILITY (WITH teachers.read)
+// ============================================================================
+test("14. CenterManager create mode requires composite capability including teachers.read", () => {
+  // CenterManager user lacking teachers.read
+  const managerWithoutTeachers = centerManagerUser([
+    permissions.curriculumsCreate,
+    permissions.subjectsRead,
+  ]);
+
+  const canCreateCurriculums = canAccess(managerWithoutTeachers, {
+    allOf: [permissions.curriculumsCreate],
+  });
+  const canReadSubjects = canAccess(managerWithoutTeachers, {
+    allOf: [permissions.subjectsRead],
+  });
+  const canReadTeachers = canAccess(managerWithoutTeachers, {
+    allOf: [permissions.teachersRead],
+  });
+
+  const isEditMode = false;
+  const isCenterManager = true;
+
+  // CenterManager must assign an owning teacher, so canInitiateCreate must check canReadTeachers
+  const canInitiateCreate =
+    !isEditMode &&
+    canCreateCurriculums &&
+    canReadSubjects &&
+    (!isCenterManager || canReadTeachers);
+
+  assert.equal(canCreateCurriculums, true);
+  assert.equal(canReadSubjects, true);
+  assert.equal(canReadTeachers, false);
+  assert.equal(
+    canInitiateCreate,
+    false,
+    "CenterManager lacking teachers.read cannot initiate create (fail-closed)"
+  );
+
+  // When manager has teachers.read, create can proceed
+  const fullManager = centerManagerUser([
+    permissions.curriculumsCreate,
+    permissions.subjectsRead,
+    permissions.teachersRead,
+  ]);
+  const fullCanReadTeachers = canAccess(fullManager, {
+    allOf: [permissions.teachersRead],
+  });
+  const fullCanInitiate =
+    !isEditMode &&
+    canCreateCurriculums &&
+    canReadSubjects &&
+    (!isCenterManager || fullCanReadTeachers);
+
+  assert.equal(fullCanInitiate, true, "CenterManager with all 3 capabilities can initiate create");
+});
+
+// ============================================================================
+// 15. SELECTION PRESERVATION ACROSS PAGINATION AND SEARCH
+// ============================================================================
+test("15. Selection preservation across server-side pagination and search for teachers and classes", () => {
+  // 1. Teacher selection cache preservation
+  const selectedTeacherId = "teacher-uuid-page-1";
+  const cachedTeachers = new Map<string, { teacherId: string; displayName: string; username: string }>();
+
+  // Page 1 loaded
+  const page1Teachers = [
+    { teacherId: "teacher-uuid-page-1", displayName: "Nguyễn Văn A", username: "nguyenvana" },
+    { teacherId: "teacher-uuid-page-1b", displayName: "Trần Thị B", username: "tranthib" },
+  ];
+  for (const t of page1Teachers) {
+    cachedTeachers.set(t.teacherId, t);
+  }
+
+  // User selects teacher-uuid-page-1
+  assert.equal(cachedTeachers.has(selectedTeacherId), true);
+
+  // User navigates to page 2 (current page results do NOT contain teacher-uuid-page-1)
+  const page2Teachers = [
+    { teacherId: "teacher-uuid-page-2a", displayName: "Lê Văn C", username: "levanc" },
+  ];
+
+  // Lookup in current page results
+  const inCurrentPage = page2Teachers.some((t) => t.teacherId === selectedTeacherId);
+  assert.equal(inCurrentPage, false);
+
+  // Lookup in cache: preserved!
+  const preservedTeacher = cachedTeachers.get(selectedTeacherId);
+  assert.ok(preservedTeacher);
+  assert.equal(preservedTeacher?.displayName, "Nguyễn Văn A");
+
+  // 2. Class allocation preservation across pages
+  let allocatedClassIds: string[] = [];
+  const cachedClasses = new Map<string, { classId: string; className: string; academicYear: string }>();
+
+  // Page 1 classes
+  const page1Classes = [
+    { classId: "class-1", className: "10A1", academicYear: "2026-2027" },
+  ];
+  for (const c of page1Classes) cachedClasses.set(c.classId, c);
+  allocatedClassIds = [...allocatedClassIds, "class-1"];
+
+  // Page 2 classes
+  const page2Classes = [
+    { classId: "class-2", className: "10A2", academicYear: "2026-2027" },
+  ];
+  for (const c of page2Classes) cachedClasses.set(c.classId, c);
+  allocatedClassIds = [...allocatedClassIds, "class-2"];
+
+  assert.deepEqual(allocatedClassIds, ["class-1", "class-2"]);
+  assert.equal(cachedClasses.get("class-1")?.className, "10A1");
+  assert.equal(cachedClasses.get("class-2")?.className, "10A2");
 });

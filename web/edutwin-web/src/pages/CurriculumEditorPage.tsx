@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { organizationApi } from "../api/organizationApi";
@@ -14,8 +14,8 @@ import {
   usePublishCurriculum,
 } from "../features/curriculum/useCurriculums";
 import type { CreateCurriculumRequest, UpdateCurriculumRequest, ReviewStatus } from "../types/curriculum";
-import type { KnowledgeGraphNodeDto } from "../types/knowledgeGraph";
-import type { ClassDto } from "../types/organization";
+import type { KnowledgeNodeDto } from "../types/knowledgeGraph";
+import type { ClassDto, TeacherDto } from "../types/organization";
 import {
   shouldDisplayTeacherSelector,
   validateCurriculumForm,
@@ -55,8 +55,12 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
   const canUpdateCurriculums = hasPermission(permissions.curriculumsUpdate);
   const canPublishCurriculums = hasPermission(permissions.curriculumsPublish);
 
-  // In create mode, manager needs both curriculums.create and subjects.read (composite capability)
-  const canInitiateCreate = !isEditMode && canCreateCurriculums && canReadSubjects;
+  // In create mode, CenterManager needs curriculums.create, subjects.read, and teachers.read (CenterManager must assign teacher)
+  const canInitiateCreate =
+    !isEditMode &&
+    canCreateCurriculums &&
+    canReadSubjects &&
+    (!isCenterManager || canReadTeachers);
   const canSaveInfo = isEditMode ? canUpdateCurriculums : canInitiateCreate;
 
   const [formData, setFormData] = useState<{
@@ -121,33 +125,74 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
     enabled: canReadSubjects,
   });
 
-  const { data: teachersData, isLoading: isLoadingTeachers } = useQuery({
-    queryKey: ["teachers", "active-for-curriculum-editor"],
-    queryFn: () => organizationApi.listTeachers({ page: 1, pageSize: 100, status: "Active" }),
+  // Teacher search & pagination states
+  const [teacherSearch, setTeacherSearch] = useState("");
+  const [teacherPage, setTeacherPage] = useState(1);
+  const [cachedTeachers, setCachedTeachers] = useState<Map<string, TeacherDto>>(new Map());
+
+  const {
+    data: teachersData,
+    isLoading: isLoadingTeachers,
+    isError: isErrorTeachers,
+    error: teachersError,
+    refetch: refetchTeachers,
+  } = useQuery({
+    queryKey: ["teachers", "active-for-curriculum-editor", teacherPage, teacherSearch],
+    queryFn: () =>
+      organizationApi.listTeachers({
+        page: teacherPage,
+        pageSize: 20,
+        search: teacherSearch.trim() || undefined,
+        status: "Active",
+      }),
     enabled: isCenterManager && canReadTeachers,
   });
 
-  // Canonical Knowledge Graph Query for current subject
+  // Accumulate teachers in cache so selection is never lost across pagination/search
+  useEffect(() => {
+    if (teachersData?.data) {
+      setCachedTeachers((prev) => {
+        const next = new Map(prev);
+        for (const t of teachersData.data) {
+          next.set(t.teacherId, t);
+        }
+        return next;
+      });
+    }
+  }, [teachersData?.data]);
+
+  // Canonical Knowledge Nodes Query for current subject (calls listNodes: requires ONLY knowledge.nodes.read)
   const {
-    data: graphData,
-    isLoading: isLoadingGraph,
-    isError: isErrorGraph,
-    error: graphError,
-    refetch: refetchGraph,
+    data: nodesData,
+    isLoading: isLoadingNodes,
+    isError: isErrorNodes,
+    error: nodesError,
+    refetch: refetchNodes,
   } = useQuery({
-    queryKey: ["knowledge-graph-for-curriculum", formData.subjectId],
-    queryFn: () => knowledgeGraphApi.getGraph(formData.subjectId),
+    queryKey: ["knowledge-nodes-for-curriculum", formData.subjectId],
+    queryFn: () => knowledgeGraphApi.listNodes(formData.subjectId),
     enabled: Boolean(formData.subjectId && canReadNodes),
   });
 
-  // Map of canonical nodes for display lookup
-  const nodeMap = useMemo(() => {
-    const map = new Map<string, KnowledgeGraphNodeDto>();
-    for (const node of graphData?.nodes || []) {
-      map.set(node.nodeId, node);
+  // Map of canonical nodes for display lookup (accumulates all loaded nodes)
+  const [cachedNodes, setCachedNodes] = useState<Map<string, KnowledgeNodeDto>>(new Map());
+
+  useEffect(() => {
+    if (nodesData) {
+      setCachedNodes((prev) => {
+        const next = new Map(prev);
+        for (const node of nodesData) {
+          next.set(node.nodeId, node);
+        }
+        return next;
+      });
     }
-    return map;
-  }, [graphData?.nodes]);
+  }, [nodesData]);
+
+  // Class search & pagination states
+  const [classPage, setClassPage] = useState(1);
+  const [filterClassByCurriculumSubject, setFilterClassByCurriculumSubject] = useState(true);
+  const [cachedClasses, setCachedClasses] = useState<Map<string, ClassDto>>(new Map());
 
   // Canonical Classes Query for CenterManager
   const {
@@ -157,18 +202,32 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
     error: classesError,
     refetch: refetchClasses,
   } = useQuery({
-    queryKey: ["classes-for-curriculum-assignment"],
-    queryFn: () => organizationApi.listClasses({ page: 1, pageSize: 100, status: "Active" }),
+    queryKey: [
+      "classes-for-curriculum-assignment",
+      classPage,
+      filterClassByCurriculumSubject && formData.subjectId ? formData.subjectId : undefined,
+    ],
+    queryFn: () =>
+      organizationApi.listClasses({
+        page: classPage,
+        pageSize: 20,
+        subjectId: filterClassByCurriculumSubject && formData.subjectId ? formData.subjectId : undefined,
+        status: "Active",
+      }),
     enabled: isCenterManager && canReadClasses,
   });
 
-  // Map of canonical classes for display lookup
-  const classMap = useMemo(() => {
-    const map = new Map<string, ClassDto>();
-    for (const cls of classesData?.data || []) {
-      map.set(cls.classId, cls);
+  // Accumulate classes in cache so selection is never lost across pagination
+  useEffect(() => {
+    if (classesData?.data) {
+      setCachedClasses((prev) => {
+        const next = new Map(prev);
+        for (const cls of classesData.data) {
+          next.set(cls.classId, cls);
+        }
+        return next;
+      });
     }
-    return map;
   }, [classesData?.data]);
 
   // Sync loaded curriculum data into form state
@@ -710,26 +769,104 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
                     <label htmlFor="curriculum-teacher-select" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mb-1">
                       Giáo viên phụ trách <span className="text-rose-400">*</span>
                     </label>
-                    <select
-                      id="curriculum-teacher-select"
-                      data-testid="curriculum-teacher-select"
-                      disabled={isLoadingTeachers || !canReadTeachers}
-                      value={formData.teacherId}
-                      onChange={(e) => handleInputChange("teacherId", e.target.value)}
-                      className="cm-select w-full text-sm"
-                    >
-                      <option value="">-- Chọn giáo viên phụ trách --</option>
-                      {teachersData?.data?.map((teacher) => (
-                        <option key={teacher.teacherId} value={teacher.teacherId}>
-                          {teacher.displayName} (@{teacher.username})
-                        </option>
-                      ))}
-                    </select>
-                    <p className="mt-1 text-xs text-[var(--cm-text-muted)]">
-                      {canReadTeachers
-                        ? "Lộ trình học bắt buộc phải do một giáo viên trong trung tâm phụ trách."
-                        : "Bạn cần quyền xem giáo viên để chọn người phụ trách lộ trình."}
-                    </p>
+                    {!canReadTeachers ? (
+                      <div className="mt-1">
+                        <SafeErrorPanel
+                          error={new Error("Thiếu quyền đọc giáo viên (userManagement.teachers.read).")}
+                          fallback="Bạn cần quyền xem danh sách giáo viên (userManagement.teachers.read) để chỉ định người phụ trách lộ trình học."
+                        />
+                      </div>
+                    ) : isErrorTeachers ? (
+                      <div className="mt-1">
+                        <SafeErrorPanel
+                          error={teachersError}
+                          fallback="Không thể tải danh sách giáo viên của trung tâm. Vui lòng thử lại."
+                          onRetry={() => refetchTeachers()}
+                        />
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            placeholder="Tìm giáo viên (tên, tài khoản)..."
+                            value={teacherSearch}
+                            onChange={(e) => {
+                              setTeacherSearch(e.target.value);
+                              setTeacherPage(1);
+                            }}
+                            className="cm-input flex-1 text-xs"
+                          />
+                          {teacherSearch && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setTeacherSearch("");
+                                setTeacherPage(1);
+                              }}
+                              className="cm-secondary-button text-xs px-2.5"
+                            >
+                              Xóa tìm kiếm
+                            </button>
+                          )}
+                        </div>
+
+                        <select
+                          id="curriculum-teacher-select"
+                          data-testid="curriculum-teacher-select"
+                          disabled={isLoadingTeachers}
+                          value={formData.teacherId}
+                          onChange={(e) => handleInputChange("teacherId", e.target.value)}
+                          className="cm-select w-full text-sm"
+                        >
+                          <option value="">
+                            {isLoadingTeachers ? "Đang tải danh sách giáo viên..." : "-- Chọn giáo viên phụ trách --"}
+                          </option>
+                          {formData.teacherId &&
+                            !teachersData?.data?.some((t) => t.teacherId === formData.teacherId) &&
+                            cachedTeachers.has(formData.teacherId) && (
+                              <option value={formData.teacherId}>
+                                {cachedTeachers.get(formData.teacherId)!.displayName} (@{cachedTeachers.get(formData.teacherId)!.username}) [Đang chọn]
+                              </option>
+                            )}
+                          {teachersData?.data?.map((teacher) => (
+                            <option key={teacher.teacherId} value={teacher.teacherId}>
+                              {teacher.displayName} (@{teacher.username})
+                            </option>
+                          ))}
+                        </select>
+
+                        {teachersData?.meta && teachersData.meta.totalPages > 1 && (
+                          <div className="flex items-center justify-between text-xs text-[var(--cm-text-secondary)] pt-1">
+                            <span>
+                              Trang {teachersData.meta.page} / {teachersData.meta.totalPages} ({teachersData.meta.totalItems} giáo viên)
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                disabled={teachersData.meta.page <= 1 || isLoadingTeachers}
+                                onClick={() => setTeacherPage((p) => Math.max(1, p - 1))}
+                                className="cm-secondary-button text-xs px-2 py-1 disabled:opacity-30"
+                              >
+                                ◀ Trước
+                              </button>
+                              <button
+                                type="button"
+                                disabled={teachersData.meta.page >= teachersData.meta.totalPages || isLoadingTeachers}
+                                onClick={() => setTeacherPage((p) => p + 1)}
+                                className="cm-secondary-button text-xs px-2 py-1 disabled:opacity-30"
+                              >
+                                Sau ▶
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        <p className="mt-1 text-xs text-[var(--cm-text-muted)]">
+                          Lộ trình học bắt buộc phải do một giáo viên trong trung tâm phụ trách.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -742,7 +879,9 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
                       type="text"
                       disabled
                       value={
-                        teachersData?.data?.find((t) => t.teacherId === formData.teacherId)
+                        cachedTeachers.get(formData.teacherId)
+                          ? `${cachedTeachers.get(formData.teacherId)!.displayName} (@${cachedTeachers.get(formData.teacherId)!.username})`
+                          : teachersData?.data?.find((t) => t.teacherId === formData.teacherId)
                           ? `${teachersData?.data?.find((t) => t.teacherId === formData.teacherId)?.displayName} (@${teachersData?.data?.find((t) => t.teacherId === formData.teacherId)?.username})`
                           : formData.teacherId
                       }
@@ -811,11 +950,11 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
                   </div>
                 )}
 
-                {formData.subjectId && canReadNodes && isErrorGraph && (
+                {formData.subjectId && canReadNodes && isErrorNodes && (
                   <SafeErrorPanel
-                    error={graphError}
-                    fallback="Không thể tải đồ thị nút kiến thức của môn học."
-                    onRetry={() => refetchGraph()}
+                    error={nodesError}
+                    fallback="Không thể tải danh mục nút kiến thức của môn học."
+                    onRetry={() => refetchNodes()}
                   />
                 )}
 
@@ -823,21 +962,21 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
                 {isDraft && canUpdateCurriculums && formData.subjectId && canReadNodes && (
                   <div className="rounded-xl border border-[var(--cm-border)] bg-[var(--cm-surface-subtle)] p-4 space-y-3">
                     <label htmlFor="curriculum-node-selector" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)]">
-                      Chọn nút kiến thức từ đồ thị môn học
+                      Chọn nút kiến thức từ danh mục môn học
                     </label>
                     <div className="flex flex-col sm:flex-row gap-2">
                       <select
                         id="curriculum-node-selector"
                         aria-label="Chọn nút kiến thức"
                         value={selectedNodeToAdd}
-                        disabled={isLoadingGraph}
+                        disabled={isLoadingNodes}
                         onChange={(e) => setSelectedNodeToAdd(e.target.value)}
                         className="cm-select flex-1 text-sm"
                       >
                         <option value="">
-                          {isLoadingGraph ? "Đang tải danh mục nút..." : "-- Chọn nút kiến thức để thêm vào lộ trình --"}
+                          {isLoadingNodes ? "Đang tải danh mục nút..." : "-- Chọn nút kiến thức để thêm vào lộ trình --"}
                         </option>
-                        {(graphData?.nodes || [])
+                        {(nodesData || [])
                           .filter((node) => !formData.nodeIds.includes(node.nodeId))
                           .map((node) => (
                             <option key={node.nodeId} value={node.nodeId}>
@@ -848,7 +987,7 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
                       <button
                         type="button"
                         id="btn-add-curriculum-node"
-                        disabled={!selectedNodeToAdd || isLoadingGraph}
+                        disabled={!selectedNodeToAdd || isLoadingNodes}
                         onClick={() => handleAddCanonicalNode(selectedNodeToAdd)}
                         className="cm-secondary-button text-sm px-4 shrink-0 disabled:opacity-40"
                       >
@@ -861,12 +1000,12 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
                 {/* Node List View */}
                 {formData.nodeIds.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-[var(--cm-border)] p-8 text-center text-xs text-[var(--cm-text-muted)]">
-                    Chưa có nút kiến thức nào trong lộ trình này. Hãy chọn các nút từ đồ thị môn học ở trên.
+                    Chưa có nút kiến thức nào trong lộ trình này. Hãy chọn các nút từ danh mục môn học ở trên.
                   </div>
                 ) : (
                   <div className="space-y-2">
                     {formData.nodeIds.map((nodeId, index) => {
-                      const node = nodeMap.get(nodeId);
+                      const node = cachedNodes.get(nodeId) || nodesData?.find((n) => n.nodeId === nodeId);
                       return (
                         <div
                           key={`${nodeId}-${index}`}
@@ -929,30 +1068,6 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
                   </div>
                 )}
 
-                {/* Raw ID Editor Fallback / Bulk Input */}
-                <div className="pt-4 border-t border-[var(--cm-border-subtle)]">
-                  <label htmlFor="curriculum-raw-nodes-input" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mb-1">
-                    Nhập nhanh mã ID nút (tùy chọn nâng cao, cách nhau bởi dấu phẩy)
-                  </label>
-                  <textarea
-                    id="curriculum-raw-nodes-input"
-                    rows={2}
-                    disabled={isReadOnly}
-                    value={formData.nodeIds.join(", ")}
-                    onChange={(e) =>
-                      handleInputChange(
-                        "nodeIds",
-                        e.target.value
-                          .split(",")
-                          .map((s) => s.trim())
-                          .filter((s) => s)
-                      )
-                    }
-                    placeholder="VD: node-uuid-1, node-uuid-2"
-                    className="cm-input w-full text-xs font-mono"
-                  />
-                </div>
-
                 {isDraft && canUpdateCurriculums && (
                   <div className="pt-4 border-t border-[var(--cm-border-subtle)]">
                     <button
@@ -998,9 +1113,25 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
                 {/* Canonical Class Selector */}
                 {isDraft && canUpdateCurriculums && canReadClasses && (
                   <div className="rounded-xl border border-[var(--cm-border)] bg-[var(--cm-surface-subtle)] p-4 space-y-3">
-                    <label htmlFor="curriculum-class-selector" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)]">
-                      Chọn lớp học từ trung tâm để phân bổ
-                    </label>
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <label htmlFor="curriculum-class-selector" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)]">
+                        Chọn lớp học từ trung tâm để phân bổ
+                      </label>
+                      {formData.subjectId && (
+                        <label className="flex items-center gap-2 text-xs text-[var(--cm-text-secondary)] cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={filterClassByCurriculumSubject}
+                            onChange={(e) => {
+                              setFilterClassByCurriculumSubject(e.target.checked);
+                              setClassPage(1);
+                            }}
+                            className="rounded border-[var(--cm-border)] text-[var(--cm-cyan)] focus:ring-[var(--cm-cyan)]"
+                          />
+                          <span>Chỉ hiện lớp thuộc môn học này</span>
+                        </label>
+                      )}
+                    </div>
                     <div className="flex flex-col sm:flex-row gap-2">
                       <select
                         id="curriculum-class-selector"
@@ -1031,6 +1162,33 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
                         + Phân bổ lớp
                       </button>
                     </div>
+
+                    {/* Class pagination controls */}
+                    {classesData?.meta && classesData.meta.totalPages > 1 && (
+                      <div className="flex items-center justify-between text-xs text-[var(--cm-text-secondary)] pt-1">
+                        <span>
+                          Trang {classesData.meta.page} / {classesData.meta.totalPages} ({classesData.meta.totalItems} lớp học)
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            disabled={classesData.meta.page <= 1 || isLoadingClasses}
+                            onClick={() => setClassPage((p) => Math.max(1, p - 1))}
+                            className="cm-secondary-button text-xs px-2 py-1 disabled:opacity-30"
+                          >
+                            ◀ Trước
+                          </button>
+                          <button
+                            type="button"
+                            disabled={classesData.meta.page >= classesData.meta.totalPages || isLoadingClasses}
+                            onClick={() => setClassPage((p) => p + 1)}
+                            className="cm-secondary-button text-xs px-2 py-1 disabled:opacity-30"
+                          >
+                            Sau ▶
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1042,7 +1200,7 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
                 ) : (
                   <div className="space-y-2">
                     {formData.classIds.map((classId, index) => {
-                      const cls = classMap.get(classId);
+                      const cls = cachedClasses.get(classId) || classesData?.data?.find((c) => c.classId === classId);
                       return (
                         <div
                           key={`${classId}-${index}`}
@@ -1087,30 +1245,6 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
                     })}
                   </div>
                 )}
-
-                {/* Raw Class ID Editor / Bulk Input */}
-                <div className="pt-4 border-t border-[var(--cm-border-subtle)]">
-                  <label htmlFor="curriculum-raw-classes-input" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mb-1">
-                    Nhập nhanh mã ID lớp (tùy chọn nâng cao, cách nhau bởi dấu phẩy)
-                  </label>
-                  <textarea
-                    id="curriculum-raw-classes-input"
-                    rows={2}
-                    disabled={isReadOnly}
-                    value={formData.classIds.join(", ")}
-                    onChange={(e) =>
-                      handleInputChange(
-                        "classIds",
-                        e.target.value
-                          .split(",")
-                          .map((s) => s.trim())
-                          .filter((s) => s)
-                      )
-                    }
-                    placeholder="VD: class-uuid-1, class-uuid-2"
-                    className="cm-input w-full text-xs font-mono"
-                  />
-                </div>
 
                 {isDraft && canUpdateCurriculums && (
                   <div className="pt-4 border-t border-[var(--cm-border-subtle)]">
