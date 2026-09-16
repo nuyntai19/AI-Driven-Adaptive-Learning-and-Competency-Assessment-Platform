@@ -445,7 +445,13 @@ graph TD
        * Bộ lọc theo loại hành động, mã quyền, thời gian.
        * Modal xem chi tiết đối chiếu Before/After JSON đã khử khuẩn.
        * Nút sao chép W3C Trace ID 1-click.
-* **Tiêu chí nghiệm thu (Gate 7):** Toàn bộ chức năng RBAC và Review Queue hoạt động chính xác; bảo toàn phân quyền đa tầng và kiểm toán bất biến.
+* **Tiêu chí nghiệm thu (Gate 7):** Toàn bộ chức năng RBAC và Review Queue hoạt động chính xác; bảo toàn phân quyền đa tầng và kiểm toán bất biến. ĐÃ HOÀN THÀNH TOÀN DIỆN VỀ MẶT MÃ NGUỒN, BACKEND BLL DUAL TEACHER/CENTER-MANAGER, OCC SYNCHRONIZATION, SCRATCHPAD CAPABILITY, BUNDLE BUDGET VÀ KIỂM THỬ TỰ ĐỘNG.
+  - Backend: `3420/3420` non-MySQL unit & integration tests pass (100%).
+  - Frontend: `193/193` tests pass (`tests/learningSupervisionGate7.test.ts` 11/11 pass, `npm test` 193/193 pass).
+  - Lint: 0 errors, 0 warnings.
+  - TypeScript: 0 compilation errors.
+  - Production build: Clean bundle 396.60 KB (budget <= 434.5 KB).
+  - Trạng thái: `GATE 7 — TECHNICALLY COMPLETE / LOCAL VERIFICATION PASS / FORMAL CLOSEOUT PENDING GATE 8 CHROME E2E`. Chi tiết xem [POST_R09_CENTER_MANAGER_UX_GATE7_VERIFICATION_REPORT.md](../verification/POST_R09_CENTER_MANAGER_UX_GATE7_VERIFICATION_REPORT.md).
 
 ---
 
