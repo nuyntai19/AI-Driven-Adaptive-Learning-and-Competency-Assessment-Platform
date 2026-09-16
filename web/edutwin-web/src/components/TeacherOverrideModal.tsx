@@ -43,7 +43,7 @@ export const TeacherOverrideModal = ({
       setAwardedScore("");
       setFeedback(review.analysisFeedback || "");
       setReason("");
-      setOverrideVersion(0);
+      setOverrideVersion(review.evidence?.analysisOverrideVersion ?? 0);
       setErrorMessage(null);
       setSuccessInfo(null);
     }

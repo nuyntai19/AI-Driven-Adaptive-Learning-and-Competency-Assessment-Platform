@@ -3,11 +3,15 @@ import { useQuery } from "@tanstack/react-query";
 import { getTeacherStudentTwin } from "../api/digitalTwinApi";
 import type { StudentTwinDataDto } from "../types/digitalTwin";
 import { SubjectRequiredState } from "../components/SubjectRequiredState";
+import { useAuthStore } from "../stores/authStore";
+import { CenterManagerThemeScope } from "../components/centerManager/CenterManagerThemeScope";
 
 export const TeacherStudentTwinPage = () => {
   const { studentId } = useParams<{ studentId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const subjectId = searchParams.get("subjectId") || undefined;
+  const user = useAuthStore((state) => state.user);
+  const isCenterManager = user?.accountType === "CenterManager";
 
   const {
     data: twinData,
@@ -74,7 +78,7 @@ export const TeacherStudentTwinPage = () => {
   const weakTopicCount = knowledgeTwin.filter((topic) => topic.mastery < 60).length;
   const evidenceCount = knowledgeTwin.reduce((sum, topic) => sum + topic.evidenceCount, 0);
 
-  return (
+  const content = (
     <div className="min-h-screen bg-slate-50 p-6">
       <div className="mx-auto max-w-6xl space-y-6">
         {/* Breadcrumb & Header */}
@@ -116,14 +120,16 @@ export const TeacherStudentTwinPage = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Độ thuần thục tổng thể
+              Độ thuần thục trung bình trong môn đang chọn
             </span>
             <div className="mt-2 flex items-baseline gap-2">
               <span className="text-3xl font-black text-indigo-600">
                 {overallMastery.toFixed(1)}%
               </span>
             </div>
-            <p className="mt-1 text-xs text-slate-500">Mô hình tính toán năng lực xác định</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Trung bình các chuyên đề thuộc môn {twinData.subjectId} (không tính gộp môn khác)
+            </p>
           </div>
 
           <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
@@ -318,4 +324,10 @@ export const TeacherStudentTwinPage = () => {
       </div>
     </div>
   );
+
+  if (isCenterManager) {
+    return <CenterManagerThemeScope data-actor="center-manager">{content}</CenterManagerThemeScope>;
+  }
+
+  return content;
 };

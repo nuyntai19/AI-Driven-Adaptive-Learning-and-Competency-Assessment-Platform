@@ -8,9 +8,17 @@ export type ErrorType =
   | "Unknown";
 
 export interface EvidenceDecisionDto {
+  evidenceAssessmentId: string;
+  sourceType: string;
+  trustLevel: string;
+  decisionMode: string;
+  reasoningWeight: number;
+  reasonCodes: string[];
+  requiresTeacherReview: boolean;
+  policyVersion: string;
+  analysisOverrideVersion: number;
+  evaluatedAt: string;
   mode?: string;
-  sourceType?: string;
-  trustLevel?: string;
 }
 
 export interface TeacherReviewQueueItemDto {
