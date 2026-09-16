@@ -5,6 +5,7 @@ import { authorizationApi } from "../api/authorizationApi";
 import { getCurrentUser } from "../auth/authApi";
 import { permissions } from "../auth/permissions";
 import { useAuthStore } from "../stores/authStore";
+import { CenterManagerThemeScope } from "../components/centerManager/CenterManagerThemeScope";
 import type { AccountType } from "../types/auth";
 import type {
   AuthorizationAuditDto,
@@ -97,7 +98,8 @@ export const AuthorizationManagementPage = () => {
   };
 
   return (
-    <main className="min-h-screen bg-slate-50 py-8">
+    <CenterManagerThemeScope data-actor="center-manager">
+      <main className="min-h-screen bg-slate-50 py-8">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -222,6 +224,7 @@ export const AuthorizationManagementPage = () => {
         )}
       </div>
     </main>
+    </CenterManagerThemeScope>
   );
 };
 
@@ -395,16 +398,20 @@ const RolePermissionPanel = ({
   }, [currentUser?.permissions]);
 
   // Evaluates a permission against the current selected role and the current actor
+  // Guardrail 2: Toggle is only allowed on Active ∩ Compatible ∩ Delegable ∩ Actor Effective Permissions
+  // Existing assigned permissions outside this set remain visible read-only and preserved in payload
   const evaluatePermission = (permission: PermissionDto) => {
+    const isActive = permission.status === "Active";
     const isOwnerByActor = actorPermissions.has(permission.permissionCode);
     const isDelegable = permission.isDelegable;
     const isCompatible = selected ? permission.allowedAccountTypes.includes(selected.accountType) : false;
-    // For CenterManager target roles: actor can only grant permissions they themselves own
-    const isOutOfScope = selected?.accountType === "CenterManager" && !isOwnerByActor;
+    const isOutOfScope = !isOwnerByActor;
+    const isWithinDelegableSet = isActive && isCompatible && isDelegable && isOwnerByActor;
     const isAssigned = selectedPermissions.includes(permission.permissionCode);
-    const canToggle = canManagePermissions && !selected?.isSystemRole && isDelegable && isCompatible && !isOutOfScope;
+    const canToggle = canManagePermissions && !selected?.isSystemRole && isWithinDelegableSet;
 
     return {
+      isActive,
       isOwnerByActor,
       isDelegable,
       isCompatible,
@@ -882,6 +889,11 @@ const RolePermissionPanel = ({
                                   <p className="mt-0.5 text-[11px] text-slate-500">{permission.description}</p>
 
                                   {/* Error/Guard Status Badges */}
+                                  {!evalResult.isActive && (
+                                    <span className="mt-1 inline-block text-[10px] font-semibold text-slate-500">
+                                      ✕ Không hoạt động (Inactive)
+                                    </span>
+                                  )}
                                   {!evalResult.isCompatible && (
                                     <span className="mt-1 inline-block text-[10px] font-semibold text-slate-500">
                                       ✕ Không tương thích {accountTypeLabels[selected.accountType]}
@@ -893,8 +905,13 @@ const RolePermissionPanel = ({
                                     </span>
                                   )}
                                   {evalResult.isOutOfScope && (
-                                    <span className="mt-1 inline-block text-[10px] font-semibold text-red-600">
+                                    <span className="mt-1 inline-block text-[10px] font-semibold text-amber-700">
                                       ✕ Vượt thẩm quyền (Bạn không sở hữu quyền này)
+                                    </span>
+                                  )}
+                                  {evalResult.isAssigned && !evalResult.canToggle && (
+                                    <span className="mt-1 inline-block rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-700 border border-slate-300">
+                                      🔒 Đã gán trước đó (Chỉ xem)
                                     </span>
                                   )}
                                 </div>
