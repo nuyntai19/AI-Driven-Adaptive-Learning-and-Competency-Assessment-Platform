@@ -219,33 +219,18 @@ export function CenterManagerLayout() {
 
   const sidebarFooter = (
     <div className="border-t border-[var(--cm-border-subtle)] p-3 bg-[var(--cm-surface)]">
-      <div className="flex items-center justify-between gap-2 rounded-xl p-2.5 bg-[var(--cm-surface-subtle)] border border-[var(--cm-border-subtle)]">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-indigo-400 text-xs font-bold text-slate-950">
-            {initials(user?.displayName, user?.username)}
-          </span>
-          <div className="min-w-0 truncate">
-            <p className="truncate text-xs font-semibold text-[var(--cm-text)]">
-              {user?.displayName ?? user?.username}
-            </p>
-            <p className="truncate text-[10px] text-[var(--cm-text-muted)]">
-              @{user?.username}
-            </p>
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={handleLogout}
-          disabled={loggingOut}
-          title="Đăng xuất khỏi hệ thống"
-          className="cm-focus-ring group flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 hover:text-rose-700 dark:hover:text-rose-300 transition-colors shrink-0"
-        >
-          <svg className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-          </svg>
-          <span>{loggingOut ? "…" : "Đăng xuất"}</span>
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={handleLogout}
+        disabled={loggingOut}
+        title="Đăng xuất khỏi hệ thống"
+        className="cm-focus-ring group flex w-full items-center justify-center gap-2 rounded-xl border border-rose-500/20 bg-rose-500/5 px-4 py-2.5 text-sm font-semibold text-rose-600 transition-all hover:bg-rose-500/15 hover:border-rose-500/40 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300"
+      >
+        <svg className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+        </svg>
+        <span>{loggingOut ? "Đang đăng xuất…" : "Đăng xuất"}</span>
+      </button>
     </div>
   );
 

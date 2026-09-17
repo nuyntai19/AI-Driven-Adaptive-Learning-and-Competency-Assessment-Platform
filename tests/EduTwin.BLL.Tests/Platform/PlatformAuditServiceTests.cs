@@ -298,4 +298,75 @@ public sealed class PlatformAuditServiceTests
         Assert.DoesNotContain("ReasoningAnalysis", jsonString);
         Assert.DoesNotContain("AwardedScore", jsonString);
     }
+
+    [Fact]
+    public async Task ListAuditLogs_CenterMetadataUpdatedFromCustomerCenter_IncludesAuditAndActorUsernameAndTargetCenterDetails()
+    {
+        var (db, _, service) = CreateContext();
+        using (db)
+        {
+            var customerCenterId = Guid.NewGuid();
+            var managerUserId = Guid.NewGuid();
+
+            var center = new Center
+            {
+                CenterId = customerCenterId,
+                CenterCode = "HA_NOI_01",
+                CenterName = "Trung tâm Hà Nội Alpha",
+                Status = EduTwin.Contracts.Organization.CenterStatus.Active,
+                Timezone = "Asia/Ho_Chi_Minh",
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            db.Centers.Add(center);
+
+            var manager = new User
+            {
+                CenterId = customerCenterId,
+                UserId = managerUserId,
+                Username = "manager_hanoi",
+                RoleName = UserRole.CenterManager,
+                DisplayName = "Quản lý Hà Nội",
+                PasswordHash = "hash",
+                Status = UserStatus.Active,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            db.Users.Add(manager);
+
+            db.AuthorizationAuditLogs.Add(new AuthorizationAuditLog
+            {
+                AuthorizationAuditId = 501,
+                CenterId = customerCenterId,
+                TargetCenterId = customerCenterId,
+                ActorUserId = managerUserId,
+                ActionType = "CenterMetadataUpdated",
+                TargetType = "Center",
+                TargetId = customerCenterId.ToString("D"),
+                Reason = "Cập nhật tên trung tâm",
+                TraceId = "trace-501",
+                CreatedAt = DateTime.UtcNow
+            });
+
+            await db.SaveChangesAsync();
+
+            var result = await service.ListAuditLogsAsync(new PlatformAuditQuery());
+
+            Assert.True(result.IsSuccess);
+            Assert.NotNull(result.Data);
+            var item = Assert.Single(result.Data.Items);
+            Assert.Equal("501", item.AuditId);
+            Assert.Equal("manager_hanoi", item.ActorUsername);
+            Assert.Equal("HA_NOI_01", item.TargetCenterCode);
+            Assert.Equal("Trung tâm Hà Nội Alpha", item.TargetCenterName);
+
+            // Verify GetAuditLogByIdAsync also retrieves it with details
+            var detailResult = await service.GetAuditLogByIdAsync(501);
+            Assert.True(detailResult.IsSuccess);
+            Assert.NotNull(detailResult.Data);
+            Assert.Equal("manager_hanoi", detailResult.Data.ActorUsername);
+            Assert.Equal("HA_NOI_01", detailResult.Data.TargetCenterCode);
+            Assert.Equal("Trung tâm Hà Nội Alpha", detailResult.Data.TargetCenterName);
+        }
+    }
 }

@@ -56,10 +56,14 @@ public sealed class PlatformAuditService(
                 "Thời gian bắt đầu (fromUtc) không được sau thời gian kết thúc (toUtc).");
         }
 
-        // Invariant: Scoped ONLY to PLATFORM tenant operations. Tenant-internal logs are strictly excluded.
+        // Invariant: Scoped to PLATFORM tenant operations and cross-tenant center metadata updates.
+        // IgnoreQueryFilters is mandatory because AuthorizationAuditLog implements ITenantAppendOnlyEntity
+        // which EF Core filters by CurrentTenantId. Cross-tenant logs (e.g. CenterMetadataUpdated from customer centers)
+        // and their cross-tenant ActorUser must not be excluded when queried by platform admin.
         var baseQuery = dbContext.AuthorizationAuditLogs
+            .IgnoreQueryFilters()
             .AsNoTracking()
-            .Where(a => a.CenterId == AuthorizationBootstrapper.ReservedPlatformCenterId);
+            .Where(a => a.CenterId == AuthorizationBootstrapper.ReservedPlatformCenterId || a.ActionType == "CenterMetadataUpdated");
 
         if (!string.IsNullOrWhiteSpace(query.ActionType))
         {
@@ -111,7 +115,7 @@ public sealed class PlatformAuditService(
             baseQuery = baseQuery.Where(a =>
                 a.Reason.Contains(search) ||
                 a.TargetId.Contains(search) ||
-                (a.TargetCenter != null && a.TargetCenter.CenterCode.Contains(search)));
+                (a.TargetCenter != null && (a.TargetCenter.CenterCode.Contains(search) || a.TargetCenter.CenterName.Contains(search))));
         }
 
         var totalCount = await baseQuery.LongCountAsync(cancellationToken);
@@ -127,6 +131,7 @@ public sealed class PlatformAuditService(
                 a.CenterId,
                 a.TargetCenterId,
                 TargetCenterCode = a.TargetCenter != null ? a.TargetCenter.CenterCode : null,
+                TargetCenterName = a.TargetCenter != null ? a.TargetCenter.CenterName : null,
                 a.ActorUserId,
                 ActorUsername = a.ActorUser != null ? a.ActorUser.Username : null,
                 a.ActionType,
@@ -146,6 +151,7 @@ public sealed class PlatformAuditService(
             CenterId = a.CenterId,
             TargetCenterId = a.TargetCenterId,
             TargetCenterCode = a.TargetCenterCode,
+            TargetCenterName = a.TargetCenterName,
             ActorUserId = a.ActorUserId,
             ActorUsername = a.ActorUsername,
             ActionType = a.ActionType,
@@ -181,15 +187,17 @@ public sealed class PlatformAuditService(
         }
 
         var audit = await dbContext.AuthorizationAuditLogs
+            .IgnoreQueryFilters()
             .AsNoTracking()
             .Where(a => a.AuthorizationAuditId == auditId &&
-                        a.CenterId == AuthorizationBootstrapper.ReservedPlatformCenterId)
+                        (a.CenterId == AuthorizationBootstrapper.ReservedPlatformCenterId || a.ActionType == "CenterMetadataUpdated"))
             .Select(a => new
             {
                 a.AuthorizationAuditId,
                 a.CenterId,
                 a.TargetCenterId,
                 TargetCenterCode = a.TargetCenter != null ? a.TargetCenter.CenterCode : null,
+                TargetCenterName = a.TargetCenter != null ? a.TargetCenter.CenterName : null,
                 a.ActorUserId,
                 ActorUsername = a.ActorUser != null ? a.ActorUser.Username : null,
                 a.ActionType,
@@ -216,6 +224,7 @@ public sealed class PlatformAuditService(
             CenterId = audit.CenterId,
             TargetCenterId = audit.TargetCenterId,
             TargetCenterCode = audit.TargetCenterCode,
+            TargetCenterName = audit.TargetCenterName,
             ActorUserId = audit.ActorUserId,
             ActorUsername = audit.ActorUsername,
             ActionType = audit.ActionType,

@@ -490,9 +490,12 @@ export const PlatformCentersPage: React.FC = () => {
                   <span className="text-slate-900 dark:text-white font-medium">
                     {audit.actorUsername ? `@${audit.actorUsername}` : "Hệ thống"}
                   </span>
-                  {audit.targetCenterCode && (
-                    <span className="text-slate-500 dark:text-slate-400 truncate max-w-[200px]">
-                      → [{audit.targetCenterCode}]
+                  {(audit.targetCenterCode || audit.targetCenterName) && (
+                    <span
+                      className="text-slate-500 dark:text-slate-400 truncate max-w-[340px]"
+                      title={[audit.targetCenterCode ? `[${audit.targetCenterCode}]` : "", audit.targetCenterName].filter(Boolean).join(" ")}
+                    >
+                      → {audit.targetCenterCode ? `[${audit.targetCenterCode}]` : ""} {audit.targetCenterName || ""}
                     </span>
                   )}
                 </div>

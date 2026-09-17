@@ -139,6 +139,7 @@ export interface PlatformAuditItem {
   centerId: string;
   targetCenterId?: string | null;
   targetCenterCode?: string | null;
+  targetCenterName?: string | null;
   actorUserId?: string | null;
   actorUsername?: string | null;
   actionType: string;

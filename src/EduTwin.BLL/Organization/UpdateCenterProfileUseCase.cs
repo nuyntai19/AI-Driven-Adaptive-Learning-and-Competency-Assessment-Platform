@@ -92,9 +92,9 @@ public class UpdateCenterProfileUseCase : IUpdateCenterProfileUseCase
         var actorUserId = _tenantContext.UserId;
         var auditLog = new AuthorizationAuditLog
         {
-            CenterId = AuthorizationBootstrapper.ReservedPlatformCenterId,
+            CenterId = center.CenterId,
             TargetCenterId = center.CenterId,
-            ActorUserId = null,
+            ActorUserId = actorUserId,
             TargetUserId = null,
             TargetType = "Center",
             TargetId = center.CenterId.ToString("D"),

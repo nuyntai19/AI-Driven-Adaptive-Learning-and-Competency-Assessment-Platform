@@ -375,6 +375,11 @@ export const PlatformAuditLogsPage: React.FC = () => {
                       <div className="text-[11px] text-slate-400">
                         {audit.targetCenterCode ? (
                           <span className="font-semibold text-blue-600 dark:text-blue-400">[{audit.targetCenterCode}]</span>
+                        ) : null}
+                        {audit.targetCenterName ? (
+                          <span className="text-slate-700 dark:text-slate-300 font-medium ml-1">
+                            {audit.targetCenterName}
+                          </span>
                         ) : null}{" "}
                         <span className="font-mono">{audit.targetId ? audit.targetId.substring(0, 8) + "..." : ""}</span>
                       </div>
@@ -489,7 +494,11 @@ export const PlatformAuditLogsPage: React.FC = () => {
                 <div>
                   <span className="text-slate-500 dark:text-slate-400 block">Trung tâm bị tác động:</span>
                   <span className="font-semibold text-slate-900 dark:text-white">
-                    {selectedAudit.targetCenterCode ? `${selectedAudit.targetCenterCode} (${selectedAudit.targetCenterId})` : selectedAudit.targetCenterId || "Root Tenant PLATFORM"}
+                    {selectedAudit.targetCenterName
+                      ? `${selectedAudit.targetCenterName} [${selectedAudit.targetCenterCode || "-"}] (${selectedAudit.targetCenterId})`
+                      : selectedAudit.targetCenterCode
+                      ? `${selectedAudit.targetCenterCode} (${selectedAudit.targetCenterId})`
+                      : selectedAudit.targetCenterId || "Root Tenant PLATFORM"}
                   </span>
                 </div>
                 <div>

@@ -25,6 +25,7 @@ public record PlatformAuditItemDto
     public Guid CenterId { get; init; }
     public Guid? TargetCenterId { get; init; }
     public string? TargetCenterCode { get; init; }
+    public string? TargetCenterName { get; init; }
     public Guid? ActorUserId { get; init; }
     public string? ActorUsername { get; init; }
     public string ActionType { get; init; } = string.Empty;
