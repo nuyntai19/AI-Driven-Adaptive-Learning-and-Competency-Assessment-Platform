@@ -74,26 +74,26 @@ export const CenterDashboardPage = () => {
         {/* ✨ A. Hero Command Banner (Trung tâm điều hành trung tâm) */}
         <section
           aria-label="Trung tâm điều hành"
-          className="relative overflow-hidden rounded-3xl border border-indigo-500/20 bg-gradient-to-br from-slate-900 via-[var(--cm-surface)] to-slate-900/95 p-6 sm:p-8 shadow-2xl backdrop-blur-xl"
+          className="relative overflow-hidden rounded-3xl border border-indigo-100 bg-gradient-to-br from-indigo-50/70 via-white to-blue-50/60 p-6 sm:p-8 shadow-xl shadow-slate-200/50 backdrop-blur-xl dark:border-indigo-500/20 dark:from-slate-900 dark:via-[#111827] dark:to-slate-900/95 dark:shadow-2xl"
         >
           {/* Ambient background glow */}
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute -top-24 -right-24 h-96 w-96 rounded-full bg-cyan-500/10 blur-3xl"
+            className="pointer-events-none absolute -top-24 -right-24 h-96 w-96 rounded-full bg-cyan-500/5 blur-3xl dark:bg-cyan-500/10"
           />
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute -bottom-24 -left-24 h-96 w-96 rounded-full bg-indigo-500/10 blur-3xl"
+            className="pointer-events-none absolute -bottom-24 -left-24 h-96 w-96 rounded-full bg-indigo-500/5 blur-3xl dark:bg-indigo-500/10"
           />
 
           <div className="relative z-10 flex flex-col gap-6">
             {/* Top row: Status indicator (solid neon green, no blinking) & timestamp */}
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-1 text-xs font-semibold text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.15)]">
+              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/25 bg-emerald-50 px-3.5 py-1 text-xs font-semibold text-emerald-800 shadow-sm dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300 dark:shadow-[0_0_12px_rgba(16,185,129,0.15)]">
                 {/* Solid green neon dot (no blinking per user requirement) */}
                 <span
                   aria-hidden="true"
-                  className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]"
+                  className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981] dark:bg-emerald-400 dark:shadow-[0_0_8px_#34d399]"
                 />
                 <span>Hệ sinh thái AI đang hoạt động tối ưu • Đồng bộ thời gian thực</span>
               </div>
@@ -114,7 +114,7 @@ export const CenterDashboardPage = () => {
                 <h1 className="text-2xl font-black tracking-tight text-[var(--cm-text)] sm:text-3xl">
                   Tổng quan trung tâm
                 </h1>
-                <span className="rounded-xl border border-indigo-400/30 bg-indigo-500/15 px-3 py-1 text-xs font-bold text-indigo-300 backdrop-blur-md">
+                <span className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700 backdrop-blur-md dark:border-indigo-400/30 dark:bg-indigo-500/15 dark:text-indigo-300">
                   {centerName}
                 </span>
               </div>
@@ -124,7 +124,7 @@ export const CenterDashboardPage = () => {
             </div>
 
             {/* Quick Action Shortcuts (Glassmorphism) */}
-            <div className="flex flex-wrap items-center gap-3 pt-4 border-t border-[var(--cm-border-subtle)]">
+            <div className="flex flex-wrap items-center gap-3 pt-4 border-t border-slate-200/80 dark:border-[var(--cm-border-subtle)]">
               <span className="text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mr-1">
                 Thao tác nhanh:
               </span>
@@ -133,10 +133,10 @@ export const CenterDashboardPage = () => {
               {canCreateAssignment && (
                 <Link
                   to="/quan-ly/bai-tap/tao-moi"
-                  className="group flex items-center gap-2 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-2 text-xs font-semibold text-cyan-200 backdrop-blur-md transition-all duration-200 hover:bg-cyan-500/20 hover:border-cyan-400/50 hover:shadow-lg hover:shadow-cyan-500/20 active:scale-95"
+                  className="group flex items-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-50 px-4 py-2 text-xs font-semibold text-cyan-800 backdrop-blur-md transition-all duration-200 hover:bg-cyan-100 hover:border-cyan-500/50 hover:shadow-md hover:shadow-cyan-500/10 active:scale-95 dark:bg-cyan-500/10 dark:text-cyan-200 dark:hover:bg-cyan-500/20 dark:hover:border-cyan-400/50 dark:hover:shadow-lg dark:hover:shadow-cyan-500/20"
                 >
                   <svg
-                    className="h-4 w-4 text-cyan-300 transition-transform group-hover:rotate-90"
+                    className="h-4 w-4 text-cyan-600 transition-transform group-hover:rotate-90 dark:text-cyan-300"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -151,10 +151,10 @@ export const CenterDashboardPage = () => {
               {canReadClasses && (
                 <Link
                   to="/quan-ly/lop-hoc"
-                  className="group flex items-center gap-2 rounded-xl border border-indigo-400/30 bg-indigo-500/10 px-4 py-2 text-xs font-semibold text-indigo-200 backdrop-blur-md transition-all duration-200 hover:bg-indigo-500/20 hover:border-indigo-400/50 hover:shadow-lg hover:shadow-indigo-500/20 active:scale-95"
+                  className="group flex items-center gap-2 rounded-xl border border-indigo-500/30 bg-indigo-50 px-4 py-2 text-xs font-semibold text-indigo-800 backdrop-blur-md transition-all duration-200 hover:bg-indigo-100 hover:border-indigo-500/50 hover:shadow-md hover:shadow-indigo-500/10 active:scale-95 dark:bg-indigo-500/10 dark:text-indigo-200 dark:hover:bg-indigo-500/20 dark:hover:border-indigo-400/50 dark:hover:shadow-lg dark:hover:shadow-indigo-500/20"
                 >
                   <svg
-                    className="h-4 w-4 text-indigo-300 transition-transform group-hover:scale-110"
+                    className="h-4 w-4 text-indigo-600 transition-transform group-hover:scale-110 dark:text-indigo-300"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -174,10 +174,10 @@ export const CenterDashboardPage = () => {
               {canReview && (
                 <Link
                   to="/quan-ly/duyet-bai"
-                  className="group flex items-center gap-2.5 rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-2 text-xs font-semibold text-amber-200 backdrop-blur-md transition-all duration-200 hover:bg-amber-500/20 hover:border-amber-400/50 hover:shadow-lg hover:shadow-amber-500/20 active:scale-95"
+                  className="group flex items-center gap-2.5 rounded-xl border border-amber-500/30 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-900 backdrop-blur-md transition-all duration-200 hover:bg-amber-100 hover:border-amber-500/50 hover:shadow-md hover:shadow-amber-500/10 active:scale-95 dark:bg-amber-500/10 dark:text-amber-200 dark:hover:bg-amber-500/20 dark:hover:border-amber-400/50 dark:hover:shadow-lg dark:hover:shadow-amber-500/20"
                 >
                   <svg
-                    className="h-4 w-4 text-amber-300 transition-transform group-hover:scale-110"
+                    className="h-4 w-4 text-amber-600 transition-transform group-hover:scale-110 dark:text-amber-300"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -190,7 +190,7 @@ export const CenterDashboardPage = () => {
                     />
                   </svg>
                   <span>Duyệt bài cần can thiệp</span>
-                  <span className="inline-flex items-center justify-center rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] font-bold text-amber-300 border border-amber-400/40">
+                  <span className="inline-flex items-center justify-center rounded-full border border-amber-500/30 bg-amber-200/60 px-2 py-0.5 text-[10px] font-bold text-amber-900 dark:border-amber-400/40 dark:bg-amber-400/20 dark:text-amber-300">
                     {reviewQueueCount > 0 ? `${reviewQueueCount} cần duyệt` : "Hàng đợi"}
                   </span>
                 </Link>
@@ -228,10 +228,10 @@ export const CenterDashboardPage = () => {
             {/* 🚀 B. Lột xác 4 Metric KPI Cards với Gradient & 3D Vector Glow */}
             <section aria-label="Chỉ số quy mô trung tâm" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {/* Card 1: Giáo viên */}
-              <article className="group relative overflow-hidden rounded-2xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface)] p-5 sm:p-6 transition-all duration-300 hover:-translate-y-1 hover:border-violet-500/40 hover:shadow-xl hover:shadow-violet-500/10">
+              <article className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-[var(--cm-surface)] p-5 sm:p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-violet-500/40 hover:shadow-xl hover:shadow-violet-500/10 dark:border-[var(--cm-border-subtle)] dark:shadow-none">
                 <div
                   aria-hidden="true"
-                  className="pointer-events-none absolute -right-6 -bottom-6 h-28 w-28 rounded-full bg-violet-500/10 blur-2xl group-hover:scale-150 transition-transform duration-500"
+                  className="pointer-events-none absolute -right-6 -bottom-6 h-28 w-28 rounded-full bg-violet-500/5 blur-2xl group-hover:scale-150 transition-transform duration-500 dark:bg-violet-500/10"
                 />
                 <div
                   aria-hidden="true"
@@ -260,8 +260,8 @@ export const CenterDashboardPage = () => {
                 </div>
 
                 <div className="mt-4 flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/30 bg-violet-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-violet-300">
-                    <span className="h-1.5 w-1.5 rounded-full bg-violet-400" />
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/20 bg-violet-50 px-2.5 py-0.5 text-[11px] font-semibold text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300">
+                    <span className="h-1.5 w-1.5 rounded-full bg-violet-500 dark:bg-violet-400" />
                     100% hoạt động
                   </span>
                   <span className="text-xs text-[var(--cm-text-muted)]">Hồ sơ giảng dạy</span>
@@ -269,10 +269,10 @@ export const CenterDashboardPage = () => {
               </article>
 
               {/* Card 2: Học sinh */}
-              <article className="group relative overflow-hidden rounded-2xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface)] p-5 sm:p-6 transition-all duration-300 hover:-translate-y-1 hover:border-cyan-500/40 hover:shadow-xl hover:shadow-cyan-500/10">
+              <article className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-[var(--cm-surface)] p-5 sm:p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-cyan-500/40 hover:shadow-xl hover:shadow-cyan-500/10 dark:border-[var(--cm-border-subtle)] dark:shadow-none">
                 <div
                   aria-hidden="true"
-                  className="pointer-events-none absolute -right-6 -bottom-6 h-28 w-28 rounded-full bg-cyan-500/10 blur-2xl group-hover:scale-150 transition-transform duration-500"
+                  className="pointer-events-none absolute -right-6 -bottom-6 h-28 w-28 rounded-full bg-cyan-500/5 blur-2xl group-hover:scale-150 transition-transform duration-500 dark:bg-cyan-500/10"
                 />
                 <div
                   aria-hidden="true"
@@ -301,8 +301,8 @@ export const CenterDashboardPage = () => {
                 </div>
 
                 <div className="mt-4 flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-cyan-300">
-                    <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-500/20 bg-cyan-50 px-2.5 py-0.5 text-[11px] font-semibold text-cyan-700 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-300">
+                    <span className="h-1.5 w-1.5 rounded-full bg-cyan-500 dark:bg-cyan-400" />
                     Đã kết nối Digital Twin
                   </span>
                   <span className="text-xs text-[var(--cm-text-muted)]">Hồ sơ năng lực</span>
@@ -310,10 +310,10 @@ export const CenterDashboardPage = () => {
               </article>
 
               {/* Card 3: Lớp học */}
-              <article className="group relative overflow-hidden rounded-2xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface)] p-5 sm:p-6 transition-all duration-300 hover:-translate-y-1 hover:border-emerald-500/40 hover:shadow-xl hover:shadow-emerald-500/10">
+              <article className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-[var(--cm-surface)] p-5 sm:p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-emerald-500/40 hover:shadow-xl hover:shadow-emerald-500/10 dark:border-[var(--cm-border-subtle)] dark:shadow-none">
                 <div
                   aria-hidden="true"
-                  className="pointer-events-none absolute -right-6 -bottom-6 h-28 w-28 rounded-full bg-emerald-500/10 blur-2xl group-hover:scale-150 transition-transform duration-500"
+                  className="pointer-events-none absolute -right-6 -bottom-6 h-28 w-28 rounded-full bg-emerald-500/5 blur-2xl group-hover:scale-150 transition-transform duration-500 dark:bg-emerald-500/10"
                 />
                 <div
                   aria-hidden="true"
@@ -342,8 +342,8 @@ export const CenterDashboardPage = () => {
                 </div>
 
                 <div className="mt-4 flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-300">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400" />
                     Đang hoạt động
                   </span>
                   <span className="text-xs text-[var(--cm-text-muted)]">Phân bổ năm học</span>
@@ -351,10 +351,10 @@ export const CenterDashboardPage = () => {
               </article>
 
               {/* Card 4: Môn học được đo lường */}
-              <article className="group relative overflow-hidden rounded-2xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface)] p-5 sm:p-6 transition-all duration-300 hover:-translate-y-1 hover:border-amber-500/40 hover:shadow-xl hover:shadow-amber-500/10">
+              <article className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-[var(--cm-surface)] p-5 sm:p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-amber-500/40 hover:shadow-xl hover:shadow-amber-500/10 dark:border-[var(--cm-border-subtle)] dark:shadow-none">
                 <div
                   aria-hidden="true"
-                  className="pointer-events-none absolute -right-6 -bottom-6 h-28 w-28 rounded-full bg-amber-500/10 blur-2xl group-hover:scale-150 transition-transform duration-500"
+                  className="pointer-events-none absolute -right-6 -bottom-6 h-28 w-28 rounded-full bg-amber-500/5 blur-2xl group-hover:scale-150 transition-transform duration-500 dark:bg-amber-500/10"
                 />
                 <div
                   aria-hidden="true"
@@ -383,8 +383,8 @@ export const CenterDashboardPage = () => {
                 </div>
 
                 <div className="mt-4 flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-amber-300">
-                    <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500 dark:bg-amber-400" />
                     Đồ thị tri thức Knowledge Graph
                   </span>
                   <span className="text-xs text-[var(--cm-text-muted)]">Phân tích mastery</span>
