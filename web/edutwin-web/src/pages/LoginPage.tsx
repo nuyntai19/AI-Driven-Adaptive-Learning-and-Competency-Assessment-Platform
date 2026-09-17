@@ -215,6 +215,7 @@ export const LoginPage = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const sessionStatus = useAuthStore((state) => state.sessionStatus);
+  const user = useAuthStore((state) => state.user);
   const clearSession = useAuthStore((state) => state.clearSession);
 
   const [centerCode, setCenterCode] = useState("");
@@ -252,6 +253,9 @@ export const LoginPage = () => {
   }, [isPaused]);
 
   if (sessionStatus === "authenticated" && !isLoading) {
+    if (user?.accountType === "CenterManager") {
+      return <Navigate to="/quan-ly/tong-quan-trung-tam" replace />;
+    }
     return <Navigate to="/" replace />;
   }
 
@@ -276,7 +280,12 @@ export const LoginPage = () => {
         password,
       });
       await getCurrentUser();
-      navigate("/", { replace: true });
+      const currentUser = useAuthStore.getState().user;
+      if (currentUser?.accountType === "CenterManager") {
+        navigate("/quan-ly/tong-quan-trung-tam", { replace: true });
+      } else {
+        navigate("/", { replace: true });
+      }
     } catch (error) {
       clearSession();
       queryClient.clear();

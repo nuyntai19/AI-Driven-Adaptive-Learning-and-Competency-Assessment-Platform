@@ -87,10 +87,17 @@ Kiểm thử tự động trên trình duyệt theo **13 kịch bản chi tiết
 
 1. **Commit Kế hoạch:** Lưu và commit kế hoạch này vào `docs/plans/POST-R09-CENTER-MANAGER-UX-GATE8-PLAN.md`.
 2. **Sửa Banner Contrast:** Cập nhật `AssignmentEditorPage.tsx`, `KnowledgeGraphPage.tsx` và các trang liên quan.
-3. **Kiểm thử E2E & Chụp ảnh đối chứng:**
+3. **Loại bỏ Portal cũ cho CenterManager:**
+   - Khi CenterManager đăng nhập hoặc truy cập `/`, tự động chuyển hướng thẳng vào CenterManager Workspace (`/quan-ly/tong-quan-trung-tam`).
+   - Xóa bỏ tình trạng hiện thẻ trắng legacy cũ của AuthenticatedHomePage đối với CenterManager.
+4. **Hiện đại hóa 3 giao diện còn dang dở:**
+   - **Tiến độ và báo cáo** (`/quan-ly/tong-quan-lop-hoc`): Tích hợp giao diện `CenterManager` với `cm-surface`, class selector, Gap Groups, KPI cards; bảo lưu 100% giao diện legacy độc lập cho Teacher.
+   - **Hàng đợi duyệt bài** (`/quan-ly/duyet-bai`): Hiện đại hóa với token Dark/Light, `cm-surface`, các bộ lọc lớp và panel đối chiếu 3 nguồn; bảo lưu 100% giao diện legacy độc lập cho Teacher.
+   - **Vai trò & Phân quyền** (`/quan-ly/phan-quyen`): Hiện đại hóa toàn bộ 3 tabs (Vai trò & Ma trận quyền, Gán vai trò người dùng, Nhật ký kiểm toán) với token Dark/Light và `cm-surface`.
+5. **Kiểm thử E2E & Chụp ảnh đối chứng:**
    - Chạy kiểm thử tự động trên Chrome qua công cụ browser automation.
    - Chụp ảnh màn hình đối chứng cho các màn hình đại diện trọng yếu.
    - Lưu trữ toàn bộ ảnh vào thư mục `docs/verification/post-r09-center-manager-ux-redesign/`.
-4. **Báo cáo Nghiệm thu:**
+6. **Báo cáo Nghiệm thu:**
    - Lập báo cáo [POST_R09_CENTER_MANAGER_UX_GATE8_VERIFICATION_REPORT.md](file:///d:/AI-Driven%20Adaptive%20Learning%20and%20Competency%20Assessment%20Platform/docs/verification/POST_R09_CENTER_MANAGER_UX_GATE8_VERIFICATION_REPORT.md).
    - Push commit lên `origin/codex/post-r09-center-manager-ux-redesign`.

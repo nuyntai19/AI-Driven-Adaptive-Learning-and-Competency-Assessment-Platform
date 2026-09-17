@@ -39,6 +39,11 @@ export const AuthenticatedHomePage = () => {
     }
   }
 
+  const isCenterManager = user.accountType === "CenterManager";
+  if (isCenterManager) {
+    return <Navigate to="/quan-ly/tong-quan-trung-tam" replace />;
+  }
+
   const handleLogout = async () => {
     setIsLoggingOut(true);
     try {

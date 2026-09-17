@@ -99,131 +99,131 @@ export const AuthorizationManagementPage = () => {
 
   return (
     <CenterManagerThemeScope data-actor="center-manager">
-      <main className="min-h-screen bg-slate-50 py-8">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="rounded-full bg-indigo-100 px-3 py-0.5 text-xs font-bold text-indigo-700">
-                Tenant RBAC Matrix
-              </span>
-              <p className="text-sm font-semibold text-indigo-600">Phân quyền động theo trung tâm</p>
+      <div className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <div className="mx-auto max-w-[96rem] space-y-6">
+          <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-[var(--cm-primary)]/10 px-3 py-0.5 text-xs font-bold text-[var(--cm-primary)] border border-[var(--cm-primary)]/20">
+                  Tenant RBAC Matrix
+                </span>
+                <p className="text-sm font-semibold text-[var(--cm-primary)]">Phân quyền động theo trung tâm</p>
+              </div>
+              <h1 className="mt-1 text-2xl sm:text-3xl font-extrabold text-[var(--cm-text)]">Vai trò và ma trận quyền truy cập</h1>
+              <p className="mt-1 text-sm text-[var(--cm-text-secondary)]">
+                Quản trị vai trò tùy chỉnh, ma trận quyền và phân công tài khoản theo mô hình Least Privilege. Mọi thay đổi đều được ghi nhật ký kiểm toán và tăng phiên bản xác thực.
+              </p>
             </div>
-            <h1 className="mt-1 text-3xl font-extrabold text-slate-900">Vai trò và ma trận quyền truy cập</h1>
-            <p className="mt-1 text-sm text-slate-600">
-              Quản trị vai trò tùy chỉnh, ma trận quyền và phân công tài khoản theo mô hình Least Privilege. Mọi thay đổi đều được ghi nhật ký kiểm toán và tăng phiên bản xác thực.
-            </p>
-          </div>
-          <Link
-            className="inline-flex items-center rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-slate-300 hover:bg-slate-50 transition-colors"
-            to="/"
-          >
-            ← Về trang chính
-          </Link>
-        </header>
-
-        {notice && (
-          <div role="status" className="mb-6 flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 shadow-sm">
-            <span className="text-lg">✓</span>
-            <div className="flex-1 font-medium">{notice}</div>
-            <button type="button" onClick={() => setNotice("")} className="text-emerald-600 hover:text-emerald-900 text-xs font-bold">Đóng</button>
-          </div>
-        )}
-
-        {failure && (
-          <div role="alert" className="mb-6 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 shadow-sm">
-            <span className="text-lg">⚠</span>
-            <div className="flex-1">
-              <p className="font-semibold">{failure.message}</p>
-              {failure.traceId && (
-                <div className="mt-2 flex items-center gap-2 text-xs font-mono text-red-700">
-                  <span>Trace ID: {failure.traceId}</span>
-                  <button
-                    type="button"
-                    onClick={() => copyToClipboard(failure.traceId!)}
-                    className="rounded bg-red-100 px-1.5 py-0.5 font-sans font-medium text-red-800 hover:bg-red-200"
-                  >
-                    Sao chép
-                  </button>
-                </div>
-              )}
-            </div>
-            <button type="button" onClick={() => setFailure(null)} className="text-red-600 hover:text-red-900 text-xs font-bold">Đóng</button>
-          </div>
-        )}
-
-        <nav aria-label="Khu vực phân quyền" className="mb-6 flex flex-wrap gap-2 border-b border-slate-200 pb-3">
-          {availableTabs.map((item) => (
-            <button
-              key={item}
-              type="button"
-              id={`tab-btn-${item}`}
-              onClick={() => {
-                setTab(item);
-                setFailure(null);
-                setNotice("");
-              }}
-              className={`rounded-lg px-4 py-2 text-sm font-semibold transition-all ${
-                tab === item
-                  ? "bg-indigo-600 text-white shadow-sm"
-                  : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100"
-              }`}
+            <Link
+              className="cm-secondary-button inline-flex items-center text-sm font-semibold self-start sm:self-auto"
+              to="/quan-ly/tong-quan-trung-tam"
             >
-              {item === "roles" && "1. Vai trò & Ma trận quyền"}
-              {item === "users" && "2. Gán vai trò người dùng"}
-              {item === "audit" && "3. Nhật ký kiểm toán phân quyền"}
-            </button>
-          ))}
-        </nav>
+              ← Về tổng quan trung tâm
+            </Link>
+          </header>
 
-        {tab === "roles" && (
-          <RolePermissionPanel
-            currentUser={user}
-            catalog={permissionQuery.data?.data ?? []}
-            catalogLoading={permissionQuery.isLoading}
-            canCreate={canCreateRoles}
-            canUpdate={canUpdateRoles}
-            canArchive={canArchiveRoles}
-            canReadPermissionCatalog={canReadPermissionCatalog}
-            canManagePermissions={canManagePermissions && canReadPermissionCatalog}
-            onSuccess={showSuccess}
-            onError={showError}
-          />
-        )}
+          {notice && (
+            <div role="status" className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-400 shadow-sm">
+              <span className="text-lg">✓</span>
+              <div className="flex-1 font-medium">{notice}</div>
+              <button type="button" onClick={() => setNotice("")} className="text-emerald-400 hover:text-emerald-300 text-xs font-bold">Đóng</button>
+            </div>
+          )}
 
-        {tab === "users" && user && (
-          <UserRolePanel
-            currentUser={{
-              userId: user.userId,
-              displayName: user.displayName,
-              username: user.username,
-              accountType: user.accountType,
-              status: user.status,
-            }}
-            actorPermissions={user.permissions}
-            catalog={permissionQuery.data?.data ?? []}
-            canRead={canReadUserRoles}
-            canReadRoles={canReadRoles}
-            canAssign={canAssignUserRoles}
-            onSuccess={async (message, changedUserId) => {
-              await queryClient.invalidateQueries({ queryKey: ["authorization"] });
-              if (changedUserId === user.userId) {
-                await getCurrentUser();
-              }
-              showSuccess(message);
-            }}
-            onError={showError}
-          />
-        )}
+          {failure && (
+            <div role="alert" className="flex items-start gap-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-400 shadow-sm">
+              <span className="text-lg">⚠</span>
+              <div className="flex-1">
+                <p className="font-semibold">{failure.message}</p>
+                {failure.traceId && (
+                  <div className="mt-2 flex items-center gap-2 text-xs font-mono text-rose-300">
+                    <span>Trace ID: {failure.traceId}</span>
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(failure.traceId!)}
+                      className="cm-secondary-button rounded px-1.5 py-0.5 font-sans font-medium text-xs"
+                    >
+                      Sao chép
+                    </button>
+                  </div>
+                )}
+              </div>
+              <button type="button" onClick={() => setFailure(null)} className="text-rose-400 hover:text-rose-300 text-xs font-bold">Đóng</button>
+            </div>
+          )}
 
-        {tab === "audit" && (
-          <AuditPanel
-            canReadAudit={canReadAudit}
-            onError={showError}
-          />
-        )}
+          <nav aria-label="Khu vực phân quyền" className="flex flex-wrap gap-2 border-b border-[var(--cm-border-subtle)] pb-4">
+            {availableTabs.map((item) => (
+              <button
+                key={item}
+                type="button"
+                id={`tab-btn-${item}`}
+                onClick={() => {
+                  setTab(item);
+                  setFailure(null);
+                  setNotice("");
+                }}
+                className={`rounded-xl px-4 py-2 text-sm font-semibold transition-all ${
+                  tab === item
+                    ? "cm-primary-button shadow-sm"
+                    : "cm-secondary-button"
+                }`}
+              >
+                {item === "roles" && "1. Vai trò & Ma trận quyền"}
+                {item === "users" && "2. Gán vai trò người dùng"}
+                {item === "audit" && "3. Nhật ký kiểm toán phân quyền"}
+              </button>
+            ))}
+          </nav>
+
+          {tab === "roles" && (
+            <RolePermissionPanel
+              currentUser={user}
+              catalog={permissionQuery.data?.data ?? []}
+              catalogLoading={permissionQuery.isLoading}
+              canCreate={canCreateRoles}
+              canUpdate={canUpdateRoles}
+              canArchive={canArchiveRoles}
+              canReadPermissionCatalog={canReadPermissionCatalog}
+              canManagePermissions={canManagePermissions && canReadPermissionCatalog}
+              onSuccess={showSuccess}
+              onError={showError}
+            />
+          )}
+
+          {tab === "users" && user && (
+            <UserRolePanel
+              currentUser={{
+                userId: user.userId,
+                displayName: user.displayName,
+                username: user.username,
+                accountType: user.accountType,
+                status: user.status,
+              }}
+              actorPermissions={user.permissions}
+              catalog={permissionQuery.data?.data ?? []}
+              canRead={canReadUserRoles}
+              canReadRoles={canReadRoles}
+              canAssign={canAssignUserRoles}
+              onSuccess={async (message, changedUserId) => {
+                await queryClient.invalidateQueries({ queryKey: ["authorization"] });
+                if (changedUserId === user.userId) {
+                  await getCurrentUser();
+                }
+                showSuccess(message);
+              }}
+              onError={showError}
+            />
+          )}
+
+          {tab === "audit" && (
+            <AuditPanel
+              canReadAudit={canReadAudit}
+              onError={showError}
+            />
+          )}
+        </div>
       </div>
-    </main>
     </CenterManagerThemeScope>
   );
 };
@@ -460,18 +460,18 @@ const RolePermissionPanel = ({
   return (
     <section className="grid gap-6 lg:grid-cols-[22rem_1fr]">
       {/* Left Column: Role List and Filters */}
-      <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-        <div className="mb-3 flex items-center justify-between">
+      <div className="cm-surface rounded-2xl p-5 shadow-sm space-y-4">
+        <div className="flex items-center justify-between">
           <div>
-            <h2 className="font-bold text-slate-900">Danh sách vai trò</h2>
-            <p className="text-xs text-slate-500">{rolesMeta?.totalItems ?? roles.length} vai trò trong trung tâm</p>
+            <h2 className="font-bold text-[var(--cm-text)] text-sm">Danh sách vai trò</h2>
+            <p className="text-xs text-[var(--cm-text-muted)]">{rolesMeta?.totalItems ?? roles.length} vai trò trong trung tâm</p>
           </div>
           {canCreate && (
             <button
               type="button"
               id="btn-open-create-role"
               onClick={() => setShowCreate((v) => !v)}
-              className="rounded-md bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700 hover:bg-indigo-100"
+              className="cm-secondary-button rounded-lg px-2.5 py-1 text-xs font-bold"
             >
               {showCreate ? "Hủy tạo" : "+ Tạo vai trò"}
             </button>
@@ -481,7 +481,7 @@ const RolePermissionPanel = ({
         {/* Create Role Form */}
         {showCreate && (
           <form
-            className="mb-4 space-y-3 rounded-lg border border-indigo-200 bg-indigo-50/50 p-3"
+            className="space-y-3 rounded-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-raised)] p-3.5"
             onSubmit={(event) => {
               event.preventDefault();
               createMutation.mutate({
@@ -492,9 +492,9 @@ const RolePermissionPanel = ({
               });
             }}
           >
-            <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-900">Tạo vai trò tùy chỉnh mới</h3>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--cm-primary)]">Tạo vai trò tùy chỉnh mới</h3>
             <div>
-              <label className="block text-xs font-medium text-slate-700">Mã vai trò (RoleCode)</label>
+              <label className="block text-xs font-medium text-[var(--cm-text-secondary)]">Mã vai trò (RoleCode)</label>
               <input
                 aria-label="Mã role"
                 required
@@ -504,11 +504,11 @@ const RolePermissionPanel = ({
                 value={createCode}
                 onChange={(event) => setCreateCode(event.target.value.toUpperCase())}
                 placeholder="TEACHER_MATH_LEAD"
-                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 font-mono text-xs uppercase"
+                className="cm-input mt-1 w-full text-xs font-mono uppercase"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-700">Tên vai trò</label>
+              <label className="block text-xs font-medium text-[var(--cm-text-secondary)]">Tên vai trò</label>
               <input
                 aria-label="Tên role"
                 required
@@ -516,16 +516,16 @@ const RolePermissionPanel = ({
                 value={createName}
                 onChange={(event) => setCreateName(event.target.value)}
                 placeholder="Tổ trưởng bộ môn Toán"
-                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs"
+                className="cm-input mt-1 w-full text-xs"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-700">Loại tài khoản tương thích</label>
+              <label className="block text-xs font-medium text-[var(--cm-text-secondary)]">Loại tài khoản tương thích</label>
               <select
                 aria-label="Loại tài khoản"
                 value={createType}
                 onChange={(event) => setCreateType(event.target.value as AccountType)}
-                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium"
+                className="cm-select mt-1 w-full text-xs font-medium"
               >
                 <option value="Teacher">Giáo viên (Teacher)</option>
                 <option value="CenterManager">Quản lý trung tâm (CenterManager)</option>
@@ -533,21 +533,21 @@ const RolePermissionPanel = ({
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-700">Mô tả mục đích</label>
+              <label className="block text-xs font-medium text-[var(--cm-text-secondary)]">Mô tả mục đích</label>
               <textarea
                 aria-label="Mô tả role"
                 maxLength={500}
                 value={createDescription}
                 onChange={(event) => setCreateDescription(event.target.value)}
                 placeholder="Phạm vi công việc và nhiệm vụ được ủy quyền..."
-                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs"
+                className="cm-input mt-1 w-full text-xs"
                 rows={2}
               />
             </div>
             <button
               type="submit"
               disabled={createMutation.isPending || !createCode.trim() || !createName.trim()}
-              className="w-full rounded-md bg-indigo-600 px-3 py-2 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
+              className="cm-primary-button w-full py-2 text-xs font-bold shadow-sm disabled:opacity-50"
             >
               {createMutation.isPending ? "Đang xử lý..." : "Xác nhận tạo vai trò"}
             </button>
@@ -555,7 +555,7 @@ const RolePermissionPanel = ({
         )}
 
         {/* Filters */}
-        <div className="mb-3 space-y-2">
+        <div className="space-y-2">
           <input
             type="search"
             placeholder="Tìm theo mã hoặc tên vai trò..."
@@ -564,7 +564,7 @@ const RolePermissionPanel = ({
               setSearchRole(e.target.value);
               setRolePage(1);
             }}
-            className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-xs"
+            className="cm-input w-full text-xs"
           />
           <div className="grid grid-cols-2 gap-2">
             <select
@@ -574,7 +574,7 @@ const RolePermissionPanel = ({
                 setFilterAccountType(e.target.value);
                 setRolePage(1);
               }}
-              className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium"
+              className="cm-select text-xs font-medium"
             >
               <option value="All">Tất cả tài khoản</option>
               <option value="CenterManager">Quản lý trung tâm</option>
@@ -588,7 +588,7 @@ const RolePermissionPanel = ({
                 setFilterStatus(e.target.value);
                 setRolePage(1);
               }}
-              className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+              className="cm-select text-xs"
             >
               <option value="All">Tất cả trạng thái</option>
               <option value="Active">Đang hoạt động (Active)</option>
@@ -599,9 +599,9 @@ const RolePermissionPanel = ({
 
         {/* Role Items */}
         {roleLoading ? (
-          <p className="py-6 text-center text-xs text-slate-500">Đang tải danh sách vai trò...</p>
+          <p className="py-6 text-center text-xs text-[var(--cm-text-muted)]">Đang tải danh sách vai trò...</p>
         ) : roles.length === 0 ? (
-          <p className="py-6 text-center text-xs text-slate-500">Không tìm thấy vai trò phù hợp bộ lọc.</p>
+          <p className="py-6 text-center text-xs text-[var(--cm-text-muted)]">Không tìm thấy vai trò phù hợp bộ lọc.</p>
         ) : (
           <div className="max-h-[34rem] space-y-2 overflow-y-auto pr-1">
             {roles.map((role) => (
@@ -610,26 +610,26 @@ const RolePermissionPanel = ({
                 type="button"
                 id={`role-item-${role.roleCode}`}
                 onClick={() => setSelectedId(role.roleId)}
-                className={`w-full rounded-lg p-3 text-left transition-all ${
+                className={`w-full rounded-xl p-3 text-left transition-all ${
                   selected?.roleId === role.roleId
-                    ? "bg-indigo-50/80 ring-2 ring-indigo-500"
-                    : "bg-slate-50 hover:bg-slate-100 ring-1 ring-slate-200"
+                    ? "bg-[var(--cm-primary)]/10 ring-2 ring-[var(--cm-primary)] border border-[var(--cm-primary)]/40"
+                    : "bg-[var(--cm-surface-raised)] hover:border-[var(--cm-border)] border border-[var(--cm-border-subtle)]"
                 }`}
               >
                 <div className="flex items-start justify-between gap-1">
-                  <span className="font-semibold text-slate-900 text-sm">{role.roleName}</span>
+                  <span className="font-semibold text-[var(--cm-text)] text-sm">{role.roleName}</span>
                   {role.isSystemRole && (
-                    <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">
+                    <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-bold text-blue-400 border border-blue-500/20">
                       Hệ thống
                     </span>
                   )}
                 </div>
-                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
-                  <span className="font-mono text-[11px] font-medium text-slate-700">{role.roleCode}</span>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-[var(--cm-text-muted)]">
+                  <span className="font-mono text-[11px] font-medium text-[var(--cm-text-secondary)]">{role.roleCode}</span>
                   <span>•</span>
                   <span>{accountTypeLabels[role.accountType]}</span>
                 </div>
-                <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500">
+                <div className="mt-2 flex items-center justify-between text-[11px] text-[var(--cm-text-muted)]">
                   <span className="flex items-center gap-1">
                     <span className={`inline-block h-1.5 w-1.5 rounded-full ${role.status === "Active" ? "bg-emerald-500" : "bg-slate-400"}`} />
                     {role.status}
@@ -643,7 +643,7 @@ const RolePermissionPanel = ({
 
         {/* Role Pagination Controls */}
         {rolesMeta && rolesMeta.totalPages > 1 && (
-          <div className="mt-3 flex items-center justify-between border-t border-slate-200 pt-3 text-xs text-slate-600">
+          <div className="flex items-center justify-between border-t border-[var(--cm-border-subtle)] pt-3 text-xs text-[var(--cm-text-secondary)]">
             <span>
               Trang {rolesMeta.page} / {rolesMeta.totalPages} ({rolesMeta.totalItems} vai trò)
             </span>
@@ -652,7 +652,7 @@ const RolePermissionPanel = ({
                 type="button"
                 disabled={rolePage <= 1}
                 onClick={() => setRolePage((p) => Math.max(1, p - 1))}
-                className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-50 disabled:opacity-50"
+                className="cm-secondary-button rounded px-2 py-1 text-xs disabled:opacity-50"
               >
                 Trước
               </button>
@@ -660,7 +660,7 @@ const RolePermissionPanel = ({
                 type="button"
                 disabled={rolePage >= rolesMeta.totalPages}
                 onClick={() => setRolePage((p) => Math.min(rolesMeta.totalPages, p + 1))}
-                className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-50 disabled:opacity-50"
+                className="cm-secondary-button rounded px-2 py-1 text-xs disabled:opacity-50"
               >
                 Sau
               </button>
@@ -670,45 +670,45 @@ const RolePermissionPanel = ({
       </div>
 
       {/* Right Column: Selected Role Details & Permission Matrix */}
-      <div className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+      <div className="cm-surface rounded-2xl p-6 shadow-sm">
         {!selected ? (
-          <div className="py-12 text-center text-slate-500">
+          <div className="py-12 text-center text-[var(--cm-text-muted)]">
             <p className="text-sm font-medium">Chưa có vai trò nào được chọn.</p>
           </div>
         ) : (
           <div className="space-y-6">
             {/* System Role Notice Banner */}
             {isSystemRole && (
-              <div className="rounded-lg border border-blue-200 bg-blue-50/70 p-4 text-blue-900">
+              <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-4 text-blue-300">
                 <div className="flex items-center gap-2 font-semibold">
                   <span className="text-base">🛡️</span>
                   <span>Vai trò hệ thống mặc định (Chỉ đọc)</span>
                 </div>
-                <p className="mt-1 text-xs text-blue-800">
+                <p className="mt-1 text-xs text-blue-200">
                   Vai trò này là cấu hình hệ thống cố định cho trung tâm nhằm đảm bảo các quyền vận hành tối thiểu. Tên vai trò, trạng thái và ma trận quyền được khóa để ngăn ngừa xung đột chính sách.
                 </p>
               </div>
             )}
 
             {/* Role Header & Metadata */}
-            <div className="border-b border-slate-200 pb-4">
+            <div className="border-b border-[var(--cm-border-subtle)] pb-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <div className="flex items-center gap-2">
-                    <h2 className="text-xl font-bold text-slate-900">{selected.roleName}</h2>
-                    <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-700">
+                    <h2 className="text-xl font-bold text-[var(--cm-text)]">{selected.roleName}</h2>
+                    <span className="rounded-lg bg-[var(--cm-surface-raised)] border border-[var(--cm-border-subtle)] px-2 py-0.5 font-mono text-xs text-[var(--cm-text-secondary)]">
                       {selected.roleCode}
                     </span>
                   </div>
-                  <p className="mt-0.5 text-xs text-slate-500">
-                    Tương thích: <strong className="text-slate-700">{accountTypeLabels[selected.accountType]}</strong> · Phiên bản RowVersion: <span className="font-mono">{selected.rowVersion}</span>
+                  <p className="mt-0.5 text-xs text-[var(--cm-text-muted)]">
+                    Tương thích: <strong className="text-[var(--cm-text-secondary)]">{accountTypeLabels[selected.accountType]}</strong> · Phiên bản RowVersion: <span className="font-mono">{selected.rowVersion}</span>
                   </p>
                 </div>
                 <div className="flex items-center gap-2 text-xs">
-                  <span className={`rounded-full px-2.5 py-0.5 font-bold ${selected.status === "Active" ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>
+                  <span className={`rounded-full px-2.5 py-0.5 font-bold ${selected.status === "Active" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-slate-500/10 text-slate-400 border border-slate-500/20"}`}>
                     {selected.status}
                   </span>
-                  <span className="text-slate-500 font-medium">{selected.activeUserCount} tài khoản được gán</span>
+                  <span className="text-[var(--cm-text-muted)] font-medium">{selected.activeUserCount} tài khoản được gán</span>
                 </div>
               </div>
             </div>
@@ -716,23 +716,23 @@ const RolePermissionPanel = ({
             {/* Basic Info Form */}
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="block text-xs font-semibold text-slate-700">Tên hiển thị vai trò</label>
+                <label className="block text-xs font-semibold text-[var(--cm-text-secondary)]">Tên hiển thị vai trò</label>
                 <input
                   disabled={!canUpdate || isSystemRole}
                   value={roleName}
                   onChange={(e) => setRoleName(e.target.value)}
                   maxLength={150}
-                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-500"
+                  className="cm-input mt-1 w-full text-sm disabled:opacity-50"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700">Trạng thái vận hành</label>
+                <label className="block text-xs font-semibold text-[var(--cm-text-secondary)]">Trạng thái vận hành</label>
                 <select
                   disabled={!canUpdate || isSystemRole}
                   value={status}
                   onChange={(e) => setStatus(e.target.value as "Active" | "Archived")}
-                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-medium disabled:bg-slate-100 disabled:text-slate-500"
+                  className="cm-select mt-1 w-full text-sm font-medium disabled:opacity-50"
                 >
                   <option value="Active">Đang hoạt động (Active)</option>
                   <option value="Archived" disabled={!canArchive}>
@@ -742,14 +742,14 @@ const RolePermissionPanel = ({
               </div>
 
               <div className="sm:col-span-2">
-                <label className="block text-xs font-semibold text-slate-700">Mô tả trách nhiệm & thẩm quyền</label>
+                <label className="block text-xs font-semibold text-[var(--cm-text-secondary)]">Mô tả trách nhiệm & thẩm quyền</label>
                 <textarea
                   disabled={!canUpdate || isSystemRole}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   maxLength={500}
                   rows={2}
-                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-500"
+                  className="cm-input mt-1 w-full text-sm disabled:opacity-50"
                   placeholder="Mô tả phạm vi vai trò..."
                 />
               </div>
@@ -757,8 +757,8 @@ const RolePermissionPanel = ({
 
             {/* Save Role Info Action */}
             {canUpdate && !isSystemRole && (
-              <div className="flex items-center justify-between border-t border-slate-100 pt-3">
-                <span className="text-xs text-slate-500">
+              <div className="flex items-center justify-between border-t border-[var(--cm-border-subtle)] pt-3">
+                <span className="text-xs text-[var(--cm-text-muted)]">
                   {roleInfoUnchanged ? "Thông tin vai trò chưa thay đổi" : "Có thay đổi thông tin vai trò chưa lưu"}
                 </span>
                 <button
@@ -766,7 +766,7 @@ const RolePermissionPanel = ({
                   id="btn-save-role-info"
                   disabled={roleInfoUnchanged || !reasonValid || updateMutation.isPending}
                   onClick={() => updateMutation.mutate()}
-                  className="rounded-md bg-slate-800 px-4 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-slate-900 disabled:opacity-40"
+                  className="cm-primary-button rounded-lg px-4 py-1.5 text-xs font-bold shadow-sm disabled:opacity-40"
                 >
                   {updateMutation.isPending ? "Đang lưu..." : "Lưu thông tin vai trò"}
                 </button>
@@ -774,12 +774,12 @@ const RolePermissionPanel = ({
             )}
 
             {/* Permission Matrix Section */}
-            <div className="border-t border-slate-200 pt-5">
+            <div className="border-t border-[var(--cm-border-subtle)] pt-5">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h3 className="font-bold text-slate-900 text-base">Ma trận quyền hạn (Dynamic Permission Matrix)</h3>
-                  <p className="text-xs text-slate-500">
-                    Đã chọn <strong className="text-indigo-600">{selectedPermissions.length}</strong> quyền cho vai trò này.
+                  <h3 className="font-bold text-[var(--cm-text)] text-base">Ma trận quyền hạn (Dynamic Permission Matrix)</h3>
+                  <p className="text-xs text-[var(--cm-text-muted)]">
+                    Đã chọn <strong className="text-[var(--cm-primary)]">{selectedPermissions.length}</strong> quyền cho vai trò này.
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -788,14 +788,14 @@ const RolePermissionPanel = ({
                     placeholder="Lọc mã permission..."
                     value={permissionSearch}
                     onChange={(e) => setPermissionSearch(e.target.value)}
-                    className="rounded-md border border-slate-300 px-2.5 py-1 text-xs"
+                    className="cm-input rounded-lg px-2.5 py-1 text-xs"
                   />
                 </div>
               </div>
 
               {/* Legend of Granular Permissions */}
-              <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
-                <span className="font-bold text-slate-700">Chú giải ma trận:</span>
+              <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl bg-[var(--cm-surface-raised)] border border-[var(--cm-border-subtle)] p-3 text-xs text-[var(--cm-text-secondary)]">
+                <span className="font-bold text-[var(--cm-text)]">Chú giải ma trận:</span>
                 <span className="flex items-center gap-1">
                   <span className="h-2 w-2 rounded-full bg-emerald-500" /> Bạn đang sở hữu
                 </span>
@@ -811,15 +811,15 @@ const RolePermissionPanel = ({
               </div>
 
               {catalogLoading ? (
-                <p className="py-8 text-center text-xs text-slate-500">Đang tải danh mục permission...</p>
+                <p className="py-8 text-center text-xs text-[var(--cm-text-muted)]">Đang tải danh mục permission...</p>
               ) : !canReadPermissionCatalog ? (
-                <p className="rounded-md bg-amber-50 p-3 text-xs text-amber-800">
+                <p className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-3 text-xs text-amber-400">
                   Tài khoản của bạn chưa có quyền đọc danh mục permission (`authorization.permissions.read`).
                 </p>
               ) : groupedCatalog.length === 0 ? (
-                <p className="py-6 text-center text-xs text-slate-500">Không tìm thấy permission phù hợp từ khóa.</p>
+                <p className="py-6 text-center text-xs text-[var(--cm-text-muted)]">Không tìm thấy permission phù hợp từ khóa.</p>
               ) : (
-                <div className="max-h-[30rem] space-y-4 overflow-y-auto rounded-lg border border-slate-200 p-4">
+                <div className="max-h-[30rem] space-y-4 overflow-y-auto rounded-xl border border-[var(--cm-border-subtle)] p-4 bg-[var(--cm-surface-raised)]/30">
                   {groupedCatalog.map(([moduleName, modulePermissions]) => {
                     const toggleableInModule = modulePermissions.filter(
                       (p) => evaluatePermission(p).canToggle,
@@ -829,9 +829,9 @@ const RolePermissionPanel = ({
                       toggleableInModule.every((p) => selectedPermissions.includes(p.permissionCode));
 
                     return (
-                      <fieldset key={moduleName} className="rounded-md border border-slate-100 bg-slate-50/50 p-3">
-                        <div className="mb-2 flex items-center justify-between border-b border-slate-200 pb-2">
-                          <legend className="font-bold uppercase tracking-wider text-xs text-slate-800">
+                      <fieldset key={moduleName} className="rounded-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-raised)] p-3.5">
+                        <div className="mb-2 flex items-center justify-between border-b border-[var(--cm-border-subtle)] pb-2">
+                          <legend className="font-bold uppercase tracking-wider text-xs text-[var(--cm-text)]">
                             {moduleName} ({modulePermissions.length})
                           </legend>
                           {canManagePermissions && !isSystemRole && toggleableInModule.length > 0 && (
@@ -839,7 +839,7 @@ const RolePermissionPanel = ({
                               <button
                                 type="button"
                                 onClick={() => handleToggleModuleAll(modulePermissions, !allSelected)}
-                                className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800"
+                                className="text-[11px] font-semibold text-[var(--cm-primary)] hover:underline"
                               >
                                 {allSelected ? "Bỏ chọn tất cả module" : "Chọn tất cả hợp lệ"}
                               </button>
@@ -856,10 +856,10 @@ const RolePermissionPanel = ({
                               <label
                                 key={permission.permissionCode}
                                 htmlFor={checkboxId}
-                                className={`flex items-start gap-2.5 rounded-md p-2 text-xs transition-colors ${
+                                className={`flex items-start gap-2.5 rounded-lg p-2.5 text-xs transition-colors ${
                                   evalResult.isAssigned
-                                    ? "bg-indigo-50/60 border border-indigo-200"
-                                    : "bg-white border border-slate-200 hover:bg-slate-50"
+                                    ? "bg-[var(--cm-primary)]/10 border border-[var(--cm-primary)]/40"
+                                    : "bg-[var(--cm-surface)] border border-[var(--cm-border-subtle)] hover:border-[var(--cm-border)]"
                                 } ${!evalResult.canToggle ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}`}
                               >
                                 <input
@@ -868,49 +868,49 @@ const RolePermissionPanel = ({
                                   disabled={!evalResult.canToggle}
                                   checked={evalResult.isAssigned}
                                   onChange={() => handleTogglePermission(permission.permissionCode)}
-                                  className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 disabled:opacity-50"
+                                  className="mt-0.5 rounded border-[var(--cm-border-subtle)] text-[var(--cm-primary)] focus:ring-[var(--cm-primary)] disabled:opacity-50"
                                 />
                                 <div className="flex-1">
                                   <div className="flex flex-wrap items-center gap-1.5">
-                                    <span className="font-mono font-medium text-slate-800">
+                                    <span className="font-mono font-medium text-[var(--cm-text)]">
                                       {permission.permissionCode}
                                     </span>
                                     {evalResult.isOwnerByActor && (
-                                      <span className="rounded bg-emerald-100 px-1 py-0.2 text-[9px] font-bold text-emerald-800">
+                                      <span className="rounded bg-emerald-500/10 px-1 py-0.2 text-[9px] font-bold text-emerald-400 border border-emerald-500/20">
                                         Bạn có
                                       </span>
                                     )}
                                     {permission.isSensitive && (
-                                      <span className="rounded bg-amber-100 px-1 py-0.2 text-[9px] font-bold text-amber-800">
+                                      <span className="rounded bg-amber-500/10 px-1 py-0.2 text-[9px] font-bold text-amber-400 border border-amber-500/20">
                                         Nhạy cảm
                                       </span>
                                     )}
                                   </div>
-                                  <p className="mt-0.5 text-[11px] text-slate-500">{permission.description}</p>
+                                  <p className="mt-0.5 text-[11px] text-[var(--cm-text-muted)]">{permission.description}</p>
 
                                   {/* Error/Guard Status Badges */}
                                   {!evalResult.isActive && (
-                                    <span className="mt-1 inline-block text-[10px] font-semibold text-slate-500">
+                                    <span className="mt-1 inline-block text-[10px] font-semibold text-[var(--cm-text-muted)]">
                                       ✕ Không hoạt động (Inactive)
                                     </span>
                                   )}
                                   {!evalResult.isCompatible && (
-                                    <span className="mt-1 inline-block text-[10px] font-semibold text-slate-500">
+                                    <span className="mt-1 inline-block text-[10px] font-semibold text-[var(--cm-text-muted)]">
                                       ✕ Không tương thích {accountTypeLabels[selected.accountType]}
                                     </span>
                                   )}
                                   {!evalResult.isDelegable && (
-                                    <span className="mt-1 inline-block text-[10px] font-semibold text-red-600">
+                                    <span className="mt-1 inline-block text-[10px] font-semibold text-rose-400">
                                       ✕ Non-delegable (Quyền không được phép ủy quyền)
                                     </span>
                                   )}
                                   {evalResult.isOutOfScope && (
-                                    <span className="mt-1 inline-block text-[10px] font-semibold text-amber-700">
+                                    <span className="mt-1 inline-block text-[10px] font-semibold text-amber-400">
                                       ✕ Vượt thẩm quyền (Bạn không sở hữu quyền này)
                                     </span>
                                   )}
                                   {evalResult.isAssigned && !evalResult.canToggle && (
-                                    <span className="mt-1 inline-block rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-700 border border-slate-300">
+                                    <span className="mt-1 inline-block rounded bg-[var(--cm-surface-raised)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--cm-text-secondary)] border border-[var(--cm-border-subtle)]">
                                       🔒 Đã gán trước đó (Chỉ xem)
                                     </span>
                                   )}
@@ -928,8 +928,8 @@ const RolePermissionPanel = ({
 
             {/* Mutation Execution Footer */}
             {(canUpdate || canManagePermissions) && (
-              <div className="rounded-lg bg-slate-50 p-4 border border-slate-200 space-y-3">
-                <label className="block text-xs font-bold text-slate-700">
+              <div className="rounded-xl bg-[var(--cm-surface-raised)] p-4 border border-[var(--cm-border-subtle)] space-y-3">
+                <label className="block text-xs font-bold text-[var(--cm-text-secondary)]">
                   Lý do thay đổi phân quyền <span className="text-red-500">*</span>
                   <input
                     required
@@ -937,12 +937,12 @@ const RolePermissionPanel = ({
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
                     placeholder="Ví dụ: Cập nhật ma trận phân quyền phục vụ kỳ thi học kỳ 1 (tối thiểu 3 ký tự)..."
-                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-xs"
+                    className="cm-input mt-1 w-full text-xs"
                   />
                 </label>
 
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <span className="text-xs text-slate-500">
+                  <span className="text-xs text-[var(--cm-text-muted)]">
                     {permissionsUnchanged
                       ? "Ma trận quyền chưa thay đổi"
                       : "Ma trận quyền đã thay đổi và cần xác nhận"}
@@ -958,7 +958,7 @@ const RolePermissionPanel = ({
                         isSystemRole
                       }
                       onClick={() => permissionsMutation.mutate()}
-                      className="rounded-md bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-40"
+                      className="cm-primary-button rounded-lg px-4 py-2 text-xs font-bold shadow-sm disabled:opacity-40"
                     >
                       {permissionsMutation.isPending ? "Đang thay thế..." : "Thay thế permission (Canonical)"}
                     </button>
@@ -1212,11 +1212,13 @@ const UserRolePanel = ({
   return (
     <section className="grid gap-6 lg:grid-cols-[22rem_1fr]">
       {/* Left Column: User Selection */}
-      <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-        <h2 className="font-bold text-slate-900 text-sm">Người dùng cùng trung tâm</h2>
-        <p className="mt-0.5 text-xs text-slate-500">Chọn người dùng để gán hoặc thu hồi vai trò</p>
+      <div className="cm-surface rounded-2xl p-5 shadow-sm space-y-4">
+        <div>
+          <h2 className="font-bold text-[var(--cm-text)] text-sm">Người dùng cùng trung tâm</h2>
+          <p className="mt-0.5 text-xs text-[var(--cm-text-muted)]">Chọn người dùng để gán hoặc thu hồi vai trò</p>
+        </div>
 
-        <div className="mt-3 space-y-2">
+        <div className="space-y-2">
           <input
             type="search"
             placeholder="Tìm theo tên hoặc username..."
@@ -1225,7 +1227,7 @@ const UserRolePanel = ({
               setUserSearch(e.target.value);
               setUserPage(1);
             }}
-            className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-xs"
+            className="cm-input w-full text-xs"
           />
           <div className="grid grid-cols-2 gap-2">
             <select
@@ -1235,7 +1237,7 @@ const UserRolePanel = ({
                 setUserAccountTypeFilter(e.target.value);
                 setUserPage(1);
               }}
-              className="w-full rounded-md border border-slate-300 px-2 py-1 text-xs"
+              className="cm-select w-full text-xs font-medium"
             >
               <option value="All">Tất cả tài khoản</option>
               <option value="CenterManager">Quản lý trung tâm</option>
@@ -1249,7 +1251,7 @@ const UserRolePanel = ({
                 setUserStatusFilter(e.target.value);
                 setUserPage(1);
               }}
-              className="w-full rounded-md border border-slate-300 px-2 py-1 text-xs"
+              className="cm-select w-full text-xs"
             >
               <option value="All">Tất cả trạng thái</option>
               <option value="Active">Đang hoạt động</option>
@@ -1259,11 +1261,11 @@ const UserRolePanel = ({
           </div>
         </div>
 
-        <div className="mt-3 max-h-[34rem] space-y-1.5 overflow-y-auto pr-1">
+        <div className="max-h-[34rem] space-y-2 overflow-y-auto pr-1">
           {userLoading ? (
-            <p className="py-6 text-center text-xs text-slate-500">Đang tải danh sách người dùng...</p>
+            <p className="py-6 text-center text-xs text-[var(--cm-text-muted)]">Đang tải danh sách người dùng...</p>
           ) : users.length === 0 ? (
-            <p className="py-6 text-center text-xs text-slate-500">Không tìm thấy người dùng phù hợp.</p>
+            <p className="py-6 text-center text-xs text-[var(--cm-text-muted)]">Không tìm thấy người dùng phù hợp.</p>
           ) : (
             users.map((u) => (
               <button
@@ -1271,23 +1273,23 @@ const UserRolePanel = ({
                 type="button"
                 id={`user-item-${u.userId}`}
                 onClick={() => setSelectedUser(u)}
-                className={`w-full rounded-lg p-2.5 text-left transition-all ${
+                className={`w-full rounded-xl p-3 text-left transition-all ${
                   selectedUserId === u.userId
-                    ? "bg-indigo-50 ring-2 ring-indigo-500"
-                    : "bg-slate-50 hover:bg-slate-100 ring-1 ring-slate-200"
+                    ? "bg-[var(--cm-primary)]/10 ring-2 ring-[var(--cm-primary)] border border-[var(--cm-primary)]/40"
+                    : "bg-[var(--cm-surface-raised)] hover:border-[var(--cm-border)] border border-[var(--cm-border-subtle)]"
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-slate-900 text-xs">{u.displayName}</span>
+                  <span className="font-semibold text-[var(--cm-text)] text-xs">{u.displayName}</span>
                   {isSelfUser(currentUser.userId, u.userId) && (
-                    <span className="rounded bg-indigo-100 px-1 py-0.2 text-[9px] font-bold text-indigo-700">
+                    <span className="rounded bg-indigo-500/10 px-1.5 py-0.2 text-[9px] font-bold text-indigo-400 border border-indigo-500/20">
                       Chính bạn
                     </span>
                   )}
                 </div>
-                <div className="mt-0.5 flex items-center justify-between text-[11px] text-slate-500">
+                <div className="mt-1 flex items-center justify-between text-[11px] text-[var(--cm-text-muted)]">
                   <span>{u.username}</span>
-                  <span className="font-medium text-slate-600">{accountTypeLabels[u.accountType]}</span>
+                  <span className="font-medium text-[var(--cm-text-secondary)]">{accountTypeLabels[u.accountType]}</span>
                 </div>
               </button>
             ))
@@ -1296,7 +1298,7 @@ const UserRolePanel = ({
 
         {/* User Pagination Controls */}
         {usersMeta && usersMeta.totalPages > 1 && (
-          <div className="mt-3 flex items-center justify-between border-t border-slate-200 pt-3 text-xs text-slate-600">
+          <div className="flex items-center justify-between border-t border-[var(--cm-border-subtle)] pt-3 text-xs text-[var(--cm-text-secondary)]">
             <span>
               Trang {usersMeta.page} / {usersMeta.totalPages} ({usersMeta.totalItems} người)
             </span>
@@ -1305,7 +1307,7 @@ const UserRolePanel = ({
                 type="button"
                 disabled={userPage <= 1}
                 onClick={() => setUserPage((p) => Math.max(1, p - 1))}
-                className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-50 disabled:opacity-50"
+                className="cm-secondary-button rounded px-2.5 py-1 text-xs disabled:opacity-50"
               >
                 Trước
               </button>
@@ -1313,7 +1315,7 @@ const UserRolePanel = ({
                 type="button"
                 disabled={userPage >= usersMeta.totalPages}
                 onClick={() => setUserPage((p) => Math.min(usersMeta.totalPages, p + 1))}
-                className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-50 disabled:opacity-50"
+                className="cm-secondary-button rounded px-2.5 py-1 text-xs disabled:opacity-50"
               >
                 Sau
               </button>
@@ -1323,23 +1325,23 @@ const UserRolePanel = ({
       </div>
 
       {/* Right Column: Roles Assignment and Effective Permissions */}
-      <div className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+      <div className="cm-surface rounded-2xl p-6 shadow-sm">
         {/* User Identity Header */}
-        <div className="border-b border-slate-200 pb-4">
+        <div className="border-b border-[var(--cm-border-subtle)] pb-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-xl font-bold text-slate-900">{selectedUser.displayName}</h2>
-                <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
+                <h2 className="text-xl font-bold text-[var(--cm-text)]">{selectedUser.displayName}</h2>
+                <span className="rounded-full bg-[var(--cm-surface-raised)] border border-[var(--cm-border-subtle)] px-2.5 py-0.5 text-xs font-semibold text-[var(--cm-text-secondary)]">
                   {accountTypeLabels[selectedUser.accountType]}
                 </span>
               </div>
-              <p className="mt-0.5 text-xs text-slate-500">
-                Tài khoản: <strong className="text-slate-700">{selectedUser.username}</strong> · AuthVersion: <span className="font-mono">{userAuth?.authorizationVersion ?? "..."}</span> · RowVersion: <span className="font-mono">{userAuth?.rowVersion ?? "..."}</span>
+              <p className="mt-0.5 text-xs text-[var(--cm-text-muted)]">
+                Tài khoản: <strong className="text-[var(--cm-text-secondary)]">{selectedUser.username}</strong> · AuthVersion: <span className="font-mono">{userAuth?.authorizationVersion ?? "..."}</span> · RowVersion: <span className="font-mono">{userAuth?.rowVersion ?? "..."}</span>
               </p>
             </div>
             {isSelfChange && (
-              <span className="rounded bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-800">
+              <span className="rounded-lg bg-amber-500/10 px-2.5 py-1 text-xs font-bold text-amber-400 border border-amber-500/20">
                 Tài khoản đang đăng nhập
               </span>
             )}
@@ -1348,33 +1350,33 @@ const UserRolePanel = ({
 
         {/* Self-Change Warning Banner */}
         {isSelfChange && (
-          <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-900">
+          <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-300">
             <div className="flex items-center gap-2 font-semibold">
               <span className="text-base">⚠️</span>
               <span>Cảnh báo tự thay đổi vai trò (Self-change Warning)</span>
             </div>
-            <p className="mt-1 text-xs text-amber-800">
+            <p className="mt-1 text-xs text-amber-200">
               Bạn đang chỉnh sửa vai trò của chính tài khoản mình đang đăng nhập. Việc gỡ bỏ quyền hoặc thay đổi vai trò có thể làm thay đổi quyền hạn hiệu lực và tự động làm mới phiên đăng nhập của bạn.
             </p>
           </div>
         )}
 
         {authorizationQuery.isLoading ? (
-          <p className="py-12 text-center text-xs text-slate-500">Đang tải thông tin quyền người dùng...</p>
+          <p className="py-12 text-center text-xs text-[var(--cm-text-muted)]">Đang tải thông tin quyền người dùng...</p>
         ) : authorizationQuery.isError ? (
-          <p className="py-8 text-center text-xs text-red-700">Không thể tải thông tin quyền của người dùng được chọn.</p>
+          <p className="py-8 text-center text-xs text-rose-400">Không thể tải thông tin quyền của người dùng được chọn.</p>
         ) : (
           <div className="mt-6 space-y-6">
             {/* Roles Selection Section */}
             <div>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <h3 className="font-bold text-slate-900 text-sm">
+                  <h3 className="font-bold text-[var(--cm-text)] text-sm">
                     {canReadRoles
                       ? `Vai trò tương thích đang hoạt động (${rolesMeta?.totalItems ?? compatibleRoles.length})`
                       : `Các vai trò đang được gán (${userAuth?.roles.length ?? 0})`}
                   </h3>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-[var(--cm-text-muted)]">
                     {canReadRoles
                       ? `Chọn các vai trò áp dụng cho ${accountTypeLabels[selectedUser.accountType]}.`
                       : `Danh sách vai trò hiện đang được phân công cho người dùng này.`}
@@ -1384,7 +1386,7 @@ const UserRolePanel = ({
 
               {!canReadRoles ? (
                 <div className="mt-3 space-y-3">
-                  <div className="rounded-lg border border-slate-200 bg-slate-100 p-3 text-xs text-slate-700">
+                  <div className="rounded-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-raised)] p-3.5 text-xs text-[var(--cm-text-secondary)]">
                     ℹ️ <strong>Chế độ chỉ đọc vai trò người dùng (Read-only):</strong> Bạn có quyền xem phân công vai trò (<code>authorization.user_roles.read</code>), không có quyền đọc danh mục vai trò hệ thống (<code>authorization.roles.read</code>). Dưới đây là danh sách các vai trò đang được gán cho người dùng này.
                   </div>
                   <div className="space-y-2">
@@ -1392,28 +1394,28 @@ const UserRolePanel = ({
                       userAuth.roles.map((role) => (
                         <div
                           key={role.roleId}
-                          className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 text-xs shadow-sm"
+                          className="flex items-start gap-3 rounded-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-raised)] p-3.5 text-xs shadow-sm"
                         >
                           <span
                             className={`mt-0.5 rounded px-1.5 py-0.5 text-[10px] font-bold ${
                               role.assignmentStatus === "Active"
-                                ? "bg-emerald-100 text-emerald-800"
-                                : "bg-slate-200 text-slate-600"
+                                ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                                : "bg-slate-500/10 text-slate-400 border border-slate-500/20"
                             }`}
                           >
                             {role.assignmentStatus === "Active" ? "Đang hoạt động" : "Đã thu hồi"}
                           </span>
                           <div className="flex-1">
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-semibold text-slate-900 text-sm">{role.roleName}</span>
-                              <span className="font-mono text-slate-600 text-[11px]">{role.roleCode}</span>
+                              <span className="font-semibold text-[var(--cm-text)] text-sm">{role.roleName}</span>
+                              <span className="font-mono text-[var(--cm-text-muted)] text-[11px]">{role.roleCode}</span>
                             </div>
-                            <p className="mt-1 text-[11px] text-slate-500">
+                            <p className="mt-1 text-[11px] text-[var(--cm-text-muted)]">
                               Gán lúc: {new Date(role.assignedAt).toLocaleString("vi-VN")}
                               {role.revokedAt && ` · Thu hồi: ${new Date(role.revokedAt).toLocaleString("vi-VN")}`}
                             </p>
                             {role.permissionCodes && role.permissionCodes.length > 0 && (
-                              <p className="mt-0.5 text-[11px] font-medium text-indigo-700">
+                              <p className="mt-0.5 text-[11px] font-medium text-[var(--cm-primary)]">
                                 {role.permissionCodes.length} quyền vận hành
                               </p>
                             )}
@@ -1421,7 +1423,7 @@ const UserRolePanel = ({
                         </div>
                       ))
                     ) : (
-                      <p className="rounded-lg bg-slate-50 p-4 text-center text-xs text-slate-500">
+                      <p className="rounded-xl bg-[var(--cm-surface-raised)] border border-[var(--cm-border-subtle)] p-4 text-center text-xs text-[var(--cm-text-muted)]">
                         Người dùng này chưa được gán vai trò nào.
                       </p>
                     )}
@@ -1430,7 +1432,7 @@ const UserRolePanel = ({
               ) : (
                 <>
                   {!canAssign && (
-                    <div className="mt-3 rounded-lg border border-slate-200 bg-slate-100 p-3 text-xs text-slate-700">
+                    <div className="mt-3 rounded-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-raised)] p-3 text-xs text-[var(--cm-text-secondary)]">
                       ℹ️ <strong>Chế độ chỉ đọc (Read-only):</strong> Bạn chỉ có quyền xem vai trò người dùng (<code>authorization.user_roles.read</code>), không có quyền gán hay thay đổi vai trò (<code>authorization.user_roles.assign</code>).
                     </div>
                   )}
@@ -1446,7 +1448,7 @@ const UserRolePanel = ({
                         setRoleSearch(e.target.value);
                         setRolePage(1);
                       }}
-                      className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs"
+                      className="cm-input w-full text-xs"
                     />
                   </div>
 
@@ -1460,10 +1462,10 @@ const UserRolePanel = ({
                         <label
                           key={role.roleId}
                           htmlFor={checkboxId}
-                          className={`flex items-start gap-3 rounded-lg border p-3 text-xs transition-colors ${
+                          className={`flex items-start gap-3 rounded-xl border p-3.5 text-xs transition-colors ${
                             isChecked
-                              ? "border-indigo-300 bg-indigo-50/60"
-                              : "border-slate-200 bg-white hover:bg-slate-50"
+                              ? "border-[var(--cm-primary)]/50 bg-[var(--cm-primary)]/10"
+                              : "border-[var(--cm-border-subtle)] bg-[var(--cm-surface-raised)] hover:border-[var(--cm-border)]"
                           } ${!canAssign || outOfScope ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}`}
                         >
                           <input
@@ -1478,24 +1480,24 @@ const UserRolePanel = ({
                                   : [...current, role.roleId],
                               )
                             }
-                            className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 disabled:opacity-50"
+                            className="mt-0.5 rounded border-[var(--cm-border-subtle)] text-[var(--cm-primary)] focus:ring-[var(--cm-primary)] disabled:opacity-50"
                           />
                           <div className="flex-1">
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-semibold text-slate-900 text-sm">{role.roleName}</span>
-                              <span className="font-mono text-slate-600 text-[11px]">{role.roleCode}</span>
+                              <span className="font-semibold text-[var(--cm-text)] text-sm">{role.roleName}</span>
+                              <span className="font-mono text-[var(--cm-text-secondary)] text-[11px]">{role.roleCode}</span>
                               {role.isSystemRole && (
-                                <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">
+                                <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-bold text-blue-400 border border-blue-500/20">
                                   Hệ thống
                                 </span>
                               )}
                             </div>
-                            <p className="mt-1 text-slate-500">{role.description || "Không có mô tả chi tiết."}</p>
-                            <p className="mt-0.5 text-[11px] text-slate-400">
+                            <p className="mt-1 text-[var(--cm-text-secondary)]">{role.description || "Không có mô tả chi tiết."}</p>
+                            <p className="mt-0.5 text-[11px] text-[var(--cm-text-muted)]">
                               {role.permissionCodes.length} permissions · {role.activeUserCount} người đang dùng
                             </p>
                             {outOfScope && (
-                              <span className="mt-1 inline-block font-semibold text-red-600 text-[10px]">
+                              <span className="mt-1 inline-block font-semibold text-rose-400 text-[10px]">
                                 ✕ Chứa quyền vượt thẩm quyền của bạn (Không thể gán vai trò này cho Quản lý khác)
                               </span>
                             )}
@@ -1504,7 +1506,7 @@ const UserRolePanel = ({
                       );
                     })}
                     {compatibleRoles.length === 0 && (
-                      <p className="rounded-lg bg-slate-50 p-4 text-center text-xs text-slate-500">
+                      <p className="rounded-xl bg-[var(--cm-surface-raised)] border border-[var(--cm-border-subtle)] p-4 text-center text-xs text-[var(--cm-text-muted)]">
                         Không có vai trò Active nào tương thích với loại tài khoản {accountTypeLabels[selectedUser.accountType]}.
                       </p>
                     )}
@@ -1512,7 +1514,7 @@ const UserRolePanel = ({
 
                   {/* Role Pagination Controls */}
                   {rolesMeta && rolesMeta.totalPages > 1 && (
-                    <div className="mt-3 flex items-center justify-between border-t border-slate-200 pt-2 text-xs text-slate-600">
+                    <div className="mt-3 flex items-center justify-between border-t border-[var(--cm-border-subtle)] pt-2 text-xs text-[var(--cm-text-secondary)]">
                       <span>
                         Trang {rolesMeta.page} / {rolesMeta.totalPages} ({rolesMeta.totalItems} vai trò)
                       </span>
@@ -1521,7 +1523,7 @@ const UserRolePanel = ({
                           type="button"
                           disabled={rolePage <= 1}
                           onClick={() => setRolePage((p) => Math.max(1, p - 1))}
-                          className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-50 disabled:opacity-50"
+                          className="cm-secondary-button rounded px-2 py-1 text-xs disabled:opacity-50"
                         >
                           Trước
                         </button>
@@ -1529,7 +1531,7 @@ const UserRolePanel = ({
                           type="button"
                           disabled={rolePage >= rolesMeta.totalPages}
                           onClick={() => setRolePage((p) => Math.min(rolesMeta.totalPages, p + 1))}
-                          className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-50 disabled:opacity-50"
+                          className="cm-secondary-button rounded px-2 py-1 text-xs disabled:opacity-50"
                         >
                           Sau
                         </button>
@@ -1541,36 +1543,36 @@ const UserRolePanel = ({
             </div>
 
             {/* Effective Permissions Breakdown (Spec Requirement 7 & 564) */}
-            <div className="border-t border-slate-200 pt-5">
+            <div className="border-t border-[var(--cm-border-subtle)] pt-5">
               <div className="mb-2">
-                <h3 className="font-bold text-slate-900 text-sm">
+                <h3 className="font-bold text-[var(--cm-text)] text-sm">
                   Quyền hạn hiệu lực (Effective Permissions)
                 </h3>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-[var(--cm-text-muted)]">
                   Tổng hợp các capability người dùng sẽ sở hữu từ các vai trò được chọn kèm role nguồn cấp quyền.
                 </p>
               </div>
 
               {effectivePermissionsBreakdown.length === 0 ? (
-                <p className="rounded-lg bg-slate-50 p-3 text-center text-xs text-slate-500">
+                <p className="rounded-xl bg-[var(--cm-surface-raised)] border border-[var(--cm-border-subtle)] p-3 text-center text-xs text-[var(--cm-text-muted)]">
                   Chưa có quyền hạn hiệu lực nào được gán cho người dùng này.
                 </p>
               ) : (
-                <div className="max-h-56 space-y-1.5 overflow-y-auto rounded-lg border border-slate-200 p-3">
+                <div className="max-h-56 space-y-1.5 overflow-y-auto rounded-xl border border-[var(--cm-border-subtle)] p-3 bg-[var(--cm-surface-raised)]/30">
                   {effectivePermissionsBreakdown.map((item) => (
                     <div
                       key={item.code}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded bg-slate-50 px-2.5 py-1.5 text-xs"
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-[var(--cm-surface-raised)] border border-[var(--cm-border-subtle)] px-3 py-2 text-xs"
                     >
                       <div>
-                        <span className="font-mono font-medium text-slate-800">{item.code}</span>
-                        <span className="ml-2 text-[11px] text-slate-500">{item.description}</span>
+                        <span className="font-mono font-medium text-[var(--cm-text)]">{item.code}</span>
+                        <span className="ml-2 text-[11px] text-[var(--cm-text-muted)]">{item.description}</span>
                       </div>
                       <div className="flex flex-wrap items-center gap-1">
                         {item.sourceRoles.map((roleName) => (
                           <span
                             key={roleName}
-                            className="rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700"
+                            className="rounded bg-indigo-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-400 border border-indigo-500/20"
                           >
                             ← {roleName}
                           </span>
@@ -1584,8 +1586,8 @@ const UserRolePanel = ({
 
             {/* Mutation Execution Footer */}
             {canAssign && canReadRoles && (
-              <div className="rounded-lg bg-slate-50 p-4 border border-slate-200 space-y-3">
-                <label className="block text-xs font-bold text-slate-700">
+              <div className="rounded-xl bg-[var(--cm-surface-raised)] p-4 border border-[var(--cm-border-subtle)] space-y-3">
+                <label className="block text-xs font-bold text-[var(--cm-text-secondary)]">
                   Lý do thay đổi vai trò người dùng <span className="text-red-500">*</span>
                   <input
                     required
@@ -1593,12 +1595,12 @@ const UserRolePanel = ({
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
                     placeholder="Ví dụ: Bổ sung nhiệm vụ quản lý học thuật tuần 2 (tối thiểu 3 ký tự)..."
-                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-xs"
+                    className="cm-input mt-1 w-full text-xs"
                   />
                 </label>
 
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <span className="text-xs text-slate-500">
+                  <span className="text-xs text-[var(--cm-text-muted)]">
                     {rolesUnchanged
                       ? "Danh sách vai trò chưa thay đổi"
                       : "Danh sách vai trò đã thay đổi và cần lưu"}
@@ -1613,7 +1615,7 @@ const UserRolePanel = ({
                       !authorizationQuery.data
                     }
                     onClick={() => replaceMutation.mutate()}
-                    className="rounded-md bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-40"
+                    className="cm-primary-button rounded-lg px-4 py-2 text-xs font-bold shadow-sm disabled:opacity-40"
                   >
                     {replaceMutation.isPending ? "Đang lưu..." : "Lưu vai trò người dùng"}
                   </button>
@@ -1710,17 +1712,17 @@ const AuditPanel = ({ canReadAudit }: AuditPanelProps) => {
   const meta = auditQuery.data?.meta;
 
   return (
-    <section className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200">
+    <section className="overflow-hidden rounded-2xl cm-surface shadow-sm border border-[var(--cm-border-subtle)]">
       {/* Header & Filter Controls */}
-      <div className="border-b border-slate-200 p-5">
+      <div className="border-b border-[var(--cm-border-subtle)] p-5">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h2 className="text-xl font-bold text-slate-900">Nhật ký kiểm toán phân quyền</h2>
-            <p className="text-xs text-slate-500">
+            <h2 className="text-xl font-bold text-[var(--cm-text)]">Nhật ký kiểm toán phân quyền</h2>
+            <p className="text-xs text-[var(--cm-text-muted)]">
               Ghi nhận các đột biến phân quyền, thay đổi vai trò, mật khẩu và xóa mềm trong trung tâm hiện tại (Append-only).
             </p>
           </div>
-          <span className="rounded bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200">
+          <span className="rounded-lg bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-400 border border-emerald-500/20">
             Dữ liệu đã khử khuẩn (0 secrets)
           </span>
         </div>
@@ -1728,7 +1730,7 @@ const AuditPanel = ({ canReadAudit }: AuditPanelProps) => {
         {/* Filter Toolbar */}
         <div className="mt-4 grid gap-3 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-4">
           <div>
-            <label className="block text-[11px] font-semibold text-slate-700">Loại hành động</label>
+            <label className="block text-[11px] font-semibold text-[var(--cm-text-secondary)]">Loại hành động</label>
             <select
               aria-label="Lọc theo loại hành động kiểm toán"
               value={filterActionType}
@@ -1736,7 +1738,7 @@ const AuditPanel = ({ canReadAudit }: AuditPanelProps) => {
                 setFilterActionType(e.target.value);
                 setPage(1);
               }}
-              className="mt-1 w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-xs"
+              className="cm-select mt-1 w-full text-xs font-medium"
             >
               <option value="">Tất cả hành động</option>
               <option value="RoleCreated">Tạo vai trò</option>
@@ -1750,7 +1752,7 @@ const AuditPanel = ({ canReadAudit }: AuditPanelProps) => {
           </div>
 
           <div>
-            <label className="block text-[11px] font-semibold text-slate-700">Mã quyền hạn</label>
+            <label className="block text-[11px] font-semibold text-[var(--cm-text-secondary)]">Mã quyền hạn</label>
             <input
               type="text"
               placeholder="VD: PERM_ROLES_CREATE"
@@ -1760,12 +1762,12 @@ const AuditPanel = ({ canReadAudit }: AuditPanelProps) => {
                 setFilterPermissionCode(e.target.value);
                 setPage(1);
               }}
-              className="mt-1 w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-mono"
+              className="cm-input mt-1 w-full text-xs font-mono"
             />
           </div>
 
           <div>
-            <label className="block text-[11px] font-semibold text-slate-700">Người thực hiện (Actor ID)</label>
+            <label className="block text-[11px] font-semibold text-[var(--cm-text-secondary)]">Người thực hiện (Actor ID)</label>
             <input
               type="text"
               placeholder="Actor User ID"
@@ -1775,12 +1777,12 @@ const AuditPanel = ({ canReadAudit }: AuditPanelProps) => {
                 setFilterActorUserId(e.target.value);
                 setPage(1);
               }}
-              className="mt-1 w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-mono"
+              className="cm-input mt-1 w-full text-xs font-mono"
             />
           </div>
 
           <div>
-            <label className="block text-[11px] font-semibold text-slate-700">Người dùng đích (Target User)</label>
+            <label className="block text-[11px] font-semibold text-[var(--cm-text-secondary)]">Người dùng đích (Target User)</label>
             <input
               type="text"
               placeholder="Target User ID"
@@ -1790,12 +1792,12 @@ const AuditPanel = ({ canReadAudit }: AuditPanelProps) => {
                 setFilterTargetUserId(e.target.value);
                 setPage(1);
               }}
-              className="mt-1 w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-mono"
+              className="cm-input mt-1 w-full text-xs font-mono"
             />
           </div>
 
           <div>
-            <label className="block text-[11px] font-semibold text-slate-700">Đối tượng đích (Target ID)</label>
+            <label className="block text-[11px] font-semibold text-[var(--cm-text-secondary)]">Đối tượng đích (Target ID)</label>
             <input
               type="text"
               placeholder="Role ID hoặc User ID"
@@ -1805,12 +1807,12 @@ const AuditPanel = ({ canReadAudit }: AuditPanelProps) => {
                 setFilterTargetId(e.target.value);
                 setPage(1);
               }}
-              className="mt-1 w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-mono"
+              className="cm-input mt-1 w-full text-xs font-mono"
             />
           </div>
 
           <div>
-            <label className="block text-[11px] font-semibold text-slate-700">Từ thời điểm</label>
+            <label className="block text-[11px] font-semibold text-[var(--cm-text-secondary)]">Từ thời điểm</label>
             <input
               type="datetime-local"
               aria-label="Lọc từ thời điểm"
@@ -1819,12 +1821,12 @@ const AuditPanel = ({ canReadAudit }: AuditPanelProps) => {
                 setFilterFrom(e.target.value);
                 setPage(1);
               }}
-              className="mt-1 w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-xs"
+              className="cm-input mt-1 w-full text-xs"
             />
           </div>
 
           <div>
-            <label className="block text-[11px] font-semibold text-slate-700">Đến thời điểm</label>
+            <label className="block text-[11px] font-semibold text-[var(--cm-text-secondary)]">Đến thời điểm</label>
             <input
               type="datetime-local"
               aria-label="Lọc đến thời điểm"
@@ -1833,7 +1835,7 @@ const AuditPanel = ({ canReadAudit }: AuditPanelProps) => {
                 setFilterTo(e.target.value);
                 setPage(1);
               }}
-              className="mt-1 w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-xs"
+              className="cm-input mt-1 w-full text-xs"
             />
           </div>
 
@@ -1841,7 +1843,7 @@ const AuditPanel = ({ canReadAudit }: AuditPanelProps) => {
             <button
               type="button"
               onClick={resetFilters}
-              className="w-full rounded-md border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+              className="cm-secondary-button w-full rounded-lg px-3 py-2 text-xs font-semibold"
             >
               Đặt lại bộ lọc
             </button>
@@ -1851,15 +1853,15 @@ const AuditPanel = ({ canReadAudit }: AuditPanelProps) => {
 
       {/* Table Content */}
       {auditQuery.isLoading ? (
-        <p className="py-12 text-center text-xs text-slate-500">Đang tải nhật ký kiểm toán...</p>
+        <p className="py-12 text-center text-xs text-[var(--cm-text-muted)]">Đang tải nhật ký kiểm toán...</p>
       ) : auditQuery.isError ? (
-        <p className="py-10 text-center text-xs text-red-700">Không thể tải dữ liệu nhật ký kiểm toán.</p>
+        <p className="py-10 text-center text-xs text-rose-400">Không thể tải dữ liệu nhật ký kiểm toán.</p>
       ) : entries.length === 0 ? (
-        <p className="py-12 text-center text-xs text-slate-500">Chưa có bản ghi kiểm toán phù hợp bộ lọc.</p>
+        <p className="py-12 text-center text-xs text-[var(--cm-text-muted)]">Chưa có bản ghi kiểm toán phù hợp bộ lọc.</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200 text-xs">
-            <thead className="bg-slate-50 text-slate-700">
+          <table className="min-w-full divide-y divide-[var(--cm-border-subtle)] text-xs">
+            <thead className="bg-[var(--cm-surface-raised)] text-[var(--cm-text-secondary)] border-b border-[var(--cm-border-subtle)]">
               <tr>
                 <th className="px-4 py-3 text-left font-semibold">Thời gian</th>
                 <th className="px-4 py-3 text-left font-semibold">Hành động</th>
@@ -1869,16 +1871,16 @@ const AuditPanel = ({ canReadAudit }: AuditPanelProps) => {
                 <th className="px-4 py-3 text-right font-semibold">Chi tiết</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-[var(--cm-border-subtle)]">
               {entries.map((entry) => {
                 const actionMeta = actionTypeLabels[entry.actionType] ?? {
                   label: entry.actionType,
-                  color: "bg-slate-100 text-slate-700",
+                  color: "bg-[var(--cm-surface-raised)] text-[var(--cm-text-secondary)] border border-[var(--cm-border-subtle)]",
                 };
 
                 return (
-                  <tr key={entry.authorizationAuditId} className="hover:bg-slate-50/80">
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-600 font-mono text-[11px]">
+                  <tr key={entry.authorizationAuditId} className="hover:bg-[var(--cm-surface-raised)]/50 transition-colors">
+                    <td className="whitespace-nowrap px-4 py-3 text-[var(--cm-text-muted)] font-mono text-[11px]">
                       {new Date(entry.createdAt).toLocaleString("vi-VN")}
                     </td>
                     <td className="px-4 py-3">
@@ -1886,17 +1888,17 @@ const AuditPanel = ({ canReadAudit }: AuditPanelProps) => {
                         {actionMeta.label}
                       </span>
                     </td>
-                    <td className="px-4 py-3 font-medium text-slate-800">
+                    <td className="px-4 py-3 font-medium text-[var(--cm-text)]">
                       <span>{entry.targetType}</span>
-                      <span className="block font-mono text-[11px] text-slate-500 truncate max-w-xs" title={entry.targetId}>
+                      <span className="block font-mono text-[11px] text-[var(--cm-text-muted)] truncate max-w-xs" title={entry.targetId}>
                         {entry.targetId}
                       </span>
                     </td>
-                    <td className="max-w-xs truncate px-4 py-3 text-slate-700" title={entry.reason}>
+                    <td className="max-w-xs truncate px-4 py-3 text-[var(--cm-text-secondary)]" title={entry.reason}>
                       {entry.reason}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5 font-mono text-[11px] text-slate-600">
+                      <div className="flex items-center gap-1.5 font-mono text-[11px] text-[var(--cm-text-muted)]">
                         <span className="truncate max-w-[8rem]" title={entry.traceId}>
                           {entry.traceId}
                         </span>
@@ -1904,7 +1906,7 @@ const AuditPanel = ({ canReadAudit }: AuditPanelProps) => {
                           type="button"
                           onClick={() => copyTrace(entry.traceId)}
                           title="Sao chép Trace ID"
-                          className="rounded p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+                          className="rounded p-1 text-[var(--cm-text-muted)] hover:text-[var(--cm-text)] hover:bg-[var(--cm-surface-raised)] transition-colors"
                         >
                           {copiedTraceId === entry.traceId ? "✓" : "📋"}
                         </button>
@@ -1915,7 +1917,7 @@ const AuditPanel = ({ canReadAudit }: AuditPanelProps) => {
                         type="button"
                         id={`btn-view-audit-${entry.authorizationAuditId}`}
                         onClick={() => setSelectedAudit(entry)}
-                        className="rounded-md bg-indigo-50 px-2.5 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100"
+                        className="cm-secondary-button rounded-lg px-2.5 py-1 text-[11px] font-bold"
                       >
                         Xem chi tiết
                       </button>
@@ -1930,7 +1932,7 @@ const AuditPanel = ({ canReadAudit }: AuditPanelProps) => {
 
       {/* Pagination Footer */}
       {meta && meta.totalPages > 1 && (
-        <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-xs text-slate-600">
+        <div className="flex items-center justify-between border-t border-[var(--cm-border-subtle)] px-4 py-3 text-xs text-[var(--cm-text-secondary)]">
           <span>
             Trang {meta.page} / {meta.totalPages} ({meta.totalItems} sự kiện)
           </span>
@@ -1939,7 +1941,7 @@ const AuditPanel = ({ canReadAudit }: AuditPanelProps) => {
               type="button"
               disabled={page <= 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="rounded-md border border-slate-300 px-3 py-1 font-semibold disabled:opacity-40 hover:bg-slate-50"
+              className="cm-secondary-button rounded-lg px-3 py-1 font-semibold disabled:opacity-40"
             >
               ← Trang trước
             </button>
@@ -1947,7 +1949,7 @@ const AuditPanel = ({ canReadAudit }: AuditPanelProps) => {
               type="button"
               disabled={page >= meta.totalPages}
               onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))}
-              className="rounded-md border border-slate-300 px-3 py-1 font-semibold disabled:opacity-40 hover:bg-slate-50"
+              className="cm-secondary-button rounded-lg px-3 py-1 font-semibold disabled:opacity-40"
             >
               Trang sau →
             </button>
@@ -1960,56 +1962,56 @@ const AuditPanel = ({ canReadAudit }: AuditPanelProps) => {
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
           onClick={() => setSelectedAudit(null)}
         >
           <div
-            className="w-full max-w-3xl rounded-xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto"
+            className="w-full max-w-3xl rounded-2xl cm-surface border border-[var(--cm-border-subtle)] p-6 shadow-2xl max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-start justify-between border-b border-slate-200 pb-3">
+            <div className="flex items-start justify-between border-b border-[var(--cm-border-subtle)] pb-3">
               <div>
-                <span className="rounded bg-indigo-100 px-2 py-0.5 text-xs font-bold text-indigo-800">
+                <span className="rounded-lg bg-indigo-500/10 px-2 py-0.5 text-xs font-bold text-indigo-400 border border-indigo-500/20">
                   {actionTypeLabels[selectedAudit.actionType]?.label ?? selectedAudit.actionType}
                 </span>
-                <h3 className="mt-1 text-lg font-bold text-slate-900">
+                <h3 className="mt-1 text-lg font-bold text-[var(--cm-text)]">
                   Chi tiết bản ghi kiểm toán #{selectedAudit.authorizationAuditId}
                 </h3>
-                <p className="text-xs text-slate-500 font-mono">
+                <p className="text-xs text-[var(--cm-text-muted)] font-mono">
                   {new Date(selectedAudit.createdAt).toLocaleString("vi-VN")} UTC
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setSelectedAudit(null)}
-                className="text-slate-400 hover:text-slate-700 text-lg font-bold"
+                className="text-[var(--cm-text-muted)] hover:text-[var(--cm-text)] text-lg font-bold transition-colors"
               >
                 ✕
               </button>
             </div>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2 text-xs">
-              <div className="rounded bg-slate-50 p-2.5">
-                <span className="block font-semibold text-slate-500">Đối tượng mục tiêu:</span>
-                <span className="font-mono font-medium text-slate-800">{selectedAudit.targetType}: {selectedAudit.targetId}</span>
+              <div className="rounded-xl bg-[var(--cm-surface-raised)] border border-[var(--cm-border-subtle)] p-3">
+                <span className="block font-semibold text-[var(--cm-text-muted)]">Đối tượng mục tiêu:</span>
+                <span className="font-mono font-medium text-[var(--cm-text)]">{selectedAudit.targetType}: {selectedAudit.targetId}</span>
               </div>
-              <div className="rounded bg-slate-50 p-2.5">
-                <span className="block font-semibold text-slate-500">Người thực hiện (Actor User ID):</span>
-                <span className="font-mono text-slate-800">{selectedAudit.actorUserId ?? "Hệ thống"}</span>
+              <div className="rounded-xl bg-[var(--cm-surface-raised)] border border-[var(--cm-border-subtle)] p-3">
+                <span className="block font-semibold text-[var(--cm-text-muted)]">Người thực hiện (Actor User ID):</span>
+                <span className="font-mono text-[var(--cm-text)]">{selectedAudit.actorUserId ?? "Hệ thống"}</span>
               </div>
-              <div className="rounded bg-slate-50 p-2.5 sm:col-span-2">
-                <span className="block font-semibold text-slate-500">Lý do thao tác:</span>
-                <span className="text-slate-800">{selectedAudit.reason}</span>
+              <div className="rounded-xl bg-[var(--cm-surface-raised)] border border-[var(--cm-border-subtle)] p-3 sm:col-span-2">
+                <span className="block font-semibold text-[var(--cm-text-muted)]">Lý do thao tác:</span>
+                <span className="text-[var(--cm-text)]">{selectedAudit.reason}</span>
               </div>
-              <div className="rounded bg-slate-50 p-2.5 sm:col-span-2 flex items-center justify-between">
+              <div className="rounded-xl bg-[var(--cm-surface-raised)] border border-[var(--cm-border-subtle)] p-3 sm:col-span-2 flex items-center justify-between">
                 <div>
-                  <span className="block font-semibold text-slate-500">W3C Trace ID:</span>
-                  <span className="font-mono text-[11px] text-slate-800">{selectedAudit.traceId}</span>
+                  <span className="block font-semibold text-[var(--cm-text-muted)]">W3C Trace ID:</span>
+                  <span className="font-mono text-[11px] text-[var(--cm-text)]">{selectedAudit.traceId}</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => copyTrace(selectedAudit.traceId)}
-                  className="rounded bg-white px-2 py-1 font-semibold text-slate-700 ring-1 ring-slate-300 hover:bg-slate-100"
+                  className="cm-secondary-button rounded px-2 py-1 font-semibold text-xs"
                 >
                   {copiedTraceId === selectedAudit.traceId ? "✓ Đã chép" : "Sao chép"}
                 </button>
@@ -2019,26 +2021,26 @@ const AuditPanel = ({ canReadAudit }: AuditPanelProps) => {
             {/* Before / After Data Inspection */}
             <div className="mt-4 space-y-3">
               <div className="flex items-center justify-between">
-                <h4 className="font-bold text-xs uppercase tracking-wider text-slate-700">
+                <h4 className="font-bold text-xs uppercase tracking-wider text-[var(--cm-text-secondary)]">
                   Đối chiếu dữ liệu (Before / After Data)
                 </h4>
-                <span className="text-[11px] text-emerald-700 font-medium">
+                <span className="text-[11px] text-emerald-400 font-medium">
                   ✓ Dữ liệu khử khuẩn nghiêm ngặt
                 </span>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
-                  <span className="block text-xs font-semibold text-slate-600 mb-1">Trước thay đổi (Before)</span>
-                  <pre className="max-h-60 overflow-auto rounded-lg bg-slate-900 p-3 font-mono text-[11px] text-emerald-400">
+                  <span className="block text-xs font-semibold text-[var(--cm-text-muted)] mb-1">Trước thay đổi (Before)</span>
+                  <pre className="max-h-60 overflow-auto rounded-xl bg-slate-950 p-3.5 font-mono text-[11px] text-emerald-400 border border-[var(--cm-border-subtle)]">
                     {selectedAudit.before
                       ? JSON.stringify(selectedAudit.before, null, 2)
                       : "(Không có dữ liệu trước)"}
                   </pre>
                 </div>
                 <div>
-                  <span className="block text-xs font-semibold text-slate-600 mb-1">Sau thay đổi (After)</span>
-                  <pre className="max-h-60 overflow-auto rounded-lg bg-slate-900 p-3 font-mono text-[11px] text-emerald-400">
+                  <span className="block text-xs font-semibold text-[var(--cm-text-muted)] mb-1">Sau thay đổi (After)</span>
+                  <pre className="max-h-60 overflow-auto rounded-xl bg-slate-950 p-3.5 font-mono text-[11px] text-emerald-400 border border-[var(--cm-border-subtle)]">
                     {selectedAudit.after
                       ? JSON.stringify(selectedAudit.after, null, 2)
                       : "(Không có dữ liệu sau)"}
@@ -2047,11 +2049,11 @@ const AuditPanel = ({ canReadAudit }: AuditPanelProps) => {
               </div>
             </div>
 
-            <div className="mt-6 flex justify-end border-t border-slate-200 pt-3">
+            <div className="mt-6 flex justify-end border-t border-[var(--cm-border-subtle)] pt-3">
               <button
                 type="button"
                 onClick={() => setSelectedAudit(null)}
-                className="rounded-md bg-slate-800 px-4 py-2 text-xs font-bold text-white hover:bg-slate-900"
+                className="cm-secondary-button rounded-lg px-4 py-2 text-xs font-bold"
               >
                 Đóng
               </button>
