@@ -1,6 +1,7 @@
 export const permissions = {
   centerRead: "organization.center.read",
-  centerManage: "organization.center.manage",
+  centerManage: "organization.center.update",
+  centerUpdate: "organization.center.update",
   teachersRead: "organization.teachers.read",
   teachersCreate: "organization.teachers.create",
   teachersUpdate: "organization.teachers.update",

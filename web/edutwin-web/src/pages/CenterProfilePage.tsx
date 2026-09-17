@@ -35,7 +35,9 @@ const statusPresentation = (status: string) => {
 
 export const CenterProfilePage = () => {
   const queryClient = useQueryClient();
-  const canManage = useAuthStore((state) => state.hasPermission(permissions.centerManage));
+  const canManage = useAuthStore(
+    (state) => state.hasPermission(permissions.centerManage) || state.hasPermission("organization.center.update"),
+  );
   const [centerName, setCenterName] = useState("");
   const [timezone, setTimezone] = useState("Asia/Ho_Chi_Minh");
   const [rowVersion, setRowVersion] = useState("");
