@@ -295,7 +295,8 @@ const RolePermissionPanel = ({
   const [status, setStatus] = useState<"Active" | "Archived">("Active");
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
   const [permissionSearch, setPermissionSearch] = useState("");
-  const [reason, setReason] = useState("");
+  const [roleInfoReason, setRoleInfoReason] = useState("");
+  const [permissionsReason, setPermissionsReason] = useState("");
 
   // Create role modal/form
   const [showCreate, setShowCreate] = useState(false);
@@ -314,7 +315,8 @@ const RolePermissionPanel = ({
     setDescription(selected.description ?? "");
     setStatus(selected.status);
     setSelectedPermissions(selected.permissionCodes);
-    setReason("");
+    setRoleInfoReason("");
+    setPermissionsReason("");
   }, [selected]);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["authorization"] });
@@ -340,10 +342,11 @@ const RolePermissionPanel = ({
         description: description.trim() || undefined,
         status,
         rowVersion: selected!.rowVersion,
-        reason: reason.trim(),
+        reason: roleInfoReason.trim(),
       }),
     onSuccess: async () => {
       await invalidate();
+      setRoleInfoReason("");
       onSuccess("Đã cập nhật thông tin vai trò thành công.");
     },
     onError: (err) => {
@@ -358,10 +361,11 @@ const RolePermissionPanel = ({
       authorizationApi.replaceRolePermissions(selected!.roleId, {
         permissionCodes: selectedPermissions,
         rowVersion: selected!.rowVersion,
-        reason: reason.trim(),
+        reason: permissionsReason.trim(),
       }),
     onSuccess: async () => {
       await invalidate();
+      setPermissionsReason("");
       onSuccess("Đã thay thế toàn bộ ma trận quyền của vai trò thành công.");
     },
     onError: (err) => {
@@ -444,7 +448,8 @@ const RolePermissionPanel = ({
     }
   };
 
-  const reasonValid = reason.trim().length >= 3 && reason.trim().length <= 1000;
+  const roleInfoReasonValid = roleInfoReason.trim().length >= 3 && roleInfoReason.trim().length <= 1000;
+  const permissionsReasonValid = permissionsReason.trim().length >= 3 && permissionsReason.trim().length <= 1000;
   const isSystemRole = Boolean(selected?.isSystemRole);
 
   // No-op detection
@@ -732,7 +737,11 @@ const RolePermissionPanel = ({
                   disabled={!canUpdate || isSystemRole}
                   value={status}
                   onChange={(e) => setStatus(e.target.value as "Active" | "Archived")}
-                  className="cm-select mt-1 w-full text-sm font-medium disabled:opacity-50"
+                  className={`cm-select mt-1 w-full text-sm font-medium disabled:opacity-50 transition-colors ${
+                    status === "Archived"
+                      ? "!border-amber-500 !bg-amber-500/15 !text-amber-800 dark:!text-amber-300 font-bold ring-1 ring-amber-400/40"
+                      : ""
+                  }`}
                 >
                   <option value="Active">Đang hoạt động (Active)</option>
                   <option value="Archived" disabled={!canArchive}>
@@ -740,6 +749,19 @@ const RolePermissionPanel = ({
                   </option>
                 </select>
               </div>
+
+              {/* Warning when Archived is selected */}
+              {status === "Archived" && (
+                <div className="sm:col-span-2 flex items-start gap-2.5 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-200">
+                  <span className="text-base leading-none" aria-hidden="true">⚠️</span>
+                  <div className="space-y-0.5">
+                    <p className="font-semibold text-amber-950 dark:text-amber-100">Lưu ý khi lưu trữ vai trò:</p>
+                    <p className="text-amber-800 dark:text-amber-300/90 leading-relaxed">
+                      Vai trò này sẽ bị vô hiệu hóa, không thể gán cho người dùng mới và thu hồi quyền của các tài khoản đang giữ. Dữ liệu lịch sử & nhật ký kiểm toán trong quá khứ vẫn được bảo toàn 100%.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               <div className="sm:col-span-2">
                 <label className="block text-xs font-semibold text-[var(--cm-text-secondary)]">Mô tả trách nhiệm & thẩm quyền</label>
@@ -753,18 +775,47 @@ const RolePermissionPanel = ({
                   placeholder="Mô tả phạm vi vai trò..."
                 />
               </div>
+
+              {/* Reason for updating Role Info */}
+              {canUpdate && !isSystemRole && (
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-[var(--cm-text-secondary)]">
+                    Lý do chỉnh sửa thông tin vai trò <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    disabled={roleInfoUnchanged}
+                    value={roleInfoReason}
+                    onChange={(e) => setRoleInfoReason(e.target.value)}
+                    maxLength={1000}
+                    placeholder={
+                      roleInfoUnchanged
+                        ? "Thay đổi thông tin vai trò ở trên trước khi nhập lý do..."
+                        : "Ví dụ: Điều chỉnh tên chức danh và mô tả nhiệm vụ mới (tối thiểu 3 ký tự)..."
+                    }
+                    className="cm-input mt-1 w-full text-xs disabled:opacity-50"
+                  />
+                  {!roleInfoUnchanged && roleInfoReason.trim().length > 0 && roleInfoReason.trim().length < 3 && (
+                    <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">Lý do phải có ít nhất 3 ký tự.</p>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Save Role Info Action */}
             {canUpdate && !isSystemRole && (
               <div className="flex items-center justify-between border-t border-[var(--cm-border-subtle)] pt-3">
                 <span className="text-xs text-[var(--cm-text-muted)]">
-                  {roleInfoUnchanged ? "Thông tin vai trò chưa thay đổi" : "Có thay đổi thông tin vai trò chưa lưu"}
+                  {roleInfoUnchanged
+                    ? "Thông tin vai trò chưa thay đổi"
+                    : !roleInfoReasonValid
+                    ? "Vui lòng nhập lý do chỉnh sửa thông tin vai trò để lưu"
+                    : "Sẵn sàng lưu thông tin vai trò"}
                 </span>
                 <button
                   type="button"
                   id="btn-save-role-info"
-                  disabled={roleInfoUnchanged || !reasonValid || updateMutation.isPending}
+                  disabled={roleInfoUnchanged || !roleInfoReasonValid || updateMutation.isPending}
                   onClick={() => updateMutation.mutate()}
                   className="cm-primary-button rounded-lg px-4 py-1.5 text-xs font-bold shadow-sm disabled:opacity-40"
                 >
@@ -927,42 +978,50 @@ const RolePermissionPanel = ({
             </div>
 
             {/* Mutation Execution Footer */}
-            {(canUpdate || canManagePermissions) && (
+            {canManagePermissions && !isSystemRole && (
               <div className="rounded-xl bg-[var(--cm-surface-raised)] p-4 border border-[var(--cm-border-subtle)] space-y-3">
                 <label className="block text-xs font-bold text-[var(--cm-text-secondary)]">
                   Lý do thay đổi phân quyền <span className="text-red-500">*</span>
                   <input
                     required
                     maxLength={1000}
-                    value={reason}
-                    onChange={(e) => setReason(e.target.value)}
-                    placeholder="Ví dụ: Cập nhật ma trận phân quyền phục vụ kỳ thi học kỳ 1 (tối thiểu 3 ký tự)..."
-                    className="cm-input mt-1 w-full text-xs"
+                    disabled={permissionsUnchanged}
+                    value={permissionsReason}
+                    onChange={(e) => setPermissionsReason(e.target.value)}
+                    placeholder={
+                      permissionsUnchanged
+                        ? "Thay đổi các checkbox quyền trong ma trận trước khi nhập lý do..."
+                        : "Ví dụ: Cập nhật ma trận phân quyền phục vụ kỳ thi học kỳ 1 (tối thiểu 3 ký tự)..."
+                    }
+                    className="cm-input mt-1 w-full text-xs disabled:opacity-50"
                   />
                 </label>
+                {!permissionsUnchanged && permissionsReason.trim().length > 0 && permissionsReason.trim().length < 3 && (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400">Lý do phải có ít nhất 3 ký tự.</p>
+                )}
 
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <span className="text-xs text-[var(--cm-text-muted)]">
                     {permissionsUnchanged
                       ? "Ma trận quyền chưa thay đổi"
-                      : "Ma trận quyền đã thay đổi và cần xác nhận"}
+                      : !permissionsReasonValid
+                      ? "Vui lòng nhập lý do thay đổi phân quyền để lưu"
+                      : "Ma trận quyền đã thay đổi và sẵn sàng cập nhật"}
                   </span>
-                  {canManagePermissions && (
-                    <button
-                      type="button"
-                      id="btn-replace-role-permissions"
-                      disabled={
-                        permissionsUnchanged ||
-                        !reasonValid ||
-                        permissionsMutation.isPending ||
-                        isSystemRole
-                      }
-                      onClick={() => permissionsMutation.mutate()}
-                      className="cm-primary-button rounded-lg px-4 py-2 text-xs font-bold shadow-sm disabled:opacity-40"
-                    >
-                      {permissionsMutation.isPending ? "Đang thay thế..." : "Thay thế permission (Canonical)"}
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    id="btn-replace-role-permissions"
+                    disabled={
+                      permissionsUnchanged ||
+                      !permissionsReasonValid ||
+                      permissionsMutation.isPending ||
+                      isSystemRole
+                    }
+                    onClick={() => permissionsMutation.mutate()}
+                    className="cm-primary-button rounded-lg px-4 py-2 text-xs font-bold shadow-sm disabled:opacity-40"
+                  >
+                    {permissionsMutation.isPending ? "Đang thay thế..." : "Thay thế permission (Canonical)"}
+                  </button>
                 </div>
               </div>
             )}
