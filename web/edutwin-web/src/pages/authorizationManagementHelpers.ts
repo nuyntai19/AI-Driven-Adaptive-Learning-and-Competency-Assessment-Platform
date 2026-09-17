@@ -242,6 +242,172 @@ export function hydrateKnownRolesFromUserAuth(
   return next;
 }
 
+export const PERMISSION_DESCRIPTIONS_VI: Record<string, string> = {
+  // Assignments (Bài tập & Giao bài)
+  "assignments.assignments.read": "Cho phép xem danh sách và chi tiết bài tập trong phạm vi được phân công.",
+  "assignments.assignments.create": "Cho phép tạo bài tập mới cho lớp học.",
+  "assignments.assignments.update": "Cho phép chỉnh sửa thông tin, cấu hình và thời hạn bài tập.",
+  "assignments.assignments.publish": "Cho phép phát hành và giao bài tập cho học sinh.",
+  "assignments.assignments.close": "Cho phép đóng hoặc kết thúc đợt làm bài tập.",
+
+  // Authorization (Vai trò & Phân quyền)
+  "authorization.permissions.read": "Cho phép xem danh mục quyền hạn của toàn hệ thống.",
+  "authorization.roles.read": "Cho phép xem danh sách vai trò và phân quyền tương ứng.",
+  "authorization.roles.create": "Cho phép tạo vai trò tùy chỉnh mới.",
+  "authorization.roles.update": "Cho phép chỉnh sửa thông tin vai trò.",
+  "authorization.roles.archive": "Cho phép lưu trữ hoặc vô hiệu hóa vai trò.",
+  "authorization.roles.manage_permissions": "Cho phép cấu hình và thay đổi quyền hạn cho vai trò.",
+  "authorization.user_roles.read": "Cho phép xem danh sách phân công vai trò của người dùng.",
+  "authorization.user_roles.assign": "Cho phép gán hoặc thu hồi vai trò của người dùng.",
+  "authorization.audit.read": "Cho phép xem nhật ký kiểm toán bảo mật và phân quyền.",
+
+  // Curriculum (Giáo trình & Ngân hàng câu hỏi)
+  "curriculum.curriculums.read": "Cho phép xem danh sách và nội dung chi tiết giáo trình.",
+  "curriculum.curriculums.create": "Cho phép tạo mới giáo trình học tập.",
+  "curriculum.curriculums.update": "Cho phép chỉnh sửa cấu trúc và nội dung giáo trình.",
+  "curriculum.curriculums.publish": "Cho phép xuất bản giáo trình để đưa vào giảng dạy.",
+  "curriculum.questions.read": "Cho phép xem ngân hàng câu hỏi trắc nghiệm và bài tập.",
+  "curriculum.questions.create": "Cho phép tạo câu hỏi mới vào ngân hàng câu hỏi.",
+  "curriculum.questions.update": "Cho phép chỉnh sửa nội dung và đáp án câu hỏi trong phạm vi được cấp.",
+  "curriculum.questions.publish": "Cho phép phê duyệt và xuất bản câu hỏi vào ngân hàng đề.",
+  "curriculum.questions.delete": "Cho phép xóa câu hỏi khỏi ngân hàng câu hỏi.",
+
+  // Dashboards (Bảng điều khiển)
+  "dashboards.center.read": "Cho phép xem bảng điều khiển phân tích tổng hợp của trung tâm.",
+  "dashboards.student.read_own": "Cho phép học sinh xem bảng điều khiển tiến độ học tập cá nhân.",
+  "dashboards.teacher.read_scoped": "Cho phép giáo viên xem bảng điều khiển các lớp được phân công.",
+
+  // Knowledge (Knowledge Graph & Cây tri thức)
+  "knowledge.subjects.read": "Cho phép xem danh sách và thông tin môn học.",
+  "knowledge.subjects.create": "Cho phép tạo môn học mới.",
+  "knowledge.subjects.update": "Cho phép cập nhật thông tin môn học.",
+  "knowledge.subjects.delete": "Cho phép xóa môn học.",
+  "knowledge.nodes.read": "Cho phép xem sơ đồ cây khái niệm kiến thức.",
+  "knowledge.nodes.create": "Cho phép tạo mới khái niệm/đơn vị kiến thức.",
+  "knowledge.nodes.update": "Cho phép chỉnh sửa khái niệm/đơn vị kiến thức.",
+  "knowledge.nodes.delete": "Cho phép xóa khái niệm/đơn vị kiến thức.",
+  "knowledge.edges.read": "Cho phép xem mạng lưới liên kết quan hệ kiến thức.",
+  "knowledge.edges.create": "Cho phép tạo liên kết quan hệ giữa các khái niệm kiến thức.",
+  "knowledge.edges.update": "Cho phép cập nhật liên kết quan hệ kiến thức.",
+  "knowledge.edges.delete": "Cho phép xóa liên kết quan hệ kiến thức.",
+
+  // Learning & Attempts (Quá trình làm bài)
+  "learning.attempts.read_own": "Cho phép học sinh xem lại lịch sử và kết quả bài làm của chính mình.",
+  "learning.attempts.read_scoped": "Cho phép giáo viên xem kết quả làm bài của học sinh trong lớp phụ trách.",
+  "learning.attempts.submit": "Cho phép nộp bài làm đánh giá hoặc bài tập.",
+
+  // Organization (Cơ cấu tổ chức & Tài khoản)
+  "organization.center.read": "Cho phép xem thông tin hồ sơ trung tâm.",
+  "organization.center.update": "Cho phép cập nhật thông tin định danh và cấu hình trung tâm.",
+  "organization.center.manage": "Cho phép quản trị toàn diện thông tin và thiết lập của trung tâm.",
+  "organization.classes.read": "Cho phép xem danh sách và thông tin lớp học.",
+  "organization.classes.create": "Cho phép tạo lớp học mới.",
+  "organization.classes.update": "Cho phép chỉnh sửa thông tin lớp học.",
+  "organization.classes.manage_members": "Cho phép quản lý phân công giáo viên và học sinh vào lớp học.",
+  "organization.students.read": "Cho phép xem danh sách và hồ sơ học sinh.",
+  "organization.students.create": "Cho phép tạo tài khoản và hồ sơ học sinh mới.",
+  "organization.students.update": "Cho phép cập nhật thông tin học sinh.",
+  "organization.students.delete": "Cho phép xóa tài khoản học sinh.",
+  "organization.students.reset_password": "Cho phép đặt lại mật khẩu cho tài khoản học sinh.",
+  "organization.teachers.read": "Cho phép xem danh sách và hồ sơ giáo viên.",
+  "organization.teachers.create": "Cho phép tạo tài khoản và hồ sơ giáo viên mới.",
+  "organization.teachers.update": "Cho phép cập nhật thông tin giáo viên.",
+  "organization.teachers.delete": "Cho phép xóa tài khoản giáo viên.",
+  "organization.teachers.reset_password": "Cho phép đặt lại mật khẩu cho tài khoản giáo viên.",
+
+  // Recommendations (Gợi ý học tập)
+  "recommendations.student.read_own": "Cho phép học sinh xem gợi ý lộ trình học tập cá nhân hóa.",
+  "recommendations.student.update_own": "Cho phép học sinh tương tác và phản hồi gợi ý lộ trình học tập.",
+
+  // Digital Twin & AI Reasoning (Hồ sơ số & Đánh giá năng lực)
+  "twin.reasoning.review": "Cho phép giáo viên xem xét và thẩm định kết quả đánh giá năng lực từ AI.",
+  "twin.reasoning.override": "Cho phép giáo viên can thiệp và điều chỉnh kết quả đánh giá của AI.",
+  "twin.student.read_own": "Cho phép học sinh xem hồ sơ năng lực số (Digital Twin) của chính mình.",
+  "twin.student.read_scoped": "Cho phép giáo viên/quản lý xem hồ sơ năng lực số của học sinh trong phạm vi phụ trách.",
+  "twin.student.update_own": "Cho phép học sinh cập nhật mục tiêu học tập cá nhân.",
+  "twin.student.update_scoped": "Cho phép giáo viên/quản lý cập nhật mục tiêu và đánh giá năng lực học sinh.",
+
+  // Platform (Quản trị nền tảng)
+  "platform.account.manage_own": "Cho phép quản trị viên tự quản lý tài khoản nền tảng của mình.",
+  "platform.audit.read": "Cho phép xem nhật ký kiểm toán hoạt động cấp toàn nền tảng.",
+  "platform.centers.read": "Cho phép xem danh sách các trung tâm trên nền tảng.",
+  "platform.centers.manage": "Cho phép quản lý thông tin và cấu hình các trung tâm trên nền tảng.",
+  "platform.managers.manage": "Cho phép quản lý tài khoản quản trị viên trung tâm.",
+};
+
+const ACTION_LABELS_VI: Record<string, string> = {
+  read: "xem",
+  read_own: "xem của cá nhân",
+  read_scoped: "xem trong phạm vi phân công",
+  create: "tạo mới",
+  update: "chỉnh sửa",
+  update_own: "cập nhật của cá nhân",
+  update_scoped: "cập nhật trong phạm vi phân công",
+  delete: "xóa",
+  publish: "xuất bản / phát hành",
+  close: "đóng / kết thúc",
+  assign: "gán vai trò",
+  archive: "lưu trữ",
+  submit: "nộp bài",
+  review: "thẩm định / xem xét",
+  override: "ghi đè / can thiệp",
+  manage: "quản trị",
+  manage_members: "quản lý thành viên",
+  manage_own: "tự quản lý",
+  reset_password: "đặt lại mật khẩu",
+  manage_permissions: "quản lý phân quyền",
+};
+
+const RESOURCE_LABELS_VI: Record<string, string> = {
+  questions: "câu hỏi",
+  curriculums: "giáo trình",
+  assignments: "bài tập",
+  teachers: "giáo viên",
+  students: "học sinh",
+  classes: "lớp học",
+  subjects: "môn học",
+  nodes: "khái niệm kiến thức",
+  edges: "liên kết kiến thức",
+  roles: "vai trò",
+  permissions: "danh mục quyền hạn",
+  user_roles: "phân công vai trò",
+  audit: "nhật ký kiểm toán",
+  center: "trung tâm",
+  centers: "các trung tâm",
+  managers: "quản trị viên",
+  account: "tài khoản",
+  attempts: "lượt làm bài",
+  reasoning: "đánh giá năng lực AI",
+};
+
+export function getLocalizedPermissionDescription(
+  permissionCode: string,
+  fallbackDescription?: string,
+): string {
+  if (PERMISSION_DESCRIPTIONS_VI[permissionCode]) {
+    return PERMISSION_DESCRIPTIONS_VI[permissionCode];
+  }
+
+  // If fallback is already a clean custom text without mechanical English tokens
+  if (
+    fallbackDescription &&
+    !fallbackDescription.includes("trong phạm vi được cấp") &&
+    !fallbackDescription.match(/\b(create|update|read|delete|publish|close|questions|assignments|curriculums|nodes|edges|subjects|teachers|students|classes)\b/i)
+  ) {
+    return fallbackDescription;
+  }
+
+  // Dynamic fallback: parse code parts (e.g. curriculum.questions.update)
+  const parts = permissionCode.split(".");
+  if (parts.length >= 3) {
+    const action = ACTION_LABELS_VI[parts[2]] ?? parts[2];
+    const resource = RESOURCE_LABELS_VI[parts[1]] ?? parts[1];
+    return `Cho phép ${action} ${resource} trong phạm vi được cấp.`;
+  }
+
+  return fallbackDescription || "Cho phép thao tác trong phạm vi được cấp.";
+}
+
 export function computeEffectivePermissionsBreakdown(
   selectedRoleIds: string[],
   knownRoles: Map<string, AuthorizationRoleDto>,
@@ -259,13 +425,18 @@ export function computeEffectivePermissionsBreakdown(
   }
 
   const permissionDescriptions = new Map(
-    catalog.map((p) => [p.permissionCode, p.description]),
+    catalog.map((p) => [
+      p.permissionCode,
+      getLocalizedPermissionDescription(p.permissionCode, p.description),
+    ]),
   );
 
   return Object.entries(permissionSources)
     .map(([code, sourceRoles]) => ({
       code,
-      description: permissionDescriptions.get(code) ?? "Quyền vận hành",
+      description:
+        permissionDescriptions.get(code) ??
+        getLocalizedPermissionDescription(code, "Quyền vận hành"),
       sourceRoles,
     }))
     .sort((a, b) => a.code.localeCompare(b.code));

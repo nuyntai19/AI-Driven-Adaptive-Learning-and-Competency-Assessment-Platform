@@ -25,6 +25,7 @@ import {
   hydrateKnownRolesFromUserAuth,
   computeEffectivePermissionsBreakdown,
   getMissingCanonicalRoleIds,
+  getLocalizedPermissionDescription,
   type ParsedSafeError,
 } from "./authorizationManagementHelpers";
 
@@ -381,9 +382,14 @@ const RolePermissionPanel = ({
     const searchLower = permissionSearch.trim().toLowerCase();
     const filtered = catalog.filter((permission) => {
       if (searchLower) {
+        const localizedDesc = getLocalizedPermissionDescription(
+          permission.permissionCode,
+          permission.description,
+        );
         return (
           permission.permissionCode.toLowerCase().includes(searchLower) ||
           permission.description.toLowerCase().includes(searchLower) ||
+          localizedDesc.toLowerCase().includes(searchLower) ||
           permission.module.toLowerCase().includes(searchLower)
         );
       }
@@ -937,7 +943,9 @@ const RolePermissionPanel = ({
                                       </span>
                                     )}
                                   </div>
-                                  <p className="mt-0.5 text-[11px] text-[var(--cm-text-muted)]">{permission.description}</p>
+                                  <p className="mt-0.5 text-[11px] text-[var(--cm-text-muted)]">
+                                    {getLocalizedPermissionDescription(permission.permissionCode, permission.description)}
+                                  </p>
 
                                   {/* Error/Guard Status Badges */}
                                   {!evalResult.isActive && (
