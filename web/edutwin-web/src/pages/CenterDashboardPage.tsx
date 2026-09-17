@@ -74,7 +74,7 @@ export const CenterDashboardPage = () => {
         {/* ✨ A. Hero Command Banner (Trung tâm điều hành trung tâm) */}
         <section
           aria-label="Trung tâm điều hành"
-          className="relative overflow-hidden rounded-3xl border border-indigo-100 bg-gradient-to-br from-indigo-50/70 via-white to-blue-50/60 p-6 sm:p-8 shadow-xl shadow-slate-200/50 backdrop-blur-xl dark:border-indigo-500/20 dark:from-slate-900 dark:via-[#111827] dark:to-slate-900/95 dark:shadow-2xl"
+          className="relative overflow-hidden rounded-3xl border border-indigo-100 bg-gradient-to-br from-indigo-50/70 via-white to-blue-50/60 p-6 sm:p-8 shadow-md shadow-indigo-100/60 backdrop-blur-xl dark:border-indigo-500/20 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950 dark:shadow-none"
         >
           {/* Ambient background glow */}
           <div
