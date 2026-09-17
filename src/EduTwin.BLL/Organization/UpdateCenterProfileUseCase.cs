@@ -1,11 +1,14 @@
 using System;
 using System.Globalization;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using EduTwin.DAL.Persistence;
+using EduTwin.DAL.IdentityAndTenancy;
 using EduTwin.BLL.IdentityAndTenancy;
+using EduTwin.BLL.Seeding;
 using EduTwin.Contracts.Common;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.Contracts.Organization;
@@ -77,9 +80,43 @@ public class UpdateCenterProfileUseCase : IUpdateCenterProfileUseCase
             return UpdateCenterProfileResult.Failure(ErrorCodes.ConcurrencyConflict);
         }
 
+        var oldName = center.CenterName;
+        var oldTimezone = center.Timezone;
+        var oldRowVersion = center.RowVersion;
+
         center.CenterName = centerName;
         center.Timezone = timezone;
-        center.UpdatedAt = _timeProvider.GetUtcNow().UtcDateTime;
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
+        center.UpdatedAt = now;
+
+        var actorUserId = _tenantContext.UserId;
+        var auditLog = new AuthorizationAuditLog
+        {
+            CenterId = AuthorizationBootstrapper.ReservedPlatformCenterId,
+            TargetCenterId = center.CenterId,
+            ActorUserId = null,
+            TargetUserId = null,
+            TargetType = "Center",
+            TargetId = center.CenterId.ToString("D"),
+            ActionType = "CenterMetadataUpdated",
+            BeforeData = JsonSerializer.Serialize(new
+            {
+                CenterName = oldName,
+                Timezone = oldTimezone,
+                RowVersion = oldRowVersion
+            }),
+            AfterData = JsonSerializer.Serialize(new
+            {
+                CenterName = center.CenterName,
+                Timezone = center.Timezone,
+                RowVersion = center.RowVersion + 1
+            }),
+            Reason = $"Quản lý trung tâm cập nhật thông tin vận hành (Tên: '{oldName}' -> '{center.CenterName}', Múi giờ: '{oldTimezone}' -> '{center.Timezone}')",
+            TraceId = Guid.NewGuid().ToString("N"),
+            CreatedAt = now,
+            CreatedBy = actorUserId
+        };
+        _dbContext.AuthorizationAuditLogs.Add(auditLog);
 
         try
         {

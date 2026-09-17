@@ -117,6 +117,12 @@ export const CenterProfilePage = () => {
   const center = centerQuery.data;
   const status = center ? statusPresentation(center.status) : null;
 
+  const isDirty = Boolean(
+    centerQuery.data &&
+      (centerName.trim() !== centerQuery.data.centerName.trim() ||
+        timezone !== (centerQuery.data.timezone || "Asia/Ho_Chi_Minh")),
+  );
+
   return (
     <div className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <div className="mx-auto max-w-6xl space-y-6">
@@ -200,8 +206,14 @@ export const CenterProfilePage = () => {
 
                 {canManage && (
                   <div className="flex flex-col-reverse gap-3 border-t border-[var(--cm-border-subtle)] pt-5 sm:flex-row sm:justify-end">
-                    <button type="button" className="cm-secondary-button" onClick={resetForm} disabled={updateMutation.isPending}>Hủy thay đổi</button>
-                    <button type="submit" className="cm-primary-button" disabled={updateMutation.isPending}>{updateMutation.isPending ? "Đang lưu…" : "Lưu thay đổi"}</button>
+                    {isDirty && (
+                      <button type="button" className="cm-secondary-button" onClick={resetForm} disabled={updateMutation.isPending}>
+                        Hủy thay đổi
+                      </button>
+                    )}
+                    <button type="submit" className="cm-primary-button" disabled={!isDirty || updateMutation.isPending}>
+                      {updateMutation.isPending ? "Đang lưu…" : "Lưu thay đổi"}
+                    </button>
                   </div>
                 )}
               </form>
