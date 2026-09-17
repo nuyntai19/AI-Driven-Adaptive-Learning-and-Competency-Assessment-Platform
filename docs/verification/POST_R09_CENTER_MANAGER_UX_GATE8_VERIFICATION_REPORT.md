@@ -100,7 +100,8 @@ Hệ thống đã thực hiện kiểm chứng **13 kịch bản kiểm thử** 
 
 ### 5.1. Phân định rõ ràng phạm vi Actor Isolation
 - **Giáo viên (Teacher):** Đã được kiểm chứng trực tiếp bằng phiên đăng nhập thật với tài khoản `teacher.math` và xuất bằng chứng hình ảnh E2E ([09_teacher_assignments_isolation.png], [10_teacher_knowledge_graph_isolation.png]). Giao diện duy trì 100% bố cục trắng truyền thống của Teacher, không hiển thị sidebar CenterManager và không bị ảnh hưởng bởi token CSS theme của CenterManager.
-- **Học sinh (Student) & Quản trị nền tảng (PlatformAdmin):** Được bảo toàn bằng cơ chế phân quyền kiến trúc phân cấp `accountTypes` ở cấp độ Route trong [App.tsx](file:///d:/AI-Driven%20Adaptive%20Learning%20and%20Competency%20Assessment%20Platform/web/edutwin-web/src/App.tsx) (`accountTypes={["Student"]}` và `accountTypes={["PlatformAdmin"]}`) kết hợp cùng bộ unit tests tự động (`PlatformCentersPage.test.tsx`, `StudentDashboardPage.test.tsx`). Trong Gate 8 này, bằng chứng hình ảnh E2E tập trung trọng điểm vào Teacher đối với các tuyến đường dùng chung (`/quan-ly/bai-tap` và `/kien-thuc/do-thi`).
+- **Học sinh (Student):** Phân lập tại route tổng quan `/hoc-tap/tong-quan` được thực thi bằng guard quyền hạn học sinh (`permissions.dashboardsStudentRead`), và tại route bài tập `/hoc-tap/bai-tap` bằng `accountTypes={["Student"]}` trong [App.tsx](file:///d:/AI-Driven%20Adaptive%20Learning%20and%20Competency%20Assessment%20Platform/web/edutwin-web/src/App.tsx#L151). Phạm vi này được bảo vệ qua các bài kiểm thử tự động (như `platformCentersPage.test.ts`, `routeCodeSplitting.test.ts`), không thuộc phạm vi xuất bằng chứng E2E trực quan của đợt CenterManager này.
+- **Quản trị nền tảng (PlatformAdmin):** Được bảo toàn bằng ranh giới `accountTypes={["PlatformAdmin"]}` ở cấp độ Route trong [App.tsx](file:///d:/AI-Driven%20Adaptive%20Learning%20and%20Competency%20Assessment%20Platform/web/edutwin-web/src/App.tsx#L163) kết hợp cùng bài kiểm thử `platformCentersPage.test.ts`.
 
 ### 5.2. Danh mục 11 bằng chứng hình ảnh trực quan cố định
 Toàn bộ ảnh chụp màn hình nghiệm thu đã được lưu trữ cố định trong repository tại thư mục `docs/verification/post-r09-center-manager-ux-redesign/`:
@@ -119,10 +120,10 @@ Toàn bộ ảnh chụp màn hình nghiệm thu đã được lưu trữ cố đ
 
 ---
 
-## 6. KẾT LUẬN NGHIỆM THU GATE 8
+## 6. KẾT LUẬN VÀ TRẠNG THÁI GATE 8
 
 Sau khi chuẩn hóa toàn bộ tính truy vết, tài liệu kỹ thuật và bằng chứng thực tế:
-- **Tính chuẩn xác Traceability:** Đường dẫn `/quan-ly/trung-tam` khớp hoàn toàn với định tuyến hệ thống; 100% quyền hạn được ánh xạ chính xác về mã định danh chuẩn trong [permissions.ts](file:///d:/AI-Driven%20Adaptive%20Learning%20and%20Competency%20Assessment%20Platform/web/edutwin-web/src/auth/permissions.ts).
-- **Phân định minh bạch bằng chứng:** Báo cáo tách bạch rõ ràng giữa các màn hình có xuất ảnh chụp tĩnh đối chứng và các màn hình đã kiểm chứng tự động qua luồng duyệt E2E runner.
+- **Tính chuẩn xác Traceability:** Đường dẫn `/quan-ly/trung-tam` khớp hoàn toàn với định tuyến hệ thống; 100% quyền hạn được ánh xạ chính xác về mã định danh canonical trong [permissions.ts](file:///d:/AI-Driven%20Adaptive%20Learning%20and%20Competency%20Assessment%20Platform/web/edutwin-web/src/auth/permissions.ts).
+- **Phân định minh bạch bằng chứng:** Báo cáo tách bạch rõ ràng giữa các màn hình có xuất ảnh chụp tĩnh đối chứng và các màn hình đã kiểm chứng tự động qua luồng duyệt E2E runner; ghi nhận chính xác phạm vi cô lập Teacher thực chứng qua ảnh, cũng như cơ chế guard của Student/PlatformAdmin.
 - **Bảo toàn giao diện và chức năng:** Không có bất kỳ hồi quy chức năng nào; mã nguồn đạt 0 lỗi TypeScript, 0 lỗi ESLint, 0 lỗi khoảng trắng git; giao diện Dark/Light sắc nét và đạt chuẩn thẩm mỹ cao cấp.
-- **Kết luận:** **Gate 8 đã hoàn thành đầy đủ, đạt độ chính xác tài liệu và kỹ thuật, đủ điều kiện để nghiệm thu chính thức.**
+- **Trạng thái hiện tại:** **Mã nguồn và giao diện Gate 8 đã sẵn sàng, tài liệu truy vết đã hoàn chỉnh. Hệ thống đang chờ người dùng kiểm tra trực tiếp trên giao diện thực tế để ghi nhận các phản hồi nghiệm thu cuối cùng.**
