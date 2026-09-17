@@ -310,8 +310,7 @@ public sealed class AuthorizationController(
             instance: HttpContext.Request.Path,
             extensions: new Dictionary<string, object?>
             {
-                ["errorCode"] = errorCode,
-                ["traceId"] = CurrentTraceId()
+                ["errorCode"] = errorCode
             });
     }
 
