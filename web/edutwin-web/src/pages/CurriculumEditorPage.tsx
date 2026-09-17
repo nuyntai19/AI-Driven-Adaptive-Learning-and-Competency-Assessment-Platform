@@ -608,18 +608,18 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
         {formError && (
           <div
             role="alert"
-            className="flex items-start justify-between rounded-xl bg-rose-500/10 p-4 border border-rose-500/30 text-sm font-medium text-rose-300"
+            className="flex items-start justify-between rounded-xl bg-rose-500/10 p-4 border border-rose-500/30 text-sm font-medium text-rose-800 dark:text-rose-300"
           >
             <div>
               <p>{formError.message}</p>
               {formError.traceId && (
-                <p className="mt-1 font-mono text-xs text-rose-200/80">Trace ID: {formError.traceId}</p>
+                <p className="mt-1 font-mono text-xs text-rose-900 dark:text-rose-200/80">Trace ID: {formError.traceId}</p>
               )}
             </div>
             <button
               type="button"
               onClick={() => setFormError(null)}
-              className="text-xs font-semibold text-rose-400 hover:text-rose-200 ml-4 shrink-0"
+              className="text-xs font-semibold text-rose-700 dark:text-rose-400 hover:text-rose-900 dark:hover:text-rose-200 ml-4 shrink-0"
             >
               Đóng
             </button>
@@ -1272,10 +1272,10 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
           onClose={() => setIsPublishModalOpen(false)}
         >
           {publishError && (
-            <div className="mb-4 rounded-lg bg-rose-500/10 p-3 border border-rose-500/30 text-xs font-medium text-rose-300">
+            <div className="mb-4 rounded-lg bg-rose-500/10 p-3 border border-rose-500/30 text-xs font-medium text-rose-800 dark:text-rose-300">
               <p>{publishError.message}</p>
               {publishError.traceId && (
-                <p className="mt-1 font-mono text-[11px] text-rose-200/80">Trace ID: {publishError.traceId}</p>
+                <p className="mt-1 font-mono text-[11px] text-rose-900 dark:text-rose-200/80">Trace ID: {publishError.traceId}</p>
               )}
             </div>
           )}

@@ -46,11 +46,11 @@ const relationTypeLabels: Record<KnowledgeRelationType, string> = {
 };
 
 const nodeTypeBadgeStyles: Record<KnowledgeNodeType, string> = {
-  Subject: "bg-blue-500/10 text-blue-300 border-blue-500/30",
-  Chapter: "bg-purple-500/10 text-purple-300 border-purple-500/30",
-  Topic: "bg-cyan-500/10 text-cyan-300 border-cyan-500/30",
-  Skill: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30",
-  Concept: "bg-amber-500/10 text-amber-300 border-amber-500/30",
+  Subject: "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30",
+  Chapter: "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30",
+  Topic: "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border-cyan-500/30",
+  Skill: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30",
+  Concept: "bg-amber-500/10 text-amber-800 dark:text-amber-300 border-amber-500/30",
 };
 
 const relationTypeColors: Record<KnowledgeRelationType, string> = {
@@ -657,10 +657,10 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
               </h4>
 
               {editNodeError && (
-                <div className="rounded-lg bg-rose-500/10 p-3 border border-rose-500/30 text-xs font-medium text-rose-300">
+                <div className="rounded-lg bg-rose-500/10 p-3 border border-rose-500/30 text-xs font-medium text-rose-800 dark:text-rose-300">
                   <p>{editNodeError.message}</p>
                   {editNodeError.traceId && (
-                    <p className="mt-1 font-mono text-[11px] text-rose-200/80">Trace ID: {editNodeError.traceId}</p>
+                    <p className="mt-1 font-mono text-[11px] text-rose-900 dark:text-rose-200/80">Trace ID: {editNodeError.traceId}</p>
                   )}
                 </div>
               )}
@@ -838,10 +838,10 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
               </h4>
 
               {editEdgeError && (
-                <div className="rounded-lg bg-rose-500/10 p-3 border border-rose-500/30 text-xs font-medium text-rose-300">
+                <div className="rounded-lg bg-rose-500/10 p-3 border border-rose-500/30 text-xs font-medium text-rose-800 dark:text-rose-300">
                   <p>{editEdgeError.message}</p>
                   {editEdgeError.traceId && (
-                    <p className="mt-1 font-mono text-[11px] text-rose-200/80">Trace ID: {editEdgeError.traceId}</p>
+                    <p className="mt-1 font-mono text-[11px] text-rose-900 dark:text-rose-200/80">Trace ID: {editEdgeError.traceId}</p>
                   )}
                 </div>
               )}
@@ -1575,10 +1575,10 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
           onClose={() => setIsCreateNodeOpen(false)}
         >
           {createNodeError && (
-            <div className="mb-4 rounded-lg bg-rose-500/10 p-3 border border-rose-500/30 text-xs font-medium text-rose-300">
+            <div className="mb-4 rounded-lg bg-rose-500/10 p-3 border border-rose-500/30 text-xs font-medium text-rose-800 dark:text-rose-300">
               <p>{createNodeError.message}</p>
               {createNodeError.traceId && (
-                <p className="mt-1 font-mono text-[11px] text-rose-200/80">Trace ID: {createNodeError.traceId}</p>
+                <p className="mt-1 font-mono text-[11px] text-rose-900 dark:text-rose-200/80">Trace ID: {createNodeError.traceId}</p>
               )}
             </div>
           )}
@@ -1736,10 +1736,10 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
           onClose={() => setIsCreateEdgeOpen(false)}
         >
           {createEdgeError && (
-            <div className="mb-4 rounded-lg bg-rose-500/10 p-3 border border-rose-500/30 text-xs font-medium text-rose-300">
+            <div className="mb-4 rounded-lg bg-rose-500/10 p-3 border border-rose-500/30 text-xs font-medium text-rose-800 dark:text-rose-300">
               <p>{createEdgeError.message}</p>
               {createEdgeError.traceId && (
-                <p className="mt-1 font-mono text-[11px] text-rose-200/80">Trace ID: {createEdgeError.traceId}</p>
+                <p className="mt-1 font-mono text-[11px] text-rose-900 dark:text-rose-200/80">Trace ID: {createEdgeError.traceId}</p>
               )}
             </div>
           )}
@@ -1848,10 +1848,10 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
           onClose={() => setDeletingNode(null)}
         >
           {deleteNodeError && (
-            <div className="mb-4 rounded-lg bg-rose-500/10 p-3 border border-rose-500/30 text-xs font-medium text-rose-300">
+            <div className="mb-4 rounded-lg bg-rose-500/10 p-3 border border-rose-500/30 text-xs font-medium text-rose-800 dark:text-rose-300">
               <p>{deleteNodeError.message}</p>
               {deleteNodeError.traceId && (
-                <p className="mt-1 font-mono text-[11px] text-rose-200/80">Trace ID: {deleteNodeError.traceId}</p>
+                <p className="mt-1 font-mono text-[11px] text-rose-900 dark:text-rose-200/80">Trace ID: {deleteNodeError.traceId}</p>
               )}
             </div>
           )}
@@ -1864,7 +1864,7 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
             ?
           </p>
 
-          <div className="rounded-lg bg-amber-500/10 p-3 border border-amber-500/30 text-xs text-amber-300 mb-5">
+          <div className="rounded-lg bg-amber-500/10 p-3 border border-amber-500/30 text-xs text-amber-800 dark:text-amber-300 mb-5">
             <strong>Lưu ý:</strong> Thao tác này sẽ xóa mềm nút kiến thức. Nếu nút đang có dữ liệu liên kết hoặc quan hệ đồ thị, hệ thống sẽ từ chối để bảo vệ toàn vẹn lịch sử.
           </div>
 
@@ -1897,10 +1897,10 @@ const CenterManagerKnowledgeGraphView: React.FC = () => {
           onClose={() => setDeletingEdge(null)}
         >
           {deleteEdgeError && (
-            <div className="mb-4 rounded-lg bg-rose-500/10 p-3 border border-rose-500/30 text-xs font-medium text-rose-300">
+            <div className="mb-4 rounded-lg bg-rose-500/10 p-3 border border-rose-500/30 text-xs font-medium text-rose-800 dark:text-rose-300">
               <p>{deleteEdgeError.message}</p>
               {deleteEdgeError.traceId && (
-                <p className="mt-1 font-mono text-[11px] text-rose-200/80">Trace ID: {deleteEdgeError.traceId}</p>
+                <p className="mt-1 font-mono text-[11px] text-rose-900 dark:text-rose-200/80">Trace ID: {deleteEdgeError.traceId}</p>
               )}
             </div>
           )}

@@ -611,18 +611,18 @@ function CenterManagerQuestionEditorView() {
             ]}
           />
           <section role="alert" className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-6 space-y-3">
-            <h2 className="text-base font-semibold text-rose-200">Không đủ điều kiện phân quyền (Fail-closed Guard)</h2>
-            <p className="text-sm text-rose-300">
+            <h2 className="text-base font-semibold text-rose-900 dark:text-rose-200">Không đủ điều kiện phân quyền (Fail-closed Guard)</h2>
+            <p className="text-sm text-rose-800 dark:text-rose-300">
               Để tạo mới câu hỏi với tư cách CenterManager, tài khoản của bạn bắt buộc phải có đầy đủ 4 quyền sau:
             </p>
-            <ul className="list-disc pl-5 text-xs font-mono text-rose-200 space-y-1">
+            <ul className="list-disc pl-5 text-xs font-mono text-rose-800 dark:text-rose-200 space-y-1">
               <li>curriculum.questions.create</li>
               <li>knowledge.subjects.read</li>
               <li>knowledge.nodes.read</li>
               <li>organization.teachers.read</li>
             </ul>
-            <p className="text-xs text-rose-300/80 pt-2">
-              Các quyền còn thiếu: <strong className="font-mono text-rose-100">{missingCreateCapabilities.join(", ")}</strong>. Vui lòng liên hệ Quản trị viên để được cấp quyền.
+            <p className="text-xs text-rose-900 dark:text-rose-300/80 pt-2">
+              Các quyền còn thiếu: <strong className="font-mono text-rose-950 dark:text-rose-100">{missingCreateCapabilities.join(", ")}</strong>. Vui lòng liên hệ Quản trị viên để được cấp quyền.
             </p>
           </section>
         </div>
@@ -688,7 +688,7 @@ function CenterManagerQuestionEditorView() {
                 <button
                   type="button"
                   onClick={() => setDialogAction("delete")}
-                  className="px-3 py-1.5 rounded-lg text-xs font-semibold text-rose-300 bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 transition"
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold text-rose-700 dark:text-rose-300 bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 transition"
                 >
                   Xóa câu hỏi
                 </button>
@@ -728,18 +728,18 @@ function CenterManagerQuestionEditorView() {
         {formError && (
           <div
             role="alert"
-            className="flex items-start justify-between rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-xs font-medium text-rose-300"
+            className="flex items-start justify-between rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-xs font-medium text-rose-800 dark:text-rose-300"
           >
             <div>
               <p>{formError.message}</p>
               {formError.traceId && (
-                <p className="mt-1 font-mono text-[11px] text-rose-200/80">Trace ID: {formError.traceId}</p>
+                <p className="mt-1 font-mono text-[11px] text-rose-900 dark:text-rose-200/80">Trace ID: {formError.traceId}</p>
               )}
             </div>
             <button
               type="button"
               onClick={() => setFormError(null)}
-              className="text-xs font-semibold text-rose-400 hover:text-rose-200 ml-4 shrink-0"
+              className="text-xs font-semibold text-rose-700 dark:text-rose-400 hover:text-rose-900 dark:hover:text-rose-200 ml-4 shrink-0"
             >
               Đóng
             </button>
@@ -750,12 +750,12 @@ function CenterManagerQuestionEditorView() {
         {isReadOnly && (
           <div
             role="status"
-            className="flex items-center justify-between rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs font-medium text-amber-200"
+            className="flex items-center justify-between rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs font-medium text-amber-900 dark:text-amber-200"
           >
             <div className="flex items-center gap-2">
               <span className="text-base">👁</span>
               <span>
-                <strong>Chế độ chỉ xem:</strong>{" "}
+                <strong className="text-amber-950 dark:text-amber-100">Chế độ chỉ xem:</strong>{" "}
                 {currentStatus !== "Draft"
                   ? `Câu hỏi đang ở trạng thái "${currentStatus}". Theo quy tắc nghiệp vụ, câu hỏi đã Kích hoạt hoặc Lưu trữ là bất biến đối với nội dung.`
                   : "Tài khoản của bạn chỉ có quyền đọc (thiếu quyền curriculum.questions.update)."}
@@ -1256,14 +1256,14 @@ function CenterManagerQuestionEditorView() {
                   {formData.gradingCriteria?.commonErrors?.map((errItem, i) => (
                     <span
                       key={i}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-rose-500/10 border border-rose-500/30 px-3 py-1 text-xs text-rose-300"
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-rose-500/10 border border-rose-500/30 px-3 py-1 text-xs text-rose-800 dark:text-rose-300"
                     >
                       <span>⚠ {errItem}</span>
                       {!isReadOnly && (
                         <button
                           type="button"
                           onClick={() => removeCommonError(i)}
-                          className="hover:text-rose-100"
+                          className="hover:text-rose-950 dark:hover:text-rose-100"
                         >
                           ✕
                         </button>

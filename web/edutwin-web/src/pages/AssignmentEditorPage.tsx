@@ -430,17 +430,17 @@ function CenterManagerAssignmentEditorView() {
             ]}
           />
           <section role="alert" className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-6 space-y-3">
-            <h2 className="text-base font-semibold text-rose-200">Không đủ điều kiện phân quyền (Fail-closed Guard)</h2>
-            <p className="text-sm text-rose-300">
+            <h2 className="text-base font-semibold text-rose-900 dark:text-rose-200">Không đủ điều kiện phân quyền (Fail-closed Guard)</h2>
+            <p className="text-sm text-rose-800 dark:text-rose-300">
               Quy trình thiết lập bài tập yêu cầu tối thiểu các quyền sau:
             </p>
-            <ul className="list-disc pl-5 text-xs font-mono text-rose-200 space-y-1">
+            <ul className="list-disc pl-5 text-xs font-mono text-rose-800 dark:text-rose-200 space-y-1">
               <li>assignments.assignments.create (hoặc update)</li>
               <li>organization.classes.read</li>
               <li>curriculum.questions.read</li>
             </ul>
-            <p className="text-xs text-rose-300/80 pt-2">
-              Các quyền còn thiếu: <strong className="font-mono text-rose-100">{missingCapabilities.join(", ")}</strong>. Vui lòng liên hệ Quản trị viên để được hỗ trợ.
+            <p className="text-xs text-rose-900 dark:text-rose-300/80 pt-2">
+              Các quyền còn thiếu: <strong className="font-mono text-rose-950 dark:text-rose-100">{missingCapabilities.join(", ")}</strong>. Vui lòng liên hệ Quản trị viên để được hỗ trợ.
             </p>
           </section>
         </div>
@@ -541,18 +541,18 @@ function CenterManagerAssignmentEditorView() {
         {formError && (
           <div
             role="alert"
-            className="flex items-start justify-between rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-xs font-medium text-rose-300"
+            className="flex items-start justify-between rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-xs font-medium text-rose-800 dark:text-rose-300"
           >
             <div>
               <p>{formError.message}</p>
               {formError.traceId && (
-                <p className="mt-1 font-mono text-[11px] text-rose-200/80">Trace ID: {formError.traceId}</p>
+                <p className="mt-1 font-mono text-[11px] text-rose-900 dark:text-rose-200/80">Trace ID: {formError.traceId}</p>
               )}
             </div>
             <button
               type="button"
               onClick={() => setFormError(null)}
-              className="text-xs font-semibold text-rose-400 hover:text-rose-200 ml-4 shrink-0"
+              className="text-xs font-semibold text-rose-700 dark:text-rose-400 hover:text-rose-900 dark:hover:text-rose-200 ml-4 shrink-0"
             >
               Đóng
             </button>
@@ -563,14 +563,14 @@ function CenterManagerAssignmentEditorView() {
         {isReadOnly && (
           <div
             role="status"
-            className="flex items-center justify-between rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs font-medium text-amber-200"
+            className="flex items-center justify-between rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs font-medium text-amber-900 dark:text-amber-200"
           >
             <div className="flex items-center gap-2">
               <span className="text-base">👁</span>
               <span>
                 <strong>Chế độ chỉ xem:</strong> Bài tập đang ở trạng thái{" "}
-                <strong className="text-amber-100">{assignment?.status}</strong>. Chỉ bài tập ở trạng thái Bản nháp (Draft) và có quyền{" "}
-                <code className="font-mono text-amber-300">assignments.assignments.update</code> mới được phép chỉnh sửa.
+                <strong className="text-amber-950 dark:text-amber-100 font-bold">{assignment?.status}</strong>. Chỉ bài tập ở trạng thái Bản nháp (Draft) và có quyền{" "}
+                <code className="font-mono text-amber-800 dark:text-amber-300 font-semibold">assignments.assignments.update</code> mới được phép chỉnh sửa.
               </span>
             </div>
             {assignment?.status && <StatusBadge status={assignment.status} />}

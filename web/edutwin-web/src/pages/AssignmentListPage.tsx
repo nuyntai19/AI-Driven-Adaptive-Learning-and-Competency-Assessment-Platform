@@ -233,18 +233,18 @@ function CenterManagerAssignmentListView() {
         {actionError && (
           <div
             role="alert"
-            className="flex items-start justify-between rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-xs font-medium text-rose-300"
+            className="flex items-start justify-between rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-xs font-medium text-rose-800 dark:text-rose-300"
           >
             <div>
               <p>{actionError.message}</p>
               {actionError.traceId && (
-                <p className="mt-1 font-mono text-[11px] text-rose-200/80">Trace ID: {actionError.traceId}</p>
+                <p className="mt-1 font-mono text-[11px] text-rose-900 dark:text-rose-200/80">Trace ID: {actionError.traceId}</p>
               )}
             </div>
             <button
               type="button"
               onClick={() => setActionError(null)}
-              className="text-xs font-semibold text-rose-400 hover:text-rose-200 ml-4 shrink-0"
+              className="text-xs font-semibold text-rose-700 dark:text-rose-400 hover:text-rose-900 dark:hover:text-rose-200 ml-4 shrink-0"
             >
               Đóng
             </button>
