@@ -1,0 +1,470 @@
+/* =============================================================================
+   TEACHER WORKSPACE DESIGN SYSTEM
+   Retro-Modern & Neo-Brutalist Soft Theme for Educators
+   ============================================================================= */
+
+[data-actor="teacher"] {
+  --th-bg: #0f131a;
+  --th-surface: #181f2a;
+  --th-surface-raised: #1f2838;
+  --th-surface-muted: #141a24;
+  --th-surface-subtle: #1c2433;
+  --th-surface-ground: #0b0e14;
+  --th-border: #384252;
+  --th-border-subtle: rgba(148, 163, 184, 0.2);
+  --th-text: #f8fafc;
+  --th-text-primary: #f8fafc;
+  --th-text-secondary: #cbd5e1;
+  --th-text-muted: #94a3b8;
+  
+  --th-sidebar-bg: #ff946f;
+  --th-sidebar-bg-dark: #f0825d;
+  --th-nav-card-inactive: #F9F2AB;
+  --th-nav-card-inactive-hover: #fff9bf;
+  --th-nav-card-active: #ffffff;
+  --th-nav-text-dark: #18181b;
+  
+  --at-accent: #ff946f;
+  --at-accent-hover: #ff6e3e;
+  --at-accent-wash: #f8e2d7;
+  --at-accent-rgb: 255, 148, 111;
+  --at-accent-text: #b2401c;
+  --at-secondary: #ce9a38;
+  --at-secondary-wash: #f3e6c8;
+  --at-tertiary: #2d4a5c;
+  --at-tertiary-wash: #d9e3e9;
+  --at-lime: #c3c96e;
+  --at-lime-wash: #f0f1dc;
+  --at-success: #4f7d2a;
+  --at-danger: #9e2b22;
+  
+  --th-terracotta: var(--at-accent);
+  --th-coral: var(--at-accent);
+  --th-butter: #F9F2AB;
+  --th-emerald: var(--at-success);
+  --th-teal: #14b8a6;
+  --th-cyan: #06b6d4;
+  --th-blue: #3b82f6;
+  --th-indigo: #6366f1;
+  
+  --th-success: var(--at-success);
+  --th-warning: var(--at-secondary);
+  --th-danger: var(--at-danger);
+  --th-focus: var(--at-accent);
+  --th-primary: var(--at-accent);
+  --th-info: var(--at-tertiary);
+  
+  --th-radius-sm: 0.375rem;
+  --th-radius-md: 0.625rem;
+  --th-radius-lg: 0.875rem;
+  --th-radius-xl: 1rem;
+  --th-shadow: 0 3px 0 #384252;
+
+  color: var(--th-text);
+  color-scheme: dark;
+}
+
+[data-actor="teacher"][data-theme="light"],
+[data-theme="light"] [data-actor="teacher"] {
+  --th-bg: #f6eedf;
+  --th-surface: #ffffff;
+  --th-surface-raised: #ffffff;
+  --th-surface-muted: #ede5d4;
+  --th-surface-subtle: #f2ead8;
+  --th-surface-ground: #ebe2cf;
+  --th-border: #231f1a;
+  --th-border-subtle: #cbbfae;
+  --th-text: #1f1c18;
+  --th-text-primary: #1f1c18;
+  --th-text-secondary: #4a453e;
+  --th-text-muted: #787168;
+  
+  --th-sidebar-bg: #ff946f;
+  --th-sidebar-bg-dark: #f0825d;
+  --th-nav-card-inactive: #F9F2AB;
+  --th-nav-card-inactive-hover: #fff9bf;
+  --th-nav-card-active: #ffffff;
+  --th-nav-text-dark: #18181b;
+  
+  --at-accent: #ff946f;
+  --at-accent-hover: #ff6e3e;
+  --at-accent-wash: #f8e2d7;
+  --at-accent-rgb: 255, 148, 111;
+  --at-accent-text: #b2401c;
+  --at-secondary: #ce9a38;
+  --at-secondary-wash: #f3e6c8;
+  --at-tertiary: #2d4a5c;
+  --at-tertiary-wash: #d9e3e9;
+  --at-lime: #c3c96e;
+  --at-lime-wash: #f0f1dc;
+  --at-success: #4f7d2a;
+  --at-danger: #9e2b22;
+  
+  --th-terracotta: var(--at-accent);
+  --th-coral: var(--at-accent);
+  --th-butter: #F9F2AB;
+  --th-emerald: var(--at-success);
+  --th-teal: #0d9488;
+  --th-cyan: #0284c7;
+  --th-blue: #2563eb;
+  --th-indigo: #4f46e5;
+  
+  --th-success: var(--at-success);
+  --th-warning: var(--at-secondary);
+  --th-danger: var(--at-danger);
+  --th-focus: var(--at-accent);
+  --th-primary: var(--at-accent);
+  --th-info: var(--at-tertiary);
+  
+  --th-shadow: 0 2px 0 #231f1a;
+
+  color: var(--th-text);
+  color-scheme: light;
+}
+
+[data-actor="teacher"] .th-page-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1.5rem;
+  width: 100%;
+}
+
+@media (min-width: 1024px) {
+  [data-actor="teacher"] .th-page-container {
+    padding: 2rem;
+  }
+}
+
+[data-actor="teacher"] .th-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+@media (min-width: 640px) {
+  [data-actor="teacher"] .th-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  [data-actor="teacher"] .th-stats-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+[data-actor="teacher"] .th-focus-ring:focus-visible,
+[data-actor="teacher"] .th-icon-button:focus-visible,
+[data-actor="teacher"] .th-primary-button:focus-visible,
+[data-actor="teacher"] .th-secondary-button:focus-visible,
+[data-actor="teacher"] .th-dashed-button:focus-visible {
+  outline: 2px solid var(--th-focus);
+  outline-offset: 2px;
+}
+
+[data-actor="teacher"] .th-surface {
+  border: 1.5px solid var(--th-border);
+  border-radius: var(--th-radius-lg);
+  background: var(--th-surface);
+  box-shadow: var(--th-shadow);
+}
+
+[data-actor="teacher"] .th-container-box {
+  border: 1.5px solid var(--th-border);
+  border-radius: var(--th-radius-lg);
+  background: var(--th-surface-muted);
+  box-shadow: var(--th-shadow);
+}
+
+[data-actor="teacher"] .th-primary-button,
+[data-actor="teacher"] .th-secondary-button,
+[data-actor="teacher"] .th-icon-button,
+[data-actor="teacher"] .th-dashed-button {
+  display: inline-flex;
+  min-height: 2.375rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: var(--th-radius-md);
+  font-weight: 700;
+  transition: transform 100ms ease, box-shadow 100ms ease, background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+[data-actor="teacher"] .th-primary-button {
+  border: 1.5px solid var(--th-border);
+  background: var(--th-primary);
+  color: #ffffff;
+  padding: 0.5rem 1rem;
+  box-shadow: var(--th-shadow);
+}
+
+[data-actor="teacher"] .th-primary-button:hover:not(:disabled) {
+  background: #f06a3d;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 0 var(--th-border);
+}
+
+[data-actor="teacher"] .th-primary-button:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: 0 1px 0 var(--th-border);
+}
+
+[data-actor="teacher"] .th-secondary-button {
+  border: 1.5px solid var(--th-border);
+  background: var(--th-surface);
+  color: var(--th-text);
+  padding: 0.5rem 1rem;
+  box-shadow: var(--th-shadow);
+}
+
+[data-actor="teacher"] .th-secondary-button:hover:not(:disabled),
+[data-actor="teacher"] .th-icon-button:hover:not(:disabled) {
+  background: var(--th-surface-muted);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 0 var(--th-border);
+}
+
+[data-actor="teacher"] .th-secondary-button:active:not(:disabled),
+[data-actor="teacher"] .th-icon-button:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: 0 1px 0 var(--th-border);
+}
+
+[data-actor="teacher"] .th-icon-button {
+  border: 1.5px solid var(--th-border);
+  background: var(--th-surface);
+  color: var(--th-text);
+  padding: 0.5rem;
+  box-shadow: var(--th-shadow);
+}
+
+[data-actor="teacher"] .th-dashed-button {
+  border: 1.5px dashed var(--th-text-muted);
+  background: transparent;
+  color: var(--th-text-secondary);
+  padding: 0.5rem 1rem;
+  font-size: 0.8125rem;
+}
+
+[data-actor="teacher"] .th-dashed-button:hover:not(:disabled) {
+  border-style: solid;
+  border-color: var(--th-border);
+  background: var(--th-surface);
+  color: var(--th-text);
+  box-shadow: var(--th-shadow);
+}
+
+[data-actor="teacher"] .th-danger-button {
+  display: inline-flex;
+  min-height: 2.375rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: var(--th-radius-md);
+  font-weight: 700;
+  border: 1.5px solid var(--th-border);
+  background: #fee2e2;
+  color: #991b1b;
+  padding: 0.5rem 1rem;
+  box-shadow: var(--th-shadow);
+  transition: transform 100ms ease, box-shadow 100ms ease, background-color 140ms ease;
+}
+
+[data-actor="teacher"] .th-danger-button:hover:not(:disabled) {
+  background: #fecaca;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 0 var(--th-border);
+}
+
+[data-actor="teacher"] .th-danger-button:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: 0 1px 0 var(--th-border);
+}
+
+[data-actor="teacher"] .th-danger-button:focus-visible {
+  outline: 2px solid var(--th-focus);
+  outline-offset: 2px;
+}
+
+[data-actor="teacher"] button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+[data-actor="teacher"] .th-field,
+[data-actor="teacher"] .th-input {
+  min-height: 2.375rem;
+  border: 1.5px solid var(--th-border);
+  border-radius: var(--th-radius-md);
+  background: var(--th-surface);
+  color: var(--th-text);
+  padding: 0.5rem 0.75rem;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+[data-actor="teacher"] .th-textarea {
+  min-height: 5rem;
+  border: 1.5px solid var(--th-border);
+  border-radius: var(--th-radius-md);
+  background: var(--th-surface);
+  color: var(--th-text);
+  padding: 0.5rem 0.75rem;
+  width: 100%;
+  resize: vertical;
+  font-family: inherit;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+[data-actor="teacher"] .th-select,
+[data-actor="teacher"] select.th-field,
+[data-actor="teacher"] select {
+  min-height: 2.375rem;
+  border: 1.5px solid var(--th-border);
+  border-radius: var(--th-radius-md);
+  background: var(--th-surface);
+  color: var(--th-text);
+  padding: 0.5rem 0.75rem;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+[data-actor="teacher"] .th-field:focus-visible,
+[data-actor="teacher"] .th-input:focus-visible,
+[data-actor="teacher"] .th-textarea:focus-visible,
+[data-actor="teacher"] .th-select:focus-visible {
+  border-color: var(--th-border);
+  outline: 2px solid var(--th-focus);
+  outline-offset: 1px;
+}
+
+[data-actor="teacher"] .th-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--th-radius-sm);
+  font-size: 0.7rem;
+  font-weight: 800;
+  line-height: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border: 1.5px solid var(--th-border);
+}
+
+/* Color Tokens from User Specification */
+[data-actor="teacher"] .th-tag-accent,
+[data-actor="teacher"] .th-badge-accent {
+  background: var(--at-accent);
+  color: #18181b;
+  border: 1.5px solid var(--th-border);
+}
+
+[data-actor="teacher"] .th-tag-accent-wash {
+  background: var(--at-accent-wash);
+  color: var(--at-accent-text);
+  border: 1.5px solid var(--th-border);
+}
+
+[data-actor="teacher"] .th-tag-secondary,
+[data-actor="teacher"] .th-badge-secondary {
+  background: var(--at-secondary);
+  color: #18181b;
+  border: 1.5px solid var(--th-border);
+}
+
+[data-actor="teacher"] .th-tag-secondary-wash {
+  background: var(--at-secondary-wash);
+  color: #18181b;
+  border: 1.5px solid var(--th-border);
+}
+
+[data-actor="teacher"] .th-tag-tertiary,
+[data-actor="teacher"] .th-badge-tertiary {
+  background: var(--at-tertiary);
+  color: #ffffff;
+  border: 1.5px solid var(--th-border);
+}
+
+[data-actor="teacher"] .th-tag-tertiary-wash {
+  background: var(--at-tertiary-wash);
+  color: var(--at-tertiary);
+  border: 1.5px solid var(--th-border);
+}
+
+[data-actor="teacher"] .th-tag-lime {
+  background: var(--at-lime);
+  color: #18181b;
+  border: 1.5px solid var(--th-border);
+}
+
+[data-actor="teacher"] .th-tag-lime-wash {
+  background: var(--at-lime-wash);
+  color: #18181b;
+  border: 1.5px solid var(--th-border);
+}
+
+[data-actor="teacher"] .th-tag-success {
+  background: var(--at-success);
+  color: #ffffff;
+  border: 1.5px solid var(--th-border);
+}
+
+[data-actor="teacher"] .th-tag-danger {
+  background: var(--at-danger);
+  color: #ffffff;
+  border: 1.5px solid var(--th-border);
+}
+
+[data-actor="teacher"] .th-tag-neutral {
+  background: #ffffff;
+  color: #18181b;
+  border: 1.5px solid var(--th-border);
+}
+
+[data-actor="teacher"] .th-badge-success {
+  background: var(--at-lime-wash);
+  color: var(--at-success);
+  border: 1.5px solid var(--th-border);
+}
+
+[data-actor="teacher"] .th-badge-warning {
+  background: var(--at-secondary-wash);
+  color: #713f12;
+  border: 1.5px solid var(--th-border);
+}
+
+[data-actor="teacher"] .th-badge-danger {
+  background: #fee2e2;
+  color: var(--at-danger);
+  border: 1.5px solid var(--th-border);
+}
+
+[data-actor="teacher"] .th-badge-info {
+  background: var(--at-tertiary-wash);
+  color: var(--at-tertiary);
+  border: 1.5px solid var(--th-border);
+}
+
+[data-actor="teacher"] .th-badge-neutral {
+  background: #ffffff;
+  color: #334155;
+  border: 1.5px solid var(--th-border);
+}
+
+/* Custom Scrollbar for Retro Feel */
+[data-actor="teacher"] .custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+[data-actor="teacher"] .custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+[data-actor="teacher"] .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 9999px;
+}
+
