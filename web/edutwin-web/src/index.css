@@ -1,3 +1,13 @@
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
+
+/* Enforce crisp high-contrast text for MathLive virtual math fields */
+math-field {
+  --color: #0f172a;
+  --placeholder-color: #4f46e5;
+  --caret-color: #4f46e5;
+  --selection-background-color: #c7d2fe;
+  color: #0f172a !important;
+  background-color: transparent !important;
+}

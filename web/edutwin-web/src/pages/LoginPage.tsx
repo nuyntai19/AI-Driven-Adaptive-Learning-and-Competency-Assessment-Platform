@@ -256,6 +256,12 @@ export const LoginPage = () => {
     if (user?.accountType === "CenterManager") {
       return <Navigate to="/quan-ly/tong-quan-trung-tam" replace />;
     }
+    if (user?.accountType === "Student") {
+      return <Navigate to="/hoc-tap/tong-quan" replace />;
+    }
+    if (user?.accountType === "Teacher") {
+      return <Navigate to="/quan-ly/tong-quan-lop-hoc" replace />;
+    }
     return <Navigate to="/" replace />;
   }
 
@@ -283,6 +289,10 @@ export const LoginPage = () => {
       const currentUser = useAuthStore.getState().user;
       if (currentUser?.accountType === "CenterManager") {
         navigate("/quan-ly/tong-quan-trung-tam", { replace: true });
+      } else if (currentUser?.accountType === "Student") {
+        navigate("/hoc-tap/tong-quan", { replace: true });
+      } else if (currentUser?.accountType === "Teacher") {
+        navigate("/quan-ly/tong-quan-lop-hoc", { replace: true });
       } else {
         navigate("/", { replace: true });
       }

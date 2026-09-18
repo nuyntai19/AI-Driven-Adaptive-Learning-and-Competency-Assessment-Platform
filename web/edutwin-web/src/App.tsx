@@ -32,6 +32,8 @@ const LearningPlayerPage = lazy(() => import("./pages/LearningPlayerPage").then(
 const TeacherClassDashboardPage = lazy(() => import("./pages/TeacherClassDashboardPage").then((module) => ({ default: module.TeacherClassDashboardPage })));
 const ReviewQueuePage = lazy(() => import("./pages/ReviewQueuePage").then((module) => ({ default: module.ReviewQueuePage })));
 const TeacherStudentTwinPage = lazy(() => import("./pages/TeacherStudentTwinPage").then((module) => ({ default: module.TeacherStudentTwinPage })));
+import { StudentLayout } from "./layouts/StudentLayout";
+
 const CenterDashboardPage = lazy(() => import("./pages/CenterDashboardPage").then((module) => ({ default: module.CenterDashboardPage })));
 const CenterProfilePage = lazy(() => import("./pages/CenterProfilePage").then((module) => ({ default: module.CenterProfilePage })));
 const AuthorizationManagementPage = lazy(() => import("./pages/AuthorizationManagementPage").then((module) => ({ default: module.AuthorizationManagementPage })));
@@ -64,13 +66,21 @@ function App() {
           <Route path="/" element={<AuthenticatedHomePage />} />
           <Route path="/khong-co-quyen" element={<AccessDeniedPage />} />
 
-          {/* Student R08 Experiences */}
-          <Route element={<PermissionRoute allOf={[permissions.dashboardsStudentRead]} />}>
-            <Route path="/hoc-tap/tong-quan" element={<StudentDashboardPage />} />
+          {/* Student Portal Experiences */}
+          <Route element={<StudentLayout />}>
+            <Route element={<PermissionRoute allOf={[permissions.dashboardsStudentRead]} />}>
+              <Route path="/hoc-tap/tong-quan" element={<StudentDashboardPage />} />
+            </Route>
+            <Route element={<PermissionRoute allOf={[permissions.twinStudentReadOwn]} />}>
+              <Route path="/hoc-tap/ho-so-nang-luc" element={<StudentTwinPage />} />
+            </Route>
+            <Route element={<PermissionRoute allOf={[permissions.assignmentsRead]} accountTypes={["Student"]} />}>
+              <Route path="/hoc-tap/bai-tap" element={<StudentAssignmentsPage />} />
+              <Route path="/hoc-tap/bai-tap/:id" element={<StudentAssignmentDetailPage />} />
+            </Route>
           </Route>
-          <Route element={<PermissionRoute allOf={[permissions.twinStudentReadOwn]} />}>
-            <Route path="/hoc-tap/ho-so-nang-luc" element={<StudentTwinPage />} />
-          </Route>
+
+          {/* Focused Full-Screen Learning Player */}
           <Route element={<PermissionRoute allOf={[permissions.learningAttemptsSubmit]} />}>
             <Route path="/hoc-tap/luyen-tap" element={<LearningPlayerPage />} />
             <Route path="/hoc-tap/luyen-tap/:questionId" element={<LearningPlayerPage />} />
@@ -146,11 +156,6 @@ function App() {
           </Route>
           <Route element={<PermissionRoute allOf={[permissions.assignmentsRead]} accountTypes={["CenterManager", "Teacher"]} />}>
             <Route path="/quan-ly/bai-tap/:id/tien-do" element={<AssignmentProgressPage />} />
-          </Route>
-
-          <Route element={<PermissionRoute allOf={[permissions.assignmentsRead]} accountTypes={["Student"]} />}>
-            <Route path="/hoc-tap/bai-tap" element={<StudentAssignmentsPage />} />
-            <Route path="/hoc-tap/bai-tap/:id" element={<StudentAssignmentDetailPage />} />
           </Route>
 
           <Route element={<PermissionRoute anyOf={authorizationUiPermissions} accountTypes={["CenterManager"]} />}>

@@ -39,6 +39,14 @@ export const AuthenticatedHomePage = () => {
     }
   }
 
+  if (user.accountType === "Student") {
+    return <Navigate to="/hoc-tap/tong-quan" replace />;
+  }
+
+  if (user.accountType === "Teacher") {
+    return <Navigate to="/quan-ly/tong-quan-lop-hoc" replace />;
+  }
+
   const isCenterManager = user.accountType === "CenterManager";
   if (isCenterManager) {
     return <Navigate to="/quan-ly/tong-quan-trung-tam" replace />;
@@ -332,21 +340,12 @@ export const AuthenticatedHomePage = () => {
                 </Link>
               )}
 
-              {(hasPermission(permissions.assignmentsCreate) || (hasPermission(permissions.assignmentsRead) && user.accountType !== "Student")) && (
+              {(hasPermission(permissions.assignmentsCreate) || hasPermission(permissions.assignmentsRead)) && (
                 <Link
                   to="/quan-ly/bai-tap"
                   className="rounded-lg bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50"
                 >
                   Quản lý bài tập
-                </Link>
-              )}
-
-              {user.accountType === "Student" && hasPermission(permissions.assignmentsRead) && (
-                <Link
-                  to="/hoc-tap/bai-tap"
-                  className="rounded-lg bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50"
-                >
-                  Bài tập của tôi
                 </Link>
               )}
 

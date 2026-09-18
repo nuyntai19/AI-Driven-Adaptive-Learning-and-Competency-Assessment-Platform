@@ -6,6 +6,7 @@ interface RouteChunkBoundaryProps {
 
 interface RouteChunkBoundaryState {
   failed: boolean;
+  error?: Error | null;
 }
 
 export const RouteLoadingFallback = () => (
@@ -23,14 +24,14 @@ export const RouteLoadingFallback = () => (
 );
 
 export class RouteChunkBoundary extends Component<RouteChunkBoundaryProps, RouteChunkBoundaryState> {
-  state: RouteChunkBoundaryState = { failed: false };
+  state: RouteChunkBoundaryState = { failed: false, error: null };
 
-  static getDerivedStateFromError(): RouteChunkBoundaryState {
-    return { failed: true };
+  static getDerivedStateFromError(error: Error): RouteChunkBoundaryState {
+    return { failed: true, error };
   }
 
-  componentDidCatch() {
-    // The user-facing state intentionally avoids exposing chunk URLs or raw runtime details.
+  componentDidCatch(error: Error, info: any) {
+    console.error("RouteChunkBoundary caught runtime error:", error, info);
   }
 
   render() {
@@ -43,6 +44,11 @@ export class RouteChunkBoundary extends Component<RouteChunkBoundaryProps, Route
           <p className="mt-3 text-sm text-slate-300">
             Phiên bản giao diện có thể vừa được cập nhật hoặc kết nối đang gián đoạn. Hãy tải lại để tiếp tục.
           </p>
+          {this.state.error && (
+            <div className="mt-4 p-3 rounded-xl bg-rose-950/60 border border-rose-800 text-left text-xs font-mono text-rose-300 max-h-40 overflow-auto whitespace-pre-wrap">
+              {this.state.error.message || String(this.state.error)}
+            </div>
+          )}
           <button
             type="button"
             className="mt-6 rounded-lg bg-indigo-500 px-5 py-2.5 font-semibold text-white hover:bg-indigo-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-300"

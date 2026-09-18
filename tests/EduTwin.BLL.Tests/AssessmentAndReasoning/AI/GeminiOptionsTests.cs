@@ -71,6 +71,45 @@ public sealed class GeminiOptionsTests
         AssertSanitizedConfigurationError(exception, "OVERSIZED_TIMEOUT_MODEL_MUST_NOT_LEAK");
     }
 
+    [Fact]
+    public void GeminiOptions_GetAllApiKeys_CombinesApiKeyAndBackupKeysAndBackupKeys2()
+    {
+        var options = new GeminiOptions
+        {
+            ApiKey = "key-primary",
+            BackupKeys = "key-backup-1",
+            BackupKeys_2 = "key-backup-2",
+            Model = "gemini-2.5-flash"
+        };
+
+        var allKeys = options.GetAllApiKeys();
+
+        Assert.Equal(3, allKeys.Count);
+        Assert.Equal("key-primary", allKeys[0]);
+        Assert.Equal("key-backup-1", allKeys[1]);
+        Assert.Equal("key-backup-2", allKeys[2]);
+    }
+
+    [Fact]
+    public void GeminiOptions_GetAllApiKeys_DeduplicatesAndSplitsDelimiters()
+    {
+        var options = new GeminiOptions
+        {
+            ApiKey = "key1, key2; key1",
+            BackupKeys = "key3, key2",
+            BackupKeys_2 = "key4",
+            Model = "gemini-2.5-flash"
+        };
+
+        var allKeys = options.GetAllApiKeys();
+
+        Assert.Equal(4, allKeys.Count);
+        Assert.Equal("key1", allKeys[0]);
+        Assert.Equal("key2", allKeys[1]);
+        Assert.Equal("key3", allKeys[2]);
+        Assert.Equal("key4", allKeys[3]);
+    }
+
     private static GeminiOptions CreateValidOptions() =>
         new()
         {
