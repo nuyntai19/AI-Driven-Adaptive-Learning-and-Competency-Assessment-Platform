@@ -37,6 +37,8 @@ services:
       - Jwt__Issuer=${Jwt__Issuer}
       - Jwt__Audience=${Jwt__Audience}
       - Gemini__ApiKey=${Gemini__ApiKey}
+      - Gemini__BackupKeys=${Gemini__BackupKeys:-}
+      - Gemini__BackupKeys_2=${Gemini__BackupKeys_2:-}
       - Gemini__Model=${Gemini__Model}
       - HealthChecks__MySqlHost=${HealthChecks__MySqlHost}
       - HealthChecks__MySqlPort=${HealthChecks__MySqlPort}

@@ -1,5 +1,7 @@
+using System.Collections.Concurrent;
 using Google.GenAI;
 using Google.GenAI.Types;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace EduTwin.API.AssessmentAndReasoning.AI;
@@ -7,14 +9,18 @@ namespace EduTwin.API.AssessmentAndReasoning.AI;
 public sealed class GoogleGenAIGenerateContentClient : IGeminiGenerateContentClient, IDisposable
 {
     private readonly GeminiOptions _options;
-    private readonly object _clientLock = new();
-    private Client? _client;
+    private readonly ILogger<GoogleGenAIGenerateContentClient>? _logger;
+    private readonly ConcurrentDictionary<string, Client> _clients = new();
+    private int _requestCounter;
     private bool _disposed;
 
-    public GoogleGenAIGenerateContentClient(IOptions<GeminiOptions> options)
+    public GoogleGenAIGenerateContentClient(
+        IOptions<GeminiOptions> options,
+        ILogger<GoogleGenAIGenerateContentClient>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         _options = options.Value;
+        _logger = logger;
     }
 
     public async Task<GeminiGenerateContentResult> GenerateContentAsync(
@@ -23,33 +29,64 @@ public sealed class GoogleGenAIGenerateContentClient : IGeminiGenerateContentCli
         GenerateContentConfig config,
         CancellationToken cancellationToken)
     {
-        try
+        var keys = _options.GetAllApiKeys();
+        if (keys.Count == 0)
         {
-            var response = await GetOrCreateClient().Models.GenerateContentAsync(
-                model,
-                prompt,
-                config,
-                cancellationToken);
-            cancellationToken.ThrowIfCancellationRequested();
+            throw GeminiAdapterException.ConfigurationInvalid();
+        }
 
-            return new GeminiGenerateContentResult(
-                response.Text ?? string.Empty,
-                response.UsageMetadata?.PromptTokenCount,
-                response.UsageMetadata?.CandidatesTokenCount,
-                response.UsageMetadata?.TotalTokenCount);
-        }
-        catch (OperationCanceledException)
+        var startIndex = Interlocked.Increment(ref _requestCounter);
+        Exception? lastException = null;
+
+        for (var i = 0; i < keys.Count; i++)
         {
-            throw;
+            var keyIndex = Math.Abs((startIndex + i) % keys.Count);
+            var apiKey = keys[keyIndex];
+
+            try
+            {
+                var client = GetOrCreateClient(apiKey);
+                var response = await client.Models.GenerateContentAsync(
+                    model,
+                    prompt,
+                    config,
+                    cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+
+                return new GeminiGenerateContentResult(
+                    response.Text ?? string.Empty,
+                    response.UsageMetadata?.PromptTokenCount,
+                    response.UsageMetadata?.CandidatesTokenCount,
+                    response.UsageMetadata?.TotalTokenCount);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (GeminiAdapterException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                lastException = ex;
+                _logger?.LogWarning(
+                    ex,
+                    "Gemini API request failed using key index {KeyIndex} ({KeyPreview}...). Trying next key ({Attempt}/{TotalKeys}). Error: {ErrorMessage}",
+                    keyIndex,
+                    apiKey[..Math.Min(10, apiKey.Length)],
+                    i + 1,
+                    keys.Count,
+                    ex.Message);
+            }
         }
-        catch (GeminiAdapterException)
-        {
-            throw;
-        }
-        catch
-        {
-            throw GeminiAdapterException.RequestFailed();
-        }
+
+        _logger?.LogError(
+            lastException,
+            "All {TotalKeys} Gemini API keys failed during GenerateContentAsync.",
+            keys.Count);
+
+        throw GeminiAdapterException.RequestFailed();
     }
 
     public async Task<GeminiGenerateContentResult> GenerateContentWithImagesAsync(
@@ -64,78 +101,106 @@ public sealed class GoogleGenAIGenerateContentClient : IGeminiGenerateContentCli
             return await GenerateContentAsync(model, prompt, config, cancellationToken);
         }
 
-        try
+        var keys = _options.GetAllApiKeys();
+        if (keys.Count == 0)
         {
-            var parts = new List<Part> { new() { Text = prompt } };
-            foreach (var image in images)
-            {
-                if (image.Data is null || image.Data.Length == 0 ||
-                    !string.Equals(image.MimeType, "image/png", StringComparison.Ordinal))
-                {
-                    throw GeminiAdapterException.RequestFailed();
-                }
-                parts.Add(new Part { InlineData = new Blob { MimeType = image.MimeType, Data = image.Data } });
-            }
+            throw GeminiAdapterException.ConfigurationInvalid();
+        }
 
-            var response = await GetOrCreateClient().Models.GenerateContentAsync(
-                model,
-                new Content { Parts = parts },
-                config,
-                cancellationToken);
-            cancellationToken.ThrowIfCancellationRequested();
-            return new GeminiGenerateContentResult(
-                response.Text ?? string.Empty,
-                response.UsageMetadata?.PromptTokenCount,
-                response.UsageMetadata?.CandidatesTokenCount,
-                response.UsageMetadata?.TotalTokenCount);
-        }
-        catch (OperationCanceledException)
+        var parts = new List<Part> { new() { Text = prompt } };
+        foreach (var image in images)
         {
-            throw;
+            if (image.Data is null || image.Data.Length == 0 ||
+                !string.Equals(image.MimeType, "image/png", StringComparison.Ordinal))
+            {
+                throw GeminiAdapterException.RequestFailed();
+            }
+            parts.Add(new Part { InlineData = new Blob { MimeType = image.MimeType, Data = image.Data } });
         }
-        catch (GeminiAdapterException)
+
+        var content = new Content { Parts = parts };
+        var startIndex = Interlocked.Increment(ref _requestCounter);
+        Exception? lastException = null;
+
+        for (var i = 0; i < keys.Count; i++)
         {
-            throw;
+            var keyIndex = Math.Abs((startIndex + i) % keys.Count);
+            var apiKey = keys[keyIndex];
+
+            try
+            {
+                var client = GetOrCreateClient(apiKey);
+                var response = await client.Models.GenerateContentAsync(
+                    model,
+                    content,
+                    config,
+                    cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+
+                return new GeminiGenerateContentResult(
+                    response.Text ?? string.Empty,
+                    response.UsageMetadata?.PromptTokenCount,
+                    response.UsageMetadata?.CandidatesTokenCount,
+                    response.UsageMetadata?.TotalTokenCount);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (GeminiAdapterException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                lastException = ex;
+                _logger?.LogWarning(
+                    ex,
+                    "Gemini multimodal API request failed using key index {KeyIndex} ({KeyPreview}...). Trying next key ({Attempt}/{TotalKeys}). Error: {ErrorMessage}",
+                    keyIndex,
+                    apiKey[..Math.Min(10, apiKey.Length)],
+                    i + 1,
+                    keys.Count,
+                    ex.Message);
+            }
         }
-        catch
-        {
-            throw GeminiAdapterException.RequestFailed();
-        }
+
+        _logger?.LogError(
+            lastException,
+            "All {TotalKeys} Gemini API keys failed during GenerateContentWithImagesAsync.",
+            keys.Count);
+
+        throw GeminiAdapterException.RequestFailed();
     }
 
     public void Dispose()
     {
-        lock (_clientLock)
-        {
-            if (_disposed)
-            {
-                return;
-            }
+        if (_disposed) return;
+        _disposed = true;
 
-            _disposed = true;
-            _client?.Dispose();
-            _client = null;
+        foreach (var client in _clients.Values)
+        {
+            try
+            {
+                client.Dispose();
+            }
+            catch
+            {
+                // ignore
+            }
         }
+        _clients.Clear();
     }
 
-    private Client GetOrCreateClient()
+    private Client GetOrCreateClient(string apiKey)
     {
-        lock (_clientLock)
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        if (string.IsNullOrWhiteSpace(apiKey))
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-
-            if (_client is not null)
-            {
-                return _client;
-            }
-
-            if (string.IsNullOrWhiteSpace(_options.ApiKey))
-            {
-                throw GeminiAdapterException.ConfigurationInvalid();
-            }
-
-            _client = new Client(apiKey: _options.ApiKey);
-            return _client;
+            throw GeminiAdapterException.ConfigurationInvalid();
         }
+
+        return _clients.GetOrAdd(apiKey, key => new Client(apiKey: key));
     }
 }

@@ -4,6 +4,7 @@ import { isAxiosError } from "axios";
 import { platformApi } from "../api/platformApi";
 import type { ProblemDetails } from "../types/auth";
 import { useModalAccessibility } from "../utils/useModalAccessibility";
+import { useAuthStore } from "../stores/authStore";
 
 interface PlatformSecurityModalProps {
   isOpen: boolean;
@@ -108,6 +109,16 @@ export const PlatformSecurityModal: React.FC<PlatformSecurityModalProps> = ({
     revokeSessionsMutation.mutate();
   };
 
+  const user = useAuthStore((state) => state.user);
+  const modalTitle =
+    user?.accountType === "Student"
+      ? "Bảo Mật & Đổi Mật Khẩu Cá Nhân"
+      : user?.accountType === "Teacher"
+      ? "Bảo Mật Tài Khoản Giáo Viên"
+      : user?.accountType === "CenterManager"
+      ? "Bảo Mật Tài Khoản Quản Lý Trung Tâm"
+      : "Bảo Mật Tài Khoản Quản Trị";
+
   return (
     <div
       ref={modalRef}
@@ -121,7 +132,7 @@ export const PlatformSecurityModal: React.FC<PlatformSecurityModalProps> = ({
           <div className="flex items-center gap-2">
             <span className="text-xl">🛡️</span>
             <h3 id="platform-security-modal-title" className="text-lg font-bold text-gray-900 dark:text-white">
-              Bảo Mật Tài Khoản Platform Admin
+              {modalTitle}
             </h3>
           </div>
           <button
