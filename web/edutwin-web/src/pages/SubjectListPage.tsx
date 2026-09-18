@@ -475,6 +475,21 @@ const CenterManagerSubjectListView: React.FC = () => {
                 </select>
               </div>
             }
+            actions={
+              (searchTerm !== "" || statusFilter !== "all") ? (
+                <button
+                  type="button"
+                  id="btn-reset-subjects"
+                  onClick={() => {
+                    setSearchTerm("");
+                    setStatusFilter("all");
+                  }}
+                  className="cm-ghost-button text-xs text-[var(--cm-text-secondary)] hover:text-white"
+                >
+                  Đặt lại
+                </button>
+              ) : undefined
+            }
           />
 
           {isError && (

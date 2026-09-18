@@ -607,15 +607,32 @@ const CenterManagerClassListView: React.FC = () => {
               </div>
             }
             actions={
-              <button
-                type="button"
-                id="btn-filter-classes"
-                onClick={handleFilter}
-                disabled={isFetching}
-                className="cm-secondary-button text-xs"
-              >
-                Lọc danh sách
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  id="btn-filter-classes"
+                  onClick={handleFilter}
+                  disabled={isFetching}
+                  className="cm-secondary-button text-xs"
+                >
+                  Lọc danh sách
+                </button>
+                {(statusInput !== "" || status !== "") && (
+                  <button
+                    type="button"
+                    id="btn-reset-classes"
+                    onClick={() => {
+                      setStatusInput("");
+                      setStatus("");
+                      setPage(1);
+                    }}
+                    disabled={isFetching}
+                    className="cm-ghost-button text-xs text-[var(--cm-text-secondary)] hover:text-white"
+                  >
+                    Đặt lại
+                  </button>
+                )}
+              </div>
             }
           />
 

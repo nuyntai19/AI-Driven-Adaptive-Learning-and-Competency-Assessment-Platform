@@ -482,6 +482,23 @@ const CenterManagerTeacherListView: React.FC = () => {
                 >
                   Tìm kiếm
                 </button>
+                {(searchInput || statusInput || search || status) && (
+                  <button
+                    type="button"
+                    id="btn-reset-teachers"
+                    onClick={() => {
+                      setSearchInput("");
+                      setStatusInput("");
+                      setSearch("");
+                      setStatus("");
+                      setPage(1);
+                    }}
+                    disabled={isFetching}
+                    className="cm-ghost-button text-xs text-[var(--cm-text-secondary)] hover:text-white"
+                  >
+                    Đặt lại
+                  </button>
+                )}
               </div>
             }
           />

@@ -533,15 +533,36 @@ const CenterManagerStudentListView: React.FC = () => {
               </div>
             }
             actions={
-              <button
-                type="button"
-                id="btn-search-students"
-                onClick={handleSearch}
-                disabled={isFetching}
-                className="cm-secondary-button text-xs"
-              >
-                Tìm kiếm
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  id="btn-search-students"
+                  onClick={handleSearch}
+                  disabled={isFetching}
+                  className="cm-secondary-button text-xs"
+                >
+                  Tìm kiếm
+                </button>
+                {(searchInput || statusInput || gradeLevelInput !== "" || search || status || gradeLevel !== "") && (
+                  <button
+                    type="button"
+                    id="btn-reset-students"
+                    onClick={() => {
+                      setSearchInput("");
+                      setStatusInput("");
+                      setGradeLevelInput("");
+                      setSearch("");
+                      setStatus("");
+                      setGradeLevel("");
+                      setPage(1);
+                    }}
+                    disabled={isFetching}
+                    className="cm-ghost-button text-xs text-[var(--cm-text-secondary)] hover:text-white"
+                  >
+                    Đặt lại
+                  </button>
+                )}
+              </div>
             }
           />
 
