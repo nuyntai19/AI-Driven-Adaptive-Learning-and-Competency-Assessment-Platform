@@ -154,17 +154,17 @@ public static class MasteryCalculator
         decimal? reasoningQuality,
         decimal reasoningWeight)
     {
-        var path = isFallback ? "Fallback" : "Reasoning";
+        var path = isFallback ? "Dự phòng (Fallback)" : "Lập luận";
         var signedDelta = delta.ToString("+0.00;-0.00;0.00", CultureInfo.InvariantCulture);
         var commonFacts = FormattableString.Invariant(
-            $"{path} path: mastery {previousMastery:0.00} -> {newMastery:0.00} (delta {signedDelta}) at difficulty {difficulty}.");
+            $"Luồng {path}: mức độ thành thạo {previousMastery:0.00} -> {newMastery:0.00} (thay đổi {signedDelta}) ở độ khó {difficulty}.");
 
         if (reasoningWeight == 0m)
         {
-            return commonFacts + " Review-only evidence has weight 0.00 and cannot change mastery before teacher confirmation.";
+            return commonFacts + " Kết quả tạm thời có trọng số 0.00 và cần giáo viên xem xét trước khi cập nhật năng lực.";
         }
 
         return commonFacts + FormattableString.Invariant(
-            $" Effective reasoning quality: {reasoningQuality!.Value:0.00}%; evidence weight: {reasoningWeight:0.00}.");
+            $" Chất lượng lập luận hiệu dụng: {reasoningQuality!.Value:0.00}%; trọng số bằng chứng: {reasoningWeight:0.00}.");
     }
 }

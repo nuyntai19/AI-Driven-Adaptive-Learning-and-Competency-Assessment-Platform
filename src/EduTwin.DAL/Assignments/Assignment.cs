@@ -15,6 +15,7 @@ public class Assignment : IMutableTenantAggregate
     public string Title { get; set; } = null!;
     public string? Instructions { get; set; }
     public DateTime? DueAt { get; set; }
+    public int? TimeLimitMinutes { get; set; }
     public AssignmentStatus Status { get; set; }
     public DateTime? PublishedAt { get; set; }
 

@@ -68,6 +68,7 @@ public class AssignmentsControllerTests
             Mock.Of<IGetAssignmentProgressUseCase>(),
             Mock.Of<IListStudentAssignmentsUseCase>(),
             getStudentAssignmentUseCase,
+            Mock.Of<IStartStudentAssignmentUseCase>(),
             timeProvider);
     }
 }

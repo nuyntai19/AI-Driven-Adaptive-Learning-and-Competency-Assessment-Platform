@@ -22,6 +22,19 @@ public sealed class EvidenceGate : IEvidenceGate
 
         if (input.SourceType == EvidenceSourceType.RuleFallback)
         {
+            if (input.EffectiveIsCorrect.HasValue)
+            {
+                return new EvidenceGateDecision(
+                    input.SourceType,
+                    EvidenceTrustLevel.Reduced,
+                    EvidenceDecisionMode.DeterministicOnly,
+                    0.3m,
+                    [EvidenceReasonCodes.SourceRuleFallback],
+                    true,
+                    CurrentPolicyVersion,
+                    input.AnalysisOverrideVersion);
+            }
+
             return ReviewOnly(input, EvidenceDecisionMode.DeterministicOnly, EvidenceReasonCodes.SourceRuleFallback);
         }
 

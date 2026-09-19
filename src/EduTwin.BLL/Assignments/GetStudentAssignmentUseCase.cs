@@ -136,15 +136,52 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
             };
         }).ToList();
 
+        DateTime? effectiveExpiresAt = null;
+        if (progress.Assignment.DueAt.HasValue && progress.Assignment.TimeLimitMinutes.HasValue && progress.StartedAt.HasValue)
+        {
+            var timeLimitExpiresAt = progress.StartedAt.Value.AddMinutes(progress.Assignment.TimeLimitMinutes.Value);
+            effectiveExpiresAt = progress.Assignment.DueAt.Value < timeLimitExpiresAt ? progress.Assignment.DueAt.Value : timeLimitExpiresAt;
+        }
+        else if (progress.Assignment.TimeLimitMinutes.HasValue && progress.StartedAt.HasValue)
+        {
+            effectiveExpiresAt = progress.StartedAt.Value.AddMinutes(progress.Assignment.TimeLimitMinutes.Value);
+        }
+        else if (progress.Assignment.DueAt.HasValue)
+        {
+            effectiveExpiresAt = progress.Assignment.DueAt.Value;
+        }
+
+        int? remainingSeconds = null;
+        if (effectiveExpiresAt.HasValue)
+        {
+            var diff = (long)(effectiveExpiresAt.Value - utcNow).TotalSeconds;
+            remainingSeconds = diff > 0 ? (int)Math.Min(diff, int.MaxValue) : 0;
+        }
+
+        EduTwin.DAL.Organization.Class? assignmentClass = null;
+        if (progress.Assignment.ClassId != Guid.Empty)
+        {
+            assignmentClass = await _dbContext.Classes
+                .AsNoTracking()
+                .Include(c => c.Subject)
+                .FirstOrDefaultAsync(c => c.CenterId == centerId && c.ClassId == progress.Assignment.ClassId, cancellationToken);
+        }
+
         var detailDto = new StudentAssignmentDetailDto
         {
             AssignmentId = progress.AssignmentId.ToString(),
             Title = progress.Assignment.Title,
             Instructions = progress.Assignment.Instructions,
             DueAt = progress.Assignment.DueAt,
+            SubjectId = assignmentClass?.SubjectId.ToString(),
+            SubjectName = assignmentClass?.Subject?.SubjectName,
+            TimeLimitMinutes = progress.Assignment.TimeLimitMinutes,
+            StartedAt = progress.StartedAt,
+            EffectiveExpiresAt = effectiveExpiresAt,
+            RemainingSeconds = remainingSeconds,
             Progress = new StudentAssignmentProgressDto
             {
-                Status = AssignmentStatusHelper.GetEffectiveProgressStatus(progress.Status, progress.Assignment.DueAt, utcNow).ToString(),
+                Status = AssignmentStatusHelper.GetEffectiveProgressStatus(progress.Status, effectiveExpiresAt, utcNow).ToString(),
                 CompletedQuestionCount = (int)progress.CompletedQuestionCount,
                 TotalQuestionCount = (int)progress.TotalQuestionCount
             },

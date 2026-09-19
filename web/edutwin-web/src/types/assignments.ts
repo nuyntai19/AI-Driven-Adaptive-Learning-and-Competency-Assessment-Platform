@@ -103,6 +103,12 @@ export interface StudentAssignmentDetailDto {
   title: string;
   instructions: string | null;
   dueAt: string | null;
+  subjectId?: string | null;
+  subjectName?: string | null;
+  timeLimitMinutes?: number | null;
+  startedAt?: string | null;
+  effectiveExpiresAt?: string | null;
+  remainingSeconds?: number | null;
   canRetake?: boolean;
   progress: StudentProgressDto;
   questions: StudentAssignmentQuestionDto[];
@@ -113,6 +119,8 @@ export interface StudentAssignmentListItemDto {
   title: string;
   instructions: string | null;
   dueAt: string | null;
+  subjectId?: string | null;
+  subjectName?: string | null;
   progress: StudentProgressDto;
 }
 

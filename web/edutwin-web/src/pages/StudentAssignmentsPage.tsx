@@ -35,52 +35,14 @@ export const StudentAssignmentsPage: React.FC = () => {
 
   const { data: response, isLoading, isError, error, refetch } = useStudentAssignments({
     status: statusFilter || undefined,
+    subjectId: (!ignoreSubjectFilter && selectedSubjectId) ? selectedSubjectId : undefined,
   });
 
   const rawAssignments = response?.data || [];
 
-  // Filter by subject, search term & sort
+  // Filter by search term & sort (Backend already filtered by subjectId)
   const filteredAssignments = useMemo(() => {
     let result = [...rawAssignments];
-
-    // Subject Filtering: If a subject is selected and not ignoring, filter by subject match
-    if (selectedSubjectId && !ignoreSubjectFilter && currentSubjectName) {
-      const subNameLower = currentSubjectName.toLowerCase();
-      result = result.filter((a) => {
-        const titleLower = a.title.toLowerCase();
-        const instrLower = (a.instructions || "").toLowerCase();
-
-        if (subNameLower.includes("toán")) {
-          // If Math selected: match math keywords or exclude other subjects
-          return (
-            titleLower.includes("toán") ||
-            titleLower.includes("đại số") ||
-            titleLower.includes("hình học") ||
-            titleLower.includes("giải tích") ||
-            (!titleLower.includes("tiếng anh") && !titleLower.includes("vật lý") && !titleLower.includes("hóa học"))
-          );
-        }
-
-        if (subNameLower.includes("anh") || subNameLower.includes("english")) {
-          // If English selected: must match english keywords
-          return (
-            titleLower.includes("tiếng anh") ||
-            titleLower.includes("english") ||
-            instrLower.includes("tiếng anh")
-          );
-        }
-
-        if (subNameLower.includes("vật lý") || subNameLower.includes("lý")) {
-          return titleLower.includes("vật lý") || titleLower.includes("vật lí");
-        }
-
-        if (subNameLower.includes("hóa")) {
-          return titleLower.includes("hóa học") || titleLower.includes("hóa");
-        }
-
-        return true;
-      });
-    }
 
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
@@ -106,7 +68,7 @@ export const StudentAssignmentsPage: React.FC = () => {
     });
 
     return result;
-  }, [rawAssignments, selectedSubjectId, ignoreSubjectFilter, currentSubjectName, searchTerm, sortBy]);
+  }, [rawAssignments, searchTerm, sortBy]);
 
   // Status counters for filter pills
   const statusCounts = useMemo(() => {

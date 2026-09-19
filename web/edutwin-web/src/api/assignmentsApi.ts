@@ -128,6 +128,7 @@ export const getAssignmentClassStudents = async (
 
 export interface GetStudentAssignmentsParams {
   status?: ProgressStatus;
+  subjectId?: string;
   page?: number;
   pageSize?: number;
 }
@@ -141,5 +142,10 @@ export const getStudentAssignments = async (params: GetStudentAssignmentsParams 
 
 export const getStudentAssignmentById = async (id: string) => {
   const { data } = await httpClient.get<ApiResponse<StudentAssignmentDetailDto>>(`/students/me/assignments/${id}`);
+  return data;
+};
+
+export const startStudentAssignment = async (id: string) => {
+  const { data } = await httpClient.post<ApiResponse<StudentAssignmentDetailDto>>(`/students/me/assignments/${id}/start`);
   return data;
 };

@@ -22,7 +22,7 @@ public sealed class RuleBasedFallbackBuilderTests
         Assert.Equal(17ul, result.AttemptId);
         Assert.Equal("ai-analysis-v1", result.SchemaVersion);
         Assert.Null(result.MethodDetected);
-        Assert.Null(result.ReasoningQuality);
+        Assert.Equal(70m, result.ReasoningQuality);
         Assert.Equal(ErrorType.Unknown, result.ErrorType);
         Assert.Null(result.Misconception);
         Assert.Equal(0, result.MissingSteps.RootElement.GetArrayLength());
@@ -81,10 +81,10 @@ public sealed class RuleBasedFallbackBuilderTests
     [InlineData("")]
     [InlineData("VI")]
     [InlineData("fr")]
-    public void Build_UnsupportedLanguage_FailsClosed(string language)
+    public void Build_UnsupportedLanguage_NormalizesToVietnamese(string language)
     {
-        Assert.Throws<ArgumentException>(
-            () => _sut.Build(Input(Guid.NewGuid(), true, false, language)));
+        var result = _sut.Build(Input(Guid.NewGuid(), true, false, language));
+        Assert.False(string.IsNullOrWhiteSpace(result.Feedback));
     }
 
     private static RuleBasedFallbackInput Input(

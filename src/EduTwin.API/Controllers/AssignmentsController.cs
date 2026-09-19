@@ -27,6 +27,7 @@ public class AssignmentsController : ControllerBase
     private readonly IGetAssignmentProgressUseCase _getAssignmentProgressUseCase;
     private readonly IListStudentAssignmentsUseCase _listStudentAssignmentsUseCase;
     private readonly IGetStudentAssignmentUseCase _getStudentAssignmentUseCase;
+    private readonly IStartStudentAssignmentUseCase _startStudentAssignmentUseCase;
     private readonly TimeProvider _timeProvider;
 
     public AssignmentsController(
@@ -39,7 +40,8 @@ public class AssignmentsController : ControllerBase
         IGetAssignmentProgressUseCase getAssignmentProgressUseCase,
         IListStudentAssignmentsUseCase listStudentAssignmentsUseCase,
         IGetStudentAssignmentUseCase getStudentAssignmentUseCase,
-        TimeProvider timeProvider)
+        IStartStudentAssignmentUseCase? startStudentAssignmentUseCase = null,
+        TimeProvider? timeProvider = null)
     {
         _createAssignmentUseCase = createAssignmentUseCase;
         _getAssignmentUseCase = getAssignmentUseCase;
@@ -50,7 +52,8 @@ public class AssignmentsController : ControllerBase
         _getAssignmentProgressUseCase = getAssignmentProgressUseCase;
         _listStudentAssignmentsUseCase = listStudentAssignmentsUseCase;
         _getStudentAssignmentUseCase = getStudentAssignmentUseCase;
-        _timeProvider = timeProvider;
+        _startStudentAssignmentUseCase = startStudentAssignmentUseCase!;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     /// <summary>
@@ -322,6 +325,33 @@ public class AssignmentsController : ControllerBase
         CancellationToken cancellationToken)
     {
         var result = await _getStudentAssignmentUseCase.ExecuteAsync(id, cancellationToken);
+
+        if (result.IsSuccess)
+        {
+            var response = result.Data!;
+            response.Meta = new MetaDto
+            {
+                TraceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                Timestamp = _timeProvider.GetUtcNow().UtcDateTime
+            };
+            return Ok(response);
+        }
+
+        return MapErrorToResponse(result.ErrorCode);
+    }
+
+    /// <summary>
+    /// POST /api/v1/students/me/assignments/{id}/start — Idempotent ghi nhận thời điểm bắt đầu làm bài.
+    /// </summary>
+    [HttpPost("/api/v1/students/me/assignments/{id}/start")]
+    [Authorize(Policy = "assignments.assignments.read")]
+    [ProducesResponseType(typeof(StudentAssignmentDetailResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> StartStudentAssignment(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var result = await _startStudentAssignmentUseCase.ExecuteAsync(id, cancellationToken);
 
         if (result.IsSuccess)
         {

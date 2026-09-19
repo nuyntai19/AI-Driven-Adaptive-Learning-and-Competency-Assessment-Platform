@@ -297,8 +297,8 @@ public sealed class DashboardBoundaryUnitTests
         var mathTopic = new KnowledgeNode { NodeId = 10, CenterId = centerId, SubjectId = mathSubjectId, NodeCode = "M-T1", NodeName = "Ham so", NodeType = NodeType.Topic, OrderIndex = 1, ExamImportance = 1.0m, EstimatedLearningMinutes = 60, IsActive = true, CreatedAt = UtcNow, UpdatedAt = UtcNow };
         var engTopic = new KnowledgeNode { NodeId = 20, CenterId = centerId, SubjectId = engSubjectId, NodeCode = "E-T1", NodeName = "Grammar", NodeType = NodeType.Topic, OrderIndex = 1, ExamImportance = 1.0m, EstimatedLearningMinutes = 60, IsActive = true, CreatedAt = UtcNow, UpdatedAt = UtcNow };
 
-        var mathTwin = new KnowledgeTwin { TwinId = 1, CenterId = centerId, StudentId = studentId, SubjectId = mathSubjectId, TopicNodeId = 10, MasteryPercentage = 80.0m, StabilityScore = 1.0m, ConfidenceScore = 1.0m, CreatedAt = UtcNow, UpdatedAt = UtcNow };
-        var engTwin = new KnowledgeTwin { TwinId = 2, CenterId = centerId, StudentId = studentId, SubjectId = engSubjectId, TopicNodeId = 20, MasteryPercentage = 60.0m, StabilityScore = 1.0m, ConfidenceScore = 1.0m, CreatedAt = UtcNow, UpdatedAt = UtcNow };
+        var mathTwin = new KnowledgeTwin { KnowledgeTwinId = 1, CenterId = centerId, StudentId = studentId, SubjectId = mathSubjectId, TopicNodeId = 10, MasteryPercentage = 80.0m, CreatedAt = UtcNow, UpdatedAt = UtcNow };
+        var engTwin = new KnowledgeTwin { KnowledgeTwinId = 2, CenterId = centerId, StudentId = studentId, SubjectId = engSubjectId, TopicNodeId = 20, MasteryPercentage = 60.0m, CreatedAt = UtcNow, UpdatedAt = UtcNow };
 
         dbContext.Centers.Add(center);
         dbContext.Users.Add(user);

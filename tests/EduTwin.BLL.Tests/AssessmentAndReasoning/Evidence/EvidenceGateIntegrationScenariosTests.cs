@@ -218,9 +218,9 @@ public sealed class EvidenceGateIntegrationScenariosTests : IDisposable
         Assert.Equal(AttemptStatus.NeedsTeacherReview, attempt.Status);
     }
 
-    // Case 4: Gemini timeout -> Fallback -> Knowledge Mastery remains completely unchanged
+    // Case 4: Gemini timeout -> Fallback with pending correctness (e.g. Essay) -> Knowledge Mastery remains completely unchanged
     [Fact]
-    public async Task Scenario4_GeminiTimeoutFallback_MasteryRemainsUnchanged()
+    public async Task Scenario4_GeminiTimeoutFallback_PendingCorrectness_MasteryRemainsUnchanged()
     {
         // Seed initial KnowledgeTwin
         var initialTwin = new KnowledgeTwin
@@ -240,7 +240,7 @@ public sealed class EvidenceGateIntegrationScenariosTests : IDisposable
         _dbContext.KnowledgeTwins.Add(initialTwin);
         await _dbContext.SaveChangesAsync();
 
-        var (attempt, question, analysis) = CreateSetup(isCorrect: true);
+        var (attempt, question, analysis) = CreateSetup(isCorrect: null);
         analysis.IsFallback = true;
         analysis.ReasoningQuality = null;
         analysis.AnalysisConfidence = null;
@@ -259,6 +259,30 @@ public sealed class EvidenceGateIntegrationScenariosTests : IDisposable
         // Mastery must not change
         Assert.Equal(65.00m, result.KnowledgeTwin.MasteryPercentage);
         Assert.Equal(5u, result.KnowledgeTwin.EvidenceCount);
+    }
+
+    // Case 4b: Gemini timeout -> Fallback for Auto-Gradable Correct -> Applies conservative mastery increase
+    [Fact]
+    public async Task Scenario4b_GeminiTimeoutFallback_AutoGradableCorrect_IncreasesMasteryConservatively()
+    {
+        var (attempt, question, analysis) = CreateSetup(isCorrect: true);
+        analysis.IsFallback = true;
+        analysis.ReasoningQuality = 70m;
+        analysis.AnalysisConfidence = null;
+
+        var orchestrator = CreateOrchestrator();
+        var result = await orchestrator.CompleteAsync(
+            attempt,
+            question,
+            analysis,
+            TwinEventSource.RuleFallback,
+            _now,
+            CancellationToken.None);
+
+        Assert.Equal(EvidenceTrustLevel.Reduced, result.Evidence.TrustLevel);
+        Assert.Equal(0.30m, result.Evidence.ReasoningWeight);
+        Assert.True(result.KnowledgeTwin.MasteryPercentage > 0m);
+        Assert.Equal(1u, result.KnowledgeTwin.EvidenceCount);
     }
 
     // Case 5: AI valid + consistent + confidence 80% -> Trusted, weight 1.0

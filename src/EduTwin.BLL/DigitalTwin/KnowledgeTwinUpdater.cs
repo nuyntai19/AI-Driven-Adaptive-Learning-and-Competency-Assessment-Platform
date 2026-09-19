@@ -75,7 +75,7 @@ public sealed class KnowledgeTwinUpdater : IKnowledgeTwinUpdater
 
         var calculation = MasteryCalculator.Calculate(input);
 
-        if (evidence.ReasoningWeight > 0m)
+        if (evidence.ReasoningWeight > 0m && twin.LastAttemptId != attempt.AttemptId)
         {
             twin.MasteryPercentage = calculation.NewMastery;
             twin.EvidenceCount += 1;

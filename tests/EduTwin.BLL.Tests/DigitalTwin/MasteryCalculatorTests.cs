@@ -363,7 +363,7 @@ public class MasteryCalculatorTests
 
         Assert.Equal(62.5m, result.NewMastery);
         Assert.Equal(0m, result.Delta);
-        Assert.Contains("cannot change mastery", result.Explanation, StringComparison.Ordinal);
+        Assert.Contains("giáo viên", result.Explanation, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -483,11 +483,11 @@ public class MasteryCalculatorTests
 
         Assert.NotEmpty(result.Explanation);
         Assert.True(result.Explanation.Length <= 1000);
-        Assert.Contains("Reasoning path", result.Explanation, StringComparison.Ordinal);
+        Assert.Contains("Lập luận", result.Explanation, StringComparison.Ordinal);
         Assert.Contains("50.00", result.Explanation, StringComparison.Ordinal);
         Assert.Contains("57.50", result.Explanation, StringComparison.Ordinal);
         Assert.Contains("+7.50", result.Explanation, StringComparison.Ordinal);
-        Assert.Contains("difficulty 3", result.Explanation, StringComparison.Ordinal);
+        Assert.Contains("độ khó 3", result.Explanation, StringComparison.Ordinal);
         Assert.Contains("80.00%", result.Explanation, StringComparison.Ordinal);
     }
 
@@ -502,13 +502,12 @@ public class MasteryCalculatorTests
 
         Assert.NotEmpty(result.Explanation);
         Assert.True(result.Explanation.Length <= 1000);
-        Assert.Contains("Fallback path", result.Explanation, StringComparison.Ordinal);
+        Assert.Contains("Fallback", result.Explanation, StringComparison.Ordinal);
         Assert.Contains("40.00", result.Explanation, StringComparison.Ordinal);
         Assert.Contains("40.00", result.Explanation, StringComparison.Ordinal);
         Assert.Contains("0.00", result.Explanation, StringComparison.Ordinal);
-        Assert.Contains("difficulty 3", result.Explanation, StringComparison.Ordinal);
-        Assert.Contains("Review-only", result.Explanation, StringComparison.Ordinal);
-        Assert.Contains("teacher confirmation", result.Explanation, StringComparison.Ordinal);
+        Assert.Contains("độ khó 3", result.Explanation, StringComparison.Ordinal);
+        Assert.Contains("giáo viên", result.Explanation, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

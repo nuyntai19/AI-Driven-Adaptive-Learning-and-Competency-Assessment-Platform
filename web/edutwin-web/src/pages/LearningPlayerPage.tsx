@@ -8,6 +8,7 @@ import {
   getAttemptFeedback,
   prepareAttemptAttachmentUpload,
 } from "../api/learningFeedbackApi";
+import { startStudentAssignment } from "../api/assignmentsApi";
 import { useStudentAssignment } from "../features/assignments/useStudentAssignment";
 import type {
   NextQuestionDataDto,
@@ -164,15 +165,6 @@ export const LearningPlayerPage = () => {
     drawingUploadToken?: string;
   }> | null>(null);
 
-  // Timer
-  useEffect(() => {
-    if (pollingJobId || feedbackData) return;
-    const timer = setInterval(() => {
-      setTimeSpentSeconds((prev) => prev + 1);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [pollingJobId, feedbackData]);
-
   // Mode 1: Assignment Mode Query
   const {
     data: assignmentResponse,
@@ -182,6 +174,50 @@ export const LearningPlayerPage = () => {
 
   const assignment = assignmentResponse?.data;
   const assignmentQuestions = assignment?.questions || [];
+
+  // Assignment Countdown & Server-Synchronized Expiration Timer
+  const [assignmentRemainingSeconds, setAssignmentRemainingSeconds] = useState<number | null>(null);
+
+  // Call idempotent start assignment API upon opening assignment
+  useEffect(() => {
+    if (!assignmentId) return;
+    startStudentAssignment(assignmentId)
+      .then((res) => {
+        if (res?.data?.remainingSeconds !== undefined && res.data.remainingSeconds !== null) {
+          setAssignmentRemainingSeconds(res.data.remainingSeconds);
+        }
+      })
+      .catch(() => {
+        // Ignore network error on start
+      });
+  }, [assignmentId]);
+
+  // Sync remaining seconds if assignment response updates
+  useEffect(() => {
+    if (assignment?.remainingSeconds !== undefined && assignment.remainingSeconds !== null) {
+      setAssignmentRemainingSeconds(assignment.remainingSeconds);
+    }
+  }, [assignment?.remainingSeconds]);
+
+  // Countdown tick
+  useEffect(() => {
+    if (assignmentRemainingSeconds === null || assignmentRemainingSeconds <= 0) return;
+    const timer = setInterval(() => {
+      setAssignmentRemainingSeconds((prev) => (prev !== null && prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [assignmentRemainingSeconds]);
+
+  const isAssignmentExpired = assignmentRemainingSeconds !== null && assignmentRemainingSeconds <= 0;
+
+  // Question Timer
+  useEffect(() => {
+    if (pollingJobId || feedbackData) return;
+    const timer = setInterval(() => {
+      setTimeSpentSeconds((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [pollingJobId, feedbackData]);
 
   // Initialize or update activeQuestionId when assignment loads
   const isInitializedRef = useRef(false);
@@ -962,7 +998,7 @@ export const LearningPlayerPage = () => {
     assignmentQuestion?.attemptStatus === "Completed" ||
     assignmentQuestion?.attemptStatus === "NeedsTeacherReview";
 
-  const isReadOnly = isAssignmentSubmitted || isCurrentQuestionSubmitted || isSubmitting;
+  const isReadOnly = isAssignmentSubmitted || isCurrentQuestionSubmitted || isSubmitting || isAssignmentExpired;
 
   // Guard: if adaptive mode and no subject selected
   if (!assignmentId && !subjectId) {
@@ -1266,13 +1302,23 @@ export const LearningPlayerPage = () => {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Timer */}
-            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs sm:text-sm font-mono font-black text-slate-700 dark:text-slate-200 shadow-2xs border border-slate-200/60 dark:border-slate-700/60">
+            {/* Timer / Countdown */}
+            <div className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-mono font-black shadow-2xs border ${
+              isAssignmentExpired
+                ? "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950/80 dark:text-rose-200 dark:border-rose-800"
+                : assignmentRemainingSeconds !== null && assignmentRemainingSeconds <= 300
+                ? "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/80 dark:text-amber-200 dark:border-amber-800 animate-pulse"
+                : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200/60 dark:border-slate-700/60"
+            }`}>
               <span className="text-slate-400 text-sm">⏱</span>
               <span>
-                {String(Math.floor(timeSpentSeconds / 60)).padStart(2, "0")}:
-                {String(timeSpentSeconds % 60).padStart(2, "0")}
+                {assignmentRemainingSeconds !== null
+                  ? `${String(Math.floor(assignmentRemainingSeconds / 3600)).padStart(2, "0")}:${String(Math.floor((assignmentRemainingSeconds % 3600) / 60)).padStart(2, "0")}:${String(assignmentRemainingSeconds % 60).padStart(2, "0")}`
+                  : `${String(Math.floor(timeSpentSeconds / 60)).padStart(2, "0")}:${String(timeSpentSeconds % 60).padStart(2, "0")}`}
               </span>
+              {assignmentRemainingSeconds !== null && assignmentRemainingSeconds <= 300 && assignmentRemainingSeconds > 0 && (
+                <span className="text-[10px] font-black text-rose-600 dark:text-rose-400 ml-1">SẮP HẾT GIỜ!</span>
+              )}
             </div>
 
             {/* If assignment is submitted: show status badge and retake button if allowed */}
@@ -1315,10 +1361,10 @@ export const LearningPlayerPage = () => {
               <button
                 type="button"
                 onClick={() => setShowBatchConfirmModal(true)}
-                disabled={isSubmitting}
+                disabled={isSubmitting || isAssignmentExpired}
                 className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs sm:text-sm shadow-sm shadow-indigo-600/25 transition-all cursor-pointer disabled:opacity-50 shrink-0"
               >
-                <span>🚀 Nộp bài tập</span>
+                <span>{isAssignmentExpired ? "🔒 Đã hết giờ" : "🚀 Nộp bài tập"}</span>
                 <span className="px-2 py-0.5 rounded-full bg-indigo-700 text-[11px] font-extrabold">
                   {answeredCount}/{totalQuestions}
                 </span>
@@ -1339,6 +1385,11 @@ export const LearningPlayerPage = () => {
         >
           {/* Left / Main Workspace */}
           <div className={activeSideTool ? "lg:col-span-7 xl:col-span-7 space-y-6" : "space-y-6"}>
+            {isAssignmentExpired && (
+              <div className="rounded-2xl bg-rose-50 dark:bg-rose-950/60 p-4 text-xs font-bold text-rose-800 dark:text-rose-300 border border-rose-300 dark:border-rose-800 flex items-center justify-between">
+                <span>⏰ Đã hết thời gian làm bài. Bài làm không thể nộp thêm câu mới. Các câu đã nộp trước đó được giữ nguyên.</span>
+              </div>
+            )}
             {submissionError && (
               <div className="rounded-2xl bg-rose-50 dark:bg-rose-950/40 p-4 text-sm font-semibold text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
                 <p>{submissionError}</p>

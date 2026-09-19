@@ -57,16 +57,33 @@ public sealed class EvidenceGateTests
     }
 
     [Fact]
-    public void Evaluate_RuleFallback_IsAlwaysReviewOnly()
+    public void Evaluate_RuleFallback_WhenNoPreliminaryCorrectness_IsReviewOnly()
     {
         var result = CreateGate().Evaluate(ValidAI(100m) with
         {
-            SourceType = EvidenceSourceType.RuleFallback
+            SourceType = EvidenceSourceType.RuleFallback,
+            EffectiveIsCorrect = null
         });
 
         Assert.Equal(EvidenceTrustLevel.ReviewOnly, result.TrustLevel);
         Assert.Equal(EvidenceDecisionMode.DeterministicOnly, result.DecisionMode);
         Assert.Equal(0m, result.ReasoningWeight);
+        Assert.Equal([EvidenceReasonCodes.SourceRuleFallback], result.ReasonCodes);
+        Assert.True(result.RequiresTeacherReview);
+    }
+
+    [Fact]
+    public void Evaluate_RuleFallback_WithPreliminaryCorrectness_IsReducedTrust()
+    {
+        var result = CreateGate().Evaluate(ValidAI(100m) with
+        {
+            SourceType = EvidenceSourceType.RuleFallback,
+            EffectiveIsCorrect = true
+        });
+
+        Assert.Equal(EvidenceTrustLevel.Reduced, result.TrustLevel);
+        Assert.Equal(EvidenceDecisionMode.DeterministicOnly, result.DecisionMode);
+        Assert.Equal(0.3m, result.ReasoningWeight);
         Assert.Equal([EvidenceReasonCodes.SourceRuleFallback], result.ReasonCodes);
         Assert.True(result.RequiresTeacherReview);
     }

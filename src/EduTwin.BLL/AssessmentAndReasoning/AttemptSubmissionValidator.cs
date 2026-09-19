@@ -17,15 +17,18 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
     private readonly EduTwinDbContext _dbContext;
     private readonly ITenantContext _tenantContext;
     private readonly PreliminaryGraderFactory _graderFactory;
+    private readonly TimeProvider _timeProvider;
 
     public AttemptSubmissionValidator(
         EduTwinDbContext dbContext,
         ITenantContext tenantContext,
-        PreliminaryGraderFactory graderFactory)
+        PreliminaryGraderFactory graderFactory,
+        TimeProvider? timeProvider = null)
     {
         _dbContext = dbContext;
         _tenantContext = tenantContext;
         _graderFactory = graderFactory;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public async Task<AttemptSubmissionValidationResult> ValidateAsync(
@@ -145,6 +148,36 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
             {
                 return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
             }
+
+            var progress = await _dbContext.StudentAssignmentProgresses
+                .AsNoTracking()
+                .SingleOrDefaultAsync(
+                    candidate =>
+                        candidate.CenterId == centerId &&
+                        candidate.AssignmentId == request.AssignmentId.Value &&
+                        candidate.StudentId == studentId,
+                    cancellationToken);
+
+            var now = _timeProvider.GetUtcNow().UtcDateTime;
+            DateTime? effectiveExpiresAt = null;
+            if (assignment.DueAt.HasValue && assignment.TimeLimitMinutes.HasValue && progress?.StartedAt.HasValue == true)
+            {
+                var timeLimitExpiresAt = progress.StartedAt.Value.AddMinutes(assignment.TimeLimitMinutes.Value);
+                effectiveExpiresAt = assignment.DueAt.Value < timeLimitExpiresAt ? assignment.DueAt.Value : timeLimitExpiresAt;
+            }
+            else if (assignment.TimeLimitMinutes.HasValue && progress?.StartedAt.HasValue == true)
+            {
+                effectiveExpiresAt = progress.StartedAt.Value.AddMinutes(assignment.TimeLimitMinutes.Value);
+            }
+            else if (assignment.DueAt.HasValue)
+            {
+                effectiveExpiresAt = assignment.DueAt.Value;
+            }
+
+            if (effectiveExpiresAt.HasValue && now > effectiveExpiresAt.Value)
+            {
+                return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
+            }
         }
 
         if (!request.Skipped && question.ReasoningRequired && string.IsNullOrWhiteSpace(request.ReasoningText))
@@ -213,7 +246,7 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
             Confidence = request.Confidence,
             AnswerChanges = request.AnswerChanges,
             Skipped = request.Skipped,
-            ReasoningLanguage = question.LanguageCode,
+            ReasoningLanguage = "vi",
             IsCorrect = preliminaryGrade.IsCorrect,
             AwardedScore = preliminaryGrade.Score
         });

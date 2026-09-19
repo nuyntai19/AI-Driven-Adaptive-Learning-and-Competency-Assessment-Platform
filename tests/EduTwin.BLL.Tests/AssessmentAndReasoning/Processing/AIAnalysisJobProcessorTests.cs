@@ -199,14 +199,14 @@ public sealed class AIAnalysisJobProcessorTests
         Assert.Equal("AI_ANALYSIS_ATTEMPT_FAILED", persisted.Job.LastErrorCode);
         Assert.Equal("AI analysis attempt failed.", persisted.Job.LastErrorMessage);
         var fallback = Assert.Single(persisted.Analyses);
-        Assert.Null(fallback.ReasoningQuality);
+        Assert.Equal(70m, fallback.ReasoningQuality);
         Assert.True(fallback.NeedsTeacherReview);
         Assert.Equal(AnalysisProvider.RuleBased, fallback.Provider);
         var evidence = Assert.Single(persisted.Evidence);
         Assert.Equal(EvidenceSourceType.RuleFallback, evidence.SourceType);
-        Assert.Equal(EvidenceTrustLevel.ReviewOnly, evidence.TrustLevel);
+        Assert.Equal(EvidenceTrustLevel.Reduced, evidence.TrustLevel);
         Assert.Equal(EvidenceDecisionMode.DeterministicOnly, evidence.DecisionMode);
-        Assert.Equal(0m, evidence.ReasoningWeight);
+        Assert.Equal(0.3m, evidence.ReasoningWeight);
         Assert.True(evidence.RequiresTeacherReview);
     }
 
@@ -322,7 +322,7 @@ public sealed class AIAnalysisJobProcessorTests
         Assert.Equal(2ul, persisted.Job.RowVersion);
         var analysis = Assert.Single(persisted.Analyses);
         Assert.Equal("ai-analysis-v1", analysis.SchemaVersion);
-        Assert.Null(analysis.ReasoningQuality);
+        Assert.Equal(70m, analysis.ReasoningQuality);
         Assert.Null(analysis.AnalysisConfidence);
         Assert.Equal(ErrorType.Unknown, analysis.ErrorType);
         Assert.True(analysis.IsFallback);

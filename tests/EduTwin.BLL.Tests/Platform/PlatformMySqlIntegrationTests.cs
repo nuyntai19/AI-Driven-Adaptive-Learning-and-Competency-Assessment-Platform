@@ -843,6 +843,7 @@ public sealed class PlatformMySqlIntegrationTests
         // Interceptor causes MySQL 1062 on unique key ux_users_center_id_username instead of ux_centers_center_code
         var interceptor = new RelationalRaceInterceptor(async cmd =>
         {
+            await Task.CompletedTask;
             if (cmd.CommandText.Contains("INSERT", StringComparison.OrdinalIgnoreCase))
             {
                 // Clear parameters and replace command with duplicate insert on ux_users_center_id_username (platform.admin already exists)
