@@ -75,7 +75,7 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
             .Where(o => o.CenterId == centerId && questionIds.Contains(o.QuestionId))
             .ToListAsync(cancellationToken);
 
-        // Fetch user attempts to map attemptStatus and latestAttempt for each question
+        // Fetch user attempts to map attemptStatus, latestAttempt, submitted answers, and attachments for each question
         var attemptsList = await _dbContext.Attempts
             .AsNoTracking()
             .Where(a => a.CenterId == centerId && a.StudentId == currentUserId && a.AssignmentId == assignmentId)
@@ -85,6 +85,15 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
         var latestAttemptsByQuestion = attemptsList
             .GroupBy(a => a.QuestionId)
             .ToDictionary(g => g.Key, g => g.First());
+
+        var attemptIds = latestAttemptsByQuestion.Values.Select(x => x.AttemptId).ToList();
+        var attachments = await _dbContext.AttemptAttachments
+            .AsNoTracking()
+            .Where(aa => aa.CenterId == centerId && attemptIds.Contains(aa.AttemptId))
+            .Select(aa => aa.AttemptId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+        var hasAttachmentSet = attachments.ToHashSet();
 
         var questionsDto = assignmentQuestions.Select(aq =>
         {
@@ -119,7 +128,11 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
                     AnswerChanges = latestAttempt.AnswerChanges,
                     Skipped = latestAttempt.Skipped,
                     SubmittedAt = latestAttempt.CreatedAt
-                } : null
+                } : null,
+                SubmittedAnswer = latestAttempt?.FinalAnswer,
+                SubmittedReasoning = latestAttempt?.ReasoningText,
+                SubmittedAttemptId = latestAttempt?.AttemptId,
+                HasAttachment = latestAttempt != null && hasAttachmentSet.Contains(latestAttempt.AttemptId)
             };
         }).ToList();
 

@@ -92,6 +92,10 @@ export interface StudentAssignmentQuestionDto {
   options?: StudentAssignmentQuestionOptionDto[];
   attemptStatus: AttemptStatus | null;
   latestAttempt?: StudentQuestionAttemptDto | null;
+  submittedAnswer?: string | null;
+  submittedReasoning?: string | null;
+  submittedAttemptId?: number | null;
+  hasAttachment?: boolean;
 }
 
 export interface StudentAssignmentDetailDto {

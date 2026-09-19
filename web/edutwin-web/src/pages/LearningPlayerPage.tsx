@@ -30,6 +30,7 @@ import {
   setAttemptSessionId,
 } from "../utils/attemptSessionStorage";
 import { useAuthStore } from "../stores/authStore";
+import { httpClient } from "../api/httpClient";
 
 interface StoredAnswer {
   finalAnswer: string;
@@ -272,41 +273,110 @@ export const LearningPlayerPage = () => {
   useEffect(() => {
     if (!question?.questionId || !assignmentId) return;
     const qId = question.questionId;
-    const existingAttempt = assignmentQuestion?.latestAttempt;
-    if (existingAttempt) {
-      setFinalAnswer(existingAttempt.finalAnswer === "SKIPPED" ? "" : (existingAttempt.finalAnswer || ""));
-      setReasoningText(existingAttempt.reasoningText || "");
-      setConfidence(existingAttempt.confidence ?? 80);
-      setTimeSpentSeconds(existingAttempt.timeSpentSeconds ?? 0);
-      setAnswerChanges(existingAttempt.answerChanges ?? 0);
+    const saved = assignmentAnswers[qId];
+
+    const isQuestionSubmitted =
+      assignmentQuestion?.attemptStatus === "Completed" ||
+      assignmentQuestion?.attemptStatus === "NeedsTeacherReview" ||
+      Boolean(assignmentQuestion?.latestAttempt) ||
+      Boolean(assignmentQuestion?.submittedAnswer) ||
+      isAssignmentSubmitted;
+
+    const effectiveSubmittedAnswer =
+      assignmentQuestion?.submittedAnswer !== undefined && assignmentQuestion?.submittedAnswer !== null
+        ? (assignmentQuestion.submittedAnswer === "SKIPPED" ? "" : assignmentQuestion.submittedAnswer)
+        : (assignmentQuestion?.latestAttempt?.finalAnswer === "SKIPPED" ? "" : (assignmentQuestion?.latestAttempt?.finalAnswer || null));
+
+    const effectiveSubmittedReasoning =
+      assignmentQuestion?.submittedReasoning !== undefined && assignmentQuestion?.submittedReasoning !== null
+        ? assignmentQuestion.submittedReasoning
+        : (assignmentQuestion?.latestAttempt?.reasoningText || null);
+
+    const hasSubmittedData =
+      (effectiveSubmittedAnswer !== null && effectiveSubmittedAnswer !== undefined) ||
+      (effectiveSubmittedReasoning !== null && effectiveSubmittedReasoning !== undefined);
+
+    if (isQuestionSubmitted && hasSubmittedData) {
+      setFinalAnswer(effectiveSubmittedAnswer || "");
+      setReasoningText(effectiveSubmittedReasoning || "");
+      setConfidence(assignmentQuestion?.latestAttempt?.confidence ?? saved?.confidence ?? 80);
+      setTimeSpentSeconds(assignmentQuestion?.latestAttempt?.timeSpentSeconds ?? saved?.timeSpentSeconds ?? 0);
+      setAnswerChanges(assignmentQuestion?.latestAttempt?.answerChanges ?? saved?.answerChanges ?? 0);
+      setAttachedSnapshotDataUrl(saved?.snapshotDataUrl || null);
+      setAttachedSnapshotTime(saved?.snapshotTime || null);
+      setDrawingUploadToken(saved?.drawingUploadToken || null);
+    } else if (saved) {
+      setFinalAnswer(saved.finalAnswer || "");
+      setReasoningText(saved.reasoningText || "");
+      setConfidence(saved.confidence ?? 80);
+      setTimeSpentSeconds(saved.timeSpentSeconds ?? 0);
+      setAnswerChanges(saved.answerChanges ?? 0);
+      setAttachedSnapshotDataUrl(saved.snapshotDataUrl || null);
+      setAttachedSnapshotTime(saved.snapshotTime || null);
+      setDrawingUploadToken(saved.drawingUploadToken || null);
+    } else if (hasSubmittedData) {
+      setFinalAnswer(effectiveSubmittedAnswer || "");
+      setReasoningText(effectiveSubmittedReasoning || "");
+      setConfidence(assignmentQuestion?.latestAttempt?.confidence ?? 80);
+      setTimeSpentSeconds(assignmentQuestion?.latestAttempt?.timeSpentSeconds ?? 0);
+      setAnswerChanges(assignmentQuestion?.latestAttempt?.answerChanges ?? 0);
       setAttachedSnapshotDataUrl(null);
       setAttachedSnapshotTime(null);
       setDrawingUploadToken(null);
     } else {
-      const saved = assignmentAnswers[qId];
-      if (saved) {
-        setFinalAnswer(saved.finalAnswer || "");
-        setReasoningText(saved.reasoningText || "");
-        setConfidence(saved.confidence ?? 80);
-        setTimeSpentSeconds(saved.timeSpentSeconds ?? 0);
-        setAnswerChanges(saved.answerChanges ?? 0);
-        setAttachedSnapshotDataUrl(saved.snapshotDataUrl || null);
-        setAttachedSnapshotTime(saved.snapshotTime || null);
-        setDrawingUploadToken(saved.drawingUploadToken || null);
-      } else {
-        setFinalAnswer("");
-        setReasoningText("");
-        setConfidence(80);
-        setTimeSpentSeconds(0);
-        setAnswerChanges(0);
-        setAttachedSnapshotDataUrl(null);
-        setAttachedSnapshotTime(null);
-        setDrawingUploadToken(null);
-      }
+      setFinalAnswer("");
+      setReasoningText("");
+      setConfidence(80);
+      setTimeSpentSeconds(0);
+      setAnswerChanges(0);
+      setAttachedSnapshotDataUrl(null);
+      setAttachedSnapshotTime(null);
+      setDrawingUploadToken(null);
     }
     setAttachedSnapshotBlob(null);
     setSubmissionError(null);
-  }, [question?.questionId, assignmentId, assignmentQuestion?.latestAttempt]);
+  }, [
+    question?.questionId,
+    assignmentId,
+    assignmentQuestion?.attemptStatus,
+    assignmentQuestion?.submittedAnswer,
+    assignmentQuestion?.submittedReasoning,
+    assignmentQuestion?.latestAttempt,
+    isAssignmentSubmitted,
+  ]);
+
+  // If question is submitted and has an attachment, load attachment if not already loaded
+  useEffect(() => {
+    const attemptId =
+      assignmentQuestion?.submittedAttemptId ??
+      (assignmentQuestion?.latestAttempt?.attemptId ? Number(assignmentQuestion.latestAttempt.attemptId) : null);
+    if (!assignmentQuestion?.hasAttachment || !attemptId) return;
+    let isCancelled = false;
+    let objectUrl: string | null = null;
+
+    httpClient
+      .get<Blob>(`/learning/attempts/${attemptId}/attachment`, { responseType: "blob" })
+      .then((res) => {
+        if (!isCancelled) {
+          objectUrl = URL.createObjectURL(res.data);
+          setAttachedSnapshotDataUrl(objectUrl);
+        }
+      })
+      .catch(() => {
+        // Silently catch attachment load error
+      });
+
+    return () => {
+      isCancelled = true;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [
+    assignmentQuestion?.submittedAttemptId,
+    assignmentQuestion?.latestAttempt?.attemptId,
+    assignmentQuestion?.hasAttachment,
+  ]);
 
   // Persist current question answer into assignmentAnswers & localStorage
   const persistCurrentAnswer = useCallback(
@@ -743,8 +813,7 @@ export const LearningPlayerPage = () => {
         frozenPayloadRef.current = null;
 
         // Invalidate TanStack queries so assignment and lists refresh with updated progress
-        void queryClient.invalidateQueries({ queryKey: ["studentAssignment", assignmentId] });
-        void queryClient.invalidateQueries({ queryKey: ["studentAssignments"] });
+        await queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
 
         // Clear local storage draft
         try {
@@ -830,7 +899,7 @@ export const LearningPlayerPage = () => {
 
     if (assignmentId) {
       try {
-        await queryClient.refetchQueries({ queryKey: ["studentAssignment", assignmentId] });
+        await queryClient.refetchQueries({ queryKey: ["student-assignments", assignmentId] });
       } catch {
         // ignore
       }
@@ -848,6 +917,8 @@ export const LearningPlayerPage = () => {
         if (!q.latestAttempt.skipped && q.latestAttempt.finalAnswer?.trim()) {
           count++;
         }
+      } else if (q.submittedAnswer && q.submittedAnswer !== "SKIPPED") {
+        count++;
       } else if (q.questionId === question?.questionId) {
         if (finalAnswer.trim().length > 0) count++;
       } else {
@@ -868,6 +939,9 @@ export const LearningPlayerPage = () => {
         }
         return;
       }
+      if (q.submittedAnswer && q.submittedAnswer !== "SKIPPED") {
+        return;
+      }
       if (q.questionId === question?.questionId) {
         if (!finalAnswer.trim()) {
           missing.push(idx + 1);
@@ -884,6 +958,7 @@ export const LearningPlayerPage = () => {
 
   const isCurrentQuestionSubmitted =
     Boolean(assignmentQuestion?.latestAttempt) ||
+    Boolean(assignmentQuestion?.submittedAnswer) ||
     assignmentQuestion?.attemptStatus === "Completed" ||
     assignmentQuestion?.attemptStatus === "NeedsTeacherReview";
 

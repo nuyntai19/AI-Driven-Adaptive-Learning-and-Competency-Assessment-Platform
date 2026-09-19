@@ -6,5 +6,7 @@ export const useStudentAssignments = (params?: GetStudentAssignmentsParams) => {
   return useQuery({
     queryKey: ['student-assignments', params],
     queryFn: () => getStudentAssignments(params),
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 };
