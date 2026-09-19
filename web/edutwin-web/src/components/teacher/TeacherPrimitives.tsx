@@ -205,8 +205,8 @@ export function TeacherSafeErrorPanel({
   onRetry,
   title = "Có lỗi xảy ra",
 }: TeacherSafeErrorPanelProps) {
-  const problem = extractProblemDetails(error);
-  const message = mapSafeOperationalError(error, fallback);
+  const problem = typeof error === "string" ? { traceId: null } : extractProblemDetails(error);
+  const message = typeof error === "string" ? error : mapSafeOperationalError(error, fallback);
 
   return (
     <section role="alert" className="rounded-xl border-2 border-rose-600 bg-rose-50 p-6 space-y-3 text-rose-950 shadow-sm">

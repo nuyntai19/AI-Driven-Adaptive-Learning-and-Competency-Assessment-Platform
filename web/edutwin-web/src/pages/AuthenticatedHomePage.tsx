@@ -44,6 +44,11 @@ export const AuthenticatedHomePage = () => {
     return <Navigate to="/quan-ly/tong-quan-trung-tam" replace />;
   }
 
+  const isTeacher = user.accountType === "Teacher";
+  if (isTeacher) {
+    return <Navigate to="/giao-vien/lop-hoc" replace />;
+  }
+
   const handleLogout = async () => {
     setIsLoggingOut(true);
     try {
@@ -155,15 +160,15 @@ export const AuthenticatedHomePage = () => {
                   <div className="mt-4 flex flex-col gap-2">
                     {hasPermission(permissions.dashboardsTeacherRead) && (
                       <Link
-                        to="/quan-ly/tong-quan-lop-hoc"
+                        to={user.accountType === "Teacher" ? "/giao-vien/lop-hoc" : "/quan-ly/tong-quan-lop-hoc"}
                         className="inline-flex items-center justify-center rounded-lg bg-teal-700 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-teal-600"
                       >
-                        Dashboard Lớp học →
+                        {user.accountType === "Teacher" ? "Không gian Sư phạm →" : "Dashboard Lớp học →"}
                       </Link>
                     )}
                     {hasPermission(permissions.teacherReviewsRead) && (
                       <Link
-                        to="/quan-ly/duyet-bai"
+                        to={user.accountType === "Teacher" ? "/giao-vien/cham-bai" : "/quan-ly/duyet-bai"}
                         className="inline-flex items-center justify-center rounded-lg bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
                       >
                         Hàng đợi duyệt bài
