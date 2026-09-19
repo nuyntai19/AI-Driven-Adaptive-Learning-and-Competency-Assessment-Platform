@@ -35,17 +35,17 @@ export const SideAssistantWorkspace: React.FC<SideAssistantWorkspaceProps> = ({
   return (
     <aside
       aria-label="Khung trợ lý học tập kế bên"
-      className="flex flex-col h-[780px] max-h-[calc(100vh-2rem)] min-h-[700px] bg-slate-900/95 rounded-3xl border border-slate-700/80 shadow-2xl overflow-hidden backdrop-blur-md animate-in fade-in slide-in-from-right-4 duration-200"
+      className="flex flex-col h-[520px] sm:h-[640px] lg:h-[780px] max-h-[calc(100vh-2rem)] min-h-[380px] w-full bg-slate-900/95 rounded-3xl border border-slate-700/80 shadow-2xl overflow-hidden backdrop-blur-md animate-in fade-in slide-in-from-right-4 duration-200"
     >
       {/* Top Header with Tab Switchers & Close Button */}
-      <header className="flex items-center justify-between px-3.5 py-2.5 bg-slate-950/85 border-b border-slate-800 shrink-0">
-        <div className="flex items-center gap-1.5" role="tablist" aria-label="Công cụ trợ lý">
+      <header className="flex items-center justify-between px-2.5 sm:px-3.5 py-2.5 bg-slate-950/85 border-b border-slate-800 shrink-0 gap-2">
+        <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto no-scrollbar" role="tablist" aria-label="Công cụ trợ lý">
           <button
             type="button"
             role="tab"
             aria-selected={activeTab === "casio"}
             onClick={() => onChangeTab("casio")}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
               activeTab === "casio"
                 ? "bg-amber-500 text-slate-950 shadow-xs"
                 : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"

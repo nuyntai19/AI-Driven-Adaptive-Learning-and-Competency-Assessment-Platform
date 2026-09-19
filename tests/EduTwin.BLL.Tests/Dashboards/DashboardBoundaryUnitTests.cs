@@ -270,6 +270,72 @@ public sealed class DashboardBoundaryUnitTests
         Assert.Empty(result.Data!.ProgressLine);
     }
 
+    [Fact]
+    public async Task StudentDashboard_WhenSubjectIdIsNull_ReturnsAllSubjectsAggregate()
+    {
+        var dbName = $"StudentDashboard_AllSubjects_{Guid.NewGuid():N}";
+        var (dbContext, tenantContext) = CreateDbContext(dbName);
+
+        var centerId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
+        var mathSubjectId = Guid.NewGuid();
+        var engSubjectId = Guid.NewGuid();
+
+        tenantContext.CenterId = centerId;
+        tenantContext.UserId = studentId;
+        tenantContext.Role = nameof(UserRole.Student);
+
+        var center = CreateCenter(centerId);
+        var user = new User { UserId = studentId, CenterId = centerId, Username = "s_all", DisplayName = "Student All", PasswordHash = "h", RoleName = UserRole.Student, Status = UserStatus.Active, CreatedAt = UtcNow, UpdatedAt = UtcNow };
+        var student = new Student { StudentId = studentId, CenterId = centerId, FullName = "Student All", GradeLevel = 12, CreatedAt = UtcNow, UpdatedAt = UtcNow };
+        var mathSubject = new Subject { SubjectId = mathSubjectId, CenterId = centerId, SubjectCode = "MATH", SubjectName = "Toan", IsActive = true, CreatedAt = UtcNow, UpdatedAt = UtcNow };
+        var engSubject = new Subject { SubjectId = engSubjectId, CenterId = centerId, SubjectCode = "ENG", SubjectName = "Tieng Anh", IsActive = true, CreatedAt = UtcNow, UpdatedAt = UtcNow };
+
+        var mathGoal = new StudentSubjectGoal { GoalId = 1, CenterId = centerId, StudentId = studentId, SubjectId = mathSubjectId, TargetScore = 9.0m, RemainingDays = 60, CurrentPredictedScore = 7.5m, RiskScore = 20.0m, CreatedAt = UtcNow, UpdatedAt = UtcNow };
+        var engGoal = new StudentSubjectGoal { GoalId = 2, CenterId = centerId, StudentId = studentId, SubjectId = engSubjectId, TargetScore = 8.0m, RemainingDays = 90, CurrentPredictedScore = 6.5m, RiskScore = 45.0m, CreatedAt = UtcNow, UpdatedAt = UtcNow };
+
+        var mathTopic = new KnowledgeNode { NodeId = 10, CenterId = centerId, SubjectId = mathSubjectId, NodeCode = "M-T1", NodeName = "Ham so", NodeType = NodeType.Topic, OrderIndex = 1, ExamImportance = 1.0m, EstimatedLearningMinutes = 60, IsActive = true, CreatedAt = UtcNow, UpdatedAt = UtcNow };
+        var engTopic = new KnowledgeNode { NodeId = 20, CenterId = centerId, SubjectId = engSubjectId, NodeCode = "E-T1", NodeName = "Grammar", NodeType = NodeType.Topic, OrderIndex = 1, ExamImportance = 1.0m, EstimatedLearningMinutes = 60, IsActive = true, CreatedAt = UtcNow, UpdatedAt = UtcNow };
+
+        var mathTwin = new KnowledgeTwin { TwinId = 1, CenterId = centerId, StudentId = studentId, SubjectId = mathSubjectId, TopicNodeId = 10, MasteryPercentage = 80.0m, StabilityScore = 1.0m, ConfidenceScore = 1.0m, CreatedAt = UtcNow, UpdatedAt = UtcNow };
+        var engTwin = new KnowledgeTwin { TwinId = 2, CenterId = centerId, StudentId = studentId, SubjectId = engSubjectId, TopicNodeId = 20, MasteryPercentage = 60.0m, StabilityScore = 1.0m, ConfidenceScore = 1.0m, CreatedAt = UtcNow, UpdatedAt = UtcNow };
+
+        dbContext.Centers.Add(center);
+        dbContext.Users.Add(user);
+        dbContext.Students.Add(student);
+        dbContext.Subjects.AddRange(mathSubject, engSubject);
+        dbContext.StudentSubjectGoals.AddRange(mathGoal, engGoal);
+        dbContext.KnowledgeNodes.AddRange(mathTopic, engTopic);
+        dbContext.KnowledgeTwins.AddRange(mathTwin, engTwin);
+        await dbContext.SaveChangesAsync();
+
+        var useCase = new GetStudentDashboardUseCase(dbContext, tenantContext, TimeProvider.System);
+        var result = await useCase.ExecuteAsync(null, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Data);
+        Assert.Equal("Toàn bộ", result.Data.Subject.SubjectName);
+        Assert.Equal(Guid.Empty, result.Data.Subject.SubjectId);
+        // Average TargetScore: (9.0 + 8.0) / 2 = 8.5
+        Assert.Equal(8.5m, result.Data.Goal.TargetScore);
+        // Average PredictedScore: (7.5 + 6.5) / 2 = 7.0
+        Assert.Equal(7.0m, result.Data.Goal.CurrentPredictedScore);
+        // Min RemainingDays: min(60, 90) = 60
+        Assert.Equal(60u, result.Data.Goal.RemainingDays);
+        // Max RiskScore: max(20.0, 45.0) = 45.0
+        Assert.Equal(45.0m, result.Data.Goal.RiskScore);
+
+        // Option A: Radar has subject-level vertices
+        Assert.Equal(2, result.Data.MasteryRadar.Count);
+        var mathRadar = Assert.Single(result.Data.MasteryRadar, r => r.TopicNodeId == mathSubjectId.ToString());
+        Assert.Equal("Toan", mathRadar.TopicName);
+        Assert.Equal(80.0m, mathRadar.Mastery);
+
+        var engRadar = Assert.Single(result.Data.MasteryRadar, r => r.TopicNodeId == engSubjectId.ToString());
+        Assert.Equal("Tieng Anh", engRadar.TopicName);
+        Assert.Equal(60.0m, engRadar.Mastery);
+    }
+
     [Theory]
     [InlineData(70.0, true)]
     [InlineData(69.9, false)]

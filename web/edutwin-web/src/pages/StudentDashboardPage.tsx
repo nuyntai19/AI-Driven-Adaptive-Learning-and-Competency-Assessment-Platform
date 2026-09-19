@@ -18,13 +18,13 @@ import {
 import { getStudentDashboard } from "../api/dashboardsApi";
 import { acceptRecommendation, dismissRecommendation } from "../api/learningFeedbackApi";
 import type { StudentDashboardDataDto } from "../types/dashboards";
-import { SubjectRequiredState } from "../components/SubjectRequiredState";
 import { useThemeMode } from "../utils/themeMode";
 
 export const StudentDashboardPage: React.FC = () => {
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const selectedSubjectId = searchParams.get("subjectId") || "";
+  const isAllSubjects = !selectedSubjectId;
   const queryClient = useQueryClient();
   const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
   const [isTableViewOpen, setIsTableViewOpen] = useState<boolean>(false);
@@ -37,9 +37,9 @@ export const StudentDashboardPage: React.FC = () => {
     error,
     refetch,
   } = useQuery<StudentDashboardDataDto>({
-    queryKey: ["studentDashboard", selectedSubjectId],
-    queryFn: () => getStudentDashboard(selectedSubjectId),
-    enabled: !!selectedSubjectId,
+    queryKey: ["studentDashboard", selectedSubjectId || "all"],
+    queryFn: () => getStudentDashboard(selectedSubjectId || undefined),
+    enabled: true,
   });
 
   const acceptMutation = useMutation({
@@ -60,20 +60,16 @@ export const StudentDashboardPage: React.FC = () => {
     },
   });
 
-  if (!selectedSubjectId) {
-    return <SubjectRequiredState onSelect={(subjectId) => setSearchParams({ subjectId })} />;
-  }
-
   if (isLoading) {
     return (
-      <div className="max-w-[1700px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 min-w-0">
         <div className="h-28 animate-pulse rounded-2xl bg-white dark:bg-[#0f172a] border border-slate-200/80 dark:border-slate-800 shadow-xs" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        <div className="w-full min-w-0 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="h-36 animate-pulse rounded-2xl bg-white dark:bg-[#0f172a] border border-slate-200/80 dark:border-slate-800 shadow-xs" />
           ))}
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="w-full min-w-0 grid grid-cols-1 xl:grid-cols-2 gap-6">
           <div className="h-88 animate-pulse rounded-2xl bg-white dark:bg-[#0f172a] border border-slate-200/80 dark:border-slate-800 shadow-xs" />
           <div className="h-88 animate-pulse rounded-2xl bg-white dark:bg-[#0f172a] border border-slate-200/80 dark:border-slate-800 shadow-xs" />
         </div>
@@ -83,7 +79,7 @@ export const StudentDashboardPage: React.FC = () => {
 
   if (isError || !dashboard) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-12">
+      <div className="max-w-4xl mx-auto px-4 py-12 min-w-0">
         <div className="rounded-2xl bg-white dark:bg-[#0f172a] p-8 border border-slate-200 dark:border-slate-800 shadow-sm text-center">
           <div className="w-12 h-12 rounded-full bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto mb-4 font-bold text-xl">
             !
@@ -159,42 +155,49 @@ export const StudentDashboardPage: React.FC = () => {
   const scoreDiff = goal.targetScore - goal.currentPredictedScore;
 
   return (
-    <div className="max-w-[1700px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+    <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 min-w-0">
       {/* Subject pill & Title Hero Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 mb-2">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 min-w-0">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
             <span className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 px-2.5 py-1 text-xs font-bold text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800">
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
               </svg>
-              <span>Môn: {subject.subjectName}</span>
+              <span>{isAllSubjects ? "Phạm vi: Toàn bộ môn học" : `Môn: ${subject.subjectName}`}</span>
             </span>
+            {isAllSubjects && (
+              <span className="inline-flex items-center rounded-lg bg-slate-100 dark:bg-slate-800 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                Tổng hợp đa môn
+              </span>
+            )}
           </div>
 
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight truncate">
             Tổng quan học tập · {student.fullName}
           </h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 font-medium">
-            Định vị năng lực thích ứng và lộ trình bứt phá điểm thi mục tiêu.
+            {isAllSubjects
+              ? "Tổng quan năng lực thích ứng tổng hợp và tiến độ trên toàn bộ chương trình."
+              : `Định vị năng lực thích ứng và lộ trình bứt phá điểm thi môn ${subject.subjectName}.`}
           </p>
         </div>
 
         {/* Top Action Buttons */}
-        <div className="flex items-center gap-3 self-start md:self-auto">
+        <div className="flex items-center gap-3 self-start md:self-auto shrink-0 flex-wrap">
           <Link
-            to={`/hoc-tap/ho-so-nang-luc?subjectId=${subject.subjectId}`}
-            className="inline-flex items-center gap-2 rounded-xl bg-white dark:bg-slate-800 px-4 py-2.5 text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 shadow-2xs border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all cursor-pointer"
+            to={selectedSubjectId ? `/hoc-tap/ho-so-nang-luc?subjectId=${selectedSubjectId}` : `/hoc-tap/ho-so-nang-luc`}
+            className="inline-flex items-center gap-2 rounded-xl bg-white dark:bg-slate-800 px-4 py-2.5 text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 shadow-2xs border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all cursor-pointer whitespace-nowrap"
           >
-            <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
             <span>Hồ sơ năng lực</span>
           </Link>
 
           <Link
-            to={`/hoc-tap/luyen-tap?subjectId=${subject.subjectId}`}
-            className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-xs sm:text-sm font-bold text-white shadow-sm shadow-indigo-600/20 hover:bg-indigo-500 transition-all cursor-pointer"
+            to={selectedSubjectId ? `/hoc-tap/luyen-tap?subjectId=${selectedSubjectId}` : `/hoc-tap/luyen-tap`}
+            className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-xs sm:text-sm font-bold text-white shadow-sm shadow-indigo-600/20 hover:bg-indigo-500 transition-all cursor-pointer whitespace-nowrap"
           >
             <span>⚡ Luyện tập ngay</span>
           </Link>
@@ -218,14 +221,14 @@ export const StudentDashboardPage: React.FC = () => {
       )}
 
       {/* Bento 4 KPI Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="w-full min-w-0 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
         {/* Card 1: Điểm mục tiêu */}
-        <div className="rounded-2xl bg-white dark:bg-[#0f172a] p-5 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:shadow-md transition-shadow">
+        <div className="w-full min-w-0 rounded-2xl bg-white dark:bg-[#0f172a] p-5 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               Điểm mục tiêu
             </span>
-            <div className="w-8 h-8 rounded-full bg-slate-50 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300">
+            <div className="w-8 h-8 rounded-full bg-slate-50 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 shrink-0">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <circle cx="12" cy="12" r="9" strokeWidth="2" />
                 <circle cx="12" cy="12" r="5" strokeWidth="2" />
@@ -240,19 +243,19 @@ export const StudentDashboardPage: React.FC = () => {
               </span>
               <span className="text-sm font-semibold text-slate-400 dark:text-slate-500">/ 10</span>
             </div>
-            <p className="mt-2 text-xs font-medium text-slate-400 dark:text-slate-500">
-              Kỳ thi ĐGNL - ĐHQG
+            <p className="mt-2 text-xs font-medium text-slate-400 dark:text-slate-500 truncate">
+              {isAllSubjects ? "Kỳ thi ĐGNL · Mục tiêu trung bình" : "Kỳ thi ĐGNL - ĐHQG"}
             </p>
           </div>
         </div>
 
         {/* Card 2: Điểm dự đoán hiện tại */}
-        <div className="rounded-2xl bg-white dark:bg-[#0f172a] p-5 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:shadow-md transition-shadow">
+        <div className="w-full min-w-0 rounded-2xl bg-white dark:bg-[#0f172a] p-5 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               Điểm dự đoán hiện tại
             </span>
-            <div className="w-8 h-8 rounded-full bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/60 dark:border-indigo-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+            <div className="w-8 h-8 rounded-full bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/60 dark:border-indigo-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
@@ -265,7 +268,7 @@ export const StudentDashboardPage: React.FC = () => {
               </span>
               <span className="text-sm font-semibold text-slate-400 dark:text-slate-500">/ 10</span>
             </div>
-            <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+            <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400 truncate">
               Độ lệch:{" "}
               <span className={scoreDiff > 0 ? "font-bold text-amber-600 dark:text-amber-400" : "font-bold text-emerald-600 dark:text-emerald-400"}>
                 {scoreDiff > 0 ? `+${scoreDiff.toFixed(1)} điểm cần bứt phá` : "Đã đạt mục tiêu!"}
@@ -275,12 +278,12 @@ export const StudentDashboardPage: React.FC = () => {
         </div>
 
         {/* Card 3: Thời gian còn lại */}
-        <div className="rounded-2xl bg-white dark:bg-[#0f172a] p-5 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:shadow-md transition-shadow">
+        <div className="w-full min-w-0 rounded-2xl bg-white dark:bg-[#0f172a] p-5 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               Thời gian còn lại
             </span>
-            <div className="w-8 h-8 rounded-full bg-amber-50 dark:bg-amber-950/60 border border-amber-200/60 dark:border-amber-800 flex items-center justify-center text-amber-600 dark:text-amber-400">
+            <div className="w-8 h-8 rounded-full bg-amber-50 dark:bg-amber-950/60 border border-amber-200/60 dark:border-amber-800 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
@@ -293,19 +296,19 @@ export const StudentDashboardPage: React.FC = () => {
               </span>
               <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">ngày</span>
             </div>
-            <p className="mt-2 text-xs font-medium text-slate-400 dark:text-slate-500">
+            <p className="mt-2 text-xs font-medium text-slate-400 dark:text-slate-500 truncate">
               Thời gian vàng ôn luyện trọng điểm
             </p>
           </div>
         </div>
 
         {/* Card 4: Đánh giá rủi ro */}
-        <div className="rounded-2xl bg-white dark:bg-[#0f172a] p-5 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:shadow-md transition-shadow">
+        <div className="w-full min-w-0 rounded-2xl bg-white dark:bg-[#0f172a] p-5 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               Đánh giá rủi ro mục tiêu
             </span>
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${riskInfo.iconColor}`}>
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${riskInfo.iconColor} shrink-0`}>
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
@@ -313,11 +316,11 @@ export const StudentDashboardPage: React.FC = () => {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 dark:text-white">
+              <span className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 dark:text-white truncate">
                 {riskInfo.label}
               </span>
             </div>
-            <p className="mt-2 text-xs font-medium text-slate-400 dark:text-slate-500">
+            <p className="mt-2 text-xs font-medium text-slate-400 dark:text-slate-500 truncate">
               {riskInfo.text}
             </p>
           </div>
@@ -325,32 +328,27 @@ export const StudentDashboardPage: React.FC = () => {
       </div>
 
       {/* Middle Section: Radar Chart + Progress Chart */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left: Radar Năng Lực Theo Chuyên Đề */}
-        <div className="rounded-2xl bg-white dark:bg-[#0f172a] p-6 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col justify-between">
+      <div className="w-full min-w-0 grid grid-cols-1 xl:grid-cols-2 gap-6">
+        {/* Left: Radar Năng Lực (Theo Môn Học khi Toàn bộ, hoặc Theo Chuyên Đề khi chọn môn) */}
+        <div className="w-full min-w-0 rounded-2xl bg-white dark:bg-[#0f172a] p-6 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col justify-between overflow-hidden">
           <div>
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                  Radar Năng Lực Theo Chuyên Đề
+                  {isAllSubjects ? "Radar Năng Lực Theo Môn Học" : "Radar Năng Lực Theo Chuyên Đề"}
                 </h3>
                 <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-                  Mức độ thành thạo hiện tại · {subject.subjectName}
+                  {isAllSubjects
+                    ? "Mức độ thành thạo tổng hợp theo từng môn học"
+                    : `Mức độ thành thạo hiện tại · ${subject.subjectName}`}
                 </p>
               </div>
-              <button
-                type="button"
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-1 cursor-pointer"
-                title="Tùy chọn hiển thị"
-              >
-                •••
-              </button>
             </div>
 
-            <div className="h-72 w-full mt-4">
+            <div className="h-72 w-full min-w-0 mt-4 relative">
               {radarChartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <RadarChart cx="50%" cy="50%" outerRadius="75%" data={radarChartData}>
+                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                  <RadarChart cx="50%" cy="50%" outerRadius="68%" data={radarChartData}>
                     <PolarGrid stroke={isDark ? "#334155" : "#e2e8f0"} strokeDasharray="3 3" />
                     <PolarAngleAxis
                       dataKey="topic"
@@ -371,7 +369,7 @@ export const StudentDashboardPage: React.FC = () => {
                       fillOpacity={isDark ? 0.5 : 0.35}
                     />
                     <Tooltip
-                      formatter={(val: number) => [`${val}%`, "Độ thành thạo"]}
+                      formatter={(val: number) => [`${val}%`, isAllSubjects ? "Thành thạo môn" : "Độ thành thạo"]}
                       labelFormatter={(label, payload) => payload?.[0]?.payload?.fullTopic || label}
                       contentStyle={{
                         backgroundColor: isDark ? "#1e293b" : "#ffffff",
@@ -384,8 +382,10 @@ export const StudentDashboardPage: React.FC = () => {
                   </RadarChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="flex h-full items-center justify-center text-sm text-slate-400 dark:text-slate-500">
-                  Chưa có dữ liệu chuyên đề để tạo biểu đồ
+                <div className="flex h-full items-center justify-center text-sm text-slate-400 dark:text-slate-500 text-center px-4">
+                  {isAllSubjects
+                    ? "Chưa có dữ liệu môn học để tạo biểu đồ"
+                    : `Chưa có dữ liệu chuyên đề để tạo biểu đồ môn ${subject.subjectName}`}
                 </div>
               )}
             </div>
@@ -404,7 +404,7 @@ export const StudentDashboardPage: React.FC = () => {
         </div>
 
         {/* Right: Tiến Trình Phát Triển Năng Lực */}
-        <div className="rounded-2xl bg-white dark:bg-[#0f172a] p-6 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col justify-between">
+        <div className="w-full min-w-0 rounded-2xl bg-white dark:bg-[#0f172a] p-6 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col justify-between overflow-hidden">
           <div>
             <div className="flex items-center justify-between">
               <div>
@@ -412,21 +412,16 @@ export const StudentDashboardPage: React.FC = () => {
                   Tiến Trình Phát Triển Năng Lực
                 </h3>
                 <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-                  Tổng quan qua các mốc làm bài
+                  {isAllSubjects
+                    ? "Tổng quan qua các mốc làm bài trên toàn hệ thống"
+                    : `Tổng quan qua các mốc làm bài môn ${subject.subjectName}`}
                 </p>
               </div>
-              <button
-                type="button"
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-1 cursor-pointer"
-                title="Tùy chọn hiển thị"
-              >
-                •••
-              </button>
             </div>
 
-            <div className="h-72 w-full mt-4">
+            <div className="h-72 w-full min-w-0 mt-4 relative">
               {progressChartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                   <AreaChart data={progressChartData} margin={{ top: 15, right: 20, left: -15, bottom: 5 }}>
                     <defs>
                       <linearGradient id="progressGradient" x1="0" y1="0" x2="0" y2="1">
@@ -472,8 +467,10 @@ export const StudentDashboardPage: React.FC = () => {
                   </AreaChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="flex h-full items-center justify-center text-sm text-slate-400 dark:text-slate-500">
-                  Chưa có lịch sử làm bài để vẽ tiến trình
+                <div className="flex h-full items-center justify-center text-sm text-slate-400 dark:text-slate-500 text-center px-4">
+                  {isAllSubjects
+                    ? "Chưa có lịch sử làm bài để vẽ tiến trình tổng thể"
+                    : `Chưa có lịch sử làm bài để vẽ tiến trình cho môn ${subject.subjectName}`}
                 </div>
               )}
             </div>
@@ -496,35 +493,45 @@ export const StudentDashboardPage: React.FC = () => {
 
       {/* Collapsible Chart Data Table */}
       {isTableViewOpen && (
-        <div className="rounded-2xl bg-white dark:bg-[#0f172a] p-6 border border-slate-200 dark:border-slate-800 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div>
-              <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-3">Năng lực theo chuyên đề</h4>
-              <div className="overflow-x-auto">
+        <div className="w-full min-w-0 rounded-2xl bg-white dark:bg-[#0f172a] p-6 border border-slate-200 dark:border-slate-800 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="w-full min-w-0 grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="w-full min-w-0">
+              <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-3">
+                {isAllSubjects ? "Năng lực tổng hợp theo môn học" : "Năng lực theo chuyên đề"}
+              </h4>
+              <div className="overflow-x-auto w-full min-w-0">
                 <table className="min-w-full text-left text-xs">
                   <thead className="bg-slate-50 dark:bg-slate-800/75 text-slate-500 dark:text-slate-400 font-semibold">
                     <tr>
-                      <th className="py-2.5 px-3 rounded-l-lg">Chuyên đề</th>
+                      <th className="py-2.5 px-3 rounded-l-lg">{isAllSubjects ? "Môn học" : "Chuyên đề"}</th>
                       <th className="py-2.5 px-3 rounded-r-lg text-right">Độ thành thạo</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {masteryRadar.map((item) => (
-                      <tr key={item.topicNodeId} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                        <td className="py-2 px-3 text-slate-700 dark:text-slate-300 font-medium">{item.topicName}</td>
-                        <td className="py-2 px-3 text-right font-bold text-indigo-600 dark:text-indigo-400">
-                          {item.mastery.toFixed(1)}%
+                    {masteryRadar.length > 0 ? (
+                      masteryRadar.map((item) => (
+                        <tr key={item.topicNodeId} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
+                          <td className="py-2 px-3 text-slate-700 dark:text-slate-300 font-medium">{item.topicName}</td>
+                          <td className="py-2 px-3 text-right font-bold text-indigo-600 dark:text-indigo-400">
+                            {item.mastery.toFixed(1)}%
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={2} className="py-4 text-center text-slate-400">
+                          Chưa có dữ liệu
                         </td>
                       </tr>
-                    ))}
+                    )}
                   </tbody>
                 </table>
               </div>
             </div>
 
-            <div>
+            <div className="w-full min-w-0">
               <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-3">Lịch sử các mốc tiến triển</h4>
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto w-full min-w-0">
                 <table className="min-w-full text-left text-xs">
                   <thead className="bg-slate-50 dark:bg-slate-800/75 text-slate-500 dark:text-slate-400 font-semibold">
                     <tr>
@@ -533,16 +540,24 @@ export const StudentDashboardPage: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {progressLine.map((item) => (
-                      <tr key={item.recordedAt} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                        <td className="py-2 px-3 text-slate-700 dark:text-slate-300 font-medium">
-                          {new Date(item.recordedAt).toLocaleString("vi-VN")}
-                        </td>
-                        <td className="py-2 px-3 text-right font-bold text-emerald-600 dark:text-emerald-400">
-                          {item.overallSubjectMastery.toFixed(1)}%
+                    {progressLine.length > 0 ? (
+                      progressLine.map((item) => (
+                        <tr key={item.recordedAt} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
+                          <td className="py-2 px-3 text-slate-700 dark:text-slate-300 font-medium">
+                            {new Date(item.recordedAt).toLocaleString("vi-VN")}
+                          </td>
+                          <td className="py-2 px-3 text-right font-bold text-emerald-600 dark:text-emerald-400">
+                            {item.overallSubjectMastery.toFixed(1)}%
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={2} className="py-4 text-center text-slate-400">
+                          Chưa có mốc tiến trình
                         </td>
                       </tr>
-                    ))}
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -553,11 +568,11 @@ export const StudentDashboardPage: React.FC = () => {
 
       {/* AI Strategy & Recommendation Banner (Bottom) */}
       {action ? (
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-950 via-[#18163b] to-slate-950 p-6 sm:p-8 text-white shadow-xl border border-indigo-500/20">
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-950 via-[#18163b] to-slate-950 p-6 sm:p-8 text-white shadow-xl border border-indigo-500/20 w-full min-w-0">
           <div className="absolute top-0 right-0 -mt-8 -mr-8 w-64 h-64 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
 
-          <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-            <div className="space-y-3 max-w-3xl">
+          <div className="relative z-10 flex flex-col xl:flex-row xl:items-center justify-between gap-6 min-w-0">
+            <div className="space-y-3 max-w-3xl min-w-0">
               <div className="flex flex-wrap items-center gap-2.5">
                 <span className="rounded-lg bg-indigo-500/25 px-3 py-1 text-xs font-bold uppercase tracking-wider text-indigo-200 ring-1 ring-inset ring-indigo-400/30">
                   Chiến lược: {action.strategy}
@@ -575,7 +590,7 @@ export const StudentDashboardPage: React.FC = () => {
                 <span>EduTwin AI đề xuất</span>
               </div>
 
-              <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+              <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight break-words">
                 Đề xuất ưu tiên: {action.topicName}
               </h3>
 
@@ -584,10 +599,16 @@ export const StudentDashboardPage: React.FC = () => {
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3 shrink-0">
+            <div className="flex flex-wrap items-center gap-3 shrink-0 min-w-0">
               <button
                 type="button"
-                onClick={() => navigate(`/hoc-tap/luyen-tap?subjectId=${subject.subjectId}`)}
+                onClick={() => {
+                  if (action.questionId) {
+                    navigate(`/hoc-tap/luyen-tap/${action.questionId}${selectedSubjectId ? `?subjectId=${selectedSubjectId}` : ""}`);
+                  } else {
+                    navigate(selectedSubjectId ? `/hoc-tap/luyen-tap?subjectId=${selectedSubjectId}` : `/hoc-tap/luyen-tap`);
+                  }
+                }}
                 className="flex items-center gap-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-emerald-500/20 transition-all cursor-pointer focus-visible:outline-emerald-500"
               >
                 <span>▶ Bắt đầu học ngay</span>
@@ -619,7 +640,7 @@ export const StudentDashboardPage: React.FC = () => {
           </div>
         </div>
       ) : (
-        <div className="rounded-2xl bg-white dark:bg-[#0f172a] p-8 border border-slate-200 dark:border-slate-800 shadow-xs text-center">
+        <div className="w-full min-w-0 rounded-2xl bg-white dark:bg-[#0f172a] p-8 border border-slate-200 dark:border-slate-800 shadow-xs text-center">
           <div className="w-12 h-12 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto mb-3 text-xl font-bold">
             🌟
           </div>
@@ -627,13 +648,15 @@ export const StudentDashboardPage: React.FC = () => {
             Bạn đang duy trì lộ trình học tập rất xuất sắc!
           </h3>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-            Hệ thống chưa ghi nhận thêm lỗ hổng kiến thức nghiêm trọng nào. Hãy tiếp tục luyện tập các chuyên đề nâng cao.
+            {isAllSubjects
+              ? "Hệ thống chưa ghi nhận thêm lỗ hổng kiến thức nghiêm trọng nào trên toàn bộ chương trình."
+              : `Hệ thống chưa ghi nhận thêm lỗ hổng kiến thức nào cho môn ${subject.subjectName}.`}
           </p>
           <Link
-            to={`/hoc-tap/luyen-tap?subjectId=${subject.subjectId}`}
+            to={selectedSubjectId ? `/hoc-tap/luyen-tap?subjectId=${selectedSubjectId}` : `/hoc-tap/luyen-tap`}
             className="mt-4 inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-500"
           >
-            <span>Luyện tập nâng cao</span>
+            <span>Luyện tập thích ứng</span>
           </Link>
         </div>
       )}

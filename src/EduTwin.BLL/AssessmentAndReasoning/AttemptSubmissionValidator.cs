@@ -147,7 +147,7 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
             }
         }
 
-        if (question.ReasoningRequired && string.IsNullOrWhiteSpace(request.ReasoningText))
+        if (!request.Skipped && question.ReasoningRequired && string.IsNullOrWhiteSpace(request.ReasoningText))
         {
             return AttemptSubmissionValidationResult.Failure(ErrorCodes.QuestionReasoningRequired);
         }
@@ -174,18 +174,29 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
                 .ToListAsync(cancellationToken)
             : [];
 
-        var preliminaryGrade = _graderFactory
-            .GetGrader(question.QuestionType)
-            .Grade(
-                request.FinalAnswer,
-                question.CorrectAnswer,
-                new PreliminaryGrading.QuestionGradingContext
-                {
-                    EvaluationMode = question.AnswerEvaluationMode,
-                    MaxScore = question.MaxScore,
-                    Criteria = question.GradingCriteria,
-                    Options = options
-                });
+        var preliminaryGrade = !request.Skipped
+            ? _graderFactory
+                .GetGrader(question.QuestionType)
+                .Grade(
+                    request.FinalAnswer,
+                    question.CorrectAnswer,
+                    new PreliminaryGrading.QuestionGradingContext
+                    {
+                        EvaluationMode = question.AnswerEvaluationMode,
+                        MaxScore = question.MaxScore,
+                        Criteria = question.GradingCriteria,
+                        Options = options
+                    })
+            : new PreliminaryGradingResult
+            {
+                IsCorrect = false,
+                Score = 0m,
+                Feedback = "Skipped"
+            };
+
+        var effectiveFinalAnswer = request.Skipped
+            ? (string.IsNullOrWhiteSpace(request.FinalAnswer) ? "SKIPPED" : request.FinalAnswer)
+            : request.FinalAnswer;
 
         return AttemptSubmissionValidationResult.Success(new ValidatedAttemptSubmission
         {
@@ -194,8 +205,8 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
             ClientSubmissionId = request.ClientSubmissionId,
             QuestionId = questionId,
             AssignmentId = request.AssignmentId,
-            FinalAnswer = request.FinalAnswer,
-            ReasoningText = request.ReasoningText,
+            FinalAnswer = effectiveFinalAnswer,
+            ReasoningText = request.Skipped ? (request.ReasoningText ?? null) : request.ReasoningText,
             AnswerDisplayLatex = request.AnswerDisplayLatex,
             DrawingUploadToken = request.DrawingUploadToken,
             TimeSpentSeconds = request.TimeSpentSeconds,
@@ -231,13 +242,17 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
         if (request is null ||
             request.ClientSubmissionId == Guid.Empty ||
             request.AssignmentId == Guid.Empty ||
-            request.FinalAnswer is null ||
             (!request.Skipped && string.IsNullOrWhiteSpace(request.FinalAnswer)) ||
             request.Confidence < 0m ||
             request.Confidence > 100m ||
             string.IsNullOrEmpty(request.QuestionId))
         {
             return false;
+        }
+
+        if (request.Skipped && request.FinalAnswer == null)
+        {
+            request.FinalAnswer = string.Empty;
         }
 
         foreach (var character in request.QuestionId)

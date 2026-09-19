@@ -45,20 +45,14 @@ export const StudentLayout: React.FC = () => {
   });
 
   const subjects = subjectsQuery.data?.data || [];
-  const currentSubject = subjects.find((s) => s.subjectId === activeSubjectId) || subjects[0];
-
-  // Auto-set subjectId in query string if missing and subjects exist
-  React.useEffect(() => {
-    if (!activeSubjectId && subjects.length > 0) {
-      const newParams = new URLSearchParams(searchParams);
-      newParams.set("subjectId", subjects[0].subjectId);
-      setSearchParams(newParams, { replace: true });
-    }
-  }, [activeSubjectId, subjects, searchParams, setSearchParams]);
 
   const handleSubjectChange = (subjectId: string) => {
     const newParams = new URLSearchParams(searchParams);
-    newParams.set("subjectId", subjectId);
+    if (!subjectId) {
+      newParams.delete("subjectId");
+    } else {
+      newParams.set("subjectId", subjectId);
+    }
     setSearchParams(newParams);
   };
 
@@ -87,53 +81,53 @@ export const StudentLayout: React.FC = () => {
 
   // Helper to preserve subjectId when navigating tabs
   const getTabUrl = (path: string) => {
-    const targetSubjectId = activeSubjectId || (currentSubject ? currentSubject.subjectId : "");
-    return targetSubjectId ? `${path}?subjectId=${targetSubjectId}` : path;
+    return activeSubjectId ? `${path}?subjectId=${activeSubjectId}` : path;
   };
 
   return (
     <div className="min-h-screen bg-[#f8fafc] dark:bg-[#090d16] text-slate-900 dark:text-slate-100 flex flex-col antialiased transition-colors duration-200">
-      {/* Top Global Navigation Bar - Sleek Single-Line Layout */}
+      {/* Top Global Navigation Bar - Responsive 2-Tier Layout */}
       <header className="sticky top-0 z-40 bg-white/95 dark:bg-[#0f172a]/95 backdrop-blur-md border-b border-slate-200/90 dark:border-slate-800 shadow-xs">
-        <div className="w-full max-w-[1700px] mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-20 gap-4">
-            {/* Left: Logo and Brand */}
-            <div className="flex items-center gap-6 shrink-0">
+        <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
+          {/* Row 1: Brand Logo, Main Nav Tabs (>= 1024px), Core Utilities */}
+          <div className="flex items-center justify-between h-16 sm:h-18 lg:h-20 gap-3 sm:gap-4 min-w-0">
+            {/* Left: Logo and Desktop Nav */}
+            <div className="flex items-center gap-3 xl:gap-6 min-w-0">
               <Link
                 to={getTabUrl("/hoc-tap/tong-quan")}
-                className="flex items-center gap-3 group focus-visible:outline-indigo-600 rounded-xl shrink-0"
+                className="flex items-center gap-2.5 sm:gap-3 group focus-visible:outline-indigo-600 rounded-xl shrink-0"
               >
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-700 to-purple-600 flex items-center justify-center text-white font-black text-xl shadow-md shadow-indigo-500/25 group-hover:scale-105 transition-transform shrink-0">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-700 to-purple-600 flex items-center justify-center text-white font-black text-lg sm:text-xl shadow-md shadow-indigo-500/25 group-hover:scale-105 transition-transform shrink-0">
                   ✦
                 </div>
                 <div className="flex flex-col">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg font-black tracking-tight text-slate-900 dark:text-white">
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    <span className="text-base sm:text-lg font-black tracking-tight text-slate-900 dark:text-white">
                       EduTwin
                     </span>
-                    <span className="rounded-lg bg-indigo-50 dark:bg-indigo-950/70 px-2 py-0.5 text-xs font-extrabold text-indigo-700 dark:text-indigo-300 uppercase tracking-wider ring-1 ring-inset ring-indigo-600/30">
+                    <span className="rounded-lg bg-indigo-50 dark:bg-indigo-950/70 px-1.5 py-0.5 text-[10px] sm:text-xs font-extrabold text-indigo-700 dark:text-indigo-300 uppercase tracking-wider ring-1 ring-inset ring-indigo-600/30">
                       AI Adaptive
                     </span>
                   </div>
-                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 hidden sm:inline">
+                  <span className="text-[11px] sm:text-xs font-semibold text-slate-500 dark:text-slate-400 hidden sm:inline">
                     Cổng học tập học sinh
                   </span>
                 </div>
               </Link>
 
-              {/* Desktop Nav Tabs - Non-wrapping Horizontal Menu */}
-              <nav className="hidden lg:flex items-center gap-1.5 overflow-x-auto whitespace-nowrap shrink-0">
+              {/* Desktop Nav Tabs - Responsive labels, seamless lg (1024px+) display */}
+              <nav className="hidden lg:flex items-center gap-1 xl:gap-2 min-w-0">
                 <NavLink
                   to={getTabUrl("/hoc-tap/tong-quan")}
                   className={({ isActive }) =>
-                    `flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-extrabold whitespace-nowrap shrink-0 transition-all ${
+                    `flex items-center gap-1.5 xl:gap-2 px-2.5 xl:px-3.5 py-2 rounded-2xl text-xs xl:text-sm font-extrabold whitespace-nowrap transition-all ${
                       isActive
                         ? "bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 shadow-xs ring-1 ring-indigo-300/80 dark:ring-indigo-700"
                         : "text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100/90 dark:hover:bg-slate-800/90"
                     }`
                   }
                 >
-                  <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="w-4 h-4 xl:w-5 xl:h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
                   </svg>
                   <span>Tổng quan</span>
@@ -142,18 +136,19 @@ export const StudentLayout: React.FC = () => {
                 <NavLink
                   to={getTabUrl("/hoc-tap/bai-tap")}
                   className={({ isActive }) =>
-                    `flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-extrabold whitespace-nowrap shrink-0 transition-all ${
+                    `flex items-center gap-1.5 xl:gap-2 px-2.5 xl:px-3.5 py-2 rounded-2xl text-xs xl:text-sm font-extrabold whitespace-nowrap transition-all ${
                       isActive || location.pathname.startsWith("/hoc-tap/bai-tap")
                         ? "bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 shadow-xs ring-1 ring-indigo-300/80 dark:ring-indigo-700"
                         : "text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100/90 dark:hover:bg-slate-800/90"
                     }`
                   }
                 >
-                  <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="w-4 h-4 xl:w-5 xl:h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
-                  <span>Bài tập của tôi</span>
-                  <span className="ml-0.5 rounded-full bg-indigo-600 px-2 py-0.5 text-xs font-black text-white leading-tight shrink-0">
+                  <span className="hidden xl:inline">Bài tập của tôi</span>
+                  <span className="inline xl:hidden">Bài tập</span>
+                  <span className="ml-0.5 rounded-full bg-indigo-600 px-1.5 py-0.5 text-[10px] xl:text-xs font-black text-white leading-tight shrink-0">
                     3
                   </span>
                 </NavLink>
@@ -161,65 +156,67 @@ export const StudentLayout: React.FC = () => {
                 <NavLink
                   to={getTabUrl("/hoc-tap/ho-so-nang-luc")}
                   className={({ isActive }) =>
-                    `flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-extrabold whitespace-nowrap shrink-0 transition-all ${
+                    `flex items-center gap-1.5 xl:gap-2 px-2.5 xl:px-3.5 py-2 rounded-2xl text-xs xl:text-sm font-extrabold whitespace-nowrap transition-all ${
                       isActive
                         ? "bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 shadow-xs ring-1 ring-indigo-300/80 dark:ring-indigo-700"
                         : "text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100/90 dark:hover:bg-slate-800/90"
                     }`
                   }
                 >
-                  <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="w-4 h-4 xl:w-5 xl:h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                   </svg>
-                  <span>Hồ sơ năng lực (Twin)</span>
+                  <span className="hidden xl:inline">Hồ sơ năng lực (Twin)</span>
+                  <span className="inline xl:hidden">Hồ sơ năng lực</span>
                 </NavLink>
 
                 <NavLink
                   to={getTabUrl("/hoc-tap/luyen-tap")}
                   className={({ isActive }) =>
-                    `flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-extrabold whitespace-nowrap shrink-0 transition-all ${
+                    `flex items-center gap-1.5 xl:gap-2 px-2.5 xl:px-3.5 py-2 rounded-2xl text-xs xl:text-sm font-extrabold whitespace-nowrap transition-all ${
                       isActive
                         ? "bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 shadow-xs ring-1 ring-indigo-300/80 dark:ring-indigo-700"
                         : "text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100/90 dark:hover:bg-slate-800/90"
                     }`
                   }
                 >
-                  <svg className="w-5 h-5 text-purple-600 dark:text-purple-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="w-4 h-4 xl:w-5 xl:h-5 text-purple-600 dark:text-purple-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
-                  <span>Luyện tập thích ứng</span>
+                  <span className="hidden min-[1760px]:inline">Luyện tập thích ứng</span>
+                  <span className="inline min-[1760px]:hidden">Luyện tập</span>
                 </NavLink>
               </nav>
             </div>
 
-            {/* Right: Controls, Subject selector, Streak, Theme, Profile */}
-            <div className="flex items-center gap-3 shrink-0">
-              {/* Subject Selector Dropdown */}
-              {subjects.length > 0 && (
-                <div className="relative hidden sm:block">
-                  <select
-                    value={activeSubjectId || (currentSubject ? currentSubject.subjectId : "")}
-                    onChange={(e) => handleSubjectChange(e.target.value)}
-                    className="appearance-none rounded-2xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 pl-4 pr-9 py-2 text-sm font-extrabold text-slate-900 dark:text-slate-100 transition-colors focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer shadow-xs"
-                    title="Chuyển đổi môn học đang theo dõi"
-                  >
-                    {subjects.map((sub) => (
-                      <option key={sub.subjectId} value={sub.subjectId}>
-                        {sub.subjectName}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-slate-500 dark:text-slate-400">
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </div>
+            {/* Right: Subject selector (min-[1760px] only), Streak (min-[1760px] only), Theme, Bell, Profile, Mobile hamburger */}
+            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+              {/* Row 1 Subject Selector - Only displayed on ultra-wide desktop (>= 1760px) where 1 row has abundant room */}
+              <div className="relative hidden min-[1760px]:block shrink-0">
+                <select
+                  value={activeSubjectId}
+                  onChange={(e) => handleSubjectChange(e.target.value)}
+                  className="appearance-none rounded-2xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 pl-3.5 pr-8 py-2 text-sm font-extrabold text-slate-900 dark:text-slate-100 transition-colors focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer shadow-xs max-w-[170px] truncate"
+                  title="Chuyển đổi môn học đang theo dõi"
+                  data-testid="student-subject-selector-desktop"
+                >
+                  <option value="">Toàn bộ</option>
+                  {subjects.map((sub) => (
+                    <option key={sub.subjectId} value={sub.subjectId}>
+                      {sub.subjectName}
+                    </option>
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-slate-500 dark:text-slate-400">
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                  </svg>
                 </div>
-              )}
+              </div>
 
-              {/* Study Streak Badge */}
+              {/* Study Streak Badge - Only on ultra-wide desktop >= 1760px */}
               <div
-                className="hidden md:flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-700/80 text-amber-900 dark:text-amber-200 text-sm font-extrabold shadow-xs whitespace-nowrap shrink-0"
+                className="hidden min-[1760px]:flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-700/80 text-amber-900 dark:text-amber-200 text-sm font-extrabold shadow-xs whitespace-nowrap shrink-0"
                 title="Chuỗi học tập liên tiếp của bạn"
               >
                 <span className="text-base leading-none">🔥</span>
@@ -232,13 +229,13 @@ export const StudentLayout: React.FC = () => {
               {/* Notifications Bell */}
               <button
                 type="button"
-                className="relative p-2.5 rounded-2xl text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors focus-visible:outline-indigo-600 cursor-pointer shrink-0 border border-slate-200 dark:border-slate-800"
+                className="relative p-2 sm:p-2.5 rounded-2xl text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors focus-visible:outline-indigo-600 cursor-pointer shrink-0 border border-slate-200 dark:border-slate-800"
                 title="Thông báo học tập"
               >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                 </svg>
-                <span className="absolute top-2 right-2 w-2.5 h-2.5 rounded-full bg-rose-500 ring-2 ring-white dark:ring-slate-900" />
+                <span className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 w-2.5 h-2.5 rounded-full bg-rose-500 ring-2 ring-white dark:ring-slate-900" />
               </button>
 
               {/* Student User Profile Dropdown */}
@@ -246,12 +243,12 @@ export const StudentLayout: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsProfileDropdownOpen((prev) => !prev)}
-                  className="flex items-center gap-2.5 p-1.5 pl-2 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors focus-visible:outline-indigo-600 border border-slate-300/80 dark:border-slate-700 cursor-pointer shadow-2xs"
+                  className="flex items-center gap-2 p-1 sm:p-1.5 pl-1.5 sm:pl-2 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors focus-visible:outline-indigo-600 border border-slate-300/80 dark:border-slate-700 cursor-pointer shadow-2xs"
                 >
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 text-white font-extrabold text-xs flex items-center justify-center shadow-xs shrink-0">
+                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 text-white font-extrabold text-xs flex items-center justify-center shadow-xs shrink-0">
                     {getInitials(user?.displayName, user?.username)}
                   </div>
-                  <div className="hidden xl:flex flex-col text-left pr-2">
+                  <div className="hidden min-[1760px]:flex flex-col text-left pr-2">
                     <span className="text-sm font-extrabold text-slate-900 dark:text-white leading-tight">
                       {user?.displayName || "Nguyễn Văn An"}
                     </span>
@@ -328,6 +325,53 @@ export const StudentLayout: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* Row 2 Context Sub-bar: Active on viewports < 1760px (min-[1760px]:hidden), covering laptop (1024px-1759px), tablet and mobile */}
+        <div className="min-[1760px]:hidden border-t border-slate-200/80 dark:border-slate-800/80 bg-slate-50/90 dark:bg-[#0b1329]/90 backdrop-blur-xs py-2">
+          <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-3 min-w-0">
+            {/* Left: Subject Selector with Icon and Label */}
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-xs font-bold text-slate-600 dark:text-slate-400 flex items-center gap-1.5 shrink-0">
+                <svg className="w-4 h-4 text-indigo-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+                <span className="hidden sm:inline">Môn học đang theo dõi:</span>
+                <span className="sm:hidden">Môn:</span>
+              </span>
+              <div className="relative min-w-0">
+                <select
+                  value={activeSubjectId}
+                  onChange={(e) => handleSubjectChange(e.target.value)}
+                  className="appearance-none rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 pl-3 pr-8 py-1.5 text-xs font-extrabold text-slate-900 dark:text-slate-100 transition-colors focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer shadow-2xs max-w-[160px] sm:max-w-[200px] truncate"
+                  title="Chuyển đổi môn học đang theo dõi"
+                  data-testid="student-subject-selector-sub"
+                >
+                  <option value="">Toàn bộ</option>
+                  {subjects.map((sub) => (
+                    <option key={sub.subjectId} value={sub.subjectId}>
+                      {sub.subjectName}
+                    </option>
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500 dark:text-slate-400">
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            {/* Right: Streak status badge on sub-bar */}
+            <div
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/60 text-amber-800 dark:text-amber-300 text-xs font-extrabold shrink-0 shadow-2xs"
+              title="Chuỗi học tập liên tiếp của bạn"
+            >
+              <span>🔥</span>
+              <span className="hidden sm:inline">7 ngày liên tiếp</span>
+              <span className="sm:hidden">7 ngày</span>
+            </div>
+          </div>
+        </div>
       </header>
 
       {/* Mobile Drawer Navigation */}
@@ -372,6 +416,7 @@ export const StudentLayout: React.FC = () => {
                     }}
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-2 text-xs font-bold text-slate-800 dark:text-white bg-white dark:bg-slate-800"
                   >
+                    <option value="">Toàn bộ</option>
                     {subjects.map((sub) => (
                       <option key={sub.subjectId} value={sub.subjectId}>
                         {sub.subjectName}
@@ -424,7 +469,7 @@ export const StudentLayout: React.FC = () => {
       )}
 
       {/* Main Content Area */}
-      <main className="flex-1 w-full pb-12">
+      <main className="flex-1 w-full min-w-0 pb-12">
         <Outlet />
       </main>
 

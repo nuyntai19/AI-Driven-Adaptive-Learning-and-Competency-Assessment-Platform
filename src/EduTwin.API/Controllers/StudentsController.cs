@@ -648,22 +648,10 @@ public class StudentsController : ControllerBase
     [HttpGet("me/dashboard")]
     [Authorize(Policy = "dashboards.student.read_own")]
     public async Task<IActionResult> GetStudentDashboard(
-        [FromQuery] Guid subjectId,
+        [FromQuery] Guid? subjectId,
         CancellationToken cancellationToken)
     {
         var traceId = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier;
-        if (subjectId == Guid.Empty)
-        {
-            return BadRequest(new ProblemDetails
-            {
-                Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.1",
-                Status = StatusCodes.Status400BadRequest,
-                Title = "Dữ liệu không hợp lệ.",
-                Detail = "Mã môn học (subjectId) không hợp lệ.",
-                Instance = HttpContext.Request.Path,
-                Extensions = { ["traceId"] = traceId, ["errorCode"] = ErrorCodes.ValidationFailed }
-            });
-        }
 
         var result = await _getStudentDashboardUseCase.ExecuteAsync(subjectId, cancellationToken);
         if (result.IsSuccess)

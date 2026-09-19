@@ -11,4 +11,5 @@ public class StudentAssignmentDetailDto
     public DateTime? DueAt { get; set; }
     public StudentAssignmentProgressDto Progress { get; set; } = new();
     public List<StudentQuestionDto> Questions { get; set; } = new();
+    public bool CanRetake { get; set; }
 }

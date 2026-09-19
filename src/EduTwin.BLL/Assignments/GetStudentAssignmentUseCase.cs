@@ -75,37 +75,52 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
             .Where(o => o.CenterId == centerId && questionIds.Contains(o.QuestionId))
             .ToListAsync(cancellationToken);
 
-        // Fetch user attempts to map attemptStatus if necessary (currently spec says AttemptStatus can be null or we can join it,
-        // for simplicity if not joined, we set to null as per API spec example `attemptStatus: null`).
-        // The API_CONTRACTS.md shows AttemptStatus: null in the example. We'll leave it as null to match MVP requirements if it's not strictly required here or can fetch from Attempts.
-        // Wait, to be fully compliant, let's fetch attempts if there are any, or just leave it null.
-        // Let's fetch latest attempt per question for this assignment.
-        var attemptStatuses = await _dbContext.Attempts
+        // Fetch user attempts to map attemptStatus and latestAttempt for each question
+        var attemptsList = await _dbContext.Attempts
             .AsNoTracking()
             .Where(a => a.CenterId == centerId && a.StudentId == currentUserId && a.AssignmentId == assignmentId)
-            .GroupBy(a => a.QuestionId)
-            .Select(g => new { QuestionId = g.Key, Status = g.OrderByDescending(x => x.CreatedAt).FirstOrDefault()!.Status })
-            .ToDictionaryAsync(x => x.QuestionId, x => x.Status, cancellationToken);
+            .OrderByDescending(a => a.CreatedAt)
+            .ToListAsync(cancellationToken);
 
-        var questionsDto = assignmentQuestions.Select(aq => new StudentQuestionDto
+        var latestAttemptsByQuestion = attemptsList
+            .GroupBy(a => a.QuestionId)
+            .ToDictionary(g => g.Key, g => g.First());
+
+        var questionsDto = assignmentQuestions.Select(aq =>
         {
-            QuestionId = aq.QuestionId.ToString(),
-            QuestionType = aq.Question!.QuestionType.ToString(),
-            Difficulty = aq.Question.Difficulty,
-            QuestionText = aq.Question.QuestionText,
-            EstimatedTimeSeconds = (int)aq.Question.EstimatedTimeSeconds,
-            ReasoningRequired = aq.Question.ReasoningRequired,
-            LanguageCode = aq.Question.LanguageCode,
-            Options = questionOptions
-                .Where(o => o.QuestionId == aq.QuestionId)
-                .OrderBy(o => o.OrderIndex)
-                .Select(o => new StudentQuestionOptionDto
+            var latestAttempt = latestAttemptsByQuestion.TryGetValue(aq.QuestionId, out var att) ? att : null;
+            return new StudentQuestionDto
+            {
+                QuestionId = aq.QuestionId.ToString(),
+                QuestionType = aq.Question!.QuestionType.ToString(),
+                Difficulty = aq.Question.Difficulty,
+                QuestionText = aq.Question.QuestionText,
+                EstimatedTimeSeconds = (int)aq.Question.EstimatedTimeSeconds,
+                ReasoningRequired = aq.Question.ReasoningRequired,
+                LanguageCode = aq.Question.LanguageCode,
+                Options = questionOptions
+                    .Where(o => o.QuestionId == aq.QuestionId)
+                    .OrderBy(o => o.OrderIndex)
+                    .Select(o => new StudentQuestionOptionDto
+                    {
+                        OptionId = o.OptionId.ToString(),
+                        Label = o.OptionLabel,
+                        Text = o.OptionText
+                    }).ToList(),
+                AttemptStatus = latestAttempt?.Status.ToString(),
+                LatestAttempt = latestAttempt != null ? new StudentQuestionAttemptDto
                 {
-                    OptionId = o.OptionId.ToString(),
-                    Label = o.OptionLabel,
-                    Text = o.OptionText
-                }).ToList(),
-            AttemptStatus = attemptStatuses.ContainsKey(aq.QuestionId) ? attemptStatuses[aq.QuestionId].ToString() : null
+                    AttemptId = latestAttempt.AttemptId.ToString(),
+                    Status = latestAttempt.Status.ToString(),
+                    FinalAnswer = latestAttempt.FinalAnswer,
+                    ReasoningText = latestAttempt.ReasoningText,
+                    Confidence = latestAttempt.Confidence,
+                    TimeSpentSeconds = latestAttempt.TimeSpentSeconds,
+                    AnswerChanges = latestAttempt.AnswerChanges,
+                    Skipped = latestAttempt.Skipped,
+                    SubmittedAt = latestAttempt.CreatedAt
+                } : null
+            };
         }).ToList();
 
         var detailDto = new StudentAssignmentDetailDto
@@ -120,7 +135,8 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
                 CompletedQuestionCount = (int)progress.CompletedQuestionCount,
                 TotalQuestionCount = (int)progress.TotalQuestionCount
             },
-            Questions = questionsDto
+            Questions = questionsDto,
+            CanRetake = false
         };
 
         var response = new StudentAssignmentDetailResponse

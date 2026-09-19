@@ -69,6 +69,18 @@ export interface StudentAssignmentQuestionOptionDto {
   text: string;
 }
 
+export interface StudentQuestionAttemptDto {
+  attemptId: number;
+  status: AttemptStatus;
+  finalAnswer: string | null;
+  reasoningText: string | null;
+  confidence: number | null;
+  timeSpentSeconds: number;
+  answerChanges: number;
+  skipped: boolean;
+  submittedAt: string;
+}
+
 export interface StudentAssignmentQuestionDto {
   questionId: string;
   questionType: string;
@@ -79,6 +91,7 @@ export interface StudentAssignmentQuestionDto {
   languageCode: string;
   options?: StudentAssignmentQuestionOptionDto[];
   attemptStatus: AttemptStatus | null;
+  latestAttempt?: StudentQuestionAttemptDto | null;
 }
 
 export interface StudentAssignmentDetailDto {
@@ -86,6 +99,7 @@ export interface StudentAssignmentDetailDto {
   title: string;
   instructions: string | null;
   dueAt: string | null;
+  canRetake?: boolean;
   progress: StudentProgressDto;
   questions: StudentAssignmentQuestionDto[];
 }

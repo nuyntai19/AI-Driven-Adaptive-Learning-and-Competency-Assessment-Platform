@@ -3,7 +3,7 @@ import { useParams, Link, useSearchParams } from "react-router-dom";
 import { isAxiosError } from "axios";
 import { useStudentAssignment } from "../features/assignments/useStudentAssignment";
 import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
-import type { ProgressStatus, AttemptStatus } from "../types/assignments";
+import type { ProgressStatus, StudentAssignmentQuestionDto } from "../types/assignments";
 
 const getStudentDetailError = (error: unknown) => {
   if (isAxiosError(error)) return error.response?.data?.detail || error.message;
@@ -82,12 +82,12 @@ export const StudentAssignmentDetailPage: React.FC = () => {
     progress.status === "Completed" ||
     (questions.length > 0 &&
       questions.every(
-        (q) => q.attemptStatus === "Completed" || q.attemptStatus === "NeedsTeacherReview"
+        (q) => Boolean(q.latestAttempt) || q.attemptStatus === "Completed" || q.attemptStatus === "NeedsTeacherReview"
       ));
 
   // Find first uncompleted question for "Bắt đầu làm bài tập ngay"
   const firstUnfinishedQuestion = questions.find(
-    (q) => q.attemptStatus !== "Completed" && q.attemptStatus !== "NeedsTeacherReview"
+    (q) => !q.latestAttempt && q.attemptStatus !== "Completed" && q.attemptStatus !== "NeedsTeacherReview"
   );
 
   const getStatusBadge = (status: ProgressStatus) => {
@@ -120,26 +120,34 @@ export const StudentAssignmentDetailPage: React.FC = () => {
     }
   };
 
-  const getAttemptStatusBadge = (status: AttemptStatus | null, index: number) => {
-    if (!status) {
+  const getAttemptStatusBadge = (question: StudentAssignmentQuestionDto) => {
+    const status = question.attemptStatus;
+    const attempt = question.latestAttempt;
+
+    if (attempt?.skipped) {
+      return (
+        <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-1 rounded-full border border-amber-200 dark:border-amber-800">
+          <span>Đã bỏ qua</span>
+        </span>
+      );
+    }
+
+    if (!status && !attempt) {
       return (
         <span className="inline-flex items-center text-xs font-semibold text-slate-400 dark:text-slate-500">
           Chưa làm
         </span>
       );
     }
+
     if (status === "Completed") {
-      const isCorrect = index % 2 === 0;
-      return isCorrect ? (
+      return (
         <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-full border border-emerald-200 dark:border-emerald-800">
-          <span>Đã làm - Đúng</span>
-        </span>
-      ) : (
-        <span className="inline-flex items-center gap-1 text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 px-2.5 py-1 rounded-full border border-rose-200 dark:border-rose-800">
-          <span>Đã làm - Sai</span>
+          <span>Đã hoàn thành</span>
         </span>
       );
     }
+
     if (status === "NeedsTeacherReview") {
       return (
         <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-1 rounded-full border border-amber-200 dark:border-amber-800">
@@ -147,8 +155,10 @@ export const StudentAssignmentDetailPage: React.FC = () => {
         </span>
       );
     }
+
     return (
       <span className="inline-flex items-center gap-1 text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 px-2.5 py-1 rounded-full border border-indigo-200 dark:border-indigo-800">
+        <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
         <span>Đang phân tích AI</span>
       </span>
     );
@@ -278,7 +288,7 @@ export const StudentAssignmentDetailPage: React.FC = () => {
                 </div>
 
                 <div>
-                  {getAttemptStatusBadge(question.attemptStatus, index)}
+                  {getAttemptStatusBadge(question)}
                 </div>
               </div>
 
@@ -322,6 +332,7 @@ export const StudentAssignmentDetailPage: React.FC = () => {
 
                 {(() => {
                   const isDone =
+                    Boolean(question.latestAttempt) ||
                     question.attemptStatus === "Completed" ||
                     question.attemptStatus === "NeedsTeacherReview";
 

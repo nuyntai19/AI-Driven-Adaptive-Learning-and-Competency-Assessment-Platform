@@ -6,5 +6,5 @@ namespace EduTwin.BLL.Dashboards;
 
 public interface IGetStudentDashboardUseCase
 {
-    Task<StudentDashboardResult> ExecuteAsync(Guid subjectId, CancellationToken cancellationToken);
+    Task<StudentDashboardResult> ExecuteAsync(Guid? subjectId, CancellationToken cancellationToken);
 }

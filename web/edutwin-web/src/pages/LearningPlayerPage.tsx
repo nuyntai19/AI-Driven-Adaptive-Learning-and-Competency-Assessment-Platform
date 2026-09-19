@@ -150,6 +150,18 @@ export const LearningPlayerPage = () => {
   const [canResubmit, setCanResubmit] = useState<boolean>(false);
   const [showBatchConfirmModal, setShowBatchConfirmModal] = useState<boolean>(false);
   const pollingAttemptRef = useRef(0);
+  const consecutiveNetworkErrorsRef = useRef(0);
+  const [networkErrorPaused, setNetworkErrorPaused] = useState<boolean>(false);
+
+  // Frozen payload reference to guarantee identical timeSpentSeconds across retries
+  const frozenPayloadRef = useRef<Record<string, {
+    finalAnswer: string;
+    reasoningText?: string;
+    confidence: number;
+    timeSpentSeconds: number;
+    answerChanges: number;
+    drawingUploadToken?: string;
+  }> | null>(null);
 
   // Timer
   useEffect(() => {
@@ -260,34 +272,47 @@ export const LearningPlayerPage = () => {
   useEffect(() => {
     if (!question?.questionId || !assignmentId) return;
     const qId = question.questionId;
-    const saved = assignmentAnswers[qId];
-    if (saved) {
-      setFinalAnswer(saved.finalAnswer || "");
-      setReasoningText(saved.reasoningText || "");
-      setConfidence(saved.confidence ?? 80);
-      setTimeSpentSeconds(saved.timeSpentSeconds ?? 0);
-      setAnswerChanges(saved.answerChanges ?? 0);
-      setAttachedSnapshotDataUrl(saved.snapshotDataUrl || null);
-      setAttachedSnapshotTime(saved.snapshotTime || null);
-      setDrawingUploadToken(saved.drawingUploadToken || null);
-    } else {
-      setFinalAnswer("");
-      setReasoningText("");
-      setConfidence(80);
-      setTimeSpentSeconds(0);
-      setAnswerChanges(0);
+    const existingAttempt = assignmentQuestion?.latestAttempt;
+    if (existingAttempt) {
+      setFinalAnswer(existingAttempt.finalAnswer === "SKIPPED" ? "" : (existingAttempt.finalAnswer || ""));
+      setReasoningText(existingAttempt.reasoningText || "");
+      setConfidence(existingAttempt.confidence ?? 80);
+      setTimeSpentSeconds(existingAttempt.timeSpentSeconds ?? 0);
+      setAnswerChanges(existingAttempt.answerChanges ?? 0);
       setAttachedSnapshotDataUrl(null);
       setAttachedSnapshotTime(null);
       setDrawingUploadToken(null);
+    } else {
+      const saved = assignmentAnswers[qId];
+      if (saved) {
+        setFinalAnswer(saved.finalAnswer || "");
+        setReasoningText(saved.reasoningText || "");
+        setConfidence(saved.confidence ?? 80);
+        setTimeSpentSeconds(saved.timeSpentSeconds ?? 0);
+        setAnswerChanges(saved.answerChanges ?? 0);
+        setAttachedSnapshotDataUrl(saved.snapshotDataUrl || null);
+        setAttachedSnapshotTime(saved.snapshotTime || null);
+        setDrawingUploadToken(saved.drawingUploadToken || null);
+      } else {
+        setFinalAnswer("");
+        setReasoningText("");
+        setConfidence(80);
+        setTimeSpentSeconds(0);
+        setAnswerChanges(0);
+        setAttachedSnapshotDataUrl(null);
+        setAttachedSnapshotTime(null);
+        setDrawingUploadToken(null);
+      }
     }
     setAttachedSnapshotBlob(null);
     setSubmissionError(null);
-  }, [question?.questionId, assignmentId]);
+  }, [question?.questionId, assignmentId, assignmentQuestion?.latestAttempt]);
 
   // Persist current question answer into assignmentAnswers & localStorage
   const persistCurrentAnswer = useCallback(
     (newFinalAnswer?: string, newReasoning?: string, newConf?: number) => {
       if (!assignmentId || !question?.questionId) return;
+      if (assignmentQuestion?.latestAttempt) return; // Do not overwrite server truth for already-submitted questions
       const qId = question.questionId;
       const updatedEntry: StoredAnswer = {
         finalAnswer: newFinalAnswer !== undefined ? newFinalAnswer : finalAnswer,
@@ -313,6 +338,7 @@ export const LearningPlayerPage = () => {
     [
       assignmentId,
       question?.questionId,
+      assignmentQuestion?.latestAttempt,
       finalAnswer,
       reasoningText,
       confidence,
@@ -388,6 +414,7 @@ export const LearningPlayerPage = () => {
 
         const currentStatus = result.status;
         pollingAttemptRef.current += 1;
+        consecutiveNetworkErrorsRef.current = 0;
 
         if (isSuccessfulTerminalStatus(currentStatus)) {
           setPollingStatus("Hoàn tất đánh giá. Đang tải kết quả bài làm...");
@@ -437,6 +464,13 @@ export const LearningPlayerPage = () => {
         }
       } catch {
         if (!isSubscribed) return;
+        consecutiveNetworkErrorsRef.current += 1;
+        if (consecutiveNetworkErrorsRef.current >= 5) {
+          setNetworkErrorPaused(true);
+          setSubmissionError("Kết nối tới máy chủ tạm thời gián đoạn khi cập nhật kết quả AI. Bài nộp của bạn đã được ghi nhận an toàn trên hệ thống. Bạn có thể bấm nút kiểm tra lại.");
+          setIsSubmitting(false);
+          return;
+        }
         pollInterval = Math.min(pollInterval + 1000, 5000);
         setTimeout(poll, pollInterval);
       }
@@ -613,28 +647,60 @@ export const LearningPlayerPage = () => {
           [currentQId]: currentSaved,
         };
 
+        // Freeze payload snapshot on first attempt so timeSpentSeconds and answers do not drift on retries
+        if (!frozenPayloadRef.current) {
+          const frozen: Record<string, {
+            finalAnswer: string;
+            reasoningText?: string;
+            confidence: number;
+            timeSpentSeconds: number;
+            answerChanges: number;
+            drawingUploadToken?: string;
+          }> = {};
+
+          for (const q of assignmentQuestions) {
+            const src = allAnswersMap[q.questionId];
+            frozen[q.questionId] = {
+              finalAnswer: src?.finalAnswer?.trim() || "",
+              reasoningText: src?.reasoningText?.trim() || undefined,
+              confidence: src?.confidence ?? 80,
+              timeSpentSeconds: src?.timeSpentSeconds ?? 0,
+              answerChanges: src?.answerChanges ?? 0,
+              drawingUploadToken: src?.drawingUploadToken || (q.questionId === currentQId ? drawingUploadToken || undefined : undefined),
+            };
+          }
+          frozenPayloadRef.current = frozen;
+        }
+
         let lastJobId: string | null = null;
         let lastAttemptId: string | null = null;
         let submittedCount = 0;
 
         for (let i = 0; i < assignmentQuestions.length; i++) {
           const q = assignmentQuestions[i];
-          // Skip if question was already evaluated
-          if (q.attemptStatus === "Completed" || q.attemptStatus === "NeedsTeacherReview") {
+          // Skip if question was already evaluated or already recorded with latestAttempt
+          if (q.latestAttempt || q.attemptStatus === "Completed" || q.attemptStatus === "NeedsTeacherReview") {
             continue;
           }
 
-          const qAnswer = allAnswersMap[q.questionId];
-          const qFinalAnswer = qAnswer?.finalAnswer?.trim() || "";
-          const qReasoning = qAnswer?.reasoningText?.trim() || undefined;
-          const qConfidence = qAnswer?.confidence ?? 80;
-          const qTimeSpent = qAnswer?.timeSpentSeconds ?? 0;
-          const qAnswerChanges = qAnswer?.answerChanges ?? 0;
-          const qSnapshotDataUrl = qAnswer?.snapshotDataUrl;
-          let qToken = qAnswer?.drawingUploadToken || (q.questionId === currentQId ? drawingUploadToken : null);
+          const qAnswer = frozenPayloadRef.current[q.questionId] || {
+            finalAnswer: "",
+            reasoningText: undefined,
+            confidence: 80,
+            timeSpentSeconds: 0,
+            answerChanges: 0,
+            drawingUploadToken: undefined,
+          };
+          const qFinalAnswer = qAnswer.finalAnswer;
+          const qReasoning = qAnswer.reasoningText;
+          const qConfidence = qAnswer.confidence;
+          const qTimeSpent = qAnswer.timeSpentSeconds;
+          const qAnswerChanges = qAnswer.answerChanges;
+          let qToken = qAnswer.drawingUploadToken;
 
           setPollingStatus(`Đang nộp câu ${i + 1}/${assignmentQuestions.length}...`);
 
+          const qSnapshotDataUrl = allAnswersMap[q.questionId]?.snapshotDataUrl;
           // Upload scratchpad snapshot if this question has an attached drawing
           if (qSnapshotDataUrl && !qToken) {
             try {
@@ -672,6 +738,9 @@ export const LearningPlayerPage = () => {
             lastAttemptId = String(resData.attemptId);
           }
         }
+
+        // Clean up frozen payload on success
+        frozenPayloadRef.current = null;
 
         // Invalidate TanStack queries so assignment and lists refresh with updated progress
         void queryClient.invalidateQueries({ queryKey: ["studentAssignment", assignmentId] });
@@ -750,7 +819,7 @@ export const LearningPlayerPage = () => {
     }
   };
 
-  const handleResubmit = () => {
+  const handleResubmit = async () => {
     if (attemptSessionScope) {
       const freshSubId = createClientSubmissionId();
       setAttemptSessionId(attemptSessionScope, freshSubId);
@@ -758,24 +827,67 @@ export const LearningPlayerPage = () => {
     }
     setSubmissionError(null);
     setCanResubmit(false);
+
+    if (assignmentId) {
+      try {
+        await queryClient.refetchQueries({ queryKey: ["studentAssignment", assignmentId] });
+      } catch {
+        // ignore
+      }
+    }
     handleFinalSubmit();
   };
 
   // Calculate stats for Question Palette & Assignment submission state (must be declared before any early return)
   const totalQuestions = assignmentQuestions?.length || 0;
   const answeredCount = useMemo(() => {
-    const keys = new Set(
-      Object.entries(assignmentAnswers || {})
-        .filter(([_, a]) => typeof a?.finalAnswer === "string" && a.finalAnswer.trim().length > 0)
-        .map(([k]) => k)
-    );
-    if (question?.questionId && finalAnswer.trim().length > 0) {
-      keys.add(question.questionId);
+    if (!assignmentQuestions.length) return 0;
+    let count = 0;
+    for (const q of assignmentQuestions) {
+      if (q.latestAttempt) {
+        if (!q.latestAttempt.skipped && q.latestAttempt.finalAnswer?.trim()) {
+          count++;
+        }
+      } else if (q.questionId === question?.questionId) {
+        if (finalAnswer.trim().length > 0) count++;
+      } else {
+        const stored = assignmentAnswers[q.questionId];
+        if (stored?.finalAnswer?.trim().length) count++;
+      }
     }
-    return keys.size;
-  }, [assignmentAnswers, question?.questionId, finalAnswer]);
+    return count;
+  }, [assignmentQuestions, assignmentAnswers, question?.questionId, finalAnswer]);
 
-  const isReadOnly = isAssignmentSubmitted || isSubmitting;
+  const unansweredQuestionIndices = useMemo(() => {
+    if (!assignmentQuestions.length) return [];
+    const missing: number[] = [];
+    assignmentQuestions.forEach((q, idx) => {
+      if (q.latestAttempt) {
+        if (q.latestAttempt.skipped || !q.latestAttempt.finalAnswer?.trim()) {
+          missing.push(idx + 1);
+        }
+        return;
+      }
+      if (q.questionId === question?.questionId) {
+        if (!finalAnswer.trim()) {
+          missing.push(idx + 1);
+        }
+      } else {
+        const stored = assignmentAnswers[q.questionId];
+        if (!stored?.finalAnswer?.trim()) {
+          missing.push(idx + 1);
+        }
+      }
+    });
+    return missing;
+  }, [assignmentQuestions, assignmentAnswers, question?.questionId, finalAnswer]);
+
+  const isCurrentQuestionSubmitted =
+    Boolean(assignmentQuestion?.latestAttempt) ||
+    assignmentQuestion?.attemptStatus === "Completed" ||
+    assignmentQuestion?.attemptStatus === "NeedsTeacherReview";
+
+  const isReadOnly = isAssignmentSubmitted || isCurrentQuestionSubmitted || isSubmitting;
 
   // Guard: if adaptive mode and no subject selected
   if (!assignmentId && !subjectId) {
@@ -1088,21 +1200,48 @@ export const LearningPlayerPage = () => {
               </span>
             </div>
 
-            {/* If assignment is submitted: show status badge and NO submit button */}
+            {/* If assignment is submitted: show status badge and retake button if allowed */}
             {assignmentId && isAssignmentSubmitted && (
-              <div className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 text-xs sm:text-sm font-black shadow-xs">
-                <span>✓</span>
-                <span>Đã nộp bài (Chỉ đọc)</span>
+              <div className="flex items-center gap-2">
+                <div className="inline-flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 text-xs sm:text-sm font-black shadow-xs">
+                  <span>✓</span>
+                  <span>Đã nộp bài (Chỉ đọc)</span>
+                </div>
+                {assignment?.canRetake && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm("Bạn có chắc chắn muốn làm lại bài tập này?")) {
+                        try {
+                          localStorage.removeItem(`edutwin_assignment_answers_${assignmentId}`);
+                        } catch {
+                          // ignore storage error
+                        }
+                        setAssignmentAnswers({});
+                        setFinalAnswer("");
+                        setReasoningText("");
+                        setFeedbackData(null);
+                        setSubmissionError(null);
+                        if (assignmentQuestions[0]) {
+                          handleSwitchQuestion(assignmentQuestions[0].questionId);
+                        }
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs sm:text-sm shadow-xs cursor-pointer"
+                  >
+                    <span>🔄 Làm lại bài</span>
+                  </button>
+                )}
               </div>
             )}
 
-            {/* If assignment is NOT submitted yet: show prominent submit button */}
+            {/* If assignment is NOT submitted yet: show prominent submit button on ALL viewports */}
             {assignmentId && !isAssignmentSubmitted && (
               <button
                 type="button"
                 onClick={() => setShowBatchConfirmModal(true)}
                 disabled={isSubmitting}
-                className="hidden sm:inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs sm:text-sm shadow-sm shadow-indigo-600/25 transition-all cursor-pointer disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs sm:text-sm shadow-sm shadow-indigo-600/25 transition-all cursor-pointer disabled:opacity-50 shrink-0"
               >
                 <span>🚀 Nộp bài tập</span>
                 <span className="px-2 py-0.5 rounded-full bg-indigo-700 text-[11px] font-extrabold">
@@ -1139,6 +1278,23 @@ export const LearningPlayerPage = () => {
                     </button>
                   </div>
                 )}
+                {networkErrorPaused && (
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        consecutiveNetworkErrorsRef.current = 0;
+                        setNetworkErrorPaused(false);
+                        setSubmissionError(null);
+                        setIsSubmitting(true);
+                        setPollingJobId(persistedJobId || pollingJobId);
+                      }}
+                      className="rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-500 shadow-xs cursor-pointer"
+                    >
+                      🔄 Tiếp tục kiểm tra kết quả AI
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1152,7 +1308,8 @@ export const LearningPlayerPage = () => {
                   <div className="flex flex-wrap items-center gap-1.5">
                     {assignmentQuestions.map((q, idx) => {
                       const isCurrent = q.questionId === (assignmentQuestion?.questionId || activeQuestionId);
-                      const isAnswered = Boolean(assignmentAnswers[q.questionId]?.finalAnswer?.trim());
+                      const isSubmitted = Boolean(q.latestAttempt) || q.attemptStatus === "Completed" || q.attemptStatus === "NeedsTeacherReview";
+                      const isAnswered = isSubmitted || Boolean(assignmentAnswers[q.questionId]?.finalAnswer?.trim());
 
                       return (
                         <button
@@ -1162,11 +1319,13 @@ export const LearningPlayerPage = () => {
                           className={`w-8 h-8 rounded-xl font-black text-xs transition-all cursor-pointer flex items-center justify-center ${
                             isCurrent
                               ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-2 ring-indigo-400 ring-offset-2 dark:ring-offset-slate-900 scale-105"
+                              : isSubmitted
+                              ? "bg-emerald-600 text-white shadow-2xs hover:bg-emerald-700"
                               : isAnswered
                               ? "bg-emerald-500 text-white shadow-2xs hover:bg-emerald-600"
                               : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200/80 dark:border-slate-700"
                           }`}
-                          title={`Câu ${idx + 1}: ${isAnswered ? "Đã làm" : "Chưa làm"}`}
+                          title={`Câu ${idx + 1}: ${isSubmitted ? "Đã nộp bài" : isAnswered ? "Đã làm" : "Chưa làm"}`}
                         >
                           {idx + 1}
                         </button>
@@ -1202,16 +1361,18 @@ export const LearningPlayerPage = () => {
               </div>
 
               {/* Review status notice if question has an existing attempt */}
-              {assignmentQuestion?.attemptStatus && (
+              {(assignmentQuestion?.attemptStatus || assignmentQuestion?.latestAttempt) && (
                 <div className="rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-2 bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800 text-xs">
                   <div className="flex items-center gap-2 text-amber-900 dark:text-amber-200 font-semibold">
                     <span className="text-base">📋</span>
                     <span>
-                      {assignmentQuestion.attemptStatus === "NeedsTeacherReview"
+                      {assignmentQuestion?.latestAttempt?.skipped
+                        ? "Câu hỏi này đã được bỏ qua khi nộp bài."
+                        : assignmentQuestion?.attemptStatus === "NeedsTeacherReview"
                         ? "Câu hỏi này đã được nộp bài và đang chờ giáo viên chấm/duyệt."
-                        : assignmentQuestion.attemptStatus === "Completed"
+                        : assignmentQuestion?.attemptStatus === "Completed"
                         ? "Câu hỏi này đã hoàn thành đánh giá."
-                        : "Câu hỏi này đang trong hàng đợi phân tích."}
+                        : "Câu hỏi này đã nộp bài thành công."}
                     </span>
                   </div>
                   <span className="px-2.5 py-1 rounded-full font-bold bg-amber-200/80 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 shrink-0">
@@ -1521,7 +1682,7 @@ export const LearningPlayerPage = () => {
               <div className="flex flex-wrap items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-6 gap-3">
                 {/* Previous / Next buttons */}
                 {assignmentId && totalQuestions > 1 ? (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-between w-full">
                     <button
                       type="button"
                       disabled={currentAssignmentIndex <= 0}
@@ -1530,58 +1691,33 @@ export const LearningPlayerPage = () => {
                     >
                       ← Câu trước
                     </button>
-                    {currentAssignmentIndex < totalQuestions - 1 && (
-                      <button
-                        type="button"
-                        onClick={() => handleSwitchQuestion(assignmentQuestions[currentAssignmentIndex + 1].questionId)}
-                        className="px-4 py-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 font-bold text-xs cursor-pointer"
-                      >
-                        Câu tiếp theo →
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      disabled={currentAssignmentIndex >= totalQuestions - 1}
+                      onClick={() => handleSwitchQuestion(assignmentQuestions[currentAssignmentIndex + 1].questionId)}
+                      className="px-5 py-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 font-bold text-xs disabled:opacity-40 cursor-pointer border border-indigo-200/80 dark:border-indigo-800"
+                    >
+                      Câu tiếp theo →
+                    </button>
                   </div>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => handleFinalSubmit()}
-                    disabled={isSubmitting}
-                    className="text-xs font-bold text-slate-400 hover:text-slate-600 cursor-pointer"
-                  >
-                    Bỏ qua câu này
-                  </button>
-                )}
-
-                {/* Final Submit Button (ONLY shown if assignment is NOT submitted yet) */}
-                {!isAssignmentSubmitted ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (assignmentId) {
-                        setShowBatchConfirmModal(true);
-                      } else {
-                        handleFinalSubmit();
-                      }
-                    }}
-                    disabled={isSubmitting}
-                    className="flex items-center gap-2 rounded-2xl bg-indigo-600 hover:bg-indigo-500 px-7 py-3 text-sm font-bold text-white shadow-md shadow-indigo-600/25 transition-all disabled:opacity-50 cursor-pointer"
-                  >
-                    <span>
-                      {assignmentId
-                        ? `🚀 Nộp toàn bộ bài tập (${answeredCount}/${totalQuestions})`
-                        : "Nộp bài & Phân tích tư duy AI ✨"}
-                    </span>
-                  </button>
-                ) : (
-                  <div className="flex flex-wrap items-center gap-3">
-                    <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                      🔒 Bài tập đã nộp. Chỉ làm lại khi có yêu cầu từ giáo viên.
-                    </span>
-                    <Link
-                      to={`/hoc-tap/bai-tap/${assignmentId}${subjectId ? `?subjectId=${subjectId}` : ""}`}
-                      className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white dark:bg-slate-700 dark:hover:bg-slate-600 font-bold text-xs shadow-xs transition-colors cursor-pointer"
+                  <div className="flex items-center justify-between w-full">
+                    <button
+                      type="button"
+                      onClick={() => handleFinalSubmit()}
+                      disabled={isSubmitting}
+                      className="text-xs font-bold text-slate-400 hover:text-slate-600 cursor-pointer"
                     >
-                      ‹ Quay lại bài tập
-                    </Link>
+                      Bỏ qua câu này
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleFinalSubmit()}
+                      disabled={isSubmitting}
+                      className="flex items-center gap-2 rounded-2xl bg-indigo-600 hover:bg-indigo-500 px-7 py-3 text-sm font-bold text-white shadow-md shadow-indigo-600/25 transition-all disabled:opacity-50 cursor-pointer"
+                    >
+                      <span>Nộp bài & Phân tích tư duy AI ✨</span>
+                    </button>
                   </div>
                 )}
               </div>
@@ -1626,6 +1762,21 @@ export const LearningPlayerPage = () => {
                 </span>
               )}
             </p>
+
+            {unansweredQuestionIndices.length > 0 && (
+              <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-300 space-y-1 text-left">
+                <div className="font-bold flex items-center gap-1.5">
+                  <span>⚠️</span>
+                  <span>Các câu chưa điền đáp án:</span>
+                </div>
+                <p className="leading-relaxed">
+                  <span className="font-black text-amber-800 dark:text-amber-200">
+                    {unansweredQuestionIndices.map((n) => `Câu ${n}`).join(", ")}
+                  </span>{" "}
+                  sẽ được hệ thống ghi nhận là <strong>Bỏ qua (0 điểm)</strong>.
+                </p>
+              </div>
+            )}
 
             <div className="pt-2 flex items-center justify-end gap-3">
               <button
