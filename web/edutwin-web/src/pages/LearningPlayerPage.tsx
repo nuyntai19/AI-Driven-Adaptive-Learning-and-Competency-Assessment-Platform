@@ -737,8 +737,7 @@ export const LearningPlayerPage = () => {
         }
 
         // Invalidate TanStack queries so assignment and lists refresh with updated progress
-        void queryClient.invalidateQueries({ queryKey: ["studentAssignment", assignmentId] });
-        void queryClient.invalidateQueries({ queryKey: ["studentAssignments"] });
+        await queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
 
         // Clear local storage draft
         try {
