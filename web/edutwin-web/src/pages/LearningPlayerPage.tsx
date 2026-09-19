@@ -30,6 +30,7 @@ import {
   setAttemptSessionId,
 } from "../utils/attemptSessionStorage";
 import { useAuthStore } from "../stores/authStore";
+import { httpClient } from "../api/httpClient";
 
 interface StoredAnswer {
   finalAnswer: string;
@@ -261,7 +262,26 @@ export const LearningPlayerPage = () => {
     if (!question?.questionId || !assignmentId) return;
     const qId = question.questionId;
     const saved = assignmentAnswers[qId];
-    if (saved) {
+
+    const isQuestionSubmitted =
+      assignmentQuestion?.attemptStatus === "Completed" ||
+      assignmentQuestion?.attemptStatus === "NeedsTeacherReview" ||
+      isAssignmentSubmitted;
+
+    const hasSubmittedData =
+      (assignmentQuestion?.submittedAnswer !== undefined && assignmentQuestion?.submittedAnswer !== null) ||
+      (assignmentQuestion?.submittedReasoning !== undefined && assignmentQuestion?.submittedReasoning !== null);
+
+    if (isQuestionSubmitted && hasSubmittedData) {
+      setFinalAnswer(assignmentQuestion?.submittedAnswer || "");
+      setReasoningText(assignmentQuestion?.submittedReasoning || "");
+      setConfidence(saved?.confidence ?? 80);
+      setTimeSpentSeconds(saved?.timeSpentSeconds ?? 0);
+      setAnswerChanges(saved?.answerChanges ?? 0);
+      setAttachedSnapshotDataUrl(saved?.snapshotDataUrl || null);
+      setAttachedSnapshotTime(saved?.snapshotTime || null);
+      setDrawingUploadToken(saved?.drawingUploadToken || null);
+    } else if (saved) {
       setFinalAnswer(saved.finalAnswer || "");
       setReasoningText(saved.reasoningText || "");
       setConfidence(saved.confidence ?? 80);
@@ -270,6 +290,15 @@ export const LearningPlayerPage = () => {
       setAttachedSnapshotDataUrl(saved.snapshotDataUrl || null);
       setAttachedSnapshotTime(saved.snapshotTime || null);
       setDrawingUploadToken(saved.drawingUploadToken || null);
+    } else if (hasSubmittedData) {
+      setFinalAnswer(assignmentQuestion?.submittedAnswer || "");
+      setReasoningText(assignmentQuestion?.submittedReasoning || "");
+      setConfidence(80);
+      setTimeSpentSeconds(0);
+      setAnswerChanges(0);
+      setAttachedSnapshotDataUrl(null);
+      setAttachedSnapshotTime(null);
+      setDrawingUploadToken(null);
     } else {
       setFinalAnswer("");
       setReasoningText("");
@@ -282,7 +311,41 @@ export const LearningPlayerPage = () => {
     }
     setAttachedSnapshotBlob(null);
     setSubmissionError(null);
-  }, [question?.questionId, assignmentId]);
+  }, [
+    question?.questionId,
+    assignmentId,
+    assignmentQuestion?.attemptStatus,
+    assignmentQuestion?.submittedAnswer,
+    assignmentQuestion?.submittedReasoning,
+    isAssignmentSubmitted,
+  ]);
+
+  // If question is submitted and has an attachment, load attachment if not already loaded
+  useEffect(() => {
+    if (!assignmentQuestion?.hasAttachment || !assignmentQuestion?.submittedAttemptId) return;
+    const attemptId = assignmentQuestion.submittedAttemptId;
+    let isCancelled = false;
+    let objectUrl: string | null = null;
+
+    httpClient
+      .get<Blob>(`/learning/attempts/${attemptId}/attachment`, { responseType: "blob" })
+      .then((res) => {
+        if (!isCancelled) {
+          objectUrl = URL.createObjectURL(res.data);
+          setAttachedSnapshotDataUrl(objectUrl);
+        }
+      })
+      .catch(() => {
+        // Silently catch attachment load error
+      });
+
+    return () => {
+      isCancelled = true;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [assignmentQuestion?.submittedAttemptId, assignmentQuestion?.hasAttachment]);
 
   // Persist current question answer into assignmentAnswers & localStorage
   const persistCurrentAnswer = useCallback(
@@ -766,7 +829,7 @@ export const LearningPlayerPage = () => {
   const answeredCount = useMemo(() => {
     const keys = new Set(
       Object.entries(assignmentAnswers || {})
-        .filter(([_, a]) => typeof a?.finalAnswer === "string" && a.finalAnswer.trim().length > 0)
+        .filter(([, a]) => typeof a?.finalAnswer === "string" && a.finalAnswer.trim().length > 0)
         .map(([k]) => k)
     );
     if (question?.questionId && finalAnswer.trim().length > 0) {

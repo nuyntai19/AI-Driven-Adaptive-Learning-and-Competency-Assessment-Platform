@@ -87,6 +87,8 @@ export const PlatformSecurityModal: React.FC<PlatformSecurityModalProps> = ({
     },
   });
 
+  const user = useAuthStore((state) => state.user);
+
   if (!isOpen) return null;
 
   const handleChangePasswordSubmit = (e: React.FormEvent) => {
@@ -109,7 +111,6 @@ export const PlatformSecurityModal: React.FC<PlatformSecurityModalProps> = ({
     revokeSessionsMutation.mutate();
   };
 
-  const user = useAuthStore((state) => state.user);
   const modalTitle =
     user?.accountType === "Student"
       ? "Bảo Mật & Đổi Mật Khẩu Cá Nhân"

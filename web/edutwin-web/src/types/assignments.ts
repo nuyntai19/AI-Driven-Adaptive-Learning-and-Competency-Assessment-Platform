@@ -79,6 +79,10 @@ export interface StudentAssignmentQuestionDto {
   languageCode: string;
   options?: StudentAssignmentQuestionOptionDto[];
   attemptStatus: AttemptStatus | null;
+  submittedAnswer?: string | null;
+  submittedReasoning?: string | null;
+  submittedAttemptId?: number | null;
+  hasAttachment?: boolean;
 }
 
 export interface StudentAssignmentDetailDto {

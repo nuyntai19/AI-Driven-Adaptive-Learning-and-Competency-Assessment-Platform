@@ -75,37 +75,60 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
             .Where(o => o.CenterId == centerId && questionIds.Contains(o.QuestionId))
             .ToListAsync(cancellationToken);
 
-        // Fetch user attempts to map attemptStatus if necessary (currently spec says AttemptStatus can be null or we can join it,
-        // for simplicity if not joined, we set to null as per API spec example `attemptStatus: null`).
-        // The API_CONTRACTS.md shows AttemptStatus: null in the example. We'll leave it as null to match MVP requirements if it's not strictly required here or can fetch from Attempts.
-        // Wait, to be fully compliant, let's fetch attempts if there are any, or just leave it null.
-        // Let's fetch latest attempt per question for this assignment.
-        var attemptStatuses = await _dbContext.Attempts
+        var attempts = await _dbContext.Attempts
             .AsNoTracking()
             .Where(a => a.CenterId == centerId && a.StudentId == currentUserId && a.AssignmentId == assignmentId)
-            .GroupBy(a => a.QuestionId)
-            .Select(g => new { QuestionId = g.Key, Status = g.OrderByDescending(x => x.CreatedAt).FirstOrDefault()!.Status })
-            .ToDictionaryAsync(x => x.QuestionId, x => x.Status, cancellationToken);
+            .OrderByDescending(a => a.CreatedAt)
+            .Select(a => new
+            {
+                a.QuestionId,
+                a.AttemptId,
+                a.Status,
+                a.FinalAnswer,
+                a.ReasoningText
+            })
+            .ToListAsync(cancellationToken);
 
-        var questionsDto = assignmentQuestions.Select(aq => new StudentQuestionDto
+        var latestAttempts = attempts
+            .GroupBy(a => a.QuestionId)
+            .ToDictionary(g => g.Key, g => g.First());
+
+        var attemptIds = latestAttempts.Values.Select(x => x.AttemptId).ToList();
+        var attachments = await _dbContext.AttemptAttachments
+            .AsNoTracking()
+            .Where(aa => aa.CenterId == centerId && attemptIds.Contains(aa.AttemptId))
+            .Select(aa => aa.AttemptId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+        var hasAttachmentSet = attachments.ToHashSet();
+
+        var questionsDto = assignmentQuestions.Select(aq =>
         {
-            QuestionId = aq.QuestionId.ToString(),
-            QuestionType = aq.Question!.QuestionType.ToString(),
-            Difficulty = aq.Question.Difficulty,
-            QuestionText = aq.Question.QuestionText,
-            EstimatedTimeSeconds = (int)aq.Question.EstimatedTimeSeconds,
-            ReasoningRequired = aq.Question.ReasoningRequired,
-            LanguageCode = aq.Question.LanguageCode,
-            Options = questionOptions
-                .Where(o => o.QuestionId == aq.QuestionId)
-                .OrderBy(o => o.OrderIndex)
-                .Select(o => new StudentQuestionOptionDto
-                {
-                    OptionId = o.OptionId.ToString(),
-                    Label = o.OptionLabel,
-                    Text = o.OptionText
-                }).ToList(),
-            AttemptStatus = attemptStatuses.ContainsKey(aq.QuestionId) ? attemptStatuses[aq.QuestionId].ToString() : null
+            var latest = latestAttempts.TryGetValue(aq.QuestionId, out var att) ? att : null;
+            return new StudentQuestionDto
+            {
+                QuestionId = aq.QuestionId.ToString(),
+                QuestionType = aq.Question!.QuestionType.ToString(),
+                Difficulty = aq.Question.Difficulty,
+                QuestionText = aq.Question.QuestionText,
+                EstimatedTimeSeconds = (int)aq.Question.EstimatedTimeSeconds,
+                ReasoningRequired = aq.Question.ReasoningRequired,
+                LanguageCode = aq.Question.LanguageCode,
+                Options = questionOptions
+                    .Where(o => o.QuestionId == aq.QuestionId)
+                    .OrderBy(o => o.OrderIndex)
+                    .Select(o => new StudentQuestionOptionDto
+                    {
+                        OptionId = o.OptionId.ToString(),
+                        Label = o.OptionLabel,
+                        Text = o.OptionText
+                    }).ToList(),
+                AttemptStatus = latest?.Status.ToString(),
+                SubmittedAnswer = latest?.FinalAnswer,
+                SubmittedReasoning = latest?.ReasoningText,
+                SubmittedAttemptId = latest?.AttemptId,
+                HasAttachment = latest != null && hasAttachmentSet.Contains(latest.AttemptId)
+            };
         }).ToList();
 
         var detailDto = new StudentAssignmentDetailDto

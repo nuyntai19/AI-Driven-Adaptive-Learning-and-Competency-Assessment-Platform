@@ -770,3 +770,77 @@ Không dùng biểu thức role OR permission để “chạy tạm”, vì sẽ
      - *Bộ lọc nâng cao:* Lọc theo Loại hành động (`ActionType`), Khoảng thời gian (Từ ngày - Đến ngày), và điều hướng phân trang phía máy chủ.
      - *Sao chép Trace ID:* Nút sao chép 1-click để phục vụ đối soát kỹ thuật và điều tra sự cố.
      - *Modal So sánh Before/After (`AuditDetailModal`):* Mở cửa sổ xem chi tiết hiển thị đầy đủ ngữ cảnh truy vết (Actor, Target, Trace ID, Reason) và hai cột so sánh JSON Dữ liệu trước (Before Data) và Dữ liệu sau (After Data) với định dạng trực quan.
+
+### 20.8. Tái thiết kế Toàn diện Phân hệ Học sinh (Student Subsystem Modernization & Integrated Math Assistants)
+
+Nhằm mang lại trải nghiệm học tập trực quan, thẩm mỹ và đạt chuẩn hiện đại (lấy cảm hứng từ thiết kế Bento Grid và hệ thống trợ lý học tập tân tiến), phân hệ Học sinh (`/hoc-tap/*`) được tái cấu trúc và bổ sung đầy đủ các năng lực sau:
+
+#### 20.8.1. Khung Điều hướng Thống nhất Phân hệ Học sinh (`StudentLayout.tsx`)
+- **Vị trí và Phạm vi:** Đóng vai trò layout bao bọc (Shell Layout) cho toàn bộ các route học sinh:
+  - `/hoc-tap/tong-quan`: Bảng điều khiển học tập thông minh.
+  - `/hoc-tap/bai-tap`: Quản lý bài tập được giao.
+  - `/hoc-tap/ho-so-nang-luc`: Hồ sơ năng lực số (Digital Twin).
+  - `/hoc-tap/luyen-tap`: Không gian làm bài tập và luyện tập thích ứng.
+- **Thanh điều hướng trên (Top Navigation Bar):**
+  - Logo và biểu tượng thương hiệu EduTwin kèm nhãn phân hệ "Học sinh".
+  - Thanh tab chuyển trang dạng Capsule Pills với hiệu ứng Active Indicator mượt mà.
+  - Bộ chọn Môn học Toàn cục (`Subject Selector`): Đồng bộ hóa hai chiều với tham số URL `?subjectId=...`, tự động kích hoạt chế độ tải lại dữ liệu thích hợp khi học sinh đổi môn.
+  - Huy hiệu Chuỗi Ngày Học tập (`Streak Pill`): Hiển thị động biểu tượng ngọn lửa (`🔥 7 ngày liên tiếp`) nhằm khích lệ tinh thần tự giác học tập.
+  - Nút chuyển đổi Giao diện Sáng/Tối (`ThemeToggle`): Hỗ trợ chuyển đổi mượt mà Light Mode / Dark Mode, lưu cấu hình vào `localStorage`.
+  - Khối thông tin cá nhân và Nút Đăng xuất (`btn-logout`).
+
+#### 20.8.2. Bảng Điều khiển Học tập Thông minh (`StudentDashboardPage.tsx`)
+- **Bố cục Bento Grid Đỉnh cao:** Phân bổ các khối thông tin trực quan theo tỉ lệ vàng, nền sáng/tối tương phản cao, bo góc mềm mại `rounded-2xl`, viền mờ tinh tế `border-slate-100 dark:border-slate-800`.
+- **4 Thẻ Chỉ số Năng lực Cốt lõi (Bento Metric Cards):**
+  1. *Điểm Mục tiêu (`Target Score`):* Hiển thị mục tiêu kỳ vọng do học sinh hoặc giáo viên thiết lập theo môn học.
+  2. *Điểm Dự đoán Hiện tại (`Predicted Score`):* Điểm số mô phỏng theo mô hình đánh giá năng lực suy luận tức thời.
+  3. *Thời gian Đếm ngược Kỳ thi (`Days Remaining`):* Đếm ngược số ngày còn lại đến kỳ thi THPT Quốc gia hoặc kỳ thi học kỳ.
+  4. *Cảnh báo Rủi ro Học tập (`Risk Level Badge`):* Phân loại mức độ rủi ro (An toàn, Cần lưu ý, Nguy cơ cao) kèm khuyến nghị tương ứng.
+- **Biểu đồ Năng lực Trực quan:**
+  - *Biểu đồ Radar Năng lực Tri thức (`Knowledge Mastery Radar Chart`):* Minh họa đa giác năng lực theo từng chủ đề toán học (Hàm số, Tích phân, Oxyz, Số phức...).
+  - *Biểu đồ Đường Xu hướng (`Mastery Progress Line Chart`):* Theo dõi biến thiên tiến trình tích lũy năng lực qua các lần làm bài.
+  - *Chuyển đổi Bảng/Biểu đồ (`Table/Chart Toggle`):* Cho phép người dùng linh hoạt chuyển giữa chế độ biểu đồ trực quan và bảng số liệu chi tiết.
+- **Thẻ Chiến lược Đề xuất Học tập AI (`AI Strategy Recommendation Banner`):**
+  - Thiết kế dải màu Gradient Indigo/Violet nổi bật, mang phong cách trợ lý AI thông minh.
+  - Hiển thị rõ lý do đề xuất có thể giải thích (Explainable AI: "Dựa trên bài làm gần nhất, bạn gặp khó khăn ở dạng bài Tiệm cận đứng...").
+  - Nút hành động chính "Bắt đầu học ngay" / "Chấp nhận lộ trình" và nút thứ cấp "Bỏ qua đề xuất" (`btn-dismiss-recommendation`).
+
+#### 20.8.3. Quản lý Bài tập Được giao (`StudentAssignmentsPage.tsx` & `StudentAssignmentDetailPage.tsx`)
+- **Bộ lọc & Tìm kiếm Đa năng:**
+  - Thanh tìm kiếm bài tập theo tiêu đề với icon kính lúp.
+  - Thanh Tabs lọc trạng thái nhanh: `Tất cả`, `Chưa bắt đầu`, `Đang làm`, `Đã hoàn thành`, `Quá hạn`.
+  - Bộ chọn sắp xếp: Theo hạn nộp gần nhất, ngày giao mới nhất, hoặc thời lượng ước tính.
+- **Thẻ Bài tập Hiện đại:**
+  - Hiển thị mã số định danh dạng badge (`#01`, `#02`), tên giáo viên phụ trách, hạn nộp kèm màu cảnh báo nếu sắp hết hạn.
+  - Thanh tiến trình hoàn thành bài làm (`Progress Bar`) sinh động với tỉ lệ % câu đã trả lời.
+  - Nút hành động dẫn trực tiếp vào không gian làm bài (`btn-start-assignment`).
+- **Trang Chi tiết Bài tập (`StudentAssignmentDetailPage.tsx`):**
+  - Khối tổng quan thông tin: Số lượng câu hỏi, thời gian làm bài dự kiến, hạn nộp, hướng dẫn của giáo viên.
+  - Danh sách câu hỏi xem trước (Question Previews): Hiển thị mức độ khó (Nhận biết, Thông hiểu, Vận dụng, Vận dụng cao), định dạng câu hỏi (Trắc nghiệm, Điền khuyết, Tự luận), trạng thái đã làm, và nút "Làm câu này".
+
+#### 20.8.4. Hồ sơ Năng lực Số của Học sinh (`StudentTwinPage.tsx`)
+- **Tăng trưởng Nhận thức (Cognitive Growth & Learning Velocity):**
+  - Đồng hồ hiển thị vận tốc tiếp thu tri thức và gia tốc học tập qua thời gian.
+- **Chỉ số Hiệu chuẩn Mức độ Tự tin (Confidence Calibration Index):**
+  - Đo lường mức độ tương quan giữa niềm tin của học sinh và tính chính xác của lời giải, giúp phát hiện sớm hiện tượng chủ quan hoặc thiếu tự tin.
+- **Bảng Chủ đề Tri thức (Knowledge Twin Topics Table):**
+  - Liệt kê chi tiết từng chủ đề con trong đồ thị tri thức, thanh tiến độ điểm thành thạo tô màu theo dải năng lực, và huy hiệu chất lượng tư duy (Reasoning Quality Badges).
+- **Nhật ký Cập nhật Năng lực (`Twin Update History Timeline`):**
+  - Dòng thời gian ghi nhận chi tiết từng biến động năng lực sau mỗi lần nộp bài hoặc sau quyết định duyệt của giáo viên.
+  - Hiển thị nguồn gốc cập nhật (`AI Analysis` hoặc `Teacher Override`), mức chênh lệch năng lực $\Delta$ Mastery, thời điểm ghi nhận và điều hướng phân trang đầy đủ.
+
+#### 20.8.5. Không gian Làm bài và Trợ lý Cạnh bên (`LearningPlayerPage.tsx` & `SideAssistantWorkspace.tsx`)
+- **Bố cục Không gian Kép (Dual-Pane Workspace):**
+  - *Khu vực Làm bài (Trái):* Hiển thị đề bài với công thức Toán KaTeX sắc nét, các lựa chọn trắc nghiệm dạng thẻ bấm hiện đại, vùng nhập câu trả lời, thanh trượt mức độ tự tin (0% - 100%), vùng trình bày lập luận tư duy (Reasoning Textarea), và chip hiển thị ảnh nháp đính kèm.
+  - *Không gian Trợ lý Cạnh bên (Phải - `SideAssistantWorkspace.tsx`):*
+    - **Máy tính Casio fx-580VN X (`CasioInlinePanel.tsx`):** Hiển thị ngay cạnh vùng làm bài (không mở tab mới, không modal che khuất tầm nhìn). Tích hợp bàn phím CalcES đầy đủ hàm số lượng giác, logarit, phân số, mũ, căn thức và **nút chèn kết quả 1-chạm** trực tiếp vào ô đáp án.
+    - **Bảng vẽ Nháp Vector (`ScratchpadInlinePanel.tsx`):** Bảng vẽ mượt mà với đầy đủ công cụ vẽ tự do, vẽ đường thẳng, compa hình tròn, tam giác, hệ trục Oxy, chuyển đổi lưới ô ly THPT, lưu bản vẽ tức thời vào IndexedDB chống mất nét vẽ khi F5, và nút đính kèm ảnh nháp PNG minh chứng bài làm.
+    - **Vẽ Đồ thị Hàm số 2D (`FunctionGrapher.tsx`):** Cho phép học sinh nhập hàm số $f(x)$ và khảo sát đồ thị trực quan ngay trong lúc giải toán.
+- **Trình Soạn thảo Công thức Toán Trực quan (`VisualMathField.tsx`):**
+  - Tích hợp công nghệ MathLive WYSIWYG, cho phép học sinh gõ công thức phân số, tích phân, đạo hàm, căn thức như viết trên giấy mà không bắt buộc phải nhớ mã lệnh LaTeX thô.
+- **Báo cáo Đa phương thức Phân tích Tư duy AI (`Multimodal AI Reasoning Analysis`):**
+  - Sau khi nộp bài và hoàn tất phân tích, giao diện hiển thị thẻ kết quả phân tích tư duy: phương pháp giải đã áp dụng, thang bậc chất lượng lập luận, các bước suy luận còn thiếu và chỉ ra quan niệm sai lầm (Misconceptions) nếu có.
+
+#### 20.8.6. Củng cố Kiến trúc React Hooks (Rules of Hooks Hardening)
+- Khắc phục triệt để lỗi crash giao diện `Minified React error #310` bằng việc đảm bảo toàn bộ React hooks (`useMemo`, `useState`, `useEffect`) luôn được khai báo ở đầu component trước bất kỳ câu lệnh `if (...) return` nào.
+- Đảm bảo tính nhất quán tuyệt đối về số lượng và thứ tự hook qua mọi trạng thái render (loading skeleton, polling job, fallback screen, active player).
