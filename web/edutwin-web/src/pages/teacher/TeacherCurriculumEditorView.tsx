@@ -112,8 +112,11 @@ export const TeacherCurriculumEditorView: React.FC = () => {
   // Save Mutation
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (!title.trim()) throw new Error("Vui lòng nhập tên giáo trình");
-      if (!subjectId) throw new Error("Vui lòng chọn môn học");
+      setFeedbackMsg(null);
+      if (!title.trim()) throw new Error("Vui lòng nhập tên giáo trình / khung chương trình.");
+      if (title.trim().length > 200) throw new Error("Tên giáo trình không được vượt quá 200 ký tự.");
+      if (!subjectId) throw new Error("Vui lòng chọn môn học cho giáo trình.");
+      if (description.trim().length > 2000) throw new Error("Mô tả giáo trình không được vượt quá 2000 ký tự.");
 
       if (isCreateMode) {
         const payload: CreateCurriculumRequest = {
@@ -169,7 +172,9 @@ export const TeacherCurriculumEditorView: React.FC = () => {
   // Publish Mutation
   const publishMutation = useMutation({
     mutationFn: async () => {
-      if (!id || isCreateMode) throw new Error("Cần lưu giáo trình trước khi xuất bản");
+      setFeedbackMsg(null);
+      if (!id || isCreateMode) throw new Error("Cần lưu giáo trình trước khi xuất bản.");
+      if (selectedNodeIds.length === 0) throw new Error("Giáo trình cần có ít nhất 1 chủ đề / điểm tri thức trước khi xuất bản chính thức.");
       return await curriculumApi.publish(id, { rowVersion });
     },
     onSuccess: (res) => {
@@ -264,11 +269,15 @@ export const TeacherCurriculumEditorView: React.FC = () => {
 
               <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
                 <div>
-                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)", marginBottom: "6px" }}>
-                    Tên giáo trình / Khung chương trình *
-                  </label>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                    <label style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)" }}>
+                      Tên giáo trình / Khung chương trình <span style={{ color: "var(--th-danger)" }}>*</span>
+                    </label>
+                    <span style={{ fontSize: "0.75rem", color: "var(--th-text-muted)" }}>{title.length}/200 ký tự</span>
+                  </div>
                   <input
                     type="text"
+                    maxLength={200}
                     className="th-input"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
@@ -279,7 +288,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
 
                 <div>
                   <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)", marginBottom: "6px" }}>
-                    Môn học *
+                    Môn học <span style={{ color: "var(--th-danger)" }}>*</span>
                   </label>
                   <select
                     className="th-select"
@@ -299,12 +308,16 @@ export const TeacherCurriculumEditorView: React.FC = () => {
                 </div>
 
                 <div>
-                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)", marginBottom: "6px" }}>
-                    Mô tả mục tiêu đào tạo
-                  </label>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                    <label style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)" }}>
+                      Mô tả mục tiêu đào tạo
+                    </label>
+                    <span style={{ fontSize: "0.75rem", color: "var(--th-text-muted)" }}>{description.length}/2000 ký tự</span>
+                  </div>
                   <textarea
                     className="th-textarea"
                     rows={4}
+                    maxLength={2000}
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="Tóm tắt yêu cầu cần đạt, chuẩn đầu ra và cấu trúc phân bổ thời lượng..."
