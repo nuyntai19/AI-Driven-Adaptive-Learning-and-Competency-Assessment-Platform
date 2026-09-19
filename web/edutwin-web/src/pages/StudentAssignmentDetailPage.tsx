@@ -3,6 +3,9 @@ import { useParams, Link, useSearchParams } from "react-router-dom";
 import { isAxiosError } from "axios";
 import { useStudentAssignment } from "../features/assignments/useStudentAssignment";
 import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
+import { getSubjectTheme } from "../components/student/subjectTheme";
+import { StudentBadge } from "../components/student/StudentBadge";
+import { StudentSubjectPattern } from "../components/student/StudentSubjectPattern";
 import type { ProgressStatus, StudentAssignmentQuestionDto } from "../types/assignments";
 
 const getStudentDetailError = (error: unknown) => {
@@ -24,7 +27,7 @@ const getQuestionTypeLabel = (qType?: string) => {
       return "Trắc nghiệm";
     case "Numeric":
     case "NumericRational":
-      return "Điền đáp án";
+      return "Điền số";
     case "Essay":
       return "Tự luận";
     default:
@@ -42,12 +45,12 @@ export const StudentAssignmentDetailPage: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        <div className="h-6 w-40 bg-slate-200 dark:bg-slate-800 animate-pulse rounded-lg" />
-        <div className="h-56 bg-white dark:bg-[#0f172a] animate-pulse rounded-2xl border border-slate-200 dark:border-slate-800" />
-        <div className="space-y-4">
+      <div className="w-full max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-5 student-shell">
+        <div className="h-6 w-32 bg-stone-200 dark:bg-stone-800 animate-pulse rounded" />
+        <div className="h-44 bg-white dark:bg-[#151d2f] animate-pulse rounded-xl border border-stone-200 dark:border-stone-800" />
+        <div className="space-y-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-36 bg-white dark:bg-[#0f172a] animate-pulse rounded-2xl border border-slate-200 dark:border-slate-800" />
+            <div key={i} className="h-32 bg-white dark:bg-[#151d2f] animate-pulse rounded-xl border border-stone-200 dark:border-stone-800" />
           ))}
         </div>
       </div>
@@ -56,14 +59,14 @@ export const StudentAssignmentDetailPage: React.FC = () => {
 
   if (isError || !assignment) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-12">
-        <div className="rounded-2xl bg-white dark:bg-[#0f172a] p-8 border border-slate-200 dark:border-slate-800 text-center shadow-sm">
-          <p className="text-sm font-bold text-rose-600 dark:text-rose-400 mb-4">
+      <div className="max-w-2xl mx-auto px-4 py-12 student-shell">
+        <div className="rounded-xl bg-white dark:bg-[#151d2f] p-8 border border-stone-200 dark:border-stone-800 text-center shadow-xs">
+          <p className="text-sm font-medium text-red-700 dark:text-red-400 mb-4">
             Đã có lỗi xảy ra: {getStudentDetailError(error)}
           </p>
           <Link
             to={`/hoc-tap/bai-tap${selectedSubjectId ? `?subjectId=${selectedSubjectId}` : ""}`}
-            className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
           >
             <span>← Quay lại danh sách bài tập</span>
           </Link>
@@ -85,56 +88,43 @@ export const StudentAssignmentDetailPage: React.FC = () => {
         (q) => Boolean(q.latestAttempt) || q.attemptStatus === "Completed" || q.attemptStatus === "NeedsTeacherReview"
       ));
 
-  // Find first uncompleted question for "Bắt đầu làm bài tập ngay"
+  // First uncompleted question
   const firstUnfinishedQuestion = questions.find(
     (q) => !q.latestAttempt && q.attemptStatus !== "Completed" && q.attemptStatus !== "NeedsTeacherReview"
   );
 
-  const getStatusBadge = (status: ProgressStatus) => {
+  const subjectName = assignment.subjectName || "Học phần";
+  const subjectTheme = getSubjectTheme(subjectName);
+
+  const renderStatusBadge = (status: ProgressStatus) => {
     switch (status) {
       case "Completed":
-        return (
-          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
-            Đã hoàn thành
-          </span>
-        );
+        return <StudentBadge variant="success" size="sm">Đã hoàn thành</StudentBadge>;
       case "InProgress":
-        return (
-          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-            Đang làm
-          </span>
-        );
+        return <StudentBadge variant="accent" size="sm">Đang làm</StudentBadge>;
       case "Overdue":
-        return (
-          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800">
-            Quá hạn
-          </span>
-        );
+        return <StudentBadge variant="danger" size="sm">Quá hạn</StudentBadge>;
       case "NotStarted":
       default:
-        return (
-          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-            Chưa bắt đầu
-          </span>
-        );
+        return <StudentBadge variant="neutral" size="sm">Chưa bắt đầu</StudentBadge>;
     }
   };
 
-  const getAttemptStatusBadge = (question: StudentAssignmentQuestionDto) => {
+  const renderAttemptStatusBadge = (question: StudentAssignmentQuestionDto) => {
     const status = question.attemptStatus;
     const attempt = question.latestAttempt;
 
     if (attempt?.skipped) {
       return (
-        <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-1 rounded-full border border-amber-200 dark:border-amber-800">
-          <span>Đã bỏ qua</span>
-        </span>
+        <StudentBadge variant="warning" size="xs">
+          Đã bỏ qua
+        </StudentBadge>
       );
     }
 
     if (!status && !attempt) {
       return (
-        <span className="inline-flex items-center text-xs font-semibold text-slate-400 dark:text-slate-500">
+        <span className="text-xs font-medium text-stone-400 dark:text-stone-500">
           Chưa làm
         </span>
       );
@@ -142,214 +132,228 @@ export const StudentAssignmentDetailPage: React.FC = () => {
 
     if (status === "Completed") {
       return (
-        <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-full border border-emerald-200 dark:border-emerald-800">
-          <span>Đã hoàn thành</span>
-        </span>
+        <StudentBadge variant="success" size="xs">
+          Đã hoàn thành
+        </StudentBadge>
       );
     }
 
     if (status === "NeedsTeacherReview") {
       return (
-        <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-1 rounded-full border border-amber-200 dark:border-amber-800">
-          <span>Chờ giáo viên duyệt</span>
-        </span>
+        <StudentBadge variant="warning" size="xs">
+          Chờ giáo viên duyệt
+        </StudentBadge>
       );
     }
 
     return (
-      <span className="inline-flex items-center gap-1 text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 px-2.5 py-1 rounded-full border border-indigo-200 dark:border-indigo-800">
-        <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
-        <span>Đang phân tích AI</span>
-      </span>
+      <StudentBadge variant="accent" size="xs">
+        Đang phân tích
+      </StudentBadge>
     );
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-      {/* Back link */}
+    <div className="w-full max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-5 min-w-0 student-shell">
+      {/* Navigation Breadcrumb */}
       <div>
         <Link
           to={`/hoc-tap/bai-tap${selectedSubjectId ? `?subjectId=${selectedSubjectId}` : ""}`}
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white dark:bg-[#0f172a] border border-slate-300 dark:border-slate-700 text-sm font-extrabold text-slate-900 dark:text-slate-100 hover:text-indigo-600 dark:hover:text-indigo-400 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/40 shadow-xs transition-all group cursor-pointer"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
         >
-          <span className="text-base group-hover:-translate-x-1 transition-transform">‹</span>
-          <span>Quay lại danh sách bài tập</span>
+          <span>← Quay lại danh sách bài tập</span>
         </Link>
       </div>
 
-      {/* Assignment Overview Hero Box */}
-      <div className="rounded-3xl bg-white dark:bg-[#0f172a] border border-slate-200/90 dark:border-slate-800 p-7 sm:p-9 shadow-xs space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-2.5">
-            {getStatusBadge(progress.status)}
-            <span className="rounded-xl bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-200 dark:border-indigo-800 px-3 py-1 text-xs font-black text-indigo-700 dark:text-indigo-300">
-              Bài tập rèn luyện năng lực
-            </span>
-          </div>
+      {/* Assignment Overview Workspace Card */}
+      <div className="relative rounded-xl bg-white dark:bg-[#151d2f] border border-stone-200/90 dark:border-stone-800/90 p-5 sm:p-6 shadow-xs overflow-hidden">
+        {/* Subtle Subject Graphic Pattern */}
+        <StudentSubjectPattern subjectName={subjectName} opacity={0.05} />
 
-          {isAssignmentFinished ? (
-            <Link
-              to={`/hoc-tap/luyen-tap/${questions[0]?.questionId || ""}?assignmentId=${assignment.assignmentId}${selectedSubjectId ? `&subjectId=${selectedSubjectId}` : ""}`}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 px-7 py-3 text-sm font-black text-white shadow-xs transition-all cursor-pointer self-start sm:self-auto"
-            >
-              <span>👁️ Xem lại toàn bộ bài làm</span>
-            </Link>
-          ) : firstUnfinishedQuestion ? (
-            <Link
-              to={`/hoc-tap/luyen-tap/${firstUnfinishedQuestion.questionId}?assignmentId=${assignment.assignmentId}${selectedSubjectId ? `&subjectId=${selectedSubjectId}` : ""}`}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 hover:bg-indigo-500 px-7 py-3 text-sm font-black text-white shadow-md shadow-indigo-600/25 transition-all cursor-pointer self-start sm:self-auto"
-            >
-              <span>{progress.completedQuestionCount > 0 ? "Tiếp tục làm bài tập →" : "🚀 Bắt đầu làm bài tập ngay"}</span>
-            </Link>
-          ) : null}
-        </div>
+        {/* Left accent rail */}
+        <div
+          className="absolute left-0 top-0 bottom-0 w-1"
+          style={{ backgroundColor: subjectTheme.color }}
+        />
 
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
-            {assignment.title}
-          </h1>
-          <p className="mt-2.5 text-sm sm:text-base text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
-            {assignment.instructions ||
-              "Hoàn thành các câu hỏi dưới đây và trình bày đầy đủ các bước suy luận để EduTwin phân tích chất lượng tư duy của bạn."}
-          </p>
-        </div>
-
-        {/* Progress & Due date row */}
-        <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-2.5">
-          <div className="flex items-center justify-between text-sm mb-1">
-            <span className="font-extrabold text-slate-900 dark:text-slate-100">
-              Tiến độ: {progress.completedQuestionCount}/{progress.totalQuestionCount} câu ({percent}%)
-            </span>
-            {assignment.dueAt && (
-              <span className="font-bold text-slate-600 dark:text-slate-400">
-                Hạn chót:{" "}
-                {new Date(assignment.dueAt).toLocaleDateString("vi-VN", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  day: "2-digit",
-                  month: "2-digit",
-                  year: "numeric",
-                })}
+        <div className="pl-2 space-y-4 relative z-10">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className="text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded"
+                style={{
+                  backgroundColor: subjectTheme.bg,
+                  color: subjectTheme.color,
+                  border: `1px solid ${subjectTheme.border}`,
+                }}
+              >
+                {subjectName}
               </span>
-            )}
+              {renderStatusBadge(progress.status)}
+            </div>
+
+            {/* Primary Action Button */}
+            {isAssignmentFinished ? (
+              <Link
+                to={`/hoc-tap/luyen-tap/${questions[0]?.questionId || ""}?assignmentId=${assignment.assignmentId}${selectedSubjectId ? `&subjectId=${selectedSubjectId}` : ""}`}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-stone-200 px-4 py-2 text-xs sm:text-sm font-semibold text-white dark:text-stone-900 transition-colors cursor-pointer self-start sm:self-auto"
+              >
+                <span>Xem lại bài làm</span>
+                <span>→</span>
+              </Link>
+            ) : firstUnfinishedQuestion ? (
+              <Link
+                to={`/hoc-tap/luyen-tap/${firstUnfinishedQuestion.questionId}?assignmentId=${assignment.assignmentId}${selectedSubjectId ? `&subjectId=${selectedSubjectId}` : ""}`}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-stone-200 px-5 py-2 text-xs sm:text-sm font-semibold text-white dark:text-stone-900 transition-colors cursor-pointer self-start sm:self-auto"
+              >
+                <span>{progress.completedQuestionCount > 0 ? "Tiếp tục làm bài" : "Bắt đầu làm bài"}</span>
+                <span>→</span>
+              </Link>
+            ) : null}
           </div>
-          <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-3 overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all duration-500 ${
-                progress.status === "Completed"
-                  ? "bg-emerald-500"
-                  : progress.status === "Overdue"
-                  ? "bg-rose-500"
-                  : "bg-indigo-600"
-              }`}
-              style={{ width: `${percent}%` }}
-            />
+
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-stone-900 dark:text-stone-100">
+              {assignment.title}
+            </h1>
+            <p className="mt-1.5 text-xs sm:text-sm text-stone-600 dark:text-stone-400 leading-relaxed">
+              {assignment.instructions ||
+                "Hoàn thành các câu hỏi bên dưới và giải trình các bước tư duy để hệ thống đánh giá năng lực thích ứng."}
+            </p>
+          </div>
+
+          {/* Progress & Due date */}
+          <div className="pt-3 border-t border-stone-100 dark:border-stone-800/80 space-y-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-stone-700 dark:text-stone-300">
+                Tiến độ: {progress.completedQuestionCount}/{progress.totalQuestionCount} câu hoàn thành ({percent}%)
+              </span>
+              {assignment.dueAt && (
+                <span className="text-stone-500 dark:text-stone-400">
+                  Hạn nộp:{" "}
+                  {new Date(assignment.dueAt).toLocaleDateString("vi-VN", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                  })}
+                </span>
+              )}
+            </div>
+            <div className="w-full bg-stone-100 dark:bg-stone-800 rounded-full h-1.5 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-300 ${
+                  progress.status === "Completed"
+                    ? "bg-emerald-500"
+                    : progress.status === "Overdue"
+                    ? "bg-rose-500"
+                    : "bg-indigo-600"
+                }`}
+                style={{ width: `${percent}%` }}
+              />
+            </div>
           </div>
         </div>
       </div>
 
       {/* Questions list header */}
       <div className="flex items-center justify-between pt-2">
-        <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
-          Danh sách câu hỏi trong bài
+        <h2 className="text-sm sm:text-base font-bold text-stone-900 dark:text-stone-100">
+          Danh sách câu hỏi ({questions.length})
         </h2>
-        <span className="text-sm font-bold text-slate-500 dark:text-slate-400">
-          {questions.length} câu hỏi · Dự kiến {Math.max(30, questions.length * 4)} phút
+        <span className="text-xs text-stone-500 dark:text-stone-400">
+          Dự kiến ~{Math.max(20, questions.length * 4)} phút
         </span>
       </div>
 
       {/* Question Items List */}
-      <div className="space-y-4">
+      <div className="space-y-3">
         {questions.map((question, index) => {
-          const formattedId = `Q-${String(index + 1).padStart(2, "0")}-${question.questionId.slice(0, 4)}`;
+          const formattedId = `Q-${String(index + 1).padStart(2, "0")}`;
           const timeSec = question.estimatedTimeSeconds || 120;
           const hasMath = /[\\[{^_\\]]/.test(question.questionText);
+          const isDone =
+            Boolean(question.latestAttempt) ||
+            question.attemptStatus === "Completed" ||
+            question.attemptStatus === "NeedsTeacherReview";
 
           return (
             <div
               key={question.questionId}
-              className="rounded-3xl bg-white dark:bg-[#0f172a] border border-slate-200/90 dark:border-slate-800 p-6 sm:p-7 shadow-xs hover:border-indigo-300 dark:hover:border-indigo-700 hover:shadow-sm transition-all"
+              className="rounded-xl bg-white dark:bg-[#151d2f] border border-stone-200/90 dark:border-stone-800/90 p-5 shadow-xs hover:border-stone-300 dark:hover:border-stone-700 transition-all space-y-3"
             >
               {/* Question header */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 mb-4 border-b border-slate-100 dark:border-slate-800">
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <span className="text-base font-black text-slate-900 dark:text-white">
+              <div className="flex items-center justify-between gap-3 pb-3 border-b border-stone-100 dark:border-stone-800/80">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-mono font-bold text-stone-700 dark:text-stone-300">
                     Câu {index + 1}
                   </span>
-                  <span className="text-xs font-mono font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-lg">
+                  <span className="text-[11px] font-mono text-stone-400">
                     {formattedId}
                   </span>
-                  <span className="rounded-xl bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-200 dark:border-indigo-800 px-3 py-1 text-xs font-bold text-indigo-700 dark:text-indigo-300">
+                  <span className="text-[11px] px-2 py-0.5 rounded bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 font-medium">
                     {getQuestionTypeLabel(question.questionType)}
                   </span>
-                  <span className="rounded-xl bg-amber-50 dark:bg-amber-950/70 border border-amber-200 dark:border-amber-800 px-3 py-1 text-xs font-bold text-amber-700 dark:text-amber-300">
+                  <span className="text-[11px] px-2 py-0.5 rounded bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 font-medium">
                     {getDifficultyLabel(question.difficulty)}
                   </span>
                 </div>
 
                 <div>
-                  {getAttemptStatusBadge(question)}
+                  {renderAttemptStatusBadge(question)}
                 </div>
               </div>
 
-              {/* Question content with LaTeX formula support */}
-              <div className="text-base sm:text-lg text-slate-900 dark:text-slate-100 leading-relaxed whitespace-pre-wrap font-bold">
+              {/* Question content */}
+              <div className="text-sm sm:text-base text-stone-800 dark:text-stone-200 leading-relaxed font-medium">
                 {question.questionText}
               </div>
 
               {/* KaTeX preview if formula detected */}
               {hasMath && (
-                <div className="mt-3">
+                <div className="pt-1">
                   <MathFormulaPreview
                     formula={question.questionText}
-                    label="Công thức toán học"
+                    label="Công thức toán"
                   />
                 </div>
               )}
 
-              {/* Multiple choice options preview if present */}
+              {/* Options preview if present */}
               {question.options && question.options.length > 0 && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                   {question.options.map((opt) => (
                     <div
                       key={opt.optionId}
-                      className="flex items-center gap-3 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/80 text-sm"
+                      className="flex items-center gap-2.5 p-2.5 rounded-lg border border-stone-200/80 dark:border-stone-800/80 bg-stone-50/60 dark:bg-stone-900/40 text-xs"
                     >
-                      <span className="w-6 h-6 rounded-full bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 font-extrabold text-slate-800 dark:text-slate-100 flex items-center justify-center text-xs shrink-0">
+                      <span className="w-5 h-5 rounded-full bg-white dark:bg-stone-800 border border-stone-300 dark:border-stone-700 font-bold text-stone-700 dark:text-stone-300 flex items-center justify-center text-[10px] shrink-0">
                         {opt.label}
                       </span>
-                      <span className="text-slate-900 dark:text-slate-200 font-semibold truncate">{opt.text}</span>
+                      <span className="text-stone-800 dark:text-stone-200 truncate">{opt.text}</span>
                     </div>
                   ))}
                 </div>
               )}
 
-              {/* Bottom footer: Time estimate & Direct action button */}
-              <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                <span className="text-xs sm:text-sm font-bold text-slate-500 dark:text-slate-400">
-                  ⏱ Thời gian dự kiến: {timeSec} giây
+              {/* Footer row */}
+              <div className="pt-2 border-t border-stone-100 dark:border-stone-800/80 flex items-center justify-between">
+                <span className="text-xs text-stone-400 dark:text-stone-500">
+                  Thời lượng ước tính: ~{Math.round(timeSec / 60)} phút
                 </span>
 
-                {(() => {
-                  const isDone =
-                    Boolean(question.latestAttempt) ||
-                    question.attemptStatus === "Completed" ||
-                    question.attemptStatus === "NeedsTeacherReview";
-
-                  return (
-                    <Link
-                      to={`/hoc-tap/luyen-tap/${question.questionId}?assignmentId=${assignment.assignmentId}${selectedSubjectId ? `&subjectId=${selectedSubjectId}` : ""}`}
-                      className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-black transition-all cursor-pointer ${
-                        isDone
-                          ? "bg-emerald-50 hover:bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
-                          : "bg-indigo-600 hover:bg-indigo-500 text-white shadow-xs shadow-indigo-600/20"
-                      }`}
-                    >
-                      <span>{isDone ? "👁️ Xem lại câu này" : "Làm câu này"}</span>
-                      <span>→</span>
-                    </Link>
-                  );
-                })()}
+                <Link
+                  to={`/hoc-tap/luyen-tap/${question.questionId}?assignmentId=${assignment.assignmentId}${selectedSubjectId ? `&subjectId=${selectedSubjectId}` : ""}`}
+                  className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                    isDone
+                      ? "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/80 hover:bg-emerald-100"
+                      : "text-stone-100 bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-stone-200"
+                  }`}
+                >
+                  <span>{isDone ? "Xem lại" : "Làm câu này"}</span>
+                  <span className="text-[11px]">→</span>
+                </Link>
               </div>
             </div>
           );

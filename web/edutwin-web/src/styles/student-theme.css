@@ -1,0 +1,165 @@
+/* ==========================================================================
+   EDUTWIN LEARNING ATLAS — DESIGN TOKENS (STUDENT ONLY)
+   Strictly scoped under .student-shell to isolate from other roles.
+   ========================================================================== */
+
+.student-shell {
+  /* Canvas & Base Ink */
+  --student-canvas: #FBF8F1;
+  --student-surface: #FFFFFF;
+  --student-surface-subtle: #F5F1E8;
+  --student-surface-elevated: #FFFFFF;
+  --student-border: #E8E2D5;
+  --student-border-subtle: #F0EBE0;
+  --student-ink: #172033;
+  --student-ink-secondary: #475467;
+  --student-muted: #667085;
+
+  /* Brand Palette */
+  --student-brand: #6746E8;
+  --student-brand-soft: #F1EEFD;
+  --student-brand-border: #D8CFFC;
+
+  /* Expressive Atlas Accents */
+  --atlas-cobalt: #3558F4;
+  --atlas-cobalt-soft: #EFF3FE;
+  --atlas-cobalt-border: #C6D5FC;
+
+  --atlas-sun: #FFC94A;
+  --atlas-sun-soft: #FFF9EB;
+  --atlas-sun-border: #FEE7B0;
+
+  --atlas-coral: #FF6B57;
+  --atlas-coral-soft: #FFF0EE;
+  --atlas-coral-border: #FFCDC6;
+
+  --atlas-mint: #36C5A0;
+  --atlas-mint-soft: #EBF9F5;
+  --atlas-mint-border: #BCEFE2;
+
+  --atlas-berry: #D94B82;
+  --atlas-berry-soft: #FDF1F5;
+  --atlas-berry-border: #F7C8DA;
+
+  --atlas-sky: #4EB8E8;
+  --atlas-sky-soft: #F0F9FD;
+  --atlas-sky-border: #C8EAF8;
+
+  /* Node & Route Motif */
+  --atlas-node-current: #6746E8;
+  --atlas-node-target: #3558F4;
+  --atlas-route-mastered: #36C5A0;
+  --atlas-route-recommended: #6746E8;
+  --atlas-route-dim: #E2DBD0;
+
+  /* Typography: Be Vietnam Pro with full Vietnamese diacritics support */
+  font-family: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background-color: var(--student-canvas);
+  color: var(--student-ink);
+  letter-spacing: -0.01em;
+}
+
+/* Dark Mode Tokens */
+.dark .student-shell,
+.student-shell.dark {
+  --student-canvas: #101623;
+  --student-surface: #172033;
+  --student-surface-subtle: #1E2A42;
+  --student-surface-elevated: #222F49;
+  --student-border: #283652;
+  --student-border-subtle: #202C44;
+  --student-ink: #E6EDF8;
+  --student-ink-secondary: #94A3B8;
+  --student-muted: #64748B;
+
+  --student-brand: #8568FF;
+  --student-brand-soft: #231C4D;
+  --student-brand-border: #443685;
+
+  --atlas-cobalt: #5C7CF9;
+  --atlas-cobalt-soft: #172B66;
+  --atlas-cobalt-border: #254299;
+
+  --atlas-sun: #FFD369;
+  --atlas-sun-soft: #423512;
+  --atlas-sun-border: #6B5620;
+
+  --atlas-coral: #FF8775;
+  --atlas-coral-soft: #4A221C;
+  --atlas-coral-border: #7A382F;
+
+  --atlas-mint: #45D6B1;
+  --atlas-mint-soft: #144237;
+  --atlas-mint-border: #206E5C;
+
+  --atlas-berry: #E5679A;
+  --atlas-berry-soft: #47192C;
+  --atlas-berry-border: #7A2B4C;
+
+  --atlas-sky: #6BCAFA;
+  --atlas-sky-soft: #183C4F;
+  --atlas-sky-border: #276280;
+
+  --atlas-route-dim: #2A3852;
+
+  background-color: var(--student-canvas);
+  color: var(--student-ink);
+}
+
+/* Base Headings - Strict Be Vietnam Pro sans-serif without serif fallback */
+.student-shell h1,
+.student-shell h2,
+.student-shell h3,
+.student-shell h4,
+.student-shell h5,
+.student-shell h6 {
+  font-family: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
+  letter-spacing: -0.015em;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+/* Learning Atlas Visual Primitives */
+.atlas-node-current {
+  background-color: var(--atlas-node-current);
+  box-shadow: 0 0 0 4px rgba(103, 70, 232, 0.18);
+}
+
+.atlas-node-target {
+  background-color: var(--atlas-node-target);
+  box-shadow: 0 0 0 4px rgba(53, 88, 244, 0.18);
+}
+
+.atlas-route-mastered {
+  stroke: var(--atlas-route-mastered);
+  stroke-dasharray: none;
+}
+
+.atlas-route-recommended {
+  stroke: var(--atlas-route-recommended);
+  stroke-dasharray: 4 3;
+}
+
+/* Marker Underline */
+.student-marker {
+  position: relative;
+}
+.student-marker::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  height: 2px;
+  background-color: var(--student-brand);
+  border-radius: 9999px;
+}
+
+/* Suppress user-agent focus outline capsule on SVG elements in student shell */
+.student-shell svg *:focus,
+.student-shell svg *:focus-visible,
+.student-shell svg g:focus,
+.student-shell svg g:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+

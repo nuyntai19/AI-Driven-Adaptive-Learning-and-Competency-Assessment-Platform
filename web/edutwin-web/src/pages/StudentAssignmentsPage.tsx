@@ -4,6 +4,8 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useStudentAssignments } from "../features/assignments/useStudentAssignments";
 import { organizationApi } from "../api/organizationApi";
+import { getSubjectTheme } from "../components/student/subjectTheme";
+import { StudentBadge } from "../components/student/StudentBadge";
 import type { ProgressStatus, StudentAssignmentListItemDto } from "../types/assignments";
 
 const getStudentListError = (error: unknown) => {
@@ -11,7 +13,13 @@ const getStudentListError = (error: unknown) => {
   return error instanceof Error ? error.message : "Không thể tải danh sách bài tập.";
 };
 
-type SortOption = "dueSoon" | "newest" | "oldest";
+type TimelineGroupKey = "today" | "tomorrow" | "thisWeek" | "later";
+
+interface TimelineGroup {
+  key: TimelineGroupKey;
+  label: string;
+  items: StudentAssignmentListItemDto[];
+}
 
 export const StudentAssignmentsPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -19,7 +27,6 @@ export const StudentAssignmentsPage: React.FC = () => {
 
   const [statusFilter, setStatusFilter] = useState<ProgressStatus | "">("");
   const [searchTerm, setSearchTerm] = useState<string>("");
-  const [sortBy, setSortBy] = useState<SortOption>("dueSoon");
   const [ignoreSubjectFilter, setIgnoreSubjectFilter] = useState<boolean>(false);
 
   // Fetch subjects to match subject names
@@ -40,7 +47,7 @@ export const StudentAssignmentsPage: React.FC = () => {
 
   const rawAssignments = response?.data || [];
 
-  // Filter by search term & sort (Backend already filtered by subjectId)
+  // Filter by search term
   const filteredAssignments = useMemo(() => {
     let result = [...rawAssignments];
 
@@ -53,251 +60,194 @@ export const StudentAssignmentsPage: React.FC = () => {
       );
     }
 
-    result.sort((a, b) => {
-      if (sortBy === "dueSoon") {
-        if (!a.dueAt) return 1;
-        if (!b.dueAt) return -1;
-        return new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime();
-      }
-      if (sortBy === "newest") {
-        if (!a.dueAt) return 1;
-        if (!b.dueAt) return -1;
-        return new Date(b.dueAt).getTime() - new Date(a.dueAt).getTime();
-      }
-      return 0;
-    });
-
     return result;
-  }, [rawAssignments, searchTerm, sortBy]);
+  }, [rawAssignments, searchTerm]);
 
-  // Status counters for filter pills
-  const statusCounts = useMemo(() => {
-    const counts = {
-      all: filteredAssignments.length,
-      NotStarted: 0,
-      InProgress: 0,
-      Completed: 0,
-      Overdue: 0,
-    };
-    filteredAssignments.forEach((a) => {
-      if (counts[a.progress.status] !== undefined) {
-        counts[a.progress.status]++;
+  // Group into Timeline / Agenda: HÔM NAY, NGÀY MAI, TUẦN NÀY, SAU ĐÓ
+  const timelineGroups = useMemo<TimelineGroup[]>(() => {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const startOfTomorrow = startOfToday + 24 * 60 * 60 * 1000;
+    const startOfDayAfterTomorrow = startOfTomorrow + 24 * 60 * 60 * 1000;
+    const endOfWeek = startOfToday + 7 * 24 * 60 * 60 * 1000;
+
+    const todayList: StudentAssignmentListItemDto[] = [];
+    const tomorrowList: StudentAssignmentListItemDto[] = [];
+    const thisWeekList: StudentAssignmentListItemDto[] = [];
+    const laterList: StudentAssignmentListItemDto[] = [];
+
+    filteredAssignments.forEach((item) => {
+      if (item.progress.status === "Completed") {
+        laterList.push(item);
+        return;
+      }
+
+      if (!item.dueAt) {
+        laterList.push(item);
+        return;
+      }
+
+      const dueTime = new Date(item.dueAt).getTime();
+      if (dueTime < startOfTomorrow) {
+        todayList.push(item);
+      } else if (dueTime < startOfDayAfterTomorrow) {
+        tomorrowList.push(item);
+      } else if (dueTime < endOfWeek) {
+        thisWeekList.push(item);
+      } else {
+        laterList.push(item);
       }
     });
-    return counts;
+
+    const groups: TimelineGroup[] = [];
+    if (todayList.length > 0) {
+      groups.push({ key: "today", label: "HÔM NAY", items: todayList });
+    }
+    if (tomorrowList.length > 0) {
+      groups.push({ key: "tomorrow", label: "NGÀY MAI", items: tomorrowList });
+    }
+    if (thisWeekList.length > 0) {
+      groups.push({ key: "thisWeek", label: "TUẦN NÀY", items: thisWeekList });
+    }
+    if (laterList.length > 0) {
+      groups.push({ key: "later", label: "CHỜ THỰC HIỆN & ĐÃ XONG", items: laterList });
+    }
+
+    // Fallback if no dates set
+    if (groups.length === 0 && filteredAssignments.length > 0) {
+      groups.push({ key: "later", label: "DANH SÁCH BÀI TẬP", items: filteredAssignments });
+    }
+
+    return groups;
   }, [filteredAssignments]);
 
-  const getStatusBadge = (status: ProgressStatus) => {
-    switch (status) {
-      case "Completed":
-        return (
-          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200/80 dark:border-emerald-800">
-            Đã hoàn thành
-          </span>
-        );
-      case "InProgress":
-        return (
-          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800">
-            Đang làm
-          </span>
-        );
-      case "Overdue":
-        return (
-          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-200/80 dark:border-rose-800">
-            Quá hạn
-          </span>
-        );
-      case "NotStarted":
-      default:
-        return (
-          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700">
-            Chưa bắt đầu
-          </span>
-        );
+  const getSubjectNameForAssignment = (item: StudentAssignmentListItemDto): string => {
+    if (item.subjectName) return item.subjectName;
+    if (item.subjectId) {
+      const matched = subjects.find((s) => s.subjectId === item.subjectId);
+      if (matched) return matched.subjectName;
     }
+    if (currentSubjectName) return currentSubjectName;
+    return "Toán học";
   };
 
   return (
-    <div className="max-w-[1700px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-      {/* Title & Subtitle */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 min-w-0 student-shell">
+      {/* Workspace Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-stone-200/80 dark:border-stone-800/80">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-            Bài tập của tôi
-          </h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 font-medium">
-            Danh sách các nhiệm vụ học tập và bài kiểm tra được giáo viên giao.
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-stone-900 dark:text-stone-100">
+              Lịch học tập & Bài tập
+            </h1>
+            <span className="text-xs font-mono px-2 py-0.5 rounded bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 font-medium">
+              {filteredAssignments.length} nhiệm vụ
+            </span>
+          </div>
+          <p className="mt-0.5 text-xs text-stone-500 dark:text-stone-400">
+            Kế hoạch rèn luyện theo mốc thời gian · Điểm chạm trên hành trình học tập
           </p>
         </div>
 
-        {/* Active Subject Filter Badge */}
-        {currentSubjectName && !ignoreSubjectFilter && (
-          <div className="flex items-center gap-2 self-start sm:self-auto">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-xs font-bold shadow-2xs">
-              <span>Đang lọc môn: {currentSubjectName}</span>
-              <button
-                type="button"
-                onClick={() => setIgnoreSubjectFilter(true)}
-                className="hover:text-indigo-900 dark:hover:text-white text-xs font-black cursor-pointer ml-1"
-                title="Xem tất cả môn học"
-              >
-                ✕
-              </button>
-            </span>
+        {/* Active Subject Filter indicator */}
+        {currentSubjectName && !ignoreSubjectFilter ? (
+          <div className="flex items-center gap-2">
+            {(() => {
+              const theme = getSubjectTheme(currentSubjectName);
+              return (
+                <span
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold"
+                  style={{
+                    backgroundColor: theme.bg,
+                    color: theme.color,
+                    border: `1px solid ${theme.border}`,
+                  }}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: theme.color }} />
+                  <span>Môn: {currentSubjectName}</span>
+                  <button
+                    type="button"
+                    onClick={() => setIgnoreSubjectFilter(true)}
+                    className="ml-1 hover:opacity-75 cursor-pointer font-bold"
+                    title="Xem tất cả môn học"
+                  >
+                    ×
+                  </button>
+                </span>
+              );
+            })()}
           </div>
-        )}
-
-        {ignoreSubjectFilter && (
+        ) : ignoreSubjectFilter && currentSubjectName ? (
           <button
             type="button"
             onClick={() => setIgnoreSubjectFilter(false)}
-            className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+            className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
           >
-            ← Quay lại lọc theo môn {currentSubjectName}
+            ← Quay lại lọc môn {currentSubjectName}
           </button>
-        )}
+        ) : null}
       </div>
 
-      {/* Search Bar & Status Filter Pills */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        {/* Search input */}
-        <div className="relative flex-1 max-w-lg">
-          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-500">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-          </div>
+      {/* Filter Tabs & Search Bar */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        {/* Status segmented tabs */}
+        <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0 scrollbar-none border-b border-stone-200/60 dark:border-stone-800/60 lg:border-none">
+          {[
+            { id: "", label: "Tất cả" },
+            { id: "NotStarted", label: "Chưa bắt đầu" },
+            { id: "InProgress", label: "Đang làm" },
+            { id: "Completed", label: "Đã xong" },
+            { id: "Overdue", label: "Quá hạn" },
+          ].map((tab) => {
+            const isActive = statusFilter === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setStatusFilter(tab.id as ProgressStatus | "")}
+                className={`relative px-3 py-1.5 text-xs sm:text-sm font-semibold whitespace-nowrap transition-colors cursor-pointer ${
+                  isActive
+                    ? "text-stone-900 dark:text-stone-100 font-bold"
+                    : "text-stone-500 hover:text-stone-800 dark:text-stone-400"
+                }`}
+              >
+                <span>{tab.label}</span>
+                {isActive && (
+                  <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-stone-900 dark:bg-stone-100 rounded-full" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Search Input */}
+        <div className="relative w-full sm:w-64">
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Tìm kiếm bài tập theo tên..."
-            className="w-full pl-11 pr-4 py-3 rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#0f172a] text-sm font-semibold text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 shadow-xs"
+            placeholder="Tìm kiếm bài tập..."
+            className="w-full pl-3 pr-7 py-1.5 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-[#151d2f] text-xs sm:text-sm text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-none focus:border-stone-400 dark:focus:border-stone-600 transition-colors"
           />
           {searchTerm && (
             <button
+              type="button"
               onClick={() => setSearchTerm("")}
-              className="absolute inset-y-0 right-0 pr-4 flex items-center text-xs text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
+              className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-xs text-stone-400 hover:text-stone-700 dark:hover:text-stone-200"
             >
-              ✕
+              ×
             </button>
           )}
         </div>
-
-        {/* Status Filter Pills */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
-          <button
-            type="button"
-            onClick={() => setStatusFilter("")}
-            className={`px-4 py-2.5 rounded-2xl text-sm font-black transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 ${
-              statusFilter === ""
-                ? "bg-slate-900 dark:bg-indigo-600 text-white shadow-xs"
-                : "bg-white dark:bg-[#0f172a] text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-300/80 dark:border-slate-700"
-            }`}
-          >
-            <span>Tất cả</span>
-            <span className={`px-2 py-0.5 rounded-full text-xs font-black ${statusFilter === "" ? "bg-slate-800 dark:bg-indigo-700 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"}`}>
-              {statusCounts.all}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setStatusFilter("NotStarted")}
-            className={`px-4 py-2.5 rounded-2xl text-sm font-black transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 ${
-              statusFilter === "NotStarted"
-                ? "bg-slate-900 dark:bg-indigo-600 text-white shadow-xs"
-                : "bg-white dark:bg-[#0f172a] text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-300/80 dark:border-slate-700"
-            }`}
-          >
-            <span>Chưa bắt đầu</span>
-            {statusCounts.NotStarted > 0 && (
-              <span className={`px-2 py-0.5 rounded-full text-xs font-black ${statusFilter === "NotStarted" ? "bg-slate-800 dark:bg-indigo-700 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"}`}>
-                {statusCounts.NotStarted}
-              </span>
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setStatusFilter("InProgress")}
-            className={`px-4 py-2.5 rounded-2xl text-sm font-black transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 ${
-              statusFilter === "InProgress"
-                ? "bg-slate-900 dark:bg-indigo-600 text-white shadow-xs"
-                : "bg-white dark:bg-[#0f172a] text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-300/80 dark:border-slate-700"
-            }`}
-          >
-            <span>Đang làm</span>
-            {statusCounts.InProgress > 0 && (
-              <span className={`px-2 py-0.5 rounded-full text-xs font-black ${statusFilter === "InProgress" ? "bg-indigo-600 dark:bg-indigo-700 text-white" : "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300"}`}>
-                {statusCounts.InProgress}
-              </span>
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setStatusFilter("Completed")}
-            className={`px-4 py-2.5 rounded-2xl text-sm font-black transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 ${
-              statusFilter === "Completed"
-                ? "bg-slate-900 dark:bg-indigo-600 text-white shadow-xs"
-                : "bg-white dark:bg-[#0f172a] text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-300/80 dark:border-slate-700"
-            }`}
-          >
-            <span>Đã hoàn thành</span>
-            {statusCounts.Completed > 0 && (
-              <span className={`px-2 py-0.5 rounded-full text-xs font-black ${statusFilter === "Completed" ? "bg-emerald-600 text-white" : "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300"}`}>
-                {statusCounts.Completed}
-              </span>
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setStatusFilter("Overdue")}
-            className={`px-4 py-2.5 rounded-2xl text-sm font-black transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 ${
-              statusFilter === "Overdue"
-                ? "bg-slate-900 dark:bg-indigo-600 text-white shadow-xs"
-                : "bg-white dark:bg-[#0f172a] text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-300/80 dark:border-slate-700"
-            }`}
-          >
-            <span>Quá hạn</span>
-            {statusCounts.Overdue > 0 && (
-              <span className={`px-2 py-0.5 rounded-full text-xs font-black ${statusFilter === "Overdue" ? "bg-rose-600 text-white" : "bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300"}`}>
-                {statusCounts.Overdue}
-              </span>
-            )}
-          </button>
-        </div>
       </div>
 
-      {/* Summary count and sorting bar */}
-      <div className="flex items-center justify-between pt-3 border-t border-slate-200/90 dark:border-slate-800">
-        <span className="text-sm font-extrabold text-slate-800 dark:text-slate-200">
-          {filteredAssignments.length} nhiệm vụ học tập {currentSubjectName && !ignoreSubjectFilter ? `cho môn ${currentSubjectName}` : ""}
-        </span>
-
-        <div className="flex items-center gap-2.5">
-          <span className="text-xs font-bold text-slate-500 hidden sm:inline">Sắp xếp:</span>
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as SortOption)}
-            className="rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#0f172a] px-3.5 py-2 text-sm font-extrabold text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 cursor-pointer shadow-xs"
-          >
-            <option value="dueSoon">Hạn chót gần nhất ⌵</option>
-            <option value="newest">Mới nhất</option>
-            <option value="oldest">Cũ nhất</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Loading state */}
+      {/* Loading Skeleton */}
       {isLoading && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 py-4">
-          {[1, 2].map((i) => (
+        <div className="space-y-4 py-2">
+          {[1, 2, 3].map((i) => (
             <div
               key={i}
-              className="h-56 animate-pulse rounded-2xl bg-white dark:bg-[#0f172a] border border-slate-200/80 dark:border-slate-800 shadow-xs"
+              className="h-20 animate-pulse rounded-xl bg-white dark:bg-[#151d2f] border border-stone-200/70 dark:border-stone-800/70"
             />
           ))}
         </div>
@@ -305,13 +255,14 @@ export const StudentAssignmentsPage: React.FC = () => {
 
       {/* Error state */}
       {isError && (
-        <div className="rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 p-6 text-center">
-          <p className="text-sm font-bold text-rose-700 dark:text-rose-300">
+        <div className="rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 p-6 text-center">
+          <p className="text-sm font-medium text-red-800 dark:text-red-300">
             Không thể tải danh sách bài tập: {getStudentListError(error)}
           </p>
           <button
+            type="button"
             onClick={() => refetch()}
-            className="mt-3 inline-flex items-center rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-rose-500 cursor-pointer"
+            className="mt-3 inline-flex items-center rounded-lg bg-red-700 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-red-600 cursor-pointer"
           >
             Thử lại
           </button>
@@ -320,153 +271,147 @@ export const StudentAssignmentsPage: React.FC = () => {
 
       {/* Empty State */}
       {!isLoading && !isError && filteredAssignments.length === 0 && (
-        <div className="rounded-2xl bg-white dark:bg-[#0f172a] border border-slate-200/80 dark:border-slate-800 p-12 text-center shadow-xs">
-          <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 flex items-center justify-center mx-auto mb-3 text-xl font-bold">
-            📋
+        <div className="py-16 text-center">
+          <div className="w-8 h-8 rounded-full border border-stone-300 dark:border-stone-700 flex items-center justify-center mx-auto mb-3 text-stone-400 text-xs">
+            ✓
           </div>
-          <h3 className="text-base font-bold text-slate-800 dark:text-white">
-            {searchTerm
-              ? "Không tìm thấy bài tập phù hợp"
-              : currentSubjectName && !ignoreSubjectFilter
-              ? `Chưa có bài tập nào cho môn ${currentSubjectName}`
-              : "Chưa có bài tập nào trong mục này"}
+          <h3 className="text-sm font-semibold text-stone-800 dark:text-stone-200">
+            {searchTerm ? "Không có kết quả phù hợp" : "Tất cả bài tập đã hoàn thành"}
           </h3>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+          <p className="mt-1 text-xs text-stone-500 dark:text-stone-400 max-w-sm mx-auto">
             {searchTerm
-              ? "Hãy thử tìm kiếm với từ khóa khác hoặc xóa bộ lọc."
-              : currentSubjectName && !ignoreSubjectFilter
-              ? `Giáo viên chưa giao bài tập cho môn ${currentSubjectName}. Bạn có thể chọn môn khác hoặc bấm xem tất cả bài tập.`
-              : "Các bài tập mới từ giáo viên sẽ hiển thị ở đây khi được giao."}
+              ? "Thử tìm kiếm với từ khóa khác hoặc xóa bộ lọc."
+              : "Bạn đang theo sát lộ trình học tập. Hãy tiếp tục luyện tập tự do để nâng cao điểm số."}
           </p>
-          <div className="mt-4 flex items-center justify-center gap-2">
-            {currentSubjectName && !ignoreSubjectFilter && (
-              <button
-                onClick={() => setIgnoreSubjectFilter(true)}
-                className="inline-flex items-center rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-indigo-500 cursor-pointer"
-              >
-                Xem tất cả bài tập của các môn
-              </button>
-            )}
-            {searchTerm && (
-              <button
-                onClick={() => {
-                  setSearchTerm("");
-                  setStatusFilter("");
-                }}
-                className="inline-flex items-center rounded-xl bg-slate-100 dark:bg-slate-800 px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-200 cursor-pointer"
-              >
-                Xóa tìm kiếm
-              </button>
-            )}
-          </div>
+          {searchTerm && (
+            <button
+              type="button"
+              onClick={() => setSearchTerm("")}
+              className="mt-3 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+            >
+              Xóa tìm kiếm
+            </button>
+          )}
         </div>
       )}
 
-      {/* 2-Column Grid of Assignment Cards */}
-      {!isLoading && !isError && filteredAssignments.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {filteredAssignments.map((assignment: StudentAssignmentListItemDto, index: number) => {
-            const progress = assignment.progress;
-            const percent =
-              progress.totalQuestionCount > 0
-                ? Math.round((progress.completedQuestionCount / progress.totalQuestionCount) * 100)
-                : 0;
-
-            const formattedId = `#${String(index + 1).padStart(2, "0")}`;
-
-            const questionCount = progress.totalQuestionCount || 3;
-            const estimatedMinutes = Math.max(20, questionCount * 4);
-            const difficultyLabel =
-              questionCount > 15 ? "Vận dụng" : questionCount > 10 ? "Trung bình" : "Cơ bản";
-
-            return (
-              <div
-                key={assignment.assignmentId}
-                className="group relative rounded-3xl bg-white dark:bg-[#0f172a] border border-slate-200/90 dark:border-slate-800 p-6 sm:p-7 shadow-xs hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-700 transition-all flex flex-col justify-between"
-              >
-                <div>
-                  {/* Card Header: ID and Status */}
-                  <div className="flex items-center justify-between mb-3.5">
-                    <span className="text-xs font-black text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-200 dark:border-indigo-800 rounded-lg px-2.5 py-1">
-                      {formattedId}
-                    </span>
-                    {getStatusBadge(progress.status)}
-                  </div>
-
-                  {/* Title */}
-                  <h3 className="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-1">
-                    {assignment.title}
-                  </h3>
-
-                  {/* Instructions / Teacher Note */}
-                  <p className="mt-2 text-sm text-slate-700 dark:text-slate-300 line-clamp-2 font-medium">
-                    {assignment.instructions || "Luyện tập có hướng dẫn và phân tích AI đa phương thức"}
-                  </p>
-
-                  {/* Due date with clock icon */}
-                  {assignment.dueAt && (
-                    <div className="mt-3.5 flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 font-semibold">
-                      <svg className="w-4 h-4 text-slate-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <span>
-                        {progress.status === "Completed" ? "Đã nộp · " : "Hạn chót · "}
-                        {new Date(assignment.dueAt).toLocaleDateString("vi-VN", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          day: "2-digit",
-                          month: "2-digit",
-                          year: "numeric",
-                        })}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Question progress and bar */}
-                  <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800">
-                    <div className="flex items-center justify-between text-sm mb-2">
-                      <span className="font-extrabold text-slate-900 dark:text-slate-100">
-                        {progress.completedQuestionCount} / {progress.totalQuestionCount} câu hỏi
-                      </span>
-                      <span className="font-black text-indigo-600 dark:text-indigo-400">{percent}%</span>
-                    </div>
-                    <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2.5 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          progress.status === "Completed"
-                            ? "bg-emerald-500"
-                            : progress.status === "Overdue"
-                            ? "bg-rose-500"
-                            : "bg-indigo-600"
-                        }`}
-                        style={{ width: `${percent}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Footer: Tags and Action Link */}
-                <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="rounded-xl bg-slate-100 dark:bg-slate-800 px-3 py-1 text-xs font-bold text-slate-800 dark:text-slate-200">
-                      {difficultyLabel}
-                    </span>
-                    <span className="rounded-xl bg-slate-100 dark:bg-slate-800 px-3 py-1 text-xs font-bold text-slate-800 dark:text-slate-200">
-                      {estimatedMinutes} phút
-                    </span>
-                  </div>
-
-                  <Link
-                    to={`/hoc-tap/bai-tap/${assignment.assignmentId}${selectedSubjectId ? `?subjectId=${selectedSubjectId}` : ""}`}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-black text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/70 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200/80 dark:border-indigo-800 transition-all cursor-pointer shadow-2xs"
-                  >
-                    <span>Xem chi tiết</span>
-                    <span>→</span>
-                  </Link>
-                </div>
+      {/* TIMELINE / AGENDA SECTIONS (No card grid, clean list separated by whitespace and thin dividers) */}
+      {!isLoading && !isError && timelineGroups.length > 0 && (
+        <div className="space-y-8">
+          {timelineGroups.map((group) => (
+            <div key={group.key} className="space-y-3">
+              {/* Group Header Line */}
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-mono font-bold tracking-wider text-stone-500 dark:text-stone-400 uppercase">
+                  {group.label}
+                </span>
+                <div className="flex-1 h-px bg-stone-200/80 dark:border-stone-800/80" />
+                <span className="text-xs font-mono text-stone-400">
+                  {group.items.length} bài
+                </span>
               </div>
-            );
-          })}
+
+              {/* Assignment Rows List */}
+              <div className="divide-y divide-stone-100 dark:divide-stone-800/80">
+                {group.items.map((item) => {
+                  const progress = item.progress;
+                  const percent =
+                    progress.totalQuestionCount > 0
+                      ? Math.round((progress.completedQuestionCount / progress.totalQuestionCount) * 100)
+                      : 0;
+
+                  const subjectName = getSubjectNameForAssignment(item);
+                  const theme = getSubjectTheme(subjectName);
+                  const isDone = progress.status === "Completed";
+                  const isStarted = progress.completedQuestionCount > 0;
+
+                  return (
+                    <div
+                      key={item.assignmentId}
+                      className="group relative flex flex-col sm:flex-row sm:items-center justify-between py-4 gap-3 transition-colors hover:bg-stone-50/50 dark:hover:bg-stone-900/30 px-2 rounded-lg"
+                    >
+                      {/* Left: Subject Indicator & Title */}
+                      <div className="flex items-start gap-3 min-w-0 flex-1">
+                        <span
+                          className="w-2.5 h-2.5 rounded-full mt-1.5 shrink-0"
+                          style={{ backgroundColor: theme.color }}
+                          title={subjectName}
+                        />
+
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-mono font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
+                              {subjectName}
+                            </span>
+                            {isDone ? (
+                              <StudentBadge variant="success" size="xs">Đã xong</StudentBadge>
+                            ) : item.progress.status === "Overdue" ? (
+                              <StudentBadge variant="danger" size="xs">Quá hạn</StudentBadge>
+                            ) : null}
+                          </div>
+
+                          <Link
+                            to={`/hoc-tap/bai-tap/${item.assignmentId}${selectedSubjectId ? `?subjectId=${selectedSubjectId}` : ""}`}
+                            className="text-sm sm:text-base font-bold text-stone-900 dark:text-stone-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-1"
+                          >
+                            {item.title}
+                          </Link>
+
+                          {item.instructions && (
+                            <p className="text-xs text-stone-500 dark:text-stone-400 line-clamp-1">
+                              {item.instructions}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Right: Progress Track & Action Link */}
+                      <div className="flex items-center gap-5 sm:gap-6 shrink-0 self-end sm:self-center pl-6 sm:pl-0">
+                        {/* Progress Tracker */}
+                        <div className="w-28 sm:w-36 space-y-1 text-right">
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-stone-500 dark:text-stone-400">
+                              {progress.completedQuestionCount}/{progress.totalQuestionCount} câu
+                            </span>
+                            <span className="font-mono font-semibold text-stone-700 dark:text-stone-300">
+                              {percent}%
+                            </span>
+                          </div>
+                          <div className="w-full bg-stone-100 dark:bg-stone-800 rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-300 ${
+                                isDone ? "bg-emerald-500" : "bg-indigo-600"
+                              }`}
+                              style={{ width: `${percent}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Due info */}
+                        {item.dueAt && (
+                          <span className="text-xs text-stone-400 dark:text-stone-500 font-mono hidden md:inline">
+                            {new Date(item.dueAt).toLocaleDateString("vi-VN", {
+                              day: "2-digit",
+                              month: "2-digit",
+                            })}
+                          </span>
+                        )}
+
+                        {/* CTA Link */}
+                        <Link
+                          to={`/hoc-tap/bai-tap/${item.assignmentId}${selectedSubjectId ? `?subjectId=${selectedSubjectId}` : ""}`}
+                          className="inline-flex items-center gap-1 text-xs sm:text-sm font-semibold text-stone-800 dark:text-stone-200 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                        >
+                          <span>{isDone ? "Xem lại" : isStarted ? "Tiếp tục" : "Bắt đầu"}</span>
+                          <span className="text-[11px]">→</span>
+                        </Link>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

@@ -19,7 +19,7 @@ import {
   isTerminalStatus,
   shouldContinuePolling,
 } from "../utils/polling";
-import { SubjectRequiredState } from "../components/SubjectRequiredState";
+import { StudentSubjectRequiredState } from "../components/student/StudentSubjectRequiredState";
 import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
 import { MathInputToolbar } from "../components/math/MathInputToolbar";
 import { VisualMathField, type VisualMathFieldRef } from "../components/math/VisualMathField";
@@ -1002,7 +1002,7 @@ export const LearningPlayerPage = () => {
 
   // Guard: if adaptive mode and no subject selected
   if (!assignmentId && !subjectId) {
-    return <SubjectRequiredState onSelect={(id) => setSearchParams({ subjectId: id })} />;
+    return <StudentSubjectRequiredState onSelect={(id) => setSearchParams({ subjectId: id })} />;
   }
 
   // Loading skeleton
@@ -1277,54 +1277,54 @@ export const LearningPlayerPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] dark:bg-[#090d16] text-slate-800 dark:text-slate-100 flex flex-col antialiased">
+    <div className="min-h-screen bg-stone-50/50 dark:bg-[#101623] text-stone-800 dark:text-stone-100 flex flex-col antialiased student-shell">
       {/* Top Header Bar */}
-      <header className="sticky top-0 z-30 bg-white/95 dark:bg-[#0f172a]/95 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800 shadow-xs">
-        <div className="max-w-[1700px] mx-auto px-4 sm:px-6 flex items-center justify-between h-16">
-          <div className="flex items-center gap-4">
+      <header className="sticky top-0 z-30 bg-white/95 dark:bg-[#151d2f]/95 backdrop-blur-md border-b border-stone-200/80 dark:border-stone-800/80 shadow-xs">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 flex items-center justify-between h-14 sm:h-16">
+          <div className="flex items-center gap-3">
             <Link
               to={
                 assignmentId
                   ? `/hoc-tap/bai-tap/${assignmentId}${subjectId ? `?subjectId=${subjectId}` : ""}`
                   : `/hoc-tap/tong-quan?subjectId=${subjectId}`
               }
-              className="text-sm font-bold text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-1.5 transition-colors group cursor-pointer"
+              className="text-xs sm:text-sm font-semibold text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 flex items-center gap-1.5 transition-colors cursor-pointer"
             >
-              <span className="text-base group-hover:-translate-x-0.5 transition-transform">‹</span>
-              <span>{assignmentId ? "Quay lại chi tiết bài tập" : "Thoát ra Dashboard"}</span>
+              <span>←</span>
+              <span>{assignmentId ? "Về bài tập" : "Thoát"}</span>
             </Link>
 
-            <div className="h-5 w-px bg-slate-200 dark:bg-slate-800 hidden sm:block" />
+            <div className="h-4 w-px bg-stone-200 dark:bg-stone-800 hidden sm:block" />
 
-            <span className="hidden sm:inline-flex items-center px-3.5 py-1 rounded-xl text-xs sm:text-sm font-extrabold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800 shadow-2xs">
-              {assignment ? `Bài tập: ${assignment.title}` : `Câu hỏi thích ứng`}
+            <span className="hidden sm:inline-flex items-center px-3 py-1 rounded-lg text-xs font-semibold bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 border border-stone-200/80 dark:border-stone-700/80">
+              {assignment ? assignment.title : `Luyện tập thích ứng`}
             </span>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             {/* Timer / Countdown */}
-            <div className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-mono font-black shadow-2xs border ${
+            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-bold border ${
               isAssignmentExpired
-                ? "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950/80 dark:text-rose-200 dark:border-rose-800"
+                ? "bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-950/60 dark:text-rose-200 dark:border-rose-900"
                 : assignmentRemainingSeconds !== null && assignmentRemainingSeconds <= 300
-                ? "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/80 dark:text-amber-200 dark:border-amber-800 animate-pulse"
-                : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200/60 dark:border-slate-700/60"
+                ? "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/60 dark:text-amber-200 dark:border-amber-900 animate-pulse"
+                : "bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 border-stone-200/60 dark:border-stone-700/60"
             }`}>
-              <span className="text-slate-400 text-sm">⏱</span>
+              <span className="text-stone-400 text-xs">⏱</span>
               <span>
                 {assignmentRemainingSeconds !== null
                   ? `${String(Math.floor(assignmentRemainingSeconds / 3600)).padStart(2, "0")}:${String(Math.floor((assignmentRemainingSeconds % 3600) / 60)).padStart(2, "0")}:${String(assignmentRemainingSeconds % 60).padStart(2, "0")}`
                   : `${String(Math.floor(timeSpentSeconds / 60)).padStart(2, "0")}:${String(timeSpentSeconds % 60).padStart(2, "0")}`}
               </span>
               {assignmentRemainingSeconds !== null && assignmentRemainingSeconds <= 300 && assignmentRemainingSeconds > 0 && (
-                <span className="text-[10px] font-black text-rose-600 dark:text-rose-400 ml-1">SẮP HẾT GIỜ!</span>
+                <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 ml-1">SẮP HẾT GIỜ!</span>
               )}
             </div>
 
             {/* If assignment is submitted: show status badge and retake button if allowed */}
             {assignmentId && isAssignmentSubmitted && (
               <div className="flex items-center gap-2">
-                <div className="inline-flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 text-xs sm:text-sm font-black shadow-xs">
+                <div className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-semibold">
                   <span>✓</span>
                   <span>Đã nộp bài (Chỉ đọc)</span>
                 </div>
@@ -1348,9 +1348,9 @@ export const LearningPlayerPage = () => {
                         }
                       }
                     }}
-                    className="inline-flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs sm:text-sm shadow-xs cursor-pointer"
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-stone-200 text-white dark:text-stone-900 font-semibold text-xs cursor-pointer"
                   >
-                    <span>🔄 Làm lại bài</span>
+                    <span>Làm lại bài</span>
                   </button>
                 )}
               </div>
@@ -1362,10 +1362,10 @@ export const LearningPlayerPage = () => {
                 type="button"
                 onClick={() => setShowBatchConfirmModal(true)}
                 disabled={isSubmitting || isAssignmentExpired}
-                className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs sm:text-sm shadow-sm shadow-indigo-600/25 transition-all cursor-pointer disabled:opacity-50 shrink-0"
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-stone-200 text-white dark:text-stone-900 font-semibold text-xs transition-colors cursor-pointer disabled:opacity-50 shrink-0"
               >
-                <span>{isAssignmentExpired ? "🔒 Đã hết giờ" : "🚀 Nộp bài tập"}</span>
-                <span className="px-2 py-0.5 rounded-full bg-indigo-700 text-[11px] font-extrabold">
+                <span>{isAssignmentExpired ? "Đã hết giờ" : "Nộp bài"}</span>
+                <span className="px-1.5 py-0.2 rounded-full bg-stone-700 dark:bg-stone-300 text-white dark:text-stone-900 text-[10px] font-mono font-bold">
                   {answeredCount}/{totalQuestions}
                 </span>
               </button>
@@ -1383,8 +1383,8 @@ export const LearningPlayerPage = () => {
               : "max-w-4xl space-y-6"
           }`}
         >
-          {/* Left / Main Workspace */}
-          <div className={activeSideTool ? "lg:col-span-7 xl:col-span-7 space-y-6" : "space-y-6"}>
+          {/* Left / Main Question Area ~70% */}
+          <div className={activeSideTool ? "lg:col-span-8 xl:col-span-8 space-y-6" : "space-y-6"}>
             {isAssignmentExpired && (
               <div className="rounded-2xl bg-rose-50 dark:bg-rose-950/60 p-4 text-xs font-bold text-rose-800 dark:text-rose-300 border border-rose-300 dark:border-rose-800 flex items-center justify-between">
                 <span>⏰ Đã hết thời gian làm bài. Bài làm không thể nộp thêm câu mới. Các câu đã nộp trước đó được giữ nguyên.</span>
@@ -1522,29 +1522,29 @@ export const LearningPlayerPage = () => {
                 )}
               </div>
 
-              {/* 3. NỔI BẬT: Thanh 3 Nút Công Cụ Trợ Lý (Casio, Nháp, Đồ Thị) bên dưới đề bài */}
+              {/* 3. Thanh 3 Nút Công Cụ Trợ Lý (Casio, Nháp, Đồ Thị) */}
               <div className="pt-2">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">
-                    Bộ công cụ trợ lý làm bài (Bấm để mở bên phải)
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
+                    Công cụ hỗ trợ làm bài
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                   {/* Button 1: Máy tính Casio fx-580VN */}
                   <button
                     type="button"
                     onClick={() => setActiveSideTool(activeSideTool === "casio" ? null : "casio")}
-                    className={`flex items-center justify-center gap-2.5 p-3.5 rounded-2xl font-bold text-sm transition-all shadow-sm cursor-pointer ${
+                    className={`flex items-center gap-2.5 p-3 rounded-xl font-medium text-xs sm:text-sm transition-all border text-left cursor-pointer ${
                       activeSideTool === "casio"
-                        ? "bg-amber-500 text-slate-950 shadow-amber-500/30 ring-2 ring-amber-300"
-                        : "bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white shadow-amber-600/20"
+                        ? "border-amber-500 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 ring-1 ring-amber-500"
+                        : "border-stone-200 dark:border-stone-800 bg-stone-50/70 dark:bg-stone-900/50 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300"
                     }`}
                   >
-                    <span className="text-xl leading-none">🖩</span>
-                    <div className="text-left">
-                      <div className="text-xs font-black">Máy tính Casio</div>
-                      <div className="text-[10px] font-medium opacity-90">fx-580VN X chuẩn</div>
+                    <span className="text-base leading-none">🖩</span>
+                    <div className="min-w-0">
+                      <div className="font-bold text-xs text-stone-900 dark:text-stone-100">Máy tính Casio</div>
+                      <div className="text-[10px] text-stone-500 dark:text-stone-400 truncate">fx-580VN X</div>
                     </div>
                   </button>
 
@@ -1552,17 +1552,17 @@ export const LearningPlayerPage = () => {
                   <button
                     type="button"
                     onClick={() => setActiveSideTool(activeSideTool === "scratchpad" ? null : "scratchpad")}
-                    className={`flex items-center justify-center gap-2.5 p-3.5 rounded-2xl font-bold text-sm transition-all shadow-sm cursor-pointer ${
+                    className={`flex items-center gap-2.5 p-3 rounded-xl font-medium text-xs sm:text-sm transition-all border text-left cursor-pointer ${
                       activeSideTool === "scratchpad"
-                        ? "bg-emerald-600 text-white shadow-emerald-600/30 ring-2 ring-emerald-300"
-                        : "bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white shadow-emerald-600/20"
+                        ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 ring-1 ring-emerald-500"
+                        : "border-stone-200 dark:border-stone-800 bg-stone-50/70 dark:bg-stone-900/50 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300"
                     }`}
                   >
-                    <span className="text-xl leading-none">✏️</span>
-                    <div className="text-left">
-                      <div className="text-xs font-black">Bảng vẽ nháp</div>
-                      <div className="text-[10px] font-medium opacity-90">
-                        {attachedSnapshotDataUrl ? "✓ Đã đính kèm ảnh" : "Thu phóng & Vẽ tự do"}
+                    <span className="text-base leading-none">✏️</span>
+                    <div className="min-w-0">
+                      <div className="font-bold text-xs text-stone-900 dark:text-stone-100">Bảng vẽ nháp</div>
+                      <div className="text-[10px] text-stone-500 dark:text-stone-400 truncate">
+                        {attachedSnapshotDataUrl ? "✓ Đã đính kèm ảnh" : "Thu phóng & vẽ tự do"}
                       </div>
                     </div>
                   </button>
@@ -1571,16 +1571,16 @@ export const LearningPlayerPage = () => {
                   <button
                     type="button"
                     onClick={() => setActiveSideTool(activeSideTool === "graph" ? null : "graph")}
-                    className={`flex items-center justify-center gap-2.5 p-3.5 rounded-2xl font-bold text-sm transition-all shadow-sm cursor-pointer ${
+                    className={`flex items-center gap-2.5 p-3 rounded-xl font-medium text-xs sm:text-sm transition-all border text-left cursor-pointer ${
                       activeSideTool === "graph"
-                        ? "bg-indigo-600 text-white shadow-indigo-600/30 ring-2 ring-indigo-300"
-                        : "bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white shadow-indigo-600/20"
+                        ? "border-sky-500 bg-sky-50 dark:bg-sky-950/40 text-sky-900 dark:text-sky-200 ring-1 ring-sky-500"
+                        : "border-stone-200 dark:border-stone-800 bg-stone-50/70 dark:bg-stone-900/50 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300"
                     }`}
                   >
-                    <span className="text-xl leading-none">📈</span>
-                    <div className="text-left">
-                      <div className="text-xs font-black">Vẽ đồ thị</div>
-                      <div className="text-[10px] font-medium opacity-90">Khảo sát hàm số Oxy</div>
+                    <span className="text-base leading-none">📈</span>
+                    <div className="min-w-0">
+                      <div className="font-bold text-xs text-stone-900 dark:text-stone-100">Vẽ đồ thị</div>
+                      <div className="text-[10px] text-stone-500 dark:text-stone-400 truncate">Khảo sát hàm Oxy</div>
                     </div>
                   </button>
                 </div>
@@ -1832,7 +1832,7 @@ export const LearningPlayerPage = () => {
                       type="button"
                       onClick={() => handleFinalSubmit()}
                       disabled={isSubmitting}
-                      className="text-xs font-bold text-slate-400 hover:text-slate-600 cursor-pointer"
+                      className="text-xs font-semibold text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 cursor-pointer"
                     >
                       Bỏ qua câu này
                     </button>
@@ -1840,9 +1840,10 @@ export const LearningPlayerPage = () => {
                       type="button"
                       onClick={() => handleFinalSubmit()}
                       disabled={isSubmitting}
-                      className="flex items-center gap-2 rounded-2xl bg-indigo-600 hover:bg-indigo-500 px-7 py-3 text-sm font-bold text-white shadow-md shadow-indigo-600/25 transition-all disabled:opacity-50 cursor-pointer"
+                      className="flex items-center gap-1.5 rounded-xl bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-stone-200 dark:text-stone-900 px-5 py-2.5 text-xs sm:text-sm font-semibold text-white transition-colors disabled:opacity-50 cursor-pointer"
                     >
-                      <span>Nộp bài & Phân tích tư duy AI ✨</span>
+                      <span>Nộp bài & Phân tích tư duy</span>
+                      <span>→</span>
                     </button>
                   </div>
                 )}
@@ -1850,9 +1851,9 @@ export const LearningPlayerPage = () => {
             </div>
           </div>
 
-          {/* Right Pane: Tall 780px Assistant Workspace */}
+          {/* Right Pane: Assistant Workspace ~30% */}
           {activeSideTool && (
-            <div className="lg:col-span-5 xl:col-span-5 sticky top-4 max-h-[calc(100vh-2rem)] flex flex-col">
+            <div className="lg:col-span-4 xl:col-span-4 sticky top-4 max-h-[calc(100vh-2rem)] flex flex-col">
               <SideAssistantWorkspace
                 activeTab={activeSideTool}
                 onChangeTab={(tab) => setActiveSideTool(tab)}

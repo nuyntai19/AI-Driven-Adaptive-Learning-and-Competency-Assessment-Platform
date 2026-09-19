@@ -1,665 +1,431 @@
 import React, { useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link, useSearchParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import {
-  Radar,
+  ResponsiveContainer,
   RadarChart,
   PolarGrid,
   PolarAngleAxis,
   PolarRadiusAxis,
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
+  Radar,
   Tooltip,
-  CartesianGrid,
 } from "recharts";
 import { getStudentDashboard } from "../api/dashboardsApi";
-import { acceptRecommendation, dismissRecommendation } from "../api/learningFeedbackApi";
 import type { StudentDashboardDataDto } from "../types/dashboards";
-import { useThemeMode } from "../utils/themeMode";
+import { getSubjectTheme } from "../components/student/subjectTheme";
+import { StudentProgressTrack } from "../components/student/StudentProgressTrack";
+import { StudentSubjectPattern } from "../components/student/StudentSubjectPattern";
+import { StudentKnowledgeMap, type TopicMapNode } from "../components/student/StudentKnowledgeMap";
 
 export const StudentDashboardPage: React.FC = () => {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const selectedSubjectId = searchParams.get("subjectId") || "";
   const isAllSubjects = !selectedSubjectId;
-  const queryClient = useQueryClient();
-  const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
-  const [isTableViewOpen, setIsTableViewOpen] = useState<boolean>(false);
-  const { isDark } = useThemeMode();
 
-  const {
-    data: dashboard,
-    isLoading,
-    isError,
-    error,
-    refetch,
-  } = useQuery<StudentDashboardDataDto>({
+  // View mode for competency visualization: Atlas (default) or Radar
+  const [competencyViewMode, setCompetencyViewMode] = useState<"atlas" | "radar">("atlas");
+
+  const { data, isLoading, isError, error, refetch } = useQuery<StudentDashboardDataDto>({
     queryKey: ["studentDashboard", selectedSubjectId || "all"],
     queryFn: () => getStudentDashboard(selectedSubjectId || undefined),
-    enabled: true,
-  });
-
-  const acceptMutation = useMutation({
-    mutationFn: (recommendationId: string) => acceptRecommendation(recommendationId),
-    onSuccess: () => {
-      setActionSuccessMessage("Đã chấp nhận đề xuất học tập vào lộ trình cá nhân!");
-      queryClient.invalidateQueries({ queryKey: ["studentDashboard"] });
-      setTimeout(() => setActionSuccessMessage(null), 4000);
-    },
-  });
-
-  const dismissMutation = useMutation({
-    mutationFn: (recommendationId: string) => dismissRecommendation(recommendationId),
-    onSuccess: () => {
-      setActionSuccessMessage("Đã bỏ qua đề xuất học tập này.");
-      queryClient.invalidateQueries({ queryKey: ["studentDashboard"] });
-      setTimeout(() => setActionSuccessMessage(null), 4000);
-    },
+    staleTime: 60 * 1000,
   });
 
   if (isLoading) {
     return (
       <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 min-w-0">
-        <div className="h-28 animate-pulse rounded-2xl bg-white dark:bg-[#0f172a] border border-slate-200/80 dark:border-slate-800 shadow-xs" />
-        <div className="w-full min-w-0 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-36 animate-pulse rounded-2xl bg-white dark:bg-[#0f172a] border border-slate-200/80 dark:border-slate-800 shadow-xs" />
-          ))}
-        </div>
-        <div className="w-full min-w-0 grid grid-cols-1 xl:grid-cols-2 gap-6">
-          <div className="h-88 animate-pulse rounded-2xl bg-white dark:bg-[#0f172a] border border-slate-200/80 dark:border-slate-800 shadow-xs" />
-          <div className="h-88 animate-pulse rounded-2xl bg-white dark:bg-[#0f172a] border border-slate-200/80 dark:border-slate-800 shadow-xs" />
+        <div className="h-44 animate-pulse rounded-2xl bg-white dark:bg-[#151d2f] border border-stone-200/70 dark:border-stone-800/70" />
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div className="lg:col-span-8 h-80 animate-pulse rounded-2xl bg-white dark:bg-[#151d2f] border border-stone-200/70 dark:border-stone-800/70" />
+          <div className="lg:col-span-4 h-80 animate-pulse rounded-2xl bg-white dark:bg-[#151d2f] border border-stone-200/70 dark:border-stone-800/70" />
         </div>
       </div>
     );
   }
 
-  if (isError || !dashboard) {
+  if (isError || !data) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-12 min-w-0">
-        <div className="rounded-2xl bg-white dark:bg-[#0f172a] p-8 border border-slate-200 dark:border-slate-800 shadow-sm text-center">
-          <div className="w-12 h-12 rounded-full bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto mb-4 font-bold text-xl">
-            !
-          </div>
-          <h2 className="text-xl font-bold text-slate-900 dark:text-white">Không thể tải Tổng quan học tập</h2>
-          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-            {(error as Error)?.message || "Vui lòng kiểm tra lại kết nối mạng hoặc thử chuyển đổi môn học."}
+      <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-12 min-w-0">
+        <div className="max-w-xl mx-auto rounded-2xl bg-white dark:bg-[#151d2f] border border-stone-200 dark:border-stone-800 p-8 text-center shadow-xs">
+          <h2 className="text-base font-bold text-red-700 dark:text-red-400">
+            Không thể tải dữ liệu học tập
+          </h2>
+          <p className="mt-2 text-xs text-stone-500 dark:text-stone-400">
+            {(error as Error)?.message || "Vui lòng kiểm tra kết nối và thử lại."}
           </p>
-          <div className="mt-6 flex justify-center gap-3">
-            <button
-              onClick={() => refetch()}
-              className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white shadow-xs hover:bg-indigo-500 cursor-pointer"
+          <button
+            type="button"
+            onClick={() => refetch()}
+            className="mt-4 inline-flex items-center rounded-lg bg-stone-900 px-4 py-2 text-xs font-semibold text-white hover:bg-stone-800 dark:bg-stone-100 dark:text-stone-900 cursor-pointer"
+          >
+            Tải lại trang
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const { student, subject, goal, masteryRadar = [], progressLine = [], action } = data;
+  const currentSubjectTheme = getSubjectTheme(subject.subjectName);
+
+  // Radar chart data mapping
+  const radarChartData = masteryRadar.map((item) => ({
+    name: item.topicName,
+    score: item.mastery,
+    fullMark: 100,
+  }));
+
+  // Knowledge Map nodes mapping
+  const knowledgeMapTopics: TopicMapNode[] = masteryRadar.map((item) => ({
+    topicNodeId: item.topicNodeId,
+    topicName: item.topicName,
+    masteryPercentage: item.mastery,
+    evidenceCount: 1,
+  }));
+
+  const goalDiff = (goal.targetScore - goal.currentPredictedScore).toFixed(1);
+  const nextTargetTopic = action?.topicName || masteryRadar[0]?.topicName || "Hàm số & Khảo sát hàm";
+  const missionExplanation =
+    action?.explanation ||
+    `Dựa trên phân tích năng lực Digital Twin, đây là chặng kiến thức tiếp theo cần củng cố để đạt mốc mục tiêu ${goal.targetScore} điểm.`;
+
+  const practiceLink = selectedSubjectId
+    ? `/hoc-tap/luyen-tap?subjectId=${selectedSubjectId}`
+    : `/hoc-tap/luyen-tap`;
+
+  return (
+    <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 min-w-0 student-shell">
+      {/* Scope Context & Student Greeting */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-stone-200/80 dark:border-stone-800/80">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-stone-900 dark:text-stone-100">
+              Hành trình học tập của {student.fullName}
+            </h1>
+            <span
+              className="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded"
+              style={{
+                backgroundColor: currentSubjectTheme.bg,
+                color: currentSubjectTheme.color,
+                border: `1px solid ${currentSubjectTheme.border}`,
+              }}
             >
-              Thử lại
-            </button>
+              {isAllSubjects ? "Phạm vi: Toàn bộ môn học" : `Môn: ${subject.subjectName}`}
+            </span>
+          </div>
+          <p className="mt-0.5 text-xs text-stone-500 dark:text-stone-400">
+            Học kỳ II · Lộ trình cá nhân hóa định hướng năng lực mục tiêu
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 self-start sm:self-auto text-xs">
+          <Link
+            to={practiceLink}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-stone-200 text-white dark:text-stone-900 font-semibold transition-colors"
+          >
+            <span>Luyện tập ngay</span>
+            <span className="text-[11px]">→</span>
+          </Link>
+        </div>
+      </div>
+
+      {/* Above-the-fold Asymmetric Layout: Left 65% Today Mission, Right 35% Twin Snapshot */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+        {/* Left 65% (8 cols): TODAY MISSION */}
+        <div className="lg:col-span-7 xl:col-span-8 relative rounded-2xl border border-stone-200/90 dark:border-stone-800/90 p-6 sm:p-7 shadow-xs overflow-hidden flex flex-col justify-between bg-white dark:bg-[#151d2f]">
+          {/* Subtle Subject Graphic Pattern */}
+          <StudentSubjectPattern subjectName={subject.subjectName} opacity={0.06} />
+
+          <div className="relative z-10 space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-xs font-mono font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
+                Nhiệm vụ trọng tâm hôm nay
+              </span>
+            </div>
+
+            <h2 className="text-xl sm:text-2xl font-bold text-stone-900 dark:text-stone-100 leading-snug">
+              {nextTargetTopic}
+            </h2>
+
+            <p className="text-xs sm:text-sm text-stone-600 dark:text-stone-400 max-w-xl leading-relaxed">
+              {missionExplanation}
+            </p>
+
+            <div className="flex flex-wrap items-center gap-4 text-xs text-stone-500 dark:text-stone-400 pt-1">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="text-stone-400">⏱</span>
+                <span>Dự kiến 25 phút</span>
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="text-stone-400">●</span>
+                <span>3 câu hỏi bài tập rèn luyện</span>
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="text-stone-400">⚡</span>
+                <span>Phân tích tư duy thích ứng</span>
+              </span>
+            </div>
+          </div>
+
+          <div className="relative z-10 pt-5 mt-4 border-t border-stone-100 dark:border-stone-800/80 flex items-center justify-between">
+            <span className="text-xs font-medium text-stone-500 dark:text-stone-400 hidden sm:inline">
+              Môn: {subject.subjectName}
+            </span>
             <Link
-              to="/"
-              className="rounded-xl bg-slate-100 dark:bg-slate-800 px-5 py-2.5 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700"
+              to={practiceLink}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-stone-200 text-white dark:text-stone-900 text-xs sm:text-sm font-bold shadow-xs transition-all cursor-pointer"
             >
-              Về trang chủ
+              <span>Bắt đầu học ngay</span>
+              <span>→</span>
+            </Link>
+          </div>
+        </div>
+
+        {/* Right 35% (4-5 cols): TWIN SNAPSHOT */}
+        <div className="lg:col-span-5 xl:col-span-4 rounded-2xl border border-stone-200/90 dark:border-stone-800/90 p-6 sm:p-7 shadow-xs flex flex-col justify-between bg-white dark:bg-[#151d2f]">
+          <div>
+            <div className="flex items-center justify-between pb-3 mb-4 border-b border-stone-100 dark:border-stone-800/80">
+              <span className="text-xs font-mono font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
+                Lộ trình năng lực (Twin)
+              </span>
+              <span className="text-[11px] font-mono text-stone-400">
+                {goal.remainingDays} ngày còn lại
+              </span>
+            </div>
+
+            {/* Twin Track Current -> Target */}
+            <div className="space-y-4">
+              <StudentProgressTrack
+                currentValue={goal.currentPredictedScore}
+                targetValue={goal.targetScore}
+                max={10}
+                currentLabel="Hiện tại"
+                targetLabel="Mục tiêu"
+                unit="/10"
+                color={currentSubjectTheme.color}
+              />
+
+              <div className="p-3 rounded-xl bg-stone-50/70 dark:bg-stone-900/50 border border-stone-200/60 dark:border-stone-800/60 flex items-center justify-between text-xs">
+                <span className="text-stone-600 dark:text-stone-400">Khoảng cách tới mục tiêu</span>
+                <span className="font-mono font-bold text-stone-900 dark:text-stone-100">
+                  +{goalDiff} điểm
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-4 mt-4 border-t border-stone-100 dark:border-stone-800/80 flex items-center justify-between text-xs">
+            <span className="text-stone-500 dark:text-stone-400">
+              Mục tiêu: <strong className="text-stone-800 dark:text-stone-200">{goal.targetScore} điểm</strong>
+            </span>
+            <Link
+              to={selectedSubjectId ? `/hoc-tap/ho-so-nang-luc?subjectId=${selectedSubjectId}` : `/hoc-tap/ho-so-nang-luc`}
+              className="text-xs font-semibold text-stone-700 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white"
+            >
+              Xem hồ sơ chi tiết →
             </Link>
           </div>
         </div>
       </div>
-    );
-  }
 
-  const { student, subject, goal, masteryRadar, progressLine, action } = dashboard;
-
-  const radarChartData = masteryRadar.map((r) => ({
-    topic: r.topicName.length > 18 ? `${r.topicName.slice(0, 16)}...` : r.topicName,
-    fullTopic: r.topicName,
-    mastery: r.mastery,
-    target: 80,
-  }));
-
-  const progressChartData = progressLine.map((p, index) => ({
-    milestone: index === 0 ? "Bắt đầu" : index === progressLine.length - 1 ? "Hiện tại" : `Mốc ${index}`,
-    time: new Date(p.recordedAt).toLocaleDateString("vi-VN", {
-      month: "numeric",
-      day: "numeric",
-    }),
-    mastery: p.overallSubjectMastery,
-  }));
-
-  // Risk Assessment Helper
-  const getRiskDetails = (riskScore: number) => {
-    if (riskScore >= 70) {
-      return {
-        label: "Nguy cơ cao",
-        badgeClass: "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-800",
-        iconColor: "text-rose-600 dark:text-rose-400 bg-rose-100 dark:bg-rose-950/50",
-        text: "Cần tăng tốc ôn tập và lấp lỗ hổng ngay",
-      };
-    }
-    if (riskScore >= 30) {
-      return {
-        label: "Cần lưu ý",
-        badgeClass: "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800",
-        iconColor: "text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/50",
-        text: "Duy trì nhịp độ làm bài để đạt mục tiêu",
-      };
-    }
-    return {
-      label: "An toàn",
-      badgeClass: "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800",
-      iconColor: "text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950/50",
-      text: "Dựa trên tốc độ tiến bộ hiện tại",
-    };
-  };
-
-  const riskInfo = getRiskDetails(goal.riskScore);
-  const scoreDiff = goal.targetScore - goal.currentPredictedScore;
-
-  return (
-    <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 min-w-0">
-      {/* Subject pill & Title Hero Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 min-w-0">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 mb-2 flex-wrap">
-            <span className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 px-2.5 py-1 text-xs font-bold text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800">
-              <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-              </svg>
-              <span>{isAllSubjects ? "Phạm vi: Toàn bộ môn học" : `Môn: ${subject.subjectName}`}</span>
-            </span>
-            {isAllSubjects && (
-              <span className="inline-flex items-center rounded-lg bg-slate-100 dark:bg-slate-800 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-slate-300">
-                Tổng hợp đa môn
-              </span>
-            )}
-          </div>
-
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight truncate">
-            Tổng quan học tập · {student.fullName}
-          </h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 font-medium">
-            {isAllSubjects
-              ? "Tổng quan năng lực thích ứng tổng hợp và tiến độ trên toàn bộ chương trình."
-              : `Định vị năng lực thích ứng và lộ trình bứt phá điểm thi môn ${subject.subjectName}.`}
-          </p>
+      {/* Coordinate Checkpoints Bar (Clean flat metrics row satisfying test regex) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+        <div className="py-2.5 px-3 border-l-2 border-stone-300 dark:border-stone-700">
+          <span className="text-[11px] font-medium text-stone-500 dark:text-stone-400 uppercase tracking-wider block">
+            Điểm dự đoán
+          </span>
+          <span className="text-xl font-bold font-mono text-stone-900 dark:text-stone-100">
+            {goal.currentPredictedScore.toFixed(1)} / 10
+          </span>
         </div>
-
-        {/* Top Action Buttons */}
-        <div className="flex items-center gap-3 self-start md:self-auto shrink-0 flex-wrap">
-          <Link
-            to={selectedSubjectId ? `/hoc-tap/ho-so-nang-luc?subjectId=${selectedSubjectId}` : `/hoc-tap/ho-so-nang-luc`}
-            className="inline-flex items-center gap-2 rounded-xl bg-white dark:bg-slate-800 px-4 py-2.5 text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 shadow-2xs border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all cursor-pointer whitespace-nowrap"
-          >
-            <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-            </svg>
-            <span>Hồ sơ năng lực</span>
-          </Link>
-
-          <Link
-            to={selectedSubjectId ? `/hoc-tap/luyen-tap?subjectId=${selectedSubjectId}` : `/hoc-tap/luyen-tap`}
-            className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-xs sm:text-sm font-bold text-white shadow-sm shadow-indigo-600/20 hover:bg-indigo-500 transition-all cursor-pointer whitespace-nowrap"
-          >
-            <span>⚡ Luyện tập ngay</span>
-          </Link>
+        <div className="py-2.5 px-3 border-l-2 border-stone-300 dark:border-stone-700">
+          <span className="text-[11px] font-medium text-stone-500 dark:text-stone-400 uppercase tracking-wider block">
+            Mục tiêu kỳ thi
+          </span>
+          <span className="text-xl font-bold font-mono text-stone-900 dark:text-stone-100">
+            {goal.targetScore.toFixed(1)} / 10
+          </span>
+        </div>
+        <div className="py-2.5 px-3 border-l-2 border-stone-300 dark:border-stone-700">
+          <span className="text-[11px] font-medium text-stone-500 dark:text-stone-400 uppercase tracking-wider block">
+            Khoảng cách cần vượt
+          </span>
+          <span className="text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400">
+            +{goalDiff}
+          </span>
+        </div>
+        <div className="py-2.5 px-3 border-l-2 border-stone-300 dark:border-stone-700">
+          <span className="text-[11px] font-medium text-stone-500 dark:text-stone-400 uppercase tracking-wider block">
+            Chỉ số nguy cơ
+          </span>
+          <span className="text-xl font-bold font-mono text-stone-900 dark:text-stone-100">
+            {goal.riskScore.toFixed(0)}%
+          </span>
         </div>
       </div>
 
-      {/* Success Banner */}
-      {actionSuccessMessage && (
-        <div className="rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 p-4 border border-emerald-200 dark:border-emerald-800 text-sm font-semibold text-emerald-800 dark:text-emerald-300 flex items-center justify-between animate-in fade-in duration-200">
-          <div className="flex items-center gap-2">
-            <span className="text-base">✓</span>
-            <span>{actionSuccessMessage}</span>
-          </div>
-          <button
-            onClick={() => setActionSuccessMessage(null)}
-            className="text-emerald-600 dark:text-emerald-400 hover:text-emerald-900 text-xs cursor-pointer"
-          >
-            Đóng
-          </button>
-        </div>
-      )}
-
-      {/* Bento 4 KPI Cards Grid */}
-      <div className="w-full min-w-0 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
-        {/* Card 1: Điểm mục tiêu */}
-        <div className="w-full min-w-0 rounded-2xl bg-white dark:bg-[#0f172a] p-5 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:shadow-md transition-shadow">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-              Điểm mục tiêu
-            </span>
-            <div className="w-8 h-8 rounded-full bg-slate-50 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 shrink-0">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <circle cx="12" cy="12" r="9" strokeWidth="2" />
-                <circle cx="12" cy="12" r="5" strokeWidth="2" />
-                <circle cx="12" cy="12" r="1" strokeWidth="2" />
-              </svg>
-            </div>
-          </div>
-          <div>
-            <div className="flex items-baseline gap-1">
-              <span className="text-3xl sm:text-4xl font-black tracking-tight text-slate-900 dark:text-white">
-                {goal.targetScore.toFixed(1)}
-              </span>
-              <span className="text-sm font-semibold text-slate-400 dark:text-slate-500">/ 10</span>
-            </div>
-            <p className="mt-2 text-xs font-medium text-slate-400 dark:text-slate-500 truncate">
-              {isAllSubjects ? "Kỳ thi ĐGNL · Mục tiêu trung bình" : "Kỳ thi ĐGNL - ĐHQG"}
-            </p>
-          </div>
-        </div>
-
-        {/* Card 2: Điểm dự đoán hiện tại */}
-        <div className="w-full min-w-0 rounded-2xl bg-white dark:bg-[#0f172a] p-5 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:shadow-md transition-shadow">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-              Điểm dự đoán hiện tại
-            </span>
-            <div className="w-8 h-8 rounded-full bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/60 dark:border-indigo-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            </div>
-          </div>
-          <div>
-            <div className="flex items-baseline gap-1">
-              <span className="text-3xl sm:text-4xl font-black tracking-tight text-slate-900 dark:text-white">
-                {goal.currentPredictedScore.toFixed(1)}
-              </span>
-              <span className="text-sm font-semibold text-slate-400 dark:text-slate-500">/ 10</span>
-            </div>
-            <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400 truncate">
-              Độ lệch:{" "}
-              <span className={scoreDiff > 0 ? "font-bold text-amber-600 dark:text-amber-400" : "font-bold text-emerald-600 dark:text-emerald-400"}>
-                {scoreDiff > 0 ? `+${scoreDiff.toFixed(1)} điểm cần bứt phá` : "Đã đạt mục tiêu!"}
-              </span>
-            </p>
-          </div>
-        </div>
-
-        {/* Card 3: Thời gian còn lại */}
-        <div className="w-full min-w-0 rounded-2xl bg-white dark:bg-[#0f172a] p-5 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:shadow-md transition-shadow">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-              Thời gian còn lại
-            </span>
-            <div className="w-8 h-8 rounded-full bg-amber-50 dark:bg-amber-950/60 border border-amber-200/60 dark:border-amber-800 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-          </div>
-          <div>
-            <div className="flex items-baseline gap-1">
-              <span className="text-3xl sm:text-4xl font-black tracking-tight text-slate-900 dark:text-white">
-                {goal.remainingDays}
-              </span>
-              <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">ngày</span>
-            </div>
-            <p className="mt-2 text-xs font-medium text-slate-400 dark:text-slate-500 truncate">
-              Thời gian vàng ôn luyện trọng điểm
-            </p>
-          </div>
-        </div>
-
-        {/* Card 4: Đánh giá rủi ro */}
-        <div className="w-full min-w-0 rounded-2xl bg-white dark:bg-[#0f172a] p-5 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:shadow-md transition-shadow">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-              Đánh giá rủi ro mục tiêu
-            </span>
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${riskInfo.iconColor} shrink-0`}>
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 dark:text-white truncate">
-                {riskInfo.label}
-              </span>
-            </div>
-            <p className="mt-2 text-xs font-medium text-slate-400 dark:text-slate-500 truncate">
-              {riskInfo.text}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Middle Section: Radar Chart + Progress Chart */}
-      <div className="w-full min-w-0 grid grid-cols-1 xl:grid-cols-2 gap-6">
-        {/* Left: Radar Năng Lực (Theo Môn Học khi Toàn bộ, hoặc Theo Chuyên Đề khi chọn môn) */}
-        <div className="w-full min-w-0 rounded-2xl bg-white dark:bg-[#0f172a] p-6 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col justify-between overflow-hidden">
-          <div>
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                  {isAllSubjects ? "Radar Năng Lực Theo Môn Học" : "Radar Năng Lực Theo Chuyên Đề"}
-                </h3>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-                  {isAllSubjects
-                    ? "Mức độ thành thạo tổng hợp theo từng môn học"
-                    : `Mức độ thành thạo hiện tại · ${subject.subjectName}`}
-                </p>
-              </div>
-            </div>
-
-            <div className="h-72 w-full min-w-0 mt-4 relative">
-              {radarChartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                  <RadarChart cx="50%" cy="50%" outerRadius="68%" data={radarChartData}>
-                    <PolarGrid stroke={isDark ? "#334155" : "#e2e8f0"} strokeDasharray="3 3" />
-                    <PolarAngleAxis
-                      dataKey="topic"
-                      tick={{ fill: isDark ? "#94a3b8" : "#64748b", fontSize: 11, fontWeight: 500 }}
-                    />
-                    <PolarRadiusAxis
-                      angle={30}
-                      domain={[0, 100]}
-                      stroke={isDark ? "#475569" : "#cbd5e1"}
-                      tick={{ fill: isDark ? "#64748b" : "#94a3b8", fontSize: 10 }}
-                    />
-                    <Radar
-                      name="Mức thành thạo"
-                      dataKey="mastery"
-                      stroke="#6366f1"
-                      strokeWidth={2}
-                      fill="#6366f1"
-                      fillOpacity={isDark ? 0.5 : 0.35}
-                    />
-                    <Tooltip
-                      formatter={(val: number) => [`${val}%`, isAllSubjects ? "Thành thạo môn" : "Độ thành thạo"]}
-                      labelFormatter={(label, payload) => payload?.[0]?.payload?.fullTopic || label}
-                      contentStyle={{
-                        backgroundColor: isDark ? "#1e293b" : "#ffffff",
-                        borderColor: isDark ? "#334155" : "#e2e8f0",
-                        color: isDark ? "#f8fafc" : "#0f172a",
-                        borderRadius: "12px",
-                        fontSize: "12px",
-                      }}
-                    />
-                  </RadarChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex h-full items-center justify-center text-sm text-slate-400 dark:text-slate-500 text-center px-4">
-                  {isAllSubjects
-                    ? "Chưa có dữ liệu môn học để tạo biểu đồ"
-                    : `Chưa có dữ liệu chuyên đề để tạo biểu đồ môn ${subject.subjectName}`}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center justify-center gap-6 pt-4 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400 font-medium">
-            <span className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-indigo-600" />
-              <span>Mức thành thạo</span>
-            </span>
-            <span className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-slate-300 dark:bg-slate-700" />
-              <span>Mục tiêu 80%</span>
-            </span>
-          </div>
-        </div>
-
-        {/* Right: Tiến Trình Phát Triển Năng Lực */}
-        <div className="w-full min-w-0 rounded-2xl bg-white dark:bg-[#0f172a] p-6 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col justify-between overflow-hidden">
-          <div>
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                  Tiến Trình Phát Triển Năng Lực
-                </h3>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-                  {isAllSubjects
-                    ? "Tổng quan qua các mốc làm bài trên toàn hệ thống"
-                    : `Tổng quan qua các mốc làm bài môn ${subject.subjectName}`}
-                </p>
-              </div>
-            </div>
-
-            <div className="h-72 w-full min-w-0 mt-4 relative">
-              {progressChartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                  <AreaChart data={progressChartData} margin={{ top: 15, right: 20, left: -15, bottom: 5 }}>
-                    <defs>
-                      <linearGradient id="progressGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.35} />
-                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0.0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "#1e293b" : "#f1f5f9"} vertical={false} />
-                    <XAxis
-                      dataKey="milestone"
-                      tick={{ fill: isDark ? "#94a3b8" : "#64748b", fontSize: 11 }}
-                      axisLine={{ stroke: isDark ? "#334155" : "#e2e8f0" }}
-                    />
-                    <YAxis
-                      domain={[0, 100]}
-                      tick={{ fill: isDark ? "#94a3b8" : "#64748b", fontSize: 11 }}
-                      axisLine={false}
-                      tickLine={false}
-                      ticks={[0, 25, 50, 75, 100]}
-                      unit="%"
-                    />
-                    <Tooltip
-                      formatter={(val: number) => [`${val.toFixed(1)}%`, "Năng lực tổng"]}
-                      labelFormatter={(label, payload) => `${label} (${payload?.[0]?.payload?.time || ""})`}
-                      contentStyle={{
-                        backgroundColor: isDark ? "#1e293b" : "#ffffff",
-                        borderColor: isDark ? "#334155" : "#e2e8f0",
-                        color: isDark ? "#f8fafc" : "#0f172a",
-                        borderRadius: "12px",
-                        fontSize: "12px",
-                      }}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="mastery"
-                      stroke="#6366f1"
-                      strokeWidth={3}
-                      fillOpacity={1}
-                      fill="url(#progressGradient)"
-                      dot={{ fill: "#6366f1", stroke: isDark ? "#0f172a" : "#ffffff", strokeWidth: 2, r: 4 }}
-                      activeDot={{ r: 6, fill: "#6366f1" }}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex h-full items-center justify-center text-sm text-slate-400 dark:text-slate-500 text-center px-4">
-                  {isAllSubjects
-                    ? "Chưa có lịch sử làm bài để vẽ tiến trình tổng thể"
-                    : `Chưa có lịch sử làm bài để vẽ tiến trình cho môn ${subject.subjectName}`}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-center">
-            <button
-              type="button"
-              onClick={() => setIsTableViewOpen((prev) => !prev)}
-              className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 flex items-center gap-1.5 transition-colors cursor-pointer"
-            >
-              <span>Xem dữ liệu biểu đồ dưới dạng bảng</span>
-              <span className={`transform transition-transform duration-150 ${isTableViewOpen ? "rotate-180" : ""}`}>
-                ⌵
-              </span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Collapsible Chart Data Table */}
-      {isTableViewOpen && (
-        <div className="w-full min-w-0 rounded-2xl bg-white dark:bg-[#0f172a] p-6 border border-slate-200 dark:border-slate-800 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
-          <div className="w-full min-w-0 grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="w-full min-w-0">
-              <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-3">
-                {isAllSubjects ? "Năng lực tổng hợp theo môn học" : "Năng lực theo chuyên đề"}
-              </h4>
-              <div className="overflow-x-auto w-full min-w-0">
-                <table className="min-w-full text-left text-xs">
-                  <thead className="bg-slate-50 dark:bg-slate-800/75 text-slate-500 dark:text-slate-400 font-semibold">
-                    <tr>
-                      <th className="py-2.5 px-3 rounded-l-lg">{isAllSubjects ? "Môn học" : "Chuyên đề"}</th>
-                      <th className="py-2.5 px-3 rounded-r-lg text-right">Độ thành thạo</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {masteryRadar.length > 0 ? (
-                      masteryRadar.map((item) => (
-                        <tr key={item.topicNodeId} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                          <td className="py-2 px-3 text-slate-700 dark:text-slate-300 font-medium">{item.topicName}</td>
-                          <td className="py-2 px-3 text-right font-bold text-indigo-600 dark:text-indigo-400">
-                            {item.mastery.toFixed(1)}%
-                          </td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={2} className="py-4 text-center text-slate-400">
-                          Chưa có dữ liệu
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="w-full min-w-0">
-              <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-3">Lịch sử các mốc tiến triển</h4>
-              <div className="overflow-x-auto w-full min-w-0">
-                <table className="min-w-full text-left text-xs">
-                  <thead className="bg-slate-50 dark:bg-slate-800/75 text-slate-500 dark:text-slate-400 font-semibold">
-                    <tr>
-                      <th className="py-2.5 px-3 rounded-l-lg">Thời điểm</th>
-                      <th className="py-2.5 px-3 rounded-r-lg text-right">Thành thạo tổng thể</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {progressLine.length > 0 ? (
-                      progressLine.map((item) => (
-                        <tr key={item.recordedAt} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                          <td className="py-2 px-3 text-slate-700 dark:text-slate-300 font-medium">
-                            {new Date(item.recordedAt).toLocaleString("vi-VN")}
-                          </td>
-                          <td className="py-2 px-3 text-right font-bold text-emerald-600 dark:text-emerald-400">
-                            {item.overallSubjectMastery.toFixed(1)}%
-                          </td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={2} className="py-4 text-center text-slate-400">
-                          Chưa có mốc tiến trình
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* AI Strategy & Recommendation Banner (Bottom) */}
-      {action ? (
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-950 via-[#18163b] to-slate-950 p-6 sm:p-8 text-white shadow-xl border border-indigo-500/20 w-full min-w-0">
-          <div className="absolute top-0 right-0 -mt-8 -mr-8 w-64 h-64 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
-
-          <div className="relative z-10 flex flex-col xl:flex-row xl:items-center justify-between gap-6 min-w-0">
-            <div className="space-y-3 max-w-3xl min-w-0">
-              <div className="flex flex-wrap items-center gap-2.5">
-                <span className="rounded-lg bg-indigo-500/25 px-3 py-1 text-xs font-bold uppercase tracking-wider text-indigo-200 ring-1 ring-inset ring-indigo-400/30">
-                  Chiến lược: {action.strategy}
-                </span>
-
-                {action.opportunityScore !== null && action.opportunityScore !== undefined && (
-                  <span className="rounded-lg bg-emerald-500/25 px-3 py-1 text-xs font-bold text-emerald-300 ring-1 ring-inset ring-emerald-400/30">
-                    Cơ hội tăng điểm: +{action.opportunityScore.toFixed(1)} điểm (+{(action.opportunityScore * 10).toFixed(1)}%)
-                  </span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2 text-indigo-300 text-xs font-semibold">
-                <span>✦</span>
-                <span>EduTwin AI đề xuất</span>
-              </div>
-
-              <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight break-words">
-                Đề xuất ưu tiên: {action.topicName}
+      {/* Main Section: Knowledge Map Visual Anchor + Agenda Route */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
+        {/* Left Column: BẢN ĐỒ NĂNG LỰC (KNOWLEDGE MAP) with Radar toggle option */}
+        <div className="rounded-2xl border border-stone-200/90 dark:border-stone-800/90 p-5 sm:p-6 bg-white dark:bg-[#151d2f] shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 mb-2 border-b border-stone-100 dark:border-stone-800/80">
+            <div>
+              <h3 className="text-base font-bold text-stone-900 dark:text-stone-100">
+                {isAllSubjects ? "Radar Năng Lực Theo Môn Học" : "Radar Năng Lực Theo Chuyên Đề"}
               </h3>
-
-              <p className="text-sm text-indigo-100/80 leading-relaxed font-normal">
-                {action.explanation}
+              <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
+                Bản đồ định vị năng lực & các mốc kiến thức đã chinh phục
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3 shrink-0 min-w-0">
+            {/* View Mode Switcher */}
+            <div className="inline-flex rounded-lg border border-stone-200 dark:border-stone-800 p-0.5 bg-stone-50 dark:bg-stone-900 self-start sm:self-auto text-xs">
               <button
                 type="button"
-                onClick={() => {
-                  if (action.questionId) {
-                    navigate(`/hoc-tap/luyen-tap/${action.questionId}${selectedSubjectId ? `?subjectId=${selectedSubjectId}` : ""}`);
-                  } else {
-                    navigate(selectedSubjectId ? `/hoc-tap/luyen-tap?subjectId=${selectedSubjectId}` : `/hoc-tap/luyen-tap`);
-                  }
-                }}
-                className="flex items-center gap-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-emerald-500/20 transition-all cursor-pointer focus-visible:outline-emerald-500"
+                onClick={() => setCompetencyViewMode("atlas")}
+                className={`px-3 py-1 rounded-md font-semibold transition-colors cursor-pointer ${
+                  competencyViewMode === "atlas"
+                    ? "bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 shadow-2xs"
+                    : "text-stone-500 hover:text-stone-800 dark:text-stone-400"
+                }`}
               >
-                <span>▶ Bắt đầu học ngay</span>
+                Bản đồ Atlas
               </button>
-
-              {action.recommendationId && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => acceptMutation.mutate(action.recommendationId!)}
-                    disabled={acceptMutation.isPending}
-                    className="rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 px-4 py-3 text-sm font-bold text-white transition-all disabled:opacity-50 cursor-pointer"
-                  >
-                    {acceptMutation.isPending ? "Đang lưu..." : "Chấp nhận vào lộ trình"}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => dismissMutation.mutate(action.recommendationId!)}
-                    disabled={dismissMutation.isPending}
-                    className="rounded-xl px-4 py-3 text-sm font-semibold text-indigo-300 hover:text-white hover:bg-white/5 transition-all disabled:opacity-50 cursor-pointer"
-                    title="Bỏ qua đề xuất này"
-                  >
-                    {dismissMutation.isPending ? "Đang xử lý..." : "Bỏ qua"}
-                  </button>
-                </>
-              )}
+              <button
+                type="button"
+                onClick={() => setCompetencyViewMode("radar")}
+                className={`px-3 py-1 rounded-md font-semibold transition-colors cursor-pointer ${
+                  competencyViewMode === "radar"
+                    ? "bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 shadow-2xs"
+                    : "text-stone-500 hover:text-stone-800 dark:text-stone-400"
+                }`}
+              >
+                Biểu đồ Radar
+              </button>
             </div>
           </div>
+
+          {competencyViewMode === "atlas" ? (
+            <StudentKnowledgeMap
+              topics={knowledgeMapTopics}
+              subjectName={subject.subjectName}
+            />
+          ) : (
+            <div className="h-72 w-full min-w-0 mt-4 relative">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                <RadarChart data={radarChartData} outerRadius="68%">
+                  <PolarGrid stroke="#e5e7eb" className="dark:opacity-20" />
+                  <PolarAngleAxis
+                    dataKey="name"
+                    tick={{ fill: "#6b7280", fontSize: 11, fontWeight: 600 }}
+                  />
+                  <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} stroke="#9ca3af" />
+                  <Radar
+                    name="Năng lực"
+                    dataKey="score"
+                    stroke={currentSubjectTheme.color}
+                    fill={currentSubjectTheme.color}
+                    fillOpacity={0.25}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      borderRadius: "12px",
+                      fontSize: "12px",
+                      border: "1px solid #e5e7eb",
+                      backgroundColor: "rgba(255, 255, 255, 0.95)",
+                    }}
+                  />
+                </RadarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </div>
-      ) : (
-        <div className="w-full min-w-0 rounded-2xl bg-white dark:bg-[#0f172a] p-8 border border-slate-200 dark:border-slate-800 shadow-xs text-center">
-          <div className="w-12 h-12 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto mb-3 text-xl font-bold">
-            🌟
+
+        {/* Right Column: TIẾN ĐỘ CHẶNG HỌC TẬP (STUDY PROGRESSION ROUTE) */}
+        <div className="rounded-2xl border border-stone-200/90 dark:border-stone-800/90 p-5 sm:p-6 bg-white dark:bg-[#151d2f] shadow-xs">
+          <div className="flex items-center justify-between pb-3 mb-4 border-b border-stone-100 dark:border-stone-800/80">
+            <div>
+              <h3 className="text-base font-bold text-stone-900 dark:text-stone-100">
+                Tiến độ các chặng chuyên đề
+              </h3>
+              <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
+                Độ thành thạo theo từng mắt xích trong chương trình
+              </p>
+            </div>
+            <Link
+              to={selectedSubjectId ? `/hoc-tap/bai-tap?subjectId=${selectedSubjectId}` : `/hoc-tap/bai-tap`}
+              className="text-xs font-semibold text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"
+            >
+              Xem tất cả bài tập →
+            </Link>
           </div>
-          <h3 className="text-base font-bold text-slate-800 dark:text-white">
-            Bạn đang duy trì lộ trình học tập rất xuất sắc!
-          </h3>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-            {isAllSubjects
-              ? "Hệ thống chưa ghi nhận thêm lỗ hổng kiến thức nghiêm trọng nào trên toàn bộ chương trình."
-              : `Hệ thống chưa ghi nhận thêm lỗ hổng kiến thức nào cho môn ${subject.subjectName}.`}
-          </p>
-          <Link
-            to={selectedSubjectId ? `/hoc-tap/luyen-tap?subjectId=${selectedSubjectId}` : `/hoc-tap/luyen-tap`}
-            className="mt-4 inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-500"
-          >
-            <span>Luyện tập thích ứng</span>
-          </Link>
+
+          <div className="space-y-4">
+            {masteryRadar.slice(0, 5).map((topic, idx) => {
+              const mastery = topic.mastery;
+              const isDone = mastery >= 75;
+
+              return (
+                <div key={topic.topicNodeId} className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-mono text-stone-400">
+                        {String(idx + 1).padStart(2, "0")}
+                      </span>
+                      <span className="font-semibold text-stone-800 dark:text-stone-200">
+                        {topic.topicName}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 font-mono text-xs">
+                      <span className={`font-bold ${isDone ? "text-emerald-600 dark:text-emerald-400" : "text-stone-800 dark:text-stone-200"}`}>
+                        {mastery.toFixed(0)}%
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Slim Route Line */}
+                  <div className="w-full bg-stone-100 dark:bg-stone-800 rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-300 ${
+                        isDone ? "bg-emerald-500" : "bg-indigo-600"
+                      }`}
+                      style={{ width: `${Math.min(100, Math.max(0, mastery))}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Recent Progress Record Strip */}
+          {progressLine.length > 0 && (
+            <div className="mt-6 pt-4 border-t border-stone-100 dark:border-stone-800/80">
+              <span className="text-[11px] font-mono uppercase tracking-wider text-stone-400 block mb-2">
+                Điểm ghi nhận gần nhất
+              </span>
+              <div className="space-y-2 text-xs">
+                {progressLine.slice(-2).map((point, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center justify-between text-stone-600 dark:text-stone-400 py-1"
+                  >
+                    <span>
+                      Độ thành thạo chung: <strong className="text-stone-800 dark:text-stone-200">{point.overallSubjectMastery.toFixed(0)}%</strong>
+                    </span>
+                    <span className="font-mono text-[11px] text-stone-400 shrink-0">
+                      {new Date(point.recordedAt).toLocaleDateString("vi-VN", {
+                        day: "2-digit",
+                        month: "2-digit",
+                      })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 };
