@@ -19,9 +19,17 @@ public partial class AddAssignmentFinalReviewAndDetailedLearningPlan : Migration
         migrationBuilder.AddColumn<string>("final_teacher_note", "student_assignment_progress", "varchar(1000)", maxLength: 1000, nullable: true);
         migrationBuilder.AddColumn<uint>("final_review_version", "student_assignment_progress", "int unsigned", nullable: false, defaultValue: 0u);
         migrationBuilder.AddCheckConstraint("ck_student_assignment_progress_final_review", "student_assignment_progress", "`teacher_final_review_status` IN ('Pending', 'Approved')");
-        migrationBuilder.CreateIndex("ix_student_assignment_progress_center_final_reviewer", "student_assignment_progress", new[] { "center_id", "final_reviewed_by_user_id" });
-        migrationBuilder.AddForeignKey("fk_student_assignment_progress_users_final_reviewer", "student_assignment_progress",
-            new[] { "center_id", "final_reviewed_by_user_id" }, "users", new[] { "center_id", "user_id" }, onDelete: ReferentialAction.Restrict);
+        migrationBuilder.CreateIndex(
+            name: "ix_student_assignment_progress_center_final_reviewer",
+            table: "student_assignment_progress",
+            columns: new[] { "center_id", "final_reviewed_by_user_id" });
+        migrationBuilder.AddForeignKey(
+            name: "fk_student_assignment_progress_users_final_reviewer",
+            table: "student_assignment_progress",
+            columns: new[] { "center_id", "final_reviewed_by_user_id" },
+            principalTable: "users",
+            principalColumns: new[] { "center_id", "user_id" },
+            onDelete: ReferentialAction.Restrict);
 
         migrationBuilder.AddColumn<string>("plan_json", "learning_paths", "json", nullable: true);
         migrationBuilder.AddColumn<string>("recommendation_rationale", "learning_paths", "longtext", nullable: true);

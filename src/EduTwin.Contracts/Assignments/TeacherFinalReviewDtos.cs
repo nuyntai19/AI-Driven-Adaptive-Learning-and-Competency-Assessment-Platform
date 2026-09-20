@@ -1,5 +1,6 @@
 using System;
 using EduTwin.Contracts.Common;
+using EduTwin.Contracts.IdentityAndTenancy;
 
 namespace EduTwin.Contracts.Assignments;
 
