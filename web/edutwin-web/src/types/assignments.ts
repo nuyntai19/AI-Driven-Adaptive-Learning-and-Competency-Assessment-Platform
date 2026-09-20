@@ -70,7 +70,7 @@ export interface StudentAssignmentQuestionOptionDto {
 }
 
 export interface StudentQuestionAttemptDto {
-  attemptId: number;
+  attemptId: string | number;
   status: AttemptStatus;
   finalAnswer: string | null;
   reasoningText: string | null;
@@ -94,7 +94,7 @@ export interface StudentAssignmentQuestionDto {
   latestAttempt?: StudentQuestionAttemptDto | null;
   submittedAnswer?: string | null;
   submittedReasoning?: string | null;
-  submittedAttemptId?: number | null;
+  submittedAttemptId?: string | number | null;
   hasAttachment?: boolean;
 }
 

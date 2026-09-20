@@ -33,6 +33,7 @@ import {
 } from "../utils/attemptSessionStorage";
 import { useAuthStore } from "../stores/authStore";
 import { httpClient } from "../api/httpClient";
+import { isFeedbackForQuestion, resolveQuestionReviewAttemptId } from "../utils/questionReview";
 
 interface StoredAnswer {
   finalAnswer: string;
@@ -249,6 +250,15 @@ export const LearningPlayerPage = () => {
   const currentAssignmentIndex = assignmentQuestions.findIndex(
     (q) => q.questionId === assignmentQuestion?.questionId
   );
+
+  const reviewAttemptId = resolveQuestionReviewAttemptId(assignmentQuestion);
+
+  const reviewFeedbackQuery = useQuery<AttemptFeedbackDataDto>({
+    queryKey: ["attempt-feedback", reviewAttemptId == null ? "none" : String(reviewAttemptId)],
+    queryFn: () => getAttemptFeedback(reviewAttemptId!),
+    enabled: Boolean(assignmentId && reviewAttemptId),
+    retry: 1,
+  });
 
   const isAssignmentSubmitted = useMemo(() => {
     if (!assignment) return false;
@@ -1143,6 +1153,11 @@ export const LearningPlayerPage = () => {
           {/* 4-Tier Hierarchy: Student Work -> AI Reasoning -> Teacher Solution -> Teacher Evaluation */}
           <AttemptFeedbackHierarchy
             feedbackData={feedbackData}
+            answerOptions={
+              assignmentQuestions.find((item) => item.questionId === feedbackData.questionId)?.options ??
+              question?.options ??
+              []
+            }
             onRefreshFeedback={async () => {
               const res = await getAttemptFeedback(feedbackData.attemptId);
               setFeedbackData(res);
@@ -1228,12 +1243,33 @@ export const LearningPlayerPage = () => {
                 Luyện câu tiếp theo →
               </button>
             ) : (
-              <Link
-                to="/hoc-tap/bai-tap"
-                className="w-full sm:w-auto rounded-xl bg-indigo-600 px-6 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-500 text-center cursor-pointer"
-              >
-                Xem danh sách bài tập khác →
-              </Link>
+              <div className="flex w-full sm:w-auto flex-col sm:flex-row gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const firstQuestionId = assignmentQuestions[0]?.questionId;
+                    setFeedbackData(null);
+                    if (firstQuestionId) {
+                      setActiveQuestionId(firstQuestionId);
+                      window.history.replaceState(
+                        null,
+                        "",
+                        `/hoc-tap/luyen-tap/${firstQuestionId}?assignmentId=${assignmentId}${subjectId ? `&subjectId=${subjectId}` : ""}`
+                      );
+                    }
+                    void queryClient.refetchQueries({ queryKey: ["student-assignments", assignmentId] });
+                  }}
+                  className="w-full sm:w-auto rounded-xl bg-indigo-600 px-6 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-500 text-center cursor-pointer"
+                >
+                  Xem lại từng câu →
+                </button>
+                <Link
+                  to="/hoc-tap/bai-tap"
+                  className="w-full sm:w-auto rounded-xl bg-white dark:bg-slate-800 px-5 py-2.5 text-xs font-bold text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-center cursor-pointer"
+                >
+                  Bài tập khác
+                </Link>
+              </div>
             )}
           </div>
         </div>
@@ -1739,6 +1775,49 @@ export const LearningPlayerPage = () => {
                   </div>
                 )}
               </div>
+
+              {/* Persisted question-level grading. Navigation only changes the attempt GET key. */}
+              {assignmentId && isCurrentQuestionSubmitted && (
+                <div className="border-t border-slate-100 dark:border-slate-800 pt-6">
+                  {reviewFeedbackQuery.isLoading ? (
+                    <div
+                      role="status"
+                      className="rounded-2xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 dark:bg-indigo-950/40 p-5 text-sm font-semibold text-indigo-800 dark:text-indigo-200"
+                    >
+                      Đang tải phân tích và lời giải đã lưu của câu này...
+                    </div>
+                  ) : reviewFeedbackQuery.isError ? (
+                    <div
+                      role="alert"
+                      className="rounded-2xl border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/40 p-5 text-sm text-rose-800 dark:text-rose-200"
+                    >
+                      <p className="font-bold">Không thể tải kết quả chi tiết của câu này.</p>
+                      <p className="mt-1 text-xs">Bài làm đã được lưu. Bạn có thể tải lại dữ liệu mà không chấm AI lại.</p>
+                      <button
+                        type="button"
+                        onClick={() => void reviewFeedbackQuery.refetch()}
+                        className="mt-3 rounded-xl border border-rose-300 dark:border-rose-700 px-3 py-2 text-xs font-bold hover:bg-rose-100 dark:hover:bg-rose-900/40"
+                      >
+                        Tải lại kết quả
+                      </button>
+                    </div>
+                  ) : reviewFeedbackQuery.data &&
+                    isFeedbackForQuestion(assignmentQuestion?.questionId ?? "", reviewFeedbackQuery.data.questionId) ? (
+                    <AttemptFeedbackHierarchy
+                      feedbackData={reviewFeedbackQuery.data}
+                      showStudentSubmission={false}
+                      answerOptions={assignmentQuestion?.options ?? []}
+                      onRefreshFeedback={async () => {
+                        await reviewFeedbackQuery.refetch();
+                      }}
+                    />
+                  ) : reviewFeedbackQuery.data ? (
+                    <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-bold text-rose-800">
+                      Dữ liệu kết quả không khớp với câu hỏi đang xem. Vui lòng tải lại trang.
+                    </div>
+                  ) : null}
+                </div>
+              )}
 
               {/* Confidence Slider */}
               <div className="border-t border-slate-100 dark:border-slate-800 pt-6">

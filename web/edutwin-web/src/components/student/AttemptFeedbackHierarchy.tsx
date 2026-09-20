@@ -7,12 +7,16 @@ interface AttemptFeedbackHierarchyProps {
   feedbackData: AttemptFeedbackDataDto;
   onRefreshFeedback: () => Promise<void>;
   onPollJob?: (jobId: string) => void;
+  showStudentSubmission?: boolean;
+  answerOptions?: Array<{ optionId: string; label: string; text: string }>;
 }
 
 export function AttemptFeedbackHierarchy({
   feedbackData,
   onRefreshFeedback,
   onPollJob,
+  showStudentSubmission = true,
+  answerOptions = [],
 }: AttemptFeedbackHierarchyProps) {
   const {
     attemptId,
@@ -107,12 +111,20 @@ export function AttemptFeedbackHierarchy({
     }
   };
 
-  const isDegradedOrFallback = !analysis || analysis.isFallback || feedbackData.status === "PendingAnalysis";
+  const isPending = feedbackData.status === "PendingAnalysis" || feedbackData.status === "Processing";
+  const isUnavailable = !analysis && !isPending;
+  const isDegradedOrFallback = !analysis || analysis.isFallback || isPending;
+  const formatAnswer = (answer: string) => {
+    const option = answerOptions.find(
+      (candidate) => candidate.optionId === answer || candidate.label === answer
+    );
+    return option ? `${option.label}. ${option.text}` : answer;
+  };
 
   return (
     <div className="space-y-6">
       {/* TIER 1: BÀI LÀM CỦA HỌC SINH (Student Work) */}
-      <div className="rounded-3xl bg-white dark:bg-[#0f172a] p-6 sm:p-7 shadow-xs border border-slate-200/80 dark:border-slate-800 space-y-4">
+      {showStudentSubmission && <div className="rounded-3xl bg-white dark:bg-[#0f172a] p-6 sm:p-7 shadow-xs border border-slate-200/80 dark:border-slate-800 space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
           <div className="flex items-center gap-2.5">
             <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 font-black text-xs">
@@ -132,7 +144,7 @@ export function AttemptFeedbackHierarchy({
             <span className="text-xs font-semibold text-slate-400 block mb-1">Đáp án đã chọn / đã nộp:</span>
             <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3.5 border border-slate-100 dark:border-slate-700/60">
               <p className="font-bold text-slate-900 dark:text-white text-base">
-                {studentSubmission?.finalAnswer || "Chưa có đáp án"}
+                {studentSubmission?.finalAnswer ? formatAnswer(studentSubmission.finalAnswer) : "Chưa có đáp án"}
               </p>
             </div>
           </div>
@@ -163,11 +175,11 @@ export function AttemptFeedbackHierarchy({
             <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 dark:text-slate-400 pt-1">
               <span>⏱ Thời gian làm: <strong>{studentSubmission.timeSpentSeconds}s</strong></span>
               <span>🔄 Số lần đổi đáp án: <strong>{studentSubmission.answerChanges}</strong></span>
-              <span>🎯 Mức tự tin: <strong>{Math.round(studentSubmission.confidence * 100)}%</strong></span>
+              <span>🎯 Mức tự tin: <strong>{Math.round(studentSubmission.confidence)}%</strong></span>
             </div>
           )}
         </div>
-      </div>
+      </div>}
 
       {/* TIER 2: AI PHÂN TÍCH & ĐÁNH GIÁ (AI Analysis) */}
       <div className="rounded-3xl bg-white dark:bg-[#0f172a] p-6 sm:p-7 shadow-xs border border-slate-200/80 dark:border-slate-800 space-y-4">
@@ -197,15 +209,38 @@ export function AttemptFeedbackHierarchy({
           )}
         </div>
 
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`rounded-full px-3 py-1 text-xs font-bold ${
+            grading.isCorrect === true
+              ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300"
+              : grading.isCorrect === false
+              ? "bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300"
+              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+          }`}>
+            {grading.isCorrect === true
+              ? "Kết quả: Đúng"
+              : grading.isCorrect === false
+              ? "Kết quả: Chưa đúng"
+              : "Kết quả: Chờ đánh giá"}
+          </span>
+          <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 text-xs font-bold text-slate-700 dark:text-slate-300">
+            Điểm: {grading.awardedScore ?? "Chưa chấm"} / {grading.maxScore}
+          </span>
+        </div>
+
         {/* Graceful Degradation / Fallback Notice */}
         {isDegradedOrFallback && (
           <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-900 dark:text-amber-200 space-y-2">
             <div className="flex items-center gap-2 font-bold">
               <span>ℹ</span>
-              <span>Đánh giá tự động dự phòng (Graceful Degradation)</span>
+              <span>{isPending ? "AI đang phân tích câu trả lời" : "AI hiện đang tạm thời không khả dụng"}</span>
             </div>
             <p className="leading-relaxed">
-              Hệ thống đã lưu bài làm và chấm điểm đáp án chuẩn xác. Phân tích tư duy chuyên sâu bằng AI đang chờ xử lý hoặc chưa đạt độ tin cậy tối ưu. Bạn có thể yêu cầu AI phân tích lại hoặc gửi yêu cầu tới giáo viên để được xem xét trực tiếp.
+              {isPending
+                ? "Bài làm của bạn đã được lưu. Kết quả phân tích của riêng câu này đang được xử lý; đáp án và lời giải giáo viên vẫn hiển thị bên dưới."
+                : isUnavailable
+                ? "AI hiện đang tạm thời không khả dụng. Bài làm của bạn đã được lưu. Đáp án và lời giải giáo viên vẫn hiển thị bên dưới."
+                : "AI đã trả về kết quả dự phòng hoặc cần giáo viên xem xét. Bài làm của bạn đã được lưu; đáp án và lời giải giáo viên vẫn hiển thị bên dưới."}
             </p>
           </div>
         )}
@@ -292,7 +327,7 @@ export function AttemptFeedbackHierarchy({
         {/* Action Buttons: Retry AI & Review Request */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
           <div className="flex items-center gap-2">
-            {retryQuota && (
+            {retryQuota && !isPending && (
               <button
                 type="button"
                 disabled={!retryQuota.canRetry || cooldownSeconds > 0 || isRetryingAI}
@@ -348,7 +383,7 @@ export function AttemptFeedbackHierarchy({
             <div>
               <span className="text-xs font-semibold text-slate-400 block mb-1">Đáp án chính xác:</span>
               <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/30 p-3.5 text-emerald-900 dark:text-emerald-200 font-mono font-bold text-sm">
-                <RichMathText content={teacherSolution.correctAnswer} />
+                <RichMathText content={formatAnswer(teacherSolution.correctAnswer)} />
               </div>
             </div>
 
@@ -430,14 +465,14 @@ export function AttemptFeedbackHierarchy({
             <div className="flex items-center justify-between p-3.5 rounded-xl bg-purple-500/10 border border-purple-500/20">
               <div>
                 <span className="text-xs text-purple-300 block">Điểm số sau khi giáo viên duyệt:</span>
-                <span className="text-xl font-black text-white">
+                <span className="text-xl font-black text-purple-950 dark:text-white">
                   {teacherFinalEvaluation.teacherScore ?? grading.awardedScore} / {grading.maxScore}
                 </span>
               </div>
               {teacherFinalEvaluation.reviewedByTeacherName && (
                 <div className="text-right">
                   <span className="text-xs text-purple-300 block">Giáo viên đánh giá:</span>
-                  <span className="text-sm font-bold text-white">{teacherFinalEvaluation.reviewedByTeacherName}</span>
+                  <span className="text-sm font-bold text-purple-950 dark:text-white">{teacherFinalEvaluation.reviewedByTeacherName}</span>
                 </div>
               )}
             </div>
