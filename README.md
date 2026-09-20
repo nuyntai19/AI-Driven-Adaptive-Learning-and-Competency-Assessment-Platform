@@ -150,7 +150,21 @@ Năm file kỹ thuật cốt lõi là CONSTITUTION, DATABASE_SCHEMA, API_CONTRAC
 
 Khi có mâu thuẫn, không tự chọn tài liệu thuận tiện hơn. Thực hiện change-control theo CONSTITUTION.md.
 
-## 7. Chuẩn bị môi trường
+## 7. Khởi động nhanh 1-Click (Click-to-Run)
+
+Để khởi động toàn bộ dự án nhanh chóng trên Windows:
+
+- **Nhấp đúp chuột vào `start.bat` hoặc `run.bat`**: Trình điều khiển tự động kiểm tra `.env`, tạo cấu hình bí mật hợp lệ nếu chưa có, khởi chạy toàn bộ dịch vụ (MySQL, API, Web, Adminer), đợi dịch vụ sẵn sàng và tự động mở trình duyệt tại `http://localhost:3000`.
+- **Dừng dịch vụ**: Nhấp đúp vào `stop.bat` hoặc chọn tùy chọn 6 trong menu `run.bat`.
+- **PowerShell**: Chạy `.\run.ps1` (hỗ trợ các cờ `.\run.ps1 -Mode Docker`, `.\run.ps1 -Mode Local`, `.\run.ps1 -Mode Stop`, `.\run.ps1 -Mode Test`).
+
+Tài khoản demo có sẵn:
+- **Platform Admin**: Trung tâm `PLATFORM` | Tài khoản `platform.admin` | Mật khẩu `PlatformAdmin123!`
+- **Quản lý trung tâm A**: Trung tâm `EDUTWIN_A` | Tài khoản `manager` | Mật khẩu `SeedPassword123!`
+- **Giáo viên Toán/Anh**: Trung tâm `EDUTWIN_A` | Tài khoản `teacher.math` / `teacher.english` | Mật khẩu `SeedPassword123!`
+- **Học sinh**: Trung tâm `EDUTWIN_A` | Tài khoản `student01` .. `student05` | Mật khẩu `SeedPassword123!`
+
+## 8. Chuẩn bị môi trường thủ công
 
 Cần có:
 

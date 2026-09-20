@@ -41,6 +41,20 @@ const PlatformCentersPage = lazy(() => import("./pages/PlatformCentersPage").the
 const PlatformAuditLogsPage = lazy(() => import("./pages/PlatformAuditLogsPage").then((module) => ({ default: module.PlatformAuditLogsPage })));
 const CenterManagerLayoutBoundary = lazy(() => import("./layouts/CenterManagerLayout").then((module) => ({ default: module.CenterManagerLayoutBoundary })));
 
+// Teacher Workspace Components
+const TeacherLayoutBoundary = lazy(() => import("./layouts/TeacherLayout").then((module) => ({ default: module.TeacherLayoutBoundary })));
+const TeacherClassDashboardView = lazy(() => import("./pages/teacher/TeacherClassDashboardView").then((module) => ({ default: module.TeacherClassDashboardView })));
+const TeacherQuestionBankView = lazy(() => import("./pages/teacher/TeacherQuestionBankView").then((module) => ({ default: module.TeacherQuestionBankView })));
+const TeacherQuestionEditorView = lazy(() => import("./pages/teacher/TeacherQuestionEditorView").then((module) => ({ default: module.TeacherQuestionEditorView })));
+const TeacherAssignmentListView = lazy(() => import("./pages/teacher/TeacherAssignmentListView").then((module) => ({ default: module.TeacherAssignmentListView })));
+const TeacherAssignmentEditorView = lazy(() => import("./pages/teacher/TeacherAssignmentEditorView").then((module) => ({ default: module.TeacherAssignmentEditorView })));
+const TeacherAssignmentProgressView = lazy(() => import("./pages/teacher/TeacherAssignmentProgressView").then((module) => ({ default: module.TeacherAssignmentProgressView })));
+const TeacherReviewQueueView = lazy(() => import("./pages/teacher/TeacherReviewQueueView").then((module) => ({ default: module.TeacherReviewQueueView })));
+const TeacherStudentTwinView = lazy(() => import("./pages/teacher/TeacherStudentTwinView").then((module) => ({ default: module.TeacherStudentTwinView })));
+const TeacherCurriculumListView = lazy(() => import("./pages/teacher/TeacherCurriculumListView").then((module) => ({ default: module.TeacherCurriculumListView })));
+const TeacherCurriculumEditorView = lazy(() => import("./pages/teacher/TeacherCurriculumEditorView").then((module) => ({ default: module.TeacherCurriculumEditorView })));
+const TeacherKnowledgeGraphView = lazy(() => import("./pages/teacher/TeacherKnowledgeGraphView").then((module) => ({ default: module.TeacherKnowledgeGraphView })));
+
 const FallbackRoute = () => {
   const sessionStatus = useAuthStore((state) => state.sessionStatus);
   if (sessionStatus === "authenticated") {
@@ -161,6 +175,67 @@ function App() {
           <Route element={<PermissionRoute anyOf={authorizationUiPermissions} accountTypes={["CenterManager"]} />}>
             <Route path="/quan-ly/phan-quyen" element={<AuthorizationManagementPage />} />
           </Route>
+          </Route>
+
+          {/* ================================================================ */}
+          {/* TEACHER WORKSPACE ROUTES (/giao-vien/*)                            */}
+          {/* Dedicated workspace isolated with permission-based routing        */}
+          {/* ================================================================ */}
+          <Route element={<TeacherLayoutBoundary />}>
+            {/* Dashboard & Class Monitoring */}
+            <Route element={<PermissionRoute anyOf={[permissions.dashboardsTeacherRead, permissions.dashboardsCenterRead]} />}>
+              <Route path="/giao-vien/lop-hoc" element={<TeacherClassDashboardView />} />
+              <Route path="/giao-vien/lop-hoc/:classId" element={<TeacherClassDashboardView />} />
+            </Route>
+
+            {/* Question Bank & Question Authoring */}
+            <Route element={<PermissionRoute allOf={[permissions.questionsRead]} />}>
+              <Route path="/giao-vien/cau-hoi" element={<TeacherQuestionBankView />} />
+            </Route>
+            <Route element={<PermissionRoute allOf={[permissions.questionsCreate]} />}>
+              <Route path="/giao-vien/cau-hoi/tao-moi" element={<TeacherQuestionEditorView />} />
+            </Route>
+            <Route element={<PermissionRoute allOf={[permissions.questionsRead]} />}>
+              <Route path="/giao-vien/cau-hoi/:id" element={<TeacherQuestionEditorView />} />
+            </Route>
+
+            {/* Assignments Management, Targeted Remediation & Progress */}
+            <Route element={<PermissionRoute allOf={[permissions.assignmentsRead]} />}>
+              <Route path="/giao-vien/bai-tap" element={<TeacherAssignmentListView />} />
+            </Route>
+            <Route element={<PermissionRoute allOf={[permissions.assignmentsCreate]} />}>
+              <Route path="/giao-vien/bai-tap/tao-moi" element={<TeacherAssignmentEditorView />} />
+            </Route>
+            <Route element={<PermissionRoute allOf={[permissions.assignmentsRead]} />}>
+              <Route path="/giao-vien/bai-tap/:id" element={<TeacherAssignmentEditorView />} />
+              <Route path="/giao-vien/bai-tap/:id/tien-do" element={<TeacherAssignmentProgressView />} />
+            </Route>
+
+            {/* Review Queue (Grading & AI Reasoning Overrides) */}
+            <Route element={<PermissionRoute anyOf={[permissions.twinReasoningReview, permissions.teacherReviewsRead]} />}>
+              <Route path="/giao-vien/cham-bai" element={<TeacherReviewQueueView />} />
+            </Route>
+
+            {/* Student Digital Twin */}
+            <Route element={<PermissionRoute anyOf={[permissions.twinStudentReadScoped, permissions.dashboardsTeacherRead]} />}>
+              <Route path="/giao-vien/hoc-sinh/:studentId/twin" element={<TeacherStudentTwinView />} />
+            </Route>
+
+            {/* Curriculum & Syllabus Structuring */}
+            <Route element={<PermissionRoute allOf={[permissions.curriculumsRead]} />}>
+              <Route path="/giao-vien/giao-trinh" element={<TeacherCurriculumListView />} />
+            </Route>
+            <Route element={<PermissionRoute allOf={[permissions.curriculumsCreate]} />}>
+              <Route path="/giao-vien/giao-trinh/tao-moi" element={<TeacherCurriculumEditorView />} />
+            </Route>
+            <Route element={<PermissionRoute allOf={[permissions.curriculumsRead]} />}>
+              <Route path="/giao-vien/giao-trinh/:id" element={<TeacherCurriculumEditorView />} />
+            </Route>
+
+            {/* Knowledge Graph Explorer */}
+            <Route element={<PermissionRoute allOf={[permissions.subjectsRead]} />}>
+              <Route path="/giao-vien/do-thi-tri-thuc" element={<TeacherKnowledgeGraphView />} />
+            </Route>
           </Route>
 
           {/* Platform Administration */}

@@ -110,9 +110,8 @@ public class UpdateQuestionUseCase : IUpdateQuestionUseCase
         if (isTeacher && question.CreatedByTeacherId != actorId)
             return UpdateQuestionResult.Failure(ErrorCodes.ResourceNotFound);
 
-        // 7. State check — only Draft can be updated
-        if (question.Status != QuestionStatus.Draft)
-            return UpdateQuestionResult.Failure(ErrorCodes.InvalidStateTransition);
+        // 7. State check removed to allow editing active or archived questions
+
 
         // 8. Concurrency
         if (question.RowVersion != rowVersion)
