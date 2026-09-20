@@ -257,7 +257,8 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                 HasRequiredEvidence: true,
                 EffectiveIsCorrect: request.IsCorrect,
                 AnalysisConfidence: null,
-                AnalysisOverrideVersion: newOverrideVersion));
+                AnalysisOverrideVersion: newOverrideVersion,
+                IsPostFeedback: attempt.IsPostFeedback));
 
             var newEvidence = _evidenceAssessmentFactory.Create(
                 attempt,
@@ -268,6 +269,18 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                 actorId);
 
             _dbContext.EvidenceAssessments.Add(newEvidence);
+
+            // Resolve any pending student review requests for this attempt
+            var pendingReviewRequest = await _dbContext.StudentReviewRequests
+                .Where(r => r.CenterId == centerId && r.AttemptId == attempt.AttemptId && r.Status == StudentReviewRequestStatus.Pending)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (pendingReviewRequest != null)
+            {
+                pendingReviewRequest.Status = StudentReviewRequestStatus.Resolved;
+                pendingReviewRequest.TeacherNote = !string.IsNullOrWhiteSpace(request.Reason) ? request.Reason : request.Feedback;
+                pendingReviewRequest.ResolvedByTeacherId = actorId;
+                pendingReviewRequest.ResolvedAt = now;
+            }
 
             // F. Replay all attempts for this student and topic chronologically
             var studentId = attempt.StudentId;

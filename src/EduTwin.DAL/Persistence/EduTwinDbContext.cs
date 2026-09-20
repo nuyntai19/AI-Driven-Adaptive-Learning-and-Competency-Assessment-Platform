@@ -84,6 +84,7 @@ public class EduTwinDbContext : DbContext
     public DbSet<ReasoningAnalysis> ReasoningAnalyses => Set<ReasoningAnalysis>();
     public DbSet<EvidenceAssessment> EvidenceAssessments => Set<EvidenceAssessment>();
     public DbSet<AIAnalysisJob> AIAnalysisJobs => Set<AIAnalysisJob>();
+    public DbSet<StudentReviewRequest> StudentReviewRequests => Set<StudentReviewRequest>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

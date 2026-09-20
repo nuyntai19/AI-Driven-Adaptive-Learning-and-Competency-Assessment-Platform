@@ -26,6 +26,7 @@ public class QuestionsController : ControllerBase
     private readonly IActivateQuestionUseCase _activateUseCase;
     private readonly IArchiveQuestionUseCase _archiveUseCase;
     private readonly IDeleteQuestionUseCase _deleteUseCase;
+    private readonly EduTwin.BLL.CurriculumAndQuestions.Import.IQuestionImportUseCase? _questionImportUseCase;
     private readonly TimeProvider _timeProvider;
 
     public QuestionsController(
@@ -36,7 +37,8 @@ public class QuestionsController : ControllerBase
         IActivateQuestionUseCase activateUseCase,
         IArchiveQuestionUseCase archiveUseCase,
         IDeleteQuestionUseCase deleteUseCase,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        EduTwin.BLL.CurriculumAndQuestions.Import.IQuestionImportUseCase? questionImportUseCase = null)
     {
         _createUseCase = createUseCase;
         _getUseCase = getUseCase;
@@ -45,6 +47,7 @@ public class QuestionsController : ControllerBase
         _activateUseCase = activateUseCase;
         _archiveUseCase = archiveUseCase;
         _deleteUseCase = deleteUseCase;
+        _questionImportUseCase = questionImportUseCase;
         _timeProvider = timeProvider;
     }
 
@@ -196,6 +199,112 @@ public class QuestionsController : ControllerBase
             return NoContent();
         }
         return MapError(result.ErrorCode!);
+    }
+
+    [HttpPost("import/preview")]
+    [Authorize(Policy = "curriculum.questions.create")]
+    [ProducesResponseType(typeof(QuestionImportPreviewResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> PreviewImport(
+        IFormFile file,
+        CancellationToken cancellationToken)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        if (file == null || file.Length == 0)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.1",
+                Title = "Dữ liệu không hợp lệ",
+                Status = StatusCodes.Status400BadRequest,
+                Detail = "Tệp tải lên không được rỗng.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = traceId, ["errorCode"] = ErrorCodes.ValidationFailed }
+            });
+        }
+
+        if (_questionImportUseCase == null)
+        {
+            throw new InvalidOperationException("QuestionImportUseCase is not configured.");
+        }
+
+        await using var stream = file.OpenReadStream();
+        var result = await _questionImportUseCase.PreviewAsync(stream, file.FileName, cancellationToken);
+        if (!result.IsSuccess)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.1",
+                Title = "Lỗi xử lý tệp nhập",
+                Status = StatusCodes.Status400BadRequest,
+                Detail = result.ErrorMessage,
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = traceId, ["errorCode"] = result.ErrorCode }
+            });
+        }
+
+        return Ok(new QuestionImportPreviewResponse
+        {
+            Data = result.Data!,
+            Meta = new MetaDto
+            {
+                TraceId = traceId,
+                Timestamp = _timeProvider.GetUtcNow().UtcDateTime
+            }
+        });
+    }
+
+    [HttpPost("import/confirm")]
+    [Authorize(Policy = "curriculum.questions.create")]
+    [ProducesResponseType(typeof(QuestionImportConfirmResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ConfirmImport(
+        [FromBody] QuestionImportConfirmRequest request,
+        CancellationToken cancellationToken)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        if (_questionImportUseCase == null)
+        {
+            throw new InvalidOperationException("QuestionImportUseCase is not configured.");
+        }
+
+        var result = await _questionImportUseCase.ConfirmAsync(request, cancellationToken);
+        if (!result.IsSuccess)
+        {
+            if (result.ErrorCode == "NOT_FOUND")
+            {
+                return NotFound(new ProblemDetails
+                {
+                    Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.4",
+                    Title = "Không tìm thấy dữ liệu",
+                    Status = StatusCodes.Status404NotFound,
+                    Detail = result.ErrorMessage,
+                    Instance = HttpContext.Request.Path,
+                    Extensions = { ["traceId"] = traceId, ["errorCode"] = result.ErrorCode }
+                });
+            }
+
+            return BadRequest(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.1",
+                Title = "Lỗi khi nhập câu hỏi",
+                Status = StatusCodes.Status400BadRequest,
+                Detail = result.ErrorMessage,
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = traceId, ["errorCode"] = result.ErrorCode }
+            });
+        }
+
+        return Ok(new QuestionImportConfirmResponse
+        {
+            Data = result.Data!,
+            Meta = new MetaDto
+            {
+                TraceId = traceId,
+                Timestamp = _timeProvider.GetUtcNow().UtcDateTime
+            }
+        });
     }
 
     private IActionResult MapError(string errorCode)

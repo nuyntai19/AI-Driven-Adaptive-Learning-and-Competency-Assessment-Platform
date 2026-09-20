@@ -476,7 +476,8 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                         HasRequiredEvidence: consistency.HasRequiredEvidence,
                         EffectiveIsCorrect: attempt.IsCorrect,
                         AnalysisConfidence: null,
-                        AnalysisOverrideVersion: fallback.OverrideVersion));
+                        AnalysisOverrideVersion: fallback.OverrideVersion,
+                        IsPostFeedback: attempt.IsPostFeedback));
                     fallback.NeedsTeacherReview = decision.RequiresTeacherReview;
                     var evidence = _evidenceAssessmentFactory.Create(
                         attempt,
@@ -728,7 +729,8 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                         HasRequiredEvidence: consistency.HasRequiredEvidence,
                         EffectiveIsCorrect: attempt.IsCorrect,
                         AnalysisConfidence: null,
-                        AnalysisOverrideVersion: fallback.OverrideVersion));
+                        AnalysisOverrideVersion: fallback.OverrideVersion,
+                        IsPostFeedback: attempt.IsPostFeedback));
 
                     fallback.NeedsTeacherReview = true;
 

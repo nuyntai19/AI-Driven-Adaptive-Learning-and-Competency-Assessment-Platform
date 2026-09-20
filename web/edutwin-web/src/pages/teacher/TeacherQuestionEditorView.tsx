@@ -36,6 +36,7 @@ interface QuestionEditorOption {
   text: string;
   isCorrect: boolean;
   orderIndex: number;
+  misconception?: string;
 }
 
 export function TeacherQuestionEditorView() {
@@ -58,10 +59,10 @@ export function TeacherQuestionEditorView() {
   const [languageCode] = useState("vi");
   const [answerEvaluationMode, setAnswerEvaluationMode] = useState<QuestionAnswerEvaluationMode>("TextExact");
   const [options, setOptions] = useState<QuestionEditorOption[]>([
-    { label: "A", text: "", isCorrect: true, orderIndex: 0 },
-    { label: "B", text: "", isCorrect: false, orderIndex: 1 },
-    { label: "C", text: "", isCorrect: false, orderIndex: 2 },
-    { label: "D", text: "", isCorrect: false, orderIndex: 3 },
+    { label: "A", text: "", isCorrect: true, orderIndex: 0, misconception: "" },
+    { label: "B", text: "", isCorrect: false, orderIndex: 1, misconception: "" },
+    { label: "C", text: "", isCorrect: false, orderIndex: 2, misconception: "" },
+    { label: "D", text: "", isCorrect: false, orderIndex: 3, misconception: "" },
   ]);
   const [correctAnswer, setCorrectAnswer] = useState("");
   const [solution, setSolution] = useState("");
@@ -118,6 +119,7 @@ export function TeacherQuestionEditorView() {
               text: opt.text || opt.optionText || "",
               isCorrect,
               orderIndex: opt.orderIndex ?? idx,
+              misconception: opt.misconception || "",
             };
           })
         );
@@ -140,11 +142,16 @@ export function TeacherQuestionEditorView() {
     setOptions((prev) => prev.map((opt, i) => (i === index ? { ...opt, text } : opt)));
   };
 
+  const handleOptionMisconceptionChange = (index: number, misconception: string) => {
+    setOptions((prev) => prev.map((opt, i) => (i === index ? { ...opt, misconception } : opt)));
+  };
+
   const handleOptionCorrectChange = (index: number) => {
     setOptions((prev) =>
       prev.map((opt, i) => ({
         ...opt,
         isCorrect: i === index,
+        misconception: i === index ? "" : opt.misconception,
       }))
     );
   };
@@ -254,6 +261,7 @@ export function TeacherQuestionEditorView() {
                 optionText: opt.text.trim(),
                 isCorrect: opt.isCorrect,
                 orderIndex: opt.orderIndex,
+                misconception: opt.isCorrect ? undefined : opt.misconception?.trim() || undefined,
               }))
             : undefined,
         correctAnswer: computedCorrectAnswer,
@@ -303,6 +311,7 @@ export function TeacherQuestionEditorView() {
                 optionText: opt.text.trim(),
                 isCorrect: opt.isCorrect,
                 orderIndex: opt.orderIndex,
+                misconception: opt.isCorrect ? undefined : opt.misconception?.trim() || undefined,
               }))
             : undefined,
         correctAnswer: computedCorrectAnswer,
@@ -501,6 +510,34 @@ export function TeacherQuestionEditorView() {
           </div>
         </div>
 
+        {/* Reasoning Required Toggle */}
+        <div className="p-3.5 rounded-xl border border-[var(--th-border-subtle)] bg-[var(--th-surface-subtle)] flex items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              id="reasoningRequiredToggle"
+              checked={reasoningRequired}
+              onChange={(e) => setReasoningRequired(e.target.checked)}
+              className="accent-teal-500 h-4 w-4 mt-0.5 cursor-pointer"
+            />
+            <label htmlFor="reasoningRequiredToggle" className="cursor-pointer select-none">
+              <span className="text-xs font-semibold text-[var(--th-text)]">
+                Bắt buộc giải trình tư duy (AI Reasoning Analysis)
+              </span>
+              <p className="text-[11px] text-[var(--th-text-muted)] mt-0.5">
+                Khi kích hoạt, học sinh làm bài sẽ được yêu cầu nhập các bước tư duy/lập luận để hệ thống AI phân tích phương pháp, phát hiện lỗi sai và cập nhật hồ sơ năng lực số (Digital Twin).
+              </p>
+            </label>
+          </div>
+          <span className={`text-[10px] uppercase font-bold px-2.5 py-1 rounded-full border whitespace-nowrap ${
+            reasoningRequired
+              ? "bg-teal-500/10 text-[var(--th-teal)] border-teal-500/30"
+              : "bg-slate-500/10 text-slate-400 border-slate-500/30"
+          }`}>
+            {reasoningRequired ? "Bắt buộc tư duy" : "Chỉ nộp đáp án"}
+          </span>
+        </div>
+
         {/* Row 3: Đề bài & Bộ công cụ Toán học */}
         <div className="space-y-3 border-t border-[var(--th-border-subtle)] pt-4">
           <div className="flex items-center justify-between">
@@ -537,40 +574,62 @@ export function TeacherQuestionEditorView() {
         {/* Row 4: Multiple choice options OR Essay criteria */}
         {questionType === "MultipleChoice" ? (
           <div className="space-y-4 border-t border-[var(--th-border-subtle)] pt-4">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--th-text)]">
-              Các Phương Án Lựa Chọn (Tích chọn 1 phương án đúng) <span className="text-rose-400">*</span>
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--th-text)]">
+                Các Phương Án Lựa Chọn (Tích chọn 1 phương án đúng) <span className="text-rose-400">*</span>
+              </h3>
+              <span className="text-[11px] text-[var(--th-text-muted)]">
+                Gợi ý: Nhập khái niệm sai cho các phương án nhiễu để hỗ trợ chẩn đoán AI
+              </span>
+            </div>
 
             <div className="space-y-3">
               {options.map((opt, idx) => (
                 <div
                   key={opt.label}
-                  className={`p-3 rounded-xl border flex items-center gap-3 transition-colors ${
+                  className={`p-3 rounded-xl border flex flex-col gap-2.5 transition-colors ${
                     opt.isCorrect
                       ? "border-emerald-500/50 bg-emerald-500/10"
                       : "border-[var(--th-border-subtle)] bg-[var(--th-surface-subtle)]"
                   }`}
                 >
-                  <label className="flex items-center gap-2 cursor-pointer font-bold text-xs">
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-2 cursor-pointer font-bold text-xs">
+                      <input
+                        type="radio"
+                        name="correctOption"
+                        checked={opt.isCorrect}
+                        onChange={() => handleOptionCorrectChange(idx)}
+                        className="accent-teal-500 h-4 w-4"
+                      />
+                      <span>Phương án {opt.label}:</span>
+                    </label>
                     <input
-                      type="radio"
-                      name="correctOption"
-                      checked={opt.isCorrect}
-                      onChange={() => handleOptionCorrectChange(idx)}
-                      className="accent-teal-500 h-4 w-4"
+                      type="text"
+                      value={opt.text}
+                      onChange={(e) => handleOptionTextChange(idx, e.target.value)}
+                      placeholder={`Nội dung đáp án ${opt.label} (hỗ trợ LaTeX)...`}
+                      className="th-input flex-1 text-xs"
                     />
-                    <span>Phương án {opt.label}:</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={opt.text}
-                    onChange={(e) => handleOptionTextChange(idx, e.target.value)}
-                    placeholder={`Nội dung đáp án ${opt.label} (hỗ trợ LaTeX)...`}
-                    className="th-input flex-1 text-xs"
-                  />
-                  {opt.text.trim() && (
-                    <div className="min-w-[120px] text-xs text-[var(--th-text-secondary)]">
-                      <TeacherMathFormulaPreview content={opt.text} />
+                    {opt.text.trim() && (
+                      <div className="min-w-[120px] text-xs text-[var(--th-text-secondary)]">
+                        <TeacherMathFormulaPreview content={opt.text} />
+                      </div>
+                    )}
+                  </div>
+
+                  {!opt.isCorrect && (
+                    <div className="flex items-center gap-2 pl-6 pt-1.5 border-t border-[var(--th-border-subtle)]/40">
+                      <span className="text-[11px] font-semibold text-amber-400 whitespace-nowrap flex items-center gap-1">
+                        <span>⚠</span> Quan niệm sai (Misconception):
+                      </span>
+                      <input
+                        type="text"
+                        value={opt.misconception || ""}
+                        onChange={(e) => handleOptionMisconceptionChange(idx, e.target.value)}
+                        placeholder="VD: Nhầm dấu khi rút gọn, Quên điều kiện xác định, Nhầm định lý..."
+                        className="th-input flex-1 text-xs py-1 px-2.5 bg-amber-500/5 border-amber-500/25 placeholder:text-[var(--th-text-muted)]"
+                      />
                     </div>
                   )}
                 </div>

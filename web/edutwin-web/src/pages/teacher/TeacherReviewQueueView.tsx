@@ -325,11 +325,29 @@ export const TeacherReviewQueueView: React.FC = () => {
                       <span style={{ fontWeight: 600, fontSize: "0.95rem", color: "var(--th-text-primary)" }}>
                         {item.studentName}
                       </span>
-                      {item.isFallback ? (
-                        <TeacherStatusBadge status="warning" label="AI Cần Rà Soát" />
-                      ) : (
-                        <TeacherStatusBadge status="info" label="Chờ Duyệt" />
-                      )}
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        {item.hasStudentReviewRequest && (
+                          <span
+                            style={{
+                              fontSize: "0.7rem",
+                              fontWeight: 700,
+                              padding: "2px 8px",
+                              borderRadius: "9999px",
+                              backgroundColor: "rgba(168, 85, 247, 0.2)",
+                              color: "#d8b4fe",
+                              border: "1px solid rgba(168, 85, 247, 0.4)",
+                            }}
+                            title={item.studentReviewReason ? `Học sinh yêu cầu xem lại: "${item.studentReviewReason}"` : "Học sinh yêu cầu xem xét kết quả AI"}
+                          >
+                            🙋 Học sinh khiếu nại
+                          </span>
+                        )}
+                        {item.isFallback ? (
+                          <TeacherStatusBadge status="warning" label="AI Cần Rà Soát" />
+                        ) : (
+                          <TeacherStatusBadge status="info" label="Chờ Duyệt" />
+                        )}
+                      </div>
                     </div>
 
                     <p style={{
@@ -357,6 +375,33 @@ export const TeacherReviewQueueView: React.FC = () => {
           {/* Right Column: Selected Item Detail & Override Form */}
           {selectedItem ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+              {selectedItem.hasStudentReviewRequest && (
+                <div
+                  style={{
+                    padding: "14px 18px",
+                    borderRadius: "12px",
+                    border: "1px solid rgba(168, 85, 247, 0.4)",
+                    backgroundColor: "rgba(168, 85, 247, 0.1)",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: "12px",
+                  }}
+                >
+                  <span style={{ fontSize: "1.3rem" }}>🙋</span>
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "#d8b4fe", display: "block", marginBottom: "4px" }}>
+                      Yêu cầu xem xét lại từ học sinh (Student Review Request)
+                    </span>
+                    <p style={{ margin: "0 0 6px 0", fontSize: "0.875rem", fontWeight: 500, color: "#fff", fontStyle: "italic" }}>
+                      "{selectedItem.studentReviewReason || "Học sinh yêu cầu giáo viên xem xét lại kết quả chấm/phân tích AI."}"
+                    </p>
+                    <span style={{ fontSize: "0.75rem", color: "rgba(216, 180, 254, 0.8)" }}>
+                      Giáo viên vui lòng đối chiếu lời giải của học sinh và thực hiện chấm đè (override) để cập nhật điểm và Digital Twin chính xác.
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {/* Submission Details Card */}
               <div className="th-surface" style={{ borderRadius: "12px", padding: "20px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px", paddingBottom: "12px", borderBottom: "1px solid var(--th-border-color)" }}>

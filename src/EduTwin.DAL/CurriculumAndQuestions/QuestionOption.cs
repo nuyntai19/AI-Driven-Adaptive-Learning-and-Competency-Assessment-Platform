@@ -13,6 +13,7 @@ public class QuestionOption : IMutableTenantAggregate
     public string OptionText { get; set; } = null!;
     public bool IsCorrect { get; set; }
     public uint OrderIndex { get; set; }
+    public string? Misconception { get; set; }
 
     // Audit and MTA
     public DateTime CreatedAt { get; set; }

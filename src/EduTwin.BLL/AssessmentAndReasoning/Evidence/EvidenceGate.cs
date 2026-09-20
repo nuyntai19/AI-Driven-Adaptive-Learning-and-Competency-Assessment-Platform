@@ -24,12 +24,16 @@ public sealed class EvidenceGate : IEvidenceGate
         {
             if (input.EffectiveIsCorrect.HasValue)
             {
+                var reasons = input.IsPostFeedback
+                    ? new[] { EvidenceReasonCodes.SourceRuleFallback, EvidenceReasonCodes.PostFeedbackAssessment }
+                    : new[] { EvidenceReasonCodes.SourceRuleFallback };
+
                 return new EvidenceGateDecision(
                     input.SourceType,
                     EvidenceTrustLevel.Reduced,
                     EvidenceDecisionMode.DeterministicOnly,
-                    0.3m,
-                    [EvidenceReasonCodes.SourceRuleFallback],
+                    input.IsPostFeedback ? 0.2m : 0.3m,
+                    reasons,
                     true,
                     CurrentPolicyVersion,
                     input.AnalysisOverrideVersion);
@@ -52,12 +56,16 @@ public sealed class EvidenceGate : IEvidenceGate
                 return ReviewOnly(input, EvidenceDecisionMode.HumanConfirmed, reasons);
             }
 
+            var overrideReasons = input.IsPostFeedback
+                ? new[] { EvidenceReasonCodes.TeacherHumanConfirmed, EvidenceReasonCodes.PostFeedbackAssessment }
+                : new[] { EvidenceReasonCodes.TeacherHumanConfirmed };
+
             return new EvidenceGateDecision(
                 input.SourceType,
                 EvidenceTrustLevel.Trusted,
                 EvidenceDecisionMode.HumanConfirmed,
-                1m,
-                [EvidenceReasonCodes.TeacherHumanConfirmed],
+                input.IsPostFeedback ? 0.5m : 1m,
+                overrideReasons,
                 false,
                 CurrentPolicyVersion,
                 input.AnalysisOverrideVersion);
@@ -81,23 +89,31 @@ public sealed class EvidenceGate : IEvidenceGate
 
         if (input.AnalysisConfidence < 80m)
         {
+            var reasons50 = input.IsPostFeedback
+                ? new[] { EvidenceReasonCodes.AIConfidence50To79, EvidenceReasonCodes.PostFeedbackAssessment }
+                : new[] { EvidenceReasonCodes.AIConfidence50To79 };
+
             return new EvidenceGateDecision(
                 input.SourceType,
                 EvidenceTrustLevel.Reduced,
                 EvidenceDecisionMode.AIWeighted,
-                0.5m,
-                [EvidenceReasonCodes.AIConfidence50To79],
+                input.IsPostFeedback ? 0.25m : 0.5m,
+                reasons50,
                 false,
                 CurrentPolicyVersion,
                 input.AnalysisOverrideVersion);
         }
 
+        var reasons80 = input.IsPostFeedback
+            ? new[] { EvidenceReasonCodes.AIConfidence80To100, EvidenceReasonCodes.PostFeedbackAssessment }
+            : new[] { EvidenceReasonCodes.AIConfidence80To100 };
+
         return new EvidenceGateDecision(
             input.SourceType,
-            EvidenceTrustLevel.Trusted,
+            input.IsPostFeedback ? EvidenceTrustLevel.Reduced : EvidenceTrustLevel.Trusted,
             EvidenceDecisionMode.AIWeighted,
-            1m,
-            [EvidenceReasonCodes.AIConfidence80To100],
+            input.IsPostFeedback ? 0.35m : 1m,
+            reasons80,
             false,
             CurrentPolicyVersion,
             input.AnalysisOverrideVersion);

@@ -82,12 +82,70 @@ export interface AttemptFeedbackRecommendationDto {
   explanation: string;
 }
 
+export interface AttemptFeedbackStudentSubmissionDto {
+  finalAnswer: string;
+  reasoningText?: string | null;
+  confidence: number;
+  timeSpentSeconds: number;
+  answerChanges: number;
+  attachmentUrl?: string | null;
+}
+
+export interface AttemptFeedbackGradingCriteriaDto {
+  scoringNotes: string;
+  requiredIdeas: string[];
+  commonErrors: string[];
+}
+
+export interface AttemptFeedbackTeacherSolutionDto {
+  correctAnswer: string;
+  solution: string;
+  expectedReasoning?: string | null;
+  gradingCriteria?: AttemptFeedbackGradingCriteriaDto | null;
+}
+
+export interface AttemptFeedbackTeacherFinalEvaluationDto {
+  hasTeacherOverride: boolean;
+  teacherIsCorrect?: boolean | null;
+  teacherScore?: number | null;
+  teacherFeedback?: string | null;
+  reviewedByTeacherName?: string | null;
+  reviewedAt?: string | null;
+  originalAIRawGrade?: AttemptFeedbackGradingDto | null;
+}
+
+export interface StudentReviewRequestDto {
+  requestId: number | string;
+  attemptId: number | string;
+  studentId: string;
+  questionId: number | string;
+  studentComment: string;
+  status: 'Pending' | 'Resolved' | 'Rejected' | string;
+  teacherNote?: string | null;
+  resolvedByTeacherId?: string | null;
+  resolvedAt?: string | null;
+  createdAt: string;
+}
+
+export interface RetryQuotaDto {
+  manualRetriesUsed: number;
+  manualRetriesRemaining: number;
+  cooldownRemainingSeconds: number;
+  canRetry: boolean;
+  nextRetryAllowedAt?: string | null;
+}
+
 export interface AttemptFeedbackDataDto {
   attemptId: string;
   questionId: string;
   status: string;
   grading: AttemptFeedbackGradingDto;
+  studentSubmission?: AttemptFeedbackStudentSubmissionDto | null;
+  teacherSolution?: AttemptFeedbackTeacherSolutionDto | null;
   analysis?: AttemptFeedbackAnalysisDto | null;
+  teacherFinalEvaluation?: AttemptFeedbackTeacherFinalEvaluationDto | null;
+  reviewRequest?: StudentReviewRequestDto | null;
+  retryQuota?: RetryQuotaDto | null;
   twinChange?: AttemptFeedbackTwinChangeDto | null;
   recommendation?: AttemptFeedbackRecommendationDto | null;
 }
@@ -114,4 +172,17 @@ export interface NextQuestionDataDto {
   }>;
   explanation: string;
   answerEvaluationMode: string;
+}
+
+export interface RetryAIAnalysisResponse {
+  attemptId: string;
+  analysisJobId?: string | null;
+  status: string;
+  pollUrl?: string | null;
+  feedbackUrl?: string | null;
+  retryQuota?: RetryQuotaDto | null;
+}
+
+export interface CreateStudentReviewRequestDto {
+  reason: string;
 }

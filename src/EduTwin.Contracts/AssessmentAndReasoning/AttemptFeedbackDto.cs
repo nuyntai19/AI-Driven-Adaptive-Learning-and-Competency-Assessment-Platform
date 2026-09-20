@@ -17,9 +17,59 @@ public sealed class AttemptFeedbackDataDto
     public string QuestionId { get; set; } = null!;
     public string Status { get; set; } = null!;
     public AttemptFeedbackGradingDto Grading { get; set; } = null!;
+    public AttemptFeedbackStudentSubmissionDto? StudentSubmission { get; set; }
+    public AttemptFeedbackTeacherSolutionDto? TeacherSolution { get; set; }
     public AttemptFeedbackAnalysisDto? Analysis { get; set; }
+    public AttemptFeedbackTeacherEvaluationDto? TeacherFinalEvaluation { get; set; }
+    public StudentReviewRequestDto? ReviewRequest { get; set; }
+    public RetryQuotaDto? RetryQuota { get; set; }
     public AttemptFeedbackTwinChangeDto? TwinChange { get; set; }
     public AttemptFeedbackRecommendationDto? Recommendation { get; set; }
+}
+
+public sealed class AttemptFeedbackStudentSubmissionDto
+{
+    public string FinalAnswer { get; set; } = string.Empty;
+    public string? ReasoningText { get; set; }
+    public decimal Confidence { get; set; }
+    public uint TimeSpentSeconds { get; set; }
+    public uint AnswerChanges { get; set; }
+    public string? AttachmentUrl { get; set; }
+}
+
+public sealed class AttemptFeedbackTeacherSolutionDto
+{
+    public string CorrectAnswer { get; set; } = string.Empty;
+    public string Solution { get; set; } = string.Empty;
+    public string? ExpectedReasoning { get; set; }
+    public AttemptFeedbackGradingCriteriaDto? GradingCriteria { get; set; }
+}
+
+public sealed class AttemptFeedbackGradingCriteriaDto
+{
+    public string ScoringNotes { get; set; } = string.Empty;
+    public List<string> RequiredIdeas { get; set; } = new();
+    public List<string> CommonErrors { get; set; } = new();
+}
+
+public sealed class AttemptFeedbackTeacherEvaluationDto
+{
+    public bool HasTeacherOverride { get; set; }
+    public bool? TeacherIsCorrect { get; set; }
+    public decimal? TeacherScore { get; set; }
+    public string? TeacherFeedback { get; set; }
+    public string? ReviewedByTeacherName { get; set; }
+    public DateTime? ReviewedAt { get; set; }
+    public AttemptFeedbackGradingDto? OriginalAIRawGrade { get; set; }
+}
+
+public sealed class RetryQuotaDto
+{
+    public byte ManualRetriesUsed { get; set; }
+    public byte ManualRetriesRemaining { get; set; }
+    public int CooldownRemainingSeconds { get; set; }
+    public bool CanRetry { get; set; }
+    public DateTime? NextRetryAllowedAt { get; set; }
 }
 
 public sealed class AttemptFeedbackGradingDto
@@ -45,6 +95,8 @@ public sealed class AttemptFeedbackAnalysisDto
     public bool IsFallback { get; set; }
     public bool NeedsTeacherReview { get; set; }
     public bool HasTeacherOverride { get; set; }
+    public bool IsRawAI { get; set; } = true;
+    public string? Model { get; set; }
 }
 
 public sealed class AttemptFeedbackRootCauseNodeDto

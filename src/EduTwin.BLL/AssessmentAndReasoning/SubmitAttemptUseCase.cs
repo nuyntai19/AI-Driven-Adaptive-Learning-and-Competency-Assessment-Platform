@@ -127,8 +127,18 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
                 }
             }
 
+            var isPostFeedback = await _dbContext.Attempts
+                .AsNoTracking()
+                .AnyAsync(
+                    candidate =>
+                        candidate.CenterId == submission.CenterId &&
+                        candidate.StudentId == submission.StudentId &&
+                        candidate.QuestionId == submission.QuestionId &&
+                        candidate.SolutionExposedAt != null,
+                    cancellationToken);
+
             var now = _timeProvider.GetUtcNow().UtcDateTime;
-            var attempt = CreateAttempt(submission, now);
+            var attempt = CreateAttempt(submission, now, isPostFeedback);
             var job = CreateAnalysisJob(
                 submission,
                 attempt,
@@ -272,7 +282,8 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
 
     private static Attempt CreateAttempt(
         ValidatedAttemptSubmission submission,
-        DateTime now) =>
+        DateTime now,
+        bool isPostFeedback = false) =>
         new()
         {
             CenterId = submission.CenterId,
@@ -291,6 +302,10 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
             ReasoningLanguage = submission.ReasoningLanguage,
             Status = AttemptStatus.PendingAnalysis,
             ClientSubmissionId = submission.ClientSubmissionId,
+            ManualRetryCount = 0,
+            LastManualRetryAt = null,
+            SolutionExposedAt = null,
+            IsPostFeedback = isPostFeedback,
             CreatedAt = now,
             CreatedBy = submission.StudentId,
             UpdatedAt = now

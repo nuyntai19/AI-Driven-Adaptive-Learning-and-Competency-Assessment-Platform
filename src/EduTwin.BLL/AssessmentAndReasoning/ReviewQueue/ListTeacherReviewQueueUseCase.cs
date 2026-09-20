@@ -4,6 +4,7 @@ using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.Contracts.Organization;
+using EduTwin.DAL.AssessmentAndReasoning;
 using EduTwin.DAL.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -121,23 +122,37 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
                 .ThenInclude(attempt => attempt.Question)
             .ToListAsync(cancellationToken);
 
-        var data = entities.Select(evidence => new TeacherReviewQueueItemDto
+        var attemptIds = entities.Select(e => e.AttemptId).Distinct().ToList();
+        var reviewRequests = attemptIds.Count > 0
+            ? await _dbContext.StudentReviewRequests
+                .AsNoTracking()
+                .Where(r => r.CenterId == centerId && attemptIds.Contains(r.AttemptId) && r.Status == StudentReviewRequestStatus.Pending)
+                .ToDictionaryAsync(r => r.AttemptId, cancellationToken)
+            : new Dictionary<ulong, StudentReviewRequest>();
+
+        var data = entities.Select(evidence =>
         {
-            AttemptId = evidence.AttemptId.ToString(CultureInfo.InvariantCulture),
-            StudentId = evidence.Attempt.StudentId.ToString("D").ToLowerInvariant(),
-            StudentName = evidence.Attempt.Student.FullName,
-            QuestionId = evidence.Attempt.QuestionId.ToString(CultureInfo.InvariantCulture),
-            SubjectId = evidence.Attempt.Question.SubjectId.ToString("D").ToLowerInvariant(),
-            QuestionText = evidence.Attempt.Question.QuestionText,
-            AnalysisId = evidence.AnalysisId!.Value.ToString(CultureInfo.InvariantCulture),
-            FinalAnswer = evidence.Attempt.FinalAnswer,
-            ReasoningText = evidence.Attempt.ReasoningText,
-            IsFallback = evidence.Analysis!.IsFallback,
-            ReasoningQuality = evidence.Analysis.ReasoningQuality,
-            AnalysisFeedback = evidence.Analysis!.Feedback,
-            AnalysisConfidence = evidence.Analysis.AnalysisConfidence,
-            Evidence = EvidenceProjectionMapper.Map(evidence),
-            SubmittedAt = NormalizeUtc(evidence.Attempt.CreatedAt)
+            var hasRequest = reviewRequests.TryGetValue(evidence.AttemptId, out var req);
+            return new TeacherReviewQueueItemDto
+            {
+                AttemptId = evidence.AttemptId.ToString(CultureInfo.InvariantCulture),
+                StudentId = evidence.Attempt.StudentId.ToString("D").ToLowerInvariant(),
+                StudentName = evidence.Attempt.Student.FullName,
+                QuestionId = evidence.Attempt.QuestionId.ToString(CultureInfo.InvariantCulture),
+                SubjectId = evidence.Attempt.Question.SubjectId.ToString("D").ToLowerInvariant(),
+                QuestionText = evidence.Attempt.Question.QuestionText,
+                AnalysisId = evidence.AnalysisId!.Value.ToString(CultureInfo.InvariantCulture),
+                FinalAnswer = evidence.Attempt.FinalAnswer,
+                ReasoningText = evidence.Attempt.ReasoningText,
+                IsFallback = evidence.Analysis!.IsFallback,
+                ReasoningQuality = evidence.Analysis.ReasoningQuality,
+                AnalysisFeedback = evidence.Analysis!.Feedback,
+                AnalysisConfidence = evidence.Analysis.AnalysisConfidence,
+                Evidence = EvidenceProjectionMapper.Map(evidence),
+                SubmittedAt = NormalizeUtc(evidence.Attempt.CreatedAt),
+                HasStudentReviewRequest = hasRequest,
+                StudentReviewReason = hasRequest ? req!.StudentComment : null
+            };
         }).ToList();
 
         return ListTeacherReviewQueueResult.Success(

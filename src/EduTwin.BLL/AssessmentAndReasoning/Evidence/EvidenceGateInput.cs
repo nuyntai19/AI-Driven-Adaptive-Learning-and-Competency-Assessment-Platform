@@ -12,4 +12,5 @@ public sealed record EvidenceGateInput(
     bool? EffectiveIsCorrect,
     decimal? AnalysisConfidence,
     uint AnalysisOverrideVersion,
-    IReadOnlyCollection<string>? DiagnosticReasonCodes = null);
+    IReadOnlyCollection<string>? DiagnosticReasonCodes = null,
+    bool IsPostFeedback = false);

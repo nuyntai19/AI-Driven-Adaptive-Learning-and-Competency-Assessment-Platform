@@ -51,6 +51,7 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
 
         var attempt = await _dbContext.Attempts.AsNoTracking()
             .Include(a => a.Question)
+            .Include(a => a.Attachment)
             .Where(a => a.CenterId == centerId && a.AttemptId == attemptId)
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -80,9 +81,28 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
             }
         }
 
-        // Load ReasoningAnalysis
+        // Record that student has viewed the solution/feedback if not already set
+        if (!attempt.SolutionExposedAt.HasValue)
+        {
+            var tracked = await _dbContext.Attempts
+                .FirstOrDefaultAsync(a => a.CenterId == centerId && a.AttemptId == attemptId, cancellationToken);
+            if (tracked != null && !tracked.SolutionExposedAt.HasValue)
+            {
+                tracked.SolutionExposedAt = DateTime.UtcNow;
+                await _dbContext.SaveChangesAsync(cancellationToken);
+            }
+        }
+
+        // Load ReasoningAnalysis with teacher user info
         var analysis = await _dbContext.ReasoningAnalyses.AsNoTracking()
+            .Include(ra => ra.OverriddenByUser)
             .Where(ra => ra.CenterId == centerId && ra.AttemptId == attemptId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        // Load Student Review Request if any
+        var reviewRequest = await _dbContext.StudentReviewRequests.AsNoTracking()
+            .Where(r => r.CenterId == centerId && r.AttemptId == attemptId)
+            .OrderByDescending(r => r.RequestId)
             .FirstOrDefaultAsync(cancellationToken);
 
         // Load TwinChange from TwinUpdateHistory
@@ -104,6 +124,48 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
         var effectiveScore = analysis?.OverrideAwardedScore ?? attempt.AwardedScore;
         var maxScore = attempt.Question?.MaxScore ?? 1.00m;
 
+        // 1. Student Submission
+        var studentSubmissionDto = new AttemptFeedbackStudentSubmissionDto
+        {
+            FinalAnswer = attempt.FinalAnswer,
+            ReasoningText = attempt.ReasoningText,
+            Confidence = attempt.Confidence,
+            TimeSpentSeconds = attempt.TimeSpentSeconds,
+            AnswerChanges = attempt.AnswerChanges,
+            AttachmentUrl = attempt.Attachment != null
+                ? $"/api/v1/attachments/attempts/{attempt.AttemptId}"
+                : null
+        };
+
+        // 2. Teacher Solution & Reference
+        AttemptFeedbackTeacherSolutionDto? teacherSolutionDto = null;
+        if (attempt.Question != null)
+        {
+            AttemptFeedbackGradingCriteriaDto? criteriaDto = null;
+            if (attempt.Question.GradingCriteria != null)
+            {
+                criteriaDto = new AttemptFeedbackGradingCriteriaDto
+                {
+                    ScoringNotes = attempt.Question.GradingCriteria.ScoringNotes ?? string.Empty,
+                    RequiredIdeas = attempt.Question.GradingCriteria.RequiredIdeas != null
+                        ? new List<string>(attempt.Question.GradingCriteria.RequiredIdeas)
+                        : new List<string>(),
+                    CommonErrors = attempt.Question.GradingCriteria.CommonErrors != null
+                        ? new List<string>(attempt.Question.GradingCriteria.CommonErrors)
+                        : new List<string>()
+                };
+            }
+
+            teacherSolutionDto = new AttemptFeedbackTeacherSolutionDto
+            {
+                CorrectAnswer = attempt.Question.CorrectAnswer,
+                Solution = attempt.Question.Solution,
+                ExpectedReasoning = attempt.Question.ExpectedReasoning,
+                GradingCriteria = criteriaDto
+            };
+        }
+
+        // 3. AI Analysis
         AttemptFeedbackAnalysisDto? analysisDto = null;
         if (analysis != null)
         {
@@ -170,9 +232,80 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
                 Feedback = analysis.OverrideFeedback ?? analysis.Feedback,
                 IsFallback = analysis.IsFallback,
                 NeedsTeacherReview = analysis.NeedsTeacherReview,
-                HasTeacherOverride = analysis.OverrideVersion > 0
+                HasTeacherOverride = analysis.OverrideVersion > 0,
+                IsRawAI = true,
+                Model = analysis.ModelName ?? "Gemini AI"
             };
         }
+
+        // 4. Teacher Final Evaluation (Override)
+        AttemptFeedbackTeacherEvaluationDto? teacherEvaluationDto = null;
+        if (analysis != null && analysis.OverrideVersion > 0)
+        {
+            var teacherName = analysis.OverriddenByUser?.DisplayName ?? analysis.OverriddenByUser?.Username ?? "Teacher";
+            teacherEvaluationDto = new AttemptFeedbackTeacherEvaluationDto
+            {
+                HasTeacherOverride = true,
+                TeacherIsCorrect = analysis.OverrideIsCorrect,
+                TeacherScore = analysis.OverrideAwardedScore,
+                TeacherFeedback = analysis.OverrideFeedback,
+                ReviewedByTeacherName = teacherName,
+                ReviewedAt = analysis.OverriddenAt,
+                OriginalAIRawGrade = new AttemptFeedbackGradingDto
+                {
+                    IsCorrect = attempt.IsCorrect,
+                    AwardedScore = attempt.AwardedScore,
+                    MaxScore = maxScore
+                }
+            };
+        }
+
+        // 5. Student Review Request
+        StudentReviewRequestDto? reviewRequestDto = null;
+        if (reviewRequest != null)
+        {
+            reviewRequestDto = new StudentReviewRequestDto
+            {
+                RequestId = reviewRequest.RequestId,
+                AttemptId = reviewRequest.AttemptId,
+                StudentId = reviewRequest.StudentId,
+                QuestionId = reviewRequest.QuestionId,
+                StudentComment = reviewRequest.StudentComment,
+                Status = reviewRequest.Status,
+                TeacherNote = reviewRequest.TeacherNote,
+                ResolvedByTeacherId = reviewRequest.ResolvedByTeacherId,
+                ResolvedAt = reviewRequest.ResolvedAt,
+                CreatedAt = reviewRequest.CreatedAt
+            };
+        }
+
+        // 6. Retry Quota & Cooldown
+        const byte maxManualRetries = 3;
+        const int cooldownPeriodSeconds = 30;
+        var retriesUsed = attempt.ManualRetryCount;
+        var retriesRemaining = (byte)Math.Max(0, maxManualRetries - retriesUsed);
+
+        var cooldownRemaining = 0;
+        DateTime? nextRetryAllowedAt = null;
+        if (attempt.LastManualRetryAt.HasValue)
+        {
+            var elapsedSeconds = (DateTime.UtcNow - attempt.LastManualRetryAt.Value).TotalSeconds;
+            if (elapsedSeconds < cooldownPeriodSeconds)
+            {
+                cooldownRemaining = (int)Math.Ceiling(cooldownPeriodSeconds - elapsedSeconds);
+                nextRetryAllowedAt = attempt.LastManualRetryAt.Value.AddSeconds(cooldownPeriodSeconds);
+            }
+        }
+
+        var canRetry = retriesRemaining > 0 && cooldownRemaining == 0;
+        var retryQuotaDto = new RetryQuotaDto
+        {
+            ManualRetriesUsed = retriesUsed,
+            ManualRetriesRemaining = retriesRemaining,
+            CooldownRemainingSeconds = cooldownRemaining,
+            CanRetry = canRetry,
+            NextRetryAllowedAt = nextRetryAllowedAt
+        };
 
         AttemptFeedbackTwinChangeDto? twinChangeDto = null;
         if (twinHistory != null)
@@ -214,7 +347,12 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
                 AwardedScore = effectiveScore,
                 MaxScore = maxScore
             },
+            StudentSubmission = studentSubmissionDto,
+            TeacherSolution = teacherSolutionDto,
             Analysis = analysisDto,
+            TeacherFinalEvaluation = teacherEvaluationDto,
+            ReviewRequest = reviewRequestDto,
+            RetryQuota = retryQuotaDto,
             TwinChange = twinChangeDto,
             Recommendation = recommendationDto
         };

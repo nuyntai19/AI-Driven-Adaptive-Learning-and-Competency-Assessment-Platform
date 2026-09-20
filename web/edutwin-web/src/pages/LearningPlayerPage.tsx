@@ -20,6 +20,7 @@ import {
   shouldContinuePolling,
 } from "../utils/polling";
 import { StudentSubjectRequiredState } from "../components/student/StudentSubjectRequiredState";
+import { AttemptFeedbackHierarchy } from "../components/student/AttemptFeedbackHierarchy";
 import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
 import { MathInputToolbar } from "../components/math/MathInputToolbar";
 import { VisualMathField, type VisualMathFieldRef } from "../components/math/VisualMathField";
@@ -549,9 +550,20 @@ export const LearningPlayerPage = () => {
         }
 
         if (isTerminalStatus(currentStatus)) {
+          try {
+            const feedbackRes = await getAttemptFeedback(result.attemptId);
+            if (isSubscribed) {
+              setFeedbackData(feedbackRes);
+              setIsSubmitting(false);
+              setPollingJobId(null);
+              return;
+            }
+          } catch {
+            // fallback if feedback fetch fails
+          }
           setIsSubmitting(false);
           setPollingJobId(null);
-          setSubmissionError(`Quá trình phân tích thất bại (${currentStatus}). Bạn có thể nộp lại.`);
+          setSubmissionError(`Quá trình phân tích AI kết thúc với trạng thái (${currentStatus}). Bạn có thể nộp lại.`);
           setCanResubmit(true);
           return;
         }
@@ -563,9 +575,20 @@ export const LearningPlayerPage = () => {
           pollInterval = Math.min(pollInterval + 500, 3000);
           setTimeout(poll, pollInterval);
         } else {
+          try {
+            const feedbackRes = await getAttemptFeedback(result.attemptId);
+            if (isSubscribed) {
+              setFeedbackData(feedbackRes);
+              setIsSubmitting(false);
+              setPollingJobId(null);
+              return;
+            }
+          } catch {
+            // fallback
+          }
           setIsSubmitting(false);
           setPollingJobId(null);
-          setSubmissionError("Quá thời gian phân tích dự kiến. Bạn có thể nộp lại để thử lại.");
+          setSubmissionError("Quá thời gian phân tích AI dự kiến. Bài làm đã được ghi nhận an toàn.");
           setCanResubmit(true);
         }
       } catch {
@@ -1079,7 +1102,7 @@ export const LearningPlayerPage = () => {
 
   // 2. Feedback Screen (Results after submission)
   if (feedbackData) {
-    const { grading, analysis, twinChange, recommendation } = feedbackData;
+    const { grading, twinChange, recommendation } = feedbackData;
 
     return (
       <div className="min-h-screen bg-[#f8fafc] dark:bg-[#090d16] p-6 text-slate-800 dark:text-slate-100">
@@ -1117,77 +1140,19 @@ export const LearningPlayerPage = () => {
             </div>
           </div>
 
-          {/* Reasoning Analysis Card */}
-          {analysis && (
-            <div className="rounded-3xl bg-white dark:bg-[#0f172a] p-6 sm:p-8 shadow-xs border border-slate-200/80 dark:border-slate-800 space-y-5">
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
-                <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
-                  Phân Tích Tư Duy & Lập Luận (AI Reasoning Analysis)
-                </h3>
-                {analysis.qualityBand && (
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-bold ${
-                      analysis.qualityBand === "Good"
-                        ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300"
-                        : analysis.qualityBand === "Acceptable"
-                        ? "bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300"
-                        : analysis.qualityBand === "NeedsImprovement"
-                        ? "bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300"
-                        : "bg-red-100 dark:bg-red-950/60 text-red-800 dark:text-red-300"
-                    }`}
-                  >
-                    Bậc tư duy: {analysis.qualityBand}
-                  </span>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                {analysis.methodDetected && (
-                  <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-4 border border-slate-100 dark:border-slate-700/60">
-                    <p className="text-xs font-medium text-slate-400">Phương pháp nhận diện</p>
-                    <p className="mt-1 text-sm font-bold text-slate-900 dark:text-white">{analysis.methodDetected}</p>
-                  </div>
-                )}
-                {analysis.reasoningQuality !== null && analysis.reasoningQuality !== undefined && (
-                  <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-4 border border-slate-100 dark:border-slate-700/60">
-                    <p className="text-xs font-medium text-slate-400">Chất lượng lập luận</p>
-                    <p className="mt-1 text-sm font-black text-indigo-600 dark:text-indigo-400">
-                      {analysis.reasoningQuality} / 100 điểm
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              <div className="rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/50 p-4 border border-indigo-200/60 dark:border-indigo-800">
-                <p className="text-xs font-extrabold text-indigo-900 dark:text-indigo-300 uppercase tracking-wider">
-                  Nhận xét từ AI
-                </p>
-                <p className="mt-1 text-sm text-indigo-950 dark:text-indigo-200 leading-relaxed font-medium">
-                  {analysis.feedback}
-                </p>
-              </div>
-
-              {analysis.missingSteps && analysis.missingSteps.length > 0 && (
-                <div>
-                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                    Các bước còn thiếu hoặc cần bổ sung:
-                  </p>
-                  <ul className="list-inside list-disc space-y-1 text-sm text-slate-600 dark:text-slate-400">
-                    {analysis.missingSteps.map((step, idx) => (
-                      <li key={idx}>{step}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {analysis.misconception && (
-                <div className="rounded-2xl bg-rose-50 dark:bg-rose-950/40 p-4 text-xs text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
-                  <span className="font-bold">Quan niệm sai lầm: </span>
-                  {analysis.misconception}
-                </div>
-              )}
-            </div>
-          )}
+          {/* 4-Tier Hierarchy: Student Work -> AI Reasoning -> Teacher Solution -> Teacher Evaluation */}
+          <AttemptFeedbackHierarchy
+            feedbackData={feedbackData}
+            onRefreshFeedback={async () => {
+              const res = await getAttemptFeedback(feedbackData.attemptId);
+              setFeedbackData(res);
+            }}
+            onPollJob={(jobId) => {
+              setPollingJobId(jobId);
+              searchParams.set("analysisJobId", jobId);
+              setSearchParams(searchParams, { replace: true });
+            }}
+          />
 
           {/* Digital Twin Change Card */}
           {twinChange && (

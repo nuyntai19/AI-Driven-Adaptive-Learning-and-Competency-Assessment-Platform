@@ -17,4 +17,6 @@ public sealed class TeacherReviewQueueItemDto
     public decimal? AnalysisConfidence { get; set; }
     public EvidenceDecisionDto Evidence { get; set; } = new();
     public DateTime SubmittedAt { get; set; }
+    public bool HasStudentReviewRequest { get; set; }
+    public string? StudentReviewReason { get; set; }
 }

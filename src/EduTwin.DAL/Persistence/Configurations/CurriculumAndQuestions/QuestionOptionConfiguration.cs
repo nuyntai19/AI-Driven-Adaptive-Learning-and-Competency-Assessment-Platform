@@ -46,6 +46,11 @@ public class QuestionOptionConfiguration : IEntityTypeConfiguration<QuestionOpti
             .HasColumnName("order_index")
             .HasColumnType("int unsigned");
 
+        builder.Property(o => o.Misconception)
+            .HasColumnName("misconception")
+            .HasColumnType("varchar(500)")
+            .IsRequired(false);
+
         // MTA Properties
         builder.Property(o => o.CreatedAt).HasColumnName("created_at").HasColumnType("datetime(6)").IsRequired();
         builder.Property(o => o.CreatedBy).HasColumnName("created_by").HasColumnType("varchar(36)");

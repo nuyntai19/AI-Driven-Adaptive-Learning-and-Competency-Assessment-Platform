@@ -206,6 +206,7 @@ public class UpdateQuestionUseCase : IUpdateQuestionUseCase
                     opt.OptionText = optInput.OptionText;
                     opt.IsCorrect = optInput.IsCorrect;
                     opt.OrderIndex = optInput.OrderIndex;
+                    opt.Misconception = optInput.Misconception;
                     opt.UpdatedAt = now;
                     opt.UpdatedBy = actorId;
                     newOptions.Add(opt);
@@ -222,6 +223,7 @@ public class UpdateQuestionUseCase : IUpdateQuestionUseCase
                         OptionText = optInput.OptionText,
                         IsCorrect = optInput.IsCorrect,
                         OrderIndex = optInput.OrderIndex,
+                        Misconception = optInput.Misconception,
                         CreatedAt = now,
                         CreatedBy = actorId,
                         UpdatedAt = now,
