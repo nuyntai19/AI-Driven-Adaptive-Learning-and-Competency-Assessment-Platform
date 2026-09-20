@@ -314,7 +314,7 @@ export function TeacherClassDashboardView() {
                             topic.averageMastery < 50
                               ? "bg-rose-500"
                               : topic.averageMastery < 70
-                              ? "bg-amber-500"
+                              ? "bg-sky-500"
                               : "bg-teal-500"
                           }`}
                           style={{ width: `${Math.min(100, Math.max(0, topic.averageMastery))}%` }}

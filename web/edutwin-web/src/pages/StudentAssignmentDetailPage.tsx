@@ -3,6 +3,7 @@ import { useParams, Link, useSearchParams } from "react-router-dom";
 import { isAxiosError } from "axios";
 import { useStudentAssignment } from "../features/assignments/useStudentAssignment";
 import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
+import { RichMathText } from "../components/math/RichMathText";
 import { getSubjectTheme } from "../components/student/subjectTheme";
 import { StudentBadge } from "../components/student/StudentBadge";
 import { StudentSubjectPattern } from "../components/student/StudentSubjectPattern";
@@ -307,7 +308,7 @@ export const StudentAssignmentDetailPage: React.FC = () => {
 
               {/* Question content */}
               <div className="text-sm sm:text-base text-stone-800 dark:text-stone-200 leading-relaxed font-medium">
-                {question.questionText}
+                <RichMathText text={question.questionText} />
               </div>
 
               {/* KaTeX preview if formula detected */}
@@ -331,7 +332,9 @@ export const StudentAssignmentDetailPage: React.FC = () => {
                       <span className="w-5 h-5 rounded-full bg-white dark:bg-stone-800 border border-stone-300 dark:border-stone-700 font-bold text-stone-700 dark:text-stone-300 flex items-center justify-center text-[10px] shrink-0">
                         {opt.label}
                       </span>
-                      <span className="text-stone-800 dark:text-stone-200 truncate">{opt.text}</span>
+                      <span className="text-stone-800 dark:text-stone-200 truncate">
+                        <RichMathText text={opt.text} />
+                      </span>
                     </div>
                   ))}
                 </div>

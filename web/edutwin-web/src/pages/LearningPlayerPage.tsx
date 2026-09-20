@@ -1810,7 +1810,7 @@ export const LearningPlayerPage = () => {
               {/* Question Text Statement */}
               <div>
                 <div className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-relaxed whitespace-pre-wrap">
-                  {question?.questionText}
+                  <RichMathText content={question?.questionText} />
                 </div>
                 {question?.questionText && /[\\[{^_\\]]/.test(question.questionText) && (
                   <div className="mt-3">
@@ -1950,7 +1950,7 @@ export const LearningPlayerPage = () => {
                           </span>
                           <div className="flex-1 min-w-0">
                             <span className="text-sm font-semibold truncate block">
-                              {option.text}
+                              <RichMathText content={option.text} />
                             </span>
                             {isSelected && isAssignmentSubmitted && (
                               <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 block mt-0.5">

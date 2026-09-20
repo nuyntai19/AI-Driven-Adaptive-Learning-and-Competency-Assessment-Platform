@@ -448,7 +448,7 @@ export function TeacherAssignmentEditorView() {
                   onClick={() => handleStepChange(s.id)}
                   className={`w-full text-left p-2.5 sm:p-3 rounded-xl transition text-xs sm:text-sm flex items-center gap-2.5 ${
                     isCurrent
-                      ? "bg-[#fed766]/30 dark:bg-amber-950/50 border-[1.5px] border-[#ff946f] shadow-sm text-slate-950 dark:text-amber-100 font-black"
+                      ? "bg-[var(--at-accent-wash)] border-[1.5px] border-[var(--at-accent)] shadow-sm text-[var(--th-text-primary)] font-black"
                       : isDone
                       ? "bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-500/40 text-emerald-950 dark:text-emerald-200 font-bold hover:bg-emerald-100/50"
                       : "border border-transparent text-[var(--th-text)] font-bold hover:bg-[var(--th-surface-muted)] hover:border-[var(--th-border-subtle)]"
@@ -457,7 +457,7 @@ export function TeacherAssignmentEditorView() {
                   <span
                     className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-black shadow-sm ${
                       isCurrent
-                        ? "bg-[#ff946f] text-white"
+                        ? "bg-[var(--at-accent)] text-white"
                         : isDone
                         ? "bg-emerald-600 text-white"
                         : "border-[1.5px] border-[var(--th-border)] bg-[var(--th-surface-muted)] text-[var(--th-text)]"

@@ -6,6 +6,7 @@ import { organizationApi } from "../api/organizationApi";
 import type { ClassDto } from "../types/organization";
 import { TeacherOverrideModal } from "../components/TeacherOverrideModal";
 import { ScratchpadAttachmentDrawer } from "../components/ScratchpadAttachmentDrawer";
+import { RichMathText } from "../components/math/RichMathText";
 import type { TeacherReviewQueueItemDto } from "../types/reviews";
 import { useAuthStore } from "../stores/authStore";
 import { permissions } from "../auth/permissions";
@@ -344,7 +345,7 @@ const CenterManagerReviewQueueView: React.FC = () => {
                         </div>
 
                         <p className="mt-1 text-xs text-[var(--cm-text-secondary)] line-clamp-1">
-                          {item.questionText}
+                          <RichMathText text={item.questionText} />
                         </p>
 
                         <div className="mt-2.5 flex items-center gap-2 flex-wrap">
@@ -442,7 +443,7 @@ const CenterManagerReviewQueueView: React.FC = () => {
                           Nội dung câu hỏi
                         </span>
                         <div className="rounded-lg bg-[var(--cm-surface-raised)] p-3.5 text-sm text-[var(--cm-text)] border border-[var(--cm-border-subtle)] leading-relaxed font-medium">
-                          {selectedReview.questionText}
+                          <RichMathText text={selectedReview.questionText} />
                         </div>
                       </div>
                     </div>
@@ -832,7 +833,9 @@ const TeacherReviewQueueLegacyView: React.FC = () => {
                             </Link>
                           </td>
                           <td className="px-6 py-4 max-w-md">
-                            <p className="text-slate-800 line-clamp-1 font-medium">{item.questionText}</p>
+                            <p className="text-slate-800 line-clamp-1 font-medium">
+                              <RichMathText text={item.questionText} />
+                            </p>
                             <p className="mt-1 text-xs text-slate-500">
                               Đáp án: <span className="font-mono font-semibold text-slate-700">{item.finalAnswer || "(Trống)"}</span>
                             </p>

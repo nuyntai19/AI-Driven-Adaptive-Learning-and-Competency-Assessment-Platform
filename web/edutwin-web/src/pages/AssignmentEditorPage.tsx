@@ -35,6 +35,7 @@ import {
 } from "../components/centerManager/CenterManagerPrimitives";
 import { ConfirmDialog } from "../components/centerManager/CenterManagerOverlays";
 import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
+import { RichMathText } from "../components/math/RichMathText";
 
 const toLocalDateTime = (value: string | null) => {
   if (!value) return "";
@@ -816,7 +817,7 @@ function CenterManagerAssignmentEditorView() {
                             )}
                           </div>
                           <p className="text-sm font-medium text-[var(--cm-text)] line-clamp-2">
-                            {q.questionText}
+                            <RichMathText text={q.questionText} />
                           </p>
                           {q.questionText.includes("\\") && (
                             <div className="pt-1">

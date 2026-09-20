@@ -620,15 +620,15 @@ export function TeacherQuestionEditorView() {
 
                   {!opt.isCorrect && (
                     <div className="flex items-center gap-2 pl-6 pt-1.5 border-t border-[var(--th-border-subtle)]/40">
-                      <span className="text-[11px] font-semibold text-amber-400 whitespace-nowrap flex items-center gap-1">
-                        <span>⚠</span> Quan niệm sai (Misconception):
+                      <span className="text-[11px] font-semibold text-sky-500 dark:text-sky-300 whitespace-nowrap flex items-center gap-1">
+                        <span>💡</span> Quan niệm sai (Misconception):
                       </span>
                       <input
                         type="text"
                         value={opt.misconception || ""}
                         onChange={(e) => handleOptionMisconceptionChange(idx, e.target.value)}
                         placeholder="VD: Nhầm dấu khi rút gọn, Quên điều kiện xác định, Nhầm định lý..."
-                        className="th-input flex-1 text-xs py-1 px-2.5 bg-amber-500/5 border-amber-500/25 placeholder:text-[var(--th-text-muted)]"
+                        className="th-input flex-1 text-xs py-1 px-2.5 bg-sky-500/5 border-sky-500/25 placeholder:text-[var(--th-text-muted)]"
                       />
                     </div>
                   )}

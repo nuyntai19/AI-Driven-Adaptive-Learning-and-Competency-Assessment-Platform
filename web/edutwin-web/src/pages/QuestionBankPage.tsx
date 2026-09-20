@@ -29,6 +29,7 @@ import {
 } from "../components/centerManager/CenterManagerPrimitives";
 import { ConfirmDialog } from "../components/centerManager/CenterManagerOverlays";
 import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
+import { RichMathText } from "../components/math/RichMathText";
 import { QuestionImportModal } from "../components/teacher/QuestionImportModal";
 
 // =============================================================================
@@ -439,7 +440,7 @@ function CenterManagerQuestionBankView() {
 
                     {/* Question text with KaTeX preview support */}
                     <div className="text-sm font-medium text-[var(--cm-text)] line-clamp-3">
-                      {q.questionText}
+                      <RichMathText text={q.questionText} />
                     </div>
                     {q.questionText.includes("\\") && (
                       <div className="text-xs">
@@ -782,7 +783,9 @@ function LegacyQuestionBankPage() {
                     {question.status}
                   </span>
                 </div>
-                <h3 className="font-medium text-slate-800 line-clamp-2 mb-3">{question.questionText}</h3>
+                <h3 className="font-medium text-slate-800 line-clamp-2 mb-3">
+                  <RichMathText text={question.questionText} />
+                </h3>
 
                 <div className="flex flex-wrap gap-3 text-xs text-slate-500 mb-4">
                   <div className="flex items-center gap-1">
