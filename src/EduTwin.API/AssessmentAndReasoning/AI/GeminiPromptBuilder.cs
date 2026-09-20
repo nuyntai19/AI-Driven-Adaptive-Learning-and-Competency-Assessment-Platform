@@ -1,3 +1,4 @@
+using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using EduTwin.BLL.AssessmentAndReasoning.AI;
@@ -27,7 +28,7 @@ public sealed class GeminiPromptBuilder
             "4. Rubric-First Evaluation: Evaluate the response against rubric grading criteria (required ideas, common errors, scoring notes) rather than matching step-by-step to the reference solution.",
             "5. Genuine Errors Only: Only penalize when there is an actual conceptual error, invalid inference, calculation mistake, or missing essential required idea.",
             "6. Uncertainty Calibration & Teacher Review: If the student's reasoning is ambiguous, uses unconventional yet plausible methods, or cannot be evaluated with high certainty, calibrate confidence accordingly and clearly explain the nuance in the pedagogical feedback so a teacher can review it.",
-            "7. Adaptive AI Solution Generation: If the student solved correctly, provide a refined and optimized solution. If the student made an error, point out the divergence and provide a corrected step-by-step solution. If the student gave no reasoning or got stuck, generate a step-by-step adaptive solution. Format mathematical expressions with KaTeX ($...$ or $$...$$) and write explanations in the requested language.",
+            "7. Adaptive AI Solution Generation: If the student solved correctly, provide a refined and optimized solution. If the student made an error, point out the divergence and provide a corrected step-by-step solution. If the student gave no reasoning or got stuck, generate a step-by-step adaptive solution. CRITICAL MATH FORMATTING: Wrap ONLY pure mathematical expressions, formulas, and numbers in KaTeX delimiters ($...$ or $$...$$). NEVER wrap natural language words, phrases, sentences, English phrases, or Vietnamese prose inside $...$ delimiters. All prose, words, and text explanations must remain regular unescaped text outside math delimiters.",
             "Set solutionType to exactly one of REFINED, CORRECTED, GENERATED, or MODEL_ANSWER; use null only when aiSolution is also null.",
             "Return only the structured response requested by the provider configuration.",
             "INPUT_JSON_BEGIN",

@@ -17,15 +17,18 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
     private readonly EduTwinDbContext _dbContext;
     private readonly ITenantContext _tenantContext;
     private readonly TimeProvider _timeProvider;
+    private readonly IAssignmentResultCalculator _resultCalculator;
 
     public GetStudentAssignmentUseCase(
         EduTwinDbContext dbContext,
         ITenantContext tenantContext,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        IAssignmentResultCalculator resultCalculator)
     {
         _dbContext = dbContext;
         _tenantContext = tenantContext;
         _timeProvider = timeProvider;
+        _resultCalculator = resultCalculator;
     }
 
     public async Task<GetStudentAssignmentResult> ExecuteAsync(Guid assignmentId, CancellationToken cancellationToken)
@@ -94,10 +97,19 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
             .Distinct()
             .ToListAsync(cancellationToken);
         var hasAttachmentSet = attachments.ToHashSet();
+        var analysesByAttemptId = attemptIds.Count == 0
+            ? new System.Collections.Generic.Dictionary<ulong, EduTwin.DAL.AssessmentAndReasoning.ReasoningAnalysis>()
+            : await _dbContext.ReasoningAnalyses
+                .AsNoTracking()
+                .Where(a => a.CenterId == centerId && attemptIds.Contains(a.AttemptId))
+                .ToDictionaryAsync(a => a.AttemptId, cancellationToken);
 
         var questionsDto = assignmentQuestions.Select(aq =>
         {
             var latestAttempt = latestAttemptsByQuestion.TryGetValue(aq.QuestionId, out var att) ? att : null;
+            var analysis = latestAttempt != null && analysesByAttemptId.TryGetValue(latestAttempt.AttemptId, out var foundAnalysis)
+                ? foundAnalysis
+                : null;
             return new StudentQuestionDto
             {
                 QuestionId = aq.QuestionId.ToString(),
@@ -107,6 +119,7 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
                 EstimatedTimeSeconds = (int)aq.Question.EstimatedTimeSeconds,
                 ReasoningRequired = aq.Question.ReasoningRequired,
                 LanguageCode = aq.Question.LanguageCode,
+                AnswerEvaluationMode = aq.Question.AnswerEvaluationMode.ToString(),
                 Options = questionOptions
                     .Where(o => o.QuestionId == aq.QuestionId)
                     .OrderBy(o => o.OrderIndex)
@@ -135,7 +148,8 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
                 SubmittedAnswer = latestAttempt?.FinalAnswer,
                 SubmittedReasoning = latestAttempt?.ReasoningText,
                 SubmittedAttemptId = latestAttempt?.AttemptId,
-                HasAttachment = latestAttempt != null && hasAttachmentSet.Contains(latestAttempt.AttemptId)
+                HasAttachment = latestAttempt != null && hasAttachmentSet.Contains(latestAttempt.AttemptId),
+                EffectiveIsCorrect = analysis?.OverrideIsCorrect ?? latestAttempt?.IsCorrect
             };
         }).ToList();
 
@@ -189,7 +203,8 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
                 TotalQuestionCount = (int)progress.TotalQuestionCount
             },
             Questions = questionsDto,
-            CanRetake = false
+            CanRetake = false,
+            Summary = await _resultCalculator.CalculateForSingleAssignmentAsync(centerId.Value, currentUserId.Value, assignmentId, cancellationToken)
         };
 
         var response = new StudentAssignmentDetailResponse

@@ -11,4 +11,5 @@ public class StudentAssignmentDto
     public string? SubjectId { get; set; }
     public string? SubjectName { get; set; }
     public StudentAssignmentProgressDto Progress { get; set; } = new();
+    public AssignmentResultSummaryDto? Summary { get; set; }
 }
