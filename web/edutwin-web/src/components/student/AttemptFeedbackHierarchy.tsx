@@ -43,6 +43,9 @@ export function AttemptFeedbackHierarchy({
   const [reviewModalError, setReviewModalError] = useState<string | null>(null);
   const [reviewSuccessMessage, setReviewSuccessMessage] = useState<string | null>(null);
 
+  // Teacher solution accordion state (collapsed by default)
+  const [isTeacherSolutionOpen, setIsTeacherSolutionOpen] = useState(false);
+
   // Sync cooldown timer
   useEffect(() => {
     if (retryQuota?.cooldownRemainingSeconds) {
@@ -119,6 +122,36 @@ export function AttemptFeedbackHierarchy({
       (candidate) => candidate.optionId === answer || candidate.label === answer
     );
     return option ? `${option.label}. ${option.text}` : answer;
+  };
+
+  const formatQualityBand = (band?: string | null): string => {
+    switch (band) {
+      case "Good":
+        return "Tốt";
+      case "Acceptable":
+        return "Đạt";
+      case "NeedsImprovement":
+        return "Cần cải thiện";
+      case "Poor":
+        return "Chưa đạt";
+      default:
+        return band || "Chưa xếp loại";
+    }
+  };
+
+  const formatSolutionTypeBadge = (type?: string | null): string => {
+    switch (type) {
+      case "REFINED":
+        return "Lời giải tối ưu / Hoàn thiện";
+      case "CORRECTED":
+        return "Lời giải sửa sai từng bước";
+      case "GENERATED":
+        return "Lời giải thích nghi từ AI";
+      case "MODEL_ANSWER":
+        return "Lời giải mẫu";
+      default:
+        return "Lời giải đề xuất";
+    }
   };
 
   return (
@@ -204,7 +237,7 @@ export function AttemptFeedbackHierarchy({
                   : "bg-red-100 dark:bg-red-950/60 text-red-800 dark:text-red-300"
               }`}
             >
-              Bậc tư duy: {analysis.qualityBand}
+              Bậc tư duy: {formatQualityBand(analysis.qualityBand)}
             </span>
           )}
         </div>
@@ -292,6 +325,27 @@ export function AttemptFeedbackHierarchy({
                 {analysis.misconception}
               </div>
             )}
+
+            {analysis.aiSolution && (
+              <div className="rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 p-5 border border-indigo-200 dark:border-indigo-800 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">💡</span>
+                    <span className="text-xs font-black uppercase tracking-wider text-indigo-950 dark:text-indigo-300">
+                      Lời giải đề xuất từ AI (AI Solution)
+                    </span>
+                  </div>
+                  {analysis.solutionType && (
+                    <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-indigo-100 dark:bg-indigo-900/60 text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700">
+                      {formatSolutionTypeBadge(analysis.solutionType)}
+                    </span>
+                  )}
+                </div>
+                <div className="text-sm text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-wrap pt-1 font-medium">
+                  <RichMathText content={analysis.aiSolution} />
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -362,7 +416,7 @@ export function AttemptFeedbackHierarchy({
         </div>
       </div>
 
-      {/* TIER 3: ĐÁP ÁN & LỜI GIẢI CỦA GIÁO VIÊN (Teacher Solution) */}
+      {/* TIER 3: ĐÁP ÁN & LỜI GIẢI CỦA GIÁO VIÊN (Teacher Solution - Collapsed by default) */}
       {teacherSolution && (
         <div className="rounded-3xl bg-white dark:bg-[#0f172a] p-6 sm:p-7 shadow-xs border border-emerald-500/30 dark:border-emerald-500/20 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
@@ -370,77 +424,92 @@ export function AttemptFeedbackHierarchy({
               <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-black text-xs">
                 3
               </span>
-              <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
-                Đáp Án & Lời Giải Chuẩn Của Giáo Viên (Teacher Solution)
-              </h3>
-            </div>
-            <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
-              Tài liệu tham khảo chính thức
-            </span>
-          </div>
-
-          <div className="space-y-4">
-            <div>
-              <span className="text-xs font-semibold text-slate-400 block mb-1">Đáp án chính xác:</span>
-              <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/30 p-3.5 text-emerald-900 dark:text-emerald-200 font-mono font-bold text-sm">
-                <RichMathText content={formatAnswer(teacherSolution.correctAnswer)} />
-              </div>
-            </div>
-
-            {teacherSolution.solution && (
               <div>
-                <span className="text-xs font-semibold text-slate-400 block mb-1">Lời giải chi tiết từng bước:</span>
-                <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-4 border border-slate-100 dark:border-slate-700/60 leading-relaxed text-slate-800 dark:text-slate-200 text-sm">
-                  <RichMathText content={teacherSolution.solution} />
-                </div>
-              </div>
-            )}
-
-            {teacherSolution.expectedReasoning && (
-              <div>
-                <span className="text-xs font-semibold text-slate-400 block mb-1">Tư duy lập luận kỳ vọng:</span>
-                <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3.5 border border-slate-100 dark:border-slate-700/60 text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-                  <RichMathText content={teacherSolution.expectedReasoning} />
-                </div>
-              </div>
-            )}
-
-            {teacherSolution.gradingCriteria && (
-              <div className="rounded-2xl border border-slate-200 dark:border-slate-700 p-4 bg-slate-50/50 dark:bg-slate-800/40 space-y-3">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 block">
-                  Tiêu chí chấm & Ý tưởng cốt lõi
+                <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                  Đáp Án & Lời Giải Chuẩn Của Giáo Viên (Teacher Solution)
+                </h3>
+                <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider block sm:inline mt-0.5">
+                  Tài liệu tham khảo chính thức
                 </span>
-
-                {teacherSolution.gradingCriteria.scoringNotes && (
-                  <p className="text-xs text-slate-600 dark:text-slate-400">
-                    {teacherSolution.gradingCriteria.scoringNotes}
-                  </p>
-                )}
-
-                {teacherSolution.gradingCriteria.requiredIdeas?.length > 0 && (
-                  <div>
-                    <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block mb-1">Ý tưởng bắt buộc:</span>
-                    <ul className="list-disc list-inside text-xs text-slate-600 dark:text-slate-300 space-y-0.5">
-                      {teacherSolution.gradingCriteria.requiredIdeas.map((idea, i) => (
-                        <li key={i}>{idea}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {teacherSolution.gradingCriteria.commonErrors?.length > 0 && (
-                  <div>
-                    <span className="text-[11px] font-semibold text-rose-500 dark:text-rose-400 block mb-1">Sai lầm phổ biến cần tránh:</span>
-                    <ul className="list-disc list-inside text-xs text-rose-600 dark:text-rose-300 space-y-0.5">
-                      {teacherSolution.gradingCriteria.commonErrors.map((err, i) => (
-                        <li key={i}>{err}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
               </div>
-            )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsTeacherSolutionOpen((prev) => !prev)}
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-100/70 hover:bg-emerald-200/80 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/80 px-3.5 py-2 rounded-xl border border-emerald-300 dark:border-emerald-700 transition-colors cursor-pointer shrink-0"
+            >
+              <span>{isTeacherSolutionOpen ? "Thu gọn lời giải ▲" : "Xem lời giải của giáo viên ▼"}</span>
+            </button>
           </div>
+
+          {isTeacherSolutionOpen ? (
+            <div className="space-y-4 pt-1">
+              <div>
+                <span className="text-xs font-semibold text-slate-400 block mb-1">Đáp án chính xác:</span>
+                <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/30 p-3.5 text-emerald-900 dark:text-emerald-200 font-mono font-bold text-sm">
+                  <RichMathText content={formatAnswer(teacherSolution.correctAnswer)} />
+                </div>
+              </div>
+
+              {teacherSolution.solution && (
+                <div>
+                  <span className="text-xs font-semibold text-slate-400 block mb-1">Lời giải chi tiết từng bước:</span>
+                  <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-4 border border-slate-100 dark:border-slate-700/60 leading-relaxed text-slate-800 dark:text-slate-200 text-sm">
+                    <RichMathText content={teacherSolution.solution} />
+                  </div>
+                </div>
+              )}
+
+              {teacherSolution.expectedReasoning && (
+                <div>
+                  <span className="text-xs font-semibold text-slate-400 block mb-1">Tư duy lập luận kỳ vọng:</span>
+                  <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3.5 border border-slate-100 dark:border-slate-700/60 text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+                    <RichMathText content={teacherSolution.expectedReasoning} />
+                  </div>
+                </div>
+              )}
+
+              {teacherSolution.gradingCriteria && (
+                <div className="rounded-2xl border border-slate-200 dark:border-slate-700 p-4 bg-slate-50/50 dark:bg-slate-800/40 space-y-3">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 block">
+                    Tiêu chí chấm & Ý tưởng cốt lõi
+                  </span>
+
+                  {teacherSolution.gradingCriteria.scoringNotes && (
+                    <p className="text-xs text-slate-600 dark:text-slate-400">
+                      {teacherSolution.gradingCriteria.scoringNotes}
+                    </p>
+                  )}
+
+                  {teacherSolution.gradingCriteria.requiredIdeas?.length > 0 && (
+                    <div>
+                      <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block mb-1">Ý tưởng bắt buộc:</span>
+                      <ul className="list-disc list-inside text-xs text-slate-600 dark:text-slate-300 space-y-0.5">
+                        {teacherSolution.gradingCriteria.requiredIdeas.map((idea, i) => (
+                          <li key={i}>{idea}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {teacherSolution.gradingCriteria.commonErrors?.length > 0 && (
+                    <div>
+                      <span className="text-[11px] font-semibold text-rose-500 dark:text-rose-400 block mb-1">Sai lầm phổ biến cần tránh:</span>
+                      <ul className="list-disc list-inside text-xs text-rose-600 dark:text-rose-300 space-y-0.5">
+                        {teacherSolution.gradingCriteria.commonErrors.map((err, i) => (
+                          <li key={i}>{err}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="py-2 text-center text-xs text-slate-500 dark:text-slate-400">
+              <p>Lời giải chuẩn của giáo viên đã sẵn sàng để đối chiếu sau khi nộp bài. Bấm <strong>[Xem lời giải của giáo viên ▼]</strong> ở trên để mở chi tiết.</p>
+            </div>
+          )}
         </div>
       )}
 

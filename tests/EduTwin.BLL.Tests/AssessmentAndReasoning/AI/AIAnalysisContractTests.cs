@@ -69,7 +69,9 @@ public sealed class AIAnalysisContractTests
             ("MissingSteps", typeof(IReadOnlyList<string>), NullabilityState.NotNull, true),
             ("RootCauseNodeIds", typeof(IReadOnlyList<string>), NullabilityState.NotNull, true),
             ("Confidence", typeof(int), NullabilityState.NotNull, false),
-            ("Feedback", typeof(string), NullabilityState.NotNull, true));
+            ("Feedback", typeof(string), NullabilityState.NotNull, true),
+            ("SolutionType", typeof(string), NullabilityState.Nullable, false),
+            ("AiSolution", typeof(string), NullabilityState.Nullable, false));
     }
 
     [Fact]
@@ -142,7 +144,9 @@ public sealed class AIAnalysisContractTests
             "missingSteps",
             "rootCauseNodeIds",
             "confidence",
-            "feedback");
+            "feedback",
+            "solutionType",
+            "aiSolution");
         Assert.Equal("ai-analysis-v1", root.GetProperty("schemaVersion").GetString());
         Assert.Equal("vi", root.GetProperty("language").GetString());
         Assert.Equal("Đưa hai vế về cùng cơ số", root.GetProperty("methodDetected").GetString());
@@ -155,6 +159,8 @@ public sealed class AIAnalysisContractTests
         Assert.Equal(
             "Em đã chọn đúng phương pháp nhưng cần đối chiếu điều kiện.",
             root.GetProperty("feedback").GetString());
+        Assert.Equal("REFINED", root.GetProperty("solutionType").GetString());
+        Assert.Equal("Lời giải gợi ý từ AI.", root.GetProperty("aiSolution").GetString());
     }
 
     [Fact]
@@ -360,7 +366,9 @@ public sealed class AIAnalysisContractTests
             MissingSteps = ["Chưa đối chiếu điều kiện"],
             RootCauseNodeIds = ["101"],
             Confidence = 85,
-            Feedback = "Em đã chọn đúng phương pháp nhưng cần đối chiếu điều kiện."
+            Feedback = "Em đã chọn đúng phương pháp nhưng cần đối chiếu điều kiện.",
+            SolutionType = "REFINED",
+            AiSolution = "Lời giải gợi ý từ AI."
         };
 
     private static JsonDocument SerializeToDocument<T>(T value) =>

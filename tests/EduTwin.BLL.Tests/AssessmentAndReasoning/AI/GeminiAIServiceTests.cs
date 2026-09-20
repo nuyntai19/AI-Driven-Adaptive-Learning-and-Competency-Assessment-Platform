@@ -162,7 +162,7 @@ public sealed class GeminiAIServiceTests
         Assert.NotNull(client.Config?.ResponseJsonSchema);
         using var schemaDocument = JsonDocument.Parse(JsonSerializer.Serialize(client.Config.ResponseJsonSchema));
         Assert.Equal(
-            10,
+            12,
             schemaDocument.RootElement.GetProperty("properties").EnumerateObject().Count());
     }
 
@@ -786,7 +786,9 @@ public sealed class GeminiAIServiceTests
           "missingSteps": ["Chưa đối chiếu điều kiện"],
           "rootCauseNodeIds": ["101"],
           "confidence": 85,
-          "feedback": "Em đã chọn đúng phương pháp."
+          "feedback": "Em đã chọn đúng phương pháp.",
+          "solutionType": "REFINED",
+          "aiSolution": "Bước 1: Ta có $2^x = 4$ suy ra $x = 2$."
         }
         """;
 

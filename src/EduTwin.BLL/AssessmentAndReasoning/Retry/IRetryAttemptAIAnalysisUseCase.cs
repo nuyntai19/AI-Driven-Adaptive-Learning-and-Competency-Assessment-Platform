@@ -33,4 +33,10 @@ public sealed class RetryAIAnalysisResult
 
     public static RetryAIAnalysisResult CooldownActive(int remainingSeconds) =>
         Failure("RETRY_COOLDOWN_ACTIVE", $"Please wait {remainingSeconds} seconds before requesting another analysis.");
+
+    public static RetryAIAnalysisResult JobProcessing() =>
+        Failure("JOB_PROCESSING", "AI đang phân tích bài làm này, vui lòng không gửi yêu cầu trùng lặp.");
+
+    public static RetryAIAnalysisResult JobAlreadyCompleted() =>
+        Failure("JOB_ALREADY_COMPLETED", "Bài làm này đã có kết quả phân tích AI.");
 }

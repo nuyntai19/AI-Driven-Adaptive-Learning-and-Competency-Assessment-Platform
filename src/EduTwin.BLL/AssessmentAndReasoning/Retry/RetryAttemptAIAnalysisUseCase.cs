@@ -103,16 +103,28 @@ public sealed class RetryAttemptAIAnalysisUseCase : IRetryAttemptAIAnalysisUseCa
             }
         }
 
-        // Apply retry
-        attempt.ManualRetryCount += 1;
-        attempt.LastManualRetryAt = now;
-        attempt.Status = AttemptStatus.PendingAnalysis;
-        attempt.UpdatedAt = now;
-
         var job = await _dbContext.AIAnalysisJobs
             .Where(j => j.CenterId == centerId && j.AttemptId == attemptId)
             .OrderByDescending(j => j.AnalysisJobId)
             .FirstOrDefaultAsync(cancellationToken);
+
+        // Anti-duplicate AI job: if current job is still Processing or Pending, reject retry
+        if (job != null && (job.Status == AIJobStatus.Processing || job.Status == AIJobStatus.Pending))
+        {
+            return RetryAIAnalysisResult.JobProcessing();
+        }
+
+        // If job is already Completed or FallbackCompleted, reject duplicate retry
+        if (job != null && (job.Status == AIJobStatus.Completed || job.Status == AIJobStatus.FallbackCompleted))
+        {
+            return RetryAIAnalysisResult.JobAlreadyCompleted();
+        }
+
+        // Apply retry on existing attempt
+        attempt.ManualRetryCount += 1;
+        attempt.LastManualRetryAt = now;
+        attempt.Status = AttemptStatus.PendingAnalysis;
+        attempt.UpdatedAt = now;
 
         if (job == null)
         {

@@ -18,7 +18,9 @@ public sealed class GeminiResponseJsonSchema
         "missingSteps",
         "rootCauseNodeIds",
         "confidence",
-        "feedback"
+        "feedback",
+        "solutionType",
+        "aiSolution"
     ];
 
     public JsonObject CreateSchema()
@@ -55,6 +57,11 @@ public sealed class GeminiResponseJsonSchema
             ["feedback"] = new JsonObject
             {
                 ["type"] = "string"
+            },
+            ["solutionType"] = CreateSolutionTypeSchema(),
+            ["aiSolution"] = new JsonObject
+            {
+                ["type"] = CreateStringArray(["string", "null"])
             }
         };
 
@@ -93,6 +100,18 @@ public sealed class GeminiResponseJsonSchema
             {
                 ["type"] = "string"
             }
+        };
+
+    private static JsonObject CreateSolutionTypeSchema() =>
+        new()
+        {
+            ["type"] = CreateStringArray(["string", "null"]),
+            ["enum"] = new JsonArray(
+                JsonValue.Create("REFINED"),
+                JsonValue.Create("CORRECTED"),
+                JsonValue.Create("GENERATED"),
+                JsonValue.Create("MODEL_ANSWER"),
+                null)
         };
 
     private static JsonArray CreateStringArray(IEnumerable<string> values) =>

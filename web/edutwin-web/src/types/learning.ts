@@ -61,6 +61,8 @@ export interface AttemptFeedbackAnalysisDto {
   isFallback: boolean;
   needsTeacherReview: boolean;
   hasTeacherOverride: boolean;
+  solutionType?: "REFINED" | "CORRECTED" | "GENERATED" | "MODEL_ANSWER" | string | null;
+  aiSolution?: string | null;
 }
 
 export interface AttemptFeedbackTwinChangeDto {

@@ -234,7 +234,9 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
                 NeedsTeacherReview = analysis.NeedsTeacherReview,
                 HasTeacherOverride = analysis.OverrideVersion > 0,
                 IsRawAI = true,
-                Model = analysis.ModelName ?? "Gemini AI"
+                Model = analysis.ModelName ?? "Gemini AI",
+                SolutionType = analysis.SolutionType,
+                AiSolution = analysis.AiSolution
             };
         }
 

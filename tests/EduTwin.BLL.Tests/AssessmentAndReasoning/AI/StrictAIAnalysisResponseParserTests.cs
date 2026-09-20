@@ -23,6 +23,8 @@ public sealed class StrictAIAnalysisResponseParserTests
         Assert.Equal(["101"], response.RootCauseNodeIds);
         Assert.Equal(85, response.Confidence);
         Assert.Equal("Em đã chọn đúng phương pháp.", response.Feedback);
+        Assert.Equal("REFINED", response.SolutionType);
+        Assert.Equal("Bước 1: Ta có $2^x = 4$ suy ra $x = 2$.", response.AiSolution);
     }
 
     [Fact]
@@ -44,11 +46,15 @@ public sealed class StrictAIAnalysisResponseParserTests
     {
         var rawResponse = ReplacePropertyValue(ValidResponseJson, "methodDetected", "null");
         rawResponse = ReplacePropertyValue(rawResponse, "misconception", "null");
+        rawResponse = ReplacePropertyValue(rawResponse, "solutionType", "null");
+        rawResponse = ReplacePropertyValue(rawResponse, "aiSolution", "null");
 
         var response = CreateParser().ParseAndValidate(rawResponse, CreateRequest());
 
         Assert.Null(response.MethodDetected);
         Assert.Null(response.Misconception);
+        Assert.Null(response.SolutionType);
+        Assert.Null(response.AiSolution);
     }
 
     [Fact]
@@ -402,7 +408,9 @@ public sealed class StrictAIAnalysisResponseParserTests
           "missingSteps": ["Chưa đối chiếu điều kiện"],
           "rootCauseNodeIds": ["101"],
           "confidence": 85,
-          "feedback": "Em đã chọn đúng phương pháp."
+          "feedback": "Em đã chọn đúng phương pháp.",
+          "solutionType": "REFINED",
+          "aiSolution": "Bước 1: Ta có $2^x = 4$ suy ra $x = 2$."
         }
         """;
 

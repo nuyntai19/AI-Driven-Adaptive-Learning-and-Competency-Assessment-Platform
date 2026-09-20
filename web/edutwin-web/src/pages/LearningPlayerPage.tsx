@@ -7,6 +7,7 @@ import {
   getAnalysisJobStatus,
   getAttemptFeedback,
   prepareAttemptAttachmentUpload,
+  retryAttemptAIAnalysis,
 } from "../api/learningFeedbackApi";
 import { startStudentAssignment } from "../api/assignmentsApi";
 import { useStudentAssignment } from "../features/assignments/useStudentAssignment";
@@ -24,6 +25,7 @@ import { AttemptFeedbackHierarchy } from "../components/student/AttemptFeedbackH
 import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
 import { MathInputToolbar } from "../components/math/MathInputToolbar";
 import { VisualMathField, type VisualMathFieldRef } from "../components/math/VisualMathField";
+import { RichMathText } from "../components/math/RichMathText";
 import { SideAssistantWorkspace, type AssistantToolTab } from "../components/math/SideAssistantWorkspace";
 import {
   clearAttemptSessionId,
@@ -145,13 +147,28 @@ export const LearningPlayerPage = () => {
   // Client submission token (unique per attempt session)
   const clientSubmissionIdRef = useRef<string>(createClientSubmissionId());
 
+  // Local submission state flag to immediately transition to submitted/result mode once save completes
+  const [isLocallySubmitted, setIsLocallySubmitted] = useState<boolean>(false);
+
   // Workflow state
   const [isSubmitting, setIsSubmitting] = useState<boolean>(Boolean(persistedJobId));
   const [pollingJobId, setPollingJobId] = useState<string | null>(persistedJobId);
   const [pollingStatus, setPollingStatus] = useState<string>("Đang xử lý...");
   const [feedbackData, setFeedbackData] = useState<AttemptFeedbackDataDto | null>(null);
-  const [submissionError, setSubmissionError] = useState<string | null>(null);
-  const [canResubmit, setCanResubmit] = useState<boolean>(false);
+
+  // Submission error (only for actual network/validation failure before attempt is saved to DB)
+  const [submissionSaveError, setSubmissionSaveError] = useState<string | null>(null);
+  const [canRetrySubmission, setCanRetrySubmission] = useState<boolean>(false);
+
+  // Asynchronous AI Analysis Banner state (completely separate from submission status)
+  const [aiBanner, setAiBanner] = useState<{
+    type: "info" | "warning";
+    message: string;
+    action?: "retry_ai" | "resume_poll" | null;
+    attemptIdForRetry?: string | null;
+  } | null>(null);
+  const [isRetryingAiFromBanner, setIsRetryingAiFromBanner] = useState<boolean>(false);
+
   const [showBatchConfirmModal, setShowBatchConfirmModal] = useState<boolean>(false);
   const pollingAttemptRef = useRef(0);
   const consecutiveNetworkErrorsRef = useRef(0);
@@ -261,15 +278,22 @@ export const LearningPlayerPage = () => {
   });
 
   const isAssignmentSubmitted = useMemo(() => {
+    if (isLocallySubmitted) return true;
     if (!assignment) return false;
     if (assignment.progress?.status === "Completed") return true;
     return (
       assignmentQuestions.length > 0 &&
       assignmentQuestions.every(
-        (q) => q?.attemptStatus === "Completed" || q?.attemptStatus === "NeedsTeacherReview"
+        (q) =>
+          Boolean(q?.latestAttempt) ||
+          Boolean(q?.submittedAttemptId) ||
+          q?.attemptStatus === "Completed" ||
+          q?.attemptStatus === "NeedsTeacherReview" ||
+          q?.attemptStatus === "PendingAnalysis" ||
+          q?.attemptStatus === "Processing"
       )
     );
-  }, [assignment, assignmentQuestions]);
+  }, [isLocallySubmitted, assignment, assignmentQuestions]);
 
   // Mode 2: Adaptive Practice Mode Query
   const {
@@ -381,7 +405,7 @@ export const LearningPlayerPage = () => {
       setDrawingUploadToken(null);
     }
     setAttachedSnapshotBlob(null);
-    setSubmissionError(null);
+    setSubmissionSaveError(null);
   }, [
     question?.questionId,
     assignmentId,
@@ -519,7 +543,7 @@ export const LearningPlayerPage = () => {
 
   // Polling Job Status Mechanism
   useEffect(() => {
-    if (!pollingJobId || feedbackData) return;
+    if (!pollingJobId || feedbackData || networkErrorPaused) return;
 
     let isSubscribed = true;
     let pollInterval = 1000;
@@ -541,6 +565,7 @@ export const LearningPlayerPage = () => {
               setFeedbackData(feedbackRes);
               setIsSubmitting(false);
               setPollingJobId(null);
+              setAiBanner(null);
               if (searchParams.get("analysisJobId")) {
                 searchParams.delete("analysisJobId");
                 setSearchParams(searchParams, { replace: true });
@@ -551,30 +576,39 @@ export const LearningPlayerPage = () => {
             }
           } catch {
             if (isSubscribed) {
-              setSubmissionError("Không thể tải kết quả phân tích chi tiết. Vui lòng thử lại.");
               setIsSubmitting(false);
               setPollingJobId(null);
             }
+          }
+          if (assignmentId) {
+            await queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
           }
           return;
         }
 
         if (isTerminalStatus(currentStatus)) {
-          try {
-            const feedbackRes = await getAttemptFeedback(result.attemptId);
-            if (isSubscribed) {
-              setFeedbackData(feedbackRes);
-              setIsSubmitting(false);
-              setPollingJobId(null);
-              return;
-            }
-          } catch {
-            // fallback if feedback fetch fails
-          }
+          // Terminal failure of AI (e.g. FailedTerminal). Submission was already saved safely.
           setIsSubmitting(false);
           setPollingJobId(null);
-          setSubmissionError(`Quá trình phân tích AI kết thúc với trạng thái (${currentStatus}). Bạn có thể nộp lại.`);
-          setCanResubmit(true);
+          if (isSubscribed) {
+            setAiBanner({
+              type: "warning",
+              message: "✓ Bài làm đã được lưu thành công. AI chưa thể hoàn tất phân tích lúc này.",
+              action: "retry_ai",
+              attemptIdForRetry: String(result.attemptId),
+            });
+            try {
+              const feedbackRes = await getAttemptFeedback(result.attemptId);
+              if (isSubscribed) {
+                setFeedbackData(feedbackRes);
+              }
+            } catch {
+              // fallback
+            }
+            if (assignmentId) {
+              await queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
+            }
+          }
           return;
         }
 
@@ -585,29 +619,40 @@ export const LearningPlayerPage = () => {
           pollInterval = Math.min(pollInterval + 500, 3000);
           setTimeout(poll, pollInterval);
         } else {
-          try {
-            const feedbackRes = await getAttemptFeedback(result.attemptId);
-            if (isSubscribed) {
-              setFeedbackData(feedbackRes);
-              setIsSubmitting(false);
-              setPollingJobId(null);
-              return;
-            }
-          } catch {
-            // fallback
-          }
+          // Polling threshold reached: Frontend stops waiting in foreground.
+          // Submission is confirmed SAVED. AI job continues in background.
           setIsSubmitting(false);
           setPollingJobId(null);
-          setSubmissionError("Quá thời gian phân tích AI dự kiến. Bài làm đã được ghi nhận an toàn.");
-          setCanResubmit(true);
+          if (isSubscribed) {
+            setAiBanner({
+              type: "info",
+              message: "✓ Bài làm đã được ghi nhận. AI đang mất nhiều thời gian hơn dự kiến để phân tích. Bạn vẫn có thể xem bài làm và lời giải của giáo viên. Kết quả AI sẽ được cập nhật khi hoàn tất.",
+              action: null,
+            });
+            try {
+              const feedbackRes = await getAttemptFeedback(result.attemptId);
+              if (isSubscribed) {
+                setFeedbackData(feedbackRes);
+              }
+            } catch {
+              // fallback
+            }
+            if (assignmentId) {
+              await queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
+            }
+          }
         }
       } catch {
         if (!isSubscribed) return;
         consecutiveNetworkErrorsRef.current += 1;
         if (consecutiveNetworkErrorsRef.current >= 5) {
           setNetworkErrorPaused(true);
-          setSubmissionError("Kết nối tới máy chủ tạm thời gián đoạn khi cập nhật kết quả AI. Bài nộp của bạn đã được ghi nhận an toàn trên hệ thống. Bạn có thể bấm nút kiểm tra lại.");
           setIsSubmitting(false);
+          setAiBanner({
+            type: "info",
+            message: "Kết nối tới máy chủ tạm thời gián đoạn khi cập nhật kết quả AI. Bài nộp của bạn đã được ghi nhận an toàn trên hệ thống. Bạn có thể bấm nút kiểm tra lại.",
+            action: "resume_poll",
+          });
           return;
         }
         pollInterval = Math.min(pollInterval + 1000, 5000);
@@ -620,7 +665,7 @@ export const LearningPlayerPage = () => {
       isSubscribed = false;
       clearTimeout(initialTimeout);
     };
-  }, [pollingJobId, feedbackData, searchParams, setSearchParams, attemptSessionScope]);
+  }, [pollingJobId, feedbackData, networkErrorPaused, searchParams, setSearchParams, attemptSessionScope, assignmentId, queryClient]);
 
   // Answer change handlers
   const handleAnswerChange = (val: string) => {
@@ -646,32 +691,35 @@ export const LearningPlayerPage = () => {
   const insertTextAtCursor = (textToInsert: string) => {
     if (isReadOnly) return;
 
-    if (activeInputTarget === "answer" && visualMathFieldRef.current) {
-      visualMathFieldRef.current.insertAtCursor(textToInsert);
-      setAnswerChanges((prev) => prev + 1);
-      return;
-    }
-
-    const textarea = reasoningTextareaRef.current;
-    if (!textarea) {
-      if (activeInputTarget === "reasoning") {
-        handleReasoningChange(reasoningText + textToInsert);
+    if (activeInputTarget === "answer") {
+      if (visualMathFieldRef.current) {
+        visualMathFieldRef.current.insertAtCursor(textToInsert);
+        setAnswerChanges((prev) => prev + 1);
       } else {
         handleAnswerChange(finalAnswer + textToInsert);
       }
       return;
     }
 
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const currentVal = textarea.value;
-    const updatedVal = currentVal.substring(0, start) + textToInsert + currentVal.substring(end);
-    handleReasoningChange(updatedVal);
+    if (activeInputTarget === "reasoning") {
+      const textarea = reasoningTextareaRef.current;
+      if (!textarea) {
+        handleReasoningChange(reasoningText + textToInsert);
+        return;
+      }
 
-    setTimeout(() => {
-      textarea.focus();
-      textarea.setSelectionRange(start + textToInsert.length, start + textToInsert.length);
-    }, 0);
+      const start = textarea.selectionStart ?? textarea.value.length;
+      const end = textarea.selectionEnd ?? textarea.value.length;
+      const currentVal = textarea.value;
+      const updatedVal = currentVal.substring(0, start) + textToInsert + currentVal.substring(end);
+      handleReasoningChange(updatedVal);
+
+      setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(start + textToInsert.length, start + textToInsert.length);
+      }, 0);
+      return;
+    }
   };
 
   // Callback from Scratchpad: Save Snapshot independently of future draws
@@ -762,9 +810,10 @@ export const LearningPlayerPage = () => {
     persistCurrentAnswer();
     setShowBatchConfirmModal(false);
 
-    setSubmissionError(null);
+    setSubmissionSaveError(null);
+    setCanRetrySubmission(false);
     setIsSubmitting(true);
-    setCanResubmit(false);
+    setAiBanner(null);
 
     try {
       // ── BATCH ASSIGNMENT SUBMISSION ─────────────────────────────────────────
@@ -811,8 +860,25 @@ export const LearningPlayerPage = () => {
           frozenPayloadRef.current = frozen;
         }
 
+        // Pre-validate all questions requiring reasoning before starting batch submit
+        for (let i = 0; i < assignmentQuestions.length; i++) {
+          const q = assignmentQuestions[i];
+          if (q.latestAttempt || q.attemptStatus === "Completed" || q.attemptStatus === "NeedsTeacherReview") {
+            continue;
+          }
+          const qAnswer = frozenPayloadRef.current[q.questionId];
+          const hasAnswer = Boolean(qAnswer?.finalAnswer?.trim());
+          const hasReasoning = Boolean(qAnswer?.reasoningText?.trim());
+          if (q.reasoningRequired && hasAnswer && !hasReasoning) {
+            setActiveQuestionId(q.questionId);
+            setIsSubmitting(false);
+            setSubmissionSaveError(`Câu ${i + 1} yêu cầu phải có phần lập luận / giải trình trước khi nộp bài. Vui lòng hoàn thành câu này.`);
+            frozenPayloadRef.current = null;
+            return;
+          }
+        }
+
         let lastJobId: string | null = null;
-        let lastAttemptId: string | null = null;
         let submittedCount = 0;
 
         for (let i = 0; i < assignmentQuestions.length; i++) {
@@ -873,16 +939,10 @@ export const LearningPlayerPage = () => {
           if (resData.analysisJobId || resData.jobId) {
             lastJobId = String(resData.analysisJobId || resData.jobId);
           }
-          if (resData.attemptId) {
-            lastAttemptId = String(resData.attemptId);
-          }
         }
 
         // Clean up frozen payload on success
         frozenPayloadRef.current = null;
-
-        // Invalidate TanStack queries so assignment and lists refresh with updated progress
-        await queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
 
         // Clear local storage draft
         try {
@@ -891,18 +951,22 @@ export const LearningPlayerPage = () => {
           // ignore
         }
 
+        // Mark local submission as complete: Immediately transitions UI to Assignment Result overview!
+        setIsLocallySubmitted(true);
+        setIsSubmitting(false);
+
+        // Invalidate TanStack queries so assignment and lists refresh with updated progress
+        await queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
+
         if (lastJobId) {
           setPollingJobId(lastJobId);
           searchParams.set("analysisJobId", lastJobId);
           setSearchParams(searchParams, { replace: true });
-          setPollingStatus(`Đã nộp thành công ${submittedCount} câu hỏi. AI đang phân tích và chấm điểm...`);
-        } else if (lastAttemptId) {
-          setPollingStatus("Đang tải kết quả bài làm...");
-          const fbRes = await getAttemptFeedback(lastAttemptId);
-          setFeedbackData(fbRes);
-          setIsSubmitting(false);
-        } else {
-          setIsSubmitting(false);
+          setAiBanner({
+            type: "info",
+            message: `✓ Đã nộp thành công ${submittedCount > 0 ? `${submittedCount} câu hỏi` : "bài làm"}. AI đang phân tích và chấm điểm...`,
+            action: null,
+          });
         }
         return;
       }
@@ -912,6 +976,12 @@ export const LearningPlayerPage = () => {
       if (attachedSnapshotDataUrl && !tokenToUse) {
         setPollingStatus("Đang tải lên bản vẽ nháp đính kèm...");
         tokenToUse = await uploadScratchpadAttachmentIfAny();
+      }
+
+      if (question.reasoningRequired && finalAnswer.trim() && !reasoningText.trim()) {
+        setIsSubmitting(false);
+        setSubmissionSaveError("Câu hỏi này yêu cầu phải có phần lập luận / giải trình trước khi nộp bài.");
+        return;
       }
 
       setPollingStatus("Đang gửi bài làm lên hệ thống AI...");
@@ -936,7 +1006,11 @@ export const LearningPlayerPage = () => {
         setPollingJobId(targetJobId);
         searchParams.set("analysisJobId", targetJobId);
         setSearchParams(searchParams, { replace: true });
-        setPollingStatus("Đã tiếp nhận bài làm. AI đang chấm điểm...");
+        setAiBanner({
+          type: "info",
+          message: "✓ Bài làm đã được ghi nhận. AI đang phân tích và chấm điểm...",
+          action: null,
+        });
       } else if (resData.attemptId) {
         setPollingStatus("Đang tải kết quả bài làm...");
         const fbRes = await getAttemptFeedback(resData.attemptId);
@@ -944,92 +1018,153 @@ export const LearningPlayerPage = () => {
         setIsSubmitting(false);
       } else {
         setIsSubmitting(false);
-        setSubmissionError("Phản hồi bất thường từ máy chủ. Vui lòng thử nộp lại.");
-        setCanResubmit(true);
+        setSubmissionSaveError("Phản hồi bất thường từ máy chủ. Vui lòng thử nộp lại.");
+        setCanRetrySubmission(true);
       }
     } catch (err: unknown) {
       setIsSubmitting(false);
       const errObj = err as { response?: { data?: { detail?: string } }; message?: string };
-      setSubmissionError(
-        errObj?.response?.data?.detail || errObj?.message || "Nộp bài thất bại. Vui lòng thử lại."
+      setSubmissionSaveError(
+        errObj?.response?.data?.detail || errObj?.message || "Nộp bài thất bại. Vui lòng kiểm tra kết nối mạng và thử nộp lại."
       );
-      setCanResubmit(true);
+      setCanRetrySubmission(true);
     }
   };
 
-  const handleResubmit = async () => {
+  const handleRetrySubmission = async () => {
     if (attemptSessionScope) {
       const freshSubId = createClientSubmissionId();
       setAttemptSessionId(attemptSessionScope, freshSubId);
       clientSubmissionIdRef.current = freshSubId;
     }
-    setSubmissionError(null);
-    setCanResubmit(false);
-
-    if (assignmentId) {
-      try {
-        await queryClient.refetchQueries({ queryKey: ["student-assignments", assignmentId] });
-      } catch {
-        // ignore
-      }
-    }
+    setSubmissionSaveError(null);
+    setCanRetrySubmission(false);
     handleFinalSubmit();
   };
+
+  const handleRetryAiFromBanner = async (attemptId: string) => {
+    try {
+      setIsRetryingAiFromBanner(true);
+      const res = await retryAttemptAIAnalysis(attemptId);
+      setIsRetryingAiFromBanner(false);
+      setAiBanner(null);
+      if (res.analysisJobId) {
+        pollingAttemptRef.current = 0;
+        setPollingJobId(res.analysisJobId);
+        setIsSubmitting(true);
+      } else {
+        if (assignmentId) {
+          await queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
+        }
+      }
+    } catch (err: any) {
+      setIsRetryingAiFromBanner(false);
+      const msg = err?.response?.data?.detail || err?.response?.data?.message || err?.message || "Không thể kích hoạt chấm lại AI lúc này.";
+      setAiBanner({
+        type: "warning",
+        message: `✓ Bài làm đã được ghi nhận an toàn. ${msg}`,
+        action: "retry_ai",
+        attemptIdForRetry: attemptId,
+      });
+    }
+  };
+
+  // Check if a question has all required fields (answer and required reasoning)
+  const checkQuestionCompletion = useCallback(
+    (q: (typeof assignmentQuestions)[0]) => {
+      if (q.latestAttempt) {
+        if (q.latestAttempt.skipped || !q.latestAttempt.finalAnswer?.trim()) return false;
+        if (q.reasoningRequired && !q.latestAttempt.reasoningText?.trim()) return false;
+        return true;
+      }
+      if (q.submittedAnswer && q.submittedAnswer !== "SKIPPED") {
+        if (q.reasoningRequired && !q.submittedReasoning?.trim()) return false;
+        return true;
+      }
+      const isCurrent = q.questionId === question?.questionId;
+      const ans = isCurrent ? finalAnswer : assignmentAnswers[q.questionId]?.finalAnswer;
+      const res = isCurrent ? reasoningText : assignmentAnswers[q.questionId]?.reasoningText;
+      if (!ans?.trim()) return false;
+      if (q.reasoningRequired && !res?.trim()) return false;
+      return true;
+    },
+    [question?.questionId, finalAnswer, reasoningText, assignmentAnswers]
+  );
 
   // Calculate stats for Question Palette & Assignment submission state (must be declared before any early return)
   const totalQuestions = assignmentQuestions?.length || 0;
   const answeredCount = useMemo(() => {
     if (!assignmentQuestions.length) return 0;
-    let count = 0;
-    for (const q of assignmentQuestions) {
-      if (q.latestAttempt) {
-        if (!q.latestAttempt.skipped && q.latestAttempt.finalAnswer?.trim()) {
-          count++;
-        }
-      } else if (q.submittedAnswer && q.submittedAnswer !== "SKIPPED") {
-        count++;
-      } else if (q.questionId === question?.questionId) {
-        if (finalAnswer.trim().length > 0) count++;
-      } else {
-        const stored = assignmentAnswers[q.questionId];
-        if (stored?.finalAnswer?.trim().length) count++;
-      }
-    }
-    return count;
-  }, [assignmentQuestions, assignmentAnswers, question?.questionId, finalAnswer]);
+    return assignmentQuestions.filter(checkQuestionCompletion).length;
+  }, [assignmentQuestions, checkQuestionCompletion]);
 
   const unansweredQuestionIndices = useMemo(() => {
     if (!assignmentQuestions.length) return [];
     const missing: number[] = [];
     assignmentQuestions.forEach((q, idx) => {
-      if (q.latestAttempt) {
-        if (q.latestAttempt.skipped || !q.latestAttempt.finalAnswer?.trim()) {
-          missing.push(idx + 1);
-        }
-        return;
-      }
-      if (q.submittedAnswer && q.submittedAnswer !== "SKIPPED") {
-        return;
-      }
-      if (q.questionId === question?.questionId) {
-        if (!finalAnswer.trim()) {
-          missing.push(idx + 1);
-        }
-      } else {
-        const stored = assignmentAnswers[q.questionId];
-        if (!stored?.finalAnswer?.trim()) {
-          missing.push(idx + 1);
-        }
+      if (!checkQuestionCompletion(q)) {
+        missing.push(idx + 1);
       }
     });
     return missing;
-  }, [assignmentQuestions, assignmentAnswers, question?.questionId, finalAnswer]);
+  }, [assignmentQuestions, checkQuestionCompletion]);
+
+  // Assignment-level statistics when submitted
+  const assignmentStats = useMemo(() => {
+    if (!assignment || !isAssignmentSubmitted) return null;
+    let awardedTotal = 0;
+    let maxTotalForDetermined = 0;
+    let overallMaxTotal = 0;
+    let correctCount = 0;
+    let evaluatedCount = 0;
+    let aiProcessingCount = 0;
+    let teacherReviewCount = 0;
+
+    for (const q of assignmentQuestions) {
+      const status = q.latestAttempt?.status || q.attemptStatus;
+      const isEvaluated = status === "Completed";
+      const isReview = status === "NeedsTeacherReview";
+      const isProcessing = status === "PendingAnalysis" || status === "Processing";
+
+      if (isEvaluated) evaluatedCount++;
+      if (isReview) teacherReviewCount++;
+      if (isProcessing) aiProcessingCount++;
+
+      const maxScore = q.latestAttempt?.maxScore ?? 10;
+      overallMaxTotal += Number(maxScore);
+
+      if (q.latestAttempt?.awardedScore !== null && q.latestAttempt?.awardedScore !== undefined) {
+        awardedTotal += Number(q.latestAttempt.awardedScore);
+        maxTotalForDetermined += Number(maxScore);
+      }
+
+      if (q.latestAttempt?.isCorrect === true) {
+        correctCount++;
+      }
+    }
+
+    return {
+      awardedTotal,
+      maxTotalForDetermined,
+      overallMaxTotal,
+      correctCount,
+      evaluatedCount,
+      aiProcessingCount,
+      teacherReviewCount,
+      pendingCount: teacherReviewCount,
+      totalCount: assignmentQuestions.length,
+      isFullyEvaluated: evaluatedCount === assignmentQuestions.length && assignmentQuestions.length > 0,
+    };
+  }, [assignment, isAssignmentSubmitted, assignmentQuestions]);
 
   const isCurrentQuestionSubmitted =
     Boolean(assignmentQuestion?.latestAttempt) ||
     Boolean(assignmentQuestion?.submittedAnswer) ||
+    Boolean(assignmentQuestion?.submittedAttemptId) ||
     assignmentQuestion?.attemptStatus === "Completed" ||
-    assignmentQuestion?.attemptStatus === "NeedsTeacherReview";
+    assignmentQuestion?.attemptStatus === "NeedsTeacherReview" ||
+    assignmentQuestion?.attemptStatus === "PendingAnalysis" ||
+    assignmentQuestion?.attemptStatus === "Processing";
 
   const isReadOnly = isAssignmentSubmitted || isCurrentQuestionSubmitted || isSubmitting || isAssignmentExpired;
 
@@ -1343,7 +1478,9 @@ export const LearningPlayerPage = () => {
                         setFinalAnswer("");
                         setReasoningText("");
                         setFeedbackData(null);
-                        setSubmissionError(null);
+                        setSubmissionSaveError(null);
+                        setAiBanner(null);
+                        setIsLocallySubmitted(false);
                         if (assignmentQuestions[0]) {
                           handleSwitchQuestion(assignmentQuestions[0].questionId);
                         }
@@ -1391,28 +1528,61 @@ export const LearningPlayerPage = () => {
                 <span>⏰ Đã hết thời gian làm bài. Bài làm không thể nộp thêm câu mới. Các câu đã nộp trước đó được giữ nguyên.</span>
               </div>
             )}
-            {submissionError && (
-              <div className="rounded-2xl bg-rose-50 dark:bg-rose-950/40 p-4 text-sm font-semibold text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
-                <p>{submissionError}</p>
-                {canResubmit && (
-                  <div className="mt-2">
+            {submissionSaveError && (
+              <div className="rounded-2xl bg-rose-50 dark:bg-rose-950/40 p-4 text-sm font-semibold text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">❌</span>
+                  <p>{submissionSaveError}</p>
+                </div>
+                {canRetrySubmission && (
+                  <div className="pt-1">
                     <button
                       type="button"
-                      onClick={handleResubmit}
+                      onClick={handleRetrySubmission}
                       className="rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700 shadow-xs cursor-pointer"
                     >
-                      Nộp lại bài làm
+                      Thử nộp lại
                     </button>
                   </div>
                 )}
-                {networkErrorPaused && (
-                  <div className="mt-2">
+              </div>
+            )}
+
+            {aiBanner && (
+              <div
+                className={`rounded-2xl p-4 text-sm font-semibold border space-y-2 ${
+                  aiBanner.type === "warning"
+                    ? "bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 border-amber-200 dark:border-amber-800"
+                    : "bg-blue-50 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200 border-blue-200 dark:border-blue-800"
+                }`}
+              >
+                <div className="flex items-start gap-2.5">
+                  <span className="text-base shrink-0">{aiBanner.type === "warning" ? "⚠️" : "ℹ️"}</span>
+                  <div className="space-y-1">
+                    <p className="leading-relaxed">{aiBanner.message}</p>
+                  </div>
+                </div>
+                {aiBanner.action === "retry_ai" && aiBanner.attemptIdForRetry && (
+                  <div className="pt-1 pl-6">
+                    <button
+                      type="button"
+                      disabled={isRetryingAiFromBanner}
+                      onClick={() => handleRetryAiFromBanner(aiBanner.attemptIdForRetry!)}
+                      className="rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white hover:bg-amber-700 shadow-xs cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5"
+                    >
+                      <span>{isRetryingAiFromBanner ? "⏳" : "🔄"}</span>
+                      <span>{isRetryingAiFromBanner ? "Đang gửi chấm lại..." : "Chấm lại bằng AI"}</span>
+                    </button>
+                  </div>
+                )}
+                {aiBanner.action === "resume_poll" && (
+                  <div className="pt-1 pl-6">
                     <button
                       type="button"
                       onClick={() => {
                         consecutiveNetworkErrorsRef.current = 0;
                         setNetworkErrorPaused(false);
-                        setSubmissionError(null);
+                        setAiBanner(null);
                         setIsSubmitting(true);
                         setPollingJobId(persistedJobId || pollingJobId);
                       }}
@@ -1422,6 +1592,121 @@ export const LearningPlayerPage = () => {
                     </button>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* 0. Assignment Result Overview Banner when submitted */}
+            {assignmentId && isAssignmentSubmitted && assignmentStats && (
+              <div className="rounded-3xl bg-white dark:bg-[#0f172a] border border-slate-200/80 dark:border-slate-800 p-6 sm:p-7 shadow-xs space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-5">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">🏆</span>
+                      <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white">
+                        Kết quả tổng quan bài tập
+                      </h2>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      {assignment?.title} · {assignmentStats.totalCount} câu hỏi
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800 px-4 py-2.5 text-center">
+                      <div className="text-[10px] uppercase font-bold text-indigo-500 dark:text-indigo-400">
+                        {assignmentStats.aiProcessingCount > 0
+                          ? "Điểm đã xác định"
+                          : assignmentStats.teacherReviewCount > 0
+                          ? "Điểm sơ bộ"
+                          : "Tổng điểm"}
+                      </div>
+                      <div className="text-xl sm:text-2xl font-black text-indigo-700 dark:text-indigo-300">
+                        {assignmentStats.evaluatedCount > 0 ? (
+                          <>
+                            {assignmentStats.awardedTotal}{" "}
+                            <span className="text-xs font-semibold text-slate-400">
+                              / {assignmentStats.maxTotalForDetermined}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-sm font-bold text-slate-500 dark:text-slate-400">Chờ phân tích</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
+                      }}
+                      className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer inline-flex items-center gap-1.5"
+                      title="Làm mới kết quả bài làm"
+                    >
+                      <span>🔄</span>
+                      <span>Làm mới</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800 p-3.5">
+                    <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Số câu đúng</div>
+                    <div className="text-base sm:text-lg font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
+                      {assignmentStats.correctCount} / {assignmentStats.totalCount}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800 p-3.5">
+                    <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Đã chấm xong</div>
+                    <div className="text-base sm:text-lg font-black text-slate-800 dark:text-slate-200 mt-0.5">
+                      {assignmentStats.evaluatedCount} / {assignmentStats.totalCount} câu
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800 p-3.5">
+                    <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                      {assignmentStats.aiProcessingCount > 0 ? "AI đang phân tích" : "Chờ GV duyệt"}
+                    </div>
+                    <div
+                      className={`text-base sm:text-lg font-black mt-0.5 ${
+                        assignmentStats.aiProcessingCount > 0
+                          ? "text-indigo-600 dark:text-indigo-400"
+                          : "text-amber-600 dark:text-amber-400"
+                      }`}
+                    >
+                      {assignmentStats.aiProcessingCount > 0
+                        ? `${assignmentStats.aiProcessingCount} câu`
+                        : `${assignmentStats.teacherReviewCount} câu`}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800 p-3.5">
+                    <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Trạng thái bài tập</div>
+                    <div className="text-xs sm:text-sm font-bold text-indigo-600 dark:text-indigo-400 mt-1">
+                      {assignmentStats.aiProcessingCount > 0
+                        ? "AI đang phân tích..."
+                        : assignmentStats.teacherReviewCount > 0
+                        ? "Chờ duyệt tự luận"
+                        : "Đã hoàn thành"}
+                    </div>
+                  </div>
+                </div>
+
+                {assignmentStats.aiProcessingCount > 0 ? (
+                  <div className="rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 p-3 text-xs text-blue-900 dark:text-blue-200 flex items-center gap-2">
+                    <span>⏳</span>
+                    <span>
+                      Đang chờ hoàn tất phân tích {assignmentStats.aiProcessingCount} câu hỏi... Điểm số và nhận xét tổng thể sẽ tự động cập nhật khi AI hoàn tất.
+                    </span>
+                  </div>
+                ) : assignmentStats.teacherReviewCount > 0 ? (
+                  <div className="rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-900 dark:text-amber-200 flex items-center gap-2">
+                    <span>⏳</span>
+                    <span>
+                      Bài tập đang có {assignmentStats.teacherReviewCount} câu chờ giáo viên chấm/duyệt lập luận. Điểm số cuối cùng sẽ được cập nhật sau khi giáo viên hoàn tất chấm bài.
+                    </span>
+                  </div>
+                ) : null}
               </div>
             )}
 
@@ -1435,8 +1720,12 @@ export const LearningPlayerPage = () => {
                   <div className="flex flex-wrap items-center gap-1.5">
                     {assignmentQuestions.map((q, idx) => {
                       const isCurrent = q.questionId === (assignmentQuestion?.questionId || activeQuestionId);
-                      const isSubmitted = Boolean(q.latestAttempt) || q.attemptStatus === "Completed" || q.attemptStatus === "NeedsTeacherReview";
-                      const isAnswered = isSubmitted || Boolean(assignmentAnswers[q.questionId]?.finalAnswer?.trim());
+                      const qStatus = q.latestAttempt?.status || q.attemptStatus;
+                      const isProcessing = qStatus === "PendingAnalysis" || qStatus === "Processing";
+                      const isReview = qStatus === "NeedsTeacherReview";
+                      const isCompleted = qStatus === "Completed";
+                      const isSubmitted = isProcessing || isReview || isCompleted || Boolean(q.latestAttempt) || Boolean(q.submittedAttemptId);
+                      const isAnswered = isSubmitted || checkQuestionCompletion(q);
 
                       return (
                         <button
@@ -1446,13 +1735,17 @@ export const LearningPlayerPage = () => {
                           className={`w-8 h-8 rounded-xl font-black text-xs transition-all cursor-pointer flex items-center justify-center ${
                             isCurrent
                               ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-2 ring-indigo-400 ring-offset-2 dark:ring-offset-slate-900 scale-105"
-                              : isSubmitted
+                              : isProcessing
+                              ? "bg-indigo-500 text-white shadow-2xs hover:bg-indigo-600"
+                              : isCompleted
                               ? "bg-emerald-600 text-white shadow-2xs hover:bg-emerald-700"
+                              : isReview
+                              ? "bg-amber-500 text-white shadow-2xs hover:bg-amber-600"
                               : isAnswered
                               ? "bg-emerald-500 text-white shadow-2xs hover:bg-emerald-600"
                               : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200/80 dark:border-slate-700"
                           }`}
-                          title={`Câu ${idx + 1}: ${isSubmitted ? "Đã nộp bài" : isAnswered ? "Đã làm" : "Chưa làm"}`}
+                          title={`Câu ${idx + 1}: ${isProcessing ? "AI đang phân tích" : isCompleted ? "Đã chấm xong" : isReview ? "Chờ GV duyệt" : isAnswered ? "Đã làm" : "Chưa làm"}`}
                         >
                           {idx + 1}
                         </button>
@@ -1488,22 +1781,28 @@ export const LearningPlayerPage = () => {
               </div>
 
               {/* Review status notice if question has an existing attempt */}
-              {(assignmentQuestion?.attemptStatus || assignmentQuestion?.latestAttempt) && (
-                <div className="rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-2 bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800 text-xs">
-                  <div className="flex items-center gap-2 text-amber-900 dark:text-amber-200 font-semibold">
+              {(assignmentQuestion?.attemptStatus || assignmentQuestion?.latestAttempt || isCurrentQuestionSubmitted) && (
+                <div className="rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-2 bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800 text-xs">
+                  <div className="flex items-center gap-2 text-indigo-950 dark:text-indigo-200 font-semibold">
                     <span className="text-base">📋</span>
                     <span>
                       {assignmentQuestion?.latestAttempt?.skipped
                         ? "Câu hỏi này đã được bỏ qua khi nộp bài."
-                        : assignmentQuestion?.attemptStatus === "NeedsTeacherReview"
+                        : assignmentQuestion?.attemptStatus === "PendingAnalysis" || assignmentQuestion?.attemptStatus === "Processing" || assignmentQuestion?.latestAttempt?.status === "PendingAnalysis" || assignmentQuestion?.latestAttempt?.status === "Processing"
+                        ? "Câu hỏi này đã nộp bài thành công. AI đang phân tích bài làm..."
+                        : assignmentQuestion?.attemptStatus === "NeedsTeacherReview" || assignmentQuestion?.latestAttempt?.status === "NeedsTeacherReview"
                         ? "Câu hỏi này đã được nộp bài và đang chờ giáo viên chấm/duyệt."
-                        : assignmentQuestion?.attemptStatus === "Completed"
+                        : assignmentQuestion?.attemptStatus === "Completed" || assignmentQuestion?.latestAttempt?.status === "Completed"
                         ? "Câu hỏi này đã hoàn thành đánh giá."
                         : "Câu hỏi này đã nộp bài thành công."}
                     </span>
                   </div>
-                  <span className="px-2.5 py-1 rounded-full font-bold bg-amber-200/80 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 shrink-0">
-                    Đã nộp · Chế độ xem lại
+                  <span className="px-2.5 py-1 rounded-full font-bold bg-indigo-100 dark:bg-indigo-900/60 text-indigo-900 dark:text-indigo-200 shrink-0">
+                    {assignmentQuestion?.attemptStatus === "PendingAnalysis" || assignmentQuestion?.attemptStatus === "Processing" || assignmentQuestion?.latestAttempt?.status === "PendingAnalysis" || assignmentQuestion?.latestAttempt?.status === "Processing"
+                      ? "Đã nộp · AI đang phân tích"
+                      : assignmentQuestion?.attemptStatus === "Completed" || assignmentQuestion?.latestAttempt?.status === "Completed"
+                      ? "Đã đánh giá"
+                      : "Đã nộp · Chế độ xem lại"}
                   </span>
                 </div>
               )}
@@ -1670,6 +1969,7 @@ export const LearningPlayerPage = () => {
                       ref={visualMathFieldRef}
                       value={finalAnswer}
                       onChange={(val) => handleAnswerChange(val)}
+                      onFocus={() => setActiveInputTarget("answer")}
                       disabled={isReadOnly}
                       placeholder={isAssignmentSubmitted ? "Chưa có đáp số" : "Gõ công thức hoặc đáp số cuối cùng (hoặc dùng Casio để tự chèn)..."}
                       autoFocus={!isReadOnly}
@@ -1718,11 +2018,16 @@ export const LearningPlayerPage = () => {
                 />
 
                 {reasoningText.trim() && /[\\[{^_\\]]/.test(reasoningText) && (
-                  <div className="mt-2">
-                    <MathFormulaPreview
-                      formula={reasoningText}
-                      label="Xem trước công thức trong lập luận (KaTeX)"
-                    />
+                  <div className="mt-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 p-3 text-xs">
+                    <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                      <span>Xem trước lập luận & công thức</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 font-mono font-bold uppercase tracking-wider">
+                        KaTeX Preview
+                      </span>
+                    </div>
+                    <div className="overflow-x-auto text-slate-800 dark:text-slate-200 py-1 text-sm font-medium leading-relaxed">
+                      <RichMathText content={reasoningText} />
+                    </div>
                   </div>
                 )}
 

@@ -19,7 +19,9 @@ public sealed class GeminiResponseJsonSchemaTests
         "missingSteps",
         "rootCauseNodeIds",
         "confidence",
-        "feedback"
+        "feedback",
+        "solutionType",
+        "aiSolution"
     ];
 
     [Fact]
@@ -33,7 +35,7 @@ public sealed class GeminiResponseJsonSchemaTests
     }
 
     [Fact]
-    public void Properties_AreExactlyTenCanonicalNames()
+    public void Properties_AreExactlyAllCanonicalNames()
     {
         using var document = CreateDocument();
         var propertyNames = document.RootElement.GetProperty("properties")
@@ -112,6 +114,20 @@ public sealed class GeminiResponseJsonSchemaTests
         Assert.Equal(
             ["string", "null"],
             StringValues(PropertySchema(document, "misconception").GetProperty("type")));
+    }
+
+    [Fact]
+    public void SolutionType_IsConstrainedToProductionAllowListOrNull()
+    {
+        using var document = CreateDocument();
+        var schema = PropertySchema(document, "solutionType");
+
+        Assert.Equal(["string", "null"], StringValues(schema.GetProperty("type")));
+        var values = schema.GetProperty("enum").EnumerateArray().ToArray();
+        Assert.Equal(
+            ["REFINED", "CORRECTED", "GENERATED", "MODEL_ANSWER"],
+            values.Take(4).Select(value => value.GetString()!).ToArray());
+        Assert.Equal(JsonValueKind.Null, values[4].ValueKind);
     }
 
     [Fact]

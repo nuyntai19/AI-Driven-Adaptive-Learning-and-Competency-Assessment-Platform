@@ -24,6 +24,8 @@ public class ReasoningAnalysis : ITenantAppendOnlyEntity, IHasRowVersion
     public bool NeedsTeacherReview { get; set; }
     public AnalysisProvider Provider { get; set; }
     public string? ModelName { get; set; }
+    public string? SolutionType { get; set; }
+    public string? AiSolution { get; set; }
 
     public decimal? OverrideReasoningQuality { get; set; }
     public ErrorType? OverrideErrorType { get; set; }

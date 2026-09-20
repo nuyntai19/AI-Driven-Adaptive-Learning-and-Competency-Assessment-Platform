@@ -356,6 +356,28 @@ public sealed class LearningController : ControllerBase
                         traceId,
                         result.ErrorCode));
             }
+            if (result.ErrorCode == "JOB_PROCESSING")
+            {
+                return StatusCode(
+                    StatusCodes.Status409Conflict,
+                    CreateProblemDetails(
+                        StatusCodes.Status409Conflict,
+                        "https://edutwin.local/problems/conflict",
+                        "AI đang xử lý",
+                        result.ErrorMessage ?? "AI đang phân tích bài làm, vui lòng chờ hoàn tất.",
+                        traceId,
+                        result.ErrorCode));
+            }
+            if (result.ErrorCode == "JOB_ALREADY_COMPLETED")
+            {
+                return BadRequest(CreateProblemDetails(
+                    StatusCodes.Status400BadRequest,
+                    "https://edutwin.local/problems/bad-request",
+                    "Đã có kết quả",
+                    result.ErrorMessage ?? "Bài làm đã hoàn thành phân tích AI.",
+                    traceId,
+                    result.ErrorCode));
+            }
             return BadRequest(CreateProblemDetails(
                 StatusCodes.Status400BadRequest,
                 "https://edutwin.local/problems/bad-request",

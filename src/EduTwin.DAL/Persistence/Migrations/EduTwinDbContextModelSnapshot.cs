@@ -441,6 +441,10 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasColumnType("decimal(5,2)")
                         .HasColumnName("analysis_confidence");
 
+                    b.Property<string>("AiSolution")
+                        .HasColumnType("longtext")
+                        .HasColumnName("ai_solution");
+
                     b.Property<ulong>("AttemptId")
                         .HasColumnType("bigint unsigned")
                         .HasColumnName("attempt_id");
@@ -557,6 +561,11 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasColumnType("varchar(20)")
                         .HasColumnName("schema_version");
 
+                    b.Property<string>("SolutionType")
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("solution_type");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime(6)")
                         .HasColumnName("updated_at");
@@ -595,6 +604,8 @@ namespace EduTwin.DAL.Persistence.Migrations
                             t.HasCheckConstraint("ck_reasoning_analyses_provider", "`provider` IN ('Gemini', 'RuleBased')");
 
                             t.HasCheckConstraint("ck_reasoning_analyses_reasoning_quality", "`reasoning_quality` IS NULL OR `reasoning_quality` BETWEEN 0 AND 100");
+
+                            t.HasCheckConstraint("ck_reasoning_analyses_solution_type", "`solution_type` IS NULL OR `solution_type` IN ('REFINED', 'CORRECTED', 'GENERATED', 'MODEL_ANSWER')");
                         });
                 });
 

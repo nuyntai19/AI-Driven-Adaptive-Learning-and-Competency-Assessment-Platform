@@ -12,6 +12,7 @@ export interface VisualMathFieldRef {
 export interface VisualMathFieldProps {
   value: string;
   onChange: (value: string) => void;
+  onFocus?: () => void;
   placeholder?: string;
   disabled?: boolean;
   className?: string;
@@ -28,6 +29,7 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
     {
       value,
       onChange,
+      onFocus,
       placeholder = "Nhấp vào đây để nhập công thức hoặc chọn ký hiệu...",
       disabled = false,
       className = "",
@@ -39,6 +41,9 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
     const mathfieldRef = useRef<any>(null);
     const [isReady, setIsReady] = useState(false);
     const lastEmittedValueRef = useRef<string>(value);
+
+    const onFocusRef = useRef(onFocus);
+    onFocusRef.current = onFocus;
 
     // Initialize Mathfield element inside container
     useEffect(() => {
@@ -85,6 +90,10 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
         onChange(currentLatex);
       };
 
+      const handleFocus = () => {
+        onFocusRef.current?.();
+      };
+
       // Keyboard Event Isolation: Prevent arrow keys, Tab, Enter, Space from bubbling up to quiz page
       const handleKeyDown = (e: KeyboardEvent) => {
         e.stopPropagation();
@@ -103,6 +112,8 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
 
       mf.addEventListener("input", handleInput);
       mf.addEventListener("keydown", handleKeyDown);
+      mf.addEventListener("focus", handleFocus);
+      mf.addEventListener("pointerdown", handleFocus);
 
       containerRef.current.innerHTML = "";
       containerRef.current.appendChild(mf);
@@ -116,6 +127,8 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
       return () => {
         mf.removeEventListener("input", handleInput);
         mf.removeEventListener("keydown", handleKeyDown);
+        mf.removeEventListener("focus", handleFocus);
+        mf.removeEventListener("pointerdown", handleFocus);
         if (containerRef.current) {
           containerRef.current.innerHTML = "";
         }
@@ -247,8 +260,14 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
           className={`p-3.5 min-h-[56px] text-slate-900 dark:text-white rounded-b-2xl overflow-x-auto min-w-0 ${
             disabled ? "cursor-default select-text" : "cursor-text bg-white dark:bg-slate-900"
           }`}
+          onPointerDown={() => {
+            if (!disabled) onFocusRef.current?.();
+          }}
           onClick={() => {
-            if (!disabled) mathfieldRef.current?.focus();
+            if (!disabled) {
+              onFocusRef.current?.();
+              mathfieldRef.current?.focus();
+            }
           }}
         />
 

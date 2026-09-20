@@ -38,6 +38,8 @@ public sealed class AIReasoningAnalysisBuilder : IAIReasoningAnalysisBuilder
             RootCauseNodeIds = JsonSerializer.SerializeToDocument(response.RootCauseNodeIds),
             AnalysisConfidence = response.Confidence,
             Feedback = response.Feedback,
+            SolutionType = response.SolutionType,
+            AiSolution = response.AiSolution,
             IsFallback = false,
             NeedsTeacherReview = false,
             Provider = AnalysisProvider.Gemini,

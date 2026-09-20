@@ -72,6 +72,11 @@ public class ReasoningAnalysisConfiguration : IEntityTypeConfiguration<Reasoning
             .IsRequired();
 
         builder.Property(r => r.ModelName).HasColumnName("model_name").HasColumnType("varchar(100)");
+        builder.Property(r => r.SolutionType)
+            .HasColumnName("solution_type")
+            .HasColumnType("varchar(32)")
+            .HasMaxLength(32);
+        builder.Property(r => r.AiSolution).HasColumnName("ai_solution").HasColumnType("longtext");
         builder.Property(r => r.OverrideReasoningQuality).HasColumnName("override_reasoning_quality").HasColumnType("decimal(5,2)");
 
         builder.Property(r => r.OverrideErrorType)
@@ -101,6 +106,7 @@ public class ReasoningAnalysisConfiguration : IEntityTypeConfiguration<Reasoning
             t.HasCheckConstraint("ck_reasoning_analyses_override_error_type", "`override_error_type` IS NULL OR `override_error_type` IN ('None', 'Knowledge', 'Skill', 'Reasoning', 'Behavior', 'Presentation', 'Unknown')");
             t.HasCheckConstraint("ck_reasoning_analyses_override_awarded_score", "`override_awarded_score` IS NULL OR `override_awarded_score` >= 0");
             t.HasCheckConstraint("ck_reasoning_analyses_provider", "`provider` IN ('Gemini', 'RuleBased')");
+            t.HasCheckConstraint("ck_reasoning_analyses_solution_type", "`solution_type` IS NULL OR `solution_type` IN ('REFINED', 'CORRECTED', 'GENERATED', 'MODEL_ANSWER')");
         });
 
         builder.HasOne(r => r.Attempt)

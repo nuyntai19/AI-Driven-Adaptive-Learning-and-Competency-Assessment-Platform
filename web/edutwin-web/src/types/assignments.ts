@@ -79,6 +79,9 @@ export interface StudentQuestionAttemptDto {
   answerChanges: number;
   skipped: boolean;
   submittedAt: string;
+  isCorrect?: boolean | null;
+  awardedScore?: number | null;
+  maxScore?: number | null;
 }
 
 export interface StudentAssignmentQuestionDto {

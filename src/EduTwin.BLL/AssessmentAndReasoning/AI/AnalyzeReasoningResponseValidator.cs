@@ -65,6 +65,9 @@ public sealed class AnalyzeReasoningResponseValidator : IAnalyzeReasoningRespons
         return allowedNodeIds;
     }
 
+    private static readonly HashSet<string> AllowedSolutionTypes =
+        new(["REFINED", "CORRECTED", "GENERATED", "MODEL_ANSWER"], StringComparer.Ordinal);
+
     private static void ValidateText(AnalyzeReasoningResponse response)
     {
         if (string.IsNullOrWhiteSpace(response.Feedback)
@@ -73,7 +76,8 @@ public sealed class AnalyzeReasoningResponseValidator : IAnalyzeReasoningRespons
             || (response.Misconception is not null
                 && (string.IsNullOrWhiteSpace(response.Misconception) || response.Misconception.Length > 1000))
             || response.MissingSteps is null
-            || response.MissingSteps.Any(string.IsNullOrWhiteSpace))
+            || response.MissingSteps.Any(string.IsNullOrWhiteSpace)
+            || (response.SolutionType is not null && !AllowedSolutionTypes.Contains(response.SolutionType)))
         {
             throw AIAnalysisValidationException.SemanticInvalid();
         }

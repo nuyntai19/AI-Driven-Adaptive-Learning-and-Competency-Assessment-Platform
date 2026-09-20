@@ -97,6 +97,8 @@ public sealed class AttemptFeedbackAnalysisDto
     public bool HasTeacherOverride { get; set; }
     public bool IsRawAI { get; set; } = true;
     public string? Model { get; set; }
+    public string? SolutionType { get; set; }
+    public string? AiSolution { get; set; }
 }
 
 public sealed class AttemptFeedbackRootCauseNodeDto

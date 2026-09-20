@@ -127,7 +127,10 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
                     TimeSpentSeconds = latestAttempt.TimeSpentSeconds,
                     AnswerChanges = latestAttempt.AnswerChanges,
                     Skipped = latestAttempt.Skipped,
-                    SubmittedAt = latestAttempt.CreatedAt
+                    SubmittedAt = latestAttempt.CreatedAt,
+                    IsCorrect = latestAttempt.IsCorrect,
+                    AwardedScore = latestAttempt.AwardedScore,
+                    MaxScore = aq.Question?.MaxScore
                 } : null,
                 SubmittedAnswer = latestAttempt?.FinalAnswer,
                 SubmittedReasoning = latestAttempt?.ReasoningText,

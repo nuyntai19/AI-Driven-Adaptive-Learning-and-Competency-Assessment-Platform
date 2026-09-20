@@ -23,4 +23,8 @@ public sealed record AnalyzeReasoningResponse
     public int Confidence { get; init; }
 
     public required string Feedback { get; init; }
+
+    public string? SolutionType { get; init; }
+
+    public string? AiSolution { get; init; }
 }

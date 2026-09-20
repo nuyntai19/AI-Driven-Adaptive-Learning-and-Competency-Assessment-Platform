@@ -122,6 +122,7 @@ export const MathInputToolbar: React.FC<MathInputToolbarProps> = ({
             key={tab.id}
             type="button"
             disabled={disabled}
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => setActiveTab(tab.id)}
             className={`px-2.5 py-1.5 font-medium rounded-t-md transition-colors whitespace-nowrap ${
               activeTab === tab.id
@@ -142,6 +143,7 @@ export const MathInputToolbar: React.FC<MathInputToolbarProps> = ({
             type="button"
             title={sym.tooltip || sym.label}
             disabled={disabled}
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => {
               if (!disabled) onInsert(sym.latex);
             }}

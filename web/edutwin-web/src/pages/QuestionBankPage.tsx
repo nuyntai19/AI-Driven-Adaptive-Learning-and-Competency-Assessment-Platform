@@ -29,6 +29,7 @@ import {
 } from "../components/centerManager/CenterManagerPrimitives";
 import { ConfirmDialog } from "../components/centerManager/CenterManagerOverlays";
 import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
+import { QuestionImportModal } from "../components/teacher/QuestionImportModal";
 
 // =============================================================================
 // 1. CENTER MANAGER DARK SAAS VIEW (GATE 6B)
@@ -62,6 +63,7 @@ function CenterManagerQuestionBankView() {
   // Dialog states for state machine transitions
   const [targetQuestion, setTargetQuestion] = useState<Question | null>(null);
   const [dialogAction, setDialogAction] = useState<"activate" | "archive" | "delete" | null>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
 
   // Canonical subject list query
   const {
@@ -204,14 +206,25 @@ function CenterManagerQuestionBankView() {
           ]}
           actions={
             canCreate ? (
-              <button
-                type="button"
-                id="btn-create-question"
-                onClick={() => navigate("/quan-ly/cau-hoi/tao-moi")}
-                className="cm-primary-button flex items-center gap-2"
-              >
-                <span>+ Tạo câu hỏi mới</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  id="btn-import-questions"
+                  onClick={() => setIsImportModalOpen(true)}
+                  className="cm-secondary-button flex items-center gap-2"
+                >
+                  <span>📥</span>
+                  <span>Nhập từ Excel / CSV</span>
+                </button>
+                <button
+                  type="button"
+                  id="btn-create-question"
+                  onClick={() => navigate("/quan-ly/cau-hoi/tao-moi")}
+                  className="cm-primary-button flex items-center gap-2"
+                >
+                  <span>+ Tạo câu hỏi mới</span>
+                </button>
+              </div>
             ) : null
           }
         />
@@ -593,6 +606,16 @@ function CenterManagerQuestionBankView() {
           }
           onConfirm={handleConfirmAction}
           onClose={handleCloseDialog}
+        />
+
+        <QuestionImportModal
+          isOpen={isImportModalOpen}
+          onClose={() => setIsImportModalOpen(false)}
+          onSuccess={() => {
+            setIsImportModalOpen(false);
+            refetch();
+            setActionSuccess("Nhập danh sách câu hỏi thành công!");
+          }}
         />
       </div>
     </CenterManagerThemeScope>
