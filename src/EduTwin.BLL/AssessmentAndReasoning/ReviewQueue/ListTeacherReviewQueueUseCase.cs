@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq.Expressions;
 using EduTwin.BLL.AssessmentAndReasoning.Evidence;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
@@ -139,12 +140,18 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
 
         var assignmentIds = entities.Select(e => e.Attempt.AssignmentId!.Value).Distinct().ToList();
         var studentIds = entities.Select(e => e.Attempt.StudentId).Distinct().ToList();
-        var progressRows = await _dbContext.StudentAssignmentProgresses
+        var progressQuery = _dbContext.StudentAssignmentProgresses
             .AsNoTracking()
             .Include(p => p.Assignment)
-            .Where(p => p.CenterId == centerId && assignmentIds.Contains(p.AssignmentId) && studentIds.Contains(p.StudentId) && !p.IsDeleted)
-            .ToListAsync(cancellationToken);
-        var progressByAssignmentStudent = progressRows.ToDictionary(p => (p.AssignmentId, p.StudentId));
+            .Where(p => p.CenterId == centerId && !p.IsDeleted);
+
+        var progressRows = (assignmentIds.Count > 0 && studentIds.Count > 0)
+            ? await WhereIn(WhereIn(progressQuery, p => p.AssignmentId, assignmentIds), p => p.StudentId, studentIds)
+                .ToListAsync(cancellationToken)
+            : [];
+        var progressByAssignmentStudent = progressRows
+            .GroupBy(p => (p.AssignmentId, p.StudentId))
+            .ToDictionary(g => g.Key, g => g.First());
 
         var data = entities.Select(evidence =>
         {
@@ -187,4 +194,29 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
             DateTimeKind.Local => value.ToUniversalTime(),
             _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
         };
+
+    private static IQueryable<T> WhereIn<T, TKey>(
+        IQueryable<T> query,
+        Expression<Func<T, TKey>> keySelector,
+        IEnumerable<TKey> keys)
+    {
+        var keyList = keys as IReadOnlyCollection<TKey> ?? keys.ToList();
+        if (keyList.Count == 0)
+        {
+            return query.Where(_ => false);
+        }
+
+        var parameter = keySelector.Parameters[0];
+        var propertyAccess = keySelector.Body;
+
+        Expression? body = null;
+        foreach (var key in keyList)
+        {
+            var constant = Expression.Constant(key, typeof(TKey));
+            var equal = Expression.Equal(propertyAccess, constant);
+            body = body == null ? equal : Expression.OrElse(body, equal);
+        }
+
+        return query.Where(Expression.Lambda<Func<T, bool>>(body!, parameter));
+    }
 }
