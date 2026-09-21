@@ -77,7 +77,7 @@ public sealed class GenerateLearningPathUseCase : IGenerateLearningPathUseCase, 
             .SingleOrDefaultAsync(p => p.CenterId == centerId && p.StudentId == studentId && p.SubjectId == request.SubjectId && !p.IsDeleted, cancellationToken);
         var unchanged = preference is not null && PreferenceMatches(preference, request, weakIds, focusIds);
         var existingPath = await _recommendationEngine.GetActiveLearningPathAsync(centerId, studentId, request.SubjectId, cancellationToken);
-        if (unchanged && existingPath?.PlanJson is not null)
+        if (!request.ForceRegenerate && unchanged && existingPath?.PlanJson is not null)
             return await BuildDetailedLearningPathAsync(centerId, studentId, subject, preference!, existingPath, cancellationToken);
 
         preference = UpsertPreference(preference, centerId, studentId, request, weakIds, focusIds, now);
@@ -110,7 +110,18 @@ public sealed class GenerateLearningPathUseCase : IGenerateLearningPathUseCase, 
         if (subject is null) return null;
         var preference = await _dbContext.StudentLearningPathPreferences.AsNoTracking()
             .SingleOrDefaultAsync(p => p.CenterId == centerId && p.StudentId == studentId && p.SubjectId == subjectId && !p.IsDeleted, cancellationToken);
-        var path = await _recommendationEngine.GetActiveLearningPathAsync(centerId, studentId, subjectId, cancellationToken);
+        // A learning path is durable history. Prefer the active version, but keep showing the
+        // latest completed/superseded version when another workflow has changed its state.
+        var path = await _dbContext.LearningPaths
+            .Include(lp => lp.Items.Where(i => !i.IsDeleted).OrderBy(i => i.RankOrder))
+            .Where(lp => lp.CenterId == centerId
+                && lp.StudentId == studentId
+                && lp.SubjectId == subjectId
+                && !lp.IsDeleted)
+            .OrderBy(lp => lp.Status == LearningPathStatus.Active ? 0 : lp.Status == LearningPathStatus.Completed ? 1 : 2)
+            .ThenByDescending(lp => lp.Version)
+            .ThenByDescending(lp => lp.GeneratedAt)
+            .FirstOrDefaultAsync(cancellationToken);
         if (path is null || preference is null) return null;
         var detailed = await BuildDetailedLearningPathAsync(centerId, studentId, subject, preference, path, cancellationToken);
         if (path.PlanJson is null)

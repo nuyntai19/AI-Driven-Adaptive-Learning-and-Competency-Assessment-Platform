@@ -91,7 +91,7 @@ public class AssignmentResultCalculatorTests
         var summary = await calculator.CalculateForSingleAssignmentAsync(centerId, studentId, assignmentId, CancellationToken.None);
 
         Assert.Null(summary.InternalAwardedScore);
-        Assert.Equal(20, summary.InternalMaxScore);
+        Assert.Equal(10, summary.InternalMaxScore);
         Assert.Equal(2, summary.TotalQuestionCount);
         Assert.Equal(0, summary.CorrectQuestionCount);
         Assert.Equal("Processing", summary.ResultStatus);

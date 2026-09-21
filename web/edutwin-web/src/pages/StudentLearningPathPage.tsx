@@ -63,7 +63,6 @@ export const StudentLearningPathPage: React.FC = () => {
   const {
     data: detailedPathData,
     isLoading: isPathLoading,
-    refetch: refetchPath,
   } = useQuery({
     queryKey: ["learning-path", effectiveSubjectId],
     queryFn: () => getDetailedLearningPath(effectiveSubjectId),
@@ -87,6 +86,23 @@ export const StudentLearningPathPage: React.FC = () => {
   const [preferredMode, setPreferredMode] = useState("Balanced");
   const [note, setNote] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+
+  // Each subject owns an independent questionnaire and persisted path.
+  useEffect(() => {
+    setSelfAssessedLevel("Medium");
+    setWeakTopicIds([]);
+    setFocusTopicIds([]);
+    setGoalType("Foundation");
+    setTargetMastery(80);
+    setTargetWeeks(4);
+    setMinutesPerDay(30);
+    setDaysPerWeek(5);
+    setPace("Moderate");
+    setPreferredMode("Balanced");
+    setNote("");
+    setFormError(null);
+    setIsQuestionnaireOpen(false);
+  }, [effectiveSubjectId]);
 
   // Sync state with saved preferences
   useEffect(() => {
@@ -116,11 +132,11 @@ export const StudentLearningPathPage: React.FC = () => {
   // Generate Learning Path Mutation
   const generateMutation = useMutation({
     mutationFn: (req: GenerateLearningPathRequest) => generateLearningPath(req),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["learning-path", effectiveSubjectId] });
-      queryClient.invalidateQueries({ queryKey: ["learning-path-preferences", effectiveSubjectId] });
+    onSuccess: (response) => {
+      queryClient.setQueryData(["learning-path", effectiveSubjectId], response);
+      void queryClient.invalidateQueries({ queryKey: ["learning-path", effectiveSubjectId] });
+      void queryClient.invalidateQueries({ queryKey: ["learning-path-preferences", effectiveSubjectId] });
       setIsQuestionnaireOpen(false);
-      refetchPath();
     },
     onError: (err: unknown) => {
       setFormError(err instanceof Error ? err.message : "Không thể tạo lộ trình học tập.");
@@ -156,6 +172,7 @@ export const StudentLearningPathPage: React.FC = () => {
       pace,
       preferredMode,
       note: note.trim() || null,
+      forceRegenerate: Boolean(detailedPath),
     };
 
     generateMutation.mutate(payload);
@@ -214,7 +231,7 @@ export const StudentLearningPathPage: React.FC = () => {
             onClick={() => setIsQuestionnaireOpen((prev) => !prev)}
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition-colors cursor-pointer"
           >
-            <span>{isQuestionnaireOpen ? "✕ Đóng khảo sát" : "⚙ Điều chỉnh mục tiêu"}</span>
+            <span>{isQuestionnaireOpen ? "✕ Đóng khảo sát" : detailedPath ? "↻ Cập nhật lộ trình học" : "⚙ Tạo lộ trình học"}</span>
           </button>
         </div>
       </div>
@@ -521,7 +538,7 @@ export const StudentLearningPathPage: React.FC = () => {
                 disabled={generateMutation.isPending}
                 className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-colors disabled:opacity-50 flex items-center gap-2"
               >
-                <span>{generateMutation.isPending ? "⏳ Đang tính toán..." : "🚀 Tạo Lộ Trình Học Tập"}</span>
+                <span>{generateMutation.isPending ? "⏳ Đang tính toán..." : detailedPath ? "↻ Cập Nhật Lộ Trình Học" : "🚀 Tạo Lộ Trình Học Tập"}</span>
               </button>
             </div>
           </form>

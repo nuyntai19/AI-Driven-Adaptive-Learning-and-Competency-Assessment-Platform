@@ -655,7 +655,7 @@ export const LearningPlayerPage = () => {
           if (isSubscribed) {
             setAiBanner({
               type: "info",
-              message: "✓ Bài làm đã được ghi nhận. AI đang mất nhiều thời gian hơn dự kiến để phân tích. Bạn vẫn có thể xem bài làm và lời giải của giáo viên. Kết quả AI sẽ được cập nhật khi hoàn tất.",
+              message: "✓ Bài làm đã được ghi nhận. AI đang mất nhiều thời gian hơn dự kiến để phân tích. Điểm số và nhận xét sẽ được cập nhật khi hoàn tất.",
               action: null,
             });
             try {
@@ -1159,47 +1159,33 @@ export const LearningPlayerPage = () => {
   // Assignment-level statistics when submitted
   const assignmentStats = useMemo(() => {
     if (!assignment || !isAssignmentSubmitted) return null;
-    let awardedTotal = 0;
-    let maxTotalForDetermined = 0;
-    let overallMaxTotal = 0;
-    let correctCount = 0;
-    let evaluatedCount = 0;
     let aiProcessingCount = 0;
     let teacherReviewCount = 0;
 
     for (const q of assignmentQuestions) {
       const status = q.latestAttempt?.status || q.attemptStatus;
-      const isEvaluated = status === "Completed";
       const isReview = status === "NeedsTeacherReview";
       const isProcessing = status === "PendingAnalysis" || status === "Processing";
 
-      if (isEvaluated) evaluatedCount++;
       if (isReview) teacherReviewCount++;
       if (isProcessing) aiProcessingCount++;
-
-      const maxScore = q.latestAttempt?.maxScore ?? 10;
-      overallMaxTotal += Number(maxScore);
-
-      if (q.latestAttempt?.awardedScore !== null && q.latestAttempt?.awardedScore !== undefined) {
-        awardedTotal += Number(q.latestAttempt.awardedScore);
-        maxTotalForDetermined += Number(maxScore);
-      }
-
-      if (q.latestAttempt?.isCorrect === true) {
-        correctCount++;
-      }
     }
 
+    const summary = assignment.summary;
+    const evaluatedCount = summary?.evaluatedQuestionCount ?? assignmentQuestions.filter((q) => {
+      const status = q.latestAttempt?.status || q.attemptStatus;
+      return status === "Completed" || status === "NeedsTeacherReview";
+    }).length;
+
     return {
-      awardedTotal,
-      maxTotalForDetermined,
-      overallMaxTotal,
-      correctCount,
+      awardedTotal: summary?.internalAwardedScore ?? null,
+      maxTotal: summary?.internalMaxScore ?? 10,
+      correctCount: summary?.correctQuestionCount ?? assignmentQuestions.filter((q) => q.effectiveIsCorrect === true).length,
       evaluatedCount,
       aiProcessingCount,
       teacherReviewCount,
       pendingCount: teacherReviewCount,
-      totalCount: assignmentQuestions.length,
+      totalCount: summary?.totalQuestionCount ?? assignmentQuestions.length,
       isFullyEvaluated: evaluatedCount === assignmentQuestions.length && assignmentQuestions.length > 0,
     };
   }, [assignment, isAssignmentSubmitted, assignmentQuestions]);
@@ -1295,6 +1281,9 @@ export const LearningPlayerPage = () => {
   // 2. Feedback Screen (Results after submission)
   if (feedbackData) {
     const { grading, twinChange, recommendation } = feedbackData;
+    const assignmentResult = assignmentId ? assignment?.summary : null;
+    const displayedScore = assignmentId ? assignmentResult?.internalAwardedScore : grading.awardedScore;
+    const displayedMaxScore = assignmentId ? assignmentResult?.internalMaxScore ?? 10 : grading.maxScore;
 
     return (
       <div className="min-h-screen bg-[#f8fafc] dark:bg-[#090d16] p-6 text-slate-800 dark:text-slate-100">
@@ -1343,7 +1332,8 @@ export const LearningPlayerPage = () => {
               </div>
 
               {/* Overall AI Comment */}
-              {assignment.summary.overallAiComment && (
+              {assignment.summary.overallAiComment &&
+                !(assignment.summary.teacherFinalReviewStatus === "Approved" && assignment.summary.finalTeacherNote) && (
                 <div className="rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 p-4 border border-indigo-200/80 dark:border-indigo-800 space-y-2">
                   <div className="flex items-center gap-2">
                     <span className="text-base">🤖</span>
@@ -1358,6 +1348,17 @@ export const LearningPlayerPage = () => {
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 italic pt-1 border-t border-indigo-100 dark:border-indigo-900/60">
                     * Nhận xét tổng hợp tự động từ AI nhằm định hướng ôn tập, không thay thế đánh giá chính thức của giáo viên.
                   </p>
+                </div>
+              )}
+              {assignment.summary.teacherFinalReviewStatus === "Approved" && assignment.summary.finalTeacherNote && (
+                <div className="rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/40 p-4 border border-emerald-200/80 dark:border-emerald-800 space-y-2">
+                  <h4 className="text-xs font-extrabold uppercase tracking-wider text-emerald-900 dark:text-emerald-200">
+                    Nhận xét của {assignment.summary.finalReviewedByName || "giáo viên"}
+                  </h4>
+                  <RichMathText
+                    text={assignment.summary.finalTeacherNote}
+                    className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed"
+                  />
                 </div>
               )}
             </div>
@@ -1375,17 +1376,15 @@ export const LearningPlayerPage = () => {
             <div className="flex items-center justify-between">
               <div>
                 <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-bold uppercase tracking-wider text-white">
-                  {grading.isCorrect === true
-                    ? "Đáp án chính xác"
-                    : grading.isCorrect === false
-                    ? "Cần hoàn thiện"
-                    : "Đang chờ đánh giá"}
+                  {assignmentId
+                    ? assignmentResult?.teacherFinalReviewStatus === "Approved" ? "Điểm giáo viên" : "Điểm AI tạm tính"
+                    : grading.isCorrect === true ? "Đáp án chính xác" : grading.isCorrect === false ? "Cần hoàn thiện" : "Đang chờ đánh giá"}
                 </span>
                 <h2 className="mt-2 text-2xl sm:text-3xl font-black">
                   Điểm số:{" "}
-                  {grading.awardedScore === null || grading.awardedScore === undefined
-                    ? `Chưa chấm / ${grading.maxScore}`
-                    : `${grading.awardedScore} / ${grading.maxScore}`}
+                  {displayedScore === null || displayedScore === undefined
+                    ? `Chưa chấm / ${displayedMaxScore}`
+                    : `${displayedScore} / ${displayedMaxScore}`}
                 </h2>
               </div>
               <div className="text-right">
@@ -1398,6 +1397,9 @@ export const LearningPlayerPage = () => {
           {/* 4-Tier Hierarchy: Student Work -> AI Reasoning -> Teacher Solution -> Teacher Evaluation */}
           <AttemptFeedbackHierarchy
             feedbackData={feedbackData}
+            showStudentSubmission={!assignmentId}
+            scoreAndFeedbackOnly={Boolean(assignmentId)}
+            assignmentQuestionCount={assignmentId ? assignmentQuestions.length : undefined}
             answerOptions={
               assignmentQuestions.find((item) => item.questionId === feedbackData.questionId)?.options ??
               question?.options ??
@@ -1415,7 +1417,7 @@ export const LearningPlayerPage = () => {
           />
 
           {/* Digital Twin Change Card */}
-          {twinChange && (
+          {!assignmentId && twinChange && (
             <div className="rounded-3xl bg-white dark:bg-[#0f172a] p-6 shadow-xs border border-slate-200/80 dark:border-slate-800">
               <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
                 Tác Động Hồ Sơ Năng Lực (Digital Twin Delta)
@@ -1445,7 +1447,7 @@ export const LearningPlayerPage = () => {
           )}
 
           {/* Next Recommendation Card if present */}
-          {recommendation && (
+          {!assignmentId && recommendation && (
             <div className="rounded-3xl bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/40 dark:to-purple-950/40 p-6 shadow-xs border border-indigo-200/80 dark:border-indigo-800">
               <span className="inline-flex items-center rounded-full bg-indigo-100 dark:bg-indigo-900/60 px-2.5 py-0.5 text-xs font-bold text-indigo-800 dark:text-indigo-300">
                 Gợi ý bước tiếp theo: {recommendation.type}
@@ -1731,11 +1733,11 @@ export const LearningPlayerPage = () => {
                           : "Tổng điểm"}
                       </div>
                       <div className="text-xl sm:text-2xl font-black text-indigo-700 dark:text-indigo-300">
-                        {assignmentStats.evaluatedCount > 0 ? (
+                        {assignmentStats.awardedTotal !== null ? (
                           <>
                             {assignmentStats.awardedTotal}{" "}
                             <span className="text-xs font-semibold text-slate-400">
-                              / {assignmentStats.maxTotalForDetermined}
+                              / {assignmentStats.maxTotal}
                             </span>
                           </>
                         ) : (
@@ -1822,6 +1824,28 @@ export const LearningPlayerPage = () => {
                     </span>
                   </div>
                 ) : null}
+
+                {assignment?.summary?.teacherFinalReviewStatus === "Approved" && assignment.summary.finalTeacherNote ? (
+                  <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 p-4">
+                    <div className="text-xs font-extrabold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
+                      Nhận xét của {assignment.summary.finalReviewedByName || "giáo viên"}
+                    </div>
+                    <RichMathText
+                      text={assignment.summary.finalTeacherNote}
+                      className="mt-1 text-sm text-slate-700 dark:text-slate-200 leading-relaxed"
+                    />
+                  </div>
+                ) : assignment?.summary?.overallAiComment ? (
+                  <div className="rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 p-4">
+                    <div className="text-xs font-extrabold uppercase tracking-wider text-indigo-800 dark:text-indigo-300">
+                      Nhận xét của AI
+                    </div>
+                    <RichMathText
+                      text={assignment.summary.overallAiComment}
+                      className="mt-1 text-sm text-slate-700 dark:text-slate-200 leading-relaxed"
+                    />
+                  </div>
+                ) : null}
               </div>
             )}
 
@@ -1841,26 +1865,39 @@ export const LearningPlayerPage = () => {
                       const isCompleted = qStatus === "Completed";
                       const isSubmitted = isProcessing || isReview || isCompleted || Boolean(q.latestAttempt) || Boolean(q.submittedAttemptId);
                       const isAnswered = isSubmitted || checkQuestionCompletion(q);
+                      const correctness = q.effectiveIsCorrect ?? q.latestAttempt?.isCorrect;
+                      const resultColor = correctness === true
+                        ? "bg-emerald-600 text-white shadow-2xs hover:bg-emerald-700"
+                        : correctness === false
+                        ? "bg-rose-600 text-white shadow-2xs hover:bg-rose-700"
+                        : isProcessing
+                        ? "bg-indigo-500 text-white shadow-2xs hover:bg-indigo-600"
+                        : isReview
+                        ? "bg-amber-500 text-white shadow-2xs hover:bg-amber-600"
+                        : isAnswered
+                        ? "bg-slate-500 text-white shadow-2xs hover:bg-slate-600"
+                        : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200/80 dark:border-slate-700";
+                      const resultLabel = correctness === true
+                        ? "Đúng"
+                        : correctness === false
+                        ? "Sai"
+                        : isProcessing
+                        ? "AI đang phân tích"
+                        : isReview
+                        ? "Chờ GV duyệt"
+                        : isAnswered
+                        ? "Đã làm"
+                        : "Chưa làm";
 
                       return (
                         <button
                           key={q.questionId}
                           type="button"
                           onClick={() => handleSwitchQuestion(q.questionId)}
-                          className={`w-8 h-8 rounded-xl font-black text-xs transition-all cursor-pointer flex items-center justify-center ${
-                            isCurrent
-                              ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-2 ring-indigo-400 ring-offset-2 dark:ring-offset-slate-900 scale-105"
-                              : isProcessing
-                              ? "bg-indigo-500 text-white shadow-2xs hover:bg-indigo-600"
-                              : isCompleted
-                              ? "bg-emerald-600 text-white shadow-2xs hover:bg-emerald-700"
-                              : isReview
-                              ? "bg-amber-500 text-white shadow-2xs hover:bg-amber-600"
-                              : isAnswered
-                              ? "bg-emerald-500 text-white shadow-2xs hover:bg-emerald-600"
-                              : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200/80 dark:border-slate-700"
+                          className={`w-8 h-8 rounded-xl font-black text-xs transition-all cursor-pointer flex items-center justify-center ${resultColor} ${
+                            isCurrent ? "ring-2 ring-indigo-400 ring-offset-2 dark:ring-offset-slate-900 scale-105" : ""
                           }`}
-                          title={`Câu ${idx + 1}: ${isProcessing ? "AI đang phân tích" : isCompleted ? "Đã chấm xong" : isReview ? "Chờ GV duyệt" : isAnswered ? "Đã làm" : "Chưa làm"}`}
+                          title={`Câu ${idx + 1}: ${resultLabel}`}
                         >
                           {idx + 1}
                         </button>
@@ -2238,6 +2275,7 @@ export const LearningPlayerPage = () => {
                     <AttemptFeedbackHierarchy
                       feedbackData={reviewFeedbackQuery.data}
                       showStudentSubmission={false}
+                      assignmentQuestionCount={assignmentQuestions.length}
                       answerOptions={assignmentQuestion?.options ?? []}
                       onRefreshFeedback={async () => {
                         await reviewFeedbackQuery.refetch();

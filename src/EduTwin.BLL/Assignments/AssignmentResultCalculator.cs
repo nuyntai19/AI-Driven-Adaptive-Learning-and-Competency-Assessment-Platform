@@ -67,7 +67,9 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
             {
                 aq.AssignmentId,
                 aq.QuestionId,
-                MaxScore = aq.Points > 0 ? aq.Points : (aq.Question != null && aq.Question.MaxScore > 0 ? aq.Question.MaxScore : 1.00m)
+                MaxScore = aq.Question != null && aq.Question.MaxScore > 0
+                    ? aq.Question.MaxScore
+                    : aq.Points > 0 ? aq.Points : 1.00m
             })
             .ToListAsync(cancellationToken);
 
@@ -126,6 +128,18 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
 
         var progressesByAssignment = progresses.ToDictionary(p => p.AssignmentId);
 
+        var reviewerIds = progresses
+            .Where(p => p.FinalReviewedByUserId.HasValue)
+            .Select(p => p.FinalReviewedByUserId!.Value)
+            .Distinct()
+            .ToList();
+        var reviewerNames = reviewerIds.Count == 0
+            ? new Dictionary<Guid, string>()
+            : await _dbContext.Users
+                .AsNoTracking()
+                .Where(u => u.CenterId == centerId && reviewerIds.Contains(u.UserId))
+                .ToDictionaryAsync(u => u.UserId, u => u.DisplayName, cancellationToken);
+
         // 5. Compute summary deterministically for each assignment
         var resultMap = new Dictionary<Guid, AssignmentResultSummaryDto>(assignmentIds.Count);
 
@@ -133,7 +147,8 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
         {
             var questions = questionsByAssignment.GetValueOrDefault(assignmentId) ?? new();
             var totalQuestionCount = questions.Count;
-            var totalAssignmentMaxScore = questions.Sum(q => q.MaxScore);
+            const decimal assignmentMaxScore = 10m;
+            var scorePerQuestion = totalQuestionCount > 0 ? assignmentMaxScore / totalQuestionCount : 0m;
 
             decimal totalAwardedScore = 0m;
             int answeredQuestionCount = 0;
@@ -158,7 +173,10 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
 
                 if (effectiveScore.HasValue || effectiveIsCorrect.HasValue)
                 {
-                    totalAwardedScore += effectiveScore ?? 0m;
+                    var earnedRatio = effectiveScore.HasValue && q.MaxScore > 0
+                        ? Math.Clamp(effectiveScore.Value / q.MaxScore, 0m, 1m)
+                        : effectiveIsCorrect == true ? 1m : 0m;
+                    totalAwardedScore += scorePerQuestion * earnedRatio;
                     evaluatedQuestionCount++;
 
                     if (effectiveIsCorrect == true)
@@ -196,10 +214,15 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
                 PendingQuestionCount = pendingQuestionCount,
                 ResultStatus = resultStatus,
                 TeacherFinalReviewStatus = finalReviewStatus.ToString(),
-                InternalAwardedScore = evaluatedQuestionCount > 0 ? totalAwardedScore : null,
-                InternalMaxScore = totalAssignmentMaxScore,
+                InternalAwardedScore = evaluatedQuestionCount > 0 ? decimal.Round(totalAwardedScore, 2) : null,
+                InternalMaxScore = totalQuestionCount > 0 ? assignmentMaxScore : 0m,
                 OverallAiComment = cachedComment,
-                OverallAiCommentGeneratedAt = commentGeneratedAt
+                OverallAiCommentGeneratedAt = commentGeneratedAt,
+                FinalTeacherNote = progress?.FinalTeacherNote,
+                FinalReviewedByName = progress?.FinalReviewedByUserId is { } reviewerId
+                    ? reviewerNames.GetValueOrDefault(reviewerId)
+                    : null,
+                FinalReviewedAt = progress?.FinalReviewedAt
             };
         }
 
@@ -219,7 +242,10 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
         InternalAwardedScore = null,
         InternalMaxScore = maxScore,
         OverallAiComment = null,
-        OverallAiCommentGeneratedAt = null
+        OverallAiCommentGeneratedAt = null,
+        FinalTeacherNote = null,
+        FinalReviewedByName = null,
+        FinalReviewedAt = null
     };
 
     private static IQueryable<T> WhereIn<T, TKey>(

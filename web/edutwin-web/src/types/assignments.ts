@@ -20,6 +20,9 @@ export interface AssignmentResultSummaryDto {
   internalMaxScore: number;
   overallAiComment: string | null;
   overallAiCommentGeneratedAt?: string | null;
+  finalTeacherNote?: string | null;
+  finalReviewedByName?: string | null;
+  finalReviewedAt?: string | null;
 }
 
 export interface AssignmentQuestionDto {

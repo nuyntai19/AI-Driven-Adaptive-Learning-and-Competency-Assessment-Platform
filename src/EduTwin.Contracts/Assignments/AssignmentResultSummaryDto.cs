@@ -16,4 +16,7 @@ public sealed class AssignmentResultSummaryDto
     public decimal InternalMaxScore { get; set; }
     public string? OverallAiComment { get; set; }
     public DateTime? OverallAiCommentGeneratedAt { get; set; }
+    public string? FinalTeacherNote { get; set; }
+    public string? FinalReviewedByName { get; set; }
+    public DateTime? FinalReviewedAt { get; set; }
 }

@@ -19,6 +19,7 @@ public sealed class GenerateLearningPathRequest
     public string Pace { get; set; } = "Moderate"; // Gentle, Moderate, Accelerated
     public string PreferredMode { get; set; } = "Balanced"; // TheoryHeavy, PracticeHeavy, Balanced
     public string? Note { get; set; }
+    public bool ForceRegenerate { get; set; }
 }
 
 public sealed class StudentLearningPathPreferenceDto

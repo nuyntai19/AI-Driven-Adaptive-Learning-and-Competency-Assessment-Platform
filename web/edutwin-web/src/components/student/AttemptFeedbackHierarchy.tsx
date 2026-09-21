@@ -12,7 +12,9 @@ interface AttemptFeedbackHierarchyProps {
   onRefreshFeedback: () => Promise<void>;
   onPollJob?: (jobId: string) => void;
   showStudentSubmission?: boolean;
+  scoreAndFeedbackOnly?: boolean;
   answerOptions?: Array<{ optionId: string; label: string; text: string }>;
+  assignmentQuestionCount?: number;
 }
 
 export function AttemptFeedbackHierarchy({
@@ -20,7 +22,9 @@ export function AttemptFeedbackHierarchy({
   onRefreshFeedback,
   onPollJob,
   showStudentSubmission = true,
+  scoreAndFeedbackOnly = false,
   answerOptions = [],
+  assignmentQuestionCount,
 }: AttemptFeedbackHierarchyProps) {
   const {
     attemptId,
@@ -115,6 +119,15 @@ export function AttemptFeedbackHierarchy({
   const isPending = feedbackData.status === "PendingAnalysis" || feedbackData.status === "Processing";
   const isUnavailable = !analysis && !isPending;
   const isDegradedOrFallback = !analysis || analysis.isFallback || isPending;
+  const displayedMaxScore = assignmentQuestionCount && assignmentQuestionCount > 0
+    ? Math.round((10 / assignmentQuestionCount) * 100) / 100
+    : grading.maxScore;
+  const toDisplayedScore = (score?: number | null) => {
+    if (score === null || score === undefined) return null;
+    if (!assignmentQuestionCount || assignmentQuestionCount <= 0 || grading.maxScore <= 0) return score;
+    return Math.round((score / grading.maxScore) * displayedMaxScore * 100) / 100;
+  };
+  const displayedAwardedScore = toDisplayedScore(grading.awardedScore);
   const formatAnswer = (answer: string) => {
     const option = answerOptions.find(
       (candidate) => candidate.optionId === answer || candidate.label === answer
@@ -255,7 +268,7 @@ export function AttemptFeedbackHierarchy({
               : "Kết quả: Chờ đánh giá"}
           </span>
           <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 text-xs font-bold text-slate-700 dark:text-slate-300">
-            Điểm: {grading.awardedScore ?? "Chưa chấm"} / {grading.maxScore}
+            Điểm: {displayedAwardedScore ?? "Chưa chấm"} / {displayedMaxScore}
           </span>
         </div>
 
@@ -268,17 +281,23 @@ export function AttemptFeedbackHierarchy({
             </div>
             <p className="leading-relaxed">
               {isPending
-                ? "Bài làm của bạn đã được lưu. Kết quả phân tích của riêng câu này đang được xử lý; đáp án và lời giải giáo viên vẫn hiển thị bên dưới."
+                ? scoreAndFeedbackOnly
+                  ? "Bài làm của bạn đã được lưu. Điểm số và nhận xét của câu này đang được xử lý."
+                  : "Bài làm của bạn đã được lưu. Kết quả phân tích của riêng câu này đang được xử lý; đáp án và lời giải giáo viên vẫn hiển thị bên dưới."
                 : isUnavailable
-                ? "AI hiện đang tạm thời không khả dụng. Bài làm của bạn đã được lưu. Đáp án và lời giải giáo viên vẫn hiển thị bên dưới."
-                : "AI đã trả về kết quả dự phòng hoặc cần giáo viên xem xét. Bài làm của bạn đã được lưu; đáp án và lời giải giáo viên vẫn hiển thị bên dưới."}
+                ? scoreAndFeedbackOnly
+                  ? "AI hiện đang tạm thời không khả dụng. Bài làm của bạn đã được lưu để giáo viên xem xét."
+                  : "AI hiện đang tạm thời không khả dụng. Bài làm của bạn đã được lưu. Đáp án và lời giải giáo viên vẫn hiển thị bên dưới."
+                : scoreAndFeedbackOnly
+                  ? "AI đã trả về kết quả dự phòng hoặc cần giáo viên xem xét. Bài làm của bạn đã được lưu."
+                  : "AI đã trả về kết quả dự phòng hoặc cần giáo viên xem xét. Bài làm của bạn đã được lưu; đáp án và lời giải giáo viên vẫn hiển thị bên dưới."}
             </p>
           </div>
         )}
 
         {analysis && (
           <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {!scoreAndFeedbackOnly && <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {analysis.methodDetected && (
                 <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-4 border border-slate-100 dark:border-slate-700/60">
                   <p className="text-xs font-medium text-slate-400">Phương pháp nhận diện</p>
@@ -293,7 +312,7 @@ export function AttemptFeedbackHierarchy({
                   </p>
                 </div>
               )}
-            </div>
+            </div>}
 
             <div className="rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/50 p-4 border border-indigo-200/60 dark:border-indigo-800">
               <p className="text-xs font-extrabold text-indigo-900 dark:text-indigo-300 uppercase tracking-wider">
@@ -304,7 +323,7 @@ export function AttemptFeedbackHierarchy({
               </div>
             </div>
 
-            {analysis.missingSteps && analysis.missingSteps.length > 0 && (
+            {!scoreAndFeedbackOnly && analysis.missingSteps && analysis.missingSteps.length > 0 && (
               <div>
                 <p className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                   Các bước còn thiếu hoặc cần bổ sung:
@@ -319,14 +338,14 @@ export function AttemptFeedbackHierarchy({
               </div>
             )}
 
-            {analysis.misconception && (
+            {!scoreAndFeedbackOnly && analysis.misconception && (
               <div className="rounded-2xl bg-rose-50 dark:bg-rose-950/40 p-4 text-xs text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
                 <span className="font-bold">Quan niệm sai lầm nhận diện: </span>
                 <RichMathText content={analysis.misconception} />
               </div>
             )}
 
-            {analysis.aiSolution && (
+            {!scoreAndFeedbackOnly && analysis.aiSolution && (
               <div className="rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 p-5 border border-indigo-200 dark:border-indigo-800 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -423,7 +442,7 @@ export function AttemptFeedbackHierarchy({
       </div>
 
       {/* TIER 3: ĐÁP ÁN & LỜI GIẢI CỦA GIÁO VIÊN (Teacher Solution - Collapsed by default) */}
-      {teacherSolution && (
+      {!scoreAndFeedbackOnly && teacherSolution && (
         <div className="rounded-3xl bg-white dark:bg-[#0f172a] p-6 sm:p-7 shadow-xs border border-emerald-500/30 dark:border-emerald-500/20 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
             <div className="flex items-center gap-2.5">
@@ -559,7 +578,7 @@ export function AttemptFeedbackHierarchy({
                   {teacherFinalEvaluation.isApprovedAsIs ? "Điểm số chính thức (được xác nhận):" : "Điểm số sau khi giáo viên chấm đè:"}
                 </span>
                 <span className="text-xl font-black text-slate-900 dark:text-white">
-                  {teacherFinalEvaluation.teacherScore ?? grading.awardedScore} / {grading.maxScore}
+                  {toDisplayedScore(teacherFinalEvaluation.teacherScore ?? grading.awardedScore) ?? "Chưa chấm"} / {displayedMaxScore}
                 </span>
               </div>
               {teacherFinalEvaluation.reviewedByTeacherName && (

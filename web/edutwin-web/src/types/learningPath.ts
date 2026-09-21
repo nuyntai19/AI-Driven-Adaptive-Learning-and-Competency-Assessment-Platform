@@ -43,6 +43,7 @@ export interface GenerateLearningPathRequest {
   pace: string;
   preferredMode: string;
   note?: string | null;
+  forceRegenerate?: boolean;
 }
 
 export interface LearningPathItemDetailDto {
