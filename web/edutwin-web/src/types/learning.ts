@@ -108,6 +108,9 @@ export interface AttemptFeedbackTeacherSolutionDto {
 
 export interface AttemptFeedbackTeacherFinalEvaluationDto {
   hasTeacherOverride: boolean;
+  isApprovedAsIs?: boolean;
+  reviewDecision?: string | null;
+  teacherReviewNote?: string | null;
   teacherIsCorrect?: boolean | null;
   teacherScore?: number | null;
   teacherFeedback?: string | null;

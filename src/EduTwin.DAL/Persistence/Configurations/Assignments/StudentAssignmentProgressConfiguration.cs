@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using EduTwin.Contracts.Assignments;
 using EduTwin.DAL.Assignments;
 
 namespace EduTwin.DAL.Persistence.Configurations.Assignments;
@@ -62,6 +63,48 @@ public class StudentAssignmentProgressConfiguration : IEntityTypeConfiguration<S
             .HasColumnName("completed_at")
             .HasColumnType("datetime(6)");
 
+        builder.Property(p => p.TeacherFinalReviewStatus)
+            .HasColumnName("teacher_final_review_status")
+            .HasColumnType("varchar(32)")
+            .HasConversion<string>()
+            .HasDefaultValue(TeacherFinalReviewStatus.Pending)
+            .IsRequired();
+
+        builder.Property(p => p.FinalReviewedByUserId)
+            .HasColumnName("final_reviewed_by_user_id")
+            .HasColumnType("varchar(36)");
+
+        builder.Property(p => p.FinalReviewedAt)
+            .HasColumnName("final_reviewed_at")
+            .HasColumnType("datetime(6)");
+
+        builder.Property(p => p.FinalTeacherNote)
+            .HasColumnName("final_teacher_note")
+            .HasColumnType("varchar(1000)");
+
+        builder.Property(p => p.FinalReviewVersion)
+            .HasColumnName("final_review_version")
+            .HasColumnType("int unsigned")
+            .HasDefaultValue(0u);
+
+        builder.Property(p => p.OverallAiComment)
+            .HasColumnName("overall_ai_comment")
+            .HasColumnType("longtext");
+
+        builder.Property(p => p.OverallAiCommentGeneratedAt)
+            .HasColumnName("overall_ai_comment_generated_at")
+            .HasColumnType("datetime(6)");
+
+        builder.Property(p => p.OverallAiCommentVersion)
+            .HasColumnName("overall_ai_comment_version")
+            .HasColumnType("int unsigned")
+            .HasDefaultValue(0u);
+
+        builder.Property(p => p.IsOverallAiCommentStale)
+            .HasColumnName("is_overall_ai_comment_stale")
+            .HasColumnType("tinyint(1)")
+            .HasDefaultValue(false);
+
         // MTA Properties
         builder.Property(p => p.CreatedAt).HasColumnName("created_at").HasColumnType("datetime(6)").IsRequired();
         builder.Property(p => p.CreatedBy).HasColumnName("created_by").HasColumnType("varchar(36)");
@@ -81,6 +124,7 @@ public class StudentAssignmentProgressConfiguration : IEntityTypeConfiguration<S
         {
             t.HasCheckConstraint("ck_student_assignment_progress_counts", "completed_question_count <= total_question_count");
             t.HasCheckConstraint("ck_student_assignment_progress_status", "status IN ('NotStarted', 'InProgress', 'Completed', 'Overdue')");
+            t.HasCheckConstraint("ck_student_assignment_progress_final_review", "teacher_final_review_status IN ('Pending', 'Approved')");
         });
 
         // Relations

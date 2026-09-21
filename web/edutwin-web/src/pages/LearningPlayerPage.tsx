@@ -22,7 +22,7 @@ import {
 } from "../utils/polling";
 import { StudentSubjectRequiredState } from "../components/student/StudentSubjectRequiredState";
 import { AttemptFeedbackHierarchy } from "../components/student/AttemptFeedbackHierarchy";
-import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
+import { supportsMathTools, isFormulaOnlyQuestion } from "../utils/subjectCapabilities";
 import { MathInputToolbar } from "../components/math/MathInputToolbar";
 import { VisualMathField, type VisualMathFieldRef } from "../components/math/VisualMathField";
 import { RichMathText } from "../components/math/RichMathText";
@@ -35,6 +35,8 @@ import {
 } from "../utils/attemptSessionStorage";
 import { useAuthStore } from "../stores/authStore";
 import { httpClient } from "../api/httpClient";
+import { organizationApi } from "../api/organizationApi";
+import { isAxiosError } from "axios";
 import { isFeedbackForQuestion, resolveQuestionReviewAttemptId } from "../utils/questionReview";
 
 interface StoredAnswer {
@@ -47,6 +49,9 @@ interface StoredAnswer {
   snapshotTime?: string | null;
   drawingUploadToken?: string | null;
 }
+
+const asStoredAnswerRecord = (value: unknown): Record<string, unknown> | null =>
+  typeof value === "object" && value !== null ? value as Record<string, unknown> : null;
 
 export const LearningPlayerPage = () => {
   const { questionId: routeQuestionId } = useParams<{ questionId?: string }>();
@@ -83,20 +88,21 @@ export const LearningPlayerPage = () => {
     try {
       const saved = localStorage.getItem(`edutwin_assignment_answers_${assignmentId}`);
       if (!saved) return {};
-      const parsed = JSON.parse(saved);
+      const parsed: unknown = JSON.parse(saved);
       if (typeof parsed !== "object" || parsed === null) return {};
       const sanitized: Record<string, StoredAnswer> = {};
-      for (const [k, v] of Object.entries(parsed)) {
-        if (v && typeof v === "object") {
+      for (const [k, value] of Object.entries(parsed as Record<string, unknown>)) {
+        const v = asStoredAnswerRecord(value);
+        if (v) {
           sanitized[k] = {
-            finalAnswer: typeof (v as any).finalAnswer === "string" ? (v as any).finalAnswer : "",
-            reasoningText: typeof (v as any).reasoningText === "string" ? (v as any).reasoningText : "",
-            confidence: typeof (v as any).confidence === "number" ? (v as any).confidence : 80,
-            timeSpentSeconds: typeof (v as any).timeSpentSeconds === "number" ? (v as any).timeSpentSeconds : 0,
-            answerChanges: typeof (v as any).answerChanges === "number" ? (v as any).answerChanges : 0,
-            snapshotDataUrl: typeof (v as any).snapshotDataUrl === "string" ? (v as any).snapshotDataUrl : null,
-            snapshotTime: typeof (v as any).snapshotTime === "string" ? (v as any).snapshotTime : null,
-            drawingUploadToken: typeof (v as any).drawingUploadToken === "string" ? (v as any).drawingUploadToken : null,
+            finalAnswer: typeof v.finalAnswer === "string" ? v.finalAnswer : "",
+            reasoningText: typeof v.reasoningText === "string" ? v.reasoningText : "",
+            confidence: typeof v.confidence === "number" ? v.confidence : 80,
+            timeSpentSeconds: typeof v.timeSpentSeconds === "number" ? v.timeSpentSeconds : 0,
+            answerChanges: typeof v.answerChanges === "number" ? v.answerChanges : 0,
+            snapshotDataUrl: typeof v.snapshotDataUrl === "string" ? v.snapshotDataUrl : null,
+            snapshotTime: typeof v.snapshotTime === "string" ? v.snapshotTime : null,
+            drawingUploadToken: typeof v.drawingUploadToken === "string" ? v.drawingUploadToken : null,
           };
         }
       }
@@ -193,6 +199,11 @@ export const LearningPlayerPage = () => {
 
   const assignment = assignmentResponse?.data;
   const assignmentQuestions = assignment?.questions || [];
+  const subjectsQuery = useQuery({
+    queryKey: ["subjects", "learning-player"],
+    queryFn: () => organizationApi.listSubjects(true),
+    staleTime: 5 * 60 * 1000,
+  });
 
   // Assignment Countdown & Server-Synchronized Expiration Timer
   const [assignmentRemainingSeconds, setAssignmentRemainingSeconds] = useState<number | null>(null);
@@ -331,7 +342,7 @@ export const LearningPlayerPage = () => {
           orderIndex: idx,
         })),
         explanation: assignment.instructions || "",
-        answerEvaluationMode: assignmentQuestion.questionType === "Numeric" ? "NumericRational" : "Exact",
+        answerEvaluationMode: assignmentQuestion.answerEvaluationMode || "TextExact",
       };
     }
     return adaptiveQuestion || null;
@@ -339,6 +350,18 @@ export const LearningPlayerPage = () => {
 
   const questionLoading = assignmentId ? assignmentLoading : adaptiveLoading;
   const questionError = assignmentId ? assignmentError : adaptiveError;
+
+  const hasMathTools = useMemo(() => {
+    const subject = assignment?.subjectName || subjectsQuery.data?.data.find((item) => item.subjectId === subjectId)?.subjectName;
+    return supportsMathTools(subject);
+  }, [assignment?.subjectName, subjectId, subjectsQuery.data]);
+
+  useEffect(() => {
+    if (!hasMathTools) {
+      setActiveSideTool(null);
+      setShowMathToolbar(false);
+    }
+  }, [hasMathTools]);
 
   // Sync form inputs when switching active question in assignment mode
   useEffect(() => {
@@ -581,7 +604,10 @@ export const LearningPlayerPage = () => {
             }
           }
           if (assignmentId) {
-            await queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
+            await Promise.all([
+              queryClient.invalidateQueries({ queryKey: ["student-assignments"] }),
+              queryClient.invalidateQueries({ queryKey: ["student-assignment", assignmentId] }),
+            ]);
           }
           return;
         }
@@ -606,7 +632,10 @@ export const LearningPlayerPage = () => {
               // fallback
             }
             if (assignmentId) {
-              await queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
+              await Promise.all([
+                queryClient.invalidateQueries({ queryKey: ["student-assignments"] }),
+                queryClient.invalidateQueries({ queryKey: ["student-assignment", assignmentId] }),
+              ]);
             }
           }
           return;
@@ -638,7 +667,10 @@ export const LearningPlayerPage = () => {
               // fallback
             }
             if (assignmentId) {
-              await queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
+              await Promise.all([
+                queryClient.invalidateQueries({ queryKey: ["student-assignments"] }),
+                queryClient.invalidateQueries({ queryKey: ["student-assignment", assignmentId] }),
+              ]);
             }
           }
         }
@@ -956,7 +988,12 @@ export const LearningPlayerPage = () => {
         setIsSubmitting(false);
 
         // Invalidate TanStack queries so assignment and lists refresh with updated progress
-        await queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["student-assignments"] }),
+          assignmentId
+            ? queryClient.invalidateQueries({ queryKey: ["student-assignment", assignmentId] })
+            : Promise.resolve(),
+        ]);
 
         if (lastJobId) {
           setPollingJobId(lastJobId);
@@ -1054,12 +1091,22 @@ export const LearningPlayerPage = () => {
         setIsSubmitting(true);
       } else {
         if (assignmentId) {
-          await queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ["student-assignments"] }),
+            queryClient.invalidateQueries({ queryKey: ["student-assignment", assignmentId] }),
+          ]);
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setIsRetryingAiFromBanner(false);
-      const msg = err?.response?.data?.detail || err?.response?.data?.message || err?.message || "Không thể kích hoạt chấm lại AI lúc này.";
+      const responseData = isAxiosError(err) && typeof err.response?.data === "object" && err.response.data !== null
+        ? err.response.data as Record<string, unknown>
+        : null;
+      const msg = typeof responseData?.detail === "string"
+        ? responseData.detail
+        : typeof responseData?.message === "string"
+          ? responseData.message
+          : err instanceof Error ? err.message : "Không thể kích hoạt chấm lại AI lúc này.";
       setAiBanner({
         type: "warning",
         message: `✓ Bài làm đã được ghi nhận an toàn. ${msg}`,
@@ -1252,6 +1299,69 @@ export const LearningPlayerPage = () => {
     return (
       <div className="min-h-screen bg-[#f8fafc] dark:bg-[#090d16] p-6 text-slate-800 dark:text-slate-100">
         <div className="mx-auto max-w-3xl space-y-6">
+          {/* Assignment Level Summary Card (when viewing in assignment context) */}
+          {assignmentId && assignment?.summary && (
+            <div className="rounded-3xl bg-white dark:bg-[#0f172a] p-6 shadow-sm border border-slate-200/80 dark:border-slate-800 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800/80 pb-4">
+                <div>
+                  <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">
+                    Tổng kết bài tập: {assignment.title}
+                  </span>
+                  <div className="flex items-baseline gap-2 mt-1">
+                    <span className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
+                      {assignment.summary.correctQuestionCount} / {assignment.summary.totalQuestionCount}
+                    </span>
+                    <span className="text-slate-400 text-sm font-semibold">
+                      câu đúng · {assignment.summary.incorrectQuestionCount} câu sai
+                    </span>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${
+                      assignment.summary.resultStatus === "Final"
+                        ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300"
+                        : assignment.summary.resultStatus === "Provisional"
+                        ? "bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300"
+                        : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                    }`}
+                  >
+                    {assignment.summary.resultStatus === "Final" ? "Chính thức" : assignment.summary.resultStatus === "Provisional" ? "Tạm tính" : "Đang xử lý"}
+                  </span>
+                  <span
+                    className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${
+                      assignment.summary.teacherFinalReviewStatus === "Approved"
+                        ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300"
+                        : "bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300"
+                    }`}
+                  >
+                    {assignment.summary.teacherFinalReviewStatus === "Approved"
+                      ? "✓ Giáo viên đã duyệt"
+                      : "⏳ GV chưa duyệt"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Overall AI Comment */}
+              {assignment.summary.overallAiComment && (
+                <div className="rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 p-4 border border-indigo-200/80 dark:border-indigo-800 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">🤖</span>
+                    <h4 className="text-xs font-extrabold uppercase tracking-wider text-indigo-900 dark:text-indigo-200">
+                      Nhận xét tổng quan từ AI
+                    </h4>
+                  </div>
+                  <RichMathText
+                    text={assignment.summary.overallAiComment}
+                    className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed"
+                  />
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 italic pt-1 border-t border-indigo-100 dark:border-indigo-900/60">
+                    * Nhận xét tổng hợp tự động từ AI nhằm định hướng ôn tập, không thay thế đánh giá chính thức của giáo viên.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
           {/* Header Result Card */}
           <div
             className={`rounded-3xl p-6 sm:p-8 text-white shadow-md ${
@@ -1392,7 +1502,7 @@ export const LearningPlayerPage = () => {
                         `/hoc-tap/luyen-tap/${firstQuestionId}?assignmentId=${assignmentId}${subjectId ? `&subjectId=${subjectId}` : ""}`
                       );
                     }
-                    void queryClient.refetchQueries({ queryKey: ["student-assignments", assignmentId] });
+                    void queryClient.refetchQueries({ queryKey: ["student-assignment", assignmentId] });
                   }}
                   className="w-full sm:w-auto rounded-xl bg-indigo-600 px-6 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-500 text-center cursor-pointer"
                 >
@@ -1637,7 +1747,12 @@ export const LearningPlayerPage = () => {
                     <button
                       type="button"
                       onClick={() => {
-                        void queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
+                        void Promise.all([
+                          queryClient.invalidateQueries({ queryKey: ["student-assignments"] }),
+                          assignmentId
+                            ? queryClient.invalidateQueries({ queryKey: ["student-assignment", assignmentId] })
+                            : Promise.resolve(),
+                        ]);
                       }}
                       className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer inline-flex items-center gap-1.5"
                       title="Làm mới kết quả bài làm"
@@ -1809,82 +1924,77 @@ export const LearningPlayerPage = () => {
 
               {/* Question Text Statement */}
               <div>
-                <div className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-relaxed whitespace-pre-wrap">
-                  {question?.questionText}
-                </div>
-                {question?.questionText && /[\\[{^_\\]]/.test(question.questionText) && (
-                  <div className="mt-3">
-                    <MathFormulaPreview
-                      formula={question.questionText}
-                      label="Hiển thị công thức Toán (KaTeX)"
-                    />
+                <RichMathText
+                  text={question?.questionText || ""}
+                  className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-relaxed"
+                />
+              </div>
+
+              {/* 3. Thanh 3 Nút Công Cụ Trợ Lý (Casio, Nháp, Đồ Thị) - Chỉ hiển thị cho Toán/Lý/Hóa */}
+              {hasMathTools && (
+                <div className="pt-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
+                      Công cụ hỗ trợ làm bài
+                    </span>
                   </div>
-                )}
-              </div>
 
-              {/* 3. Thanh 3 Nút Công Cụ Trợ Lý (Casio, Nháp, Đồ Thị) */}
-              <div className="pt-2">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
-                    Công cụ hỗ trợ làm bài
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                  {/* Button 1: Máy tính Casio fx-580VN */}
-                  <button
-                    type="button"
-                    onClick={() => setActiveSideTool(activeSideTool === "casio" ? null : "casio")}
-                    className={`flex items-center gap-2.5 p-3 rounded-xl font-medium text-xs sm:text-sm transition-all border text-left cursor-pointer ${
-                      activeSideTool === "casio"
-                        ? "border-amber-500 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 ring-1 ring-amber-500"
-                        : "border-stone-200 dark:border-stone-800 bg-stone-50/70 dark:bg-stone-900/50 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300"
-                    }`}
-                  >
-                    <span className="text-base leading-none">🖩</span>
-                    <div className="min-w-0">
-                      <div className="font-bold text-xs text-stone-900 dark:text-stone-100">Máy tính Casio</div>
-                      <div className="text-[10px] text-stone-500 dark:text-stone-400 truncate">fx-580VN X</div>
-                    </div>
-                  </button>
-
-                  {/* Button 2: Bảng nháp vẽ tay */}
-                  <button
-                    type="button"
-                    onClick={() => setActiveSideTool(activeSideTool === "scratchpad" ? null : "scratchpad")}
-                    className={`flex items-center gap-2.5 p-3 rounded-xl font-medium text-xs sm:text-sm transition-all border text-left cursor-pointer ${
-                      activeSideTool === "scratchpad"
-                        ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 ring-1 ring-emerald-500"
-                        : "border-stone-200 dark:border-stone-800 bg-stone-50/70 dark:bg-stone-900/50 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300"
-                    }`}
-                  >
-                    <span className="text-base leading-none">✏️</span>
-                    <div className="min-w-0">
-                      <div className="font-bold text-xs text-stone-900 dark:text-stone-100">Bảng vẽ nháp</div>
-                      <div className="text-[10px] text-stone-500 dark:text-stone-400 truncate">
-                        {attachedSnapshotDataUrl ? "✓ Đã đính kèm ảnh" : "Thu phóng & vẽ tự do"}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    {/* Button 1: Máy tính Casio fx-580VN */}
+                    <button
+                      type="button"
+                      onClick={() => setActiveSideTool(activeSideTool === "casio" ? null : "casio")}
+                      className={`flex items-center gap-2.5 p-3 rounded-xl font-medium text-xs sm:text-sm transition-all border text-left cursor-pointer ${
+                        activeSideTool === "casio"
+                          ? "border-amber-500 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 ring-1 ring-amber-500"
+                          : "border-stone-200 dark:border-stone-800 bg-stone-50/70 dark:bg-stone-900/50 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300"
+                      }`}
+                    >
+                      <span className="text-base leading-none">🖩</span>
+                      <div className="min-w-0">
+                        <div className="font-bold text-xs text-stone-900 dark:text-stone-100">Máy tính Casio</div>
+                        <div className="text-[10px] text-stone-500 dark:text-stone-400 truncate">fx-580VN X</div>
                       </div>
-                    </div>
-                  </button>
+                    </button>
 
-                  {/* Button 3: Khảo sát đồ thị */}
-                  <button
-                    type="button"
-                    onClick={() => setActiveSideTool(activeSideTool === "graph" ? null : "graph")}
-                    className={`flex items-center gap-2.5 p-3 rounded-xl font-medium text-xs sm:text-sm transition-all border text-left cursor-pointer ${
-                      activeSideTool === "graph"
-                        ? "border-sky-500 bg-sky-50 dark:bg-sky-950/40 text-sky-900 dark:text-sky-200 ring-1 ring-sky-500"
-                        : "border-stone-200 dark:border-stone-800 bg-stone-50/70 dark:bg-stone-900/50 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300"
-                    }`}
-                  >
-                    <span className="text-base leading-none">📈</span>
-                    <div className="min-w-0">
-                      <div className="font-bold text-xs text-stone-900 dark:text-stone-100">Vẽ đồ thị</div>
-                      <div className="text-[10px] text-stone-500 dark:text-stone-400 truncate">Khảo sát hàm Oxy</div>
-                    </div>
-                  </button>
+                    {/* Button 2: Bảng nháp vẽ tay */}
+                    <button
+                      type="button"
+                      onClick={() => setActiveSideTool(activeSideTool === "scratchpad" ? null : "scratchpad")}
+                      className={`flex items-center gap-2.5 p-3 rounded-xl font-medium text-xs sm:text-sm transition-all border text-left cursor-pointer ${
+                        activeSideTool === "scratchpad"
+                          ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 ring-1 ring-emerald-500"
+                          : "border-stone-200 dark:border-stone-800 bg-stone-50/70 dark:bg-stone-900/50 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300"
+                      }`}
+                    >
+                      <span className="text-base leading-none">✏️</span>
+                      <div className="min-w-0">
+                        <div className="font-bold text-xs text-stone-900 dark:text-stone-100">Bảng vẽ nháp</div>
+                        <div className="text-[10px] text-stone-500 dark:text-stone-400 truncate">
+                          {attachedSnapshotDataUrl ? "✓ Đã đính kèm ảnh" : "Thu phóng & vẽ tự do"}
+                        </div>
+                      </div>
+                    </button>
+
+                    {/* Button 3: Khảo sát đồ thị */}
+                    <button
+                      type="button"
+                      onClick={() => setActiveSideTool(activeSideTool === "graph" ? null : "graph")}
+                      className={`flex items-center gap-2.5 p-3 rounded-xl font-medium text-xs sm:text-sm transition-all border text-left cursor-pointer ${
+                        activeSideTool === "graph"
+                          ? "border-sky-500 bg-sky-50 dark:bg-sky-950/40 text-sky-900 dark:text-sky-200 ring-1 ring-sky-500"
+                          : "border-stone-200 dark:border-stone-800 bg-stone-50/70 dark:bg-stone-900/50 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300"
+                      }`}
+                    >
+                      <span className="text-base leading-none">📈</span>
+                      <div className="min-w-0">
+                        <div className="font-bold text-xs text-stone-900 dark:text-stone-100">Vẽ đồ thị</div>
+                        <div className="text-[10px] text-stone-500 dark:text-stone-400 truncate">Khảo sát hàm Oxy</div>
+                      </div>
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* 4. Answer Section */}
               <div className="border-t border-slate-100 dark:border-slate-800 pt-6">
@@ -1899,7 +2009,7 @@ export const LearningPlayerPage = () => {
                       </span>
                     )}
                   </div>
-                  {question?.questionType !== "MultipleChoice" && !isReadOnly && (
+                  {hasMathTools && question?.questionType !== "MultipleChoice" && !isReadOnly && (
                     <button
                       type="button"
                       onClick={() => setShowMathToolbar(!showMathToolbar)}
@@ -1911,7 +2021,7 @@ export const LearningPlayerPage = () => {
                   )}
                 </div>
 
-                {showMathToolbar && question?.questionType !== "MultipleChoice" && !isReadOnly && (
+                {hasMathTools && showMathToolbar && question?.questionType !== "MultipleChoice" && !isReadOnly && (
                   <div className="mb-4">
                     <MathInputToolbar onInsert={(sym) => insertTextAtCursor(sym)} disabled={isReadOnly} />
                   </div>
@@ -1962,9 +2072,9 @@ export const LearningPlayerPage = () => {
                       );
                     })}
                   </fieldset>
-                ) : (
+                ) : isFormulaOnlyQuestion(question?.answerEvaluationMode, question?.questionText) ? (
                   <div>
-                    {/* Visual Math Field (MathLive) */}
+                    {/* Visual Math Field (MathLive) - Chỉ dùng cho câu hỏi công thức/số ngắn */}
                     <VisualMathField
                       ref={visualMathFieldRef}
                       value={finalAnswer}
@@ -1972,6 +2082,23 @@ export const LearningPlayerPage = () => {
                       onFocus={() => setActiveInputTarget("answer")}
                       disabled={isReadOnly}
                       placeholder={isAssignmentSubmitted ? "Chưa có đáp số" : "Gõ công thức hoặc đáp số cuối cùng (hoặc dùng Casio để tự chèn)..."}
+                      autoFocus={!isReadOnly}
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    {/* Free-response multiline textarea (hỗ trợ văn bản + xuống dòng + công thức) */}
+                    <textarea
+                      rows={3}
+                      value={finalAnswer}
+                      onChange={(e) => {
+                        if (!isReadOnly) handleAnswerChange(e.target.value);
+                      }}
+                      onFocus={() => setActiveInputTarget("answer")}
+                      disabled={isReadOnly}
+                      readOnly={isAssignmentSubmitted}
+                      placeholder={isAssignmentSubmitted ? "Chưa có câu trả lời" : "Nhập câu trả lời / lời giải (hỗ trợ xuống dòng, công thức $...$)..."}
+                      className="w-full rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:bg-slate-50 dark:disabled:bg-slate-900/40 resize-y whitespace-pre-wrap"
                       autoFocus={!isReadOnly}
                     />
                   </div>
@@ -2201,7 +2328,7 @@ export const LearningPlayerPage = () => {
           </div>
 
           {/* Right Pane: Assistant Workspace ~30% */}
-          {activeSideTool && (
+          {activeSideTool && hasMathTools && (
             <div className="lg:col-span-4 xl:col-span-4 sticky top-4 max-h-[calc(100vh-2rem)] flex flex-col">
               <SideAssistantWorkspace
                 activeTab={activeSideTool}

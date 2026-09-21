@@ -19,6 +19,17 @@ public class StudentAssignmentProgress : IMutableTenantAggregate
     public DateTime? StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
 
+    public TeacherFinalReviewStatus TeacherFinalReviewStatus { get; set; } = TeacherFinalReviewStatus.Pending;
+    public Guid? FinalReviewedByUserId { get; set; }
+    public DateTime? FinalReviewedAt { get; set; }
+    public string? FinalTeacherNote { get; set; }
+    public uint FinalReviewVersion { get; set; }
+
+    public string? OverallAiComment { get; set; }
+    public DateTime? OverallAiCommentGeneratedAt { get; set; }
+    public uint OverallAiCommentVersion { get; set; }
+    public bool IsOverallAiCommentStale { get; set; }
+
     // Audit and MTA
     public DateTime CreatedAt { get; set; }
     public Guid? CreatedBy { get; set; }

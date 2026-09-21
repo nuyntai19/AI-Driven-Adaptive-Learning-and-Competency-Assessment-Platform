@@ -4,6 +4,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   listTeacherReviewQueue,
   overrideReasoningAnalysis,
+  approveReasoningAnalysis,
+  approveAssignmentResult,
 } from "../../api/teacherReviewsApi";
 import { organizationApi } from "../../api/organizationApi";
 import type {
@@ -112,9 +114,57 @@ export const TeacherReviewQueueView: React.FC = () => {
       setReplayResult(data.data);
       setOverrideFeedbackMessage("Đã lưu kết quả chấm đè và tính toán lại Digital Twin thành công!");
       queryClient.invalidateQueries({ queryKey: ["teacherReviewQueue"] });
+      queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["attemptFeedback"] });
+      queryClient.invalidateQueries({ queryKey: ["learning-path"] });
+      queryClient.invalidateQueries({ queryKey: ["competencyProfile"] });
+      queryClient.invalidateQueries({ queryKey: ["digitalTwin"] });
     },
-    onError: (err: any) => {
-      setOverrideFeedbackMessage(`Lỗi khi ghi đè kết quả: ${err.message || "Thao tác thất bại"}`);
+    onError: (err: unknown) => {
+      setOverrideFeedbackMessage(`Lỗi khi ghi đè kết quả: ${err instanceof Error ? err.message : "Thao tác thất bại"}`);
+    },
+  });
+
+  // Approve Mutation (Direct Human Confirmation)
+  const approveMutation = useMutation({
+    mutationFn: async (comment?: string) => {
+      if (!selectedItem) throw new Error("Chưa chọn bài làm cần duyệt");
+      return await approveReasoningAnalysis(selectedItem.analysisId, {
+        note: comment,
+        overrideVersion: selectedItem.evidence.analysisOverrideVersion,
+      });
+    },
+    onSuccess: () => {
+      setOverrideFeedbackMessage("Đã phê duyệt kết quả AI thành công! Trạng thái đã chuyển sang Đã duyệt.");
+      queryClient.invalidateQueries({ queryKey: ["teacherReviewQueue"] });
+      queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["attemptFeedback"] });
+      queryClient.invalidateQueries({ queryKey: ["learning-path"] });
+      queryClient.invalidateQueries({ queryKey: ["competencyProfile"] });
+      queryClient.invalidateQueries({ queryKey: ["digitalTwin"] });
+    },
+    onError: (err: unknown) => {
+      setOverrideFeedbackMessage(`Lỗi khi phê duyệt: ${err instanceof Error ? err.message : "Thao tác thất bại"}`);
+    },
+  });
+
+  const approveAssignmentMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedItem?.assignmentId) throw new Error("Chưa chọn bài tập cần duyệt");
+      return approveAssignmentResult(selectedItem.assignmentId, {
+        studentId: selectedItem.studentId,
+        note: feedback.trim() || null,
+        finalReviewVersion: selectedItem.finalReviewVersion ?? 0,
+      });
+    },
+    onSuccess: () => {
+      setOverrideFeedbackMessage("Đã duyệt kết quả bài tập. Học sinh sẽ thấy kết quả chính thức.");
+      queryClient.invalidateQueries({ queryKey: ["teacherReviewQueue"] });
+      setSelectedItem(null);
+    },
+    onError: (err: unknown) => {
+      const message = err instanceof Error ? err.message : "Không thể duyệt kết quả bài tập";
+      setOverrideFeedbackMessage(message);
     },
   });
 
@@ -655,22 +705,53 @@ export const TeacherReviewQueueView: React.FC = () => {
                     />
                   </div>
 
-                  <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", marginTop: "10px", flexWrap: "wrap" }}>
                     <button
                       type="button"
-                      className="th-button-secondary"
-                      onClick={() => resetOverrideForm(selectedItem)}
-                      disabled={overrideMutation.isPending}
+                      style={{
+                        padding: "8px 16px",
+                        borderRadius: "8px",
+                        fontWeight: 700,
+                        fontSize: "0.875rem",
+                        backgroundColor: "rgba(16, 185, 129, 0.15)",
+                        color: "#059669",
+                        border: "1px solid #10b981",
+                        cursor: "pointer",
+                      }}
+                      disabled={!canOverride || approveMutation.isPending || overrideMutation.isPending}
+                      onClick={() => approveMutation.mutate(feedback || undefined)}
+                      title="Công nhận kết quả AI đã chấm, chuyển trạng thái sang Đã duyệt mà không cần sửa đổi điểm số"
                     >
-                      Khôi phục mặc định
+                      {approveMutation.isPending ? "Đang phê duyệt..." : "✓ Phê duyệt kết quả AI (Giữ nguyên)"}
                     </button>
-                    <button
-                      type="submit"
-                      className="th-primary-button"
-                      disabled={!canOverride || overrideMutation.isPending}
-                    >
-                      {overrideMutation.isPending ? "Đang lưu & Replay..." : "Xác nhận & Cập nhật Digital Twin"}
-                    </button>
+
+                    <div style={{ display: "flex", gap: "10px" }}>
+                      <button
+                        type="button"
+                        className="th-button-secondary"
+                        onClick={() => resetOverrideForm(selectedItem)}
+                        disabled={overrideMutation.isPending || approveMutation.isPending}
+                      >
+                        Khôi phục mặc định
+                      </button>
+                      <button
+                        type="submit"
+                        className="th-primary-button"
+                        disabled={!canOverride || overrideMutation.isPending || approveMutation.isPending}
+                      >
+                        {overrideMutation.isPending ? "Đang lưu & Replay..." : "Xác nhận ghi đè & Cập nhật Digital Twin"}
+                      </button>
+                    </div>
+                    {selectedItem.teacherFinalReviewStatus !== "Approved" && (
+                      <button
+                        type="button"
+                        className="th-primary-button"
+                        onClick={() => approveAssignmentMutation.mutate()}
+                        disabled={!canOverride || approveAssignmentMutation.isPending || overrideMutation.isPending}
+                      >
+                        {approveAssignmentMutation.isPending ? "Đang duyệt bài tập..." : "Duyệt kết quả bài tập"}
+                      </button>
+                    )}
                   </div>
                 </form>
               </div>

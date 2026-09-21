@@ -37,6 +37,11 @@ public class ReasoningAnalysis : ITenantAppendOnlyEntity, IHasRowVersion
     public DateTime? OverriddenAt { get; set; }
     public uint OverrideVersion { get; set; }
 
+    public string? ReviewDecision { get; set; } // Approved | Adjusted
+    public Guid? ReviewedByUserId { get; set; }
+    public DateTime? ReviewedAt { get; set; }
+    public string? TeacherReviewNote { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public Guid? CreatedBy { get; set; }
     public DateTime UpdatedAt { get; set; }
@@ -44,4 +49,5 @@ public class ReasoningAnalysis : ITenantAppendOnlyEntity, IHasRowVersion
 
     public Attempt Attempt { get; set; } = null!;
     public User? OverriddenByUser { get; set; }
+    public User? ReviewedByUser { get; set; }
 }

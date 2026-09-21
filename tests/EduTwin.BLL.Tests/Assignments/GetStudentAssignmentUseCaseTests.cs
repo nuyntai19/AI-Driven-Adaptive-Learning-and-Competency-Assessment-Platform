@@ -42,7 +42,8 @@ public class GetStudentAssignmentUseCaseTests
         var sut = new GetStudentAssignmentUseCase(
             context,
             tenantContext.Object,
-            TimeProvider.System);
+            TimeProvider.System,
+            new AssignmentResultCalculator(context));
 
         var result = await sut.ExecuteAsync(Guid.NewGuid(), CancellationToken.None);
 
@@ -134,7 +135,7 @@ public class GetStudentAssignmentUseCaseTests
         tenantContextMock.Setup(x => x.Role).Returns("Student");
         tenantContextMock.Setup(x => x.IsResolved).Returns(true);
 
-        var useCase = new GetStudentAssignmentUseCase(context, tenantContextMock.Object, TimeProvider.System);
+        var useCase = new GetStudentAssignmentUseCase(context, tenantContextMock.Object, TimeProvider.System, new AssignmentResultCalculator(context));
 
         // Act
         var result = await useCase.ExecuteAsync(assignmentId, CancellationToken.None);
@@ -201,7 +202,7 @@ public class GetStudentAssignmentUseCaseTests
         tenantContextMock.Setup(x => x.CenterId).Returns(centerId);
         tenantContextMock.Setup(x => x.UserId).Returns(studentId);
 
-        var useCase = new GetStudentAssignmentUseCase(context, tenantContextMock.Object, TimeProvider.System);
+        var useCase = new GetStudentAssignmentUseCase(context, tenantContextMock.Object, TimeProvider.System, new AssignmentResultCalculator(context));
 
         // Act
         var result = await useCase.ExecuteAsync(assignmentId, CancellationToken.None);
@@ -328,7 +329,7 @@ public class GetStudentAssignmentUseCaseTests
         tenantContextMock.Setup(x => x.Role).Returns("Student");
         tenantContextMock.Setup(x => x.IsResolved).Returns(true);
 
-        var useCase = new GetStudentAssignmentUseCase(context, tenantContextMock.Object, TimeProvider.System);
+        var useCase = new GetStudentAssignmentUseCase(context, tenantContextMock.Object, TimeProvider.System, new AssignmentResultCalculator(context));
 
         // Act
         var result = await useCase.ExecuteAsync(assignmentId, CancellationToken.None);

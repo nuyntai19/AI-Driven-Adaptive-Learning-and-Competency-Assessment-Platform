@@ -1,6 +1,18 @@
 import { useEffect, useRef, useImperativeHandle, forwardRef, useState } from "react";
 import "mathlive";
 
+interface MathFieldElement extends HTMLElement {
+  readOnly: boolean;
+  value: string;
+  mathVirtualKeyboardPolicy: string;
+  smartFence: boolean;
+  smartSuperscript: boolean;
+  getValue: (format?: string) => string;
+  setValue: (value: string, options?: { silenceNotifications?: boolean }) => void;
+  insert: (value: string, options?: { mode?: string; selectionMode?: string; focus?: boolean }) => void;
+  executeCommand: (command: [string, string]) => void;
+}
+
 export interface VisualMathFieldRef {
   insertAtCursor: (latex: string) => void;
   focus: () => void;
@@ -38,7 +50,7 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
     ref
   ) => {
     const containerRef = useRef<HTMLDivElement>(null);
-    const mathfieldRef = useRef<any>(null);
+    const mathfieldRef = useRef<MathFieldElement | null>(null);
     const [isReady, setIsReady] = useState(false);
     const lastEmittedValueRef = useRef<string>(value);
 
@@ -50,7 +62,7 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
       if (!containerRef.current) return;
 
       // Create <math-field> instance
-      const mf = document.createElement("math-field") as any;
+      const mf = document.createElement("math-field") as MathFieldElement;
       mf.style.width = "100%";
       mf.style.minHeight = "46px";
       mf.style.fontSize = "1.3rem";

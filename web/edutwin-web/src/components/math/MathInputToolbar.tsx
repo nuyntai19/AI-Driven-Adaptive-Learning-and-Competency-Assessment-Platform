@@ -9,7 +9,7 @@ type TabType = "basic" | "algebra" | "calculus" | "sets" | "geometry";
 
 interface SymbolItem {
   label: string;
-  latex: string;
+  value: string;
   tooltip?: string;
 }
 
@@ -23,75 +23,44 @@ const TABS: { id: TabType; name: string }[] = [
 
 const SYMBOLS: Record<TabType, SymbolItem[]> = {
   basic: [
-    { label: "a/b", latex: "\\frac{\\placeholder{?}}{\\placeholder{?}}", tooltip: "Phân số" },
-    { label: "x²", latex: "^{2}", tooltip: "Bình phương" },
-    { label: "xⁿ", latex: "^{\\placeholder{?}}", tooltip: "Số mũ" },
-    { label: "√x", latex: "\\sqrt{\\placeholder{?}}", tooltip: "Căn bậc hai" },
-    { label: "ⁿ√x", latex: "\\sqrt[\\placeholder{?}]{\\placeholder{?}}", tooltip: "Căn bậc n" },
-    { label: "+", latex: " + ", tooltip: "Cộng" },
-    { label: "−", latex: " - ", tooltip: "Trừ" },
-    { label: "×", latex: " \\times ", tooltip: "Nhân" },
-    { label: "÷", latex: " \\div ", tooltip: "Chia" },
-    { label: "±", latex: "\\pm", tooltip: "Cộng trừ" },
-    { label: "=", latex: " = ", tooltip: "Bằng" },
-    { label: "≠", latex: " \\ne ", tooltip: "Khác" },
-    { label: "<", latex: " < ", tooltip: "Nhỏ hơn" },
-    { label: ">", latex: " > ", tooltip: "Lớn hơn" },
-    { label: "≤", latex: " \\le ", tooltip: "Nhỏ hơn hoặc bằng" },
-    { label: "≥", latex: " \\ge ", tooltip: "Lớn hơn hoặc bằng" },
+    { label: "a/b", value: "□/□", tooltip: "Phân số" },
+    { label: "x²", value: "²", tooltip: "Bình phương" },
+    { label: "x³", value: "³", tooltip: "Lập phương" },
+    { label: "√x", value: "√", tooltip: "Căn bậc hai" },
+    { label: "+", value: " + ", tooltip: "Cộng" },
+    { label: "−", value: " − ", tooltip: "Trừ" },
+    { label: "×", value: " × ", tooltip: "Nhân" },
+    { label: "÷", value: " ÷ ", tooltip: "Chia" },
+    { label: "±", value: " ± ", tooltip: "Cộng trừ" },
+    { label: "=", value: " = ", tooltip: "Bằng" },
+    { label: "≠", value: " ≠ ", tooltip: "Khác" },
+    { label: "<", value: " < ", tooltip: "Nhỏ hơn" },
+    { label: ">", value: " > ", tooltip: "Lớn hơn" },
+    { label: "≤", value: " ≤ ", tooltip: "Nhỏ hơn hoặc bằng" },
+    { label: "≥", value: " ≥ ", tooltip: "Lớn hơn hoặc bằng" },
   ],
   algebra: [
-    { label: "x", latex: "x", tooltip: "Biến x" },
-    { label: "y", latex: "y", tooltip: "Biến y" },
-    { label: "z", latex: "z", tooltip: "Biến z" },
-    { label: "( )", latex: "(\\placeholder{?})", tooltip: "Ngoặc đơn" },
-    { label: "[ ]", latex: "[\\placeholder{?}]", tooltip: "Ngoặc vuông" },
-    { label: "{ }", latex: "\\{\\placeholder{?}\\}", tooltip: "Ngoặc nhọn" },
-    { label: "|x|", latex: "|\\placeholder{?}|", tooltip: "Giá trị tuyệt đối" },
-    { label: "∑", latex: "\\sum_{\\placeholder{?}}^{\\placeholder{?}}", tooltip: "Tổng xích-ma" },
-    { label: "∏", latex: "\\prod_{\\placeholder{?}}^{\\placeholder{?}}", tooltip: "Tích pi" },
-    { label: "∞", latex: "\\infty", tooltip: "Vô cùng" },
-    { label: "≈", latex: " \\approx ", tooltip: "Xấp xỉ" },
-    { label: "log", latex: "\\log_{\\placeholder{?}}(\\placeholder{?})", tooltip: "Logarit" },
-    { label: "ln", latex: "\\ln(\\placeholder{?})", tooltip: "Logarit tự nhiên" },
+    { label: "x", value: "x" }, { label: "y", value: "y" }, { label: "z", value: "z" },
+    { label: "( )", value: "()" }, { label: "[ ]", value: "[]" }, { label: "{ }", value: "{}" },
+    { label: "|x|", value: "||" }, { label: "∑", value: "∑" }, { label: "∏", value: "∏" },
+    { label: "∞", value: "∞" }, { label: "≈", value: " ≈ " }, { label: "log", value: "log()" }, { label: "ln", value: "ln()" },
   ],
   calculus: [
-    { label: "d/dx", latex: "\\frac{d}{dx}(\\placeholder{?})", tooltip: "Đạo hàm d/dx" },
-    { label: "∂/∂x", latex: "\\frac{\\partial}{\\partial x}(\\placeholder{?})", tooltip: "Đạo hàm riêng" },
-    { label: "∫", latex: "\\int \\placeholder{?} \\,dx", tooltip: "Tích phân bất định" },
-    { label: "∫ₐᵇ", latex: "\\int_{\\placeholder{?}}^{\\placeholder{?}} \\placeholder{?} \\,dx", tooltip: "Tích phân xác định" },
-    { label: "lim", latex: "\\lim_{\\placeholder{?} \\to \\placeholder{?}} \\placeholder{?}", tooltip: "Giới hạn" },
-    { label: "∇", latex: "\\nabla", tooltip: "Del / Nabla" },
-    { label: "Δ", latex: "\\Delta", tooltip: "Delta" },
-    { label: "f'(x)", latex: "f'(\\placeholder{?})", tooltip: "Đạo hàm f'(x)" },
+    { label: "d/dx", value: "d/dx()" }, { label: "∂/∂x", value: "∂/∂x()" },
+    { label: "∫", value: "∫ dx" }, { label: "∫ₐᵇ", value: "∫ₐᵇ dx" }, { label: "lim", value: "lim → " },
+    { label: "∇", value: "∇" }, { label: "Δ", value: "Δ" }, { label: "f'(x)", value: "f'(x)" },
   ],
   sets: [
-    { label: "∈", latex: " \\in ", tooltip: "Thuộc" },
-    { label: "∉", latex: " \\notin ", tooltip: "Không thuộc" },
-    { label: "⊂", latex: " \\subset ", tooltip: "Tập con" },
-    { label: "⊆", latex: " \\subseteq ", tooltip: "Tập con hoặc bằng" },
-    { label: "∪", latex: " \\cup ", tooltip: "Hợp" },
-    { label: "∩", latex: " \\cap ", tooltip: "Giao" },
-    { label: "∅", latex: "\\emptyset", tooltip: "Tập rỗng" },
-    { label: "ℝ", latex: "\\mathbb{R}", tooltip: "Tập số thực R" },
-    { label: "ℕ", latex: "\\mathbb{N}", tooltip: "Tập số tự nhiên N" },
-    { label: "ℤ", latex: "\\mathbb{Z}", tooltip: "Tập số nguyên Z" },
-    { label: "ℚ", latex: "\\mathbb{Q}", tooltip: "Tập số hữu tỉ Q" },
-    { label: "⇒", latex: " \\implies ", tooltip: "Suy ra" },
-    { label: "⇔", latex: " \\iff ", tooltip: "Tương đương" },
+    { label: "∈", value: " ∈ " }, { label: "∉", value: " ∉ " }, { label: "⊂", value: " ⊂ " },
+    { label: "⊆", value: " ⊆ " }, { label: "∪", value: " ∪ " }, { label: "∩", value: " ∩ " },
+    { label: "∅", value: "∅" }, { label: "ℝ", value: "ℝ" }, { label: "ℕ", value: "ℕ" },
+    { label: "ℤ", value: "ℤ" }, { label: "ℚ", value: "ℚ" }, { label: "⇒", value: " ⇒ " }, { label: "⇔", value: " ⇔ " },
   ],
   geometry: [
-    { label: "π", latex: "\\pi", tooltip: "Số Pi" },
-    { label: "θ", latex: "\\theta", tooltip: "Góc Theta" },
-    { label: "α", latex: "\\alpha", tooltip: "Góc Alpha" },
-    { label: "β", latex: "\\beta", tooltip: "Góc Beta" },
-    { label: "γ", latex: "\\gamma", tooltip: "Góc Gamma" },
-    { label: "λ", latex: "\\lambda", tooltip: "Góc Lambda" },
-    { label: "°", latex: "^{\\circ}", tooltip: "Độ" },
-    { label: "∠", latex: "\\angle", tooltip: "Góc" },
-    { label: "△", latex: "\\triangle", tooltip: "Tam giác" },
-    { label: "∥", latex: " \\parallel ", tooltip: "Song song" },
-    { label: "⊥", latex: " \\perp ", tooltip: "Vuông góc" },
+    { label: "π", value: "π" }, { label: "θ", value: "θ" }, { label: "α", value: "α" },
+    { label: "β", value: "β" }, { label: "γ", value: "γ" }, { label: "λ", value: "λ" },
+    { label: "°", value: "°" }, { label: "∠", value: "∠" }, { label: "△", value: "△" },
+    { label: "∥", value: " ∥ " }, { label: "⊥", value: " ⊥ " },
   ],
 };
 
@@ -145,7 +114,7 @@ export const MathInputToolbar: React.FC<MathInputToolbarProps> = ({
             disabled={disabled}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => {
-              if (!disabled) onInsert(sym.latex);
+              if (!disabled) onInsert(sym.value);
             }}
             className={`min-w-8 h-8 px-2 flex items-center justify-center text-xs font-mono font-medium rounded border transition-colors ${
               disabled

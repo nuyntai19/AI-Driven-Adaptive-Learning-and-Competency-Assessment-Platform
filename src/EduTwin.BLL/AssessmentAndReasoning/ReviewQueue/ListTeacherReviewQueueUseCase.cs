@@ -2,6 +2,7 @@ using System.Globalization;
 using EduTwin.BLL.AssessmentAndReasoning.Evidence;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
+using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.Contracts.Organization;
 using EduTwin.DAL.AssessmentAndReasoning;
@@ -81,7 +82,13 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
             .AsNoTracking()
             .Where(evidence =>
                 evidence.CenterId == centerId &&
-                evidence.RequiresTeacherReview &&
+                (evidence.RequiresTeacherReview || _dbContext.StudentAssignmentProgresses.Any(progress =>
+                    progress.CenterId == centerId &&
+                    progress.AssignmentId == evidence.Attempt.AssignmentId &&
+                    progress.StudentId == evidence.Attempt.StudentId &&
+                    progress.Status == ProgressStatus.Completed &&
+                    progress.TeacherFinalReviewStatus == TeacherFinalReviewStatus.Pending &&
+                    !progress.IsDeleted)) &&
                 evidence.AnalysisId.HasValue &&
                 evidence.Analysis != null &&
                 evidence.AnalysisOverrideVersion == evidence.Analysis.OverrideVersion &&
@@ -130,12 +137,24 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
                 .ToDictionaryAsync(r => r.AttemptId, cancellationToken)
             : new Dictionary<ulong, StudentReviewRequest>();
 
+        var assignmentIds = entities.Select(e => e.Attempt.AssignmentId!.Value).Distinct().ToList();
+        var studentIds = entities.Select(e => e.Attempt.StudentId).Distinct().ToList();
+        var progressRows = await _dbContext.StudentAssignmentProgresses
+            .AsNoTracking()
+            .Include(p => p.Assignment)
+            .Where(p => p.CenterId == centerId && assignmentIds.Contains(p.AssignmentId) && studentIds.Contains(p.StudentId) && !p.IsDeleted)
+            .ToListAsync(cancellationToken);
+        var progressByAssignmentStudent = progressRows.ToDictionary(p => (p.AssignmentId, p.StudentId));
+
         var data = entities.Select(evidence =>
         {
             var hasRequest = reviewRequests.TryGetValue(evidence.AttemptId, out var req);
+            progressByAssignmentStudent.TryGetValue((evidence.Attempt.AssignmentId!.Value, evidence.Attempt.StudentId), out var progress);
             return new TeacherReviewQueueItemDto
             {
                 AttemptId = evidence.AttemptId.ToString(CultureInfo.InvariantCulture),
+                AssignmentId = evidence.Attempt.AssignmentId.Value.ToString("D"),
+                AssignmentTitle = progress?.Assignment?.Title ?? "Bài tập",
                 StudentId = evidence.Attempt.StudentId.ToString("D").ToLowerInvariant(),
                 StudentName = evidence.Attempt.Student.FullName,
                 QuestionId = evidence.Attempt.QuestionId.ToString(CultureInfo.InvariantCulture),
@@ -151,7 +170,9 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
                 Evidence = EvidenceProjectionMapper.Map(evidence),
                 SubmittedAt = NormalizeUtc(evidence.Attempt.CreatedAt),
                 HasStudentReviewRequest = hasRequest,
-                StudentReviewReason = hasRequest ? req!.StudentComment : null
+                StudentReviewReason = hasRequest ? req!.StudentComment : null,
+                TeacherFinalReviewStatus = progress?.TeacherFinalReviewStatus.ToString() ?? "Pending",
+                FinalReviewVersion = progress?.FinalReviewVersion ?? 0
             };
         }).ToList();
 

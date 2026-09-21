@@ -12,6 +12,7 @@ using EduTwin.BLL.AssessmentAndReasoning.Evidence;
 using EduTwin.BLL.DigitalTwin;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.BLL.Recommendations;
+using EduTwin.BLL.Assignments;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.DigitalTwin;
@@ -39,6 +40,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
     private readonly TimeProvider _timeProvider;
     private readonly IAttemptTeacherReviewScopeGuard _scopeGuard;
     private readonly ILogger<TeacherOverrideUseCase> _logger;
+    private readonly IOverallAssignmentCommentWorkflow? _overallCommentWorkflow;
 
     public TeacherOverrideUseCase(
         EduTwinDbContext dbContext,
@@ -53,7 +55,8 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
         IBehaviorCalibrationSampleProvider? calibrationSampleProvider = null,
         IRecommendationEngine? recommendationEngine = null,
         IAttemptTeacherReviewScopeGuard? scopeGuard = null,
-        ILogger<TeacherOverrideUseCase>? logger = null)
+        ILogger<TeacherOverrideUseCase>? logger = null,
+        IOverallAssignmentCommentWorkflow? overallCommentWorkflow = null)
     {
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         _tenantContext = tenantContext ?? throw new ArgumentNullException(nameof(tenantContext));
@@ -68,6 +71,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
         _recommendationEngine = recommendationEngine;
         _scopeGuard = scopeGuard ?? new AttemptTeacherReviewScopeGuard(_dbContext);
         _logger = logger ?? NullLogger<TeacherOverrideUseCase>.Instance;
+        _overallCommentWorkflow = overallCommentWorkflow;
     }
 
     public async Task<TeacherOverrideResult> ExecuteAsync(
@@ -200,6 +204,12 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
 
                 if (progress is not null)
                 {
+                    progress.TeacherFinalReviewStatus = TeacherFinalReviewStatus.Pending;
+                    progress.FinalReviewedByUserId = null;
+                    progress.FinalReviewedAt = null;
+                    progress.FinalTeacherNote = null;
+                    progress.FinalReviewVersion++;
+                    progress.IsOverallAiCommentStale = true;
                     var dbQuestionIds = await _dbContext.Attempts
                         .Where(a => a.CenterId == attempt.CenterId
                             && a.AssignmentId == attempt.AssignmentId.Value
@@ -591,6 +601,11 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                     recommendationSubjectId,
                     recommendationAttemptId);
             }
+        }
+
+        if (_overallCommentWorkflow is not null && attempt.AssignmentId.HasValue)
+        {
+            await _overallCommentWorkflow.GenerateAndCacheOverallCommentAsync(centerId, attempt.AssignmentId.Value, attempt.StudentId, cancellationToken);
         }
 
         return TeacherOverrideResult.Success(committedResponse!);
