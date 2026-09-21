@@ -74,7 +74,7 @@ public sealed class AIAnalysisJobProcessorTests
         Assert.False(analysis.NeedsTeacherReview);
         Assert.Equal(AnalysisProvider.Gemini, analysis.Provider);
         Assert.Equal(84m, analysis.ReasoningQuality);
-        Assert.Equal(["20"], analysis.RootCauseNodeIds.RootElement.EnumerateArray().Select(item => item.GetString()));
+        Assert.Empty(analysis.RootCauseNodeIds.RootElement.EnumerateArray());
         var evidence = Assert.Single(persisted.Evidence);
         Assert.Equal(EvidenceSourceType.AI, evidence.SourceType);
         Assert.Equal(EvidenceTrustLevel.Trusted, evidence.TrustLevel);
@@ -85,7 +85,7 @@ public sealed class AIAnalysisJobProcessorTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_SkippedEmptyAnswerAndEmptyScoringNotes_StillCallsAIAndCompletes()
+    public async Task ExecuteAsync_SkippedQuestion_DoesNotCallAIAndCompletesWithZeroWeightFallback()
     {
         var store = new InMemoryDatabaseRoot();
         var databaseName = Guid.NewGuid().ToString();
@@ -98,21 +98,22 @@ public sealed class AIAnalysisJobProcessorTests
             skipped: true,
             finalAnswer: string.Empty,
             emptyScoringNotes: true);
-        var aiService = new RecordingAIService((request, _) =>
-        {
-            Assert.Equal(string.Empty, request.StudentSubmission.FinalAnswer);
-            Assert.Equal(string.Empty, request.Question.GradingCriteria.ScoringNotes);
-            return Task.FromResult(ValidResponse("vi"));
-        });
+        var aiService = new RecordingAIService();
 
         var result = await ExecuteWithAIAsync(store, databaseName, centerId, aiService);
 
         Assert.Equal(AIAnalysisJobProcessingOutcome.Completed, result.Outcome);
-        Assert.Equal(1, aiService.CallCount);
+        Assert.Equal(0, aiService.CallCount);
         var persisted = await ReloadAsync(store, databaseName, centerId);
         Assert.Equal(AttemptStatus.Completed, persisted.Attempt.Status);
         Assert.Equal(AIJobStatus.Completed, persisted.Job.Status);
-        Assert.Single(persisted.Analyses);
+        var analysis = Assert.Single(persisted.Analyses);
+        Assert.True(analysis.IsFallback);
+        Assert.Null(analysis.ReasoningQuality);
+        Assert.Contains("không gọi AI chấm điểm", analysis.Feedback);
+        var evidence = Assert.Single(persisted.Evidence);
+        Assert.Equal(EvidenceSourceType.RuleFallback, evidence.SourceType);
+        Assert.Equal(0m, evidence.ReasoningWeight);
     }
 
     [Fact]

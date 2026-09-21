@@ -189,5 +189,5 @@ export interface RetryAIAnalysisResponse {
 }
 
 export interface CreateStudentReviewRequestDto {
-  reason: string;
+  studentComment: string;
 }

@@ -11,6 +11,7 @@ using EduTwin.Contracts.Organization;
 using EduTwin.Contracts.Recommendations;
 using EduTwin.Contracts.KnowledgeGraph;
 using EduTwin.DAL.Persistence;
+using EduTwin.BLL.DigitalTwin;
 
 namespace EduTwin.BLL.Dashboards;
 
@@ -67,12 +68,38 @@ public sealed class GetStudentDashboardUseCase : IGetStudentDashboardUseCase
                 .Where(g => g.CenterId == centerId && g.StudentId == studentId && !g.IsDeleted)
                 .ToListAsync(cancellationToken);
 
+            var learningPathPreferences = await _dbContext.StudentLearningPathPreferences.AsNoTracking()
+                .Where(p => p.CenterId == centerId && p.StudentId == studentId && !p.IsDeleted)
+                .ToListAsync(cancellationToken);
+
+            var targets = activeSubjects
+                .Select(subject =>
+                {
+                    var preference = learningPathPreferences.FirstOrDefault(p => p.SubjectId == subject.SubjectId);
+                    var governedGoal = goals.FirstOrDefault(g => g.SubjectId == subject.SubjectId);
+                    var hasTarget = preference is not null || governedGoal is not null;
+                    var targetScore = preference is not null
+                        ? Math.Round(preference.TargetMastery / 10m, 1, MidpointRounding.AwayFromZero)
+                        : governedGoal?.TargetScore ?? 0m;
+                    var remainingDays = preference is not null
+                        ? checked((uint)preference.TargetWeeks * 7u)
+                        : governedGoal?.RemainingDays ?? 0u;
+                    var predictedScore = governedGoal?.CurrentPredictedScore ?? 0m;
+                    var riskScore = hasTarget
+                        ? StudentSubjectGoalRiskCalculator.CalculateRisk(targetScore, predictedScore, checked((int)remainingDays))
+                        : 0m;
+                    return new { HasTarget = hasTarget, TargetScore = targetScore, RemainingDays = remainingDays, PredictedScore = predictedScore, RiskScore = riskScore };
+                })
+                .Where(target => target.HasTarget)
+                .ToList();
+
             var goalDto = new StudentGoalSummaryDto
             {
-                TargetScore = goals.Count > 0 ? Math.Round(goals.Average(g => g.TargetScore), 1, MidpointRounding.AwayFromZero) : 8.0m,
-                RemainingDays = goals.Count > 0 ? goals.Min(g => g.RemainingDays) : 90u,
-                CurrentPredictedScore = goals.Count > 0 ? Math.Round(goals.Average(g => g.CurrentPredictedScore), 1, MidpointRounding.AwayFromZero) : 0m,
-                RiskScore = goals.Count > 0 ? Math.Round(goals.Max(g => g.RiskScore), 1, MidpointRounding.AwayFromZero) : 0m
+                HasGoal = targets.Count > 0,
+                TargetScore = targets.Count > 0 ? Math.Round(targets.Average(g => g.TargetScore), 1, MidpointRounding.AwayFromZero) : 0m,
+                RemainingDays = targets.Count > 0 ? targets.Min(g => g.RemainingDays) : 0u,
+                CurrentPredictedScore = targets.Count > 0 ? Math.Round(targets.Average(g => g.PredictedScore), 1, MidpointRounding.AwayFromZero) : 0m,
+                RiskScore = targets.Count > 0 ? Math.Round(targets.Max(g => g.RiskScore), 1, MidpointRounding.AwayFromZero) : 0m
             };
 
             // Option A: Subject-level Competency Radar across all active subjects
@@ -219,12 +246,27 @@ public sealed class GetStudentDashboardUseCase : IGetStudentDashboardUseCase
             .Where(g => g.CenterId == centerId && g.StudentId == studentId && g.SubjectId == targetSubjectId && !g.IsDeleted)
             .FirstOrDefaultAsync(cancellationToken);
 
+        var learningPathPreference = await _dbContext.StudentLearningPathPreferences.AsNoTracking()
+            .Where(p => p.CenterId == centerId && p.StudentId == studentId && p.SubjectId == targetSubjectId && !p.IsDeleted)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var targetScore = learningPathPreference is not null
+            ? Math.Round(learningPathPreference.TargetMastery / 10m, 1, MidpointRounding.AwayFromZero)
+            : goalEntity?.TargetScore ?? 0m;
+        var remainingDays = learningPathPreference is not null
+            ? checked((uint)learningPathPreference.TargetWeeks * 7u)
+            : goalEntity?.RemainingDays ?? 0u;
+        var currentPredictedScore = goalEntity?.CurrentPredictedScore ?? 0m;
+
         var singleGoalDto = new StudentGoalSummaryDto
         {
-            TargetScore = goalEntity?.TargetScore ?? 0m,
-            RemainingDays = goalEntity?.RemainingDays ?? 0u,
-            CurrentPredictedScore = goalEntity?.CurrentPredictedScore ?? 0m,
-            RiskScore = goalEntity?.RiskScore ?? 0m
+            HasGoal = learningPathPreference is not null || goalEntity is not null,
+            TargetScore = targetScore,
+            RemainingDays = remainingDays,
+            CurrentPredictedScore = currentPredictedScore,
+            RiskScore = learningPathPreference is not null
+                ? StudentSubjectGoalRiskCalculator.CalculateRisk(targetScore, currentPredictedScore, checked((int)remainingDays))
+                : goalEntity?.RiskScore ?? 0m
         };
 
         // 2. Topic Mastery Radar (zero-fill missing KnowledgeTwin)

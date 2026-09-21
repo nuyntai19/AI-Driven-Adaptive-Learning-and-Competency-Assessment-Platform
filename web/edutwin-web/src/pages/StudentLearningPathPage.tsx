@@ -231,7 +231,7 @@ export const StudentLearningPathPage: React.FC = () => {
             onClick={() => setIsQuestionnaireOpen((prev) => !prev)}
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition-colors cursor-pointer"
           >
-            <span>{isQuestionnaireOpen ? "✕ Đóng khảo sát" : detailedPath ? "↻ Cập nhật lộ trình học" : "⚙ Tạo lộ trình học"}</span>
+            <span>{isQuestionnaireOpen ? "✕ Đóng khảo sát" : detailedPath ? "↻ AI đề xuất lại lộ trình" : "✨ AI đề xuất lộ trình"}</span>
           </button>
         </div>
       </div>
@@ -538,7 +538,7 @@ export const StudentLearningPathPage: React.FC = () => {
                 disabled={generateMutation.isPending}
                 className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-colors disabled:opacity-50 flex items-center gap-2"
               >
-                <span>{generateMutation.isPending ? "⏳ Đang tính toán..." : detailedPath ? "↻ Cập Nhật Lộ Trình Học" : "🚀 Tạo Lộ Trình Học Tập"}</span>
+                <span>{generateMutation.isPending ? "⏳ AI đang xây dựng lộ trình..." : detailedPath ? "↻ AI Đề Xuất Lại Lộ Trình" : "✨ AI Đề Xuất Lộ Trình Học Tập"}</span>
               </button>
             </div>
           </form>

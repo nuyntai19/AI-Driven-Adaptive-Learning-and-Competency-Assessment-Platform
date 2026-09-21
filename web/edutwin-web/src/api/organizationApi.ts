@@ -18,6 +18,7 @@ import type {
   StudentSubjectGoalDto,
   UpsertStudentSubjectGoalRequest,
   StudentSubjectGoalResponse,
+  StudentSubjectGoalListResponse,
   ResetAccountPasswordRequest,
   ResetAccountPasswordData,
   ResetAccountPasswordResponse,
@@ -314,6 +315,13 @@ export const organizationApi = {
     const response = await httpClient.put<StudentSubjectGoalResponse>(
       `/students/${studentId}/goals/${subjectId}`,
       payload
+    );
+    return response.data.data;
+  },
+
+  listStudentSubjectGoals: async (studentId: string): Promise<StudentSubjectGoalDto[]> => {
+    const response = await httpClient.get<StudentSubjectGoalListResponse>(
+      `/students/${encodeURIComponent(studentId)}/goals`
     );
     return response.data.data;
   },

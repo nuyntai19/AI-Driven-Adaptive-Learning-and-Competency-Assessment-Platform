@@ -198,6 +198,30 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                 AIAnalysisJobProcessingOutcome.NotEligible);
         }
 
+        // A skipped question is telemetry, not an answer to be graded by an AI.
+        // Complete it with the deterministic Vietnamese fallback so skip-rate is
+        // recorded while mastery remains unchanged (zero-weight evidence).
+        if (initialAttempt.Skipped)
+        {
+            var skippedAnalysis = _fallbackBuilder.Build(new RuleBasedFallbackInput(
+                initialAttempt.CenterId,
+                initialAttempt.AttemptId,
+                initialAttempt.IsCorrect,
+                initialAttempt.AwardedScore,
+                true,
+                initialAttempt.ReasoningLanguage,
+                utcNow));
+
+            return await PersistSuccessAsync(
+                initialJob,
+                initialAttempt,
+                requestContext,
+                skippedAnalysis,
+                TwinEventSource.RuleFallback,
+                workerId,
+                cancellationToken);
+        }
+
         ReasoningAnalysis analysis;
         try
         {
@@ -222,7 +246,9 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                 centerId,
                 initialAttempt.AttemptId,
                 response,
-                analysisUtcNow);
+                analysisUtcNow,
+                initialAttempt.IsCorrect,
+                initialAttempt.ReasoningLanguage);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -252,6 +278,7 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             initialAttempt,
             requestContext,
             analysis,
+            TwinEventSource.AIAnalysis,
             workerId,
             cancellationToken);
     }
@@ -261,6 +288,7 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         Attempt initialAttempt,
         RequestContext requestContext,
         ReasoningAnalysis analysis,
+        TwinEventSource eventSource,
         string workerId,
         CancellationToken cancellationToken)
     {
@@ -296,7 +324,7 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                 attempt,
                 requestContext.Question,
                 analysis,
-                TwinEventSource.AIAnalysis,
+                eventSource,
                 transactionalUtcNow,
                 cancellationToken,
                 requestContext.AllowedNodes.Select(n => n.NodeId).ToArray());

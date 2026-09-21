@@ -12,3 +12,11 @@ math-field {
   color: #0f172a !important;
   background-color: transparent !important;
 }
+
+.dark math-field {
+  --color: #f8fafc;
+  --placeholder-color: #a5b4fc;
+  --caret-color: #a5b4fc;
+  --selection-background-color: rgba(129, 140, 248, 0.35);
+  color: #f8fafc !important;
+}

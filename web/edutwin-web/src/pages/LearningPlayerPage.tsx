@@ -62,6 +62,9 @@ export const LearningPlayerPage = () => {
 
   const currentUser = useAuthStore((state) => state.user);
   const queryClient = useQueryClient();
+  const assignmentDraftStorageKey = assignmentId && currentUser
+    ? `edutwin_assignment_answers_${currentUser.centerId}_${currentUser.userId}_${assignmentId}`
+    : null;
 
   // Auto-restore subjectId from localStorage if entering adaptive learning directly
   useEffect(() => {
@@ -86,7 +89,7 @@ export const LearningPlayerPage = () => {
   const [assignmentAnswers, setAssignmentAnswers] = useState<Record<string, StoredAnswer>>(() => {
     if (!assignmentId) return {};
     try {
-      const saved = localStorage.getItem(`edutwin_assignment_answers_${assignmentId}`);
+      const saved = assignmentDraftStorageKey ? localStorage.getItem(assignmentDraftStorageKey) : null;
       if (!saved) return {};
       const parsed: unknown = JSON.parse(saved);
       if (typeof parsed !== "object" || parsed === null) return {};
@@ -492,7 +495,7 @@ export const LearningPlayerPage = () => {
       setAssignmentAnswers((prev) => {
         const next = { ...prev, [qId]: updatedEntry };
         try {
-          localStorage.setItem(`edutwin_assignment_answers_${assignmentId}`, JSON.stringify(next));
+          if (assignmentDraftStorageKey) localStorage.setItem(assignmentDraftStorageKey, JSON.stringify(next));
         } catch {
           // Ignore localStorage quote limits
         }
@@ -511,6 +514,7 @@ export const LearningPlayerPage = () => {
       attachedSnapshotDataUrl,
       attachedSnapshotTime,
       drawingUploadToken,
+      assignmentDraftStorageKey,
     ]
   );
 
@@ -603,12 +607,16 @@ export const LearningPlayerPage = () => {
               setPollingJobId(null);
             }
           }
-          if (assignmentId) {
-            await Promise.all([
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ["studentTwin"] }),
+            queryClient.invalidateQueries({ queryKey: ["studentTwinHistory"] }),
+            queryClient.invalidateQueries({ queryKey: ["studentDashboard"] }),
+            queryClient.invalidateQueries({ queryKey: ["learning-path"] }),
+            ...(assignmentId ? [
               queryClient.invalidateQueries({ queryKey: ["student-assignments"] }),
               queryClient.invalidateQueries({ queryKey: ["student-assignment", assignmentId] }),
-            ]);
-          }
+            ] : []),
+          ]);
           return;
         }
 
@@ -781,7 +789,7 @@ export const LearningPlayerPage = () => {
           },
         };
         try {
-          localStorage.setItem(`edutwin_assignment_answers_${assignmentId}`, JSON.stringify(next));
+          if (assignmentDraftStorageKey) localStorage.setItem(assignmentDraftStorageKey, JSON.stringify(next));
         } catch {
           // Handle storage quota
         }
@@ -811,7 +819,7 @@ export const LearningPlayerPage = () => {
           },
         };
         try {
-          localStorage.setItem(`edutwin_assignment_answers_${assignmentId}`, JSON.stringify(next));
+          if (assignmentDraftStorageKey) localStorage.setItem(assignmentDraftStorageKey, JSON.stringify(next));
         } catch {
           // Handle storage quota
         }
@@ -837,7 +845,7 @@ export const LearningPlayerPage = () => {
   // Submit flow:
   // - Assignment Mode: Sequentially submit each question attempt (generating 1 prompt per question + scratchpad)
   // - Adaptive Mode: Submit single active question
-  const handleFinalSubmit = async () => {
+  const handleFinalSubmit = async (options?: { forceSkip?: boolean }) => {
     if (!question) return;
     persistCurrentAnswer();
     setShowBatchConfirmModal(false);
@@ -976,9 +984,24 @@ export const LearningPlayerPage = () => {
         // Clean up frozen payload on success
         frozenPayloadRef.current = null;
 
+        // Every question in the assignment has now been accepted by the server.
+        // Purge all of their idempotency identities immediately; otherwise a new
+        // student/retake in this browser tab can accidentally reuse stale IDs.
+        if (currentUser) {
+          for (const submittedQuestion of assignmentQuestions) {
+            clearAttemptSessionId({
+              centerId: currentUser.centerId,
+              userId: currentUser.userId,
+              subjectId: subjectId || "assignment",
+              questionId: String(submittedQuestion.questionId),
+            });
+          }
+          clientSubmissionIdRef.current = createClientSubmissionId();
+        }
+
         // Clear local storage draft
         try {
-          localStorage.removeItem(`edutwin_assignment_answers_${assignmentId}`);
+          if (assignmentDraftStorageKey) localStorage.removeItem(assignmentDraftStorageKey);
         } catch {
           // ignore
         }
@@ -1009,13 +1032,14 @@ export const LearningPlayerPage = () => {
       }
 
       // ── SINGLE ADAPTIVE QUESTION SUBMISSION ──────────────────────────────────
+      const forceSkip = options?.forceSkip === true;
       let tokenToUse: string | null = drawingUploadToken;
       if (attachedSnapshotDataUrl && !tokenToUse) {
         setPollingStatus("Đang tải lên bản vẽ nháp đính kèm...");
         tokenToUse = await uploadScratchpadAttachmentIfAny();
       }
 
-      if (question.reasoningRequired && finalAnswer.trim() && !reasoningText.trim()) {
+      if (!forceSkip && question.reasoningRequired && finalAnswer.trim() && !reasoningText.trim()) {
         setIsSubmitting(false);
         setSubmissionSaveError("Câu hỏi này yêu cầu phải có phần lập luận / giải trình trước khi nộp bài.");
         return;
@@ -1025,12 +1049,12 @@ export const LearningPlayerPage = () => {
       const submitted = await submitAttempt({
         questionId: question.questionId,
         assignmentId: undefined,
-        finalAnswer: finalAnswer.trim() || "SKIPPED",
-        reasoningText: reasoningText.trim() || undefined,
+        finalAnswer: forceSkip ? "SKIPPED" : finalAnswer.trim() || "SKIPPED",
+        reasoningText: forceSkip ? undefined : reasoningText.trim() || undefined,
         timeSpentSeconds,
         confidence,
         answerChanges,
-        skipped: !finalAnswer.trim(),
+        skipped: forceSkip || !finalAnswer.trim(),
         clientSubmissionId: getClientSubmissionId(),
         answerDisplayLatex: answerDisplayLatex.trim() || undefined,
         drawingUploadToken: tokenToUse || undefined,
@@ -1053,6 +1077,12 @@ export const LearningPlayerPage = () => {
         const fbRes = await getAttemptFeedback(resData.attemptId);
         setFeedbackData(fbRes);
         setIsSubmitting(false);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["studentTwin"] }),
+          queryClient.invalidateQueries({ queryKey: ["studentTwinHistory"] }),
+          queryClient.invalidateQueries({ queryKey: ["studentDashboard"] }),
+          queryClient.invalidateQueries({ queryKey: ["learning-path"] }),
+        ]);
       } else {
         setIsSubmitting(false);
         setSubmissionSaveError("Phản hồi bất thường từ máy chủ. Vui lòng thử nộp lại.");
@@ -1582,7 +1612,7 @@ export const LearningPlayerPage = () => {
                     onClick={() => {
                       if (window.confirm("Bạn có chắc chắn muốn làm lại bài tập này?")) {
                         try {
-                          localStorage.removeItem(`edutwin_assignment_answers_${assignmentId}`);
+                          if (assignmentDraftStorageKey) localStorage.removeItem(assignmentDraftStorageKey);
                         } catch {
                           // ignore storage error
                         }
@@ -2109,7 +2139,7 @@ export const LearningPlayerPage = () => {
                       );
                     })}
                   </fieldset>
-                ) : isFormulaOnlyQuestion(question?.answerEvaluationMode, question?.questionText) ? (
+                ) : hasMathTools && isFormulaOnlyQuestion(question?.answerEvaluationMode, question?.questionText) ? (
                   <div>
                     {/* Visual Math Field (MathLive) - Chỉ dùng cho câu hỏi công thức/số ngắn */}
                     <VisualMathField
@@ -2344,7 +2374,7 @@ export const LearningPlayerPage = () => {
                   <div className="flex items-center justify-between w-full">
                     <button
                       type="button"
-                      onClick={() => handleFinalSubmit()}
+                      onClick={() => handleFinalSubmit({ forceSkip: true })}
                       disabled={isSubmitting}
                       className="text-xs font-semibold text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 cursor-pointer"
                     >
@@ -2429,7 +2459,7 @@ export const LearningPlayerPage = () => {
               </button>
               <button
                 type="button"
-                onClick={handleFinalSubmit}
+                onClick={() => handleFinalSubmit()}
                 className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs shadow-md shadow-indigo-600/30 cursor-pointer"
               >
                 Xác nhận nộp bài

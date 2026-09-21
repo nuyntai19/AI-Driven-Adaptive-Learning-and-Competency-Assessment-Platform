@@ -1,9 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using EduTwin.BLL.AssessmentAndReasoning.Evidence;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.IdentityAndTenancy;
@@ -44,9 +47,9 @@ public sealed class CreateStudentReviewRequestUseCase : ICreateStudentReviewRequ
             return CreateStudentReviewRequestResult.ValidationFailed("Lý do yêu cầu xem xét không được để trống.");
         }
 
-        if (comment.Trim().Length > 2000)
+        if (comment.Trim().Length > 1000)
         {
-            return CreateStudentReviewRequestResult.ValidationFailed("Lý do yêu cầu xem xét không được vượt quá 2000 ký tự.");
+            return CreateStudentReviewRequestResult.ValidationFailed("Lý do yêu cầu xem xét không được vượt quá 1000 ký tự.");
         }
 
         if (!_tenantContext.IsResolved ||
@@ -96,12 +99,13 @@ public sealed class CreateStudentReviewRequestUseCase : ICreateStudentReviewRequ
             StudentComment = comment.Trim(),
             Status = StudentReviewRequestStatus.Pending,
             CreatedAt = now,
+            CreatedBy = currentUserId,
             UpdatedAt = now
         };
 
         _dbContext.StudentReviewRequests.Add(reviewRequest);
 
-        // Flag analysis and evidence as requiring teacher review
+        // Flag the mutable analysis/attempt as requiring teacher review.
         var analysis = await _dbContext.ReasoningAnalyses
             .Where(ra => ra.CenterId == centerId && ra.AttemptId == attemptId)
             .FirstOrDefaultAsync(cancellationToken);
@@ -112,19 +116,61 @@ public sealed class CreateStudentReviewRequestUseCase : ICreateStudentReviewRequ
             analysis.UpdatedAt = now;
         }
 
+        attempt.Status = AttemptStatus.NeedsTeacherReview;
+        attempt.UpdatedAt = now;
+
         var evidence = await _dbContext.EvidenceAssessments
             .Where(ea => ea.CenterId == centerId && ea.AttemptId == attemptId)
             .OrderByDescending(ea => ea.EvidenceAssessmentId)
             .FirstOrDefaultAsync(cancellationToken);
 
-        if (evidence != null)
+        if (evidence != null && !evidence.RequiresTeacherReview)
         {
-            evidence.RequiresTeacherReview = true;
+            // Evidence is append-only by database contract. Create a successor
+            // instead of updating the existing row (which the MySQL trigger
+            // correctly rejects).
+            var reasonCodes = ReadReasonCodes(evidence.ReasonCodes);
+            reasonCodes.Add(EvidenceReasonCodes.StudentReviewRequested);
+
+            _dbContext.EvidenceAssessments.Add(new EvidenceAssessment
+            {
+                CenterId = evidence.CenterId,
+                AttemptId = evidence.AttemptId,
+                AnalysisId = evidence.AnalysisId,
+                SupersedesAssessmentId = evidence.EvidenceAssessmentId,
+                SourceType = evidence.SourceType,
+                TrustLevel = evidence.TrustLevel,
+                DecisionMode = evidence.DecisionMode,
+                ReasoningWeight = evidence.ReasoningWeight,
+                ReasonCodes = JsonSerializer.SerializeToDocument(reasonCodes.Distinct().ToArray()),
+                RequiresTeacherReview = true,
+                PolicyVersion = evidence.PolicyVersion,
+                AnalysisOverrideVersion = evidence.AnalysisOverrideVersion,
+                EvaluatedAt = now,
+                CreatedAt = now,
+                CreatedBy = currentUserId
+            });
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return CreateStudentReviewRequestResult.Success(Map(reviewRequest));
+    }
+
+    private static List<string> ReadReasonCodes(JsonDocument? document)
+    {
+        if (document?.RootElement.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        return document.RootElement
+            .EnumerateArray()
+            .Where(item => item.ValueKind == JsonValueKind.String)
+            .Select(item => item.GetString())
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Cast<string>()
+            .ToList();
     }
 
     private static StudentReviewRequestDto Map(StudentReviewRequest request) =>

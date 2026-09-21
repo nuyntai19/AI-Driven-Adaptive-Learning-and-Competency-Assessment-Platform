@@ -2,9 +2,19 @@ import { useState, useEffect } from "react";
 import type { AttemptFeedbackDataDto } from "../../types/learning";
 import { RichMathText } from "../math/RichMathText";
 import { retryAttemptAIAnalysis, createStudentReviewRequest } from "../../api/learningFeedbackApi";
+import { extractProblemDetails } from "../../utils/problemDetails";
 
 function safeClientErrorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message.trim() ? error.message : fallback;
+  const details = extractProblemDetails(error);
+  if (details.status === 401) return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.";
+  if (details.status === 403) return "Bạn không có quyền yêu cầu xem xét bài làm này.";
+  if (details.status === 404) return "Không tìm thấy bài làm cần xem xét.";
+  if (details.status === 409) return "Yêu cầu xem xét này đã được gửi trước đó.";
+  if (details.status === 429) return "Bạn thao tác quá nhanh. Vui lòng chờ một lúc rồi thử lại.";
+  if (details.status && details.status >= 500) {
+    return details.traceId ? `${fallback} (Mã theo dõi: ${details.traceId})` : fallback;
+  }
+  return details.detail?.trim() || fallback;
 }
 
 interface AttemptFeedbackHierarchyProps {
@@ -99,7 +109,7 @@ export function AttemptFeedbackHierarchy({
     try {
       setIsSubmittingReview(true);
       setReviewModalError(null);
-      await createStudentReviewRequest(attemptId, { reason: reviewReason.trim() });
+      await createStudentReviewRequest(attemptId, { studentComment: reviewReason.trim() });
       setReviewSuccessMessage("Đã gửi yêu cầu xem xét tới giáo viên phụ trách!");
       setTimeout(() => {
         setIsReviewModalOpen(false);

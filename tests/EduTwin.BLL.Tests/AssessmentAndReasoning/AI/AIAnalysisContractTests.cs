@@ -44,6 +44,7 @@ public sealed class AIAnalysisContractTests
         AssertExactProperties(
             typeof(AnalyzeReasoningStudentSubmission),
             ("FinalAnswer", typeof(string), NullabilityState.NotNull, true),
+            ("PreliminaryIsCorrect", typeof(bool?), NullabilityState.Nullable, false),
             ("ReasoningText", typeof(string), NullabilityState.Nullable, false),
             ("TimeSpentSeconds", typeof(uint), NullabilityState.NotNull, false),
             ("Confidence", typeof(decimal), NullabilityState.NotNull, false),
@@ -110,12 +111,14 @@ public sealed class AIAnalysisContractTests
         AssertObjectProperties(
             submission,
             "finalAnswer",
+            "preliminaryIsCorrect",
             "reasoningText",
             "timeSpentSeconds",
             "confidence",
             "answerChanges",
             "imageParts");
         Assert.Equal("B", submission.GetProperty("finalAnswer").GetString());
+        Assert.True(submission.GetProperty("preliminaryIsCorrect").GetBoolean());
         Assert.Equal("Em đặt điều kiện...", submission.GetProperty("reasoningText").GetString());
         Assert.Equal(165u, submission.GetProperty("timeSpentSeconds").GetUInt32());
         Assert.Equal(80m, submission.GetProperty("confidence").GetDecimal());
@@ -339,6 +342,7 @@ public sealed class AIAnalysisContractTests
             StudentSubmission = new AnalyzeReasoningStudentSubmission
             {
                 FinalAnswer = "B",
+                PreliminaryIsCorrect = true,
                 ReasoningText = reasoningText,
                 TimeSpentSeconds = 165,
                 Confidence = 80m,

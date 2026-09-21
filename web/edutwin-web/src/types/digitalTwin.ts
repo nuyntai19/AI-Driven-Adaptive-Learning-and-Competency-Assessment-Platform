@@ -28,6 +28,9 @@ export interface TwinUpdateHistoryItemDto {
   topicNodeId: string;
   topicName: string;
   eventSource: string;
+  learningContext: "Assignment" | "AdaptivePractice" | "Unknown";
+  contextLabel: string;
+  questionText?: string | null;
   previousMastery: number;
   newMastery: number;
   delta: number;
