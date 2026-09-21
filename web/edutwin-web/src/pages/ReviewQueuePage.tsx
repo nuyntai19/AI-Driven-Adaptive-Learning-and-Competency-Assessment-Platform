@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { listTeacherReviewQueue } from "../api/teacherReviewsApi";
 import { organizationApi } from "../api/organizationApi";
@@ -932,6 +932,9 @@ const TeacherReviewQueueLegacyView: React.FC = () => {
 // ============================================================================
 export const ReviewQueuePage: React.FC = () => {
   const user = useAuthStore((state) => state.user);
+  if (user?.accountType === "Teacher") {
+    return <Navigate to="/giao-vien/cham-bai" replace />;
+  }
   const mode = resolveReviewQueueViewMode(user?.accountType);
   return mode === "CenterManager" ? (
     <CenterManagerReviewQueueView />

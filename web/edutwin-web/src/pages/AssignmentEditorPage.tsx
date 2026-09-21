@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, Navigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { organizationApi } from "../api/organizationApi";
 import { useAssignment } from "../features/assignments/useAssignment";
@@ -1321,7 +1321,11 @@ function LegacyAssignmentEditorPage() {
 // =============================================================================
 
 export const AssignmentEditorPage = () => {
+  const { id } = useParams<{ id?: string }>();
   const accountType = useAuthStore((state) => state.user?.accountType);
+  if (accountType === "Teacher") {
+    return <Navigate to={id ? `/giao-vien/bai-tap/${id}` : "/giao-vien/bai-tap/tao-moi"} replace />;
+  }
   if (accountType === "CenterManager") {
     return <CenterManagerAssignmentEditorView />;
   }

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, Navigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useCurriculums } from "../features/curriculum/useCurriculums";
 import type { ReviewStatus } from "../types/curriculum";
@@ -399,6 +399,9 @@ const LegacyCurriculumListPage: React.FC = () => {
 
 export const CurriculumListPage: React.FC = () => {
   const user = useAuthStore((state) => state.user);
+  if (user?.accountType === "Teacher") {
+    return <Navigate to="/giao-vien/giao-trinh" replace />;
+  }
   return user?.accountType === "CenterManager" ? (
     <CenterManagerCurriculumListView />
   ) : (

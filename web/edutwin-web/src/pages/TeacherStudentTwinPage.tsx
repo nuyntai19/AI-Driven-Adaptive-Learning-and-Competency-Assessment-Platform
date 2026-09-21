@@ -1,5 +1,5 @@
 import React from "react";
-import { useParams, Link, useSearchParams } from "react-router-dom";
+import { useParams, Link, Navigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getTeacherStudentTwin } from "../api/digitalTwinApi";
 import type { StudentTwinDataDto } from "../types/digitalTwin";
@@ -657,7 +657,11 @@ const TeacherStudentTwinLegacyView: React.FC = () => {
 // 3. CANONICAL EXPORT WITH STRICT ACTOR ISOLATION
 // ============================================================================
 export const TeacherStudentTwinPage: React.FC = () => {
+  const { studentId } = useParams<{ studentId: string }>();
   const user = useAuthStore((state) => state.user);
+  if (user?.accountType === "Teacher") {
+    return <Navigate to={studentId ? `/giao-vien/hoc-sinh/${studentId}/twin` : "/giao-vien/lop-hoc"} replace />;
+  }
   const mode = resolveStudentTwinViewMode(user?.accountType);
   return mode === "CenterManager" ? (
     <CenterManagerStudentTwinView />

@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link, useNavigate, Navigate } from "react-router-dom";
 import { useAssignment } from "../features/assignments/useAssignment";
 import { useAssignmentProgress } from "../features/assignments/useAssignmentProgress";
 import { useCloseAssignment } from "../features/assignments/useCloseAssignment";
@@ -486,7 +486,11 @@ function LegacyAssignmentProgressPage() {
 // =============================================================================
 
 export const AssignmentProgressPage = () => {
+  const { id } = useParams<{ id: string }>();
   const accountType = useAuthStore((state) => state.user?.accountType);
+  if (accountType === "Teacher") {
+    return <Navigate to={id ? `/giao-vien/bai-tap/${id}/tien-do` : "/giao-vien/bai-tap"} replace />;
+  }
   if (accountType === "CenterManager") {
     return <CenterManagerAssignmentProgressView />;
   }

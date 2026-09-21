@@ -1,6 +1,7 @@
 import { createPortal } from "react-dom";
 import { useId, useRef, type ReactNode } from "react";
 import { useModalAccessibility } from "../../utils/useModalAccessibility";
+import { useThemeMode } from "../../utils/themeMode";
 
 interface TeacherDrawerProps {
   isOpen: boolean;
@@ -16,13 +17,14 @@ export function TeacherDrawer({ isOpen, title, description, onClose, children, f
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const descriptionId = useId();
+  const { theme } = useThemeMode();
 
   useModalAccessibility({ isOpen, onClose, containerRef, initialFocusRef: closeButtonRef });
 
   if (!isOpen || typeof document === "undefined") return null;
 
   return createPortal(
-    <div data-actor="teacher" className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-sm" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+    <div data-actor="teacher" data-theme={theme} className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-sm" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <aside
         ref={containerRef}
         role="dialog"
@@ -70,6 +72,7 @@ export function TeacherModal({
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const descriptionId = useId();
+  const { theme } = useThemeMode();
 
   useModalAccessibility({ isOpen, onClose, containerRef, initialFocusRef: closeButtonRef });
 
@@ -78,6 +81,7 @@ export function TeacherModal({
   return createPortal(
     <div
       data-actor="teacher"
+      data-theme={theme}
       className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm"
       onMouseDown={(event) => event.target === event.currentTarget && onClose()}
     >

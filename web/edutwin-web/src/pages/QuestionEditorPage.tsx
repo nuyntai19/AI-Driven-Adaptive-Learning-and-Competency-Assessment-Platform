@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, Navigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { organizationApi } from "../api/organizationApi";
 import { knowledgeGraphApi } from "../api/knowledgeGraphApi";
@@ -1468,7 +1468,11 @@ function LegacyQuestionEditorPage() {
 // =============================================================================
 
 export const QuestionEditorPage = () => {
+  const { id } = useParams<{ id?: string }>();
   const accountType = useAuthStore((state) => state.user?.accountType);
+  if (accountType === "Teacher") {
+    return <Navigate to={id ? `/giao-vien/cau-hoi/${id}` : "/giao-vien/cau-hoi/tao-moi"} replace />;
+  }
   if (accountType === "CenterManager") {
     return <CenterManagerQuestionEditorView />;
   }

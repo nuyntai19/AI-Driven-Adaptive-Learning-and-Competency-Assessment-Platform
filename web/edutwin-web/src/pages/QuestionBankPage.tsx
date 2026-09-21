@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Navigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   useQuestions,
@@ -844,6 +844,9 @@ function LegacyQuestionBankPage() {
 
 export const QuestionBankPage = () => {
   const accountType = useAuthStore((state) => state.user?.accountType);
+  if (accountType === "Teacher") {
+    return <Navigate to="/giao-vien/cau-hoi" replace />;
+  }
   if (accountType === "CenterManager") {
     return <CenterManagerQuestionBankView />;
   }
