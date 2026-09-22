@@ -312,7 +312,7 @@ public class GetCurrentUserUseCaseTests : IDisposable
     }
 
     [Fact]
-    public async Task DependencyInjection_ShouldResolveIGetCurrentUserUseCase()
+    public void DependencyInjection_ShouldResolveIGetCurrentUserUseCase()
     {
         var services = new ServiceCollection();
         services.AddScoped(sp => _dbContext);

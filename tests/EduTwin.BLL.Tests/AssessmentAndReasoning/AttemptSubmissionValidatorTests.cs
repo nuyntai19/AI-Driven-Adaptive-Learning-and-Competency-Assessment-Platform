@@ -275,6 +275,26 @@ public sealed class AttemptSubmissionValidatorTests : IDisposable
     [Theory]
     [InlineData(null)]
     [InlineData("")]
+    [InlineData("   ")]
+    public async Task ValidateAsync_ReasoningRequiredAndSkipped_IsAcceptedWithZeroScore(
+        string? reasoningText)
+    {
+        await SeedActiveStudentAsync();
+        await SeedQuestionAsync(reasoningRequired: true);
+
+        var result = await CreateSut().ValidateAsync(
+            CreateRequest(finalAnswer: string.Empty, skipped: true, reasoningText: reasoningText));
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Submission);
+        Assert.True(result.Submission.Skipped);
+        Assert.False(result.Submission.IsCorrect);
+        Assert.Equal(0m, result.Submission.AwardedScore);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
     [InlineData("student")]
     [InlineData("Teacher")]
     [InlineData("CenterManager")]

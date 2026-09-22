@@ -14,6 +14,7 @@ public class StudentQuestionDto
     public string LanguageCode { get; set; } = string.Empty;
     public List<StudentQuestionOptionDto> Options { get; set; } = new();
     public string? AttemptStatus { get; set; }
+    public StudentQuestionAttemptDto? LatestAttempt { get; set; }
     public string? SubmittedAnswer { get; set; }
     public string? SubmittedReasoning { get; set; }
     public ulong? SubmittedAttemptId { get; set; }

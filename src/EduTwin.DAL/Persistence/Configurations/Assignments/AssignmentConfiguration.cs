@@ -50,6 +50,10 @@ public class AssignmentConfiguration : IEntityTypeConfiguration<Assignment>
             .HasColumnName("due_at")
             .HasColumnType("datetime(6)");
 
+        builder.Property(a => a.TimeLimitMinutes)
+            .HasColumnName("time_limit_minutes")
+            .HasColumnType("int");
+
         builder.Property(a => a.Status)
             .HasColumnName("status")
             .HasColumnType("varchar(32)")

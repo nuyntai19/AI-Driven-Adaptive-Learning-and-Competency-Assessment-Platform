@@ -51,6 +51,15 @@ public class ListStudentAssignmentsUseCase : IListStudentAssignmentsUseCase
                         !p.Assignment.IsDeleted &&
                         (p.Assignment.Status == AssignmentStatus.Published || p.Assignment.Status == AssignmentStatus.Closed));
 
+        if (query.SubjectId.HasValue && query.SubjectId.Value != Guid.Empty)
+        {
+            var subjectId = query.SubjectId.Value;
+            baseQuery = baseQuery.Where(p => _dbContext.Classes.Any(c =>
+                c.CenterId == centerId &&
+                c.SubjectId == subjectId &&
+                c.ClassId == p.Assignment!.ClassId));
+        }
+
         if (!string.IsNullOrEmpty(query.Status))
         {
             if (Enum.TryParse<ProgressStatus>(query.Status, out var statusFilter))
@@ -81,25 +90,49 @@ public class ListStudentAssignmentsUseCase : IListStudentAssignmentsUseCase
         var page = query.Page < 1 ? 1 : query.Page;
         var skip = (page - 1) * pageSize;
 
-        var items = await baseQuery
+        var rawItems = await baseQuery
             .OrderByDescending(p => p.Assignment!.CreatedAt)
             .ThenBy(p => p.AssignmentId)
             .Skip(skip)
             .Take(pageSize)
-            .Select(p => new StudentAssignmentDto
+            .Select(p => new
+            {
+                p.AssignmentId,
+                p.Assignment!.Title,
+                p.Assignment.Instructions,
+                p.Assignment.DueAt,
+                p.Status,
+                p.CompletedQuestionCount,
+                p.TotalQuestionCount,
+                SubjectId = _dbContext.Classes
+                    .Where(c => c.CenterId == centerId && c.ClassId == p.Assignment.ClassId)
+                    .Select(c => (Guid?)c.SubjectId)
+                    .FirstOrDefault(),
+                SubjectName = _dbContext.Classes
+                    .Where(c => c.CenterId == centerId && c.ClassId == p.Assignment.ClassId)
+                    .Select(c => c.Subject.SubjectName)
+                    .FirstOrDefault()
+            })
+            .ToListAsync(cancellationToken);
+
+        var items = rawItems.Select(p =>
+        {
+            return new StudentAssignmentDto
             {
                 AssignmentId = p.AssignmentId.ToString(),
-                Title = p.Assignment!.Title,
-                Instructions = p.Assignment.Instructions,
-                DueAt = p.Assignment.DueAt,
+                Title = p.Title,
+                Instructions = p.Instructions,
+                DueAt = p.DueAt,
+                SubjectId = p.SubjectId?.ToString(),
+                SubjectName = p.SubjectName,
                 Progress = new StudentAssignmentProgressDto
                 {
-                    Status = AssignmentStatusHelper.GetEffectiveProgressStatus(p.Status, p.Assignment.DueAt, utcNow).ToString(),
+                    Status = AssignmentStatusHelper.GetEffectiveProgressStatus(p.Status, p.DueAt, utcNow).ToString(),
                     CompletedQuestionCount = (int)p.CompletedQuestionCount,
                     TotalQuestionCount = (int)p.TotalQuestionCount
                 }
-            })
-            .ToListAsync(cancellationToken);
+            };
+        }).ToList();
 
         var totalPages = pageSize == 0 ? 0 : (int)Math.Ceiling((double)totalItems / pageSize);
 

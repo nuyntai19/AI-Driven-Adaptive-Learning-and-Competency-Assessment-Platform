@@ -666,6 +666,10 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasColumnType("varchar(32)")
                         .HasColumnName("status");
 
+                    b.Property<int?>("TimeLimitMinutes")
+                        .HasColumnType("int")
+                        .HasColumnName("time_limit_minutes");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasColumnType("varchar(250)")

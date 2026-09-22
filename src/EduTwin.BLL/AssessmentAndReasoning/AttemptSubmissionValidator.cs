@@ -17,15 +17,18 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
     private readonly EduTwinDbContext _dbContext;
     private readonly ITenantContext _tenantContext;
     private readonly PreliminaryGraderFactory _graderFactory;
+    private readonly TimeProvider _timeProvider;
 
     public AttemptSubmissionValidator(
         EduTwinDbContext dbContext,
         ITenantContext tenantContext,
-        PreliminaryGraderFactory graderFactory)
+        PreliminaryGraderFactory graderFactory,
+        TimeProvider? timeProvider = null)
     {
         _dbContext = dbContext;
         _tenantContext = tenantContext;
         _graderFactory = graderFactory;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public async Task<AttemptSubmissionValidationResult> ValidateAsync(
@@ -145,9 +148,39 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
             {
                 return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
             }
+
+            var progress = await _dbContext.StudentAssignmentProgresses
+                .AsNoTracking()
+                .SingleOrDefaultAsync(
+                    candidate =>
+                        candidate.CenterId == centerId &&
+                        candidate.AssignmentId == request.AssignmentId.Value &&
+                        candidate.StudentId == studentId,
+                    cancellationToken);
+
+            var now = _timeProvider.GetUtcNow().UtcDateTime;
+            DateTime? effectiveExpiresAt = null;
+            if (assignment.DueAt.HasValue && assignment.TimeLimitMinutes.HasValue && progress?.StartedAt.HasValue == true)
+            {
+                var timeLimitExpiresAt = progress.StartedAt.Value.AddMinutes(assignment.TimeLimitMinutes.Value);
+                effectiveExpiresAt = assignment.DueAt.Value < timeLimitExpiresAt ? assignment.DueAt.Value : timeLimitExpiresAt;
+            }
+            else if (assignment.TimeLimitMinutes.HasValue && progress?.StartedAt.HasValue == true)
+            {
+                effectiveExpiresAt = progress.StartedAt.Value.AddMinutes(assignment.TimeLimitMinutes.Value);
+            }
+            else if (assignment.DueAt.HasValue)
+            {
+                effectiveExpiresAt = assignment.DueAt.Value;
+            }
+
+            if (effectiveExpiresAt.HasValue && now > effectiveExpiresAt.Value)
+            {
+                return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
+            }
         }
 
-        if (question.ReasoningRequired && string.IsNullOrWhiteSpace(request.ReasoningText))
+        if (!request.Skipped && question.ReasoningRequired && string.IsNullOrWhiteSpace(request.ReasoningText))
         {
             return AttemptSubmissionValidationResult.Failure(ErrorCodes.QuestionReasoningRequired);
         }
@@ -174,18 +207,29 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
                 .ToListAsync(cancellationToken)
             : [];
 
-        var preliminaryGrade = _graderFactory
-            .GetGrader(question.QuestionType)
-            .Grade(
-                request.FinalAnswer,
-                question.CorrectAnswer,
-                new PreliminaryGrading.QuestionGradingContext
-                {
-                    EvaluationMode = question.AnswerEvaluationMode,
-                    MaxScore = question.MaxScore,
-                    Criteria = question.GradingCriteria,
-                    Options = options
-                });
+        var preliminaryGrade = !request.Skipped
+            ? _graderFactory
+                .GetGrader(question.QuestionType)
+                .Grade(
+                    request.FinalAnswer,
+                    question.CorrectAnswer,
+                    new PreliminaryGrading.QuestionGradingContext
+                    {
+                        EvaluationMode = question.AnswerEvaluationMode,
+                        MaxScore = question.MaxScore,
+                        Criteria = question.GradingCriteria,
+                        Options = options
+                    })
+            : new PreliminaryGradingResult
+            {
+                IsCorrect = false,
+                Score = 0m,
+                Feedback = "Skipped"
+            };
+
+        var effectiveFinalAnswer = request.Skipped
+            ? (string.IsNullOrWhiteSpace(request.FinalAnswer) ? "SKIPPED" : request.FinalAnswer)
+            : request.FinalAnswer;
 
         return AttemptSubmissionValidationResult.Success(new ValidatedAttemptSubmission
         {
@@ -194,15 +238,15 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
             ClientSubmissionId = request.ClientSubmissionId,
             QuestionId = questionId,
             AssignmentId = request.AssignmentId,
-            FinalAnswer = request.FinalAnswer,
-            ReasoningText = request.ReasoningText,
+            FinalAnswer = effectiveFinalAnswer,
+            ReasoningText = request.Skipped ? (request.ReasoningText ?? null) : request.ReasoningText,
             AnswerDisplayLatex = request.AnswerDisplayLatex,
             DrawingUploadToken = request.DrawingUploadToken,
             TimeSpentSeconds = request.TimeSpentSeconds,
             Confidence = request.Confidence,
             AnswerChanges = request.AnswerChanges,
             Skipped = request.Skipped,
-            ReasoningLanguage = question.LanguageCode,
+            ReasoningLanguage = "vi",
             IsCorrect = preliminaryGrade.IsCorrect,
             AwardedScore = preliminaryGrade.Score
         });
@@ -231,13 +275,17 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
         if (request is null ||
             request.ClientSubmissionId == Guid.Empty ||
             request.AssignmentId == Guid.Empty ||
-            request.FinalAnswer is null ||
             (!request.Skipped && string.IsNullOrWhiteSpace(request.FinalAnswer)) ||
             request.Confidence < 0m ||
             request.Confidence > 100m ||
             string.IsNullOrEmpty(request.QuestionId))
         {
             return false;
+        }
+
+        if (request.Skipped && request.FinalAnswer == null)
+        {
+            request.FinalAnswer = string.Empty;
         }
 
         foreach (var character in request.QuestionId)

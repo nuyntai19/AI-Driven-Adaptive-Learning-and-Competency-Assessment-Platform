@@ -76,10 +76,6 @@ public sealed class AIAnalysisRequestFactory : IAIAnalysisRequestFactory
             || attempt.QuestionId != question.QuestionId
             || attempt.CenterId != question.CenterId
             || !SupportedLanguages.Contains(attempt.ReasoningLanguage)
-            || !string.Equals(
-                attempt.ReasoningLanguage,
-                question.LanguageCode,
-                StringComparison.Ordinal)
             || (!attempt.Skipped && string.IsNullOrWhiteSpace(attempt.FinalAnswer))
             || string.IsNullOrWhiteSpace(question.QuestionText)
             || string.IsNullOrWhiteSpace(question.CorrectAnswer)

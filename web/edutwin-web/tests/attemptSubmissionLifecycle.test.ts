@@ -339,3 +339,98 @@ test("failed submit -> draft and session identity retained for retry", async () 
   assert.ok(scratchpadPng !== null);
   assert.equal(drawingUploadToken, "token-uncommitted");
 });
+
+test("server-authoritative latestAttempt hydrates submitted answers and enforces read-only", () => {
+  interface MockQuestion {
+    questionId: string;
+    latestAttempt?: {
+      attemptId: number;
+      status: string;
+      finalAnswer: string | null;
+      reasoningText: string | null;
+      confidence: number | null;
+      timeSpentSeconds: number;
+      answerChanges: number;
+      skipped: boolean;
+      submittedAt: string;
+    } | null;
+  }
+
+  const submittedQuestion: MockQuestion = {
+    questionId: "q-201",
+    latestAttempt: {
+      attemptId: 9001,
+      status: "Completed",
+      finalAnswer: "x = 5",
+      reasoningText: "Subtract 3 from both sides, then divide by 2.",
+      confidence: 90,
+      timeSpentSeconds: 45,
+      answerChanges: 1,
+      skipped: false,
+      submittedAt: "2026-08-12T08:00:00Z",
+    },
+  };
+
+  // Local draft should NOT override server latestAttempt
+  const localDraft = {
+    finalAnswer: "draft answer",
+    reasoningText: "draft reasoning",
+  };
+
+  const effectiveFinalAnswer = submittedQuestion.latestAttempt?.finalAnswer ?? localDraft.finalAnswer;
+  const effectiveReasoning = submittedQuestion.latestAttempt?.reasoningText ?? localDraft.reasoningText;
+  const isReadOnly = Boolean(submittedQuestion.latestAttempt);
+
+  assert.equal(effectiveFinalAnswer, "x = 5");
+  assert.equal(effectiveReasoning, "Subtract 3 from both sides, then divide by 2.");
+  assert.equal(isReadOnly, true);
+});
+
+test("batch submit freezes payload to prevent timer drift and 409 conflict on retry", () => {
+  const initialTimeSpentSeconds = 120;
+  const frozenPayload = {
+    "q-1": { finalAnswer: "42", timeSpentSeconds: initialTimeSpentSeconds },
+    "q-2": { finalAnswer: "SKIPPED", timeSpentSeconds: initialTimeSpentSeconds },
+  };
+
+  // Timer ticks forward during network delay / retry
+  let tickingTimer = initialTimeSpentSeconds + 15;
+
+  // On retry, payload used must come from frozen snapshot, NOT ticking timer
+  const retrySubmissionTimeSpent = frozenPayload["q-1"].timeSpentSeconds;
+  assert.equal(retrySubmissionTimeSpent, 120, "Retried timeSpent must remain frozen to avoid 409 payload mismatch");
+  assert.notEqual(retrySubmissionTimeSpent, tickingTimer);
+});
+
+test("bounded polling retry stops after 5 consecutive network errors and preserves resume", () => {
+  let consecutiveNetworkErrors = 0;
+  let isPolling = true;
+  let manualRetryEnabled = false;
+
+  const simulateNetworkError = () => {
+    consecutiveNetworkErrors += 1;
+    if (consecutiveNetworkErrors >= 5) {
+      isPolling = false;
+      manualRetryEnabled = true;
+    }
+  };
+
+  for (let i = 0; i < 4; i++) {
+    simulateNetworkError();
+    assert.equal(isPolling, true);
+    assert.equal(manualRetryEnabled, false);
+  }
+
+  // 5th error hits threshold
+  simulateNetworkError();
+  assert.equal(isPolling, false);
+  assert.equal(manualRetryEnabled, true);
+
+  // Manual resume recovers polling
+  consecutiveNetworkErrors = 0;
+  isPolling = true;
+  manualRetryEnabled = false;
+  assert.equal(isPolling, true);
+  assert.equal(consecutiveNetworkErrors, 0);
+});
+

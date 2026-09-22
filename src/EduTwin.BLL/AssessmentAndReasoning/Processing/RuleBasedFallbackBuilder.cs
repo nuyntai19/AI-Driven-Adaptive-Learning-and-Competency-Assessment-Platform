@@ -19,13 +19,13 @@ public sealed class RuleBasedFallbackBuilder : IRuleBasedFallbackBuilder
             throw new ArgumentException("Fallback input must have a persisted attempt.", nameof(input));
         }
 
-        var feedback = input.ReasoningLanguage switch
+        var feedback = BuildVietnameseFeedback(input.IsCorrect, input.Skipped);
+
+        decimal? reasoningQuality = input.IsCorrect switch
         {
-            "vi" => BuildVietnameseFeedback(input.IsCorrect, input.Skipped),
-            "en" => BuildEnglishFeedback(input.IsCorrect, input.Skipped),
-            _ => throw new ArgumentException(
-                "Reasoning language must be either vi or en.",
-                nameof(input))
+            true => 70m,
+            false => 30m,
+            null => null
         };
 
         return new ReasoningAnalysis
@@ -34,7 +34,7 @@ public sealed class RuleBasedFallbackBuilder : IRuleBasedFallbackBuilder
             AttemptId = input.AttemptId,
             SchemaVersion = "ai-analysis-v1",
             MethodDetected = null,
-            ReasoningQuality = null,
+            ReasoningQuality = reasoningQuality,
             ErrorType = ErrorType.Unknown,
             Misconception = null,
             MissingSteps = JsonDocument.Parse("[]"),

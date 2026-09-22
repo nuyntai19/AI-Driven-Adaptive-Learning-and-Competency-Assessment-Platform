@@ -112,7 +112,7 @@ public class PlatformSecurityRateLimitingTests
     }
 
     [Fact]
-    public async Task RateLimiting_PartitionUsesRoutePattern_NotRawGuidPath()
+    public void RateLimiting_PartitionUsesRoutePattern_NotRawGuidPath()
     {
         // Demonstrates that the partition key uses route pattern rather than raw URL path
         var endpoint = new RouteEndpoint(

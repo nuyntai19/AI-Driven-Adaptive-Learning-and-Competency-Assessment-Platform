@@ -75,25 +75,18 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
             .Where(o => o.CenterId == centerId && questionIds.Contains(o.QuestionId))
             .ToListAsync(cancellationToken);
 
-        var attempts = await _dbContext.Attempts
+        // Fetch user attempts to map attemptStatus, latestAttempt, submitted answers, and attachments for each question
+        var attemptsList = await _dbContext.Attempts
             .AsNoTracking()
             .Where(a => a.CenterId == centerId && a.StudentId == currentUserId && a.AssignmentId == assignmentId)
             .OrderByDescending(a => a.CreatedAt)
-            .Select(a => new
-            {
-                a.QuestionId,
-                a.AttemptId,
-                a.Status,
-                a.FinalAnswer,
-                a.ReasoningText
-            })
             .ToListAsync(cancellationToken);
 
-        var latestAttempts = attempts
+        var latestAttemptsByQuestion = attemptsList
             .GroupBy(a => a.QuestionId)
             .ToDictionary(g => g.Key, g => g.First());
 
-        var attemptIds = latestAttempts.Values.Select(x => x.AttemptId).ToList();
+        var attemptIds = latestAttemptsByQuestion.Values.Select(x => x.AttemptId).ToList();
         var attachments = await _dbContext.AttemptAttachments
             .AsNoTracking()
             .Where(aa => aa.CenterId == centerId && attemptIds.Contains(aa.AttemptId))
@@ -104,7 +97,7 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
 
         var questionsDto = assignmentQuestions.Select(aq =>
         {
-            var latest = latestAttempts.TryGetValue(aq.QuestionId, out var att) ? att : null;
+            var latestAttempt = latestAttemptsByQuestion.TryGetValue(aq.QuestionId, out var att) ? att : null;
             return new StudentQuestionDto
             {
                 QuestionId = aq.QuestionId.ToString(),
@@ -123,13 +116,56 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
                         Label = o.OptionLabel,
                         Text = o.OptionText
                     }).ToList(),
-                AttemptStatus = latest?.Status.ToString(),
-                SubmittedAnswer = latest?.FinalAnswer,
-                SubmittedReasoning = latest?.ReasoningText,
-                SubmittedAttemptId = latest?.AttemptId,
-                HasAttachment = latest != null && hasAttachmentSet.Contains(latest.AttemptId)
+                AttemptStatus = latestAttempt?.Status.ToString(),
+                LatestAttempt = latestAttempt != null ? new StudentQuestionAttemptDto
+                {
+                    AttemptId = latestAttempt.AttemptId.ToString(),
+                    Status = latestAttempt.Status.ToString(),
+                    FinalAnswer = latestAttempt.FinalAnswer,
+                    ReasoningText = latestAttempt.ReasoningText,
+                    Confidence = latestAttempt.Confidence,
+                    TimeSpentSeconds = latestAttempt.TimeSpentSeconds,
+                    AnswerChanges = latestAttempt.AnswerChanges,
+                    Skipped = latestAttempt.Skipped,
+                    SubmittedAt = latestAttempt.CreatedAt
+                } : null,
+                SubmittedAnswer = latestAttempt?.FinalAnswer,
+                SubmittedReasoning = latestAttempt?.ReasoningText,
+                SubmittedAttemptId = latestAttempt?.AttemptId,
+                HasAttachment = latestAttempt != null && hasAttachmentSet.Contains(latestAttempt.AttemptId)
             };
         }).ToList();
+
+        DateTime? effectiveExpiresAt = null;
+        if (progress.Assignment.DueAt.HasValue && progress.Assignment.TimeLimitMinutes.HasValue && progress.StartedAt.HasValue)
+        {
+            var timeLimitExpiresAt = progress.StartedAt.Value.AddMinutes(progress.Assignment.TimeLimitMinutes.Value);
+            effectiveExpiresAt = progress.Assignment.DueAt.Value < timeLimitExpiresAt ? progress.Assignment.DueAt.Value : timeLimitExpiresAt;
+        }
+        else if (progress.Assignment.TimeLimitMinutes.HasValue && progress.StartedAt.HasValue)
+        {
+            effectiveExpiresAt = progress.StartedAt.Value.AddMinutes(progress.Assignment.TimeLimitMinutes.Value);
+        }
+        else if (progress.Assignment.DueAt.HasValue)
+        {
+            effectiveExpiresAt = progress.Assignment.DueAt.Value;
+        }
+
+        int? remainingSeconds = null;
+        if (effectiveExpiresAt.HasValue)
+        {
+            var diff = (long)(effectiveExpiresAt.Value - utcNow).TotalSeconds;
+            remainingSeconds = diff > 0 ? (int)Math.Min(diff, int.MaxValue) : 0;
+        }
+
+        EduTwin.DAL.Organization.Class? assignmentClass = null;
+        if (progress.Assignment.ClassId != Guid.Empty)
+        {
+            assignmentClass = await _dbContext.Classes
+                .AsNoTracking()
+                .Include(c => c.Subject)
+                .FirstOrDefaultAsync(c => c.CenterId == centerId && c.ClassId == progress.Assignment.ClassId, cancellationToken);
+        }
 
         var detailDto = new StudentAssignmentDetailDto
         {
@@ -137,13 +173,20 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
             Title = progress.Assignment.Title,
             Instructions = progress.Assignment.Instructions,
             DueAt = progress.Assignment.DueAt,
+            SubjectId = assignmentClass?.SubjectId.ToString(),
+            SubjectName = assignmentClass?.Subject?.SubjectName,
+            TimeLimitMinutes = progress.Assignment.TimeLimitMinutes,
+            StartedAt = progress.StartedAt,
+            EffectiveExpiresAt = effectiveExpiresAt,
+            RemainingSeconds = remainingSeconds,
             Progress = new StudentAssignmentProgressDto
             {
-                Status = AssignmentStatusHelper.GetEffectiveProgressStatus(progress.Status, progress.Assignment.DueAt, utcNow).ToString(),
+                Status = AssignmentStatusHelper.GetEffectiveProgressStatus(progress.Status, effectiveExpiresAt, utcNow).ToString(),
                 CompletedQuestionCount = (int)progress.CompletedQuestionCount,
                 TotalQuestionCount = (int)progress.TotalQuestionCount
             },
-            Questions = questionsDto
+            Questions = questionsDto,
+            CanRetake = false
         };
 
         var response = new StudentAssignmentDetailResponse

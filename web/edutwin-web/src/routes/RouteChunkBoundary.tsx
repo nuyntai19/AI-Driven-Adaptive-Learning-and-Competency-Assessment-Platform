@@ -6,7 +6,6 @@ interface RouteChunkBoundaryProps {
 
 interface RouteChunkBoundaryState {
   failed: boolean;
-  error?: Error | null;
 }
 
 export const RouteLoadingFallback = () => (
@@ -24,10 +23,10 @@ export const RouteLoadingFallback = () => (
 );
 
 export class RouteChunkBoundary extends Component<RouteChunkBoundaryProps, RouteChunkBoundaryState> {
-  state: RouteChunkBoundaryState = { failed: false, error: null };
+  state: RouteChunkBoundaryState = { failed: false };
 
-  static getDerivedStateFromError(error: Error): RouteChunkBoundaryState {
-    return { failed: true, error };
+  static getDerivedStateFromError(): RouteChunkBoundaryState {
+    return { failed: true };
   }
 
   componentDidCatch(error: Error, info: any) {

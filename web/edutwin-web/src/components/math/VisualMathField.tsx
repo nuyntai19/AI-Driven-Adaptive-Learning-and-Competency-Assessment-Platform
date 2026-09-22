@@ -54,11 +54,11 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
       mf.style.backgroundColor = "transparent";
       mf.style.display = "block";
       mf.style.padding = "6px 8px";
-      mf.style.color = "#0f172a";
-      mf.style.setProperty("--color", "#0f172a");
-      mf.style.setProperty("--placeholder-color", "#4f46e5");
-      mf.style.setProperty("--caret-color", "#4f46e5");
-      mf.style.setProperty("--selection-background-color", "#c7d2fe");
+      mf.style.color = "inherit";
+      mf.style.setProperty("--color", "currentColor");
+      mf.style.setProperty("--placeholder-color", "#818cf8");
+      mf.style.setProperty("--caret-color", "#6366f1");
+      mf.style.setProperty("--selection-background-color", "rgba(99, 102, 241, 0.25)");
 
       // Configure MathLive settings
       mf.mathVirtualKeyboardPolicy = "manual"; // Prevent unwanted mobile popups on desktop
@@ -244,7 +244,7 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
         {/* MathLive Container */}
         <div
           ref={containerRef}
-          className={`p-3.5 min-h-[56px] text-slate-900 dark:text-white rounded-b-2xl ${
+          className={`p-3.5 min-h-[56px] text-slate-900 dark:text-white rounded-b-2xl overflow-x-auto min-w-0 ${
             disabled ? "cursor-default select-text" : "cursor-text bg-white dark:bg-slate-900"
           }`}
           onClick={() => {
