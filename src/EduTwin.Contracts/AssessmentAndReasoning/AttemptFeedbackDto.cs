@@ -55,9 +55,12 @@ public sealed class AttemptFeedbackGradingCriteriaDto
 public sealed class AttemptFeedbackTeacherEvaluationDto
 {
     public bool HasTeacherOverride { get; set; }
+    public string? ReviewDecision { get; set; }
+    public bool IsApprovedAsIs { get; set; }
     public bool? TeacherIsCorrect { get; set; }
     public decimal? TeacherScore { get; set; }
     public string? TeacherFeedback { get; set; }
+    public string? TeacherReviewNote { get; set; }
     public string? ReviewedByTeacherName { get; set; }
     public DateTime? ReviewedAt { get; set; }
     public AttemptFeedbackGradingDto? OriginalAIRawGrade { get; set; }

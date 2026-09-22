@@ -96,6 +96,7 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
         // Load ReasoningAnalysis with teacher user info
         var analysis = await _dbContext.ReasoningAnalyses.AsNoTracking()
             .Include(ra => ra.OverriddenByUser)
+            .Include(ra => ra.ReviewedByUser)
             .Where(ra => ra.CenterId == centerId && ra.AttemptId == attemptId)
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -240,19 +241,25 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
             };
         }
 
-        // 4. Teacher Final Evaluation (Override)
+        // 4. Teacher Final Evaluation (Override or Approval)
         AttemptFeedbackTeacherEvaluationDto? teacherEvaluationDto = null;
-        if (analysis != null && analysis.OverrideVersion > 0)
+        if (analysis != null && (analysis.OverrideVersion > 0 || !string.IsNullOrEmpty(analysis.ReviewDecision)))
         {
-            var teacherName = analysis.OverriddenByUser?.DisplayName ?? analysis.OverriddenByUser?.Username ?? "Teacher";
+            var reviewer = analysis.ReviewedByUser ?? analysis.OverriddenByUser;
+            var teacherName = reviewer?.DisplayName ?? reviewer?.Username ?? "Giáo viên";
+            var isApprovedAsIs = string.Equals(analysis.ReviewDecision, "Approved", StringComparison.OrdinalIgnoreCase) && analysis.OverrideVersion == 0;
+
             teacherEvaluationDto = new AttemptFeedbackTeacherEvaluationDto
             {
-                HasTeacherOverride = true,
-                TeacherIsCorrect = analysis.OverrideIsCorrect,
-                TeacherScore = analysis.OverrideAwardedScore,
-                TeacherFeedback = analysis.OverrideFeedback,
+                HasTeacherOverride = analysis.OverrideVersion > 0,
+                IsApprovedAsIs = isApprovedAsIs,
+                ReviewDecision = analysis.ReviewDecision,
+                TeacherReviewNote = analysis.TeacherReviewNote,
+                TeacherIsCorrect = analysis.OverrideIsCorrect ?? attempt.IsCorrect,
+                TeacherScore = analysis.OverrideAwardedScore ?? attempt.AwardedScore,
+                TeacherFeedback = analysis.OverrideFeedback ?? analysis.TeacherReviewNote,
                 ReviewedByTeacherName = teacherName,
-                ReviewedAt = analysis.OverriddenAt,
+                ReviewedAt = analysis.ReviewedAt ?? analysis.OverriddenAt,
                 OriginalAIRawGrade = new AttemptFeedbackGradingDto
                 {
                     IsCorrect = attempt.IsCorrect,

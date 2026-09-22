@@ -22,6 +22,8 @@ export interface EvidenceDecisionDto {
 
 export interface TeacherReviewQueueItemDto {
   attemptId: string;
+  assignmentId?: string;
+  assignmentTitle?: string;
   studentId: string;
   studentName: string;
   questionId: string;
@@ -38,6 +40,8 @@ export interface TeacherReviewQueueItemDto {
   submittedAt: string;
   hasStudentReviewRequest?: boolean;
   studentReviewReason?: string | null;
+  teacherFinalReviewStatus?: "Pending" | "Approved";
+  finalReviewVersion?: number;
 }
 
 export interface TeacherReviewQueueQuery {

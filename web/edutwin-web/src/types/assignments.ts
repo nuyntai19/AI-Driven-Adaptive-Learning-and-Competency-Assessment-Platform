@@ -2,7 +2,28 @@ export type AssignmentStatus = 'Draft' | 'Published' | 'Closed' | 'Archived';
 export type TargetMode = 'WholeClass' | 'SelectedStudents';
 export type TargetSource = TargetMode | 'GapGroup';
 export type ProgressStatus = 'NotStarted' | 'InProgress' | 'Completed' | 'Overdue';
-export type AttemptStatus = 'PendingAnalysis' | 'Processing' | 'Completed' | 'NeedsTeacherReview';
+export type AttemptStatus = 'PendingAnalysis' | 'Processing' | 'Completed' | 'NeedsTeacherReview' | 'AnalysisFailed';
+
+export type TeacherFinalReviewStatus = 'Pending' | 'Approved';
+export type AssignmentResultStatus = 'Processing' | 'Provisional' | 'Final';
+
+export interface AssignmentResultSummaryDto {
+  totalQuestionCount: number;
+  answeredQuestionCount: number;
+  evaluatedQuestionCount: number;
+  correctQuestionCount: number;
+  incorrectQuestionCount: number;
+  pendingQuestionCount: number;
+  resultStatus: AssignmentResultStatus;
+  teacherFinalReviewStatus: TeacherFinalReviewStatus;
+  internalAwardedScore?: number | null;
+  internalMaxScore: number;
+  overallAiComment: string | null;
+  overallAiCommentGeneratedAt?: string | null;
+  finalTeacherNote?: string | null;
+  finalReviewedByName?: string | null;
+  finalReviewedAt?: string | null;
+}
 
 export interface AssignmentQuestionDto {
   questionId: string;
@@ -92,6 +113,7 @@ export interface StudentAssignmentQuestionDto {
   estimatedTimeSeconds: number;
   reasoningRequired: boolean;
   languageCode: string;
+  answerEvaluationMode?: string;
   options?: StudentAssignmentQuestionOptionDto[];
   attemptStatus: AttemptStatus | null;
   latestAttempt?: StudentQuestionAttemptDto | null;
@@ -99,6 +121,7 @@ export interface StudentAssignmentQuestionDto {
   submittedReasoning?: string | null;
   submittedAttemptId?: string | number | null;
   hasAttachment?: boolean;
+  effectiveIsCorrect?: boolean | null;
 }
 
 export interface StudentAssignmentDetailDto {
@@ -115,6 +138,7 @@ export interface StudentAssignmentDetailDto {
   canRetake?: boolean;
   progress: StudentProgressDto;
   questions: StudentAssignmentQuestionDto[];
+  summary?: AssignmentResultSummaryDto | null;
 }
 
 export interface StudentAssignmentListItemDto {
@@ -125,6 +149,7 @@ export interface StudentAssignmentListItemDto {
   subjectId?: string | null;
   subjectName?: string | null;
   progress: StudentProgressDto;
+  summary?: AssignmentResultSummaryDto | null;
 }
 
 export interface AssignmentProgressItemDto {

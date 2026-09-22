@@ -51,6 +51,9 @@ public sealed class TwinHistoryItemDto
     public string TopicNodeId { get; set; } = null!;
     public string TopicName { get; set; } = null!;
     public string EventSource { get; set; } = null!;
+    public string LearningContext { get; set; } = null!;
+    public string ContextLabel { get; set; } = null!;
+    public string? QuestionText { get; set; }
     public decimal PreviousMastery { get; set; }
     public decimal NewMastery { get; set; }
     public decimal Delta { get; set; }

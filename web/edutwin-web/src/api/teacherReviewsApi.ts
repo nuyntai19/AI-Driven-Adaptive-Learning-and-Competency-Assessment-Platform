@@ -37,3 +37,41 @@ export const overrideReasoningAnalysis = async (
   );
   return response.data;
 };
+
+export interface TeacherApproveRequest {
+  note?: string | null;
+  overrideVersion: number;
+}
+
+export interface TeacherApproveResponse {
+  data: {
+    analysisId: string;
+    attemptId: string;
+    reviewDecision: string;
+    reviewedByUserId: string;
+    reviewedAt: string;
+    teacherReviewNote?: string | null;
+  };
+}
+
+export const approveReasoningAnalysis = async (
+  analysisId: string | number,
+  request?: TeacherApproveRequest
+): Promise<TeacherApproveResponse> => {
+  const response = await httpClient.post<TeacherApproveResponse>(
+    `/teachers/me/reasoning-analyses/${analysisId}/approve`,
+    request ?? {}
+  );
+  return response.data;
+};
+
+export interface ApproveAssignmentResultRequest {
+  studentId: string;
+  note?: string | null;
+  finalReviewVersion: number;
+}
+
+export const approveAssignmentResult = async (assignmentId: string, request: ApproveAssignmentResultRequest) => {
+  const response = await httpClient.post(`/teachers/me/assignments/${assignmentId}/approve-result`, request);
+  return response.data;
+};

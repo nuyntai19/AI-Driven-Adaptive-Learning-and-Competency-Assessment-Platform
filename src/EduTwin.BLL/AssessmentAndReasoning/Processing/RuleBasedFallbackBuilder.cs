@@ -21,7 +21,7 @@ public sealed class RuleBasedFallbackBuilder : IRuleBasedFallbackBuilder
 
         var feedback = BuildVietnameseFeedback(input.IsCorrect, input.Skipped);
 
-        decimal? reasoningQuality = input.IsCorrect switch
+        decimal? reasoningQuality = input.Skipped ? null : input.IsCorrect switch
         {
             true => 70m,
             false => 30m,
@@ -63,7 +63,7 @@ public sealed class RuleBasedFallbackBuilder : IRuleBasedFallbackBuilder
     {
         if (skipped)
         {
-            return "Bài làm đã được bỏ qua. Kết quả tạm thời cần giáo viên xem xét.";
+            return "Bạn đã bỏ qua câu hỏi này. Hệ thống không gọi AI chấm điểm và không cập nhật mức độ thành thạo.";
         }
 
         return isCorrect switch

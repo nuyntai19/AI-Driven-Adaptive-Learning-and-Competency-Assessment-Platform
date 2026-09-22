@@ -83,11 +83,13 @@ export const StudentDashboardPage: React.FC = () => {
     evidenceCount: 1,
   }));
 
-  const goalDiff = (goal.targetScore - goal.currentPredictedScore).toFixed(1);
+  const goalDiff = goal.hasGoal ? (goal.targetScore - goal.currentPredictedScore).toFixed(1) : "—";
   const nextTargetTopic = action?.topicName || masteryRadar[0]?.topicName || "Hàm số & Khảo sát hàm";
   const missionExplanation =
     action?.explanation ||
-    `Dựa trên phân tích năng lực Digital Twin, đây là chặng kiến thức tiếp theo cần củng cố để đạt mốc mục tiêu ${goal.targetScore} điểm.`;
+    (goal.hasGoal
+      ? `Dựa trên phân tích năng lực Digital Twin, đây là chặng kiến thức tiếp theo cần củng cố để đạt mốc mục tiêu ${goal.targetScore} điểm.`
+      : "Dựa trên phân tích năng lực Digital Twin, đây là chặng kiến thức tiếp theo bạn nên củng cố.");
 
   const practiceLink = selectedSubjectId
     ? `/hoc-tap/luyen-tap?subjectId=${selectedSubjectId}`
@@ -190,12 +192,12 @@ export const StudentDashboardPage: React.FC = () => {
                 Lộ trình năng lực (Twin)
               </span>
               <span className="text-[11px] font-mono text-stone-400">
-                {goal.remainingDays} ngày còn lại
+                {goal.hasGoal ? `${goal.remainingDays} ngày còn lại` : "Chưa đặt mục tiêu"}
               </span>
             </div>
 
             {/* Twin Track Current -> Target */}
-            <div className="space-y-4">
+            {goal.hasGoal ? <div className="space-y-4">
               <StudentProgressTrack
                 currentValue={goal.currentPredictedScore}
                 targetValue={goal.targetScore}
@@ -212,12 +214,16 @@ export const StudentDashboardPage: React.FC = () => {
                   +{goalDiff} điểm
                 </span>
               </div>
-            </div>
+            </div> : (
+              <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4 text-xs text-indigo-900 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-200">
+                Mục tiêu điểm không còn được gán sẵn. Hãy tự đặt mục tiêu cho từng môn trong Hồ sơ năng lực.
+              </div>
+            )}
           </div>
 
           <div className="pt-4 mt-4 border-t border-stone-100 dark:border-stone-800/80 flex items-center justify-between text-xs">
             <span className="text-stone-500 dark:text-stone-400">
-              Mục tiêu: <strong className="text-stone-800 dark:text-stone-200">{goal.targetScore} điểm</strong>
+              {goal.hasGoal ? <>Mục tiêu: <strong className="text-stone-800 dark:text-stone-200">{goal.targetScore} điểm</strong></> : "Mục tiêu do học sinh tự đặt"}
             </span>
             <Link
               to={selectedSubjectId ? `/hoc-tap/ho-so-nang-luc?subjectId=${selectedSubjectId}` : `/hoc-tap/ho-so-nang-luc`}
@@ -244,7 +250,7 @@ export const StudentDashboardPage: React.FC = () => {
             Mục tiêu kỳ thi
           </span>
           <span className="text-xl font-bold font-mono text-stone-900 dark:text-stone-100">
-            {goal.targetScore.toFixed(1)} / 10
+            {goal.hasGoal ? `${goal.targetScore.toFixed(1)} / 10` : "Chưa đặt"}
           </span>
         </div>
         <div className="py-2.5 px-3 border-l-2 border-stone-300 dark:border-stone-700">
@@ -252,7 +258,7 @@ export const StudentDashboardPage: React.FC = () => {
             Khoảng cách cần vượt
           </span>
           <span className="text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400">
-            +{goalDiff}
+            {goal.hasGoal ? `+${goalDiff}` : "—"}
           </span>
         </div>
         <div className="py-2.5 px-3 border-l-2 border-stone-300 dark:border-stone-700">
@@ -260,7 +266,7 @@ export const StudentDashboardPage: React.FC = () => {
             Chỉ số nguy cơ
           </span>
           <span className="text-xl font-bold font-mono text-stone-900 dark:text-stone-100">
-            {goal.riskScore.toFixed(0)}%
+            {goal.hasGoal ? `${goal.riskScore.toFixed(0)}%` : "—"}
           </span>
         </div>
       </div>

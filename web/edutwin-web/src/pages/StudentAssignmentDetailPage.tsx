@@ -2,7 +2,6 @@ import React from "react";
 import { useParams, Link, useSearchParams } from "react-router-dom";
 import { isAxiosError } from "axios";
 import { useStudentAssignment } from "../features/assignments/useStudentAssignment";
-import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
 import { RichMathText } from "../components/math/RichMathText";
 import { getSubjectTheme } from "../components/student/subjectTheme";
 import { StudentBadge } from "../components/student/StudentBadge";
@@ -88,6 +87,9 @@ export const StudentAssignmentDetailPage: React.FC = () => {
       questions.every(
         (q) => Boolean(q.latestAttempt) || q.attemptStatus === "Completed" || q.attemptStatus === "NeedsTeacherReview"
       ));
+  const showCompactResult = Boolean(
+    isAssignmentFinished && assignment.summary && assignment.summary.answeredQuestionCount > 0
+  );
 
   // First uncompleted question
   const firstUnfinishedQuestion = questions.find(
@@ -255,25 +257,97 @@ export const StudentAssignmentDetailPage: React.FC = () => {
               />
             </div>
           </div>
+
+          {showCompactResult && assignment.summary && (
+            <div className="pt-4 border-t border-stone-100 dark:border-stone-800/80 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60">
+                <div>
+                  <span className="text-xs text-slate-400 block font-semibold">Kết quả tổng quan</span>
+                  <div className="flex items-baseline gap-2 mt-0.5">
+                    <span className="text-2xl font-black text-slate-900 dark:text-white">
+                      {assignment.summary.correctQuestionCount} / {assignment.summary.totalQuestionCount}
+                    </span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      câu đúng · {assignment.summary.incorrectQuestionCount} câu sai · {assignment.summary.evaluatedQuestionCount}/{assignment.summary.totalQuestionCount} câu đã đánh giá
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                    assignment.summary.resultStatus === "Final"
+                      ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300"
+                      : assignment.summary.resultStatus === "Provisional"
+                      ? "bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300"
+                      : "bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300"
+                  }`}>
+                    {assignment.summary.resultStatus === "Final"
+                      ? "Kết quả chính thức"
+                      : assignment.summary.resultStatus === "Provisional"
+                      ? "Kết quả tạm thời (Chờ GV duyệt)"
+                      : "Đang chấm..."}
+                  </span>
+
+                  {assignment.summary.teacherFinalReviewStatus === "Approved" ? (
+                    <StudentBadge variant="success" size="sm">GV đã duyệt</StudentBadge>
+                  ) : (
+                    <StudentBadge variant="warning" size="sm">GV chưa duyệt</StudentBadge>
+                  )}
+                </div>
+              </div>
+
+              {assignment.summary.overallAiComment && (
+                <div className="p-4 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">🤖</span>
+                    <span className="text-xs font-extrabold uppercase tracking-wider text-indigo-950 dark:text-indigo-300">
+                      Nhận xét tổng quan từ AI (Toàn bộ bài làm)
+                    </span>
+                  </div>
+                  <div className="text-xs sm:text-sm text-slate-800 dark:text-slate-200 leading-relaxed font-medium">
+                    <RichMathText content={assignment.summary.overallAiComment} />
+                  </div>
+                  <p className="text-[10px] text-slate-400 italic pt-1">
+                    Nhận xét từ AI chỉ mang tính hỗ trợ và tạm thời. Kết quả chính thức được xác nhận sau khi giáo viên duyệt.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Questions list header */}
-      <div className="flex items-center justify-between pt-2">
+      {showCompactResult && (
+        <section className="rounded-xl bg-white dark:bg-[#151d2f] border border-stone-200 dark:border-stone-800 p-5 space-y-3">
+          <h2 className="text-sm font-bold text-stone-900 dark:text-stone-100">Tình trạng các câu</h2>
+          <div className="flex flex-wrap gap-2">
+            {questions.map((question, index) => {
+              const evaluated = question.effectiveIsCorrect !== null && question.effectiveIsCorrect !== undefined;
+              const statusClass = !evaluated
+                ? "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+                : question.effectiveIsCorrect
+                  ? "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+                  : "border-red-300 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300";
+              return <span key={question.questionId} className={`rounded-lg border px-3 py-2 text-xs font-bold ${statusClass}`}>Câu {index + 1}</span>;
+            })}
+          </div>
+        </section>
+      )}
+
+      {!showCompactResult && <div className="flex items-center justify-between pt-2">
         <h2 className="text-sm sm:text-base font-bold text-stone-900 dark:text-stone-100">
           Danh sách câu hỏi ({questions.length})
         </h2>
         <span className="text-xs text-stone-500 dark:text-stone-400">
           Dự kiến ~{Math.max(20, questions.length * 4)} phút
         </span>
-      </div>
+      </div>}
 
       {/* Question Items List */}
-      <div className="space-y-3">
+      {!showCompactResult && <div className="space-y-3">
         {questions.map((question, index) => {
           const formattedId = `Q-${String(index + 1).padStart(2, "0")}`;
           const timeSec = question.estimatedTimeSeconds || 120;
-          const hasMath = /[\\[{^_\\]]/.test(question.questionText);
           const isDone =
             Boolean(question.latestAttempt) ||
             question.attemptStatus === "Completed" ||
@@ -311,16 +385,6 @@ export const StudentAssignmentDetailPage: React.FC = () => {
                 <RichMathText text={question.questionText} />
               </div>
 
-              {/* KaTeX preview if formula detected */}
-              {hasMath && (
-                <div className="pt-1">
-                  <MathFormulaPreview
-                    formula={question.questionText}
-                    label="Công thức toán"
-                  />
-                </div>
-              )}
-
               {/* Options preview if present */}
               {question.options && question.options.length > 0 && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
@@ -332,9 +396,7 @@ export const StudentAssignmentDetailPage: React.FC = () => {
                       <span className="w-5 h-5 rounded-full bg-white dark:bg-stone-800 border border-stone-300 dark:border-stone-700 font-bold text-stone-700 dark:text-stone-300 flex items-center justify-center text-[10px] shrink-0">
                         {opt.label}
                       </span>
-                      <span className="text-stone-800 dark:text-stone-200 truncate">
-                        <RichMathText text={opt.text} />
-                      </span>
+                      <span className="text-stone-800 dark:text-stone-200 truncate">{opt.text}</span>
                     </div>
                   ))}
                 </div>
@@ -361,7 +423,7 @@ export const StudentAssignmentDetailPage: React.FC = () => {
             </div>
           );
         })}
-      </div>
+      </div>}
     </div>
   );
 };
