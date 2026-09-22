@@ -153,6 +153,18 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
                 progress.UpdatedBy = submission.StudentId;
             }
 
+            if (progress is not null)
+            {
+                progress.TeacherFinalReviewStatus = TeacherFinalReviewStatus.Pending;
+                progress.FinalReviewedByUserId = null;
+                progress.FinalReviewedAt = null;
+                progress.FinalTeacherNote = null;
+                progress.FinalReviewVersion++;
+                progress.IsOverallAiCommentStale = true;
+                progress.UpdatedAt = now;
+                progress.UpdatedBy = submission.StudentId;
+            }
+
             _dbContext.Attempts.Add(attempt);
             _dbContext.AIAnalysisJobs.Add(job);
 

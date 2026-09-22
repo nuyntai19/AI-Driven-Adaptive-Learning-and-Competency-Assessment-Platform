@@ -6,6 +6,7 @@ using EduTwin.BLL.DigitalTwin;
 using EduTwin.BLL.DigitalTwin.Orchestration;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.BLL.Recommendations;
+using EduTwin.BLL.Assignments;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.DigitalTwin;
@@ -42,6 +43,7 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
     private readonly IAttemptAttachmentStorage? _attachmentStorage;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<AIAnalysisJobProcessor> _logger;
+    private readonly IOverallAssignmentCommentWorkflow? _overallCommentWorkflow;
 
     public AIAnalysisJobProcessor(
         EduTwinDbContext dbContext,
@@ -58,7 +60,8 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         IEvidenceConsistencyChecker? consistencyChecker = null,
         IRecommendationEngine? recommendationEngine = null,
         IAttemptAttachmentStorage? attachmentStorage = null,
-        ILogger<AIAnalysisJobProcessor>? logger = null)
+        ILogger<AIAnalysisJobProcessor>? logger = null,
+        IOverallAssignmentCommentWorkflow? overallCommentWorkflow = null)
     {
         _dbContext = dbContext;
         _tenantContext = tenantContext;
@@ -84,6 +87,7 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         _recommendationEngine = recommendationEngine;
         _attachmentStorage = attachmentStorage;
         _logger = logger ?? NullLogger<AIAnalysisJobProcessor>.Instance;
+        _overallCommentWorkflow = overallCommentWorkflow;
     }
 
     public async Task<AIAnalysisJobProcessingResult> ExecuteAsync(
@@ -194,6 +198,30 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                 AIAnalysisJobProcessingOutcome.NotEligible);
         }
 
+        // A skipped question is telemetry, not an answer to be graded by an AI.
+        // Complete it with the deterministic Vietnamese fallback so skip-rate is
+        // recorded while mastery remains unchanged (zero-weight evidence).
+        if (initialAttempt.Skipped)
+        {
+            var skippedAnalysis = _fallbackBuilder.Build(new RuleBasedFallbackInput(
+                initialAttempt.CenterId,
+                initialAttempt.AttemptId,
+                initialAttempt.IsCorrect,
+                initialAttempt.AwardedScore,
+                true,
+                initialAttempt.ReasoningLanguage,
+                utcNow));
+
+            return await PersistSuccessAsync(
+                initialJob,
+                initialAttempt,
+                requestContext,
+                skippedAnalysis,
+                TwinEventSource.RuleFallback,
+                workerId,
+                cancellationToken);
+        }
+
         ReasoningAnalysis analysis;
         try
         {
@@ -218,7 +246,9 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                 centerId,
                 initialAttempt.AttemptId,
                 response,
-                analysisUtcNow);
+                analysisUtcNow,
+                initialAttempt.IsCorrect,
+                initialAttempt.ReasoningLanguage);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -248,6 +278,7 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             initialAttempt,
             requestContext,
             analysis,
+            TwinEventSource.AIAnalysis,
             workerId,
             cancellationToken);
     }
@@ -257,6 +288,7 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         Attempt initialAttempt,
         RequestContext requestContext,
         ReasoningAnalysis analysis,
+        TwinEventSource eventSource,
         string workerId,
         CancellationToken cancellationToken)
     {
@@ -292,7 +324,7 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                 attempt,
                 requestContext.Question,
                 analysis,
-                TwinEventSource.AIAnalysis,
+                eventSource,
                 transactionalUtcNow,
                 cancellationToken,
                 requestContext.AllowedNodes.Select(n => n.NodeId).ToArray());
@@ -357,6 +389,10 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             recommendationSubjectId,
             recommendationAttemptId,
             recommendationTriggerAt);
+        await TryGenerateOverallCommentAfterCommitAsync(
+            recommendationCenterId,
+            initialAttempt.AssignmentId,
+            recommendationStudentId);
 
         return Result(
             initialJob.AnalysisJobId,
@@ -587,6 +623,11 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                     recommendationAttemptId,
                     recommendationTriggerAt);
             }
+
+            await TryGenerateOverallCommentAfterCommitAsync(
+                recommendationCenterId,
+                initialAttempt.AssignmentId,
+                recommendationStudentId);
         }
 
         return Result(initialJob.AnalysisJobId, initialAttempt.AttemptId, committedOutcome);
@@ -827,6 +868,20 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                 centerId,
                 questionId);
             return Guid.Empty;
+        }
+    }
+
+    private async Task TryGenerateOverallCommentAfterCommitAsync(Guid centerId, Guid? assignmentId, Guid studentId)
+    {
+        if (_overallCommentWorkflow is null || !assignmentId.HasValue) return;
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        try
+        {
+            await _overallCommentWorkflow.GenerateAndCacheOverallCommentAsync(centerId, assignmentId.Value, studentId, timeout.Token);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Post-commit assignment comment generation failed for assignment {AssignmentId} and student {StudentId}.", assignmentId, studentId);
         }
     }
 

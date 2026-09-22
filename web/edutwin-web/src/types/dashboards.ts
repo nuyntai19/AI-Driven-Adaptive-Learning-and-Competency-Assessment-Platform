@@ -9,6 +9,7 @@ export interface SubjectBasicInfoDto {
 }
 
 export interface StudentSubjectGoalDto {
+  hasGoal: boolean;
   targetScore: number;
   remainingDays: number;
   currentPredictedScore: number;

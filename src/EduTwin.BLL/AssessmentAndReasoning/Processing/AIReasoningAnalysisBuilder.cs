@@ -11,7 +11,9 @@ public sealed class AIReasoningAnalysisBuilder : IAIReasoningAnalysisBuilder
         Guid centerId,
         ulong attemptId,
         AnalyzeReasoningResponse response,
-        DateTime utcNow)
+        DateTime utcNow,
+        bool? preliminaryIsCorrect = null,
+        string language = "vi")
     {
         if (centerId == Guid.Empty)
         {
@@ -25,6 +27,26 @@ public sealed class AIReasoningAnalysisBuilder : IAIReasoningAnalysisBuilder
 
         ArgumentNullException.ThrowIfNull(response);
 
+        var deterministicFeedback = preliminaryIsCorrect switch
+        {
+            true when string.Equals(language, "vi", StringComparison.OrdinalIgnoreCase) =>
+                "Đáp án của bạn đã được hệ thống chấm đúng. AI chỉ phân tích phương pháp và gợi ý lời giải tối ưu; kết quả đúng/sai không bị AI chấm lại.",
+            true =>
+                "Your answer was graded correct by the deterministic grader. AI only analyzes the method and suggests an improved solution; it does not re-grade correctness.",
+            false when string.Equals(language, "vi", StringComparison.OrdinalIgnoreCase) =>
+                "Đáp án của bạn chưa đúng theo kết quả chấm xác định. Hãy đối chiếu lời giải đề xuất để tìm bước cần điều chỉnh.",
+            false =>
+                "Your answer was graded incorrect by the deterministic grader. Compare it with the suggested solution to identify the step to revise.",
+            _ => response.Feedback
+        };
+
+        var errorType = preliminaryIsCorrect switch
+        {
+            true => ErrorType.None,
+            false when response.ErrorType == ErrorType.None => ErrorType.Unknown,
+            _ => response.ErrorType
+        };
+
         return new ReasoningAnalysis
         {
             CenterId = centerId,
@@ -32,12 +54,14 @@ public sealed class AIReasoningAnalysisBuilder : IAIReasoningAnalysisBuilder
             SchemaVersion = response.SchemaVersion,
             MethodDetected = response.MethodDetected,
             ReasoningQuality = response.ReasoningQuality,
-            ErrorType = response.ErrorType,
-            Misconception = response.Misconception,
-            MissingSteps = JsonSerializer.SerializeToDocument(response.MissingSteps),
-            RootCauseNodeIds = JsonSerializer.SerializeToDocument(response.RootCauseNodeIds),
+            ErrorType = errorType,
+            Misconception = preliminaryIsCorrect == true ? null : response.Misconception,
+            MissingSteps = JsonSerializer.SerializeToDocument(
+                preliminaryIsCorrect == true ? Array.Empty<string>() : response.MissingSteps),
+            RootCauseNodeIds = JsonSerializer.SerializeToDocument(
+                preliminaryIsCorrect == true ? Array.Empty<string>() : response.RootCauseNodeIds),
             AnalysisConfidence = response.Confidence,
-            Feedback = response.Feedback,
+            Feedback = deterministicFeedback,
             SolutionType = response.SolutionType,
             AiSolution = response.AiSolution,
             IsFallback = false,

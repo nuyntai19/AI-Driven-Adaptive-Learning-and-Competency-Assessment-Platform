@@ -98,6 +98,15 @@ public sealed class GetStudentTwinHistoryUseCase : IGetStudentTwinHistoryUseCase
                 TopicNodeId = h.TopicNodeId.ToString(CultureInfo.InvariantCulture),
                 TopicName = h.TopicNode.NodeName,
                 EventSource = h.EventSource.ToString(),
+                LearningContext = h.Attempt == null
+                    ? "Unknown"
+                    : h.Attempt.AssignmentId.HasValue ? "Assignment" : "AdaptivePractice",
+                ContextLabel = h.Attempt == null
+                    ? "Không xác định"
+                    : h.Attempt.AssignmentId.HasValue
+                        ? (h.Attempt.Assignment != null ? h.Attempt.Assignment.Title : "Bài tập")
+                        : "Luyện tập thích ứng",
+                QuestionText = h.Attempt != null ? h.Attempt.Question.QuestionText : null,
                 PreviousMastery = h.PreviousMastery,
                 NewMastery = h.NewMastery,
                 Delta = h.MasteryDelta,

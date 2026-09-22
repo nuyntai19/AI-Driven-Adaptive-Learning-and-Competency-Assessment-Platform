@@ -42,13 +42,16 @@ public sealed class EvidenceGate : IEvidenceGate
             return ReviewOnly(input, EvidenceDecisionMode.DeterministicOnly, EvidenceReasonCodes.SourceRuleFallback);
         }
 
-        if (input.SourceType == EvidenceSourceType.TeacherOverride)
+        if (input.SourceType == EvidenceSourceType.TeacherOverride || input.SourceType == EvidenceSourceType.TeacherApproval)
         {
-            if (input.AnalysisOverrideVersion == 0 || input.EffectiveIsCorrect is null ||
-                !input.StructuralValidationPassed || !input.SemanticValidationPassed || !input.HasRequiredEvidence)
+            var isInvalidOverride = input.SourceType == EvidenceSourceType.TeacherOverride && input.AnalysisOverrideVersion == 0;
+
+            if (input.EffectiveIsCorrect is null ||
+                !input.StructuralValidationPassed || !input.SemanticValidationPassed || !input.HasRequiredEvidence ||
+                isInvalidOverride)
             {
                 var reasons = BuildValidationReasons(input);
-                if (input.AnalysisOverrideVersion == 0)
+                if (isInvalidOverride)
                 {
                     reasons.Add(EvidenceReasonCodes.TeacherOverrideInvalid);
                 }
@@ -56,7 +59,7 @@ public sealed class EvidenceGate : IEvidenceGate
                 return ReviewOnly(input, EvidenceDecisionMode.HumanConfirmed, reasons);
             }
 
-            var overrideReasons = input.IsPostFeedback
+            var humanReasons = input.IsPostFeedback
                 ? new[] { EvidenceReasonCodes.TeacherHumanConfirmed, EvidenceReasonCodes.PostFeedbackAssessment }
                 : new[] { EvidenceReasonCodes.TeacherHumanConfirmed };
 
@@ -65,7 +68,7 @@ public sealed class EvidenceGate : IEvidenceGate
                 EvidenceTrustLevel.Trusted,
                 EvidenceDecisionMode.HumanConfirmed,
                 input.IsPostFeedback ? 0.5m : 1m,
-                overrideReasons,
+                humanReasons,
                 false,
                 CurrentPolicyVersion,
                 input.AnalysisOverrideVersion);

@@ -2,6 +2,7 @@ import { httpClient, publicTransport } from "../api/httpClient";
 import { useAuthStore } from "../stores/authStore";
 import type { LoginRequest, LoginResponse, CurrentUserResponse } from "../types/auth";
 import { clearUserScratchpadDrafts } from "../utils/scratchpadStorage";
+import { clearUserAttemptSessionIds } from "../utils/attemptSessionStorage";
 
 export const login = async (request: LoginRequest): Promise<void> => {
   const response = await publicTransport.post<LoginResponse>("/auth/login", request);
@@ -31,6 +32,7 @@ export const logout = async (): Promise<void> => {
       } catch {
         // Session invalidation must still succeed even if browser storage is unavailable.
       }
+      clearUserAttemptSessionIds(user.centerId, user.userId);
     }
     useAuthStore.getState().clearSession();
   }

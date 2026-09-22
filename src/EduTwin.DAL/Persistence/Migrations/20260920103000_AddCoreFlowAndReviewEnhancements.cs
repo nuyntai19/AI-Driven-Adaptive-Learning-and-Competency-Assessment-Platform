@@ -1,4 +1,6 @@
 using System;
+using EduTwin.DAL.Persistence;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -6,6 +8,8 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace EduTwin.DAL.Persistence.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(EduTwinDbContext))]
+    [Migration("20260920103000_AddCoreFlowAndReviewEnhancements")]
     public partial class AddCoreFlowAndReviewEnhancements : Migration
     {
         /// <inheritdoc />

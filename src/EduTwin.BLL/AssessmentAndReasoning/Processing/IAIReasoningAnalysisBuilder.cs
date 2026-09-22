@@ -9,5 +9,7 @@ public interface IAIReasoningAnalysisBuilder
         Guid centerId,
         ulong attemptId,
         AnalyzeReasoningResponse response,
-        DateTime utcNow);
+        DateTime utcNow,
+        bool? preliminaryIsCorrect = null,
+        string language = "vi");
 }

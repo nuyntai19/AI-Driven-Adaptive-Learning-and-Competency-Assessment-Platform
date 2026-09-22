@@ -18,4 +18,6 @@ public static class EvidenceReasonCodes
     public const string TeacherOverrideInvalid = "TEACHER_OVERRIDE_INVALID";
     public const string HistoricalBackfillReviewOnly = "HISTORICAL_BACKFILL_REVIEW_ONLY";
     public const string PostFeedbackAssessment = "POST_FEEDBACK_ASSESSMENT";
+    public const string AttemptSkipped = "ATTEMPT_SKIPPED";
+    public const string StudentReviewRequested = "STUDENT_REVIEW_REQUESTED";
 }
