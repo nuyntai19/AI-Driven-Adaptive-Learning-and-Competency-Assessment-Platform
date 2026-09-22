@@ -221,29 +221,75 @@ export function TeacherAssignmentEditorView() {
     setStudentPage(1);
   };
 
+  const validateStep0 = (): boolean => {
+    if (!title.trim()) {
+      setFormError({ message: "Vui lòng nhập tiêu đề bài tập." });
+      return false;
+    }
+    if (title.trim().length > 200) {
+      setFormError({ message: "Tiêu đề bài tập không được vượt quá 200 ký tự." });
+      return false;
+    }
+    if (!classId) {
+      setFormError({ message: "Vui lòng chọn lớp học tiếp nhận bài tập." });
+      return false;
+    }
+    if (dueAt) {
+      const dueTime = new Date(dueAt).getTime();
+      if (isNaN(dueTime)) {
+        setFormError({ message: "Thời gian hạn chót nộp bài không hợp lệ." });
+        return false;
+      }
+      if (dueTime <= Date.now()) {
+        setFormError({ message: "Hạn chót nộp bài phải ở thời điểm tương lai (sau thời điểm hiện tại)." });
+        return false;
+      }
+    }
+    setFormError(null);
+    return true;
+  };
+
+  const validateStep1 = (): boolean => {
+    if (!validateStep0()) return false;
+    if (questionIds.length === 0) {
+      setFormError({ message: "Vui lòng chọn ít nhất 1 câu hỏi cho bài tập." });
+      return false;
+    }
+    setFormError(null);
+    return true;
+  };
+
+  const validateStep2 = (): boolean => {
+    if (!validateStep1()) return false;
+    if (targetMode === "SelectedStudents" && studentIds.length === 0) {
+      setFormError({ message: "Vui lòng chọn ít nhất 1 học sinh nhận bài tập ở chế độ Chỉ định nhóm học sinh." });
+      return false;
+    }
+    setFormError(null);
+    return true;
+  };
+
+  const handleStepChange = (targetStep: number) => {
+    if (targetStep <= step) {
+      setStep(targetStep);
+      setFormError(null);
+      return;
+    }
+    if (targetStep === 1) {
+      if (validateStep0()) setStep(1);
+    } else if (targetStep === 2) {
+      if (validateStep1()) setStep(2);
+    } else if (targetStep === 3) {
+      if (validateStep2()) setStep(3);
+    }
+  };
+
   const handleSaveDraft = (afterSuccess?: (resId?: string) => void) => {
     if (isReadOnly) return;
     setFormError(null);
     setConcurrencyConflict(false);
 
-    if (!title.trim()) {
-      setFormError({ message: "Vui lòng nhập tiêu đề bài tập." });
-      setStep(0);
-      return;
-    }
-    if (!classId) {
-      setFormError({ message: "Vui lòng chọn lớp học tiếp nhận bài tập." });
-      setStep(0);
-      return;
-    }
-    if (questionIds.length === 0) {
-      setFormError({ message: "Vui lòng chọn ít nhất 1 câu hỏi cho bài tập." });
-      setStep(1);
-      return;
-    }
-    if (targetMode === "SelectedStudents" && studentIds.length === 0) {
-      setFormError({ message: "Vui lòng chọn ít nhất 1 học sinh nhận bài tập ở chế độ Chọn học sinh." });
-      setStep(2);
+    if (!validateStep2()) {
       return;
     }
 
@@ -399,7 +445,7 @@ export function TeacherAssignmentEditorView() {
               <li key={s.id}>
                 <button
                   type="button"
-                  onClick={() => setStep(s.id)}
+                  onClick={() => handleStepChange(s.id)}
                   className={`w-full text-left p-2.5 sm:p-3 rounded-xl transition text-xs sm:text-sm flex items-center gap-2.5 ${
                     isCurrent
                       ? "bg-[#fed766]/30 dark:bg-amber-950/50 border-[1.5px] border-[#ff946f] shadow-sm text-slate-950 dark:text-amber-100 font-black"
@@ -433,13 +479,17 @@ export function TeacherAssignmentEditorView() {
         {step === 0 && (
           <div className="max-w-2xl space-y-5">
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1">
-                Tiêu đề bài tập <span className="text-rose-400">*</span>
-              </label>
+              <div className="flex justify-between items-center mb-1">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)]">
+                  Tiêu đề bài tập <span className="text-rose-400">*</span>
+                </label>
+                <span className="text-[10px] text-[var(--th-text-muted)]">{title.length}/200 ký tự</span>
+              </div>
               <input
                 type="text"
                 disabled={isReadOnly}
                 value={title}
+                maxLength={200}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="VD: Ôn tập Chuyên đề Hàm số & Cực trị - Tuần 3"
                 className="th-input w-full text-sm"
@@ -490,15 +540,22 @@ export function TeacherAssignmentEditorView() {
                 onChange={(e) => setDueAt(e.target.value)}
                 className="th-input w-full text-sm"
               />
+              <p className="mt-1 text-[11px] text-[var(--th-text-muted)]">
+                Nếu đặt hạn nộp, thời gian phải sau thời điểm hiện tại.
+              </p>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1">
-                Hướng dẫn làm bài cho học sinh
-              </label>
+              <div className="flex justify-between items-center mb-1">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)]">
+                  Hướng dẫn làm bài cho học sinh
+                </label>
+                <span className="text-[10px] text-[var(--th-text-muted)]">{instructions.length}/2000 ký tự</span>
+              </div>
               <textarea
                 rows={4}
                 disabled={isReadOnly}
+                maxLength={2000}
                 value={instructions}
                 onChange={(e) => setInstructions(e.target.value)}
                 placeholder="Nhập ghi chú hoặc nhắc nhở học sinh (VD: Yêu cầu trình bày rõ từng bước giải ra giấy nháp)..."
@@ -509,7 +566,7 @@ export function TeacherAssignmentEditorView() {
             <div className="pt-4 flex justify-end">
               <button
                 type="button"
-                onClick={() => setStep(1)}
+                onClick={() => handleStepChange(1)}
                 className="th-primary-button text-xs py-2 px-5"
               >
                 Tiếp tục: Chọn câu hỏi từ Ngân hàng →
@@ -524,10 +581,10 @@ export function TeacherAssignmentEditorView() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[var(--th-border-subtle)] pb-4">
               <div>
                 <h3 className="text-sm font-semibold uppercase tracking-wider text-[var(--th-teal)]">
-                  Danh Sách Câu Hỏi Phù Hợp ({selectedClass?.subject?.subjectName || "Chưa chọn lớp"})
+                  Danh Sách Câu Hỏi Phù Hợp ({selectedClass?.subject?.subjectName || "Chưa chọn lớp"}) <span className="text-rose-400">*</span>
                 </h3>
                 <p className="text-xs text-[var(--th-text-secondary)]">
-                  Đã chọn: <strong className="text-[var(--th-text)]">{questionIds.length}</strong> câu hỏi cho bài tập
+                  Đã chọn: <strong className="text-[var(--th-text)]">{questionIds.length}</strong> câu hỏi cho bài tập (Yêu cầu tối thiểu: 1 câu)
                 </p>
               </div>
 
@@ -650,14 +707,7 @@ export function TeacherAssignmentEditorView() {
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  if (questionIds.length === 0) {
-                    setFormError({ message: "Vui lòng chọn ít nhất 1 câu hỏi từ ngân hàng." });
-                    return;
-                  }
-                  setFormError(null);
-                  setStep(2);
-                }}
+                onClick={() => handleStepChange(2)}
                 className="th-primary-button text-xs py-2 px-5"
               >
                 Tiếp tục: Đối tượng giao bài →
@@ -720,9 +770,9 @@ export function TeacherAssignmentEditorView() {
                   className="mt-1 h-4 w-4 accent-teal-500"
                 />
                 <div>
-                  <p className="text-sm font-semibold text-[var(--th-text)]">Chỉ định nhóm học sinh (SelectedStudents)</p>
+                  <p className="text-sm font-semibold text-[var(--th-text)]">Chỉ định nhóm học sinh (SelectedStudents) <span className="text-rose-400">*</span></p>
                   <p className="text-xs text-[var(--th-text-secondary)] mt-1">
-                    Giao bài tập riêng biệt cho nhóm học sinh hổng kiến thức (Gap Group).
+                    Giao bài tập riêng biệt cho nhóm học sinh hổng kiến thức (Gap Group). Yêu cầu chọn ít nhất 1 học sinh.
                   </p>
                 </div>
               </label>
@@ -790,14 +840,7 @@ export function TeacherAssignmentEditorView() {
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  if (targetMode === "SelectedStudents" && studentIds.length === 0) {
-                    setFormError({ message: "Vui lòng chọn ít nhất 1 học sinh nhận bài tập." });
-                    return;
-                  }
-                  setFormError(null);
-                  setStep(3);
-                }}
+                onClick={() => handleStepChange(3)}
                 className="th-primary-button text-xs py-2 px-5"
               >
                 Tiếp tục: Xem lại & Xuất bản →

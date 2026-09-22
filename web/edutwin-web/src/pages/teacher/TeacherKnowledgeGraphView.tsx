@@ -399,14 +399,42 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
 
   const handleCreateNodeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newNodeName.trim() || !newNodeCode.trim()) return;
+    setFeedbackMsg(null);
+
+    const trimmedName = newNodeName.trim();
+    const trimmedCode = newNodeCode.trim().toUpperCase();
+
+    if (!trimmedName) {
+      setFeedbackMsg({ type: "error", text: "Vui lòng nhập tên chủ đề / khái niệm." });
+      return;
+    }
+    if (trimmedName.length > 200) {
+      setFeedbackMsg({ type: "error", text: "Tên chủ đề không được vượt quá 200 ký tự." });
+      return;
+    }
+    if (!trimmedCode) {
+      setFeedbackMsg({ type: "error", text: "Vui lòng nhập mã điểm tri thức." });
+      return;
+    }
+    if (trimmedCode.length > 50) {
+      setFeedbackMsg({ type: "error", text: "Mã điểm tri thức không được vượt quá 50 ký tự." });
+      return;
+    }
+    if (newExamImportance < 0 || newExamImportance > 100) {
+      setFeedbackMsg({ type: "error", text: "Trọng số thi phải nằm trong khoảng từ 0% đến 100%." });
+      return;
+    }
+    if (newLearningMinutes <= 0) {
+      setFeedbackMsg({ type: "error", text: "Thời lượng học phải lớn hơn 0 phút." });
+      return;
+    }
 
     createNodeMutation.mutate({
       subjectId: selectedSubjectId,
       parentNodeId: newParentNodeId || null,
       nodeType: newNodeType,
-      nodeCode: newNodeCode.trim(),
-      nodeName: newNodeName.trim(),
+      nodeCode: trimmedCode,
+      nodeName: trimmedName,
       description: newNodeDesc.trim() || null,
       orderIndex: nodes.length + 1,
       examImportance: newExamImportance,
@@ -417,23 +445,66 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
 
   const handleCreateEdgeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!edgeSourceId || !edgeTargetId || edgeSourceId === edgeTargetId) return;
+    setFeedbackMsg(null);
+
+    if (!edgeSourceId || !edgeTargetId) {
+      setFeedbackMsg({ type: "error", text: "Vui lòng chọn đầy đủ điểm tri thức nguồn và đích." });
+      return;
+    }
+    if (edgeSourceId === edgeTargetId) {
+      setFeedbackMsg({ type: "error", text: "Không thể tạo liên kết giữa một điểm tri thức với chính nó." });
+      return;
+    }
+    const weightNum = Number(edgeWeight);
+    if (isNaN(weightNum) || weightNum < 0 || weightNum > 1.0) {
+      setFeedbackMsg({ type: "error", text: "Trọng số phụ thuộc phải là số trong khoảng từ 0.00 đến 1.00." });
+      return;
+    }
 
     createEdgeMutation.mutate({
       subjectId: selectedSubjectId,
       sourceNodeId: edgeSourceId,
       targetNodeId: edgeTargetId,
       relationType: edgeRelation,
-      weight: Number(edgeWeight),
+      weight: weightNum,
     });
   };
 
   const handleEditNodeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedNode) return;
+    setFeedbackMsg(null);
 
     const trimmedName = editNodeName.trim();
-    if (!trimmedName) return;
+    if (!trimmedName) {
+      setFeedbackMsg({ type: "error", text: "Tên điểm tri thức không được để trống." });
+      return;
+    }
+    if (trimmedName.length > 200) {
+      setFeedbackMsg({ type: "error", text: "Tên điểm tri thức không được vượt quá 200 ký tự." });
+      return;
+    }
+    if (editNodeParentId && editNodeParentId === selectedNode.nodeId) {
+      setFeedbackMsg({ type: "error", text: "Điểm tri thức không thể chọn chính nó làm nút cha." });
+      return;
+    }
+
+    const orderIdx = parseInt(editNodeOrderIndex, 10);
+    const examImp = parseFloat(editNodeExamImportance);
+    const minutes = parseInt(editNodeEstimatedMinutes, 10);
+
+    if (isNaN(orderIdx) || orderIdx < 0) {
+      setFeedbackMsg({ type: "error", text: "Thứ tự sắp xếp phải là số nguyên không âm." });
+      return;
+    }
+    if (isNaN(examImp) || examImp < 0 || examImp > 100) {
+      setFeedbackMsg({ type: "error", text: "Trọng số thi phải nằm trong khoảng từ 0 đến 100." });
+      return;
+    }
+    if (isNaN(minutes) || minutes <= 0) {
+      setFeedbackMsg({ type: "error", text: "Thời lượng học phải lớn hơn 0 phút." });
+      return;
+    }
 
     updateNodeMutation.mutate({
       id: selectedNode.nodeId,
@@ -441,9 +512,9 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
         nodeName: trimmedName,
         parentNodeId: editNodeParentId.trim() || null,
         description: editNodeDescription.trim() || null,
-        orderIndex: parseInt(editNodeOrderIndex, 10) || 0,
-        examImportance: parseFloat(editNodeExamImportance) || 0,
-        estimatedLearningMinutes: parseInt(editNodeEstimatedMinutes, 10) || 30,
+        orderIndex: orderIdx,
+        examImportance: examImp,
+        estimatedLearningMinutes: minutes,
         isActive: editNodeIsActive,
         rowVersion: selectedNode.rowVersion,
       },
@@ -453,9 +524,13 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
   const handleEditEdgeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedEdge) return;
+    setFeedbackMsg(null);
 
     const weight = parseFloat(editEdgeWeight);
-    if (isNaN(weight) || weight < 0 || weight > 1.0) return;
+    if (isNaN(weight) || weight < 0 || weight > 1.0) {
+      setFeedbackMsg({ type: "error", text: "Trọng số phụ thuộc phải là số trong khoảng từ 0.00 đến 1.00." });
+      return;
+    }
 
     updateEdgeMutation.mutate({
       id: selectedEdge.edgeId,
@@ -1187,15 +1262,39 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                     </h4>
 
                     <div>
-                      <label style={{ display: "block", fontSize: "0.75rem", color: "var(--th-text-secondary)", marginBottom: "4px" }}>Tên nút *</label>
+                      <label style={{ display: "block", fontSize: "0.75rem", color: "var(--th-text-secondary)", marginBottom: "4px" }}>
+                        Tên nút <span style={{ color: "var(--th-danger)" }}>*</span>
+                      </label>
                       <input
                         type="text"
+                        maxLength={200}
                         className="th-input"
                         value={editNodeName}
                         onChange={(e) => setEditNodeName(e.target.value)}
                         required
                         style={{ width: "100%", fontSize: "0.8rem" }}
                       />
+                    </div>
+
+                    <div>
+                      <label style={{ display: "block", fontSize: "0.75rem", color: "var(--th-text-secondary)", marginBottom: "4px" }}>
+                        Nút cha phân cấp
+                      </label>
+                      <select
+                        className="th-select"
+                        value={editNodeParentId}
+                        onChange={(e) => setEditNodeParentId(e.target.value)}
+                        style={{ width: "100%", fontSize: "0.8rem" }}
+                      >
+                        <option value="">-- Không có (Nút gốc) --</option>
+                        {nodes
+                          .filter((n) => n.nodeId !== selectedNode.nodeId)
+                          .map((n) => (
+                            <option key={n.nodeId} value={n.nodeId}>
+                              {n.nodeCode} - {n.nodeName}
+                            </option>
+                          ))}
+                      </select>
                     </div>
 
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
@@ -1216,6 +1315,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                         <input
                           type="number"
                           min={1}
+                          max={600}
                           className="th-input"
                           value={editNodeEstimatedMinutes}
                           onChange={(e) => setEditNodeEstimatedMinutes(e.target.value)}
@@ -1225,9 +1325,13 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                     </div>
 
                     <div>
-                      <label style={{ display: "block", fontSize: "0.75rem", color: "var(--th-text-secondary)", marginBottom: "4px" }}>Mô tả</label>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                        <label style={{ fontSize: "0.75rem", color: "var(--th-text-secondary)" }}>Mô tả</label>
+                        <span style={{ fontSize: "0.7rem", color: "var(--th-text-muted)" }}>{editNodeDescription.length}/1000 ký tự</span>
+                      </div>
                       <textarea
                         rows={2}
+                        maxLength={1000}
                         className="th-textarea"
                         value={editNodeDescription}
                         onChange={(e) => setEditNodeDescription(e.target.value)}
@@ -1293,7 +1397,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                   <form onSubmit={handleEditEdgeSubmit} style={{ display: "flex", flexDirection: "column", gap: "10px", borderTop: "1px solid var(--th-border-subtle)", paddingTop: "12px" }}>
                     <div>
                       <label style={{ display: "block", fontSize: "0.75rem", color: "var(--th-text-secondary)", marginBottom: "4px" }}>
-                        Trọng số phụ thuộc (0.00 – 1.00)
+                        Trọng số phụ thuộc (0.00 – 1.00) <span style={{ color: "var(--th-danger)" }}>*</span>
                       </label>
                       <input
                         type="number"
@@ -1384,11 +1488,15 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
       >
         <form onSubmit={handleCreateNodeSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           <div>
-            <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)", marginBottom: "6px" }}>
-              Tên chủ đề / Khái niệm *
-            </label>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+              <label style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)" }}>
+                Tên chủ đề / Khái niệm <span style={{ color: "var(--th-danger)" }}>*</span>
+              </label>
+              <span style={{ fontSize: "0.75rem", color: "var(--th-text-muted)" }}>{newNodeName.length}/200 ký tự</span>
+            </div>
             <input
               type="text"
+              maxLength={200}
               className="th-input"
               value={newNodeName}
               onChange={(e) => setNewNodeName(e.target.value)}
@@ -1400,14 +1508,18 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
             <div>
-              <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)", marginBottom: "6px" }}>
-                Mã điểm tri thức *
-              </label>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                <label style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)" }}>
+                  Mã điểm tri thức <span style={{ color: "var(--th-danger)" }}>*</span>
+                </label>
+                <span style={{ fontSize: "0.75rem", color: "var(--th-text-muted)" }}>{newNodeCode.length}/50</span>
+              </div>
               <input
                 type="text"
+                maxLength={50}
                 className="th-input"
                 value={newNodeCode}
-                onChange={(e) => setNewNodeCode(e.target.value)}
+                onChange={(e) => setNewNodeCode(e.target.value.toUpperCase())}
                 placeholder="Ví dụ: MATH10_PTBH"
                 required
                 style={{ width: "100%" }}
@@ -1482,12 +1594,16 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
           </div>
 
           <div>
-            <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)", marginBottom: "6px" }}>
-              Mô tả chi tiết
-            </label>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+              <label style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)" }}>
+                Mô tả chi tiết
+              </label>
+              <span style={{ fontSize: "0.75rem", color: "var(--th-text-muted)" }}>{newNodeDesc.length}/1000 ký tự</span>
+            </div>
             <textarea
               className="th-textarea"
               rows={3}
+              maxLength={1000}
               value={newNodeDesc}
               onChange={(e) => setNewNodeDesc(e.target.value)}
               placeholder="Yêu cầu cần đạt, dạng bài tập điển hình..."
@@ -1523,7 +1639,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
         <form onSubmit={handleCreateEdgeSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           <div>
             <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)", marginBottom: "6px" }}>
-              Chủ đề Tiên quyết (Học trước) *
+              Chủ đề Tiên quyết (Học trước) <span style={{ color: "var(--th-danger)" }}>*</span>
             </label>
             <select
               className="th-select"
@@ -1532,6 +1648,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
               required
               style={{ width: "100%" }}
             >
+              <option value="">-- Chọn điểm tri thức nguồn --</option>
               {nodes.map((n) => (
                 <option key={n.nodeId} value={n.nodeId}>
                   {n.nodeCode} - {n.nodeName}
@@ -1542,7 +1659,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
 
           <div>
             <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)", marginBottom: "6px" }}>
-              Chủ đề Phụ thuộc (Học sau) *
+              Chủ đề Phụ thuộc (Học sau) <span style={{ color: "var(--th-danger)" }}>*</span>
             </label>
             <select
               className="th-select"
@@ -1551,12 +1668,18 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
               required
               style={{ width: "100%" }}
             >
+              <option value="">-- Chọn điểm tri thức đích --</option>
               {nodes.map((n) => (
                 <option key={n.nodeId} value={n.nodeId}>
                   {n.nodeCode} - {n.nodeName}
                 </option>
               ))}
             </select>
+            {edgeSourceId && edgeTargetId && edgeSourceId === edgeTargetId && (
+              <p style={{ color: "var(--th-danger)", fontSize: "0.75rem", marginTop: "4px" }}>
+                ⚠️ Điểm tri thức nguồn và đích không được trùng nhau.
+              </p>
+            )}
           </div>
 
           <div>
@@ -1578,17 +1701,18 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
 
           <div>
             <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)", marginBottom: "6px" }}>
-              Trọng số liên kết (0.10 - 1.00)
+              Trọng số liên kết (0.00 – 1.00) <span style={{ color: "var(--th-danger)" }}>*</span>
             </label>
             <input
               type="number"
-              min="0.1"
+              min="0.0"
               max="1.0"
               step="0.05"
               className="th-input"
               value={edgeWeight}
               onChange={(e) => setEdgeWeight(Number(e.target.value))}
               style={{ width: "100%" }}
+              required
             />
           </div>
 
@@ -1603,7 +1727,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
             <button
               type="submit"
               className="th-primary-button"
-              disabled={createEdgeMutation.isPending || edgeSourceId === edgeTargetId}
+              disabled={createEdgeMutation.isPending || !edgeSourceId || !edgeTargetId || edgeSourceId === edgeTargetId}
             >
               {createEdgeMutation.isPending ? "Đang tạo..." : "Xác Nhận Liên Kết"}
             </button>

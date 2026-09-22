@@ -384,25 +384,88 @@ export function TeacherQuestionBankView() {
                     <RichMathText text={q.questionText} />
                   </div>
 
-                  {/* Options preview for multiple choice */}
+                  {/* Options & Answers preview for all question types */}
                   {q.questionType === "MultipleChoice" && q.options && q.options.length > 0 && (
-                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[var(--th-border-subtle)] text-xs">
-                      {q.options.map((opt) => (
-                        <div
-                          key={opt.optionId ?? opt.optionLabel}
-                          className={`p-2 rounded-md border text-xs flex items-baseline gap-1.5 ${
-                            opt.isCorrect
-                              ? "border-[var(--at-success)] bg-[var(--at-lime-wash)] text-[var(--at-success)] font-bold"
-                              : "border-[var(--th-border-subtle)] bg-[var(--th-surface-muted)]/50 text-[var(--th-text-secondary)]"
-                          }`}
-                        >
-                          <span className="font-black shrink-0">{opt.optionLabel}.</span>
-                          <span className="min-w-0 flex-1 font-medium">
-                            <RichMathText text={opt.optionText} />
-                          </span>
-                        </div>
-                      ))}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-[var(--th-border-subtle)] text-xs">
+                      {q.options.map((opt, idx) => {
+                        const optLabel = opt.label || opt.optionLabel || String.fromCharCode(65 + idx);
+                        const optText = opt.text || opt.optionText || "";
+                        const isCorrect = Boolean(
+                          opt.isCorrect ||
+                            (q.correctAnswer && optLabel.trim().toUpperCase() === q.correctAnswer.trim().toUpperCase())
+                        );
+
+                        return (
+                          <div
+                            key={opt.optionId ?? `${optLabel}-${idx}`}
+                            className={`p-2.5 rounded-lg border text-xs flex items-start gap-2 transition-colors ${
+                              isCorrect
+                                ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-300 font-medium ring-1 ring-emerald-500/20"
+                                : "border-[var(--th-border-subtle)] bg-[var(--th-surface-muted)]/60 text-[var(--th-text)]"
+                            }`}
+                          >
+                            <span
+                              className={`shrink-0 font-bold px-1.5 py-0.5 rounded text-[11px] ${
+                                isCorrect
+                                  ? "bg-emerald-500/20 text-emerald-300"
+                                  : "bg-[var(--th-surface)] border border-[var(--th-border-subtle)] text-[var(--th-text-muted)]"
+                              }`}
+                            >
+                              {optLabel}.
+                            </span>
+                            <span className="min-w-0 flex-1 leading-relaxed">
+                              <RichMathText text={optText} />
+                            </span>
+                            {isCorrect && (
+                              <span className="shrink-0 text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
+                                ✓ Đúng
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
+                  )}
+
+                  {/* Short Answer Display */}
+                  {q.questionType === "ShortAnswer" && (
+                    <div className="pt-2 border-t border-[var(--th-border-subtle)]">
+                      <div className="p-2.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-xs flex items-start gap-2">
+                        <span className="shrink-0 font-bold text-[11px] uppercase tracking-wider text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded">
+                          Đáp án đúng:
+                        </span>
+                        <div className="flex-1 font-semibold text-xs text-[var(--th-text)] leading-relaxed pt-0.5">
+                          <RichMathText text={q.correctAnswer || "Chưa thiết lập đáp án"} />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Essay Display */}
+                  {q.questionType === "Essay" && (
+                    <div className="pt-2 border-t border-[var(--th-border-subtle)]">
+                      <div className="p-2.5 rounded-lg border border-purple-500/40 bg-purple-500/10 text-xs flex items-start gap-2">
+                        <span className="shrink-0 font-bold text-[11px] uppercase tracking-wider text-purple-300 bg-purple-500/20 px-2 py-0.5 rounded">
+                          Đáp án mẫu / Thang điểm:
+                        </span>
+                        <div className="flex-1 font-medium text-xs text-[var(--th-text)] leading-relaxed pt-0.5">
+                          <RichMathText text={q.correctAnswer || "Chấm tự luận theo rubric"} />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Optional Solution Preview */}
+                  {q.solution && (
+                    <details className="group rounded-lg border border-[var(--th-border-subtle)] bg-[var(--th-surface-subtle)] p-2.5 text-xs transition-colors">
+                      <summary className="cursor-pointer font-semibold text-[11px] uppercase tracking-wider text-[var(--th-teal)] flex items-center justify-between select-none">
+                        <span>💡 Xem lời giải chi tiết (Solution)</span>
+                        <span className="text-[10px] text-[var(--th-text-muted)] group-open:rotate-180 transition-transform">▼</span>
+                      </summary>
+                      <div className="mt-2 pt-2 border-t border-[var(--th-border-subtle)] font-normal text-xs text-[var(--th-text)] leading-relaxed">
+                        <RichMathText text={q.solution} />
+                      </div>
+                    </details>
                   )}
                 </div>
 

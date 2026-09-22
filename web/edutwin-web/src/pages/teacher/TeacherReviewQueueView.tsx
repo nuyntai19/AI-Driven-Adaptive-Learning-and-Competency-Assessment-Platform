@@ -121,14 +121,36 @@ export const TeacherReviewQueueView: React.FC = () => {
   const handleSubmitOverride = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedItem) return;
+    setOverrideFeedbackMessage(null);
+
+    const scoreNum = Number(awardedScore);
+    if (isNaN(scoreNum) || scoreNum < 0 || scoreNum > 10) {
+      setOverrideFeedbackMessage("Điểm số công nhận không hợp lệ. Vui lòng nhập số trong khoảng từ 0.0 đến 10.0.");
+      return;
+    }
+
+    if (!overrideReason.trim() || overrideReason.trim().length < 3) {
+      setOverrideFeedbackMessage("Vui lòng nhập lý do điều chỉnh kết quả chấm (tối thiểu 3 ký tự để lưu vết nhật ký hệ thống).");
+      return;
+    }
+
+    if (overrideReason.trim().length > 500) {
+      setOverrideFeedbackMessage("Lý do điều chỉnh không được vượt quá 500 ký tự.");
+      return;
+    }
+
+    if (feedback.trim().length > 1000) {
+      setOverrideFeedbackMessage("Nhận xét cho học sinh không được vượt quá 1000 ký tự.");
+      return;
+    }
 
     const payload: TeacherOverrideRequest = {
-      reasoningQuality: reasoningQuality / 100,
+      reasoningQuality: Math.max(0, Math.min(100, reasoningQuality)) / 100,
       errorType,
       feedback: feedback.trim(),
       isCorrect,
-      awardedScore: Number(awardedScore),
-      reason: overrideReason.trim() || "Giáo viên điều chỉnh kết quả chấm tự động",
+      awardedScore: scoreNum,
+      reason: overrideReason.trim(),
       overrideVersion: selectedItem.evidence?.analysisOverrideVersion ?? 1,
     };
 
@@ -479,7 +501,7 @@ export const TeacherReviewQueueView: React.FC = () => {
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "14px" }}>
                     <div>
                       <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)", marginBottom: "6px" }}>
-                        Điểm số công nhận (Thang 10)
+                        Điểm số công nhận (Thang 10) <span style={{ color: "var(--th-danger)" }}>*</span>
                       </label>
                       <input
                         type="number"
@@ -488,7 +510,14 @@ export const TeacherReviewQueueView: React.FC = () => {
                         step="0.5"
                         className="th-input"
                         value={awardedScore}
-                        onChange={(e) => setAwardedScore(Number(e.target.value))}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "") {
+                            setAwardedScore(0);
+                          } else {
+                            setAwardedScore(Math.max(0, Math.min(10, Number(val))));
+                          }
+                        }}
                         disabled={!canOverride || overrideMutation.isPending}
                         required
                       />
@@ -545,12 +574,16 @@ export const TeacherReviewQueueView: React.FC = () => {
                   </div>
 
                   <div>
-                    <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)", marginBottom: "6px" }}>
-                      Nhận xét của giáo viên (Gửi trực tiếp đến học sinh)
-                    </label>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                      <label style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)" }}>
+                        Nhận xét của giáo viên (Gửi trực tiếp đến học sinh)
+                      </label>
+                      <span style={{ fontSize: "0.75rem", color: "var(--th-text-muted)" }}>{feedback.length}/1000 ký tự</span>
+                    </div>
                     <textarea
                       className="th-textarea"
                       rows={2}
+                      maxLength={1000}
                       value={feedback}
                       onChange={(e) => setFeedback(e.target.value)}
                       placeholder="Lời khuyên, hướng dẫn sửa lỗi cho học sinh..."
@@ -559,16 +592,21 @@ export const TeacherReviewQueueView: React.FC = () => {
                   </div>
 
                   <div>
-                    <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)", marginBottom: "6px" }}>
-                      Lý do điều chỉnh (Lưu vết nhật ký hệ thống)
-                    </label>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                      <label style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)" }}>
+                        Lý do điều chỉnh (Lưu vết nhật ký hệ thống) <span style={{ color: "var(--th-danger)" }}>*</span>
+                      </label>
+                      <span style={{ fontSize: "0.75rem", color: "var(--th-text-muted)" }}>{overrideReason.length}/500 ký tự</span>
+                    </div>
                     <input
                       type="text"
+                      maxLength={500}
                       className="th-input"
                       value={overrideReason}
                       onChange={(e) => setOverrideReason(e.target.value)}
                       placeholder="Ví dụ: AI chấm nhầm do học sinh giải theo phương pháp thứ 2..."
                       disabled={!canOverride || overrideMutation.isPending}
+                      required
                     />
                   </div>
 

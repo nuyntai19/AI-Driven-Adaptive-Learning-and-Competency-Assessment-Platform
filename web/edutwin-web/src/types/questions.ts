@@ -4,8 +4,10 @@ export type QuestionAnswerEvaluationMode = "TextExact" | "NumericRational" | "Ma
 
 export interface QuestionOption {
   optionId: string;
-  optionLabel: string;
-  optionText: string;
+  label?: string;
+  optionLabel?: string;
+  text?: string;
+  optionText?: string;
   isCorrect: boolean;
   orderIndex: number;
 }

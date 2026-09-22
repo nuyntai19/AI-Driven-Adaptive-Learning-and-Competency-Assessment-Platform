@@ -105,14 +105,21 @@ export function TeacherQuestionEditorView() {
           (q.questionType === "MultipleChoice" ? "TextExact" : q.questionType === "Essay" ? "Manual" : "TextExact")
       );
       if (q.options && q.options.length > 0) {
+        const hasAnyCorrect = q.options.some((opt: any) => Boolean(opt.isCorrect));
         setOptions(
-          q.options.map((opt: any, idx: number) => ({
-            optionId: opt.optionId,
-            label: opt.label || opt.optionLabel || String.fromCharCode(65 + idx),
-            text: opt.text || opt.optionText || "",
-            isCorrect: Boolean(opt.isCorrect),
-            orderIndex: opt.orderIndex ?? idx,
-          }))
+          q.options.map((opt: any, idx: number) => {
+            const label = opt.label || opt.optionLabel || String.fromCharCode(65 + idx);
+            const isCorrect = hasAnyCorrect
+              ? Boolean(opt.isCorrect)
+              : label.trim().toUpperCase() === (q.correctAnswer || "").trim().toUpperCase();
+            return {
+              optionId: opt.optionId,
+              label,
+              text: opt.text || opt.optionText || "",
+              isCorrect,
+              orderIndex: opt.orderIndex ?? idx,
+            };
+          })
         );
       }
       setCorrectAnswer(q.correctAnswer || "");
@@ -158,10 +165,28 @@ export function TeacherQuestionEditorView() {
       setFormError({ message: "Vui lòng chọn môn học cho câu hỏi." });
       return;
     }
+    if (!primaryTopicNodeId.trim()) {
+      setFormError({ message: "Vui lòng chọn chủ đề Cây Tri thức (Topic Node) cho câu hỏi." });
+      return;
+    }
     if (!questionText.trim()) {
       setFormError({ message: "Vui lòng nhập nội dung đề bài câu hỏi." });
       return;
     }
+    if (difficulty < 1 || difficulty > 5) {
+      setFormError({ message: "Độ khó phải nằm trong khoảng từ 1 đến 5." });
+      return;
+    }
+    if (maxScore <= 0) {
+      setFormError({ message: "Điểm tối đa phải lớn hơn 0." });
+      return;
+    }
+    if (estimatedTimeSeconds <= 0) {
+      setFormError({ message: "Thời gian ước tính phải lớn hơn 0 giây." });
+      return;
+    }
+
+    let computedCorrectAnswer = "";
 
     if (questionType === "MultipleChoice") {
       const emptyOption = options.find((opt) => !opt.text.trim());
@@ -169,12 +194,37 @@ export function TeacherQuestionEditorView() {
         setFormError({ message: `Vui lòng nhập đầy đủ nội dung cho phương án ${emptyOption.label}.` });
         return;
       }
-      const hasCorrect = options.some((opt) => opt.isCorrect);
-      if (!hasCorrect) {
+      const correctOpt = options.find((opt) => opt.isCorrect);
+      if (!correctOpt) {
         setFormError({ message: "Vui lòng chọn ít nhất 1 phương án đúng cho câu hỏi trắc nghiệm." });
         return;
       }
+      computedCorrectAnswer = correctOpt.label;
+    } else if (questionType === "ShortAnswer") {
+      if (!correctAnswer.trim()) {
+        setFormError({ message: "Vui lòng nhập đáp án chuẩn cho câu hỏi trả lời ngắn." });
+        return;
+      }
+      computedCorrectAnswer = correctAnswer.trim();
+    } else if (questionType === "Essay") {
+      if (!correctAnswer.trim()) {
+        setFormError({ message: "Vui lòng nhập đáp án chuẩn hoặc kết quả mẫu cho câu hỏi tự luận." });
+        return;
+      }
+      computedCorrectAnswer = correctAnswer.trim();
     }
+
+    if (!solution.trim()) {
+      setFormError({ message: "Vui lòng nhập lời giải chi tiết (Solution) cho câu hỏi." });
+      return;
+    }
+
+    const evalMode: QuestionAnswerEvaluationMode =
+      questionType === "MultipleChoice"
+        ? "TextExact"
+        : questionType === "Essay"
+        ? "Manual"
+        : answerEvaluationMode || "TextExact";
 
     const parsedGradingCriteria = gradingCriteria.trim()
       ? {
@@ -196,7 +246,7 @@ export function TeacherQuestionEditorView() {
         estimatedTimeSeconds,
         reasoningRequired,
         languageCode,
-        answerEvaluationMode,
+        answerEvaluationMode: evalMode,
         options:
           questionType === "MultipleChoice"
             ? options.map((opt) => ({
@@ -206,10 +256,16 @@ export function TeacherQuestionEditorView() {
                 orderIndex: opt.orderIndex,
               }))
             : undefined,
-        correctAnswer: questionType !== "MultipleChoice" ? correctAnswer.trim() || undefined : undefined,
-        solution: solution.trim() || undefined,
+        correctAnswer: computedCorrectAnswer,
+        solution: solution.trim(),
         expectedReasoning: expectedReasoning.trim() || undefined,
         gradingCriteria: parsedGradingCriteria,
+        knowledgeMappings: [
+          {
+            nodeId: primaryTopicNodeId.trim(),
+            mappingRole: "Primary",
+          },
+        ],
       };
 
       createMutation.mutate(payload, {
@@ -239,7 +295,7 @@ export function TeacherQuestionEditorView() {
         estimatedTimeSeconds,
         reasoningRequired,
         languageCode,
-        answerEvaluationMode,
+        answerEvaluationMode: evalMode,
         options:
           questionType === "MultipleChoice"
             ? options.map((opt) => ({
@@ -249,10 +305,18 @@ export function TeacherQuestionEditorView() {
                 orderIndex: opt.orderIndex,
               }))
             : undefined,
-        correctAnswer: questionType !== "MultipleChoice" ? correctAnswer.trim() || undefined : undefined,
-        solution: solution.trim() || undefined,
+        correctAnswer: computedCorrectAnswer,
+        solution: solution.trim(),
         expectedReasoning: expectedReasoning.trim() || undefined,
         gradingCriteria: parsedGradingCriteria,
+        knowledgeMappings: questionData?.data?.knowledgeMappings?.length
+          ? questionData.data.knowledgeMappings
+          : [
+              {
+                nodeId: primaryTopicNodeId.trim(),
+                mappingRole: "Primary",
+              },
+            ],
         rowVersion: questionData.data.rowVersion,
       };
 
@@ -345,7 +409,7 @@ export function TeacherQuestionEditorView() {
 
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1.5">
-              Chủ đề Cây Tri thức (Topic Node)
+              Chủ đề Cây Tri thức (Topic Node) <span className="text-rose-400">*</span>
             </label>
             <select
               value={primaryTopicNodeId}
@@ -353,7 +417,7 @@ export function TeacherQuestionEditorView() {
               onChange={(e) => setPrimaryTopicNodeId(e.target.value)}
               className="th-select w-full text-xs"
             >
-              <option value="">-- Không chọn / Toàn môn --</option>
+              <option value="">-- Chọn chủ đề kiến thức --</option>
               {topicsData?.nodes?.map((node: any) => (
                 <option key={node.nodeId} value={node.nodeId}>
                   {node.nodeName} ({node.nodeCode})
@@ -368,7 +432,17 @@ export function TeacherQuestionEditorView() {
             </label>
             <select
               value={questionType}
-              onChange={(e) => setQuestionType(e.target.value as QuestionType)}
+              onChange={(e) => {
+                const newType = e.target.value as QuestionType;
+                setQuestionType(newType);
+                if (newType === "MultipleChoice") {
+                  setAnswerEvaluationMode("TextExact");
+                } else if (newType === "Essay") {
+                  setAnswerEvaluationMode("Manual");
+                } else if (newType === "ShortAnswer" && answerEvaluationMode === "Manual") {
+                  setAnswerEvaluationMode("TextExact");
+                }
+              }}
               className="th-select w-full text-xs"
             >
               <option value="MultipleChoice">Trắc nghiệm nhiều lựa chọn</option>
@@ -399,7 +473,7 @@ export function TeacherQuestionEditorView() {
 
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1.5">
-              Điểm tối đa
+              Điểm tối đa <span className="text-rose-400">*</span>
             </label>
             <input
               type="number"
@@ -413,7 +487,7 @@ export function TeacherQuestionEditorView() {
 
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1.5">
-              Thời gian ước tính (giây)
+              Thời gian ước tính (giây) <span className="text-rose-400">*</span>
             </label>
             <input
               type="number"
@@ -464,7 +538,7 @@ export function TeacherQuestionEditorView() {
         {questionType === "MultipleChoice" ? (
           <div className="space-y-4 border-t border-[var(--th-border-subtle)] pt-4">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--th-text)]">
-              Các Phương Án Lựa Chọn (Tích chọn phương án đúng)
+              Các Phương Án Lựa Chọn (Tích chọn 1 phương án đúng) <span className="text-rose-400">*</span>
             </h3>
 
             <div className="space-y-3">
@@ -505,9 +579,25 @@ export function TeacherQuestionEditorView() {
           </div>
         ) : (
           <div className="space-y-4 border-t border-[var(--th-border-subtle)] pt-4">
+            {questionType === "ShortAnswer" && (
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1.5">
+                  Chế độ so khớp đáp án (Evaluation Mode)
+                </label>
+                <select
+                  value={answerEvaluationMode}
+                  onChange={(e) => setAnswerEvaluationMode(e.target.value as QuestionAnswerEvaluationMode)}
+                  className="th-select w-full text-xs"
+                >
+                  <option value="TextExact">So khớp chính xác chuỗi (TextExact)</option>
+                  <option value="NumericRational">Tương đương số học / đại số / phân số (NumericRational)</option>
+                </select>
+              </div>
+            )}
+
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1.5">
-                Đáp án chuẩn / Kết quả cuối cùng
+                Đáp án chuẩn / Kết quả cuối cùng <span className="text-rose-400">*</span>
               </label>
               <input
                 type="text"
@@ -538,7 +628,7 @@ export function TeacherQuestionEditorView() {
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)]">
-                Lời giải chi tiết (Solution)
+                Lời giải chi tiết (Solution) <span className="text-rose-400">*</span>
               </label>
             </div>
             <MathInputToolbar onInsert={handleInsertMathToSolution} />
