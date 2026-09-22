@@ -6,6 +6,9 @@ import type {
   ActivateQuestionRequest,
   ArchiveQuestionRequest,
   QuestionFilter,
+  QuestionImportPreviewResponse,
+  QuestionImportConfirmRequest,
+  QuestionImportConfirmResponse,
 } from "../types/questions";
 import type { ApiResponse, ApiCollectionResponse } from "../types/api";
 
@@ -44,6 +47,20 @@ export const questionsApi = {
 
   delete: async (id: string) => {
     const response = await httpClient.delete(`${BASE_URL}/${id}`);
+    return response.data;
+  },
+
+  previewImport: async (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await httpClient.post<QuestionImportPreviewResponse>(`${BASE_URL}/import/preview`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return response.data;
+  },
+
+  confirmImport: async (data: QuestionImportConfirmRequest) => {
+    const response = await httpClient.post<QuestionImportConfirmResponse>(`${BASE_URL}/import/confirm`, data);
     return response.data;
   },
 };

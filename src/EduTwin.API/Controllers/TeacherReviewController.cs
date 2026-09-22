@@ -8,6 +8,7 @@ using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.Common;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.Contracts.DigitalTwin;
+using EduTwin.Contracts.Assignments;
 using EduTwin.BLL.DigitalTwin;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -22,26 +23,24 @@ public sealed class TeacherReviewController : ControllerBase
 {
     private readonly IListTeacherReviewQueueUseCase _reviewQueueUseCase;
     private readonly ITeacherOverrideUseCase? _overrideUseCase;
+    private readonly ITeacherApproveUseCase? _approveUseCase;
+    private readonly IApproveAssignmentResultUseCase? _approveAssignmentResultUseCase;
     private readonly IGetTeacherStudentTwinUseCase? _teacherStudentTwinUseCase;
     private readonly TimeProvider _timeProvider;
-
-    public TeacherReviewController(
-        IListTeacherReviewQueueUseCase reviewQueueUseCase,
-        ITeacherOverrideUseCase overrideUseCase,
-        TimeProvider timeProvider)
-        : this(reviewQueueUseCase, overrideUseCase, null!, timeProvider)
-    {
-    }
 
     [ActivatorUtilitiesConstructor]
     public TeacherReviewController(
         IListTeacherReviewQueueUseCase reviewQueueUseCase,
         ITeacherOverrideUseCase? overrideUseCase,
+        ITeacherApproveUseCase? approveUseCase,
+        IApproveAssignmentResultUseCase? approveAssignmentResultUseCase,
         IGetTeacherStudentTwinUseCase teacherStudentTwinUseCase,
         TimeProvider timeProvider)
     {
         _reviewQueueUseCase = reviewQueueUseCase ?? throw new ArgumentNullException(nameof(reviewQueueUseCase));
         _overrideUseCase = overrideUseCase;
+        _approveUseCase = approveUseCase;
+        _approveAssignmentResultUseCase = approveAssignmentResultUseCase;
         _teacherStudentTwinUseCase = teacherStudentTwinUseCase;
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     }
@@ -49,7 +48,15 @@ public sealed class TeacherReviewController : ControllerBase
     public TeacherReviewController(
         IListTeacherReviewQueueUseCase reviewQueueUseCase,
         TimeProvider timeProvider)
-        : this(reviewQueueUseCase, null, null!, timeProvider)
+        : this(reviewQueueUseCase, null, null, null, null!, timeProvider)
+    {
+    }
+
+    public TeacherReviewController(
+        IListTeacherReviewQueueUseCase reviewQueueUseCase,
+        ITeacherOverrideUseCase? overrideUseCase,
+        TimeProvider timeProvider)
+        : this(reviewQueueUseCase, overrideUseCase, null, null, null!, timeProvider)
     {
     }
 
@@ -175,6 +182,105 @@ public sealed class TeacherReviewController : ControllerBase
                 result.ErrorMessage,
                 result.ErrorCode,
                 traceId),
+            _ => throw new InvalidOperationException($"Unexpected status: {result.Status}")
+        };
+    }
+
+    [HttpPost("reasoning-analyses/{analysisId}/approve")]
+    [Authorize(Policy = "twin.reasoning.override")]
+    [ProducesResponseType(typeof(TeacherApproveResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> ApproveAnalysis(
+        [FromRoute] ulong analysisId,
+        [FromBody] TeacherApproveRequest? request,
+        CancellationToken cancellationToken)
+    {
+        if (_approveUseCase is null)
+        {
+            throw new InvalidOperationException("TeacherApproveUseCase is not configured.");
+        }
+
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        var result = await _approveUseCase.ExecuteAsync(analysisId, request ?? new TeacherApproveRequest(), cancellationToken);
+
+        if (result.Status == TeacherApproveStatus.Success)
+        {
+            return Ok(new TeacherApproveResponse
+            {
+                Data = result.Data ?? throw new InvalidOperationException("Approve succeeded without response data."),
+                Meta = new MetaDto
+                {
+                    TraceId = traceId,
+                    Timestamp = _timeProvider.GetUtcNow().UtcDateTime
+                }
+            });
+        }
+
+        return result.Status switch
+        {
+            TeacherApproveStatus.ValidationFailed => ProblemResponse(
+                StatusCodes.Status400BadRequest,
+                "validation",
+                "Dữ liệu không hợp lệ",
+                result.ErrorMessage,
+                result.ErrorCode,
+                traceId),
+            TeacherApproveStatus.Forbidden => ProblemResponse(
+                StatusCodes.Status403Forbidden,
+                "forbidden",
+                "Không có quyền phê duyệt",
+                result.ErrorMessage,
+                result.ErrorCode,
+                traceId),
+            TeacherApproveStatus.NotFound => ProblemResponse(
+                StatusCodes.Status404NotFound,
+                "not-found",
+                "Không tìm thấy dữ liệu",
+                result.ErrorMessage,
+                result.ErrorCode,
+                traceId),
+            TeacherApproveStatus.Conflict => ProblemResponse(
+                StatusCodes.Status409Conflict,
+                "conflict",
+                "Xung đột phiên bản",
+                result.ErrorMessage,
+                result.ErrorCode,
+                traceId),
+            _ => throw new InvalidOperationException($"Unexpected status: {result.Status}")
+        };
+    }
+
+    [HttpPost("assignments/{assignmentId:guid}/approve-result")]
+    [Authorize(Policy = "twin.reasoning.override")]
+    [ProducesResponseType(typeof(AssignmentFinalReviewResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ApproveAssignmentResult(
+        [FromRoute] Guid assignmentId,
+        [FromBody] ApproveAssignmentResultRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (_approveAssignmentResultUseCase is null)
+            throw new InvalidOperationException("ApproveAssignmentResultUseCase is not configured.");
+
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        var result = await _approveAssignmentResultUseCase.ExecuteAsync(assignmentId, request, cancellationToken);
+        if (result.Status == TeacherApproveStatus.Success)
+        {
+            return Ok(new AssignmentFinalReviewResponse
+            {
+                Data = result.Data!,
+                Meta = new MetaDto { TraceId = traceId, Timestamp = _timeProvider.GetUtcNow().UtcDateTime }
+            });
+        }
+
+        return result.Status switch
+        {
+            TeacherApproveStatus.ValidationFailed => ProblemResponse(400, "validation", "Chưa thể duyệt kết quả", result.ErrorMessage, result.ErrorCode, traceId),
+            TeacherApproveStatus.Forbidden => ProblemResponse(403, "forbidden", "Không có quyền phê duyệt", result.ErrorMessage, result.ErrorCode, traceId),
+            TeacherApproveStatus.NotFound => ProblemResponse(404, "not-found", "Không tìm thấy dữ liệu", result.ErrorMessage, result.ErrorCode, traceId),
+            TeacherApproveStatus.Conflict => ProblemResponse(409, "conflict", "Xung đột phiên bản", result.ErrorMessage, result.ErrorCode, traceId),
             _ => throw new InvalidOperationException($"Unexpected status: {result.Status}")
         };
     }

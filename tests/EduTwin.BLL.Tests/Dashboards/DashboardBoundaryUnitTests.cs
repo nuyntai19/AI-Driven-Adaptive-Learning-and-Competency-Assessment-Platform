@@ -336,6 +336,67 @@ public sealed class DashboardBoundaryUnitTests
         Assert.Equal(60.0m, engRadar.Mastery);
     }
 
+    [Fact]
+    public async Task StudentDashboard_LearningPathPreference_OverridesSeedSubjectGoal()
+    {
+        var (dbContext, tenantContext) = CreateDbContext($"StudentDashboard_LearningPathOverride_{Guid.NewGuid():N}");
+        var centerId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+        tenantContext.CenterId = centerId;
+        tenantContext.UserId = studentId;
+        tenantContext.Role = nameof(UserRole.Student);
+
+        dbContext.Centers.Add(CreateCenter(centerId));
+        dbContext.Users.Add(new User { UserId = studentId, CenterId = centerId, Username = "s_pref", DisplayName = "Student Pref", PasswordHash = "h", RoleName = UserRole.Student, Status = UserStatus.Active, CreatedAt = UtcNow, UpdatedAt = UtcNow });
+        dbContext.Students.Add(new Student { StudentId = studentId, CenterId = centerId, FullName = "Student Pref", GradeLevel = 10, CreatedAt = UtcNow, UpdatedAt = UtcNow });
+        dbContext.Subjects.Add(new Subject { SubjectId = subjectId, CenterId = centerId, SubjectCode = "MATH", SubjectName = "Toan", IsActive = true, CreatedAt = UtcNow, UpdatedAt = UtcNow });
+
+        dbContext.StudentSubjectGoals.Add(new StudentSubjectGoal
+        {
+            GoalId = 1,
+            CenterId = centerId,
+            StudentId = studentId,
+            SubjectId = subjectId,
+            TargetScore = 8.0m,
+            RemainingDays = 90,
+            CurrentPredictedScore = 6.0m,
+            RiskScore = 30.0m,
+            CreatedAt = UtcNow,
+            UpdatedAt = UtcNow
+        });
+
+        dbContext.StudentLearningPathPreferences.Add(new EduTwin.DAL.Recommendations.StudentLearningPathPreference
+        {
+            PreferenceId = 1ul,
+            CenterId = centerId,
+            StudentId = studentId,
+            SubjectId = subjectId,
+            TargetMastery = 85.0m,
+            TargetWeeks = 10,
+            MinutesPerDay = 30,
+            DaysPerWeek = 4,
+            GoalType = "ExamPrep",
+            SelfAssessedLevel = "Intermediate",
+            WeakTopicNodeIds = JsonDocument.Parse("[]"),
+            FocusTopicNodeIds = JsonDocument.Parse("[]"),
+            CreatedAt = UtcNow,
+            UpdatedAt = UtcNow
+        });
+
+        await dbContext.SaveChangesAsync();
+
+        var useCase = new GetStudentDashboardUseCase(dbContext, tenantContext, TimeProvider.System);
+        var result = await useCase.ExecuteAsync(subjectId, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Data);
+        Assert.True(result.Data.Goal.HasGoal);
+        Assert.Equal(8.5m, result.Data.Goal.TargetScore);
+        Assert.Equal(70u, result.Data.Goal.RemainingDays);
+        Assert.Equal(6.0m, result.Data.Goal.CurrentPredictedScore);
+    }
+
     [Theory]
     [InlineData(70.0, true)]
     [InlineData(69.9, false)]

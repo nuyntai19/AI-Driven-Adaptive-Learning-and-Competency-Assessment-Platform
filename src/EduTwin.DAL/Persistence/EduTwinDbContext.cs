@@ -77,6 +77,7 @@ public class EduTwinDbContext : DbContext
     public DbSet<LearningPathItem> LearningPathItems => Set<LearningPathItem>();
     public DbSet<Recommendation> Recommendations => Set<Recommendation>();
     public DbSet<RecommendationGenerationState> RecommendationGenerationStates => Set<RecommendationGenerationState>();
+    public DbSet<StudentLearningPathPreference> StudentLearningPathPreferences => Set<StudentLearningPathPreference>();
 
     // Assessment and Reasoning
     public DbSet<Attempt> Attempts => Set<Attempt>();
@@ -84,6 +85,8 @@ public class EduTwinDbContext : DbContext
     public DbSet<ReasoningAnalysis> ReasoningAnalyses => Set<ReasoningAnalysis>();
     public DbSet<EvidenceAssessment> EvidenceAssessments => Set<EvidenceAssessment>();
     public DbSet<AIAnalysisJob> AIAnalysisJobs => Set<AIAnalysisJob>();
+    public DbSet<StudentReviewRequest> StudentReviewRequests => Set<StudentReviewRequest>();
+    public DbSet<TeacherReviewHistory> TeacherReviewHistories => Set<TeacherReviewHistory>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

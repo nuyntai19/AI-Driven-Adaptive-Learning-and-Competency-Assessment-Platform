@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,15 +18,18 @@ public class ListStudentAssignmentsUseCase : IListStudentAssignmentsUseCase
     private readonly EduTwinDbContext _dbContext;
     private readonly ITenantContext _tenantContext;
     private readonly TimeProvider _timeProvider;
+    private readonly IAssignmentResultCalculator _resultCalculator;
 
     public ListStudentAssignmentsUseCase(
         EduTwinDbContext dbContext,
         ITenantContext tenantContext,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        IAssignmentResultCalculator resultCalculator)
     {
         _dbContext = dbContext;
         _tenantContext = tenantContext;
         _timeProvider = timeProvider;
+        _resultCalculator = resultCalculator;
     }
 
     public async Task<ListStudentAssignmentsResult> ExecuteAsync(ListStudentAssignmentsQuery query, CancellationToken cancellationToken)
@@ -115,8 +119,16 @@ public class ListStudentAssignmentsUseCase : IListStudentAssignmentsUseCase
             })
             .ToListAsync(cancellationToken);
 
+        var assignmentIds = rawItems.Select(x => x.AssignmentId).Distinct().ToList();
+        var summaries = await _resultCalculator.CalculateBatchForAssignmentsAsync(
+            centerId.Value,
+            currentUserId.Value,
+            assignmentIds,
+            cancellationToken);
+
         var items = rawItems.Select(p =>
         {
+            summaries.TryGetValue(p.AssignmentId, out var summary);
             return new StudentAssignmentDto
             {
                 AssignmentId = p.AssignmentId.ToString(),
@@ -130,7 +142,8 @@ public class ListStudentAssignmentsUseCase : IListStudentAssignmentsUseCase
                     Status = AssignmentStatusHelper.GetEffectiveProgressStatus(p.Status, p.DueAt, utcNow).ToString(),
                     CompletedQuestionCount = (int)p.CompletedQuestionCount,
                     TotalQuestionCount = (int)p.TotalQuestionCount
-                }
+                },
+                Summary = summary
             };
         }).ToList();
 

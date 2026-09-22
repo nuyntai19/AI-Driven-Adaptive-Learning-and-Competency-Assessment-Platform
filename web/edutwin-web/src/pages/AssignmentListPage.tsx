@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, Navigate } from "react-router-dom";
 import { useAssignments } from "../features/assignments/useAssignments";
 import { usePublishAssignment } from "../features/assignments/usePublishAssignment";
 import { useCloseAssignment } from "../features/assignments/useCloseAssignment";
@@ -681,6 +681,9 @@ function LegacyAssignmentListPage() {
 
 export const AssignmentListPage = () => {
   const accountType = useAuthStore((state) => state.user?.accountType);
+  if (accountType === "Teacher") {
+    return <Navigate to="/giao-vien/bai-tap" replace />;
+  }
   if (accountType === "CenterManager") {
     return <CenterManagerAssignmentListView />;
   }

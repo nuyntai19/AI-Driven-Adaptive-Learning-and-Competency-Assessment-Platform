@@ -41,6 +41,10 @@ public static class DependencyInjection
         services.TryAddScoped<IGetAttemptAttachmentUseCase, GetAttemptAttachmentUseCase>();
         services.TryAddScoped<ISubmitAttemptUseCase, SubmitAttemptUseCase>();
         services.TryAddScoped<Feedback.IGetAttemptFeedbackUseCase, Feedback.GetAttemptFeedbackUseCase>();
+        services.TryAddScoped<Retry.IRetryAttemptAIAnalysisUseCase, Retry.RetryAttemptAIAnalysisUseCase>();
+        services.TryAddScoped<ReviewRequest.ICreateStudentReviewRequestUseCase, ReviewRequest.CreateStudentReviewRequestUseCase>();
+        services.TryAddScoped<ITeacherApproveUseCase, TeacherApproveUseCase>();
+        services.TryAddScoped<IApproveAssignmentResultUseCase, ApproveAssignmentResultUseCase>();
 
         return services;
     }

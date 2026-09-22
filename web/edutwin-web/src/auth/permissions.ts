@@ -60,6 +60,7 @@ export const permissions = {
   learningAttemptsReadOwn: "learning.attempts.read_own",
   learningAttemptsReadScoped: "learning.attempts.read_scoped",
   learningAttemptsSubmit: "learning.attempts.submit",
+  recommendationsStudentReadOwn: "recommendations.student.read_own",
   recommendationsStudentUpdateOwn: "recommendations.student.update_own",
   twinReasoningReview: "twin.reasoning.review",
   twinReasoningOverride: "twin.reasoning.override",

@@ -72,6 +72,18 @@ public class ReasoningAnalysisConfiguration : IEntityTypeConfiguration<Reasoning
             .IsRequired();
 
         builder.Property(r => r.ModelName).HasColumnName("model_name").HasColumnType("varchar(100)");
+        builder.Property(r => r.SolutionType)
+            .HasColumnName("solution_type")
+            .HasColumnType("varchar(32)")
+            .HasMaxLength(32);
+        builder.Property(r => r.AiSolution).HasColumnName("ai_solution").HasColumnType("longtext");
+        builder.Property(r => r.OverrideReasoningQuality).HasColumnName("override_reasoning_quality").HasColumnType("decimal(5,2)");
+
+        builder.Property(r => r.OverrideErrorType)
+            .HasColumnName("override_error_type")
+            .HasColumnType("varchar(32)")
+            .HasConversion<string>();
+        builder.Property(r => r.AiSolution).HasColumnName("ai_solution").HasColumnType("longtext");
         builder.Property(r => r.OverrideReasoningQuality).HasColumnName("override_reasoning_quality").HasColumnType("decimal(5,2)");
 
         builder.Property(r => r.OverrideErrorType)
@@ -87,6 +99,11 @@ public class ReasoningAnalysisConfiguration : IEntityTypeConfiguration<Reasoning
         builder.Property(r => r.OverriddenAt).HasColumnName("overridden_at").HasColumnType("datetime(6)");
         builder.Property(r => r.OverrideVersion).HasColumnName("override_version").HasColumnType("int unsigned").HasDefaultValue(0u);
 
+        builder.Property(r => r.ReviewDecision).HasColumnName("review_decision").HasColumnType("varchar(32)");
+        builder.Property(r => r.ReviewedByUserId).HasColumnName("reviewed_by_user_id").HasColumnType("varchar(36)");
+        builder.Property(r => r.ReviewedAt).HasColumnName("reviewed_at").HasColumnType("datetime(6)");
+        builder.Property(r => r.TeacherReviewNote).HasColumnName("teacher_review_note").HasColumnType("varchar(1000)");
+
         builder.Property(r => r.CreatedAt).HasColumnName("created_at").HasColumnType("datetime(6)").IsRequired();
         builder.Property(r => r.CreatedBy).HasColumnName("created_by").HasColumnType("varchar(36)");
         builder.Property(r => r.UpdatedAt).HasColumnName("updated_at").HasColumnType("datetime(6)").IsRequired();
@@ -101,6 +118,8 @@ public class ReasoningAnalysisConfiguration : IEntityTypeConfiguration<Reasoning
             t.HasCheckConstraint("ck_reasoning_analyses_override_error_type", "`override_error_type` IS NULL OR `override_error_type` IN ('None', 'Knowledge', 'Skill', 'Reasoning', 'Behavior', 'Presentation', 'Unknown')");
             t.HasCheckConstraint("ck_reasoning_analyses_override_awarded_score", "`override_awarded_score` IS NULL OR `override_awarded_score` >= 0");
             t.HasCheckConstraint("ck_reasoning_analyses_provider", "`provider` IN ('Gemini', 'RuleBased')");
+            t.HasCheckConstraint("ck_reasoning_analyses_solution_type", "`solution_type` IS NULL OR `solution_type` IN ('REFINED', 'CORRECTED', 'GENERATED', 'MODEL_ANSWER')");
+            t.HasCheckConstraint("ck_reasoning_analyses_review_decision", "`review_decision` IS NULL OR `review_decision` IN ('Approved', 'Adjusted')");
         });
 
         builder.HasOne(r => r.Attempt)
@@ -116,5 +135,12 @@ public class ReasoningAnalysisConfiguration : IEntityTypeConfiguration<Reasoning
             .HasPrincipalKey(user => new { user.CenterId, user.UserId })
             .OnDelete(DeleteBehavior.Restrict)
             .HasConstraintName("fk_reasoning_analyses_users_overridden_by_user");
+
+        builder.HasOne(r => r.ReviewedByUser)
+            .WithMany()
+            .HasForeignKey(r => new { r.CenterId, r.ReviewedByUserId })
+            .HasPrincipalKey(user => new { user.CenterId, user.UserId })
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_reasoning_analyses_users_reviewed_by_user");
     }
 }

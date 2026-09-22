@@ -131,6 +131,20 @@ export const StudentLayout: React.FC = () => {
                 </NavLink>
 
                 <NavLink
+                  to={getTabUrl("/hoc-tap/lo-trinh-hoc-tap")}
+                  className={({ isActive }) =>
+                    `relative flex items-center gap-1.5 xl:gap-2 px-3 xl:px-3.5 py-2 rounded-lg text-xs xl:text-sm font-semibold whitespace-nowrap transition-all ${
+                      isActive || location.pathname.startsWith("/hoc-tap/lo-trinh-hoc-tap")
+                        ? "text-[var(--student-brand,#6546D7)] dark:text-[#856BEE] font-bold bg-[var(--student-surface-subtle,#F4F3EE)] dark:bg-[var(--student-surface-subtle,#1C2738)] after:absolute after:bottom-0 after:left-3 after:right-3 after:h-0.5 after:bg-[var(--student-brand,#6546D7)] dark:after:bg-[#856BEE] after:rounded-full"
+                        : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-[var(--student-surface-subtle,#F4F3EE)] dark:hover:bg-[var(--student-surface-subtle,#1C2738)]"
+                    }`
+                  }
+                >
+                  <span className="hidden xl:inline">Lộ trình học tập</span>
+                  <span className="inline xl:hidden">Lộ trình</span>
+                </NavLink>
+
+                <NavLink
                   to={getTabUrl("/hoc-tap/bai-tap")}
                   className={({ isActive }) =>
                     `relative flex items-center gap-1.5 xl:gap-2 px-3 xl:px-3.5 py-2 rounded-lg text-xs xl:text-sm font-semibold whitespace-nowrap transition-all ${
@@ -419,6 +433,13 @@ export const StudentLayout: React.FC = () => {
                   className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-[var(--student-surface-subtle)] hover:text-slate-900 dark:hover:text-white"
                 >
                   <span>Tổng quan</span>
+                </Link>
+                <Link
+                  to={getTabUrl("/hoc-tap/lo-trinh-hoc-tap")}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-[var(--student-surface-subtle)] hover:text-slate-900 dark:hover:text-white"
+                >
+                  <span>Lộ trình học tập</span>
                 </Link>
                 <Link
                   to={getTabUrl("/hoc-tap/bai-tap")}

@@ -77,9 +77,20 @@ public sealed class TwinCompletionOrchestrator : ITwinCompletionOrchestrator
             EffectiveIsCorrect: attempt.IsCorrect,
             AnalysisConfidence: analysis.AnalysisConfidence,
             AnalysisOverrideVersion: analysis.OverrideVersion,
-            DiagnosticReasonCodes: consistency.ReasonCodes);
+            DiagnosticReasonCodes: consistency.ReasonCodes,
+            IsPostFeedback: attempt.IsPostFeedback);
 
-        var decision = _evidenceGate.Evaluate(gateInput);
+        var decision = attempt.Skipped
+            ? new EvidenceGateDecision(
+                gateSource,
+                EvidenceTrustLevel.Reduced,
+                EvidenceDecisionMode.DeterministicOnly,
+                0m,
+                [EvidenceReasonCodes.AttemptSkipped],
+                false,
+                EvidenceGate.CurrentPolicyVersion,
+                analysis.OverrideVersion)
+            : _evidenceGate.Evaluate(gateInput);
         analysis.NeedsTeacherReview = decision.RequiresTeacherReview;
 
         // 2. Persist ReasoningAnalysis and EvidenceAssessment

@@ -417,7 +417,7 @@ export const TeacherStudentTwinView: React.FC = () => {
                   <div>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", marginBottom: "4px" }}>
                       <span style={{ color: "var(--th-text-secondary)" }}>Chuẩn hóa độ tự tin (Calibration):</span>
-                      <span style={{ fontWeight: 700, color: behavior.confidenceCalibration >= 0.7 ? "var(--th-primary)" : "var(--th-amber)" }}>
+                      <span style={{ fontWeight: 700, color: behavior.confidenceCalibration >= 0.7 ? "var(--th-primary)" : "var(--at-secondary)" }}>
                         {Math.round(behavior.confidenceCalibration * 100)}%
                       </span>
                     </div>

@@ -4,3 +4,4 @@ export * from "./TeacherOverlays";
 export * from "./TeacherFilterBar";
 export * from "./TeacherDataTable";
 export * from "./MathFormulaPreview";
+export * from "./QuestionImportModal";

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, Navigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { organizationApi } from "../api/organizationApi";
 import { useAssignment } from "../features/assignments/useAssignment";
@@ -35,6 +35,7 @@ import {
 } from "../components/centerManager/CenterManagerPrimitives";
 import { ConfirmDialog } from "../components/centerManager/CenterManagerOverlays";
 import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
+import { RichMathText } from "../components/math/RichMathText";
 
 const toLocalDateTime = (value: string | null) => {
   if (!value) return "";
@@ -816,7 +817,7 @@ function CenterManagerAssignmentEditorView() {
                             )}
                           </div>
                           <p className="text-sm font-medium text-[var(--cm-text)] line-clamp-2">
-                            {q.questionText}
+                            <RichMathText text={q.questionText} />
                           </p>
                           {q.questionText.includes("\\") && (
                             <div className="pt-1">
@@ -1320,7 +1321,11 @@ function LegacyAssignmentEditorPage() {
 // =============================================================================
 
 export const AssignmentEditorPage = () => {
+  const { id } = useParams<{ id?: string }>();
   const accountType = useAuthStore((state) => state.user?.accountType);
+  if (accountType === "Teacher") {
+    return <Navigate to={id ? `/giao-vien/bai-tap/${id}` : "/giao-vien/bai-tap/tao-moi"} replace />;
+  }
   if (accountType === "CenterManager") {
     return <CenterManagerAssignmentEditorView />;
   }

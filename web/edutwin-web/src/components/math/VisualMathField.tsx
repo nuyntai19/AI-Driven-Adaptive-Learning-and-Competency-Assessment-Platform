@@ -1,6 +1,18 @@
 import { useEffect, useRef, useImperativeHandle, forwardRef, useState } from "react";
 import "mathlive";
 
+interface MathFieldElement extends HTMLElement {
+  readOnly: boolean;
+  value: string;
+  mathVirtualKeyboardPolicy: string;
+  smartFence: boolean;
+  smartSuperscript: boolean;
+  getValue: (format?: string) => string;
+  setValue: (value: string, options?: { silenceNotifications?: boolean }) => void;
+  insert: (value: string, options?: { mode?: string; selectionMode?: string; focus?: boolean }) => void;
+  executeCommand: (command: [string, string]) => void;
+}
+
 export interface VisualMathFieldRef {
   insertAtCursor: (latex: string) => void;
   focus: () => void;
@@ -12,6 +24,7 @@ export interface VisualMathFieldRef {
 export interface VisualMathFieldProps {
   value: string;
   onChange: (value: string) => void;
+  onFocus?: () => void;
   placeholder?: string;
   disabled?: boolean;
   className?: string;
@@ -28,6 +41,7 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
     {
       value,
       onChange,
+      onFocus,
       placeholder = "Nhấp vào đây để nhập công thức hoặc chọn ký hiệu...",
       disabled = false,
       className = "",
@@ -36,16 +50,19 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
     ref
   ) => {
     const containerRef = useRef<HTMLDivElement>(null);
-    const mathfieldRef = useRef<any>(null);
+    const mathfieldRef = useRef<MathFieldElement | null>(null);
     const [isReady, setIsReady] = useState(false);
     const lastEmittedValueRef = useRef<string>(value);
+
+    const onFocusRef = useRef(onFocus);
+    onFocusRef.current = onFocus;
 
     // Initialize Mathfield element inside container
     useEffect(() => {
       if (!containerRef.current) return;
 
       // Create <math-field> instance
-      const mf = document.createElement("math-field") as any;
+      const mf = document.createElement("math-field") as MathFieldElement;
       mf.style.width = "100%";
       mf.style.minHeight = "46px";
       mf.style.fontSize = "1.3rem";
@@ -85,6 +102,10 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
         onChange(currentLatex);
       };
 
+      const handleFocus = () => {
+        onFocusRef.current?.();
+      };
+
       // Keyboard Event Isolation: Prevent arrow keys, Tab, Enter, Space from bubbling up to quiz page
       const handleKeyDown = (e: KeyboardEvent) => {
         e.stopPropagation();
@@ -103,6 +124,8 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
 
       mf.addEventListener("input", handleInput);
       mf.addEventListener("keydown", handleKeyDown);
+      mf.addEventListener("focus", handleFocus);
+      mf.addEventListener("pointerdown", handleFocus);
 
       containerRef.current.innerHTML = "";
       containerRef.current.appendChild(mf);
@@ -116,6 +139,8 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
       return () => {
         mf.removeEventListener("input", handleInput);
         mf.removeEventListener("keydown", handleKeyDown);
+        mf.removeEventListener("focus", handleFocus);
+        mf.removeEventListener("pointerdown", handleFocus);
         if (containerRef.current) {
           containerRef.current.innerHTML = "";
         }
@@ -247,8 +272,14 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
           className={`p-3.5 min-h-[56px] text-slate-900 dark:text-white rounded-b-2xl overflow-x-auto min-w-0 ${
             disabled ? "cursor-default select-text" : "cursor-text bg-white dark:bg-slate-900"
           }`}
+          onPointerDown={() => {
+            if (!disabled) onFocusRef.current?.();
+          }}
           onClick={() => {
-            if (!disabled) mathfieldRef.current?.focus();
+            if (!disabled) {
+              onFocusRef.current?.();
+              mathfieldRef.current?.focus();
+            }
           }}
         />
 

@@ -344,7 +344,21 @@ export const StudentAssignmentsPage: React.FC = () => {
                               {subjectName}
                             </span>
                             {isDone ? (
-                              <StudentBadge variant="success" size="xs">Đã xong</StudentBadge>
+                              <>
+                                <StudentBadge variant="success" size="xs">Đã xong</StudentBadge>
+                                {item.summary && (
+                                  <>
+                                    {item.summary.teacherFinalReviewStatus === "Approved" ? (
+                                      <StudentBadge variant="success" size="xs">GV đã duyệt</StudentBadge>
+                                    ) : (
+                                      <StudentBadge variant="warning" size="xs">GV chưa duyệt</StudentBadge>
+                                    )}
+                                    <span className="text-[10px] font-black text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
+                                      {item.summary.correctQuestionCount}/{item.summary.totalQuestionCount} câu đúng
+                                    </span>
+                                  </>
+                                )}
+                              </>
                             ) : item.progress.status === "Overdue" ? (
                               <StudentBadge variant="danger" size="xs">Quá hạn</StudentBadge>
                             ) : null}

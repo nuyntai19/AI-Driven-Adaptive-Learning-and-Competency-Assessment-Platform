@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate, Link, Navigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getClassDashboard } from "../api/dashboardsApi";
 import { organizationApi } from "../api/organizationApi";
@@ -10,6 +10,11 @@ export const TeacherClassDashboardPage = () => {
   const { classId: routeClassId } = useParams<{ classId?: string }>();
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
+
+  if (user?.accountType === "Teacher") {
+    return <Navigate to={routeClassId ? `/giao-vien/lop-hoc/${routeClassId}` : "/giao-vien/lop-hoc"} replace />;
+  }
+
   const isCenterManager = user?.accountType === "CenterManager";
 
   // Load teacher classes

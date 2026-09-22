@@ -37,7 +37,8 @@ public class ListStudentAssignmentsUseCaseTests
         var sut = new ListStudentAssignmentsUseCase(
             context,
             tenantContext.Object,
-            TimeProvider.System);
+            TimeProvider.System,
+            new AssignmentResultCalculator(context));
 
         var result = await sut.ExecuteAsync(
             new ListStudentAssignmentsQuery(),
@@ -98,7 +99,7 @@ public class ListStudentAssignmentsUseCaseTests
         context.StudentAssignmentProgresses.Add(progress);
         await context.SaveChangesAsync();
 
-        var useCase = new ListStudentAssignmentsUseCase(context, tenantContextMock.Object, TimeProvider.System);
+        var useCase = new ListStudentAssignmentsUseCase(context, tenantContextMock.Object, TimeProvider.System, new AssignmentResultCalculator(context));
         var query = new ListStudentAssignmentsQuery();
 
         // Act
@@ -186,7 +187,7 @@ public class ListStudentAssignmentsUseCaseTests
         context.StudentAssignmentProgresses.AddRange(progress1, progress2);
         await context.SaveChangesAsync();
 
-        var useCase = new ListStudentAssignmentsUseCase(context, tenantContextMock.Object, TimeProvider.System);
+        var useCase = new ListStudentAssignmentsUseCase(context, tenantContextMock.Object, TimeProvider.System, new AssignmentResultCalculator(context));
         var query = new ListStudentAssignmentsQuery { Status = "Overdue" };
 
         // Act

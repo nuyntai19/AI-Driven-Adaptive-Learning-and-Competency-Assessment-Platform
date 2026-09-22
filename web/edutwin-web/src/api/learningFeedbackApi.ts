@@ -5,6 +5,9 @@ import type {
   AnalysisJobStatusDataDto,
   AttemptFeedbackDataDto,
   NextQuestionDataDto,
+  RetryAIAnalysisResponse,
+  CreateStudentReviewRequestDto,
+  StudentReviewRequestDto,
 } from "../types/learning";
 
 interface ApiResponse<T> {
@@ -140,4 +143,24 @@ export const dismissRecommendation = async (
     `/students/me/recommendation/${encodeURIComponent(recommendationId)}/dismiss`,
     { reason: reason?.trim() || null }
   );
+};
+
+export const retryAttemptAIAnalysis = async (
+  attemptId: string | number
+): Promise<RetryAIAnalysisResponse> => {
+  const response = await httpClient.post<ApiResponse<RetryAIAnalysisResponse>>(
+    `/learning/attempts/${encodeURIComponent(attemptId.toString())}/retry-ai`
+  );
+  return response.data.data;
+};
+
+export const createStudentReviewRequest = async (
+  attemptId: string | number,
+  body: CreateStudentReviewRequestDto
+): Promise<StudentReviewRequestDto> => {
+  const response = await httpClient.post<ApiResponse<StudentReviewRequestDto>>(
+    `/learning/attempts/${encodeURIComponent(attemptId.toString())}/review-request`,
+    body
+  );
+  return response.data.data;
 };

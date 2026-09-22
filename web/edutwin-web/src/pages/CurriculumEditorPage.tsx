@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, Navigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { organizationApi } from "../api/organizationApi";
 import { knowledgeGraphApi } from "../api/knowledgeGraphApi";
@@ -1813,7 +1813,11 @@ const LegacyCurriculumEditorPage = () => {
 };
 
 export const CurriculumEditorPage = () => {
+  const { id } = useParams<{ id?: string }>();
   const user = useAuthStore((state) => state.user);
+  if (user?.accountType === "Teacher") {
+    return <Navigate to={id ? `/giao-vien/giao-trinh/${id}` : "/giao-vien/giao-trinh/tao-moi"} replace />;
+  }
   return user?.accountType === "CenterManager" ? (
     <CenterManagerCurriculumEditorView />
   ) : (

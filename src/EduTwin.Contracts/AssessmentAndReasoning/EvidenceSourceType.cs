@@ -4,5 +4,6 @@ public enum EvidenceSourceType
 {
     AI = 1,
     RuleFallback = 2,
-    TeacherOverride = 3
+    TeacherOverride = 3,
+    TeacherApproval = 4
 }

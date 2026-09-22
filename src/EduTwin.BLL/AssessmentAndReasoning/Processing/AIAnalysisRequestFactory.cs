@@ -45,6 +45,7 @@ public sealed class AIAnalysisRequestFactory : IAIAnalysisRequestFactory
             StudentSubmission = new AnalyzeReasoningStudentSubmission
             {
                 FinalAnswer = attempt.FinalAnswer,
+                PreliminaryIsCorrect = attempt.IsCorrect,
                 ReasoningText = attempt.ReasoningText,
                 TimeSpentSeconds = attempt.TimeSpentSeconds,
                 Confidence = attempt.Confidence,

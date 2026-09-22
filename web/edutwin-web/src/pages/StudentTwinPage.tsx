@@ -1,17 +1,24 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getStudentTwin, getStudentTwinHistory } from "../api/digitalTwinApi";
 import { getStudentDashboard } from "../api/dashboardsApi";
 import type { StudentTwinDataDto, TwinUpdateHistoryItemDto } from "../types/digitalTwin";
 import { StudentSubjectRequiredState } from "../components/student/StudentSubjectRequiredState";
 import { getSubjectTheme } from "../components/student/subjectTheme";
 import { StudentSubjectPattern } from "../components/student/StudentSubjectPattern";
+import { organizationApi } from "../api/organizationApi";
+import { mapSafeOperationalError } from "../utils/problemDetails";
 
 export const StudentTwinPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedSubjectId = searchParams.get("subjectId") || "";
   const [historyPage, setHistoryPage] = useState<number>(1);
+  const [isGoalEditorOpen, setIsGoalEditorOpen] = useState(false);
+  const [targetScoreInput, setTargetScoreInput] = useState("8.0");
+  const [remainingDaysInput, setRemainingDaysInput] = useState("90");
+  const [goalError, setGoalError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   const {
     data: twinData,
@@ -30,6 +37,48 @@ export const StudentTwinPage: React.FC = () => {
     queryFn: () => getStudentDashboard(selectedSubjectId),
     enabled: !!selectedSubjectId,
   });
+
+  const studentId = dashboardQuery.data?.student.studentId || "";
+  const goalsQuery = useQuery({
+    queryKey: ["student-subject-goals", studentId],
+    queryFn: () => organizationApi.listStudentSubjectGoals(studentId),
+    enabled: Boolean(studentId),
+  });
+  const currentGoal = goalsQuery.data?.find((item) => item.subjectId === selectedSubjectId);
+
+  useEffect(() => {
+    if (!currentGoal) return;
+    setTargetScoreInput(currentGoal.targetScore.toString());
+    setRemainingDaysInput(currentGoal.remainingDays.toString());
+  }, [currentGoal]);
+
+  const saveGoalMutation = useMutation({
+    mutationFn: () => organizationApi.upsertStudentSubjectGoal(studentId, selectedSubjectId, {
+      targetScore: Number(targetScoreInput),
+      remainingDays: Number(remainingDaysInput),
+      rowVersion: currentGoal?.rowVersion,
+    }),
+    onSuccess: async () => {
+      setGoalError(null);
+      setIsGoalEditorOpen(false);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["student-subject-goals", studentId] }),
+        queryClient.invalidateQueries({ queryKey: ["studentDashboard", selectedSubjectId] }),
+      ]);
+    },
+    onError: (error: unknown) => setGoalError(mapSafeOperationalError(error, "Không thể lưu mục tiêu học tập.")),
+  });
+
+  const handleSaveGoal = () => {
+    const target = Number(targetScoreInput);
+    const days = Number(remainingDaysInput);
+    if (!Number.isFinite(target) || target < 0 || target > 10 || !Number.isInteger(days) || days < 1 || days > 3650) {
+      setGoalError("Điểm mục tiêu phải từ 0 đến 10 và thời hạn phải từ 1 đến 3650 ngày.");
+      return;
+    }
+    setGoalError(null);
+    saveGoalMutation.mutate();
+  };
 
   const {
     data: historyData,
@@ -123,7 +172,7 @@ export const StudentTwinPage: React.FC = () => {
     progressLine.length > 1
       ? progressLine[progressLine.length - 1].overallSubjectMastery -
         progressLine[progressLine.length - 2].overallSubjectMastery
-      : 3.2;
+      : 0;
 
   const historyPageSize = 8;
   const historyTotalPages = Math.max(1, Math.ceil((historyData?.length ?? 0) / historyPageSize));
@@ -168,8 +217,55 @@ export const StudentTwinPage: React.FC = () => {
           >
             <span>Luyện tập ngay →</span>
           </Link>
+          <button
+            type="button"
+            onClick={() => setIsGoalEditorOpen((open) => !open)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 font-semibold text-indigo-800 hover:bg-indigo-100 dark:border-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-200"
+          >
+            {currentGoal ? "Sửa mục tiêu" : "Đặt mục tiêu"}
+          </button>
         </div>
       </div>
+
+      {isGoalEditorOpen && (
+        <div className="rounded-2xl border border-indigo-200 bg-indigo-50/70 p-4 dark:border-indigo-800 dark:bg-indigo-950/30">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <label className="flex-1 text-xs font-semibold text-stone-700 dark:text-stone-200">
+              Điểm mục tiêu (0–10)
+              <input
+                type="number"
+                min="0"
+                max="10"
+                step="0.1"
+                value={targetScoreInput}
+                onChange={(event) => setTargetScoreInput(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-stone-900 outline-none focus:border-indigo-500 dark:border-stone-600 dark:bg-slate-900 dark:text-white"
+              />
+            </label>
+            <label className="flex-1 text-xs font-semibold text-stone-700 dark:text-stone-200">
+              Thời hạn (ngày)
+              <input
+                type="number"
+                min="1"
+                max="3650"
+                step="1"
+                value={remainingDaysInput}
+                onChange={(event) => setRemainingDaysInput(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-stone-900 outline-none focus:border-indigo-500 dark:border-stone-600 dark:bg-slate-900 dark:text-white"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={handleSaveGoal}
+              disabled={saveGoalMutation.isPending}
+              className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {saveGoalMutation.isPending ? "Đang lưu..." : "Lưu mục tiêu của tôi"}
+            </button>
+          </div>
+          {goalError && <p className="mt-2 text-xs font-medium text-rose-700 dark:text-rose-300">{goalError}</p>}
+        </div>
+      )}
 
       {/* 2. Visual Signature: CURRENT vs TARGET (Bản đồ tiến trình lớn) */}
       <div className="relative rounded-2xl border border-stone-200/90 dark:border-stone-800/90 p-6 sm:p-8 bg-white dark:bg-[#151d2f] shadow-xs overflow-hidden">
@@ -214,8 +310,8 @@ export const StudentTwinPage: React.FC = () => {
                   className="text-3xl sm:text-4xl font-extrabold font-mono"
                   style={{ color: subjectTheme.color }}
                 >
-                  {goal.targetScore.toFixed(1)}
-                  <span className="text-sm text-stone-400 font-normal"> / 10</span>
+                  {goal.hasGoal ? goal.targetScore.toFixed(1) : "—"}
+                  {goal.hasGoal && <span className="text-sm text-stone-400 font-normal"> / 10</span>}
                 </span>
               </div>
             </div>
@@ -238,17 +334,17 @@ export const StudentTwinPage: React.FC = () => {
                 }}
               />
               {/* Target Node */}
-              <div
-                className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border-2 border-stone-400 dark:border-stone-500 bg-white dark:bg-stone-900 shadow-2xs"
-                style={{
-                  left: `calc(${Math.min(100, (goal.targetScore / 10) * 100)}% - 8px)`,
-                }}
-              />
+              {goal.hasGoal && (
+                <div
+                  className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border-2 border-stone-400 dark:border-stone-500 bg-white dark:bg-stone-900 shadow-2xs"
+                  style={{ left: `calc(${Math.min(100, (goal.targetScore / 10) * 100)}% - 8px)` }}
+                />
+              )}
             </div>
 
             <div className="flex items-center justify-between text-xs text-stone-500 dark:text-stone-400 pt-1">
-              <span>Còn lại: {goal.remainingDays} ngày</span>
-              <span>Cần thêm: +{(goal.targetScore - goal.currentPredictedScore).toFixed(1)} điểm</span>
+              <span>{goal.hasGoal ? `Còn lại: ${goal.remainingDays} ngày` : "Bạn chưa đặt mục tiêu cho môn này"}</span>
+              <span>{goal.hasGoal ? `Cần thêm: +${(goal.targetScore - goal.currentPredictedScore).toFixed(1)} điểm` : "Hãy chọn Đặt mục tiêu"}</span>
             </div>
           </div>
         </div>
@@ -458,6 +554,16 @@ export const StudentTwinPage: React.FC = () => {
                     </span>
                   </div>
                   <p className="mt-0.5 text-stone-500 dark:text-stone-400">{item.explanation}</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                    <span className="rounded-md border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 font-semibold text-indigo-800 dark:border-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-200">
+                      {item.learningContext === "Assignment" ? `Bài tập: ${item.contextLabel}` : item.contextLabel}
+                    </span>
+                    {item.questionText && (
+                      <span className="max-w-2xl truncate text-stone-600 dark:text-stone-300" title={item.questionText}>
+                        Câu hỏi: {item.questionText}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-3 text-right shrink-0">
@@ -501,18 +607,18 @@ export const StudentTwinPage: React.FC = () => {
               type="button"
               onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
               disabled={historyPage <= 1}
-              className="rounded-lg bg-stone-100 dark:bg-stone-800 px-3 py-1 font-medium text-stone-700 dark:text-stone-300 hover:bg-stone-200 disabled:opacity-40 cursor-pointer"
+              className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 font-semibold text-stone-800 shadow-xs hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-100 dark:hover:bg-stone-700 cursor-pointer"
             >
               ← Trang trước
             </button>
-            <span className="text-stone-400">
+            <span className="rounded-md bg-stone-100 px-2.5 py-1 font-semibold text-stone-700 dark:bg-stone-800 dark:text-stone-200">
               Trang {historyPage} / {historyTotalPages}
             </span>
             <button
               type="button"
               onClick={() => setHistoryPage((p) => Math.min(historyTotalPages, p + 1))}
               disabled={historyPage >= historyTotalPages}
-              className="rounded-lg bg-stone-100 dark:bg-stone-800 px-3 py-1 font-medium text-stone-700 dark:text-stone-300 hover:bg-stone-200 disabled:opacity-40 cursor-pointer"
+              className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 font-semibold text-stone-800 shadow-xs hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-100 dark:hover:bg-stone-700 cursor-pointer"
             >
               Trang sau →
             </button>

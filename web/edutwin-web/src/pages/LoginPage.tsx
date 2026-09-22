@@ -260,7 +260,7 @@ export const LoginPage = () => {
       return <Navigate to="/hoc-tap/tong-quan" replace />;
     }
     if (user?.accountType === "Teacher") {
-      return <Navigate to="/quan-ly/tong-quan-lop-hoc" replace />;
+      return <Navigate to="/giao-vien/lop-hoc" replace />;
     }
     return <Navigate to="/" replace />;
   }
@@ -292,7 +292,7 @@ export const LoginPage = () => {
       } else if (currentUser?.accountType === "Student") {
         navigate("/hoc-tap/tong-quan", { replace: true });
       } else if (currentUser?.accountType === "Teacher") {
-        navigate("/quan-ly/tong-quan-lop-hoc", { replace: true });
+        navigate("/giao-vien/lop-hoc", { replace: true });
       } else {
         navigate("/", { replace: true });
       }

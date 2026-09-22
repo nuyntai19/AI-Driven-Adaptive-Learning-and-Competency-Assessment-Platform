@@ -36,6 +36,7 @@ public sealed class SubjectBasicInfoDto
 
 public sealed class StudentGoalSummaryDto
 {
+    public bool HasGoal { get; set; }
     public decimal TargetScore { get; set; }
     public uint RemainingDays { get; set; }
     public decimal CurrentPredictedScore { get; set; }

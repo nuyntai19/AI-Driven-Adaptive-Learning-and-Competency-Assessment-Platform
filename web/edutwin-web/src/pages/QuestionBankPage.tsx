@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Navigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   useQuestions,
@@ -29,6 +29,8 @@ import {
 } from "../components/centerManager/CenterManagerPrimitives";
 import { ConfirmDialog } from "../components/centerManager/CenterManagerOverlays";
 import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
+import { RichMathText } from "../components/math/RichMathText";
+import { QuestionImportModal } from "../components/teacher/QuestionImportModal";
 
 // =============================================================================
 // 1. CENTER MANAGER DARK SAAS VIEW (GATE 6B)
@@ -62,6 +64,7 @@ function CenterManagerQuestionBankView() {
   // Dialog states for state machine transitions
   const [targetQuestion, setTargetQuestion] = useState<Question | null>(null);
   const [dialogAction, setDialogAction] = useState<"activate" | "archive" | "delete" | null>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
 
   // Canonical subject list query
   const {
@@ -204,14 +207,25 @@ function CenterManagerQuestionBankView() {
           ]}
           actions={
             canCreate ? (
-              <button
-                type="button"
-                id="btn-create-question"
-                onClick={() => navigate("/quan-ly/cau-hoi/tao-moi")}
-                className="cm-primary-button flex items-center gap-2"
-              >
-                <span>+ Tạo câu hỏi mới</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  id="btn-import-questions"
+                  onClick={() => setIsImportModalOpen(true)}
+                  className="cm-secondary-button flex items-center gap-2"
+                >
+                  <span>📥</span>
+                  <span>Nhập từ Excel / CSV</span>
+                </button>
+                <button
+                  type="button"
+                  id="btn-create-question"
+                  onClick={() => navigate("/quan-ly/cau-hoi/tao-moi")}
+                  className="cm-primary-button flex items-center gap-2"
+                >
+                  <span>+ Tạo câu hỏi mới</span>
+                </button>
+              </div>
             ) : null
           }
         />
@@ -426,7 +440,7 @@ function CenterManagerQuestionBankView() {
 
                     {/* Question text with KaTeX preview support */}
                     <div className="text-sm font-medium text-[var(--cm-text)] line-clamp-3">
-                      {q.questionText}
+                      <RichMathText text={q.questionText} />
                     </div>
                     {q.questionText.includes("\\") && (
                       <div className="text-xs">
@@ -594,6 +608,16 @@ function CenterManagerQuestionBankView() {
           onConfirm={handleConfirmAction}
           onClose={handleCloseDialog}
         />
+
+        <QuestionImportModal
+          isOpen={isImportModalOpen}
+          onClose={() => setIsImportModalOpen(false)}
+          onSuccess={() => {
+            setIsImportModalOpen(false);
+            refetch();
+            setActionSuccess("Nhập danh sách câu hỏi thành công!");
+          }}
+        />
       </div>
     </CenterManagerThemeScope>
   );
@@ -759,7 +783,9 @@ function LegacyQuestionBankPage() {
                     {question.status}
                   </span>
                 </div>
-                <h3 className="font-medium text-slate-800 line-clamp-2 mb-3">{question.questionText}</h3>
+                <h3 className="font-medium text-slate-800 line-clamp-2 mb-3">
+                  <RichMathText text={question.questionText} />
+                </h3>
 
                 <div className="flex flex-wrap gap-3 text-xs text-slate-500 mb-4">
                   <div className="flex items-center gap-1">
@@ -818,6 +844,9 @@ function LegacyQuestionBankPage() {
 
 export const QuestionBankPage = () => {
   const accountType = useAuthStore((state) => state.user?.accountType);
+  if (accountType === "Teacher") {
+    return <Navigate to="/giao-vien/cau-hoi" replace />;
+  }
   if (accountType === "CenterManager") {
     return <CenterManagerQuestionBankView />;
   }

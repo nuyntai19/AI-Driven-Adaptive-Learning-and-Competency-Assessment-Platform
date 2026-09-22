@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using EduTwin.DAL.Persistence.Models;
 using EduTwin.DAL.Organization;
 using EduTwin.DAL.AssessmentAndReasoning;
@@ -17,6 +18,11 @@ public class LearningPath : IMutableTenantAggregate
     public LearningPathStatus Status { get; set; }
     public ulong? GeneratedFromAttemptId { get; set; }
     public DateTime GeneratedAt { get; set; }
+    public JsonDocument? PlanJson { get; set; }
+    public string? RecommendationRationale { get; set; }
+    public string PlanSchemaVersion { get; set; } = "2.0";
+    public string GenerationStatus { get; set; } = "Ready";
+    public string? AdaptationMessage { get; set; }
 
     public Guid CenterId { get; set; }
     public DateTime CreatedAt { get; set; }

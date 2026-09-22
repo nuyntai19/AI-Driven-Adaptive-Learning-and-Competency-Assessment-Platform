@@ -270,6 +270,7 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
                         OptionText = optInput.OptionText,
                         IsCorrect = optInput.IsCorrect,
                         OrderIndex = optInput.OrderIndex,
+                        Misconception = optInput.Misconception,
                         CreatedAt = now,
                         CreatedBy = actorId,
                         UpdatedAt = now,

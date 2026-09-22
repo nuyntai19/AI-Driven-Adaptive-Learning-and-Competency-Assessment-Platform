@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { StudentAssignmentQuestionDto } from "../src/types/assignments.ts";
+import {
+  isFeedbackForQuestion,
+  resolveQuestionReviewAttemptId,
+} from "../src/utils/questionReview.ts";
 
 interface StoredAnswer {
   finalAnswer: string;
@@ -197,4 +201,65 @@ test("Student submitted assignment review - submitted question overrides stale d
     "Submitted question should use authoritative backend reasoning instead of stale draft"
   );
   assert.equal(result.isReadOnly, true);
+});
+
+test("question review resolves the persisted attempt for each question independently", () => {
+  const questions: StudentAssignmentQuestionDto[] = [
+    {
+      questionId: "10001",
+      questionType: "MultipleChoice",
+      difficulty: 1,
+      questionText: "Question one",
+      estimatedTimeSeconds: 60,
+      reasoningRequired: false,
+      languageCode: "vi",
+      submittedAttemptId: "501",
+      submittedAnswer: "A",
+      attemptStatus: "Completed",
+    },
+    {
+      questionId: "10002",
+      questionType: "Essay",
+      difficulty: 2,
+      questionText: "Question two",
+      estimatedTimeSeconds: 120,
+      reasoningRequired: true,
+      languageCode: "vi",
+      submittedAttemptId: "502",
+      submittedAnswer: "Second answer",
+      attemptStatus: "NeedsTeacherReview",
+    },
+  ];
+
+  assert.equal(resolveQuestionReviewAttemptId(questions[0]), "501");
+  assert.equal(resolveQuestionReviewAttemptId(questions[1]), "502");
+  assert.equal(isFeedbackForQuestion(questions[0].questionId, "10001"), true);
+  assert.equal(isFeedbackForQuestion(questions[0].questionId, "10002"), false);
+});
+
+test("question review falls back to latestAttempt after refresh without frontend draft state", () => {
+  const question: StudentAssignmentQuestionDto = {
+    questionId: "10003",
+    questionType: "Essay",
+    difficulty: 3,
+    questionText: "Persisted question",
+    estimatedTimeSeconds: 180,
+    reasoningRequired: true,
+    languageCode: "vi",
+    attemptStatus: "Completed",
+    submittedAttemptId: null,
+    latestAttempt: {
+      attemptId: "7003",
+      status: "Completed",
+      finalAnswer: "Persisted answer",
+      reasoningText: "Persisted reasoning",
+      confidence: 85,
+      timeSpentSeconds: 90,
+      answerChanges: 1,
+      skipped: false,
+      submittedAt: "2026-09-20T00:00:00Z",
+    },
+  };
+
+  assert.equal(resolveQuestionReviewAttemptId(question), "7003");
 });

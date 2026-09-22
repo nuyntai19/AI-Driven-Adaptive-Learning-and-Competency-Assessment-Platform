@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   buildAttemptSessionKey,
   clearAttemptSessionId,
+  clearUserAttemptSessionIds,
   getOrCreateAttemptSessionId,
   type SessionStorageLike,
 } from "../src/utils/attemptSessionStorage.ts";
@@ -20,6 +21,14 @@ class MemorySessionStorage implements SessionStorageLike {
 
   removeItem(key: string): void {
     this.values.delete(key);
+  }
+
+  get length(): number {
+    return this.values.size;
+  }
+
+  key(index: number): string | null {
+    return [...this.values.keys()][index] ?? null;
   }
 }
 
@@ -49,4 +58,21 @@ test("clearing a successful attempt session allows only a new submission identit
   clearAttemptSessionId(scope, storage);
 
   assert.equal(getOrCreateAttemptSessionId(scope, storage, () => "submission-new"), "submission-new");
+});
+
+test("account switch clears only the outgoing student's attempt identities", () => {
+  const storage = new MemorySessionStorage();
+  const firstQuestion = scope;
+  const secondQuestion = { ...scope, questionId: "question-43" };
+  const otherStudent = { ...scope, userId: "student-b" };
+
+  getOrCreateAttemptSessionId(firstQuestion, storage, () => "student-a-first");
+  getOrCreateAttemptSessionId(secondQuestion, storage, () => "student-a-second");
+  getOrCreateAttemptSessionId(otherStudent, storage, () => "student-b-first");
+
+  clearUserAttemptSessionIds(scope.centerId, scope.userId, storage);
+
+  assert.equal(storage.getItem(buildAttemptSessionKey(firstQuestion)), null);
+  assert.equal(storage.getItem(buildAttemptSessionKey(secondQuestion)), null);
+  assert.equal(storage.getItem(buildAttemptSessionKey(otherStudent)), "student-b-first");
 });

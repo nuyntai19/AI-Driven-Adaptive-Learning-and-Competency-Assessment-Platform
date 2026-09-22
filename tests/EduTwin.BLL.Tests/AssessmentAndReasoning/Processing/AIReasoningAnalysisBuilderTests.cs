@@ -71,6 +71,42 @@ public sealed class AIReasoningAnalysisBuilderTests
         Assert.Throws<ArgumentNullException>(() => builder.Build(Guid.NewGuid(), 1, null!, DateTime.UtcNow));
     }
 
+    [Fact]
+    public void Build_CorrectDeterministicGrade_CannotBeContradictedByAiResponse()
+    {
+        var response = ValidResponse() with
+        {
+            ErrorType = ErrorType.Reasoning,
+            Misconception = "AI incorrectly claims an error",
+            MissingSteps = ["missing"],
+            RootCauseNodeIds = ["42"],
+            Feedback = "Incorrect answer."
+        };
+
+        var analysis = new AIReasoningAnalysisBuilder().Build(
+            Guid.NewGuid(), 7, response, DateTime.UtcNow, true, "vi");
+
+        Assert.Equal(ErrorType.None, analysis.ErrorType);
+        Assert.Null(analysis.Misconception);
+        Assert.Empty(analysis.MissingSteps.RootElement.EnumerateArray());
+        Assert.Empty(analysis.RootCauseNodeIds.RootElement.EnumerateArray());
+        Assert.Contains("chấm đúng", analysis.Feedback, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Incorrect", analysis.Feedback, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Build_IncorrectDeterministicGrade_CannotBeChangedToNoErrorByAiResponse()
+    {
+        var response = ValidResponse() with { ErrorType = ErrorType.None, Feedback = "Correct." };
+
+        var analysis = new AIReasoningAnalysisBuilder().Build(
+            Guid.NewGuid(), 8, response, DateTime.UtcNow, false, "vi");
+
+        Assert.Equal(ErrorType.Unknown, analysis.ErrorType);
+        Assert.Contains("chưa đúng", analysis.Feedback, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Correct", analysis.Feedback, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static AnalyzeReasoningResponse ValidResponse() => new()
     {
         SchemaVersion = AIAnalysisContract.SchemaVersion,

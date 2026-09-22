@@ -102,19 +102,35 @@ exit /b 0
 :: -----------------------------------------------------------------------------
 :SHOW_DEMO_ACCOUNTS
 echo.
-echo --------------------------------------------------------------------------------
-echo                       PRE-SEEDED DEMO ACCOUNTS FOR LOGIN
-echo --------------------------------------------------------------------------------
-echo   Role            Center Code   Username          Default Password
-echo   -------------   -----------   ---------------   ----------------
-echo   Platform Admin  PLATFORM      platform.admin    PlatformAdmin123!
-echo   Center Manager  EDUTWIN_A     manager           SeedPassword123!
-echo   Math Teacher    EDUTWIN_A     teacher.math      SeedPassword123!
-echo   English Teacher EDUTWIN_A     teacher.english   SeedPassword123!
-echo   Student 01      EDUTWIN_A     student01         SeedPassword123!
-echo   Student 02..05  EDUTWIN_A     student02..05     SeedPassword123!
-echo   Center B Users  EDUTWIN_B     manager, teacher* SeedPassword123!
-echo --------------------------------------------------------------------------------
+echo ================================================================================
+echo                         PRE-SEEDED ACCOUNTS FOR LOGIN
+echo ================================================================================
+echo   [1] PLATFORM ROOT TENANT (Center Code: PLATFORM)
+echo       - Role: Platform Admin
+echo         Username: platform.admin      Password: PlatformAdmin123!
+echo.
+echo   [2] CENTER A (Center Code: EDUTWIN_A - Trung tam EduTwin A)
+echo       - Role: Center Manager
+echo         Username: manager             Password: SeedPassword123!
+echo       - Role: Math Teacher
+echo         Username: teacher.math        Password: SeedPassword123!
+echo       - Role: English Teacher
+echo         Username: teacher.english     Password: SeedPassword123!
+echo       - Role: Students (5 students)
+echo         Usernames: student01, student02, student03, student04, student05
+echo         Password:  SeedPassword123!
+echo.
+echo   [3] CENTER B (Center Code: EDUTWIN_B - Trung tam EduTwin B)
+echo       - Role: Center Manager
+echo         Username: manager             Password: SeedPassword123!
+echo       - Role: Math Teacher
+echo         Username: teacher.math        Password: SeedPassword123!
+echo       - Role: English Teacher
+echo         Username: teacher.english     Password: SeedPassword123!
+echo       - Role: Students (5 students)
+echo         Usernames: student01, student02, student03, student04, student05
+echo         Password:  SeedPassword123!
+echo ================================================================================
 echo.
 exit /b 0
 

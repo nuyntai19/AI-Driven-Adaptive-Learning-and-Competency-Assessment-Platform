@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { organizationApi } from "../api/organizationApi";
 import type { UserStatus } from "../types/auth";
 import type {
@@ -2121,6 +2121,9 @@ const LegacyStudentListPage: React.FC = () => {
 
 export const StudentListPage: React.FC = () => {
   const user = useAuthStore((state) => state.user);
+  if (user?.accountType === "Teacher") {
+    return <Navigate to="/giao-vien/lop-hoc" replace />;
+  }
   return user?.accountType === "CenterManager" ? (
     <CenterManagerStudentListView />
   ) : (

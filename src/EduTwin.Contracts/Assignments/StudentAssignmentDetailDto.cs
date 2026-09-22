@@ -18,4 +18,5 @@ public class StudentAssignmentDetailDto
     public StudentAssignmentProgressDto Progress { get; set; } = new();
     public List<StudentQuestionDto> Questions { get; set; } = new();
     public bool CanRetake { get; set; }
+    public AssignmentResultSummaryDto? Summary { get; set; }
 }

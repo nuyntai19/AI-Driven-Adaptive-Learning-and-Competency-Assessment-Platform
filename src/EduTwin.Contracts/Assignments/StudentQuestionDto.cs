@@ -12,6 +12,7 @@ public class StudentQuestionDto
     public int EstimatedTimeSeconds { get; set; }
     public bool ReasoningRequired { get; set; }
     public string LanguageCode { get; set; } = string.Empty;
+    public string AnswerEvaluationMode { get; set; } = string.Empty;
     public List<StudentQuestionOptionDto> Options { get; set; } = new();
     public string? AttemptStatus { get; set; }
     public StudentQuestionAttemptDto? LatestAttempt { get; set; }
@@ -19,4 +20,5 @@ public class StudentQuestionDto
     public string? SubmittedReasoning { get; set; }
     public ulong? SubmittedAttemptId { get; set; }
     public bool HasAttachment { get; set; }
+    public bool? EffectiveIsCorrect { get; set; }
 }

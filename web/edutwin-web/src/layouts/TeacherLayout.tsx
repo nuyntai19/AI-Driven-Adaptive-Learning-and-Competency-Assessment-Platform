@@ -114,30 +114,30 @@ function initials(displayName?: string, username?: string) {
 function RetroHeaderTokens() {
   return (
     <div className="flex items-center gap-2.5">
-      {/* Green 4-petal flower icon */}
+      {/* Cyan/Teal 4-petal flower icon */}
       <svg className="h-8 w-8 drop-shadow-sm" viewBox="0 0 36 36" fill="none" aria-hidden="true">
-        <circle cx="13" cy="13" r="6" fill="#a3e635" />
-        <circle cx="23" cy="13" r="6" fill="#a3e635" />
-        <circle cx="13" cy="23" r="6" fill="#a3e635" />
-        <circle cx="23" cy="23" r="6" fill="#a3e635" />
-        <circle cx="18" cy="18" r="4.5" fill="#ecfccb" />
+        <circle cx="13" cy="13" r="6" fill="#06b6d4" />
+        <circle cx="23" cy="13" r="6" fill="#06b6d4" />
+        <circle cx="13" cy="23" r="6" fill="#06b6d4" />
+        <circle cx="23" cy="23" r="6" fill="#06b6d4" />
+        <circle cx="18" cy="18" r="4.5" fill="#cffafe" />
       </svg>
 
-      {/* Yellow donut icon */}
+      {/* Ice Cyan donut icon */}
       <svg className="h-8 w-8 drop-shadow-sm" viewBox="0 0 36 36" fill="none" aria-hidden="true">
-        <circle cx="18" cy="18" r="11" fill="#F9F2AB" />
-        <circle cx="18" cy="18" r="4.5" fill="#ff946f" />
+        <circle cx="18" cy="18" r="11" fill="#e0f2fe" />
+        <circle cx="18" cy="18" r="4.5" fill="#0284c7" />
       </svg>
 
-      {/* Sky-blue daisy icon */}
+      {/* Ocean Blue daisy icon */}
       <svg className="h-8 w-8 drop-shadow-sm" viewBox="0 0 36 36" fill="none" aria-hidden="true">
-        <circle cx="18" cy="10" r="5" fill="#7dd3fc" />
-        <circle cx="25.5" cy="15.5" r="5" fill="#7dd3fc" />
-        <circle cx="22.5" cy="24.5" r="5" fill="#7dd3fc" />
-        <circle cx="13.5" cy="24.5" r="5" fill="#7dd3fc" />
-        <circle cx="10.5" cy="15.5" r="5" fill="#7dd3fc" />
+        <circle cx="18" cy="10" r="5" fill="#38bdf8" />
+        <circle cx="25.5" cy="15.5" r="5" fill="#38bdf8" />
+        <circle cx="22.5" cy="24.5" r="5" fill="#38bdf8" />
+        <circle cx="13.5" cy="24.5" r="5" fill="#38bdf8" />
+        <circle cx="10.5" cy="15.5" r="5" fill="#38bdf8" />
         <circle cx="18" cy="18" r="4.5" fill="#ffffff" />
-        <circle cx="18" cy="18" r="2.5" fill="#F9F2AB" />
+        <circle cx="18" cy="18" r="2.5" fill="#0284c7" />
       </svg>
     </div>
   );
@@ -168,10 +168,10 @@ function TeacherNavCards({
               className="group block rounded-2xl bg-white p-4 text-slate-900 shadow-md transition-all duration-200 hover:shadow-lg"
             >
               <div className="flex items-start justify-between gap-2">
-                <span className="text-base font-extrabold tracking-tight text-slate-900 group-hover:text-amber-700 transition-colors">
+                <span className="text-base font-extrabold tracking-tight text-slate-900 group-hover:text-sky-700 transition-colors">
                   {item.label}
                 </span>
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#F9F2AB] text-[11px] font-bold text-slate-950 shadow-inner">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--th-nav-card-inactive)] text-[11px] font-bold text-sky-950 shadow-inner">
                   {itemNumber}
                 </span>
               </div>
@@ -192,14 +192,14 @@ function TeacherNavCards({
             key={item.to}
             to={item.to}
             onClick={onNavigate}
-            className="group flex items-center justify-between rounded-2xl bg-[#F9F2AB] px-4 py-3 text-slate-950 shadow-sm transition-all duration-150 hover:bg-[#fff9bf] hover:shadow hover:-translate-y-0.5 active:translate-y-0"
+            className="group flex items-center justify-between rounded-2xl bg-[var(--th-nav-card-inactive)] px-4 py-3 text-[var(--th-nav-text-dark)] shadow-sm transition-all duration-150 hover:bg-[var(--th-nav-card-inactive-hover)] hover:shadow hover:-translate-y-0.5 active:translate-y-0"
           >
             <div className="flex items-center gap-2 min-w-0 pr-2">
-              <span className="text-sm font-extrabold tracking-tight truncate text-slate-950">
+              <span className="text-sm font-extrabold tracking-tight truncate text-[var(--th-nav-text-dark)]">
                 {item.label}
               </span>
             </div>
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-black/15 bg-black/5 text-[11px] font-bold text-slate-900">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-black/15 bg-black/5 text-[11px] font-bold text-[var(--th-nav-text-dark)]">
               {itemNumber}
             </span>
           </Link>
@@ -296,7 +296,7 @@ export function TeacherLayout() {
           <RetroHeaderTokens />
           <div className="mt-3">
             <h2 className="text-xl font-black tracking-tight text-white drop-shadow-sm">EduTwin</h2>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-100/90">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-100/90">
               Teacher Workspace
             </p>
           </div>
@@ -322,7 +322,7 @@ export function TeacherLayout() {
           <button
             type="button"
             onClick={() => setCenterModalOpen(true)}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#18181b] px-4 py-2.5 text-xs font-bold text-white shadow-lg transition-transform duration-150 hover:bg-black hover:scale-[1.02] active:scale-[0.98]"
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#0f172a] px-4 py-2.5 text-xs font-bold text-white shadow-lg transition-transform duration-150 hover:bg-slate-900 hover:scale-[1.02] active:scale-[0.98]"
           >
             <span>🏫</span>
             <span className="truncate">{centerName}</span>
@@ -355,10 +355,10 @@ export function TeacherLayout() {
   return (
     <TeacherThemeScope data-actor="teacher">
       <div className="flex min-h-screen bg-[var(--th-bg)] text-[var(--th-text)]">
-        {/* Desktop Sidebar with Coral Orange Retro Theme */}
+        {/* Desktop Sidebar with Cool Tone Theme */}
         <aside
           aria-label="Thanh điều hướng Giáo viên"
-          className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:block lg:w-80 bg-[#ff946f] shadow-2xl overflow-y-auto"
+          className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:block lg:w-80 bg-[var(--th-sidebar-bg)] shadow-2xl overflow-y-auto"
         >
           {sidebarContent}
         </aside>
@@ -374,7 +374,7 @@ export function TeacherLayout() {
               role="dialog"
               aria-modal="true"
               aria-label="Menu điều hướng giáo viên"
-              className="w-80 max-w-[85vw] bg-[#ff946f] shadow-2xl overflow-y-auto"
+              className="w-80 max-w-[85vw] bg-[var(--th-sidebar-bg)] shadow-2xl overflow-y-auto"
             >
               <div className="p-3 flex justify-end">
                 <button
@@ -405,7 +405,7 @@ export function TeacherLayout() {
                 ☰
               </button>
               <div className="flex items-center gap-2.5">
-                <span className="hidden sm:inline-flex items-center rounded-lg bg-amber-500/10 px-2 py-1 text-xs font-bold text-amber-700 dark:text-amber-300">
+                <span className="hidden sm:inline-flex items-center rounded-lg bg-sky-500/10 px-2 py-1 text-xs font-bold text-sky-700 dark:text-sky-300">
                   {activeItem?.icon ?? "🎓"} Không gian Sư phạm
                 </span>
                 <span className="hidden sm:inline text-xs text-[var(--th-text-muted)]">/</span>
@@ -430,7 +430,7 @@ export function TeacherLayout() {
                   aria-expanded={profileOpen}
                   aria-haspopup="menu"
                 >
-                  <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#ff946f] text-xs font-bold text-white shadow-sm">
+                  <span className="grid h-8 w-8 place-items-center rounded-lg bg-[var(--at-accent)] text-xs font-bold text-white shadow-sm">
                     {initials(user?.displayName, user?.username)}
                   </span>
                   <div className="hidden text-xs md:block">
@@ -450,7 +450,7 @@ export function TeacherLayout() {
                     <div className="p-3 border-b border-[var(--th-border-subtle)] text-xs">
                       <p className="font-bold text-[var(--th-text)]">{user?.displayName}</p>
                       <p className="text-[11px] text-[var(--th-text-muted)] mt-0.5">@{user?.username}</p>
-                      <p className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold mt-1">
+                      <p className="text-[10px] text-sky-600 dark:text-sky-400 font-semibold mt-1">
                         {centerName}
                       </p>
                     </div>
@@ -500,7 +500,7 @@ export function TeacherLayout() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3">
-              <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#ff946f] text-xl font-bold text-white shadow-md">
+              <span className="grid h-10 w-10 place-items-center rounded-xl bg-[var(--at-accent)] text-xl font-bold text-white shadow-md">
                 🏫
               </span>
               <div>
@@ -522,7 +522,7 @@ export function TeacherLayout() {
               </div>
               <div className="flex justify-between">
                 <span className="text-[var(--th-text-muted)]">Vai trò của bạn:</span>
-                <span className="font-semibold text-amber-500">Giáo viên (Teacher)</span>
+                <span className="font-semibold text-sky-600 dark:text-sky-400">Giáo viên (Teacher)</span>
               </div>
             </div>
 

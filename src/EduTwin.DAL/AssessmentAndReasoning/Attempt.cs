@@ -27,6 +27,11 @@ public class Attempt : ITenantAppendOnlyEntity, IHasRowVersion
     public Guid ClientSubmissionId { get; set; }
     public string? AnswerDisplayLatex { get; set; }
 
+    public byte ManualRetryCount { get; set; }
+    public DateTime? LastManualRetryAt { get; set; }
+    public DateTime? SolutionExposedAt { get; set; }
+    public bool IsPostFeedback { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public Guid? CreatedBy { get; set; }
     public DateTime UpdatedAt { get; set; }

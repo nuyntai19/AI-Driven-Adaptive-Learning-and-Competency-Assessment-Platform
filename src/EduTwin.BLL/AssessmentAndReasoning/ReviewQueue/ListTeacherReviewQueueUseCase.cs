@@ -1,9 +1,12 @@
 using System.Globalization;
+using System.Linq.Expressions;
 using EduTwin.BLL.AssessmentAndReasoning.Evidence;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
+using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.Contracts.Organization;
+using EduTwin.DAL.AssessmentAndReasoning;
 using EduTwin.DAL.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -80,7 +83,13 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
             .AsNoTracking()
             .Where(evidence =>
                 evidence.CenterId == centerId &&
-                evidence.RequiresTeacherReview &&
+                (evidence.RequiresTeacherReview || _dbContext.StudentAssignmentProgresses.Any(progress =>
+                    progress.CenterId == centerId &&
+                    progress.AssignmentId == evidence.Attempt.AssignmentId &&
+                    progress.StudentId == evidence.Attempt.StudentId &&
+                    progress.Status == ProgressStatus.Completed &&
+                    progress.TeacherFinalReviewStatus == TeacherFinalReviewStatus.Pending &&
+                    !progress.IsDeleted)) &&
                 evidence.AnalysisId.HasValue &&
                 evidence.Analysis != null &&
                 evidence.AnalysisOverrideVersion == evidence.Analysis.OverrideVersion &&
@@ -121,23 +130,57 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
                 .ThenInclude(attempt => attempt.Question)
             .ToListAsync(cancellationToken);
 
-        var data = entities.Select(evidence => new TeacherReviewQueueItemDto
+        var attemptIds = entities.Select(e => e.AttemptId).Distinct().ToList();
+        var reviewRequests = attemptIds.Count > 0
+            ? await _dbContext.StudentReviewRequests
+                .AsNoTracking()
+                .Where(r => r.CenterId == centerId && attemptIds.Contains(r.AttemptId) && r.Status == StudentReviewRequestStatus.Pending)
+                .ToDictionaryAsync(r => r.AttemptId, cancellationToken)
+            : new Dictionary<ulong, StudentReviewRequest>();
+
+        var assignmentIds = entities.Select(e => e.Attempt.AssignmentId!.Value).Distinct().ToList();
+        var studentIds = entities.Select(e => e.Attempt.StudentId).Distinct().ToList();
+        var progressQuery = _dbContext.StudentAssignmentProgresses
+            .AsNoTracking()
+            .Include(p => p.Assignment)
+            .Where(p => p.CenterId == centerId && !p.IsDeleted);
+
+        var progressRows = (assignmentIds.Count > 0 && studentIds.Count > 0)
+            ? await WhereIn(WhereIn(progressQuery, p => p.AssignmentId, assignmentIds), p => p.StudentId, studentIds)
+                .ToListAsync(cancellationToken)
+            : [];
+        var progressByAssignmentStudent = progressRows
+            .GroupBy(p => (p.AssignmentId, p.StudentId))
+            .ToDictionary(g => g.Key, g => g.First());
+
+        var data = entities.Select(evidence =>
         {
-            AttemptId = evidence.AttemptId.ToString(CultureInfo.InvariantCulture),
-            StudentId = evidence.Attempt.StudentId.ToString("D").ToLowerInvariant(),
-            StudentName = evidence.Attempt.Student.FullName,
-            QuestionId = evidence.Attempt.QuestionId.ToString(CultureInfo.InvariantCulture),
-            SubjectId = evidence.Attempt.Question.SubjectId.ToString("D").ToLowerInvariant(),
-            QuestionText = evidence.Attempt.Question.QuestionText,
-            AnalysisId = evidence.AnalysisId!.Value.ToString(CultureInfo.InvariantCulture),
-            FinalAnswer = evidence.Attempt.FinalAnswer,
-            ReasoningText = evidence.Attempt.ReasoningText,
-            IsFallback = evidence.Analysis!.IsFallback,
-            ReasoningQuality = evidence.Analysis.ReasoningQuality,
-            AnalysisFeedback = evidence.Analysis!.Feedback,
-            AnalysisConfidence = evidence.Analysis.AnalysisConfidence,
-            Evidence = EvidenceProjectionMapper.Map(evidence),
-            SubmittedAt = NormalizeUtc(evidence.Attempt.CreatedAt)
+            var hasRequest = reviewRequests.TryGetValue(evidence.AttemptId, out var req);
+            progressByAssignmentStudent.TryGetValue((evidence.Attempt.AssignmentId!.Value, evidence.Attempt.StudentId), out var progress);
+            return new TeacherReviewQueueItemDto
+            {
+                AttemptId = evidence.AttemptId.ToString(CultureInfo.InvariantCulture),
+                AssignmentId = evidence.Attempt.AssignmentId.Value.ToString("D"),
+                AssignmentTitle = progress?.Assignment?.Title ?? "Bài tập",
+                StudentId = evidence.Attempt.StudentId.ToString("D").ToLowerInvariant(),
+                StudentName = evidence.Attempt.Student.FullName,
+                QuestionId = evidence.Attempt.QuestionId.ToString(CultureInfo.InvariantCulture),
+                SubjectId = evidence.Attempt.Question.SubjectId.ToString("D").ToLowerInvariant(),
+                QuestionText = evidence.Attempt.Question.QuestionText,
+                AnalysisId = evidence.AnalysisId!.Value.ToString(CultureInfo.InvariantCulture),
+                FinalAnswer = evidence.Attempt.FinalAnswer,
+                ReasoningText = evidence.Attempt.ReasoningText,
+                IsFallback = evidence.Analysis!.IsFallback,
+                ReasoningQuality = evidence.Analysis.ReasoningQuality,
+                AnalysisFeedback = evidence.Analysis!.Feedback,
+                AnalysisConfidence = evidence.Analysis.AnalysisConfidence,
+                Evidence = EvidenceProjectionMapper.Map(evidence),
+                SubmittedAt = NormalizeUtc(evidence.Attempt.CreatedAt),
+                HasStudentReviewRequest = hasRequest,
+                StudentReviewReason = hasRequest ? req!.StudentComment : null,
+                TeacherFinalReviewStatus = progress?.TeacherFinalReviewStatus.ToString() ?? "Pending",
+                FinalReviewVersion = progress?.FinalReviewVersion ?? 0
+            };
         }).ToList();
 
         return ListTeacherReviewQueueResult.Success(
@@ -151,4 +194,29 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
             DateTimeKind.Local => value.ToUniversalTime(),
             _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
         };
+
+    private static IQueryable<T> WhereIn<T, TKey>(
+        IQueryable<T> query,
+        Expression<Func<T, TKey>> keySelector,
+        IEnumerable<TKey> keys)
+    {
+        var keyList = keys as IReadOnlyCollection<TKey> ?? keys.ToList();
+        if (keyList.Count == 0)
+        {
+            return query.Where(_ => false);
+        }
+
+        var parameter = keySelector.Parameters[0];
+        var propertyAccess = keySelector.Body;
+
+        Expression? body = null;
+        foreach (var key in keyList)
+        {
+            var constant = Expression.Constant(key, typeof(TKey));
+            var equal = Expression.Equal(propertyAccess, constant);
+            body = body == null ? equal : Expression.OrElse(body, equal);
+        }
+
+        return query.Where(Expression.Lambda<Func<T, bool>>(body!, parameter));
+    }
 }

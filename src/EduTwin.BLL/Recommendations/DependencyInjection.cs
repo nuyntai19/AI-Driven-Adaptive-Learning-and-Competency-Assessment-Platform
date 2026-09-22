@@ -17,6 +17,11 @@ public static class DependencyInjection
         services.AddScoped<IAcceptRecommendationUseCase, AcceptRecommendationUseCase>();
         services.AddScoped<IDismissRecommendationUseCase, DismissRecommendationUseCase>();
         services.AddScoped<IGetActiveLearningPathUseCase, GetActiveLearningPathUseCase>();
+        services.AddScoped<IGetLearningPathTopicsUseCase, GetLearningPathTopicsUseCase>();
+        services.AddScoped<IGetStudentLearningPathPreferenceUseCase, GetStudentLearningPathPreferenceUseCase>();
+        services.AddScoped<IGenerateLearningPathUseCase, GenerateLearningPathUseCase>();
+        services.AddScoped<IGetDetailedLearningPathUseCase, GenerateLearningPathUseCase>();
+        services.AddScoped<IUpdateLearningPathSessionUseCase, UpdateLearningPathSessionUseCase>();
 
         return services;
     }

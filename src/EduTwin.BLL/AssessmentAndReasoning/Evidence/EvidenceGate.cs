@@ -24,12 +24,16 @@ public sealed class EvidenceGate : IEvidenceGate
         {
             if (input.EffectiveIsCorrect.HasValue)
             {
+                var reasons = input.IsPostFeedback
+                    ? new[] { EvidenceReasonCodes.SourceRuleFallback, EvidenceReasonCodes.PostFeedbackAssessment }
+                    : new[] { EvidenceReasonCodes.SourceRuleFallback };
+
                 return new EvidenceGateDecision(
                     input.SourceType,
                     EvidenceTrustLevel.Reduced,
                     EvidenceDecisionMode.DeterministicOnly,
-                    0.3m,
-                    [EvidenceReasonCodes.SourceRuleFallback],
+                    input.IsPostFeedback ? 0.2m : 0.3m,
+                    reasons,
                     true,
                     CurrentPolicyVersion,
                     input.AnalysisOverrideVersion);
@@ -38,13 +42,16 @@ public sealed class EvidenceGate : IEvidenceGate
             return ReviewOnly(input, EvidenceDecisionMode.DeterministicOnly, EvidenceReasonCodes.SourceRuleFallback);
         }
 
-        if (input.SourceType == EvidenceSourceType.TeacherOverride)
+        if (input.SourceType == EvidenceSourceType.TeacherOverride || input.SourceType == EvidenceSourceType.TeacherApproval)
         {
-            if (input.AnalysisOverrideVersion == 0 || input.EffectiveIsCorrect is null ||
-                !input.StructuralValidationPassed || !input.SemanticValidationPassed || !input.HasRequiredEvidence)
+            var isInvalidOverride = input.SourceType == EvidenceSourceType.TeacherOverride && input.AnalysisOverrideVersion == 0;
+
+            if (input.EffectiveIsCorrect is null ||
+                !input.StructuralValidationPassed || !input.SemanticValidationPassed || !input.HasRequiredEvidence ||
+                isInvalidOverride)
             {
                 var reasons = BuildValidationReasons(input);
-                if (input.AnalysisOverrideVersion == 0)
+                if (isInvalidOverride)
                 {
                     reasons.Add(EvidenceReasonCodes.TeacherOverrideInvalid);
                 }
@@ -52,12 +59,16 @@ public sealed class EvidenceGate : IEvidenceGate
                 return ReviewOnly(input, EvidenceDecisionMode.HumanConfirmed, reasons);
             }
 
+            var humanReasons = input.IsPostFeedback
+                ? new[] { EvidenceReasonCodes.TeacherHumanConfirmed, EvidenceReasonCodes.PostFeedbackAssessment }
+                : new[] { EvidenceReasonCodes.TeacherHumanConfirmed };
+
             return new EvidenceGateDecision(
                 input.SourceType,
                 EvidenceTrustLevel.Trusted,
                 EvidenceDecisionMode.HumanConfirmed,
-                1m,
-                [EvidenceReasonCodes.TeacherHumanConfirmed],
+                input.IsPostFeedback ? 0.5m : 1m,
+                humanReasons,
                 false,
                 CurrentPolicyVersion,
                 input.AnalysisOverrideVersion);
@@ -81,23 +92,31 @@ public sealed class EvidenceGate : IEvidenceGate
 
         if (input.AnalysisConfidence < 80m)
         {
+            var reasons50 = input.IsPostFeedback
+                ? new[] { EvidenceReasonCodes.AIConfidence50To79, EvidenceReasonCodes.PostFeedbackAssessment }
+                : new[] { EvidenceReasonCodes.AIConfidence50To79 };
+
             return new EvidenceGateDecision(
                 input.SourceType,
                 EvidenceTrustLevel.Reduced,
                 EvidenceDecisionMode.AIWeighted,
-                0.5m,
-                [EvidenceReasonCodes.AIConfidence50To79],
+                input.IsPostFeedback ? 0.25m : 0.5m,
+                reasons50,
                 false,
                 CurrentPolicyVersion,
                 input.AnalysisOverrideVersion);
         }
 
+        var reasons80 = input.IsPostFeedback
+            ? new[] { EvidenceReasonCodes.AIConfidence80To100, EvidenceReasonCodes.PostFeedbackAssessment }
+            : new[] { EvidenceReasonCodes.AIConfidence80To100 };
+
         return new EvidenceGateDecision(
             input.SourceType,
-            EvidenceTrustLevel.Trusted,
+            input.IsPostFeedback ? EvidenceTrustLevel.Reduced : EvidenceTrustLevel.Trusted,
             EvidenceDecisionMode.AIWeighted,
-            1m,
-            [EvidenceReasonCodes.AIConfidence80To100],
+            input.IsPostFeedback ? 0.35m : 1m,
+            reasons80,
             false,
             CurrentPolicyVersion,
             input.AnalysisOverrideVersion);

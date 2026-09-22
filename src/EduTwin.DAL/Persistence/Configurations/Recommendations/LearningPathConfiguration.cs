@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using EduTwin.DAL.Recommendations;
+using System.Text.Json;
 
 namespace EduTwin.DAL.Persistence.Configurations.Recommendations;
 
@@ -44,6 +45,14 @@ public class LearningPathConfiguration : IEntityTypeConfiguration<LearningPath>
 
         builder.Property(l => l.GeneratedFromAttemptId).HasColumnName("generated_from_attempt_id").HasColumnType("bigint unsigned");
         builder.Property(l => l.GeneratedAt).HasColumnName("generated_at").HasColumnType("datetime(6)");
+        builder.Property(l => l.PlanJson)
+            .HasColumnName("plan_json").HasColumnType("json").IsRequired(false)
+            .HasConversion(v => v != null ? v.RootElement.ToString() : null,
+                v => !string.IsNullOrEmpty(v) ? JsonDocument.Parse(v, new JsonDocumentOptions()) : null);
+        builder.Property(l => l.RecommendationRationale).HasColumnName("recommendation_rationale").HasColumnType("longtext");
+        builder.Property(l => l.PlanSchemaVersion).HasColumnName("plan_schema_version").HasColumnType("varchar(16)").HasDefaultValue("2.0");
+        builder.Property(l => l.GenerationStatus).HasColumnName("generation_status").HasColumnType("varchar(32)").HasDefaultValue("Ready");
+        builder.Property(l => l.AdaptationMessage).HasColumnName("adaptation_message").HasColumnType("longtext");
 
         builder.Property(l => l.CenterId).HasColumnName("center_id").HasColumnType("varchar(36)").IsRequired();
         builder.Property(l => l.CreatedAt).HasColumnName("created_at").HasColumnType("datetime(6)");

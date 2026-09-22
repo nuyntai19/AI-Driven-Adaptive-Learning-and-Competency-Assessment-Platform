@@ -1,4 +1,5 @@
 using EduTwin.BLL.AssessmentAndReasoning.AI;
+using EduTwin.BLL.Recommendations;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace EduTwin.API.AssessmentAndReasoning.AI;
@@ -20,6 +21,7 @@ public static class DependencyInjection
         services.TryAddSingleton<GeminiPromptBuilder>();
         services.TryAddSingleton<GeminiResponseJsonSchema>();
         services.TryAddSingleton<IAIService, GeminiAIService>();
+        services.TryAddScoped<ILearningPathPlanEnricher, GeminiLearningPathPlanEnricher>();
 
         return services;
     }

@@ -47,6 +47,7 @@ public sealed class GeminiPromptBuilderTests
         AssertObjectProperties(
             root.GetProperty("studentSubmission"),
             "finalAnswer",
+            "preliminaryIsCorrect",
             "reasoningText",
             "timeSpentSeconds",
             "confidence",
@@ -137,6 +138,15 @@ public sealed class GeminiPromptBuilderTests
             document.RootElement.GetProperty("allowedKnowledgeNodes")[0].GetProperty("nodeId").GetString());
     }
 
+    [Fact]
+    public void Build_PreliminaryGrade_InstructsAiNotToRegradeOrContradictIt()
+    {
+        var prompt = new GeminiPromptBuilder().Build(CreateRequest());
+
+        Assert.Contains("preliminaryIsCorrect", prompt, StringComparison.Ordinal);
+        Assert.Contains("Do NOT re-grade or contradict it", prompt, StringComparison.Ordinal);
+    }
+
     private static AnalyzeReasoningRequest CreateRequest(
         string language = "vi",
         string? reasoningText = "Em đặt điều kiện rồi biến đổi biểu thức.") =>
@@ -162,6 +172,7 @@ public sealed class GeminiPromptBuilderTests
             StudentSubmission = new AnalyzeReasoningStudentSubmission
             {
                 FinalAnswer = "B",
+                PreliminaryIsCorrect = true,
                 ReasoningText = reasoningText,
                 TimeSpentSeconds = 165,
                 Confidence = 80,

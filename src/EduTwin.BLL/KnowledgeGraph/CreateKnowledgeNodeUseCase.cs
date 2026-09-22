@@ -114,37 +114,60 @@ public class CreateKnowledgeNodeUseCase : ICreateKnowledgeNodeUseCase
                 return CreateKnowledgeNodeResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
-        var isDuplicate = await _dbContext.KnowledgeNodes
-            .AsNoTracking()
-            .AnyAsync(n => n.CenterId == _tenantContext.CenterId && n.SubjectId == request.SubjectId && n.NodeCode == trimmedCode, cancellationToken);
+        var existingNode = await _dbContext.KnowledgeNodes
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(n => n.CenterId == _tenantContext.CenterId && n.SubjectId == request.SubjectId && n.NodeCode == trimmedCode, cancellationToken);
 
-        if (isDuplicate)
+        if (existingNode != null && !existingNode.IsDeleted)
+        {
             return CreateKnowledgeNodeResult.Failure(ErrorCodes.DuplicateResource);
+        }
 
         var now = _timeProvider.GetUtcNow().UtcDateTime;
 
-        var node = new KnowledgeNode
+        KnowledgeNode node;
+        if (existingNode != null && existingNode.IsDeleted)
         {
-            CenterId = _tenantContext.CenterId.Value,
-            SubjectId = request.SubjectId,
-            ParentNodeId = parsedParentNodeId,
-            NodeType = parsedType,
-            NodeCode = trimmedCode,
-            NodeName = trimmedName,
-            Description = trimmedDesc,
-            OrderIndex = request.OrderIndex,
-            ExamImportance = request.ExamImportance.Value,
-            EstimatedLearningMinutes = request.EstimatedLearningMinutes,
-            IsActive = request.IsActive.Value,
-            IsDeleted = false,
-            RowVersion = 1,
-            CreatedAt = now,
-            UpdatedAt = now,
-            CreatedBy = _tenantContext.UserId.Value,
-            UpdatedBy = _tenantContext.UserId.Value
-        };
-
-        _dbContext.KnowledgeNodes.Add(node);
+            existingNode.ParentNodeId = parsedParentNodeId;
+            existingNode.NodeType = parsedType;
+            existingNode.NodeName = trimmedName;
+            existingNode.Description = trimmedDesc;
+            existingNode.OrderIndex = request.OrderIndex;
+            existingNode.ExamImportance = request.ExamImportance.Value;
+            existingNode.EstimatedLearningMinutes = request.EstimatedLearningMinutes;
+            existingNode.IsActive = request.IsActive.Value;
+            existingNode.IsDeleted = false;
+            existingNode.DeletedAt = null;
+            existingNode.DeletedBy = null;
+            existingNode.UpdatedAt = now;
+            existingNode.UpdatedBy = _tenantContext.UserId.Value;
+            existingNode.RowVersion++;
+            node = existingNode;
+        }
+        else
+        {
+            node = new KnowledgeNode
+            {
+                CenterId = _tenantContext.CenterId.Value,
+                SubjectId = request.SubjectId,
+                ParentNodeId = parsedParentNodeId,
+                NodeType = parsedType,
+                NodeCode = trimmedCode,
+                NodeName = trimmedName,
+                Description = trimmedDesc,
+                OrderIndex = request.OrderIndex,
+                ExamImportance = request.ExamImportance.Value,
+                EstimatedLearningMinutes = request.EstimatedLearningMinutes,
+                IsActive = request.IsActive.Value,
+                IsDeleted = false,
+                RowVersion = 1,
+                CreatedAt = now,
+                UpdatedAt = now,
+                CreatedBy = _tenantContext.UserId.Value,
+                UpdatedBy = _tenantContext.UserId.Value
+            };
+            _dbContext.KnowledgeNodes.Add(node);
+        }
 
         try
         {

@@ -17,7 +17,8 @@ import {
   TeacherStatusBadge,
   TeacherSkeleton,
   TeacherSafeErrorPanel,
-} from "../../components/teacher/TeacherPrimitives";
+  QuestionImportModal,
+} from "../../components/teacher";
 import { TeacherConfirmDialog } from "../../components/teacher/TeacherOverlays";
 import { RichMathText } from "../../components/math/RichMathText";
 
@@ -49,6 +50,7 @@ export function TeacherQuestionBankView() {
   // Dialog states
   const [targetQuestion, setTargetQuestion] = useState<Question | null>(null);
   const [dialogAction, setDialogAction] = useState<"activate" | "archive" | "delete" | null>(null);
+  const [isImportOpen, setIsImportOpen] = useState(false);
 
   // Canonical subject list query
   const { data: subjectsData, isLoading: isLoadingSubjects } = useQuery({
@@ -181,14 +183,25 @@ export function TeacherQuestionBankView() {
           { label: "Ngân hàng câu hỏi" },
         ]}
         actions={
-          canCreate ? (
-            <Link
-              to="/giao-vien/cau-hoi/tao-moi"
-              className="th-primary-button text-xs py-2 px-4 shadow-md shadow-teal-500/20"
-            >
-              + Soạn câu hỏi mới
-            </Link>
-          ) : null
+          <div className="flex items-center gap-2">
+            {canCreate && (
+              <button
+                type="button"
+                onClick={() => setIsImportOpen(true)}
+                className="th-button-secondary text-xs py-2 px-3.5 flex items-center gap-1.5 shadow-sm"
+              >
+                <span>📥</span> Nhập từ Excel / CSV
+              </button>
+            )}
+            {canCreate && (
+              <Link
+                to="/giao-vien/cau-hoi/tao-moi"
+                className="th-primary-button text-xs py-2 px-4 shadow-md shadow-teal-500/20"
+              >
+                + Soạn câu hỏi mới
+              </Link>
+            )}
+          </div>
         }
       />
 
@@ -632,6 +645,16 @@ export function TeacherQuestionBankView() {
         isConfirming={activateMutation.isPending || archiveMutation.isPending || deleteMutation.isPending}
         onConfirm={handleConfirmAction}
         onClose={handleCloseDialog}
+      />
+
+      <QuestionImportModal
+        isOpen={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        onSuccess={() => {
+          setIsImportOpen(false);
+          refetch();
+          setActionSuccess("Nhập câu hỏi thành công!");
+        }}
       />
     </div>
   );

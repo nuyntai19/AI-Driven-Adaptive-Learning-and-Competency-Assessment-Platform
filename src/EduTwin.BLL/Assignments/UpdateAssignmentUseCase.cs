@@ -194,33 +194,59 @@ public class UpdateAssignmentUseCase : IUpdateAssignmentUseCase
             }
         }
 
-        // 10. Apply updates and persist atomically
-        if (request.Title != null)
-            assignment.Title = request.Title;
-
-        if (request.Instructions != null)
-            assignment.Instructions = request.Instructions;
-
-        // Allow clearing DueAt by sending null explicitly — we use a sentinel here.
-        // If the caller wants to clear DueAt, they'd send null; we accept it.
-        assignment.DueAt = request.DueAt;
-        assignment.UpdatedAt = now;
-        assignment.UpdatedBy = actorId;
-        // RowVersion incremented by DbContext.UpdateRowVersions()
-
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
         try
         {
-            // Replace AssignmentQuestions atomically if provided
-            List<AssignmentQuestion> finalQuestions;
+            // 1. Remove existing questions if replacement list provided
             if (newParsedQuestionIds != null)
             {
                 var existingAQs = await _dbContext.AssignmentQuestions
                     .Where(aq => aq.AssignmentId == assignmentId)
                     .ToListAsync(cancellationToken);
 
-                _dbContext.AssignmentQuestions.RemoveRange(existingAQs);
+                if (existingAQs.Count > 0)
+                {
+                    _dbContext.AssignmentQuestions.RemoveRange(existingAQs);
+                }
+            }
 
+            // 2. Remove existing targets if replacement target mode provided
+            if (newTargetMode != null)
+            {
+                var existingDraftTargets = await _dbContext.AssignmentTargets
+                    .Where(at => at.AssignmentId == assignmentId)
+                    .ToListAsync(cancellationToken);
+
+                if (existingDraftTargets.Count > 0)
+                {
+                    _dbContext.AssignmentTargets.RemoveRange(existingDraftTargets);
+                }
+            }
+
+            // 3. Flush deletions first so unique keys (ux_assignment_questions_center_id_assignment_id_order_index) are freed up in MySQL
+            if (_dbContext.ChangeTracker.HasChanges())
+            {
+                await _dbContext.SaveChangesAsync(cancellationToken);
+            }
+
+            // 4. Update assignment scalar properties
+            if (request.Title != null)
+                assignment.Title = request.Title;
+
+            if (request.Instructions != null)
+                assignment.Instructions = request.Instructions;
+
+            // Allow clearing DueAt by sending null explicitly — we use a sentinel here.
+            // If the caller wants to clear DueAt, they'd send null; we accept it.
+            assignment.DueAt = request.DueAt;
+            assignment.UpdatedAt = now;
+            assignment.UpdatedBy = actorId;
+            // RowVersion incremented by DbContext.UpdateRowVersions()
+
+            // 5. Add new AssignmentQuestions
+            List<AssignmentQuestion> finalQuestions;
+            if (newParsedQuestionIds != null)
+            {
                 finalQuestions = new List<AssignmentQuestion>();
                 for (var i = 0; i < newParsedQuestionIds.Count; i++)
                 {
@@ -246,17 +272,9 @@ public class UpdateAssignmentUseCase : IUpdateAssignmentUseCase
                     .ToListAsync(cancellationToken);
             }
 
-            // Replace Draft AssignmentTargets atomically if TargetMode is provided.
-            // WholeClass: xóa existing draft targets (Publish sẽ lấy active members tại publish time).
-            // SelectedStudents: replace toàn bộ với danh sách mới.
+            // 6. Add new targets if SelectedStudents
             if (newTargetMode != null)
             {
-                var existingDraftTargets = await _dbContext.AssignmentTargets
-                    .Where(at => at.AssignmentId == assignmentId)
-                    .ToListAsync(cancellationToken);
-
-                _dbContext.AssignmentTargets.RemoveRange(existingDraftTargets);
-
                 if (string.Equals(newTargetMode, "SelectedStudents", StringComparison.Ordinal) &&
                     newParsedStudentIds != null && newParsedStudentIds.Count > 0)
                 {

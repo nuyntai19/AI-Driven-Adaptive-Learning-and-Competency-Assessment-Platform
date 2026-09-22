@@ -17,7 +17,9 @@ public sealed class StrictAIAnalysisResponseParser : IAIAnalysisResponseParser
         "missingSteps",
         "rootCauseNodeIds",
         "confidence",
-        "feedback"
+        "feedback",
+        "solutionType",
+        "aiSolution"
     ];
 
     private static readonly HashSet<string> CanonicalProperties =
@@ -75,7 +77,9 @@ public sealed class StrictAIAnalysisResponseParser : IAIAnalysisResponseParser
                 MissingSteps = ReadStringArray(root, "missingSteps"),
                 RootCauseNodeIds = ReadStringArray(root, "rootCauseNodeIds"),
                 Confidence = ReadLexicalInteger(root, "confidence"),
-                Feedback = ReadRequiredString(root, "feedback")
+                Feedback = ReadRequiredString(root, "feedback"),
+                SolutionType = ReadNullableString(root, "solutionType"),
+                AiSolution = ReadNullableString(root, "aiSolution")
             };
 
             _validator.Validate(request, response);

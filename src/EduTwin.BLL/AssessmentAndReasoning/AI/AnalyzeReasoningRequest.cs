@@ -45,6 +45,12 @@ public sealed record AnalyzeReasoningStudentSubmission
 {
     public required string FinalAnswer { get; init; }
 
+    /// <summary>
+    /// Authoritative result from the deterministic preliminary grader. The AI
+    /// explains the reasoning only and must not re-grade this value.
+    /// </summary>
+    public bool? PreliminaryIsCorrect { get; init; }
+
     public string? ReasoningText { get; init; }
 
     public uint TimeSpentSeconds { get; init; }

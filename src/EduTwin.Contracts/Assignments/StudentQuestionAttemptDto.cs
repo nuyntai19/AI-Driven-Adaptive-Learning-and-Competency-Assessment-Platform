@@ -13,4 +13,7 @@ public class StudentQuestionAttemptDto
     public uint AnswerChanges { get; set; }
     public bool Skipped { get; set; }
     public DateTime SubmittedAt { get; set; }
+    public bool? IsCorrect { get; set; }
+    public decimal? AwardedScore { get; set; }
+    public decimal? MaxScore { get; set; }
 }

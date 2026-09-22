@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { isAxiosError } from "axios";
 import { organizationApi } from "../api/organizationApi";
 import { knowledgeGraphApi } from "../api/knowledgeGraphApi";
@@ -2999,6 +2999,9 @@ const LegacyKnowledgeGraphPage: React.FC = () => {
 
 export const KnowledgeGraphPage: React.FC = () => {
   const user = useAuthStore((state) => state.user);
+  if (user?.accountType === "Teacher") {
+    return <Navigate to="/giao-vien/do-thi-tri-thuc" replace />;
+  }
   return user?.accountType === "CenterManager" ? (
     <CenterManagerKnowledgeGraphView />
   ) : (

@@ -55,6 +55,11 @@ public class AttemptConfiguration : IEntityTypeConfiguration<Attempt>
         builder.Property(a => a.ClientSubmissionId).HasColumnName("client_submission_id").HasColumnType("varchar(36)").IsRequired();
         builder.Property(a => a.AnswerDisplayLatex).HasColumnName("answer_display_latex").HasColumnType("varchar(2048)").IsRequired(false);
 
+        builder.Property(a => a.ManualRetryCount).HasColumnName("manual_retry_count").HasColumnType("tinyint unsigned").HasDefaultValue((byte)0);
+        builder.Property(a => a.LastManualRetryAt).HasColumnName("last_manual_retry_at").HasColumnType("datetime(6)").IsRequired(false);
+        builder.Property(a => a.SolutionExposedAt).HasColumnName("solution_exposed_at").HasColumnType("datetime(6)").IsRequired(false);
+        builder.Property(a => a.IsPostFeedback).HasColumnName("is_post_feedback").HasColumnType("tinyint(1)").HasDefaultValue(false);
+
         builder.Property(a => a.CreatedAt).HasColumnName("created_at").HasColumnType("datetime(6)").IsRequired();
         builder.Property(a => a.CreatedBy).HasColumnName("created_by").HasColumnType("varchar(36)");
         builder.Property(a => a.UpdatedAt).HasColumnName("updated_at").HasColumnType("datetime(6)").IsRequired();

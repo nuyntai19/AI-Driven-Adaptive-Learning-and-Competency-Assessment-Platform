@@ -53,6 +53,11 @@ export interface StudentSubjectGoalResponse {
   meta: Meta;
 }
 
+export interface StudentSubjectGoalListResponse {
+  data: StudentSubjectGoalDto[];
+  meta: Meta;
+}
+
 
 export interface StudentDetailDto {
   studentId: string;
