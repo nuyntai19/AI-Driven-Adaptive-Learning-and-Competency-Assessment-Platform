@@ -1823,14 +1823,13 @@ export const LearningPlayerPage = () => {
                 )}
               </div>
 
-              {/* 3. Thanh 3 Nút Công Cụ Trợ Lý (Casio, Nháp, Đồ Thị) - Chỉ hiển thị cho Toán/Lý/Hóa */}
-              {hasMathTools && (
-                <div className="pt-2">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
-                      Công cụ hỗ trợ làm bài
-                    </span>
-                  </div>
+              {/* 3. Thanh 3 Nút Công Cụ Trợ Lý (Casio, Nháp, Đồ Thị) */}
+              <div className="pt-2">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
+                    Công cụ hỗ trợ làm bài
+                  </span>
+                </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                   {/* Button 1: Máy tính Casio fx-580VN */}
