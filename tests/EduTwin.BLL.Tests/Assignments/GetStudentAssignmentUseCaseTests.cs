@@ -17,6 +17,8 @@ using EduTwin.DAL.Persistence;
 using EduTwin.DAL.Persistence.Tenancy;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.CurriculumAndQuestions;
+using EduTwin.DAL.AssessmentAndReasoning;
+using EduTwin.Contracts.AssessmentAndReasoning;
 
 namespace EduTwin.BLL.Tests.Assignments;
 
@@ -207,5 +209,147 @@ public class GetStudentAssignmentUseCaseTests
         // Assert
         Assert.False(result.IsSuccess);
         Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WithSubmittedAttempt_ReturnsSubmittedAnswerAndReasoningAndAttachment()
+    {
+        // Arrange
+        var centerId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
+        var assignmentId = Guid.NewGuid();
+
+        var options = new DbContextOptionsBuilder<EduTwinDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options;
+
+        var tenantAccessorMock = new Mock<ITenantIdAccessor>();
+        tenantAccessorMock.Setup(x => x.CenterId).Returns(centerId);
+
+        using var context = new EduTwinDbContext(options, tenantAccessorMock.Object);
+
+        var assignment = new Assignment
+        {
+            AssignmentId = assignmentId,
+            CenterId = centerId,
+            Title = "Math Assignment",
+            Status = AssignmentStatus.Published,
+            DueAt = DateTime.UtcNow.AddDays(1),
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        var progress = new StudentAssignmentProgress
+        {
+            ProgressId = 1,
+            CenterId = centerId,
+            StudentId = studentId,
+            AssignmentId = assignment.AssignmentId,
+            Status = ProgressStatus.InProgress,
+            CompletedQuestionCount = 1,
+            TotalQuestionCount = 2,
+            Assignment = assignment,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        var q1 = new Question
+        {
+            QuestionId = 10001,
+            CenterId = centerId,
+            QuestionType = QuestionType.ShortAnswer,
+            Difficulty = 2,
+            QuestionText = "Tìm tập xác định của hàm số y = 1 / (x - 2).",
+            CorrectAnswer = "x != 2",
+            Solution = "Mẫu khác 0",
+            ExpectedReasoning = "x - 2 != 0",
+            LanguageCode = "vi",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        var q2 = new Question
+        {
+            QuestionId = 10002,
+            CenterId = centerId,
+            QuestionType = QuestionType.MultipleChoice,
+            Difficulty = 1,
+            QuestionText = "1 + 1 = ?",
+            CorrectAnswer = "2",
+            Solution = "1 + 1 = 2",
+            ExpectedReasoning = "1 + 1 = 2",
+            LanguageCode = "vi",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        var aq1 = new AssignmentQuestion { CenterId = centerId, AssignmentId = assignmentId, QuestionId = 10001, OrderIndex = 1, Points = 5, Question = q1, CreatedAt = DateTime.UtcNow };
+        var aq2 = new AssignmentQuestion { CenterId = centerId, AssignmentId = assignmentId, QuestionId = 10002, OrderIndex = 2, Points = 5, Question = q2, CreatedAt = DateTime.UtcNow };
+
+        var attempt = new Attempt
+        {
+            AttemptId = 42,
+            CenterId = centerId,
+            StudentId = studentId,
+            QuestionId = 10001,
+            AssignmentId = assignmentId,
+            Status = AttemptStatus.NeedsTeacherReview,
+            FinalAnswer = "x != 2",
+            ReasoningText = "Mẫu khác 0 cho nên (x-2) khác 0 cho nên x khác 2",
+            ReasoningLanguage = "vi",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        var attachment = new AttemptAttachment
+        {
+            AttachmentId = 101,
+            CenterId = centerId,
+            AttemptId = 42,
+            FileName = "scratchpad.png",
+            StorageKey = "tenants/test/scratchpad.png",
+            FileSizeBytes = 1024,
+            ContentType = "image/png",
+            UploadNonce = Guid.NewGuid().ToString(),
+            CreatedAt = DateTime.UtcNow
+        };
+
+        context.Assignments.Add(assignment);
+        context.StudentAssignmentProgresses.Add(progress);
+        context.Questions.AddRange(q1, q2);
+        context.AssignmentQuestions.AddRange(aq1, aq2);
+        context.Attempts.Add(attempt);
+        context.AttemptAttachments.Add(attachment);
+        await context.SaveChangesAsync();
+
+        var tenantContextMock = new Mock<ITenantContext>();
+        tenantContextMock.Setup(x => x.CenterId).Returns(centerId);
+        tenantContextMock.Setup(x => x.UserId).Returns(studentId);
+        tenantContextMock.Setup(x => x.Role).Returns("Student");
+        tenantContextMock.Setup(x => x.IsResolved).Returns(true);
+
+        var useCase = new GetStudentAssignmentUseCase(context, tenantContextMock.Object, TimeProvider.System);
+
+        // Act
+        var result = await useCase.ExecuteAsync(assignmentId, CancellationToken.None);
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        var detail = result.Data!.Data;
+        Assert.Equal(2, detail.Questions.Count);
+
+        var q1Dto = detail.Questions.First(q => q.QuestionId == "10001");
+        Assert.Equal("NeedsTeacherReview", q1Dto.AttemptStatus);
+        Assert.Equal("x != 2", q1Dto.SubmittedAnswer);
+        Assert.Equal("Mẫu khác 0 cho nên (x-2) khác 0 cho nên x khác 2", q1Dto.SubmittedReasoning);
+        Assert.Equal(42UL, q1Dto.SubmittedAttemptId);
+        Assert.True(q1Dto.HasAttachment);
+
+        var q2Dto = detail.Questions.First(q => q.QuestionId == "10002");
+        Assert.Null(q2Dto.AttemptStatus);
+        Assert.Null(q2Dto.SubmittedAnswer);
+        Assert.Null(q2Dto.SubmittedReasoning);
+        Assert.Null(q2Dto.SubmittedAttemptId);
+        Assert.False(q2Dto.HasAttachment);
     }
 }

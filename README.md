@@ -64,17 +64,20 @@ Documentation checkpoint không tự trở thành đóng góp môn học. Tên/U
 
 ### Frontend
 
-- React và Vite.
+- React 18 và Vite.
 - TypeScript.
-- Tailwind CSS.
-- Zustand.
-- TanStack Query.
-- Axios.
+- Tailwind CSS với Dark Mode toggle toàn diện.
+- MathLive WYSIWYG (`VisualMathField`) và KaTeX (`MathFormulaPreview`) cho công thức Toán học chuẩn mực.
+- Lucide React icons.
+- Zustand và TanStack Query.
+- Axios và IndexedDB vector scratchpad caching.
+- Phân hệ Học sinh hiện đại hóa: Bento grid dashboard, radar/line charts, SideAssistantWorkspace (Casio fx-580VN X, Vector Scratchpad xuất ảnh, Đồ thị hàm số 2D).
 
 ### AI và thuật toán
 
-- Gemini qua abstraction IAIService.
-- Durable AI job, retry và rule-based fallback.
+- Gemini 2.5 Flash qua abstraction `IAIService` và client `GoogleGenAIGenerateContentClient`.
+- Cơ chế **Xoay tua Đa Khóa (Multi-Key Pool & Round-Robin Failover)**: Hỗ trợ cấu hình song song 3 key (`Gemini__ApiKey`, `Gemini__BackupKeys`, `Gemini__BackupKeys_2`), phân bổ tải đều qua atomic counter và tự động chuyển key tức thì khi gặp lỗi quota (HTTP 429), timeout hoặc sự cố mạng.
+- Durable AI job state machine, retry và rule-based fallback an toàn (`RuleBasedFallbackBuilder`).
 - Deterministic Evidence Gate.
 - Explainable mastery/risk/opportunity calculations.
 - Teacher review, override và deterministic replay.
@@ -115,18 +118,16 @@ Controller không chứa business rule. DAL không gọi AI. Frontend không ph�
 
 ## 5. Trạng thái source đã xác minh
 
-Tại baseline nêu trên:
+Trạng thái hệ thống đã kiểm chứng toàn diện:
 
-- backend build Release: thành công, không warning/error;
-- frontend production build: thành công;
-- full .NET test suite: 2.853 pass, 3 skip, 0 fail;
-- EF Core không có pending model changes;
-- migrations tạo 31 bảng, 75 index, 66 foreign key và 59 check constraint;
-- target v2 đang đặc tả thêm 7 bảng có mục đích cho Dynamic RBAC/Evidence, nâng target lên 38 bảng sau khi được duyệt và migration;
-- ba MySQL integration test bị skip do chưa có kết nối integration database;
-- AI job, Gemini retry/fallback và Reasoning Analysis đã tồn tại;
-- Mastery Calculator v1 đã tồn tại dưới dạng deterministic pure function;
-- Evidence Gate, Twin Orchestrator, Dynamic RBAC và các dashboard cuối chưa hoàn tất.
+- backend build Release: thành công, 0 warning, 0 error;
+- frontend production build: thành công (`tsc -b && vite build` hoàn tất sạch sẽ);
+- full .NET test suite: 3.422 pass, 56 skip (chỉ các test yêu cầu live MySQL port 3307), 0 fail;
+- live MySQL integration test suite: pass 100% trên Docker container port 3307;
+- EF Core schema: 40 bảng domain vật lý + 1 bảng `__EFMigrationsHistory`, 0 pending model changes (0 drift);
+- AI Multimodal & Key Pool: Đã tích hợp trọn vẹn xử lý ảnh minh chứng 5 MB (`attempt_attachments`) và cụm 3 khóa Gemini xoay tua Round-Robin kèm failover;
+- Phân hệ Học sinh (Student Portal): Hoàn thiện toàn diện 5 trang chính (Dashboard, Danh sách bài tập, Chi tiết bài tập, Hồ sơ năng lực số Digital Twin, Không gian học tập thích ứng Dual-pane) và bộ trợ lý toán học SideAssistant (Casio fx-580VN X, Bảng nháp Vector, Đồ thị hàm số, MathLive WYSIWYG);
+- Đã giải quyết triệt để vi phạm thứ tự React Hook (Rules of Hooks) tại `LearningPlayerPage`.
 
 Tổng test xanh không thay thế kiểm thử MySQL thật. Trước release, ba test relational phải chạy trong CI hoặc môi trường kiểm thử có MySQL.
 
@@ -199,7 +200,7 @@ npm run build
 
 ## 9. Chạy bằng Docker Compose
 
-Sau khi cấu hình .env:
+Sau khi cấu hình .env (bao gồm `Gemini__ApiKey`, `Gemini__BackupKeys`, `Gemini__BackupKeys_2` để kích hoạt cụm 3 khóa xoay tua tự động):
 
 ~~~powershell
 docker compose up -d --build

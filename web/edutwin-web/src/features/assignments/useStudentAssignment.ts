@@ -6,5 +6,7 @@ export const useStudentAssignment = (id: string | undefined) => {
     queryKey: ['student-assignments', id],
     queryFn: () => getStudentAssignmentById(id!),
     enabled: !!id,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 };

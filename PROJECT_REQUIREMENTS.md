@@ -275,6 +275,7 @@ Thiếu một điều kiện phải fail closed.
 | FR-LEARN-004 | Submission có client submission ID để bảo vệ idempotency | Must |
 | FR-LEARN-005 | Nộp bài (POST /learning/attempts) và upload ảnh nháp bắt buộc tài khoản Student (AccountType == Student) và có quyền learning.attempts.submit; gửi final answer, reasoning, confidence, time và hành vi cần thiết | Must |
 | FR-LEARN-006 | API nhận submission và trả trạng thái AI job bất đồng bộ | Must |
+| FR-LEARN-007 | Giao diện học sinh tích hợp không gian trợ lý cạnh bên (SideAssistantWorkspace: máy tính Casio fx-580VN X, bảng vẽ nháp vector có lưu trữ IndexedDB và xuất ảnh minh chứng, đồ thị hàm số 2D) và trình soạn thảo công thức Toán WYSIWYG MathLive (VisualMathField) | Must |
 
 ### 7.6. AI Reasoning và Evidence
 
@@ -293,6 +294,7 @@ Thiếu một điều kiện phải fail closed.
 | FR-AI-011 | AI chỉ phân tích reasoning và soạn phản hồi; chấm sơ bộ deterministic/teacher decision mới sở hữu điểm và kết quả cuối | Must |
 | FR-AI-012 | Khi preliminary `isCorrect = null` (điển hình Essay chưa chấm), Evidence phải ReviewOnly, reasoning weight bằng 0 và Knowledge Mastery không đổi cho tới Teacher HumanConfirmed + replay | Must |
 | FR-AI-013 | Phân biệt sự cố lưu trữ hạ tầng (AttachmentStorageUnavailable): AIAnalysisJobStateMachine hỗ trợ tối đa 3 persisted retries kèm exponential backoff; chỉ sự cố lưu trữ ảnh nháp đặc biệt này khi hết retry mới phân nhánh (bài có assignment chuyển Teacher Review Queue; bài free-practice chuyển sang FailedTerminal/AnalysisFailed và cho phép resubmit với ClientSubmissionId mới mà không vào review queue) | Must |
+| FR-AI-014 | Cơ chế Quản lý Cụm Khóa Đa Tầng Gemini (Multi-Key Pool & Round-Robin Failover): Hỗ trợ cấu hình song song 3 key (Gemini__ApiKey, Gemini__BackupKeys, Gemini__BackupKeys_2), phân bổ tải xoay vòng Round-Robin và tự động chuyển đổi khóa ngay lập tức (Automatic Failover) khi một khóa gặp lỗi Quota (HTTP 429), Timeout hoặc sự cố mạng | Must |
 
 ### 7.7. Digital Twin và recommendation
 
