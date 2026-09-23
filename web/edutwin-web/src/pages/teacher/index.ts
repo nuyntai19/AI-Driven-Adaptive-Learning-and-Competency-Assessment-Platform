@@ -11,3 +11,5 @@ export { TeacherStudentTwinView } from "./TeacherStudentTwinView";
 export { TeacherCurriculumListView } from "./TeacherCurriculumListView";
 export { TeacherCurriculumEditorView } from "./TeacherCurriculumEditorView";
 export { TeacherKnowledgeGraphView } from "./TeacherKnowledgeGraphView";
+export { TeacherStudentManagementView } from "./TeacherStudentManagementView";
+
