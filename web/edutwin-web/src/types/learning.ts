@@ -190,4 +190,5 @@ export interface RetryAIAnalysisResponse {
 
 export interface CreateStudentReviewRequestDto {
   studentComment: string;
+  disputeCategory?: string;
 }

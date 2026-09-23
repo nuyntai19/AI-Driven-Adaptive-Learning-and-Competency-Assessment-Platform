@@ -4,9 +4,11 @@ using EduTwin.BLL.AssessmentAndReasoning.Evidence;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.Assignments;
+using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.Contracts.Organization;
 using EduTwin.DAL.AssessmentAndReasoning;
+using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -83,6 +85,7 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
             .AsNoTracking()
             .Where(evidence =>
                 evidence.CenterId == centerId &&
+                evidence.Attempt.Question.Status != QuestionStatus.Archived &&
                 (evidence.RequiresTeacherReview || _dbContext.StudentAssignmentProgresses.Any(progress =>
                     progress.CenterId == centerId &&
                     progress.AssignmentId == evidence.Attempt.AssignmentId &&

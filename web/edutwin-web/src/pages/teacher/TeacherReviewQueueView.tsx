@@ -6,6 +6,7 @@ import {
   overrideReasoningAnalysis,
   approveReasoningAnalysis,
   approveAssignmentResult,
+  voidAssignmentQuestion,
 } from "../../api/teacherReviewsApi";
 import { organizationApi } from "../../api/organizationApi";
 import type {
@@ -24,6 +25,7 @@ import {
   TeacherSkeleton,
   TeacherSafeErrorPanel,
 } from "../../components/teacher/TeacherPrimitives";
+import { extractProblemDetails } from "../../utils/problemDetails";
 
 export const TeacherReviewQueueView: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -37,6 +39,12 @@ export const TeacherReviewQueueView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [replayResult, setReplayResult] = useState<TeacherOverrideResponse["data"] | null>(null);
   const [overrideFeedbackMessage, setOverrideFeedbackMessage] = useState<string | null>(null);
+
+  // Void Assignment Question Modal State
+  const [isVoidModalOpen, setIsVoidModalOpen] = useState(false);
+  const [voidReason, setVoidReason] = useState("Đề bài có sai sót kỹ thuật / thiếu dữ kiện.");
+  const [quarantineInBank, setQuarantineInBank] = useState(true);
+  const [voidModalError, setVoidModalError] = useState<string | null>(null);
 
   // Override Form State
   const [reasoningQuality, setReasoningQuality] = useState<number>(80);
@@ -165,6 +173,39 @@ export const TeacherReviewQueueView: React.FC = () => {
     onError: (err: unknown) => {
       const message = err instanceof Error ? err.message : "Không thể duyệt kết quả bài tập";
       setOverrideFeedbackMessage(message);
+    },
+  });
+
+  const voidQuestionMutation = useMutation({
+    mutationFn: async ({ reason, quarantineInBank }: { reason: string; quarantineInBank: boolean }) => {
+      if (!selectedItem?.assignmentId || !selectedItem.questionId) {
+        throw new Error("Không tìm thấy thông tin bài tập hoặc câu hỏi");
+      }
+      return await voidAssignmentQuestion(selectedItem.assignmentId, selectedItem.questionId, {
+        voidReason: reason,
+        archiveQuestionInBank: quarantineInBank,
+        reason,
+        quarantineInBank,
+      });
+    },
+    onSuccess: (data) => {
+      setIsVoidModalOpen(false);
+      setVoidReason("Đề bài có sai sót kỹ thuật / thiếu dữ kiện.");
+      const count = data.data.voidedAttemptsCount ?? data.data.affectedAttemptsCount ?? 0;
+      const isArchived = data.data.questionArchived ?? data.data.quarantinedInQuestionBank ?? false;
+      setOverrideFeedbackMessage(
+        `✓ Đã hủy câu hỏi thành công! ${count} bài làm của học sinh đã được cộng điểm tối đa.${isArchived ? " Câu hỏi đã được cách ly khỏi ngân hàng đề." : ""}`
+      );
+      queryClient.invalidateQueries({ queryKey: ["teacherReviewQueue"] });
+      queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["attemptFeedback"] });
+      queryClient.invalidateQueries({ queryKey: ["learning-path"] });
+      queryClient.invalidateQueries({ queryKey: ["competencyProfile"] });
+      queryClient.invalidateQueries({ queryKey: ["digitalTwin"] });
+    },
+    onError: (err: unknown) => {
+      const details = extractProblemDetails(err);
+      setVoidModalError(details.detail || details.message || "Không thể hủy câu hỏi bài tập");
     },
   });
 
@@ -383,13 +424,21 @@ export const TeacherReviewQueueView: React.FC = () => {
                               fontWeight: 700,
                               padding: "2px 8px",
                               borderRadius: "9999px",
-                              backgroundColor: "rgba(168, 85, 247, 0.2)",
-                              color: "#d8b4fe",
-                              border: "1px solid rgba(168, 85, 247, 0.4)",
+                              backgroundColor: item.studentReviewReason?.startsWith("[DEFECTIVE") || item.studentReviewReason?.startsWith("[QUESTION")
+                                ? "rgba(239, 68, 68, 0.2)"
+                                : "rgba(168, 85, 247, 0.2)",
+                              color: item.studentReviewReason?.startsWith("[DEFECTIVE") || item.studentReviewReason?.startsWith("[QUESTION")
+                                ? "#fca5a5"
+                                : "#d8b4fe",
+                              border: item.studentReviewReason?.startsWith("[DEFECTIVE") || item.studentReviewReason?.startsWith("[QUESTION")
+                                ? "1px solid rgba(239, 68, 68, 0.4)"
+                                : "1px solid rgba(168, 85, 247, 0.4)",
                             }}
-                            title={item.studentReviewReason ? `Học sinh yêu cầu xem lại: "${item.studentReviewReason}"` : "Học sinh yêu cầu xem xét kết quả AI"}
+                            title={item.studentReviewReason ? `Học sinh báo cáo: "${item.studentReviewReason}"` : "Học sinh yêu cầu xem xét kết quả AI"}
                           >
-                            🙋 Học sinh khiếu nại
+                            {item.studentReviewReason?.startsWith("[DEFECTIVE") || item.studentReviewReason?.startsWith("[QUESTION")
+                              ? "🚩 Báo lỗi đề bài"
+                              : "🙋 Khiếu nại AI"}
                           </span>
                         )}
                         {item.isFallback ? (
@@ -425,32 +474,70 @@ export const TeacherReviewQueueView: React.FC = () => {
           {/* Right Column: Selected Item Detail & Override Form */}
           {selectedItem ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-              {selectedItem.hasStudentReviewRequest && (
-                <div
-                  style={{
-                    padding: "14px 18px",
-                    borderRadius: "12px",
-                    border: "1px solid rgba(168, 85, 247, 0.4)",
-                    backgroundColor: "rgba(168, 85, 247, 0.1)",
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: "12px",
-                  }}
-                >
-                  <span style={{ fontSize: "1.3rem" }}>🙋</span>
-                  <div style={{ flex: 1 }}>
-                    <span style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "#d8b4fe", display: "block", marginBottom: "4px" }}>
-                      Yêu cầu xem xét lại từ học sinh (Student Review Request)
-                    </span>
-                    <p style={{ margin: "0 0 6px 0", fontSize: "0.875rem", fontWeight: 500, color: "#fff", fontStyle: "italic" }}>
-                      "{selectedItem.studentReviewReason || "Học sinh yêu cầu giáo viên xem xét lại kết quả chấm/phân tích AI."}"
-                    </p>
-                    <span style={{ fontSize: "0.75rem", color: "rgba(216, 180, 254, 0.8)" }}>
-                      Giáo viên vui lòng đối chiếu lời giải của học sinh và thực hiện chấm đè (override) để cập nhật điểm và Digital Twin chính xác.
-                    </span>
+              {selectedItem.hasStudentReviewRequest && (() => {
+                const isDispute = selectedItem.studentReviewReason?.startsWith("[DEFECTIVE") || selectedItem.studentReviewReason?.startsWith("[QUESTION");
+                return (
+                  <div
+                    style={{
+                      padding: "14px 18px",
+                      borderRadius: "12px",
+                      border: isDispute ? "1px solid rgba(239, 68, 68, 0.4)" : "1px solid rgba(168, 85, 247, 0.4)",
+                      backgroundColor: isDispute ? "rgba(239, 68, 68, 0.1)" : "rgba(168, 85, 247, 0.1)",
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: "12px",
+                    }}
+                  >
+                    <span style={{ fontSize: "1.3rem" }}>{isDispute ? "🚩" : "🙋"}</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px", flexWrap: "wrap", gap: "8px" }}>
+                        <span style={{
+                          fontSize: "0.75rem",
+                          fontWeight: 700,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.05em",
+                          color: isDispute ? "#fca5a5" : "#d8b4fe",
+                        }}>
+                          {isDispute ? "Báo cáo sự cố đề bài từ học sinh (Defective Question Dispute)" : "Yêu cầu xem xét lại từ học sinh (Student Review Request)"}
+                        </span>
+                        {selectedItem.assignmentId && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setVoidReason(selectedItem.studentReviewReason ? `Học sinh báo cáo: ${selectedItem.studentReviewReason}` : "Đề bài có sai sót kỹ thuật / thiếu dữ kiện.");
+                              setIsVoidModalOpen(true);
+                            }}
+                            disabled={!canOverride || voidQuestionMutation.isPending}
+                            style={{
+                              padding: "6px 12px",
+                              borderRadius: "8px",
+                              fontSize: "0.75rem",
+                              fontWeight: 700,
+                              backgroundColor: "#ef4444",
+                              color: "#fff",
+                              border: "none",
+                              cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "6px",
+                            }}
+                          >
+                            <span>🚩</span> Hủy câu này & Cho điểm tối đa cả lớp
+                          </button>
+                        )}
+                      </div>
+                      <p style={{ margin: "0 0 6px 0", fontSize: "0.875rem", fontWeight: 500, color: "#fff", fontStyle: "italic" }}>
+                        "{selectedItem.studentReviewReason || "Học sinh yêu cầu giáo viên xem xét lại kết quả chấm/phân tích AI."}"
+                      </p>
+                      <span style={{ fontSize: "0.75rem", color: isDispute ? "rgba(254, 202, 202, 0.85)" : "rgba(216, 180, 254, 0.8)" }}>
+                        {isDispute
+                          ? "Nếu đề bài bị lỗi thật (sai số, thiếu đề, công thức hỏng), bạn có thể bấm nút đỏ bên trên để hủy câu này cho toàn bộ lớp và bảo vệ Digital Twin. Nếu đề đúng và học sinh chỉ làm sai, hãy dùng biểu mẫu chấm bài bên dưới."
+                          : "Giáo viên vui lòng đối chiếu lời giải của học sinh và thực hiện chấm đè (override) để cập nhật điểm và Digital Twin chính xác."}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Submission Details Card */}
               <div className="th-surface" style={{ borderRadius: "12px", padding: "20px" }}>
@@ -725,7 +812,7 @@ export const TeacherReviewQueueView: React.FC = () => {
                       {approveMutation.isPending ? "Đang phê duyệt..." : "✓ Phê duyệt kết quả AI (Giữ nguyên)"}
                     </button>
 
-                    <div style={{ display: "flex", gap: "10px" }}>
+                    <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
                       <button
                         type="button"
                         className="th-button-secondary"
@@ -752,6 +839,29 @@ export const TeacherReviewQueueView: React.FC = () => {
                         {approveAssignmentMutation.isPending ? "Đang duyệt bài tập..." : "Duyệt kết quả bài tập"}
                       </button>
                     )}
+                    {selectedItem.assignmentId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVoidReason(selectedItem.studentReviewReason ? `Học sinh báo cáo: ${selectedItem.studentReviewReason}` : "Đề bài có sai sót kỹ thuật / thiếu dữ kiện.");
+                          setIsVoidModalOpen(true);
+                        }}
+                        disabled={!canOverride || voidQuestionMutation.isPending || overrideMutation.isPending}
+                        style={{
+                          padding: "8px 14px",
+                          borderRadius: "8px",
+                          fontWeight: 700,
+                          fontSize: "0.825rem",
+                          backgroundColor: "rgba(239, 68, 68, 0.12)",
+                          color: "#ef4444",
+                          border: "1px solid rgba(239, 68, 68, 0.4)",
+                          cursor: "pointer",
+                        }}
+                        title="Hủy câu hỏi này cho toàn bộ học sinh trong bài tập và cấp điểm tối đa"
+                      >
+                        🚩 Hủy câu này & Cho điểm cả lớp
+                      </button>
+                    )}
                   </div>
                 </form>
               </div>
@@ -761,6 +871,131 @@ export const TeacherReviewQueueView: React.FC = () => {
               Chọn một bài làm từ danh sách bên trái để xem chi tiết và chấm bài
             </div>
           )}
+        </div>
+      )}
+
+      {/* VOID ASSIGNMENT QUESTION MODAL */}
+      {isVoidModalOpen && selectedItem && (
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 9999,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "16px",
+          backgroundColor: "rgba(0, 0, 0, 0.7)",
+          backdropFilter: "blur(4px)",
+        }}>
+          <div style={{
+            width: "100%",
+            maxWidth: "540px",
+            backgroundColor: "var(--th-surface)",
+            borderRadius: "16px",
+            border: "1px solid var(--th-border-color)",
+            padding: "24px",
+            boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "18px",
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--th-border-color)", paddingBottom: "12px" }}>
+              <h3 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 700, color: "#ef4444", display: "flex", alignItems: "center", gap: "8px" }}>
+                <span>🚩</span> Hủy Câu Hỏi & Cho Điểm Tối Đa Cả Lớp
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsVoidModalOpen(false)}
+                style={{ background: "none", border: "none", color: "var(--th-text-muted)", fontSize: "1.2rem", cursor: "pointer" }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              <div style={{
+                padding: "12px 14px",
+                borderRadius: "10px",
+                backgroundColor: "rgba(239, 68, 68, 0.1)",
+                border: "1px solid rgba(239, 68, 68, 0.25)",
+                fontSize: "0.8rem",
+                color: "var(--th-text-primary)",
+                lineHeight: "1.5",
+              }}>
+                <strong>Hành động này sẽ thực hiện tự động:</strong>
+                <ul style={{ margin: "6px 0 0 18px", padding: 0 }}>
+                  <li>Cộng điểm tối đa cho câu hỏi này đối với <strong>mọi học sinh</strong> trong bài tập <em>"{selectedItem.assignmentTitle || "bài tập này"}"</em>.</li>
+                  <li>Tạo bản ghi chứng cứ Digital Twin với trọng số bằng 0 (<code>ReasoningWeight = 0</code>, <code>ReasonCodes = ["QUESTION_VOIDED_BY_TEACHER"]</code>) để bảo vệ năng lực học sinh không bị trừ điểm oan.</li>
+                  <li>Tự động giải quyết các yêu cầu khiếu nại liên quan đến câu hỏi này.</li>
+                </ul>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)", marginBottom: "6px" }}>
+                  Lý do hủy câu hỏi <span style={{ color: "var(--th-danger)" }}>*</span>:
+                </label>
+                <textarea
+                  rows={3}
+                  className="th-input"
+                  value={voidReason}
+                  onChange={(e) => setVoidReason(e.target.value)}
+                  placeholder="Ví dụ: Đề bài bị thiếu dữ kiện điểm M; hoặc không có đáp án đúng..."
+                  style={{ width: "100%", fontSize: "0.85rem" }}
+                  required
+                />
+              </div>
+
+              <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.825rem", color: "var(--th-text-primary)", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={quarantineInBank}
+                  onChange={(e) => setQuarantineInBank(e.target.checked)}
+                />
+                <span>Cách ly câu hỏi này khỏi Ngân hàng đề (Khuyên dùng - chuyển sang trạng thái Lưu trữ để tránh giao bài mới)</span>
+              </label>
+
+              {voidModalError && (
+                <div style={{ padding: "10px", borderRadius: "8px", backgroundColor: "rgba(239, 68, 68, 0.15)", border: "1px solid #ef4444", color: "#fca5a5", fontSize: "0.8rem" }}>
+                  {voidModalError}
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", borderTop: "1px solid var(--th-border-color)", paddingTop: "14px" }}>
+              <button
+                type="button"
+                className="th-button-secondary"
+                onClick={() => setIsVoidModalOpen(false)}
+                disabled={voidQuestionMutation.isPending}
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!voidReason.trim()) {
+                    setVoidModalError("Vui lòng nhập lý do hủy câu hỏi.");
+                    return;
+                  }
+                  setVoidModalError(null);
+                  voidQuestionMutation.mutate({ reason: voidReason.trim(), quarantineInBank });
+                }}
+                disabled={voidQuestionMutation.isPending || !voidReason.trim()}
+                style={{
+                  padding: "8px 18px",
+                  borderRadius: "8px",
+                  fontWeight: 700,
+                  fontSize: "0.875rem",
+                  backgroundColor: "#ef4444",
+                  color: "#fff",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                {voidQuestionMutation.isPending ? "Đang xử lý..." : "Xác nhận Hủy câu & Cấp điểm"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

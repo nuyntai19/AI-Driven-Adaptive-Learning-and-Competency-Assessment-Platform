@@ -3,12 +3,13 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.Common;
-using EduTwin.DAL;
-using EduTwin.DAL.Persistence;
-using EduTwin.BLL.IdentityAndTenancy;
+using QuestionStatus = EduTwin.Contracts.CurriculumAndQuestions.QuestionStatus;
 using EduTwin.Contracts.IdentityAndTenancy;
+using EduTwin.BLL.IdentityAndTenancy;
+using EduTwin.DAL.Persistence;
 
 namespace EduTwin.BLL.Assignments;
 
@@ -110,6 +111,8 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
             var analysis = latestAttempt != null && analysesByAttemptId.TryGetValue(latestAttempt.AttemptId, out var foundAnalysis)
                 ? foundAnalysis
                 : null;
+            var isVoided = aq.Question?.Status == QuestionStatus.Archived;
+            var fullScore = aq.Points > 0 ? aq.Points : (aq.Question?.MaxScore ?? 1.00m);
             return new StudentQuestionDto
             {
                 QuestionId = aq.QuestionId.ToString(),
@@ -129,11 +132,11 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
                         Label = o.OptionLabel,
                         Text = o.OptionText
                     }).ToList(),
-                AttemptStatus = latestAttempt?.Status.ToString(),
+                AttemptStatus = isVoided ? nameof(AttemptStatus.Completed) : latestAttempt?.Status.ToString(),
                 LatestAttempt = latestAttempt != null ? new StudentQuestionAttemptDto
                 {
                     AttemptId = latestAttempt.AttemptId.ToString(),
-                    Status = latestAttempt.Status.ToString(),
+                    Status = isVoided ? nameof(AttemptStatus.Completed) : latestAttempt.Status.ToString(),
                     FinalAnswer = latestAttempt.FinalAnswer,
                     ReasoningText = latestAttempt.ReasoningText,
                     Confidence = latestAttempt.Confidence,
@@ -141,15 +144,15 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
                     AnswerChanges = latestAttempt.AnswerChanges,
                     Skipped = latestAttempt.Skipped,
                     SubmittedAt = latestAttempt.CreatedAt,
-                    IsCorrect = latestAttempt.IsCorrect,
-                    AwardedScore = latestAttempt.AwardedScore,
+                    IsCorrect = isVoided ? true : latestAttempt.IsCorrect,
+                    AwardedScore = isVoided ? fullScore : latestAttempt.AwardedScore,
                     MaxScore = aq.Question?.MaxScore
                 } : null,
                 SubmittedAnswer = latestAttempt?.FinalAnswer,
                 SubmittedReasoning = latestAttempt?.ReasoningText,
                 SubmittedAttemptId = latestAttempt?.AttemptId,
                 HasAttachment = latestAttempt != null && hasAttachmentSet.Contains(latestAttempt.AttemptId),
-                EffectiveIsCorrect = analysis?.OverrideIsCorrect ?? latestAttempt?.IsCorrect
+                EffectiveIsCorrect = isVoided ? true : (analysis?.OverrideIsCorrect ?? latestAttempt?.IsCorrect)
             };
         }).ToList();
 

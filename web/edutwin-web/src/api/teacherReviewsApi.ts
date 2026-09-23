@@ -75,3 +75,44 @@ export const approveAssignmentResult = async (assignmentId: string, request: App
   const response = await httpClient.post(`/teachers/me/assignments/${assignmentId}/approve-result`, request);
   return response.data;
 };
+
+export interface VoidAssignmentQuestionRequest {
+  voidReason?: string;
+  archiveQuestionInBank?: boolean;
+  reason?: string;
+  quarantineInBank?: boolean;
+}
+
+export interface VoidAssignmentQuestionResponse {
+  data: {
+    assignmentId: string;
+    questionId: number | string;
+    voidedAttemptsCount?: number;
+    affectedAttemptsCount?: number;
+    questionArchived?: boolean;
+    quarantinedInQuestionBank?: boolean;
+    message: string;
+  };
+}
+
+export const voidAssignmentQuestion = async (
+  assignmentId: string,
+  questionId: number | string,
+  request: VoidAssignmentQuestionRequest
+): Promise<VoidAssignmentQuestionResponse> => {
+  const text = (request.voidReason || request.reason || "").trim();
+  const quarantine = request.archiveQuestionInBank ?? request.quarantineInBank ?? true;
+  const payload = {
+    voidReason: text,
+    reason: text,
+    archiveQuestionInBank: quarantine,
+    quarantineInBank: quarantine,
+  };
+  const response = await httpClient.post<VoidAssignmentQuestionResponse>(
+    `/teachers/me/assignments/${assignmentId}/questions/${questionId}/void`,
+    payload
+  );
+  return response.data;
+};
+
+

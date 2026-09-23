@@ -25,6 +25,8 @@ public class CurriculumsController : ControllerBase
     private readonly IAssignCurriculumClassesUseCase _assignCurriculumClassesUseCase;
     private readonly IAssignCurriculumNodesUseCase _assignCurriculumNodesUseCase;
     private readonly IPublishCurriculumUseCase _publishCurriculumUseCase;
+    private readonly IArchiveCurriculumUseCase _archiveCurriculumUseCase;
+    private readonly ICloneCurriculumUseCase _cloneCurriculumUseCase;
     private readonly TimeProvider _timeProvider;
 
     public CurriculumsController(
@@ -35,6 +37,8 @@ public class CurriculumsController : ControllerBase
         IAssignCurriculumClassesUseCase assignCurriculumClassesUseCase,
         IAssignCurriculumNodesUseCase assignCurriculumNodesUseCase,
         IPublishCurriculumUseCase publishCurriculumUseCase,
+        IArchiveCurriculumUseCase archiveCurriculumUseCase,
+        ICloneCurriculumUseCase cloneCurriculumUseCase,
         TimeProvider timeProvider)
     {
         _createCurriculumUseCase = createCurriculumUseCase;
@@ -44,6 +48,8 @@ public class CurriculumsController : ControllerBase
         _assignCurriculumClassesUseCase = assignCurriculumClassesUseCase;
         _assignCurriculumNodesUseCase = assignCurriculumNodesUseCase;
         _publishCurriculumUseCase = publishCurriculumUseCase;
+        _archiveCurriculumUseCase = archiveCurriculumUseCase;
+        _cloneCurriculumUseCase = cloneCurriculumUseCase;
         _timeProvider = timeProvider;
     }
 
@@ -216,6 +222,53 @@ public class CurriculumsController : ControllerBase
                 Meta = new MetaDto { TraceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier, Timestamp = _timeProvider.GetUtcNow().UtcDateTime }
             };
             return Ok(response);
+        }
+        return MapError(result.ErrorCode!);
+    }
+
+    [HttpPost("{id:guid}/archive")]
+    [Authorize(Policy = "curriculum.curriculums.publish")]
+    [ProducesResponseType(typeof(CurriculumResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> ArchiveCurriculum(
+        [FromRoute] Guid id,
+        [FromBody] ArchiveCurriculumRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _archiveCurriculumUseCase.ExecuteAsync(id, request, cancellationToken);
+        if (result.IsSuccess)
+        {
+            var response = new CurriculumResponse
+            {
+                Data = result.Data!,
+                Meta = new MetaDto { TraceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier, Timestamp = _timeProvider.GetUtcNow().UtcDateTime }
+            };
+            return Ok(response);
+        }
+        return MapError(result.ErrorCode!);
+    }
+
+    [HttpPost("{id:guid}/clone")]
+    [Authorize(Policy = "curriculum.curriculums.create")]
+    [ProducesResponseType(typeof(CurriculumResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> CloneCurriculum(
+        [FromRoute] Guid id,
+        [FromBody] CloneCurriculumRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _cloneCurriculumUseCase.ExecuteAsync(id, request, cancellationToken);
+        if (result.IsSuccess)
+        {
+            var response = new CurriculumResponse
+            {
+                Data = result.Data!,
+                Meta = new MetaDto { TraceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier, Timestamp = _timeProvider.GetUtcNow().UtcDateTime }
+            };
+            return Created(string.Empty, response);
         }
         return MapError(result.ErrorCode!);
     }

@@ -327,9 +327,15 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
     },
     onError: (err: any) => {
       const details = extractProblemDetails(err);
+      const isConflictOrLocked =
+        (isAxiosError(err) && (err.response?.status === 409 || err.response?.status === 400)) ||
+        err?.message?.includes("ràng buộc") ||
+        err?.message?.includes("conflict");
       setFeedbackMsg({
         type: "error",
-        text: mapSafeOperationalError(err, "Không thể xóa điểm tri thức vì đang có ràng buộc liên kết."),
+        text: isConflictOrLocked
+          ? "Điểm tri thức này đang được gắn vào Giáo trình, Ngân hàng câu hỏi hoặc Lịch sử năng lực học sinh (Digital Twin) nên bị CẤM XÓA CỨNG để bảo toàn dữ liệu học thuật. Thay vào đó, vui lòng chuyển trạng thái nút sang 'Vô hiệu hóa' (Tắt hoạt động)."
+          : mapSafeOperationalError(err, "Không thể xóa điểm tri thức vì đang có ràng buộc liên kết."),
         traceId: details.traceId,
       });
     },
@@ -1257,9 +1263,17 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                 {/* Edit Form */}
                 {canUpdateNodes ? (
                   <form onSubmit={handleEditNodeSubmit} style={{ display: "flex", flexDirection: "column", gap: "10px", borderTop: "1px solid var(--th-border-subtle)", paddingTop: "12px" }}>
-                    <h4 style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", color: "var(--th-text-muted)", margin: 0 }}>
-                      Chỉnh sửa điểm tri thức
-                    </h4>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <h4 style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", color: "var(--th-text-muted)", margin: 0 }}>
+                        Chỉnh sửa điểm tri thức
+                      </h4>
+                      <span
+                        className={`th-badge ${selectedNode.isActive ? "th-badge-success" : "th-badge-neutral"}`}
+                        style={{ fontSize: "0.7rem", padding: "2px 8px" }}
+                      >
+                        {selectedNode.isActive ? "Đang hoạt động" : "Đã vô hiệu hóa"}
+                      </span>
+                    </div>
 
                     <div>
                       <label style={{ display: "block", fontSize: "0.75rem", color: "var(--th-text-secondary)", marginBottom: "4px" }}>
@@ -1339,7 +1353,18 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                       />
                     </div>
 
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
+                    {/* Active/Inactive Toggle Checkbox */}
+                    <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "0.8rem", color: "var(--th-text-primary)", padding: "4px 0" }}>
+                      <input
+                        type="checkbox"
+                        checked={editNodeIsActive}
+                        onChange={(e) => setEditNodeIsActive(e.target.checked)}
+                        style={{ width: "15px", height: "15px", accentColor: "var(--th-primary)" }}
+                      />
+                      <span>Kích hoạt cho giảng dạy (Đang hoạt động)</span>
+                    </label>
+
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px", gap: "8px", flexWrap: "wrap" }}>
                       {canDeleteNodes && (
                         <button
                           type="button"
@@ -1348,6 +1373,33 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                           style={{ minHeight: "32px", padding: "0 10px", fontSize: "0.75rem" }}
                         >
                           Xóa nút
+                        </button>
+                      )}
+                      {canUpdateNodes && selectedNode.isActive && (
+                        <button
+                          type="button"
+                          className="th-secondary-button"
+                          onClick={() => {
+                            setEditNodeIsActive(false);
+                            updateNodeMutation.mutate({
+                              id: selectedNode.nodeId,
+                              req: {
+                                nodeName: editNodeName.trim(),
+                                parentNodeId: editNodeParentId.trim() || null,
+                                description: editNodeDescription.trim() || null,
+                                orderIndex: parseInt(editNodeOrderIndex, 10) || 0,
+                                examImportance: parseFloat(editNodeExamImportance) || 0,
+                                estimatedLearningMinutes: parseInt(editNodeEstimatedMinutes, 10) || 30,
+                                isActive: false,
+                                rowVersion: selectedNode.rowVersion,
+                              },
+                            });
+                          }}
+                          disabled={updateNodeMutation.isPending}
+                          style={{ minHeight: "32px", padding: "0 10px", fontSize: "0.75rem", color: "var(--th-warning)" }}
+                          title="Vô hiệu hóa điểm tri thức thay vì xóa cứng nhằm bảo toàn dữ liệu giáo trình và năng lực học sinh"
+                        >
+                          Tắt hoạt động
                         </button>
                       )}
                       <button
@@ -1745,7 +1797,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
           }
         }}
         title="Xác nhận xóa điểm tri thức"
-        description={`Bạn có chắc chắn muốn xóa điểm tri thức "${deletingNode?.nodeName}" (${deletingNode?.nodeCode})? Tất cả liên kết liên quan sẽ bị gỡ bỏ.`}
+        description={`Bạn có chắc chắn muốn xóa điểm tri thức "${deletingNode?.nodeName}" (${deletingNode?.nodeCode})? Lưu ý: Nếu điểm tri thức này đã được sử dụng trong bất kỳ Giáo trình, Bài tập, Câu hỏi hoặc Lịch sử năng lực học sinh (Digital Twin), hệ thống sẽ cấm xóa cứng để bảo vệ dữ liệu. Thay vào đó bạn có thể chọn Tắt hoạt động (Vô hiệu hóa).`}
         confirmLabel="Xóa vĩnh viễn"
         tone="danger"
         isConfirming={deleteNodeMutation.isPending}

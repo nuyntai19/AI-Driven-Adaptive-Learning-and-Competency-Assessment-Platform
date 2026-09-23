@@ -103,6 +103,22 @@ public sealed class AttemptSubmissionValidatorTests : IDisposable
     }
 
     [Fact]
+    public async Task ValidateAsync_ArchivedQuestionInPublishedAssignment_AllowsSubmissionSuccessfully()
+    {
+        await SeedActiveStudentAsync();
+        await SeedQuestionAsync(status: QuestionStatus.Archived);
+        var assignmentId = await SeedAssignmentAsync(
+            AssignmentStatus.Published,
+            includeTarget: true,
+            includeQuestion: true);
+
+        var result = await CreateSut().ValidateAsync(CreateRequest(assignmentId: assignmentId));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(assignmentId, result.Submission!.AssignmentId);
+    }
+
+    [Fact]
     public async Task ValidateAsync_SameIdempotencyPayload_ReturnsExistingAttempt()
     {
         await SeedActiveStudentAsync();
@@ -253,6 +269,27 @@ public sealed class AttemptSubmissionValidatorTests : IDisposable
         Assert.True(result.IsSuccess);
         Assert.False(result.Submission!.IsCorrect);
         Assert.Equal(0m, result.Submission.AwardedScore);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_ArchivedQuestionInPublishedAssignment_IsAwardedFullScoreEvenWhenAnswerIncorrect()
+    {
+        await SeedActiveStudentAsync();
+        await SeedQuestionAsync(
+            status: QuestionStatus.Archived,
+            reasoningRequired: true,
+            correctAnswer: "CORRECT_KEY");
+        var assignmentId = await SeedAssignmentAsync(AssignmentStatus.Published);
+
+        var result = await CreateSut().ValidateAsync(
+            CreateRequest(
+                assignmentId: assignmentId,
+                finalAnswer: "WRONG_ANSWER",
+                reasoningText: ""));
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Submission!.IsCorrect);
+        Assert.Equal(2m, result.Submission.AwardedScore);
     }
 
     [Theory]
