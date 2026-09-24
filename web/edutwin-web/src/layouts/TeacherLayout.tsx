@@ -28,7 +28,7 @@ const allTeacherNavItems: TeacherNavigationItem[] = [
   {
     number: "01",
     label: "Lớp học phụ trách",
-    subLabel: "Quản lý & Theo dõi học sinh",
+    subLabel: "Quản lý & Theo dõi lớp",
     meta: "Niên khóa 2025 - 2026",
     badge: "Lớp học",
     to: "/giao-vien/lop-hoc",
@@ -39,6 +39,18 @@ const allTeacherNavItems: TeacherNavigationItem[] = [
   },
   {
     number: "02",
+    label: "Quản lý học sinh",
+    subLabel: "Hồ sơ, Bảng điểm & Báo cáo",
+    meta: "Học sinh & Báo cáo",
+    badge: "Học sinh",
+    to: "/giao-vien/hoc-sinh",
+    permissions: [permissions.studentsRead, permissions.dashboardsTeacherRead, permissions.classesRead],
+    permissionMode: "any",
+    match: (pathname) => pathname === "/giao-vien/hoc-sinh" || /^\/giao-vien\/hoc-sinh\/[^/]+/.test(pathname),
+    icon: "👨‍🎓",
+  },
+  {
+    number: "03",
     label: "Hàng đợi chấm bài",
     subLabel: "Chấm điểm & Phản hồi bài tập",
     meta: "Hàng đợi chấm thi",
@@ -49,7 +61,7 @@ const allTeacherNavItems: TeacherNavigationItem[] = [
     icon: "✍️",
   },
   {
-    number: "03",
+    number: "04",
     label: "Ngân hàng câu hỏi",
     subLabel: "Kho đề & Quản lý câu hỏi",
     meta: "Trắc nghiệm & Tự luận",
@@ -60,7 +72,7 @@ const allTeacherNavItems: TeacherNavigationItem[] = [
     icon: "📚",
   },
   {
-    number: "04",
+    number: "05",
     label: "Giáo trình môn học",
     subLabel: "Cấu trúc & Kế hoạch đào tạo",
     meta: "Khung chương trình",
@@ -71,7 +83,7 @@ const allTeacherNavItems: TeacherNavigationItem[] = [
     icon: "📖",
   },
   {
-    number: "05",
+    number: "06",
     label: "Đồ thị tri thức",
     subLabel: "Sơ đồ & Mạng lưới năng lực",
     meta: "Cây tri thức chuẩn",
@@ -82,7 +94,7 @@ const allTeacherNavItems: TeacherNavigationItem[] = [
     icon: "🕸️",
   },
   {
-    number: "06",
+    number: "07",
     label: "Danh sách bài tập",
     subLabel: "Giao bài & Theo dõi tiến độ",
     meta: "Bài tập & Đề kiểm tra",
@@ -93,7 +105,7 @@ const allTeacherNavItems: TeacherNavigationItem[] = [
     icon: "📋",
   },
   {
-    number: "07",
+    number: "08",
     label: "Tạo bài tập mới",
     subLabel: "Thiết lập & Phát hành đề",
     meta: "Soạn thảo nhanh",

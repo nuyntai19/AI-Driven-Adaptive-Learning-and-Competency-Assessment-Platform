@@ -22,7 +22,7 @@ import {
 } from "../utils/polling";
 import { StudentSubjectRequiredState } from "../components/student/StudentSubjectRequiredState";
 import { AttemptFeedbackHierarchy } from "../components/student/AttemptFeedbackHierarchy";
-import { supportsMathTools, isFormulaOnlyQuestion } from "../utils/subjectCapabilities";
+import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
 import { MathInputToolbar } from "../components/math/MathInputToolbar";
 import { VisualMathField, type VisualMathFieldRef } from "../components/math/VisualMathField";
 import { RichMathText } from "../components/math/RichMathText";
@@ -35,8 +35,6 @@ import {
 } from "../utils/attemptSessionStorage";
 import { useAuthStore } from "../stores/authStore";
 import { httpClient } from "../api/httpClient";
-import { organizationApi } from "../api/organizationApi";
-import { isAxiosError } from "axios";
 import { isFeedbackForQuestion, resolveQuestionReviewAttemptId } from "../utils/questionReview";
 
 interface StoredAnswer {
@@ -50,9 +48,6 @@ interface StoredAnswer {
   drawingUploadToken?: string | null;
 }
 
-const asStoredAnswerRecord = (value: unknown): Record<string, unknown> | null =>
-  typeof value === "object" && value !== null ? value as Record<string, unknown> : null;
-
 export const LearningPlayerPage = () => {
   const { questionId: routeQuestionId } = useParams<{ questionId?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -62,9 +57,6 @@ export const LearningPlayerPage = () => {
 
   const currentUser = useAuthStore((state) => state.user);
   const queryClient = useQueryClient();
-  const assignmentDraftStorageKey = assignmentId && currentUser
-    ? `edutwin_assignment_answers_${currentUser.centerId}_${currentUser.userId}_${assignmentId}`
-    : null;
 
   // Auto-restore subjectId from localStorage if entering adaptive learning directly
   useEffect(() => {
@@ -89,23 +81,22 @@ export const LearningPlayerPage = () => {
   const [assignmentAnswers, setAssignmentAnswers] = useState<Record<string, StoredAnswer>>(() => {
     if (!assignmentId) return {};
     try {
-      const saved = assignmentDraftStorageKey ? localStorage.getItem(assignmentDraftStorageKey) : null;
+      const saved = localStorage.getItem(`edutwin_assignment_answers_${assignmentId}`);
       if (!saved) return {};
-      const parsed: unknown = JSON.parse(saved);
+      const parsed = JSON.parse(saved);
       if (typeof parsed !== "object" || parsed === null) return {};
       const sanitized: Record<string, StoredAnswer> = {};
-      for (const [k, value] of Object.entries(parsed as Record<string, unknown>)) {
-        const v = asStoredAnswerRecord(value);
-        if (v) {
+      for (const [k, v] of Object.entries(parsed)) {
+        if (v && typeof v === "object") {
           sanitized[k] = {
-            finalAnswer: typeof v.finalAnswer === "string" ? v.finalAnswer : "",
-            reasoningText: typeof v.reasoningText === "string" ? v.reasoningText : "",
-            confidence: typeof v.confidence === "number" ? v.confidence : 80,
-            timeSpentSeconds: typeof v.timeSpentSeconds === "number" ? v.timeSpentSeconds : 0,
-            answerChanges: typeof v.answerChanges === "number" ? v.answerChanges : 0,
-            snapshotDataUrl: typeof v.snapshotDataUrl === "string" ? v.snapshotDataUrl : null,
-            snapshotTime: typeof v.snapshotTime === "string" ? v.snapshotTime : null,
-            drawingUploadToken: typeof v.drawingUploadToken === "string" ? v.drawingUploadToken : null,
+            finalAnswer: typeof (v as any).finalAnswer === "string" ? (v as any).finalAnswer : "",
+            reasoningText: typeof (v as any).reasoningText === "string" ? (v as any).reasoningText : "",
+            confidence: typeof (v as any).confidence === "number" ? (v as any).confidence : 80,
+            timeSpentSeconds: typeof (v as any).timeSpentSeconds === "number" ? (v as any).timeSpentSeconds : 0,
+            answerChanges: typeof (v as any).answerChanges === "number" ? (v as any).answerChanges : 0,
+            snapshotDataUrl: typeof (v as any).snapshotDataUrl === "string" ? (v as any).snapshotDataUrl : null,
+            snapshotTime: typeof (v as any).snapshotTime === "string" ? (v as any).snapshotTime : null,
+            drawingUploadToken: typeof (v as any).drawingUploadToken === "string" ? (v as any).drawingUploadToken : null,
           };
         }
       }
@@ -202,11 +193,6 @@ export const LearningPlayerPage = () => {
 
   const assignment = assignmentResponse?.data;
   const assignmentQuestions = assignment?.questions || [];
-  const subjectsQuery = useQuery({
-    queryKey: ["subjects", "learning-player"],
-    queryFn: () => organizationApi.listSubjects(true),
-    staleTime: 5 * 60 * 1000,
-  });
 
   // Assignment Countdown & Server-Synchronized Expiration Timer
   const [assignmentRemainingSeconds, setAssignmentRemainingSeconds] = useState<number | null>(null);
@@ -345,7 +331,7 @@ export const LearningPlayerPage = () => {
           orderIndex: idx,
         })),
         explanation: assignment.instructions || "",
-        answerEvaluationMode: assignmentQuestion.answerEvaluationMode || "TextExact",
+        answerEvaluationMode: assignmentQuestion.questionType === "Numeric" ? "NumericRational" : "Exact",
       };
     }
     return adaptiveQuestion || null;
@@ -353,18 +339,6 @@ export const LearningPlayerPage = () => {
 
   const questionLoading = assignmentId ? assignmentLoading : adaptiveLoading;
   const questionError = assignmentId ? assignmentError : adaptiveError;
-
-  const hasMathTools = useMemo(() => {
-    const subject = assignment?.subjectName || subjectsQuery.data?.data.find((item) => item.subjectId === subjectId)?.subjectName;
-    return supportsMathTools(subject);
-  }, [assignment?.subjectName, subjectId, subjectsQuery.data]);
-
-  useEffect(() => {
-    if (!hasMathTools) {
-      setActiveSideTool(null);
-      setShowMathToolbar(false);
-    }
-  }, [hasMathTools]);
 
   // Sync form inputs when switching active question in assignment mode
   useEffect(() => {
@@ -495,7 +469,7 @@ export const LearningPlayerPage = () => {
       setAssignmentAnswers((prev) => {
         const next = { ...prev, [qId]: updatedEntry };
         try {
-          if (assignmentDraftStorageKey) localStorage.setItem(assignmentDraftStorageKey, JSON.stringify(next));
+          localStorage.setItem(`edutwin_assignment_answers_${assignmentId}`, JSON.stringify(next));
         } catch {
           // Ignore localStorage quote limits
         }
@@ -514,7 +488,6 @@ export const LearningPlayerPage = () => {
       attachedSnapshotDataUrl,
       attachedSnapshotTime,
       drawingUploadToken,
-      assignmentDraftStorageKey,
     ]
   );
 
@@ -607,16 +580,9 @@ export const LearningPlayerPage = () => {
               setPollingJobId(null);
             }
           }
-          await Promise.all([
-            queryClient.invalidateQueries({ queryKey: ["studentTwin"] }),
-            queryClient.invalidateQueries({ queryKey: ["studentTwinHistory"] }),
-            queryClient.invalidateQueries({ queryKey: ["studentDashboard"] }),
-            queryClient.invalidateQueries({ queryKey: ["learning-path"] }),
-            ...(assignmentId ? [
-              queryClient.invalidateQueries({ queryKey: ["student-assignments"] }),
-              queryClient.invalidateQueries({ queryKey: ["student-assignment", assignmentId] }),
-            ] : []),
-          ]);
+          if (assignmentId) {
+            await queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
+          }
           return;
         }
 
@@ -640,10 +606,7 @@ export const LearningPlayerPage = () => {
               // fallback
             }
             if (assignmentId) {
-              await Promise.all([
-                queryClient.invalidateQueries({ queryKey: ["student-assignments"] }),
-                queryClient.invalidateQueries({ queryKey: ["student-assignment", assignmentId] }),
-              ]);
+              await queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
             }
           }
           return;
@@ -663,7 +626,7 @@ export const LearningPlayerPage = () => {
           if (isSubscribed) {
             setAiBanner({
               type: "info",
-              message: "✓ Bài làm đã được ghi nhận. AI đang mất nhiều thời gian hơn dự kiến để phân tích. Điểm số và nhận xét sẽ được cập nhật khi hoàn tất.",
+              message: "✓ Bài làm đã được ghi nhận. AI đang mất nhiều thời gian hơn dự kiến để phân tích. Bạn vẫn có thể xem bài làm và lời giải của giáo viên. Kết quả AI sẽ được cập nhật khi hoàn tất.",
               action: null,
             });
             try {
@@ -675,10 +638,7 @@ export const LearningPlayerPage = () => {
               // fallback
             }
             if (assignmentId) {
-              await Promise.all([
-                queryClient.invalidateQueries({ queryKey: ["student-assignments"] }),
-                queryClient.invalidateQueries({ queryKey: ["student-assignment", assignmentId] }),
-              ]);
+              await queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
             }
           }
         }
@@ -789,7 +749,7 @@ export const LearningPlayerPage = () => {
           },
         };
         try {
-          if (assignmentDraftStorageKey) localStorage.setItem(assignmentDraftStorageKey, JSON.stringify(next));
+          localStorage.setItem(`edutwin_assignment_answers_${assignmentId}`, JSON.stringify(next));
         } catch {
           // Handle storage quota
         }
@@ -819,7 +779,7 @@ export const LearningPlayerPage = () => {
           },
         };
         try {
-          if (assignmentDraftStorageKey) localStorage.setItem(assignmentDraftStorageKey, JSON.stringify(next));
+          localStorage.setItem(`edutwin_assignment_answers_${assignmentId}`, JSON.stringify(next));
         } catch {
           // Handle storage quota
         }
@@ -845,7 +805,7 @@ export const LearningPlayerPage = () => {
   // Submit flow:
   // - Assignment Mode: Sequentially submit each question attempt (generating 1 prompt per question + scratchpad)
   // - Adaptive Mode: Submit single active question
-  const handleFinalSubmit = async (options?: { forceSkip?: boolean }) => {
+  const handleFinalSubmit = async () => {
     if (!question) return;
     persistCurrentAnswer();
     setShowBatchConfirmModal(false);
@@ -984,24 +944,9 @@ export const LearningPlayerPage = () => {
         // Clean up frozen payload on success
         frozenPayloadRef.current = null;
 
-        // Every question in the assignment has now been accepted by the server.
-        // Purge all of their idempotency identities immediately; otherwise a new
-        // student/retake in this browser tab can accidentally reuse stale IDs.
-        if (currentUser) {
-          for (const submittedQuestion of assignmentQuestions) {
-            clearAttemptSessionId({
-              centerId: currentUser.centerId,
-              userId: currentUser.userId,
-              subjectId: subjectId || "assignment",
-              questionId: String(submittedQuestion.questionId),
-            });
-          }
-          clientSubmissionIdRef.current = createClientSubmissionId();
-        }
-
         // Clear local storage draft
         try {
-          if (assignmentDraftStorageKey) localStorage.removeItem(assignmentDraftStorageKey);
+          localStorage.removeItem(`edutwin_assignment_answers_${assignmentId}`);
         } catch {
           // ignore
         }
@@ -1011,12 +956,7 @@ export const LearningPlayerPage = () => {
         setIsSubmitting(false);
 
         // Invalidate TanStack queries so assignment and lists refresh with updated progress
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ["student-assignments"] }),
-          assignmentId
-            ? queryClient.invalidateQueries({ queryKey: ["student-assignment", assignmentId] })
-            : Promise.resolve(),
-        ]);
+        await queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
 
         if (lastJobId) {
           setPollingJobId(lastJobId);
@@ -1032,14 +972,13 @@ export const LearningPlayerPage = () => {
       }
 
       // ── SINGLE ADAPTIVE QUESTION SUBMISSION ──────────────────────────────────
-      const forceSkip = options?.forceSkip === true;
       let tokenToUse: string | null = drawingUploadToken;
       if (attachedSnapshotDataUrl && !tokenToUse) {
         setPollingStatus("Đang tải lên bản vẽ nháp đính kèm...");
         tokenToUse = await uploadScratchpadAttachmentIfAny();
       }
 
-      if (!forceSkip && question.reasoningRequired && finalAnswer.trim() && !reasoningText.trim()) {
+      if (question.reasoningRequired && finalAnswer.trim() && !reasoningText.trim()) {
         setIsSubmitting(false);
         setSubmissionSaveError("Câu hỏi này yêu cầu phải có phần lập luận / giải trình trước khi nộp bài.");
         return;
@@ -1049,12 +988,12 @@ export const LearningPlayerPage = () => {
       const submitted = await submitAttempt({
         questionId: question.questionId,
         assignmentId: undefined,
-        finalAnswer: forceSkip ? "SKIPPED" : finalAnswer.trim() || "SKIPPED",
-        reasoningText: forceSkip ? undefined : reasoningText.trim() || undefined,
+        finalAnswer: finalAnswer.trim() || "SKIPPED",
+        reasoningText: reasoningText.trim() || undefined,
         timeSpentSeconds,
         confidence,
         answerChanges,
-        skipped: forceSkip || !finalAnswer.trim(),
+        skipped: !finalAnswer.trim(),
         clientSubmissionId: getClientSubmissionId(),
         answerDisplayLatex: answerDisplayLatex.trim() || undefined,
         drawingUploadToken: tokenToUse || undefined,
@@ -1077,12 +1016,6 @@ export const LearningPlayerPage = () => {
         const fbRes = await getAttemptFeedback(resData.attemptId);
         setFeedbackData(fbRes);
         setIsSubmitting(false);
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ["studentTwin"] }),
-          queryClient.invalidateQueries({ queryKey: ["studentTwinHistory"] }),
-          queryClient.invalidateQueries({ queryKey: ["studentDashboard"] }),
-          queryClient.invalidateQueries({ queryKey: ["learning-path"] }),
-        ]);
       } else {
         setIsSubmitting(false);
         setSubmissionSaveError("Phản hồi bất thường từ máy chủ. Vui lòng thử nộp lại.");
@@ -1121,22 +1054,12 @@ export const LearningPlayerPage = () => {
         setIsSubmitting(true);
       } else {
         if (assignmentId) {
-          await Promise.all([
-            queryClient.invalidateQueries({ queryKey: ["student-assignments"] }),
-            queryClient.invalidateQueries({ queryKey: ["student-assignment", assignmentId] }),
-          ]);
+          await queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
         }
       }
-    } catch (err: unknown) {
+    } catch (err: any) {
       setIsRetryingAiFromBanner(false);
-      const responseData = isAxiosError(err) && typeof err.response?.data === "object" && err.response.data !== null
-        ? err.response.data as Record<string, unknown>
-        : null;
-      const msg = typeof responseData?.detail === "string"
-        ? responseData.detail
-        : typeof responseData?.message === "string"
-          ? responseData.message
-          : err instanceof Error ? err.message : "Không thể kích hoạt chấm lại AI lúc này.";
+      const msg = err?.response?.data?.detail || err?.response?.data?.message || err?.message || "Không thể kích hoạt chấm lại AI lúc này.";
       setAiBanner({
         type: "warning",
         message: `✓ Bài làm đã được ghi nhận an toàn. ${msg}`,
@@ -1189,33 +1112,47 @@ export const LearningPlayerPage = () => {
   // Assignment-level statistics when submitted
   const assignmentStats = useMemo(() => {
     if (!assignment || !isAssignmentSubmitted) return null;
+    let awardedTotal = 0;
+    let maxTotalForDetermined = 0;
+    let overallMaxTotal = 0;
+    let correctCount = 0;
+    let evaluatedCount = 0;
     let aiProcessingCount = 0;
     let teacherReviewCount = 0;
 
     for (const q of assignmentQuestions) {
       const status = q.latestAttempt?.status || q.attemptStatus;
+      const isEvaluated = status === "Completed";
       const isReview = status === "NeedsTeacherReview";
       const isProcessing = status === "PendingAnalysis" || status === "Processing";
 
+      if (isEvaluated) evaluatedCount++;
       if (isReview) teacherReviewCount++;
       if (isProcessing) aiProcessingCount++;
+
+      const maxScore = q.latestAttempt?.maxScore ?? 10;
+      overallMaxTotal += Number(maxScore);
+
+      if (q.latestAttempt?.awardedScore !== null && q.latestAttempt?.awardedScore !== undefined) {
+        awardedTotal += Number(q.latestAttempt.awardedScore);
+        maxTotalForDetermined += Number(maxScore);
+      }
+
+      if (q.latestAttempt?.isCorrect === true) {
+        correctCount++;
+      }
     }
 
-    const summary = assignment.summary;
-    const evaluatedCount = summary?.evaluatedQuestionCount ?? assignmentQuestions.filter((q) => {
-      const status = q.latestAttempt?.status || q.attemptStatus;
-      return status === "Completed" || status === "NeedsTeacherReview";
-    }).length;
-
     return {
-      awardedTotal: summary?.internalAwardedScore ?? null,
-      maxTotal: summary?.internalMaxScore ?? 10,
-      correctCount: summary?.correctQuestionCount ?? assignmentQuestions.filter((q) => q.effectiveIsCorrect === true).length,
+      awardedTotal,
+      maxTotalForDetermined,
+      overallMaxTotal,
+      correctCount,
       evaluatedCount,
       aiProcessingCount,
       teacherReviewCount,
       pendingCount: teacherReviewCount,
-      totalCount: summary?.totalQuestionCount ?? assignmentQuestions.length,
+      totalCount: assignmentQuestions.length,
       isFullyEvaluated: evaluatedCount === assignmentQuestions.length && assignmentQuestions.length > 0,
     };
   }, [assignment, isAssignmentSubmitted, assignmentQuestions]);
@@ -1311,88 +1248,10 @@ export const LearningPlayerPage = () => {
   // 2. Feedback Screen (Results after submission)
   if (feedbackData) {
     const { grading, twinChange, recommendation } = feedbackData;
-    const assignmentResult = assignmentId ? assignment?.summary : null;
-    const displayedScore = assignmentId ? assignmentResult?.internalAwardedScore : grading.awardedScore;
-    const displayedMaxScore = assignmentId ? assignmentResult?.internalMaxScore ?? 10 : grading.maxScore;
 
     return (
       <div className="min-h-screen bg-[#f8fafc] dark:bg-[#090d16] p-6 text-slate-800 dark:text-slate-100">
         <div className="mx-auto max-w-3xl space-y-6">
-          {/* Assignment Level Summary Card (when viewing in assignment context) */}
-          {assignmentId && assignment?.summary && (
-            <div className="rounded-3xl bg-white dark:bg-[#0f172a] p-6 shadow-sm border border-slate-200/80 dark:border-slate-800 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800/80 pb-4">
-                <div>
-                  <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">
-                    Tổng kết bài tập: {assignment.title}
-                  </span>
-                  <div className="flex items-baseline gap-2 mt-1">
-                    <span className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
-                      {assignment.summary.correctQuestionCount} / {assignment.summary.totalQuestionCount}
-                    </span>
-                    <span className="text-slate-400 text-sm font-semibold">
-                      câu đúng · {assignment.summary.incorrectQuestionCount} câu sai
-                    </span>
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span
-                    className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${
-                      assignment.summary.resultStatus === "Final"
-                        ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300"
-                        : assignment.summary.resultStatus === "Provisional"
-                        ? "bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300"
-                        : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
-                    }`}
-                  >
-                    {assignment.summary.resultStatus === "Final" ? "Chính thức" : assignment.summary.resultStatus === "Provisional" ? "Tạm tính" : "Đang xử lý"}
-                  </span>
-                  <span
-                    className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${
-                      assignment.summary.teacherFinalReviewStatus === "Approved"
-                        ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300"
-                        : "bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300"
-                    }`}
-                  >
-                    {assignment.summary.teacherFinalReviewStatus === "Approved"
-                      ? "✓ Giáo viên đã duyệt"
-                      : "⏳ GV chưa duyệt"}
-                  </span>
-                </div>
-              </div>
-
-              {/* Overall AI Comment */}
-              {assignment.summary.overallAiComment &&
-                !(assignment.summary.teacherFinalReviewStatus === "Approved" && assignment.summary.finalTeacherNote) && (
-                <div className="rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 p-4 border border-indigo-200/80 dark:border-indigo-800 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-base">🤖</span>
-                    <h4 className="text-xs font-extrabold uppercase tracking-wider text-indigo-900 dark:text-indigo-200">
-                      Nhận xét tổng quan từ AI
-                    </h4>
-                  </div>
-                  <RichMathText
-                    text={assignment.summary.overallAiComment}
-                    className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed"
-                  />
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 italic pt-1 border-t border-indigo-100 dark:border-indigo-900/60">
-                    * Nhận xét tổng hợp tự động từ AI nhằm định hướng ôn tập, không thay thế đánh giá chính thức của giáo viên.
-                  </p>
-                </div>
-              )}
-              {assignment.summary.teacherFinalReviewStatus === "Approved" && assignment.summary.finalTeacherNote && (
-                <div className="rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/40 p-4 border border-emerald-200/80 dark:border-emerald-800 space-y-2">
-                  <h4 className="text-xs font-extrabold uppercase tracking-wider text-emerald-900 dark:text-emerald-200">
-                    Nhận xét của {assignment.summary.finalReviewedByName || "giáo viên"}
-                  </h4>
-                  <RichMathText
-                    text={assignment.summary.finalTeacherNote}
-                    className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed"
-                  />
-                </div>
-              )}
-            </div>
-          )}
           {/* Header Result Card */}
           <div
             className={`rounded-3xl p-6 sm:p-8 text-white shadow-md ${
@@ -1406,15 +1265,17 @@ export const LearningPlayerPage = () => {
             <div className="flex items-center justify-between">
               <div>
                 <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-bold uppercase tracking-wider text-white">
-                  {assignmentId
-                    ? assignmentResult?.teacherFinalReviewStatus === "Approved" ? "Điểm giáo viên" : "Điểm AI tạm tính"
-                    : grading.isCorrect === true ? "Đáp án chính xác" : grading.isCorrect === false ? "Cần hoàn thiện" : "Đang chờ đánh giá"}
+                  {grading.isCorrect === true
+                    ? "Đáp án chính xác"
+                    : grading.isCorrect === false
+                    ? "Cần hoàn thiện"
+                    : "Đang chờ đánh giá"}
                 </span>
                 <h2 className="mt-2 text-2xl sm:text-3xl font-black">
                   Điểm số:{" "}
-                  {displayedScore === null || displayedScore === undefined
-                    ? `Chưa chấm / ${displayedMaxScore}`
-                    : `${displayedScore} / ${displayedMaxScore}`}
+                  {grading.awardedScore === null || grading.awardedScore === undefined
+                    ? `Chưa chấm / ${grading.maxScore}`
+                    : `${grading.awardedScore} / ${grading.maxScore}`}
                 </h2>
               </div>
               <div className="text-right">
@@ -1427,9 +1288,6 @@ export const LearningPlayerPage = () => {
           {/* 4-Tier Hierarchy: Student Work -> AI Reasoning -> Teacher Solution -> Teacher Evaluation */}
           <AttemptFeedbackHierarchy
             feedbackData={feedbackData}
-            showStudentSubmission={!assignmentId}
-            scoreAndFeedbackOnly={Boolean(assignmentId)}
-            assignmentQuestionCount={assignmentId ? assignmentQuestions.length : undefined}
             answerOptions={
               assignmentQuestions.find((item) => item.questionId === feedbackData.questionId)?.options ??
               question?.options ??
@@ -1447,7 +1305,7 @@ export const LearningPlayerPage = () => {
           />
 
           {/* Digital Twin Change Card */}
-          {!assignmentId && twinChange && (
+          {twinChange && (
             <div className="rounded-3xl bg-white dark:bg-[#0f172a] p-6 shadow-xs border border-slate-200/80 dark:border-slate-800">
               <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
                 Tác Động Hồ Sơ Năng Lực (Digital Twin Delta)
@@ -1477,7 +1335,7 @@ export const LearningPlayerPage = () => {
           )}
 
           {/* Next Recommendation Card if present */}
-          {!assignmentId && recommendation && (
+          {recommendation && (
             <div className="rounded-3xl bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/40 dark:to-purple-950/40 p-6 shadow-xs border border-indigo-200/80 dark:border-indigo-800">
               <span className="inline-flex items-center rounded-full bg-indigo-100 dark:bg-indigo-900/60 px-2.5 py-0.5 text-xs font-bold text-indigo-800 dark:text-indigo-300">
                 Gợi ý bước tiếp theo: {recommendation.type}
@@ -1534,7 +1392,7 @@ export const LearningPlayerPage = () => {
                         `/hoc-tap/luyen-tap/${firstQuestionId}?assignmentId=${assignmentId}${subjectId ? `&subjectId=${subjectId}` : ""}`
                       );
                     }
-                    void queryClient.refetchQueries({ queryKey: ["student-assignment", assignmentId] });
+                    void queryClient.refetchQueries({ queryKey: ["student-assignments", assignmentId] });
                   }}
                   className="w-full sm:w-auto rounded-xl bg-indigo-600 px-6 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-500 text-center cursor-pointer"
                 >
@@ -1612,7 +1470,7 @@ export const LearningPlayerPage = () => {
                     onClick={() => {
                       if (window.confirm("Bạn có chắc chắn muốn làm lại bài tập này?")) {
                         try {
-                          if (assignmentDraftStorageKey) localStorage.removeItem(assignmentDraftStorageKey);
+                          localStorage.removeItem(`edutwin_assignment_answers_${assignmentId}`);
                         } catch {
                           // ignore storage error
                         }
@@ -1763,11 +1621,11 @@ export const LearningPlayerPage = () => {
                           : "Tổng điểm"}
                       </div>
                       <div className="text-xl sm:text-2xl font-black text-indigo-700 dark:text-indigo-300">
-                        {assignmentStats.awardedTotal !== null ? (
+                        {assignmentStats.evaluatedCount > 0 ? (
                           <>
                             {assignmentStats.awardedTotal}{" "}
                             <span className="text-xs font-semibold text-slate-400">
-                              / {assignmentStats.maxTotal}
+                              / {assignmentStats.maxTotalForDetermined}
                             </span>
                           </>
                         ) : (
@@ -1779,12 +1637,7 @@ export const LearningPlayerPage = () => {
                     <button
                       type="button"
                       onClick={() => {
-                        void Promise.all([
-                          queryClient.invalidateQueries({ queryKey: ["student-assignments"] }),
-                          assignmentId
-                            ? queryClient.invalidateQueries({ queryKey: ["student-assignment", assignmentId] })
-                            : Promise.resolve(),
-                        ]);
+                        void queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
                       }}
                       className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer inline-flex items-center gap-1.5"
                       title="Làm mới kết quả bài làm"
@@ -1854,28 +1707,6 @@ export const LearningPlayerPage = () => {
                     </span>
                   </div>
                 ) : null}
-
-                {assignment?.summary?.teacherFinalReviewStatus === "Approved" && assignment.summary.finalTeacherNote ? (
-                  <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 p-4">
-                    <div className="text-xs font-extrabold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
-                      Nhận xét của {assignment.summary.finalReviewedByName || "giáo viên"}
-                    </div>
-                    <RichMathText
-                      text={assignment.summary.finalTeacherNote}
-                      className="mt-1 text-sm text-slate-700 dark:text-slate-200 leading-relaxed"
-                    />
-                  </div>
-                ) : assignment?.summary?.overallAiComment ? (
-                  <div className="rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 p-4">
-                    <div className="text-xs font-extrabold uppercase tracking-wider text-indigo-800 dark:text-indigo-300">
-                      Nhận xét của AI
-                    </div>
-                    <RichMathText
-                      text={assignment.summary.overallAiComment}
-                      className="mt-1 text-sm text-slate-700 dark:text-slate-200 leading-relaxed"
-                    />
-                  </div>
-                ) : null}
               </div>
             )}
 
@@ -1895,39 +1726,26 @@ export const LearningPlayerPage = () => {
                       const isCompleted = qStatus === "Completed";
                       const isSubmitted = isProcessing || isReview || isCompleted || Boolean(q.latestAttempt) || Boolean(q.submittedAttemptId);
                       const isAnswered = isSubmitted || checkQuestionCompletion(q);
-                      const correctness = q.effectiveIsCorrect ?? q.latestAttempt?.isCorrect;
-                      const resultColor = correctness === true
-                        ? "bg-emerald-600 text-white shadow-2xs hover:bg-emerald-700"
-                        : correctness === false
-                        ? "bg-rose-600 text-white shadow-2xs hover:bg-rose-700"
-                        : isProcessing
-                        ? "bg-indigo-500 text-white shadow-2xs hover:bg-indigo-600"
-                        : isReview
-                        ? "bg-amber-500 text-white shadow-2xs hover:bg-amber-600"
-                        : isAnswered
-                        ? "bg-slate-500 text-white shadow-2xs hover:bg-slate-600"
-                        : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200/80 dark:border-slate-700";
-                      const resultLabel = correctness === true
-                        ? "Đúng"
-                        : correctness === false
-                        ? "Sai"
-                        : isProcessing
-                        ? "AI đang phân tích"
-                        : isReview
-                        ? "Chờ GV duyệt"
-                        : isAnswered
-                        ? "Đã làm"
-                        : "Chưa làm";
 
                       return (
                         <button
                           key={q.questionId}
                           type="button"
                           onClick={() => handleSwitchQuestion(q.questionId)}
-                          className={`w-8 h-8 rounded-xl font-black text-xs transition-all cursor-pointer flex items-center justify-center ${resultColor} ${
-                            isCurrent ? "ring-2 ring-indigo-400 ring-offset-2 dark:ring-offset-slate-900 scale-105" : ""
+                          className={`w-8 h-8 rounded-xl font-black text-xs transition-all cursor-pointer flex items-center justify-center ${
+                            isCurrent
+                              ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-2 ring-indigo-400 ring-offset-2 dark:ring-offset-slate-900 scale-105"
+                              : isProcessing
+                              ? "bg-indigo-500 text-white shadow-2xs hover:bg-indigo-600"
+                              : isCompleted
+                              ? "bg-emerald-600 text-white shadow-2xs hover:bg-emerald-700"
+                              : isReview
+                              ? "bg-amber-500 text-white shadow-2xs hover:bg-amber-600"
+                              : isAnswered
+                              ? "bg-emerald-500 text-white shadow-2xs hover:bg-emerald-600"
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200/80 dark:border-slate-700"
                           }`}
-                          title={`Câu ${idx + 1}: ${resultLabel}`}
+                          title={`Câu ${idx + 1}: ${isProcessing ? "AI đang phân tích" : isCompleted ? "Đã chấm xong" : isReview ? "Chờ GV duyệt" : isAnswered ? "Đã làm" : "Chưa làm"}`}
                         >
                           {idx + 1}
                         </button>
@@ -1991,15 +1809,21 @@ export const LearningPlayerPage = () => {
 
               {/* Question Text Statement */}
               <div>
-                <RichMathText
-                  text={question?.questionText || ""}
-                  className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-relaxed"
-                />
+                <div className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-relaxed whitespace-pre-wrap">
+                  <RichMathText content={question?.questionText} text={question?.questionText} />
+                </div>
+                {question?.questionText && /[\\[{^_\\]]/.test(question.questionText) && (
+                  <div className="mt-3">
+                    <MathFormulaPreview
+                      formula={question.questionText}
+                      label="Hiển thị công thức Toán (KaTeX)"
+                    />
+                  </div>
+                )}
               </div>
 
-              {/* 3. Thanh 3 Nút Công Cụ Trợ Lý (Casio, Nháp, Đồ Thị) - Chỉ hiển thị cho Toán/Lý/Hóa */}
-              {hasMathTools && (
-                <div className="pt-2">
+              {/* 3. Thanh 3 Nút Công Cụ Trợ Lý (Casio, Nháp, Đồ Thị) */}
+              <div className="pt-2">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
                       Công cụ hỗ trợ làm bài
@@ -2061,7 +1885,6 @@ export const LearningPlayerPage = () => {
                     </button>
                   </div>
                 </div>
-              )}
 
               {/* 4. Answer Section */}
               <div className="border-t border-slate-100 dark:border-slate-800 pt-6">
@@ -2076,7 +1899,7 @@ export const LearningPlayerPage = () => {
                       </span>
                     )}
                   </div>
-                  {hasMathTools && question?.questionType !== "MultipleChoice" && !isReadOnly && (
+                  {question?.questionType !== "MultipleChoice" && !isReadOnly && (
                     <button
                       type="button"
                       onClick={() => setShowMathToolbar(!showMathToolbar)}
@@ -2088,7 +1911,7 @@ export const LearningPlayerPage = () => {
                   )}
                 </div>
 
-                {hasMathTools && showMathToolbar && question?.questionType !== "MultipleChoice" && !isReadOnly && (
+                {showMathToolbar && question?.questionType !== "MultipleChoice" && !isReadOnly && (
                   <div className="mb-4">
                     <MathInputToolbar onInsert={(sym) => insertTextAtCursor(sym)} disabled={isReadOnly} />
                   </div>
@@ -2139,9 +1962,9 @@ export const LearningPlayerPage = () => {
                       );
                     })}
                   </fieldset>
-                ) : hasMathTools && isFormulaOnlyQuestion(question?.answerEvaluationMode, question?.questionText) ? (
+                ) : (
                   <div>
-                    {/* Visual Math Field (MathLive) - Chỉ dùng cho câu hỏi công thức/số ngắn */}
+                    {/* Visual Math Field (MathLive) */}
                     <VisualMathField
                       ref={visualMathFieldRef}
                       value={finalAnswer}
@@ -2149,23 +1972,6 @@ export const LearningPlayerPage = () => {
                       onFocus={() => setActiveInputTarget("answer")}
                       disabled={isReadOnly}
                       placeholder={isAssignmentSubmitted ? "Chưa có đáp số" : "Gõ công thức hoặc đáp số cuối cùng (hoặc dùng Casio để tự chèn)..."}
-                      autoFocus={!isReadOnly}
-                    />
-                  </div>
-                ) : (
-                  <div>
-                    {/* Free-response multiline textarea (hỗ trợ văn bản + xuống dòng + công thức) */}
-                    <textarea
-                      rows={3}
-                      value={finalAnswer}
-                      onChange={(e) => {
-                        if (!isReadOnly) handleAnswerChange(e.target.value);
-                      }}
-                      onFocus={() => setActiveInputTarget("answer")}
-                      disabled={isReadOnly}
-                      readOnly={isAssignmentSubmitted}
-                      placeholder={isAssignmentSubmitted ? "Chưa có câu trả lời" : "Nhập câu trả lời / lời giải (hỗ trợ xuống dòng, công thức $...$)..."}
-                      className="w-full rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:bg-slate-50 dark:disabled:bg-slate-900/40 resize-y whitespace-pre-wrap"
                       autoFocus={!isReadOnly}
                     />
                   </div>
@@ -2305,7 +2111,6 @@ export const LearningPlayerPage = () => {
                     <AttemptFeedbackHierarchy
                       feedbackData={reviewFeedbackQuery.data}
                       showStudentSubmission={false}
-                      assignmentQuestionCount={assignmentQuestions.length}
                       answerOptions={assignmentQuestion?.options ?? []}
                       onRefreshFeedback={async () => {
                         await reviewFeedbackQuery.refetch();
@@ -2374,7 +2179,7 @@ export const LearningPlayerPage = () => {
                   <div className="flex items-center justify-between w-full">
                     <button
                       type="button"
-                      onClick={() => handleFinalSubmit({ forceSkip: true })}
+                      onClick={() => handleFinalSubmit()}
                       disabled={isSubmitting}
                       className="text-xs font-semibold text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 cursor-pointer"
                     >
@@ -2396,7 +2201,7 @@ export const LearningPlayerPage = () => {
           </div>
 
           {/* Right Pane: Assistant Workspace ~30% */}
-          {activeSideTool && hasMathTools && (
+          {activeSideTool && (
             <div className="lg:col-span-4 xl:col-span-4 sticky top-4 max-h-[calc(100vh-2rem)] flex flex-col">
               <SideAssistantWorkspace
                 activeTab={activeSideTool}
@@ -2459,7 +2264,7 @@ export const LearningPlayerPage = () => {
               </button>
               <button
                 type="button"
-                onClick={() => handleFinalSubmit()}
+                onClick={handleFinalSubmit}
                 className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs shadow-md shadow-indigo-600/30 cursor-pointer"
               >
                 Xác nhận nộp bài
