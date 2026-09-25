@@ -1,19 +1,12 @@
 import React, { useState } from "react";
+import {
+  MATH_INPUT_SYMBOLS,
+  resolveMathSymbolValue,
+  type MathSymbolTab,
+  type MathToolbarInputMode,
+} from "./mathInputSymbols";
 
-export interface MathInputToolbarProps {
-  onInsert: (symbol: string) => void;
-  className?: string;
-}
-
-type TabType = "basic" | "algebra" | "calculus" | "sets" | "geometry";
-
-interface SymbolItem {
-  label: string;
-  value: string;
-  tooltip?: string;
-}
-
-const TABS: { id: TabType; name: string }[] = [
+const TABS: { id: MathSymbolTab; name: string }[] = [
   { id: "basic", name: "Cơ bản" },
   { id: "algebra", name: "Đại số" },
   { id: "calculus", name: "Giải tích" },
@@ -21,61 +14,20 @@ const TABS: { id: TabType; name: string }[] = [
   { id: "geometry", name: "Hình học & Hy Lạp" },
 ];
 
-const SYMBOLS: Record<TabType, SymbolItem[]> = {
-  basic: [
-    { label: "a/b", value: "□/□", tooltip: "Phân số" },
-    { label: "x²", value: "²", tooltip: "Bình phương" },
-    { label: "x³", value: "³", tooltip: "Lập phương" },
-    { label: "√x", value: "√", tooltip: "Căn bậc hai" },
-    { label: "+", value: " + ", tooltip: "Cộng" },
-    { label: "−", value: " − ", tooltip: "Trừ" },
-    { label: "×", value: " × ", tooltip: "Nhân" },
-    { label: "÷", value: " ÷ ", tooltip: "Chia" },
-    { label: "±", value: " ± ", tooltip: "Cộng trừ" },
-    { label: "=", value: " = ", tooltip: "Bằng" },
-    { label: "≠", value: " ≠ ", tooltip: "Khác" },
-    { label: "<", value: " < ", tooltip: "Nhỏ hơn" },
-    { label: ">", value: " > ", tooltip: "Lớn hơn" },
-    { label: "≤", value: " ≤ ", tooltip: "Nhỏ hơn hoặc bằng" },
-    { label: "≥", value: " ≥ ", tooltip: "Lớn hơn hoặc bằng" },
-  ],
-  algebra: [
-    { label: "x", value: "x" }, { label: "y", value: "y" }, { label: "z", value: "z" },
-    { label: "( )", value: "()" }, { label: "[ ]", value: "[]" }, { label: "{ }", value: "{}" },
-    { label: "|x|", value: "||" }, { label: "∑", value: "∑" }, { label: "∏", value: "∏" },
-    { label: "∞", value: "∞" }, { label: "≈", value: " ≈ " }, { label: "log", value: "log()" }, { label: "ln", value: "ln()" },
-  ],
-  calculus: [
-    { label: "d/dx", value: "d/dx()" }, { label: "∂/∂x", value: "∂/∂x()" },
-    { label: "∫", value: "∫ dx" }, { label: "∫ₐᵇ", value: "∫ₐᵇ dx" }, { label: "lim", value: "lim → " },
-    { label: "∇", value: "∇" }, { label: "Δ", value: "Δ" }, { label: "f'(x)", value: "f'(x)" },
-  ],
-  sets: [
-    { label: "∈", value: " ∈ " }, { label: "∉", value: " ∉ " }, { label: "⊂", value: " ⊂ " },
-    { label: "⊆", value: " ⊆ " }, { label: "∪", value: " ∪ " }, { label: "∩", value: " ∩ " },
-    { label: "∅", value: "∅" }, { label: "ℝ", value: "ℝ" }, { label: "ℕ", value: "ℕ" },
-    { label: "ℤ", value: "ℤ" }, { label: "ℚ", value: "ℚ" }, { label: "⇒", value: " ⇒ " }, { label: "⇔", value: " ⇔ " },
-  ],
-  geometry: [
-    { label: "π", value: "π" }, { label: "θ", value: "θ" }, { label: "α", value: "α" },
-    { label: "β", value: "β" }, { label: "γ", value: "γ" }, { label: "λ", value: "λ" },
-    { label: "°", value: "°" }, { label: "∠", value: "∠" }, { label: "△", value: "△" },
-    { label: "∥", value: " ∥ " }, { label: "⊥", value: " ⊥ " },
-  ],
-};
-
 export interface MathInputToolbarProps {
   onInsert: (symbol: string) => void;
   className?: string;
   disabled?: boolean;
+  inputMode?: MathToolbarInputMode;
 }
 
 export const MathInputToolbar: React.FC<MathInputToolbarProps> = ({
   onInsert,
   className = "",
   disabled = false,
+  inputMode = "latex",
 }) => {
-  const [activeTab, setActiveTab] = useState<TabType>("basic");
+  const [activeTab, setActiveTab] = useState<MathSymbolTab>("basic");
 
   return (
     <div
@@ -104,17 +56,25 @@ export const MathInputToolbar: React.FC<MathInputToolbarProps> = ({
         ))}
       </div>
 
+      {!disabled && inputMode === "visual" && (
+        <div className="px-3 pt-2 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+          Các mẫu có ô <strong className="text-indigo-600 dark:text-indigo-400">[?]</strong>: nhập giá trị rồi dùng
+          <kbd className="mx-1 rounded border border-slate-300 dark:border-slate-700 px-1 py-0.5 font-sans">Tab</kbd>
+          hoặc phím mũi tên để sang ô kế tiếp.
+        </div>
+      )}
+
       {/* Symbol buttons */}
       <div className="p-2 flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
-        {SYMBOLS[activeTab].map((sym, index) => (
+        {MATH_INPUT_SYMBOLS[activeTab].map((sym) => (
           <button
-            key={index}
+            key={`${activeTab}-${sym.label}`}
             type="button"
             title={sym.tooltip || sym.label}
             disabled={disabled}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => {
-              if (!disabled) onInsert(sym.value);
+              if (!disabled) onInsert(resolveMathSymbolValue(sym, inputMode));
             }}
             className={`min-w-8 h-8 px-2 flex items-center justify-center text-xs font-mono font-medium rounded border transition-colors ${
               disabled

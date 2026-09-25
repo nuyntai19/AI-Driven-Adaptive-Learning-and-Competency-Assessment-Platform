@@ -1913,7 +1913,11 @@ export const LearningPlayerPage = () => {
 
                 {showMathToolbar && question?.questionType !== "MultipleChoice" && !isReadOnly && (
                   <div className="mb-4">
-                    <MathInputToolbar onInsert={(sym) => insertTextAtCursor(sym)} disabled={isReadOnly} />
+                    <MathInputToolbar
+                      onInsert={(sym) => insertTextAtCursor(sym)}
+                      disabled={isReadOnly}
+                      inputMode={activeInputTarget === "answer" ? "visual" : "latex"}
+                    />
                   </div>
                 )}
 
@@ -2020,9 +2024,9 @@ export const LearningPlayerPage = () => {
                 {reasoningText.trim() && /[\\[{^_\\]]/.test(reasoningText) && (
                   <div className="mt-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 p-3 text-xs">
                     <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                      <span>Xem trước lập luận & công thức</span>
+                      <span>Bản trình bày toán học</span>
                       <span className="text-[10px] px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 font-mono font-bold uppercase tracking-wider">
-                        KaTeX Preview
+                        Tự động định dạng
                       </span>
                     </div>
                     <div className="overflow-x-auto text-slate-800 dark:text-slate-200 py-1 text-sm font-medium leading-relaxed">

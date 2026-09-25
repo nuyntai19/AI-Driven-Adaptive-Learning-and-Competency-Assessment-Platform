@@ -13,6 +13,9 @@ interface MathFieldElement extends HTMLElement {
   executeCommand: (command: [string, string]) => void;
 }
 
+const readPersistableLatex = (mathfield: MathFieldElement): string =>
+  mathfield.getValue ? mathfield.getValue("latex-without-placeholders") : mathfield.value;
+
 export interface VisualMathFieldRef {
   insertAtCursor: (latex: string) => void;
   focus: () => void;
@@ -97,7 +100,7 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
       // Handle user typing / input
       const handleInput = () => {
         if (disabled || mf.readOnly) return;
-        const currentLatex = mf.getValue ? mf.getValue("latex-expanded") : mf.value;
+        const currentLatex = readPersistableLatex(mf);
         lastEmittedValueRef.current = currentLatex;
         onChange(currentLatex);
       };
@@ -151,7 +154,7 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
     // Sync external value updates if changed from outside (e.g. reset or clear)
     useEffect(() => {
       if (!isReady || !mathfieldRef.current) return;
-      const currentVal = mathfieldRef.current.getValue ? mathfieldRef.current.getValue("latex-expanded") : mathfieldRef.current.value;
+      const currentVal = readPersistableLatex(mathfieldRef.current);
       if (value !== currentVal && value !== lastEmittedValueRef.current) {
         mathfieldRef.current.setValue(value || "", { silenceNotifications: true });
         lastEmittedValueRef.current = value;
@@ -189,7 +192,7 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
         } else {
           mf.executeCommand(["insert", latexOrText]);
         }
-        const newVal = mf.getValue ? mf.getValue("latex-expanded") : mf.value;
+        const newVal = readPersistableLatex(mf);
         lastEmittedValueRef.current = newVal;
         onChange(newVal);
       },
@@ -206,7 +209,7 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
       },
       getValue: () => {
         if (!mathfieldRef.current) return "";
-        return mathfieldRef.current.getValue ? mathfieldRef.current.getValue("latex-expanded") : mathfieldRef.current.value;
+        return readPersistableLatex(mathfieldRef.current);
       },
       setValue: (latex: string) => {
         if (disabled || !mathfieldRef.current) return;
