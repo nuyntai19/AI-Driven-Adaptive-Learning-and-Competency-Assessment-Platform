@@ -44,6 +44,12 @@ const toLocalDateTime = (value: string | null) => {
   return new Date(date.getTime() - timezoneOffset).toISOString().slice(0, 16);
 };
 
+export const getMinLocalDateTime = () => {
+  const d = new Date(Date.now() + 60_000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
 const WIZARD_STEPS = [
   { id: 0, label: "1. Thông tin chung & Lớp học" },
   { id: 1, label: "2. Chọn câu hỏi từ Ngân hàng" },
@@ -87,6 +93,12 @@ export function TeacherAssignmentEditorView() {
   const [title, setTitle] = useState("");
   const [instructions, setInstructions] = useState("");
   const [dueAt, setDueAt] = useState("");
+  const [dueDateError, setDueDateError] = useState<string | null>(null);
+  const [minDateTime, setMinDateTime] = useState(getMinLocalDateTime);
+
+  const refreshMinDateTime = () => {
+    setMinDateTime(getMinLocalDateTime());
+  };
   const [targetMode, setTargetMode] = useState<TargetMode>(paramStudentIds.length > 0 ? "SelectedStudents" : "WholeClass");
   const [questionIds, setQuestionIds] = useState<string[]>([]);
   const [studentIds, setStudentIds] = useState<string[]>(() => paramStudentIds);
@@ -224,7 +236,13 @@ export function TeacherAssignmentEditorView() {
     setClassId(assignment.classId);
     setTitle(assignment.title);
     setInstructions(assignment.instructions || "");
-    setDueAt(toLocalDateTime(assignment.dueAt));
+    const localDue = toLocalDateTime(assignment.dueAt);
+    setDueAt(localDue);
+    if (localDue && new Date(localDue).getTime() <= Date.now()) {
+      setDueDateError("Hạn chót nộp bài của bản nháp này đã qua thời điểm hiện tại. Vui lòng chọn thời gian mới trong tươnglai hoặc xóa hạn chót.");
+    } else {
+      setDueDateError(null);
+    }
     setQuestionIds(assignment.questions.map((q) => q.questionId));
 
     const source = assignment.targets[0]?.targetSource;
@@ -260,30 +278,60 @@ export function TeacherAssignmentEditorView() {
     setStudentPage(1);
   };
 
+  const handleDueAtChange = (val: string) => {
+    setDueAt(val);
+    if (!val) {
+      setDueDateError(null);
+      if (formError?.message.includes("Hạn chót nộp bài")) {
+        setFormError(null);
+      }
+      return;
+    }
+    const dueTime = new Date(val).getTime();
+    if (isNaN(dueTime)) {
+      setDueDateError("Thời gian hạn chót nộp bài không hợp lệ.");
+    } else if (dueTime <= Date.now()) {
+      setDueDateError("Hạn chót nộp bài phải ở thời điểm tương lai (sau thời điểm hiện tại).");
+    } else {
+      setDueDateError(null);
+      if (formError?.message.includes("Hạn chót nộp bài")) {
+        setFormError(null);
+      }
+    }
+  };
+
   const validateStep0 = (): boolean => {
     if (!title.trim()) {
       setFormError({ message: "Vui lòng nhập tiêu đề bài tập." });
+      setStep(0);
       return false;
     }
     if (title.trim().length > 200) {
       setFormError({ message: "Tiêu đề bài tập không được vượt quá 200 ký tự." });
+      setStep(0);
       return false;
     }
     if (!classId) {
       setFormError({ message: "Vui lòng chọn lớp học tiếp nhận bài tập." });
+      setStep(0);
       return false;
     }
     if (dueAt) {
       const dueTime = new Date(dueAt).getTime();
       if (isNaN(dueTime)) {
         setFormError({ message: "Thời gian hạn chót nộp bài không hợp lệ." });
+        setDueDateError("Thời gian hạn chót nộp bài không hợp lệ.");
+        setStep(0);
         return false;
       }
       if (dueTime <= Date.now()) {
         setFormError({ message: "Hạn chót nộp bài phải ở thời điểm tương lai (sau thời điểm hiện tại)." });
+        setDueDateError("Hạn chót nộp bài phải ở thời điểm tương lai (sau thời điểm hiện tại).");
+        setStep(0);
         return false;
       }
     }
+    setDueDateError(null);
     setFormError(null);
     return true;
   };
@@ -581,19 +629,29 @@ export function TeacherAssignmentEditorView() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1">
+              <label htmlFor="teacher-assignment-dueat-input" className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1">
                 Hạn chót nộp bài (tùy chọn)
               </label>
               <input
+                id="teacher-assignment-dueat-input"
                 type="datetime-local"
+                min={minDateTime}
+                onFocus={refreshMinDateTime}
+                onPointerDown={refreshMinDateTime}
                 disabled={isReadOnly}
                 value={dueAt}
-                onChange={(e) => setDueAt(e.target.value)}
-                className="th-input w-full text-sm"
+                onChange={(e) => handleDueAtChange(e.target.value)}
+                className={`th-input w-full text-sm ${dueDateError ? "!border-rose-500 focus:!border-rose-500" : ""}`}
               />
-              <p className="mt-1 text-[11px] text-[var(--th-text-muted)]">
-                Nếu đặt hạn nộp, thời gian phải sau thời điểm hiện tại.
-              </p>
+              {dueDateError ? (
+                <p className="mt-1 text-[11px] text-rose-500 font-medium">
+                  ⚠ {dueDateError}
+                </p>
+              ) : (
+                <p className="mt-1 text-[11px] text-[var(--th-text-muted)]">
+                  Nếu đặt hạn nộp, thời gian phải sau thời điểm hiện tại.
+                </p>
+              )}
             </div>
 
             <div>

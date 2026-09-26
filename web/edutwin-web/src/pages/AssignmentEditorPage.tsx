@@ -44,6 +44,12 @@ const toLocalDateTime = (value: string | null) => {
   return new Date(date.getTime() - timezoneOffset).toISOString().slice(0, 16);
 };
 
+export const getMinLocalDateTime = () => {
+  const d = new Date(Date.now() + 60_000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
 // =============================================================================
 // 1. CENTER MANAGER DARK SAAS WIZARD VIEW (GATE 6B)
 // =============================================================================
@@ -87,6 +93,12 @@ function CenterManagerAssignmentEditorView() {
   const [title, setTitle] = useState("");
   const [instructions, setInstructions] = useState("");
   const [dueAt, setDueAt] = useState("");
+  const [dueDateError, setDueDateError] = useState<string | null>(null);
+  const [minDateTime, setMinDateTime] = useState(getMinLocalDateTime);
+
+  const refreshMinDateTime = () => {
+    setMinDateTime(getMinLocalDateTime());
+  };
   const [targetMode, setTargetMode] = useState<TargetMode>("WholeClass");
   const [questionIds, setQuestionIds] = useState<string[]>([]);
   const [studentIds, setStudentIds] = useState<string[]>([]);
@@ -218,7 +230,13 @@ function CenterManagerAssignmentEditorView() {
     setClassId(assignment.classId);
     setTitle(assignment.title);
     setInstructions(assignment.instructions || "");
-    setDueAt(toLocalDateTime(assignment.dueAt));
+    const localDueAt = toLocalDateTime(assignment.dueAt);
+    setDueAt(localDueAt);
+    if (localDueAt && new Date(localDueAt).getTime() <= Date.now()) {
+      setDueDateError("Hạn chót nộp bài của bản nháp này đã qua thời điểm hiện tại. Vui lòng chọn thời gian mới trong tương lai hoặc xóa hạn chót.");
+    } else {
+      setDueDateError(null);
+    }
     setQuestionIds(assignment.questions.map((q) => q.questionId));
 
     const source = assignment.targets[0]?.targetSource;
@@ -277,30 +295,108 @@ function CenterManagerAssignmentEditorView() {
     setStudentPage(1);
   };
 
+  const handleDueAtChange = (val: string) => {
+    setDueAt(val);
+    if (!val) {
+      setDueDateError(null);
+      if (formError?.message.includes("Hạn chót nộp bài")) {
+        setFormError(null);
+      }
+      return;
+    }
+    const dueTime = new Date(val).getTime();
+    if (isNaN(dueTime)) {
+      setDueDateError("Thời gian hạn chót nộp bài không hợp lệ.");
+    } else if (dueTime <= Date.now()) {
+      setDueDateError("Hạn chót nộp bài phải ở thời điểm tương lai (sau thời điểm hiện tại).");
+    } else {
+      setDueDateError(null);
+      if (formError?.message.includes("Hạn chót nộp bài")) {
+        setFormError(null);
+      }
+    }
+  };
+
+  const validateStep0 = (): boolean => {
+    if (!title.trim()) {
+      setFormError({ message: "Vui lòng nhập tiêu đề bài tập." });
+      setStep(0);
+      return false;
+    }
+    if (title.trim().length > 250) {
+      setFormError({ message: "Tiêu đề bài tập không được vượt quá 250 ký tự." });
+      setStep(0);
+      return false;
+    }
+    if (!classId) {
+      setFormError({ message: "Vui lòng chọn lớp học tiếp nhận bài tập." });
+      setStep(0);
+      return false;
+    }
+    if (dueAt) {
+      const dueTime = new Date(dueAt).getTime();
+      if (isNaN(dueTime)) {
+        setFormError({ message: "Thời gian hạn chót nộp bài không hợp lệ." });
+        setDueDateError("Thời gian hạn chót nộp bài không hợp lệ.");
+        setStep(0);
+        return false;
+      }
+      if (dueTime <= Date.now()) {
+        setFormError({ message: "Hạn chót nộp bài phải ở thời điểm tương lai (sau thời điểm hiện tại)." });
+        setDueDateError("Hạn chót nộp bài phải ở thời điểm tương lai (sau thời điểm hiện tại).");
+        setStep(0);
+        return false;
+      }
+    }
+    setDueDateError(null);
+    setFormError(null);
+    return true;
+  };
+
+  const validateStep1 = (): boolean => {
+    if (!validateStep0()) return false;
+    if (questionIds.length === 0) {
+      setFormError({ message: "Vui lòng chọn ít nhất 1 câu hỏi cho bài tập." });
+      setStep(1);
+      return false;
+    }
+    setFormError(null);
+    return true;
+  };
+
+  const validateStep2 = (): boolean => {
+    if (!validateStep1()) return false;
+    if (targetMode === "SelectedStudents" && studentIds.length === 0) {
+      setFormError({ message: "Vui lòng chọn ít nhất 1 học sinh nhận bài tập ở chế độ Chọn học sinh." });
+      setStep(2);
+      return false;
+    }
+    setFormError(null);
+    return true;
+  };
+
+  const handleStepChange = (targetStep: number) => {
+    if (targetStep <= step) {
+      setStep(targetStep);
+      setFormError(null);
+      return;
+    }
+    if (targetStep === 1) {
+      if (validateStep0()) setStep(1);
+    } else if (targetStep === 2) {
+      if (validateStep1()) setStep(2);
+    } else if (targetStep === 3) {
+      if (validateStep2()) setStep(3);
+    }
+  };
+
   // Save / Update Draft Handler
   const handleSaveDraft = (afterSuccess?: () => void) => {
     if (isReadOnly) return;
     setFormError(null);
     setConcurrencyConflict(false);
 
-    if (!title.trim()) {
-      setFormError({ message: "Vui lòng nhập tiêu đề bài tập." });
-      setStep(0);
-      return;
-    }
-    if (!classId) {
-      setFormError({ message: "Vui lòng chọn lớp học tiếp nhận bài tập." });
-      setStep(0);
-      return;
-    }
-    if (questionIds.length === 0) {
-      setFormError({ message: "Vui lòng chọn ít nhất 1 câu hỏi cho bài tập." });
-      setStep(1);
-      return;
-    }
-    if (targetMode === "SelectedStudents" && studentIds.length === 0) {
-      setFormError({ message: "Vui lòng chọn ít nhất 1 học sinh nhận bài tập ở chế độ Chọn học sinh." });
-      setStep(2);
+    if (!validateStep2()) {
       return;
     }
 
@@ -588,7 +684,7 @@ function CenterManagerAssignmentEditorView() {
                 <li key={s.id} className="flex-1 min-w-[140px]">
                   <button
                     type="button"
-                    onClick={() => setStep(s.id)}
+                    onClick={() => handleStepChange(s.id)}
                     className={`w-full py-2.5 px-3 rounded-xl text-left text-xs font-medium transition border ${
                       isActive
                         ? "border-[var(--cm-cyan)] bg-cyan-500/15 text-cyan-700 dark:bg-cyan-950/40 dark:text-[var(--cm-cyan)] font-semibold shadow-sm"
@@ -691,11 +787,23 @@ function CenterManagerAssignmentEditorView() {
                 <input
                   id="assignment-dueat-input"
                   type="datetime-local"
+                  min={minDateTime}
+                  onFocus={refreshMinDateTime}
+                  onPointerDown={refreshMinDateTime}
                   disabled={isReadOnly}
                   value={dueAt}
-                  onChange={(e) => setDueAt(e.target.value)}
-                  className="cm-input w-full text-sm"
+                  onChange={(e) => handleDueAtChange(e.target.value)}
+                  className={`cm-input w-full text-sm ${dueDateError ? "!border-rose-500 focus:!border-rose-500" : ""}`}
                 />
+                {dueDateError ? (
+                  <p className="mt-1 text-xs text-rose-500 font-medium">
+                    ⚠ {dueDateError}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-[11px] text-[var(--cm-text-muted)]">
+                    Nếu đặt hạn nộp, thời gian phải sau thời điểm hiện tại.
+                  </p>
+                )}
               </div>
 
               <div>
@@ -716,7 +824,9 @@ function CenterManagerAssignmentEditorView() {
               <div className="pt-4 flex justify-end">
                 <button
                   type="button"
-                  onClick={() => setStep(1)}
+                  onClick={() => {
+                    if (validateStep0()) setStep(1);
+                  }}
                   className="cm-primary-button text-xs"
                 >
                   Tiếp tục: Chọn câu hỏi →
@@ -1244,6 +1354,13 @@ function LegacyAssignmentEditorPage() {
   }, [assignment]);
 
   const handleSave = () => {
+    if (dueAt) {
+      const dueTime = new Date(dueAt).getTime();
+      if (isNaN(dueTime) || dueTime <= Date.now()) {
+        alert("Hạn chót nộp bài phải ở thời điểm tương lai (sau thời điểm hiện tại).");
+        return;
+      }
+    }
     const payloadDueAt = dueAt ? new Date(dueAt).toISOString() : null;
 
     if (!isEditing) {
