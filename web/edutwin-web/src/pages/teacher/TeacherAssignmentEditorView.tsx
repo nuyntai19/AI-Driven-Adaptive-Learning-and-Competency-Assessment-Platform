@@ -33,6 +33,8 @@ import {
   TeacherSafeErrorPanel,
 } from "../../components/teacher/TeacherPrimitives";
 import { TeacherConfirmDialog } from "../../components/teacher/TeacherOverlays";
+import { TeacherAssignmentQuickViewModal } from "../../components/teacher/TeacherAssignmentQuickViewModal";
+import { questionsApi } from "../../api/questionsApi";
 import { RichMathText } from "../../components/math/RichMathText";
 
 const toLocalDateTime = (value: string | null) => {
@@ -97,6 +99,7 @@ export function TeacherAssignmentEditorView() {
   const [formError, setFormError] = useState<{ message: string; traceId?: string | null } | null>(null);
   const [concurrencyConflict, setConcurrencyConflict] = useState(false);
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
+  const [isQuickViewOpen, setIsQuickViewOpen] = useState(false);
 
   // Question Selector filter & page
   const [questionPage, setQuestionPage] = useState(1);
@@ -144,7 +147,7 @@ export function TeacherAssignmentEditorView() {
       ? {
           classId,
           page: studentPage,
-          pageSize: 50,
+          pageSize: 100,
           search: studentSearch.trim() || undefined,
           status: "Active",
         }
@@ -164,6 +167,42 @@ export function TeacherAssignmentEditorView() {
       });
     }
   }, [questionsQuery.data?.data]);
+
+  // Pre-fetch details for questions already belonging to this assignment
+  const assignedQuestionIds = useMemo(() => {
+    return assignment?.questions?.map((q) => q.questionId) || [];
+  }, [assignment?.questions]);
+
+  const existingQuestionsQuery = useQuery({
+    queryKey: ["editor-assigned-questions-details", assignedQuestionIds],
+    queryFn: async () => {
+      if (assignedQuestionIds.length === 0) return [];
+      const results = await Promise.allSettled(
+        assignedQuestionIds.map((qid) => questionsApi.getById(qid))
+      );
+      const list: Question[] = [];
+      results.forEach((r) => {
+        if (r.status === "fulfilled" && r.value?.data) {
+          list.push(r.value.data);
+        }
+      });
+      return list;
+    },
+    enabled: assignedQuestionIds.length > 0,
+    staleTime: 120_000,
+  });
+
+  useEffect(() => {
+    if (existingQuestionsQuery.data && existingQuestionsQuery.data.length > 0) {
+      setCachedQuestions((prev) => {
+        const next = new Map(prev);
+        for (const q of existingQuestionsQuery.data) {
+          next.set(q.questionId, q);
+        }
+        return next;
+      });
+    }
+  }, [existingQuestionsQuery.data]);
 
   // Accumulate students into cache
   useEffect(() => {
@@ -406,16 +445,28 @@ export function TeacherAssignmentEditorView() {
           { label: isEditing ? "Chỉnh sửa" : "Tạo mới" },
         ]}
         actions={
-          assignment?.status && (
-            <div className="flex items-center gap-2">
-              <TeacherStatusBadge status={assignment.status} />
-              {isReadOnly && (
-                <span className="text-xs text-[var(--th-text-muted)] italic">
-                  (Bài tập đã khóa cấu hình câu hỏi)
-                </span>
-              )}
-            </div>
-          )
+          <div className="flex items-center gap-2">
+            {isEditing && (
+              <button
+                type="button"
+                onClick={() => setIsQuickViewOpen(true)}
+                className="th-secondary-button text-xs py-1.5 px-3 flex items-center gap-1.5"
+                title="Xem lại chi tiết câu hỏi và danh sách học sinh đã phân công"
+              >
+                <span>👁️ Xem lại câu hỏi & học sinh</span>
+              </button>
+            )}
+            {assignment?.status && (
+              <>
+                <TeacherStatusBadge status={assignment.status} />
+                {isReadOnly && (
+                  <span className="text-xs text-[var(--th-text-muted)] italic">
+                    (Đã khóa cấu hình)
+                  </span>
+                )}
+              </>
+            )}
+          </div>
         }
       />
 
@@ -934,24 +985,42 @@ export function TeacherAssignmentEditorView() {
                 </div>
               </div>
 
-              {/* Target Students if selected */}
-              {targetMode === "SelectedStudents" && studentIds.length > 0 && (
-                <div className="pt-3 border-t border-[var(--th-border-subtle)]">
-                  <span className="text-[var(--th-text-muted)] uppercase tracking-wider text-[10px] font-semibold block mb-2">
-                    Học sinh nhận bài ({studentIds.length}):
-                  </span>
-                  <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
-                    {studentIds.map((sid) => {
+              {/* Target Students */}
+              <div className="pt-3 border-t border-[var(--th-border-subtle)]">
+                <span className="text-[var(--th-text-muted)] uppercase tracking-wider text-[10px] font-semibold block mb-2">
+                  {targetMode === "WholeClass"
+                    ? `Học sinh nhận bài (Toàn bộ lớp: ${studentsQuery.data?.data?.length || 0} học sinh):`
+                    : `Học sinh nhận bài (${studentIds.length} học sinh được chọn):`}
+                </span>
+                <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto">
+                  {targetMode === "WholeClass" ? (
+                    studentsQuery.data?.data && studentsQuery.data.data.length > 0 ? (
+                      studentsQuery.data.data.map((s) => (
+                        <span key={s.studentId} className="th-badge th-badge-neutral text-[10px]">
+                          {s.fullName} (@{s.username})
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-xs text-[var(--th-text-muted)] italic">
+                        Đang tải danh sách học sinh của lớp...
+                      </span>
+                    )
+                  ) : studentIds.length > 0 ? (
+                    studentIds.map((sid) => {
                       const sObj = cachedStudents.get(sid);
                       return (
                         <span key={sid} className="th-badge th-badge-neutral text-[10px]">
                           {sObj?.fullName || `Học sinh #${sid.slice(0, 6)}`}
                         </span>
                       );
-                    })}
-                  </div>
+                    })
+                  ) : (
+                    <span className="text-xs text-rose-400 italic">
+                      Chưa chọn học sinh nào
+                    </span>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
 
             <div className="pt-4 flex items-center justify-between border-t border-[var(--th-border-subtle)]">
@@ -1000,6 +1069,13 @@ export function TeacherAssignmentEditorView() {
           </div>
         )}
       </div>
+
+      {/* Quick View Modal to review questions and assigned students */}
+      <TeacherAssignmentQuickViewModal
+        assignmentId={id || null}
+        isOpen={isQuickViewOpen}
+        onClose={() => setIsQuickViewOpen(false)}
+      />
 
       {/* Confirm Publish Dialog */}
       <TeacherConfirmDialog
