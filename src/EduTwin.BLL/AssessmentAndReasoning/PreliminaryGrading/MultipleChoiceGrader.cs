@@ -26,7 +26,8 @@ public class MultipleChoiceGrader : IQuestionGrader
             {
                 IsCorrect = false,
                 Score = 0m,
-                Feedback = "No answer provided."
+                Feedback = "No answer provided.",
+                ReasonCode = PreliminaryGradingReasonCodes.NoAnswer
             };
         }
 
@@ -37,8 +38,9 @@ public class MultipleChoiceGrader : IQuestionGrader
             return new PreliminaryGradingResult
             {
                 IsCorrect = null,
-                Score = 0m,
-                Feedback = "Requires manual review (no correct answer provided)."
+                Score = null,
+                Feedback = "Requires manual review (no correct answer provided).",
+                ReasonCode = PreliminaryGradingReasonCodes.InvalidReferenceAnswer
             };
         }
 
@@ -64,7 +66,10 @@ public class MultipleChoiceGrader : IQuestionGrader
         {
             IsCorrect = isCorrect,
             Score = isCorrect ? maxScore : 0m,
-            Feedback = isCorrect ? "Correct answer." : "Incorrect answer."
+            Feedback = isCorrect ? "Correct answer." : "Incorrect answer.",
+            ReasonCode = isCorrect
+                ? PreliminaryGradingReasonCodes.ExactMatch
+                : PreliminaryGradingReasonCodes.TextMismatch
         };
     }
 

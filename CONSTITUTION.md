@@ -123,7 +123,7 @@ Căn cứ phê duyệt của nhóm và hai bản ghi kiến trúc độc lập (
 
 2. **Bộ Công Cụ Toán Học & Minh Chứng Đa Phương Thức (Math Toolkit & Multimodal Evidence - Track 2):**
    - Cung cấp Visual Math Toolbar 5 tab ký tự toán học và xem trước KaTeX an toàn (`trust: false`), lưu vết `answer_display_latex` (`VARCHAR(2048) NULL`).
-   - Bổ sung chế độ chấm điểm `QuestionAnswerEvaluationMode` (`TextExact`, `NumericRational`, `Manual`) kèm bộ chuẩn hóa phân số tối giản `MathAnswerNormalizer` bằng `BigInteger`.
+   - Bổ sung chế độ chấm điểm `QuestionAnswerEvaluationMode` (`TextExact`, `NumericRational`, `Coordinate2D`, `Manual`) kèm bộ chuẩn hóa phân số tối giản `MathAnswerNormalizer` bằng `BigInteger`; dữ liệu toán có cấu trúc như tọa độ phải được so theo cấu trúc, không so chuỗi thô.
    - Cung cấp Scientific Calculator Drawer thuần tính toán, tuyệt đối không có tính năng tự động giải toán.
    - Bảng vẽ nháp vector (Vector Scratchpad Canvas) lưu trữ draft scoped IndexedDB theo `draft:${centerId}:${userId}:${clientSubmissionId}`.
    - Nộp bài (`POST /learning/attempts`) và upload minh chứng bắt buộc tài khoản loại `Student` và quyền `learning.attempts.submit`.

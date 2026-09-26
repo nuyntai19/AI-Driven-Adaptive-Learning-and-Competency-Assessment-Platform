@@ -93,10 +93,16 @@ export function normalizeMathExpression(raw: string): { latex: string; trailingP
   s = s.replace(/([a-zA-Z0-9]+(?:\^[a-zA-Z0-9()\-+*]+)?)\s*\/\s*([a-zA-Z0-9]+)/g, "\\frac{$1}{$2}");
 
   // Handle powers: 3^(x-1) -> 3^{x-1}, e^(x^2) -> e^{x^2}, (1/2)^(x^2 - x) -> \left(\frac{1}{2}\right)^{x^2 - x}
+  s = s.replace(/\\left\(([^()]+)\\right\)\^\(([^()]+)\)/g, (_, base, exp) => `\\left(${base}\\right)^{${exp}}`);
+  s = s.replace(/\\left\(([^()]+)\\right\)\^([a-zA-Z0-9]+)/g, (_, base, exp) => `\\left(${base}\\right)^{${exp}}`);
   s = s.replace(/\(([^()]+)\)\^\(([^()]+)\)/g, (_, base, exp) => `\\left(${base}\\right)^{${exp}}`);
   s = s.replace(/([a-zA-Z0-9]+)\^\(([^()]+)\)/g, (_, base, exp) => `${base}^{${exp}}`);
   s = s.replace(/([a-zA-Z0-9]+)\^([a-zA-Z0-9]+)/g, (_, base, exp) => `${base}^{${exp}}`);
   s = s.replace(/\(([^()]+)\)\^([a-zA-Z0-9]+)/g, (_, base, exp) => `\\left(${base}\\right)^{${exp}}`);
+
+  // Clean up any duplicated \left or \right
+  s = s.replace(/\\left\s*\\left/g, "\\left");
+  s = s.replace(/\\right\s*\\right/g, "\\right");
 
   // Multi-equations like x = -1, x = -3
   s = s.replace(/,\s*([a-zA-Z]\s*=)/g, ",\\ $1");

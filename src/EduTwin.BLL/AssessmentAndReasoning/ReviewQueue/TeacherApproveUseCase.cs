@@ -135,6 +135,15 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
             return TeacherApproveResult.Conflict();
         }
 
+        var confirmedCorrectness = analysis.OverrideIsCorrect ?? attempt.IsCorrect;
+        var confirmedScore = analysis.OverrideAwardedScore ?? attempt.AwardedScore;
+        if (!confirmedCorrectness.HasValue || !confirmedScore.HasValue)
+        {
+            return TeacherApproveResult.ValidationFailed(
+                "MANUAL_GRADING_REQUIRED",
+                "Bài tự luận chưa có kết quả xác định. Giáo viên phải chấm và xác nhận điểm trước khi hoàn tất.");
+        }
+
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
         TeacherApproveDataDto? committedResponse = null;
         Guid recommendationStudentId = default;
@@ -147,8 +156,8 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
             var now = _timeProvider.GetUtcNow().UtcDateTime;
             var newOverrideVersion = analysis.OverrideVersion + 1;
 
-            var effectiveCorrectness = analysis.OverrideIsCorrect ?? attempt.IsCorrect;
-            var effectiveScore = analysis.OverrideAwardedScore ?? attempt.AwardedScore ?? (effectiveCorrectness == true ? question.MaxScore : 0m);
+            var effectiveCorrectness = confirmedCorrectness.Value;
+            var effectiveScore = confirmedScore.Value;
 
             // 1. Update ReasoningAnalysis review fields
             analysis.ReviewDecision = TeacherReviewDecision.Approved;
@@ -483,7 +492,7 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
                 ReviewedAt = now,
                 TeacherNote = request.Note,
                 EffectiveAwardedScore = effectiveScore,
-                EffectiveIsCorrect = effectiveCorrectness == true,
+                EffectiveIsCorrect = effectiveCorrectness,
                 Replay = new TeacherOverrideReplayDto
                 {
                     StudentId = studentId.ToString("D"),

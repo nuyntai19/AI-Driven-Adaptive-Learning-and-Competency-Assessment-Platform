@@ -502,4 +502,118 @@ public class QuestionEvaluationModeCrudTests : IDisposable
         Assert.False(result.IsSuccess);
         Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
     }
+
+    [Fact]
+    public async Task CreateQuestion_WithValidCoordinate2DAnswer_PersistsStructuredMode()
+    {
+        var sut = new CreateQuestionUseCase(_dbContext, _tenantContextMock.Object, _timeProviderMock.Object);
+        var request = new CreateQuestionRequest
+        {
+            SubjectId = _subjectId,
+            PrimaryTopicNodeId = _nodeId.ToString(),
+            QuestionType = nameof(QuestionType.ShortAnswer),
+            AnswerEvaluationMode = nameof(QuestionAnswerEvaluationMode.Coordinate2D),
+            Difficulty = 2,
+            QuestionText = "Find the vertex",
+            CorrectAnswer = "(1, 1)",
+            Solution = "The vertex is (1, 1).",
+            MaxScore = 1m,
+            EstimatedTimeSeconds = 60,
+            LanguageCode = "vi"
+        };
+
+        var result = await sut.ExecuteAsync(request);
+
+        Assert.True(result.IsSuccess);
+        var stored = await _dbContext.Questions.SingleAsync(q => q.QuestionText == "Find the vertex");
+        Assert.Equal(QuestionAnswerEvaluationMode.Coordinate2D, stored.AnswerEvaluationMode);
+    }
+
+    [Theory]
+    [InlineData("1,1")]
+    [InlineData("(1,2,3)")]
+    [InlineData("(x, 1)")]
+    public async Task CreateQuestion_WithInvalidCoordinate2DReference_ReturnsValidationFailed(string correctAnswer)
+    {
+        var sut = new CreateQuestionUseCase(_dbContext, _tenantContextMock.Object, _timeProviderMock.Object);
+        var request = new CreateQuestionRequest
+        {
+            SubjectId = _subjectId,
+            PrimaryTopicNodeId = _nodeId.ToString(),
+            QuestionType = nameof(QuestionType.ShortAnswer),
+            AnswerEvaluationMode = nameof(QuestionAnswerEvaluationMode.Coordinate2D),
+            Difficulty = 2,
+            QuestionText = "Find the vertex",
+            CorrectAnswer = correctAnswer,
+            Solution = "Solution",
+            MaxScore = 1m,
+            EstimatedTimeSeconds = 60,
+            LanguageCode = "vi"
+        };
+
+        var result = await sut.ExecuteAsync(request);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task CreateQuestion_WithCoordinate2DForMultipleChoice_ReturnsValidationFailed()
+    {
+        var sut = new CreateQuestionUseCase(_dbContext, _tenantContextMock.Object, _timeProviderMock.Object);
+        var request = new CreateQuestionRequest
+        {
+            SubjectId = _subjectId,
+            PrimaryTopicNodeId = _nodeId.ToString(),
+            QuestionType = nameof(QuestionType.MultipleChoice),
+            AnswerEvaluationMode = nameof(QuestionAnswerEvaluationMode.Coordinate2D),
+            Difficulty = 2,
+            QuestionText = "Choose the vertex",
+            CorrectAnswer = "A",
+            Solution = "Solution",
+            MaxScore = 1m,
+            EstimatedTimeSeconds = 60,
+            LanguageCode = "vi"
+        };
+
+        var result = await sut.ExecuteAsync(request);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task ActivateQuestion_WithInvalidCoordinate2DReference_ReturnsValidationFailed()
+    {
+        var question = new Question
+        {
+            QuestionId = 6UL,
+            CenterId = _centerId,
+            SubjectId = _subjectId,
+            PrimaryTopicNodeId = _nodeId,
+            CreatedByTeacherId = _teacherId,
+            QuestionType = QuestionType.ShortAnswer,
+            AnswerEvaluationMode = QuestionAnswerEvaluationMode.Coordinate2D,
+            Difficulty = 2,
+            QuestionText = "Find the vertex",
+            CorrectAnswer = "not-a-coordinate",
+            Solution = "Solution",
+            MaxScore = 1m,
+            EstimatedTimeSeconds = 60,
+            LanguageCode = "vi",
+            Status = QuestionStatus.Draft,
+            RowVersion = 1UL,
+            CreatedAt = _fixedTime.UtcDateTime,
+            UpdatedAt = _fixedTime.UtcDateTime
+        };
+        _dbContext.Questions.Add(question);
+        await _dbContext.SaveChangesAsync();
+
+        var sut = new ActivateQuestionUseCase(_dbContext, _tenantContextMock.Object, _timeProviderMock.Object, _normalizer);
+        var result = await sut.ExecuteAsync("6", new ActivateQuestionRequest { RowVersion = "1" });
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+        Assert.Equal(QuestionStatus.Draft, question.Status);
+    }
 }

@@ -150,7 +150,7 @@ Collection rỗng trả data: [], không trả 404.
 | NodeType | Subject, Chapter, Topic, Skill, Concept |
 | RelationType | PrerequisiteOf, RelatedTo, PartOf, CausesErrorIn |
 | QuestionType | MultipleChoice, ShortAnswer, Essay |
-| QuestionAnswerEvaluationMode | TextExact, NumericRational, Manual |
+| QuestionAnswerEvaluationMode | TextExact, NumericRational, Coordinate2D, Manual |
 | QuestionStatus | Draft, Active, Archived |
 | AssignmentStatus | Draft, Published, Closed, Archived |
 | ProgressStatus | NotStarted, InProgress, Completed, Overdue |
@@ -1548,7 +1548,9 @@ Response 200:
     "grading": {
       "isCorrect": true,
       "awardedScore": 1,
-      "maxScore": 1
+      "maxScore": 1,
+      "reasonCode": "COORDINATE_EQUIVALENT",
+      "source": "Deterministic"
     },
     "analysis": {
       "analysisId": "14001",

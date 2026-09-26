@@ -40,6 +40,9 @@ public class AttemptConfiguration : IEntityTypeConfiguration<Attempt>
         builder.Property(a => a.ReasoningText).HasColumnName("reasoning_text").HasColumnType("longtext");
         builder.Property(a => a.IsCorrect).HasColumnName("is_correct").HasColumnType("tinyint(1)");
         builder.Property(a => a.AwardedScore).HasColumnName("awarded_score").HasColumnType("decimal(5,2)");
+        builder.Property(a => a.PreliminaryGradingReasonCode)
+            .HasColumnName("preliminary_grading_reason_code")
+            .HasColumnType("varchar(64)");
         builder.Property(a => a.TimeSpentSeconds).HasColumnName("time_spent_seconds").HasColumnType("int unsigned");
         builder.Property(a => a.Confidence).HasColumnName("confidence").HasColumnType("decimal(5,2)");
         builder.Property(a => a.AnswerChanges).HasColumnName("answer_changes").HasColumnType("int unsigned").HasDefaultValue(0);

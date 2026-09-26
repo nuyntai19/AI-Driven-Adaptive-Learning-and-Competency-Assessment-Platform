@@ -89,6 +89,26 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
       mf.smartFence = true;
       mf.smartMode = false;
       mf.smartSuperscript = true;
+      mf.setAttribute("data-input-mode", "math");
+
+      try {
+        const shadowStyle = document.createElement("style");
+        shadowStyle.setAttribute("data-edutwin-toggle-guard", "true");
+        shadowStyle.textContent = `
+          :host([data-input-mode="text"]) [part="virtual-keyboard-toggle"],
+          :host([data-input-mode="text"]) [part="menu-toggle"],
+          :host([data-input-mode="text"]) .ML__virtual-keyboard-toggle,
+          :host([data-input-mode="text"]) .ML__menu-toggle,
+          :host([data-input-mode="text"]) .ML__toggles {
+            display: none !important;
+            visibility: hidden !important;
+            pointer-events: none !important;
+          }
+        `;
+        mf.shadowRoot?.appendChild(shadowStyle);
+      } catch {
+        // Fallback handled via global CSS
+      }
 
       if (disabled) {
         mf.readOnly = true;
@@ -183,6 +203,22 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
       }
     }, [disabled]);
 
+    // Sync input mode attribute and ensure virtual keyboard is hidden in text mode
+    useEffect(() => {
+      const mf = mathfieldRef.current;
+      if (!mf) return;
+      mf.setAttribute("data-input-mode", inputMode);
+
+      if (inputMode === "text") {
+        if (
+          typeof window !== "undefined" &&
+          (window as unknown as { mathVirtualKeyboard?: { visible?: boolean; hide: () => void } }).mathVirtualKeyboard?.visible
+        ) {
+          (window as unknown as { mathVirtualKeyboard?: { hide: () => void } }).mathVirtualKeyboard?.hide();
+        }
+      }
+    }, [inputMode]);
+
     // Expose ref methods for toolbar and Casio calculator insertion
     useImperativeHandle(ref, () => ({
       insertAtCursor: (latexOrText: string) => {
@@ -192,6 +228,7 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
         mf.focus();
         mf.defaultMode = "math";
         mf.executeCommand(["switchMode", "math"]);
+        mf.setAttribute("data-input-mode", "math");
         if (typeof mf.insert === "function") {
           mf.insert(latexOrText, {
             mode: "math",
@@ -243,6 +280,17 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
       mf.focus();
       mf.defaultMode = nextMode;
       mf.executeCommand(["switchMode", nextMode]);
+      mf.setAttribute("data-input-mode", nextMode);
+
+      if (nextMode === "text") {
+        if (
+          typeof window !== "undefined" &&
+          (window as unknown as { mathVirtualKeyboard?: { visible?: boolean; hide: () => void } }).mathVirtualKeyboard?.visible
+        ) {
+          (window as unknown as { mathVirtualKeyboard?: { hide: () => void } }).mathVirtualKeyboard?.hide();
+        }
+      }
+
       setInputMode(nextMode);
     };
 
@@ -337,7 +385,7 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
           ref={containerRef}
           className={`p-3.5 min-h-[56px] text-slate-900 dark:text-white rounded-b-2xl overflow-x-auto min-w-0 ${
             disabled ? "cursor-default select-text" : "cursor-text bg-white dark:bg-slate-900"
-          }`}
+          } ${inputMode === "text" ? "math-field-text-mode" : "math-field-math-mode"}`}
           onPointerDown={() => {
             if (!disabled) onFocusRef.current?.();
           }}

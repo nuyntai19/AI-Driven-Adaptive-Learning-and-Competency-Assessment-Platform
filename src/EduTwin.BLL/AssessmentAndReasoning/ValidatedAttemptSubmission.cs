@@ -20,6 +20,7 @@ public sealed class ValidatedAttemptSubmission
     public string ReasoningLanguage { get; init; } = string.Empty;
     public bool? IsCorrect { get; init; }
     public decimal? AwardedScore { get; init; }
+    public string? PreliminaryGradingReasonCode { get; init; }
     public string? AnswerDisplayLatex { get; init; }
     public string? DrawingUploadToken { get; init; }
 

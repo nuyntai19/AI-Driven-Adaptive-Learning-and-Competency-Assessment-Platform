@@ -3,6 +3,7 @@ import type { AttemptFeedbackDataDto } from "../../types/learning";
 import { RichMathText } from "../math/RichMathText";
 import { retryAttemptAIAnalysis, createStudentReviewRequest } from "../../api/learningFeedbackApi";
 import { extractProblemDetails } from "../../utils/problemDetails";
+import { formatAwardedScore, formatPreliminaryResult } from "../../utils/gradingDisplay";
 
 function safeClientErrorMessage(error: unknown, fallback: string): string {
   const details = extractProblemDetails(error);
@@ -312,14 +313,10 @@ export function AttemptFeedbackHierarchy({
               ? "bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300"
               : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
           }`}>
-            {grading.isCorrect === true
-              ? "Kết quả: Đúng"
-              : grading.isCorrect === false
-              ? "Kết quả: Chưa đúng"
-              : "Kết quả: Chờ đánh giá"}
+            {formatPreliminaryResult(grading.isCorrect)}
           </span>
           <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 text-xs font-bold text-slate-700 dark:text-slate-300">
-            Điểm: {displayedAwardedScore ?? "Chưa chấm"} / {displayedMaxScore}
+            {formatAwardedScore(displayedAwardedScore, displayedMaxScore)}
           </span>
         </div>
 

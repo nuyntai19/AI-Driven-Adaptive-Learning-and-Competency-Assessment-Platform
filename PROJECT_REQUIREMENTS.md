@@ -345,7 +345,7 @@ Thiếu một điều kiện phải fail closed.
 | ID | Requirement | Priority |
 |---|---|---|
 | FR-MTH-001 | Cung cấp Visual Math Input Toolbar với 5 tab ký tự toán học và xem trước công thức qua KaTeX client-side an toàn (trust: false) | Must |
-| FR-MTH-002 | Cung cấp QuestionAnswerEvaluationMode (TextExact, NumericRational, Manual) với ma trận ràng buộc QuestionType chặt chẽ | Must |
+| FR-MTH-002 | Cung cấp QuestionAnswerEvaluationMode (TextExact, NumericRational, Coordinate2D, Manual) với ma trận ràng buộc QuestionType chặt chẽ; Coordinate2D chuẩn hóa Unicode/LaTeX/dấu phân cách và so hai thành phần số hữu tỉ theo cấu trúc | Must |
 | FR-MTH-003 | Xây dựng MathAnswerNormalizer chuẩn hóa số thập phân, phân số, hỗn số về dạng phân số tối giản P/Q bằng BigInteger | Must |
 | FR-MTH-004 | Cung cấp ngăn kéo Máy tính Khoa học (Scientific Calculator Drawer) thuần tính toán, không chứa engine tự động giải toán | Must |
 | FR-MTH-005 | Cung cấp Bảng vẽ nháp vector (Vector Scratchpad Canvas) với đầy đủ công cụ vẽ, lưới ô ly, thước hình học, trục Oxy, lưu trữ draft scoped IndexedDB theo draft:{centerId}:{userId}:{clientSubmissionId} | Must |

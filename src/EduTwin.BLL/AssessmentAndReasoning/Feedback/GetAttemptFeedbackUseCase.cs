@@ -124,6 +124,18 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
         var effectiveCorrectness = analysis?.OverrideIsCorrect ?? attempt.IsCorrect;
         var effectiveScore = analysis?.OverrideAwardedScore ?? attempt.AwardedScore;
         var maxScore = attempt.Question?.MaxScore ?? 1.00m;
+        var hasTeacherGrade = analysis?.OverrideIsCorrect.HasValue == true
+            || analysis?.OverrideAwardedScore.HasValue == true;
+        var gradingSource = hasTeacherGrade
+            ? "Teacher"
+            : attempt.IsCorrect.HasValue || attempt.AwardedScore.HasValue
+                ? "Deterministic"
+                : "PendingTeacher";
+        var gradingReasonCode = hasTeacherGrade
+            ? PreliminaryGradingReasonCodes.TeacherOverride
+            : (analysis?.IsFallback == true && string.IsNullOrEmpty(attempt.PreliminaryGradingReasonCode))
+                ? PreliminaryGradingReasonCodes.AiProviderUnavailable
+                : attempt.PreliminaryGradingReasonCode;
 
         // 1. Student Submission
         var studentSubmissionDto = new AttemptFeedbackStudentSubmissionDto
@@ -265,7 +277,11 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
                 {
                     IsCorrect = attempt.IsCorrect,
                     AwardedScore = attempt.AwardedScore,
-                    MaxScore = maxScore
+                    MaxScore = maxScore,
+                    ReasonCode = attempt.PreliminaryGradingReasonCode,
+                    Source = attempt.IsCorrect.HasValue || attempt.AwardedScore.HasValue
+                        ? "Deterministic"
+                        : "PendingTeacher"
                 }
             };
         }
@@ -355,7 +371,9 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
             {
                 IsCorrect = effectiveCorrectness,
                 AwardedScore = effectiveScore,
-                MaxScore = maxScore
+                MaxScore = maxScore,
+                ReasonCode = gradingReasonCode,
+                Source = gradingSource
             },
             StudentSubmission = studentSubmissionDto,
             TeacherSolution = teacherSolutionDto,

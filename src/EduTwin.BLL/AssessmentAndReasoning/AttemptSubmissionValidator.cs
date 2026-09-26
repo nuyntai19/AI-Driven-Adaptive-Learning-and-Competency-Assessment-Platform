@@ -226,7 +226,8 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
             {
                 IsCorrect = true,
                 Score = assignmentQuestion?.Points > 0 ? assignmentQuestion.Points : question.MaxScore,
-                Feedback = "Câu hỏi đã được đánh dấu có sai sót đề và được tự động công nhận trọn điểm."
+                Feedback = "Câu hỏi đã được đánh dấu có sai sót đề và được tự động công nhận trọn điểm.",
+                ReasonCode = PreliminaryGradingReasonCodes.VoidedQuestion
             }
             : (!request.Skipped
                 ? _graderFactory
@@ -245,7 +246,8 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
                 {
                     IsCorrect = false,
                     Score = 0m,
-                    Feedback = "Skipped"
+                    Feedback = "Skipped",
+                    ReasonCode = PreliminaryGradingReasonCodes.NoAnswer
                 });
 
         var effectiveFinalAnswer = request.Skipped
@@ -269,7 +271,8 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
             Skipped = request.Skipped,
             ReasoningLanguage = "vi",
             IsCorrect = preliminaryGrade.IsCorrect,
-            AwardedScore = preliminaryGrade.Score
+            AwardedScore = preliminaryGrade.Score,
+            PreliminaryGradingReasonCode = preliminaryGrade.ReasonCode
         });
     }
 
@@ -359,6 +362,7 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
         ReasoningLanguage = attempt.ReasoningLanguage,
         IsCorrect = attempt.IsCorrect,
         AwardedScore = attempt.AwardedScore,
+        PreliminaryGradingReasonCode = attempt.PreliminaryGradingReasonCode,
         ExistingAttemptId = attempt.AttemptId
     };
 

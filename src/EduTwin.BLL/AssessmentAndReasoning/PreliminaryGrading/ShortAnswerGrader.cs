@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.DAL.CurriculumAndQuestions;
@@ -9,13 +10,23 @@ namespace EduTwin.BLL.AssessmentAndReasoning.PreliminaryGrading;
 public class ShortAnswerGrader : IQuestionGrader
 {
     private readonly IMathAnswerNormalizer _mathNormalizer;
+    private readonly ICoordinateAnswerNormalizer _coordinateNormalizer;
 
-    public ShortAnswerGrader(IMathAnswerNormalizer mathNormalizer)
+    public ShortAnswerGrader(
+        IMathAnswerNormalizer mathNormalizer,
+        ICoordinateAnswerNormalizer coordinateNormalizer)
     {
         _mathNormalizer = mathNormalizer;
+        _coordinateNormalizer = coordinateNormalizer;
     }
 
-    public ShortAnswerGrader() : this(new MathAnswerNormalizer())
+    public ShortAnswerGrader(IMathAnswerNormalizer mathNormalizer)
+        : this(mathNormalizer, new CoordinateAnswerNormalizer(mathNormalizer))
+    {
+    }
+
+    public ShortAnswerGrader()
+        : this(new MathAnswerNormalizer())
     {
     }
 
@@ -46,7 +57,8 @@ public class ShortAnswerGrader : IQuestionGrader
             {
                 IsCorrect = false,
                 Score = 0m,
-                Feedback = "No answer provided (skipped)."
+                Feedback = "No answer provided (skipped).",
+                ReasonCode = PreliminaryGradingReasonCodes.NoAnswer
             };
         }
 
@@ -56,8 +68,9 @@ public class ShortAnswerGrader : IQuestionGrader
             return new PreliminaryGradingResult
             {
                 IsCorrect = null,
-                Score = 0m,
-                Feedback = "Requires teacher review."
+                Score = null,
+                Feedback = "Requires teacher review.",
+                ReasonCode = PreliminaryGradingReasonCodes.ManualMode
             };
         }
 
@@ -67,8 +80,45 @@ public class ShortAnswerGrader : IQuestionGrader
             return new PreliminaryGradingResult
             {
                 IsCorrect = null,
-                Score = 0m,
-                Feedback = "Requires manual review."
+                Score = null,
+                Feedback = "Requires manual review.",
+                ReasonCode = PreliminaryGradingReasonCodes.InvalidReferenceAnswer
+            };
+        }
+
+        if (context.EvaluationMode == QuestionAnswerEvaluationMode.Coordinate2D)
+        {
+            if (!_coordinateNormalizer.TryNormalize(correctAnswer, out var expectedCoordinate))
+            {
+                return new PreliminaryGradingResult
+                {
+                    IsCorrect = null,
+                    Score = null,
+                    Feedback = "Requires manual review (invalid coordinate reference answer).",
+                    ReasonCode = PreliminaryGradingReasonCodes.InvalidReferenceAnswer
+                };
+            }
+
+            if (!_coordinateNormalizer.TryNormalize(studentAnswer, out var studentCoordinate))
+            {
+                return new PreliminaryGradingResult
+                {
+                    IsCorrect = null,
+                    Score = null,
+                    Feedback = "Unsupported coordinate format. Requires teacher review.",
+                    ReasonCode = PreliminaryGradingReasonCodes.UnsupportedMathFormat
+                };
+            }
+
+            var matches = studentCoordinate.GetValueOrDefault() == expectedCoordinate.GetValueOrDefault();
+            return new PreliminaryGradingResult
+            {
+                IsCorrect = matches,
+                Score = matches ? context.MaxScore : 0m,
+                Feedback = matches ? "Correct coordinate." : "Incorrect coordinate.",
+                ReasonCode = matches
+                    ? PreliminaryGradingReasonCodes.CoordinateEquivalent
+                    : PreliminaryGradingReasonCodes.CoordinateMismatch
             };
         }
 
@@ -80,8 +130,9 @@ public class ShortAnswerGrader : IQuestionGrader
                 return new PreliminaryGradingResult
                 {
                     IsCorrect = null,
-                    Score = 0m,
-                    Feedback = "Requires manual review (invalid reference answer)."
+                    Score = null,
+                    Feedback = "Requires manual review (invalid reference answer).",
+                    ReasonCode = PreliminaryGradingReasonCodes.InvalidReferenceAnswer
                 };
             }
 
@@ -94,7 +145,10 @@ public class ShortAnswerGrader : IQuestionGrader
                 {
                     IsCorrect = matches,
                     Score = matches ? context.MaxScore : 0m,
-                    Feedback = matches ? "Correct answer." : "Incorrect answer."
+                    Feedback = matches ? "Correct answer." : "Incorrect answer.",
+                    ReasonCode = matches
+                        ? PreliminaryGradingReasonCodes.NumericEquivalent
+                        : PreliminaryGradingReasonCodes.NumericMismatch
                 };
             }
 
@@ -103,8 +157,9 @@ public class ShortAnswerGrader : IQuestionGrader
             return new PreliminaryGradingResult
             {
                 IsCorrect = null,
-                Score = 0m,
-                Feedback = "Unsupported mathematical format. Requires teacher review."
+                Score = null,
+                Feedback = "Unsupported mathematical format. Requires teacher review.",
+                ReasonCode = PreliminaryGradingReasonCodes.UnsupportedMathFormat
             };
         }
 
@@ -113,12 +168,29 @@ public class ShortAnswerGrader : IQuestionGrader
         var normalizedCorrectAnswer = correctAnswer.Trim();
 
         bool isCorrect = string.Equals(normalizedStudentAnswer, normalizedCorrectAnswer, StringComparison.OrdinalIgnoreCase);
+        var reasonCode = isCorrect
+            ? PreliminaryGradingReasonCodes.ExactMatch
+            : AreEqualIgnoringWhitespace(normalizedStudentAnswer, normalizedCorrectAnswer)
+                ? PreliminaryGradingReasonCodes.TextMismatchInternalWhitespace
+                : PreliminaryGradingReasonCodes.TextMismatch;
 
         return new PreliminaryGradingResult
         {
             IsCorrect = isCorrect,
             Score = isCorrect ? context.MaxScore : 0m,
-            Feedback = isCorrect ? "Correct answer." : "Incorrect answer."
+            Feedback = isCorrect ? "Correct answer." : "Incorrect answer.",
+            ReasonCode = reasonCode
         };
+    }
+
+    private static bool AreEqualIgnoringWhitespace(string left, string right)
+    {
+        static string RemoveWhitespace(string value) =>
+            string.Concat(value.Where(character => !char.IsWhiteSpace(character)));
+
+        return string.Equals(
+            RemoveWhitespace(left),
+            RemoveWhitespace(right),
+            StringComparison.OrdinalIgnoreCase);
     }
 }

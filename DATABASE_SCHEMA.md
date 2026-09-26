@@ -534,7 +534,7 @@ Indexes:
 | primary_topic_node_id | BIGINT UNSIGNED | No | Phải là Topic |
 | created_by_teacher_id | VARCHAR(36) | No | Tenant-safe FK |
 | question_type | VARCHAR(32) | No | MultipleChoice, ShortAnswer, Essay |
-| answer_evaluation_mode | VARCHAR(32) | No | TextExact, NumericRational, Manual (Default TextExact) |
+| answer_evaluation_mode | VARCHAR(32) | No | TextExact, NumericRational, Coordinate2D, Manual (Default TextExact) |
 | difficulty | TINYINT UNSIGNED | No | 1–5 |
 | question_text | LONGTEXT | No | Việt hoặc Anh |
 | correct_answer | TEXT | No | Canonical final answer/model answer |
@@ -554,7 +554,7 @@ Indexes/constraints:
 - IX(center_id, subject_id, primary_topic_node_id, status, difficulty).
 - IX(center_id, created_by_teacher_id, status).
 - CHECK question_type IN (MultipleChoice, ShortAnswer, Essay).
-- CHECK answer_evaluation_mode IN (TextExact, NumericRational, Manual).
+- CHECK answer_evaluation_mode IN (TextExact, NumericRational, Coordinate2D, Manual).
 - CHECK difficulty BETWEEN 1 AND 5.
 - CHECK max_score > 0.
 - CHECK estimated_time_seconds > 0.
@@ -872,6 +872,7 @@ Table append-only; replay tạo event mới, không sửa event cũ.
 | answer_display_latex | VARCHAR(2048) | Yes | Công thức LaTeX hiển thị của câu trả lời |
 | is_correct | TINYINT(1) | Yes | Preliminary deterministic grade |
 | awarded_score | DECIMAL(5,2) | Yes | Điểm sơ bộ theo grader/criteria; teacher có thể review theo use case |
+| preliminary_grading_reason_code | VARCHAR(64) | Yes | Mã lý do deterministic/manual; null với dữ liệu cũ. Essay chưa chấm dùng `MANUAL_MODE` cùng `is_correct = NULL`, `awarded_score = NULL` |
 | time_spent_seconds | INT UNSIGNED | No | Telemetry thời gian quan sát được |
 | confidence | DECIMAL(5,2) | No | 0–100 |
 | answer_changes | INT UNSIGNED | No | Default 0 |

@@ -81,6 +81,8 @@ public sealed class AttemptFeedbackGradingDto
     public bool? IsCorrect { get; set; }
     public decimal? AwardedScore { get; set; }
     public decimal MaxScore { get; set; }
+    public string? ReasonCode { get; set; }
+    public string Source { get; set; } = "PendingTeacher";
 }
 
 public sealed class AttemptFeedbackAnalysisDto

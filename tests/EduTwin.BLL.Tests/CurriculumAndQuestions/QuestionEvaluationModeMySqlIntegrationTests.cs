@@ -42,6 +42,7 @@ public sealed class QuestionEvaluationModeMySqlIntegrationTests
         const ulong essayQuestionId = 90001UL;
         const ulong mcqQuestionId = 90002UL;
         const ulong shortAnswerQuestionId = 90003UL;
+        const ulong coordinateQuestionId = 90004UL;
 
         // 2. Insert hierarchy and legacy question data where Essay has answer_evaluation_mode = 'TextExact'
         await using (var seedContext = CreateContext(database.ConnectionString, tenant))
@@ -136,8 +137,9 @@ public sealed class QuestionEvaluationModeMySqlIntegrationTests
                     ) VALUES 
                     ({0}, {1}, {2}, {3}, {4}, 'Essay', 3, 'Legacy Essay Question', 'Legacy rubric', 'Legacy solution', {5}, 5.0, 300, 'vi', 'Active', 'TextExact', {6}, {6}, 1),
                     ({0}, {7}, {2}, {3}, {4}, 'MultipleChoice', 1, 'Legacy MCQ Question', 'A', 'Sol', {5}, 1.0, 60, 'vi', 'Active', 'TextExact', {6}, {6}, 1),
-                    ({0}, {8}, {2}, {3}, {4}, 'ShortAnswer', 2, 'Legacy Short Answer Rational', '3/2', 'Sol', {5}, 2.0, 120, 'vi', 'Active', 'NumericRational', {6}, {6}, 1);",
-                    centerId, essayQuestionId, subjectId, nodeId, teacherId, emptyJson, UtcNow, mcqQuestionId, shortAnswerQuestionId);
+                    ({0}, {8}, {2}, {3}, {4}, 'ShortAnswer', 2, 'Legacy Short Answer Rational', '3/2', 'Sol', {5}, 2.0, 120, 'vi', 'Active', 'NumericRational', {6}, {6}, 1),
+                    ({0}, {9}, {2}, {3}, {4}, 'ShortAnswer', 4, 'Tìm tọa độ đỉnh của parabol y = -2x^2 + 4x - 1.', '(1, 1)', 'Sol', {5}, 4.0, 300, 'vi', 'Active', 'TextExact', {6}, {6}, 1);",
+                    centerId, essayQuestionId, subjectId, nodeId, teacherId, emptyJson, UtcNow, mcqQuestionId, shortAnswerQuestionId, coordinateQuestionId);
             }
             finally
             {
@@ -151,6 +153,10 @@ public sealed class QuestionEvaluationModeMySqlIntegrationTests
             var preEssayMode = await verifyPreContext.Database.SqlQueryRaw<string>(
                 "SELECT answer_evaluation_mode AS Value FROM questions WHERE question_id = {0}", essayQuestionId).SingleAsync();
             Assert.Equal("TextExact", preEssayMode);
+
+            var preCoordinateMode = await verifyPreContext.Database.SqlQueryRaw<string>(
+                "SELECT answer_evaluation_mode AS Value FROM questions WHERE question_id = {0}", coordinateQuestionId).SingleAsync();
+            Assert.Equal("TextExact", preCoordinateMode);
         }
 
         // 4. Perform database upgrade to latest (applies BackfillQuestionEvaluationModeMatrix migration)
@@ -165,6 +171,7 @@ public sealed class QuestionEvaluationModeMySqlIntegrationTests
         // - Legacy Essay question must now be 'Manual'
         // - MultipleChoice question remains 'TextExact'
         // - ShortAnswer question remains 'NumericRational'
+        // - Known coordinate seed is backfilled from 'TextExact' to 'Coordinate2D'
         await using (var verifyPostContext = CreateContext(database.ConnectionString, tenant))
         {
             var postEssayMode = await verifyPostContext.Database.SqlQueryRaw<string>(
@@ -179,6 +186,10 @@ public sealed class QuestionEvaluationModeMySqlIntegrationTests
                 "SELECT answer_evaluation_mode AS Value FROM questions WHERE question_id = {0}", shortAnswerQuestionId).SingleAsync();
             Assert.Equal("NumericRational", postShortAnswerMode);
 
+            var postCoordinateMode = await verifyPostContext.Database.SqlQueryRaw<string>(
+                "SELECT answer_evaluation_mode AS Value FROM questions WHERE question_id = {0}", coordinateQuestionId).SingleAsync();
+            Assert.Equal("Coordinate2D", postCoordinateMode);
+
             // Verify strongly typed EF Core mapping with IgnoreQueryFilters
             var essayEntity = await verifyPostContext.Questions.IgnoreQueryFilters().SingleAsync(q => q.QuestionId == essayQuestionId);
             Assert.Equal(QuestionType.Essay, essayEntity.QuestionType);
@@ -191,6 +202,10 @@ public sealed class QuestionEvaluationModeMySqlIntegrationTests
             var saEntity = await verifyPostContext.Questions.IgnoreQueryFilters().SingleAsync(q => q.QuestionId == shortAnswerQuestionId);
             Assert.Equal(QuestionType.ShortAnswer, saEntity.QuestionType);
             Assert.Equal(QuestionAnswerEvaluationMode.NumericRational, saEntity.AnswerEvaluationMode);
+
+            var coordinateEntity = await verifyPostContext.Questions.IgnoreQueryFilters().SingleAsync(q => q.QuestionId == coordinateQuestionId);
+            Assert.Equal(QuestionType.ShortAnswer, coordinateEntity.QuestionType);
+            Assert.Equal(QuestionAnswerEvaluationMode.Coordinate2D, coordinateEntity.AnswerEvaluationMode);
         }
     }
 
@@ -251,9 +266,15 @@ public sealed class QuestionEvaluationModeMySqlIntegrationTests
             {
                 Assert.True(
                     sa.AnswerEvaluationMode == QuestionAnswerEvaluationMode.NumericRational ||
-                    sa.AnswerEvaluationMode == QuestionAnswerEvaluationMode.TextExact,
-                    $"ShortAnswer question {sa.QuestionId} must have NumericRational or TextExact, got {sa.AnswerEvaluationMode}");
+                    sa.AnswerEvaluationMode == QuestionAnswerEvaluationMode.TextExact ||
+                    sa.AnswerEvaluationMode == QuestionAnswerEvaluationMode.Coordinate2D,
+                    $"ShortAnswer question {sa.QuestionId} must have NumericRational, TextExact, or Coordinate2D, got {sa.AnswerEvaluationMode}");
             }
+
+            var coordinateSeed = Assert.Single(
+                allQuestions,
+                q => q.QuestionText == "Tìm tọa độ đỉnh của parabol y = -2x^2 + 4x - 1.");
+            Assert.Equal(QuestionAnswerEvaluationMode.Coordinate2D, coordinateSeed.AnswerEvaluationMode);
         }
 
         // 4. Assert MySQL Check Constraint ck_questions_answer_evaluation_mode rejects invalid evaluation mode
