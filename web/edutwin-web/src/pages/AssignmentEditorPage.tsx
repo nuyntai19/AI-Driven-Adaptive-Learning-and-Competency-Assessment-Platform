@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, Navigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { organizationApi } from "../api/organizationApi";
+import { knowledgeGraphApi } from "../api/knowledgeGraphApi";
 import { useAssignment } from "../features/assignments/useAssignment";
 import { useCreateAssignment } from "../features/assignments/useCreateAssignment";
 import { useUpdateAssignment } from "../features/assignments/useUpdateAssignment";
@@ -75,6 +76,7 @@ function CenterManagerAssignmentEditorView() {
   const canPublish = hasPermission(permissions.assignmentsPublish);
   const canReadClasses = hasPermission(permissions.classesRead);
   const canReadQuestions = hasPermission(permissions.questionsRead);
+  const canReadNodes = hasPermission(permissions.nodesRead);
 
   // Assignment data query
   const assignmentQuery = useAssignment(id);
@@ -115,6 +117,7 @@ function CenterManagerAssignmentEditorView() {
   // Filter & Pagination for Question Selector (matching backend QuestionListQuery: no search param)
   const [questionPage, setQuestionPage] = useState(1);
   const [questionDifficulty, setQuestionDifficulty] = useState<number | "">("");
+  const [questionTopicId, setQuestionTopicId] = useState<string>("");
 
   // Filter & Pagination for Class Selector
   const [classPage, setClassPage] = useState(1);
@@ -170,17 +173,28 @@ function CenterManagerAssignmentEditorView() {
     return classesQuery.data?.data.find((c) => c.classId === classId);
   }, [classId, classDetailQuery.data, cachedClasses, classesQuery.data?.data]);
 
+  const selectedSubjectId = selectedClass?.subject?.subjectId;
+
+  // Knowledge Nodes Query for the subject of the selected class
+  const knowledgeNodesQuery = useQuery({
+    queryKey: ["knowledge-nodes-for-assignment-editor", selectedSubjectId],
+    queryFn: () => knowledgeGraphApi.listNodes(selectedSubjectId!),
+    enabled: canReadNodes && Boolean(selectedSubjectId),
+    staleTime: 60_000,
+  });
+
   // Questions Query for the subject of the selected class - guarded with canReadQuestions
   const questionsQuery = useAssignableQuestions(
-    selectedClass?.subject?.subjectId
+    selectedSubjectId
       ? {
-          subjectId: selectedClass.subject.subjectId,
+          subjectId: selectedSubjectId,
+          topicId: questionTopicId || undefined,
           page: questionPage,
           pageSize: 10,
           difficulty: questionDifficulty !== "" ? Number(questionDifficulty) : undefined,
         }
       : undefined,
-    { enabled: canReadQuestions && Boolean(selectedClass?.subject?.subjectId) }
+    { enabled: canReadQuestions && Boolean(selectedSubjectId) }
   );
 
   // Students Query for the selected class - guarded with canReadClasses
@@ -288,6 +302,7 @@ function CenterManagerAssignmentEditorView() {
   const handleClassChange = (nextClassId: string) => {
     if (isReadOnly) return;
     setClassId(nextClassId);
+    setQuestionTopicId("");
     setQuestionIds([]);
     setStudentIds([]);
     setTargetMode("WholeClass");
@@ -848,27 +863,60 @@ function CenterManagerAssignmentEditorView() {
                   </p>
                 </div>
 
-                {/* Difficulty Filter (pure canonical filter: no search param) */}
-                <div className="flex items-center gap-3">
-                  <label htmlFor="q-diff-filter" className="text-xs text-[var(--cm-text-secondary)] whitespace-nowrap">
-                    Lọc độ khó:
-                  </label>
-                  <select
-                    id="q-diff-filter"
-                    value={questionDifficulty}
-                    onChange={(e) => {
-                      setQuestionDifficulty(e.target.value ? Number(e.target.value) : "");
-                      setQuestionPage(1);
-                    }}
-                    className="cm-select text-xs py-1.5"
-                  >
-                    <option value="">Tất cả độ khó</option>
-                    <option value="1">1 - Rất dễ</option>
-                    <option value="2">2 - Dễ</option>
-                    <option value="3">3 - Trung bình</option>
-                    <option value="4">4 - Khó</option>
-                    <option value="5">5 - Rất khó</option>
-                  </select>
+                {/* Topic & Difficulty Filters */}
+                <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+                  {/* Knowledge Graph / Topic Filter */}
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="q-topic-filter" className="text-xs text-[var(--cm-text-secondary)] whitespace-nowrap">
+                      Đồ thị tri thức:
+                    </label>
+                    <select
+                      id="q-topic-filter"
+                      value={questionTopicId}
+                      onChange={(e) => {
+                        setQuestionTopicId(e.target.value);
+                        setQuestionPage(1);
+                      }}
+                      disabled={!selectedSubjectId || knowledgeNodesQuery.isLoading}
+                      className="cm-select text-xs py-1.5 max-w-[220px]"
+                    >
+                      <option value="">
+                        {!selectedSubjectId
+                          ? "-- Chọn lớp trước --"
+                          : knowledgeNodesQuery.isLoading
+                          ? "Đang tải nút..."
+                          : "Tất cả nút tri thức"}
+                      </option>
+                      {knowledgeNodesQuery.data?.map((node) => (
+                        <option key={node.nodeId} value={node.nodeId}>
+                          [{node.nodeType}] {node.nodeName} ({node.nodeCode})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Difficulty Filter */}
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="q-diff-filter" className="text-xs text-[var(--cm-text-secondary)] whitespace-nowrap">
+                      Lọc độ khó:
+                    </label>
+                    <select
+                      id="q-diff-filter"
+                      value={questionDifficulty}
+                      onChange={(e) => {
+                        setQuestionDifficulty(e.target.value ? Number(e.target.value) : "");
+                        setQuestionPage(1);
+                      }}
+                      className="cm-select text-xs py-1.5"
+                    >
+                      <option value="">Tất cả độ khó</option>
+                      <option value="1">1 - Rất dễ</option>
+                      <option value="2">2 - Dễ</option>
+                      <option value="3">3 - Trung bình</option>
+                      <option value="4">4 - Khó</option>
+                      <option value="5">5 - Rất khó</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 
