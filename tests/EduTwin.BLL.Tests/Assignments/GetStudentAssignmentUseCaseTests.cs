@@ -296,6 +296,7 @@ public class GetStudentAssignmentUseCaseTests
             AssignmentId = assignmentId,
             Status = AttemptStatus.NeedsTeacherReview,
             FinalAnswer = "x != 2",
+            AnswerDisplayLatex = "x \\ne 2",
             ReasoningText = "Mẫu khác 0 cho nên (x-2) khác 0 cho nên x khác 2",
             ReasoningLanguage = "vi",
             CreatedAt = DateTime.UtcNow,
@@ -342,6 +343,8 @@ public class GetStudentAssignmentUseCaseTests
         var q1Dto = detail.Questions.First(q => q.QuestionId == "10001");
         Assert.Equal("NeedsTeacherReview", q1Dto.AttemptStatus);
         Assert.Equal("x != 2", q1Dto.SubmittedAnswer);
+        Assert.Equal("x \\ne 2", q1Dto.SubmittedAnswerDisplayLatex);
+        Assert.Equal("x \\ne 2", q1Dto.LatestAttempt?.AnswerDisplayLatex);
         Assert.Equal("Mẫu khác 0 cho nên (x-2) khác 0 cho nên x khác 2", q1Dto.SubmittedReasoning);
         Assert.Equal(42UL, q1Dto.SubmittedAttemptId);
         Assert.True(q1Dto.HasAttachment);

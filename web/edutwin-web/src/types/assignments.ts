@@ -94,6 +94,7 @@ export interface StudentQuestionAttemptDto {
   attemptId: string | number;
   status: AttemptStatus;
   finalAnswer: string | null;
+  answerDisplayLatex?: string | null;
   reasoningText: string | null;
   confidence: number | null;
   timeSpentSeconds: number;
@@ -118,6 +119,7 @@ export interface StudentAssignmentQuestionDto {
   attemptStatus: AttemptStatus | null;
   latestAttempt?: StudentQuestionAttemptDto | null;
   submittedAnswer?: string | null;
+  submittedAnswerDisplayLatex?: string | null;
   submittedReasoning?: string | null;
   submittedAttemptId?: string | number | null;
   hasAttachment?: boolean;

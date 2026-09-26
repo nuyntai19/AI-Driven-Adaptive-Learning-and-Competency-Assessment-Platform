@@ -35,10 +35,23 @@ import {
 } from "../utils/attemptSessionStorage";
 import { useAuthStore } from "../stores/authStore";
 import { httpClient } from "../api/httpClient";
-import { isFeedbackForQuestion, resolveQuestionReviewAttemptId } from "../utils/questionReview";
+import {
+  isAssignmentReviewHydrated,
+  isFeedbackForQuestion,
+  resolveQuestionReviewAttemptId,
+} from "../utils/questionReview";
+import {
+  buildAssignmentDraftKey,
+  clearLegacyAssignmentDraftsForAssignment,
+  readAssignmentDraft,
+  removeAssignmentDraft,
+  writeAssignmentDraft,
+  type AssignmentDraftScope,
+} from "../utils/assignmentDraftStorage";
 
 interface StoredAnswer {
   finalAnswer: string;
+  answerDisplayLatex: string;
   reasoningText: string;
   confidence: number;
   timeSpentSeconds: number;
@@ -46,6 +59,42 @@ interface StoredAnswer {
   snapshotDataUrl?: string | null;
   snapshotTime?: string | null;
   drawingUploadToken?: string | null;
+}
+
+const EMPTY_ASSIGNMENT_ANSWERS: Record<string, StoredAnswer> = {};
+
+function loadStoredAssignmentAnswers(scope: AssignmentDraftScope | null): Record<string, StoredAnswer> {
+  if (!scope) return {};
+
+  try {
+    const saved = readAssignmentDraft(scope);
+    if (!saved) return {};
+    const parsed = JSON.parse(saved);
+    if (typeof parsed !== "object" || parsed === null) return {};
+
+    const sanitized: Record<string, StoredAnswer> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (!value || typeof value !== "object") continue;
+      const stored = value as Partial<StoredAnswer>;
+      sanitized[key] = {
+        finalAnswer: typeof stored.finalAnswer === "string" ? stored.finalAnswer : "",
+        answerDisplayLatex:
+          typeof stored.answerDisplayLatex === "string"
+            ? stored.answerDisplayLatex
+            : (typeof stored.finalAnswer === "string" ? stored.finalAnswer : ""),
+        reasoningText: typeof stored.reasoningText === "string" ? stored.reasoningText : "",
+        confidence: typeof stored.confidence === "number" ? stored.confidence : 80,
+        timeSpentSeconds: typeof stored.timeSpentSeconds === "number" ? stored.timeSpentSeconds : 0,
+        answerChanges: typeof stored.answerChanges === "number" ? stored.answerChanges : 0,
+        snapshotDataUrl: typeof stored.snapshotDataUrl === "string" ? stored.snapshotDataUrl : null,
+        snapshotTime: typeof stored.snapshotTime === "string" ? stored.snapshotTime : null,
+        drawingUploadToken: typeof stored.drawingUploadToken === "string" ? stored.drawingUploadToken : null,
+      };
+    }
+    return sanitized;
+  } catch {
+    return {};
+  }
 }
 
 export const LearningPlayerPage = () => {
@@ -57,6 +106,18 @@ export const LearningPlayerPage = () => {
 
   const currentUser = useAuthStore((state) => state.user);
   const queryClient = useQueryClient();
+
+  const assignmentDraftScope = useMemo<AssignmentDraftScope | null>(() => {
+    if (!assignmentId || !currentUser) return null;
+    return {
+      centerId: currentUser.centerId,
+      userId: currentUser.userId,
+      assignmentId,
+    };
+  }, [assignmentId, currentUser]);
+  const assignmentDraftKey = assignmentDraftScope
+    ? buildAssignmentDraftKey(assignmentDraftScope)
+    : null;
 
   // Auto-restore subjectId from localStorage if entering adaptive learning directly
   useEffect(() => {
@@ -78,57 +139,42 @@ export const LearningPlayerPage = () => {
   const [activeQuestionId, setActiveQuestionId] = useState<string>(routeQuestionId || "");
 
   // Batch Assignment Answers state (mapped by questionId)
-  const [assignmentAnswers, setAssignmentAnswers] = useState<Record<string, StoredAnswer>>(() => {
-    if (!assignmentId) return {};
-    try {
-      const saved = localStorage.getItem(`edutwin_assignment_answers_${assignmentId}`);
-      if (!saved) return {};
-      const parsed = JSON.parse(saved);
-      if (typeof parsed !== "object" || parsed === null) return {};
-      const sanitized: Record<string, StoredAnswer> = {};
-      for (const [k, v] of Object.entries(parsed)) {
-        if (v && typeof v === "object") {
-          sanitized[k] = {
-            finalAnswer: typeof (v as any).finalAnswer === "string" ? (v as any).finalAnswer : "",
-            reasoningText: typeof (v as any).reasoningText === "string" ? (v as any).reasoningText : "",
-            confidence: typeof (v as any).confidence === "number" ? (v as any).confidence : 80,
-            timeSpentSeconds: typeof (v as any).timeSpentSeconds === "number" ? (v as any).timeSpentSeconds : 0,
-            answerChanges: typeof (v as any).answerChanges === "number" ? (v as any).answerChanges : 0,
-            snapshotDataUrl: typeof (v as any).snapshotDataUrl === "string" ? (v as any).snapshotDataUrl : null,
-            snapshotTime: typeof (v as any).snapshotTime === "string" ? (v as any).snapshotTime : null,
-            drawingUploadToken: typeof (v as any).drawingUploadToken === "string" ? (v as any).drawingUploadToken : null,
-          };
-        }
-      }
-      return sanitized;
-    } catch {
-      return {};
-    }
-  });
+  const [assignmentAnswersState, setAssignmentAnswersState] = useState<{
+    scopeKey: string | null;
+    answers: Record<string, StoredAnswer>;
+  }>(() => ({
+    scopeKey: assignmentDraftKey,
+    answers: loadStoredAssignmentAnswers(assignmentDraftScope),
+  }));
+  const assignmentAnswers = assignmentAnswersState.scopeKey === assignmentDraftKey
+    ? assignmentAnswersState.answers
+    : EMPTY_ASSIGNMENT_ANSWERS;
+  const assignmentAnswersRef = useRef(assignmentAnswers);
+  assignmentAnswersRef.current = assignmentAnswers;
+  const [assignmentDraftLoadVersion, setAssignmentDraftLoadVersion] = useState(0);
+  const setAssignmentAnswers = useCallback((
+    update:
+      | Record<string, StoredAnswer>
+      | ((previous: Record<string, StoredAnswer>) => Record<string, StoredAnswer>)
+  ) => {
+    setAssignmentAnswersState((previousState) => {
+      const previousAnswers = previousState.scopeKey === assignmentDraftKey
+        ? previousState.answers
+        : EMPTY_ASSIGNMENT_ANSWERS;
+      const nextAnswers = typeof update === "function" ? update(previousAnswers) : update;
+      return { scopeKey: assignmentDraftKey, answers: nextAnswers };
+    });
+  }, [assignmentDraftKey]);
 
   // Attached Scratchpad Snapshot State (Stored independently from scratchpad edits)
-  const [attachedSnapshotDataUrl, setAttachedSnapshotDataUrl] = useState<string | null>(() => {
-    if (!assignmentId) return null;
-    try {
-      return localStorage.getItem(`edutwin_assignment_snapshot_${assignmentId}`) || null;
-    } catch {
-      return null;
-    }
-  });
+  const [attachedSnapshotDataUrl, setAttachedSnapshotDataUrl] = useState<string | null>(null);
   const [attachedSnapshotBlob, setAttachedSnapshotBlob] = useState<Blob | null>(null);
-  const [attachedSnapshotTime, setAttachedSnapshotTime] = useState<string | null>(() => {
-    if (!assignmentId) return null;
-    try {
-      return localStorage.getItem(`edutwin_assignment_snapshot_time_${assignmentId}`) || null;
-    } catch {
-      return null;
-    }
-  });
+  const [attachedSnapshotTime, setAttachedSnapshotTime] = useState<string | null>(null);
   const [showFullSnapshotModal, setShowFullSnapshotModal] = useState<boolean>(false);
 
   // Current question input state
   const [finalAnswer, setFinalAnswer] = useState<string>("");
-  const answerDisplayLatex = "";
+  const [answerDisplayLatex, setAnswerDisplayLatex] = useState<string>("");
   const [reasoningText, setReasoningText] = useState<string>("");
   const [confidence, setConfidence] = useState<number>(80);
   const [answerChanges, setAnswerChanges] = useState<number>(0);
@@ -155,6 +201,7 @@ export const LearningPlayerPage = () => {
   const [pollingJobId, setPollingJobId] = useState<string | null>(persistedJobId);
   const [pollingStatus, setPollingStatus] = useState<string>("Đang xử lý...");
   const [feedbackData, setFeedbackData] = useState<AttemptFeedbackDataDto | null>(null);
+  const [isRefreshingAssignmentReview, setIsRefreshingAssignmentReview] = useState(false);
 
   // Submission error (only for actual network/validation failure before attempt is saved to DB)
   const [submissionSaveError, setSubmissionSaveError] = useState<string | null>(null);
@@ -177,6 +224,7 @@ export const LearningPlayerPage = () => {
   // Frozen payload reference to guarantee identical timeSpentSeconds across retries
   const frozenPayloadRef = useRef<Record<string, {
     finalAnswer: string;
+    answerDisplayLatex?: string;
     reasoningText?: string;
     confidence: number;
     timeSpentSeconds: number;
@@ -189,17 +237,109 @@ export const LearningPlayerPage = () => {
     data: assignmentResponse,
     isLoading: assignmentLoading,
     isError: assignmentError,
+    refetch: refetchAssignment,
   } = useStudentAssignment(assignmentId || undefined);
 
   const assignment = assignmentResponse?.data;
-  const assignmentQuestions = assignment?.questions || [];
+  const assignmentQuestions = useMemo(
+    () => assignment?.questions || [],
+    [assignment?.questions]
+  );
+
+  const refreshSubmittedAssignmentData = useCallback(async (): Promise<boolean> => {
+    if (!assignmentId) return false;
+
+    try {
+      const [detailResult] = await Promise.all([
+        refetchAssignment(),
+        queryClient.invalidateQueries({ queryKey: ["student-assignments"] }),
+      ]);
+      const refreshedQuestions = detailResult.data?.data?.questions ?? [];
+      const isHydrated = detailResult.isSuccess && isAssignmentReviewHydrated(
+        refreshedQuestions,
+        assignmentQuestions.length
+      );
+
+      if (isHydrated) {
+        if (assignmentDraftScope) removeAssignmentDraft(assignmentDraftScope);
+        setAssignmentAnswers({});
+      }
+
+      return isHydrated;
+    } catch {
+      // Submission has already been accepted. Keep the scoped local draft so
+      // review mode can still render answers until a later refresh succeeds.
+      return false;
+    }
+  }, [
+    assignmentDraftScope,
+    assignmentId,
+    assignmentQuestions.length,
+    queryClient,
+    refetchAssignment,
+    setAssignmentAnswers,
+  ]);
 
   // Assignment Countdown & Server-Synchronized Expiration Timer
   const [assignmentRemainingSeconds, setAssignmentRemainingSeconds] = useState<number | null>(null);
+  const isInitializedRef = useRef(false);
+  const previousAssignmentDraftKeyRef = useRef(assignmentDraftKey);
+
+  // Never carry local component state across assignment or authenticated-user scopes.
+  useEffect(() => {
+    if (assignmentId) {
+      clearLegacyAssignmentDraftsForAssignment(assignmentId);
+    }
+
+    if (previousAssignmentDraftKeyRef.current === assignmentDraftKey) return;
+    previousAssignmentDraftKeyRef.current = assignmentDraftKey;
+
+    setAssignmentAnswers(loadStoredAssignmentAnswers(assignmentDraftScope));
+    setAssignmentDraftLoadVersion((version) => version + 1);
+    setActiveQuestionId(routeQuestionId || "");
+    setAttachedSnapshotDataUrl(null);
+    setAttachedSnapshotBlob(null);
+    setAttachedSnapshotTime(null);
+    setShowFullSnapshotModal(false);
+    setFinalAnswer("");
+    setAnswerDisplayLatex("");
+    setReasoningText("");
+    setConfidence(80);
+    setAnswerChanges(0);
+    setTimeSpentSeconds(0);
+    setActiveSideTool(null);
+    setShowMathToolbar(false);
+    setDrawingUploadToken(null);
+    setActiveInputTarget("answer");
+    clientSubmissionIdRef.current = createClientSubmissionId();
+    setIsLocallySubmitted(false);
+    setIsSubmitting(false);
+    setPollingJobId(null);
+    setPollingStatus("Đang xử lý...");
+    setFeedbackData(null);
+    setIsRefreshingAssignmentReview(false);
+    setSubmissionSaveError(null);
+    setCanRetrySubmission(false);
+    setAiBanner(null);
+    setIsRetryingAiFromBanner(false);
+    setShowBatchConfirmModal(false);
+    pollingAttemptRef.current = 0;
+    consecutiveNetworkErrorsRef.current = 0;
+    setNetworkErrorPaused(false);
+    frozenPayloadRef.current = null;
+    setAssignmentRemainingSeconds(null);
+    isInitializedRef.current = false;
+  }, [
+    assignmentDraftKey,
+    assignmentDraftScope,
+    assignmentId,
+    routeQuestionId,
+    setAssignmentAnswers,
+  ]);
 
   // Call idempotent start assignment API upon opening assignment
   useEffect(() => {
-    if (!assignmentId) return;
+    if (!assignmentId || !assignmentDraftKey) return;
     startStudentAssignment(assignmentId)
       .then((res) => {
         if (res?.data?.remainingSeconds !== undefined && res.data.remainingSeconds !== null) {
@@ -209,7 +349,7 @@ export const LearningPlayerPage = () => {
       .catch(() => {
         // Ignore network error on start
       });
-  }, [assignmentId]);
+  }, [assignmentId, assignmentDraftKey]);
 
   // Sync remaining seconds if assignment response updates
   useEffect(() => {
@@ -239,7 +379,6 @@ export const LearningPlayerPage = () => {
   }, [pollingJobId, feedbackData]);
 
   // Initialize or update activeQuestionId when assignment loads
-  const isInitializedRef = useRef(false);
   useEffect(() => {
     if (!assignmentQuestions.length) return;
     if (!isInitializedRef.current) {
@@ -344,7 +483,7 @@ export const LearningPlayerPage = () => {
   useEffect(() => {
     if (!question?.questionId || !assignmentId) return;
     const qId = question.questionId;
-    const saved = assignmentAnswers[qId];
+    const saved = assignmentAnswersRef.current[qId];
 
     const isQuestionSubmitted =
       assignmentQuestion?.attemptStatus === "Completed" ||
@@ -358,6 +497,11 @@ export const LearningPlayerPage = () => {
         ? (assignmentQuestion.submittedAnswer === "SKIPPED" ? "" : assignmentQuestion.submittedAnswer)
         : (assignmentQuestion?.latestAttempt?.finalAnswer === "SKIPPED" ? "" : (assignmentQuestion?.latestAttempt?.finalAnswer || null));
 
+    const effectiveSubmittedAnswerDisplayLatex =
+      assignmentQuestion?.submittedAnswerDisplayLatex ??
+      assignmentQuestion?.latestAttempt?.answerDisplayLatex ??
+      effectiveSubmittedAnswer;
+
     const effectiveSubmittedReasoning =
       assignmentQuestion?.submittedReasoning !== undefined && assignmentQuestion?.submittedReasoning !== null
         ? assignmentQuestion.submittedReasoning
@@ -369,6 +513,7 @@ export const LearningPlayerPage = () => {
 
     if (isQuestionSubmitted && hasSubmittedData) {
       setFinalAnswer(effectiveSubmittedAnswer || "");
+      setAnswerDisplayLatex(effectiveSubmittedAnswerDisplayLatex || "");
       setReasoningText(effectiveSubmittedReasoning || "");
       setConfidence(assignmentQuestion?.latestAttempt?.confidence ?? saved?.confidence ?? 80);
       setTimeSpentSeconds(assignmentQuestion?.latestAttempt?.timeSpentSeconds ?? saved?.timeSpentSeconds ?? 0);
@@ -378,6 +523,7 @@ export const LearningPlayerPage = () => {
       setDrawingUploadToken(saved?.drawingUploadToken || null);
     } else if (saved) {
       setFinalAnswer(saved.finalAnswer || "");
+      setAnswerDisplayLatex(saved.answerDisplayLatex || saved.finalAnswer || "");
       setReasoningText(saved.reasoningText || "");
       setConfidence(saved.confidence ?? 80);
       setTimeSpentSeconds(saved.timeSpentSeconds ?? 0);
@@ -387,6 +533,7 @@ export const LearningPlayerPage = () => {
       setDrawingUploadToken(saved.drawingUploadToken || null);
     } else if (hasSubmittedData) {
       setFinalAnswer(effectiveSubmittedAnswer || "");
+      setAnswerDisplayLatex(effectiveSubmittedAnswerDisplayLatex || "");
       setReasoningText(effectiveSubmittedReasoning || "");
       setConfidence(assignmentQuestion?.latestAttempt?.confidence ?? 80);
       setTimeSpentSeconds(assignmentQuestion?.latestAttempt?.timeSpentSeconds ?? 0);
@@ -396,6 +543,7 @@ export const LearningPlayerPage = () => {
       setDrawingUploadToken(null);
     } else {
       setFinalAnswer("");
+      setAnswerDisplayLatex("");
       setReasoningText("");
       setConfidence(80);
       setTimeSpentSeconds(0);
@@ -411,9 +559,12 @@ export const LearningPlayerPage = () => {
     assignmentId,
     assignmentQuestion?.attemptStatus,
     assignmentQuestion?.submittedAnswer,
+    assignmentQuestion?.submittedAnswerDisplayLatex,
     assignmentQuestion?.submittedReasoning,
     assignmentQuestion?.latestAttempt,
     isAssignmentSubmitted,
+    assignmentDraftKey,
+    assignmentDraftLoadVersion,
   ]);
 
   // If question is submitted and has an attachment, load attachment if not already loaded
@@ -451,12 +602,14 @@ export const LearningPlayerPage = () => {
 
   // Persist current question answer into assignmentAnswers & localStorage
   const persistCurrentAnswer = useCallback(
-    (newFinalAnswer?: string, newReasoning?: string, newConf?: number) => {
-      if (!assignmentId || !question?.questionId) return;
+    (newFinalAnswer?: string, newReasoning?: string, newConf?: number, newAnswerDisplayLatex?: string) => {
+      if (!assignmentDraftScope || !question?.questionId) return;
       if (assignmentQuestion?.latestAttempt) return; // Do not overwrite server truth for already-submitted questions
       const qId = question.questionId;
       const updatedEntry: StoredAnswer = {
         finalAnswer: newFinalAnswer !== undefined ? newFinalAnswer : finalAnswer,
+        answerDisplayLatex:
+          newAnswerDisplayLatex !== undefined ? newAnswerDisplayLatex : answerDisplayLatex,
         reasoningText: newReasoning !== undefined ? newReasoning : reasoningText,
         confidence: newConf !== undefined ? newConf : confidence,
         timeSpentSeconds,
@@ -468,19 +621,16 @@ export const LearningPlayerPage = () => {
 
       setAssignmentAnswers((prev) => {
         const next = { ...prev, [qId]: updatedEntry };
-        try {
-          localStorage.setItem(`edutwin_assignment_answers_${assignmentId}`, JSON.stringify(next));
-        } catch {
-          // Ignore localStorage quote limits
-        }
+        writeAssignmentDraft(assignmentDraftScope, JSON.stringify(next));
         return next;
       });
     },
     [
-      assignmentId,
+      assignmentDraftScope,
       question?.questionId,
       assignmentQuestion?.latestAttempt,
       finalAnswer,
+      answerDisplayLatex,
       reasoningText,
       confidence,
       timeSpentSeconds,
@@ -488,6 +638,7 @@ export const LearningPlayerPage = () => {
       attachedSnapshotDataUrl,
       attachedSnapshotTime,
       drawingUploadToken,
+      setAssignmentAnswers,
     ]
   );
 
@@ -581,7 +732,7 @@ export const LearningPlayerPage = () => {
             }
           }
           if (assignmentId) {
-            await queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
+            await refreshSubmittedAssignmentData();
           }
           return;
         }
@@ -606,7 +757,7 @@ export const LearningPlayerPage = () => {
               // fallback
             }
             if (assignmentId) {
-              await queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
+              await refreshSubmittedAssignmentData();
             }
           }
           return;
@@ -638,7 +789,7 @@ export const LearningPlayerPage = () => {
               // fallback
             }
             if (assignmentId) {
-              await queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
+              await refreshSubmittedAssignmentData();
             }
           }
         }
@@ -665,14 +816,15 @@ export const LearningPlayerPage = () => {
       isSubscribed = false;
       clearTimeout(initialTimeout);
     };
-  }, [pollingJobId, feedbackData, networkErrorPaused, searchParams, setSearchParams, attemptSessionScope, assignmentId, queryClient]);
+  }, [pollingJobId, feedbackData, networkErrorPaused, searchParams, setSearchParams, attemptSessionScope, assignmentId, refreshSubmittedAssignmentData]);
 
   // Answer change handlers
-  const handleAnswerChange = (val: string) => {
+  const handleAnswerChange = (plainText: string, latex: string) => {
     if (isReadOnly) return;
-    setFinalAnswer(val);
+    setFinalAnswer(plainText);
+    setAnswerDisplayLatex(latex);
     setAnswerChanges((prev) => prev + 1);
-    persistCurrentAnswer(val, undefined, undefined);
+    persistCurrentAnswer(plainText, undefined, undefined, latex);
   };
 
   const handleReasoningChange = (val: string) => {
@@ -696,7 +848,7 @@ export const LearningPlayerPage = () => {
         visualMathFieldRef.current.insertAtCursor(textToInsert);
         setAnswerChanges((prev) => prev + 1);
       } else {
-        handleAnswerChange(finalAnswer + textToInsert);
+        handleAnswerChange(finalAnswer + textToInsert, answerDisplayLatex + textToInsert);
       }
       return;
     }
@@ -730,11 +882,12 @@ export const LearningPlayerPage = () => {
     const nowTime = new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
     setAttachedSnapshotTime(nowTime);
 
-    if (assignmentId && question?.questionId) {
+    if (assignmentDraftScope && question?.questionId) {
       const qId = question.questionId;
       setAssignmentAnswers((prev) => {
         const existing = prev[qId] || {
           finalAnswer,
+          answerDisplayLatex,
           reasoningText,
           confidence,
           timeSpentSeconds,
@@ -748,11 +901,7 @@ export const LearningPlayerPage = () => {
             snapshotTime: nowTime,
           },
         };
-        try {
-          localStorage.setItem(`edutwin_assignment_answers_${assignmentId}`, JSON.stringify(next));
-        } catch {
-          // Handle storage quota
-        }
+        writeAssignmentDraft(assignmentDraftScope, JSON.stringify(next));
         return next;
       });
     }
@@ -764,7 +913,7 @@ export const LearningPlayerPage = () => {
     setAttachedSnapshotDataUrl(null);
     setAttachedSnapshotTime(null);
     setDrawingUploadToken(null);
-    if (assignmentId && question?.questionId) {
+    if (assignmentDraftScope && question?.questionId) {
       const qId = question.questionId;
       setAssignmentAnswers((prev) => {
         const existing = prev[qId];
@@ -778,11 +927,7 @@ export const LearningPlayerPage = () => {
             drawingUploadToken: null,
           },
         };
-        try {
-          localStorage.setItem(`edutwin_assignment_answers_${assignmentId}`, JSON.stringify(next));
-        } catch {
-          // Handle storage quota
-        }
+        writeAssignmentDraft(assignmentDraftScope, JSON.stringify(next));
         return next;
       });
     }
@@ -821,6 +966,7 @@ export const LearningPlayerPage = () => {
         const currentQId = question.questionId;
         const currentSaved: StoredAnswer = {
           finalAnswer,
+          answerDisplayLatex,
           reasoningText,
           confidence,
           timeSpentSeconds,
@@ -839,6 +985,7 @@ export const LearningPlayerPage = () => {
         if (!frozenPayloadRef.current) {
           const frozen: Record<string, {
             finalAnswer: string;
+            answerDisplayLatex?: string;
             reasoningText?: string;
             confidence: number;
             timeSpentSeconds: number;
@@ -850,6 +997,7 @@ export const LearningPlayerPage = () => {
             const src = allAnswersMap[q.questionId];
             frozen[q.questionId] = {
               finalAnswer: src?.finalAnswer?.trim() || "",
+              answerDisplayLatex: src?.answerDisplayLatex?.trim() || undefined,
               reasoningText: src?.reasoningText?.trim() || undefined,
               confidence: src?.confidence ?? 80,
               timeSpentSeconds: src?.timeSpentSeconds ?? 0,
@@ -890,6 +1038,7 @@ export const LearningPlayerPage = () => {
 
           const qAnswer = frozenPayloadRef.current[q.questionId] || {
             finalAnswer: "",
+            answerDisplayLatex: undefined,
             reasoningText: undefined,
             confidence: 80,
             timeSpentSeconds: 0,
@@ -897,6 +1046,7 @@ export const LearningPlayerPage = () => {
             drawingUploadToken: undefined,
           };
           const qFinalAnswer = qAnswer.finalAnswer;
+          const qAnswerDisplayLatex = qAnswer.answerDisplayLatex;
           const qReasoning = qAnswer.reasoningText;
           const qConfidence = qAnswer.confidence;
           const qTimeSpent = qAnswer.timeSpentSeconds;
@@ -931,6 +1081,7 @@ export const LearningPlayerPage = () => {
             answerChanges: qAnswerChanges,
             skipped: !qFinalAnswer,
             clientSubmissionId: clientSubId,
+            answerDisplayLatex: qAnswerDisplayLatex,
             drawingUploadToken: qToken || undefined,
           });
 
@@ -944,19 +1095,13 @@ export const LearningPlayerPage = () => {
         // Clean up frozen payload on success
         frozenPayloadRef.current = null;
 
-        // Clear local storage draft
-        try {
-          localStorage.removeItem(`edutwin_assignment_answers_${assignmentId}`);
-        } catch {
-          // ignore
-        }
+        // Hydrate the detail query before discarding the local fallback. Without
+        // this refetch, review mode sees the pre-submit cache until a full reload.
+        await refreshSubmittedAssignmentData();
 
         // Mark local submission as complete: Immediately transitions UI to Assignment Result overview!
         setIsLocallySubmitted(true);
         setIsSubmitting(false);
-
-        // Invalidate TanStack queries so assignment and lists refresh with updated progress
-        await queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
 
         if (lastJobId) {
           setPollingJobId(lastJobId);
@@ -1054,7 +1199,7 @@ export const LearningPlayerPage = () => {
         setIsSubmitting(true);
       } else {
         if (assignmentId) {
-          await queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
+          await refreshSubmittedAssignmentData();
         }
       }
     } catch (err: any) {
@@ -1066,6 +1211,30 @@ export const LearningPlayerPage = () => {
         action: "retry_ai",
         attemptIdForRetry: attemptId,
       });
+    }
+  };
+
+  const handleReviewAssignmentQuestions = async () => {
+    if (!assignmentId || isRefreshingAssignmentReview) return;
+
+    setIsRefreshingAssignmentReview(true);
+    try {
+      // Wait for the detail query, not only the assignment list, before leaving
+      // the feedback screen. The scoped local draft remains as a safe fallback
+      // when this request is temporarily unavailable.
+      await refreshSubmittedAssignmentData();
+      const firstQuestionId = assignmentQuestions[0]?.questionId;
+      setFeedbackData(null);
+      if (firstQuestionId) {
+        setActiveQuestionId(firstQuestionId);
+        window.history.replaceState(
+          null,
+          "",
+          `/hoc-tap/luyen-tap/${firstQuestionId}?assignmentId=${assignmentId}${subjectId ? `&subjectId=${subjectId}` : ""}`
+        );
+      }
+    } finally {
+      setIsRefreshingAssignmentReview(false);
     }
   };
 
@@ -1381,22 +1550,11 @@ export const LearningPlayerPage = () => {
               <div className="flex w-full sm:w-auto flex-col sm:flex-row gap-3">
                 <button
                   type="button"
-                  onClick={() => {
-                    const firstQuestionId = assignmentQuestions[0]?.questionId;
-                    setFeedbackData(null);
-                    if (firstQuestionId) {
-                      setActiveQuestionId(firstQuestionId);
-                      window.history.replaceState(
-                        null,
-                        "",
-                        `/hoc-tap/luyen-tap/${firstQuestionId}?assignmentId=${assignmentId}${subjectId ? `&subjectId=${subjectId}` : ""}`
-                      );
-                    }
-                    void queryClient.refetchQueries({ queryKey: ["student-assignments", assignmentId] });
-                  }}
-                  className="w-full sm:w-auto rounded-xl bg-indigo-600 px-6 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-500 text-center cursor-pointer"
+                  onClick={() => void handleReviewAssignmentQuestions()}
+                  disabled={isRefreshingAssignmentReview}
+                  className="w-full sm:w-auto rounded-xl bg-indigo-600 px-6 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-500 text-center cursor-pointer disabled:cursor-wait disabled:opacity-60"
                 >
-                  Xem lại từng câu →
+                  {isRefreshingAssignmentReview ? "Đang tải bài làm..." : "Xem lại từng câu →"}
                 </button>
                 <Link
                   to="/hoc-tap/bai-tap"
@@ -1469,11 +1627,7 @@ export const LearningPlayerPage = () => {
                     type="button"
                     onClick={() => {
                       if (window.confirm("Bạn có chắc chắn muốn làm lại bài tập này?")) {
-                        try {
-                          localStorage.removeItem(`edutwin_assignment_answers_${assignmentId}`);
-                        } catch {
-                          // ignore storage error
-                        }
+                        if (assignmentDraftScope) removeAssignmentDraft(assignmentDraftScope);
                         setAssignmentAnswers({});
                         setFinalAnswer("");
                         setReasoningText("");
@@ -1637,7 +1791,7 @@ export const LearningPlayerPage = () => {
                     <button
                       type="button"
                       onClick={() => {
-                        void queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
+                        void refreshSubmittedAssignmentData();
                       }}
                       className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer inline-flex items-center gap-1.5"
                       title="Làm mới kết quả bài làm"
@@ -1929,7 +2083,7 @@ export const LearningPlayerPage = () => {
                           type="button"
                           disabled={isReadOnly}
                           onClick={() => {
-                            if (!isReadOnly) handleAnswerChange(option.optionId);
+                            if (!isReadOnly) handleAnswerChange(option.optionId, option.optionId);
                           }}
                           className={`flex items-center gap-3 p-4 rounded-2xl border text-left transition-all ${
                             isReadOnly ? "cursor-default" : "cursor-pointer"
@@ -1967,8 +2121,8 @@ export const LearningPlayerPage = () => {
                     {/* Visual Math Field (MathLive) */}
                     <VisualMathField
                       ref={visualMathFieldRef}
-                      value={finalAnswer}
-                      onChange={(val) => handleAnswerChange(val)}
+                      value={answerDisplayLatex}
+                      onChange={(latex, plainText) => handleAnswerChange(plainText, latex)}
                       onFocus={() => setActiveInputTarget("answer")}
                       disabled={isReadOnly}
                       placeholder={isAssignmentSubmitted ? "Chưa có đáp số" : "Gõ công thức hoặc đáp số cuối cùng (hoặc dùng Casio để tự chèn)..."}

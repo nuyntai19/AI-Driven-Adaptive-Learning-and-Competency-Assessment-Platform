@@ -86,6 +86,7 @@ export interface AttemptFeedbackRecommendationDto {
 
 export interface AttemptFeedbackStudentSubmissionDto {
   finalAnswer: string;
+  answerDisplayLatex?: string | null;
   reasoningText?: string | null;
   confidence: number;
   timeSpentSeconds: number;

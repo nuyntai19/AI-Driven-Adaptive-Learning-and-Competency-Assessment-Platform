@@ -138,6 +138,7 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
                     AttemptId = latestAttempt.AttemptId.ToString(),
                     Status = isVoided ? nameof(AttemptStatus.Completed) : latestAttempt.Status.ToString(),
                     FinalAnswer = latestAttempt.FinalAnswer,
+                    AnswerDisplayLatex = latestAttempt.AnswerDisplayLatex,
                     ReasoningText = latestAttempt.ReasoningText,
                     Confidence = latestAttempt.Confidence,
                     TimeSpentSeconds = latestAttempt.TimeSpentSeconds,
@@ -149,6 +150,7 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
                     MaxScore = aq.Question?.MaxScore
                 } : null,
                 SubmittedAnswer = latestAttempt?.FinalAnswer,
+                SubmittedAnswerDisplayLatex = latestAttempt?.AnswerDisplayLatex,
                 SubmittedReasoning = latestAttempt?.ReasoningText,
                 SubmittedAttemptId = latestAttempt?.AttemptId,
                 HasAttachment = latestAttempt != null && hasAttachmentSet.Contains(latestAttempt.AttemptId),

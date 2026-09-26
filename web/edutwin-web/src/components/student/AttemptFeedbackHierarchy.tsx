@@ -235,7 +235,11 @@ export function AttemptFeedbackHierarchy({
             <span className="text-xs font-semibold text-slate-400 block mb-1">Đáp án đã chọn / đã nộp:</span>
             <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3.5 border border-slate-100 dark:border-slate-700/60">
               <p className="font-bold text-slate-900 dark:text-white text-base">
-                {studentSubmission?.finalAnswer ? formatAnswer(studentSubmission.finalAnswer) : "Chưa có đáp án"}
+                {studentSubmission?.finalAnswer ? (
+                  <RichMathText
+                    content={studentSubmission.answerDisplayLatex || formatAnswer(studentSubmission.finalAnswer)}
+                  />
+                ) : "Chưa có đáp án"}
               </p>
             </div>
           </div>

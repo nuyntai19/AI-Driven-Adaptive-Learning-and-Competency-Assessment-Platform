@@ -129,6 +129,7 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
         var studentSubmissionDto = new AttemptFeedbackStudentSubmissionDto
         {
             FinalAnswer = attempt.FinalAnswer,
+            AnswerDisplayLatex = attempt.AnswerDisplayLatex,
             ReasoningText = attempt.ReasoningText,
             Confidence = attempt.Confidence,
             TimeSpentSeconds = attempt.TimeSpentSeconds,

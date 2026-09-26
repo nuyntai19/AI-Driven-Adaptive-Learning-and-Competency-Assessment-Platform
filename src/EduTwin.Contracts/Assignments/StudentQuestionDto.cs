@@ -17,6 +17,7 @@ public class StudentQuestionDto
     public string? AttemptStatus { get; set; }
     public StudentQuestionAttemptDto? LatestAttempt { get; set; }
     public string? SubmittedAnswer { get; set; }
+    public string? SubmittedAnswerDisplayLatex { get; set; }
     public string? SubmittedReasoning { get; set; }
     public ulong? SubmittedAttemptId { get; set; }
     public bool HasAttachment { get; set; }
