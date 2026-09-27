@@ -86,7 +86,8 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
             .Where(evidence =>
                 evidence.CenterId == centerId &&
                 evidence.Attempt.Question.Status != QuestionStatus.Archived &&
-                (evidence.RequiresTeacherReview || _dbContext.StudentAssignmentProgresses.Any(progress =>
+                (query.AssignmentId.HasValue || query.StudentId.HasValue || query.IncludeAllQuestions ||
+                 evidence.RequiresTeacherReview || _dbContext.StudentAssignmentProgresses.Any(progress =>
                     progress.CenterId == centerId &&
                     progress.AssignmentId == evidence.Attempt.AssignmentId &&
                     progress.StudentId == evidence.Attempt.StudentId &&
@@ -108,6 +109,28 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
                     target.Assignment.Class != null &&
                     (!isTeacher || target.Assignment.Class.TeacherId == actorId) &&
                     (!query.ClassId.HasValue || target.Assignment.ClassId == query.ClassId.Value)));
+
+        if (query.AssignmentId.HasValue && query.AssignmentId.Value != Guid.Empty)
+        {
+            reviewItems = reviewItems.Where(evidence => evidence.Attempt.AssignmentId == query.AssignmentId.Value);
+        }
+
+        if (query.StudentId.HasValue && query.StudentId.Value != Guid.Empty)
+        {
+            reviewItems = reviewItems.Where(evidence => evidence.Attempt.StudentId == query.StudentId.Value);
+        }
+
+        if (query.FromDate.HasValue)
+        {
+            var fromUtc = query.FromDate.Value.ToUniversalTime();
+            reviewItems = reviewItems.Where(evidence => evidence.Attempt.CreatedAt >= fromUtc);
+        }
+
+        if (query.ToDate.HasValue)
+        {
+            var toUtc = query.ToDate.Value.ToUniversalTime();
+            reviewItems = reviewItems.Where(evidence => evidence.Attempt.CreatedAt <= toUtc);
+        }
 
         var totalItems = await reviewItems.LongCountAsync(cancellationToken);
         var totalPages = totalItems == 0
@@ -156,10 +179,70 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
             .GroupBy(p => (p.AssignmentId, p.StudentId))
             .ToDictionary(g => g.Key, g => g.First());
 
+        var questionIds = entities.Select(e => e.Attempt.QuestionId).Distinct().ToList();
+        var questionOptions = questionIds.Count > 0
+            ? await _dbContext.QuestionOptions
+                .AsNoTracking()
+                .Where(o => o.CenterId == centerId && questionIds.Contains(o.QuestionId) && !o.IsDeleted)
+                .OrderBy(o => o.OrderIndex)
+                .ThenBy(o => o.OptionId)
+                .ToListAsync(cancellationToken)
+            : [];
+        var optionsByQuestionId = questionOptions
+            .GroupBy(o => o.QuestionId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
         var data = entities.Select(evidence =>
         {
             var hasRequest = reviewRequests.TryGetValue(evidence.AttemptId, out var req);
             progressByAssignmentStudent.TryGetValue((evidence.Attempt.AssignmentId!.Value, evidence.Attempt.StudentId), out var progress);
+
+            var qType = evidence.Attempt.Question.QuestionType;
+            var qOpts = optionsByQuestionId.GetValueOrDefault(evidence.Attempt.QuestionId) ?? [];
+
+            string resolvedFinalAnswer = evidence.Attempt.FinalAnswer;
+            if (qType == QuestionType.MultipleChoice && qOpts.Count > 0)
+            {
+                var rawAnswer = evidence.Attempt.FinalAnswer?.Trim() ?? string.Empty;
+                var matchedOpt = qOpts.FirstOrDefault(o =>
+                    o.OptionId.ToString(CultureInfo.InvariantCulture) == rawAnswer ||
+                    string.Equals(o.OptionLabel, rawAnswer, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(o.OptionText, rawAnswer, StringComparison.OrdinalIgnoreCase));
+
+                if (matchedOpt != null)
+                {
+                    resolvedFinalAnswer = !string.IsNullOrWhiteSpace(matchedOpt.OptionText)
+                        ? $"{matchedOpt.OptionLabel}. {matchedOpt.OptionText}"
+                        : matchedOpt.OptionLabel;
+                }
+            }
+
+            string? resolvedDisplayLatex = evidence.Attempt.AnswerDisplayLatex;
+            if (qType == QuestionType.MultipleChoice)
+            {
+                var rawLatex = resolvedDisplayLatex?.Trim();
+                if (string.IsNullOrWhiteSpace(rawLatex) ||
+                    rawLatex == evidence.Attempt.FinalAnswer?.Trim() ||
+                    qOpts.Any(o => o.OptionId.ToString(CultureInfo.InvariantCulture) == rawLatex ||
+                                   string.Equals(o.OptionLabel, rawLatex, StringComparison.OrdinalIgnoreCase)))
+                {
+                    resolvedDisplayLatex = null;
+                }
+            }
+
+            string? resolvedReasoning = evidence.Attempt.ReasoningText;
+            if (qType == QuestionType.MultipleChoice && !string.IsNullOrWhiteSpace(resolvedReasoning))
+            {
+                var trimmedReasoning = resolvedReasoning.Trim();
+                // Only sanitize if reasoning is purely an internal numeric option ID (e.g. "20006")
+                if (long.TryParse(trimmedReasoning, out _) &&
+                    trimmedReasoning.Length >= 4 &&
+                    qOpts.Any(o => o.OptionId.ToString(CultureInfo.InvariantCulture) == trimmedReasoning))
+                {
+                    resolvedReasoning = null;
+                }
+            }
+
             return new TeacherReviewQueueItemDto
             {
                 AttemptId = evidence.AttemptId.ToString(CultureInfo.InvariantCulture),
@@ -170,9 +253,11 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
                 QuestionId = evidence.Attempt.QuestionId.ToString(CultureInfo.InvariantCulture),
                 SubjectId = evidence.Attempt.Question.SubjectId.ToString("D").ToLowerInvariant(),
                 QuestionText = evidence.Attempt.Question.QuestionText,
+                QuestionType = qType.ToString(),
                 AnalysisId = evidence.AnalysisId!.Value.ToString(CultureInfo.InvariantCulture),
-                FinalAnswer = evidence.Attempt.FinalAnswer,
-                ReasoningText = evidence.Attempt.ReasoningText,
+                FinalAnswer = resolvedFinalAnswer,
+                AnswerDisplayLatex = resolvedDisplayLatex,
+                ReasoningText = resolvedReasoning,
                 IsFallback = evidence.Analysis!.IsFallback,
                 ReasoningQuality = evidence.Analysis.ReasoningQuality,
                 AnalysisFeedback = evidence.Analysis!.Feedback,
@@ -182,7 +267,24 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
                 HasStudentReviewRequest = hasRequest,
                 StudentReviewReason = hasRequest ? req!.StudentComment : null,
                 TeacherFinalReviewStatus = progress?.TeacherFinalReviewStatus.ToString() ?? "Pending",
-                FinalReviewVersion = progress?.FinalReviewVersion ?? 0
+                FinalReviewVersion = progress?.FinalReviewVersion ?? 0,
+                CorrectAnswer = evidence.Attempt.Question.CorrectAnswer,
+                MaxScore = evidence.Attempt.Question.MaxScore,
+                AwardedScore = evidence.Analysis.OverrideAwardedScore ?? evidence.Attempt.AwardedScore,
+                IsCorrect = evidence.Analysis.OverrideIsCorrect ?? evidence.Attempt.IsCorrect,
+                HasTeacherOverride = evidence.Analysis.OverriddenAt.HasValue,
+                OverrideAwardedScore = evidence.Analysis.OverrideAwardedScore,
+                OverrideReason = evidence.Analysis.OverrideReason,
+                TeacherFeedback = evidence.Analysis.OverrideFeedback,
+                ReviewDecision = evidence.Analysis.ReviewDecision,
+                OverrideVersion = evidence.Analysis.OverrideVersion,
+                Options = qOpts.Select(o => new TeacherReviewQuestionOptionDto
+                {
+                    OptionId = o.OptionId.ToString(CultureInfo.InvariantCulture),
+                    OptionLabel = o.OptionLabel,
+                    OptionText = o.OptionText,
+                    IsCorrect = o.IsCorrect
+                }).ToList()
             };
         }).ToList();
 

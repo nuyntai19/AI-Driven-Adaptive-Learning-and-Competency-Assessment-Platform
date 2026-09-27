@@ -91,8 +91,7 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
         var role = _tenantContext.Role ?? string.Empty;
 
         var isTeacher = string.Equals(role, nameof(UserRole.Teacher), StringComparison.OrdinalIgnoreCase);
-        var isCenterManager = string.Equals(role, nameof(UserRole.CenterManager), StringComparison.OrdinalIgnoreCase);
-        if (!isTeacher && !isCenterManager)
+        if (!isTeacher)
         {
             return TeacherApproveResult.Forbidden();
         }
@@ -319,13 +318,13 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
                     : latestEvidenceByAttempt.GetValueOrDefault(att.AttemptId);
 
                 decimal reasoningWeight = ev?.ReasoningWeight ?? 0m;
-                decimal? quality = a is not null
-                    ? (a.OverrideVersion > 0 ? a.OverrideReasoningQuality : a.ReasoningQuality)
-                    : null;
-
                 bool? correctness = att.AttemptId == attempt.AttemptId
                     ? effectiveCorrectness
                     : (a?.OverrideIsCorrect ?? att.IsCorrect);
+
+                decimal? quality = a is not null
+                    ? (a.OverrideReasoningQuality ?? a.ReasoningQuality ?? (correctness == true ? 70m : 30m))
+                    : null;
 
                 if (reasoningWeight > 0m)
                 {

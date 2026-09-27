@@ -54,7 +54,9 @@ public class MultipleChoiceGrader : IQuestionGrader
             // Or try to match against options if provided
             var selectedOption = options.FirstOrDefault(o => 
                 string.Equals(o.OptionLabel, studentAnswer.Trim(), StringComparison.OrdinalIgnoreCase) || 
-                o.OptionId.ToString() == studentAnswer.Trim());
+                o.OptionId.ToString() == studentAnswer.Trim() ||
+                string.Equals($"{o.OptionLabel}. {o.OptionText}".Trim(), studentAnswer.Trim(), StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(o.OptionText.Trim(), studentAnswer.Trim(), StringComparison.OrdinalIgnoreCase));
 
             if (selectedOption != null && selectedOption.IsCorrect)
             {

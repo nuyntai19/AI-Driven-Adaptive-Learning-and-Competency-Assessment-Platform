@@ -577,7 +577,7 @@ export const LearningPlayerPage = () => {
 
     if (isQuestionSubmitted && hasSubmittedData) {
       setFinalAnswer(effectiveSubmittedAnswer || "");
-      setAnswerDisplayLatex(effectiveSubmittedAnswerDisplayLatex || "");
+      setAnswerDisplayLatex(question?.questionType === "MultipleChoice" ? "" : (effectiveSubmittedAnswerDisplayLatex || ""));
       setReasoningText(effectiveSubmittedReasoning || "");
       setConfidence(assignmentQuestion?.latestAttempt?.confidence ?? saved?.confidence ?? 80);
       setTimeSpentSeconds(assignmentQuestion?.latestAttempt?.timeSpentSeconds ?? saved?.timeSpentSeconds ?? 0);
@@ -587,7 +587,7 @@ export const LearningPlayerPage = () => {
       setDrawingUploadToken(saved?.drawingUploadToken || null);
     } else if (saved) {
       setFinalAnswer(saved.finalAnswer || "");
-      setAnswerDisplayLatex(saved.answerDisplayLatex || saved.finalAnswer || "");
+      setAnswerDisplayLatex(question?.questionType === "MultipleChoice" ? "" : (saved.answerDisplayLatex || saved.finalAnswer || ""));
       setReasoningText(saved.reasoningText || "");
       setConfidence(saved.confidence ?? 80);
       setTimeSpentSeconds(saved.timeSpentSeconds ?? 0);
@@ -597,7 +597,7 @@ export const LearningPlayerPage = () => {
       setDrawingUploadToken(saved.drawingUploadToken || null);
     } else if (hasSubmittedData) {
       setFinalAnswer(effectiveSubmittedAnswer || "");
-      setAnswerDisplayLatex(effectiveSubmittedAnswerDisplayLatex || "");
+      setAnswerDisplayLatex(question?.questionType === "MultipleChoice" ? "" : (effectiveSubmittedAnswerDisplayLatex || ""));
       setReasoningText(effectiveSubmittedReasoning || "");
       setConfidence(assignmentQuestion?.latestAttempt?.confidence ?? 80);
       setTimeSpentSeconds(assignmentQuestion?.latestAttempt?.timeSpentSeconds ?? 0);
@@ -2216,14 +2216,18 @@ export const LearningPlayerPage = () => {
                   <fieldset className="grid grid-cols-1 sm:grid-cols-2 gap-3" disabled={isReadOnly}>
                     <legend className="sr-only">Chọn một đáp án</legend>
                     {question.options.map((option) => {
-                      const isSelected = finalAnswer === option.optionId;
+                      const isSelected =
+                        finalAnswer === option.optionId ||
+                        finalAnswer?.trim().toUpperCase() === option.label.toUpperCase() ||
+                        finalAnswer?.startsWith(option.label + ".") ||
+                        finalAnswer === option.text;
                       return (
                         <button
                           key={option.optionId}
                           type="button"
                           disabled={isReadOnly}
                           onClick={() => {
-                            if (!isReadOnly) handleAnswerChange(option.optionId, option.optionId);
+                            if (!isReadOnly) handleAnswerChange(option.optionId, "");
                           }}
                           className={`flex items-center gap-3 p-4 rounded-2xl border text-left transition-all ${
                             isReadOnly ? "cursor-default" : "cursor-pointer"

@@ -103,6 +103,32 @@ public sealed class TeacherReviewControllerTests
     }
 
     [Fact]
+    public void AuthorizationCatalog_CenterManagerDoesNotHaveOverridePermission_TeacherHasOverride()
+    {
+        var mappings = EduTwin.DAL.Seeding.AuthorizationPermissionCatalog.CreateAccountTypeMappings();
+        var overrideId = EduTwin.DAL.Seeding.AuthorizationPermissionCatalog.CreateDeterministicId("twin.reasoning.override");
+        var reviewId = EduTwin.DAL.Seeding.AuthorizationPermissionCatalog.CreateDeterministicId("twin.reasoning.review");
+
+        var overrideRoles = mappings
+            .Where(m => m.PermissionId == overrideId)
+            .Select(m => m.AccountType)
+            .ToList();
+
+        var reviewRoles = mappings
+            .Where(m => m.PermissionId == reviewId)
+            .Select(m => m.AccountType)
+            .ToList();
+
+        // Manager cannot override/grade
+        Assert.Contains(EduTwin.Contracts.IdentityAndTenancy.UserRole.Teacher, overrideRoles);
+        Assert.DoesNotContain(EduTwin.Contracts.IdentityAndTenancy.UserRole.CenterManager, overrideRoles);
+
+        // Both can view/review queue
+        Assert.Contains(EduTwin.Contracts.IdentityAndTenancy.UserRole.Teacher, reviewRoles);
+        Assert.Contains(EduTwin.Contracts.IdentityAndTenancy.UserRole.CenterManager, reviewRoles);
+    }
+
+    [Fact]
     public async Task OverrideAnalysis_Success_Returns200WithReplayData()
     {
         var overrideData = new TeacherOverrideDataDto

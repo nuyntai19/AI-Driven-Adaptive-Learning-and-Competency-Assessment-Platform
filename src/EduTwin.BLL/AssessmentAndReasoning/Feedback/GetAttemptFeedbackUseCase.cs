@@ -137,10 +137,33 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
                 ? PreliminaryGradingReasonCodes.AiProviderUnavailable
                 : attempt.PreliminaryGradingReasonCode;
 
+        var finalAnswerDisplay = attempt.FinalAnswer;
+        if (attempt.Question?.QuestionType == EduTwin.Contracts.CurriculumAndQuestions.QuestionType.MultipleChoice)
+        {
+            var options = await _dbContext.QuestionOptions
+                .AsNoTracking()
+                .Where(o => o.CenterId == centerId && o.QuestionId == attempt.QuestionId && !o.IsDeleted)
+                .OrderBy(o => o.OrderIndex)
+                .ToListAsync(cancellationToken);
+
+            var raw = attempt.FinalAnswer?.Trim() ?? string.Empty;
+            var matched = options.FirstOrDefault(o =>
+                o.OptionId.ToString(CultureInfo.InvariantCulture) == raw ||
+                string.Equals(o.OptionLabel, raw, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(o.OptionText, raw, StringComparison.OrdinalIgnoreCase));
+
+            if (matched != null)
+            {
+                finalAnswerDisplay = !string.IsNullOrWhiteSpace(matched.OptionText)
+                    ? $"{matched.OptionLabel}. {matched.OptionText}"
+                    : matched.OptionLabel;
+            }
+        }
+
         // 1. Student Submission
         var studentSubmissionDto = new AttemptFeedbackStudentSubmissionDto
         {
-            FinalAnswer = attempt.FinalAnswer,
+            FinalAnswer = finalAnswerDisplay,
             AnswerDisplayLatex = attempt.AnswerDisplayLatex,
             ReasoningText = attempt.ReasoningText,
             Confidence = attempt.Confidence,

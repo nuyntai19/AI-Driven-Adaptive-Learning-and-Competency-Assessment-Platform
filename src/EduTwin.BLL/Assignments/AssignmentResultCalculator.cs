@@ -138,9 +138,7 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
             .ToList();
         var reviewerNames = reviewerIds.Count == 0
             ? new Dictionary<Guid, string>()
-            : await _dbContext.Users
-                .AsNoTracking()
-                .Where(u => u.CenterId == centerId && reviewerIds.Contains(u.UserId))
+            : await WhereIn(_dbContext.Users.AsNoTracking().Where(u => u.CenterId == centerId), u => u.UserId, reviewerIds)
                 .ToDictionaryAsync(u => u.UserId, u => u.DisplayName, cancellationToken);
 
         // 5. Compute summary deterministically for each assignment

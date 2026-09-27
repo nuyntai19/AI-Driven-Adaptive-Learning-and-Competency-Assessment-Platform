@@ -163,4 +163,7 @@ export interface AssignmentProgressItemDto {
   status: ProgressStatus;
   completedQuestionCount: number;
   totalQuestionCount: number;
+  teacherFinalReviewStatus?: "Pending" | "Approved";
+  finalReviewVersion?: number;
+  completedAt?: string | null;
 }
