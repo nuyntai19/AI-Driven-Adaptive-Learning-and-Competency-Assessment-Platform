@@ -36,6 +36,19 @@ const getQuestionTypeLabel = (qType?: string) => {
   }
 };
 
+const formatTimeLimit = (minutes?: number | null) => {
+  if (!minutes || minutes <= 0) return "Không giới hạn";
+  if (minutes % 60 === 0) {
+    return `${minutes / 60} giờ`;
+  }
+  if (minutes > 60) {
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return `${h} giờ ${m} phút`;
+  }
+  return `${minutes} phút`;
+};
+
 export const StudentAssignmentDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
@@ -225,22 +238,27 @@ export const StudentAssignmentDetailPage: React.FC = () => {
 
           {/* Progress & Due date */}
           <div className="pt-3 border-t border-stone-100 dark:border-stone-800/80 space-y-1.5">
-            <div className="flex items-center justify-between text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
               <span className="font-semibold text-stone-700 dark:text-stone-300">
                 Tiến độ: {progress.completedQuestionCount}/{progress.totalQuestionCount} câu hoàn thành ({percent}%)
               </span>
-              {assignment.dueAt && (
-                <span className="text-stone-500 dark:text-stone-400">
-                  Hạn nộp:{" "}
-                  {new Date(assignment.dueAt).toLocaleDateString("vi-VN", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    day: "2-digit",
-                    month: "2-digit",
-                    year: "numeric",
-                  })}
+              <div className="flex items-center gap-3 text-stone-500 dark:text-stone-400">
+                <span>
+                  Thời gian: {formatTimeLimit(assignment.timeLimitMinutes)}
                 </span>
-              )}
+                {assignment.dueAt && (
+                  <span>
+                    • Hạn nộp:{" "}
+                    {new Date(assignment.dueAt).toLocaleDateString("vi-VN", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      day: "2-digit",
+                      month: "2-digit",
+                      year: "numeric",
+                    })}
+                  </span>
+                )}
+              </div>
             </div>
             <div className="w-full bg-stone-100 dark:bg-stone-800 rounded-full h-1.5 overflow-hidden">
               <div
@@ -263,8 +281,8 @@ export const StudentAssignmentDetailPage: React.FC = () => {
         <h2 className="text-sm sm:text-base font-bold text-stone-900 dark:text-stone-100">
           Danh sách câu hỏi ({questions.length})
         </h2>
-        <span className="text-xs text-stone-500 dark:text-stone-400">
-          Dự kiến ~{Math.max(20, questions.length * 4)} phút
+        <span className="text-xs text-stone-500 dark:text-stone-400 font-medium">
+          Thời gian làm bài: {formatTimeLimit(assignment.timeLimitMinutes)}
         </span>
       </div>
 

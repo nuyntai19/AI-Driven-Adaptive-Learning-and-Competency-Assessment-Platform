@@ -104,6 +104,7 @@ public class GetAssignmentUseCase : IGetAssignmentUseCase
             Title = assignment.Title,
             Instructions = assignment.Instructions,
             DueAt = assignment.DueAt,
+            TimeLimitMinutes = assignment.TimeLimitMinutes,
             Status = assignment.Status.ToString(),
             QuestionCount = questionDtos.Count,
             TargetStudentCount = targetDtos.Count,

@@ -171,22 +171,7 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
                     cancellationToken);
 
             var now = _timeProvider.GetUtcNow().UtcDateTime;
-            DateTime? effectiveExpiresAt = null;
-            if (assignment.DueAt.HasValue && assignment.TimeLimitMinutes.HasValue && progress?.StartedAt.HasValue == true)
-            {
-                var timeLimitExpiresAt = progress.StartedAt.Value.AddMinutes(assignment.TimeLimitMinutes.Value);
-                effectiveExpiresAt = assignment.DueAt.Value < timeLimitExpiresAt ? assignment.DueAt.Value : timeLimitExpiresAt;
-            }
-            else if (assignment.TimeLimitMinutes.HasValue && progress?.StartedAt.HasValue == true)
-            {
-                effectiveExpiresAt = progress.StartedAt.Value.AddMinutes(assignment.TimeLimitMinutes.Value);
-            }
-            else if (assignment.DueAt.HasValue)
-            {
-                effectiveExpiresAt = assignment.DueAt.Value;
-            }
-
-            if (effectiveExpiresAt.HasValue && now > effectiveExpiresAt.Value)
+            if (assignment.DueAt.HasValue && now > assignment.DueAt.Value.AddSeconds(120))
             {
                 return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
             }

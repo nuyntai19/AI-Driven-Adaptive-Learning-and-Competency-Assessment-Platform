@@ -17,6 +17,7 @@ public class CreateAssignmentRequest
     public string Title { get; set; } = string.Empty;
     public string? Instructions { get; set; }
     public DateTime? DueAt { get; set; }
+    public int? TimeLimitMinutes { get; set; }
 
     /// <summary>
     /// Danh sách questionId (string của BIGINT UNSIGNED) theo thứ tự.

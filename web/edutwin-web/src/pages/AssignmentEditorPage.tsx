@@ -96,7 +96,33 @@ function CenterManagerAssignmentEditorView() {
   const [instructions, setInstructions] = useState("");
   const [dueAt, setDueAt] = useState("");
   const [dueDateError, setDueDateError] = useState<string | null>(null);
+  const [timeLimitValue, setTimeLimitValue] = useState("");
+  const [timeLimitUnit, setTimeLimitUnit] = useState<"minutes" | "hours">("minutes");
+  const [timeLimitError, setTimeLimitError] = useState<string | null>(null);
   const [minDateTime, setMinDateTime] = useState(getMinLocalDateTime);
+
+  const effectiveTimeLimitMinutes = useMemo(() => {
+    const trimmed = timeLimitValue.trim();
+    if (!trimmed) return null;
+    const num = Number(trimmed);
+    if (isNaN(num) || num <= 0) return null;
+    return timeLimitUnit === "hours" ? Math.round(num * 60) : Math.round(num);
+  }, [timeLimitValue, timeLimitUnit]);
+
+  const handleTimeLimitChange = (val: string, unit: "minutes" | "hours" = timeLimitUnit) => {
+    setTimeLimitValue(val);
+    setTimeLimitUnit(unit);
+    if (!val.trim()) {
+      setTimeLimitError(null);
+      return;
+    }
+    const num = Number(val.trim());
+    if (isNaN(num) || num <= 0) {
+      setTimeLimitError("Thời gian làm bài phải là số dương lớn hơn 0.");
+    } else {
+      setTimeLimitError(null);
+    }
+  };
 
   const refreshMinDateTime = () => {
     setMinDateTime(getMinLocalDateTime());
@@ -251,6 +277,18 @@ function CenterManagerAssignmentEditorView() {
     } else {
       setDueDateError(null);
     }
+    if (assignment.timeLimitMinutes) {
+      if (assignment.timeLimitMinutes % 60 === 0 && assignment.timeLimitMinutes >= 60) {
+        setTimeLimitValue(String(assignment.timeLimitMinutes / 60));
+        setTimeLimitUnit("hours");
+      } else {
+        setTimeLimitValue(String(assignment.timeLimitMinutes));
+        setTimeLimitUnit("minutes");
+      }
+    } else {
+      setTimeLimitValue("");
+      setTimeLimitUnit("minutes");
+    }
     setQuestionIds(assignment.questions.map((q) => q.questionId));
 
     const source = assignment.targets[0]?.targetSource;
@@ -363,6 +401,16 @@ function CenterManagerAssignmentEditorView() {
         return false;
       }
     }
+    if (timeLimitValue.trim()) {
+      const num = Number(timeLimitValue.trim());
+      if (isNaN(num) || num <= 0) {
+        setFormError({ message: "Thời gian làm bài phải là số dương lớn hơn 0." });
+        setTimeLimitError("Thời gian làm bài phải là số dương lớn hơn 0.");
+        setStep(0);
+        return false;
+      }
+    }
+    setTimeLimitError(null);
     setDueDateError(null);
     setFormError(null);
     return true;
@@ -423,6 +471,7 @@ function CenterManagerAssignmentEditorView() {
         title: title.trim(),
         instructions: instructions.trim() || null,
         dueAt: payloadDueAt,
+        timeLimitMinutes: effectiveTimeLimitMinutes,
         questionIds,
         targetMode,
         studentIds: targetMode === "SelectedStudents" ? studentIds : undefined,
@@ -453,6 +502,7 @@ function CenterManagerAssignmentEditorView() {
         title: title.trim(),
         instructions: instructions.trim() || null,
         dueAt: payloadDueAt,
+        timeLimitMinutes: effectiveTimeLimitMinutes,
         questionIds,
         targetMode,
         studentIds: targetMode === "SelectedStudents" ? studentIds : undefined,
@@ -817,6 +867,60 @@ function CenterManagerAssignmentEditorView() {
                 ) : (
                   <p className="mt-1 text-[11px] text-[var(--cm-text-muted)]">
                     Nếu đặt hạn nộp, thời gian phải sau thời điểm hiện tại.
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label htmlFor="assignment-timelimit-input" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)]">
+                    Thời gian làm bài (tùy chọn)
+                  </label>
+                  <span className="text-[11px] text-[var(--cm-cyan)] font-medium">
+                    {effectiveTimeLimitMinutes ? `⏱ ${effectiveTimeLimitMinutes} phút làm bài` : "Không giới hạn thời gian"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="assignment-timelimit-input"
+                    type="number"
+                    min="1"
+                    step="1"
+                    disabled={isReadOnly}
+                    value={timeLimitValue}
+                    onChange={(e) => handleTimeLimitChange(e.target.value, timeLimitUnit)}
+                    placeholder="Nhập số phút hoặc số giờ làm bài (VD: 45, 90, 2)..."
+                    className={`cm-input flex-1 text-sm ${timeLimitError ? "!border-rose-500 focus:!border-rose-500" : ""}`}
+                  />
+                  <select
+                    disabled={isReadOnly}
+                    value={timeLimitUnit}
+                    onChange={(e) => handleTimeLimitChange(timeLimitValue, e.target.value as "minutes" | "hours")}
+                    className="cm-select w-28 text-sm"
+                  >
+                    <option value="minutes">Phút</option>
+                    <option value="hours">Giờ</option>
+                  </select>
+                  {timeLimitValue && !isReadOnly && (
+                    <button
+                      type="button"
+                      onClick={() => handleTimeLimitChange("", timeLimitUnit)}
+                      className="cm-secondary-button text-xs py-2 px-3 text-[var(--cm-text-muted)] hover:text-rose-400"
+                      title="Xóa thời gian làm bài"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+                {timeLimitError ? (
+                  <p className="mt-1 text-xs text-rose-500 font-medium">
+                    ⚠ {timeLimitError}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-[11px] text-[var(--cm-text-muted)]">
+                    {effectiveTimeLimitMinutes
+                      ? `Học sinh sẽ có đúng ${effectiveTimeLimitMinutes} phút làm bài tính từ lúc nhấn Bắt đầu. Khi hết giờ, bài làm sẽ tự động nộp.`
+                      : "Để trống nếu không giới hạn thời gian làm bài (học sinh có thể làm bất kỳ lúc nào trước hạn chót)."}
                   </p>
                 )}
               </div>
@@ -1264,6 +1368,12 @@ function CenterManagerAssignmentEditorView() {
                       <span className="text-[var(--cm-text-muted)]">Hạn nộp:</span>
                       <p className="text-sm font-semibold text-[var(--cm-text)] mt-0.5">
                         {dueAt ? new Date(dueAt).toLocaleString("vi-VN") : "Không giới hạn"}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-[var(--cm-text-muted)]">Thời gian làm bài:</span>
+                      <p className="text-sm font-semibold text-[var(--cm-cyan)] mt-0.5">
+                        {effectiveTimeLimitMinutes ? `⏱ ${effectiveTimeLimitMinutes} phút` : "Không giới hạn"}
                       </p>
                     </div>
                     <div>

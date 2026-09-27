@@ -84,3 +84,35 @@ test("legacy assignment-only answer and snapshot keys are deleted instead of mig
   assert.equal(storage.getItem(`edutwin_assignment_snapshot_time_${assignmentId}`), null);
   assert.equal(storage.getItem("edutwin-theme"), "dark");
 });
+
+test("timer remaining seconds is scoped and persisted properly", async () => {
+  const {
+    readAssignmentRemainingSeconds,
+    writeAssignmentRemainingSeconds,
+    removeAssignmentRemainingSeconds,
+    buildAssignmentTimerKey,
+  } = await import("../src/utils/assignmentDraftStorage.ts");
+
+  const storage = new MemoryLocalStorage();
+  const scope = {
+    centerId: "center-1",
+    userId: "student-a",
+    assignmentId: "assignment-9",
+  };
+
+  assert.equal(buildAssignmentTimerKey(scope), "edutwin:assignment-timer:center-1:student-a:assignment-9");
+  assert.equal(readAssignmentRemainingSeconds(scope, storage), null);
+
+  // Write remaining seconds
+  writeAssignmentRemainingSeconds(scope, 99, storage);
+  assert.equal(readAssignmentRemainingSeconds(scope, storage), 99);
+
+  // Overwrite when countdown ticks
+  writeAssignmentRemainingSeconds(scope, 98, storage);
+  assert.equal(readAssignmentRemainingSeconds(scope, storage), 98);
+
+  // Remove on submission or reset
+  removeAssignmentRemainingSeconds(scope, storage);
+  assert.equal(readAssignmentRemainingSeconds(scope, storage), null);
+});
+

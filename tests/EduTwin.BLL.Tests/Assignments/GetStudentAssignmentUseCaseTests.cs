@@ -356,4 +356,67 @@ public class GetStudentAssignmentUseCaseTests
         Assert.Null(q2Dto.SubmittedAttemptId);
         Assert.False(q2Dto.HasAttachment);
     }
+
+    [Fact]
+    public async Task ExecuteAsync_WithTimeLimit_ReturnsRemainingSecondsAsTimeLimitMinutesTimes60()
+    {
+        // Arrange
+        var centerId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
+        var assignmentId = Guid.NewGuid();
+
+        var options = new DbContextOptionsBuilder<EduTwinDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options;
+
+        var tenantAccessorMock = new Mock<ITenantIdAccessor>();
+        tenantAccessorMock.Setup(x => x.CenterId).Returns(centerId);
+
+        using var context = new EduTwinDbContext(options, tenantAccessorMock.Object);
+
+        var assignment = new Assignment
+        {
+            AssignmentId = assignmentId,
+            CenterId = centerId,
+            Title = "Timed Assignment",
+            Status = AssignmentStatus.Published,
+            TimeLimitMinutes = 2,
+            DueAt = DateTime.UtcNow.AddHours(24),
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            RowVersion = 1UL
+        };
+
+        var progress = new StudentAssignmentProgress
+        {
+            ProgressId = 99,
+            AssignmentId = assignmentId,
+            Assignment = assignment,
+            CenterId = centerId,
+            StudentId = studentId,
+            Status = ProgressStatus.NotStarted,
+            StartedAt = null,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        context.Assignments.Add(assignment);
+        context.StudentAssignmentProgresses.Add(progress);
+        await context.SaveChangesAsync();
+
+        var tenantContextMock = new Mock<ITenantContext>();
+        tenantContextMock.Setup(x => x.CenterId).Returns(centerId);
+        tenantContextMock.Setup(x => x.UserId).Returns(studentId);
+        tenantContextMock.Setup(x => x.Role).Returns("Student");
+        tenantContextMock.Setup(x => x.IsResolved).Returns(true);
+
+        var useCase = new GetStudentAssignmentUseCase(context, tenantContextMock.Object, TimeProvider.System, new AssignmentResultCalculator(context));
+
+        // Act
+        var result = await useCase.ExecuteAsync(assignmentId, CancellationToken.None);
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        Assert.Equal(120, result.Data!.Data.RemainingSeconds);
+    }
 }

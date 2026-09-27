@@ -104,6 +104,9 @@ public class UpdateAssignmentUseCase : IUpdateAssignmentUseCase
         if (request.DueAt.HasValue && request.DueAt.Value <= now)
             return UpdateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
 
+        if (request.TimeLimitMinutes.HasValue && request.TimeLimitMinutes.Value <= 0)
+            return UpdateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
+
         // 8. Validate and parse new questionIds if provided
         List<ulong>? newParsedQuestionIds = null;
         if (request.QuestionIds != null)
@@ -239,6 +242,7 @@ public class UpdateAssignmentUseCase : IUpdateAssignmentUseCase
             // Allow clearing DueAt by sending null explicitly — we use a sentinel here.
             // If the caller wants to clear DueAt, they'd send null; we accept it.
             assignment.DueAt = request.DueAt;
+            assignment.TimeLimitMinutes = request.TimeLimitMinutes;
             assignment.UpdatedAt = now;
             assignment.UpdatedBy = actorId;
             // RowVersion incremented by DbContext.UpdateRowVersions()
@@ -325,6 +329,7 @@ public class UpdateAssignmentUseCase : IUpdateAssignmentUseCase
                 Title = assignment.Title,
                 Instructions = assignment.Instructions,
                 DueAt = assignment.DueAt,
+                TimeLimitMinutes = assignment.TimeLimitMinutes,
                 Status = assignment.Status.ToString(),
                 QuestionCount = questionDtos.Count,
                 TargetStudentCount = targetDtos.Count,

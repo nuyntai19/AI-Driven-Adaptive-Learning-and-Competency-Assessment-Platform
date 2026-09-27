@@ -60,6 +60,55 @@ export function removeAssignmentDraft(
   }
 }
 
+const SCOPED_TIMER_PREFIX = "edutwin:assignment-timer";
+
+export function buildAssignmentTimerKey(scope: AssignmentDraftScope): string {
+  const parts = [scope.centerId, scope.userId, scope.assignmentId].map((part, index) => {
+    const normalized = part.trim();
+    if (!normalized) throw new Error(`Assignment draft scope part ${index} is required.`);
+    return normalized;
+  });
+
+  return [SCOPED_TIMER_PREFIX, ...parts].join(":");
+}
+
+export function readAssignmentRemainingSeconds(
+  scope: AssignmentDraftScope,
+  storage: LocalStorageLike | null = getBrowserLocalStorage()
+): number | null {
+  try {
+    const val = storage?.getItem(buildAssignmentTimerKey(scope));
+    if (val === null || val === undefined || val === "") return null;
+    const parsed = parseInt(val, 10);
+    return Number.isFinite(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeAssignmentRemainingSeconds(
+  scope: AssignmentDraftScope,
+  seconds: number,
+  storage: LocalStorageLike | null = getBrowserLocalStorage()
+): void {
+  try {
+    storage?.setItem(buildAssignmentTimerKey(scope), String(Math.max(0, Math.floor(seconds))));
+  } catch {
+    // Draft persistence is best effort.
+  }
+}
+
+export function removeAssignmentRemainingSeconds(
+  scope: AssignmentDraftScope,
+  storage: LocalStorageLike | null = getBrowserLocalStorage()
+): void {
+  try {
+    storage?.removeItem(buildAssignmentTimerKey(scope));
+  } catch {
+    // Cleanup is best effort.
+  }
+}
+
 /**
  * Deletes the historical assignment-only keys. They cannot be migrated safely
  * because the browser does not record which student originally created them.

@@ -46,6 +46,9 @@ import {
   readAssignmentDraft,
   removeAssignmentDraft,
   writeAssignmentDraft,
+  readAssignmentRemainingSeconds,
+  writeAssignmentRemainingSeconds,
+  removeAssignmentRemainingSeconds,
   type AssignmentDraftScope,
 } from "../utils/assignmentDraftStorage";
 
@@ -261,7 +264,10 @@ export const LearningPlayerPage = () => {
       );
 
       if (isHydrated) {
-        if (assignmentDraftScope) removeAssignmentDraft(assignmentDraftScope);
+        if (assignmentDraftScope) {
+          removeAssignmentDraft(assignmentDraftScope);
+          removeAssignmentRemainingSeconds(assignmentDraftScope);
+        }
         setAssignmentAnswers({});
       }
 
@@ -280,10 +286,17 @@ export const LearningPlayerPage = () => {
     setAssignmentAnswers,
   ]);
 
-  // Assignment Countdown & Server-Synchronized Expiration Timer
+  // Assignment Timers:
+  // - assignmentRemainingSeconds: active test time limit countdown (paused on exit/close, resumes on continue).
+  // - dueRemainingSeconds: due date countdown (ONLY shown when assignment has no active time limit, but has a due date).
   const [assignmentRemainingSeconds, setAssignmentRemainingSeconds] = useState<number | null>(null);
+  const [dueRemainingSeconds, setDueRemainingSeconds] = useState<number | null>(null);
+  const hasAutoSubmittedRef = useRef(false);
   const isInitializedRef = useRef(false);
+  const timerInitializedForAssignmentRef = useRef<string | null>(null);
   const previousAssignmentDraftKeyRef = useRef(assignmentDraftKey);
+
+  const hasTimeLimit = Boolean(assignment?.timeLimitMinutes && assignment.timeLimitMinutes > 0);
 
   // Never carry local component state across assignment or authenticated-user scopes.
   useEffect(() => {
@@ -328,7 +341,10 @@ export const LearningPlayerPage = () => {
     setNetworkErrorPaused(false);
     frozenPayloadRef.current = null;
     setAssignmentRemainingSeconds(null);
+    setDueRemainingSeconds(null);
+    hasAutoSubmittedRef.current = false;
     isInitializedRef.current = false;
+    timerInitializedForAssignmentRef.current = null;
   }, [
     assignmentDraftKey,
     assignmentDraftScope,
@@ -340,34 +356,12 @@ export const LearningPlayerPage = () => {
   // Call idempotent start assignment API upon opening assignment
   useEffect(() => {
     if (!assignmentId || !assignmentDraftKey) return;
-    startStudentAssignment(assignmentId)
-      .then((res) => {
-        if (res?.data?.remainingSeconds !== undefined && res.data.remainingSeconds !== null) {
-          setAssignmentRemainingSeconds(res.data.remainingSeconds);
-        }
-      })
-      .catch(() => {
-        // Ignore network error on start
-      });
+    startStudentAssignment(assignmentId).catch(() => {
+      // Ignore network error on start
+    });
   }, [assignmentId, assignmentDraftKey]);
 
-  // Sync remaining seconds if assignment response updates
-  useEffect(() => {
-    if (assignment?.remainingSeconds !== undefined && assignment.remainingSeconds !== null) {
-      setAssignmentRemainingSeconds(assignment.remainingSeconds);
-    }
-  }, [assignment?.remainingSeconds]);
 
-  // Countdown tick
-  useEffect(() => {
-    if (assignmentRemainingSeconds === null || assignmentRemainingSeconds <= 0) return;
-    const timer = setInterval(() => {
-      setAssignmentRemainingSeconds((prev) => (prev !== null && prev > 0 ? prev - 1 : 0));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [assignmentRemainingSeconds]);
-
-  const isAssignmentExpired = assignmentRemainingSeconds !== null && assignmentRemainingSeconds <= 0;
 
   // Question Timer
   useEffect(() => {
@@ -433,6 +427,76 @@ export const LearningPlayerPage = () => {
       )
     );
   }, [isLocallySubmitted, assignment, assignmentQuestions]);
+
+  // Initialize timer for timed or untimed assignments
+  useEffect(() => {
+    if (!assignment || !assignmentId || !assignmentDraftScope) return;
+    if (timerInitializedForAssignmentRef.current === assignmentId) return;
+
+    if (hasTimeLimit) {
+      // Check scoped local storage for paused/resumed active remaining seconds
+      const savedSeconds = readAssignmentRemainingSeconds(assignmentDraftScope);
+      if (savedSeconds !== null && savedSeconds >= 0) {
+        setAssignmentRemainingSeconds(savedSeconds);
+      } else {
+        const initialSeconds = assignment.timeLimitMinutes! * 60;
+        writeAssignmentRemainingSeconds(assignmentDraftScope, initialSeconds);
+        setAssignmentRemainingSeconds(initialSeconds);
+      }
+      timerInitializedForAssignmentRef.current = assignmentId;
+    } else {
+      setAssignmentRemainingSeconds(null);
+      timerInitializedForAssignmentRef.current = assignmentId;
+    }
+  }, [assignment, assignmentId, assignmentDraftScope, hasTimeLimit]);
+
+  const isTimerTicking =
+    hasTimeLimit &&
+    !isAssignmentSubmitted &&
+    !isLocallySubmitted &&
+    assignmentRemainingSeconds !== null &&
+    assignmentRemainingSeconds > 0;
+
+  // Active test countdown tick for timed assignments (auto-pauses on leave/unmount, resumes on return)
+  useEffect(() => {
+    if (!isTimerTicking || !assignmentDraftScope) return;
+
+    const timer = setInterval(() => {
+      setAssignmentRemainingSeconds((prev) => {
+        if (prev === null) return null;
+        const next = prev > 0 ? prev - 1 : 0;
+        if (assignmentDraftScope) {
+          writeAssignmentRemainingSeconds(assignmentDraftScope, next);
+        }
+        return next;
+      });
+    }, 1000);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, [isTimerTicking, assignmentDraftKey]);
+
+  // Countdown to deadline ONLY when teacher configured NO time limit (không giới hạn thời gian)
+  useEffect(() => {
+    if (hasTimeLimit || !assignment?.dueAt || isAssignmentSubmitted || isLocallySubmitted) {
+      setDueRemainingSeconds(null);
+      return;
+    }
+
+    const calcDueRemaining = () => {
+      const diff = Math.max(0, Math.floor((new Date(assignment.dueAt!).getTime() - Date.now()) / 1000));
+      setDueRemainingSeconds(diff);
+    };
+
+    calcDueRemaining();
+    const interval = setInterval(calcDueRemaining, 1000);
+    return () => clearInterval(interval);
+  }, [hasTimeLimit, assignment?.dueAt, isAssignmentSubmitted, isLocallySubmitted]);
+
+  const isAssignmentExpired =
+    (hasTimeLimit && assignmentRemainingSeconds !== null && assignmentRemainingSeconds <= 0) ||
+    (!hasTimeLimit && dueRemainingSeconds !== null && dueRemainingSeconds <= 0);
 
   // Mode 2: Adaptive Practice Mode Query
   const {
@@ -950,10 +1014,12 @@ export const LearningPlayerPage = () => {
   // Submit flow:
   // - Assignment Mode: Sequentially submit each question attempt (generating 1 prompt per question + scratchpad)
   // - Adaptive Mode: Submit single active question
-  const handleFinalSubmit = async () => {
+  const handleFinalSubmit = async (autoSubmitArg?: boolean | React.MouseEvent) => {
+    const isAutoSubmit = typeof autoSubmitArg === "boolean" ? autoSubmitArg : false;
     if (!question) return;
     persistCurrentAnswer();
     setShowBatchConfirmModal(false);
+    setActiveSideTool(null);
 
     setSubmissionSaveError(null);
     setCanRetrySubmission(false);
@@ -995,10 +1061,15 @@ export const LearningPlayerPage = () => {
 
           for (const q of assignmentQuestions) {
             const src = allAnswersMap[q.questionId];
+            const answerTrimmed = src?.finalAnswer?.trim() || "";
+            let reasoningTrimmed = src?.reasoningText?.trim() || undefined;
+            if (isAutoSubmit && q.reasoningRequired && answerTrimmed && !reasoningTrimmed) {
+              reasoningTrimmed = "[Hết giờ làm bài - Tự động nộp]";
+            }
             frozen[q.questionId] = {
-              finalAnswer: src?.finalAnswer?.trim() || "",
+              finalAnswer: answerTrimmed,
               answerDisplayLatex: src?.answerDisplayLatex?.trim() || undefined,
-              reasoningText: src?.reasoningText?.trim() || undefined,
+              reasoningText: reasoningTrimmed,
               confidence: src?.confidence ?? 80,
               timeSpentSeconds: src?.timeSpentSeconds ?? 0,
               answerChanges: src?.answerChanges ?? 0,
@@ -1008,7 +1079,8 @@ export const LearningPlayerPage = () => {
           frozenPayloadRef.current = frozen;
         }
 
-        // Pre-validate all questions requiring reasoning before starting batch submit
+        // Pre-validate all questions requiring reasoning before starting batch submit (only when manual submit)
+        if (!isAutoSubmit) {
         for (let i = 0; i < assignmentQuestions.length; i++) {
           const q = assignmentQuestions[i];
           if (q.latestAttempt || q.attemptStatus === "Completed" || q.attemptStatus === "NeedsTeacherReview") {
@@ -1024,6 +1096,8 @@ export const LearningPlayerPage = () => {
             frozenPayloadRef.current = null;
             return;
           }
+        }
+
         }
 
         let lastJobId: string | null = null;
@@ -1053,11 +1127,12 @@ export const LearningPlayerPage = () => {
           const qAnswerChanges = qAnswer.answerChanges;
           let qToken = qAnswer.drawingUploadToken;
 
-          setPollingStatus(`Đang nộp câu ${i + 1}/${assignmentQuestions.length}...`);
+          setPollingStatus(isAutoSubmit ? `Hết giờ: Đang tự động nộp câu ${i + 1}/${assignmentQuestions.length}...` : `Đang nộp câu ${i + 1}/${assignmentQuestions.length}...`);
+          const isSkipped = !qFinalAnswer;
 
           const qSnapshotDataUrl = allAnswersMap[q.questionId]?.snapshotDataUrl;
           // Upload scratchpad snapshot if this question has an attached drawing
-          if (qSnapshotDataUrl && !qToken) {
+          if (!isSkipped && qSnapshotDataUrl && !qToken) {
             try {
               setPollingStatus(`Đang tải ảnh nháp câu ${i + 1}/${assignmentQuestions.length}...`);
               const res = await fetch(qSnapshotDataUrl);
@@ -1074,15 +1149,15 @@ export const LearningPlayerPage = () => {
           const submitted = await submitAttempt({
             questionId: q.questionId,
             assignmentId: assignmentId,
-            finalAnswer: qFinalAnswer || "SKIPPED",
-            reasoningText: qReasoning,
+            finalAnswer: isSkipped ? "SKIPPED" : qFinalAnswer,
+            reasoningText: isSkipped ? undefined : qReasoning,
             timeSpentSeconds: qTimeSpent,
             confidence: qConfidence,
             answerChanges: qAnswerChanges,
-            skipped: !qFinalAnswer,
+            skipped: isSkipped,
             clientSubmissionId: clientSubId,
-            answerDisplayLatex: qAnswerDisplayLatex,
-            drawingUploadToken: qToken || undefined,
+            answerDisplayLatex: isSkipped ? undefined : qAnswerDisplayLatex,
+            drawingUploadToken: isSkipped ? undefined : (qToken || undefined),
           });
 
           submittedCount += 1;
@@ -1102,8 +1177,17 @@ export const LearningPlayerPage = () => {
         // Mark local submission as complete: Immediately transitions UI to Assignment Result overview!
         setIsLocallySubmitted(true);
         setIsSubmitting(false);
+        if (assignmentDraftScope) {
+          removeAssignmentRemainingSeconds(assignmentDraftScope);
+        }
 
-        if (lastJobId) {
+        if (isAutoSubmit) {
+          setAiBanner({
+            type: "info",
+            message: "⏱ Hết thời gian làm bài! Hệ thống đã tự động nộp bài làm của bạn. Các câu chưa làm đã được tự động bỏ qua.",
+            action: null,
+          });
+        } else if (lastJobId) {
           setPollingJobId(lastJobId);
           searchParams.set("analysisJobId", lastJobId);
           setSearchParams(searchParams, { replace: true });
@@ -1123,10 +1207,15 @@ export const LearningPlayerPage = () => {
         tokenToUse = await uploadScratchpadAttachmentIfAny();
       }
 
-      if (question.reasoningRequired && finalAnswer.trim() && !reasoningText.trim()) {
+      let reasoningToSubmit = reasoningText.trim() || undefined;
+      if (question.reasoningRequired && finalAnswer.trim() && !reasoningToSubmit) {
+        if (isAutoSubmit) {
+          reasoningToSubmit = "[Hết giờ làm bài - Tự động nộp]";
+        } else {
         setIsSubmitting(false);
         setSubmissionSaveError("Câu hỏi này yêu cầu phải có phần lập luận / giải trình trước khi nộp bài.");
         return;
+        }
       }
 
       setPollingStatus("Đang gửi bài làm lên hệ thống AI...");
@@ -1134,7 +1223,7 @@ export const LearningPlayerPage = () => {
         questionId: question.questionId,
         assignmentId: undefined,
         finalAnswer: finalAnswer.trim() || "SKIPPED",
-        reasoningText: reasoningText.trim() || undefined,
+        reasoningText: reasoningToSubmit,
         timeSpentSeconds,
         confidence,
         answerChanges,
@@ -1184,8 +1273,31 @@ export const LearningPlayerPage = () => {
     }
     setSubmissionSaveError(null);
     setCanRetrySubmission(false);
-    handleFinalSubmit();
+    handleFinalSubmit(isAssignmentExpired);
   };
+
+  // Auto-submit when test time limit or due deadline expires
+  useEffect(() => {
+    if (
+      assignmentId &&
+      isAssignmentExpired &&
+      !isAssignmentSubmitted &&
+      !isSubmitting &&
+      !hasAutoSubmittedRef.current &&
+      question &&
+      assignmentQuestions.length > 0
+    ) {
+      hasAutoSubmittedRef.current = true;
+      handleFinalSubmit(true);
+    }
+  }, [
+    assignmentId,
+    isAssignmentExpired,
+    isAssignmentSubmitted,
+    isSubmitting,
+    question,
+    assignmentQuestions.length,
+  ]);
 
   const handleRetryAiFromBanner = async (attemptId: string) => {
     try {
@@ -1597,21 +1709,37 @@ export const LearningPlayerPage = () => {
 
           <div className="flex items-center gap-2.5">
             {/* Timer / Countdown */}
-            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-bold border ${
-              isAssignmentExpired
-                ? "bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-950/60 dark:text-rose-200 dark:border-rose-900"
-                : assignmentRemainingSeconds !== null && assignmentRemainingSeconds <= 300
-                ? "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/60 dark:text-amber-200 dark:border-amber-900 animate-pulse"
-                : "bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 border-stone-200/60 dark:border-stone-700/60"
-            }`}>
+            <div
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-bold border ${
+                isAssignmentExpired
+                  ? "bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-950/60 dark:text-rose-200 dark:border-rose-900"
+                  : hasTimeLimit && assignmentRemainingSeconds !== null && assignmentRemainingSeconds <= 300
+                  ? "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/60 dark:text-amber-200 dark:border-amber-900 animate-pulse"
+                  : !hasTimeLimit && dueRemainingSeconds !== null && dueRemainingSeconds <= 3600
+                  ? "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/60 dark:text-amber-200 dark:border-amber-900 animate-pulse"
+                  : "bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 border-stone-200/60 dark:border-stone-700/60"
+              }`}
+              title={
+                hasTimeLimit
+                  ? "Thời gian làm bài còn lại"
+                  : dueRemainingSeconds !== null
+                  ? "Hạn chót nộp bài"
+                  : "Thời gian làm bài"
+              }
+            >
               <span className="text-stone-400 text-xs">⏱</span>
               <span>
-                {assignmentRemainingSeconds !== null
+                {hasTimeLimit && assignmentRemainingSeconds !== null
                   ? `${String(Math.floor(assignmentRemainingSeconds / 3600)).padStart(2, "0")}:${String(Math.floor((assignmentRemainingSeconds % 3600) / 60)).padStart(2, "0")}:${String(assignmentRemainingSeconds % 60).padStart(2, "0")}`
+                  : !hasTimeLimit && dueRemainingSeconds !== null
+                  ? `${String(Math.floor(dueRemainingSeconds / 3600)).padStart(2, "0")}:${String(Math.floor((dueRemainingSeconds % 3600) / 60)).padStart(2, "0")}:${String(dueRemainingSeconds % 60).padStart(2, "0")}`
                   : `${String(Math.floor(timeSpentSeconds / 60)).padStart(2, "0")}:${String(timeSpentSeconds % 60).padStart(2, "0")}`}
               </span>
-              {assignmentRemainingSeconds !== null && assignmentRemainingSeconds <= 300 && assignmentRemainingSeconds > 0 && (
+              {hasTimeLimit && assignmentRemainingSeconds !== null && assignmentRemainingSeconds <= 300 && assignmentRemainingSeconds > 0 && (
                 <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 ml-1">SẮP HẾT GIỜ!</span>
+              )}
+              {isAssignmentExpired && (
+                <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 ml-1">HẾT GIỜ</span>
               )}
             </div>
 
@@ -1627,7 +1755,18 @@ export const LearningPlayerPage = () => {
                     type="button"
                     onClick={() => {
                       if (window.confirm("Bạn có chắc chắn muốn làm lại bài tập này?")) {
-                        if (assignmentDraftScope) removeAssignmentDraft(assignmentDraftScope);
+                        if (assignmentDraftScope) {
+                          removeAssignmentDraft(assignmentDraftScope);
+                          removeAssignmentRemainingSeconds(assignmentDraftScope);
+                        }
+                        timerInitializedForAssignmentRef.current = null;
+                        if (hasTimeLimit && assignment?.timeLimitMinutes) {
+                          const freshSeconds = assignment.timeLimitMinutes * 60;
+                          if (assignmentDraftScope) {
+                            writeAssignmentRemainingSeconds(assignmentDraftScope, freshSeconds);
+                          }
+                          setAssignmentRemainingSeconds(freshSeconds);
+                        }
                         setAssignmentAnswers({});
                         setFinalAnswer("");
                         setReasoningText("");
@@ -1635,6 +1774,7 @@ export const LearningPlayerPage = () => {
                         setSubmissionSaveError(null);
                         setAiBanner(null);
                         setIsLocallySubmitted(false);
+                        hasAutoSubmittedRef.current = false;
                         if (assignmentQuestions[0]) {
                           handleSwitchQuestion(assignmentQuestions[0].questionId);
                         }
@@ -1656,7 +1796,7 @@ export const LearningPlayerPage = () => {
                 disabled={isSubmitting || isAssignmentExpired}
                 className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-stone-200 text-white dark:text-stone-900 font-semibold text-xs transition-colors cursor-pointer disabled:opacity-50 shrink-0"
               >
-                <span>{isAssignmentExpired ? "Đã hết giờ" : "Nộp bài"}</span>
+                <span>{isAssignmentExpired ? (isSubmitting ? "Đang tự động nộp..." : "Đã hết giờ") : "Nộp bài"}</span>
                 <span className="px-1.5 py-0.2 rounded-full bg-stone-700 dark:bg-stone-300 text-white dark:text-stone-900 text-[10px] font-mono font-bold">
                   {answeredCount}/{totalQuestions}
                 </span>
