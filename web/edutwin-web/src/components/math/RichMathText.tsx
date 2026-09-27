@@ -124,7 +124,12 @@ export function isPureMathString(str: string): boolean {
   if (!s) return false;
   if (/_{2,}/.test(s)) return false;
 
-  if (/^\\(frac|sqrt|int|sum|prod|lim|vec|alpha|beta|gamma|theta|Delta|begin|left|mathbf|text|displaystyle)\b|^\$|\\\[|\\\(|\bR\s*\\\s*\{/.test(s)) return true;
+  // Natural language prose containing Vietnamese diacritics is never pure math
+  if (/[àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđĐ]/i.test(s)) {
+    return false;
+  }
+
+  if (/^\\(frac|sqrt|int|sum|prod|lim|vec|alpha|beta|gamma|theta|Delta|begin|left|mathbf|text|displaystyle)\b|^\$|\\\[|\\\(|^(?:[a-zA-Z]\s*=\s*)?R\s*\\\s*\{/.test(s)) return true;
   if (/^[-+]?\d+(\.\d+)?$/.test(s)) return true;
   if (/^[\[\(]\s*[-+]?(?:\d+|vô cùng|\+vô cùng|-vô cùng|\\infty|\+\\infty|-\\infty)\s*[;,]\s*[-+]?(?:\d+|vô cùng|\+vô cùng|-vô cùng|\\infty|\+\\infty|-\\infty)\s*[\]\)]$/.test(s)) return true;
   if (/^(?:[A-Z]\s*)?\(\s*[-+]?\d+(?:\.\d+)?\s*,\s*[-+]?\d+(?:\.\d+)?\s*\)$/.test(s)) return true;

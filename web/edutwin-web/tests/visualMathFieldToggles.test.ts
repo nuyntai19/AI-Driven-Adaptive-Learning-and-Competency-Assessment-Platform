@@ -94,3 +94,19 @@ test("normalizeMathExpression renders exponential fractions without duplicate le
     katex.renderToString(solLatex, { throwOnError: true });
   });
 });
+
+test("tokenizePlainText preserves Vietnamese sentence spacing and tokenizes set notation (Question #20001)", async () => {
+  const { tokenizePlainText, isPureMathString } = await import("../src/components/math/RichMathText");
+
+  const sol = "Hàm số xác định khi mẫu số khác 0, tức là x - 2 khác 0, suy ra x khác 2. Vậy tập xác định là D = R \\ {2}.";
+  assert.equal(isPureMathString(sol), false, "Full explanation sentence must not be flagged as pure math");
+
+  const tokens = tokenizePlainText(sol);
+  const textTokens = tokens.filter((t) => t.type === "text");
+  assert.ok(textTokens.length > 0, "Must contain text tokens for Vietnamese words");
+  assert.ok(textTokens[0].value?.includes("Hàm số xác định khi mẫu số khác 0"), "Must keep word spaces in text");
+
+  const mathTokens = tokens.filter((t) => t.type === "math");
+  assert.ok(mathTokens.some((m) => m.latex?.includes("\\mathbb{R} \\setminus")), "Set notation must be KaTeX formatted");
+});
+
