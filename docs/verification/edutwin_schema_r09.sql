@@ -124,6 +124,7 @@ CREATE TABLE `assignments` (
   `title` varchar(250) NOT NULL,
   `instructions` text,
   `due_at` datetime(6) DEFAULT NULL,
+  `time_limit_minutes` int DEFAULT NULL,
   `status` varchar(32) NOT NULL,
   `published_at` datetime(6) DEFAULT NULL,
   `created_at` datetime(6) NOT NULL,
@@ -201,6 +202,10 @@ CREATE TABLE `attempts` (
   `updated_at` datetime(6) NOT NULL,
   `row_version` bigint unsigned NOT NULL DEFAULT '1',
   `answer_display_latex` varchar(2048) DEFAULT NULL,
+  `manual_retry_count` tinyint unsigned NOT NULL DEFAULT '0',
+  `last_manual_retry_at` datetime(6) DEFAULT NULL,
+  `solution_exposed_at` datetime(6) DEFAULT NULL,
+  `is_post_feedback` tinyint(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`attempt_id`),
   UNIQUE KEY `ux_attempts_center_id_attempt_id` (`center_id`,`attempt_id`),
   UNIQUE KEY `ux_attempts_center_id_student_id_client_submission_id` (`center_id`,`student_id`,`client_submission_id`),
@@ -822,6 +827,7 @@ CREATE TABLE `question_options` (
   `option_text` text NOT NULL,
   `is_correct` tinyint(1) NOT NULL,
   `order_index` int unsigned NOT NULL,
+  `misconception` varchar(500) DEFAULT NULL,
   `created_at` datetime(6) NOT NULL,
   `created_by` varchar(36) DEFAULT NULL,
   `updated_at` datetime(6) NOT NULL,
@@ -1142,6 +1148,39 @@ CREATE TABLE `student_assignment_progress` (
   CONSTRAINT `fk_student_assignment_progress_students_student` FOREIGN KEY (`center_id`, `student_id`) REFERENCES `students` (`center_id`, `student_id`) ON DELETE RESTRICT,
   CONSTRAINT `ck_student_assignment_progress_counts` CHECK ((`completed_question_count` <= `total_question_count`)),
   CONSTRAINT `ck_student_assignment_progress_status` CHECK ((`status` in (_utf8mb4'NotStarted',_utf8mb4'InProgress',_utf8mb4'Completed',_utf8mb4'Overdue')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `student_review_requests`
+--
+
+DROP TABLE IF EXISTS `student_review_requests`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `student_review_requests` (
+  `request_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `center_id` varchar(36) NOT NULL,
+  `attempt_id` bigint unsigned NOT NULL,
+  `student_id` varchar(36) NOT NULL,
+  `question_id` bigint unsigned NOT NULL,
+  `student_comment` varchar(1000) NOT NULL,
+  `status` varchar(32) NOT NULL,
+  `teacher_note` varchar(1000) DEFAULT NULL,
+  `resolved_by_teacher_id` varchar(36) DEFAULT NULL,
+  `resolved_at` datetime(6) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL,
+  `created_by` varchar(36) DEFAULT NULL,
+  `updated_at` datetime(6) NOT NULL,
+  `row_version` bigint unsigned NOT NULL DEFAULT '1',
+  PRIMARY KEY (`request_id`),
+  UNIQUE KEY `ux_student_review_requests_center_id_request_id` (`center_id`,`request_id`),
+  KEY `ix_student_review_requests_center_id_attempt_id` (`center_id`,`attempt_id`),
+  KEY `ix_student_review_requests_center_id_student_id_status` (`center_id`,`student_id`,`status`),
+  CONSTRAINT `fk_student_review_requests_attempts` FOREIGN KEY (`center_id`, `attempt_id`) REFERENCES `attempts` (`center_id`, `attempt_id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_student_review_requests_questions` FOREIGN KEY (`center_id`, `question_id`) REFERENCES `questions` (`center_id`, `question_id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_student_review_requests_students` FOREIGN KEY (`center_id`, `student_id`) REFERENCES `students` (`center_id`, `student_id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_student_review_requests_teachers` FOREIGN KEY (`center_id`, `resolved_by_teacher_id`) REFERENCES `teachers` (`center_id`, `teacher_id`) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

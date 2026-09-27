@@ -1196,14 +1196,16 @@ Không có upload/analyze/map AI endpoint trong MVP.
       "label": "A",
       "text": "x = 1",
       "isCorrect": false,
-      "orderIndex": 1
+      "orderIndex": 1,
+      "misconception": "Quên đặt điều kiện x > 0 dẫn đến nghiệm ngoại lai"
     },
     {
       "optionId": "9102",
       "label": "B",
       "text": "x = 2",
       "isCorrect": true,
-      "orderIndex": 2
+      "orderIndex": 2,
+      "misconception": null
     }
   ],
   "knowledgeMappings": [
@@ -1244,6 +1246,88 @@ Activate request:
 }
 ~~~
 
+### 48.1. POST /questions/import/preview
+
+Quyền: Teacher, CenterManager (Policy: `curriculum.questions.create`).
+Content-Type: `multipart/form-data`
+
+Request: File upload (`.csv`, `.txt`, `.xlsx`, `.docx`) qua trường `file`.
+
+Response 200:
+
+~~~json
+{
+  "data": {
+    "previewToken": "prev_7f8c9b1a-...",
+    "totalRows": 10,
+    "validCount": 9,
+    "invalidCount": 1,
+    "validQuestions": [
+      {
+        "rowIndex": 1,
+        "questionType": "MultipleChoice",
+        "difficulty": 3,
+        "questionText": "Nghiệm của phương trình...",
+        "correctAnswer": "A",
+        "solution": "Lời giải chi tiết...",
+        "expectedReasoning": "Biến đổi tương đương...",
+        "maxScore": 1.0,
+        "estimatedTimeSeconds": 120,
+        "reasoningRequired": true,
+        "options": [
+          { "label": "A", "text": "x = 1", "isCorrect": true, "orderIndex": 1, "misconception": null },
+          { "label": "B", "text": "x = 2", "isCorrect": false, "orderIndex": 2, "misconception": "Sai dấu" }
+        ],
+        "requiredIdeas": ["Đặt điều kiện"],
+        "commonErrors": ["Quên nghiệm"]
+      }
+    ],
+    "errors": [
+      {
+        "rowIndex": 10,
+        "field": "CorrectAnswer",
+        "errorMessage": "Đáp án đúng không khớp với nhãn lựa chọn nào.",
+        "rawValue": "E"
+      }
+    ]
+  },
+  "meta": {
+    "traceId": "00-abcd-1234-01",
+    "timestamp": "2026-09-20T10:30:00Z"
+  }
+}
+~~~
+
+### 48.2. POST /questions/import/confirm
+
+Quyền: Teacher, CenterManager (Policy: `curriculum.questions.create`).
+
+Request:
+
+~~~json
+{
+  "previewToken": "prev_7f8c9b1a-...",
+  "subjectId": "2ed34b81-0b0d-457c-888d-6a78f50a33d2",
+  "primaryTopicNodeId": "101",
+  "questions": []
+}
+~~~
+
+Response 200:
+
+~~~json
+{
+  "data": {
+    "importedCount": 9,
+    "message": "Đã nhập thành công 9 câu hỏi vào ngân hàng câu hỏi."
+  },
+  "meta": {
+    "traceId": "00-abcd-1234-01",
+    "timestamp": "2026-09-20T10:30:00Z"
+  }
+}
+~~~
+
 # Assignments
 
 ## 49. Assignment DTO
@@ -1255,6 +1339,7 @@ Activate request:
   "title": "Bài luyện Mũ và Logarit",
   "instructions": "Trình bày rõ cách làm.",
   "dueAt": "2026-07-20T16:59:59Z",
+  "timeLimitMinutes": 45,
   "status": "Draft",
   "questionCount": 3,
   "targetStudentCount": 5,
@@ -1311,6 +1396,13 @@ Response 201: Assignment DTO Draft.
 | GET | /assignments/{id}/progress | Teacher owner, CenterManager | Student progress collection |
 | GET | /students/me/assignments | Student | Filter status |
 | GET | /students/me/assignments/{id} | Target Student | Student-facing questions |
+| POST | /students/me/assignments/{id}/start | Target Student | Ghi nhận thời điểm bắt đầu làm bài (idempotent) |
+
+### 51.1. POST /students/me/assignments/{id}/start
+
+Quyền: Target Student được giao bài (Policy: `assignments.assignments.read`).
+
+Response 200: `StudentAssignmentDetailResponse` chứa thông tin bài tập, `timeLimitMinutes`, `startedAt`, và danh sách câu hỏi.
 
 Publish request:
 
@@ -1453,6 +1545,71 @@ Fail-Closed Invariant:
 - Attempt không có ảnh đính kèm: Trả về 404 RESOURCE_NOT_FOUND.
 
 Response 200: Stream nhị phân với `Content-Type: image/png`.
+
+## 52.3. POST /learning/attempts/{attemptId}/retry
+
+Quyền: Student sở hữu Attempt (Policy: `learning.attempts.submit`).
+
+Chức năng: Yêu cầu AI chấm lại bài làm khi gặp sự cố hoặc phân tích chưa hoàn tất. Có cơ chế giãn cách `CooldownSeconds = 30s` và tối đa `MaxManualRetries = 3` lần. Không cho phép retry nếu học sinh đã mở xem lời giải (`solution_exposed_at != null`).
+
+Response 200:
+
+~~~json
+{
+  "data": {
+    "attemptId": "12001",
+    "jobId": "13002",
+    "manualRetriesUsed": 1,
+    "manualRetriesRemaining": 2,
+    "nextRetryAllowedAt": "2026-09-20T10:30:30Z",
+    "cooldownRemainingSeconds": 0
+  },
+  "meta": {
+    "traceId": "00-abcd-1234-01",
+    "timestamp": "2026-09-20T10:30:00Z"
+  }
+}
+~~~
+
+Lỗi 400: `VALIDATION_FAILED` (Hết lượt retry hoặc đã xem lời giải).
+Lỗi 429: `COOLDOWN_ACTIVE` (Yêu cầu quá nhanh khi chưa hết 30s cooldown).
+
+## 52.4. POST /learning/attempts/{attemptId}/review-request
+
+Quyền: Student sở hữu Attempt (Policy: `learning.attempts.submit`).
+
+Chức năng: Học sinh gửi phản ánh / khiếu nại kết quả chấm của AI tới giáo viên phụ trách.
+
+Request:
+
+~~~json
+{
+  "studentComment": "Em có cách giải rút gọn bằng cách đặt ẩn phụ t = 2^x, kết quả ra đúng nhưng AI chấm thiếu bước."
+}
+~~~
+
+Response 200:
+
+~~~json
+{
+  "data": {
+    "requestId": 501,
+    "attemptId": 12001,
+    "studentId": "baf68743-a272-4983-a9e2-41663734a7c2",
+    "questionId": 9001,
+    "studentComment": "Em có cách giải rút gọn...",
+    "status": "Pending",
+    "teacherNote": null,
+    "resolvedByTeacherId": null,
+    "resolvedAt": null,
+    "createdAt": "2026-09-20T10:30:00Z"
+  },
+  "meta": {
+    "traceId": "00-abcd-1234-01",
+    "timestamp": "2026-09-20T10:30:00Z"
+  }
+}
+~~~
 
 ## 53. GET /learning/analysis-jobs/{analysisJobId}
 
@@ -1833,7 +1990,9 @@ Response item:
   "isFallback": true,
   "reasoningQuality": null,
   "feedback": "AI không khả dụng; kết quả tạm dựa trên đáp án.",
-  "createdAt": "2026-07-15T08:31:06Z"
+  "createdAt": "2026-07-15T08:31:06Z",
+  "hasStudentReviewRequest": true,
+  "studentReviewReason": "Em giải bằng cách đặt ẩn phụ t = 2^x, ra đúng đáp án nhưng AI trừ điểm."
 }
 ~~~
 
@@ -2289,7 +2448,18 @@ Rules:
 
 Không gửi username, password, token, center name hoặc dữ liệu Student không cần thiết.
 
-IAIService chỉ tạo observation/analysis. Adapter không được trả hoặc quyết định mastery delta, risk score, opportunity rank, permission hay authorization outcome.
+IAIService chỉ tạo observation/analysis. Adapter không đọc/ghi hoặc quyết định mastery delta, risk score, opportunity rank, permission hay authorization outcome.
+
+### 72.1. Pedagogical & Evaluation Guidelines (Anti-anchoring Bias Mitigation)
+
+Prompt gửi tới AI model bắt buộc tích hợp 6 nguyên tắc sư phạm nhằm chống thiên kiến rập khuôn (anti-anchoring bias):
+
+1. **Reference Solution Independence**: Lời giải mẫu của giáo viên chỉ là một phương án tham khảo, không phải đáp án duy nhất. Không trừ điểm học sinh chỉ vì dùng phương pháp, ký hiệu hoặc hướng tiếp cận khác lời giải mẫu.
+2. **Alternative Valid Methods**: Các phương pháp giải hợp lệ khác (đại số vs hình học, bảo toàn năng lượng vs động học, thế vs cộng đại số, v.v.) dẫn đến kết quả đúng qua các bước logic chặt chẽ BẮT BUỘC phải được công nhận và cho điểm suy luận (reasoning quality) cao.
+3. **Omitted Trivial Steps**: Không trừ điểm khi học sinh bỏ qua các bước tính nhẩm, biến đổi trung gian đơn giản nếu mạch tư duy đúng đắn và kết quả cuối cùng chính xác.
+4. **Rubric-First Evaluation**: Đánh giá bài làm dựa trên tiêu chí chấm (grading criteria / rubric: required ideas, common errors, scoring notes) thay vì đối chiếu từng dòng với lời giải mẫu.
+5. **Genuine Errors Only**: Chỉ trừ điểm khi có lỗi sai khái niệm thực sự, lập luận ngụy biện, sai sót tính toán hoặc thiếu ý bắt buộc không thể suy ra được.
+6. **Uncertainty Calibration & Teacher Review**: Nếu bài làm mơ hồ hoặc dùng phương pháp lạ/sáng tạo chưa thể khẳng định chắc chắn, AI phải hạ điểm tin cậy (`confidence`) tương ứng và giải thích rõ sắc thái sư phạm trong nhận xét để chuyển giáo viên thẩm định lại.
 
 ## 73. Gemini response contract
 
