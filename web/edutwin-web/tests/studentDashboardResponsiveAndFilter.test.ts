@@ -25,6 +25,9 @@ test("Phase 11: StudentLayout header and main container responsive constraints",
   assert.match(layoutSource, /<nav className="hidden lg:flex items-center gap-1 xl:gap-2 min-w-0">/);
 });
 
+const radarChartSource = readFileSync(new URL("../src/components/student/StudentRadarChart.tsx", import.meta.url), "utf8");
+const dashboardAndRadarSource = dashboardSource + "\n" + radarChartSource;
+
 test("Phase 11: StudentDashboardPage layout, stat cards, radar and progress responsiveness", () => {
   // Page container must have min-w-0 and max-w-[1600px]
   assert.match(dashboardSource, /w-full max-w-\[1600px\] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 min-w-0/);
@@ -33,11 +36,11 @@ test("Phase 11: StudentDashboardPage layout, stat cards, radar and progress resp
   // Radar + Progress section must stack properly on tablet/mobile and 2 cols on xl
   assert.match(dashboardSource, /grid-cols-1 xl:grid-cols-2 gap-6/);
   // Chart wrappers must have min-w-0
-  assert.match(dashboardSource, /h-72 w-full min-w-0 mt-4 relative/);
+  assert.match(dashboardAndRadarSource, /h-72 w-full min-w-0 mt-4 relative/);
   // ResponsiveContainer must specify minWidth={0}
-  assert.match(dashboardSource, /<ResponsiveContainer width="100%" height="100%" minWidth=\{0\}>/);
+  assert.match(dashboardAndRadarSource, /<ResponsiveContainer width="100%" height="100%" minWidth=\{0\}>/);
   // RadarChart must have appropriate outerRadius so labels do not overflow
-  assert.match(dashboardSource, /outerRadius="68%"/);
+  assert.match(dashboardAndRadarSource, /outerRadius="68%"/);
 });
 
 test("Phase 12: Subject filter defaults to 'Toàn bộ' and does not auto-select first subject", () => {

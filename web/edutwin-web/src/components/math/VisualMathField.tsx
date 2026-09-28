@@ -1,6 +1,7 @@
 import { useEffect, useRef, useImperativeHandle, forwardRef, useState } from "react";
-import "mathlive";
 import { normalizeMathLivePlainText } from "../../utils/mathAnswerValue";
+import { loadMathLive, resetMathLiveLoader } from "../../utils/mathLiveLoader";
+import { hydrateMathFieldInstance, shouldSyncExternalValue } from "../../utils/visualMathFieldLifecycle";
 
 interface MathFieldElement extends HTMLElement {
   readOnly: boolean;
@@ -55,6 +56,8 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
     const containerRef = useRef<HTMLDivElement>(null);
     const mathfieldRef = useRef<MathFieldElement | null>(null);
     const [isReady, setIsReady] = useState(false);
+    const [loadError, setLoadError] = useState(false);
+    const [retryCount, setRetryCount] = useState(0);
     const [inputMode, setInputMode] = useState<"math" | "text">("math");
     const lastEmittedValueRef = useRef<string>(value);
 
@@ -63,126 +66,154 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
     const onChangeRef = useRef(onChange);
     onChangeRef.current = onChange;
 
-    // Initialize Mathfield element inside container
+    const latestValueRef = useRef(value);
+    latestValueRef.current = value;
+    const latestDisabledRef = useRef(disabled);
+    latestDisabledRef.current = disabled;
+    const latestAutoFocusRef = useRef(autoFocus);
+    latestAutoFocusRef.current = autoFocus;
+
+    // Initialize Mathfield element inside container after dynamically loading MathLive
     useEffect(() => {
-      if (!containerRef.current) return;
+      let isMounted = true;
+      const container = containerRef.current;
+      if (!container) return;
 
-      // Create <math-field> instance
-      const mf = document.createElement("math-field") as MathFieldElement;
-      mf.style.width = "100%";
-      mf.style.minHeight = "46px";
-      mf.style.fontSize = "1.3rem";
-      mf.style.outline = "none";
-      mf.style.border = "none";
-      mf.style.backgroundColor = "transparent";
-      mf.style.display = "block";
-      mf.style.padding = "6px 8px";
-      mf.style.color = "inherit";
-      mf.style.setProperty("--color", "currentColor");
-      mf.style.setProperty("--placeholder-color", "#818cf8");
-      mf.style.setProperty("--caret-color", "#6366f1");
-      mf.style.setProperty("--selection-background-color", "rgba(99, 102, 241, 0.25)");
+      let currentMf: MathFieldElement | null = null;
+      let onInputHandler: (() => void) | null = null;
+      let onKeyDownHandler: ((e: KeyboardEvent) => void) | null = null;
+      let onFocusHandler: (() => void) | null = null;
 
-      // Configure MathLive settings
-      mf.mathVirtualKeyboardPolicy = "manual"; // Prevent unwanted mobile popups on desktop
-      mf.defaultMode = "math";
-      mf.smartFence = true;
-      mf.smartMode = false;
-      mf.smartSuperscript = true;
-      mf.setAttribute("data-input-mode", "math");
+      loadMathLive()
+        .then(() => {
+          if (!isMounted || !containerRef.current) return;
 
-      try {
-        const shadowStyle = document.createElement("style");
-        shadowStyle.setAttribute("data-edutwin-toggle-guard", "true");
-        shadowStyle.textContent = `
-          :host([data-input-mode="text"]) [part="virtual-keyboard-toggle"],
-          :host([data-input-mode="text"]) [part="menu-toggle"],
-          :host([data-input-mode="text"]) .ML__virtual-keyboard-toggle,
-          :host([data-input-mode="text"]) .ML__menu-toggle,
-          :host([data-input-mode="text"]) .ML__toggles {
-            display: none !important;
-            visibility: hidden !important;
-            pointer-events: none !important;
+          // Create <math-field> instance
+          const mf = document.createElement("math-field") as MathFieldElement;
+          mf.style.width = "100%";
+          mf.style.minHeight = "46px";
+          mf.style.fontSize = "1.3rem";
+          mf.style.outline = "none";
+          mf.style.border = "none";
+          mf.style.backgroundColor = "transparent";
+          mf.style.display = "block";
+          mf.style.padding = "6px 8px";
+          mf.style.color = "inherit";
+          mf.style.setProperty("--color", "currentColor");
+          mf.style.setProperty("--placeholder-color", "#818cf8");
+          mf.style.setProperty("--caret-color", "#6366f1");
+          mf.style.setProperty("--selection-background-color", "rgba(99, 102, 241, 0.25)");
+
+          // Configure MathLive settings
+          mf.mathVirtualKeyboardPolicy = "manual"; // Prevent unwanted mobile popups on desktop
+          mf.defaultMode = "math";
+          mf.smartFence = true;
+          mf.smartMode = false;
+          mf.smartSuperscript = true;
+          mf.setAttribute("data-input-mode", "math");
+
+          try {
+            const shadowStyle = document.createElement("style");
+            shadowStyle.setAttribute("data-edutwin-toggle-guard", "true");
+            shadowStyle.textContent = `
+              :host([data-input-mode="text"]) [part="virtual-keyboard-toggle"],
+              :host([data-input-mode="text"]) [part="menu-toggle"],
+              :host([data-input-mode="text"]) .ML__virtual-keyboard-toggle,
+              :host([data-input-mode="text"]) .ML__menu-toggle,
+              :host([data-input-mode="text"]) .ML__toggles {
+                display: none !important;
+                visibility: hidden !important;
+                pointer-events: none !important;
+              }
+            `;
+            mf.shadowRoot?.appendChild(shadowStyle);
+          } catch {
+            // Fallback handled via global CSS
           }
-        `;
-        mf.shadowRoot?.appendChild(shadowStyle);
-      } catch {
-        // Fallback handled via global CSS
-      }
 
-      if (disabled) {
-        mf.readOnly = true;
-        mf.setAttribute("readonly", "true");
-        mf.setAttribute("disabled", "true");
-        mf.tabIndex = -1;
-      }
+          // Hydrate with latest value and disabled state (retaining any edits made in fallback textarea)
+          const { hydratedValue } = hydrateMathFieldInstance(mf, {
+            latestValue: latestValueRef.current,
+            latestDisabled: latestDisabledRef.current,
+            latestAutoFocus: latestAutoFocusRef.current,
+          });
+          lastEmittedValueRef.current = hydratedValue;
 
-      if (value) {
-        mf.setValue(value, { silenceNotifications: true });
-        lastEmittedValueRef.current = value;
-      }
+          // Handle user typing / input
+          const handleInput = () => {
+            if (mf.readOnly) return;
+            const currentLatex = mf.getValue ? mf.getValue("latex-expanded") : mf.value;
+            const rawPlainText = mf.getValue ? mf.getValue("plain-text") : currentLatex;
+            const currentPlainText = normalizeMathLivePlainText(rawPlainText, currentLatex);
+            lastEmittedValueRef.current = currentLatex;
+            latestValueRef.current = currentLatex;
+            onChangeRef.current(currentLatex, currentPlainText);
+          };
 
-      // Handle user typing / input
-      const handleInput = () => {
-        if (disabled || mf.readOnly) return;
-        const currentLatex = mf.getValue ? mf.getValue("latex-expanded") : mf.value;
-        const rawPlainText = mf.getValue ? mf.getValue("plain-text") : currentLatex;
-        const currentPlainText = normalizeMathLivePlainText(rawPlainText, currentLatex);
-        lastEmittedValueRef.current = currentLatex;
-        onChangeRef.current(currentLatex, currentPlainText);
-      };
+          const handleFocus = () => {
+            onFocusRef.current?.();
+          };
 
-      const handleFocus = () => {
-        onFocusRef.current?.();
-      };
+          // Keyboard Event Isolation: Prevent arrow keys, Tab, Enter, Space from bubbling up to quiz page
+          const handleKeyDown = (e: KeyboardEvent) => {
+            e.stopPropagation();
 
-      // Keyboard Event Isolation: Prevent arrow keys, Tab, Enter, Space from bubbling up to quiz page
-      const handleKeyDown = (e: KeyboardEvent) => {
-        e.stopPropagation();
+            if (mf.readOnly) {
+              // In read-only mode, only allow copy (Ctrl+C / Cmd+C) and navigation arrow keys
+              const isCopyOrNav =
+                (e.ctrlKey || e.metaKey) && (e.key === "c" || e.key === "C" || e.key === "a" || e.key === "A");
+              const isArrow = e.key.startsWith("Arrow");
+              if (!isCopyOrNav && !isArrow) {
+                e.preventDefault();
+                return;
+              }
+            }
+          };
 
-        if (disabled || mf.readOnly) {
-          // In read-only mode, only allow copy (Ctrl+C / Cmd+C) and navigation arrow keys
-          const isCopyOrNav =
-            (e.ctrlKey || e.metaKey) && (e.key === "c" || e.key === "C" || e.key === "a" || e.key === "A");
-          const isArrow = e.key.startsWith("Arrow");
-          if (!isCopyOrNav && !isArrow) {
-            e.preventDefault();
-            return;
-          }
-        }
-      };
+          onInputHandler = handleInput;
+          onKeyDownHandler = handleKeyDown;
+          onFocusHandler = handleFocus;
+          currentMf = mf;
 
-      mf.addEventListener("input", handleInput);
-      mf.addEventListener("keydown", handleKeyDown);
-      mf.addEventListener("focus", handleFocus);
-      mf.addEventListener("pointerdown", handleFocus);
+          mf.addEventListener("input", handleInput);
+          mf.addEventListener("keydown", handleKeyDown);
+          mf.addEventListener("focus", handleFocus);
+          mf.addEventListener("pointerdown", handleFocus);
 
-      containerRef.current.innerHTML = "";
-      containerRef.current.appendChild(mf);
-      mathfieldRef.current = mf;
-      setIsReady(true);
-
-      if (autoFocus && !disabled) {
-        setTimeout(() => mf.focus(), 150);
-      }
+          containerRef.current.innerHTML = "";
+          containerRef.current.appendChild(mf);
+          mathfieldRef.current = mf;
+          setLoadError(false);
+          setIsReady(true);
+        })
+        .catch((err) => {
+          if (!isMounted) return;
+          console.error("Failed to load MathLive bundle:", err);
+          setLoadError(true);
+        });
 
       return () => {
-        mf.removeEventListener("input", handleInput);
-        mf.removeEventListener("keydown", handleKeyDown);
-        mf.removeEventListener("focus", handleFocus);
-        mf.removeEventListener("pointerdown", handleFocus);
-        if (containerRef.current) {
-          containerRef.current.innerHTML = "";
+        isMounted = false;
+        if (currentMf) {
+          if (onInputHandler) currentMf.removeEventListener("input", onInputHandler);
+          if (onKeyDownHandler) currentMf.removeEventListener("keydown", onKeyDownHandler);
+          if (onFocusHandler) {
+            currentMf.removeEventListener("focus", onFocusHandler);
+            currentMf.removeEventListener("pointerdown", onFocusHandler);
+          }
+        }
+        if (container) {
+          container.innerHTML = "";
         }
         mathfieldRef.current = null;
       };
-    }, []);
+    }, [retryCount]);
 
     // Sync external value updates if changed from outside (e.g. reset or clear)
     useEffect(() => {
       if (!isReady || !mathfieldRef.current) return;
       const currentVal = mathfieldRef.current.getValue ? mathfieldRef.current.getValue("latex-expanded") : mathfieldRef.current.value;
-      if (value !== currentVal && value !== lastEmittedValueRef.current) {
+      if (shouldSyncExternalValue(value, currentVal, lastEmittedValueRef.current)) {
         mathfieldRef.current.setValue(value || "", { silenceNotifications: true });
         lastEmittedValueRef.current = value;
       }
@@ -257,11 +288,13 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
         onChangeRef.current("", "");
       },
       getValue: () => {
-        if (!mathfieldRef.current) return "";
+        if (!mathfieldRef.current) return latestValueRef.current || "";
         return mathfieldRef.current.getValue ? mathfieldRef.current.getValue("latex-expanded") : mathfieldRef.current.value;
       },
       setValue: (latex: string) => {
-        if (disabled || !mathfieldRef.current) return;
+        lastEmittedValueRef.current = latex;
+        latestValueRef.current = latex;
+        if (latestDisabledRef.current || !mathfieldRef.current) return;
         mathfieldRef.current.setValue(latex, { silenceNotifications: true });
         lastEmittedValueRef.current = latex;
         const rawPlainText = mathfieldRef.current.getValue
@@ -380,22 +413,57 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
           )}
         </div>
 
-        {/* MathLive Container */}
-        <div
-          ref={containerRef}
-          className={`p-3.5 min-h-[56px] text-slate-900 dark:text-white rounded-b-2xl overflow-x-auto min-w-0 ${
-            disabled ? "cursor-default select-text" : "cursor-text bg-white dark:bg-slate-900"
-          } ${inputMode === "text" ? "math-field-text-mode" : "math-field-math-mode"}`}
-          onPointerDown={() => {
-            if (!disabled) onFocusRef.current?.();
-          }}
-          onClick={() => {
-            if (!disabled) {
-              onFocusRef.current?.();
-              mathfieldRef.current?.focus();
-            }
-          }}
-        />
+        {/* Fallback & Error State if dynamic chunk fails to load */}
+        {loadError && (
+          <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200 flex items-center justify-between gap-3">
+            <span>Không thể tải bộ gõ công thức trực quan MathLive. Bạn vẫn có thể nhập đáp án bên dưới hoặc thử tải lại.</span>
+            <button
+              type="button"
+              onClick={() => {
+                resetMathLiveLoader();
+                setLoadError(false);
+                setRetryCount((c) => c + 1);
+              }}
+              className="px-2.5 py-1 text-xs font-semibold rounded bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100 hover:bg-amber-300 dark:hover:bg-amber-700 shrink-0"
+            >
+              Thử tải lại
+            </button>
+          </div>
+        )}
+
+        {/* MathLive Container or Fallback Textarea */}
+        {loadError && !isReady ? (
+          <div className="p-3.5 bg-white dark:bg-slate-900 rounded-b-2xl">
+            <textarea
+              value={value}
+              onChange={(e) => {
+                const nextVal = e.target.value;
+                lastEmittedValueRef.current = nextVal;
+                latestValueRef.current = nextVal;
+                onChange(nextVal, nextVal);
+              }}
+              disabled={disabled}
+              placeholder={placeholder}
+              className="w-full min-h-[50px] p-2 text-sm font-mono border rounded border-amber-300 dark:border-amber-700 bg-transparent text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-amber-500"
+            />
+          </div>
+        ) : (
+          <div
+            ref={containerRef}
+            className={`p-3.5 min-h-[56px] text-slate-900 dark:text-white rounded-b-2xl overflow-x-auto min-w-0 ${
+              disabled ? "cursor-default select-text" : "cursor-text bg-white dark:bg-slate-900"
+            } ${inputMode === "text" ? "math-field-text-mode" : "math-field-math-mode"}`}
+            onPointerDown={() => {
+              if (!disabled) onFocusRef.current?.();
+            }}
+            onClick={() => {
+              if (!disabled) {
+                onFocusRef.current?.();
+                mathfieldRef.current?.focus();
+              }
+            }}
+          />
+        )}
 
         {/* Empty state hint */}
         {!value && (
