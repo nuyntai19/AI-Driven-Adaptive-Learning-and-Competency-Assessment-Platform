@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.BLL.AssessmentAndReasoning.PreliminaryGrading;
@@ -519,50 +520,52 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
             return QuestionImportConfirmResult.ValidationFailed("Phiên nhập câu hỏi này đang được xử lý hoặc đã hoàn tất. Vui lòng không gửi yêu cầu trùng lặp.");
         }
 
-        var questionsToImport = cached.Questions;
-        if (questionsToImport == null || questionsToImport.Count == 0)
-        {
-            cached.ResetToPending();
-            return QuestionImportConfirmResult.ValidationFailed("Không có câu hỏi hợp lệ nào để nhập.");
-        }
-
-        if (request.SubjectId == Guid.Empty)
-        {
-            cached.ResetToPending();
-            return QuestionImportConfirmResult.ValidationFailed("Môn học (SubjectId) là bắt buộc.");
-        }
-
-        if (request.PrimaryTopicNodeId == 0)
-        {
-            cached.ResetToPending();
-            return QuestionImportConfirmResult.ValidationFailed("Chủ đề kiến thức (PrimaryTopicNodeId) là bắt buộc.");
-        }
-
-        // Verify subject and topic node exist
-        var subjectExists = await _dbContext.Subjects.AsNoTracking()
-            .AnyAsync(s => s.CenterId == centerId && s.SubjectId == request.SubjectId && !s.IsDeleted, cancellationToken);
-        if (!subjectExists)
-        {
-            cached.ResetToPending();
-            return QuestionImportConfirmResult.NotFound("Môn học không tồn tại trong trung tâm.");
-        }
-
-        var nodeExists = await _dbContext.KnowledgeNodes.AsNoTracking()
-            .AnyAsync(n => n.CenterId == centerId && n.SubjectId == request.SubjectId && n.NodeId == request.PrimaryTopicNodeId && !n.IsDeleted, cancellationToken);
-        if (!nodeExists)
-        {
-            cached.ResetToPending();
-            return QuestionImportConfirmResult.NotFound("Chủ đề kiến thức không tồn tại trong môn học.");
-        }
-
-        var now = _timeProvider.GetUtcNow().UtcDateTime;
-        var importedCount = 0;
-
-        await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var completed = false;
+        IDbContextTransaction? transaction = null;
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var questionsToImport = cached.Questions;
+            if (questionsToImport == null || questionsToImport.Count == 0)
+            {
+                return QuestionImportConfirmResult.ValidationFailed("Không có câu hỏi hợp lệ nào để nhập.");
+            }
+
+            if (request.SubjectId == Guid.Empty)
+            {
+                return QuestionImportConfirmResult.ValidationFailed("Môn học (SubjectId) là bắt buộc.");
+            }
+
+            if (request.PrimaryTopicNodeId == 0)
+            {
+                return QuestionImportConfirmResult.ValidationFailed("Chủ đề kiến thức (PrimaryTopicNodeId) là bắt buộc.");
+            }
+
+            // Verify subject and topic node exist
+            var subjectExists = await _dbContext.Subjects.AsNoTracking()
+                .AnyAsync(s => s.CenterId == centerId && s.SubjectId == request.SubjectId && !s.IsDeleted, cancellationToken);
+            if (!subjectExists)
+            {
+                return QuestionImportConfirmResult.NotFound("Môn học không tồn tại trong trung tâm.");
+            }
+
+            var nodeExists = await _dbContext.KnowledgeNodes.AsNoTracking()
+                .AnyAsync(n => n.CenterId == centerId && n.SubjectId == request.SubjectId && n.NodeId == request.PrimaryTopicNodeId && !n.IsDeleted, cancellationToken);
+            if (!nodeExists)
+            {
+                return QuestionImportConfirmResult.NotFound("Chủ đề kiến thức không tồn tại trong môn học.");
+            }
+
+            var now = _timeProvider.GetUtcNow().UtcDateTime;
+            var importedCount = 0;
+
+            transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+
             foreach (var item in questionsToImport)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 var criteria = new Contracts.CurriculumAndQuestions.GradingCriteria
                 {
                     RequiredIdeas = item.RequiredIdeas,
@@ -587,8 +590,14 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
                     optionValidationItems,
                     out var policyError))
                 {
-                    await transaction.RollbackAsync(cancellationToken);
-                    cached.ResetToPending();
+                    try
+                    {
+                        await transaction.RollbackAsync(CancellationToken.None);
+                    }
+                    catch (Exception rbEx)
+                    {
+                        _logger?.LogWarning(rbEx, "Không thể rollback transaction khi câu hỏi không thỏa điều kiện kích hoạt.");
+                    }
                     return QuestionImportConfirmResult.ValidationFailed($"Dòng {item.RowIndex}: {policyError}");
                 }
 
@@ -651,6 +660,7 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
 
             await transaction.CommitAsync(cancellationToken);
 
+            completed = true;
             cached.MarkCompleted();
             if (!string.IsNullOrWhiteSpace(request.PreviewToken))
             {
@@ -663,12 +673,54 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
                 Message = $"Đã nhập thành công {importedCount} câu hỏi vào ngân hàng đề."
             });
         }
+        catch (OperationCanceledException)
+        {
+            if (transaction != null)
+            {
+                try
+                {
+                    await transaction.RollbackAsync(CancellationToken.None);
+                }
+                catch (Exception rbEx)
+                {
+                    _logger?.LogWarning(rbEx, "Không thể rollback transaction khi bị hủy (cancellation).");
+                }
+            }
+            throw;
+        }
         catch (Exception ex)
         {
-            await transaction.RollbackAsync(cancellationToken);
-            cached.ResetToPending();
+            if (transaction != null)
+            {
+                try
+                {
+                    await transaction.RollbackAsync(CancellationToken.None);
+                }
+                catch (Exception rbEx)
+                {
+                    _logger?.LogWarning(rbEx, "Không thể rollback transaction khi xảy ra lỗi.");
+                }
+            }
             _logger?.LogError(ex, "Lỗi xảy ra khi lưu câu hỏi nhập dữ liệu cho CenterId {CenterId}, SubjectId {SubjectId}", centerId, request.SubjectId);
             return QuestionImportConfirmResult.Failure("IMPORT_FAILED", "Đã xảy ra lỗi trong quá trình lưu dữ liệu câu hỏi. Vui lòng kiểm tra lại dữ liệu hoặc thử lại sau.");
+        }
+        finally
+        {
+            if (transaction != null)
+            {
+                try
+                {
+                    await transaction.DisposeAsync();
+                }
+                catch (Exception dispEx)
+                {
+                    _logger?.LogWarning(dispEx, "Không thể dispose transaction.");
+                }
+            }
+            if (!completed)
+            {
+                cached.ResetToPending();
+            }
         }
     }
 

@@ -638,15 +638,114 @@ public sealed class QuestionImportUseCaseTests : IDisposable
         }
         Assert.True(File.Exists(fixturePath), $"Fixture file not found: {fixturePath}");
 
-        var solutionRoot = Directory.GetParent(AppContext.BaseDirectory)!.Parent!.Parent!.Parent!.Parent!.FullName;
-        var frontendPublicPath = Path.Combine(solutionRoot, "web", "edutwin-web", "public", "EduTwin_Question_Import_Template.csv");
-
-        if (File.Exists(frontendPublicPath))
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null && !File.Exists(Path.Combine(dir.FullName, "EduTwin.sln")))
         {
-            var fixtureContent = (await File.ReadAllTextAsync(fixturePath, Encoding.UTF8)).Replace("\r\n", "\n").Trim();
-            var frontendContent = (await File.ReadAllTextAsync(frontendPublicPath, Encoding.UTF8)).Replace("\r\n", "\n").Trim();
-            Assert.Equal(fixtureContent, frontendContent);
+            dir = dir.Parent;
         }
+        Assert.NotNull(dir);
+        var frontendPublicPath = Path.Combine(dir.FullName, "web", "edutwin-web", "public", "EduTwin_Question_Import_Template.csv");
+        Assert.True(File.Exists(frontendPublicPath), $"Frontend public CSV template file not found at: {frontendPublicPath}");
+
+        var fixtureContent = (await File.ReadAllTextAsync(fixturePath, Encoding.UTF8)).Replace("\r\n", "\n").Trim();
+        var frontendContent = (await File.ReadAllTextAsync(frontendPublicPath, Encoding.UTF8)).Replace("\r\n", "\n").Trim();
+        Assert.Equal(fixtureContent, frontendContent);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_CancellationAfterTokenAcquired_AllowsRetry()
+    {
+        var sut = new QuestionImportUseCase(
+            _dbContext,
+            _tenantContextMock.Object,
+            _timeProviderMock.Object,
+            _mathNormalizer,
+            _coordinateNormalizer);
+
+        var csvContent = new StringBuilder()
+            .AppendLine("QuestionText,QuestionType,AnswerEvaluationMode,CorrectAnswer,Solution,Difficulty")
+            .AppendLine("Test question,ShortAnswer,TextExact,10,Solution,3")
+            .ToString();
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(csvContent));
+        var previewResult = await sut.PreviewAsync(stream, "test.csv", CancellationToken.None);
+        Assert.True(previewResult.IsSuccess);
+        var previewToken = previewResult.Data!.PreviewToken;
+
+        var confirmRequest = new QuestionImportConfirmRequest
+        {
+            PreviewToken = previewToken,
+            SubjectId = _subjectId,
+            PrimaryTopicNodeId = _nodeId
+        };
+
+        // 1. Simulate cancellation during confirm request after token has been acquired
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+        {
+            await sut.ConfirmAsync(confirmRequest, cts.Token);
+        });
+
+        // 2. Retry with the same preview token and active cancellation token
+        var retryResult = await sut.ConfirmAsync(confirmRequest, CancellationToken.None);
+
+        Assert.True(retryResult.IsSuccess, retryResult.ErrorMessage);
+        Assert.Equal(1, retryResult.Data!.ImportedCount);
+
+        var savedQuestions = await _dbContext.Questions.Where(q => q.CenterId == _centerId).ToListAsync();
+        Assert.Single(savedQuestions);
+        Assert.Equal("Test question", savedQuestions[0].QuestionText);
+        Assert.Equal(QuestionStatus.Active, savedQuestions[0].Status);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_ValidationFailureAfterTokenAcquired_ResetsTokenAndAllowsRetry()
+    {
+        var sut = new QuestionImportUseCase(
+            _dbContext,
+            _tenantContextMock.Object,
+            _timeProviderMock.Object,
+            _mathNormalizer,
+            _coordinateNormalizer);
+
+        var csvContent = new StringBuilder()
+            .AppendLine("QuestionText,QuestionType,AnswerEvaluationMode,CorrectAnswer,Solution,Difficulty")
+            .AppendLine("Test question 2,ShortAnswer,TextExact,20,Solution 2,2")
+            .ToString();
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(csvContent));
+        var previewResult = await sut.PreviewAsync(stream, "test2.csv", CancellationToken.None);
+        Assert.True(previewResult.IsSuccess);
+        var previewToken = previewResult.Data!.PreviewToken;
+
+        var initialRequest = new QuestionImportConfirmRequest
+        {
+            PreviewToken = previewToken,
+            SubjectId = Guid.NewGuid(), // Non-existent subject to trigger validation failure
+            PrimaryTopicNodeId = _nodeId
+        };
+
+        // 1. Initial attempt fails validation after token is acquired
+        var initialResult = await sut.ConfirmAsync(initialRequest, CancellationToken.None);
+        Assert.False(initialResult.IsSuccess);
+
+        // 2. Retry with valid subject using same preview token must not be blocked as "in-processing"
+        var retryRequest = new QuestionImportConfirmRequest
+        {
+            PreviewToken = previewToken,
+            SubjectId = _subjectId,
+            PrimaryTopicNodeId = _nodeId
+        };
+        var retryResult = await sut.ConfirmAsync(retryRequest, CancellationToken.None);
+
+        Assert.True(retryResult.IsSuccess, retryResult.ErrorMessage);
+        Assert.Equal(1, retryResult.Data!.ImportedCount);
+
+        var savedQuestion = await _dbContext.Questions.FirstOrDefaultAsync(q => q.CenterId == _centerId && q.QuestionText == "Test question 2");
+        Assert.NotNull(savedQuestion);
+        Assert.Equal(QuestionStatus.Active, savedQuestion.Status);
     }
 
     public void Dispose()
