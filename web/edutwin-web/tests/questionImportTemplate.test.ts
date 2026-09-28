@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import test from "node:test";
 import { QUESTION_IMPORT_CSV_TEMPLATE } from "../src/utils/questionImportTemplate.ts";
 
@@ -37,4 +39,12 @@ test("ensures every example row contains valid matching question types and evalu
 
   // Row 4: Essay + Manual
   assert.match(lines[4], /^Essay,.*Manual$/);
+});
+
+test("matches public canonical CSV template file byte-for-byte to prevent template drift", () => {
+  const publicCsvPath = path.resolve(import.meta.dirname, "../public/EduTwin_Question_Import_Template.csv");
+  assert.ok(fs.existsSync(publicCsvPath), "Canonical CSV file must exist in public directory");
+  const fileContent = fs.readFileSync(publicCsvPath, "utf-8").replace(/\r\n/g, "\n").trim();
+  const tsContent = QUESTION_IMPORT_CSV_TEMPLATE.replace(/\r\n/g, "\n").trim();
+  assert.equal(tsContent, fileContent);
 });

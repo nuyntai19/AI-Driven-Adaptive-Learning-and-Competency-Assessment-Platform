@@ -23,11 +23,48 @@ namespace EduTwin.BLL.CurriculumAndQuestions.Import;
 
 public sealed class QuestionImportUseCase : IQuestionImportUseCase
 {
-    private sealed record PreviewCacheEntry(
-        DateTime CreatedAtUtc,
-        Guid CenterId,
-        Guid UserId,
-        List<QuestionImportItemDto> Questions);
+    private const int StatusPending = 0;
+    private const int StatusProcessing = 1;
+    private const int StatusCompleted = 2;
+
+    private sealed class PreviewCacheEntry
+    {
+        public DateTime CreatedAtUtc { get; }
+        public Guid CenterId { get; }
+        public Guid UserId { get; }
+        public List<QuestionImportItemDto> Questions { get; }
+        private int _status;
+
+        public PreviewCacheEntry(
+            DateTime createdAtUtc,
+            Guid centerId,
+            Guid userId,
+            List<QuestionImportItemDto> questions)
+        {
+            CreatedAtUtc = createdAtUtc;
+            CenterId = centerId;
+            UserId = userId;
+            Questions = questions;
+            _status = StatusPending;
+        }
+
+        public bool TryBeginProcessing()
+        {
+            return Interlocked.CompareExchange(ref _status, StatusProcessing, StatusPending) == StatusPending;
+        }
+
+        public void MarkCompleted()
+        {
+            Interlocked.Exchange(ref _status, StatusCompleted);
+        }
+
+        public void ResetToPending()
+        {
+            Interlocked.CompareExchange(ref _status, StatusPending, StatusProcessing);
+        }
+
+        public int Status => Volatile.Read(ref _status);
+    }
 
     private static readonly ConcurrentDictionary<string, PreviewCacheEntry> PreviewCache = new();
 
@@ -476,19 +513,28 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
             return QuestionImportConfirmResult.ValidationFailed("Mã xác thực xem trước (PreviewToken) đã hết hạn. Vui lòng tải và xem trước lại tệp dữ liệu.");
         }
 
+        // Atomic transition to prevent concurrent duplicate imports and guarantee idempotency
+        if (!cached.TryBeginProcessing())
+        {
+            return QuestionImportConfirmResult.ValidationFailed("Phiên nhập câu hỏi này đang được xử lý hoặc đã hoàn tất. Vui lòng không gửi yêu cầu trùng lặp.");
+        }
+
         var questionsToImport = cached.Questions;
         if (questionsToImport == null || questionsToImport.Count == 0)
         {
+            cached.ResetToPending();
             return QuestionImportConfirmResult.ValidationFailed("Không có câu hỏi hợp lệ nào để nhập.");
         }
 
         if (request.SubjectId == Guid.Empty)
         {
+            cached.ResetToPending();
             return QuestionImportConfirmResult.ValidationFailed("Môn học (SubjectId) là bắt buộc.");
         }
 
         if (request.PrimaryTopicNodeId == 0)
         {
+            cached.ResetToPending();
             return QuestionImportConfirmResult.ValidationFailed("Chủ đề kiến thức (PrimaryTopicNodeId) là bắt buộc.");
         }
 
@@ -497,6 +543,7 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
             .AnyAsync(s => s.CenterId == centerId && s.SubjectId == request.SubjectId && !s.IsDeleted, cancellationToken);
         if (!subjectExists)
         {
+            cached.ResetToPending();
             return QuestionImportConfirmResult.NotFound("Môn học không tồn tại trong trung tâm.");
         }
 
@@ -504,6 +551,7 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
             .AnyAsync(n => n.CenterId == centerId && n.SubjectId == request.SubjectId && n.NodeId == request.PrimaryTopicNodeId && !n.IsDeleted, cancellationToken);
         if (!nodeExists)
         {
+            cached.ResetToPending();
             return QuestionImportConfirmResult.NotFound("Chủ đề kiến thức không tồn tại trong môn học.");
         }
 
@@ -540,6 +588,7 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
                     out var policyError))
                 {
                     await transaction.RollbackAsync(cancellationToken);
+                    cached.ResetToPending();
                     return QuestionImportConfirmResult.ValidationFailed($"Dòng {item.RowIndex}: {policyError}");
                 }
 
@@ -602,6 +651,7 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
 
             await transaction.CommitAsync(cancellationToken);
 
+            cached.MarkCompleted();
             if (!string.IsNullOrWhiteSpace(request.PreviewToken))
             {
                 PreviewCache.TryRemove(request.PreviewToken, out _);
@@ -616,6 +666,7 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
         catch (Exception ex)
         {
             await transaction.RollbackAsync(cancellationToken);
+            cached.ResetToPending();
             _logger?.LogError(ex, "Lỗi xảy ra khi lưu câu hỏi nhập dữ liệu cho CenterId {CenterId}, SubjectId {SubjectId}", centerId, request.SubjectId);
             return QuestionImportConfirmResult.Failure("IMPORT_FAILED", "Đã xảy ra lỗi trong quá trình lưu dữ liệu câu hỏi. Vui lòng kiểm tra lại dữ liệu hoặc thử lại sau.");
         }

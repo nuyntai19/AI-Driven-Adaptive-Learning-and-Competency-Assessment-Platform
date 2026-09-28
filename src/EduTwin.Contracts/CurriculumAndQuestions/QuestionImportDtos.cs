@@ -52,7 +52,6 @@ public sealed class QuestionImportConfirmRequest
     public string PreviewToken { get; set; } = string.Empty;
     public Guid SubjectId { get; set; }
     public ulong PrimaryTopicNodeId { get; set; }
-    public List<QuestionImportItemDto>? Questions { get; set; }
 }
 
 public sealed class QuestionImportConfirmResponse

@@ -155,7 +155,6 @@ export interface QuestionImportConfirmRequest {
   previewToken: string;
   subjectId: string;
   primaryTopicNodeId: number | string;
-  questions?: QuestionImportItemDto[];
 }
 
 export interface QuestionImportConfirmDataDto {

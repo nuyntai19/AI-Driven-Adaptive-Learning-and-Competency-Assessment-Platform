@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Moq;
 using Xunit;
 using EduTwin.BLL.AssessmentAndReasoning.PreliminaryGrading;
+using EduTwin.BLL.CurriculumAndQuestions;
 using EduTwin.BLL.CurriculumAndQuestions.Import;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.CurriculumAndQuestions;
@@ -268,36 +269,61 @@ public sealed class QuestionImportUseCaseTests : IDisposable
     [Fact]
     public async Task ConfirmAsync_ItemFailingActivationGuard_FailsGracefullyWithoutCommitting()
     {
+        var activationMock = new Mock<IQuestionActivationPolicy>();
+        string? policyError = "Chế độ chấm không phù hợp với kiểu câu hỏi.";
+        activationMock.Setup(p => p.Validate(
+                It.IsAny<QuestionType>(),
+                It.IsAny<QuestionAnswerEvaluationMode>(),
+                It.IsAny<string?>(),
+                It.IsAny<IReadOnlyList<QuestionOptionValidationItem>>(),
+                out policyError))
+            .Returns(true);
+
+        var isConfirmPhase = false;
+        activationMock.Setup(p => p.ValidateCompleteQuestion(
+                It.IsAny<QuestionType>(),
+                It.IsAny<QuestionAnswerEvaluationMode>(),
+                It.IsAny<byte>(),
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<string>(),
+                It.IsAny<decimal>(),
+                It.IsAny<uint>(),
+                It.IsAny<IReadOnlyList<QuestionOptionValidationItem>>(),
+                out policyError))
+            .Returns(() => !isConfirmPhase);
+
         var sut = new QuestionImportUseCase(
             _dbContext,
             _tenantContextMock.Object,
             _timeProviderMock.Object,
             _mathNormalizer,
-            _coordinateNormalizer);
+            _coordinateNormalizer,
+            activationMock.Object);
 
+        var csvContent = new StringBuilder()
+            .AppendLine("QuestionText,QuestionType,AnswerEvaluationMode,CorrectAnswer,Solution,Difficulty")
+            .AppendLine("Test question,ShortAnswer,TextExact,10,Solution,3")
+            .ToString();
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(csvContent));
+        var previewResult = await sut.PreviewAsync(stream, "test.csv", CancellationToken.None);
+        Assert.True(previewResult.IsSuccess);
+        Assert.Single(previewResult.Data!.ValidQuestions);
+
+        isConfirmPhase = true; // Now simulate activation policy rejecting it during confirm
         var confirmRequest = new QuestionImportConfirmRequest
         {
+            PreviewToken = previewResult.Data!.PreviewToken,
             SubjectId = _subjectId,
-            PrimaryTopicNodeId = _nodeId,
-            Questions = new List<QuestionImportItemDto>
-            {
-                new()
-                {
-                    RowIndex = 2,
-                    QuestionText = "Broken MC Question",
-                    QuestionType = QuestionType.MultipleChoice,
-                    AnswerEvaluationMode = QuestionAnswerEvaluationMode.Manual, // Invalid evaluation mode for MC
-                    CorrectAnswer = "A",
-                    Solution = "Solution",
-                    Options = new List<QuestionOptionInput>()
-                }
-            }
+            PrimaryTopicNodeId = _nodeId
         };
 
         var confirmResult = await sut.ConfirmAsync(confirmRequest, CancellationToken.None);
 
         Assert.False(confirmResult.IsSuccess);
         Assert.Equal("VALIDATION_FAILED", confirmResult.ErrorCode);
+        Assert.Contains("Chế độ chấm không phù hợp", confirmResult.ErrorMessage);
 
         var count = await _dbContext.Questions.CountAsync(q => q.CenterId == _centerId);
         Assert.Equal(0, count);
@@ -313,30 +339,12 @@ public sealed class QuestionImportUseCaseTests : IDisposable
             _mathNormalizer,
             _coordinateNormalizer);
 
-        // Attempting to bypass PreviewAsync by supplying arbitrary questions with fake or missing preview token
+        // Attempting to bypass PreviewAsync by supplying a fake or unregistered preview token
         var tamperedRequest = new QuestionImportConfirmRequest
         {
             PreviewToken = "fake-unregistered-token",
             SubjectId = _subjectId,
-            PrimaryTopicNodeId = _nodeId,
-            Questions = new List<QuestionImportItemDto>
-            {
-                new()
-                {
-                    RowIndex = 2,
-                    QuestionText = "", // Empty text
-                    QuestionType = QuestionType.MultipleChoice,
-                    AnswerEvaluationMode = QuestionAnswerEvaluationMode.TextExact,
-                    CorrectAnswer = "A",
-                    Solution = "Solution",
-                    MaxScore = -5, // Invalid negative score
-                    Options = new List<QuestionOptionInput>
-                    {
-                        new() { OptionLabel = "A", OptionText = "Opt A", IsCorrect = true },
-                        new() { OptionLabel = "B", OptionText = "Opt B", IsCorrect = false }
-                    }
-                }
-            }
+            PrimaryTopicNodeId = _nodeId
         };
 
         var confirmResult = await sut.ConfirmAsync(tamperedRequest, CancellationToken.None);
@@ -347,6 +355,127 @@ public sealed class QuestionImportUseCaseTests : IDisposable
 
         var count = await _dbContext.Questions.CountAsync(q => q.CenterId == _centerId);
         Assert.Equal(0, count);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_ConcurrentRequestsWithSameToken_OnlyOneSucceedsAndNoDuplicateRows()
+    {
+        var inMemoryDbName = Guid.NewGuid().ToString();
+        var dbOptions = new DbContextOptionsBuilder<EduTwinDbContext>()
+            .UseInMemoryDatabase(inMemoryDbName)
+            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+            .Options;
+
+        using var dbContextSeed = new EduTwinDbContext(dbOptions, _tenantIdAccessorMock.Object);
+        dbContextSeed.Database.EnsureCreated();
+        var user = new User
+        {
+            UserId = _teacherId,
+            CenterId = _centerId,
+            Username = "teacher.concurrent",
+            DisplayName = "Teacher Concurrent",
+            PasswordHash = "hash",
+            RoleName = UserRole.Teacher,
+            Status = UserStatus.Active,
+            CreatedAt = _fixedTime.UtcDateTime,
+            UpdatedAt = _fixedTime.UtcDateTime
+        };
+        dbContextSeed.Users.Add(user);
+        dbContextSeed.Teachers.Add(new Teacher
+        {
+            TeacherId = _teacherId,
+            CenterId = _centerId,
+            User = user,
+            CreatedAt = _fixedTime.UtcDateTime,
+            UpdatedAt = _fixedTime.UtcDateTime
+        });
+        dbContextSeed.Subjects.Add(new Subject
+        {
+            SubjectId = _subjectId,
+            CenterId = _centerId,
+            SubjectCode = "MATH",
+            SubjectName = "Toán Học",
+            IsActive = true,
+            CreatedAt = _fixedTime.UtcDateTime,
+            UpdatedAt = _fixedTime.UtcDateTime
+        });
+        dbContextSeed.KnowledgeNodes.Add(new KnowledgeNode
+        {
+            NodeId = _nodeId,
+            CenterId = _centerId,
+            SubjectId = _subjectId,
+            NodeCode = "CALC-01",
+            NodeName = "Đạo Hàm",
+            IsActive = true,
+            CreatedAt = _fixedTime.UtcDateTime,
+            UpdatedAt = _fixedTime.UtcDateTime
+        });
+        await dbContextSeed.SaveChangesAsync();
+
+        using var dbContext1 = new EduTwinDbContext(dbOptions, _tenantIdAccessorMock.Object);
+        using var dbContext2 = new EduTwinDbContext(dbOptions, _tenantIdAccessorMock.Object);
+
+        var sut1 = new QuestionImportUseCase(
+            dbContext1,
+            _tenantContextMock.Object,
+            _timeProviderMock.Object,
+            _mathNormalizer,
+            _coordinateNormalizer);
+
+        var sut2 = new QuestionImportUseCase(
+            dbContext2,
+            _tenantContextMock.Object,
+            _timeProviderMock.Object,
+            _mathNormalizer,
+            _coordinateNormalizer);
+
+        var csvContent = new StringBuilder()
+            .AppendLine("QuestionText,QuestionType,AnswerEvaluationMode,CorrectAnswer,Solution,Difficulty")
+            .AppendLine("Test question,ShortAnswer,TextExact,10,Solution,3")
+            .ToString();
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(csvContent));
+        var previewResult = await sut1.PreviewAsync(stream, "test.csv", CancellationToken.None);
+        Assert.True(previewResult.IsSuccess);
+        Assert.Single(previewResult.Data!.ValidQuestions);
+        var token = previewResult.Data!.PreviewToken;
+
+        var request1 = new QuestionImportConfirmRequest
+        {
+            PreviewToken = token,
+            SubjectId = _subjectId,
+            PrimaryTopicNodeId = _nodeId
+        };
+        var request2 = new QuestionImportConfirmRequest
+        {
+            PreviewToken = token,
+            SubjectId = _subjectId,
+            PrimaryTopicNodeId = _nodeId
+        };
+
+        // Fire both requests concurrently
+        var task1 = sut1.ConfirmAsync(request1, CancellationToken.None);
+        var task2 = sut2.ConfirmAsync(request2, CancellationToken.None);
+
+        var results = await Task.WhenAll(task1, task2);
+
+        var successCount = results.Count(r => r.IsSuccess);
+        var failureCount = results.Count(r => !r.IsSuccess);
+
+        Assert.True(successCount == 1, $"Expected 1 success, got {successCount}. R1: {results[0].ErrorMessage} ({results[0].ErrorCode}), R2: {results[1].ErrorMessage} ({results[1].ErrorCode})");
+        Assert.Equal(1, failureCount);
+
+        var failedResult = results.First(r => !r.IsSuccess);
+        Assert.Equal("VALIDATION_FAILED", failedResult.ErrorCode);
+        Assert.NotNull(failedResult.ErrorMessage);
+        Assert.True(
+            failedResult.ErrorMessage!.Contains("đang được xử lý hoặc đã hoàn tất") ||
+            failedResult.ErrorMessage!.Contains("không hợp lệ hoặc đã hết hạn"),
+            $"Unexpected error message: {failedResult.ErrorMessage}");
+
+        using var verifyContext = new EduTwinDbContext(dbOptions, _tenantIdAccessorMock.Object);
+        var count = await verifyContext.Questions.CountAsync(q => q.CenterId == _centerId);
+        Assert.Equal(1, count);
     }
 
     [Fact]
@@ -497,6 +626,27 @@ public sealed class QuestionImportUseCaseTests : IDisposable
         Assert.Equal(QuestionType.Essay, qEssay.QuestionType);
         Assert.Equal(QuestionAnswerEvaluationMode.Manual, qEssay.AnswerEvaluationMode);
         Assert.Equal(QuestionStatus.Active, qEssay.Status);
+    }
+
+    [Fact]
+    public async Task OfficialCsvTemplateFixture_MatchesFrontendPublicFile()
+    {
+        var fixturePath = Path.Combine(AppContext.BaseDirectory, "CurriculumAndQuestions", "Fixtures", "EduTwin_Question_Import_Template.csv");
+        if (!File.Exists(fixturePath))
+        {
+            fixturePath = Path.Combine(Directory.GetCurrentDirectory(), "CurriculumAndQuestions", "Fixtures", "EduTwin_Question_Import_Template.csv");
+        }
+        Assert.True(File.Exists(fixturePath), $"Fixture file not found: {fixturePath}");
+
+        var solutionRoot = Directory.GetParent(AppContext.BaseDirectory)!.Parent!.Parent!.Parent!.Parent!.FullName;
+        var frontendPublicPath = Path.Combine(solutionRoot, "web", "edutwin-web", "public", "EduTwin_Question_Import_Template.csv");
+
+        if (File.Exists(frontendPublicPath))
+        {
+            var fixtureContent = (await File.ReadAllTextAsync(fixturePath, Encoding.UTF8)).Replace("\r\n", "\n").Trim();
+            var frontendContent = (await File.ReadAllTextAsync(frontendPublicPath, Encoding.UTF8)).Replace("\r\n", "\n").Trim();
+            Assert.Equal(fixtureContent, frontendContent);
+        }
     }
 
     public void Dispose()

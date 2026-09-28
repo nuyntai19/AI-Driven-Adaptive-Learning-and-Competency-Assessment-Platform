@@ -97,7 +97,6 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
         previewToken: previewData.previewToken,
         subjectId: selectedSubjectId,
         primaryTopicNodeId: selectedTopicNodeId,
-        questions: previewData.validQuestions,
       });
 
       setImportResult(res.data);
