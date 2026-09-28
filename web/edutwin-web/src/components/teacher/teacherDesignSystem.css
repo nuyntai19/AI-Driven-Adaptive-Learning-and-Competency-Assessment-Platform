@@ -188,7 +188,9 @@
 }
 
 [data-actor="teacher"] .th-primary-button,
+[data-actor="teacher"] .th-button-primary,
 [data-actor="teacher"] .th-secondary-button,
+[data-actor="teacher"] .th-button-secondary,
 [data-actor="teacher"] .th-icon-button,
 [data-actor="teacher"] .th-dashed-button {
   display: inline-flex;
@@ -201,7 +203,8 @@
   transition: transform 100ms ease, box-shadow 100ms ease, background-color 140ms ease, border-color 140ms ease, color 140ms ease;
 }
 
-[data-actor="teacher"] .th-primary-button {
+[data-actor="teacher"] .th-primary-button,
+[data-actor="teacher"] .th-button-primary {
   border: 1.5px solid var(--th-border);
   background: var(--th-primary);
   color: #ffffff;
@@ -209,18 +212,21 @@
   box-shadow: var(--th-shadow);
 }
 
-[data-actor="teacher"] .th-primary-button:hover:not(:disabled) {
+[data-actor="teacher"] .th-primary-button:hover:not(:disabled),
+[data-actor="teacher"] .th-button-primary:hover:not(:disabled) {
   background: var(--at-accent-hover);
   transform: translateY(-1px);
   box-shadow: 0 3px 0 var(--th-border);
 }
 
-[data-actor="teacher"] .th-primary-button:active:not(:disabled) {
+[data-actor="teacher"] .th-primary-button:active:not(:disabled),
+[data-actor="teacher"] .th-button-primary:active:not(:disabled) {
   transform: translateY(1px);
   box-shadow: 0 1px 0 var(--th-border);
 }
 
-[data-actor="teacher"] .th-secondary-button {
+[data-actor="teacher"] .th-secondary-button,
+[data-actor="teacher"] .th-button-secondary {
   border: 1.5px solid var(--th-border);
   background: var(--th-surface);
   color: var(--th-text);
@@ -229,6 +235,7 @@
 }
 
 [data-actor="teacher"] .th-secondary-button:hover:not(:disabled),
+[data-actor="teacher"] .th-button-secondary:hover:not(:disabled),
 [data-actor="teacher"] .th-icon-button:hover:not(:disabled) {
   background: var(--th-surface-muted);
   transform: translateY(-1px);
@@ -236,6 +243,7 @@
 }
 
 [data-actor="teacher"] .th-secondary-button:active:not(:disabled),
+[data-actor="teacher"] .th-button-secondary:active:not(:disabled),
 [data-actor="teacher"] .th-icon-button:active:not(:disabled) {
   transform: translateY(1px);
   box-shadow: 0 1px 0 var(--th-border);
