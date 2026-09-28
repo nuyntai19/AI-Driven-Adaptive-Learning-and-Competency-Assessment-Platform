@@ -26,9 +26,12 @@ import {
   TeacherSkeleton,
   TeacherSafeErrorPanel,
   TeacherConcurrencyBanner,
-  TeacherMathFormulaPreview,
 } from "../../components/teacher";
-import { MathInputToolbar } from "../../components/math/MathInputToolbar";
+import { RichMathEditor } from "../../components/math/RichMathEditor";
+import {
+  hasUnfilledPlaceholder,
+  findIncompleteFormulasInText,
+} from "../centerManagerQuestionEditorHelpers";
 
 interface QuestionEditorOption {
   optionId?: string;
@@ -156,14 +159,6 @@ export function TeacherQuestionEditorView() {
     );
   };
 
-  const handleInsertMathToQuestion = (latex: string) => {
-    setQuestionText((prev) => prev + latex);
-  };
-
-  const handleInsertMathToSolution = (latex: string) => {
-    setSolution((prev) => prev + latex);
-  };
-
   const handleSave = () => {
     setFormError(null);
     setConcurrencyConflict(false);
@@ -223,6 +218,55 @@ export function TeacherQuestionEditorView() {
 
     if (!solution.trim()) {
       setFormError({ message: "Vui lòng nhập lời giải chi tiết (Solution) cho câu hỏi." });
+      return;
+    }
+
+    // Defensive check against unfilled MathLive \placeholder{}
+    if (
+      hasUnfilledPlaceholder(questionText) ||
+      findIncompleteFormulasInText(questionText).length > 0
+    ) {
+      setFormError({
+        message:
+          "Nội dung đề bài chứa công thức chưa hoàn thành (còn ô trống \\placeholder). Vui lòng hoàn tất trước khi lưu.",
+      });
+      return;
+    }
+
+    if (
+      hasUnfilledPlaceholder(solution) ||
+      findIncompleteFormulasInText(solution).length > 0
+    ) {
+      setFormError({
+        message:
+          "Lời giải chứa công thức chưa hoàn thành (còn ô trống \\placeholder). Vui lòng hoàn tất trước khi lưu.",
+      });
+      return;
+    }
+
+    if (questionType === "MultipleChoice") {
+      for (const opt of options) {
+        if (
+          hasUnfilledPlaceholder(opt.text) ||
+          findIncompleteFormulasInText(opt.text).length > 0
+        ) {
+          setFormError({
+            message: `Phương án ${opt.label} chứa công thức chưa hoàn thành (còn ô trống \\placeholder).`,
+          });
+          return;
+        }
+      }
+    }
+
+    if (
+      computedCorrectAnswer &&
+      (hasUnfilledPlaceholder(computedCorrectAnswer) ||
+        findIncompleteFormulasInText(computedCorrectAnswer).length > 0)
+    ) {
+      setFormError({
+        message:
+          "Đáp án chuẩn chứa công thức chưa hoàn thành (còn ô trống \\placeholder).",
+      });
       return;
     }
 
@@ -544,31 +588,15 @@ export function TeacherQuestionEditorView() {
             <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)]">
               Nội dung Đề bài <span className="text-rose-400">*</span>
             </label>
-            <span className="text-[11px] text-[var(--th-teal)]">Hỗ trợ LaTeX: $công\_thức$ hoặc $$khối\_toán$$</span>
+            <span className="text-[11px] text-[var(--th-teal)]">Hỗ trợ WYSIWYG: Gõ $ hoặc Ctrl+M để nhập công thức</span>
           </div>
 
-          {/* Math toolbar */}
-          <MathInputToolbar onInsert={handleInsertMathToQuestion} />
-
-          <textarea
-            rows={4}
+          <RichMathEditor
             value={questionText}
-            onChange={(e) => setQuestionText(e.target.value)}
+            onChange={setQuestionText}
             placeholder="Nhập nội dung đề bài. Ví dụ: Cho hàm số $f(x) = x^3 - 3x^2 + 2$. Tìm giá trị cực đại của hàm số."
-            className="th-input w-full text-sm font-mono leading-relaxed"
+            minHeight="110px"
           />
-
-          {/* KaTeX Live Preview */}
-          {questionText.trim() && (
-            <div className="rounded-xl border border-[var(--th-border-subtle)] bg-[var(--th-surface-subtle)] p-4 space-y-1.5">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--th-teal)]">
-                Xem trước đề bài (KaTeX Live Preview):
-              </p>
-              <div className="text-sm text-[var(--th-text)]">
-                <TeacherMathFormulaPreview content={questionText} />
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Row 4: Multiple choice options OR Essay criteria */}
@@ -594,7 +622,7 @@ export function TeacherQuestionEditorView() {
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <label className="flex items-center gap-2 cursor-pointer font-bold text-xs">
+                    <label className="flex items-center gap-2 cursor-pointer font-bold text-xs shrink-0">
                       <input
                         type="radio"
                         name="correctOption"
@@ -604,18 +632,14 @@ export function TeacherQuestionEditorView() {
                       />
                       <span>Phương án {opt.label}:</span>
                     </label>
-                    <input
-                      type="text"
+                    <RichMathEditor
                       value={opt.text}
-                      onChange={(e) => handleOptionTextChange(idx, e.target.value)}
-                      placeholder={`Nội dung đáp án ${opt.label} (hỗ trợ LaTeX)...`}
-                      className="th-input flex-1 text-xs"
+                      onChange={(val) => handleOptionTextChange(idx, val)}
+                      placeholder={`Nội dung đáp án ${opt.label} (gõ $ để chèn công thức)...`}
+                      singleLine={true}
+                      minHeight="38px"
+                      className="flex-1"
                     />
-                    {opt.text.trim() && (
-                      <div className="min-w-[120px] text-xs text-[var(--th-text-secondary)]">
-                        <TeacherMathFormulaPreview content={opt.text} />
-                      </div>
-                    )}
                   </div>
 
                   {!opt.isCorrect && (
@@ -702,13 +726,11 @@ export function TeacherQuestionEditorView() {
                 Lời giải chi tiết (Solution) <span className="text-rose-400">*</span>
               </label>
             </div>
-            <MathInputToolbar onInsert={handleInsertMathToSolution} />
-            <textarea
-              rows={3}
+            <RichMathEditor
               value={solution}
-              onChange={(e) => setSolution(e.target.value)}
-              placeholder="Nhập lời giải chuẩn từng bước để hỗ trợ học sinh..."
-              className="th-input w-full text-xs font-mono mt-2"
+              onChange={setSolution}
+              placeholder="Nhập lời giải chuẩn từng bước để hỗ trợ học sinh... (Gõ $ để chèn công thức)"
+              minHeight="96px"
             />
           </div>
 

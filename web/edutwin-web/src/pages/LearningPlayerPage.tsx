@@ -23,7 +23,6 @@ import {
 import { StudentSubjectRequiredState } from "../components/student/StudentSubjectRequiredState";
 import { AttemptFeedbackHierarchy } from "../components/student/AttemptFeedbackHierarchy";
 import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
-import { MathInputToolbar } from "../components/math/MathInputToolbar";
 import { VisualMathField, type VisualMathFieldRef } from "../components/math/VisualMathField";
 import { RichMathText } from "../components/math/RichMathText";
 import { SideAssistantWorkspace, type AssistantToolTab } from "../components/math/SideAssistantWorkspace";
@@ -185,7 +184,6 @@ export const LearningPlayerPage = () => {
 
   // Assistant tools state
   const [activeSideTool, setActiveSideTool] = useState<AssistantToolTab | null>(null);
-  const [showMathToolbar, setShowMathToolbar] = useState<boolean>(false);
   const [drawingUploadToken, setDrawingUploadToken] = useState<string | null>(null);
 
   // Input refs and cursor management
@@ -321,7 +319,6 @@ export const LearningPlayerPage = () => {
     setAnswerChanges(0);
     setTimeSpentSeconds(0);
     setActiveSideTool(null);
-    setShowMathToolbar(false);
     setDrawingUploadToken(null);
     setActiveInputTarget("answer");
     clientSubmissionIdRef.current = createClientSubmissionId();
@@ -2193,23 +2190,7 @@ export const LearningPlayerPage = () => {
                       </span>
                     )}
                   </div>
-                  {question?.questionType !== "MultipleChoice" && !isReadOnly && (
-                    <button
-                      type="button"
-                      onClick={() => setShowMathToolbar(!showMathToolbar)}
-                      className="text-xs font-bold px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800 transition-colors flex items-center gap-1 cursor-pointer"
-                    >
-                      <span>∑ Bảng gõ ký hiệu Toán</span>
-                      <span>{showMathToolbar ? "▲" : "▼"}</span>
-                    </button>
-                  )}
                 </div>
-
-                {showMathToolbar && question?.questionType !== "MultipleChoice" && !isReadOnly && (
-                  <div className="mb-4">
-                    <MathInputToolbar onInsert={(sym) => insertTextAtCursor(sym)} disabled={isReadOnly} />
-                  </div>
-                )}
 
                 {/* Multiple choice grid */}
                 {question?.questionType === "MultipleChoice" ? (

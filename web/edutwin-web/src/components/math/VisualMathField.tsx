@@ -30,6 +30,8 @@ export interface VisualMathFieldProps {
   value: string;
   onChange: (latex: string, plainText: string) => void;
   onFocus?: () => void;
+  onCommit?: () => void;
+  onCancel?: () => void;
   placeholder?: string;
   disabled?: boolean;
   className?: string;
@@ -47,6 +49,8 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
       value,
       onChange,
       onFocus,
+      onCommit,
+      onCancel,
       placeholder = "Nhấp vào đây để nhập công thức hoặc chọn ký hiệu...",
       disabled = false,
       className = "",
@@ -66,6 +70,10 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
     onFocusRef.current = onFocus;
     const onChangeRef = useRef(onChange);
     onChangeRef.current = onChange;
+    const onCommitRef = useRef(onCommit);
+    onCommitRef.current = onCommit;
+    const onCancelRef = useRef(onCancel);
+    onCancelRef.current = onCancel;
 
     const latestValueRef = useRef(value);
     latestValueRef.current = value;
@@ -157,6 +165,20 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
 
           // Keyboard Event Isolation: Prevent arrow keys, Tab, Enter, Space from bubbling up to quiz page
           const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Enter" && !e.shiftKey && onCommitRef.current) {
+              e.preventDefault();
+              e.stopPropagation();
+              onCommitRef.current();
+              return;
+            }
+
+            if (e.key === "Escape" && onCancelRef.current) {
+              e.preventDefault();
+              e.stopPropagation();
+              onCancelRef.current();
+              return;
+            }
+
             e.stopPropagation();
 
             if (mf.readOnly) {
@@ -425,6 +447,8 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
                 onChange(nextVal, nextVal);
               }}
               onFocus={() => onFocusRef.current?.()}
+              onCommit={onCommit}
+              onCancel={onCancel}
               disabled={disabled}
               placeholder={placeholder}
               onRetry={() => {

@@ -142,7 +142,7 @@ export function validateAndCleanFormula(latex: string | null | undefined): Formu
 }
 
 /**
- * Scans a text string for any inline $...$ or $$...$$ formulas that still contain \placeholder{}.
+ * Scans a text string for any inline $...$ or $$...$$ formulas or raw LaTeX that still contain \placeholder{}.
  * Used for defensive validation on save, activation, or legacy data hydration.
  */
 export function findIncompleteFormulasInText(text: string | null | undefined): string[] {
@@ -153,6 +153,11 @@ export function findIncompleteFormulasInText(text: string | null | undefined): s
     if (hasUnfilledPlaceholder(m)) {
       incomplete.push(m);
     }
+  }
+  // If no delimited formula was matched or \placeholder is present in raw LaTeX outside delimiters,
+  // also check the whole text so that raw LaTeX placeholders cannot bypass validation.
+  if (incomplete.length === 0 && hasUnfilledPlaceholder(text)) {
+    incomplete.push(text);
   }
   return incomplete;
 }
@@ -288,10 +293,11 @@ export function hydrateAnswerEditorValue(
  * Serializes an AnswerEditorValue into the authoritative raw string for API submission.
  */
 export function serializeAnswerEditorValue(
-  val: AnswerEditorValue | null | undefined,
+  val: AnswerEditorValue | string | null | undefined,
   evaluationMode: QuestionAnswerEvaluationMode | string
 ): string {
   if (!val) return "";
+  if (typeof val === "string") return val.trim();
   const raw = (val.rawText ?? "").trim();
 
   if (evaluationMode === "Coordinate2D") {
@@ -394,14 +400,21 @@ export function buildAuthoritativeQuestionPayload({
   }
 
   // Defensive validation against incomplete MathLive \placeholder{} across all fields
-  if (findIncompleteFormulasInText(formData.questionText).length > 0) {
+  if (
+    hasUnfilledPlaceholder(formData.questionText) ||
+    findIncompleteFormulasInText(formData.questionText).length > 0
+  ) {
     return {
       payload: formData,
       error: "Nội dung câu hỏi chứa công thức chưa hoàn thành (còn ô trống \\placeholder). Vui lòng hoàn tất trước khi lưu.",
     };
   }
 
-  if (formData.solution && findIncompleteFormulasInText(formData.solution).length > 0) {
+  if (
+    formData.solution &&
+    (hasUnfilledPlaceholder(formData.solution) ||
+      findIncompleteFormulasInText(formData.solution).length > 0)
+  ) {
     return {
       payload: formData,
       error: "Lời giải chứa công thức chưa hoàn thành (còn ô trống \\placeholder). Vui lòng hoàn tất trước khi lưu.",
@@ -410,7 +423,10 @@ export function buildAuthoritativeQuestionPayload({
 
   if (formData.options && Array.isArray(formData.options)) {
     for (const opt of formData.options) {
-      if (findIncompleteFormulasInText(opt.optionText).length > 0) {
+      if (
+        hasUnfilledPlaceholder(opt.optionText) ||
+        findIncompleteFormulasInText(opt.optionText).length > 0
+      ) {
         return {
           payload: formData,
           error: `Phương án ${opt.optionLabel || ""} chứa công thức chưa hoàn thành (còn ô trống \\placeholder).`,
@@ -419,7 +435,11 @@ export function buildAuthoritativeQuestionPayload({
     }
   }
 
-  if (authoritativeCorrectAnswer && findIncompleteFormulasInText(authoritativeCorrectAnswer).length > 0) {
+  if (
+    authoritativeCorrectAnswer &&
+    (hasUnfilledPlaceholder(authoritativeCorrectAnswer) ||
+      findIncompleteFormulasInText(authoritativeCorrectAnswer).length > 0)
+  ) {
     return {
       payload: formData,
       error: "Đáp án chuẩn chứa công thức chưa hoàn thành (còn ô trống \\placeholder).",

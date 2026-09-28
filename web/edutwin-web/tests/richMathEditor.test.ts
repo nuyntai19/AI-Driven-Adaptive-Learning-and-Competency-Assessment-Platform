@@ -1,5 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import katex from "katex";
 import {
   parseRichSegments,
@@ -7,7 +10,48 @@ import {
   hasUnfilledPlaceholder,
   validateAndCleanFormula,
   findIncompleteFormulasInText,
+  buildAuthoritativeQuestionPayload,
 } from "../src/pages/centerManagerQuestionEditorHelpers.ts";
+import {
+  serializeEditorDom,
+} from "../src/components/math/richMathEditorHelpers.ts";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Minimal DOM mock helper for Node environment
+function createMockElement(tagName = "div"): any {
+  const children: any[] = [];
+  const classList = new Set<string>();
+  const dataset: Record<string, string> = {};
+
+  return {
+    nodeType: 1,
+    tagName: tagName.toUpperCase(),
+    childNodes: children,
+    dataset,
+    classList: {
+      contains: (c: string) => classList.has(c),
+      add: (c: string) => classList.add(c),
+    },
+    appendChild(child: any) {
+      children.push(child);
+      return child;
+    },
+    set innerHTML(_: string) {
+      children.length = 0;
+    },
+    title: "",
+    contentEditable: "true",
+  };
+}
+
+function createMockTextNode(text: string): any {
+  return {
+    nodeType: 3,
+    nodeValue: text,
+  };
+}
 
 describe("WYSIWYG RichMathEditor Contract & Serialization", () => {
   it("parses mixed Vietnamese prose and KaTeX formulas into separate nodes", () => {
@@ -68,5 +112,161 @@ describe("WYSIWYG RichMathEditor Contract & Serialization", () => {
     const serialized = serializeRichSegments(segments);
 
     assert.equal(serialized, original);
+  });
+});
+
+describe("Defensive Placeholder Validation for Raw LaTeX without Delimiters", () => {
+  it("detects raw MathLive placeholder without $ delimiters", () => {
+    const rawLatex = "\\frac{\\placeholder{}}{2}";
+    assert.equal(hasUnfilledPlaceholder(rawLatex), true);
+
+    const found = findIncompleteFormulasInText(rawLatex);
+    assert.equal(found.length, 1);
+    assert.equal(found[0], rawLatex);
+  });
+
+  it("buildAuthoritativeQuestionPayload blocks raw LaTeX correctAnswer containing placeholder", () => {
+    const formData: any = {
+      subjectId: "sub-1",
+      primaryTopicNodeId: "node-1",
+      questionType: "ShortAnswer",
+      difficulty: 3,
+      questionText: "Tính giá trị biểu thức.",
+      maxScore: 10,
+      estimatedTimeSeconds: 60,
+      reasoningRequired: false,
+      languageCode: "vi",
+      answerEvaluationMode: "NumericRational",
+    };
+
+    const answerDrafts = {
+      "ShortAnswer:NumericRational": {
+        rawText: "\\frac{\\placeholder{}}{2}",
+        displayLatex: "\\frac{\\placeholder{}}{2}",
+      },
+    };
+
+    const result = buildAuthoritativeQuestionPayload({
+      formData,
+      modeDrafts: answerDrafts,
+    });
+    assert.ok(result.error);
+    assert.ok(result.error.includes("Đáp án chuẩn chứa công thức chưa hoàn thành"));
+  });
+
+  it("buildAuthoritativeQuestionPayload blocks questionText containing raw placeholder without delimiters", () => {
+    const formData: any = {
+      subjectId: "sub-1",
+      primaryTopicNodeId: "node-1",
+      questionType: "ShortAnswer",
+      difficulty: 3,
+      questionText: "Cho biểu thức \\placeholder{} hãy tính",
+      maxScore: 10,
+      estimatedTimeSeconds: 60,
+      reasoningRequired: false,
+      languageCode: "vi",
+      answerEvaluationMode: "TextExact",
+    };
+
+    const answerDrafts = {
+      "ShortAnswer:TextExact": {
+        rawText: "x = 1",
+        displayLatex: "",
+      },
+    };
+
+    const result = buildAuthoritativeQuestionPayload({
+      formData,
+      modeDrafts: answerDrafts,
+    });
+    assert.ok(result.error);
+    assert.ok(result.error.includes("Nội dung câu hỏi chứa công thức chưa hoàn thành"));
+  });
+});
+
+describe("DOM Serialization & Spacer (NBSP) Management", () => {
+  it("serializeEditorDom normalizes non-breaking spaces into normal spaces", () => {
+    const container = createMockElement("div");
+    container.appendChild(createMockTextNode("Cho\u00A0hàm\u00A0số\u00A0"));
+
+    const mathSpan = createMockElement("span");
+    mathSpan.classList.add("inline-math-node");
+    mathSpan.dataset.latex = "f(x)=x^2";
+    container.appendChild(mathSpan);
+
+    container.appendChild(createMockTextNode("\u00A0liên\u00A0tục."));
+
+    const serialized = serializeEditorDom(container);
+    assert.equal(serialized, "Cho hàm số $f(x)=x^2$ liên tục.");
+    assert.ok(!serialized.includes("\u00A0"));
+  });
+
+  it("serializeEditorDom handles multiple paragraphs and line breaks cleanly", () => {
+    const container = createMockElement("div");
+    container.appendChild(createMockTextNode("Dòng 1: "));
+
+    const math1 = createMockElement("span");
+    math1.classList.add("inline-math-node");
+    math1.dataset.latex = "x=1";
+    container.appendChild(math1);
+
+    container.appendChild(createMockElement("br"));
+    container.appendChild(createMockTextNode("Dòng 2: "));
+
+    const math2 = createMockElement("span");
+    math2.classList.add("inline-math-node");
+    math2.dataset.latex = "y=2";
+    container.appendChild(math2);
+
+    const serialized = serializeEditorDom(container);
+    assert.equal(serialized, "Dòng 1: $x=1$\nDòng 2: $y=2$");
+  });
+});
+
+describe("VisualMathField onCommit (Enter) and onCancel (Escape) Keyboard Isolation", () => {
+  it("VisualMathField implementation intercepts Enter and Escape before stopPropagation", () => {
+    const vmfPath = path.resolve(__dirname, "../src/components/math/VisualMathField.tsx");
+    const content = fs.readFileSync(vmfPath, "utf-8");
+
+    // Static code assertions confirming onCommit & onCancel hooks
+    assert.ok(content.includes("onCommit?: () => void;"));
+    assert.ok(content.includes("onCancel?: () => void;"));
+    assert.ok(content.includes('e.key === "Enter" && !e.shiftKey && onCommitRef.current'));
+    assert.ok(content.includes('e.key === "Escape" && onCancelRef.current'));
+  });
+
+  it("RichMathEditor uses anchored in-place popover without fullscreen modal backdrop", () => {
+    const rmePath = path.resolve(__dirname, "../src/components/math/RichMathEditor.tsx");
+    const content = fs.readFileSync(rmePath, "utf-8");
+
+    // Verify fullscreen black blur modal is eliminated
+    assert.ok(!content.includes("fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"));
+
+    // Verify anchored popover positioning
+    assert.ok(content.includes("popoverPos"));
+    assert.ok(content.includes("getBoundingClientRect()"));
+    assert.ok(content.includes("onCommit={handleConfirmMath}"));
+    assert.ok(content.includes("onCancel={handleCancelMath}"));
+  });
+});
+
+describe("Cross-Actor Unification (Center Manager, Teacher, Student)", () => {
+  it("TeacherQuestionEditorView uses RichMathEditor and does not use MathInputToolbar", () => {
+    const teacherPath = path.resolve(__dirname, "../src/pages/teacher/TeacherQuestionEditorView.tsx");
+    const content = fs.readFileSync(teacherPath, "utf-8");
+
+    assert.ok(content.includes('import { RichMathEditor } from "../../components/math/RichMathEditor";'));
+    assert.ok(!content.includes('import { MathInputToolbar } from "../../components/math/MathInputToolbar";'));
+    assert.ok(!content.includes("<MathInputToolbar"));
+    assert.ok(content.includes("<RichMathEditor"));
+  });
+
+  it("LearningPlayerPage does not render legacy MathInputToolbar for students", () => {
+    const studentPath = path.resolve(__dirname, "../src/pages/LearningPlayerPage.tsx");
+    const content = fs.readFileSync(studentPath, "utf-8");
+
+    assert.ok(!content.includes('import { MathInputToolbar } from "../components/math/MathInputToolbar";'));
+    assert.ok(!content.includes("<MathInputToolbar"));
+    assert.ok(!content.includes("Bảng gõ ký hiệu Toán"));
   });
 });

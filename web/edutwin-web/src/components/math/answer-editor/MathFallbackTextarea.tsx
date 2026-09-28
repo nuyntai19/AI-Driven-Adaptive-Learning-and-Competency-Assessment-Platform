@@ -10,6 +10,8 @@ export interface MathFallbackTextareaProps {
   onRetry?: () => void;
   errorMessage?: string;
   onFocus?: () => void;
+  onCommit?: () => void;
+  onCancel?: () => void;
 }
 
 /**
@@ -27,6 +29,8 @@ export const MathFallbackTextarea: React.FC<MathFallbackTextareaProps> = ({
   onRetry,
   errorMessage = "Không thể tải trình gõ công thức trực quan MathLive. Bạn vẫn có thể nhập đáp án bên dưới hoặc thử tải lại.",
   onFocus,
+  onCommit,
+  onCancel,
 }) => {
   return (
     <div className={`rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/30 p-3 space-y-2.5 ${className}`}>
@@ -49,6 +53,20 @@ export const MathFallbackTextarea: React.FC<MathFallbackTextareaProps> = ({
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey && onCommit) {
+            e.preventDefault();
+            e.stopPropagation();
+            onCommit();
+            return;
+          }
+          if (e.key === "Escape" && onCancel) {
+            e.preventDefault();
+            e.stopPropagation();
+            onCancel();
+            return;
+          }
+        }}
         onFocus={onFocus}
         disabled={disabled}
         readOnly={readOnly}
