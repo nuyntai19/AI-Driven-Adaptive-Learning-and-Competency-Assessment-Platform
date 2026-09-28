@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate, Navigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { organizationApi } from "../api/organizationApi";
@@ -19,7 +19,8 @@ import type {
   QuestionOption,
 } from "../types/questions";
 import type { TeacherDto } from "../types/organization";
-import { InlineMathComposer } from "../components/math/InlineMathComposer";
+import { RichMathEditor } from "../components/math/RichMathEditor";
+import { MathPreviewCore } from "../components/math/MathPreviewCore";
 import { ModeAwareAnswerEditor } from "../components/math/answer-editor/ModeAwareAnswerEditor";
 import {
   getAnswerDraftKey,
@@ -31,7 +32,6 @@ import {
   type DraftStore,
 } from "./centerManagerQuestionEditorHelpers";
 import type { AnswerEditorValue } from "../components/math/answer-editor/answerEditorHelpers";
-import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
 import { useAuthStore } from "../stores/authStore";
 import { permissions } from "../auth/permissions";
 import {
@@ -99,11 +99,6 @@ function CenterManagerQuestionEditorView() {
   // Draft store and active draft for ModeAwareAnswerEditor
   const [modeDrafts, setModeDrafts] = useState<DraftStore>({});
   const [activeDraftValue, setActiveDraftValue] = useState<AnswerEditorValue | null>(null);
-
-  // Element refs for InlineMathComposer caret/focus restoration
-  const questionTextRef = useRef<HTMLTextAreaElement>(null);
-  const solutionRef = useRef<HTMLTextAreaElement>(null);
-  const optionInputRefs = useRef<Array<HTMLInputElement | null>>([]);
 
   // Operational feedback states
   const [formError, setFormError] = useState<{ message: string; traceId?: string | null } | null>(null);
@@ -1106,36 +1101,29 @@ function CenterManagerQuestionEditorView() {
             </div>
           </div>
 
-          {/* Question Text Area with InlineMathComposer and KaTeX Preview */}
+          {/* Question Text Area with WYSIWYG RichMathEditor and KaTeX Preview */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label htmlFor="question-text-area" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)]">
-                Nội dung câu hỏi (hỗ trợ văn bản và công thức LaTeX) <span className="text-rose-400">*</span>
-              </label>
-              {!isReadOnly && (
-                <InlineMathComposer
-                  targetRef={questionTextRef}
-                  onInsert={(_formula, newText) => {
-                    if (newText !== undefined) handleInputChange("questionText", newText);
-                  }}
-                  size="xs"
-                  buttonLabel="Chèn công thức toán"
-                />
-              )}
-            </div>
-            <textarea
+            <RichMathEditor
               id="question-text-area"
-              ref={questionTextRef}
-              rows={4}
-              disabled={isReadOnly}
+              label="Nội dung câu hỏi (hỗ trợ văn bản tiếng Việt và công thức LaTeX trực quan)"
               value={formData.questionText}
-              onChange={(e) => handleInputChange("questionText", e.target.value)}
-              placeholder="Nhập đề bài câu hỏi. Nhấn 'Chèn công thức toán' để nhập công thức MathLive dạng $công_thức$..."
-              className="cm-input w-full text-sm font-sans"
+              disabled={isReadOnly}
+              onChange={(val) => handleInputChange("questionText", val)}
+              placeholder="Nhập nội dung câu hỏi... (Gõ $ hoặc Ctrl+M để chèn công thức toán)"
+              minHeight="120px"
             />
             {formData.questionText && (
               <div className="pt-1">
-                <MathFormulaPreview formula={formData.questionText} displayMode={false} label="Xem trước đề bài (KaTeX)" />
+                <MathPreviewCore
+                  content={formData.questionText}
+                  mode="rich"
+                  displayMode={false}
+                  headerSlot={
+                    <div className="text-[11px] font-semibold text-[var(--cm-text-muted)] uppercase tracking-wider mb-1">
+                      Xem trước đề bài (KaTeX)
+                    </div>
+                  }
+                />
               </div>
             )}
           </div>
@@ -1230,31 +1218,29 @@ function CenterManagerQuestionEditorView() {
                         <span className="text-[11px] font-medium text-[var(--cm-text-muted)]">
                           Nội dung phương án {opt.optionLabel}
                         </span>
-                        {!isReadOnly && (
-                          <InlineMathComposer
-                            targetRef={{ current: optionInputRefs.current[idx] }}
-                            onInsert={(_formula, newText) => {
-                              if (newText !== undefined) handleOptionChange(idx, "optionText", newText);
-                            }}
-                            size="xs"
-                            buttonLabel="Chèn công thức"
-                          />
-                        )}
                       </div>
-                      <input
+                      <RichMathEditor
                         id={`option-input-${idx}`}
-                        ref={(el) => {
-                          optionInputRefs.current[idx] = el;
-                        }}
-                        type="text"
-                        disabled={isReadOnly}
                         value={opt.optionText}
-                        onChange={(e) => handleOptionChange(idx, "optionText", e.target.value)}
-                        placeholder={`Nội dung phương án ${opt.optionLabel}...`}
-                        className="cm-input w-full text-sm"
+                        disabled={isReadOnly}
+                        singleLine={true}
+                        minHeight="42px"
+                        onChange={(val) => handleOptionChange(idx, "optionText", val)}
+                        placeholder={`Nội dung phương án ${opt.optionLabel}... (Gõ $ hoặc Ctrl+M)`}
                       />
-                      {opt.optionText.includes("\\") && (
-                        <MathFormulaPreview formula={opt.optionText} displayMode={false} label={`Xem trước ${opt.optionLabel}`} />
+                      {(opt.optionText.includes("$") || opt.optionText.includes("\\")) && (
+                        <div className="pt-1">
+                          <MathPreviewCore
+                            content={opt.optionText}
+                            mode="rich"
+                            displayMode={false}
+                            headerSlot={
+                              <div className="text-[11px] font-semibold text-[var(--cm-text-muted)] uppercase tracking-wider mb-1">
+                                Xem trước {opt.optionLabel}
+                              </div>
+                            }
+                          />
+                        </div>
                       )}
                     </div>
 
@@ -1438,36 +1424,29 @@ function CenterManagerQuestionEditorView() {
             </div>
           )}
 
-          {/* Solution & Explanation Area with InlineMathComposer */}
+          {/* Solution & Explanation Area with WYSIWYG RichMathEditor and KaTeX Preview */}
           <div className="border-t border-[var(--cm-border-subtle)] pt-6 space-y-2">
-            <div className="flex items-center justify-between">
-              <label htmlFor="question-solution-area" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)]">
-                Lời giải chi tiết / Hướng dẫn chấm
-              </label>
-              {!isReadOnly && (
-                <InlineMathComposer
-                  targetRef={solutionRef}
-                  onInsert={(_formula, newText) => {
-                    if (newText !== undefined) handleInputChange("solution", newText);
-                  }}
-                  size="xs"
-                  buttonLabel="Chèn công thức toán"
-                />
-              )}
-            </div>
-            <textarea
+            <RichMathEditor
               id="question-solution-area"
-              ref={solutionRef}
-              rows={3}
-              disabled={isReadOnly}
+              label="Lời giải chi tiết / Hướng dẫn chấm"
               value={formData.solution || ""}
-              onChange={(e) => handleInputChange("solution", e.target.value)}
-              placeholder="Nhập lời giải chi tiết giải thích cho học sinh hoặc hướng dẫn cho giáo viên chấm..."
-              className="cm-input w-full text-sm font-sans"
+              disabled={isReadOnly}
+              onChange={(val) => handleInputChange("solution", val)}
+              placeholder="Nhập lời giải chi tiết giải thích cho học sinh hoặc hướng dẫn cho giáo viên chấm... (Gõ $ hoặc Ctrl+M)"
+              minHeight="96px"
             />
             {formData.solution && (
               <div className="pt-1">
-                <MathFormulaPreview formula={formData.solution} displayMode={false} label="Xem trước lời giải (KaTeX)" />
+                <MathPreviewCore
+                  content={formData.solution}
+                  mode="rich"
+                  displayMode={false}
+                  headerSlot={
+                    <div className="text-[11px] font-semibold text-[var(--cm-text-muted)] uppercase tracking-wider mb-1">
+                      Xem trước lời giải (KaTeX)
+                    </div>
+                  }
+                />
               </div>
             )}
           </div>

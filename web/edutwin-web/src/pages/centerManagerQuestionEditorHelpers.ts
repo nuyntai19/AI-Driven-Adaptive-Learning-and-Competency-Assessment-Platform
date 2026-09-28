@@ -95,12 +95,137 @@ export function cleanFormulaForInsertion(latex: string | null | undefined): stri
   return clean;
 }
 
+export interface FormulaCleanResult {
+  cleanLatex: string;
+  isComplete: boolean;
+  hasPlaceholder: boolean;
+  error?: string;
+}
+
+/**
+ * Checks if a formula string contains any unfilled MathLive \placeholder{} elements.
+ */
+export function hasUnfilledPlaceholder(latex: string | null | undefined): boolean {
+  if (!latex) return false;
+  return /\\placeholder\b/.test(latex);
+}
+
+/**
+ * Validates whether a formula is complete (not empty and contains no \placeholder{}).
+ */
+export function validateAndCleanFormula(latex: string | null | undefined): FormulaCleanResult {
+  const cleanLatex = cleanFormulaForInsertion(latex);
+  if (!cleanLatex) {
+    return {
+      cleanLatex: "",
+      isComplete: false,
+      hasPlaceholder: false,
+      error: "Công thức không được để trống.",
+    };
+  }
+
+  const hasPlaceholder = hasUnfilledPlaceholder(cleanLatex);
+  if (hasPlaceholder) {
+    return {
+      cleanLatex,
+      isComplete: false,
+      hasPlaceholder: true,
+      error: "Công thức còn ô trống chưa điền (\\placeholder). Vui lòng hoàn thành mọi vị trí trước khi xác nhận.",
+    };
+  }
+
+  return {
+    cleanLatex,
+    isComplete: true,
+    hasPlaceholder: false,
+  };
+}
+
+/**
+ * Scans a text string for any inline $...$ or $$...$$ formulas that still contain \placeholder{}.
+ * Used for defensive validation on save, activation, or legacy data hydration.
+ */
+export function findIncompleteFormulasInText(text: string | null | undefined): string[] {
+  if (!text) return [];
+  const mathMatches = text.match(/(\$\$[\s\S]*?\$\$|\$[^$\n]+?\$)/g) || [];
+  const incomplete: string[] = [];
+  for (const m of mathMatches) {
+    if (hasUnfilledPlaceholder(m)) {
+      incomplete.push(m);
+    }
+  }
+  return incomplete;
+}
+
+export interface RichSegment {
+  id: string;
+  type: "text" | "math";
+  content: string; // text: plain string; math: LaTeX without outer $
+}
+
+/**
+ * Parses a mixed-content string (prose + $...$ / $$...$$) into structured RichSegments.
+ */
+export function parseRichSegments(raw: string | null | undefined): RichSegment[] {
+  if (!raw) {
+    return [{ id: "seg-1", type: "text", content: "" }];
+  }
+  const regex = /(\$\$[\s\S]*?\$\$|\$[^$\n]+?\$)/g;
+  const parts = raw.split(regex);
+  const segments: RichSegment[] = [];
+  let idCounter = 1;
+
+  for (const part of parts) {
+    if (!part) continue;
+    if (part.startsWith("$$") && part.endsWith("$$") && part.length >= 4) {
+      segments.push({
+        id: `seg-${idCounter++}`,
+        type: "math",
+        content: part.slice(2, -2).trim(),
+      });
+    } else if (part.startsWith("$") && part.endsWith("$") && part.length >= 2) {
+      segments.push({
+        id: `seg-${idCounter++}`,
+        type: "math",
+        content: part.slice(1, -1).trim(),
+      });
+    } else {
+      segments.push({
+        id: `seg-${idCounter++}`,
+        type: "text",
+        content: part,
+      });
+    }
+  }
+
+  if (segments.length === 0) {
+    return [{ id: "seg-1", type: "text", content: "" }];
+  }
+  return segments;
+}
+
+/**
+ * Serializes an array of RichSegments back into a canonical mixed-content string for API/storage.
+ */
+export function serializeRichSegments(segments: RichSegment[]): string {
+  if (!segments || segments.length === 0) return "";
+  return segments
+    .map((seg) => {
+      if (seg.type === "math") {
+        const clean = cleanFormulaForInsertion(seg.content);
+        return clean ? `$${clean}$` : "";
+      }
+      return seg.content;
+    })
+    .join("");
+}
+
 /**
  * Inserts a clean LaTeX formula enclosed in $...$ into the target string at [selectionStart, selectionEnd].
  * Returns the updated string and the new caret position immediately after the inserted formula.
  *
  * Rules:
- * - If formula is empty/whitespace: returns original text and unchanged caret.
+ * - If formula is empty/whitespace or has incomplete \placeholder{}: returns original text and unchanged caret.
  * - Prevents nested $ delimiters.
  * - Clamps selection bounds safely within string boundaries.
  */
@@ -109,13 +234,14 @@ export function insertFormulaAtCursor(
   selectionStart: number,
   selectionEnd: number,
   formula: string | null | undefined
-): { newText: string; newCursorPos: number } {
-  const cleanLatex = cleanFormulaForInsertion(formula);
-  if (!cleanLatex) {
+): { newText: string; newCursorPos: number; error?: string } {
+  const validation = validateAndCleanFormula(formula);
+  if (!validation.isComplete || !validation.cleanLatex) {
     const safeCaret = Math.min(Math.max(0, selectionStart), text.length);
-    return { newText: text, newCursorPos: safeCaret };
+    return { newText: text, newCursorPos: safeCaret, error: validation.error };
   }
 
+  const cleanLatex = validation.cleanLatex;
   const safeStart = Math.min(Math.max(0, Math.min(selectionStart, selectionEnd)), text.length);
   const safeEnd = Math.min(Math.max(0, Math.max(selectionStart, selectionEnd)), text.length);
 
@@ -128,6 +254,7 @@ export function insertFormulaAtCursor(
 
   return { newText, newCursorPos };
 }
+
 
 /**
  * Hydrates an AnswerEditorValue from a raw backend string based on evaluation mode.
@@ -264,6 +391,39 @@ export function buildAuthoritativeQuestionPayload({
         };
       }
     }
+  }
+
+  // Defensive validation against incomplete MathLive \placeholder{} across all fields
+  if (findIncompleteFormulasInText(formData.questionText).length > 0) {
+    return {
+      payload: formData,
+      error: "Nội dung câu hỏi chứa công thức chưa hoàn thành (còn ô trống \\placeholder). Vui lòng hoàn tất trước khi lưu.",
+    };
+  }
+
+  if (formData.solution && findIncompleteFormulasInText(formData.solution).length > 0) {
+    return {
+      payload: formData,
+      error: "Lời giải chứa công thức chưa hoàn thành (còn ô trống \\placeholder). Vui lòng hoàn tất trước khi lưu.",
+    };
+  }
+
+  if (formData.options && Array.isArray(formData.options)) {
+    for (const opt of formData.options) {
+      if (findIncompleteFormulasInText(opt.optionText).length > 0) {
+        return {
+          payload: formData,
+          error: `Phương án ${opt.optionLabel || ""} chứa công thức chưa hoàn thành (còn ô trống \\placeholder).`,
+        };
+      }
+    }
+  }
+
+  if (authoritativeCorrectAnswer && findIncompleteFormulasInText(authoritativeCorrectAnswer).length > 0) {
+    return {
+      payload: formData,
+      error: "Đáp án chuẩn chứa công thức chưa hoàn thành (còn ô trống \\placeholder).",
+    };
   }
 
   const payload: CreateQuestionRequest = {

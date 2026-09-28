@@ -4,6 +4,11 @@ import {
   getAnswerDraftKey,
   syncMcqCorrectAnswer,
   cleanFormulaForInsertion,
+  validateAndCleanFormula,
+  hasUnfilledPlaceholder,
+  findIncompleteFormulasInText,
+  parseRichSegments,
+  serializeRichSegments,
   insertFormulaAtCursor,
   hydrateAnswerEditorValue,
   serializeAnswerEditorValue,
@@ -316,6 +321,167 @@ describe("CenterManager Question Editor Helpers & Integration (Gate 2A.2)", () =
 
       assert.equal(error, undefined);
       assert.equal(payload.correctAnswer, "5/7");
+    });
+
+    it("rejects saving when questionText contains incomplete MathLive placeholder", () => {
+      const invalidFormData: CreateQuestionRequest = {
+        ...baseFormData,
+        questionText: "Cho tích phân $\\int_0^1 \\placeholder{dx}$ hãy tính kết quả.",
+      };
+
+      const { error } = buildAuthoritativeQuestionPayload({
+        formData: invalidFormData,
+        modeDrafts: {},
+      });
+
+      assert.ok(error?.includes("Nội dung câu hỏi chứa công thức chưa hoàn thành"));
+    });
+
+    it("rejects saving when solution contains incomplete MathLive placeholder", () => {
+      const invalidFormData: CreateQuestionRequest = {
+        ...baseFormData,
+        solution: "Lời giải: Áp dụng công thức $\\frac{\\placeholder{a}}{b}$.",
+      };
+
+      const { error } = buildAuthoritativeQuestionPayload({
+        formData: invalidFormData,
+        modeDrafts: {},
+      });
+
+      assert.ok(error?.includes("Lời giải chứa công thức chưa hoàn thành"));
+    });
+
+    it("rejects saving when an MCQ option contains incomplete MathLive placeholder", () => {
+      const invalidOptions = [
+        { optionLabel: "A", optionText: "$\\sqrt{\\placeholder{x}}$", isCorrect: true, orderIndex: 0 },
+        { optionLabel: "B", optionText: "Phương án B", isCorrect: false, orderIndex: 1 },
+      ];
+
+      const { error } = buildAuthoritativeQuestionPayload({
+        formData: { ...baseFormData, options: invalidOptions },
+        modeDrafts: {},
+      });
+
+      assert.ok(error?.includes("Phương án A chứa công thức chưa hoàn thành"));
+    });
+
+    it("rejects saving when correctAnswer contains incomplete MathLive placeholder", () => {
+      const invalidFormData: CreateQuestionRequest = {
+        ...baseFormData,
+        questionType: "ShortAnswer",
+        answerEvaluationMode: "TextExact",
+      };
+
+      const { error } = buildAuthoritativeQuestionPayload({
+        formData: invalidFormData,
+        activeDraftValue: { rawText: "$\\placeholder{}$", displayLatex: "" },
+        modeDrafts: {},
+      });
+
+      assert.ok(error?.includes("Đáp án chuẩn chứa công thức chưa hoàn thành"));
+    });
+  });
+
+  describe("Formula Placeholder Detection & Validation (validateAndCleanFormula)", () => {
+    it("detects unfilled placeholders in standard MathLive templates", () => {
+      assert.equal(hasUnfilledPlaceholder("\\int_0^\\infty \\placeholder{} dx"), true);
+      assert.equal(hasUnfilledPlaceholder("\\frac{\\placeholder{a}}{\\placeholder{b}}"), true);
+      assert.equal(hasUnfilledPlaceholder("\\placeholder"), true);
+      assert.equal(hasUnfilledPlaceholder("x^2 + 2x + 1"), false);
+      assert.equal(hasUnfilledPlaceholder("\\int_0^1 x^2 dx"), false);
+    });
+
+    it("validates and cleans complete formulas successfully", () => {
+      const res = validateAndCleanFormula("  $\\frac{1}{2} + \\sqrt{x}$  ");
+      assert.equal(res.isComplete, true);
+      assert.equal(res.hasPlaceholder, false);
+      assert.equal(res.cleanLatex, "\\frac{1}{2} + \\sqrt{x}");
+      assert.equal(res.error, undefined);
+    });
+
+    it("rejects formulas with unfilled placeholder and returns descriptive error", () => {
+      const res = validateAndCleanFormula("\\int_0^1 \\placeholder{} dx");
+      assert.equal(res.isComplete, false);
+      assert.equal(res.hasPlaceholder, true);
+      assert.ok(res.error?.includes("còn ô trống chưa điền"));
+    });
+
+    it("rejects empty formula", () => {
+      const res = validateAndCleanFormula("   $$   ");
+      assert.equal(res.isComplete, false);
+      assert.equal(res.cleanLatex, "");
+      assert.ok(res.error?.includes("không được để trống"));
+    });
+
+    it("finds all incomplete formulas across a mixed-content prose text", () => {
+      const text = "Cho $\\int_0^1 \\placeholder{} dx$ và $\\frac{1}{2}$ và $\\sqrt{\\placeholder{a}}$.";
+      const incomplete = findIncompleteFormulasInText(text);
+      assert.equal(incomplete.length, 2);
+      assert.ok(incomplete[0].includes("\\placeholder{}"));
+      assert.ok(incomplete[1].includes("\\placeholder{a}"));
+
+      const cleanText = "Cho hàm số $y=x^2+1$ và $\\frac{1}{2}$.";
+      assert.equal(findIncompleteFormulasInText(cleanText).length, 0);
+    });
+  });
+
+  describe("Rich Segment Parsing & Serialization (parseRichSegments, serializeRichSegments)", () => {
+    it("parses mixed text and formulas into structured RichSegments", () => {
+      const input = "Cho một tam giác vuông có cạnh $a^2+b^2=c^2$ tính cạnh huyền.";
+      const segments = parseRichSegments(input);
+
+      assert.equal(segments.length, 3);
+      assert.equal(segments[0].type, "text");
+      assert.equal(segments[0].content, "Cho một tam giác vuông có cạnh ");
+      assert.equal(segments[1].type, "math");
+      assert.equal(segments[1].content, "a^2+b^2=c^2");
+      assert.equal(segments[2].type, "text");
+      assert.equal(segments[2].content, " tính cạnh huyền.");
+    });
+
+    it("achieves 100% round-trip fidelity between prose + $latex$ and parsed segments", () => {
+      const input = "Cho hàm số $f(x)=x^2+1$ liên tục trên $\\mathbb{R}$ và $\\int_0^1 f(x)dx = 2$.";
+      const segments = parseRichSegments(input);
+      const output = serializeRichSegments(segments);
+
+      assert.equal(output, input);
+    });
+
+    it("handles plain text with no formulas without corruption", () => {
+      const input = "Tìm từ đồng nghĩa với từ in đậm dưới đây:";
+      const segments = parseRichSegments(input);
+      assert.equal(segments.length, 1);
+      assert.equal(segments[0].type, "text");
+      assert.equal(serializeRichSegments(segments), input);
+    });
+
+    it("hydrates legacy double-dollar math $$...$$ cleanly into single-dollar canonical form", () => {
+      const input = "Tích phân $$\\int_0^1 x^2 dx$$ có giá trị là:";
+      const segments = parseRichSegments(input);
+      assert.equal(segments.length, 3);
+      assert.equal(segments[1].type, "math");
+      assert.equal(segments[1].content, "\\int_0^1 x^2 dx");
+      assert.equal(serializeRichSegments(segments), "Tích phân $\\int_0^1 x^2 dx$ có giá trị là:");
+    });
+  });
+
+  describe("Inline Formula Insertion Placeholder Safety (insertFormulaAtCursor)", () => {
+    it("refuses to insert formula containing placeholder and returns error without modifying text", () => {
+      const text = "Cho hàm số f(x) = ";
+      const result = insertFormulaAtCursor(text, text.length, text.length, "\\int_0^\\infty \\placeholder{} dx");
+
+      assert.equal(result.newText, text);
+      assert.equal(result.newCursorPos, text.length);
+      assert.ok(result.error?.includes("còn ô trống chưa điền"));
+    });
+
+    it("inserts complete formula cleanly when valid", () => {
+      const text = "Cho hàm số f(x) = ";
+      const result = insertFormulaAtCursor(text, text.length, text.length, "x^2 + 1");
+
+      assert.equal(result.newText, "Cho hàm số f(x) = $x^2 + 1$");
+      assert.equal(result.newCursorPos, text.length + "$x^2 + 1$".length);
+      assert.equal(result.error, undefined);
     });
   });
 
