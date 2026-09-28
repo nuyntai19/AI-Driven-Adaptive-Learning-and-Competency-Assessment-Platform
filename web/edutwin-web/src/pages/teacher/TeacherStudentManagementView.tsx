@@ -49,6 +49,10 @@ export function TeacherStudentManagementView() {
   const [isStudentPrintModalOpen, setIsStudentPrintModalOpen] = useState<boolean>(false);
   const [isClassPrintModalOpen, setIsClassPrintModalOpen] = useState<boolean>(false);
 
+  // Excel Export Async / Loading & Error State
+  const [isExportingExcel, setIsExportingExcel] = useState<boolean>(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
   // Pedagogical notes state (stored by studentId in localStorage for teacher persistence)
   const [teacherNotes, setTeacherNotes] = useState<Record<string, string>>(() => {
     try {
@@ -344,27 +348,37 @@ export function TeacherStudentManagementView() {
     : null;
 
   // CSV & Excel Export Handlers
-  const handleExportIndividualExcel = (student: StudentDto) => {
-    const summary = studentSummaries.get(student.studentId) || {
-      totalAssigned: 0,
-      completedCount: 0,
-      inProgressCount: 0,
-      notStartedCount: 0,
-      overdueCount: 0,
-      completionRate: 0,
-      averageScore: null,
-      minScore: null,
-      maxScore: null,
-      records: [],
-    };
-    exportStudentReportXlsx(
-      student,
-      selectedClass,
-      studentSubjectGoals,
-      subjectsMap,
-      summary,
-      teacherNotes[student.studentId]
-    );
+  const handleExportIndividualExcel = async (student: StudentDto) => {
+    if (isExportingExcel) return;
+    setIsExportingExcel(true);
+    setExportError(null);
+    try {
+      const summary = studentSummaries.get(student.studentId) || {
+        totalAssigned: 0,
+        completedCount: 0,
+        inProgressCount: 0,
+        notStartedCount: 0,
+        overdueCount: 0,
+        completionRate: 0,
+        averageScore: null,
+        minScore: null,
+        maxScore: null,
+        records: [],
+      };
+      await exportStudentReportXlsx(
+        student,
+        selectedClass,
+        studentSubjectGoals,
+        subjectsMap,
+        summary,
+        teacherNotes[student.studentId]
+      );
+    } catch (err) {
+      console.error("Failed to export student excel report:", err);
+      setExportError("Không thể xuất file Excel học viên. Vui lòng kiểm tra mạng và thử lại.");
+    } finally {
+      setIsExportingExcel(false);
+    }
   };
 
   const handleExportIndividualCsv = (student: StudentDto) => {
@@ -385,10 +399,19 @@ export function TeacherStudentManagementView() {
     downloadCsv(filename, rows);
   };
 
-  const handleExportClassExcel = () => {
-    if (!selectedClass) return;
-    const goalsMap = new Map<string, StudentSubjectGoalDto[]>();
-    exportClassReportXlsx(selectedClass, studentsList, studentSummaries, goalsMap);
+  const handleExportClassExcel = async () => {
+    if (!selectedClass || isExportingExcel) return;
+    setIsExportingExcel(true);
+    setExportError(null);
+    try {
+      const goalsMap = new Map<string, StudentSubjectGoalDto[]>();
+      await exportClassReportXlsx(selectedClass, studentsList, studentSummaries, goalsMap);
+    } catch (err) {
+      console.error("Failed to export class excel report:", err);
+      setExportError("Không thể xuất file Excel bảng điểm cả lớp. Vui lòng thử lại.");
+    } finally {
+      setIsExportingExcel(false);
+    }
   };
 
   const handleExportClassCsv = () => {
@@ -435,8 +458,10 @@ export function TeacherStudentManagementView() {
             <button
               type="button"
               onClick={handleExportClassExcel}
-              disabled={studentsList.length === 0}
-              className="th-primary-button text-xs py-2 px-3 flex items-center gap-1.5"
+              disabled={studentsList.length === 0 || isExportingExcel}
+              className={`th-primary-button text-xs py-2 px-3 flex items-center gap-1.5 ${
+                isExportingExcel ? "opacity-60 cursor-wait" : ""
+              }`}
               title="Xuất bảng điểm và tiến độ toàn bộ học sinh trong lớp ra file Microsoft Excel (.xlsx) với các cột riêng biệt"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -444,7 +469,7 @@ export function TeacherStudentManagementView() {
                 <polyline points="7 10 12 15 17 10" />
                 <line x1="12" y1="15" x2="12" y2="3" />
               </svg>
-              <span>Xuất Excel Cả Lớp (.xlsx)</span>
+              <span>{isExportingExcel ? "Đang xuất Excel..." : "Xuất Excel Cả Lớp (.xlsx)"}</span>
             </button>
 
             <button
@@ -475,6 +500,22 @@ export function TeacherStudentManagementView() {
           </div>
         }
       />
+
+      {exportError && (
+        <div className="rounded-xl border border-rose-300 bg-rose-50 p-3.5 text-xs text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span>⚠</span>
+            <span>{exportError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setExportError(null)}
+            className="font-bold underline text-rose-900 dark:text-rose-100 hover:text-rose-700 ml-4 cursor-pointer"
+          >
+            Đóng
+          </button>
+        </div>
+      )}
 
       {/* 2. Overview Metric Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -757,7 +798,10 @@ export function TeacherStudentManagementView() {
                           <button
                             type="button"
                             onClick={() => handleExportIndividualExcel(student)}
-                            className="th-icon-button h-7 w-7 text-xs text-teal-700 dark:text-teal-400 hover:bg-teal-500/10"
+                            disabled={isExportingExcel}
+                            className={`th-icon-button h-7 w-7 text-xs text-teal-700 dark:text-teal-400 hover:bg-teal-500/10 ${
+                              isExportingExcel ? "opacity-40 cursor-wait" : ""
+                            }`}
                             title="Tải bảng điểm cá nhân định dạng Microsoft Excel (.xlsx)"
                           >
                             📊
@@ -795,11 +839,14 @@ export function TeacherStudentManagementView() {
                 <button
                   type="button"
                   onClick={() => selectedStudent && handleExportIndividualExcel(selectedStudent)}
-                  className="th-primary-button text-xs py-1.5 px-3 flex items-center gap-1.5"
+                  disabled={isExportingExcel}
+                  className={`th-primary-button text-xs py-1.5 px-3 flex items-center gap-1.5 ${
+                    isExportingExcel ? "opacity-60 cursor-wait" : ""
+                  }`}
                   title="Tải bảng điểm và mục tiêu học sinh định dạng Microsoft Excel (.xlsx) với các cột và hàng riêng biệt"
                 >
                   <span>📊</span>
-                  <span>Xuất Excel (.xlsx)</span>
+                  <span>{isExportingExcel ? "Đang tải Excel..." : "Xuất Excel (.xlsx)"}</span>
                 </button>
                 <button
                   type="button"

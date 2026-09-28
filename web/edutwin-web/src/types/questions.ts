@@ -124,6 +124,7 @@ export interface QuestionImportItemDto {
   maxScore: number;
   estimatedTimeSeconds: number;
   reasoningRequired: boolean;
+  answerEvaluationMode?: QuestionAnswerEvaluationMode;
   options: QuestionImportOptionInput[];
   requiredIdeas: string[];
   commonErrors: string[];
@@ -154,7 +155,6 @@ export interface QuestionImportConfirmRequest {
   previewToken: string;
   subjectId: string;
   primaryTopicNodeId: number | string;
-  questions?: QuestionImportItemDto[];
 }
 
 export interface QuestionImportConfirmDataDto {

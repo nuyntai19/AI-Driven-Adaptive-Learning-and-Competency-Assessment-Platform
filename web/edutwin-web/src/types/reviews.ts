@@ -46,6 +46,7 @@ export interface TeacherReviewQueueItemDto {
   reasoningQuality?: number | null;
   analysisFeedback?: string | null;
   analysisConfidence?: number | null;
+  errorType?: string | null;
   evidence: EvidenceDecisionDto;
   submittedAt: string;
   hasStudentReviewRequest?: boolean;

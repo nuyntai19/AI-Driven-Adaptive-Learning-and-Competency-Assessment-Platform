@@ -19,9 +19,13 @@ public sealed record AnalyzeReasoningQuestion
 {
     public QuestionType QuestionType { get; init; }
 
+    public QuestionAnswerEvaluationMode AnswerEvaluationMode { get; init; } = QuestionAnswerEvaluationMode.TextExact;
+
     public required string QuestionText { get; init; }
 
     public required string CorrectAnswer { get; init; }
+
+    public string? CanonicalCorrectAnswer { get; init; }
 
     public required string Solution { get; init; }
 
@@ -44,6 +48,10 @@ public sealed record AnalyzeReasoningGradingCriteria
 public sealed record AnalyzeReasoningStudentSubmission
 {
     public required string FinalAnswer { get; init; }
+
+    public string? AnswerDisplayLatex { get; init; }
+
+    public string? CanonicalFinalAnswer { get; init; }
 
     /// <summary>
     /// Authoritative result from the deterministic preliminary grader. The AI

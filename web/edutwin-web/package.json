@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "test": "node --test tests/*.test.ts",
+    "test:bundle": "npm run build && node --test tests/bundle/bundleBudget.test.ts",
     "lint": "eslint .",
+    "verify": "npm run lint && npm test && npm run test:bundle",
     "preview": "vite preview"
   },
   "dependencies": {

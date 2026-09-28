@@ -534,7 +534,7 @@ export const LearningPlayerPage = () => {
           orderIndex: idx,
         })),
         explanation: assignment.instructions || "",
-        answerEvaluationMode: assignmentQuestion.questionType === "Numeric" ? "NumericRational" : "Exact",
+        answerEvaluationMode: assignmentQuestion.answerEvaluationMode || "TextExact",
       };
     }
     return adaptiveQuestion || null;
@@ -1419,7 +1419,7 @@ export const LearningPlayerPage = () => {
         maxTotalForDetermined += Number(maxScore);
       }
 
-      if (q.latestAttempt?.isCorrect === true) {
+      if ((q.effectiveIsCorrect ?? q.latestAttempt?.isCorrect) === true) {
         correctCount++;
       }
     }

@@ -47,7 +47,7 @@ export const TeacherOverrideModal = ({
       setReasoningQuality(review.reasoningQuality !== null ? Number(review.reasoningQuality) : 75);
       setErrorType("None");
       setAwardedScore("");
-      setFeedback(review.analysisFeedback || "");
+      setFeedback(review.teacherFeedback || "");
       setReason("");
 
       const rawVersion = review.evidence?.analysisOverrideVersion;
@@ -127,6 +127,10 @@ export const TeacherOverrideModal = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!feedback.trim()) {
+      setErrorMessage("Vui lòng nhập lời nhận xét của giáo viên gửi học sinh trước khi can thiệp.");
+      return;
+    }
     if (!reason.trim()) {
       setErrorMessage("Vui lòng cung cấp lý do điều chỉnh (bắt buộc theo quy định kiểm toán).");
       return;
@@ -402,7 +406,7 @@ export const TeacherOverrideModal = ({
           {/* Teacher Feedback to student */}
           <div>
             <label htmlFor="override-feedback" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-              Nhận xét của Giáo viên (Gửi tới học sinh)
+              Nhận xét của Giáo viên (Gửi tới học sinh) <span className="text-red-500">*</span>
             </label>
             <textarea
               id="override-feedback"

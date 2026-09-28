@@ -145,8 +145,8 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
                     AnswerChanges = latestAttempt.AnswerChanges,
                     Skipped = latestAttempt.Skipped,
                     SubmittedAt = latestAttempt.CreatedAt,
-                    IsCorrect = isVoided ? true : latestAttempt.IsCorrect,
-                    AwardedScore = isVoided ? fullScore : latestAttempt.AwardedScore,
+                    IsCorrect = isVoided ? true : (analysis?.OverrideIsCorrect ?? latestAttempt.IsCorrect),
+                    AwardedScore = isVoided ? fullScore : (analysis?.OverrideAwardedScore ?? latestAttempt.AwardedScore),
                     MaxScore = aq.Question?.MaxScore
                 } : null,
                 SubmittedAnswer = latestAttempt?.FinalAnswer,

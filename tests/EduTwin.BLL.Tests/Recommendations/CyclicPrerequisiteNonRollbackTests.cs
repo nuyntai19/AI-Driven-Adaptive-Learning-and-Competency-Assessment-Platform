@@ -391,7 +391,8 @@ public sealed class CyclicPrerequisiteNonRollbackTests : IDisposable
             IsCorrect = true,
             ReasoningQuality = 85m,
             AwardedScore = 10m,
-            Reason = "Teacher marked correct upon review"
+            Reason = "Teacher marked correct upon review",
+            Feedback = "Giáo viên nhận xét bài làm tốt."
         };
 
         var result = await useCase.ExecuteAsync(initialAnalysis.AnalysisId, request, CancellationToken.None);

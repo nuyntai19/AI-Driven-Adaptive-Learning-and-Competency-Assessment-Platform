@@ -20,18 +20,22 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
     private readonly EduTwinDbContext _dbContext;
     private readonly ITenantContext _tenantContext;
     private readonly TimeProvider _timeProvider;
-    private readonly ICoordinateAnswerNormalizer _coordinateNormalizer;
+    private readonly IQuestionActivationPolicy _activationPolicy;
 
     public CreateQuestionUseCase(
         EduTwinDbContext dbContext,
         ITenantContext tenantContext,
         TimeProvider timeProvider,
-        ICoordinateAnswerNormalizer? coordinateNormalizer = null)
+        ICoordinateAnswerNormalizer? coordinateNormalizer = null,
+        IMathAnswerNormalizer? mathNormalizer = null,
+        IQuestionActivationPolicy? activationPolicy = null)
     {
         _dbContext = dbContext;
         _tenantContext = tenantContext;
         _timeProvider = timeProvider;
-        _coordinateNormalizer = coordinateNormalizer ?? new CoordinateAnswerNormalizer();
+        var math = mathNormalizer ?? new MathAnswerNormalizer();
+        var coord = coordinateNormalizer ?? new CoordinateAnswerNormalizer(math);
+        _activationPolicy = activationPolicy ?? new QuestionActivationPolicy(math, coord);
     }
 
     public async Task<CreateQuestionResult> ExecuteAsync(CreateQuestionRequest request, CancellationToken cancellationToken = default)
@@ -92,17 +96,6 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
              !string.Equals(request.LanguageCode, "en", StringComparison.Ordinal)))
             return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
 
-        // MultipleChoice option validation (warn on create: require at least structure if provided)
-        if (questionType == QuestionType.MultipleChoice)
-        {
-            if (request.Options == null || request.Options.Count < 2)
-                return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
-
-            var correctCount = request.Options.Count(o => o.IsCorrect);
-            if (correctCount != 1)
-                return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
-        }
-
         // AnswerEvaluationMode validation & matrix enforcement
         QuestionAnswerEvaluationMode evalMode;
         if (string.IsNullOrWhiteSpace(request.AnswerEvaluationMode))
@@ -122,17 +115,13 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
             {
                 return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
             }
-
-            if (questionType == QuestionType.MultipleChoice && evalMode != QuestionAnswerEvaluationMode.TextExact)
-                return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
-
-            if (questionType == QuestionType.Essay && evalMode != QuestionAnswerEvaluationMode.Manual)
-                return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
         }
 
-        if (evalMode == QuestionAnswerEvaluationMode.Coordinate2D
-            && (questionType != QuestionType.ShortAnswer
-                || !_coordinateNormalizer.TryNormalize(request.CorrectAnswer, out _)))
+        var optionValidationItems = request.Options?
+            .Select(o => new QuestionOptionValidationItem(o.OptionLabel, o.OptionText, o.IsCorrect))
+            .ToList();
+
+        if (!_activationPolicy.Validate(questionType, evalMode, request.CorrectAnswer, optionValidationItems, out _))
         {
             return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
         }

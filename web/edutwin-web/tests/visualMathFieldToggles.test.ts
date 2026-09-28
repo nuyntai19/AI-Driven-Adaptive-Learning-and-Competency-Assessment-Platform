@@ -4,7 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import katex from "katex";
-import { normalizeMathExpression } from "../src/components/math/RichMathText";
+import { normalizeMathExpression } from "../src/utils/mathExpression.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -96,7 +96,7 @@ test("normalizeMathExpression renders exponential fractions without duplicate le
 });
 
 test("tokenizePlainText preserves Vietnamese sentence spacing and tokenizes set notation (Question #20001)", async () => {
-  const { tokenizePlainText, isPureMathString } = await import("../src/components/math/RichMathText");
+  const { tokenizePlainText, isPureMathString } = await import("../src/utils/mathExpression.ts");
 
   const sol = "Hàm số xác định khi mẫu số khác 0, tức là x - 2 khác 0, suy ra x khác 2. Vậy tập xác định là D = R \\ {2}.";
   assert.equal(isPureMathString(sol), false, "Full explanation sentence must not be flagged as pure math");

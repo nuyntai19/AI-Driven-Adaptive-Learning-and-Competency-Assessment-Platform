@@ -20,18 +20,22 @@ public class UpdateQuestionUseCase : IUpdateQuestionUseCase
     private readonly EduTwinDbContext _dbContext;
     private readonly ITenantContext _tenantContext;
     private readonly TimeProvider _timeProvider;
-    private readonly ICoordinateAnswerNormalizer _coordinateNormalizer;
+    private readonly IQuestionActivationPolicy _activationPolicy;
 
     public UpdateQuestionUseCase(
         EduTwinDbContext dbContext,
         ITenantContext tenantContext,
         TimeProvider timeProvider,
-        ICoordinateAnswerNormalizer? coordinateNormalizer = null)
+        ICoordinateAnswerNormalizer? coordinateNormalizer = null,
+        IMathAnswerNormalizer? mathNormalizer = null,
+        IQuestionActivationPolicy? activationPolicy = null)
     {
         _dbContext = dbContext;
         _tenantContext = tenantContext;
         _timeProvider = timeProvider;
-        _coordinateNormalizer = coordinateNormalizer ?? new CoordinateAnswerNormalizer();
+        var math = mathNormalizer ?? new MathAnswerNormalizer();
+        var coord = coordinateNormalizer ?? new CoordinateAnswerNormalizer(math);
+        _activationPolicy = activationPolicy ?? new QuestionActivationPolicy(math, coord);
     }
 
     public async Task<UpdateQuestionResult> ExecuteAsync(string questionId, UpdateQuestionRequest request, CancellationToken cancellationToken = default)
@@ -129,15 +133,6 @@ public class UpdateQuestionUseCase : IUpdateQuestionUseCase
         if (topicNode == null)
             return UpdateQuestionResult.Failure(ErrorCodes.ResourceNotFound);
 
-        // 10. MultipleChoice option validation
-        if (questionType == QuestionType.MultipleChoice)
-        {
-            if (request.Options == null || request.Options.Count < 2)
-                return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
-            if (request.Options.Count(o => o.IsCorrect) != 1)
-                return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
-        }
-
         // AnswerEvaluationMode validation & matrix enforcement
         QuestionAnswerEvaluationMode evalMode;
         if (string.IsNullOrWhiteSpace(request.AnswerEvaluationMode))
@@ -157,17 +152,13 @@ public class UpdateQuestionUseCase : IUpdateQuestionUseCase
             {
                 return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
             }
-
-            if (questionType == QuestionType.MultipleChoice && evalMode != QuestionAnswerEvaluationMode.TextExact)
-                return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
-
-            if (questionType == QuestionType.Essay && evalMode != QuestionAnswerEvaluationMode.Manual)
-                return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
         }
 
-        if (evalMode == QuestionAnswerEvaluationMode.Coordinate2D
-            && (questionType != QuestionType.ShortAnswer
-                || !_coordinateNormalizer.TryNormalize(request.CorrectAnswer, out _)))
+        var optionValidationItems = request.Options?
+            .Select(o => new QuestionOptionValidationItem(o.OptionLabel, o.OptionText, o.IsCorrect))
+            .ToList();
+
+        if (!_activationPolicy.Validate(questionType, evalMode, request.CorrectAnswer, optionValidationItems, out _))
         {
             return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
         }

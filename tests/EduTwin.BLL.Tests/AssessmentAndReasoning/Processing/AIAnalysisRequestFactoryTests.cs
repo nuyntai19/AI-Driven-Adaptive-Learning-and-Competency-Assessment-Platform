@@ -113,9 +113,86 @@ public sealed class AIAnalysisRequestFactoryTests
             new AIAnalysisRequestFactory().Create(
                 attempt,
                 question,
-                [CreateNode(9, centerId, subjectId, "Mapped")])) ;
+                [CreateNode(9, centerId, subjectId, "Mapped")]));
 
         Assert.Equal("The primary topic is not in the allowed node set.", exception.Message);
+    }
+
+    [Fact]
+    public void Create_NumericRational_PopulatesCanonicalAnswersAndDisplayLatex()
+    {
+        var centerId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+        var attempt = CreateAttempt(centerId, "vi");
+        attempt.FinalAnswer = "0.5";
+        attempt.AnswerDisplayLatex = @"\frac{1}{2}";
+
+        var question = CreateQuestion(centerId, subjectId, "vi");
+        question.QuestionType = QuestionType.ShortAnswer;
+        question.AnswerEvaluationMode = QuestionAnswerEvaluationMode.NumericRational;
+        question.CorrectAnswer = @"\frac{2}{4}";
+
+        var request = new AIAnalysisRequestFactory().Create(
+            attempt,
+            question,
+            [CreateNode(9, centerId, subjectId, "Primary")]);
+
+        Assert.Equal(QuestionAnswerEvaluationMode.NumericRational, request.Question.AnswerEvaluationMode);
+        Assert.Equal(@"\frac{2}{4}", request.Question.CorrectAnswer);
+        Assert.Equal("1/2", request.Question.CanonicalCorrectAnswer);
+        Assert.Equal("0.5", request.StudentSubmission.FinalAnswer);
+        Assert.Equal(@"\frac{1}{2}", request.StudentSubmission.AnswerDisplayLatex);
+        Assert.Equal("1/2", request.StudentSubmission.CanonicalFinalAnswer);
+    }
+
+    [Fact]
+    public void Create_Coordinate2D_PopulatesCanonicalCoordinates()
+    {
+        var centerId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+        var attempt = CreateAttempt(centerId, "vi");
+        attempt.FinalAnswer = "(1, 0.5)";
+        attempt.AnswerDisplayLatex = @"\left(1;\frac{1}{2}\right)";
+
+        var question = CreateQuestion(centerId, subjectId, "vi");
+        question.QuestionType = QuestionType.ShortAnswer;
+        question.AnswerEvaluationMode = QuestionAnswerEvaluationMode.Coordinate2D;
+        question.CorrectAnswer = "I(1; 2/4)";
+
+        var request = new AIAnalysisRequestFactory().Create(
+            attempt,
+            question,
+            [CreateNode(9, centerId, subjectId, "Primary")]);
+
+        Assert.Equal(QuestionAnswerEvaluationMode.Coordinate2D, request.Question.AnswerEvaluationMode);
+        Assert.Equal("I(1; 2/4)", request.Question.CorrectAnswer);
+        Assert.Equal("(1; 1/2)", request.Question.CanonicalCorrectAnswer);
+        Assert.Equal("(1, 0.5)", request.StudentSubmission.FinalAnswer);
+        Assert.Equal(@"\left(1;\frac{1}{2}\right)", request.StudentSubmission.AnswerDisplayLatex);
+        Assert.Equal("(1; 1/2)", request.StudentSubmission.CanonicalFinalAnswer);
+    }
+
+    [Fact]
+    public void Create_TextExact_TrimsCanonicalAnswer()
+    {
+        var centerId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+        var attempt = CreateAttempt(centerId, "vi");
+        attempt.FinalAnswer = "  photosynthesis  ";
+
+        var question = CreateQuestion(centerId, subjectId, "vi");
+        question.QuestionType = QuestionType.ShortAnswer;
+        question.AnswerEvaluationMode = QuestionAnswerEvaluationMode.TextExact;
+        question.CorrectAnswer = " Photosynthesis ";
+
+        var request = new AIAnalysisRequestFactory().Create(
+            attempt,
+            question,
+            [CreateNode(9, centerId, subjectId, "Primary")]);
+
+        Assert.Equal(QuestionAnswerEvaluationMode.TextExact, request.Question.AnswerEvaluationMode);
+        Assert.Equal("Photosynthesis", request.Question.CanonicalCorrectAnswer);
+        Assert.Equal("photosynthesis", request.StudentSubmission.CanonicalFinalAnswer);
     }
 
     private static Attempt CreateAttempt(Guid centerId, string language) => new()

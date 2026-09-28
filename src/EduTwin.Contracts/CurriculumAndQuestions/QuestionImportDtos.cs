@@ -17,6 +17,7 @@ public sealed class QuestionImportItemDto
     public decimal MaxScore { get; set; } = 10m;
     public uint EstimatedTimeSeconds { get; set; } = 120;
     public bool ReasoningRequired { get; set; } = true;
+    public QuestionAnswerEvaluationMode AnswerEvaluationMode { get; set; } = QuestionAnswerEvaluationMode.TextExact;
     public List<QuestionOptionInput> Options { get; set; } = new();
     public List<string> RequiredIdeas { get; set; } = new();
     public List<string> CommonErrors { get; set; } = new();
@@ -51,7 +52,6 @@ public sealed class QuestionImportConfirmRequest
     public string PreviewToken { get; set; } = string.Empty;
     public Guid SubjectId { get; set; }
     public ulong PrimaryTopicNodeId { get; set; }
-    public List<QuestionImportItemDto>? Questions { get; set; }
 }
 
 public sealed class QuestionImportConfirmResponse

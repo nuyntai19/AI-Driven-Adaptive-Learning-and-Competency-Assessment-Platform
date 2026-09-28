@@ -19,6 +19,7 @@ public sealed class TeacherReviewQueueItemDto
     public decimal? ReasoningQuality { get; set; }
     public string? AnalysisFeedback { get; set; }
     public decimal? AnalysisConfidence { get; set; }
+    public string? ErrorType { get; set; }
     public EvidenceDecisionDto Evidence { get; set; } = new();
     public DateTime SubmittedAt { get; set; }
     public bool HasStudentReviewRequest { get; set; }

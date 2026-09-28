@@ -394,7 +394,7 @@ test("batch submit freezes payload to prevent timer drift and 409 conflict on re
   };
 
   // Timer ticks forward during network delay / retry
-  let tickingTimer = initialTimeSpentSeconds + 15;
+  const tickingTimer = initialTimeSpentSeconds + 15;
 
   // On retry, payload used must come from frozen snapshot, NOT ticking timer
   const retrySubmissionTimeSpent = frozenPayload["q-1"].timeSpentSeconds;

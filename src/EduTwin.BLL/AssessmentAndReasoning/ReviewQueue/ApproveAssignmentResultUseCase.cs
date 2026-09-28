@@ -46,8 +46,14 @@ public sealed class ApproveAssignmentResultUseCase : IApproveAssignmentResultUse
             return ApproveAssignmentResult.Fail(TeacherApproveStatus.Forbidden, "FORBIDDEN", "Không có quyền duyệt kết quả bài tập.");
 
         var isTeacher = string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.OrdinalIgnoreCase);
-        if (!isTeacher || request.StudentId == Guid.Empty || request.Note?.Length > 1000)
+        if (!isTeacher)
             return ApproveAssignmentResult.Fail(TeacherApproveStatus.Forbidden, "FORBIDDEN", "Chỉ giáo viên phụ trách mới có quyền duyệt kết quả bài tập.");
+
+        if (request.StudentId == Guid.Empty)
+            return ApproveAssignmentResult.Fail(TeacherApproveStatus.ValidationFailed, "STUDENT_ID_REQUIRED", "Mã học sinh không hợp lệ.");
+
+        if (request.Note?.Length > 1000)
+            return ApproveAssignmentResult.Fail(TeacherApproveStatus.ValidationFailed, "NOTE_TOO_LONG", "Ghi chú duyệt kết quả không được vượt quá 1000 ký tự.");
 
         var progress = await _dbContext.StudentAssignmentProgresses
             .Include(p => p.Assignment)

@@ -1,7 +1,7 @@
 # EduTwin — Database Schema
 
-> Phiên bản: 2.5 (Post-R09 & Core Learning Flow Amendments)
-> Trạng thái: ACTIVE — 41 bảng vật lý trong EF migration model hiện hành (Đã bao gồm bảng thứ 41: student_review_requests)
+> Phiên bản: 2.6 (Post-R09, Core Flow & Learning Path Workflow Amendments)
+> Trạng thái: ACTIVE — 43 bảng vật lý trong EF migration model hiện hành (Đã bao gồm bảng 41: student_review_requests, bảng 42: teacher_review_histories, bảng 43: student_learning_path_preferences)
 > Database: MySQL 8.x / InnoDB / utf8mb4
 > ORM: Entity Framework Core 10
 > Chủ sở hữu: Data/Architecture owners; thay đổi cần nhóm phê duyệt
@@ -27,7 +27,7 @@ Schema gồm sáu module logic:
 5. Assessment & AI Reasoning.
 6. Dynamic Authorization & Evidence Governance.
 
-Hệ thống có 41 bảng vật lý trong EF migration model hiện hành, bao gồm 7 bảng ở Module 6, bảng watermark recommendation generation (bảng thứ 39: recommendation_generation_states), bảng lưu trữ minh chứng đính kèm bài làm (bảng thứ 40: attempt_attachments) và bảng quản lý yêu cầu khiếu nại bài làm của học sinh (bảng thứ 41: student_review_requests). Toàn bộ mô hình tuân thủ kiểm tra live-MySQL và Global Query Filter nghiêm ngặt.
+Hệ thống có 43 bảng vật lý trong EF migration model hiện hành, bao gồm 7 bảng ở Module 6, bảng watermark recommendation generation (bảng thứ 39: recommendation_generation_states), bảng lưu trữ minh chứng đính kèm bài làm (bảng thứ 40: attempt_attachments), bảng quản lý yêu cầu khiếu nại bài làm của học sinh (bảng thứ 41: student_review_requests), bảng lịch sử xét duyệt bài của giáo viên (bảng thứ 42: teacher_review_histories) và bảng sở thích lộ trình học tập của học sinh (bảng thứ 43: student_learning_path_preferences). Toàn bộ mô hình tuân thủ kiểm tra live-MySQL và Global Query Filter nghiêm ngặt.
 
 ## 2. Quy ước vật lý
 
@@ -674,11 +674,22 @@ Indexes:
 | total_question_count | INT UNSIGNED | No | Snapshot |
 | started_at | DATETIME(6) | Yes | Thời điểm UTC bắt đầu |
 | completed_at | DATETIME(6) | Yes | Thời điểm UTC hoàn tất |
+| overall_ai_comment | LONGTEXT | Yes | Nhận xét tổng quan của AI cho toàn bộ bài tập |
+| overall_ai_comment_generated_at | DATETIME(6) | Yes | Thời điểm UTC sinh nhận xét tổng quan |
+| overall_ai_comment_version | INT UNSIGNED | No | Default 0; tăng khi sinh lại nhận xét |
+| is_overall_ai_comment_stale | TINYINT(1) | No | Default 0; đánh dấu nhận xét cần làm mới |
+| teacher_final_review_status | VARCHAR(32) | No | Default 'Pending'; Pending, Approved |
+| final_reviewed_by_user_id | VARCHAR(36) | Yes | Tenant-safe FK users; giáo viên chốt điểm/nhận xét cuối |
+| final_reviewed_at | DATETIME(6) | Yes | Thời điểm UTC giáo viên duyệt bài cuối cùng |
+| final_teacher_note | VARCHAR(1000) | Yes | Lời dặn / nhận xét chung của giáo viên |
+| final_review_version | INT UNSIGNED | No | Default 0 |
 | ...MTA | | | Kế thừa audit, soft-delete, tenant và row_version tại mục 2.3 |
 
 - UX(center_id, assignment_id, student_id).
 - IX(center_id, student_id, status).
+- IX(center_id, final_reviewed_by_user_id).
 - CHECK completed_question_count <= total_question_count.
+- CHECK teacher_final_review_status IN ('Pending', 'Approved').
 
 # Module 4 — Digital Twin & Personalization
 
@@ -794,6 +805,11 @@ Table append-only; replay tạo event mới, không sửa event cũ.
 | status | VARCHAR(32) | No | Active, Superseded, Completed |
 | generated_from_attempt_id | BIGINT UNSIGNED | Yes | Attempt làm thay đổi input; null cho bootstrap/manual regenerate |
 | generated_at | DATETIME(6) | No | Thời điểm UTC sinh version |
+| plan_json | JSON | Yes | Cấu trúc lộ trình học tập chi tiết (giai đoạn, chủ đề, bài tập) |
+| recommendation_rationale | LONGTEXT | Yes | Giải thích sư phạm chi tiết cơ sở đề xuất lộ trình |
+| plan_schema_version | VARCHAR(16) | No | Default '2.0'; phiên bản cấu trúc plan |
+| generation_status | VARCHAR(32) | No | Default 'Ready'; trạng thái sinh lộ trình |
+| adaptation_message | LONGTEXT | Yes | Thông điệp thích ứng khi lộ trình được điều chỉnh |
 | ...MTA | | | Kế thừa audit, soft-delete, tenant và row_version tại mục 2.3 |
 
 - Chỉ một Active path cho Student + Subject; bảo đảm bằng transaction/service và filtered strategy phù hợp MySQL.
@@ -923,6 +939,12 @@ Attempts không soft delete; nếu cần loại khỏi replay phải có use cas
 | needs_teacher_review | TINYINT(1) | No | Cờ vận hành đưa analysis vào review queue |
 | provider | VARCHAR(32) | No | Gemini hoặc RuleBased |
 | model_name | VARCHAR(100) | Yes | Model provider trả về; null cho fallback |
+| solution_type | VARCHAR(32) | Yes | REFINED, CORRECTED, GENERATED, MODEL_ANSWER |
+| ai_solution | LONGTEXT | Yes | Lời giải chi tiết mẫu hoặc đã chuẩn hóa do AI tạo ra |
+| review_decision | VARCHAR(32) | Yes | Approved, Adjusted |
+| reviewed_by_user_id | VARCHAR(36) | Yes | Tenant-safe FK users; giáo viên thẩm định |
+| reviewed_at | DATETIME(6) | Yes | Thời điểm UTC giáo viên duyệt bài |
+| teacher_review_note | VARCHAR(1000) | Yes | Ghi chú sư phạm khi giáo viên duyệt/điều chỉnh |
 | override_reasoning_quality | DECIMAL(5,2) | Yes | Quality giáo viên xác nhận/sửa |
 | override_error_type | VARCHAR(32) | Yes | Error type giáo viên xác nhận/sửa |
 | override_feedback | LONGTEXT | Yes | Feedback hiệu lực do giáo viên sửa |
@@ -1192,7 +1214,7 @@ Invariant:
 | attempt_id | BIGINT UNSIGNED | No | Tenant-safe FK attempts |
 | analysis_id | BIGINT UNSIGNED | Yes | Tenant-safe FK reasoning_analyses; null khi chưa có AI output |
 | supersedes_assessment_id | BIGINT UNSIGNED | Yes | Bản đánh giá trước bị thay thế khi replay |
-| source_type | VARCHAR(32) | No | AI, RuleFallback, TeacherOverride |
+| source_type | VARCHAR(32) | No | AI, RuleFallback, TeacherOverride, TeacherApproval |
 | trust_level | VARCHAR(32) | No | Trusted, Reduced, ReviewOnly |
 | decision_mode | VARCHAR(32) | No | AIWeighted, DeterministicOnly, HumanConfirmed |
 | reasoning_weight | DECIMAL(4,3) | No | 0.000–1.000 |
@@ -1215,7 +1237,7 @@ Indexes/constraints:
 - FK(center_id, supersedes_assessment_id, attempt_id) → evidence_assessments(center_id, evidence_assessment_id, attempt_id) khi supersedes_assessment_id khác null.
 - CHECK reasoning_weight BETWEEN 0 AND 1.
 - CHECK trust_level IN (Trusted, Reduced, ReviewOnly).
-- CHECK source_type IN (AI, RuleFallback, TeacherOverride).
+- CHECK source_type IN (AI, RuleFallback, TeacherOverride, TeacherApproval).
 - CHECK decision_mode IN (AIWeighted, DeterministicOnly, HumanConfirmed).
 - Trigger `tr_evidence_no_self_supersede` từ chối insert tự supersede. MySQL không cho CHECK tham chiếu cột AUTO_INCREMENT, nên invariant này dùng trigger thay vì CHECK.
 - Trigger `tr_evidence_append_only_update` và `tr_evidence_append_only_delete` chặn UPDATE/DELETE để database tự bảo vệ lịch sử append-only.
@@ -1299,7 +1321,71 @@ Invariant:
 - Khi giáo viên giải quyết khiếu nại (`Resolved` hoặc `Dismissed`), bắt buộc cập nhật `resolved_by_teacher_id`, `resolved_at` và `teacher_note`.
 - Xóa vật lý Attempt (trong môi trường kiểm thử) sẽ CASCADE xóa các yêu cầu khiếu nại liên quan.
 
-## 45. Structured AI output contract lưu vào reasoning_analyses
+## 45. teacher_review_histories [TA - Bảng vật lý thứ 42]
+
+| Column | Type | Null | Constraint/Ý nghĩa |
+|---|---|---:|---|
+| history_id | BIGINT UNSIGNED | No | PK, auto increment |
+| center_id | VARCHAR(36) | No | Tenant discriminator |
+| analysis_id | BIGINT UNSIGNED | No | Tenant-safe FK reasoning_analyses |
+| attempt_id | BIGINT UNSIGNED | No | Tenant-safe FK attempts |
+| teacher_id | VARCHAR(36) | No | Tenant-safe FK users; giáo viên thực hiện chấm duyệt |
+| decision | VARCHAR(32) | No | Approved, Adjusted |
+| previous_score | DECIMAL(5,2) | Yes | Điểm trước khi giáo viên can thiệp |
+| new_score | DECIMAL(5,2) | Yes | Điểm hiệu lực do giáo viên quyết định |
+| previous_is_correct | TINYINT(1) | Yes | Đánh giá đúng/sai trước can thiệp |
+| new_is_correct | TINYINT(1) | Yes | Đánh giá đúng/sai sau can thiệp |
+| note | VARCHAR(1000) | Yes | Ghi chú sư phạm của giáo viên |
+| override_version | INT UNSIGNED | No | Default 0; phiên bản override tương ứng |
+| ...TA | | | Kế thừa created_at, created_by và row_version tại mục 2.3 |
+
+Indexes/constraints:
+
+- PK(history_id).
+- UX(center_id, history_id).
+- IX(center_id, analysis_id).
+- IX(center_id, attempt_id).
+- IX(center_id, teacher_id).
+- FK(center_id, analysis_id) → reasoning_analyses(center_id, analysis_id) ON DELETE RESTRICT.
+- FK(center_id, attempt_id) → attempts(center_id, attempt_id) ON DELETE RESTRICT.
+- FK(center_id, teacher_id) → users(center_id, user_id) ON DELETE RESTRICT.
+- CHECK decision IN ('Approved', 'Adjusted').
+
+Invariant:
+
+- Ghi lại toàn bộ lịch sử các lần giáo viên phê duyệt hoặc điều chỉnh điểm số/kết quả bài làm.
+- Dữ liệu có tính lịch sử (audit trail) phục vụ minh bạch và đối chiếu khi học sinh khiếu nại.
+
+## 46. student_learning_path_preferences [MTA - Bảng vật lý thứ 43]
+
+| Column | Type | Null | Constraint/Ý nghĩa |
+|---|---|---:|---|
+| preference_id | BIGINT UNSIGNED | No | PK, auto increment |
+| center_id | VARCHAR(36) | No | Tenant discriminator |
+| student_id | VARCHAR(36) | No | Tenant-safe FK students; học sinh sở hữu cấu hình |
+| subject_id | VARCHAR(36) | No | Tenant-safe FK subjects; môn học áp dụng |
+| self_assessed_level | VARCHAR(32) | No | Mức độ tự đánh giá năng lực ban đầu |
+| weak_topic_node_ids | JSON | No | Mảng JSON chứa ID các nút kiến thức học sinh cảm thấy yếu |
+| focus_topic_node_ids | JSON | No | Mảng JSON chứa ID các nút kiến thức học sinh muốn tập trung |
+| goal_type | VARCHAR(32) | No | Loại mục tiêu (ôn thi, bổ trợ, nâng cao) |
+| target_mastery | DECIMAL(5,2) | No | Mức độ thông thạo mục tiêu (0–100%) |
+| target_weeks | INT | No | Số tuần dự kiến hoàn thành |
+| minutes_per_day | INT | No | Thời gian dành cho việc học mỗi ngày (phút) |
+| days_per_week | INT | No | Số ngày học trong tuần |
+| pace | VARCHAR(32) | No | Tốc độ học (chậm chắc, tiêu chuẩn, tăng tốc) |
+| preferred_mode | VARCHAR(32) | No | Phương thức học ưu tiên |
+| note | VARCHAR(1000) | Yes | Ghi chú cá nhân của học sinh |
+| ...MTA | | | Kế thừa audit, soft-delete, tenant và row_version tại mục 2.3 |
+
+Indexes/constraints:
+
+- PK(preference_id).
+- UX(center_id, preference_id).
+- UX(center_id, student_id, subject_id) — mỗi học sinh có tối đa 1 cấu hình sở thích trên mỗi môn học.
+- FK(center_id, student_id) → students(center_id, student_id) ON DELETE RESTRICT.
+- FK(center_id, subject_id) → subjects(center_id, subject_id) ON DELETE RESTRICT.
+
+## 47. Structured AI output contract lưu vào reasoning_analyses
 
 Payload hợp lệ trước khi persistence:
 
