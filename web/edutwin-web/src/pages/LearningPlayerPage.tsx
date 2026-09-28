@@ -1419,7 +1419,7 @@ export const LearningPlayerPage = () => {
         maxTotalForDetermined += Number(maxScore);
       }
 
-      if (q.latestAttempt?.isCorrect === true) {
+      if ((q.effectiveIsCorrect ?? q.latestAttempt?.isCorrect) === true) {
         correctCount++;
       }
     }

@@ -1328,7 +1328,12 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                               <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
                                 <button
                                   type="button"
-                                  onClick={() => setIsCorrectVal(true)}
+                                  onClick={() => {
+                                    setIsCorrectVal(true);
+                                    if (awardedScore === 0) {
+                                      setAwardedScore(currentQuestion.maxScore ?? 10);
+                                    }
+                                  }}
                                   className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
                                     isCorrectVal
                                       ? "bg-emerald-600 text-white shadow-sm"
@@ -1339,7 +1344,10 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => setIsCorrectVal(false)}
+                                  onClick={() => {
+                                    setIsCorrectVal(false);
+                                    setAwardedScore(0);
+                                  }}
                                   className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
                                     !isCorrectVal
                                       ? "bg-rose-600 text-white shadow-sm"
