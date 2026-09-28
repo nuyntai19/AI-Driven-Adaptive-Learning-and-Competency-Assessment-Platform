@@ -318,22 +318,30 @@ Tạo mới file `web/edutwin-web/tests/modeAwareAnswerEditorHelpers.test.ts` ki
    - **Đồng bộ Multiple Choice correctAnswer**:
      - Backend yêu cầu câu hỏi `MultipleChoice`: (1) phải có đúng một option `isCorrect === true`, và (2) `correctAnswer` không được rỗng.
      - `QuestionEditorPage.tsx` tự động đồng bộ `correctAnswer` từ nhãn `optionLabel` (ví dụ `"A"`, `"B"`, `"C"`, `"D"`) của phương án được đánh dấu `isCorrect: true`, đảm bảo cả hai điều kiện backend luôn thỏa mãn.
-   - **Thay thế nguyên tử "Bảng gõ ký hiệu Toán" bằng Shared `InlineMathComposer`**:
-     - Xây dựng component dùng chung [InlineMathComposer.tsx](file:///d:/AI-Driven%20Adaptive%20Learning%20and%20Competency%20Assessment%20Platform/web/edutwin-web/src/components/math/InlineMathComposer.tsx) (popover / modal MathLive kèm KaTeX live preview). Khi người soạn nhấn nút *"Chèn công thức"* trên các trường văn bản hỗn hợp (`questionText`, `options[].optionText`, `solution`), công thức toán `$..$` sẽ được chèn chuẩn xác vào vị trí con trỏ (cursor position) của textarea/input.
-     - Việc gỡ bỏ component `MathInputToolbar` cũ và tích hợp `InlineMathComposer` trên `QuestionEditorPage.tsx` phải diễn ra **nguyên tử trong cùng một commit**, tuyệt đối không tạo hồi quy UX (không chấp nhận trạng thái trung gian chỉ có textarea và KaTeX preview).
-     - Không xóa file `MathInputToolbar.tsx` trong Gate 2A.2 vì `TeacherQuestionEditorView.tsx` vẫn đang dùng tạm thời cho đến Gate 2A.3.
-   - **Bảo toàn bản nháp theo cặp `questionType:evaluationMode` (No Cross-Contamination Draft Store)**:
-     - Khóa bản nháp theo cả `questionType` và `evaluationMode` (`AnswerDraftKey`):
-       ```typescript
-       export type AnswerDraftKey =
-         | "ShortAnswer:TextExact"
-         | "ShortAnswer:NumericRational"
-         | "ShortAnswer:Coordinate2D"
-         | "ShortAnswer:Manual"
-         | "Essay:Manual";
-       ```
-     - Quản lý state `modeDrafts: Partial<Record<AnswerDraftKey, AnswerEditorValue>>`.
-     - Phân định rạch ròi giữa `ShortAnswer:Manual` (câu trả lời ngắn) và `Essay:Manual` (đáp án mẫu / rubric tự luận dài). Khi người soạn chuyển đổi qua lại giữa ShortAnswer và Essay, hệ thống bảo toàn và khôi phục đúng bản nháp tương ứng, tuyệt đối không làm xuất hiện nhầm câu trả lời ngắn vào ô rubric tự luận hoặc ngược lại.
+    - **Thay thế nguyên tử "Bảng gõ ký hiệu Toán" bằng Shared `InlineMathComposer`**:
+      - Xây dựng component dùng chung [InlineMathComposer.tsx](file:///d:/AI-Driven%20Adaptive%20Learning%20and%20Competency%20Assessment%20Platform/web/edutwin-web/src/components/math/InlineMathComposer.tsx) (popover / modal MathLive kèm KaTeX live preview).
+      - **Contract của InlineMathComposer**:
+        * Tái sử dụng trực tiếp [VisualMathField.tsx](file:///d:/AI-Driven%20Adaptive%20Learning%20and%20Competency%20Assessment%20Platform/web/edutwin-web/src/components/math/VisualMathField.tsx) và hạ tầng lazy-load/fallback MathLive hiện có (`loadMathLive`), tuyệt đối không viết loader MathLive thứ hai.
+        * Snapshot `selectionStart`/`selectionEnd` của target input/textarea ngay trước khi mở modal/popover (vì việc mở modal sẽ khiến target mất focus).
+        * Chèn công thức chuẩn dạng `$${cleanLatex}$` vào đúng vị trí snapshot và lập tức khôi phục focus/caret ngay sau vị trí công thức vừa chèn.
+        * Kiểm soát chặt chẽ: Không chèn nếu chuỗi công thức rỗng; chuẩn hóa không tự lồng thêm `$...$` nếu đầu vào đã chứa delimiters.
+        * Hỗ trợ đầy đủ phím Escape, đóng modal khôi phục focus về target ban đầu, và đầy đủ nhãn hỗ trợ tiếp cận (`aria-label`).
+      - Việc gỡ bỏ component `MathInputToolbar` cũ và tích hợp `InlineMathComposer` trên `QuestionEditorPage.tsx` phải diễn ra **nguyên tử trong cùng một commit**, tuyệt đối không tạo hồi quy UX (không chấp nhận trạng thái trung gian chỉ có textarea và KaTeX preview).
+      - Không xóa file `MathInputToolbar.tsx` trong Gate 2A.2 vì `TeacherQuestionEditorView.tsx` vẫn đang dùng tạm thời cho đến Gate 2A.3.
+    - **Bảo toàn bản nháp theo cặp `questionType:evaluationMode` và Quản lý Vòng Đời Identity**:
+      - Khóa bản nháp theo cả `questionType` và `evaluationMode` (`AnswerDraftKey`):
+        ```typescript
+        export type AnswerDraftKey =
+          | "ShortAnswer:TextExact"
+          | "ShortAnswer:NumericRational"
+          | "ShortAnswer:Coordinate2D"
+          | "ShortAnswer:Manual"
+          | "Essay:Manual";
+        ```
+      - Quản lý state `modeDrafts: Partial<Record<AnswerDraftKey, AnswerEditorValue>>`.
+      - **Vòng đời Question Identity**: Reset và re-hydrate lại toàn bộ `modeDrafts` khi `questionId` hoặc trạng thái `create ↔ edit` thay đổi, bảo đảm tuyệt đối không để rò rỉ bản nháp từ câu hỏi A sang câu hỏi B.
+      - **Single Source of Truth**: Active draft là nguồn duy nhất để sinh và serialize `correctAnswer` khi submit, loại bỏ hoàn toàn tình trạng `formData.correctAnswer` và `modeDrafts` tồn tại song song nhưng bị lệch dữ liệu.
+      - Phân định rạch ròi giữa `ShortAnswer:Manual` (câu trả lời ngắn) và `Essay:Manual` (đáp án mẫu / rubric tự luận dài). Khi người soạn chuyển đổi qua lại giữa ShortAnswer và Essay, hệ thống bảo toàn và khôi phục đúng bản nháp tương ứng, tuyệt đối không làm xuất hiện nhầm câu trả lời ngắn vào ô rubric tự luận hoặc ngược lại.
    - **Triết lý Thẩm Quyền và Dữ Liệu**:
      - Validation client chỉ đóng vai trò hỗ trợ UX (syntax hints non-blocking); backend `MathAnswerNormalizer` / `CoordinateAnswerNormalizer` và `ProblemDetails` là nguồn xác thực duy nhất.
      - Không tự xây dựng canonicalizer thứ hai bằng TypeScript trên frontend để tự động chuyển `3/4` thành `\frac{3}{4}`. Trường `displayLatex` chỉ dùng cho render trình bày MathLive / KaTeX.
@@ -341,10 +349,12 @@ Tạo mới file `web/edutwin-web/tests/modeAwareAnswerEditorHelpers.test.ts` ki
      - Xây dựng module pure helper `centerManagerQuestionEditorHelpers.ts` và unit test suite `tests/centerManagerQuestionEditorIntegration.test.ts` (trên hạ tầng `node:test`) kiểm tra:
        * Draft key resolution và bảo toàn/khôi phục draft theo từng cặp `questionType:evaluationMode`.
        * **Test case chuyên biệt chuyển `ShortAnswer:Manual ↔ Essay:Manual`** bảo đảm không trộn câu trả lời ngắn với rubric tự luận.
+        * **Test case quản lý lifecycle**: Reset/hydrate draft khi đổi `questionId` hoặc chuyển chế độ `create ↔ edit`.
        * Tạo payload Create/Update (đặc biệt: Essay có `correctAnswer` hợp lệ, không undefined).
        * Tự động đồng bộ `correctAnswer` cho MultipleChoice từ option có `isCorrect = true`.
-       * Chèn công thức inline vào chuỗi văn bản tại vị trí con trỏ (selection insertion).
+        * Chèn công thức inline vào chuỗi văn bản tại vị trí con trỏ (selection insertion): test với `questionText`, `solution` và đúng `optionText` của option đang active (chẳng hạn option B trong danh sách MCQ).
        * Hydration và serialize `correctAnswer` sang `AnswerEditorValue`.
+      - Thực hiện **Chrome smoke test** (sử dụng browser subagent) để kiểm chứng thực tế: mở modal composer, tương tác với bàn phím MathLive, kiểm tra vị trí con trỏ (caret) và khả năng restore focus trong textarea thật của DOM.
    - **Ranh giới tác nhân (Actor Isolation)**:
      - Chỉ thay đổi bề mặt CenterManager ([QuestionEditorPage.tsx](file:///d:/AI-Driven%20Adaptive%20Learning%20and%20Competency%20Assessment%20Platform/web/edutwin-web/src/pages/QuestionEditorPage.tsx)) và tạo mới shared component [InlineMathComposer.tsx](file:///d:/AI-Driven%20Adaptive%20Learning%20and%20Competency%20Assessment%20Platform/web/edutwin-web/src/components/math/InlineMathComposer.tsx); không tác động đến Teacher ([TeacherQuestionEditorView.tsx](file:///d:/AI-Driven%20Adaptive%20Learning%20and%20Competency%20Assessment%20Platform/web/edutwin-web/src/pages/teacher/TeacherQuestionEditorView.tsx)) hay Student ([LearningPlayerPage.tsx](file:///d:/AI-Driven%20Adaptive%20Learning%20and%20Competency%20Assessment%20Platform/web/edutwin-web/src/pages/LearningPlayerPage.tsx)).
    - **Tiêu chí nghiệm thu Gate 2A.2**:
@@ -421,16 +431,18 @@ Tạo mới file `web/edutwin-web/tests/modeAwareAnswerEditorHelpers.test.ts` ki
 7. **Thẩm quyền chuẩn hóa**:
    - Backend là Single Source of Truth duy nhất. Client validation chỉ là gợi ý cú pháp không mang tính quyết định. Không tạo canonicalizer TypeScript thứ hai trên frontend.
 8. **Ranh giới phạm vi**:
-   - Khóa chặt Core Phase 2A vào `correctAnswer` (Teacher/Manager), Student answer input và Readonly answer display. Mixed-content authoring được quy hoạch thành Gate 2A.Extension rõ ràng.
+   - Core Gate 2A.2–2A.4 triển khai `correctAnswer` (`ModeAwareAnswerEditor`) kết hợp mixed-content `InlineMathComposer` theo từng actor tương ứng. Gate Extension chỉ xử lý preview công thức trong `QuestionImportModal` và dọn dẹp file cũ `MathInputToolbar.tsx` sau khi xác nhận không còn import nào trên toàn codebase.
 9. **Component Ref**:
    - Dùng `forwardRef<AnswerEditorRef, ModeAwareAnswerEditorProps>` với quy tắc chống feedback loop nghiêm ngặt.
 10. **Preview KaTeX**:
     - Sửa đổi trực tiếp tại `src/components/teacher/MathFormulaPreview.tsx` (implementation thực tế), giữ nguyên file proxy `TeacherMathFormulaPreview.tsx`.
 11. **Khóa Quyết Định Toolbar / Composer**:
-    - Loại bỏ hoàn toàn bảng ký hiệu cũ (`MathInputToolbar`) theo lộ trình nguyên tử: Gate 2A.2 thay bằng shared `InlineMathComposer` cho CenterManager, Gate 2A.3 cho Teacher, Gate 2A.4 cho Student. MathLive virtual keyboard là công cụ nhập toán độc lập duy nhất; văn bản trộn công thức sử dụng `InlineMathComposer`. File `MathInputToolbar.tsx` chỉ bị xóa ở Gate Extension sau khi `git grep MathInputToolbar` xác nhận sạch 100%.
-12. **Bảo Toàn Bản Nháp Khóa Theo `questionType:evaluationMode` (No Auto-Wipe, No Cross-Contamination)**:
+    - Loại bỏ hoàn toàn bảng ký hiệu cũ (`MathInputToolbar`) theo lộ trình nguyên tử: Gate 2A.2 thay bằng shared `InlineMathComposer` cho CenterManager, Gate 2A.3 cho Teacher, Gate 2A.4 cho Student (`reasoningText`). MathLive virtual keyboard là công cụ nhập toán độc lập duy nhất; văn bản trộn công thức sử dụng `InlineMathComposer`. File `MathInputToolbar.tsx` chỉ bị xóa ở Gate Extension sau khi `git grep MathInputToolbar` xác nhận sạch 100%.
+12. **Bảo Toàn Bản Nháp Khóa Theo `questionType:evaluationMode` và Vòng Đời Question Identity**:
     - Bản nháp được lưu theo khóa `AnswerDraftKey` (`ShortAnswer:TextExact`, `ShortAnswer:NumericRational`, `ShortAnswer:Coordinate2D`, `ShortAnswer:Manual`, `Essay:Manual`). Khi chuyển đổi qua lại giữa các chế độ (đặc biệt `ShortAnswer:Manual ↔ Essay:Manual`), bản nháp được bảo toàn độc lập, không tự ý xóa trắng và không để câu trả lời ngắn xuất hiện nhầm trong rubric tự luận hay ngược lại.
+    - Quản lý vòng đời chặt chẽ: Reset và hydrate lại toàn bộ draft store khi `questionId` hoặc chế độ create/edit thay đổi; tuyệt đối không để rò rỉ bản nháp giữa các câu hỏi khác nhau.
+    - Active draft là nguồn dữ liệu duy nhất (Single Source of Truth) để sinh `correctAnswer` khi submit, loại bỏ hoàn toàn rủi ro lệch pha giữa `formData.correctAnswer` và `modeDrafts`.
 
 ---
 
-*Tài liệu hiệu chỉnh v3.4 hoàn tất. Đã giải quyết triệt để vấn đề nguyên tử thay thế toolbar, phân tách draft store câu hỏi tự luận/ngắn, ghi nhận lịch sử commit và hoàn thiện kế hoạch Gate 2A.2. Dừng lại chờ Codex & Tech Lead nghiệm thu kế hoạch trước khi bắt đầu triển khai code Gate 2A.2.*
+*Tài liệu hiệu chỉnh v3.5 hoàn tất. Đã thống nhất ranh giới phạm vi mixed-content composer vào Core Gates, hoàn thiện lifecycle draft store theo question identity và khóa chặt contract của InlineMathComposer. Sẵn sàng triển khai mã nguồn Gate 2A.2.*
