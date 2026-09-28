@@ -2,6 +2,7 @@ import { useEffect, useRef, useImperativeHandle, forwardRef, useState } from "re
 import { normalizeMathLivePlainText } from "../../utils/mathAnswerValue";
 import { loadMathLive, resetMathLiveLoader } from "../../utils/mathLiveLoader";
 import { hydrateMathFieldInstance, shouldSyncExternalValue } from "../../utils/visualMathFieldLifecycle";
+import { MathFallbackTextarea } from "./answer-editor/MathFallbackTextarea";
 
 interface MathFieldElement extends HTMLElement {
   readOnly: boolean;
@@ -413,38 +414,24 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
           )}
         </div>
 
-        {/* Fallback & Error State if dynamic chunk fails to load */}
-        {loadError && (
-          <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200 flex items-center justify-between gap-3">
-            <span>Không thể tải bộ gõ công thức trực quan MathLive. Bạn vẫn có thể nhập đáp án bên dưới hoặc thử tải lại.</span>
-            <button
-              type="button"
-              onClick={() => {
-                resetMathLiveLoader();
-                setLoadError(false);
-                setRetryCount((c) => c + 1);
-              }}
-              className="px-2.5 py-1 text-xs font-semibold rounded bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100 hover:bg-amber-300 dark:hover:bg-amber-700 shrink-0"
-            >
-              Thử tải lại
-            </button>
-          </div>
-        )}
-
         {/* MathLive Container or Fallback Textarea */}
         {loadError && !isReady ? (
           <div className="p-3.5 bg-white dark:bg-slate-900 rounded-b-2xl">
-            <textarea
+            <MathFallbackTextarea
               value={value}
-              onChange={(e) => {
-                const nextVal = e.target.value;
+              onChange={(nextVal) => {
                 lastEmittedValueRef.current = nextVal;
                 latestValueRef.current = nextVal;
                 onChange(nextVal, nextVal);
               }}
+              onFocus={() => onFocusRef.current?.()}
               disabled={disabled}
               placeholder={placeholder}
-              className="w-full min-h-[50px] p-2 text-sm font-mono border rounded border-amber-300 dark:border-amber-700 bg-transparent text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-amber-500"
+              onRetry={() => {
+                resetMathLiveLoader();
+                setLoadError(false);
+                setRetryCount((c) => c + 1);
+              }}
             />
           </div>
         ) : (
