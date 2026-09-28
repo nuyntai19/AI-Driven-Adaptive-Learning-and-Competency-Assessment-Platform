@@ -18,6 +18,7 @@ public class Attempt : ITenantAppendOnlyEntity, IHasRowVersion
     public string? ReasoningText { get; set; }
     public bool? IsCorrect { get; set; }
     public decimal? AwardedScore { get; set; }
+    public string? PreliminaryGradingReasonCode { get; set; }
     public uint TimeSpentSeconds { get; set; }
     public decimal Confidence { get; set; }
     public uint AnswerChanges { get; set; }

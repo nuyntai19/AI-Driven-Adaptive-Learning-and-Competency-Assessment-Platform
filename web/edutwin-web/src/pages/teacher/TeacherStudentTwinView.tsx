@@ -88,6 +88,17 @@ export const TeacherStudentTwinView: React.FC = () => {
         subtitle="Mô hình hóa năng lực cá nhân, lịch sử lập luận và phát hiện lỗ hổng tri thức theo thời gian thực"
         actions={
           <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+            <button
+              className="th-secondary-button"
+              onClick={() => navigate(-1)}
+              style={{ display: "flex", alignItems: "center", gap: "6px", height: "38px" }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M19 12H5M12 19l-7-7 7-7" />
+              </svg>
+              Trở về
+            </button>
+
             <select
               className="th-select"
               value={activeSubjectId}
@@ -272,7 +283,13 @@ export const TeacherStudentTwinView: React.FC = () => {
                         {t.lastReasoningQuality !== null && t.lastReasoningQuality !== undefined && (
                           <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "var(--th-text-muted)", marginTop: "6px" }}>
                             <span>Chất lượng lập luận bài gần nhất:</span>
-                            <span style={{ fontWeight: 600 }}>{Math.round(t.lastReasoningQuality * 100)}%</span>
+                            <span style={{ fontWeight: 600 }}>
+                              {Math.round(
+                                t.lastReasoningQuality <= 1 && t.lastReasoningQuality > 0
+                                  ? t.lastReasoningQuality * 100
+                                  : t.lastReasoningQuality
+                              )}%
+                            </span>
                           </div>
                         )}
                       </div>

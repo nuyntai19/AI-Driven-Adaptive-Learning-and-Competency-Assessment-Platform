@@ -76,7 +76,10 @@ public class GetAssignmentProgressUseCase : IGetAssignmentProgressUseCase
                 FullName = item.Student!.FullName,
                 item.Status,
                 item.CompletedQuestionCount,
-                item.TotalQuestionCount
+                item.TotalQuestionCount,
+                item.TeacherFinalReviewStatus,
+                item.FinalReviewVersion,
+                item.CompletedAt
             })
             .OrderBy(item => item.FullName)
             .ThenBy(item => item.StudentId)
@@ -92,7 +95,10 @@ public class GetAssignmentProgressUseCase : IGetAssignmentProgressUseCase
                     .GetEffectiveProgressStatus(item.Status, assignment.DueAt, utcNow)
                     .ToString(),
                 CompletedQuestionCount = checked((int)item.CompletedQuestionCount),
-                TotalQuestionCount = checked((int)item.TotalQuestionCount)
+                TotalQuestionCount = checked((int)item.TotalQuestionCount),
+                TeacherFinalReviewStatus = item.TeacherFinalReviewStatus.ToString(),
+                FinalReviewVersion = item.FinalReviewVersion,
+                CompletedAt = item.CompletedAt
             })
             .ToList();
 

@@ -15,6 +15,7 @@ import {
   TeacherSafeErrorPanel,
 } from "../../components/teacher/TeacherPrimitives";
 import { TeacherConfirmDialog } from "../../components/teacher/TeacherOverlays";
+import { TeacherAssignmentQuickViewModal } from "../../components/teacher/TeacherAssignmentQuickViewModal";
 
 export function TeacherAssignmentProgressView() {
   const { id } = useParams<{ id: string }>();
@@ -26,6 +27,7 @@ export function TeacherAssignmentProgressView() {
   const [statusFilter, setStatusFilter] = useState<ProgressStatus | "">("");
 
   const [isCloseDialogOpen, setIsCloseDialogOpen] = useState(false);
+  const [isQuickViewOpen, setIsQuickViewOpen] = useState(false);
   const [actionError, setActionError] = useState<{ message: string; traceId?: string | null } | null>(null);
 
   const assignmentQuery = useAssignment(id);
@@ -120,17 +122,26 @@ export function TeacherAssignmentProgressView() {
           { label: "Tiến độ" },
         ]}
         actions={
-          assignment?.status === "Published" && canClose ? (
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setIsCloseDialogOpen(true)}
-              className="th-danger-button text-xs py-2 px-4"
+              onClick={() => setIsQuickViewOpen(true)}
+              className="th-secondary-button text-xs py-2 px-3.5 flex items-center gap-1.5"
+              title="Xem lại câu hỏi và danh sách học sinh đã phân công"
             >
-              Đóng bài tập
+              <span>📚 Xem câu hỏi ({assignment?.questionCount || 0})</span>
             </button>
-          ) : assignment?.status ? (
-            <TeacherStatusBadge status={assignment.status} />
-          ) : null
+            {assignment?.status === "Published" && canClose && (
+              <button
+                type="button"
+                onClick={() => setIsCloseDialogOpen(true)}
+                className="th-danger-button text-xs py-2 px-4"
+              >
+                Đóng bài tập
+              </button>
+            )}
+            {assignment?.status && <TeacherStatusBadge status={assignment.status} />}
+          </div>
         }
       />
 
@@ -262,6 +273,14 @@ export function TeacherAssignmentProgressView() {
           </tbody>
         </table>
       </div>
+
+      {/* Quick View Modal to review questions and assigned students */}
+      <TeacherAssignmentQuickViewModal
+        assignmentId={id || null}
+        isOpen={isQuickViewOpen}
+        onClose={() => setIsQuickViewOpen(false)}
+        initialTab="questions"
+      />
 
       {/* Confirm Close Dialog */}
       <TeacherConfirmDialog

@@ -8,6 +8,7 @@ import {
   useDeleteQuestion,
 } from "../features/questions/useQuestions";
 import { organizationApi } from "../api/organizationApi";
+import { knowledgeGraphApi } from "../api/knowledgeGraphApi";
 import type {
   Question,
   QuestionFilter,
@@ -45,9 +46,11 @@ function CenterManagerQuestionBankView() {
   const canPublish = hasPermission(permissions.questionsPublish);
   const canDelete = hasPermission(permissions.questionsDelete);
   const canReadSubjects = hasPermission(permissions.subjectsRead);
+  const canReadNodes = hasPermission(permissions.nodesRead);
 
   // Filters state (strictly matching backend QuestionListQuery contract: no search param)
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>("");
+  const [selectedTopicId, setSelectedTopicId] = useState<string>("");
   const [selectedType, setSelectedType] = useState<QuestionType | "">("");
   const [selectedDifficulty, setSelectedDifficulty] = useState<number | "">("");
   const [selectedStatus, setSelectedStatus] = useState<QuestionStatus | "">("");
@@ -76,17 +79,29 @@ function CenterManagerQuestionBankView() {
     enabled: canReadSubjects,
   });
 
+  // Canonical knowledge nodes query for selected subject
+  const {
+    data: knowledgeNodesData,
+    isLoading: isLoadingKnowledgeNodes,
+  } = useQuery({
+    queryKey: ["knowledge-nodes-for-filter", selectedSubjectId],
+    queryFn: () => knowledgeGraphApi.listNodes(selectedSubjectId),
+    enabled: canReadNodes && Boolean(selectedSubjectId),
+    staleTime: 60_000,
+  });
+
   // Canonical questions list query with server-side pagination & filters
   const questionFilter: QuestionFilter = useMemo(
     () => ({
       subjectId: selectedSubjectId || undefined,
+      topicId: selectedTopicId || undefined,
       type: (selectedType as QuestionType) || undefined,
       difficulty: selectedDifficulty !== "" ? Number(selectedDifficulty) : undefined,
       status: (selectedStatus as QuestionStatus) || undefined,
       page,
       pageSize,
     }),
-    [selectedSubjectId, selectedType, selectedDifficulty, selectedStatus, page, pageSize]
+    [selectedSubjectId, selectedTopicId, selectedType, selectedDifficulty, selectedStatus, page, pageSize]
   );
 
   const {
@@ -273,16 +288,19 @@ function CenterManagerQuestionBankView() {
           aria-label="Bộ lọc ngân hàng câu hỏi"
           className="rounded-2xl border border-[var(--cm-border)] bg-[var(--cm-surface)] p-5 shadow-xl"
         >
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
             {/* Subject Selector */}
-            <div>
+            <div className="min-w-0">
               <label htmlFor="filter-subject" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mb-1">
                 Môn học
               </label>
               <select
                 id="filter-subject"
                 value={selectedSubjectId}
-                onChange={(e) => handleFilterChange(setSelectedSubjectId, e.target.value)}
+                onChange={(e) => {
+                  handleFilterChange(setSelectedSubjectId, e.target.value);
+                  setSelectedTopicId("");
+                }}
                 disabled={isLoadingSubjects}
                 className="cm-select w-full text-sm"
               >
@@ -295,8 +313,35 @@ function CenterManagerQuestionBankView() {
               </select>
             </div>
 
+            {/* Knowledge Graph / Topic Selector */}
+            <div className="min-w-0">
+              <label htmlFor="filter-topic" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mb-1">
+                Đồ thị tri thức
+              </label>
+              <select
+                id="filter-topic"
+                value={selectedTopicId}
+                onChange={(e) => handleFilterChange(setSelectedTopicId, e.target.value)}
+                disabled={!selectedSubjectId || isLoadingKnowledgeNodes}
+                className="cm-select w-full text-sm"
+              >
+                <option value="">
+                  {!selectedSubjectId
+                    ? "-- Chọn môn học trước --"
+                    : isLoadingKnowledgeNodes
+                    ? "Đang tải nút..."
+                    : "-- Tất cả nút tri thức --"}
+                </option>
+                {knowledgeNodesData?.map((node) => (
+                  <option key={node.nodeId} value={node.nodeId}>
+                    [{node.nodeType}] {node.nodeName} ({node.nodeCode})
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Question Type */}
-            <div>
+            <div className="min-w-0">
               <label htmlFor="filter-type" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mb-1">
                 Loại câu hỏi
               </label>
@@ -314,7 +359,7 @@ function CenterManagerQuestionBankView() {
             </div>
 
             {/* Difficulty */}
-            <div>
+            <div className="min-w-0">
               <label htmlFor="filter-difficulty" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mb-1">
                 Độ khó (1-5)
               </label>
@@ -334,7 +379,7 @@ function CenterManagerQuestionBankView() {
             </div>
 
             {/* Status */}
-            <div>
+            <div className="min-w-0">
               <label htmlFor="filter-status" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mb-1">
                 Trạng thái
               </label>
@@ -352,7 +397,7 @@ function CenterManagerQuestionBankView() {
             </div>
 
             {/* Quick Local Search Filter */}
-            <div>
+            <div className="min-w-0">
               <label htmlFor="filter-local-search" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mb-1">
                 Lọc nội dung trang
               </label>

@@ -175,6 +175,26 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasColumnType("tinyint(1)")
                         .HasColumnName("is_correct");
 
+                    b.Property<bool>("IsPostFeedback")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_post_feedback");
+
+                    b.Property<DateTime?>("LastManualRetryAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("last_manual_retry_at");
+
+                    b.Property<byte>("ManualRetryCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint unsigned")
+                        .HasDefaultValue((byte)0)
+                        .HasColumnName("manual_retry_count");
+
+                    b.Property<string>("PreliminaryGradingReasonCode")
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("preliminary_grading_reason_code");
+
                     b.Property<ulong>("QuestionId")
                         .HasColumnType("bigint unsigned")
                         .HasColumnName("question_id");
@@ -200,6 +220,10 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasColumnType("tinyint(1)")
                         .HasDefaultValue(false)
                         .HasColumnName("skipped");
+
+                    b.Property<DateTime?>("SolutionExposedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("solution_exposed_at");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -437,13 +461,13 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasColumnType("bigint unsigned")
                         .HasColumnName("analysis_id");
 
-                    b.Property<decimal?>("AnalysisConfidence")
-                        .HasColumnType("decimal(5,2)")
-                        .HasColumnName("analysis_confidence");
-
                     b.Property<string>("AiSolution")
                         .HasColumnType("longtext")
                         .HasColumnName("ai_solution");
+
+                    b.Property<decimal?>("AnalysisConfidence")
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("analysis_confidence");
 
                     b.Property<ulong>("AttemptId")
                         .HasColumnType("bigint unsigned")
@@ -544,6 +568,18 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasColumnType("decimal(5,2)")
                         .HasColumnName("reasoning_quality");
 
+                    b.Property<string>("ReviewDecision")
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("review_decision");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("reviewed_at");
+
+                    b.Property<string>("ReviewedByUserId")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("reviewed_by_user_id");
+
                     b.Property<string>("RootCauseNodeIds")
                         .IsRequired()
                         .HasColumnType("json")
@@ -566,6 +602,10 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasColumnType("varchar(32)")
                         .HasColumnName("solution_type");
 
+                    b.Property<string>("TeacherReviewNote")
+                        .HasColumnType("varchar(1000)")
+                        .HasColumnName("teacher_review_note");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime(6)")
                         .HasColumnName("updated_at");
@@ -586,6 +626,8 @@ namespace EduTwin.DAL.Persistence.Migrations
                     b.HasIndex("CenterId", "OverriddenByUserId")
                         .HasDatabaseName("ix_reasoning_analyses_center_id_overridden_by_user_id");
 
+                    b.HasIndex("CenterId", "ReviewedByUserId");
+
                     b.HasIndex("CenterId", "NeedsTeacherReview", "CreatedAt")
                         .HasDatabaseName("ix_reasoning_analyses_center_id_needs_teacher_review_created_at");
 
@@ -605,7 +647,186 @@ namespace EduTwin.DAL.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_reasoning_analyses_reasoning_quality", "`reasoning_quality` IS NULL OR `reasoning_quality` BETWEEN 0 AND 100");
 
+                            t.HasCheckConstraint("ck_reasoning_analyses_review_decision", "`review_decision` IS NULL OR `review_decision` IN ('Approved', 'Adjusted')");
+
                             t.HasCheckConstraint("ck_reasoning_analyses_solution_type", "`solution_type` IS NULL OR `solution_type` IN ('REFINED', 'CORRECTED', 'GENERATED', 'MODEL_ANSWER')");
+                        });
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.AssessmentAndReasoning.StudentReviewRequest", b =>
+                {
+                    b.Property<ulong>("RequestId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("request_id");
+
+                    b.Property<ulong>("AttemptId")
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("attempt_id");
+
+                    b.Property<string>("CenterId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("center_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("created_by");
+
+                    b.Property<ulong>("QuestionId")
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("question_id");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("resolved_at");
+
+                    b.Property<string>("ResolvedByTeacherId")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("resolved_by_teacher_id");
+
+                    b.Property<ulong>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint unsigned")
+                        .HasDefaultValue(1ul)
+                        .HasColumnName("row_version");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("StudentComment")
+                        .IsRequired()
+                        .HasColumnType("varchar(1000)")
+                        .HasColumnName("student_comment");
+
+                    b.Property<string>("StudentId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("student_id");
+
+                    b.Property<string>("TeacherNote")
+                        .HasColumnType("varchar(1000)")
+                        .HasColumnName("teacher_note");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("RequestId")
+                        .HasName("pk_student_review_requests");
+
+                    b.HasAlternateKey("CenterId", "RequestId")
+                        .HasName("ux_student_review_requests_center_id_request_id");
+
+                    b.HasIndex("CenterId", "AttemptId")
+                        .HasDatabaseName("ix_student_review_requests_center_id_attempt_id");
+
+                    b.HasIndex("CenterId", "QuestionId");
+
+                    b.HasIndex("CenterId", "ResolvedByTeacherId");
+
+                    b.HasIndex("CenterId", "StudentId", "Status")
+                        .HasDatabaseName("ix_student_review_requests_center_id_student_id_status");
+
+                    b.ToTable("student_review_requests", (string)null);
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.AssessmentAndReasoning.TeacherReviewHistory", b =>
+                {
+                    b.Property<ulong>("HistoryId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("history_id");
+
+                    b.Property<ulong>("AnalysisId")
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("analysis_id");
+
+                    b.Property<ulong>("AttemptId")
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("attempt_id");
+
+                    b.Property<string>("CenterId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("center_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Decision")
+                        .IsRequired()
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("decision");
+
+                    b.Property<bool?>("NewIsCorrect")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("new_is_correct");
+
+                    b.Property<decimal?>("NewScore")
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("new_score");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("varchar(1000)")
+                        .HasColumnName("note");
+
+                    b.Property<uint>("OverrideVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int unsigned")
+                        .HasDefaultValue(0u)
+                        .HasColumnName("override_version");
+
+                    b.Property<bool?>("PreviousIsCorrect")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("previous_is_correct");
+
+                    b.Property<decimal?>("PreviousScore")
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("previous_score");
+
+                    b.Property<ulong>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint unsigned")
+                        .HasDefaultValue(1ul)
+                        .HasColumnName("row_version");
+
+                    b.Property<string>("TeacherId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("teacher_id");
+
+                    b.HasKey("HistoryId")
+                        .HasName("pk_teacher_review_histories");
+
+                    b.HasAlternateKey("CenterId", "HistoryId")
+                        .HasName("ux_teacher_review_histories_center_id_history_id");
+
+                    b.HasIndex("CenterId", "AnalysisId")
+                        .HasDatabaseName("ix_teacher_review_histories_center_id_analysis_id");
+
+                    b.HasIndex("CenterId", "AttemptId")
+                        .HasDatabaseName("ix_teacher_review_histories_center_id_attempt_id");
+
+                    b.HasIndex("CenterId", "TeacherId")
+                        .HasDatabaseName("ix_teacher_review_histories_center_id_teacher_id");
+
+                    b.ToTable("teacher_review_histories", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_teacher_review_histories_decision", "`decision` IN ('Approved', 'Adjusted')");
                         });
                 });
 
@@ -836,11 +1057,49 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasColumnType("varchar(36)")
                         .HasColumnName("deleted_by");
 
+                    b.Property<uint>("FinalReviewVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int unsigned")
+                        .HasDefaultValue(0u)
+                        .HasColumnName("final_review_version");
+
+                    b.Property<DateTime?>("FinalReviewedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("final_reviewed_at");
+
+                    b.Property<string>("FinalReviewedByUserId")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("final_reviewed_by_user_id");
+
+                    b.Property<string>("FinalTeacherNote")
+                        .HasColumnType("varchar(1000)")
+                        .HasColumnName("final_teacher_note");
+
                     b.Property<bool>("IsDeleted")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("tinyint(1)")
                         .HasDefaultValue(false)
                         .HasColumnName("is_deleted");
+
+                    b.Property<bool>("IsOverallAiCommentStale")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_overall_ai_comment_stale");
+
+                    b.Property<string>("OverallAiComment")
+                        .HasColumnType("longtext")
+                        .HasColumnName("overall_ai_comment");
+
+                    b.Property<DateTime?>("OverallAiCommentGeneratedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("overall_ai_comment_generated_at");
+
+                    b.Property<uint>("OverallAiCommentVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int unsigned")
+                        .HasDefaultValue(0u)
+                        .HasColumnName("overall_ai_comment_version");
 
                     b.Property<ulong>("RowVersion")
                         .IsConcurrencyToken()
@@ -862,6 +1121,13 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("varchar(36)")
                         .HasColumnName("student_id");
+
+                    b.Property<string>("TeacherFinalReviewStatus")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("varchar(32)")
+                        .HasDefaultValue("Pending")
+                        .HasColumnName("teacher_final_review_status");
 
                     b.Property<uint>("TotalQuestionCount")
                         .HasColumnType("int unsigned")
@@ -888,6 +1154,8 @@ namespace EduTwin.DAL.Persistence.Migrations
                     b.ToTable("student_assignment_progress", null, t =>
                         {
                             t.HasCheckConstraint("ck_student_assignment_progress_counts", "completed_question_count <= total_question_count");
+
+                            t.HasCheckConstraint("ck_student_assignment_progress_final_review", "teacher_final_review_status IN ('Pending', 'Approved')");
 
                             t.HasCheckConstraint("ck_student_assignment_progress_status", "status IN ('NotStarted', 'InProgress', 'Completed', 'Overdue')");
                         });
@@ -1201,7 +1469,7 @@ namespace EduTwin.DAL.Persistence.Migrations
 
                     b.ToTable("questions", null, t =>
                         {
-                            t.HasCheckConstraint("ck_questions_answer_evaluation_mode", "answer_evaluation_mode IN ('TextExact', 'NumericRational', 'Manual')");
+                            t.HasCheckConstraint("ck_questions_answer_evaluation_mode", "answer_evaluation_mode IN ('TextExact', 'NumericRational', 'Manual', 'Coordinate2D')");
 
                             t.HasCheckConstraint("ck_questions_difficulty", "difficulty BETWEEN 1 AND 5");
 
@@ -4752,6 +5020,10 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasColumnType("varchar(36)")
                         .HasColumnName("learning_path_id");
 
+                    b.Property<string>("AdaptationMessage")
+                        .HasColumnType("longtext")
+                        .HasColumnName("adaptation_message");
+
                     b.Property<string>("CenterId")
                         .IsRequired()
                         .HasColumnType("varchar(36)")
@@ -4781,11 +5053,33 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasColumnType("bigint unsigned")
                         .HasColumnName("generated_from_attempt_id");
 
+                    b.Property<string>("GenerationStatus")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("varchar(32)")
+                        .HasDefaultValue("Ready")
+                        .HasColumnName("generation_status");
+
                     b.Property<bool>("IsDeleted")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("tinyint(1)")
                         .HasDefaultValue(false)
                         .HasColumnName("is_deleted");
+
+                    b.Property<string>("PlanJson")
+                        .HasColumnType("json")
+                        .HasColumnName("plan_json");
+
+                    b.Property<string>("PlanSchemaVersion")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("varchar(16)")
+                        .HasDefaultValue("2.0")
+                        .HasColumnName("plan_schema_version");
+
+                    b.Property<string>("RecommendationRationale")
+                        .HasColumnType("longtext")
+                        .HasColumnName("recommendation_rationale");
 
                     b.Property<ulong>("RowVersion")
                         .IsConcurrencyToken()
@@ -5154,6 +5448,128 @@ namespace EduTwin.DAL.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("EduTwin.DAL.Recommendations.StudentLearningPathPreference", b =>
+                {
+                    b.Property<ulong>("PreferenceId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("preference_id");
+
+                    b.Property<string>("CenterId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("center_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("created_by");
+
+                    b.Property<int>("DaysPerWeek")
+                        .HasColumnType("int")
+                        .HasColumnName("days_per_week");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("deleted_by");
+
+                    b.Property<string>("FocusTopicNodeIds")
+                        .IsRequired()
+                        .HasColumnType("json")
+                        .HasColumnName("focus_topic_node_ids");
+
+                    b.Property<string>("GoalType")
+                        .IsRequired()
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("goal_type");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<int>("MinutesPerDay")
+                        .HasColumnType("int")
+                        .HasColumnName("minutes_per_day");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("varchar(1000)")
+                        .HasColumnName("note");
+
+                    b.Property<string>("Pace")
+                        .IsRequired()
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("pace");
+
+                    b.Property<string>("PreferredMode")
+                        .IsRequired()
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("preferred_mode");
+
+                    b.Property<ulong>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint unsigned")
+                        .HasDefaultValue(1ul)
+                        .HasColumnName("row_version");
+
+                    b.Property<string>("SelfAssessedLevel")
+                        .IsRequired()
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("self_assessed_level");
+
+                    b.Property<string>("StudentId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("student_id");
+
+                    b.Property<string>("SubjectId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("subject_id");
+
+                    b.Property<decimal>("TargetMastery")
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("target_mastery");
+
+                    b.Property<int>("TargetWeeks")
+                        .HasColumnType("int")
+                        .HasColumnName("target_weeks");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("updated_by");
+
+                    b.Property<string>("WeakTopicNodeIds")
+                        .IsRequired()
+                        .HasColumnType("json")
+                        .HasColumnName("weak_topic_node_ids");
+
+                    b.HasKey("PreferenceId")
+                        .HasName("pk_student_learning_path_preferences");
+
+                    b.HasAlternateKey("CenterId", "PreferenceId")
+                        .HasName("ux_slp_pref_center_pref_id");
+
+                    b.HasIndex("CenterId", "SubjectId");
+
+                    b.HasIndex("CenterId", "StudentId", "SubjectId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_slp_pref_center_student_subject");
+
+                    b.ToTable("student_learning_path_preferences", (string)null);
+                });
+
             modelBuilder.Entity("EduTwin.DAL.AssessmentAndReasoning.AIAnalysisJob", b =>
                 {
                     b.HasOne("EduTwin.DAL.AssessmentAndReasoning.Attempt", "Attempt")
@@ -5260,9 +5676,93 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_reasoning_analyses_users_overridden_by_user");
 
+                    b.HasOne("EduTwin.DAL.IdentityAndTenancy.User", "ReviewedByUser")
+                        .WithMany()
+                        .HasForeignKey("CenterId", "ReviewedByUserId")
+                        .HasPrincipalKey("CenterId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_reasoning_analyses_users_reviewed_by_user");
+
                     b.Navigation("Attempt");
 
                     b.Navigation("OverriddenByUser");
+
+                    b.Navigation("ReviewedByUser");
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.AssessmentAndReasoning.StudentReviewRequest", b =>
+                {
+                    b.HasOne("EduTwin.DAL.AssessmentAndReasoning.Attempt", "Attempt")
+                        .WithMany()
+                        .HasForeignKey("CenterId", "AttemptId")
+                        .HasPrincipalKey("CenterId", "AttemptId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_student_review_requests_attempts");
+
+                    b.HasOne("EduTwin.DAL.CurriculumAndQuestions.Question", "Question")
+                        .WithMany()
+                        .HasForeignKey("CenterId", "QuestionId")
+                        .HasPrincipalKey("CenterId", "QuestionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_student_review_requests_questions");
+
+                    b.HasOne("EduTwin.DAL.Organization.Teacher", "ResolvedByTeacher")
+                        .WithMany()
+                        .HasForeignKey("CenterId", "ResolvedByTeacherId")
+                        .HasPrincipalKey("CenterId", "TeacherId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_student_review_requests_teachers");
+
+                    b.HasOne("EduTwin.DAL.Organization.Student", "Student")
+                        .WithMany()
+                        .HasForeignKey("CenterId", "StudentId")
+                        .HasPrincipalKey("CenterId", "StudentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_student_review_requests_students");
+
+                    b.Navigation("Attempt");
+
+                    b.Navigation("Question");
+
+                    b.Navigation("ResolvedByTeacher");
+
+                    b.Navigation("Student");
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.AssessmentAndReasoning.TeacherReviewHistory", b =>
+                {
+                    b.HasOne("EduTwin.DAL.AssessmentAndReasoning.ReasoningAnalysis", "Analysis")
+                        .WithMany()
+                        .HasForeignKey("CenterId", "AnalysisId")
+                        .HasPrincipalKey("CenterId", "AnalysisId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_teacher_review_histories_reasoning_analyses");
+
+                    b.HasOne("EduTwin.DAL.AssessmentAndReasoning.Attempt", "Attempt")
+                        .WithMany()
+                        .HasForeignKey("CenterId", "AttemptId")
+                        .HasPrincipalKey("CenterId", "AttemptId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_teacher_review_histories_attempts");
+
+                    b.HasOne("EduTwin.DAL.IdentityAndTenancy.User", "Teacher")
+                        .WithMany()
+                        .HasForeignKey("CenterId", "TeacherId")
+                        .HasPrincipalKey("CenterId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_teacher_review_histories_teachers");
+
+                    b.Navigation("Analysis");
+
+                    b.Navigation("Attempt");
+
+                    b.Navigation("Teacher");
                 });
 
             modelBuilder.Entity("EduTwin.DAL.Assignments.Assignment", b =>
@@ -6091,6 +6591,29 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_recommendation_generation_states_subjects_subject");
+
+                    b.Navigation("Student");
+
+                    b.Navigation("Subject");
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.Recommendations.StudentLearningPathPreference", b =>
+                {
+                    b.HasOne("EduTwin.DAL.Organization.Student", "Student")
+                        .WithMany()
+                        .HasForeignKey("CenterId", "StudentId")
+                        .HasPrincipalKey("CenterId", "StudentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_student_learning_path_preferences_students");
+
+                    b.HasOne("EduTwin.DAL.Organization.Subject", "Subject")
+                        .WithMany()
+                        .HasForeignKey("CenterId", "SubjectId")
+                        .HasPrincipalKey("CenterId", "SubjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_student_learning_path_preferences_subjects");
 
                     b.Navigation("Student");
 

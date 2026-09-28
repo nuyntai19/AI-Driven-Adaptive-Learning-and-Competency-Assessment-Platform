@@ -76,14 +76,13 @@ public sealed class VoidAssignmentQuestionUseCase : IVoidAssignmentQuestionUseCa
         var role = _tenantContext.Role ?? string.Empty;
 
         var isTeacher = string.Equals(role, nameof(UserRole.Teacher), StringComparison.OrdinalIgnoreCase);
-        var isManager = string.Equals(role, nameof(UserRole.CenterManager), StringComparison.OrdinalIgnoreCase);
 
-        if (!isTeacher && !isManager)
+        if (!isTeacher)
         {
             return VoidAssignmentQuestionResult.Fail(
                 VoidAssignmentQuestionStatus.Forbidden,
                 "FORBIDDEN",
-                "Chỉ giáo viên hoặc quản lý trung tâm mới có quyền hủy câu hỏi trong bài tập.");
+                "Chỉ giáo viên phụ trách mới có quyền hủy câu hỏi trong bài tập.");
         }
 
         // 1. Load assignment with class

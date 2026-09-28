@@ -35,10 +35,26 @@ import {
 } from "../utils/attemptSessionStorage";
 import { useAuthStore } from "../stores/authStore";
 import { httpClient } from "../api/httpClient";
-import { isFeedbackForQuestion, resolveQuestionReviewAttemptId } from "../utils/questionReview";
+import {
+  isAssignmentReviewHydrated,
+  isFeedbackForQuestion,
+  resolveQuestionReviewAttemptId,
+} from "../utils/questionReview";
+import {
+  buildAssignmentDraftKey,
+  clearLegacyAssignmentDraftsForAssignment,
+  readAssignmentDraft,
+  removeAssignmentDraft,
+  writeAssignmentDraft,
+  readAssignmentRemainingSeconds,
+  writeAssignmentRemainingSeconds,
+  removeAssignmentRemainingSeconds,
+  type AssignmentDraftScope,
+} from "../utils/assignmentDraftStorage";
 
 interface StoredAnswer {
   finalAnswer: string;
+  answerDisplayLatex: string;
   reasoningText: string;
   confidence: number;
   timeSpentSeconds: number;
@@ -46,6 +62,42 @@ interface StoredAnswer {
   snapshotDataUrl?: string | null;
   snapshotTime?: string | null;
   drawingUploadToken?: string | null;
+}
+
+const EMPTY_ASSIGNMENT_ANSWERS: Record<string, StoredAnswer> = {};
+
+function loadStoredAssignmentAnswers(scope: AssignmentDraftScope | null): Record<string, StoredAnswer> {
+  if (!scope) return {};
+
+  try {
+    const saved = readAssignmentDraft(scope);
+    if (!saved) return {};
+    const parsed = JSON.parse(saved);
+    if (typeof parsed !== "object" || parsed === null) return {};
+
+    const sanitized: Record<string, StoredAnswer> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (!value || typeof value !== "object") continue;
+      const stored = value as Partial<StoredAnswer>;
+      sanitized[key] = {
+        finalAnswer: typeof stored.finalAnswer === "string" ? stored.finalAnswer : "",
+        answerDisplayLatex:
+          typeof stored.answerDisplayLatex === "string"
+            ? stored.answerDisplayLatex
+            : (typeof stored.finalAnswer === "string" ? stored.finalAnswer : ""),
+        reasoningText: typeof stored.reasoningText === "string" ? stored.reasoningText : "",
+        confidence: typeof stored.confidence === "number" ? stored.confidence : 80,
+        timeSpentSeconds: typeof stored.timeSpentSeconds === "number" ? stored.timeSpentSeconds : 0,
+        answerChanges: typeof stored.answerChanges === "number" ? stored.answerChanges : 0,
+        snapshotDataUrl: typeof stored.snapshotDataUrl === "string" ? stored.snapshotDataUrl : null,
+        snapshotTime: typeof stored.snapshotTime === "string" ? stored.snapshotTime : null,
+        drawingUploadToken: typeof stored.drawingUploadToken === "string" ? stored.drawingUploadToken : null,
+      };
+    }
+    return sanitized;
+  } catch {
+    return {};
+  }
 }
 
 export const LearningPlayerPage = () => {
@@ -57,6 +109,18 @@ export const LearningPlayerPage = () => {
 
   const currentUser = useAuthStore((state) => state.user);
   const queryClient = useQueryClient();
+
+  const assignmentDraftScope = useMemo<AssignmentDraftScope | null>(() => {
+    if (!assignmentId || !currentUser) return null;
+    return {
+      centerId: currentUser.centerId,
+      userId: currentUser.userId,
+      assignmentId,
+    };
+  }, [assignmentId, currentUser]);
+  const assignmentDraftKey = assignmentDraftScope
+    ? buildAssignmentDraftKey(assignmentDraftScope)
+    : null;
 
   // Auto-restore subjectId from localStorage if entering adaptive learning directly
   useEffect(() => {
@@ -78,57 +142,42 @@ export const LearningPlayerPage = () => {
   const [activeQuestionId, setActiveQuestionId] = useState<string>(routeQuestionId || "");
 
   // Batch Assignment Answers state (mapped by questionId)
-  const [assignmentAnswers, setAssignmentAnswers] = useState<Record<string, StoredAnswer>>(() => {
-    if (!assignmentId) return {};
-    try {
-      const saved = localStorage.getItem(`edutwin_assignment_answers_${assignmentId}`);
-      if (!saved) return {};
-      const parsed = JSON.parse(saved);
-      if (typeof parsed !== "object" || parsed === null) return {};
-      const sanitized: Record<string, StoredAnswer> = {};
-      for (const [k, v] of Object.entries(parsed)) {
-        if (v && typeof v === "object") {
-          sanitized[k] = {
-            finalAnswer: typeof (v as any).finalAnswer === "string" ? (v as any).finalAnswer : "",
-            reasoningText: typeof (v as any).reasoningText === "string" ? (v as any).reasoningText : "",
-            confidence: typeof (v as any).confidence === "number" ? (v as any).confidence : 80,
-            timeSpentSeconds: typeof (v as any).timeSpentSeconds === "number" ? (v as any).timeSpentSeconds : 0,
-            answerChanges: typeof (v as any).answerChanges === "number" ? (v as any).answerChanges : 0,
-            snapshotDataUrl: typeof (v as any).snapshotDataUrl === "string" ? (v as any).snapshotDataUrl : null,
-            snapshotTime: typeof (v as any).snapshotTime === "string" ? (v as any).snapshotTime : null,
-            drawingUploadToken: typeof (v as any).drawingUploadToken === "string" ? (v as any).drawingUploadToken : null,
-          };
-        }
-      }
-      return sanitized;
-    } catch {
-      return {};
-    }
-  });
+  const [assignmentAnswersState, setAssignmentAnswersState] = useState<{
+    scopeKey: string | null;
+    answers: Record<string, StoredAnswer>;
+  }>(() => ({
+    scopeKey: assignmentDraftKey,
+    answers: loadStoredAssignmentAnswers(assignmentDraftScope),
+  }));
+  const assignmentAnswers = assignmentAnswersState.scopeKey === assignmentDraftKey
+    ? assignmentAnswersState.answers
+    : EMPTY_ASSIGNMENT_ANSWERS;
+  const assignmentAnswersRef = useRef(assignmentAnswers);
+  assignmentAnswersRef.current = assignmentAnswers;
+  const [assignmentDraftLoadVersion, setAssignmentDraftLoadVersion] = useState(0);
+  const setAssignmentAnswers = useCallback((
+    update:
+      | Record<string, StoredAnswer>
+      | ((previous: Record<string, StoredAnswer>) => Record<string, StoredAnswer>)
+  ) => {
+    setAssignmentAnswersState((previousState) => {
+      const previousAnswers = previousState.scopeKey === assignmentDraftKey
+        ? previousState.answers
+        : EMPTY_ASSIGNMENT_ANSWERS;
+      const nextAnswers = typeof update === "function" ? update(previousAnswers) : update;
+      return { scopeKey: assignmentDraftKey, answers: nextAnswers };
+    });
+  }, [assignmentDraftKey]);
 
   // Attached Scratchpad Snapshot State (Stored independently from scratchpad edits)
-  const [attachedSnapshotDataUrl, setAttachedSnapshotDataUrl] = useState<string | null>(() => {
-    if (!assignmentId) return null;
-    try {
-      return localStorage.getItem(`edutwin_assignment_snapshot_${assignmentId}`) || null;
-    } catch {
-      return null;
-    }
-  });
+  const [attachedSnapshotDataUrl, setAttachedSnapshotDataUrl] = useState<string | null>(null);
   const [attachedSnapshotBlob, setAttachedSnapshotBlob] = useState<Blob | null>(null);
-  const [attachedSnapshotTime, setAttachedSnapshotTime] = useState<string | null>(() => {
-    if (!assignmentId) return null;
-    try {
-      return localStorage.getItem(`edutwin_assignment_snapshot_time_${assignmentId}`) || null;
-    } catch {
-      return null;
-    }
-  });
+  const [attachedSnapshotTime, setAttachedSnapshotTime] = useState<string | null>(null);
   const [showFullSnapshotModal, setShowFullSnapshotModal] = useState<boolean>(false);
 
   // Current question input state
   const [finalAnswer, setFinalAnswer] = useState<string>("");
-  const answerDisplayLatex = "";
+  const [answerDisplayLatex, setAnswerDisplayLatex] = useState<string>("");
   const [reasoningText, setReasoningText] = useState<string>("");
   const [confidence, setConfidence] = useState<number>(80);
   const [answerChanges, setAnswerChanges] = useState<number>(0);
@@ -155,6 +204,7 @@ export const LearningPlayerPage = () => {
   const [pollingJobId, setPollingJobId] = useState<string | null>(persistedJobId);
   const [pollingStatus, setPollingStatus] = useState<string>("Đang xử lý...");
   const [feedbackData, setFeedbackData] = useState<AttemptFeedbackDataDto | null>(null);
+  const [isRefreshingAssignmentReview, setIsRefreshingAssignmentReview] = useState(false);
 
   // Submission error (only for actual network/validation failure before attempt is saved to DB)
   const [submissionSaveError, setSubmissionSaveError] = useState<string | null>(null);
@@ -177,6 +227,7 @@ export const LearningPlayerPage = () => {
   // Frozen payload reference to guarantee identical timeSpentSeconds across retries
   const frozenPayloadRef = useRef<Record<string, {
     finalAnswer: string;
+    answerDisplayLatex?: string;
     reasoningText?: string;
     confidence: number;
     timeSpentSeconds: number;
@@ -189,45 +240,128 @@ export const LearningPlayerPage = () => {
     data: assignmentResponse,
     isLoading: assignmentLoading,
     isError: assignmentError,
+    refetch: refetchAssignment,
   } = useStudentAssignment(assignmentId || undefined);
 
   const assignment = assignmentResponse?.data;
-  const assignmentQuestions = assignment?.questions || [];
+  const assignmentQuestions = useMemo(
+    () => assignment?.questions || [],
+    [assignment?.questions]
+  );
 
-  // Assignment Countdown & Server-Synchronized Expiration Timer
+  const refreshSubmittedAssignmentData = useCallback(async (): Promise<boolean> => {
+    if (!assignmentId) return false;
+
+    try {
+      const [detailResult] = await Promise.all([
+        refetchAssignment(),
+        queryClient.invalidateQueries({ queryKey: ["student-assignments"] }),
+      ]);
+      const refreshedQuestions = detailResult.data?.data?.questions ?? [];
+      const isHydrated = detailResult.isSuccess && isAssignmentReviewHydrated(
+        refreshedQuestions,
+        assignmentQuestions.length
+      );
+
+      if (isHydrated) {
+        if (assignmentDraftScope) {
+          removeAssignmentDraft(assignmentDraftScope);
+          removeAssignmentRemainingSeconds(assignmentDraftScope);
+        }
+        setAssignmentAnswers({});
+      }
+
+      return isHydrated;
+    } catch {
+      // Submission has already been accepted. Keep the scoped local draft so
+      // review mode can still render answers until a later refresh succeeds.
+      return false;
+    }
+  }, [
+    assignmentDraftScope,
+    assignmentId,
+    assignmentQuestions.length,
+    queryClient,
+    refetchAssignment,
+    setAssignmentAnswers,
+  ]);
+
+  // Assignment Timers:
+  // - assignmentRemainingSeconds: active test time limit countdown (paused on exit/close, resumes on continue).
+  // - dueRemainingSeconds: due date countdown (ONLY shown when assignment has no active time limit, but has a due date).
   const [assignmentRemainingSeconds, setAssignmentRemainingSeconds] = useState<number | null>(null);
+  const [dueRemainingSeconds, setDueRemainingSeconds] = useState<number | null>(null);
+  const hasAutoSubmittedRef = useRef(false);
+  const isInitializedRef = useRef(false);
+  const timerInitializedForAssignmentRef = useRef<string | null>(null);
+  const previousAssignmentDraftKeyRef = useRef(assignmentDraftKey);
+
+  const hasTimeLimit = Boolean(assignment?.timeLimitMinutes && assignment.timeLimitMinutes > 0);
+
+  // Never carry local component state across assignment or authenticated-user scopes.
+  useEffect(() => {
+    if (assignmentId) {
+      clearLegacyAssignmentDraftsForAssignment(assignmentId);
+    }
+
+    if (previousAssignmentDraftKeyRef.current === assignmentDraftKey) return;
+    previousAssignmentDraftKeyRef.current = assignmentDraftKey;
+
+    setAssignmentAnswers(loadStoredAssignmentAnswers(assignmentDraftScope));
+    setAssignmentDraftLoadVersion((version) => version + 1);
+    setActiveQuestionId(routeQuestionId || "");
+    setAttachedSnapshotDataUrl(null);
+    setAttachedSnapshotBlob(null);
+    setAttachedSnapshotTime(null);
+    setShowFullSnapshotModal(false);
+    setFinalAnswer("");
+    setAnswerDisplayLatex("");
+    setReasoningText("");
+    setConfidence(80);
+    setAnswerChanges(0);
+    setTimeSpentSeconds(0);
+    setActiveSideTool(null);
+    setShowMathToolbar(false);
+    setDrawingUploadToken(null);
+    setActiveInputTarget("answer");
+    clientSubmissionIdRef.current = createClientSubmissionId();
+    setIsLocallySubmitted(false);
+    setIsSubmitting(false);
+    setPollingJobId(null);
+    setPollingStatus("Đang xử lý...");
+    setFeedbackData(null);
+    setIsRefreshingAssignmentReview(false);
+    setSubmissionSaveError(null);
+    setCanRetrySubmission(false);
+    setAiBanner(null);
+    setIsRetryingAiFromBanner(false);
+    setShowBatchConfirmModal(false);
+    pollingAttemptRef.current = 0;
+    consecutiveNetworkErrorsRef.current = 0;
+    setNetworkErrorPaused(false);
+    frozenPayloadRef.current = null;
+    setAssignmentRemainingSeconds(null);
+    setDueRemainingSeconds(null);
+    hasAutoSubmittedRef.current = false;
+    isInitializedRef.current = false;
+    timerInitializedForAssignmentRef.current = null;
+  }, [
+    assignmentDraftKey,
+    assignmentDraftScope,
+    assignmentId,
+    routeQuestionId,
+    setAssignmentAnswers,
+  ]);
 
   // Call idempotent start assignment API upon opening assignment
   useEffect(() => {
-    if (!assignmentId) return;
-    startStudentAssignment(assignmentId)
-      .then((res) => {
-        if (res?.data?.remainingSeconds !== undefined && res.data.remainingSeconds !== null) {
-          setAssignmentRemainingSeconds(res.data.remainingSeconds);
-        }
-      })
-      .catch(() => {
-        // Ignore network error on start
-      });
-  }, [assignmentId]);
+    if (!assignmentId || !assignmentDraftKey) return;
+    startStudentAssignment(assignmentId).catch(() => {
+      // Ignore network error on start
+    });
+  }, [assignmentId, assignmentDraftKey]);
 
-  // Sync remaining seconds if assignment response updates
-  useEffect(() => {
-    if (assignment?.remainingSeconds !== undefined && assignment.remainingSeconds !== null) {
-      setAssignmentRemainingSeconds(assignment.remainingSeconds);
-    }
-  }, [assignment?.remainingSeconds]);
 
-  // Countdown tick
-  useEffect(() => {
-    if (assignmentRemainingSeconds === null || assignmentRemainingSeconds <= 0) return;
-    const timer = setInterval(() => {
-      setAssignmentRemainingSeconds((prev) => (prev !== null && prev > 0 ? prev - 1 : 0));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [assignmentRemainingSeconds]);
-
-  const isAssignmentExpired = assignmentRemainingSeconds !== null && assignmentRemainingSeconds <= 0;
 
   // Question Timer
   useEffect(() => {
@@ -239,7 +373,6 @@ export const LearningPlayerPage = () => {
   }, [pollingJobId, feedbackData]);
 
   // Initialize or update activeQuestionId when assignment loads
-  const isInitializedRef = useRef(false);
   useEffect(() => {
     if (!assignmentQuestions.length) return;
     if (!isInitializedRef.current) {
@@ -295,6 +428,76 @@ export const LearningPlayerPage = () => {
     );
   }, [isLocallySubmitted, assignment, assignmentQuestions]);
 
+  // Initialize timer for timed or untimed assignments
+  useEffect(() => {
+    if (!assignment || !assignmentId || !assignmentDraftScope) return;
+    if (timerInitializedForAssignmentRef.current === assignmentId) return;
+
+    if (hasTimeLimit) {
+      // Check scoped local storage for paused/resumed active remaining seconds
+      const savedSeconds = readAssignmentRemainingSeconds(assignmentDraftScope);
+      if (savedSeconds !== null && savedSeconds >= 0) {
+        setAssignmentRemainingSeconds(savedSeconds);
+      } else {
+        const initialSeconds = assignment.timeLimitMinutes! * 60;
+        writeAssignmentRemainingSeconds(assignmentDraftScope, initialSeconds);
+        setAssignmentRemainingSeconds(initialSeconds);
+      }
+      timerInitializedForAssignmentRef.current = assignmentId;
+    } else {
+      setAssignmentRemainingSeconds(null);
+      timerInitializedForAssignmentRef.current = assignmentId;
+    }
+  }, [assignment, assignmentId, assignmentDraftScope, hasTimeLimit]);
+
+  const isTimerTicking =
+    hasTimeLimit &&
+    !isAssignmentSubmitted &&
+    !isLocallySubmitted &&
+    assignmentRemainingSeconds !== null &&
+    assignmentRemainingSeconds > 0;
+
+  // Active test countdown tick for timed assignments (auto-pauses on leave/unmount, resumes on return)
+  useEffect(() => {
+    if (!isTimerTicking || !assignmentDraftScope) return;
+
+    const timer = setInterval(() => {
+      setAssignmentRemainingSeconds((prev) => {
+        if (prev === null) return null;
+        const next = prev > 0 ? prev - 1 : 0;
+        if (assignmentDraftScope) {
+          writeAssignmentRemainingSeconds(assignmentDraftScope, next);
+        }
+        return next;
+      });
+    }, 1000);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, [isTimerTicking, assignmentDraftKey]);
+
+  // Countdown to deadline ONLY when teacher configured NO time limit (không giới hạn thời gian)
+  useEffect(() => {
+    if (hasTimeLimit || !assignment?.dueAt || isAssignmentSubmitted || isLocallySubmitted) {
+      setDueRemainingSeconds(null);
+      return;
+    }
+
+    const calcDueRemaining = () => {
+      const diff = Math.max(0, Math.floor((new Date(assignment.dueAt!).getTime() - Date.now()) / 1000));
+      setDueRemainingSeconds(diff);
+    };
+
+    calcDueRemaining();
+    const interval = setInterval(calcDueRemaining, 1000);
+    return () => clearInterval(interval);
+  }, [hasTimeLimit, assignment?.dueAt, isAssignmentSubmitted, isLocallySubmitted]);
+
+  const isAssignmentExpired =
+    (hasTimeLimit && assignmentRemainingSeconds !== null && assignmentRemainingSeconds <= 0) ||
+    (!hasTimeLimit && dueRemainingSeconds !== null && dueRemainingSeconds <= 0);
+
   // Mode 2: Adaptive Practice Mode Query
   const {
     data: adaptiveQuestion,
@@ -344,7 +547,7 @@ export const LearningPlayerPage = () => {
   useEffect(() => {
     if (!question?.questionId || !assignmentId) return;
     const qId = question.questionId;
-    const saved = assignmentAnswers[qId];
+    const saved = assignmentAnswersRef.current[qId];
 
     const isQuestionSubmitted =
       assignmentQuestion?.attemptStatus === "Completed" ||
@@ -358,6 +561,11 @@ export const LearningPlayerPage = () => {
         ? (assignmentQuestion.submittedAnswer === "SKIPPED" ? "" : assignmentQuestion.submittedAnswer)
         : (assignmentQuestion?.latestAttempt?.finalAnswer === "SKIPPED" ? "" : (assignmentQuestion?.latestAttempt?.finalAnswer || null));
 
+    const effectiveSubmittedAnswerDisplayLatex =
+      assignmentQuestion?.submittedAnswerDisplayLatex ??
+      assignmentQuestion?.latestAttempt?.answerDisplayLatex ??
+      effectiveSubmittedAnswer;
+
     const effectiveSubmittedReasoning =
       assignmentQuestion?.submittedReasoning !== undefined && assignmentQuestion?.submittedReasoning !== null
         ? assignmentQuestion.submittedReasoning
@@ -369,6 +577,7 @@ export const LearningPlayerPage = () => {
 
     if (isQuestionSubmitted && hasSubmittedData) {
       setFinalAnswer(effectiveSubmittedAnswer || "");
+      setAnswerDisplayLatex(question?.questionType === "MultipleChoice" ? "" : (effectiveSubmittedAnswerDisplayLatex || ""));
       setReasoningText(effectiveSubmittedReasoning || "");
       setConfidence(assignmentQuestion?.latestAttempt?.confidence ?? saved?.confidence ?? 80);
       setTimeSpentSeconds(assignmentQuestion?.latestAttempt?.timeSpentSeconds ?? saved?.timeSpentSeconds ?? 0);
@@ -378,6 +587,7 @@ export const LearningPlayerPage = () => {
       setDrawingUploadToken(saved?.drawingUploadToken || null);
     } else if (saved) {
       setFinalAnswer(saved.finalAnswer || "");
+      setAnswerDisplayLatex(question?.questionType === "MultipleChoice" ? "" : (saved.answerDisplayLatex || saved.finalAnswer || ""));
       setReasoningText(saved.reasoningText || "");
       setConfidence(saved.confidence ?? 80);
       setTimeSpentSeconds(saved.timeSpentSeconds ?? 0);
@@ -387,6 +597,7 @@ export const LearningPlayerPage = () => {
       setDrawingUploadToken(saved.drawingUploadToken || null);
     } else if (hasSubmittedData) {
       setFinalAnswer(effectiveSubmittedAnswer || "");
+      setAnswerDisplayLatex(question?.questionType === "MultipleChoice" ? "" : (effectiveSubmittedAnswerDisplayLatex || ""));
       setReasoningText(effectiveSubmittedReasoning || "");
       setConfidence(assignmentQuestion?.latestAttempt?.confidence ?? 80);
       setTimeSpentSeconds(assignmentQuestion?.latestAttempt?.timeSpentSeconds ?? 0);
@@ -396,6 +607,7 @@ export const LearningPlayerPage = () => {
       setDrawingUploadToken(null);
     } else {
       setFinalAnswer("");
+      setAnswerDisplayLatex("");
       setReasoningText("");
       setConfidence(80);
       setTimeSpentSeconds(0);
@@ -411,9 +623,12 @@ export const LearningPlayerPage = () => {
     assignmentId,
     assignmentQuestion?.attemptStatus,
     assignmentQuestion?.submittedAnswer,
+    assignmentQuestion?.submittedAnswerDisplayLatex,
     assignmentQuestion?.submittedReasoning,
     assignmentQuestion?.latestAttempt,
     isAssignmentSubmitted,
+    assignmentDraftKey,
+    assignmentDraftLoadVersion,
   ]);
 
   // If question is submitted and has an attachment, load attachment if not already loaded
@@ -451,12 +666,14 @@ export const LearningPlayerPage = () => {
 
   // Persist current question answer into assignmentAnswers & localStorage
   const persistCurrentAnswer = useCallback(
-    (newFinalAnswer?: string, newReasoning?: string, newConf?: number) => {
-      if (!assignmentId || !question?.questionId) return;
+    (newFinalAnswer?: string, newReasoning?: string, newConf?: number, newAnswerDisplayLatex?: string) => {
+      if (!assignmentDraftScope || !question?.questionId) return;
       if (assignmentQuestion?.latestAttempt) return; // Do not overwrite server truth for already-submitted questions
       const qId = question.questionId;
       const updatedEntry: StoredAnswer = {
         finalAnswer: newFinalAnswer !== undefined ? newFinalAnswer : finalAnswer,
+        answerDisplayLatex:
+          newAnswerDisplayLatex !== undefined ? newAnswerDisplayLatex : answerDisplayLatex,
         reasoningText: newReasoning !== undefined ? newReasoning : reasoningText,
         confidence: newConf !== undefined ? newConf : confidence,
         timeSpentSeconds,
@@ -468,19 +685,16 @@ export const LearningPlayerPage = () => {
 
       setAssignmentAnswers((prev) => {
         const next = { ...prev, [qId]: updatedEntry };
-        try {
-          localStorage.setItem(`edutwin_assignment_answers_${assignmentId}`, JSON.stringify(next));
-        } catch {
-          // Ignore localStorage quote limits
-        }
+        writeAssignmentDraft(assignmentDraftScope, JSON.stringify(next));
         return next;
       });
     },
     [
-      assignmentId,
+      assignmentDraftScope,
       question?.questionId,
       assignmentQuestion?.latestAttempt,
       finalAnswer,
+      answerDisplayLatex,
       reasoningText,
       confidence,
       timeSpentSeconds,
@@ -488,6 +702,7 @@ export const LearningPlayerPage = () => {
       attachedSnapshotDataUrl,
       attachedSnapshotTime,
       drawingUploadToken,
+      setAssignmentAnswers,
     ]
   );
 
@@ -581,7 +796,7 @@ export const LearningPlayerPage = () => {
             }
           }
           if (assignmentId) {
-            await queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
+            await refreshSubmittedAssignmentData();
           }
           return;
         }
@@ -606,7 +821,7 @@ export const LearningPlayerPage = () => {
               // fallback
             }
             if (assignmentId) {
-              await queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
+              await refreshSubmittedAssignmentData();
             }
           }
           return;
@@ -638,7 +853,7 @@ export const LearningPlayerPage = () => {
               // fallback
             }
             if (assignmentId) {
-              await queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
+              await refreshSubmittedAssignmentData();
             }
           }
         }
@@ -665,14 +880,15 @@ export const LearningPlayerPage = () => {
       isSubscribed = false;
       clearTimeout(initialTimeout);
     };
-  }, [pollingJobId, feedbackData, networkErrorPaused, searchParams, setSearchParams, attemptSessionScope, assignmentId, queryClient]);
+  }, [pollingJobId, feedbackData, networkErrorPaused, searchParams, setSearchParams, attemptSessionScope, assignmentId, refreshSubmittedAssignmentData]);
 
   // Answer change handlers
-  const handleAnswerChange = (val: string) => {
+  const handleAnswerChange = (plainText: string, latex: string) => {
     if (isReadOnly) return;
-    setFinalAnswer(val);
+    setFinalAnswer(plainText);
+    setAnswerDisplayLatex(latex);
     setAnswerChanges((prev) => prev + 1);
-    persistCurrentAnswer(val, undefined, undefined);
+    persistCurrentAnswer(plainText, undefined, undefined, latex);
   };
 
   const handleReasoningChange = (val: string) => {
@@ -696,7 +912,7 @@ export const LearningPlayerPage = () => {
         visualMathFieldRef.current.insertAtCursor(textToInsert);
         setAnswerChanges((prev) => prev + 1);
       } else {
-        handleAnswerChange(finalAnswer + textToInsert);
+        handleAnswerChange(finalAnswer + textToInsert, answerDisplayLatex + textToInsert);
       }
       return;
     }
@@ -730,11 +946,12 @@ export const LearningPlayerPage = () => {
     const nowTime = new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
     setAttachedSnapshotTime(nowTime);
 
-    if (assignmentId && question?.questionId) {
+    if (assignmentDraftScope && question?.questionId) {
       const qId = question.questionId;
       setAssignmentAnswers((prev) => {
         const existing = prev[qId] || {
           finalAnswer,
+          answerDisplayLatex,
           reasoningText,
           confidence,
           timeSpentSeconds,
@@ -748,11 +965,7 @@ export const LearningPlayerPage = () => {
             snapshotTime: nowTime,
           },
         };
-        try {
-          localStorage.setItem(`edutwin_assignment_answers_${assignmentId}`, JSON.stringify(next));
-        } catch {
-          // Handle storage quota
-        }
+        writeAssignmentDraft(assignmentDraftScope, JSON.stringify(next));
         return next;
       });
     }
@@ -764,7 +977,7 @@ export const LearningPlayerPage = () => {
     setAttachedSnapshotDataUrl(null);
     setAttachedSnapshotTime(null);
     setDrawingUploadToken(null);
-    if (assignmentId && question?.questionId) {
+    if (assignmentDraftScope && question?.questionId) {
       const qId = question.questionId;
       setAssignmentAnswers((prev) => {
         const existing = prev[qId];
@@ -778,11 +991,7 @@ export const LearningPlayerPage = () => {
             drawingUploadToken: null,
           },
         };
-        try {
-          localStorage.setItem(`edutwin_assignment_answers_${assignmentId}`, JSON.stringify(next));
-        } catch {
-          // Handle storage quota
-        }
+        writeAssignmentDraft(assignmentDraftScope, JSON.stringify(next));
         return next;
       });
     }
@@ -805,10 +1014,12 @@ export const LearningPlayerPage = () => {
   // Submit flow:
   // - Assignment Mode: Sequentially submit each question attempt (generating 1 prompt per question + scratchpad)
   // - Adaptive Mode: Submit single active question
-  const handleFinalSubmit = async () => {
+  const handleFinalSubmit = async (autoSubmitArg?: boolean | React.MouseEvent) => {
+    const isAutoSubmit = typeof autoSubmitArg === "boolean" ? autoSubmitArg : false;
     if (!question) return;
     persistCurrentAnswer();
     setShowBatchConfirmModal(false);
+    setActiveSideTool(null);
 
     setSubmissionSaveError(null);
     setCanRetrySubmission(false);
@@ -821,6 +1032,7 @@ export const LearningPlayerPage = () => {
         const currentQId = question.questionId;
         const currentSaved: StoredAnswer = {
           finalAnswer,
+          answerDisplayLatex,
           reasoningText,
           confidence,
           timeSpentSeconds,
@@ -839,6 +1051,7 @@ export const LearningPlayerPage = () => {
         if (!frozenPayloadRef.current) {
           const frozen: Record<string, {
             finalAnswer: string;
+            answerDisplayLatex?: string;
             reasoningText?: string;
             confidence: number;
             timeSpentSeconds: number;
@@ -848,9 +1061,15 @@ export const LearningPlayerPage = () => {
 
           for (const q of assignmentQuestions) {
             const src = allAnswersMap[q.questionId];
+            const answerTrimmed = src?.finalAnswer?.trim() || "";
+            let reasoningTrimmed = src?.reasoningText?.trim() || undefined;
+            if (isAutoSubmit && q.reasoningRequired && answerTrimmed && !reasoningTrimmed) {
+              reasoningTrimmed = "[Hết giờ làm bài - Tự động nộp]";
+            }
             frozen[q.questionId] = {
-              finalAnswer: src?.finalAnswer?.trim() || "",
-              reasoningText: src?.reasoningText?.trim() || undefined,
+              finalAnswer: answerTrimmed,
+              answerDisplayLatex: src?.answerDisplayLatex?.trim() || undefined,
+              reasoningText: reasoningTrimmed,
               confidence: src?.confidence ?? 80,
               timeSpentSeconds: src?.timeSpentSeconds ?? 0,
               answerChanges: src?.answerChanges ?? 0,
@@ -860,7 +1079,8 @@ export const LearningPlayerPage = () => {
           frozenPayloadRef.current = frozen;
         }
 
-        // Pre-validate all questions requiring reasoning before starting batch submit
+        // Pre-validate all questions requiring reasoning before starting batch submit (only when manual submit)
+        if (!isAutoSubmit) {
         for (let i = 0; i < assignmentQuestions.length; i++) {
           const q = assignmentQuestions[i];
           if (q.latestAttempt || q.attemptStatus === "Completed" || q.attemptStatus === "NeedsTeacherReview") {
@@ -878,6 +1098,8 @@ export const LearningPlayerPage = () => {
           }
         }
 
+        }
+
         let lastJobId: string | null = null;
         let submittedCount = 0;
 
@@ -890,6 +1112,7 @@ export const LearningPlayerPage = () => {
 
           const qAnswer = frozenPayloadRef.current[q.questionId] || {
             finalAnswer: "",
+            answerDisplayLatex: undefined,
             reasoningText: undefined,
             confidence: 80,
             timeSpentSeconds: 0,
@@ -897,17 +1120,19 @@ export const LearningPlayerPage = () => {
             drawingUploadToken: undefined,
           };
           const qFinalAnswer = qAnswer.finalAnswer;
+          const qAnswerDisplayLatex = qAnswer.answerDisplayLatex;
           const qReasoning = qAnswer.reasoningText;
           const qConfidence = qAnswer.confidence;
           const qTimeSpent = qAnswer.timeSpentSeconds;
           const qAnswerChanges = qAnswer.answerChanges;
           let qToken = qAnswer.drawingUploadToken;
 
-          setPollingStatus(`Đang nộp câu ${i + 1}/${assignmentQuestions.length}...`);
+          setPollingStatus(isAutoSubmit ? `Hết giờ: Đang tự động nộp câu ${i + 1}/${assignmentQuestions.length}...` : `Đang nộp câu ${i + 1}/${assignmentQuestions.length}...`);
+          const isSkipped = !qFinalAnswer;
 
           const qSnapshotDataUrl = allAnswersMap[q.questionId]?.snapshotDataUrl;
           // Upload scratchpad snapshot if this question has an attached drawing
-          if (qSnapshotDataUrl && !qToken) {
+          if (!isSkipped && qSnapshotDataUrl && !qToken) {
             try {
               setPollingStatus(`Đang tải ảnh nháp câu ${i + 1}/${assignmentQuestions.length}...`);
               const res = await fetch(qSnapshotDataUrl);
@@ -924,14 +1149,15 @@ export const LearningPlayerPage = () => {
           const submitted = await submitAttempt({
             questionId: q.questionId,
             assignmentId: assignmentId,
-            finalAnswer: qFinalAnswer || "SKIPPED",
-            reasoningText: qReasoning,
+            finalAnswer: isSkipped ? "SKIPPED" : qFinalAnswer,
+            reasoningText: isSkipped ? undefined : qReasoning,
             timeSpentSeconds: qTimeSpent,
             confidence: qConfidence,
             answerChanges: qAnswerChanges,
-            skipped: !qFinalAnswer,
+            skipped: isSkipped,
             clientSubmissionId: clientSubId,
-            drawingUploadToken: qToken || undefined,
+            answerDisplayLatex: isSkipped ? undefined : qAnswerDisplayLatex,
+            drawingUploadToken: isSkipped ? undefined : (qToken || undefined),
           });
 
           submittedCount += 1;
@@ -944,21 +1170,24 @@ export const LearningPlayerPage = () => {
         // Clean up frozen payload on success
         frozenPayloadRef.current = null;
 
-        // Clear local storage draft
-        try {
-          localStorage.removeItem(`edutwin_assignment_answers_${assignmentId}`);
-        } catch {
-          // ignore
-        }
+        // Hydrate the detail query before discarding the local fallback. Without
+        // this refetch, review mode sees the pre-submit cache until a full reload.
+        await refreshSubmittedAssignmentData();
 
         // Mark local submission as complete: Immediately transitions UI to Assignment Result overview!
         setIsLocallySubmitted(true);
         setIsSubmitting(false);
+        if (assignmentDraftScope) {
+          removeAssignmentRemainingSeconds(assignmentDraftScope);
+        }
 
-        // Invalidate TanStack queries so assignment and lists refresh with updated progress
-        await queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
-
-        if (lastJobId) {
+        if (isAutoSubmit) {
+          setAiBanner({
+            type: "info",
+            message: "⏱ Hết thời gian làm bài! Hệ thống đã tự động nộp bài làm của bạn. Các câu chưa làm đã được tự động bỏ qua.",
+            action: null,
+          });
+        } else if (lastJobId) {
           setPollingJobId(lastJobId);
           searchParams.set("analysisJobId", lastJobId);
           setSearchParams(searchParams, { replace: true });
@@ -978,10 +1207,15 @@ export const LearningPlayerPage = () => {
         tokenToUse = await uploadScratchpadAttachmentIfAny();
       }
 
-      if (question.reasoningRequired && finalAnswer.trim() && !reasoningText.trim()) {
+      let reasoningToSubmit = reasoningText.trim() || undefined;
+      if (question.reasoningRequired && finalAnswer.trim() && !reasoningToSubmit) {
+        if (isAutoSubmit) {
+          reasoningToSubmit = "[Hết giờ làm bài - Tự động nộp]";
+        } else {
         setIsSubmitting(false);
         setSubmissionSaveError("Câu hỏi này yêu cầu phải có phần lập luận / giải trình trước khi nộp bài.");
         return;
+        }
       }
 
       setPollingStatus("Đang gửi bài làm lên hệ thống AI...");
@@ -989,7 +1223,7 @@ export const LearningPlayerPage = () => {
         questionId: question.questionId,
         assignmentId: undefined,
         finalAnswer: finalAnswer.trim() || "SKIPPED",
-        reasoningText: reasoningText.trim() || undefined,
+        reasoningText: reasoningToSubmit,
         timeSpentSeconds,
         confidence,
         answerChanges,
@@ -1039,8 +1273,31 @@ export const LearningPlayerPage = () => {
     }
     setSubmissionSaveError(null);
     setCanRetrySubmission(false);
-    handleFinalSubmit();
+    handleFinalSubmit(isAssignmentExpired);
   };
+
+  // Auto-submit when test time limit or due deadline expires
+  useEffect(() => {
+    if (
+      assignmentId &&
+      isAssignmentExpired &&
+      !isAssignmentSubmitted &&
+      !isSubmitting &&
+      !hasAutoSubmittedRef.current &&
+      question &&
+      assignmentQuestions.length > 0
+    ) {
+      hasAutoSubmittedRef.current = true;
+      handleFinalSubmit(true);
+    }
+  }, [
+    assignmentId,
+    isAssignmentExpired,
+    isAssignmentSubmitted,
+    isSubmitting,
+    question,
+    assignmentQuestions.length,
+  ]);
 
   const handleRetryAiFromBanner = async (attemptId: string) => {
     try {
@@ -1054,7 +1311,7 @@ export const LearningPlayerPage = () => {
         setIsSubmitting(true);
       } else {
         if (assignmentId) {
-          await queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
+          await refreshSubmittedAssignmentData();
         }
       }
     } catch (err: any) {
@@ -1066,6 +1323,30 @@ export const LearningPlayerPage = () => {
         action: "retry_ai",
         attemptIdForRetry: attemptId,
       });
+    }
+  };
+
+  const handleReviewAssignmentQuestions = async () => {
+    if (!assignmentId || isRefreshingAssignmentReview) return;
+
+    setIsRefreshingAssignmentReview(true);
+    try {
+      // Wait for the detail query, not only the assignment list, before leaving
+      // the feedback screen. The scoped local draft remains as a safe fallback
+      // when this request is temporarily unavailable.
+      await refreshSubmittedAssignmentData();
+      const firstQuestionId = assignmentQuestions[0]?.questionId;
+      setFeedbackData(null);
+      if (firstQuestionId) {
+        setActiveQuestionId(firstQuestionId);
+        window.history.replaceState(
+          null,
+          "",
+          `/hoc-tap/luyen-tap/${firstQuestionId}?assignmentId=${assignmentId}${subjectId ? `&subjectId=${subjectId}` : ""}`
+        );
+      }
+    } finally {
+      setIsRefreshingAssignmentReview(false);
     }
   };
 
@@ -1381,22 +1662,11 @@ export const LearningPlayerPage = () => {
               <div className="flex w-full sm:w-auto flex-col sm:flex-row gap-3">
                 <button
                   type="button"
-                  onClick={() => {
-                    const firstQuestionId = assignmentQuestions[0]?.questionId;
-                    setFeedbackData(null);
-                    if (firstQuestionId) {
-                      setActiveQuestionId(firstQuestionId);
-                      window.history.replaceState(
-                        null,
-                        "",
-                        `/hoc-tap/luyen-tap/${firstQuestionId}?assignmentId=${assignmentId}${subjectId ? `&subjectId=${subjectId}` : ""}`
-                      );
-                    }
-                    void queryClient.refetchQueries({ queryKey: ["student-assignments", assignmentId] });
-                  }}
-                  className="w-full sm:w-auto rounded-xl bg-indigo-600 px-6 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-500 text-center cursor-pointer"
+                  onClick={() => void handleReviewAssignmentQuestions()}
+                  disabled={isRefreshingAssignmentReview}
+                  className="w-full sm:w-auto rounded-xl bg-indigo-600 px-6 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-500 text-center cursor-pointer disabled:cursor-wait disabled:opacity-60"
                 >
-                  Xem lại từng câu →
+                  {isRefreshingAssignmentReview ? "Đang tải bài làm..." : "Xem lại từng câu →"}
                 </button>
                 <Link
                   to="/hoc-tap/bai-tap"
@@ -1439,21 +1709,37 @@ export const LearningPlayerPage = () => {
 
           <div className="flex items-center gap-2.5">
             {/* Timer / Countdown */}
-            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-bold border ${
-              isAssignmentExpired
-                ? "bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-950/60 dark:text-rose-200 dark:border-rose-900"
-                : assignmentRemainingSeconds !== null && assignmentRemainingSeconds <= 300
-                ? "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/60 dark:text-amber-200 dark:border-amber-900 animate-pulse"
-                : "bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 border-stone-200/60 dark:border-stone-700/60"
-            }`}>
+            <div
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-bold border ${
+                isAssignmentExpired
+                  ? "bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-950/60 dark:text-rose-200 dark:border-rose-900"
+                  : hasTimeLimit && assignmentRemainingSeconds !== null && assignmentRemainingSeconds <= 300
+                  ? "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/60 dark:text-amber-200 dark:border-amber-900 animate-pulse"
+                  : !hasTimeLimit && dueRemainingSeconds !== null && dueRemainingSeconds <= 3600
+                  ? "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/60 dark:text-amber-200 dark:border-amber-900 animate-pulse"
+                  : "bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 border-stone-200/60 dark:border-stone-700/60"
+              }`}
+              title={
+                hasTimeLimit
+                  ? "Thời gian làm bài còn lại"
+                  : dueRemainingSeconds !== null
+                  ? "Hạn chót nộp bài"
+                  : "Thời gian làm bài"
+              }
+            >
               <span className="text-stone-400 text-xs">⏱</span>
               <span>
-                {assignmentRemainingSeconds !== null
+                {hasTimeLimit && assignmentRemainingSeconds !== null
                   ? `${String(Math.floor(assignmentRemainingSeconds / 3600)).padStart(2, "0")}:${String(Math.floor((assignmentRemainingSeconds % 3600) / 60)).padStart(2, "0")}:${String(assignmentRemainingSeconds % 60).padStart(2, "0")}`
+                  : !hasTimeLimit && dueRemainingSeconds !== null
+                  ? `${String(Math.floor(dueRemainingSeconds / 3600)).padStart(2, "0")}:${String(Math.floor((dueRemainingSeconds % 3600) / 60)).padStart(2, "0")}:${String(dueRemainingSeconds % 60).padStart(2, "0")}`
                   : `${String(Math.floor(timeSpentSeconds / 60)).padStart(2, "0")}:${String(timeSpentSeconds % 60).padStart(2, "0")}`}
               </span>
-              {assignmentRemainingSeconds !== null && assignmentRemainingSeconds <= 300 && assignmentRemainingSeconds > 0 && (
+              {hasTimeLimit && assignmentRemainingSeconds !== null && assignmentRemainingSeconds <= 300 && assignmentRemainingSeconds > 0 && (
                 <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 ml-1">SẮP HẾT GIỜ!</span>
+              )}
+              {isAssignmentExpired && (
+                <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 ml-1">HẾT GIỜ</span>
               )}
             </div>
 
@@ -1469,10 +1755,17 @@ export const LearningPlayerPage = () => {
                     type="button"
                     onClick={() => {
                       if (window.confirm("Bạn có chắc chắn muốn làm lại bài tập này?")) {
-                        try {
-                          localStorage.removeItem(`edutwin_assignment_answers_${assignmentId}`);
-                        } catch {
-                          // ignore storage error
+                        if (assignmentDraftScope) {
+                          removeAssignmentDraft(assignmentDraftScope);
+                          removeAssignmentRemainingSeconds(assignmentDraftScope);
+                        }
+                        timerInitializedForAssignmentRef.current = null;
+                        if (hasTimeLimit && assignment?.timeLimitMinutes) {
+                          const freshSeconds = assignment.timeLimitMinutes * 60;
+                          if (assignmentDraftScope) {
+                            writeAssignmentRemainingSeconds(assignmentDraftScope, freshSeconds);
+                          }
+                          setAssignmentRemainingSeconds(freshSeconds);
                         }
                         setAssignmentAnswers({});
                         setFinalAnswer("");
@@ -1481,6 +1774,7 @@ export const LearningPlayerPage = () => {
                         setSubmissionSaveError(null);
                         setAiBanner(null);
                         setIsLocallySubmitted(false);
+                        hasAutoSubmittedRef.current = false;
                         if (assignmentQuestions[0]) {
                           handleSwitchQuestion(assignmentQuestions[0].questionId);
                         }
@@ -1502,7 +1796,7 @@ export const LearningPlayerPage = () => {
                 disabled={isSubmitting || isAssignmentExpired}
                 className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-stone-200 text-white dark:text-stone-900 font-semibold text-xs transition-colors cursor-pointer disabled:opacity-50 shrink-0"
               >
-                <span>{isAssignmentExpired ? "Đã hết giờ" : "Nộp bài"}</span>
+                <span>{isAssignmentExpired ? (isSubmitting ? "Đang tự động nộp..." : "Đã hết giờ") : "Nộp bài"}</span>
                 <span className="px-1.5 py-0.2 rounded-full bg-stone-700 dark:bg-stone-300 text-white dark:text-stone-900 text-[10px] font-mono font-bold">
                   {answeredCount}/{totalQuestions}
                 </span>
@@ -1637,7 +1931,7 @@ export const LearningPlayerPage = () => {
                     <button
                       type="button"
                       onClick={() => {
-                        void queryClient.invalidateQueries({ queryKey: ["student-assignments"] });
+                        void refreshSubmittedAssignmentData();
                       }}
                       className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer inline-flex items-center gap-1.5"
                       title="Làm mới kết quả bài làm"
@@ -1926,14 +2220,18 @@ export const LearningPlayerPage = () => {
                   <fieldset className="grid grid-cols-1 sm:grid-cols-2 gap-3" disabled={isReadOnly}>
                     <legend className="sr-only">Chọn một đáp án</legend>
                     {question.options.map((option) => {
-                      const isSelected = finalAnswer === option.optionId;
+                      const isSelected =
+                        finalAnswer === option.optionId ||
+                        finalAnswer?.trim().toUpperCase() === option.label.toUpperCase() ||
+                        finalAnswer?.startsWith(option.label + ".") ||
+                        finalAnswer === option.text;
                       return (
                         <button
                           key={option.optionId}
                           type="button"
                           disabled={isReadOnly}
                           onClick={() => {
-                            if (!isReadOnly) handleAnswerChange(option.optionId);
+                            if (!isReadOnly) handleAnswerChange(option.optionId, "");
                           }}
                           className={`flex items-center gap-3 p-4 rounded-2xl border text-left transition-all ${
                             isReadOnly ? "cursor-default" : "cursor-pointer"
@@ -1971,8 +2269,8 @@ export const LearningPlayerPage = () => {
                     {/* Visual Math Field (MathLive) */}
                     <VisualMathField
                       ref={visualMathFieldRef}
-                      value={finalAnswer}
-                      onChange={(val) => handleAnswerChange(val)}
+                      value={answerDisplayLatex}
+                      onChange={(latex, plainText) => handleAnswerChange(plainText, latex)}
                       onFocus={() => setActiveInputTarget("answer")}
                       disabled={isReadOnly}
                       placeholder={isAssignmentSubmitted ? "Chưa có đáp số" : "Gõ công thức hoặc đáp số cuối cùng (hoặc dùng Casio để tự chèn)..."}

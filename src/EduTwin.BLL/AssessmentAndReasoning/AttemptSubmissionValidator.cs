@@ -171,22 +171,7 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
                     cancellationToken);
 
             var now = _timeProvider.GetUtcNow().UtcDateTime;
-            DateTime? effectiveExpiresAt = null;
-            if (assignment.DueAt.HasValue && assignment.TimeLimitMinutes.HasValue && progress?.StartedAt.HasValue == true)
-            {
-                var timeLimitExpiresAt = progress.StartedAt.Value.AddMinutes(assignment.TimeLimitMinutes.Value);
-                effectiveExpiresAt = assignment.DueAt.Value < timeLimitExpiresAt ? assignment.DueAt.Value : timeLimitExpiresAt;
-            }
-            else if (assignment.TimeLimitMinutes.HasValue && progress?.StartedAt.HasValue == true)
-            {
-                effectiveExpiresAt = progress.StartedAt.Value.AddMinutes(assignment.TimeLimitMinutes.Value);
-            }
-            else if (assignment.DueAt.HasValue)
-            {
-                effectiveExpiresAt = assignment.DueAt.Value;
-            }
-
-            if (effectiveExpiresAt.HasValue && now > effectiveExpiresAt.Value)
+            if (assignment.DueAt.HasValue && now > assignment.DueAt.Value.AddSeconds(120))
             {
                 return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
             }
@@ -226,7 +211,8 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
             {
                 IsCorrect = true,
                 Score = assignmentQuestion?.Points > 0 ? assignmentQuestion.Points : question.MaxScore,
-                Feedback = "Câu hỏi đã được đánh dấu có sai sót đề và được tự động công nhận trọn điểm."
+                Feedback = "Câu hỏi đã được đánh dấu có sai sót đề và được tự động công nhận trọn điểm.",
+                ReasonCode = PreliminaryGradingReasonCodes.VoidedQuestion
             }
             : (!request.Skipped
                 ? _graderFactory
@@ -245,7 +231,8 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
                 {
                     IsCorrect = false,
                     Score = 0m,
-                    Feedback = "Skipped"
+                    Feedback = "Skipped",
+                    ReasonCode = PreliminaryGradingReasonCodes.NoAnswer
                 });
 
         var effectiveFinalAnswer = request.Skipped
@@ -269,7 +256,8 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
             Skipped = request.Skipped,
             ReasoningLanguage = "vi",
             IsCorrect = preliminaryGrade.IsCorrect,
-            AwardedScore = preliminaryGrade.Score
+            AwardedScore = preliminaryGrade.Score,
+            PreliminaryGradingReasonCode = preliminaryGrade.ReasonCode
         });
     }
 
@@ -359,6 +347,7 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
         ReasoningLanguage = attempt.ReasoningLanguage,
         IsCorrect = attempt.IsCorrect,
         AwardedScore = attempt.AwardedScore,
+        PreliminaryGradingReasonCode = attempt.PreliminaryGradingReasonCode,
         ExistingAttemptId = attempt.AttemptId
     };
 

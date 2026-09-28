@@ -648,9 +648,15 @@ export function TeacherQuestionEditorView() {
                   onChange={(e) => setAnswerEvaluationMode(e.target.value as QuestionAnswerEvaluationMode)}
                   className="th-select w-full text-xs"
                 >
-                  <option value="TextExact">So khớp chính xác chuỗi (TextExact)</option>
-                  <option value="NumericRational">Tương đương số học / đại số / phân số (NumericRational)</option>
-                </select>
+                   <option value="TextExact">So khớp chính xác chuỗi (TextExact)</option>
+                   <option value="NumericRational">Tương đương số học / đại số / phân số (NumericRational)</option>
+                   <option value="Coordinate2D">Tọa độ 2D — chấp nhận (1,1), (1;1) và dạng tương đương</option>
+                 </select>
+                 {answerEvaluationMode === "Coordinate2D" && (
+                   <p className="mt-1.5 text-[11px] text-[var(--th-text-muted)]">
+                     Đáp án chuẩn phải là một cặp tọa độ, ví dụ (1, 1) hoặc (1/2; 3/4).
+                   </p>
+                 )}
               </div>
             )}
 

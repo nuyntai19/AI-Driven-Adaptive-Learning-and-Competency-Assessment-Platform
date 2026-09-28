@@ -64,6 +64,9 @@ public class CreateAssignmentUseCase : ICreateAssignmentUseCase
         if (request.DueAt.HasValue && request.DueAt.Value <= now)
             return CreateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
 
+        if (request.TimeLimitMinutes.HasValue && request.TimeLimitMinutes.Value <= 0)
+            return CreateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
+
         // TargetMode validation
         var targetMode = request.TargetMode?.Trim();
         var isWholeClass = string.Equals(targetMode, "WholeClass", StringComparison.Ordinal);
@@ -188,6 +191,7 @@ public class CreateAssignmentUseCase : ICreateAssignmentUseCase
             Title = request.Title,
             Instructions = request.Instructions,
             DueAt = request.DueAt,
+            TimeLimitMinutes = request.TimeLimitMinutes,
             Status = AssignmentStatus.Draft,
             PublishedAt = null,
             IsDeleted = false,
@@ -276,6 +280,7 @@ public class CreateAssignmentUseCase : ICreateAssignmentUseCase
             Title = assignment.Title,
             Instructions = assignment.Instructions,
             DueAt = assignment.DueAt,
+            TimeLimitMinutes = assignment.TimeLimitMinutes,
             Status = assignment.Status.ToString(),
             QuestionCount = questionDtos.Count,
             TargetStudentCount = targetDtos.Count,

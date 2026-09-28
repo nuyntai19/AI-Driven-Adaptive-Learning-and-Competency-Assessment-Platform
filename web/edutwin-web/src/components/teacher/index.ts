@@ -5,3 +5,4 @@ export * from "./TeacherFilterBar";
 export * from "./TeacherDataTable";
 export * from "./MathFormulaPreview";
 export * from "./QuestionImportModal";
+export * from "./TeacherAssignmentQuickViewModal";

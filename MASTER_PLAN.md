@@ -996,7 +996,7 @@ Dependencies: P08.
 
 - MultipleChoice: option/canonical label.
 - ShortAnswer: normalized exact/canonical comparison ở mức MVP.
-- Essay: preliminary isCorrect = null và score = 0 cho tới teacher review; AI chỉ phân tích reasoning. Null bắt buộc ReviewOnly/weight 0, không được cập nhật Knowledge Mastery.
+- Essay: preliminary `isCorrect = null` và `awardedScore = null` cho tới teacher review; UI hiển thị “Chưa chấm”, AI chỉ phân tích reasoning. Null bắt buộc ReviewOnly/weight 0, không được cập nhật Knowledge Mastery.
 - Không dùng AI tại Controller.
 
 ### P09-T05 — UI
@@ -2155,8 +2155,8 @@ Phần bổ sung phạm vi chính thức sau Release R08 nhằm hoàn thiện ha
    - Toolbar 5 tab ký tự toán học (Basic, Algebra, Calculus, Sets, Geometry) tích hợp vào trình soạn thảo và trình làm bài.
    - Xem trước công thức thời gian thực qua KaTeX an toàn (`trust: false`), lưu vết trường `answer_display_latex` (`VARCHAR(2048) NULL`) trong bảng `attempts`.
 2. **Chế Độ Chấm Điểm & Chuẩn Hóa Phân Số Rút Gọn:**
-   - Thêm cột `answer_evaluation_mode` vào bảng `questions` với các giá trị: `TextExact`, `NumericRational`, `Manual`.
-   - Khóa chặt ma trận: `MultipleChoice` $\to$ `TextExact`; `Essay` $\to$ `Manual`; `ShortAnswer` $\to$ `TextExact` / `NumericRational` / `Manual`.
+   - Thêm cột `answer_evaluation_mode` vào bảng `questions` với các giá trị: `TextExact`, `NumericRational`, `Coordinate2D`, `Manual`.
+   - Khóa chặt ma trận: `MultipleChoice` $\to$ `TextExact`; `Essay` $\to$ `Manual`; `ShortAnswer` $\to$ `TextExact` / `NumericRational` / `Coordinate2D` / `Manual`.
    - Xây dựng `MathAnswerNormalizer` chuẩn hóa số thập phân, phân số, hỗn số về dạng phân số tối giản $P/Q$ bằng .NET `BigInteger` (tránh sai số dấu phẩy động).
 3. **Ngăn Kéo Máy Tính Khoa Học (Scientific Calculator Drawer):**
    - Máy tính khoa học bỏ túi client-side phục vụ tính toán trực tiếp; tuyệt đối không tích hợp giải phương trình tự động.

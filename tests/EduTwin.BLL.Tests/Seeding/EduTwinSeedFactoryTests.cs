@@ -151,4 +151,20 @@ public class EduTwinSeedFactoryTests
             Assert.Equal(0m, g.RiskScore);
         });
     }
+
+    [Fact]
+    public void CreateData_MathFunc04_UsesCoordinate2DEvaluation()
+    {
+        var factory = new EduTwinSeedFactory(true);
+        var data = factory.CreateData();
+        var mathSubject = data.Subjects.Single(s => s.SubjectCode == "MATH");
+        var question = data.Questions.Single(q =>
+            q.SubjectId == mathSubject.SubjectId &&
+            q.QuestionText == "Tìm tọa độ đỉnh của parabol y = -2x^2 + 4x - 1.");
+
+        Assert.Equal(
+            EduTwin.Contracts.CurriculumAndQuestions.QuestionAnswerEvaluationMode.Coordinate2D,
+            question.AnswerEvaluationMode);
+        Assert.Equal("(1, 1)", question.CorrectAnswer);
+    }
 }

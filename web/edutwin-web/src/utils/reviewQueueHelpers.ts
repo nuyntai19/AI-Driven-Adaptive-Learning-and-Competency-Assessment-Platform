@@ -1,4 +1,4 @@
-import type { TeacherReviewQueueItemDto } from "../types/reviews";
+import type { TeacherReviewQueueItemDto, TeacherReviewQuestionOptionDto } from "../types/reviews";
 
 /**
  * Canonical helper utilities for Review Queue, Digital Twin & OCC versioning.
@@ -92,3 +92,60 @@ export const reconcileAttemptOccVersion = (
   }
   return { updatedItem: found, freshVersion: version };
 };
+
+/**
+ * Resolves the student's selected option from question options.
+ * Matches by optionId, optionLabel, or option text.
+ */
+export const findSelectedOption = (
+  item?: { finalAnswer?: string | null; options?: TeacherReviewQuestionOptionDto[] | null } | null
+): TeacherReviewQuestionOptionDto | null => {
+  if (!item?.finalAnswer || !item.options || item.options.length === 0) return null;
+  const raw = item.finalAnswer.trim();
+
+  // 1. Match by optionId (e.g. "20000")
+  const byId = item.options.find((o) => String(o.optionId).trim() === raw);
+  if (byId) return byId;
+
+  // 2. Match by exact optionLabel (e.g. "A" or "A.")
+  const labelClean = raw.replace(/\.$/, "").trim().toUpperCase();
+  const byLabel = item.options.find((o) => o.optionLabel.trim().toUpperCase() === labelClean);
+  if (byLabel) return byLabel;
+
+  // 3. Match by "Label. Text" prefix or exact formatted match
+  const byFormatted = item.options.find((o) => {
+    const formatted = `${o.optionLabel}. ${o.optionText}`.trim().toLowerCase();
+    const rawLower = raw.toLowerCase();
+    return (
+      formatted === rawLower ||
+      rawLower.startsWith(`${o.optionLabel.toLowerCase()}.`) ||
+      rawLower.startsWith(`${o.optionLabel.toLowerCase()}:`)
+    );
+  });
+  if (byFormatted) return byFormatted;
+
+  // 4. Match by optionText directly
+  const byText = item.options.find(
+    (o) => o.optionText?.trim().toLowerCase() === raw.toLowerCase()
+  );
+  return byText ?? null;
+};
+
+/**
+ * Returns a human-readable display string for a student's answer in review queue.
+ * For multiple-choice questions where finalAnswer is an option ID or label,
+ * formats as "A. <Option Text>".
+ */
+export const formatReviewStudentAnswer = (
+  item?: { finalAnswer?: string | null; options?: TeacherReviewQuestionOptionDto[] | null } | null
+): string => {
+  if (!item?.finalAnswer) return "";
+  const matched = findSelectedOption(item);
+  if (matched) {
+    return matched.optionText?.trim()
+      ? `${matched.optionLabel}. ${matched.optionText}`
+      : matched.optionLabel;
+  }
+  return item.finalAnswer;
+};
+

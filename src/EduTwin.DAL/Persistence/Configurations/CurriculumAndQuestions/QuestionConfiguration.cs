@@ -151,7 +151,7 @@ public class QuestionConfiguration : IEntityTypeConfiguration<Question>
             t.HasCheckConstraint("ck_questions_estimated_time_seconds", "estimated_time_seconds > 0");
             t.HasCheckConstraint("ck_questions_language_code", "language_code IN ('vi', 'en')");
             t.HasCheckConstraint("ck_questions_status", "status IN ('Draft', 'Active', 'Archived')");
-            t.HasCheckConstraint("ck_questions_answer_evaluation_mode", "answer_evaluation_mode IN ('TextExact', 'NumericRational', 'Manual')");
+            t.HasCheckConstraint("ck_questions_answer_evaluation_mode", "answer_evaluation_mode IN ('TextExact', 'NumericRational', 'Manual', 'Coordinate2D')");
         });
 
         // Relations

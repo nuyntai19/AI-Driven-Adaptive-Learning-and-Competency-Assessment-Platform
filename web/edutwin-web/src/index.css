@@ -20,3 +20,15 @@ math-field {
   --selection-background-color: rgba(129, 140, 248, 0.35);
   color: #f8fafc !important;
 }
+
+/* Hide MathLive virtual keyboard toggle and menu toggle when in text (keyboard) mode */
+math-field[data-input-mode="text"]::part(virtual-keyboard-toggle),
+math-field[data-input-mode="text"]::part(menu-toggle),
+.math-field-text-mode math-field::part(virtual-keyboard-toggle),
+.math-field-text-mode math-field::part(menu-toggle) {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+

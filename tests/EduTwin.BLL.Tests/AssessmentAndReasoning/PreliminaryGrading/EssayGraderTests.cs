@@ -1,4 +1,5 @@
 using EduTwin.BLL.AssessmentAndReasoning.PreliminaryGrading;
+using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using FluentAssertions;
 using Xunit;
@@ -11,12 +12,13 @@ public class EssayGraderTests
     private readonly GradingCriteria _criteria = new();
 
     [Fact]
-    public void Grade_AnyAnswer_ReturnsNullIsCorrectAndZeroScore()
+    public void Grade_AnyAnswer_ReturnsNullIsCorrectAndNullScore()
     {
         var result = _sut.Grade("This is a long essay about history...", "", 10m, _criteria);
         
         result.IsCorrect.Should().BeNull();
-        result.Score.Should().Be(0m);
+        result.Score.Should().BeNull();
+        result.ReasonCode.Should().Be(PreliminaryGradingReasonCodes.ManualMode);
         result.Feedback.Should().NotBeNullOrEmpty();
     }
 }

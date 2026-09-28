@@ -26,7 +26,8 @@ public class MultipleChoiceGrader : IQuestionGrader
             {
                 IsCorrect = false,
                 Score = 0m,
-                Feedback = "No answer provided."
+                Feedback = "No answer provided.",
+                ReasonCode = PreliminaryGradingReasonCodes.NoAnswer
             };
         }
 
@@ -37,8 +38,9 @@ public class MultipleChoiceGrader : IQuestionGrader
             return new PreliminaryGradingResult
             {
                 IsCorrect = null,
-                Score = 0m,
-                Feedback = "Requires manual review (no correct answer provided)."
+                Score = null,
+                Feedback = "Requires manual review (no correct answer provided).",
+                ReasonCode = PreliminaryGradingReasonCodes.InvalidReferenceAnswer
             };
         }
 
@@ -52,7 +54,9 @@ public class MultipleChoiceGrader : IQuestionGrader
             // Or try to match against options if provided
             var selectedOption = options.FirstOrDefault(o => 
                 string.Equals(o.OptionLabel, studentAnswer.Trim(), StringComparison.OrdinalIgnoreCase) || 
-                o.OptionId.ToString() == studentAnswer.Trim());
+                o.OptionId.ToString() == studentAnswer.Trim() ||
+                string.Equals($"{o.OptionLabel}. {o.OptionText}".Trim(), studentAnswer.Trim(), StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(o.OptionText.Trim(), studentAnswer.Trim(), StringComparison.OrdinalIgnoreCase));
 
             if (selectedOption != null && selectedOption.IsCorrect)
             {
@@ -64,7 +68,10 @@ public class MultipleChoiceGrader : IQuestionGrader
         {
             IsCorrect = isCorrect,
             Score = isCorrect ? maxScore : 0m,
-            Feedback = isCorrect ? "Correct answer." : "Incorrect answer."
+            Feedback = isCorrect ? "Correct answer." : "Incorrect answer.",
+            ReasonCode = isCorrect
+                ? PreliminaryGradingReasonCodes.ExactMatch
+                : PreliminaryGradingReasonCodes.TextMismatch
         };
     }
 

@@ -1,4 +1,5 @@
 using EduTwin.BLL.AssessmentAndReasoning.PreliminaryGrading;
+using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using Xunit;
 
@@ -25,7 +26,7 @@ public class ShortAnswerGraderEvaluationModeTests
     }
 
     [Fact]
-    public void Grade_ManualMode_ReturnsNullCorrectnessWithZeroScore()
+    public void Grade_ManualMode_ReturnsNullCorrectnessAndNullScore()
     {
         var context = new QuestionGradingContext
         {
@@ -36,7 +37,8 @@ public class ShortAnswerGraderEvaluationModeTests
         var result = _grader.Grade("x = 5", "5", context);
 
         Assert.Null(result.IsCorrect);
-        Assert.Equal(0m, result.Score);
+        Assert.Null(result.Score);
+        Assert.Equal(PreliminaryGradingReasonCodes.ManualMode, result.ReasonCode);
         Assert.Equal("Requires teacher review.", result.Feedback);
     }
 
@@ -92,7 +94,8 @@ public class ShortAnswerGraderEvaluationModeTests
         var result = _grader.Grade("not a number", "1/2", context);
 
         Assert.Null(result.IsCorrect);
-        Assert.Equal(0m, result.Score);
+        Assert.Null(result.Score);
+        Assert.Equal(PreliminaryGradingReasonCodes.UnsupportedMathFormat, result.ReasonCode);
         Assert.Contains("Unsupported mathematical format. Requires teacher review.", result.Feedback);
     }
 
@@ -113,6 +116,7 @@ public class ShortAnswerGraderEvaluationModeTests
 
         Assert.False(result.IsCorrect);
         Assert.Equal(0m, result.Score);
+        Assert.Equal(PreliminaryGradingReasonCodes.NoAnswer, result.ReasonCode);
         Assert.Contains("No answer provided", result.Feedback);
     }
 
@@ -128,7 +132,57 @@ public class ShortAnswerGraderEvaluationModeTests
         var result = _grader.Grade("1/2", "non-parseable-answer", context);
 
         Assert.Null(result.IsCorrect);
-        Assert.Equal(0m, result.Score);
+        Assert.Null(result.Score);
+        Assert.Equal(PreliminaryGradingReasonCodes.InvalidReferenceAnswer, result.ReasonCode);
         Assert.Contains("Requires manual review", result.Feedback);
+    }
+
+    [Theory]
+    [InlineData("(1,1)", "(1, 1)")]
+    [InlineData("(1;1)", "(1, 1)")]
+    [InlineData("\\left(1,1\\right)", "(1;1)")]
+    [InlineData("I(1;1)", "(1, 1)")]
+    [InlineData("(1/2;2/4)", "(0.5;0.5)")]
+    public void Grade_Coordinate2DMode_EquivalentCoordinates_ReturnsCorrect(
+        string studentAnswer,
+        string correctAnswer)
+    {
+        var result = _grader.Grade(studentAnswer, correctAnswer, new QuestionGradingContext
+        {
+            EvaluationMode = QuestionAnswerEvaluationMode.Coordinate2D,
+            MaxScore = 40m
+        });
+
+        Assert.True(result.IsCorrect);
+        Assert.Equal(40m, result.Score);
+        Assert.Equal(PreliminaryGradingReasonCodes.CoordinateEquivalent, result.ReasonCode);
+    }
+
+    [Fact]
+    public void Grade_Coordinate2DMode_DifferentCoordinate_ReturnsIncorrect()
+    {
+        var result = _grader.Grade("(2,1)", "(1,2)", new QuestionGradingContext
+        {
+            EvaluationMode = QuestionAnswerEvaluationMode.Coordinate2D,
+            MaxScore = 40m
+        });
+
+        Assert.False(result.IsCorrect);
+        Assert.Equal(0m, result.Score);
+        Assert.Equal(PreliminaryGradingReasonCodes.CoordinateMismatch, result.ReasonCode);
+    }
+
+    [Fact]
+    public void Grade_Coordinate2DMode_UnsupportedStudentFormat_ReturnsUnresolved()
+    {
+        var result = _grader.Grade("(1,1,1)", "(1,1)", new QuestionGradingContext
+        {
+            EvaluationMode = QuestionAnswerEvaluationMode.Coordinate2D,
+            MaxScore = 40m
+        });
+
+        Assert.Null(result.IsCorrect);
+        Assert.Null(result.Score);
+        Assert.Equal(PreliminaryGradingReasonCodes.UnsupportedMathFormat, result.ReasonCode);
     }
 }

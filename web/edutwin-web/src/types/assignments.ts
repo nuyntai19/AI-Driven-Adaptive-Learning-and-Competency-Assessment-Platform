@@ -42,6 +42,7 @@ export interface AssignmentDto {
   title: string;
   instructions: string | null;
   dueAt: string | null;
+  timeLimitMinutes?: number | null;
   status: AssignmentStatus;
   questionCount: number;
   targetStudentCount: number;
@@ -55,6 +56,7 @@ export interface CreateAssignmentRequest {
   title: string;
   instructions?: string | null;
   dueAt?: string | null;
+  timeLimitMinutes?: number | null;
   questionIds: string[];
   targetMode: TargetMode;
   studentIds?: string[];
@@ -64,6 +66,7 @@ export interface UpdateAssignmentRequest {
   title: string;
   instructions?: string | null;
   dueAt?: string | null;
+  timeLimitMinutes?: number | null;
   questionIds: string[];
   targetMode: TargetMode;
   studentIds?: string[];
@@ -94,6 +97,7 @@ export interface StudentQuestionAttemptDto {
   attemptId: string | number;
   status: AttemptStatus;
   finalAnswer: string | null;
+  answerDisplayLatex?: string | null;
   reasoningText: string | null;
   confidence: number | null;
   timeSpentSeconds: number;
@@ -118,6 +122,7 @@ export interface StudentAssignmentQuestionDto {
   attemptStatus: AttemptStatus | null;
   latestAttempt?: StudentQuestionAttemptDto | null;
   submittedAnswer?: string | null;
+  submittedAnswerDisplayLatex?: string | null;
   submittedReasoning?: string | null;
   submittedAttemptId?: string | number | null;
   hasAttachment?: boolean;
@@ -158,4 +163,7 @@ export interface AssignmentProgressItemDto {
   status: ProgressStatus;
   completedQuestionCount: number;
   totalQuestionCount: number;
+  teacherFinalReviewStatus?: "Pending" | "Approved";
+  finalReviewVersion?: number;
+  completedAt?: string | null;
 }
