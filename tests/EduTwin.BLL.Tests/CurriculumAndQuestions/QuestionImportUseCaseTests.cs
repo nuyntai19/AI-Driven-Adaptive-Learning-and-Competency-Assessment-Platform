@@ -304,6 +304,126 @@ public sealed class QuestionImportUseCaseTests : IDisposable
     }
 
     [Fact]
+    public async Task ConfirmAsync_TamperedDirectPayloadWithoutValidToken_FailsValidation()
+    {
+        var sut = new QuestionImportUseCase(
+            _dbContext,
+            _tenantContextMock.Object,
+            _timeProviderMock.Object,
+            _mathNormalizer,
+            _coordinateNormalizer);
+
+        // Attempting to bypass PreviewAsync by supplying arbitrary questions with fake or missing preview token
+        var tamperedRequest = new QuestionImportConfirmRequest
+        {
+            PreviewToken = "fake-unregistered-token",
+            SubjectId = _subjectId,
+            PrimaryTopicNodeId = _nodeId,
+            Questions = new List<QuestionImportItemDto>
+            {
+                new()
+                {
+                    RowIndex = 2,
+                    QuestionText = "", // Empty text
+                    QuestionType = QuestionType.MultipleChoice,
+                    AnswerEvaluationMode = QuestionAnswerEvaluationMode.TextExact,
+                    CorrectAnswer = "A",
+                    Solution = "Solution",
+                    MaxScore = -5, // Invalid negative score
+                    Options = new List<QuestionOptionInput>
+                    {
+                        new() { OptionLabel = "A", OptionText = "Opt A", IsCorrect = true },
+                        new() { OptionLabel = "B", OptionText = "Opt B", IsCorrect = false }
+                    }
+                }
+            }
+        };
+
+        var confirmResult = await sut.ConfirmAsync(tamperedRequest, CancellationToken.None);
+
+        Assert.False(confirmResult.IsSuccess);
+        Assert.Equal("VALIDATION_FAILED", confirmResult.ErrorCode);
+        Assert.Contains("PreviewToken", confirmResult.ErrorMessage);
+
+        var count = await _dbContext.Questions.CountAsync(q => q.CenterId == _centerId);
+        Assert.Equal(0, count);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_ExpiredPreviewToken_FailsValidation()
+    {
+        var sut = new QuestionImportUseCase(
+            _dbContext,
+            _tenantContextMock.Object,
+            _timeProviderMock.Object,
+            _mathNormalizer,
+            _coordinateNormalizer);
+
+        var csvContent = "QuestionType,Difficulty,QuestionText,OptionA,MisconceptionA,OptionB,MisconceptionB,OptionC,MisconceptionC,OptionD,MisconceptionD,CorrectAnswer,Solution,ExpectedReasoning,MaxScore,EstimatedTimeSeconds,ReasoningRequired,AnswerEvaluationMode\n" +
+                         "ShortAnswer,2,\"1 + 1 = ?\",,,,,,,,\"2\",\"1+1=2\",\"Cộng cơ bản\",10,60,TRUE,TextExact\n";
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(csvContent));
+        var previewResult = await sut.PreviewAsync(stream, "test.csv", CancellationToken.None);
+        Assert.True(previewResult.IsSuccess);
+
+        // Advance time by 35 minutes (past the 30-minute TTL)
+        _timeProviderMock.Setup(t => t.GetUtcNow()).Returns(_fixedTime.AddMinutes(35));
+
+        var confirmRequest = new QuestionImportConfirmRequest
+        {
+            PreviewToken = previewResult.Data!.PreviewToken,
+            SubjectId = _subjectId,
+            PrimaryTopicNodeId = _nodeId
+        };
+
+        var confirmResult = await sut.ConfirmAsync(confirmRequest, CancellationToken.None);
+
+        Assert.False(confirmResult.IsSuccess);
+        Assert.Equal("VALIDATION_FAILED", confirmResult.ErrorCode);
+        Assert.Contains("hết hạn", confirmResult.ErrorMessage);
+
+        var count = await _dbContext.Questions.CountAsync(q => q.CenterId == _centerId);
+        Assert.Equal(0, count);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_CrossTenantPreviewToken_FailsValidation()
+    {
+        var sut = new QuestionImportUseCase(
+            _dbContext,
+            _tenantContextMock.Object,
+            _timeProviderMock.Object,
+            _mathNormalizer,
+            _coordinateNormalizer);
+
+        var csvContent = "QuestionType,Difficulty,QuestionText,OptionA,MisconceptionA,OptionB,MisconceptionB,OptionC,MisconceptionC,OptionD,MisconceptionD,CorrectAnswer,Solution,ExpectedReasoning,MaxScore,EstimatedTimeSeconds,ReasoningRequired,AnswerEvaluationMode\n" +
+                         "ShortAnswer,2,\"1 + 1 = ?\",,,,,,,,\"2\",\"1+1=2\",\"Cộng cơ bản\",10,60,TRUE,TextExact\n";
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(csvContent));
+        var previewResult = await sut.PreviewAsync(stream, "test.csv", CancellationToken.None);
+        Assert.True(previewResult.IsSuccess);
+
+        // Switch tenant context to another center
+        var otherCenterId = Guid.NewGuid();
+        _tenantContextMock.Setup(t => t.CenterId).Returns(otherCenterId);
+
+        var confirmRequest = new QuestionImportConfirmRequest
+        {
+            PreviewToken = previewResult.Data!.PreviewToken,
+            SubjectId = _subjectId,
+            PrimaryTopicNodeId = _nodeId
+        };
+
+        var confirmResult = await sut.ConfirmAsync(confirmRequest, CancellationToken.None);
+
+        Assert.False(confirmResult.IsSuccess);
+        Assert.Equal("VALIDATION_FAILED", confirmResult.ErrorCode);
+
+        var count = await _dbContext.Questions.CountAsync(q => q.CenterId == _centerId);
+        Assert.Equal(0, count);
+    }
+
+    [Fact]
     public async Task ImportFromOfficialCsvTemplate_SucceedsWithAllEvaluationModes()
     {
         var sut = new QuestionImportUseCase(
@@ -313,16 +433,17 @@ public sealed class QuestionImportUseCaseTests : IDisposable
             _mathNormalizer,
             _coordinateNormalizer);
 
-        var csvContent = new StringBuilder()
-            .AppendLine("QuestionType,Difficulty,QuestionText,OptionA,MisconceptionA,OptionB,MisconceptionB,OptionC,MisconceptionC,OptionD,MisconceptionD,CorrectAnswer,Solution,ExpectedReasoning,MaxScore,EstimatedTimeSeconds,ReasoningRequired,AnswerEvaluationMode")
-            .AppendLine("MultipleChoice,3,\"Cho hàm số $y=x^2$. Tính $y'(2)$.\",\"2\",\"Nhầm đạo hàm của hằng số\",\"4\",\"\",\"8\",\"Nhầm mũ thành nhân\",\"0\",\"Nhầm cực trị\",\"B\",\"Ta có $y'=2x$, thay $x=2$ được $y'(2)=4$.\",\"Tính đạo hàm cơ bản và thế số\",10,120,TRUE,TextExact")
-            .AppendLine("ShortAnswer,2,\"Tính giá trị của biểu thức $\\frac{1}{4} + \\frac{1}{4}$.\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"1/2\",\"Ta có 1/4 + 1/4 = 2/4 = 1/2.\",\"Quy đồng và rút gọn phân số\",10,60,TRUE,NumericRational")
-            .AppendLine("ShortAnswer,2,\"Tìm tọa độ giao điểm của $y=x$ và $y=2-x$.\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"(1; 1)\",\"Phương trình hoành độ: x = 2 - x <=> 2x = 2 <=> x = 1 => y = 1.\",\"Giải hệ phương trình tọa độ giao điểm\",10,90,TRUE,Coordinate2D")
-            .AppendLine("Essay,3,\"Trình bày ý nghĩa hình học của đạo hàm tại một điểm.\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"Đạo hàm tại điểm x0 là hệ số góc của tiếp tuyến với đồ thị hàm số tại điểm đó.\",\"Học sinh nêu định nghĩa và liên hệ hệ số góc tiếp tuyến.\",\"Hiểu bản chất hình học của đạo hàm\",10,180,TRUE,Manual")
-            .ToString();
+        var fixturePath = Path.Combine(AppContext.BaseDirectory, "CurriculumAndQuestions", "Fixtures", "EduTwin_Question_Import_Template.csv");
+        if (!File.Exists(fixturePath))
+        {
+            fixturePath = Path.Combine(Directory.GetCurrentDirectory(), "CurriculumAndQuestions", "Fixtures", "EduTwin_Question_Import_Template.csv");
+        }
+        Assert.True(File.Exists(fixturePath), $"Official CSV template fixture not found at: {fixturePath}");
+
+        var csvContent = await File.ReadAllTextAsync(fixturePath, Encoding.UTF8);
 
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes(csvContent));
-        var previewResult = await sut.PreviewAsync(stream, "official_template.csv", CancellationToken.None);
+        var previewResult = await sut.PreviewAsync(stream, "EduTwin_Question_Import_Template.csv", CancellationToken.None);
 
         Assert.True(previewResult.IsSuccess);
         Assert.NotNull(previewResult.Data);

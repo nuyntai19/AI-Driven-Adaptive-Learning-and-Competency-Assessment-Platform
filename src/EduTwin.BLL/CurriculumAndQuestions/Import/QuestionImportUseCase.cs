@@ -23,7 +23,13 @@ namespace EduTwin.BLL.CurriculumAndQuestions.Import;
 
 public sealed class QuestionImportUseCase : IQuestionImportUseCase
 {
-    private static readonly ConcurrentDictionary<string, (DateTime CreatedAt, List<QuestionImportItemDto> Questions)> PreviewCache = new();
+    private sealed record PreviewCacheEntry(
+        DateTime CreatedAtUtc,
+        Guid CenterId,
+        Guid UserId,
+        List<QuestionImportItemDto> Questions);
+
+    private static readonly ConcurrentDictionary<string, PreviewCacheEntry> PreviewCache = new();
 
     private readonly EduTwinDbContext _dbContext;
     private readonly ITenantContext _tenantContext;
@@ -403,13 +409,16 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
         }
 
         var previewToken = Guid.NewGuid().ToString("N");
-        PreviewCache[previewToken] = (DateTime.UtcNow, validQuestions);
+        var nowUtc = _timeProvider.GetUtcNow().UtcDateTime;
+        var centerId = _tenantContext.CenterId ?? Guid.Empty;
+        var actorId = _tenantContext.UserId ?? Guid.Empty;
+        PreviewCache[previewToken] = new PreviewCacheEntry(nowUtc, centerId, actorId, validQuestions);
 
-        // Clean up old cache entries (> 1 hour)
-        var threshold = DateTime.UtcNow.AddHours(-1);
+        // Clean up old cache entries (> 30 minutes)
+        var threshold = nowUtc.AddMinutes(-30);
         foreach (var key in PreviewCache.Keys)
         {
-            if (PreviewCache.TryGetValue(key, out var cached) && cached.CreatedAt < threshold)
+            if (PreviewCache.TryGetValue(key, out var cached) && cached.CreatedAtUtc < threshold)
             {
                 PreviewCache.TryRemove(key, out _);
             }
@@ -449,6 +458,30 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
         var centerId = _tenantContext.CenterId.Value;
         var actorId = _tenantContext.UserId.Value;
 
+        // Strictly require valid, non-expired preview token bound to current tenant and actor.
+        // Direct unverified question payloads without a valid preview session are rejected.
+        if (string.IsNullOrWhiteSpace(request.PreviewToken) || !PreviewCache.TryGetValue(request.PreviewToken, out var cached))
+        {
+            return QuestionImportConfirmResult.ValidationFailed("Mã xác thực xem trước (PreviewToken) không hợp lệ hoặc đã hết hạn. Vui lòng tải và xem trước lại tệp dữ liệu.");
+        }
+
+        if (cached.CenterId != centerId || cached.UserId != actorId)
+        {
+            return QuestionImportConfirmResult.ValidationFailed("Mã xác thực xem trước không khớp với người dùng hoặc trung tâm hiện tại.");
+        }
+
+        if (cached.CreatedAtUtc.AddMinutes(30) < _timeProvider.GetUtcNow().UtcDateTime)
+        {
+            PreviewCache.TryRemove(request.PreviewToken, out _);
+            return QuestionImportConfirmResult.ValidationFailed("Mã xác thực xem trước (PreviewToken) đã hết hạn. Vui lòng tải và xem trước lại tệp dữ liệu.");
+        }
+
+        var questionsToImport = cached.Questions;
+        if (questionsToImport == null || questionsToImport.Count == 0)
+        {
+            return QuestionImportConfirmResult.ValidationFailed("Không có câu hỏi hợp lệ nào để nhập.");
+        }
+
         if (request.SubjectId == Guid.Empty)
         {
             return QuestionImportConfirmResult.ValidationFailed("Môn học (SubjectId) là bắt buộc.");
@@ -474,22 +507,6 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
             return QuestionImportConfirmResult.NotFound("Chủ đề kiến thức không tồn tại trong môn học.");
         }
 
-        // Retrieve questions from preview cache when preview token is present, or fallback to request payload
-        List<QuestionImportItemDto>? questionsToImport = null;
-        if (!string.IsNullOrWhiteSpace(request.PreviewToken) && PreviewCache.TryGetValue(request.PreviewToken, out var cached))
-        {
-            questionsToImport = cached.Questions;
-        }
-        else if (request.Questions != null && request.Questions.Count > 0)
-        {
-            questionsToImport = request.Questions;
-        }
-
-        if (questionsToImport == null || questionsToImport.Count == 0)
-        {
-            return QuestionImportConfirmResult.ValidationFailed("Không có câu hỏi hợp lệ nào để nhập.");
-        }
-
         var now = _timeProvider.GetUtcNow().UtcDateTime;
         var importedCount = 0;
 
@@ -505,12 +522,22 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
                     ScoringNotes = item.Solution
                 };
 
-                // Shared activation validation policy for importing directly into Active status
+                // Shared comprehensive activation validation policy for importing directly into Active status
                 var optionValidationItems = item.Options?
                     .Select(o => new QuestionOptionValidationItem(o.OptionLabel, o.OptionText, o.IsCorrect))
                     .ToList() ?? new List<QuestionOptionValidationItem>();
 
-                if (!_activationPolicy.Validate(item.QuestionType, item.AnswerEvaluationMode, item.CorrectAnswer, optionValidationItems, out var policyError))
+                if (!_activationPolicy.ValidateCompleteQuestion(
+                    item.QuestionType,
+                    item.AnswerEvaluationMode,
+                    item.Difficulty,
+                    item.QuestionText,
+                    item.CorrectAnswer,
+                    item.Solution,
+                    item.MaxScore,
+                    item.EstimatedTimeSeconds,
+                    optionValidationItems,
+                    out var policyError))
                 {
                     await transaction.RollbackAsync(cancellationToken);
                     return QuestionImportConfirmResult.ValidationFailed($"Dòng {item.RowIndex}: {policyError}");

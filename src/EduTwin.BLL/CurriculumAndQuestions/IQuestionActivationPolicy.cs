@@ -13,4 +13,16 @@ public interface IQuestionActivationPolicy
         string? correctAnswer,
         IReadOnlyList<QuestionOptionValidationItem>? options,
         out string? validationError);
+
+    bool ValidateCompleteQuestion(
+        QuestionType questionType,
+        QuestionAnswerEvaluationMode evaluationMode,
+        byte difficulty,
+        string? questionText,
+        string? correctAnswer,
+        string? solution,
+        decimal maxScore,
+        uint estimatedTimeSeconds,
+        IReadOnlyList<QuestionOptionValidationItem>? options,
+        out string? validationError);
 }

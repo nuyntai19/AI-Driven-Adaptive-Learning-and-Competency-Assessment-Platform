@@ -189,9 +189,9 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
                   ? "Đang tải danh sách chủ đề..."
                   : "-- Chọn chủ đề cây tri thức --"}
               </option>
-              {topicsData?.nodes?.map((node: any) => (
-                <option key={node.id} value={node.id}>
-                  {node.label || node.name || `Node ${node.id}`}
+              {topicsData?.nodes?.map((node) => (
+                <option key={node.nodeId} value={node.nodeId}>
+                  {node.nodeName} ({node.nodeCode})
                 </option>
               ))}
             </select>

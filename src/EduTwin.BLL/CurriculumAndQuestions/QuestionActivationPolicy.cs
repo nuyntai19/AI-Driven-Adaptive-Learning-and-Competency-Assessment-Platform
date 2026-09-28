@@ -114,4 +114,82 @@ public sealed class QuestionActivationPolicy : IQuestionActivationPolicy
         validationError = $"Loại câu hỏi {questionType} không được hỗ trợ.";
         return false;
     }
+
+    public bool ValidateCompleteQuestion(
+        QuestionType questionType,
+        QuestionAnswerEvaluationMode evaluationMode,
+        byte difficulty,
+        string? questionText,
+        string? correctAnswer,
+        string? solution,
+        decimal maxScore,
+        uint estimatedTimeSeconds,
+        IReadOnlyList<QuestionOptionValidationItem>? options,
+        out string? validationError)
+    {
+        validationError = null;
+
+        if (string.IsNullOrWhiteSpace(questionText))
+        {
+            validationError = "Nội dung câu hỏi không được để trống.";
+            return false;
+        }
+
+        if (difficulty < 1 || difficulty > 5)
+        {
+            validationError = "Độ khó câu hỏi phải nằm trong khoảng từ 1 đến 5.";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(solution))
+        {
+            validationError = "Lời giải / hướng dẫn giải không được để trống.";
+            return false;
+        }
+
+        if (maxScore <= 0)
+        {
+            validationError = "Điểm tối đa phải lớn hơn 0.";
+            return false;
+        }
+
+        if (estimatedTimeSeconds == 0)
+        {
+            validationError = "Thời gian ước tính phải là số nguyên dương.";
+            return false;
+        }
+
+        if (questionType == QuestionType.MultipleChoice)
+        {
+            if (options == null || options.Count < 2)
+            {
+                validationError = "Câu hỏi trắc nghiệm phải có ít nhất 2 lựa chọn.";
+                return false;
+            }
+
+            var seenLabels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var opt in options)
+            {
+                if (string.IsNullOrWhiteSpace(opt.OptionLabel))
+                {
+                    validationError = "Nhãn lựa chọn không được để trống.";
+                    return false;
+                }
+
+                if (string.IsNullOrWhiteSpace(opt.OptionText))
+                {
+                    validationError = $"Nội dung lựa chọn {opt.OptionLabel} không được để trống.";
+                    return false;
+                }
+
+                if (!seenLabels.Add(opt.OptionLabel.Trim()))
+                {
+                    validationError = $"Nhãn lựa chọn '{opt.OptionLabel}' bị trùng lặp.";
+                    return false;
+                }
+            }
+        }
+
+        return Validate(questionType, evaluationMode, correctAnswer, options, out validationError);
+    }
 }
