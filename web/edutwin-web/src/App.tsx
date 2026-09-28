@@ -55,6 +55,7 @@ const TeacherStudentTwinView = lazy(() => import("./pages/teacher/TeacherStudent
 const TeacherCurriculumListView = lazy(() => import("./pages/teacher/TeacherCurriculumListView").then((module) => ({ default: module.TeacherCurriculumListView })));
 const TeacherCurriculumEditorView = lazy(() => import("./pages/teacher/TeacherCurriculumEditorView").then((module) => ({ default: module.TeacherCurriculumEditorView })));
 const TeacherKnowledgeGraphView = lazy(() => import("./pages/teacher/TeacherKnowledgeGraphView").then((module) => ({ default: module.TeacherKnowledgeGraphView })));
+const TeacherStudentManagementView = lazy(() => import("./pages/teacher/TeacherStudentManagementView").then((module) => ({ default: module.TeacherStudentManagementView })));
 
 const FallbackRoute = () => {
   const sessionStatus = useAuthStore((state) => state.sessionStatus);
@@ -190,6 +191,12 @@ function App() {
             <Route element={<PermissionRoute anyOf={[permissions.dashboardsTeacherRead, permissions.dashboardsCenterRead]} />}>
               <Route path="/giao-vien/lop-hoc" element={<TeacherClassDashboardView />} />
               <Route path="/giao-vien/lop-hoc/:classId" element={<TeacherClassDashboardView />} />
+            </Route>
+
+            {/* Student Roster, Goals, Assignments Tracking & Reports */}
+            <Route element={<PermissionRoute anyOf={[permissions.studentsRead, permissions.dashboardsTeacherRead, permissions.classesRead]} />}>
+              <Route path="/giao-vien/hoc-sinh" element={<TeacherStudentManagementView />} />
+              <Route path="/giao-vien/hoc-sinh/:studentId" element={<TeacherStudentManagementView />} />
             </Route>
 
             {/* Question Bank & Question Authoring */}

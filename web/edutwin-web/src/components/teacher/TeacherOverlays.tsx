@@ -57,6 +57,7 @@ interface TeacherModalProps {
   children: ReactNode;
   footer?: ReactNode;
   maxWidth?: string;
+  size?: "sm" | "md" | "lg" | "xl";
 }
 
 export function TeacherModal({
@@ -66,7 +67,8 @@ export function TeacherModal({
   onClose,
   children,
   footer,
-  maxWidth = "max-w-lg",
+  maxWidth,
+  size = "md",
 }: TeacherModalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -78,11 +80,22 @@ export function TeacherModal({
 
   if (!isOpen || typeof document === "undefined") return null;
 
+  // Responsive width percentages based on size
+  const responsiveWidthClass =
+    maxWidth ||
+    (size === "sm"
+      ? "w-[92%] sm:w-[75%] md:w-[55%] lg:w-[40%] max-w-md"
+      : size === "lg"
+      ? "w-[96%] sm:w-[92%] md:w-[85%] lg:w-[76%] xl:w-[68%] max-w-5xl"
+      : size === "xl"
+      ? "w-[98%] sm:w-[94%] md:w-[90%] lg:w-[84%] xl:w-[78%] max-w-6xl"
+      : "w-[94%] sm:w-[88%] md:w-[78%] lg:w-[65%] xl:w-[55%] max-w-3xl");
+
   return createPortal(
     <div
       data-actor="teacher"
       data-theme={theme}
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-3 sm:p-5 backdrop-blur-sm animate-in fade-in duration-150"
       onMouseDown={(event) => event.target === event.currentTarget && onClose()}
     >
       <div
@@ -92,25 +105,25 @@ export function TeacherModal({
         aria-labelledby={titleId}
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
-        className={`th-surface flex max-h-[90vh] w-full ${maxWidth} flex-col overflow-hidden shadow-2xl`}
+        className={`th-surface flex max-h-[88vh] ${responsiveWidthClass} flex-col overflow-hidden rounded-2xl border-[1.5px] border-[var(--th-border)] shadow-2xl`}
       >
         <header className="flex items-start justify-between gap-4 border-b-[1.5px] border-[var(--th-border)] bg-[var(--th-surface-muted)] p-4 sm:p-5">
-          <div>
-            <h2 id={titleId} className="text-base sm:text-lg font-black text-[var(--th-text)]">{title}</h2>
+          <div className="min-w-0 flex-1">
+            <h2 id={titleId} className="text-base sm:text-lg font-black text-[var(--th-text)] truncate">{title}</h2>
             {description && <p id={descriptionId} className="mt-1 text-xs font-medium text-[var(--th-text-secondary)]">{description}</p>}
           </div>
           <button
             ref={closeButtonRef}
             type="button"
-            className="th-icon-button h-8 w-8 text-base"
+            className="th-icon-button h-8 w-8 text-base shrink-0"
             aria-label="Đóng cửa sổ"
             onClick={onClose}
           >
             ×
           </button>
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
-        {footer && <footer className="border-t-[1.5px] border-[var(--th-border)] bg-[var(--th-surface-muted)] p-4">{footer}</footer>}
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">{children}</div>
+        {footer && <footer className="border-t-[1.5px] border-[var(--th-border)] bg-[var(--th-surface-muted)] p-3.5 sm:p-4">{footer}</footer>}
       </div>
     </div>,
     document.body,
