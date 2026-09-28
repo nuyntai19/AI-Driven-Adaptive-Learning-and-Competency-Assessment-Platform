@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.BLL.AssessmentAndReasoning.PreliminaryGrading;
 using EduTwin.Contracts.CurriculumAndQuestions;
@@ -27,21 +28,25 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
     private readonly EduTwinDbContext _dbContext;
     private readonly ITenantContext _tenantContext;
     private readonly TimeProvider _timeProvider;
-    private readonly IMathAnswerNormalizer _mathNormalizer;
-    private readonly ICoordinateAnswerNormalizer _coordinateNormalizer;
+    private readonly IQuestionActivationPolicy _activationPolicy;
+    private readonly ILogger<QuestionImportUseCase>? _logger;
 
     public QuestionImportUseCase(
         EduTwinDbContext dbContext,
         ITenantContext tenantContext,
         TimeProvider? timeProvider = null,
         IMathAnswerNormalizer? mathNormalizer = null,
-        ICoordinateAnswerNormalizer? coordinateNormalizer = null)
+        ICoordinateAnswerNormalizer? coordinateNormalizer = null,
+        IQuestionActivationPolicy? activationPolicy = null,
+        ILogger<QuestionImportUseCase>? logger = null)
     {
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         _tenantContext = tenantContext ?? throw new ArgumentNullException(nameof(tenantContext));
         _timeProvider = timeProvider ?? TimeProvider.System;
-        _mathNormalizer = mathNormalizer ?? new MathAnswerNormalizer();
-        _coordinateNormalizer = coordinateNormalizer ?? new CoordinateAnswerNormalizer(_mathNormalizer);
+        var math = mathNormalizer ?? new MathAnswerNormalizer();
+        var coord = coordinateNormalizer ?? new CoordinateAnswerNormalizer(math);
+        _activationPolicy = activationPolicy ?? new QuestionActivationPolicy(math, coord);
+        _logger = logger;
     }
 
     public async Task<QuestionImportPreviewResult> PreviewAsync(
@@ -74,7 +79,8 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
         }
         catch (Exception ex)
         {
-            return QuestionImportPreviewResult.ValidationFailed($"Lỗi khi đọc tệp dữ liệu: {ex.Message}");
+            _logger?.LogError(ex, "Lỗi khi đọc tệp dữ liệu nhập câu hỏi: {FileName}", fileName);
+            return QuestionImportPreviewResult.ValidationFailed("Không thể đọc tệp dữ liệu hoặc cấu trúc tệp không hợp lệ. Vui lòng kiểm tra lại định dạng tệp.");
         }
 
         if (rawRows.Count == 0)
@@ -290,57 +296,6 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
                 }
             }
 
-            // Enforce matrix rules & normalizer validation
-            if (questionType == QuestionType.MultipleChoice && evalMode != QuestionAnswerEvaluationMode.TextExact)
-            {
-                rowErrors.Add(new QuestionImportRowErrorDto
-                {
-                    RowIndex = rowIndex,
-                    Field = "AnswerEvaluationMode",
-                    ErrorMessage = "Câu hỏi trắc nghiệm bắt buộc phải có chế độ so khớp là TextExact.",
-                    RawValue = evalMode.ToString()
-                });
-            }
-            else if (questionType == QuestionType.Essay && evalMode != QuestionAnswerEvaluationMode.Manual)
-            {
-                rowErrors.Add(new QuestionImportRowErrorDto
-                {
-                    RowIndex = rowIndex,
-                    Field = "AnswerEvaluationMode",
-                    ErrorMessage = "Câu hỏi tự luận bắt buộc phải có chế độ so khớp là Manual.",
-                    RawValue = evalMode.ToString()
-                });
-            }
-            else if (questionType == QuestionType.ShortAnswer)
-            {
-                if (evalMode == QuestionAnswerEvaluationMode.NumericRational)
-                {
-                    if (string.IsNullOrWhiteSpace(correctAnswer) || !_mathNormalizer.TryNormalize(correctAnswer, out _))
-                    {
-                        rowErrors.Add(new QuestionImportRowErrorDto
-                        {
-                            RowIndex = rowIndex,
-                            Field = "CorrectAnswer",
-                            ErrorMessage = "Đáp án đúng không hợp lệ cho chế độ Điền số / Số hữu tỉ (NumericRational). Ví dụ hợp lệ: 0.5, 1/2, -3/4.",
-                            RawValue = correctAnswer
-                        });
-                    }
-                }
-                else if (evalMode == QuestionAnswerEvaluationMode.Coordinate2D)
-                {
-                    if (string.IsNullOrWhiteSpace(correctAnswer) || !_coordinateNormalizer.TryNormalize(correctAnswer, out _))
-                    {
-                        rowErrors.Add(new QuestionImportRowErrorDto
-                        {
-                            RowIndex = rowIndex,
-                            Field = "CorrectAnswer",
-                            ErrorMessage = "Đáp án đúng không hợp lệ cho chế độ Tọa độ 2D (Coordinate2D). Ví dụ hợp lệ: (1, 2), (1/2; -3/4).",
-                            RawValue = correctAnswer
-                        });
-                    }
-                }
-            }
-
             // 11. Options (for MultipleChoice)
             var options = new List<QuestionOptionInput>();
             if (questionType == QuestionType.MultipleChoice)
@@ -379,31 +334,35 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
                         });
                     }
                 }
+            }
 
-                if (options.Count < 2)
+            // 12. Enforce unified activation invariants validation
+            var optionValidationItems = options
+                .Select(o => new QuestionOptionValidationItem(o.OptionLabel, o.OptionText, o.IsCorrect))
+                .ToList();
+
+            if (!_activationPolicy.Validate(questionType, evalMode, correctAnswer, optionValidationItems, out var policyError))
+            {
+                string errorField = "AnswerEvaluationMode";
+                if (policyError != null)
                 {
-                    rowErrors.Add(new QuestionImportRowErrorDto
+                    if (policyError.Contains("NumericRational") || policyError.Contains("Coordinate2D") || policyError.Contains("Đáp án đúng"))
                     {
-                        RowIndex = rowIndex,
-                        Field = "Options",
-                        ErrorMessage = "Câu hỏi trắc nghiệm phải có ít nhất 2 lựa chọn (OptionA, OptionB).",
-                        RawValue = $"Found {options.Count} options"
-                    });
-                }
-                else
-                {
-                    var correctCount = options.Count(o => o.IsCorrect);
-                    if (correctCount != 1)
+                        errorField = "CorrectAnswer";
+                    }
+                    else if (policyError.Contains("lựa chọn") || policyError.Contains("đáp án đúng"))
                     {
-                        rowErrors.Add(new QuestionImportRowErrorDto
-                        {
-                            RowIndex = rowIndex,
-                            Field = "CorrectAnswer",
-                            ErrorMessage = $"Câu hỏi trắc nghiệm phải có đúng 1 đáp án đúng (hiện phát hiện {correctCount} đáp án khớp với '{correctAnswer}').",
-                            RawValue = correctAnswer
-                        });
+                        errorField = "Options";
                     }
                 }
+
+                rowErrors.Add(new QuestionImportRowErrorDto
+                {
+                    RowIndex = rowIndex,
+                    Field = errorField,
+                    ErrorMessage = policyError ?? "Câu hỏi không thỏa mãn điều kiện kích hoạt.",
+                    RawValue = errorField == "CorrectAnswer" ? correctAnswer : evalMode.ToString()
+                });
             }
 
             // 11. Rubrics (RequiredIdeas, CommonErrors)
@@ -515,14 +474,15 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
             return QuestionImportConfirmResult.NotFound("Chủ đề kiến thức không tồn tại trong môn học.");
         }
 
-        // Retrieve questions from request payload or preview cache
-        List<QuestionImportItemDto>? questionsToImport = request.Questions;
-        if (questionsToImport == null || questionsToImport.Count == 0)
+        // Retrieve questions from preview cache when preview token is present, or fallback to request payload
+        List<QuestionImportItemDto>? questionsToImport = null;
+        if (!string.IsNullOrWhiteSpace(request.PreviewToken) && PreviewCache.TryGetValue(request.PreviewToken, out var cached))
         {
-            if (!string.IsNullOrWhiteSpace(request.PreviewToken) && PreviewCache.TryGetValue(request.PreviewToken, out var cached))
-            {
-                questionsToImport = cached.Questions;
-            }
+            questionsToImport = cached.Questions;
+        }
+        else if (request.Questions != null && request.Questions.Count > 0)
+        {
+            questionsToImport = request.Questions;
         }
 
         if (questionsToImport == null || questionsToImport.Count == 0)
@@ -546,30 +506,14 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
                 };
 
                 // Shared activation validation policy for importing directly into Active status
-                if (item.QuestionType == QuestionType.MultipleChoice)
+                var optionValidationItems = item.Options?
+                    .Select(o => new QuestionOptionValidationItem(o.OptionLabel, o.OptionText, o.IsCorrect))
+                    .ToList() ?? new List<QuestionOptionValidationItem>();
+
+                if (!_activationPolicy.Validate(item.QuestionType, item.AnswerEvaluationMode, item.CorrectAnswer, optionValidationItems, out var policyError))
                 {
-                    if (item.AnswerEvaluationMode != QuestionAnswerEvaluationMode.TextExact)
-                        throw new InvalidOperationException($"Câu hỏi trắc nghiệm dòng {item.RowIndex} không đúng chế độ TextExact.");
-                    if (item.Options == null || item.Options.Count < 2 || item.Options.Count(o => o.IsCorrect) != 1)
-                        throw new InvalidOperationException($"Câu hỏi trắc nghiệm dòng {item.RowIndex} phải có ít nhất 2 lựa chọn và đúng 1 đáp án đúng.");
-                }
-                else if (item.QuestionType == QuestionType.Essay)
-                {
-                    if (item.AnswerEvaluationMode != QuestionAnswerEvaluationMode.Manual)
-                        throw new InvalidOperationException($"Câu hỏi tự luận dòng {item.RowIndex} phải có chế độ Manual.");
-                }
-                else if (item.QuestionType == QuestionType.ShortAnswer)
-                {
-                    if (item.AnswerEvaluationMode == QuestionAnswerEvaluationMode.NumericRational
-                        && (string.IsNullOrWhiteSpace(item.CorrectAnswer) || !_mathNormalizer.TryNormalize(item.CorrectAnswer, out _)))
-                    {
-                        throw new InvalidOperationException($"Đáp án câu hỏi dòng {item.RowIndex} không hợp lệ cho chế độ NumericRational.");
-                    }
-                    if (item.AnswerEvaluationMode == QuestionAnswerEvaluationMode.Coordinate2D
-                        && (string.IsNullOrWhiteSpace(item.CorrectAnswer) || !_coordinateNormalizer.TryNormalize(item.CorrectAnswer, out _)))
-                    {
-                        throw new InvalidOperationException($"Đáp án câu hỏi dòng {item.RowIndex} không hợp lệ cho chế độ Coordinate2D.");
-                    }
+                    await transaction.RollbackAsync(cancellationToken);
+                    return QuestionImportConfirmResult.ValidationFailed($"Dòng {item.RowIndex}: {policyError}");
                 }
 
                 var question = new Question
@@ -645,7 +589,8 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
         catch (Exception ex)
         {
             await transaction.RollbackAsync(cancellationToken);
-            return QuestionImportConfirmResult.Failure("IMPORT_FAILED", $"Lỗi trong quá trình nhập dữ liệu: {ex.Message}");
+            _logger?.LogError(ex, "Lỗi xảy ra khi lưu câu hỏi nhập dữ liệu cho CenterId {CenterId}, SubjectId {SubjectId}", centerId, request.SubjectId);
+            return QuestionImportConfirmResult.Failure("IMPORT_FAILED", "Đã xảy ra lỗi trong quá trình lưu dữ liệu câu hỏi. Vui lòng kiểm tra lại dữ liệu hoặc thử lại sau.");
         }
     }
 

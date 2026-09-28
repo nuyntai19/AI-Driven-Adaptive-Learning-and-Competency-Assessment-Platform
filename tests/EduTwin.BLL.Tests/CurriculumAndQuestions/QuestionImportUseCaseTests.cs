@@ -297,10 +297,85 @@ public sealed class QuestionImportUseCaseTests : IDisposable
         var confirmResult = await sut.ConfirmAsync(confirmRequest, CancellationToken.None);
 
         Assert.False(confirmResult.IsSuccess);
-        Assert.Equal("IMPORT_FAILED", confirmResult.ErrorCode);
+        Assert.Equal("VALIDATION_FAILED", confirmResult.ErrorCode);
 
         var count = await _dbContext.Questions.CountAsync(q => q.CenterId == _centerId);
         Assert.Equal(0, count);
+    }
+
+    [Fact]
+    public async Task ImportFromOfficialCsvTemplate_SucceedsWithAllEvaluationModes()
+    {
+        var sut = new QuestionImportUseCase(
+            _dbContext,
+            _tenantContextMock.Object,
+            _timeProviderMock.Object,
+            _mathNormalizer,
+            _coordinateNormalizer);
+
+        var csvContent = new StringBuilder()
+            .AppendLine("QuestionType,Difficulty,QuestionText,OptionA,MisconceptionA,OptionB,MisconceptionB,OptionC,MisconceptionC,OptionD,MisconceptionD,CorrectAnswer,Solution,ExpectedReasoning,MaxScore,EstimatedTimeSeconds,ReasoningRequired,AnswerEvaluationMode")
+            .AppendLine("MultipleChoice,3,\"Cho hàm số $y=x^2$. Tính $y'(2)$.\",\"2\",\"Nhầm đạo hàm của hằng số\",\"4\",\"\",\"8\",\"Nhầm mũ thành nhân\",\"0\",\"Nhầm cực trị\",\"B\",\"Ta có $y'=2x$, thay $x=2$ được $y'(2)=4$.\",\"Tính đạo hàm cơ bản và thế số\",10,120,TRUE,TextExact")
+            .AppendLine("ShortAnswer,2,\"Tính giá trị của biểu thức $\\frac{1}{4} + \\frac{1}{4}$.\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"1/2\",\"Ta có 1/4 + 1/4 = 2/4 = 1/2.\",\"Quy đồng và rút gọn phân số\",10,60,TRUE,NumericRational")
+            .AppendLine("ShortAnswer,2,\"Tìm tọa độ giao điểm của $y=x$ và $y=2-x$.\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"(1; 1)\",\"Phương trình hoành độ: x = 2 - x <=> 2x = 2 <=> x = 1 => y = 1.\",\"Giải hệ phương trình tọa độ giao điểm\",10,90,TRUE,Coordinate2D")
+            .AppendLine("Essay,3,\"Trình bày ý nghĩa hình học của đạo hàm tại một điểm.\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"Đạo hàm tại điểm x0 là hệ số góc của tiếp tuyến với đồ thị hàm số tại điểm đó.\",\"Học sinh nêu định nghĩa và liên hệ hệ số góc tiếp tuyến.\",\"Hiểu bản chất hình học của đạo hàm\",10,180,TRUE,Manual")
+            .ToString();
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(csvContent));
+        var previewResult = await sut.PreviewAsync(stream, "official_template.csv", CancellationToken.None);
+
+        Assert.True(previewResult.IsSuccess);
+        Assert.NotNull(previewResult.Data);
+        Assert.Empty(previewResult.Data.Errors);
+        Assert.Equal(4, previewResult.Data.ValidQuestions.Count);
+
+        var confirmRequest = new QuestionImportConfirmRequest
+        {
+            PreviewToken = previewResult.Data.PreviewToken,
+            SubjectId = _subjectId,
+            PrimaryTopicNodeId = _nodeId
+        };
+
+        var confirmResult = await sut.ConfirmAsync(confirmRequest, CancellationToken.None);
+        Assert.True(confirmResult.IsSuccess);
+        Assert.Equal(4, confirmResult.Data?.ImportedCount);
+
+        var savedQuestions = await _dbContext.Questions
+            .Where(q => q.CenterId == _centerId && q.SubjectId == _subjectId)
+            .OrderBy(q => q.QuestionId)
+            .ToListAsync();
+
+        Assert.Equal(4, savedQuestions.Count);
+
+        // 1. MultipleChoice
+        var qMc = savedQuestions[0];
+        Assert.Equal(QuestionType.MultipleChoice, qMc.QuestionType);
+        Assert.Equal(QuestionAnswerEvaluationMode.TextExact, qMc.AnswerEvaluationMode);
+        Assert.Equal(QuestionStatus.Active, qMc.Status);
+        var mcOptions = await _dbContext.QuestionOptions.Where(o => o.QuestionId == qMc.QuestionId).ToListAsync();
+        Assert.Equal(4, mcOptions.Count);
+        Assert.Single(mcOptions, o => o.IsCorrect);
+        Assert.Equal("B", mcOptions.Single(o => o.IsCorrect).OptionLabel);
+
+        // 2. NumericRational ShortAnswer
+        var qNum = savedQuestions[1];
+        Assert.Equal(QuestionType.ShortAnswer, qNum.QuestionType);
+        Assert.Equal(QuestionAnswerEvaluationMode.NumericRational, qNum.AnswerEvaluationMode);
+        Assert.Equal(QuestionStatus.Active, qNum.Status);
+        Assert.Equal("1/2", qNum.CorrectAnswer);
+
+        // 3. Coordinate2D ShortAnswer
+        var qCoord = savedQuestions[2];
+        Assert.Equal(QuestionType.ShortAnswer, qCoord.QuestionType);
+        Assert.Equal(QuestionAnswerEvaluationMode.Coordinate2D, qCoord.AnswerEvaluationMode);
+        Assert.Equal(QuestionStatus.Active, qCoord.Status);
+        Assert.Equal("(1; 1)", qCoord.CorrectAnswer);
+
+        // 4. Manual Essay
+        var qEssay = savedQuestions[3];
+        Assert.Equal(QuestionType.Essay, qEssay.QuestionType);
+        Assert.Equal(QuestionAnswerEvaluationMode.Manual, qEssay.AnswerEvaluationMode);
+        Assert.Equal(QuestionStatus.Active, qEssay.Status);
     }
 
     public void Dispose()

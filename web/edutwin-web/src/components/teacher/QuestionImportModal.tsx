@@ -12,6 +12,9 @@ interface QuestionImportModalProps {
   onSuccess: () => void;
 }
 
+import { QUESTION_IMPORT_CSV_TEMPLATE } from "../../utils/questionImportTemplate";
+export { QUESTION_IMPORT_CSV_TEMPLATE };
+
 export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImportModalProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -123,10 +126,7 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
   };
 
   const downloadCsvTemplate = () => {
-    const csvContent =
-      "QuestionType,Difficulty,QuestionText,OptionA,MisconceptionA,OptionB,MisconceptionB,OptionC,MisconceptionC,OptionD,MisconceptionD,CorrectAnswer,Solution,ExpectedReasoning,MaxScore,EstimatedTimeSeconds,ReasoningRequired\n" +
-      'MultipleChoice,3,"Cho hàm số $y=x^2$. Tính $y\'(2)$.","2","Nhầm đạo hàm của hằng số","4","","8","Nhầm mũ thành nhân","0","Nhầm cực trị","B","Ta có $y\'=2x$, thay $x=2$ được $y\'(2)=4$.","Tính đạo hàm cơ bản và thế số",10,120,TRUE\n' +
-      'ShortAnswer,2,"Giải phương trình $2x - 6 = 0$.","","","","","","","","","3","Ta có $2x=6 \\Rightarrow x=3$.","Chuyển vế đổi dấu",10,60,TRUE\n';
+    const csvContent = QUESTION_IMPORT_CSV_TEMPLATE;
 
     const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -346,6 +346,7 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
                       <tr>
                         <th className="p-2.5">Dòng</th>
                         <th className="p-2.5">Loại</th>
+                        <th className="p-2.5">Chế độ chấm</th>
                         <th className="p-2.5">Độ khó</th>
                         <th className="p-2.5">Nội dung câu hỏi</th>
                         <th className="p-2.5">Đáp án</th>
@@ -361,6 +362,11 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
                             <td className="p-2.5">
                               <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-700/50 text-slate-300">
                                 {q.questionType}
+                              </span>
+                            </td>
+                            <td className="p-2.5">
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-cyan-950/60 text-cyan-300 border border-cyan-500/30">
+                                {q.answerEvaluationMode || "TextExact"}
                               </span>
                             </td>
                             <td className="p-2.5 font-semibold text-[var(--th-teal)]">Lv {q.difficulty}</td>

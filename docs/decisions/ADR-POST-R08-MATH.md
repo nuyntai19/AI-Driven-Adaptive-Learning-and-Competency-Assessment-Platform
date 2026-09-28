@@ -138,6 +138,17 @@ In the R00–R08 baseline, students submitted plain text `reasoning_text` and sc
   - Rejects following symbolic links / reparse points (`FileAttributes.ReparsePoint`).
   - Purges expired temp files and unreferenced permanent files exceeding `AttachmentStorage__GracePeriodHours`.
 
+### 3.11. Phase 1 Scope Boundaries & Phase 2 Backlog
+- **Phase 1 Boundaries (Accepted Scope):**
+  - **Deterministic Equivalence Scope:** Strictly scoped to rational numbers (`NumericRational`: integers, fractions, mixed numbers, finite decimals via `System.Numerics.BigInteger`) and 2D Cartesian coordinates (`Coordinate2D`).
+  - **Explicit Non-Goals / Limitations:** Phase 1 does **NOT** include a general Computer Algebra System (CAS) or Abstract Syntax Tree (AST) symbolic equivalence engine. Expressions such as $x+x \equiv 2x$, commutative equations $x=2 \equiv 2=x$, or LaTeX symbol variants in `TextExact` (e.g. $x \ne 2$ vs $x \neq 2$) are **not** treated as equivalent in Phase 1.
+  - **Policy Invariant:** Single unified `IQuestionActivationPolicy` validates question activation rules across `CreateQuestionUseCase`, `UpdateQuestionUseCase`, `ActivateQuestionUseCase`, and `QuestionImportUseCase` (both Preview and Confirm).
+  - **Security & Client Template:** Import template CSVs include the `AnswerEvaluationMode` header with examples; internal exceptions during import are logged server-side and never leaked as raw `ex.Message` to the frontend.
+
+- **Phase 2 Roadmap & Backlog:**
+  - **Unified MathLive Question Authoring:** Standardize Center Manager (`QuestionEditorPage`) and Teacher (`TeacherQuestionEditorView`) question creation/edit forms onto the shared MathLive `VisualMathField` component.
+  - **Generalized Mathematical Equivalence (`MathEquivalent`):** Design and evaluate an algebraic canonicalizer / CAS engine for polynomial simplification, algebraic equivalence, equation normalization, and set/interval representations.
+
 ---
 
 ## 4. Consequences and Verification

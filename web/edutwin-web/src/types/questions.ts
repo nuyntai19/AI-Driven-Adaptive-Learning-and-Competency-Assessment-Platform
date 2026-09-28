@@ -124,6 +124,7 @@ export interface QuestionImportItemDto {
   maxScore: number;
   estimatedTimeSeconds: number;
   reasoningRequired: boolean;
+  answerEvaluationMode?: QuestionAnswerEvaluationMode;
   options: QuestionImportOptionInput[];
   requiredIdeas: string[];
   commonErrors: string[];

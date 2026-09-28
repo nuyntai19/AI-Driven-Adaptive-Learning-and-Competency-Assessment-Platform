@@ -19,21 +19,22 @@ public class ActivateQuestionUseCase : IActivateQuestionUseCase
     private readonly EduTwinDbContext _dbContext;
     private readonly ITenantContext _tenantContext;
     private readonly TimeProvider _timeProvider;
-    private readonly IMathAnswerNormalizer _mathNormalizer;
-    private readonly ICoordinateAnswerNormalizer _coordinateNormalizer;
+    private readonly IQuestionActivationPolicy _activationPolicy;
 
     public ActivateQuestionUseCase(
         EduTwinDbContext dbContext,
         ITenantContext tenantContext,
         TimeProvider timeProvider,
         IMathAnswerNormalizer? mathNormalizer = null,
-        ICoordinateAnswerNormalizer? coordinateNormalizer = null)
+        ICoordinateAnswerNormalizer? coordinateNormalizer = null,
+        IQuestionActivationPolicy? activationPolicy = null)
     {
         _dbContext = dbContext;
         _tenantContext = tenantContext;
         _timeProvider = timeProvider;
-        _mathNormalizer = mathNormalizer ?? new MathAnswerNormalizer();
-        _coordinateNormalizer = coordinateNormalizer ?? new CoordinateAnswerNormalizer(_mathNormalizer);
+        var math = mathNormalizer ?? new MathAnswerNormalizer();
+        var coord = coordinateNormalizer ?? new CoordinateAnswerNormalizer(math);
+        _activationPolicy = activationPolicy ?? new QuestionActivationPolicy(math, coord);
     }
 
     public async Task<ActivateQuestionResult> ExecuteAsync(string questionId, ActivateQuestionRequest request, CancellationToken cancellationToken = default)
@@ -87,34 +88,8 @@ public class ActivateQuestionUseCase : IActivateQuestionUseCase
         if (question.RowVersion != rowVersion)
             return ActivateQuestionResult.Failure(ErrorCodes.ConcurrencyConflict);
 
-        // 8. Evaluation mode and matrix activation guard
-        if (question.QuestionType == QuestionType.Essay && question.AnswerEvaluationMode != QuestionAnswerEvaluationMode.Manual)
-        {
-            return ActivateQuestionResult.Failure(ErrorCodes.ValidationFailed);
-        }
-
-        if (question.QuestionType == QuestionType.MultipleChoice && question.AnswerEvaluationMode != QuestionAnswerEvaluationMode.TextExact)
-        {
-            return ActivateQuestionResult.Failure(ErrorCodes.ValidationFailed);
-        }
-
-        if (question.QuestionType == QuestionType.ShortAnswer && question.AnswerEvaluationMode == QuestionAnswerEvaluationMode.NumericRational)
-        {
-            if (string.IsNullOrWhiteSpace(question.CorrectAnswer) || !_mathNormalizer.TryNormalize(question.CorrectAnswer, out _))
-            {
-                return ActivateQuestionResult.Failure(ErrorCodes.ValidationFailed);
-            }
-        }
-
-        if (question.QuestionType == QuestionType.ShortAnswer && question.AnswerEvaluationMode == QuestionAnswerEvaluationMode.Coordinate2D)
-        {
-            if (string.IsNullOrWhiteSpace(question.CorrectAnswer) || !_coordinateNormalizer.TryNormalize(question.CorrectAnswer, out _))
-            {
-                return ActivateQuestionResult.Failure(ErrorCodes.ValidationFailed);
-            }
-        }
-
-        // 9. MultipleChoice activation guard
+        // 8. Load active options if MultipleChoice
+        List<QuestionOptionValidationItem>? optionItems = null;
         if (question.QuestionType == QuestionType.MultipleChoice)
         {
             var activeOptions = await _dbContext.QuestionOptions
@@ -122,11 +97,15 @@ public class ActivateQuestionUseCase : IActivateQuestionUseCase
                 .Where(o => o.QuestionId == qId && o.CenterId == centerId && !o.IsDeleted)
                 .ToListAsync(cancellationToken);
 
-            if (activeOptions.Count < 2)
-                return ActivateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+            optionItems = activeOptions
+                .Select(o => new QuestionOptionValidationItem(o.OptionLabel, o.OptionText, o.IsCorrect))
+                .ToList();
+        }
 
-            if (activeOptions.Count(o => o.IsCorrect) != 1)
-                return ActivateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+        // 9. Unified activation invariants validation
+        if (!_activationPolicy.Validate(question.QuestionType, question.AnswerEvaluationMode, question.CorrectAnswer, optionItems, out _))
+        {
+            return ActivateQuestionResult.Failure(ErrorCodes.ValidationFailed);
         }
 
         // 9. Activate

@@ -23,6 +23,7 @@ public static class DependencyInjection
         services.AddScoped<IActivateQuestionUseCase, ActivateQuestionUseCase>();
         services.AddScoped<IArchiveQuestionUseCase, ArchiveQuestionUseCase>();
         services.AddScoped<IDeleteQuestionUseCase, DeleteQuestionUseCase>();
+        services.AddScoped<IQuestionActivationPolicy, QuestionActivationPolicy>();
         services.AddScoped<Import.IQuestionImportUseCase, Import.QuestionImportUseCase>();
         
         return services;
