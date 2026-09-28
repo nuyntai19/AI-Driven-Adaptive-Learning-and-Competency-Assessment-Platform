@@ -11,6 +11,7 @@ using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.Persistence;
 using Microsoft.EntityFrameworkCore;
+using EduTwin.BLL.AssessmentAndReasoning.PreliminaryGrading;
 
 namespace EduTwin.BLL.CurriculumAndQuestions;
 
@@ -19,15 +20,18 @@ public class UpdateQuestionUseCase : IUpdateQuestionUseCase
     private readonly EduTwinDbContext _dbContext;
     private readonly ITenantContext _tenantContext;
     private readonly TimeProvider _timeProvider;
+    private readonly ICoordinateAnswerNormalizer _coordinateNormalizer;
 
     public UpdateQuestionUseCase(
         EduTwinDbContext dbContext,
         ITenantContext tenantContext,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        ICoordinateAnswerNormalizer? coordinateNormalizer = null)
     {
         _dbContext = dbContext;
         _tenantContext = tenantContext;
         _timeProvider = timeProvider;
+        _coordinateNormalizer = coordinateNormalizer ?? new CoordinateAnswerNormalizer();
     }
 
     public async Task<UpdateQuestionResult> ExecuteAsync(string questionId, UpdateQuestionRequest request, CancellationToken cancellationToken = default)
@@ -159,6 +163,13 @@ public class UpdateQuestionUseCase : IUpdateQuestionUseCase
 
             if (questionType == QuestionType.Essay && evalMode != QuestionAnswerEvaluationMode.Manual)
                 return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+        }
+
+        if (evalMode == QuestionAnswerEvaluationMode.Coordinate2D
+            && (questionType != QuestionType.ShortAnswer
+                || !_coordinateNormalizer.TryNormalize(request.CorrectAnswer, out _)))
+        {
+            return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
         }
 
         // 11. Update scalar fields

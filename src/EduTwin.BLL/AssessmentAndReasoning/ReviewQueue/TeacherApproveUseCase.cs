@@ -91,8 +91,7 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
         var role = _tenantContext.Role ?? string.Empty;
 
         var isTeacher = string.Equals(role, nameof(UserRole.Teacher), StringComparison.OrdinalIgnoreCase);
-        var isCenterManager = string.Equals(role, nameof(UserRole.CenterManager), StringComparison.OrdinalIgnoreCase);
-        if (!isTeacher && !isCenterManager)
+        if (!isTeacher)
         {
             return TeacherApproveResult.Forbidden();
         }
@@ -135,6 +134,15 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
             return TeacherApproveResult.Conflict();
         }
 
+        var confirmedCorrectness = analysis.OverrideIsCorrect ?? attempt.IsCorrect;
+        var confirmedScore = analysis.OverrideAwardedScore ?? attempt.AwardedScore;
+        if (!confirmedCorrectness.HasValue || !confirmedScore.HasValue)
+        {
+            return TeacherApproveResult.ValidationFailed(
+                "MANUAL_GRADING_REQUIRED",
+                "Bài tự luận chưa có kết quả xác định. Giáo viên phải chấm và xác nhận điểm trước khi hoàn tất.");
+        }
+
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
         TeacherApproveDataDto? committedResponse = null;
         Guid recommendationStudentId = default;
@@ -147,8 +155,8 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
             var now = _timeProvider.GetUtcNow().UtcDateTime;
             var newOverrideVersion = analysis.OverrideVersion + 1;
 
-            var effectiveCorrectness = analysis.OverrideIsCorrect ?? attempt.IsCorrect;
-            var effectiveScore = analysis.OverrideAwardedScore ?? attempt.AwardedScore ?? (effectiveCorrectness == true ? question.MaxScore : 0m);
+            var effectiveCorrectness = confirmedCorrectness.Value;
+            var effectiveScore = confirmedScore.Value;
 
             // 1. Update ReasoningAnalysis review fields
             analysis.ReviewDecision = TeacherReviewDecision.Approved;
@@ -310,13 +318,13 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
                     : latestEvidenceByAttempt.GetValueOrDefault(att.AttemptId);
 
                 decimal reasoningWeight = ev?.ReasoningWeight ?? 0m;
-                decimal? quality = a is not null
-                    ? (a.OverrideVersion > 0 ? a.OverrideReasoningQuality : a.ReasoningQuality)
-                    : null;
-
                 bool? correctness = att.AttemptId == attempt.AttemptId
                     ? effectiveCorrectness
                     : (a?.OverrideIsCorrect ?? att.IsCorrect);
+
+                decimal? quality = a is not null
+                    ? (a.OverrideReasoningQuality ?? a.ReasoningQuality ?? (correctness == true ? 70m : 30m))
+                    : null;
 
                 if (reasoningWeight > 0m)
                 {
@@ -483,7 +491,7 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
                 ReviewedAt = now,
                 TeacherNote = request.Note,
                 EffectiveAwardedScore = effectiveScore,
-                EffectiveIsCorrect = effectiveCorrectness == true,
+                EffectiveIsCorrect = effectiveCorrectness,
                 Replay = new TeacherOverrideReplayDto
                 {
                     StudentId = studentId.ToString("D"),

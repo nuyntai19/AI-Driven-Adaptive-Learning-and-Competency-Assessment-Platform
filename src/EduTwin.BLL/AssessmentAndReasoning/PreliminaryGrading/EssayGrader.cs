@@ -19,8 +19,9 @@ public class EssayGrader : IQuestionGrader
         return new PreliminaryGradingResult
         {
             IsCorrect = null,
-            Score = 0m,
-            Feedback = "Requires AI or manual teacher review."
+            Score = null,
+            Feedback = "Requires AI observation and manual teacher review.",
+            ReasonCode = PreliminaryGradingReasonCodes.ManualMode
         };
     }
 

@@ -356,21 +356,49 @@ Course MVP không có màn hình tạo/xóa Center hoặc chuyển sang Center k
 - Publish là atomic action có confirmation.
 - Student assignment page không hiển thị management actions.
 
+### 9.1. Question Bulk Import Modal (QuestionImportModal)
+
+Modal nhập câu hỏi hàng loạt cho giáo viên và quản lý trung tâm:
+- **Tải lên tệp**: Hỗ trợ kéo thả (drag & drop) hoặc chọn file từ máy tính với các định dạng `.docx`, `.xlsx`, `.csv`, `.txt`.
+- **Xem trước bảng dữ liệu (Preview)**:
+  - Hiển thị thống kê tổng quan: Tổng số câu, số câu hợp lệ (Valid), số câu bị lỗi cấu trúc (Invalid).
+  - Bảng danh sách câu hỏi: Cho phép xem trước nội dung, công thức KaTeX, đáp án đúng, lời giải, độ khó, và danh sách các phương án.
+  - Chỉnh sửa tại chỗ (In-place edit): Giáo viên có thể sửa trực tiếp nội dung hoặc đáp án của từng câu trên bảng trước khi lưu.
+  - Bảng cảnh báo lỗi: Chỉ rõ số dòng, trường thông tin bị lỗi và nguyên nhân cụ thể.
+- **Xác nhận nhập kho (Confirm)**: Chọn môn học và chủ đề chính (`primaryTopicNodeId`), hệ thống lưu trữ hàng loạt vào ngân hàng câu hỏi.
+
+### 9.2. Teacher Workspace & 10 Chuyên trang
+
+Không gian làm việc chuyên biệt của Giáo viên sử dụng `TeacherLayout` cùng hệ thống Design System chuẩn (`teacherDesignSystem.css`, `TeacherPrimitives`, `TeacherDataTable`, `TeacherFilterBar`, `TeacherOverlays`):
+1. **TeacherAssignmentListView**: Quản lý danh sách bài tập, bộ lọc trạng thái (Draft, Published, Closed), lớp học và ngày hết hạn.
+2. **TeacherAssignmentEditorView**: Soạn thảo bài tập, cấu hình thời gian làm bài (`TimeLimitMinutes`), ma trận câu hỏi và danh sách học sinh được giao.
+3. **TeacherAssignmentProgressView**: Theo dõi tiến độ làm bài thời gian thực của học sinh theo từng bài tập (tỷ lệ hoàn thành, thời gian nộp).
+4. **TeacherClassDashboardView**: Bảng điều khiển lớp học, thống kê độ làm chủ (Mastery) trung bình, tỷ lệ rủi ro và các chủ đề yếu của học sinh.
+5. **TeacherCurriculumListView**: Quản lý danh sách khung chương trình đào tạo của giáo viên.
+6. **TeacherCurriculumEditorView**: Thiết lập cấu trúc chương trình, sắp xếp thứ tự nốt bài học và gán lớp học phụ trách.
+7. **TeacherKnowledgeGraphView**: Trực quan hóa tương tác đồ thị tri thức 2D/3D (Node/Edge), phát hiện chu trình (cycle detection), tra cứu quan hệ tiên quyết.
+8. **TeacherQuestionBankView**: Ngân hàng câu hỏi của giáo viên, tìm kiếm toàn văn, lọc theo môn/chủ đề/độ khó và tích hợp nút Import hàng loạt.
+9. **TeacherQuestionEditorView**: Soạn thảo câu hỏi chi tiết, hỗ trợ soạn công thức toán học LaTeX kèm thanh công cụ Math Toolbar, rubric tiêu chí chấm và nhận thức sai lầm (`misconception`).
+10. **TeacherStudentTwinView**: Xem chi tiết hồ sơ năng lực Digital Twin của từng học sinh (Knowledge Mastery, Behavior telemetry, lịch sử cập nhật Twin).
+
 ## 10. Student Learning Player
 
-Màn hình cần:
+Màn hình làm bài của học sinh (`LearningPlayerPage`):
 
-- question content;
-- final answer;
-- reasoning text khi bắt buộc;
-- confidence input 0–100;
-- timer/time spent;
-- submit state chống double submit;
-- job-processing state sau HTTP 202;
-- fallback/review state không làm mất bài;
-- feedback chỉ hiển thị khi terminal.
-
-Không hiển thị prompt nội bộ, model raw response hoặc correct answer trước submit.
+- **Nội dung câu hỏi**: Hiển thị câu hỏi và các phương án kết hợp văn bản và công thức toán học sắc nét qua component `RichMathText`.
+- **Đồng hồ đếm ngược (Countdown Timer)**: Khi bài tập có giới hạn thời gian (`TimeLimitMinutes`), đồng hồ đếm ngược hiển thị nổi bật ở góc trên, tự động cảnh báo khi sắp hết giờ.
+- **Khối phân cấp kết quả (`AttemptFeedbackHierarchy`)**:
+  - Cấp 1 - Điểm số & Độ chính xác: Hiển thị điểm đạt được, tỷ lệ điểm và thời gian làm bài.
+  - Cấp 2 - Phân tích logic của AI: Hiển thị phương pháp suy luận phát hiện được, điểm chất lượng tư duy (Reasoning Quality), nhận xét sư phạm chi tiết và các bước còn thiếu.
+  - Cấp 3 - Đối chiếu lời giải mẫu: So sánh câu trả lời của học sinh với lời giải chuẩn của giáo viên và các quan niệm sai lầm thường gặp.
+  - Cấp 4 - Định hướng cải thiện: Gợi ý các chủ đề kiến thức cần củng cố và bước học tiếp theo.
+- **Nút yêu cầu AI chấm lại (AI Retry)**:
+  - Hiển thị khi AI gặp sự cố hoặc phân tích thất bại; có bộ đếm ngược thời gian chờ 30 giây (`CooldownSeconds = 30s`) và giới hạn tối đa 3 lần bấm.
+  - Bị vô hiệu hóa nếu học sinh đã mở xem lời giải chi tiết (`solution_exposed_at != null`).
+- **Modal Khiếu nại kết quả (`ReviewRequestModal`)**:
+  - Cho phép học sinh gửi phản ánh (tối đa 1000 ký tự) khi cho rằng bài làm của mình đúng hoặc có cách giải khác hợp lệ mà AI chưa nhận diện được.
+  - Yêu cầu khiếu nại được gửi trực tiếp vào hàng đợi xét duyệt của giáo viên.
+- **Trạng thái nộp bài & An toàn**: Chống double-submit, hỗ trợ ảnh nháp đính kèm (`AttemptAttachment`), không hiển thị prompt nội bộ hoặc đáp án đúng trước khi nộp.
 
 ## 11. AI Review and Evidence
 
@@ -387,6 +415,7 @@ Hiển thị:
 - Reason codes.
 - Fallback flag.
 - Waiting time.
+- **Huy hiệu Khiếu nại (Student Appeal Badge)**: Hiển thị cờ `HasStudentReviewRequest` nổi bật kèm nội dung phản ánh `StudentReviewReason` của học sinh để giáo viên ưu tiên thẩm định.
 
 ### 11.2. Review detail
 

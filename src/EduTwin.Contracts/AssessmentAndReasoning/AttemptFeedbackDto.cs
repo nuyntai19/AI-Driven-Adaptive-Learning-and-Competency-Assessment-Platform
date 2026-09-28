@@ -30,6 +30,7 @@ public sealed class AttemptFeedbackDataDto
 public sealed class AttemptFeedbackStudentSubmissionDto
 {
     public string FinalAnswer { get; set; } = string.Empty;
+    public string? AnswerDisplayLatex { get; set; }
     public string? ReasoningText { get; set; }
     public decimal Confidence { get; set; }
     public uint TimeSpentSeconds { get; set; }
@@ -80,6 +81,8 @@ public sealed class AttemptFeedbackGradingDto
     public bool? IsCorrect { get; set; }
     public decimal? AwardedScore { get; set; }
     public decimal MaxScore { get; set; }
+    public string? ReasonCode { get; set; }
+    public string Source { get; set; } = "PendingTeacher";
 }
 
 public sealed class AttemptFeedbackAnalysisDto

@@ -11,6 +11,7 @@ using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.Persistence;
 using Microsoft.EntityFrameworkCore;
+using EduTwin.BLL.AssessmentAndReasoning.PreliminaryGrading;
 
 namespace EduTwin.BLL.CurriculumAndQuestions;
 
@@ -19,15 +20,18 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
     private readonly EduTwinDbContext _dbContext;
     private readonly ITenantContext _tenantContext;
     private readonly TimeProvider _timeProvider;
+    private readonly ICoordinateAnswerNormalizer _coordinateNormalizer;
 
     public CreateQuestionUseCase(
         EduTwinDbContext dbContext,
         ITenantContext tenantContext,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        ICoordinateAnswerNormalizer? coordinateNormalizer = null)
     {
         _dbContext = dbContext;
         _tenantContext = tenantContext;
         _timeProvider = timeProvider;
+        _coordinateNormalizer = coordinateNormalizer ?? new CoordinateAnswerNormalizer();
     }
 
     public async Task<CreateQuestionResult> ExecuteAsync(CreateQuestionRequest request, CancellationToken cancellationToken = default)
@@ -124,6 +128,13 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
 
             if (questionType == QuestionType.Essay && evalMode != QuestionAnswerEvaluationMode.Manual)
                 return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+        }
+
+        if (evalMode == QuestionAnswerEvaluationMode.Coordinate2D
+            && (questionType != QuestionType.ShortAnswer
+                || !_coordinateNormalizer.TryNormalize(request.CorrectAnswer, out _)))
+        {
+            return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
         }
 
         // Knowledge mapping validation

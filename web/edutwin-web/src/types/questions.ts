@@ -1,6 +1,6 @@
 export type QuestionType = "MultipleChoice" | "ShortAnswer" | "Essay";
 export type QuestionStatus = "Draft" | "Active" | "Archived";
-export type QuestionAnswerEvaluationMode = "TextExact" | "NumericRational" | "Manual";
+export type QuestionAnswerEvaluationMode = "TextExact" | "NumericRational" | "Coordinate2D" | "Manual";
 
 export interface QuestionOption {
   optionId: string;

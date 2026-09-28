@@ -65,7 +65,7 @@ public sealed class AIReasoningAnalysisBuilder : IAIReasoningAnalysisBuilder
             SolutionType = response.SolutionType,
             AiSolution = response.AiSolution,
             IsFallback = false,
-            NeedsTeacherReview = false,
+            NeedsTeacherReview = preliminaryIsCorrect is null,
             Provider = AnalysisProvider.Gemini,
             ModelName = null,
             OverrideReasoningQuality = null,

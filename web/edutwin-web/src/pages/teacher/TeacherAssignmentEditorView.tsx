@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { organizationApi } from "../../api/organizationApi";
+import { knowledgeGraphApi } from "../../api/knowledgeGraphApi";
 import { useAssignment } from "../../features/assignments/useAssignment";
 import { useCreateAssignment } from "../../features/assignments/useCreateAssignment";
 import { useUpdateAssignment } from "../../features/assignments/useUpdateAssignment";
@@ -44,6 +45,12 @@ const toLocalDateTime = (value: string | null) => {
   return new Date(date.getTime() - timezoneOffset).toISOString().slice(0, 16);
 };
 
+export const getMinLocalDateTime = () => {
+  const d = new Date(Date.now() + 60_000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
 const WIZARD_STEPS = [
   { id: 0, label: "1. Thông tin chung & Lớp học" },
   { id: 1, label: "2. Chọn câu hỏi từ Ngân hàng" },
@@ -63,6 +70,7 @@ export function TeacherAssignmentEditorView() {
   const canPublish = hasPermission(permissions.assignmentsPublish);
   const canReadClasses = hasPermission(permissions.classesRead);
   const canReadQuestions = hasPermission(permissions.questionsRead);
+  const canReadNodes = hasPermission(permissions.nodesRead);
 
   // Assignment query in edit mode
   const assignmentQuery = useAssignment(id);
@@ -87,6 +95,38 @@ export function TeacherAssignmentEditorView() {
   const [title, setTitle] = useState("");
   const [instructions, setInstructions] = useState("");
   const [dueAt, setDueAt] = useState("");
+  const [dueDateError, setDueDateError] = useState<string | null>(null);
+  const [timeLimitValue, setTimeLimitValue] = useState("");
+  const [timeLimitUnit, setTimeLimitUnit] = useState<"minutes" | "hours">("minutes");
+  const [timeLimitError, setTimeLimitError] = useState<string | null>(null);
+  const [minDateTime, setMinDateTime] = useState(getMinLocalDateTime);
+
+  const effectiveTimeLimitMinutes = useMemo(() => {
+    const trimmed = timeLimitValue.trim();
+    if (!trimmed) return null;
+    const num = Number(trimmed);
+    if (isNaN(num) || num <= 0) return null;
+    return timeLimitUnit === "hours" ? Math.round(num * 60) : Math.round(num);
+  }, [timeLimitValue, timeLimitUnit]);
+
+  const handleTimeLimitChange = (val: string, unit: "minutes" | "hours" = timeLimitUnit) => {
+    setTimeLimitValue(val);
+    setTimeLimitUnit(unit);
+    if (!val.trim()) {
+      setTimeLimitError(null);
+      return;
+    }
+    const num = Number(val.trim());
+    if (isNaN(num) || num <= 0) {
+      setTimeLimitError("Thời gian làm bài phải là số dương lớn hơn 0.");
+    } else {
+      setTimeLimitError(null);
+    }
+  };
+
+  const refreshMinDateTime = () => {
+    setMinDateTime(getMinLocalDateTime());
+  };
   const [targetMode, setTargetMode] = useState<TargetMode>(paramStudentIds.length > 0 ? "SelectedStudents" : "WholeClass");
   const [questionIds, setQuestionIds] = useState<string[]>([]);
   const [studentIds, setStudentIds] = useState<string[]>(() => paramStudentIds);
@@ -104,6 +144,7 @@ export function TeacherAssignmentEditorView() {
   // Question Selector filter & page
   const [questionPage, setQuestionPage] = useState(1);
   const [questionDifficulty, setQuestionDifficulty] = useState<number | "">("");
+  const [questionTopicId, setQuestionTopicId] = useState<string>("");
 
   // Student Selector filter & page
   const [studentPage, setStudentPage] = useState(1);
@@ -128,17 +169,28 @@ export function TeacherAssignmentEditorView() {
     return classesData?.data?.find((c) => c.classId === classId);
   }, [classId, classDetailQuery.data, classesData?.data]);
 
+  const selectedSubjectId = selectedClass?.subject?.subjectId;
+
+  // Knowledge Nodes Query for the subject of the selected class
+  const knowledgeNodesQuery = useQuery({
+    queryKey: ["knowledge-nodes-for-teacher-assignment-editor", selectedSubjectId],
+    queryFn: () => knowledgeGraphApi.listNodes(selectedSubjectId!),
+    enabled: canReadNodes && Boolean(selectedSubjectId),
+    staleTime: 60_000,
+  });
+
   // Questions query for the subject of the selected class
   const questionsQuery = useAssignableQuestions(
-    selectedClass?.subject?.subjectId
+    selectedSubjectId
       ? {
-          subjectId: selectedClass.subject.subjectId,
+          subjectId: selectedSubjectId,
+          topicId: questionTopicId || undefined,
           page: questionPage,
           pageSize: 10,
           difficulty: questionDifficulty !== "" ? Number(questionDifficulty) : undefined,
         }
       : undefined,
-    { enabled: canReadQuestions && Boolean(selectedClass?.subject?.subjectId) }
+    { enabled: canReadQuestions && Boolean(selectedSubjectId) }
   );
 
   // Students query for selected class
@@ -224,7 +276,25 @@ export function TeacherAssignmentEditorView() {
     setClassId(assignment.classId);
     setTitle(assignment.title);
     setInstructions(assignment.instructions || "");
-    setDueAt(toLocalDateTime(assignment.dueAt));
+    const localDue = toLocalDateTime(assignment.dueAt);
+    setDueAt(localDue);
+    if (localDue && new Date(localDue).getTime() <= Date.now()) {
+      setDueDateError("Hạn chót nộp bài của bản nháp này đã qua thời điểm hiện tại. Vui lòng chọn thời gian mới trong tương lai hoặc xóa hạn chót.");
+    } else {
+      setDueDateError(null);
+    }
+    if (assignment.timeLimitMinutes) {
+      if (assignment.timeLimitMinutes % 60 === 0 && assignment.timeLimitMinutes >= 60) {
+        setTimeLimitValue(String(assignment.timeLimitMinutes / 60));
+        setTimeLimitUnit("hours");
+      } else {
+        setTimeLimitValue(String(assignment.timeLimitMinutes));
+        setTimeLimitUnit("minutes");
+      }
+    } else {
+      setTimeLimitValue("");
+      setTimeLimitUnit("minutes");
+    }
     setQuestionIds(assignment.questions.map((q) => q.questionId));
 
     const source = assignment.targets[0]?.targetSource;
@@ -253,6 +323,7 @@ export function TeacherAssignmentEditorView() {
   const handleClassChange = (nextClassId: string) => {
     if (isReadOnly) return;
     setClassId(nextClassId);
+    setQuestionTopicId("");
     setQuestionIds([]);
     setStudentIds([]);
     setTargetMode("WholeClass");
@@ -260,30 +331,70 @@ export function TeacherAssignmentEditorView() {
     setStudentPage(1);
   };
 
+  const handleDueAtChange = (val: string) => {
+    setDueAt(val);
+    if (!val) {
+      setDueDateError(null);
+      if (formError?.message.includes("Hạn chót nộp bài")) {
+        setFormError(null);
+      }
+      return;
+    }
+    const dueTime = new Date(val).getTime();
+    if (isNaN(dueTime)) {
+      setDueDateError("Thời gian hạn chót nộp bài không hợp lệ.");
+    } else if (dueTime <= Date.now()) {
+      setDueDateError("Hạn chót nộp bài phải ở thời điểm tương lai (sau thời điểm hiện tại).");
+    } else {
+      setDueDateError(null);
+      if (formError?.message.includes("Hạn chót nộp bài")) {
+        setFormError(null);
+      }
+    }
+  };
+
   const validateStep0 = (): boolean => {
     if (!title.trim()) {
       setFormError({ message: "Vui lòng nhập tiêu đề bài tập." });
+      setStep(0);
       return false;
     }
     if (title.trim().length > 200) {
       setFormError({ message: "Tiêu đề bài tập không được vượt quá 200 ký tự." });
+      setStep(0);
       return false;
     }
     if (!classId) {
       setFormError({ message: "Vui lòng chọn lớp học tiếp nhận bài tập." });
+      setStep(0);
       return false;
     }
     if (dueAt) {
       const dueTime = new Date(dueAt).getTime();
       if (isNaN(dueTime)) {
         setFormError({ message: "Thời gian hạn chót nộp bài không hợp lệ." });
+        setDueDateError("Thời gian hạn chót nộp bài không hợp lệ.");
+        setStep(0);
         return false;
       }
       if (dueTime <= Date.now()) {
         setFormError({ message: "Hạn chót nộp bài phải ở thời điểm tương lai (sau thời điểm hiện tại)." });
+        setDueDateError("Hạn chót nộp bài phải ở thời điểm tương lai (sau thời điểm hiện tại).");
+        setStep(0);
         return false;
       }
     }
+    if (timeLimitValue.trim()) {
+      const num = Number(timeLimitValue.trim());
+      if (isNaN(num) || num <= 0) {
+        setFormError({ message: "Thời gian làm bài phải là số dương lớn hơn 0." });
+        setTimeLimitError("Thời gian làm bài phải là số dương lớn hơn 0.");
+        setStep(0);
+        return false;
+      }
+    }
+    setTimeLimitError(null);
+    setDueDateError(null);
     setFormError(null);
     return true;
   };
@@ -340,6 +451,7 @@ export function TeacherAssignmentEditorView() {
         title: title.trim(),
         instructions: instructions.trim() || null,
         dueAt: payloadDueAt,
+        timeLimitMinutes: effectiveTimeLimitMinutes,
         questionIds,
         targetMode,
         studentIds: targetMode === "SelectedStudents" ? studentIds : undefined,
@@ -371,6 +483,7 @@ export function TeacherAssignmentEditorView() {
         title: title.trim(),
         instructions: instructions.trim() || null,
         dueAt: payloadDueAt,
+        timeLimitMinutes: effectiveTimeLimitMinutes,
         questionIds,
         targetMode,
         studentIds: targetMode === "SelectedStudents" ? studentIds : undefined,
@@ -581,19 +694,83 @@ export function TeacherAssignmentEditorView() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1">
+              <label htmlFor="teacher-assignment-dueat-input" className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1">
                 Hạn chót nộp bài (tùy chọn)
               </label>
               <input
+                id="teacher-assignment-dueat-input"
                 type="datetime-local"
+                min={minDateTime}
+                onFocus={refreshMinDateTime}
+                onPointerDown={refreshMinDateTime}
                 disabled={isReadOnly}
                 value={dueAt}
-                onChange={(e) => setDueAt(e.target.value)}
-                className="th-input w-full text-sm"
+                onChange={(e) => handleDueAtChange(e.target.value)}
+                className={`th-input w-full text-sm ${dueDateError ? "!border-rose-500 focus:!border-rose-500" : ""}`}
               />
-              <p className="mt-1 text-[11px] text-[var(--th-text-muted)]">
-                Nếu đặt hạn nộp, thời gian phải sau thời điểm hiện tại.
-              </p>
+              {dueDateError ? (
+                <p className="mt-1 text-[11px] text-rose-500 font-medium">
+                  ⚠ {dueDateError}
+                </p>
+              ) : (
+                <p className="mt-1 text-[11px] text-[var(--th-text-muted)]">
+                  Nếu đặt hạn nộp, thời gian phải sau thời điểm hiện tại.
+                </p>
+              )}
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label htmlFor="teacher-assignment-timelimit-input" className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)]">
+                  Thời gian làm bài (tùy chọn)
+                </label>
+                <span className="text-[11px] text-[var(--th-teal)] font-medium">
+                  {effectiveTimeLimitMinutes ? `⏱ ${effectiveTimeLimitMinutes} phút làm bài` : "Không giới hạn thời gian"}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  id="teacher-assignment-timelimit-input"
+                  type="number"
+                  min="1"
+                  step="1"
+                  disabled={isReadOnly}
+                  value={timeLimitValue}
+                  onChange={(e) => handleTimeLimitChange(e.target.value, timeLimitUnit)}
+                  placeholder="Nhập số phút hoặc số giờ làm bài (VD: 45, 90, 2)..."
+                  className={`th-input flex-1 text-sm ${timeLimitError ? "!border-rose-500 focus:!border-rose-500" : ""}`}
+                />
+                <select
+                  disabled={isReadOnly}
+                  value={timeLimitUnit}
+                  onChange={(e) => handleTimeLimitChange(timeLimitValue, e.target.value as "minutes" | "hours")}
+                  className="th-select w-28 text-sm"
+                >
+                  <option value="minutes">Phút</option>
+                  <option value="hours">Giờ</option>
+                </select>
+                {timeLimitValue && !isReadOnly && (
+                  <button
+                    type="button"
+                    onClick={() => handleTimeLimitChange("", timeLimitUnit)}
+                    className="th-secondary-button text-xs py-2 px-3 text-[var(--th-text-muted)] hover:text-rose-400"
+                    title="Xóa thời gian làm bài"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              {timeLimitError ? (
+                <p className="mt-1 text-xs text-rose-500 font-medium">
+                  ⚠ {timeLimitError}
+                </p>
+              ) : (
+                <p className="mt-1 text-[11px] text-[var(--th-text-muted)]">
+                  {effectiveTimeLimitMinutes
+                    ? `Học sinh sẽ có đúng ${effectiveTimeLimitMinutes} phút làm bài tính từ lúc nhấn Bắt đầu. Khi hết giờ, bài làm sẽ tự động nộp.`
+                    : "Để trống nếu không giới hạn thời gian làm bài (học sinh có thể làm bất kỳ lúc nào trước hạn chót)."}
+                </p>
+              )}
             </div>
 
             <div>
@@ -639,24 +816,60 @@ export function TeacherAssignmentEditorView() {
                 </p>
               </div>
 
-              {/* Difficulty Filter */}
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-[var(--th-text-secondary)]">Lọc độ khó:</label>
-                <select
-                  value={questionDifficulty}
-                  onChange={(e) => {
-                    setQuestionDifficulty(e.target.value ? Number(e.target.value) : "");
-                    setQuestionPage(1);
-                  }}
-                  className="th-select text-xs py-1"
-                >
-                  <option value="">Tất cả độ khó</option>
-                  <option value="1">1 - Rất dễ</option>
-                  <option value="2">2 - Dễ</option>
-                  <option value="3">3 - Trung bình</option>
-                  <option value="4">4 - Khó</option>
-                  <option value="5">5 - Rất khó</option>
-                </select>
+              {/* Topic & Difficulty Filters */}
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Knowledge Graph / Topic Filter */}
+                <div className="flex items-center gap-2">
+                  <label htmlFor="teacher-q-topic-filter" className="text-xs text-[var(--th-text-secondary)] whitespace-nowrap">
+                    Đồ thị tri thức:
+                  </label>
+                  <select
+                    id="teacher-q-topic-filter"
+                    value={questionTopicId}
+                    onChange={(e) => {
+                      setQuestionTopicId(e.target.value);
+                      setQuestionPage(1);
+                    }}
+                    disabled={!selectedSubjectId || knowledgeNodesQuery.isLoading}
+                    className="th-select text-xs py-1 max-w-[220px]"
+                  >
+                    <option value="">
+                      {!selectedSubjectId
+                        ? "-- Chọn lớp trước --"
+                        : knowledgeNodesQuery.isLoading
+                        ? "Đang tải nút..."
+                        : "Tất cả nút tri thức"}
+                    </option>
+                    {knowledgeNodesQuery.data?.map((node) => (
+                      <option key={node.nodeId} value={node.nodeId}>
+                        [{node.nodeType}] {node.nodeName} ({node.nodeCode})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Difficulty Filter */}
+                <div className="flex items-center gap-2">
+                  <label htmlFor="teacher-q-diff-filter" className="text-xs text-[var(--th-text-secondary)] whitespace-nowrap">
+                    Lọc độ khó:
+                  </label>
+                  <select
+                    id="teacher-q-diff-filter"
+                    value={questionDifficulty}
+                    onChange={(e) => {
+                      setQuestionDifficulty(e.target.value ? Number(e.target.value) : "");
+                      setQuestionPage(1);
+                    }}
+                    className="th-select text-xs py-1"
+                  >
+                    <option value="">Tất cả độ khó</option>
+                    <option value="1">1 - Rất dễ</option>
+                    <option value="2">2 - Dễ</option>
+                    <option value="3">3 - Trung bình</option>
+                    <option value="4">4 - Khó</option>
+                    <option value="5">5 - Rất khó</option>
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -942,6 +1155,14 @@ export function TeacherAssignmentEditorView() {
                   </span>
                   <p className="font-semibold text-[var(--th-text)]">
                     {targetMode === "WholeClass" ? "Toàn bộ học sinh trong lớp" : `${studentIds.length} học sinh được chọn`}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-[var(--th-text-muted)] uppercase tracking-wider text-[10px] font-semibold block mb-1">
+                    Thời gian làm bài:
+                  </span>
+                  <p className="font-semibold text-teal-400 text-sm">
+                    {effectiveTimeLimitMinutes ? `⏱ ${effectiveTimeLimitMinutes} phút` : "Không giới hạn"}
                   </p>
                 </div>
                 {dueAt && (

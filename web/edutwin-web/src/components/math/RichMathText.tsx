@@ -93,10 +93,16 @@ export function normalizeMathExpression(raw: string): { latex: string; trailingP
   s = s.replace(/([a-zA-Z0-9]+(?:\^[a-zA-Z0-9()\-+*]+)?)\s*\/\s*([a-zA-Z0-9]+)/g, "\\frac{$1}{$2}");
 
   // Handle powers: 3^(x-1) -> 3^{x-1}, e^(x^2) -> e^{x^2}, (1/2)^(x^2 - x) -> \left(\frac{1}{2}\right)^{x^2 - x}
+  s = s.replace(/\\left\(([^()]+)\\right\)\^\(([^()]+)\)/g, (_, base, exp) => `\\left(${base}\\right)^{${exp}}`);
+  s = s.replace(/\\left\(([^()]+)\\right\)\^([a-zA-Z0-9]+)/g, (_, base, exp) => `\\left(${base}\\right)^{${exp}}`);
   s = s.replace(/\(([^()]+)\)\^\(([^()]+)\)/g, (_, base, exp) => `\\left(${base}\\right)^{${exp}}`);
   s = s.replace(/([a-zA-Z0-9]+)\^\(([^()]+)\)/g, (_, base, exp) => `${base}^{${exp}}`);
   s = s.replace(/([a-zA-Z0-9]+)\^([a-zA-Z0-9]+)/g, (_, base, exp) => `${base}^{${exp}}`);
   s = s.replace(/\(([^()]+)\)\^([a-zA-Z0-9]+)/g, (_, base, exp) => `\\left(${base}\\right)^{${exp}}`);
+
+  // Clean up any duplicated \left or \right
+  s = s.replace(/\\left\s*\\left/g, "\\left");
+  s = s.replace(/\\right\s*\\right/g, "\\right");
 
   // Multi-equations like x = -1, x = -3
   s = s.replace(/,\s*([a-zA-Z]\s*=)/g, ",\\ $1");
@@ -118,7 +124,12 @@ export function isPureMathString(str: string): boolean {
   if (!s) return false;
   if (/_{2,}/.test(s)) return false;
 
-  if (/^\\(frac|sqrt|int|sum|prod|lim|vec|alpha|beta|gamma|theta|Delta|begin|left|mathbf|text|displaystyle)\b|^\$|\\\[|\\\(|\bR\s*\\\s*\{/.test(s)) return true;
+  // Natural language prose containing Vietnamese diacritics is never pure math
+  if (/[àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđĐ]/i.test(s)) {
+    return false;
+  }
+
+  if (/^\\(frac|sqrt|int|sum|prod|lim|vec|alpha|beta|gamma|theta|Delta|begin|left|mathbf|text|displaystyle)\b|^\$|\\\[|\\\(|^(?:[a-zA-Z]\s*=\s*)?R\s*\\\s*\{/.test(s)) return true;
   if (/^[-+]?\d+(\.\d+)?$/.test(s)) return true;
   if (/^[\[\(]\s*[-+]?(?:\d+|vô cùng|\+vô cùng|-vô cùng|\\infty|\+\\infty|-\\infty)\s*[;,]\s*[-+]?(?:\d+|vô cùng|\+vô cùng|-vô cùng|\\infty|\+\\infty|-\\infty)\s*[\]\)]$/.test(s)) return true;
   if (/^(?:[A-Z]\s*)?\(\s*[-+]?\d+(?:\.\d+)?\s*,\s*[-+]?\d+(?:\.\d+)?\s*\)$/.test(s)) return true;

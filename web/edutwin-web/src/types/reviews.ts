@@ -20,6 +20,13 @@ export interface EvidenceDecisionDto {
   evaluatedAt: string;
 }
 
+export interface TeacherReviewQuestionOptionDto {
+  optionId: string;
+  optionLabel: string;
+  optionText: string;
+  isCorrect: boolean;
+}
+
 export interface TeacherReviewQueueItemDto {
   attemptId: string;
   assignmentId?: string;
@@ -29,6 +36,9 @@ export interface TeacherReviewQueueItemDto {
   questionId: string;
   subjectId: string;
   questionText: string;
+  questionType?: string;
+  answerDisplayLatex?: string | null;
+  options?: TeacherReviewQuestionOptionDto[];
   analysisId: string;
   finalAnswer: string;
   reasoningText?: string | null;
@@ -42,10 +52,25 @@ export interface TeacherReviewQueueItemDto {
   studentReviewReason?: string | null;
   teacherFinalReviewStatus?: "Pending" | "Approved";
   finalReviewVersion?: number;
+  correctAnswer?: string | null;
+  maxScore?: number | null;
+  awardedScore?: number | null;
+  isCorrect?: boolean | null;
+  hasTeacherOverride?: boolean;
+  overrideAwardedScore?: number | null;
+  overrideReason?: string | null;
+  teacherFeedback?: string | null;
+  reviewDecision?: string | null;
+  overrideVersion?: number;
 }
 
 export interface TeacherReviewQueueQuery {
   classId?: string;
+  assignmentId?: string;
+  studentId?: string;
+  fromDate?: string;
+  toDate?: string;
+  includeAllQuestions?: boolean;
   page?: number;
   pageSize?: number;
 }

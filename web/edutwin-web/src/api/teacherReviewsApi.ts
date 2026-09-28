@@ -9,9 +9,24 @@ import type {
 export const listTeacherReviewQueue = async (
   query?: TeacherReviewQueueQuery
 ): Promise<TeacherReviewQueueResponse> => {
-  const params: Record<string, string | number> = {};
+  const params: Record<string, string | number | boolean> = {};
   if (query?.classId) {
     params.classId = query.classId;
+  }
+  if (query?.assignmentId) {
+    params.assignmentId = query.assignmentId;
+  }
+  if (query?.studentId) {
+    params.studentId = query.studentId;
+  }
+  if (query?.fromDate) {
+    params.fromDate = query.fromDate;
+  }
+  if (query?.toDate) {
+    params.toDate = query.toDate;
+  }
+  if (query?.includeAllQuestions !== undefined) {
+    params.includeAllQuestions = query.includeAllQuestions;
   }
   if (query?.page) {
     params.page = query.page;

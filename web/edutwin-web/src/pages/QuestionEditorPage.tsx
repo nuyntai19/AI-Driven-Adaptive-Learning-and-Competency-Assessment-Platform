@@ -265,6 +265,7 @@ function CenterManagerQuestionEditorView() {
         newMode =
           formData.answerEvaluationMode === "TextExact" ||
           formData.answerEvaluationMode === "NumericRational" ||
+          formData.answerEvaluationMode === "Coordinate2D" ||
           formData.answerEvaluationMode === "Manual"
             ? formData.answerEvaluationMode
             : "TextExact";
@@ -1052,11 +1053,14 @@ function CenterManagerQuestionEditorView() {
               >
                 <option value="TextExact">TextExact - Khớp chuỗi chính xác</option>
                 <option value="NumericRational">NumericRational - Chuẩn hóa phân số & số thực</option>
+                <option value="Coordinate2D">Coordinate2D - Tọa độ 2D</option>
                 <option value="Manual">Manual - Chấm thủ công / AI Rubric</option>
               </select>
               <p className="mt-1.5 text-xs text-[var(--cm-text-muted)] leading-relaxed">
                 {formData.answerEvaluationMode === "NumericRational"
                   ? "Chấp nhận các biểu diễn tương đương toán học như 3/4 = 0.75 hoặc 6/8."
+                  : formData.answerEvaluationMode === "Coordinate2D"
+                  ? "Dành cho tọa độ 2D; chấp nhận (1,1), (1, 1), (1;1) và các thành phần số tương đương."
                   : formData.answerEvaluationMode === "Manual"
                   ? "Dành cho câu hỏi tự luận cần đánh giá qua tiêu chí Rubric hoặc giáo viên duyệt."
                   : "So khớp chính xác ký tự chữ hoa/thường theo chuẩn trắc nghiệm."}

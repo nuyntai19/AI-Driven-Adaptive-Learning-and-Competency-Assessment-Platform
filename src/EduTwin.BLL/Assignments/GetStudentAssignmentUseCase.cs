@@ -138,6 +138,7 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
                     AttemptId = latestAttempt.AttemptId.ToString(),
                     Status = isVoided ? nameof(AttemptStatus.Completed) : latestAttempt.Status.ToString(),
                     FinalAnswer = latestAttempt.FinalAnswer,
+                    AnswerDisplayLatex = latestAttempt.AnswerDisplayLatex,
                     ReasoningText = latestAttempt.ReasoningText,
                     Confidence = latestAttempt.Confidence,
                     TimeSpentSeconds = latestAttempt.TimeSpentSeconds,
@@ -149,6 +150,7 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
                     MaxScore = aq.Question?.MaxScore
                 } : null,
                 SubmittedAnswer = latestAttempt?.FinalAnswer,
+                SubmittedAnswerDisplayLatex = latestAttempt?.AnswerDisplayLatex,
                 SubmittedReasoning = latestAttempt?.ReasoningText,
                 SubmittedAttemptId = latestAttempt?.AttemptId,
                 HasAttachment = latestAttempt != null && hasAttachmentSet.Contains(latestAttempt.AttemptId),
@@ -157,25 +159,29 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
         }).ToList();
 
         DateTime? effectiveExpiresAt = null;
-        if (progress.Assignment.DueAt.HasValue && progress.Assignment.TimeLimitMinutes.HasValue && progress.StartedAt.HasValue)
-        {
-            var timeLimitExpiresAt = progress.StartedAt.Value.AddMinutes(progress.Assignment.TimeLimitMinutes.Value);
-            effectiveExpiresAt = progress.Assignment.DueAt.Value < timeLimitExpiresAt ? progress.Assignment.DueAt.Value : timeLimitExpiresAt;
-        }
-        else if (progress.Assignment.TimeLimitMinutes.HasValue && progress.StartedAt.HasValue)
-        {
-            effectiveExpiresAt = progress.StartedAt.Value.AddMinutes(progress.Assignment.TimeLimitMinutes.Value);
-        }
-        else if (progress.Assignment.DueAt.HasValue)
-        {
-            effectiveExpiresAt = progress.Assignment.DueAt.Value;
-        }
-
         int? remainingSeconds = null;
-        if (effectiveExpiresAt.HasValue)
+
+        if (progress.Assignment.TimeLimitMinutes.HasValue && progress.Assignment.TimeLimitMinutes.Value > 0)
         {
-            var diff = (long)(effectiveExpiresAt.Value - utcNow).TotalSeconds;
-            remainingSeconds = diff > 0 ? (int)Math.Min(diff, int.MaxValue) : 0;
+            // For timed assignments, remainingSeconds is strictly the configured active test time limit.
+            // Active test timer pauses on leave/close and resumes on return in the client session.
+            remainingSeconds = progress.Assignment.TimeLimitMinutes.Value * 60;
+            effectiveExpiresAt = progress.Assignment.DueAt;
+        }
+        else
+        {
+            // For untimed assignments: if teacher set a DueAt, countdown to DueAt; otherwise no timer.
+            if (progress.Assignment.DueAt.HasValue)
+            {
+                effectiveExpiresAt = progress.Assignment.DueAt.Value;
+                var diff = (long)(progress.Assignment.DueAt.Value - utcNow).TotalSeconds;
+                remainingSeconds = diff > 0 ? (int)Math.Min(diff, int.MaxValue) : 0;
+            }
+            else
+            {
+                effectiveExpiresAt = null;
+                remainingSeconds = null;
+            }
         }
 
         EduTwin.DAL.Organization.Class? assignmentClass = null;

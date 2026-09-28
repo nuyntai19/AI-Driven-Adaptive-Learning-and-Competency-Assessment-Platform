@@ -17,6 +17,7 @@ public static class DependencyInjection
     public static IServiceCollection AddAssessmentAndReasoning(this IServiceCollection services)
     {
         services.TryAddSingleton<IMathAnswerNormalizer, MathAnswerNormalizer>();
+        services.TryAddSingleton<ICoordinateAnswerNormalizer, CoordinateAnswerNormalizer>();
         services.TryAddSingleton<MultipleChoiceGrader>();
         services.TryAddSingleton<ShortAnswerGrader>();
         services.TryAddSingleton<EssayGrader>();

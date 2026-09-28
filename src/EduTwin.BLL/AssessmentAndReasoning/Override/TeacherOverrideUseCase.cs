@@ -91,8 +91,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
         var role = _tenantContext.Role ?? string.Empty;
 
         var isTeacher = string.Equals(role, nameof(UserRole.Teacher), StringComparison.OrdinalIgnoreCase);
-        var isCenterManager = string.Equals(role, nameof(UserRole.CenterManager), StringComparison.OrdinalIgnoreCase);
-        if (!isTeacher && !isCenterManager)
+        if (!isTeacher)
         {
             return TeacherOverrideResult.Forbidden();
         }
@@ -356,11 +355,6 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                     ? newEvidence
                     : latestEvidenceByAttempt.GetValueOrDefault(att.AttemptId);
 
-                decimal reasoningWeight = ev?.ReasoningWeight ?? 0m;
-                decimal? effectiveQuality = a is not null
-                    ? (a.OverrideVersion > 0 ? a.OverrideReasoningQuality : a.ReasoningQuality)
-                    : null;
-
                 bool? effectiveCorrectness;
                 if (att.AttemptId == attempt.AttemptId)
                 {
@@ -370,6 +364,11 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                 {
                     effectiveCorrectness = a?.OverrideIsCorrect ?? att.IsCorrect;
                 }
+
+                decimal reasoningWeight = ev?.ReasoningWeight ?? 0m;
+                decimal? effectiveQuality = a is not null
+                    ? (a.OverrideReasoningQuality ?? a.ReasoningQuality ?? (effectiveCorrectness == true ? 70m : 30m))
+                    : null;
 
                 // Fail closed if positive weight evidence has unresolved correctness
                 if (reasoningWeight > 0m && !effectiveCorrectness.HasValue)

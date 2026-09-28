@@ -82,7 +82,8 @@ public sealed class AttemptSubmissionValidatorTests : IDisposable
 
         Assert.True(result.IsSuccess);
         Assert.Null(result.Submission!.IsCorrect);
-        Assert.Equal(0m, result.Submission.AwardedScore);
+        Assert.Null(result.Submission.AwardedScore);
+        Assert.Equal(PreliminaryGradingReasonCodes.ManualMode, result.Submission.PreliminaryGradingReasonCode);
     }
 
     [Fact]
@@ -131,6 +132,7 @@ public sealed class AttemptSubmissionValidatorTests : IDisposable
         Assert.True(result.IsSuccess);
         Assert.True(result.Submission!.IsIdempotentReplay);
         Assert.Equal(7001UL, result.Submission.ExistingAttemptId);
+        Assert.Equal(PreliminaryGradingReasonCodes.ExactMatch, result.Submission.PreliminaryGradingReasonCode);
         Assert.Equal(AttemptStatus.PendingAnalysis, await _dbContext.Attempts
             .Where(attempt => attempt.AttemptId == 7001)
             .Select(attempt => attempt.Status)
@@ -724,6 +726,7 @@ public sealed class AttemptSubmissionValidatorTests : IDisposable
             ReasoningText = request.ReasoningText,
             IsCorrect = true,
             AwardedScore = 2m,
+            PreliminaryGradingReasonCode = PreliminaryGradingReasonCodes.ExactMatch,
             TimeSpentSeconds = request.TimeSpentSeconds,
             Confidence = request.Confidence,
             AnswerChanges = request.AnswerChanges,

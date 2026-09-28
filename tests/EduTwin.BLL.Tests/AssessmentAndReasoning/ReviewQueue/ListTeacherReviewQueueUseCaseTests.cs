@@ -191,6 +191,132 @@ public sealed class ListTeacherReviewQueueUseCaseTests
         Assert.DoesNotContain(result.Data!, item => item.AttemptId == freePracticeAttemptId.ToString());
     }
 
+    [Fact]
+    public async Task ExecuteAsync_MultipleChoiceQuestion_ResolvesOptionIdToReadableAnswer()
+    {
+        var fixture = await CreateFixtureAsync(UserRole.Teacher);
+        await using var context = fixture.Context;
+        var now = DateTime.UtcNow;
+        var centerId = fixture.Tenant.CenterId!.Value;
+
+        var ownedAssignment = await context.Assignments.FirstAsync(a => a.Title == "Owned Assignment");
+
+        const ulong mcQuestionId = 20000;
+        const ulong optAId = 20000;
+        const ulong optBId = 20001;
+
+        context.Questions.Add(new Question
+        {
+            CenterId = centerId,
+            QuestionId = mcQuestionId,
+            SubjectId = Guid.NewGuid(),
+            QuestionText = "Cho hàm số y = 2x + 1. Tính giá trị của y khi x = 3.",
+            QuestionType = EduTwin.Contracts.CurriculumAndQuestions.QuestionType.MultipleChoice,
+            CorrectAnswer = "A",
+            Solution = "y = 2*3 + 1 = 7",
+            LanguageCode = "vi",
+            MaxScore = 10,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+
+        context.QuestionOptions.AddRange(
+            new QuestionOption
+            {
+                CenterId = centerId,
+                OptionId = optAId,
+                QuestionId = mcQuestionId,
+                OptionLabel = "A",
+                OptionText = "7",
+                IsCorrect = true,
+                OrderIndex = 1,
+                CreatedAt = now,
+                UpdatedAt = now
+            },
+            new QuestionOption
+            {
+                CenterId = centerId,
+                OptionId = optBId,
+                QuestionId = mcQuestionId,
+                OptionLabel = "B",
+                OptionText = "5",
+                IsCorrect = false,
+                OrderIndex = 2,
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+
+        const ulong attemptId = 999;
+        context.Attempts.Add(new Attempt
+        {
+            CenterId = centerId,
+            AttemptId = attemptId,
+            StudentId = fixture.StudentId,
+            QuestionId = mcQuestionId,
+            AssignmentId = ownedAssignment.AssignmentId,
+            FinalAnswer = optAId.ToString(),
+            AnswerDisplayLatex = optAId.ToString(),
+            ReasoningText = optAId.ToString(),
+            ReasoningLanguage = "vi",
+            ClientSubmissionId = Guid.NewGuid(),
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+
+        const ulong analysisId = 9999;
+        context.ReasoningAnalyses.Add(new ReasoningAnalysis
+        {
+            CenterId = centerId,
+            AnalysisId = analysisId,
+            AttemptId = attemptId,
+            SchemaVersion = "1.0",
+            MissingSteps = JsonDocument.Parse("[]"),
+            RootCauseNodeIds = JsonDocument.Parse("[]"),
+            Feedback = "Teacher review required",
+            AnalysisConfidence = 40m,
+            OverrideVersion = 0,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+
+        context.EvidenceAssessments.Add(new EvidenceAssessment
+        {
+            CenterId = centerId,
+            EvidenceAssessmentId = 99999,
+            AttemptId = attemptId,
+            AnalysisId = analysisId,
+            SourceType = EvidenceSourceType.AI,
+            TrustLevel = EvidenceTrustLevel.ReviewOnly,
+            DecisionMode = EvidenceDecisionMode.AIWeighted,
+            ReasoningWeight = 0m,
+            ReasonCodes = JsonDocument.Parse("[\"AI_CONFIDENCE_BELOW_50\"]"),
+            RequiresTeacherReview = true,
+            PolicyVersion = "evidence-gate-v1",
+            EvaluatedAt = now,
+            CreatedAt = now
+        });
+
+        await context.SaveChangesAsync();
+
+        var sut = new ListTeacherReviewQueueUseCase(
+            context,
+            fixture.Tenant,
+            new StubClassOwnershipGuard(OwnershipDecision.Allowed));
+
+        var result = await sut.ExecuteAsync(new TeacherReviewQueueQuery(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var item = Assert.Single(result.Data!, i => i.AttemptId == attemptId.ToString());
+        Assert.Equal("A. 7", item.FinalAnswer);
+        Assert.Null(item.AnswerDisplayLatex);
+        Assert.Null(item.ReasoningText);
+        Assert.Equal("MultipleChoice", item.QuestionType);
+        Assert.NotNull(item.Options);
+        Assert.Equal(2, item.Options.Count);
+        Assert.Contains(item.Options, o => o.OptionLabel == "A" && o.OptionText == "7" && o.IsCorrect);
+        Assert.Contains(item.Options, o => o.OptionLabel == "B" && o.OptionText == "5" && !o.IsCorrect);
+    }
+
     private static async Task<Fixture> CreateFixtureAsync(UserRole role)
     {
         var centerId = Guid.NewGuid();

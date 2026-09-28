@@ -46,9 +46,8 @@ public sealed class ApproveAssignmentResultUseCase : IApproveAssignmentResultUse
             return ApproveAssignmentResult.Fail(TeacherApproveStatus.Forbidden, "FORBIDDEN", "Không có quyền duyệt kết quả bài tập.");
 
         var isTeacher = string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.OrdinalIgnoreCase);
-        var isManager = string.Equals(_tenantContext.Role, nameof(UserRole.CenterManager), StringComparison.OrdinalIgnoreCase);
-        if ((!isTeacher && !isManager) || request.StudentId == Guid.Empty || request.Note?.Length > 1000)
-            return ApproveAssignmentResult.Fail(TeacherApproveStatus.ValidationFailed, "VALIDATION_FAILED", "Dữ liệu duyệt kết quả không hợp lệ.");
+        if (!isTeacher || request.StudentId == Guid.Empty || request.Note?.Length > 1000)
+            return ApproveAssignmentResult.Fail(TeacherApproveStatus.Forbidden, "FORBIDDEN", "Chỉ giáo viên phụ trách mới có quyền duyệt kết quả bài tập.");
 
         var progress = await _dbContext.StudentAssignmentProgresses
             .Include(p => p.Assignment)
@@ -71,8 +70,20 @@ public sealed class ApproveAssignmentResultUseCase : IApproveAssignmentResultUse
             .OrderByDescending(a => a.CreatedAt)
             .ToListAsync(cancellationToken);
         var latest = attempts.GroupBy(a => a.QuestionId).Select(g => g.First()).ToList();
-        if (questionIds.Count == 0 || latest.Count != questionIds.Count || latest.Any(a => a.Status is AttemptStatus.PendingAnalysis or AttemptStatus.Processing or AttemptStatus.AnalysisFailed or AttemptStatus.NeedsTeacherReview))
-            return ApproveAssignmentResult.Fail(TeacherApproveStatus.ValidationFailed, "ASSIGNMENT_NOT_READY", "AI chưa đánh giá xong tất cả câu hỏi của bài tập.");
+        if (questionIds.Count == 0 || latest.Count != questionIds.Count)
+        {
+            return ApproveAssignmentResult.Fail(TeacherApproveStatus.ValidationFailed, "ASSIGNMENT_INCOMPLETE", "Học sinh chưa hoàn thành tất cả câu hỏi của bài tập.");
+        }
+
+        if (latest.Any(a => a.Status == AttemptStatus.NeedsTeacherReview))
+        {
+            return ApproveAssignmentResult.Fail(TeacherApproveStatus.ValidationFailed, "ASSIGNMENT_HAS_PENDING_REVIEWS", "Bài tập vẫn còn câu hỏi cần giáo viên rà soát trong hàng đợi. Vui lòng phê duyệt hoặc ghi đè điểm từng câu hỏi trước khi duyệt kết quả toàn bài.");
+        }
+
+        if (latest.Any(a => a.Status is AttemptStatus.PendingAnalysis or AttemptStatus.Processing or AttemptStatus.AnalysisFailed))
+        {
+            return ApproveAssignmentResult.Fail(TeacherApproveStatus.ValidationFailed, "ASSIGNMENT_NOT_READY", "AI chưa phân tích xong tất cả câu hỏi của bài tập. Vui lòng chờ hoàn tất.");
+        }
 
         var now = _timeProvider.GetUtcNow().UtcDateTime;
         progress.TeacherFinalReviewStatus = TeacherFinalReviewStatus.Approved;

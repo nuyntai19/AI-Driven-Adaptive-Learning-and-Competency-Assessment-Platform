@@ -39,6 +39,8 @@ export interface AttemptFeedbackGradingDto {
   isCorrect?: boolean | null;
   awardedScore?: number | null;
   maxScore: number;
+  reasonCode?: string | null;
+  source?: "Deterministic" | "Teacher" | "PendingTeacher" | string;
 }
 
 export interface AttemptFeedbackRootCauseNodeDto {
@@ -86,6 +88,7 @@ export interface AttemptFeedbackRecommendationDto {
 
 export interface AttemptFeedbackStudentSubmissionDto {
   finalAnswer: string;
+  answerDisplayLatex?: string | null;
   reasoningText?: string | null;
   confidence: number;
   timeSpentSeconds: number;

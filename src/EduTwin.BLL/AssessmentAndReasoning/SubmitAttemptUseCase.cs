@@ -307,6 +307,7 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
             AnswerDisplayLatex = submission.AnswerDisplayLatex,
             IsCorrect = submission.IsCorrect,
             AwardedScore = submission.AwardedScore,
+            PreliminaryGradingReasonCode = submission.PreliminaryGradingReasonCode,
             TimeSpentSeconds = submission.TimeSpentSeconds,
             Confidence = submission.Confidence,
             AnswerChanges = submission.AnswerChanges,

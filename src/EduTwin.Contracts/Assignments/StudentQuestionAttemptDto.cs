@@ -7,6 +7,7 @@ public class StudentQuestionAttemptDto
     public string AttemptId { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public string FinalAnswer { get; set; } = string.Empty;
+    public string? AnswerDisplayLatex { get; set; }
     public string? ReasoningText { get; set; }
     public decimal Confidence { get; set; }
     public uint TimeSpentSeconds { get; set; }

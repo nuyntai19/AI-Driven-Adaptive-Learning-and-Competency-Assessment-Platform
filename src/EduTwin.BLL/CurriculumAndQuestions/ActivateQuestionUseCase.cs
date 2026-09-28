@@ -20,17 +20,20 @@ public class ActivateQuestionUseCase : IActivateQuestionUseCase
     private readonly ITenantContext _tenantContext;
     private readonly TimeProvider _timeProvider;
     private readonly IMathAnswerNormalizer _mathNormalizer;
+    private readonly ICoordinateAnswerNormalizer _coordinateNormalizer;
 
     public ActivateQuestionUseCase(
         EduTwinDbContext dbContext,
         ITenantContext tenantContext,
         TimeProvider timeProvider,
-        IMathAnswerNormalizer? mathNormalizer = null)
+        IMathAnswerNormalizer? mathNormalizer = null,
+        ICoordinateAnswerNormalizer? coordinateNormalizer = null)
     {
         _dbContext = dbContext;
         _tenantContext = tenantContext;
         _timeProvider = timeProvider;
         _mathNormalizer = mathNormalizer ?? new MathAnswerNormalizer();
+        _coordinateNormalizer = coordinateNormalizer ?? new CoordinateAnswerNormalizer(_mathNormalizer);
     }
 
     public async Task<ActivateQuestionResult> ExecuteAsync(string questionId, ActivateQuestionRequest request, CancellationToken cancellationToken = default)
@@ -98,6 +101,14 @@ public class ActivateQuestionUseCase : IActivateQuestionUseCase
         if (question.QuestionType == QuestionType.ShortAnswer && question.AnswerEvaluationMode == QuestionAnswerEvaluationMode.NumericRational)
         {
             if (string.IsNullOrWhiteSpace(question.CorrectAnswer) || !_mathNormalizer.TryNormalize(question.CorrectAnswer, out _))
+            {
+                return ActivateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+            }
+        }
+
+        if (question.QuestionType == QuestionType.ShortAnswer && question.AnswerEvaluationMode == QuestionAnswerEvaluationMode.Coordinate2D)
+        {
+            if (string.IsNullOrWhiteSpace(question.CorrectAnswer) || !_coordinateNormalizer.TryNormalize(question.CorrectAnswer, out _))
             {
                 return ActivateQuestionResult.Failure(ErrorCodes.ValidationFailed);
             }

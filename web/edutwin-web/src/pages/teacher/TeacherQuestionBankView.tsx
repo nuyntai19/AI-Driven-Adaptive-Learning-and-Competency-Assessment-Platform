@@ -8,6 +8,7 @@ import {
   useDeleteQuestion,
 } from "../../features/questions/useQuestions";
 import { organizationApi } from "../../api/organizationApi";
+import { knowledgeGraphApi } from "../../api/knowledgeGraphApi";
 import type { Question, QuestionFilter, QuestionType, QuestionStatus } from "../../types/questions";
 import { useAuthStore } from "../../stores/authStore";
 import { permissions } from "../../auth/permissions";
@@ -31,9 +32,11 @@ export function TeacherQuestionBankView() {
   const canPublish = hasPermission(permissions.questionsPublish);
   const canDelete = hasPermission(permissions.questionsDelete);
   const canReadSubjects = hasPermission(permissions.subjectsRead);
+  const canReadNodes = hasPermission(permissions.nodesRead);
 
   // Filters state
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>("");
+  const [selectedTopicId, setSelectedTopicId] = useState<string>("");
   const [selectedType, setSelectedType] = useState<QuestionType | "">("");
   const [selectedDifficulty, setSelectedDifficulty] = useState<number | "">("");
   const [selectedStatus, setSelectedStatus] = useState<QuestionStatus | "">("");
@@ -59,6 +62,14 @@ export function TeacherQuestionBankView() {
     enabled: canReadSubjects,
   });
 
+  // Canonical knowledge nodes query for selected subject
+  const { data: knowledgeNodesData, isLoading: isLoadingKnowledgeNodes } = useQuery({
+    queryKey: ["knowledge-nodes-for-teacher-filter", selectedSubjectId],
+    queryFn: () => knowledgeGraphApi.listNodes(selectedSubjectId),
+    enabled: canReadNodes && Boolean(selectedSubjectId),
+    staleTime: 60_000,
+  });
+
   const subjectMap = useMemo(() => {
     const map = new Map<string, string>();
     subjectsData?.data?.forEach((s) => {
@@ -70,13 +81,14 @@ export function TeacherQuestionBankView() {
   const questionFilter: QuestionFilter = useMemo(
     () => ({
       subjectId: selectedSubjectId || undefined,
+      topicId: selectedTopicId || undefined,
       type: (selectedType as QuestionType) || undefined,
       difficulty: selectedDifficulty !== "" ? Number(selectedDifficulty) : undefined,
       status: (selectedStatus as QuestionStatus) || undefined,
       page,
       pageSize,
     }),
-    [selectedSubjectId, selectedType, selectedDifficulty, selectedStatus, page, pageSize]
+    [selectedSubjectId, selectedTopicId, selectedType, selectedDifficulty, selectedStatus, page, pageSize]
   );
 
   const { data: response, isLoading, isError, error, refetch } = useQuestions(questionFilter);
@@ -222,14 +234,16 @@ export function TeacherQuestionBankView() {
 
       {/* Filter Bar */}
       <div className="rounded-xl border border-[var(--th-border-subtle)] bg-[var(--th-surface)] p-4 shadow-md space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
           {/* Subject Filter */}
-          <div>
-            <label className="block text-[10px] font-semibold uppercase text-[var(--th-text-muted)] mb-1">Môn học</label>
+          <div className="min-w-0">
+            <label htmlFor="filter-teacher-subject" className="block text-[10px] font-semibold uppercase text-[var(--th-text-muted)] mb-1">Môn học</label>
             <select
+              id="filter-teacher-subject"
               value={selectedSubjectId}
               onChange={(e) => {
                 setSelectedSubjectId(e.target.value);
+                setSelectedTopicId("");
                 setPage(1);
               }}
               disabled={isLoadingSubjects}
@@ -244,10 +258,39 @@ export function TeacherQuestionBankView() {
             </select>
           </div>
 
-          {/* Type Filter */}
-          <div>
-            <label className="block text-[10px] font-semibold uppercase text-[var(--th-text-muted)] mb-1">Dạng câu hỏi</label>
+          {/* Knowledge Graph / Topic Filter */}
+          <div className="min-w-0">
+            <label htmlFor="filter-teacher-topic" className="block text-[10px] font-semibold uppercase text-[var(--th-text-muted)] mb-1">Đồ thị tri thức</label>
             <select
+              id="filter-teacher-topic"
+              value={selectedTopicId}
+              onChange={(e) => {
+                setSelectedTopicId(e.target.value);
+                setPage(1);
+              }}
+              disabled={!selectedSubjectId || isLoadingKnowledgeNodes}
+              className="th-select w-full text-xs py-1.5"
+            >
+              <option value="">
+                {!selectedSubjectId
+                  ? "-- Chọn môn học trước --"
+                  : isLoadingKnowledgeNodes
+                  ? "Đang tải nút..."
+                  : "Tất cả nút tri thức"}
+              </option>
+              {knowledgeNodesData?.map((node) => (
+                <option key={node.nodeId} value={node.nodeId}>
+                  [{node.nodeType}] {node.nodeName} ({node.nodeCode})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Type Filter */}
+          <div className="min-w-0">
+            <label htmlFor="filter-teacher-type" className="block text-[10px] font-semibold uppercase text-[var(--th-text-muted)] mb-1">Dạng câu hỏi</label>
+            <select
+              id="filter-teacher-type"
               value={selectedType}
               onChange={(e) => {
                 setSelectedType(e.target.value as QuestionType | "");
@@ -263,9 +306,10 @@ export function TeacherQuestionBankView() {
           </div>
 
           {/* Difficulty Filter */}
-          <div>
-            <label className="block text-[10px] font-semibold uppercase text-[var(--th-text-muted)] mb-1">Độ khó</label>
+          <div className="min-w-0">
+            <label htmlFor="filter-teacher-difficulty" className="block text-[10px] font-semibold uppercase text-[var(--th-text-muted)] mb-1">Độ khó</label>
             <select
+              id="filter-teacher-difficulty"
               value={selectedDifficulty}
               onChange={(e) => {
                 setSelectedDifficulty(e.target.value ? Number(e.target.value) : "");
@@ -283,9 +327,10 @@ export function TeacherQuestionBankView() {
           </div>
 
           {/* Status Filter */}
-          <div>
-            <label className="block text-[10px] font-semibold uppercase text-[var(--th-text-muted)] mb-1">Trạng thái</label>
+          <div className="min-w-0">
+            <label htmlFor="filter-teacher-status" className="block text-[10px] font-semibold uppercase text-[var(--th-text-muted)] mb-1">Trạng thái</label>
             <select
+              id="filter-teacher-status"
               value={selectedStatus}
               onChange={(e) => {
                 setSelectedStatus(e.target.value as QuestionStatus | "");
@@ -301,9 +346,10 @@ export function TeacherQuestionBankView() {
           </div>
 
           {/* Local search input */}
-          <div>
-            <label className="block text-[10px] font-semibold uppercase text-[var(--th-text-muted)] mb-1">Tìm kiếm nội dung</label>
+          <div className="min-w-0">
+            <label htmlFor="filter-teacher-search" className="block text-[10px] font-semibold uppercase text-[var(--th-text-muted)] mb-1">Tìm kiếm nội dung</label>
             <input
+              id="filter-teacher-search"
               type="text"
               placeholder="Nhập từ khóa..."
               value={localSearchText}

@@ -59,7 +59,11 @@ public static class AuthorizationPermissionCatalog
         "recommendations.student.read_own", "recommendations.student.update_own", "dashboards.student.read_own"
     ];
 
-    private static readonly string[] TeacherCodes = ["dashboards.teacher.read_scoped"];
+    private static readonly string[] TeacherCodes =
+    [
+        "dashboards.teacher.read_scoped",
+        "twin.reasoning.override"
+    ];
 
     private static readonly string[] CenterManagerCodes =
     [
@@ -84,8 +88,7 @@ public static class AuthorizationPermissionCatalog
         "curriculum.questions.update", "curriculum.questions.publish", "assignments.assignments.create",
         "assignments.assignments.update", "assignments.assignments.publish", "assignments.assignments.close",
         "learning.attempts.read_scoped", "twin.student.read_scoped", "twin.student.update_scoped",
-        "twin.reasoning.review",
-        "twin.reasoning.override"
+        "twin.reasoning.review"
     ];
 
     private static readonly string[] AllAccountTypeCodes =
