@@ -112,6 +112,16 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
             return TeacherOverrideResult.ValidationFailed("REASON_TOO_LONG", "Override reason must not exceed 1000 characters.");
         }
 
+        if (string.IsNullOrWhiteSpace(request.Feedback))
+        {
+            return TeacherOverrideResult.ValidationFailed("FEEDBACK_REQUIRED", "Teacher feedback is required.");
+        }
+
+        if (request.Feedback.Length > 4000)
+        {
+            return TeacherOverrideResult.ValidationFailed("FEEDBACK_TOO_LONG", "Teacher feedback must not exceed 4000 characters.");
+        }
+
         if (!Enum.IsDefined(typeof(ErrorType), request.ErrorType))
         {
             return TeacherOverrideResult.ValidationFailed("INVALID_ERROR_TYPE", "ErrorType is invalid.");

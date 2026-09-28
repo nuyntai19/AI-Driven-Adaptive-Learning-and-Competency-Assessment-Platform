@@ -62,6 +62,8 @@ public sealed class AttemptFeedbackTeacherEvaluationDto
     public decimal? TeacherScore { get; set; }
     public string? TeacherFeedback { get; set; }
     public string? TeacherReviewNote { get; set; }
+    public int? TeacherReasoningQuality { get; set; }
+    public string? TeacherErrorType { get; set; }
     public string? ReviewedByTeacherName { get; set; }
     public DateTime? ReviewedAt { get; set; }
     public AttemptFeedbackGradingDto? OriginalAIRawGrade { get; set; }

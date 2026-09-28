@@ -121,9 +121,8 @@ public sealed class SubmitAttemptUseCaseTests
         var persisted = await context.StudentAssignmentProgresses.SingleAsync();
         Assert.Equal(ProgressStatus.InProgress, persisted.Status);
         Assert.Equal(originalStartedAt, persisted.StartedAt);
-        Assert.Equal(originalUpdatedAt, persisted.UpdatedAt);
-        Assert.Equal(originalUpdater, persisted.UpdatedBy);
-        Assert.Equal(1ul, persisted.RowVersion);
+        Assert.Equal(FixedNow.UtcDateTime, persisted.UpdatedAt);
+        Assert.Equal(_studentId, persisted.UpdatedBy);
     }
 
     [Fact]

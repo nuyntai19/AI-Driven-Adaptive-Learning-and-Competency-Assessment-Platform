@@ -52,11 +52,14 @@ public class MultipleChoiceGrader : IQuestionGrader
         else if (options != null)
         {
             // Or try to match against options if provided
-            var selectedOption = options.FirstOrDefault(o => 
-                string.Equals(o.OptionLabel, studentAnswer.Trim(), StringComparison.OrdinalIgnoreCase) || 
+            var selectedOption = options.FirstOrDefault(o =>
+                o != null && (
+                string.Equals(o.OptionLabel?.Trim(), studentAnswer.Trim(), StringComparison.OrdinalIgnoreCase) ||
                 o.OptionId.ToString() == studentAnswer.Trim() ||
-                string.Equals($"{o.OptionLabel}. {o.OptionText}".Trim(), studentAnswer.Trim(), StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(o.OptionText.Trim(), studentAnswer.Trim(), StringComparison.OrdinalIgnoreCase));
+                (!string.IsNullOrWhiteSpace(o.OptionLabel) && !string.IsNullOrWhiteSpace(o.OptionText) &&
+                 string.Equals($"{o.OptionLabel}. {o.OptionText}".Trim(), studentAnswer.Trim(), StringComparison.OrdinalIgnoreCase)) ||
+                (!string.IsNullOrWhiteSpace(o.OptionText) &&
+                 string.Equals(o.OptionText.Trim(), studentAnswer.Trim(), StringComparison.OrdinalIgnoreCase))));
 
             if (selectedOption != null && selectedOption.IsCorrect)
             {

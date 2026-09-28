@@ -291,6 +291,7 @@ public sealed class TeacherOverrideUseCaseTests : IDisposable
             ReasoningQuality = 90m,
             IsCorrect = true,
             Reason = "Override",
+            Feedback = "Teacher feedback note",
             OverrideVersion = 1 // Stale! Current is 2
         };
 
@@ -356,6 +357,7 @@ public sealed class TeacherOverrideUseCaseTests : IDisposable
             ReasoningQuality = 90m,
             IsCorrect = true,
             Reason = "Override",
+            Feedback = "Teacher feedback note",
             OverrideVersion = 0
         };
 
@@ -462,6 +464,65 @@ public sealed class TeacherOverrideUseCaseTests : IDisposable
 
         var result = await useCase.ExecuteAsync(2099, request, CancellationToken.None);
         Assert.Equal(TeacherOverrideStatus.Forbidden, result.Status);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task ExecuteAsync_WhenFeedbackIsNullOrEmptyOrWhitespace_ReturnsValidationFailed_FeedbackRequired(string? feedback)
+    {
+        var useCase = new TeacherOverrideUseCase(
+            _dbContext,
+            _tenantContext,
+            new EvidenceGate(),
+            new EvidenceAssessmentFactory(),
+            new StudentGoalRiskUpdater(_dbContext),
+            new StudentTwinUpdater(_dbContext),
+            new TwinUpdateHistoryWriter(_dbContext),
+            TimeProvider.System);
+
+        var request = new TeacherOverrideRequest
+        {
+            ReasoningQuality = 90m,
+            ErrorType = ErrorType.None,
+            Feedback = feedback!,
+            IsCorrect = true,
+            Reason = "Valid reason",
+            OverrideVersion = 0
+        };
+
+        var result = await useCase.ExecuteAsync(1, request, CancellationToken.None);
+        Assert.Equal(TeacherOverrideStatus.ValidationFailed, result.Status);
+        Assert.Equal("FEEDBACK_REQUIRED", result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenFeedbackExceeds4000Chars_ReturnsValidationFailed_FeedbackTooLong()
+    {
+        var useCase = new TeacherOverrideUseCase(
+            _dbContext,
+            _tenantContext,
+            new EvidenceGate(),
+            new EvidenceAssessmentFactory(),
+            new StudentGoalRiskUpdater(_dbContext),
+            new StudentTwinUpdater(_dbContext),
+            new TwinUpdateHistoryWriter(_dbContext),
+            TimeProvider.System);
+
+        var request = new TeacherOverrideRequest
+        {
+            ReasoningQuality = 90m,
+            ErrorType = ErrorType.None,
+            Feedback = new string('A', 4001),
+            IsCorrect = true,
+            Reason = "Valid reason",
+            OverrideVersion = 0
+        };
+
+        var result = await useCase.ExecuteAsync(1, request, CancellationToken.None);
+        Assert.Equal(TeacherOverrideStatus.ValidationFailed, result.Status);
+        Assert.Equal("FEEDBACK_TOO_LONG", result.ErrorCode);
     }
 
     private sealed class FixedTimeProvider : TimeProvider
