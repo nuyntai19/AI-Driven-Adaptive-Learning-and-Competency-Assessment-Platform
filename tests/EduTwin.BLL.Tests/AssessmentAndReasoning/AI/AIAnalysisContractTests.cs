@@ -30,8 +30,10 @@ public sealed class AIAnalysisContractTests
         AssertExactProperties(
             typeof(AnalyzeReasoningQuestion),
             ("QuestionType", typeof(QuestionType), NullabilityState.NotNull, false),
+            ("AnswerEvaluationMode", typeof(QuestionAnswerEvaluationMode), NullabilityState.NotNull, false),
             ("QuestionText", typeof(string), NullabilityState.NotNull, true),
             ("CorrectAnswer", typeof(string), NullabilityState.NotNull, true),
+            ("CanonicalCorrectAnswer", typeof(string), NullabilityState.Nullable, false),
             ("Solution", typeof(string), NullabilityState.NotNull, true),
             ("ExpectedReasoning", typeof(string), NullabilityState.Nullable, false),
             ("GradingCriteria", typeof(AnalyzeReasoningGradingCriteria), NullabilityState.NotNull, true));
@@ -44,6 +46,8 @@ public sealed class AIAnalysisContractTests
         AssertExactProperties(
             typeof(AnalyzeReasoningStudentSubmission),
             ("FinalAnswer", typeof(string), NullabilityState.NotNull, true),
+            ("AnswerDisplayLatex", typeof(string), NullabilityState.Nullable, false),
+            ("CanonicalFinalAnswer", typeof(string), NullabilityState.Nullable, false),
             ("PreliminaryIsCorrect", typeof(bool?), NullabilityState.Nullable, false),
             ("ReasoningText", typeof(string), NullabilityState.Nullable, false),
             ("TimeSpentSeconds", typeof(uint), NullabilityState.NotNull, false),
@@ -89,14 +93,18 @@ public sealed class AIAnalysisContractTests
         AssertObjectProperties(
             question,
             "questionType",
+            "answerEvaluationMode",
             "questionText",
             "correctAnswer",
+            "canonicalCorrectAnswer",
             "solution",
             "expectedReasoning",
             "gradingCriteria");
         Assert.Equal("MultipleChoice", question.GetProperty("questionType").GetString());
+        Assert.Equal("TextExact", question.GetProperty("answerEvaluationMode").GetString());
         Assert.Equal("Giải phương trình ...", question.GetProperty("questionText").GetString());
         Assert.Equal("B", question.GetProperty("correctAnswer").GetString());
+        Assert.Null(question.GetProperty("canonicalCorrectAnswer").GetString());
         Assert.Equal("Lời giải chuẩn", question.GetProperty("solution").GetString());
         Assert.Equal("Các ý mong đợi", question.GetProperty("expectedReasoning").GetString());
 
@@ -111,6 +119,8 @@ public sealed class AIAnalysisContractTests
         AssertObjectProperties(
             submission,
             "finalAnswer",
+            "answerDisplayLatex",
+            "canonicalFinalAnswer",
             "preliminaryIsCorrect",
             "reasoningText",
             "timeSpentSeconds",
@@ -118,6 +128,8 @@ public sealed class AIAnalysisContractTests
             "answerChanges",
             "imageParts");
         Assert.Equal("B", submission.GetProperty("finalAnswer").GetString());
+        Assert.Null(submission.GetProperty("answerDisplayLatex").GetString());
+        Assert.Null(submission.GetProperty("canonicalFinalAnswer").GetString());
         Assert.True(submission.GetProperty("preliminaryIsCorrect").GetBoolean());
         Assert.Equal("Em đặt điều kiện...", submission.GetProperty("reasoningText").GetString());
         Assert.Equal(165u, submission.GetProperty("timeSpentSeconds").GetUInt32());

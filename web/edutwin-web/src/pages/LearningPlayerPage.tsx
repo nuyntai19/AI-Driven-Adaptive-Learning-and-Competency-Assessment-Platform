@@ -534,7 +534,7 @@ export const LearningPlayerPage = () => {
           orderIndex: idx,
         })),
         explanation: assignment.instructions || "",
-        answerEvaluationMode: assignmentQuestion.questionType === "Numeric" ? "NumericRational" : "Exact",
+        answerEvaluationMode: assignmentQuestion.answerEvaluationMode || "TextExact",
       };
     }
     return adaptiveQuestion || null;

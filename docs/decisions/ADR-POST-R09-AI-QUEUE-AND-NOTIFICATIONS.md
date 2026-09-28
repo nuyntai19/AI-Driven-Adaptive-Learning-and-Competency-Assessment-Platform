@@ -113,7 +113,7 @@ Khi mô phỏng 2 worker chạy đồng thời tranh chấp cùng 1 job:
 Để xóa bỏ hàng chục ngàn truy vấn polling dồn về MySQL khi có tải đồng thời:
 
 ```text
-[Học sinh nộp bài] 
+[Học sinh nộp bài]
         │
         ▼ (Transaction duy nhất)
   Lưu Attempt + Tạo Job

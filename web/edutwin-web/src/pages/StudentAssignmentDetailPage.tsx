@@ -26,6 +26,8 @@ const getQuestionTypeLabel = (qType?: string) => {
   switch (qType) {
     case "MultipleChoice":
       return "Trắc nghiệm";
+    case "ShortAnswer":
+      return "Trả lời ngắn";
     case "Numeric":
     case "NumericRational":
       return "Điền số";

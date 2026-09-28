@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using System.Xml.Linq;
 using Microsoft.EntityFrameworkCore;
 using EduTwin.BLL.IdentityAndTenancy;
+using EduTwin.BLL.AssessmentAndReasoning.PreliminaryGrading;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.DAL.CurriculumAndQuestions;
@@ -26,15 +27,21 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
     private readonly EduTwinDbContext _dbContext;
     private readonly ITenantContext _tenantContext;
     private readonly TimeProvider _timeProvider;
+    private readonly IMathAnswerNormalizer _mathNormalizer;
+    private readonly ICoordinateAnswerNormalizer _coordinateNormalizer;
 
     public QuestionImportUseCase(
         EduTwinDbContext dbContext,
         ITenantContext tenantContext,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IMathAnswerNormalizer? mathNormalizer = null,
+        ICoordinateAnswerNormalizer? coordinateNormalizer = null)
     {
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         _tenantContext = tenantContext ?? throw new ArgumentNullException(nameof(tenantContext));
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _mathNormalizer = mathNormalizer ?? new MathAnswerNormalizer();
+        _coordinateNormalizer = coordinateNormalizer ?? new CoordinateAnswerNormalizer(_mathNormalizer);
     }
 
     public async Task<QuestionImportPreviewResult> PreviewAsync(
@@ -104,12 +111,13 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
             {
                 if (typeStr.Equals("ShortAnswer", StringComparison.OrdinalIgnoreCase) ||
                     typeStr.Equals("Tuluanngan", StringComparison.OrdinalIgnoreCase) ||
-                    typeStr.Equals("TuLuan", StringComparison.OrdinalIgnoreCase))
+                    typeStr.Equals("TraLoiNgan", StringComparison.OrdinalIgnoreCase) ||
+                    typeStr.Equals("DienKhuyet", StringComparison.OrdinalIgnoreCase))
                 {
                     questionType = QuestionType.ShortAnswer;
                 }
                 else if (typeStr.Equals("Essay", StringComparison.OrdinalIgnoreCase) ||
-                         typeStr.Equals("Tuluan", StringComparison.OrdinalIgnoreCase))
+                         typeStr.Equals("TuLuan", StringComparison.OrdinalIgnoreCase))
                 {
                     questionType = QuestionType.Essay;
                 }
@@ -234,7 +242,106 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
                 }
             }
 
-            // 10. Options (for MultipleChoice)
+            // 10. Answer Evaluation Mode
+            var evalModeStr = GetValue(row, "answerevaluationmode", "evaluationmode", "chedochamdapan", "mode", "evalmode");
+            QuestionAnswerEvaluationMode evalMode = questionType switch
+            {
+                QuestionType.MultipleChoice => QuestionAnswerEvaluationMode.TextExact,
+                QuestionType.Essay => QuestionAnswerEvaluationMode.Manual,
+                _ => QuestionAnswerEvaluationMode.TextExact
+            };
+
+            if (!string.IsNullOrWhiteSpace(evalModeStr))
+            {
+                if (evalModeStr.Equals("TextExact", StringComparison.OrdinalIgnoreCase) ||
+                    evalModeStr.Equals("Exact", StringComparison.OrdinalIgnoreCase) ||
+                    evalModeStr.Equals("ChinhXac", StringComparison.OrdinalIgnoreCase))
+                {
+                    evalMode = QuestionAnswerEvaluationMode.TextExact;
+                }
+                else if (evalModeStr.Equals("NumericRational", StringComparison.OrdinalIgnoreCase) ||
+                         evalModeStr.Equals("Numeric", StringComparison.OrdinalIgnoreCase) ||
+                         evalModeStr.Equals("SoHuuTi", StringComparison.OrdinalIgnoreCase) ||
+                         evalModeStr.Equals("So", StringComparison.OrdinalIgnoreCase))
+                {
+                    evalMode = QuestionAnswerEvaluationMode.NumericRational;
+                }
+                else if (evalModeStr.Equals("Coordinate2D", StringComparison.OrdinalIgnoreCase) ||
+                         evalModeStr.Equals("Coordinate", StringComparison.OrdinalIgnoreCase) ||
+                         evalModeStr.Equals("ToaDo", StringComparison.OrdinalIgnoreCase))
+                {
+                    evalMode = QuestionAnswerEvaluationMode.Coordinate2D;
+                }
+                else if (evalModeStr.Equals("Manual", StringComparison.OrdinalIgnoreCase) ||
+                         evalModeStr.Equals("ThuCong", StringComparison.OrdinalIgnoreCase) ||
+                         evalModeStr.Equals("GiaoVienCham", StringComparison.OrdinalIgnoreCase))
+                {
+                    evalMode = QuestionAnswerEvaluationMode.Manual;
+                }
+                else
+                {
+                    rowErrors.Add(new QuestionImportRowErrorDto
+                    {
+                        RowIndex = rowIndex,
+                        Field = "AnswerEvaluationMode",
+                        ErrorMessage = "Chế độ so khớp đáp án không hợp lệ (hỗ trợ TextExact, NumericRational, Coordinate2D, Manual).",
+                        RawValue = evalModeStr
+                    });
+                }
+            }
+
+            // Enforce matrix rules & normalizer validation
+            if (questionType == QuestionType.MultipleChoice && evalMode != QuestionAnswerEvaluationMode.TextExact)
+            {
+                rowErrors.Add(new QuestionImportRowErrorDto
+                {
+                    RowIndex = rowIndex,
+                    Field = "AnswerEvaluationMode",
+                    ErrorMessage = "Câu hỏi trắc nghiệm bắt buộc phải có chế độ so khớp là TextExact.",
+                    RawValue = evalMode.ToString()
+                });
+            }
+            else if (questionType == QuestionType.Essay && evalMode != QuestionAnswerEvaluationMode.Manual)
+            {
+                rowErrors.Add(new QuestionImportRowErrorDto
+                {
+                    RowIndex = rowIndex,
+                    Field = "AnswerEvaluationMode",
+                    ErrorMessage = "Câu hỏi tự luận bắt buộc phải có chế độ so khớp là Manual.",
+                    RawValue = evalMode.ToString()
+                });
+            }
+            else if (questionType == QuestionType.ShortAnswer)
+            {
+                if (evalMode == QuestionAnswerEvaluationMode.NumericRational)
+                {
+                    if (string.IsNullOrWhiteSpace(correctAnswer) || !_mathNormalizer.TryNormalize(correctAnswer, out _))
+                    {
+                        rowErrors.Add(new QuestionImportRowErrorDto
+                        {
+                            RowIndex = rowIndex,
+                            Field = "CorrectAnswer",
+                            ErrorMessage = "Đáp án đúng không hợp lệ cho chế độ Điền số / Số hữu tỉ (NumericRational). Ví dụ hợp lệ: 0.5, 1/2, -3/4.",
+                            RawValue = correctAnswer
+                        });
+                    }
+                }
+                else if (evalMode == QuestionAnswerEvaluationMode.Coordinate2D)
+                {
+                    if (string.IsNullOrWhiteSpace(correctAnswer) || !_coordinateNormalizer.TryNormalize(correctAnswer, out _))
+                    {
+                        rowErrors.Add(new QuestionImportRowErrorDto
+                        {
+                            RowIndex = rowIndex,
+                            Field = "CorrectAnswer",
+                            ErrorMessage = "Đáp án đúng không hợp lệ cho chế độ Tọa độ 2D (Coordinate2D). Ví dụ hợp lệ: (1, 2), (1/2; -3/4).",
+                            RawValue = correctAnswer
+                        });
+                    }
+                }
+            }
+
+            // 11. Options (for MultipleChoice)
             var options = new List<QuestionOptionInput>();
             if (questionType == QuestionType.MultipleChoice)
             {
@@ -328,6 +435,7 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
                     MaxScore = maxScore,
                     EstimatedTimeSeconds = estimatedTimeSeconds,
                     ReasoningRequired = reasoningRequired,
+                    AnswerEvaluationMode = evalMode,
                     Options = options,
                     RequiredIdeas = requiredIdeas,
                     CommonErrors = commonErrors
@@ -437,12 +545,32 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
                     ScoringNotes = item.Solution
                 };
 
-                var evalMode = item.QuestionType switch
+                // Shared activation validation policy for importing directly into Active status
+                if (item.QuestionType == QuestionType.MultipleChoice)
                 {
-                    QuestionType.MultipleChoice => QuestionAnswerEvaluationMode.TextExact,
-                    QuestionType.Essay => QuestionAnswerEvaluationMode.Manual,
-                    _ => QuestionAnswerEvaluationMode.TextExact
-                };
+                    if (item.AnswerEvaluationMode != QuestionAnswerEvaluationMode.TextExact)
+                        throw new InvalidOperationException($"Câu hỏi trắc nghiệm dòng {item.RowIndex} không đúng chế độ TextExact.");
+                    if (item.Options == null || item.Options.Count < 2 || item.Options.Count(o => o.IsCorrect) != 1)
+                        throw new InvalidOperationException($"Câu hỏi trắc nghiệm dòng {item.RowIndex} phải có ít nhất 2 lựa chọn và đúng 1 đáp án đúng.");
+                }
+                else if (item.QuestionType == QuestionType.Essay)
+                {
+                    if (item.AnswerEvaluationMode != QuestionAnswerEvaluationMode.Manual)
+                        throw new InvalidOperationException($"Câu hỏi tự luận dòng {item.RowIndex} phải có chế độ Manual.");
+                }
+                else if (item.QuestionType == QuestionType.ShortAnswer)
+                {
+                    if (item.AnswerEvaluationMode == QuestionAnswerEvaluationMode.NumericRational
+                        && (string.IsNullOrWhiteSpace(item.CorrectAnswer) || !_mathNormalizer.TryNormalize(item.CorrectAnswer, out _)))
+                    {
+                        throw new InvalidOperationException($"Đáp án câu hỏi dòng {item.RowIndex} không hợp lệ cho chế độ NumericRational.");
+                    }
+                    if (item.AnswerEvaluationMode == QuestionAnswerEvaluationMode.Coordinate2D
+                        && (string.IsNullOrWhiteSpace(item.CorrectAnswer) || !_coordinateNormalizer.TryNormalize(item.CorrectAnswer, out _)))
+                    {
+                        throw new InvalidOperationException($"Đáp án câu hỏi dòng {item.RowIndex} không hợp lệ cho chế độ Coordinate2D.");
+                    }
+                }
 
                 var question = new Question
                 {
@@ -462,7 +590,7 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
                     ReasoningRequired = item.ReasoningRequired,
                     LanguageCode = "vi",
                     Status = QuestionStatus.Active,
-                    AnswerEvaluationMode = evalMode,
+                    AnswerEvaluationMode = item.AnswerEvaluationMode,
                     CreatedAt = now,
                     CreatedBy = actorId,
                     UpdatedAt = now,

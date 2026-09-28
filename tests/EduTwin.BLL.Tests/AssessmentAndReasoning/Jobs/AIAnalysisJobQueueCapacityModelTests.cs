@@ -263,7 +263,7 @@ public sealed class AIAnalysisJobQueueCapacityModelTests
             new FixedTimeProvider(BaseUtc));
 
         var result2 = await leaseOpWorker2.ExecuteAsync(workItem, "worker-2", TimeSpan.FromMinutes(2), CancellationToken.None);
-        
+
         // Worker 2 finds job is now Processing (not Pending) -> State machine safely rejects claim
         _output.WriteLine($"[State Simulation] Worker 1 outcome: {result1.Outcome}");
         _output.WriteLine($"[State Simulation] Worker 2 outcome: {result2.Outcome} (Safely rejected by state machine OCC guard)");

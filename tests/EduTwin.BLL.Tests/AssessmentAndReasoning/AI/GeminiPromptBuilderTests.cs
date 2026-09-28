@@ -32,8 +32,10 @@ public sealed class GeminiPromptBuilderTests
         AssertObjectProperties(
             question,
             "questionType",
+            "answerEvaluationMode",
             "questionText",
             "correctAnswer",
+            "canonicalCorrectAnswer",
             "solution",
             "expectedReasoning",
             "gradingCriteria");
@@ -47,6 +49,8 @@ public sealed class GeminiPromptBuilderTests
         AssertObjectProperties(
             root.GetProperty("studentSubmission"),
             "finalAnswer",
+            "answerDisplayLatex",
+            "canonicalFinalAnswer",
             "preliminaryIsCorrect",
             "reasoningText",
             "timeSpentSeconds",
