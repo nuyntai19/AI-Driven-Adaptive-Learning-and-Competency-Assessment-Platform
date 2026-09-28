@@ -31,7 +31,7 @@ export function supportsMathTools(subjectNameOrCode?: string | null): boolean {
  * Determines whether a free-response question is strictly formula-only or numeric (where MathLive is appropriate),
  * as opposed to full solution derivation/explanation (where multiline text + newlines is required).
  */
-export function isFormulaOnlyQuestion(answerEvaluationMode?: string | null, _questionText?: string | null): boolean {
+export function isFormulaOnlyQuestion(answerEvaluationMode?: string | null): boolean {
   if (!answerEvaluationMode) return false;
   const mode = answerEvaluationMode.trim().toLowerCase();
   if (mode === 'formulaonly' || mode === 'formula_only' || mode === 'numericexact' || mode === 'numericrational' || mode === 'numeric' || mode === 'numeric_only') {

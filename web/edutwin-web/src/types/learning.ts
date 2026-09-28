@@ -117,6 +117,8 @@ export interface AttemptFeedbackTeacherFinalEvaluationDto {
   teacherIsCorrect?: boolean | null;
   teacherScore?: number | null;
   teacherFeedback?: string | null;
+  teacherReasoningQuality?: number | null;
+  teacherErrorType?: string | null;
   reviewedByTeacherName?: string | null;
   reviewedAt?: string | null;
   originalAIRawGrade?: AttemptFeedbackGradingDto | null;

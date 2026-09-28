@@ -126,7 +126,7 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
     const csvContent =
       "QuestionType,Difficulty,QuestionText,OptionA,MisconceptionA,OptionB,MisconceptionB,OptionC,MisconceptionC,OptionD,MisconceptionD,CorrectAnswer,Solution,ExpectedReasoning,MaxScore,EstimatedTimeSeconds,ReasoningRequired\n" +
       'MultipleChoice,3,"Cho hàm số $y=x^2$. Tính $y\'(2)$.","2","Nhầm đạo hàm của hằng số","4","","8","Nhầm mũ thành nhân","0","Nhầm cực trị","B","Ta có $y\'=2x$, thay $x=2$ được $y\'(2)=4$.","Tính đạo hàm cơ bản và thế số",10,120,TRUE\n' +
-      'ShortAnswer,2,"Giải phương trình $2x - 6 = 0$.","","","","","","","","","3","Ta có $2x=6 \Rightarrow x=3$.","Chuyển vế đổi dấu",10,60,TRUE\n';
+      'ShortAnswer,2,"Giải phương trình $2x - 6 = 0$.","","","","","","","","","3","Ta có $2x=6 \\Rightarrow x=3$.","Chuyển vế đổi dấu",10,60,TRUE\n';
 
     const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);

@@ -22,6 +22,7 @@ import { permissions } from "../../auth/permissions";
 import { RichMathText } from "../math/RichMathText";
 import { ScratchpadAttachmentDrawer } from "../ScratchpadAttachmentDrawer";
 import { extractProblemDetails } from "../../utils/problemDetails";
+import { resolveQuestionDefaultFormValues } from "../../utils/gradingWorkspaceHelpers";
 
 export interface AssignmentGradingWorkspaceProps {
   actor: "Teacher" | "CenterManager";
@@ -295,7 +296,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
 
   // Override Form State for the active question
   const [awardedScore, setAwardedScore] = useState<number>(10);
-  const [isCorrectVal, setIsCorrectVal] = useState<boolean>(true);
+  const [isCorrectVal, setIsCorrectVal] = useState<boolean | null>(null);
   const [reasoningQuality, setReasoningQuality] = useState<number>(80);
   const [errorTypeVal, setErrorTypeVal] = useState<ErrorType>("None");
   const [feedbackVal, setFeedbackVal] = useState<string>("");
@@ -304,21 +305,13 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
   // Populate override form when active question changes
   useEffect(() => {
     if (currentQuestion) {
-      const max = currentQuestion.maxScore ?? 10;
-      setAwardedScore(
-        currentQuestion.overrideAwardedScore ??
-        currentQuestion.awardedScore ??
-        (currentQuestion.evidence?.trustLevel === "Trusted" ? max : 0)
-      );
-      setIsCorrectVal(
-        currentQuestion.isCorrect !== undefined && currentQuestion.isCorrect !== null
-          ? currentQuestion.isCorrect
-          : currentQuestion.evidence?.decisionMode !== "Fallback"
-      );
-      setReasoningQuality(currentQuestion.reasoningQuality ? Math.round(Number(currentQuestion.reasoningQuality)) : 80);
-      setFeedbackVal(currentQuestion.teacherFeedback || "");
-      setOverrideReasonVal(currentQuestion.overrideReason || "");
-      setErrorTypeVal("None");
+      const defaults = resolveQuestionDefaultFormValues(currentQuestion);
+      setAwardedScore(defaults.awardedScore);
+      setIsCorrectVal(defaults.isCorrectVal);
+      setReasoningQuality(defaults.reasoningQuality);
+      setFeedbackVal(defaults.feedbackVal);
+      setOverrideReasonVal(defaults.overrideReasonVal);
+      setErrorTypeVal(defaults.errorTypeVal);
     }
   }, [currentQuestion]);
 
@@ -460,6 +453,10 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
   // Submit Override Handler
   const handleSaveQuestionGrade = () => {
     if (!currentQuestion) return;
+    if (isCorrectVal === null) {
+      showToast("Vui lòng chọn kết quả Đúng hoặc Sai cho câu hỏi trước khi lưu.", "error");
+      return;
+    }
     if (!feedbackVal.trim()) {
       showToast("Vui lòng nhập lời nhận xét của giáo viên gửi học sinh trước khi lưu.", "error");
       return;
@@ -1228,7 +1225,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                         <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-800">
                           <span className="text-slate-500 dark:text-slate-400 block mb-1">Chất lượng lập luận</span>
                           <span className="text-base font-extrabold text-slate-900 dark:text-slate-100">
-                            {currentQuestion.reasoningQuality
+                            {currentQuestion.reasoningQuality !== null && currentQuestion.reasoningQuality !== undefined
                               ? `${Math.round(Number(currentQuestion.reasoningQuality))}/100`
                               : "N/A"}
                           </span>
@@ -1358,7 +1355,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                                     }
                                   }}
                                   className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                                    isCorrectVal
+                                    isCorrectVal === true
                                       ? "bg-emerald-600 text-white shadow-sm"
                                       : "text-slate-600 dark:text-slate-400"
                                   }`}
@@ -1372,7 +1369,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                                     setAwardedScore(0);
                                   }}
                                   className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                                    !isCorrectVal
+                                    isCorrectVal === false
                                       ? "bg-rose-600 text-white shadow-sm"
                                       : "text-slate-600 dark:text-slate-400"
                                   }`}
