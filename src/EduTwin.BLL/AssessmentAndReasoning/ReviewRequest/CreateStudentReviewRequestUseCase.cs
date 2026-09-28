@@ -41,13 +41,17 @@ public sealed class CreateStudentReviewRequestUseCase : ICreateStudentReviewRequ
             return CreateStudentReviewRequestResult.NotFound();
         }
 
-        var comment = !string.IsNullOrWhiteSpace(request.StudentComment) ? request.StudentComment : request.Reason;
-        if (string.IsNullOrWhiteSpace(comment))
+        var rawComment = !string.IsNullOrWhiteSpace(request.StudentComment) ? request.StudentComment : request.Reason;
+        if (string.IsNullOrWhiteSpace(rawComment))
         {
             return CreateStudentReviewRequestResult.ValidationFailed("Lý do yêu cầu xem xét không được để trống.");
         }
 
-        if (comment.Trim().Length > 1000)
+        var comment = !string.IsNullOrWhiteSpace(request.DisputeCategory) && !rawComment.StartsWith($"[{request.DisputeCategory}]", StringComparison.OrdinalIgnoreCase)
+            ? $"[{request.DisputeCategory}] {rawComment.Trim()}"
+            : rawComment.Trim();
+
+        if (comment.Length > 1000)
         {
             return CreateStudentReviewRequestResult.ValidationFailed("Lý do yêu cầu xem xét không được vượt quá 1000 ký tự.");
         }

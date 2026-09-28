@@ -61,6 +61,14 @@ export function AttemptFeedbackHierarchy({
   const [reviewModalError, setReviewModalError] = useState<string | null>(null);
   const [reviewSuccessMessage, setReviewSuccessMessage] = useState<string | null>(null);
 
+  // Dispute Question State
+  const [isDisputeModalOpen, setIsDisputeModalOpen] = useState(false);
+  const [disputeCategory, setDisputeCategory] = useState("DEFECTIVE_QUESTION");
+  const [disputeComment, setDisputeComment] = useState("");
+  const [isSubmittingDispute, setIsSubmittingDispute] = useState(false);
+  const [disputeModalError, setDisputeModalError] = useState<string | null>(null);
+  const [disputeSuccessMessage, setDisputeSuccessMessage] = useState<string | null>(null);
+
   // Teacher solution accordion state (collapsed by default)
   const [isTeacherSolutionOpen, setIsTeacherSolutionOpen] = useState(false);
 
@@ -123,6 +131,35 @@ export function AttemptFeedbackHierarchy({
       );
     } finally {
       setIsSubmittingReview(false);
+    }
+  };
+
+  const handleSubmitDispute = async () => {
+    if (!disputeComment.trim() || disputeComment.trim().length < 10) {
+      setDisputeModalError("Vui lòng nhập mô tả sự cố cụ thể (tối thiểu 10 ký tự).");
+      return;
+    }
+
+    try {
+      setIsSubmittingDispute(true);
+      setDisputeModalError(null);
+      await createStudentReviewRequest(attemptId, {
+        studentComment: `[${disputeCategory}] ${disputeComment.trim()}`,
+        disputeCategory,
+      });
+      setDisputeSuccessMessage("Đã gửi báo cáo sự cố đề bài tới giáo viên phụ trách!");
+      setTimeout(() => {
+        setIsDisputeModalOpen(false);
+        setDisputeSuccessMessage(null);
+        setDisputeComment("");
+      }, 1500);
+      await onRefreshFeedback();
+    } catch (error: unknown) {
+      setDisputeModalError(
+        safeClientErrorMessage(error, "Không thể gửi báo cáo sự cố. Vui lòng thử lại sau."),
+      );
+    } finally {
+      setIsSubmittingDispute(false);
     }
   };
 
@@ -380,10 +417,21 @@ export function AttemptFeedbackHierarchy({
 
         {/* Existing Student Review Request Status Card */}
         {reviewRequest && (
-          <div className="rounded-2xl border border-purple-500/30 bg-purple-500/10 p-4 space-y-2">
+          <div className={`rounded-2xl border p-4 space-y-2 ${
+            reviewRequest.studentComment?.startsWith("[DEFECTIVE") || reviewRequest.studentComment?.startsWith("[QUESTION")
+              ? "border-amber-500/30 bg-amber-500/10"
+              : "border-purple-500/30 bg-purple-500/10"
+          }`}>
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
-                <span>🙋</span> Yêu cầu xem xét của bạn
+              <span className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${
+                reviewRequest.studentComment?.startsWith("[DEFECTIVE") || reviewRequest.studentComment?.startsWith("[QUESTION")
+                  ? "text-amber-400"
+                  : "text-purple-300"
+              }`}>
+                <span>{reviewRequest.studentComment?.startsWith("[DEFECTIVE") || reviewRequest.studentComment?.startsWith("[QUESTION") ? "🚩" : "🙋"}</span>
+                {reviewRequest.studentComment?.startsWith("[DEFECTIVE") || reviewRequest.studentComment?.startsWith("[QUESTION")
+                  ? "Báo cáo sự cố đề bài của bạn"
+                  : "Yêu cầu xem xét của bạn"}
               </span>
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border ${
                 reviewRequest.status === "Pending"
@@ -395,19 +443,31 @@ export function AttemptFeedbackHierarchy({
                 {reviewRequest.status === "Pending" ? "Đang chờ giáo viên duyệt" : reviewRequest.status === "Resolved" ? "Đã giải quyết" : "Từ chối"}
               </span>
             </div>
-            <p className="text-xs text-purple-200 italic">
+            <p className={`text-xs italic ${
+              reviewRequest.studentComment?.startsWith("[DEFECTIVE") || reviewRequest.studentComment?.startsWith("[QUESTION")
+                ? "text-amber-200"
+                : "text-purple-200"
+            }`}>
               "{reviewRequest.studentComment}"
             </p>
             {reviewRequest.teacherNote && (
-              <div className="pt-2 border-t border-purple-500/20 text-xs text-purple-100">
-                <span className="font-semibold text-purple-300">Phản hồi từ giáo viên: </span>
+              <div className={`pt-2 border-t text-xs ${
+                reviewRequest.studentComment?.startsWith("[DEFECTIVE") || reviewRequest.studentComment?.startsWith("[QUESTION")
+                  ? "border-amber-500/20 text-amber-100"
+                  : "border-purple-500/20 text-purple-100"
+              }`}>
+                <span className={`font-semibold ${
+                  reviewRequest.studentComment?.startsWith("[DEFECTIVE") || reviewRequest.studentComment?.startsWith("[QUESTION")
+                    ? "text-amber-300"
+                    : "text-purple-300"
+                }`}>Phản hồi từ giáo viên: </span>
                 {reviewRequest.teacherNote}
               </div>
             )}
           </div>
         )}
 
-        {/* Action Buttons: Retry AI & Review Request */}
+        {/* Action Buttons: Retry AI & Review Request / Dispute */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
           <div className="flex items-center gap-2">
             {feedbackData.status === "AnalysisFailed" && retryQuota?.canRetry && (
@@ -440,13 +500,22 @@ export function AttemptFeedbackHierarchy({
           </div>
 
           {!reviewRequest && (
-            <button
-              type="button"
-              onClick={() => setIsReviewModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border border-purple-500/40 text-purple-600 dark:text-purple-300 hover:bg-purple-500/10 transition-colors cursor-pointer"
-            >
-              <span>🙋</span> Yêu cầu xem xét kết quả AI
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsReviewModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border border-purple-500/40 text-purple-600 dark:text-purple-300 hover:bg-purple-500/10 transition-colors cursor-pointer"
+              >
+                <span>🙋</span> Yêu cầu xem xét kết quả AI
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsDisputeModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border border-rose-500/40 text-rose-600 dark:text-rose-300 hover:bg-rose-500/10 transition-colors cursor-pointer"
+              >
+                <span>🚩</span> Báo cáo đề bài bị sai
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -690,6 +759,111 @@ export function AttemptFeedbackHierarchy({
                 className="px-5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50 flex items-center gap-2"
               >
                 {isSubmittingReview ? "Đang gửi..." : "Gửi yêu cầu tới giáo viên"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* STUDENT DISPUTE MODAL */}
+      {isDisputeModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-3xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 p-6 sm:p-7 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                <span>🚩</span> Báo Cáo Đề Bài Bị Sai Sót
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsDisputeModalOpen(false)}
+                className="text-slate-400 hover:text-slate-200 text-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 p-3 text-xs text-amber-800 dark:text-amber-200 leading-relaxed">
+                <span className="font-bold">Lưu ý:</span> Khi bạn báo cáo câu hỏi sai sót (sai số liệu, thiếu đề, không có đáp án đúng, lỗi công thức LaTeX...), giáo viên phụ trách sẽ kiểm tra trực tiếp. Nếu đề bài thực sự có lỗi, giáo viên có thể hủy câu này và cộng điểm tối đa cho cả lớp.
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                  Loại sự cố gặp phải <span className="text-rose-400">*</span>:
+                </label>
+                <div className="space-y-2">
+                  {[
+                    { value: "DEFECTIVE_QUESTION_WRONG_CONTENT", label: "Đề bài sai dữ liệu / Thiếu giả thiết không giải được" },
+                    { value: "DEFECTIVE_QUESTION_WRONG_OPTIONS", label: "Đáp án trắc nghiệm bị sai / Không có đáp án đúng" },
+                    { value: "DEFECTIVE_QUESTION_TYPO_LATEX", label: "Lỗi hiển thị công thức LaTeX / Lỗi chính tả nghiêm trọng" },
+                    { value: "DEFECTIVE_QUESTION_OTHER", label: "Sự cố khác liên quan đến đề bài" }
+                  ].map((option) => (
+                    <label
+                      key={option.value}
+                      className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-xs cursor-pointer transition-colors ${
+                        disputeCategory === option.value
+                          ? "border-amber-500 bg-amber-500/10 text-amber-800 dark:text-amber-200 font-semibold"
+                          : "border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40 text-slate-700 dark:text-slate-300"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="disputeCategory"
+                        value={option.value}
+                        checked={disputeCategory === option.value}
+                        onChange={(e) => setDisputeCategory(e.target.value)}
+                        className="text-amber-500 focus:ring-amber-500"
+                      />
+                      <span>{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Mô tả chi tiết lỗi <span className="text-rose-400">*</span>:
+                </label>
+                <textarea
+                  rows={4}
+                  value={disputeComment}
+                  onChange={(e) => setDisputeComment(e.target.value)}
+                  placeholder="Ví dụ: Đề bài yêu cầu tìm x nhưng không cho dữ kiện cạnh BC; hoặc đáp án A và C đều giống hệt nhau..."
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-3 text-xs text-slate-900 dark:text-slate-100 focus:outline-hidden focus:border-amber-500"
+                />
+                <span className="text-[11px] text-slate-400 mt-1 block">
+                  Tối thiểu 10 ký tự ({disputeComment.trim().length}/500)
+                </span>
+              </div>
+
+              {disputeModalError && (
+                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+                  {disputeModalError}
+                </div>
+              )}
+
+              {disputeSuccessMessage && (
+                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-semibold">
+                  ✓ {disputeSuccessMessage}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setIsDisputeModalOpen(false)}
+                className="px-4 py-2 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                disabled={isSubmittingDispute || disputeComment.trim().length < 10}
+                onClick={handleSubmitDispute}
+                className="px-5 py-2 text-xs font-bold rounded-xl bg-amber-600 hover:bg-amber-500 text-white disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+              >
+                {isSubmittingDispute ? "Đang gửi..." : "Gửi báo cáo sự cố"}
               </button>
             </div>
           </div>

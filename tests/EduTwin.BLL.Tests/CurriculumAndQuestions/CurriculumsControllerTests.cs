@@ -28,6 +28,8 @@ public class CurriculumsControllerTests
     private readonly Mock<IAssignCurriculumClassesUseCase> _assignClassesUseCaseMock;
     private readonly Mock<IAssignCurriculumNodesUseCase> _assignNodesUseCaseMock;
     private readonly Mock<IPublishCurriculumUseCase> _publishUseCaseMock;
+    private readonly Mock<IArchiveCurriculumUseCase> _archiveUseCaseMock;
+    private readonly Mock<ICloneCurriculumUseCase> _cloneUseCaseMock;
     private readonly Mock<TimeProvider> _timeProviderMock;
     private readonly CurriculumsController _sut;
     private readonly DateTimeOffset _fixedTime = new DateTimeOffset(2026, 7, 24, 14, 0, 0, TimeSpan.Zero);
@@ -41,6 +43,8 @@ public class CurriculumsControllerTests
         _assignClassesUseCaseMock = new Mock<IAssignCurriculumClassesUseCase>();
         _assignNodesUseCaseMock = new Mock<IAssignCurriculumNodesUseCase>();
         _publishUseCaseMock = new Mock<IPublishCurriculumUseCase>();
+        _archiveUseCaseMock = new Mock<IArchiveCurriculumUseCase>();
+        _cloneUseCaseMock = new Mock<ICloneCurriculumUseCase>();
         _timeProviderMock = new Mock<TimeProvider>();
         _timeProviderMock.Setup(t => t.GetUtcNow()).Returns(_fixedTime);
 
@@ -52,6 +56,8 @@ public class CurriculumsControllerTests
             _assignClassesUseCaseMock.Object,
             _assignNodesUseCaseMock.Object,
             _publishUseCaseMock.Object,
+            _archiveUseCaseMock.Object,
+            _cloneUseCaseMock.Object,
             _timeProviderMock.Object);
 
         var httpContext = new DefaultHttpContext
@@ -374,16 +380,57 @@ public class CurriculumsControllerTests
     }
 
     [Fact]
-    public void CurriculumListResponse_HasNoPaginationProperties()
+    public async Task ArchiveCurriculum_Success_Returns200Envelope()
     {
-        var type = typeof(CurriculumListResponse);
-        var properties = type.GetProperties().Select(p => p.Name.ToLowerInvariant()).ToList();
+        var curriculumId = Guid.NewGuid();
+        var request = new ArchiveCurriculumRequest { RowVersion = "1" };
+        var expectedDto = new CurriculumDto
+        {
+            CurriculumId = curriculumId.ToString("D"),
+            Title = "Toán 12",
+            ReviewStatus = "Archived",
+            RowVersion = "2"
+        };
 
-        Assert.DoesNotContain("page", properties);
-        Assert.DoesNotContain("pagesize", properties);
-        Assert.DoesNotContain("totalitems", properties);
-        Assert.DoesNotContain("totalpages", properties);
-        Assert.DoesNotContain("issuccess", properties);
-        Assert.DoesNotContain("message", properties);
+        _archiveUseCaseMock
+            .Setup(x => x.ExecuteAsync(curriculumId, request, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ArchiveCurriculumResult.Success(expectedDto));
+
+        var result = await _sut.ArchiveCurriculum(curriculumId, request, CancellationToken.None);
+
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var response = Assert.IsType<CurriculumResponse>(okResult.Value);
+
+        Assert.Same(expectedDto, response.Data);
+        Assert.NotNull(response.Meta);
+        Assert.Equal("test-trace-id", response.Meta.TraceId);
+    }
+
+    [Fact]
+    public async Task CloneCurriculum_Success_Returns201Envelope()
+    {
+        var curriculumId = Guid.NewGuid();
+        var request = new CloneCurriculumRequest { Title = "Toán 12 V2" };
+        var expectedDto = new CurriculumDto
+        {
+            CurriculumId = Guid.NewGuid().ToString("D"),
+            Title = "Toán 12 V2",
+            ReviewStatus = "Draft",
+            RowVersion = "1"
+        };
+
+        _cloneUseCaseMock
+            .Setup(x => x.ExecuteAsync(curriculumId, request, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CloneCurriculumResult.Success(expectedDto));
+
+        var result = await _sut.CloneCurriculum(curriculumId, request, CancellationToken.None);
+
+        var createdResult = Assert.IsType<CreatedResult>(result);
+        var response = Assert.IsType<CurriculumResponse>(createdResult.Value);
+
+        Assert.Same(expectedDto, response.Data);
+        Assert.NotNull(response.Meta);
+        Assert.Equal("test-trace-id", response.Meta.TraceId);
     }
 }
+

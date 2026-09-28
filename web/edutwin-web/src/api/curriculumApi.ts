@@ -4,6 +4,8 @@ import type {
   CreateCurriculumRequest,
   UpdateCurriculumRequest,
   PublishCurriculumRequest,
+  ArchiveCurriculumRequest,
+  CloneCurriculumRequest,
   UpdateCurriculumClassesRequest,
   UpdateCurriculumNodesRequest,
   ReviewStatus,
@@ -35,6 +37,16 @@ export const curriculumApi = {
 
   publish: async (id: string, data: PublishCurriculumRequest) => {
     const response = await httpClient.post<ApiResponse<Curriculum>>(`${BASE_URL}/${id}/publish`, data);
+    return response.data;
+  },
+
+  archive: async (id: string, data: ArchiveCurriculumRequest) => {
+    const response = await httpClient.post<ApiResponse<Curriculum>>(`${BASE_URL}/${id}/archive`, data);
+    return response.data;
+  },
+
+  clone: async (id: string, data: CloneCurriculumRequest) => {
+    const response = await httpClient.post<ApiResponse<Curriculum>>(`${BASE_URL}/${id}/clone`, data);
     return response.data;
   },
 

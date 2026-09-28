@@ -53,7 +53,7 @@ namespace EduTwin.DAL.Persistence.Migrations
                 columns: table => new
                 {
                     request_id = table.Column<ulong>(type: "bigint unsigned", nullable: false)
-                        .Annotation("MySql:ValueGenerationStrategy", MySql.EntityFrameworkCore.Metadata.MySQLValueGenerationStrategy.IdentityColumn),
+                        .Annotation("MySQL:ValueGenerationStrategy", MySql.EntityFrameworkCore.Metadata.MySQLValueGenerationStrategy.IdentityColumn),
                     center_id = table.Column<string>(type: "varchar(36)", maxLength: 36, nullable: false),
                     attempt_id = table.Column<ulong>(type: "bigint unsigned", nullable: false),
                     student_id = table.Column<string>(type: "varchar(36)", maxLength: 36, nullable: false),

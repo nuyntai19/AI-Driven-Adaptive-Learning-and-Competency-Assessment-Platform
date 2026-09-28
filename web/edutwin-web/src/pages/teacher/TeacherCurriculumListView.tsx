@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { curriculumApi } from "../../api/curriculumApi";
 import { organizationApi } from "../../api/organizationApi";
@@ -14,14 +14,20 @@ import {
   TeacherSafeErrorPanel,
 } from "../../components/teacher/TeacherPrimitives";
 import { TeacherFilterBar } from "../../components/teacher/TeacherFilterBar";
+import { TeacherModal, TeacherConfirmDialog } from "../../components/teacher/TeacherOverlays";
 
 export const TeacherCurriculumListView: React.FC = () => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const selectedSubjectId = searchParams.get("subjectId") || "";
   const selectedStatus = searchParams.get("status") || "";
   const [searchTerm, setSearchTerm] = useState("");
+  const [archiveTarget, setArchiveTarget] = useState<Curriculum | null>(null);
+  const [cloneTarget, setCloneTarget] = useState<Curriculum | null>(null);
+  const [cloneTitle, setCloneTitle] = useState("");
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const hasPermission = useAuthStore((state) => state.hasPermission);
   const canCreate = hasPermission(permissions.curriculumsCreate);
@@ -72,7 +78,48 @@ export const TeacherCurriculumListView: React.FC = () => {
       });
     },
     onSuccess: () => {
+      setActionError(null);
       queryClient.invalidateQueries({ queryKey: ["teacherCurriculums"] });
+    },
+    onError: (err: any) => {
+      setActionError(err.message || "Không thể xuất bản giáo trình.");
+    },
+  });
+
+  // Archive mutation
+  const archiveMutation = useMutation({
+    mutationFn: async (curriculum: Curriculum) => {
+      return await curriculumApi.archive(curriculum.curriculumId, {
+        rowVersion: curriculum.rowVersion,
+      });
+    },
+    onSuccess: () => {
+      setArchiveTarget(null);
+      setActionError(null);
+      queryClient.invalidateQueries({ queryKey: ["teacherCurriculums"] });
+    },
+    onError: (err: any) => {
+      setActionError(err.message || "Không thể lưu trữ giáo trình.");
+    },
+  });
+
+  // Clone mutation
+  const cloneMutation = useMutation({
+    mutationFn: async ({ curriculum, title }: { curriculum: Curriculum; title?: string }) => {
+      return await curriculumApi.clone(curriculum.curriculumId, {
+        title: title?.trim() || undefined,
+      });
+    },
+    onSuccess: (res) => {
+      setCloneTarget(null);
+      setActionError(null);
+      queryClient.invalidateQueries({ queryKey: ["teacherCurriculums"] });
+      if (res?.data?.curriculumId) {
+        navigate(`/giao-vien/giao-trinh/${res.data.curriculumId}`);
+      }
+    },
+    onError: (err: any) => {
+      setActionError(err.message || "Không thể nhân bản giáo trình.");
     },
   });
 
@@ -98,6 +145,33 @@ export const TeacherCurriculumListView: React.FC = () => {
           ) : undefined
         }
       />
+
+      {actionError && (
+        <div
+          style={{
+            padding: "12px 16px",
+            borderRadius: "8px",
+            marginBottom: "16px",
+            backgroundColor: "rgba(239, 68, 68, 0.12)",
+            border: "1px solid var(--th-danger)",
+            color: "var(--th-danger)",
+            fontSize: "0.875rem",
+            fontWeight: 600,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <span>{actionError}</span>
+          <button
+            type="button"
+            onClick={() => setActionError(null)}
+            style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontWeight: "bold" }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Metrics Row */}
       <div className="th-stats-grid" style={{ marginBottom: "20px" }}>
@@ -304,7 +378,7 @@ export const TeacherCurriculumListView: React.FC = () => {
                     </div>
                   </div>
 
-                  <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+                  <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", flexWrap: "wrap" }}>
                     {canPublish && curr.reviewStatus === "Draft" && (
                       <button
                         className="th-button-secondary"
@@ -316,12 +390,39 @@ export const TeacherCurriculumListView: React.FC = () => {
                       </button>
                     )}
 
+                    {canPublish && curr.reviewStatus === "Published" && (
+                      <button
+                        className="th-button-secondary"
+                        onClick={() => setArchiveTarget(curr)}
+                        disabled={archiveMutation.isPending}
+                        style={{ fontSize: "0.8rem", padding: "6px 12px", color: "var(--th-warning)" }}
+                        title="Đóng băng và lưu trữ giáo trình sau khi hoàn tất khóa học"
+                      >
+                        Lưu trữ
+                      </button>
+                    )}
+
+                    {canCreate && (curr.reviewStatus === "Published" || curr.reviewStatus === "Archived") && (
+                      <button
+                        className="th-button-secondary"
+                        onClick={() => {
+                          setCloneTarget(curr);
+                          setCloneTitle(`${curr.title} (V2)`);
+                        }}
+                        disabled={cloneMutation.isPending}
+                        style={{ fontSize: "0.8rem", padding: "6px 12px" }}
+                        title="Tạo bản sao mới dạng Nháp với đầy đủ các chủ đề tri thức để cải cách chương trình"
+                      >
+                        Nhân bản (Clone V2)
+                      </button>
+                    )}
+
                     <Link
                       to={`/giao-vien/giao-trinh/${curr.curriculumId}`}
                       className="th-primary-button"
                       style={{ fontSize: "0.8rem", padding: "6px 14px", textDecoration: "none" }}
                     >
-                      Chỉnh sửa & Cấu trúc
+                      {curr.reviewStatus === "Draft" ? "Chỉnh sửa & Cấu trúc" : "Xem cấu trúc"}
                     </Link>
                   </div>
                 </div>
@@ -330,6 +431,76 @@ export const TeacherCurriculumListView: React.FC = () => {
           })}
         </div>
       )}
+
+      {/* Archive Confirm Dialog */}
+      <TeacherConfirmDialog
+        isOpen={Boolean(archiveTarget)}
+        onClose={() => setArchiveTarget(null)}
+        onConfirm={() => {
+          if (archiveTarget) {
+            archiveMutation.mutate(archiveTarget);
+          }
+        }}
+        title="Lưu trữ giáo trình (Archive)"
+        description={`Bạn có chắc chắn muốn lưu trữ giáo trình "${archiveTarget?.title}"? Sau khi lưu trữ, cấu trúc các điểm tri thức sẽ được đóng băng để bảo toàn lịch sử học tập của các lớp học đã qua. Bạn có thể sử dụng chức năng "Nhân bản (Clone V2)" để tạo phiên bản mới cho năm học tiếp theo.`}
+        confirmLabel="Xác nhận lưu trữ"
+        tone="danger"
+        isConfirming={archiveMutation.isPending}
+      />
+
+      {/* Clone Curriculum Modal */}
+      <TeacherModal
+        isOpen={Boolean(cloneTarget)}
+        onClose={() => setCloneTarget(null)}
+        title="Nhân bản giáo trình (Clone V2)"
+        description={`Tạo một bản sao mới dạng Bản nháp (Draft) từ "${cloneTarget?.title}". Tất cả các chủ đề tri thức còn hoạt động (${cloneTarget?.nodeIds?.length ?? 0} nodes) sẽ được sao chép nguyên vẹn.`}
+        maxWidth="max-w-md"
+        footer={
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+            <button
+              type="button"
+              className="th-button-secondary"
+              onClick={() => setCloneTarget(null)}
+              disabled={cloneMutation.isPending}
+            >
+              Hủy
+            </button>
+            <button
+              type="button"
+              className="th-primary-button"
+              onClick={() => {
+                if (cloneTarget) {
+                  cloneMutation.mutate({ curriculum: cloneTarget, title: cloneTitle });
+                }
+              }}
+              disabled={cloneMutation.isPending || !cloneTitle.trim()}
+            >
+              {cloneMutation.isPending ? "Đang nhân bản..." : "Tạo bản sao V2"}
+            </button>
+          </div>
+        }
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          <div>
+            <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)", marginBottom: "6px" }}>
+              Tên giáo trình mới <span style={{ color: "var(--th-danger)" }}>*</span>
+            </label>
+            <input
+              type="text"
+              maxLength={200}
+              className="th-input"
+              value={cloneTitle}
+              onChange={(e) => setCloneTitle(e.target.value)}
+              placeholder="Nhập tên giáo trình mới..."
+              style={{ width: "100%" }}
+              autoFocus
+            />
+          </div>
+          <p style={{ fontSize: "0.75rem", color: "var(--th-text-muted)", margin: 0 }}>
+            💡 Gợi ý: Bản sao mới sẽ ở trạng thái Bản nháp (Draft). Bạn có thể tự do thêm, bớt và đổi thứ tự các chủ đề trước khi áp dụng cho khóa học sinh mới mà không ảnh hưởng đến lớp cũ.
+          </p>
+        </div>
+      </TeacherModal>
     </div>
   );
 };

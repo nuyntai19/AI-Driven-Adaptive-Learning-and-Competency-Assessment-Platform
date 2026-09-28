@@ -7,7 +7,9 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.Assignments;
+using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.DAL.AssessmentAndReasoning;
+using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.Persistence;
 
 namespace EduTwin.BLL.Assignments;
@@ -67,6 +69,7 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
             {
                 aq.AssignmentId,
                 aq.QuestionId,
+                Status = aq.Question != null ? aq.Question.Status : QuestionStatus.Active,
                 MaxScore = aq.Question != null && aq.Question.MaxScore > 0
                     ? aq.Question.MaxScore
                     : aq.Points > 0 ? aq.Points : 1.00m
@@ -167,15 +170,17 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
 
                 var analysis = analysesByAttemptId.GetValueOrDefault(attempt.AttemptId);
 
-                // Effective grade calculation
-                decimal? effectiveScore = analysis?.OverrideAwardedScore ?? attempt.AwardedScore;
-                bool? effectiveIsCorrect = analysis?.OverrideIsCorrect ?? attempt.IsCorrect;
+                var isVoided = q.Status == QuestionStatus.Archived;
 
-                if (effectiveScore.HasValue || effectiveIsCorrect.HasValue)
+                // Effective grade calculation
+                decimal? effectiveScore = isVoided ? q.MaxScore : (analysis?.OverrideAwardedScore ?? attempt.AwardedScore);
+                bool? effectiveIsCorrect = isVoided ? true : (analysis?.OverrideIsCorrect ?? attempt.IsCorrect);
+
+                if (isVoided || effectiveScore.HasValue || effectiveIsCorrect.HasValue)
                 {
-                    var earnedRatio = effectiveScore.HasValue && q.MaxScore > 0
+                    var earnedRatio = isVoided ? 1m : (effectiveScore.HasValue && q.MaxScore > 0
                         ? Math.Clamp(effectiveScore.Value / q.MaxScore, 0m, 1m)
-                        : effectiveIsCorrect == true ? 1m : 0m;
+                        : effectiveIsCorrect == true ? 1m : 0m);
                     totalAwardedScore += scorePerQuestion * earnedRatio;
                     evaluatedQuestionCount++;
 

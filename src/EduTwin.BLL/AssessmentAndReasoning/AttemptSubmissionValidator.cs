@@ -7,6 +7,7 @@ using EduTwin.Contracts.Common;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.DAL.AssessmentAndReasoning;
+using EduTwin.DAL.Assignments;
 using EduTwin.DAL.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -96,8 +97,7 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
                 candidate =>
                     candidate.CenterId == centerId &&
                     candidate.QuestionId == questionId &&
-                    !candidate.IsDeleted &&
-                    candidate.Status == QuestionStatus.Active,
+                    !candidate.IsDeleted,
                 cancellationToken);
 
         if (question is null || !IsSupportedLanguage(question.LanguageCode))
@@ -105,6 +105,18 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
             return AttemptSubmissionValidationResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
+        // Only Active questions or questions archived while part of a published assignment are eligible
+        if (question.Status != QuestionStatus.Active && question.Status != QuestionStatus.Archived)
+        {
+            return AttemptSubmissionValidationResult.Failure(ErrorCodes.ResourceNotFound);
+        }
+
+        if (!request.AssignmentId.HasValue && question.Status != QuestionStatus.Active)
+        {
+            return AttemptSubmissionValidationResult.Failure(ErrorCodes.ResourceNotFound);
+        }
+
+        AssignmentQuestion? assignmentQuestion = null;
         if (request.AssignmentId.HasValue)
         {
             var assignment = await _dbContext.Assignments
@@ -135,16 +147,16 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
                         target.StudentId == studentId,
                     cancellationToken);
 
-            var belongsToAssignment = await _dbContext.AssignmentQuestions
+            assignmentQuestion = await _dbContext.AssignmentQuestions
                 .AsNoTracking()
-                .AnyAsync(
-                    assignmentQuestion =>
-                        assignmentQuestion.CenterId == centerId &&
-                        assignmentQuestion.AssignmentId == request.AssignmentId.Value &&
-                        assignmentQuestion.QuestionId == questionId,
+                .SingleOrDefaultAsync(
+                    aq =>
+                        aq.CenterId == centerId &&
+                        aq.AssignmentId == request.AssignmentId.Value &&
+                        aq.QuestionId == questionId,
                     cancellationToken);
 
-            if (!isTarget || !belongsToAssignment)
+            if (!isTarget || assignmentQuestion is null)
             {
                 return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
             }
@@ -180,7 +192,9 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
             }
         }
 
-        if (!request.Skipped && question.ReasoningRequired && string.IsNullOrWhiteSpace(request.ReasoningText))
+        var isVoidedQuestion = request.AssignmentId.HasValue && question.Status == QuestionStatus.Archived;
+
+        if (!request.Skipped && !isVoidedQuestion && question.ReasoningRequired && string.IsNullOrWhiteSpace(request.ReasoningText))
         {
             return AttemptSubmissionValidationResult.Failure(ErrorCodes.QuestionReasoningRequired);
         }
@@ -207,25 +221,32 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
                 .ToListAsync(cancellationToken)
             : [];
 
-        var preliminaryGrade = !request.Skipped
-            ? _graderFactory
-                .GetGrader(question.QuestionType)
-                .Grade(
-                    request.FinalAnswer,
-                    question.CorrectAnswer,
-                    new PreliminaryGrading.QuestionGradingContext
-                    {
-                        EvaluationMode = question.AnswerEvaluationMode,
-                        MaxScore = question.MaxScore,
-                        Criteria = question.GradingCriteria,
-                        Options = options
-                    })
-            : new PreliminaryGradingResult
+        var preliminaryGrade = isVoidedQuestion
+            ? new PreliminaryGradingResult
             {
-                IsCorrect = false,
-                Score = 0m,
-                Feedback = "Skipped"
-            };
+                IsCorrect = true,
+                Score = assignmentQuestion?.Points > 0 ? assignmentQuestion.Points : question.MaxScore,
+                Feedback = "Câu hỏi đã được đánh dấu có sai sót đề và được tự động công nhận trọn điểm."
+            }
+            : (!request.Skipped
+                ? _graderFactory
+                    .GetGrader(question.QuestionType)
+                    .Grade(
+                        request.FinalAnswer,
+                        question.CorrectAnswer,
+                        new PreliminaryGrading.QuestionGradingContext
+                        {
+                            EvaluationMode = question.AnswerEvaluationMode,
+                            MaxScore = question.MaxScore,
+                            Criteria = question.GradingCriteria,
+                            Options = options
+                        })
+                : new PreliminaryGradingResult
+                {
+                    IsCorrect = false,
+                    Score = 0m,
+                    Feedback = "Skipped"
+                });
 
         var effectiveFinalAnswer = request.Skipped
             ? (string.IsNullOrWhiteSpace(request.FinalAnswer) ? "SKIPPED" : request.FinalAnswer)

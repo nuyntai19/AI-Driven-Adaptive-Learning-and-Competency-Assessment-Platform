@@ -121,6 +121,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
   const [viewMode, setViewMode] = useState<"canvas" | "table">("canvas");
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: "success" | "error"; text: string; traceId?: string | null } | null>(null);
+  const [hideInactiveNodes, setHideInactiveNodes] = useState<boolean>(false);
 
   // Modals state
   const [isAddNodeOpen, setIsAddNodeOpen] = useState(false);
@@ -207,6 +208,19 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
   const nodes = useMemo(() => graphData?.nodes ?? [], [graphData?.nodes]);
   const edges = useMemo(() => graphData?.edges ?? [], [graphData?.edges]);
 
+  const inactiveNodesCount = useMemo(() => nodes.filter((n) => !n.isActive).length, [nodes]);
+
+  const visibleNodes = useMemo(() => {
+    if (!hideInactiveNodes) return nodes;
+    return nodes.filter((n) => n.isActive);
+  }, [nodes, hideInactiveNodes]);
+
+  const visibleEdges = useMemo(() => {
+    if (!hideInactiveNodes) return edges;
+    const activeNodeIdSet = new Set(nodes.filter((n) => n.isActive).map((n) => n.nodeId));
+    return edges.filter((e) => activeNodeIdSet.has(e.sourceNodeId) && activeNodeIdSet.has(e.targetNodeId));
+  }, [edges, nodes, hideInactiveNodes]);
+
   const nodeMap = useMemo(() => {
     const map = new Map<string, KnowledgeGraphNodeDto>();
     for (const node of nodes) {
@@ -224,6 +238,13 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
     () => (selectedEdgeId ? edges.find((e) => e.edgeId === selectedEdgeId) || null : null),
     [selectedEdgeId, edges]
   );
+
+  // If selected node gets hidden by filter, deselect it
+  useEffect(() => {
+    if (hideInactiveNodes && selectedNode && !selectedNode.isActive) {
+      setSelectedNodeId(null);
+    }
+  }, [hideInactiveNodes, selectedNode]);
 
   // Populate node edit form when selectedNode changes
   useEffect(() => {
@@ -247,12 +268,12 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
 
   // DAG Validation Check
   const dagValidation = useMemo(() => {
-    return checkDagCycles(nodes, edges);
-  }, [nodes, edges]);
+    return checkDagCycles(visibleNodes, visibleEdges);
+  }, [visibleNodes, visibleEdges]);
 
   // Compute Deterministic DAG Topological Layout
   const layout = useMemo(() => {
-    return computeDeterministicDagLayout(nodes, edges, {
+    return computeDeterministicDagLayout(visibleNodes, visibleEdges, {
       cardWidth: 190,
       cardHeight: 75,
       gapX: 80,
@@ -262,7 +283,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
       minWidth: 850,
       minHeight: 520,
     });
-  }, [nodes, edges]);
+  }, [visibleNodes, visibleEdges]);
 
   const invalidateGraph = async () => {
     if (user?.centerId && selectedSubjectId) {
@@ -327,9 +348,15 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
     },
     onError: (err: any) => {
       const details = extractProblemDetails(err);
+      const isConflictOrLocked =
+        (isAxiosError(err) && (err.response?.status === 409 || err.response?.status === 400)) ||
+        err?.message?.includes("ràng buộc") ||
+        err?.message?.includes("conflict");
       setFeedbackMsg({
         type: "error",
-        text: mapSafeOperationalError(err, "Không thể xóa điểm tri thức vì đang có ràng buộc liên kết."),
+        text: isConflictOrLocked
+          ? "Điểm tri thức này đang được gắn vào Giáo trình, Ngân hàng câu hỏi hoặc Lịch sử năng lực học sinh (Digital Twin) nên bị CẤM XÓA CỨNG để bảo toàn dữ liệu học thuật. Thay vào đó, vui lòng chuyển trạng thái nút sang 'Vô hiệu hóa' (Tắt hoạt động)."
+          : mapSafeOperationalError(err, "Không thể xóa điểm tri thức vì đang có ràng buộc liên kết."),
         traceId: details.traceId,
       });
     },
@@ -830,9 +857,41 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                     <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                       <span style={{ width: "10px", height: "10px", borderRadius: "50%", backgroundColor: "#f43f5e" }} /> Gây lỗi (CausesError)
                     </span>
+                    <span style={{ display: "flex", alignItems: "center", gap: "6px", opacity: 0.85 }}>
+                      <span style={{ width: "12px", height: "8px", border: "1.5px dashed #94a3b8", borderRadius: "2px", backgroundColor: "rgba(100, 116, 139, 0.4)" }} /> Đã vô hiệu hóa
+                    </span>
                   </div>
 
-                  {/* Zoom Controls inside Canvas Header */}
+                  {/* Right Controls: Hide Inactive Toggle + Zoom Controls */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                    <label
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        cursor: "pointer",
+                        backgroundColor: hideInactiveNodes ? "rgba(20, 184, 166, 0.15)" : "var(--th-surface)",
+                        border: `1px solid ${hideInactiveNodes ? "var(--th-teal)" : "var(--th-border)"}`,
+                        borderRadius: "6px",
+                        padding: "3px 10px",
+                        fontSize: "0.75rem",
+                        color: hideInactiveNodes ? "var(--th-teal)" : "var(--th-text-secondary)",
+                        userSelect: "none",
+                        transition: "all 0.15s ease",
+                        fontWeight: hideInactiveNodes ? 600 : 500,
+                      }}
+                      title="Ẩn các điểm tri thức đã vô hiệu hóa để sơ đồ cây tri thức gọn gàng, sạch đẹp"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={hideInactiveNodes}
+                        onChange={(e) => setHideInactiveNodes(e.target.checked)}
+                        style={{ accentColor: "var(--th-teal)", cursor: "pointer" }}
+                      />
+                      <span>Ẩn điểm tri thức đã tắt {inactiveNodesCount > 0 ? `(${inactiveNodesCount})` : ""}</span>
+                    </label>
+
+                    {/* Zoom Controls inside Canvas Header */}
                   <div style={{ display: "flex", alignItems: "center", gap: "4px", backgroundColor: "var(--th-surface)", border: "1px solid var(--th-border)", borderRadius: "6px", padding: "2px 4px" }}>
                     <button
                       type="button"
@@ -863,6 +922,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                     </button>
                   </div>
                 </div>
+              </div>
 
                 {/* SVG Canvas Area */}
                 <div
@@ -929,19 +989,25 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                         </defs>
 
                         {/* Render Edges */}
-                        {edges.map((edge) => {
+                        {visibleEdges.map((edge) => {
                           const sourcePos = layout.positions.get(edge.sourceNodeId);
                           const targetPos = layout.positions.get(edge.targetNodeId);
                           if (!sourcePos || !targetPos) return null;
 
+                          const isSourceInactive = !nodeMap.get(edge.sourceNodeId)?.isActive;
+                          const isTargetInactive = !nodeMap.get(edge.targetNodeId)?.isActive;
+                          const isInactiveEdge = isSourceInactive || isTargetInactive;
+
                           const isSelected = selectedEdgeId === edge.edgeId;
-                          const strokeColor = relationTypeColors[edge.relationType] || "#64748b";
+                          const strokeColor = isInactiveEdge
+                            ? "#64748b"
+                            : relationTypeColors[edge.relationType] || "#64748b";
                           const { d: pathData, midX, midY } = computeEdgePath(sourcePos, targetPos, 190, 75);
 
                           return (
                             <g
                               key={edge.edgeId}
-                              style={{ cursor: "pointer" }}
+                              style={{ cursor: "pointer", opacity: isInactiveEdge ? 0.45 : 1 }}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setSelectedEdgeId(edge.edgeId);
@@ -957,7 +1023,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                                 fill="none"
                                 stroke={strokeColor}
                                 strokeWidth={isSelected ? 3.5 : Math.max(1.8, (edge.weight ?? 1) * 2.5)}
-                                strokeDasharray={edge.relationType === "RelatedTo" ? "5,5" : undefined}
+                                strokeDasharray={isInactiveEdge ? "4,4" : (edge.relationType === "RelatedTo" ? "5,5" : undefined)}
                                 markerEnd={`url(#arrow-${edge.relationType})`}
                                 style={{
                                   filter: isSelected ? `drop-shadow(0 0 6px ${strokeColor})` : undefined,
@@ -992,19 +1058,24 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                         })}
 
                         {/* Render Nodes Cards */}
-                        {nodes.map((node) => {
+                        {visibleNodes.map((node) => {
                           const pos = layout.positions.get(node.nodeId);
                           if (!pos) return null;
 
                           const cardW = 190;
                           const cardH = 75;
                           const isSelected = selectedNodeId === node.nodeId;
+                          const isInactive = !node.isActive;
 
                           return (
                             <g
                               key={node.nodeId}
                               transform={`translate(${pos.x}, ${pos.y})`}
-                              style={{ cursor: "pointer" }}
+                              style={{
+                                cursor: "pointer",
+                                opacity: isInactive ? (isSelected ? 0.9 : 0.55) : 1,
+                                transition: "all 0.2s ease",
+                              }}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setSelectedNodeId(node.nodeId);
@@ -1016,12 +1087,21 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                                 width={cardW}
                                 height={cardH}
                                 rx={10}
-                                fill="var(--th-surface)"
-                                stroke={isSelected ? "var(--th-teal)" : "var(--th-border)"}
+                                fill={isInactive ? "rgba(30, 41, 59, 0.75)" : "var(--th-surface)"}
+                                stroke={
+                                  isSelected
+                                    ? "var(--th-teal)"
+                                    : isInactive
+                                    ? "#64748b"
+                                    : "var(--th-border)"
+                                }
                                 strokeWidth={isSelected ? 2.5 : 1}
+                                strokeDasharray={isInactive ? "5 4" : undefined}
                                 style={{
                                   filter: isSelected
                                     ? "drop-shadow(0 0 10px rgba(20, 184, 166, 0.5))"
+                                    : isInactive
+                                    ? "none"
                                     : "drop-shadow(0 4px 6px rgba(0, 0, 0, 0.25))",
                                   transition: "all 0.15s ease",
                                 }}
@@ -1032,7 +1112,8 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                                 width={cardW}
                                 height={4}
                                 rx={2}
-                                fill={nodeTypeColors[node.nodeType] || "#06b6d4"}
+                                fill={isInactive ? "#64748b" : (nodeTypeColors[node.nodeType] || "#06b6d4")}
+                                opacity={isInactive ? 0.5 : 1}
                               />
 
                               {/* Node Code */}
@@ -1041,22 +1122,22 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                                 y={22}
                                 fontSize={10}
                                 fontWeight="bold"
-                                fill="var(--th-teal)"
+                                fill={isInactive ? "#94a3b8" : "var(--th-teal)"}
                                 fontFamily="monospace"
                               >
                                 {node.nodeCode}
                               </text>
 
-                              {/* Node Type Badge Text */}
+                              {/* Node Type Badge Text or Inactive Alert */}
                               <text
                                 x={cardW - 12}
                                 y={22}
                                 textAnchor="end"
                                 fontSize={9}
-                                fill="var(--th-text-secondary)"
-                                fontWeight="600"
+                                fill={isInactive ? "#f59e0b" : "var(--th-text-secondary)"}
+                                fontWeight={isInactive ? "700" : "600"}
                               >
-                                {nodeTypeLabels[node.nodeType] ?? node.nodeType}
+                                {isInactive ? "🚫 ĐÃ TẮT" : (nodeTypeLabels[node.nodeType] ?? node.nodeType)}
                               </text>
 
                               {/* Node Name */}
@@ -1065,10 +1146,10 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                                 y={44}
                                 fontSize={12}
                                 fontWeight="700"
-                                fill="var(--th-text)"
+                                fill={isInactive ? "var(--th-text-muted)" : "var(--th-text)"}
                               >
-                                {node.nodeName.length > 20
-                                  ? `${node.nodeName.substring(0, 19)}...`
+                                {node.nodeName.length > 18
+                                  ? `${node.nodeName.substring(0, 17)}...`
                                   : node.nodeName}
                               </text>
 
@@ -1079,7 +1160,9 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                                 fontSize={9}
                                 fill="var(--th-text-muted)"
                               >
-                                #{node.orderIndex} • Thi: {node.examImportance}% • {node.estimatedLearningMinutes}p
+                                {isInactive
+                                  ? "Vô hiệu hóa (không áp dụng)"
+                                  : `#${node.orderIndex} • Thi: ${node.examImportance}% • ${node.estimatedLearningMinutes}p`}
                               </text>
                             </g>
                           );
@@ -1102,6 +1185,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                         <th style={{ padding: "8px 10px" }}>Mã</th>
                         <th style={{ padding: "8px 10px" }}>Tên chủ đề</th>
                         <th style={{ padding: "8px 10px" }}>Phân loại</th>
+                        <th style={{ padding: "8px 10px" }}>Trạng thái</th>
                         <th style={{ padding: "8px 10px" }}>Thứ tự</th>
                         <th style={{ padding: "8px 10px" }}>Trọng số thi</th>
                         <th style={{ padding: "8px 10px" }}>Thời lượng</th>
@@ -1115,6 +1199,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                           style={{
                             borderBottom: "1px solid var(--th-border-subtle)",
                             backgroundColor: selectedNodeId === n.nodeId ? "var(--th-surface-raised)" : "transparent",
+                            opacity: n.isActive ? 1 : 0.6,
                             cursor: "pointer",
                           }}
                           onClick={() => {
@@ -1122,10 +1207,26 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                             setSelectedEdgeId(null);
                           }}
                         >
-                          <td style={{ padding: "10px", fontFamily: "monospace", color: "var(--th-teal)", fontWeight: 600 }}>{n.nodeCode}</td>
-                          <td style={{ padding: "10px", fontWeight: 600 }}>{n.nodeName}</td>
+                          <td style={{ padding: "10px", fontFamily: "monospace", color: n.isActive ? "var(--th-teal)" : "#94a3b8", fontWeight: 600 }}>{n.nodeCode}</td>
+                          <td style={{ padding: "10px", fontWeight: 600, color: n.isActive ? "var(--th-text)" : "var(--th-text-muted)" }}>{n.nodeName}</td>
                           <td style={{ padding: "10px" }}>
                             <span className="th-badge th-badge-info">{nodeTypeLabels[n.nodeType] ?? n.nodeType}</span>
+                          </td>
+                          <td style={{ padding: "10px" }}>
+                            <span
+                              style={{
+                                display: "inline-block",
+                                padding: "2px 8px",
+                                borderRadius: "12px",
+                                fontSize: "0.72rem",
+                                fontWeight: 600,
+                                backgroundColor: n.isActive ? "rgba(16, 185, 129, 0.15)" : "rgba(245, 158, 11, 0.15)",
+                                color: n.isActive ? "#10b981" : "#f59e0b",
+                                border: `1px solid ${n.isActive ? "#10b981" : "#f59e0b"}`,
+                              }}
+                            >
+                              {n.isActive ? "Đang hoạt động" : "Đã vô hiệu hóa"}
+                            </span>
                           </td>
                           <td style={{ padding: "10px" }}>{n.orderIndex}</td>
                           <td style={{ padding: "10px" }}>{n.examImportance}%</td>
@@ -1257,9 +1358,17 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                 {/* Edit Form */}
                 {canUpdateNodes ? (
                   <form onSubmit={handleEditNodeSubmit} style={{ display: "flex", flexDirection: "column", gap: "10px", borderTop: "1px solid var(--th-border-subtle)", paddingTop: "12px" }}>
-                    <h4 style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", color: "var(--th-text-muted)", margin: 0 }}>
-                      Chỉnh sửa điểm tri thức
-                    </h4>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <h4 style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", color: "var(--th-text-muted)", margin: 0 }}>
+                        Chỉnh sửa điểm tri thức
+                      </h4>
+                      <span
+                        className={`th-badge ${selectedNode.isActive ? "th-badge-success" : "th-badge-neutral"}`}
+                        style={{ fontSize: "0.7rem", padding: "2px 8px" }}
+                      >
+                        {selectedNode.isActive ? "Đang hoạt động" : "Đã vô hiệu hóa"}
+                      </span>
+                    </div>
 
                     <div>
                       <label style={{ display: "block", fontSize: "0.75rem", color: "var(--th-text-secondary)", marginBottom: "4px" }}>
@@ -1339,7 +1448,39 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                       />
                     </div>
 
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
+                    {/* Active/Inactive Toggle Checkbox */}
+                    <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "0.8rem", color: "var(--th-text-primary)", padding: "4px 0" }}>
+                      <input
+                        type="checkbox"
+                        checked={editNodeIsActive}
+                        onChange={(e) => setEditNodeIsActive(e.target.checked)}
+                        style={{ width: "15px", height: "15px", accentColor: "var(--th-primary)" }}
+                      />
+                      <span>Kích hoạt cho giảng dạy (Đang hoạt động)</span>
+                    </label>
+
+                    {!selectedNode.isActive && (
+                      <div
+                        style={{
+                          padding: "8px 12px",
+                          borderRadius: "8px",
+                          background: "rgba(245, 158, 11, 0.08)",
+                          border: "1px dashed rgba(245, 158, 11, 0.3)",
+                          fontSize: "0.75rem",
+                          color: "#f59e0b",
+                          lineHeight: "1.4",
+                        }}
+                      >
+                        ⚠️ <strong>Điểm tri thức này đã bị vô hiệu hóa</strong>: Không còn phục vụ học tập & phân tích mới. Bạn có thể tích chọn <em>&ldquo;Ẩn điểm tri thức đã tắt&rdquo;</em> ở thanh công cụ phía trên đồ thị để làm gọn và hiển thị đồ thị đẹp nhất.
+                        {!canDeleteNodes && (
+                          <div style={{ marginTop: "4px", color: "var(--th-text-muted)", fontSize: "0.72rem" }}>
+                            ℹ️ Quyền xóa vĩnh viễn nút khỏi cơ sở dữ liệu thuộc về Quản lý Trung tâm (CenterManager) nhằm bảo vệ an toàn toàn vẹn dữ liệu hệ thống.
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px", gap: "8px", flexWrap: "wrap" }}>
                       {canDeleteNodes && (
                         <button
                           type="button"
@@ -1348,6 +1489,33 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                           style={{ minHeight: "32px", padding: "0 10px", fontSize: "0.75rem" }}
                         >
                           Xóa nút
+                        </button>
+                      )}
+                      {canUpdateNodes && selectedNode.isActive && (
+                        <button
+                          type="button"
+                          className="th-secondary-button"
+                          onClick={() => {
+                            setEditNodeIsActive(false);
+                            updateNodeMutation.mutate({
+                              id: selectedNode.nodeId,
+                              req: {
+                                nodeName: editNodeName.trim(),
+                                parentNodeId: editNodeParentId.trim() || null,
+                                description: editNodeDescription.trim() || null,
+                                orderIndex: parseInt(editNodeOrderIndex, 10) || 0,
+                                examImportance: parseFloat(editNodeExamImportance) || 0,
+                                estimatedLearningMinutes: parseInt(editNodeEstimatedMinutes, 10) || 30,
+                                isActive: false,
+                                rowVersion: selectedNode.rowVersion,
+                              },
+                            });
+                          }}
+                          disabled={updateNodeMutation.isPending}
+                          style={{ minHeight: "32px", padding: "0 10px", fontSize: "0.75rem", color: "var(--th-warning)" }}
+                          title="Vô hiệu hóa điểm tri thức thay vì xóa cứng nhằm bảo toàn dữ liệu giáo trình và năng lực học sinh"
+                        >
+                          Tắt hoạt động
                         </button>
                       )}
                       <button
@@ -1745,7 +1913,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
           }
         }}
         title="Xác nhận xóa điểm tri thức"
-        description={`Bạn có chắc chắn muốn xóa điểm tri thức "${deletingNode?.nodeName}" (${deletingNode?.nodeCode})? Tất cả liên kết liên quan sẽ bị gỡ bỏ.`}
+        description={`Bạn có chắc chắn muốn xóa điểm tri thức "${deletingNode?.nodeName}" (${deletingNode?.nodeCode})? Lưu ý: Nếu điểm tri thức này đã được sử dụng trong bất kỳ Giáo trình, Bài tập, Câu hỏi hoặc Lịch sử năng lực học sinh (Digital Twin), hệ thống sẽ cấm xóa cứng để bảo vệ dữ liệu. Thay vào đó bạn có thể chọn Tắt hoạt động (Vô hiệu hóa).`}
         confirmLabel="Xóa vĩnh viễn"
         tone="danger"
         isConfirming={deleteNodeMutation.isPending}

@@ -25,6 +25,7 @@ public sealed class TeacherReviewController : ControllerBase
     private readonly ITeacherOverrideUseCase? _overrideUseCase;
     private readonly ITeacherApproveUseCase? _approveUseCase;
     private readonly IApproveAssignmentResultUseCase? _approveAssignmentResultUseCase;
+    private readonly IVoidAssignmentQuestionUseCase? _voidAssignmentQuestionUseCase;
     private readonly IGetTeacherStudentTwinUseCase? _teacherStudentTwinUseCase;
     private readonly TimeProvider _timeProvider;
 
@@ -35,7 +36,8 @@ public sealed class TeacherReviewController : ControllerBase
         ITeacherApproveUseCase? approveUseCase,
         IApproveAssignmentResultUseCase? approveAssignmentResultUseCase,
         IGetTeacherStudentTwinUseCase teacherStudentTwinUseCase,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        IVoidAssignmentQuestionUseCase? voidAssignmentQuestionUseCase = null)
     {
         _reviewQueueUseCase = reviewQueueUseCase ?? throw new ArgumentNullException(nameof(reviewQueueUseCase));
         _overrideUseCase = overrideUseCase;
@@ -43,6 +45,7 @@ public sealed class TeacherReviewController : ControllerBase
         _approveAssignmentResultUseCase = approveAssignmentResultUseCase;
         _teacherStudentTwinUseCase = teacherStudentTwinUseCase;
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+        _voidAssignmentQuestionUseCase = voidAssignmentQuestionUseCase;
     }
 
     public TeacherReviewController(
@@ -281,6 +284,39 @@ public sealed class TeacherReviewController : ControllerBase
             TeacherApproveStatus.Forbidden => ProblemResponse(403, "forbidden", "Không có quyền phê duyệt", result.ErrorMessage, result.ErrorCode, traceId),
             TeacherApproveStatus.NotFound => ProblemResponse(404, "not-found", "Không tìm thấy dữ liệu", result.ErrorMessage, result.ErrorCode, traceId),
             TeacherApproveStatus.Conflict => ProblemResponse(409, "conflict", "Xung đột phiên bản", result.ErrorMessage, result.ErrorCode, traceId),
+            _ => throw new InvalidOperationException($"Unexpected status: {result.Status}")
+        };
+    }
+
+    [HttpPost("assignments/{assignmentId:guid}/questions/{questionId}/void")]
+    [Authorize(Policy = "twin.reasoning.override")]
+    [ProducesResponseType(typeof(VoidAssignmentQuestionResultDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> VoidAssignmentQuestion(
+        [FromRoute] Guid assignmentId,
+        [FromRoute] ulong questionId,
+        [FromBody] VoidAssignmentQuestionRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (_voidAssignmentQuestionUseCase is null)
+            throw new InvalidOperationException("VoidAssignmentQuestionUseCase is not configured.");
+
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        var result = await _voidAssignmentQuestionUseCase.ExecuteAsync(assignmentId, questionId, request, cancellationToken);
+        if (result.Status == VoidAssignmentQuestionStatus.Success)
+        {
+            return Ok(new
+            {
+                Data = result.Data!,
+                Meta = new MetaDto { TraceId = traceId, Timestamp = _timeProvider.GetUtcNow().UtcDateTime }
+            });
+        }
+
+        return result.Status switch
+        {
+            VoidAssignmentQuestionStatus.ValidationFailed => ProblemResponse(400, "validation", "Dữ liệu không hợp lệ", result.ErrorMessage, result.ErrorCode, traceId),
+            VoidAssignmentQuestionStatus.Forbidden => ProblemResponse(403, "forbidden", "Không có quyền thao tác", result.ErrorMessage, result.ErrorCode, traceId),
+            VoidAssignmentQuestionStatus.NotFound => ProblemResponse(404, "not-found", "Không tìm thấy dữ liệu", result.ErrorMessage, result.ErrorCode, traceId),
+            VoidAssignmentQuestionStatus.Conflict => ProblemResponse(409, "conflict", "Xung đột dữ liệu", result.ErrorMessage, result.ErrorCode, traceId),
             _ => throw new InvalidOperationException($"Unexpected status: {result.Status}")
         };
     }

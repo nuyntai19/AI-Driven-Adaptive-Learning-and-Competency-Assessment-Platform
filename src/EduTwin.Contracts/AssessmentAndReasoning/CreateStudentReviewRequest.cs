@@ -8,6 +8,8 @@ public sealed class CreateStudentReviewRequest
     [StringLength(1000, MinimumLength = 5, ErrorMessage = "Lý do yêu cầu xem xét phải từ 5 đến 1000 ký tự.")]
     public string StudentComment { get; set; } = string.Empty;
 
+    public string? DisputeCategory { get; set; }
+
     public string? Reason
     {
         get => StudentComment;

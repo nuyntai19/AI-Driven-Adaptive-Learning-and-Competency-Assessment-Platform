@@ -39,7 +39,8 @@ public sealed class GeminiResponseJsonSchema
             },
             ["methodDetected"] = new JsonObject
             {
-                ["type"] = CreateStringArray(["string", "null"])
+                ["type"] = "string",
+                ["nullable"] = true
             },
             ["reasoningQuality"] = CreatePercentageSchema(),
             ["errorType"] = new JsonObject
@@ -49,7 +50,8 @@ public sealed class GeminiResponseJsonSchema
             },
             ["misconception"] = new JsonObject
             {
-                ["type"] = CreateStringArray(["string", "null"])
+                ["type"] = "string",
+                ["nullable"] = true
             },
             ["missingSteps"] = CreateStringArraySchema(),
             ["rootCauseNodeIds"] = CreateStringArraySchema(),
@@ -61,7 +63,8 @@ public sealed class GeminiResponseJsonSchema
             ["solutionType"] = CreateSolutionTypeSchema(),
             ["aiSolution"] = new JsonObject
             {
-                ["type"] = CreateStringArray(["string", "null"])
+                ["type"] = "string",
+                ["nullable"] = true
             }
         };
 
@@ -105,13 +108,9 @@ public sealed class GeminiResponseJsonSchema
     private static JsonObject CreateSolutionTypeSchema() =>
         new()
         {
-            ["type"] = CreateStringArray(["string", "null"]),
-            ["enum"] = new JsonArray(
-                JsonValue.Create("REFINED"),
-                JsonValue.Create("CORRECTED"),
-                JsonValue.Create("GENERATED"),
-                JsonValue.Create("MODEL_ANSWER"),
-                null)
+            ["type"] = "string",
+            ["nullable"] = true,
+            ["enum"] = CreateStringArray(["REFINED", "CORRECTED", "GENERATED", "MODEL_ANSWER"])
         };
 
     private static JsonArray CreateStringArray(IEnumerable<string> values) =>

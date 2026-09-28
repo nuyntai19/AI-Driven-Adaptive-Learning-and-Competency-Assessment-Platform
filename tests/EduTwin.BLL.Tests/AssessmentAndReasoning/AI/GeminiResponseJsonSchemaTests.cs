@@ -108,12 +108,17 @@ public sealed class GeminiResponseJsonSchemaTests
     {
         using var document = CreateDocument();
 
-        Assert.Equal(
-            ["string", "null"],
-            StringValues(PropertySchema(document, "methodDetected").GetProperty("type")));
-        Assert.Equal(
-            ["string", "null"],
-            StringValues(PropertySchema(document, "misconception").GetProperty("type")));
+        var method = PropertySchema(document, "methodDetected");
+        Assert.Equal("string", method.GetProperty("type").GetString());
+        Assert.True(method.GetProperty("nullable").GetBoolean());
+
+        var misconception = PropertySchema(document, "misconception");
+        Assert.Equal("string", misconception.GetProperty("type").GetString());
+        Assert.True(misconception.GetProperty("nullable").GetBoolean());
+
+        var aiSolution = PropertySchema(document, "aiSolution");
+        Assert.Equal("string", aiSolution.GetProperty("type").GetString());
+        Assert.True(aiSolution.GetProperty("nullable").GetBoolean());
     }
 
     [Fact]
@@ -122,12 +127,11 @@ public sealed class GeminiResponseJsonSchemaTests
         using var document = CreateDocument();
         var schema = PropertySchema(document, "solutionType");
 
-        Assert.Equal(["string", "null"], StringValues(schema.GetProperty("type")));
-        var values = schema.GetProperty("enum").EnumerateArray().ToArray();
+        Assert.Equal("string", schema.GetProperty("type").GetString());
+        Assert.True(schema.GetProperty("nullable").GetBoolean());
         Assert.Equal(
             ["REFINED", "CORRECTED", "GENERATED", "MODEL_ANSWER"],
-            values.Take(4).Select(value => value.GetString()!).ToArray());
-        Assert.Equal(JsonValueKind.Null, values[4].ValueKind);
+            StringValues(schema.GetProperty("enum")));
     }
 
     [Fact]

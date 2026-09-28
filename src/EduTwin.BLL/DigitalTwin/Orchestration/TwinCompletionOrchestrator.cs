@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using EduTwin.BLL.AssessmentAndReasoning.Evidence;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.Assignments;
+using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.DigitalTwin;
 using EduTwin.DAL.AssessmentAndReasoning;
 using EduTwin.DAL.CurriculumAndQuestions;
@@ -80,17 +81,37 @@ public sealed class TwinCompletionOrchestrator : ITwinCompletionOrchestrator
             DiagnosticReasonCodes: consistency.ReasonCodes,
             IsPostFeedback: attempt.IsPostFeedback);
 
-        var decision = attempt.Skipped
+        var isVoidedQuestion = question.Status == QuestionStatus.Archived && attempt.AssignmentId.HasValue;
+        if (isVoidedQuestion)
+        {
+            attempt.IsCorrect = true;
+            analysis.OverrideAwardedScore = attempt.AwardedScore;
+            analysis.OverrideIsCorrect = true;
+            analysis.OverrideReason = "[HỦY CÂU - ĐỀ SAI]";
+            analysis.NeedsTeacherReview = false;
+        }
+
+        var decision = isVoidedQuestion
             ? new EvidenceGateDecision(
-                gateSource,
-                EvidenceTrustLevel.Reduced,
+                EvidenceSourceType.TeacherOverride,
+                EvidenceTrustLevel.ReviewOnly,
                 EvidenceDecisionMode.DeterministicOnly,
                 0m,
-                [EvidenceReasonCodes.AttemptSkipped],
+                ["QUESTION_VOIDED_BY_TEACHER"],
                 false,
                 EvidenceGate.CurrentPolicyVersion,
                 analysis.OverrideVersion)
-            : _evidenceGate.Evaluate(gateInput);
+            : (attempt.Skipped
+                ? new EvidenceGateDecision(
+                    gateSource,
+                    EvidenceTrustLevel.Reduced,
+                    EvidenceDecisionMode.DeterministicOnly,
+                    0m,
+                    [EvidenceReasonCodes.AttemptSkipped],
+                    false,
+                    EvidenceGate.CurrentPolicyVersion,
+                    analysis.OverrideVersion)
+                : _evidenceGate.Evaluate(gateInput));
         analysis.NeedsTeacherReview = decision.RequiresTeacherReview;
 
         // 2. Persist ReasoningAnalysis and EvidenceAssessment

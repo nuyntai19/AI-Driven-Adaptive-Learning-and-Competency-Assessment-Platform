@@ -39,3 +39,12 @@ export interface UpdateCurriculumNodesRequest {
   nodeIds: string[];
   rowVersion: string;
 }
+
+export interface ArchiveCurriculumRequest {
+  rowVersion: string;
+}
+
+export interface CloneCurriculumRequest {
+  title?: string;
+}
+

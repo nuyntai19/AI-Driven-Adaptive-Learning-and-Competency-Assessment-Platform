@@ -15,6 +15,7 @@ import {
   TeacherSafeErrorPanel,
 } from "../../components/teacher/TeacherPrimitives";
 import { TeacherConfirmDialog } from "../../components/teacher/TeacherOverlays";
+import { TeacherAssignmentQuickViewModal } from "../../components/teacher/TeacherAssignmentQuickViewModal";
 
 export function TeacherAssignmentListView() {
   const hasPermission = useAuthStore((state) => state.hasPermission);
@@ -38,6 +39,19 @@ export function TeacherAssignmentListView() {
   // Dialog states
   const [targetAssignment, setTargetAssignment] = useState<AssignmentDto | null>(null);
   const [dialogAction, setDialogAction] = useState<"publish" | "close" | null>(null);
+
+  // Quick View Modal State (Review questions and students in any status)
+  const [quickViewAssignmentId, setQuickViewAssignmentId] = useState<string | null>(null);
+  const [quickViewInitialTab, setQuickViewInitialTab] = useState<"questions" | "students" | "details">("questions");
+
+  const handleOpenQuickView = (assignmentId: string, tab: "questions" | "students" | "details" = "questions") => {
+    setQuickViewAssignmentId(assignmentId);
+    setQuickViewInitialTab(tab);
+  };
+
+  const handleCloseQuickView = () => {
+    setQuickViewAssignmentId(null);
+  };
 
   // Classes list for filter
   const { data: classesData, isLoading: isLoadingClasses } = useAssignmentClasses(
@@ -240,14 +254,38 @@ export function TeacherAssignmentListView() {
                 </p>
 
                 <div className="flex items-center justify-between text-xs text-[var(--th-text-muted)] pt-2 border-t border-[var(--th-border-subtle)]">
-                  <span>📚 <strong>{assignment.questionCount}</strong> câu hỏi</span>
-                  <span>👥 <strong>{assignment.targetStudentCount}</strong> học sinh</span>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenQuickView(assignment.assignmentId, "questions")}
+                    className="hover:text-[var(--th-teal)] hover:underline flex items-center gap-1 transition-colors cursor-pointer text-left"
+                    title="Bấm để xem danh sách câu hỏi trong bài tập"
+                  >
+                    <span>📚 <strong>{assignment.questionCount}</strong> câu hỏi</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenQuickView(assignment.assignmentId, "students")}
+                    className="hover:text-[var(--th-teal)] hover:underline flex items-center gap-1 transition-colors cursor-pointer text-right"
+                    title="Bấm để xem danh sách học sinh được phân công"
+                  >
+                    <span>👥 <strong>{assignment.targetStudentCount}</strong> học sinh</span>
+                  </button>
                 </div>
               </div>
 
               {/* Action Buttons */}
               <div className="mt-4 pt-3 border-t border-[var(--th-border-subtle)] flex items-center justify-between gap-2">
-                <div className="flex gap-2">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenQuickView(assignment.assignmentId, "questions")}
+                    className="th-secondary-button text-xs py-1 px-2.5 flex items-center gap-1"
+                    title="Xem chi tiết câu hỏi và danh sách học sinh đã phân công"
+                  >
+                    <span>👁️</span>
+                    <span>Xem bài</span>
+                  </button>
+
                   {canPublish && assignment.status === "Draft" && (
                     <button
                       type="button"
@@ -275,12 +313,22 @@ export function TeacherAssignmentListView() {
                   >
                     Tiến độ →
                   </Link>
-                  {canUpdate && assignment.status === "Draft" && (
+                  {assignment.status === "Draft" ? (
+                    canUpdate && (
+                      <Link
+                        to={`/giao-vien/bai-tap/${assignment.assignmentId}`}
+                        className="th-secondary-button text-xs py-1 px-2.5"
+                      >
+                        Sửa
+                      </Link>
+                    )
+                  ) : (
                     <Link
                       to={`/giao-vien/bai-tap/${assignment.assignmentId}`}
                       className="th-secondary-button text-xs py-1 px-2.5"
+                      title="Xem toàn bộ cấu hình bài tập"
                     >
-                      Sửa
+                      Cấu hình
                     </Link>
                   )}
                 </div>
@@ -316,6 +364,14 @@ export function TeacherAssignmentListView() {
           </div>
         </div>
       )}
+
+      {/* Quick View Modal for Questions & Assigned Students */}
+      <TeacherAssignmentQuickViewModal
+        assignmentId={quickViewAssignmentId}
+        isOpen={Boolean(quickViewAssignmentId)}
+        onClose={handleCloseQuickView}
+        initialTab={quickViewInitialTab}
+      />
 
       {/* Confirm Action Dialog */}
       <TeacherConfirmDialog

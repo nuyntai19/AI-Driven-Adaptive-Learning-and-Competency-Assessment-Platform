@@ -13,6 +13,8 @@ public static class DependencyInjection
         services.AddScoped<IAssignCurriculumClassesUseCase, AssignCurriculumClassesUseCase>();
         services.AddScoped<IAssignCurriculumNodesUseCase, AssignCurriculumNodesUseCase>();
         services.AddScoped<IPublishCurriculumUseCase, PublishCurriculumUseCase>();
+        services.AddScoped<IArchiveCurriculumUseCase, ArchiveCurriculumUseCase>();
+        services.AddScoped<ICloneCurriculumUseCase, CloneCurriculumUseCase>();
         
         services.AddScoped<ICreateQuestionUseCase, CreateQuestionUseCase>();
         services.AddScoped<IGetQuestionUseCase, GetQuestionUseCase>();
