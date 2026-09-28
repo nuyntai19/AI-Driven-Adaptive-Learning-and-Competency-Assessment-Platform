@@ -61,7 +61,7 @@ CREATE TABLE `ai_analysis_jobs` (
   CONSTRAINT `fk_ai_analysis_jobs_attempts_attempt` FOREIGN KEY (`center_id`, `attempt_id`) REFERENCES `attempts` (`center_id`, `attempt_id`) ON DELETE RESTRICT,
   CONSTRAINT `ck_ai_analysis_jobs_retry_count` CHECK ((`retry_count` between 0 and 3)),
   CONSTRAINT `ck_ai_analysis_jobs_status` CHECK ((`status` in (_utf8mb4'Pending',_utf8mb4'Processing',_utf8mb4'Completed',_utf8mb4'FallbackCompleted',_utf8mb4'FailedTerminal')))
-) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=27 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -124,7 +124,6 @@ CREATE TABLE `assignments` (
   `title` varchar(250) NOT NULL,
   `instructions` text,
   `due_at` datetime(6) DEFAULT NULL,
-  `time_limit_minutes` int DEFAULT NULL,
   `status` varchar(32) NOT NULL,
   `published_at` datetime(6) DEFAULT NULL,
   `created_at` datetime(6) NOT NULL,
@@ -135,6 +134,7 @@ CREATE TABLE `assignments` (
   `deleted_at` datetime(6) DEFAULT NULL,
   `deleted_by` varchar(36) DEFAULT NULL,
   `row_version` bigint unsigned NOT NULL DEFAULT '1',
+  `time_limit_minutes` int DEFAULT NULL,
   PRIMARY KEY (`assignment_id`),
   UNIQUE KEY `ux_assignments_center_id_assignment_id` (`center_id`,`assignment_id`),
   KEY `ix_assignments_center_id_class_id_status_due_at` (`center_id`,`class_id`,`status`,`due_at`),
@@ -170,7 +170,7 @@ CREATE TABLE `attempt_attachments` (
   CONSTRAINT `fk_attempt_attachments_attempts` FOREIGN KEY (`center_id`, `attempt_id`) REFERENCES `attempts` (`center_id`, `attempt_id`) ON DELETE RESTRICT,
   CONSTRAINT `ck_attempt_attachments_content_type` CHECK ((`content_type` = _utf8mb4'image/png')),
   CONSTRAINT `ck_attempt_attachments_file_size_bytes` CHECK (((`file_size_bytes` >= 1) and (`file_size_bytes` <= 5242880)))
-) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=9 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -206,6 +206,7 @@ CREATE TABLE `attempts` (
   `last_manual_retry_at` datetime(6) DEFAULT NULL,
   `solution_exposed_at` datetime(6) DEFAULT NULL,
   `is_post_feedback` tinyint(1) NOT NULL DEFAULT '0',
+  `preliminary_grading_reason_code` varchar(64) DEFAULT NULL,
   PRIMARY KEY (`attempt_id`),
   UNIQUE KEY `ux_attempts_center_id_attempt_id` (`center_id`,`attempt_id`),
   UNIQUE KEY `ux_attempts_center_id_student_id_client_submission_id` (`center_id`,`student_id`,`client_submission_id`),
@@ -220,7 +221,7 @@ CREATE TABLE `attempts` (
   CONSTRAINT `ck_attempts_reasoning_language` CHECK ((`reasoning_language` in (_utf8mb4'vi',_utf8mb4'en'))),
   CONSTRAINT `ck_attempts_status` CHECK ((`status` in (_utf8mb4'PendingAnalysis',_utf8mb4'Processing',_utf8mb4'Completed',_utf8mb4'NeedsTeacherReview',_utf8mb4'AnalysisFailed'))),
   CONSTRAINT `ck_attempts_time_spent_seconds` CHECK ((`time_spent_seconds` >= 0))
-) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=27 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -256,7 +257,7 @@ CREATE TABLE `authorization_audit_logs` (
   CONSTRAINT `fk_authorization_audit_logs_centers_target` FOREIGN KEY (`target_center_id`) REFERENCES `centers` (`center_id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_authorization_audit_logs_users_actor` FOREIGN KEY (`center_id`, `actor_user_id`) REFERENCES `users` (`center_id`, `user_id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_authorization_audit_logs_users_target` FOREIGN KEY (`center_id`, `target_user_id`) REFERENCES `users` (`center_id`, `user_id`) ON DELETE RESTRICT
-) ENGINE=InnoDB AUTO_INCREMENT=73 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=135 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -493,9 +494,9 @@ CREATE TABLE `evidence_assessments` (
   CONSTRAINT `fk_evidence_assessments_reasoning_analyses_analysis` FOREIGN KEY (`center_id`, `analysis_id`, `attempt_id`) REFERENCES `reasoning_analyses` (`center_id`, `analysis_id`, `attempt_id`) ON DELETE RESTRICT,
   CONSTRAINT `ck_evidence_assessments_decision_mode` CHECK ((`decision_mode` in (_utf8mb4'AIWeighted',_utf8mb4'DeterministicOnly',_utf8mb4'HumanConfirmed'))),
   CONSTRAINT `ck_evidence_assessments_reasoning_weight` CHECK ((`reasoning_weight` between 0 and 1)),
-  CONSTRAINT `ck_evidence_assessments_source_type` CHECK ((`source_type` in (_utf8mb4'AI',_utf8mb4'RuleFallback',_utf8mb4'TeacherOverride'))),
+  CONSTRAINT `ck_evidence_assessments_source_type` CHECK ((`source_type` in (_utf8mb4'AI',_utf8mb4'RuleFallback',_utf8mb4'TeacherOverride',_utf8mb4'TeacherApproval'))),
   CONSTRAINT `ck_evidence_assessments_trust_level` CHECK ((`trust_level` in (_utf8mb4'Trusted',_utf8mb4'Reduced',_utf8mb4'ReviewOnly')))
-) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=29 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!50003 SET @saved_cs_client      = @@character_set_client */ ;
 /*!50003 SET @saved_cs_results     = @@character_set_results */ ;
@@ -627,7 +628,7 @@ CREATE TABLE `knowledge_nodes` (
   CONSTRAINT `ck_knowledge_nodes_estimated_learning_minutes` CHECK ((`estimated_learning_minutes` > 0)),
   CONSTRAINT `ck_knowledge_nodes_exam_importance` CHECK ((`exam_importance` between 0 and 100)),
   CONSTRAINT `ck_knowledge_nodes_node_type` CHECK ((`node_type` in (_utf8mb4'Subject',_utf8mb4'Chapter',_utf8mb4'Topic',_utf8mb4'Skill',_utf8mb4'Concept')))
-) ENGINE=InnoDB AUTO_INCREMENT=20006 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=20007 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -734,6 +735,11 @@ CREATE TABLE `learning_paths` (
   `deleted_at` datetime(6) DEFAULT NULL,
   `deleted_by` varchar(36) DEFAULT NULL,
   `row_version` bigint unsigned NOT NULL DEFAULT '1',
+  `plan_json` json DEFAULT NULL,
+  `recommendation_rationale` longtext,
+  `plan_schema_version` varchar(16) NOT NULL DEFAULT '2.0',
+  `generation_status` varchar(32) NOT NULL DEFAULT 'Ready',
+  `adaptation_message` longtext,
   PRIMARY KEY (`learning_path_id`),
   UNIQUE KEY `ux_learning_paths_center_id_learning_path_id` (`center_id`,`learning_path_id`),
   KEY `ix_learning_paths_center_id_student_id_subject_id_status` (`center_id`,`student_id`,`subject_id`,`status`),
@@ -827,7 +833,6 @@ CREATE TABLE `question_options` (
   `option_text` text NOT NULL,
   `is_correct` tinyint(1) NOT NULL,
   `order_index` int unsigned NOT NULL,
-  `misconception` varchar(500) DEFAULT NULL,
   `created_at` datetime(6) NOT NULL,
   `created_by` varchar(36) DEFAULT NULL,
   `updated_at` datetime(6) NOT NULL,
@@ -836,6 +841,7 @@ CREATE TABLE `question_options` (
   `deleted_at` datetime(6) DEFAULT NULL,
   `deleted_by` varchar(36) DEFAULT NULL,
   `row_version` bigint unsigned NOT NULL DEFAULT '1',
+  `misconception` varchar(500) DEFAULT NULL,
   PRIMARY KEY (`option_id`),
   UNIQUE KEY `ux_question_options_center_id_question_id_option_label` (`center_id`,`question_id`,`option_label`),
   UNIQUE KEY `ux_question_options_center_id_question_id_order_index` (`center_id`,`question_id`,`order_index`),
@@ -885,7 +891,7 @@ CREATE TABLE `questions` (
   CONSTRAINT `fk_questions_knowledge_nodes_primary_topic` FOREIGN KEY (`center_id`, `primary_topic_node_id`) REFERENCES `knowledge_nodes` (`center_id`, `node_id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_questions_subjects_subject` FOREIGN KEY (`center_id`, `subject_id`) REFERENCES `subjects` (`center_id`, `subject_id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_questions_teachers_created_by_teacher` FOREIGN KEY (`center_id`, `created_by_teacher_id`) REFERENCES `teachers` (`center_id`, `teacher_id`) ON DELETE RESTRICT,
-  CONSTRAINT `ck_questions_answer_evaluation_mode` CHECK ((`answer_evaluation_mode` in (_utf8mb4'TextExact',_utf8mb4'NumericRational',_utf8mb4'Manual'))),
+  CONSTRAINT `ck_questions_answer_evaluation_mode` CHECK ((`answer_evaluation_mode` in (_utf8mb4'TextExact',_utf8mb4'NumericRational',_utf8mb4'Manual',_utf8mb4'Coordinate2D'))),
   CONSTRAINT `ck_questions_difficulty` CHECK ((`difficulty` between 1 and 5)),
   CONSTRAINT `ck_questions_estimated_time_seconds` CHECK ((`estimated_time_seconds` > 0)),
   CONSTRAINT `ck_questions_language_code` CHECK ((`language_code` in (_utf8mb4'vi',_utf8mb4'en'))),
@@ -932,22 +938,32 @@ CREATE TABLE `reasoning_analyses` (
   `updated_at` datetime(6) NOT NULL,
   `row_version` bigint unsigned NOT NULL DEFAULT '1',
   `override_awarded_score` decimal(5,2) DEFAULT NULL,
+  `solution_type` varchar(32) DEFAULT NULL,
+  `ai_solution` longtext,
+  `review_decision` varchar(32) DEFAULT NULL,
+  `reviewed_by_user_id` varchar(36) DEFAULT NULL,
+  `reviewed_at` datetime(6) DEFAULT NULL,
+  `teacher_review_note` varchar(1000) DEFAULT NULL,
   PRIMARY KEY (`analysis_id`),
   UNIQUE KEY `ux_reasoning_analyses_center_id_analysis_id` (`center_id`,`analysis_id`),
   UNIQUE KEY `ux_reasoning_analyses_center_id_attempt_id` (`center_id`,`attempt_id`),
   UNIQUE KEY `ux_reasoning_analyses_center_id_analysis_id_attempt_id` (`center_id`,`analysis_id`,`attempt_id`),
   KEY `ix_reasoning_analyses_center_id_needs_teacher_review_created_at` (`center_id`,`needs_teacher_review`,`created_at`),
   KEY `ix_reasoning_analyses_center_id_overridden_by_user_id` (`center_id`,`overridden_by_user_id`),
+  KEY `ix_reasoning_analyses_center_id_reviewed_by_user_id` (`center_id`,`reviewed_by_user_id`),
   CONSTRAINT `fk_reasoning_analyses_attempts_attempt` FOREIGN KEY (`center_id`, `attempt_id`) REFERENCES `attempts` (`center_id`, `attempt_id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_reasoning_analyses_users_overridden_by_user` FOREIGN KEY (`center_id`, `overridden_by_user_id`) REFERENCES `users` (`center_id`, `user_id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_reasoning_analyses_users_reviewed_by_user` FOREIGN KEY (`center_id`, `reviewed_by_user_id`) REFERENCES `users` (`center_id`, `user_id`) ON DELETE RESTRICT,
   CONSTRAINT `ck_reasoning_analyses_analysis_confidence` CHECK (((`analysis_confidence` is null) or (`analysis_confidence` between 0 and 100))),
   CONSTRAINT `ck_reasoning_analyses_error_type` CHECK ((`error_type` in (_utf8mb4'None',_utf8mb4'Knowledge',_utf8mb4'Skill',_utf8mb4'Reasoning',_utf8mb4'Behavior',_utf8mb4'Presentation',_utf8mb4'Unknown'))),
   CONSTRAINT `ck_reasoning_analyses_override_awarded_score` CHECK (((`override_awarded_score` is null) or (`override_awarded_score` >= 0))),
   CONSTRAINT `ck_reasoning_analyses_override_error_type` CHECK (((`override_error_type` is null) or (`override_error_type` in (_utf8mb4'None',_utf8mb4'Knowledge',_utf8mb4'Skill',_utf8mb4'Reasoning',_utf8mb4'Behavior',_utf8mb4'Presentation',_utf8mb4'Unknown')))),
   CONSTRAINT `ck_reasoning_analyses_override_reasoning_quality` CHECK (((`override_reasoning_quality` is null) or (`override_reasoning_quality` between 0 and 100))),
   CONSTRAINT `ck_reasoning_analyses_provider` CHECK ((`provider` in (_utf8mb4'Gemini',_utf8mb4'RuleBased'))),
-  CONSTRAINT `ck_reasoning_analyses_reasoning_quality` CHECK (((`reasoning_quality` is null) or (`reasoning_quality` between 0 and 100)))
-) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+  CONSTRAINT `ck_reasoning_analyses_reasoning_quality` CHECK (((`reasoning_quality` is null) or (`reasoning_quality` between 0 and 100))),
+  CONSTRAINT `ck_reasoning_analyses_review_decision` CHECK (((`review_decision` is null) or (`review_decision` in (_utf8mb4'Approved',_utf8mb4'Adjusted')))),
+  CONSTRAINT `ck_reasoning_analyses_solution_type` CHECK (((`solution_type` is null) or (`solution_type` in (_utf8mb4'REFINED',_utf8mb4'CORRECTED',_utf8mb4'GENERATED',_utf8mb4'MODEL_ANSWER'))))
+) ENGINE=InnoDB AUTO_INCREMENT=24 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -1052,7 +1068,7 @@ CREATE TABLE `refresh_tokens` (
   KEY `ix_refresh_tokens_center_id_user_id_expires_at` (`center_id`,`user_id`,`expires_at`),
   CONSTRAINT `fk_refresh_tokens_refresh_tokens_replaced_by` FOREIGN KEY (`center_id`, `replaced_by_token_id`) REFERENCES `refresh_tokens` (`center_id`, `refresh_token_id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_refresh_tokens_users_tenant` FOREIGN KEY (`center_id`, `user_id`) REFERENCES `users` (`center_id`, `user_id`) ON DELETE RESTRICT
-) ENGINE=InnoDB AUTO_INCREMENT=107 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=555 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -1141,13 +1157,65 @@ CREATE TABLE `student_assignment_progress` (
   `deleted_at` datetime(6) DEFAULT NULL,
   `deleted_by` varchar(36) DEFAULT NULL,
   `row_version` bigint unsigned NOT NULL DEFAULT '1',
+  `overall_ai_comment` longtext,
+  `overall_ai_comment_generated_at` datetime(6) DEFAULT NULL,
+  `overall_ai_comment_version` int unsigned NOT NULL DEFAULT '0',
+  `is_overall_ai_comment_stale` tinyint(1) NOT NULL DEFAULT '0',
+  `teacher_final_review_status` varchar(32) NOT NULL DEFAULT 'Pending',
+  `final_reviewed_by_user_id` varchar(36) DEFAULT NULL,
+  `final_reviewed_at` datetime(6) DEFAULT NULL,
+  `final_teacher_note` varchar(1000) DEFAULT NULL,
+  `final_review_version` int unsigned NOT NULL DEFAULT '0',
   PRIMARY KEY (`progress_id`),
   UNIQUE KEY `ux_student_assignment_progress_center_assignment_id_student_id` (`center_id`,`assignment_id`,`student_id`),
   KEY `ix_student_assignment_progress_center_id_student_id_status` (`center_id`,`student_id`,`status`),
+  KEY `ix_student_assignment_progress_center_final_reviewer` (`center_id`,`final_reviewed_by_user_id`),
   CONSTRAINT `fk_student_assignment_progress_assignments_assignment` FOREIGN KEY (`center_id`, `assignment_id`) REFERENCES `assignments` (`center_id`, `assignment_id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_student_assignment_progress_students_student` FOREIGN KEY (`center_id`, `student_id`) REFERENCES `students` (`center_id`, `student_id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_student_assignment_progress_users_final_reviewer` FOREIGN KEY (`center_id`, `final_reviewed_by_user_id`) REFERENCES `users` (`center_id`, `user_id`) ON DELETE RESTRICT,
   CONSTRAINT `ck_student_assignment_progress_counts` CHECK ((`completed_question_count` <= `total_question_count`)),
+  CONSTRAINT `ck_student_assignment_progress_final_review` CHECK ((`teacher_final_review_status` in (_utf8mb4'Pending',_utf8mb4'Approved'))),
   CONSTRAINT `ck_student_assignment_progress_status` CHECK ((`status` in (_utf8mb4'NotStarted',_utf8mb4'InProgress',_utf8mb4'Completed',_utf8mb4'Overdue')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `student_learning_path_preferences`
+--
+
+DROP TABLE IF EXISTS `student_learning_path_preferences`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `student_learning_path_preferences` (
+  `preference_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `center_id` varchar(36) NOT NULL,
+  `student_id` varchar(36) NOT NULL,
+  `subject_id` varchar(36) NOT NULL,
+  `self_assessed_level` varchar(32) NOT NULL,
+  `weak_topic_node_ids` json NOT NULL,
+  `focus_topic_node_ids` json NOT NULL,
+  `goal_type` varchar(32) NOT NULL,
+  `target_mastery` decimal(5,2) NOT NULL,
+  `target_weeks` int NOT NULL,
+  `minutes_per_day` int NOT NULL,
+  `days_per_week` int NOT NULL,
+  `pace` varchar(32) NOT NULL,
+  `preferred_mode` varchar(32) NOT NULL,
+  `note` varchar(1000) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL,
+  `created_by` varchar(36) DEFAULT NULL,
+  `updated_at` datetime(6) NOT NULL,
+  `updated_by` varchar(36) DEFAULT NULL,
+  `is_deleted` tinyint(1) NOT NULL DEFAULT '0',
+  `deleted_at` datetime(6) DEFAULT NULL,
+  `deleted_by` varchar(36) DEFAULT NULL,
+  `row_version` bigint unsigned NOT NULL DEFAULT '1',
+  PRIMARY KEY (`preference_id`),
+  UNIQUE KEY `ux_slp_pref_center_pref_id` (`center_id`,`preference_id`),
+  UNIQUE KEY `ux_slp_pref_center_student_subject` (`center_id`,`student_id`,`subject_id`),
+  KEY `fk_student_learning_path_preferences_subjects` (`center_id`,`subject_id`),
+  CONSTRAINT `fk_student_learning_path_preferences_students` FOREIGN KEY (`center_id`, `student_id`) REFERENCES `students` (`center_id`, `student_id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_student_learning_path_preferences_subjects` FOREIGN KEY (`center_id`, `subject_id`) REFERENCES `subjects` (`center_id`, `subject_id`) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1177,6 +1245,8 @@ CREATE TABLE `student_review_requests` (
   UNIQUE KEY `ux_student_review_requests_center_id_request_id` (`center_id`,`request_id`),
   KEY `ix_student_review_requests_center_id_attempt_id` (`center_id`,`attempt_id`),
   KEY `ix_student_review_requests_center_id_student_id_status` (`center_id`,`student_id`,`status`),
+  KEY `fk_student_review_requests_questions` (`center_id`,`question_id`),
+  KEY `fk_student_review_requests_teachers` (`center_id`,`resolved_by_teacher_id`),
   CONSTRAINT `fk_student_review_requests_attempts` FOREIGN KEY (`center_id`, `attempt_id`) REFERENCES `attempts` (`center_id`, `attempt_id`) ON DELETE CASCADE,
   CONSTRAINT `fk_student_review_requests_questions` FOREIGN KEY (`center_id`, `question_id`) REFERENCES `questions` (`center_id`, `question_id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_student_review_requests_students` FOREIGN KEY (`center_id`, `student_id`) REFERENCES `students` (`center_id`, `student_id`) ON DELETE RESTRICT,
@@ -1307,6 +1377,41 @@ CREATE TABLE `subjects` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `teacher_review_histories`
+--
+
+DROP TABLE IF EXISTS `teacher_review_histories`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `teacher_review_histories` (
+  `history_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `center_id` varchar(36) NOT NULL,
+  `analysis_id` bigint unsigned NOT NULL,
+  `attempt_id` bigint unsigned NOT NULL,
+  `teacher_id` varchar(36) NOT NULL,
+  `decision` varchar(32) NOT NULL,
+  `previous_score` decimal(5,2) DEFAULT NULL,
+  `new_score` decimal(5,2) DEFAULT NULL,
+  `previous_is_correct` tinyint(1) DEFAULT NULL,
+  `new_is_correct` tinyint(1) DEFAULT NULL,
+  `note` varchar(1000) DEFAULT NULL,
+  `override_version` int unsigned NOT NULL DEFAULT '0',
+  `created_at` datetime(6) NOT NULL,
+  `created_by` varchar(36) DEFAULT NULL,
+  `row_version` bigint unsigned NOT NULL DEFAULT '1',
+  PRIMARY KEY (`history_id`),
+  UNIQUE KEY `ux_teacher_review_histories_center_id_history_id` (`center_id`,`history_id`),
+  KEY `ix_teacher_review_histories_center_id_analysis_id` (`center_id`,`analysis_id`),
+  KEY `ix_teacher_review_histories_center_id_attempt_id` (`center_id`,`attempt_id`),
+  KEY `ix_teacher_review_histories_center_id_teacher_id` (`center_id`,`teacher_id`),
+  CONSTRAINT `fk_teacher_review_histories_attempts` FOREIGN KEY (`center_id`, `attempt_id`) REFERENCES `attempts` (`center_id`, `attempt_id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_teacher_review_histories_reasoning_analyses` FOREIGN KEY (`center_id`, `analysis_id`) REFERENCES `reasoning_analyses` (`center_id`, `analysis_id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_teacher_review_histories_teachers` FOREIGN KEY (`center_id`, `teacher_id`) REFERENCES `users` (`center_id`, `user_id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_teacher_review_histories_decision` CHECK ((`decision` in (_utf8mb4'Approved',_utf8mb4'Adjusted')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `teachers`
 --
 
@@ -1372,7 +1477,7 @@ CREATE TABLE `twin_update_history` (
   CONSTRAINT `ck_twin_update_history_event_source` CHECK ((`event_source` in (_utf8mb4'AIAnalysis',_utf8mb4'RuleFallback',_utf8mb4'TeacherOverride',_utf8mb4'Replay'))),
   CONSTRAINT `ck_twin_update_history_new_mastery` CHECK ((`new_mastery` between 0 and 100)),
   CONSTRAINT `ck_twin_update_history_previous_mastery` CHECK ((`previous_mastery` between 0 and 100))
-) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=29 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -1455,4 +1560,4 @@ CREATE TABLE `users` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2026-09-14  6:27:30
+-- Dump completed on 2026-09-27 15:08:16
