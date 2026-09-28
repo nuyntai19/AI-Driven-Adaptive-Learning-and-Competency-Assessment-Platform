@@ -316,7 +316,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
           : currentQuestion.evidence?.decisionMode !== "Fallback"
       );
       setReasoningQuality(currentQuestion.reasoningQuality ? Math.round(Number(currentQuestion.reasoningQuality)) : 80);
-      setFeedbackVal(currentQuestion.teacherFeedback || currentQuestion.analysisFeedback || "");
+      setFeedbackVal(currentQuestion.teacherFeedback || "");
       setOverrideReasonVal(currentQuestion.overrideReason || "");
       setErrorTypeVal("None");
     }
@@ -330,6 +330,8 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
     onSuccess: () => {
       showToast("Đã duyệt kết quả đánh giá của AI thành công!", "success");
       refetchStudentQuestions();
+      refetchProgress();
+      queryClient.invalidateQueries({ queryKey: ["gradingAssignmentProgress", selectedAssignmentId] });
       queryClient.invalidateQueries({ queryKey: ["gradingGlobalQueue"] });
     },
     onError: (err: any) => {
@@ -345,6 +347,8 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
     onSuccess: () => {
       showToast("Đã lưu điểm và đánh giá cho câu hỏi thành công!", "success");
       refetchStudentQuestions();
+      refetchProgress();
+      queryClient.invalidateQueries({ queryKey: ["gradingAssignmentProgress", selectedAssignmentId] });
       queryClient.invalidateQueries({ queryKey: ["gradingGlobalQueue"] });
     },
     onError: (err: any) => {
@@ -355,11 +359,24 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
 
   // C. Final Approve Entire Student Assignment Result
   const finalApproveMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       if (!selectedAssignment || !selectedStudent) throw new Error("Thiếu thông tin bài tập hoặc học sinh.");
+
+      // Fetch fresh progress data to guarantee the latest finalReviewVersion
+      let latestVersion = selectedStudent.finalReviewVersion || 0;
+      try {
+        const freshProgress = await getAssignmentProgress(selectedAssignment.assignmentId);
+        const freshStudent = freshProgress?.data?.find((s) => s.studentId === selectedStudent.studentId);
+        if (freshStudent && freshStudent.finalReviewVersion !== undefined) {
+          latestVersion = freshStudent.finalReviewVersion;
+        }
+      } catch {
+        // Fallback to currently loaded selectedStudent version if fetch fails
+      }
+
       return approveAssignmentResult(selectedAssignment.assignmentId, {
         studentId: selectedStudent.studentId,
-        finalReviewVersion: selectedStudent.finalReviewVersion || 0,
+        finalReviewVersion: latestVersion,
         note: finalApproveNote,
       });
     },
@@ -368,9 +385,11 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
       setIsFinalApproveModalOpen(false);
       refetchProgress();
       refetchStudentQuestions();
+      queryClient.invalidateQueries({ queryKey: ["gradingAssignmentProgress", selectedAssignmentId] });
       queryClient.invalidateQueries({ queryKey: ["gradingGlobalQueue"] });
     },
     onError: (err: any) => {
+      refetchProgress();
       const problem = extractProblemDetails(err);
       showToast(problem.detail || "Lỗi khi phê duyệt kết quả bài làm.", "error");
     },
@@ -441,6 +460,10 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
   // Submit Override Handler
   const handleSaveQuestionGrade = () => {
     if (!currentQuestion) return;
+    if (!feedbackVal.trim()) {
+      showToast("Vui lòng nhập lời nhận xét của giáo viên gửi học sinh trước khi lưu.", "error");
+      return;
+    }
     if (!overrideReasonVal.trim()) {
       showToast("Vui lòng nhập lý do điều chỉnh điểm số (bắt buộc theo quy định kiểm tra).", "error");
       return;
@@ -1402,7 +1425,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                           {/* 3. Nhận xét của giáo viên cho học sinh */}
                           <div>
                             <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
-                              Lời nhận xét của giáo viên gửi học sinh
+                              Lời nhận xét của giáo viên gửi học sinh <span className="text-rose-500">*</span>
                             </label>
                             <textarea
                               rows={2}

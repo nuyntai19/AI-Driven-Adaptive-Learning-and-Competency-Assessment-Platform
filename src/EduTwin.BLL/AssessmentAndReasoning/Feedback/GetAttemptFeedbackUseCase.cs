@@ -266,7 +266,7 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
                 Confidence = analysis.AnalysisConfidence.HasValue
                     ? (int)Math.Round(analysis.AnalysisConfidence.Value, MidpointRounding.AwayFromZero)
                     : null,
-                Feedback = analysis.OverrideFeedback ?? analysis.Feedback,
+                Feedback = analysis.Feedback,
                 IsFallback = analysis.IsFallback,
                 NeedsTeacherReview = analysis.NeedsTeacherReview,
                 HasTeacherOverride = analysis.OverrideVersion > 0,
