@@ -80,7 +80,9 @@ export function useThemeMode() {
 
   useEffect(() => {
     const handleThemeChange = () => {
-      setTheme(resolveInitialTheme());
+      const nextTheme = resolveInitialTheme();
+      applyTheme(nextTheme);
+      setTheme(nextTheme);
     };
 
     window.addEventListener(THEME_CHANGE_EVENT, handleThemeChange);

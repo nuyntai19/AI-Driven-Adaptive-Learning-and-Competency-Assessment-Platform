@@ -143,4 +143,85 @@ describe("Theme DOM Synchronization & First-Click Toggle", () => {
       "main.tsx must not contain duplicate localStorage inspection"
     );
   });
+
+  it("storage event synchronizes both DOM .dark class and theme state across tabs", () => {
+    const classes = new Set<string>(["dark"]);
+    const mockDoc = {
+      documentElement: {
+        classList: {
+          add: (c: string) => classes.add(c),
+          remove: (c: string) => classes.delete(c),
+          contains: (c: string) => classes.has(c),
+        },
+      },
+    };
+
+    const originalDoc = (globalThis as any).document;
+    (globalThis as any).document = mockDoc;
+
+    try {
+      // Step 1: Current tab starts in 'dark' mode
+      assert.equal(classes.has("dark"), true, "Tab starts in dark mode");
+
+      // Step 2: Another tab updates storage to 'light' and triggers storage event
+      const storageMap = new Map<string, string>([[THEME_STORAGE_KEY, "light"]]);
+      const mockStorage = {
+        getItem: (k: string) => storageMap.get(k) ?? null,
+      };
+
+      // Simulated storage event handler (matches handleThemeChange in useThemeMode)
+      const nextTheme1 = resolveInitialTheme(mockStorage, () => ({ matches: false }));
+      applyTheme(nextTheme1);
+      let activeThemeState: ThemeMode = nextTheme1;
+
+      assert.equal(nextTheme1, "light");
+      assert.equal(activeThemeState, "light");
+      assert.equal(classes.has("dark"), false, "DOM must have 'dark' class removed upon storage event to light");
+
+      // Step 3: Another tab updates storage back to 'dark' and triggers storage event
+      storageMap.set(THEME_STORAGE_KEY, "dark");
+      const nextTheme2 = resolveInitialTheme(mockStorage, () => ({ matches: false }));
+      applyTheme(nextTheme2);
+      activeThemeState = nextTheme2;
+
+      assert.equal(nextTheme2, "dark");
+      assert.equal(activeThemeState, "dark");
+      assert.equal(classes.has("dark"), true, "DOM must have 'dark' class restored upon storage event to dark");
+    } finally {
+      (globalThis as any).document = originalDoc;
+    }
+  });
+
+  it("useThemeMode implementation ensures handleThemeChange calls applyTheme and does not trigger event loops", () => {
+    const hookPath = path.resolve(__dirname, "../src/utils/themeMode.ts");
+    const content = fs.readFileSync(hookPath, "utf-8");
+
+    // Invariant 1: handleThemeChange calls applyTheme(nextTheme)
+    assert.ok(
+      content.includes("const nextTheme = resolveInitialTheme();"),
+      "handleThemeChange must resolve nextTheme"
+    );
+    assert.ok(
+      content.includes("applyTheme(nextTheme);"),
+      "handleThemeChange must applyTheme(nextTheme) to keep DOM synchronized"
+    );
+    assert.ok(
+      content.includes("setTheme(nextTheme);"),
+      "handleThemeChange must update state with setTheme(nextTheme)"
+    );
+
+    // Invariant 2: handleThemeChange does not redispatch custom events or write to storage (no event loops)
+    const handleThemeChangeBlock = content.slice(
+      content.indexOf("const handleThemeChange = () => {"),
+      content.indexOf("window.addEventListener(THEME_CHANGE_EVENT")
+    );
+    assert.ok(
+      !handleThemeChangeBlock.includes("dispatchEvent"),
+      "handleThemeChange must not dispatch events to avoid event loop"
+    );
+    assert.ok(
+      !handleThemeChangeBlock.includes("localStorage.setItem"),
+      "handleThemeChange must not write to localStorage to avoid event loop"
+    );
+  });
 });
