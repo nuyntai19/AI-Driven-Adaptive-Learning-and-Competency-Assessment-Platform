@@ -18,7 +18,15 @@ interface MathFieldElement extends HTMLElement {
   smartSuperscript: boolean;
   getValue: (format?: string) => string;
   setValue: (value: string, options?: { silenceNotifications?: boolean }) => void;
-  insert: (value: string, options?: { mode?: string; selectionMode?: string; focus?: boolean }) => void;
+  insert: (
+    value: string,
+    options?: {
+      mode?: string;
+      selectionMode?: string;
+      focus?: boolean;
+      silenceNotifications?: boolean;
+    }
+  ) => void;
   executeCommand: (command: [string, string]) => void;
 }
 
@@ -333,7 +341,7 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
             selectionMode: "placeholder",
             focus: true,
             silenceNotifications: true,
-          } as any);
+          });
         } else {
           mf.executeCommand(["insert", latexOrText]);
         }

@@ -758,21 +758,21 @@ describe("RichMathEditor Caret Preservation and External Insertion", () => {
     assert.match(source, /return\s*\(\)\s*=>\s*\{[\s\S]*?lastValidRangeRef\.current\s*=\s*null;\s*\};/);
   });
 
-  it("calls getEffectiveTargetRange BEFORE container.focus to prevent selection reset upon focus stealing", () => {
+  it("enforces robust 5-step caret sequence: get targetRange, focus editor, restore targetRange, insert node, place afterRange", () => {
     // In handleInsertMathAtCursor:
     assert.match(
       source,
-      /handleInsertMathAtCursor\s*=\s*useCallback\(\(\)\s*=>\s*\{[\s\S]*?const targetRange = getEffectiveTargetRange\(container\);[\s\S]*?targetRange\.deleteContents\(\);/
+      /handleInsertMathAtCursor\s*=\s*useCallback\(\(\)\s*=>\s*\{[\s\S]*?const targetRange = getEffectiveTargetRange\(container\);[\s\S]*?container\.focus\(\);[\s\S]*?sel\.addRange\(targetRange\);[\s\S]*?targetRange\.deleteContents\(\);[\s\S]*?afterRange\.setStartAfter\(mathSpan\);[\s\S]*?sel\.addRange\(afterRange\);/
     );
     // In insertLatexAtCursor:
     assert.match(
       source,
-      /insertLatexAtCursor\s*=\s*useCallback\([\s\S]*?const targetRange = getEffectiveTargetRange\(container\);[\s\S]*?targetRange\.deleteContents\(\);/
+      /insertLatexAtCursor\s*=\s*useCallback\([\s\S]*?const targetRange = getEffectiveTargetRange\(container\);[\s\S]*?container\.focus\(\);[\s\S]*?sel\.addRange\(targetRange\);[\s\S]*?targetRange\.deleteContents\(\);[\s\S]*?afterRange\.setStartAfter\(mathSpan\);[\s\S]*?sel\.addRange\(afterRange\);/
     );
     // In insertTextAtCursor:
     assert.match(
       source,
-      /insertTextAtCursor\s*=\s*useCallback\([\s\S]*?const targetRange = getEffectiveTargetRange\(container\);[\s\S]*?targetRange\.deleteContents\(\);/
+      /insertTextAtCursor\s*=\s*useCallback\([\s\S]*?const targetRange = getEffectiveTargetRange\(container\);[\s\S]*?container\.focus\(\);[\s\S]*?sel\.addRange\(targetRange\);[\s\S]*?targetRange\.deleteContents\(\);[\s\S]*?afterRange\.setStartAfter\(textNode\);[\s\S]*?sel\.addRange\(afterRange\);/
     );
     // Ensure container.focus() is NOT called before getEffectiveTargetRange in any of these functions
     assert.doesNotMatch(
@@ -781,7 +781,7 @@ describe("RichMathEditor Caret Preservation and External Insertion", () => {
     );
   });
 
-  it("simulates DOM contentEditable caret: preserves range when focus is lost and inserts node in middle", () => {
+  it("models contentEditable range preservation and middle-text node insertion using mock DOM hierarchy", () => {
     // Emulate DOM container and nodes
     const container = createMockElement("div");
     const part1 = createMockTextNode("Cho hàm số ");
@@ -854,7 +854,7 @@ describe("RichMathEditor Caret Preservation and External Insertion", () => {
     assert.notEqual(serialized, "Cho hàm số  đồng biến trên R.$y=f(x)$");
   });
 
-  it("restricts Source Mode: hidden for Student actor, read-only with copy button for Teacher and Manager", () => {
+  it("restricts Source Mode: hidden for Student actor, read-only with aria-live copy button for Teacher and Manager", () => {
     // 1. Student hides source button:
     assert.match(source, /variant\s*!==\s*"student"\s*&&\s*\(\s*<button/);
     // 2. Teacher/Manager displays 'Xem mã':
@@ -862,9 +862,13 @@ describe("RichMathEditor Caret Preservation and External Insertion", () => {
     // 3. Textarea is read-only with no mutating onChange:
     assert.match(source, /<textarea[^>]*?readOnly/);
     assert.doesNotMatch(source, /<textarea[^>]*?onChange/);
-    // 4. Includes copy button and 'Chế độ xem mã (Chỉ đọc)':
+    // 4. Source textarea is never disabled, allowing manual selection/copy:
+    assert.doesNotMatch(source, /<textarea[^>]*?readOnly[^>]*?disabled=/);
+    // 5. Includes copy button with aria-live and idle/copied/error feedback:
     assert.match(source, /Chế độ xem mã \(Chỉ đọc\)/);
     assert.match(source, /handleCopySource/);
+    assert.match(source, /aria-live="polite"/);
+    assert.match(source, /Không thể sao chép/);
     assert.match(source, /Sao chép/);
   });
 });

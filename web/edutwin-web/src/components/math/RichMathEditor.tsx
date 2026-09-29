@@ -66,7 +66,7 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
   ) => {
   const { isDark } = useThemeMode();
   const [viewMode, setViewMode] = useState<"visual" | "source">("visual");
-  const [copiedSource, setCopiedSource] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">("idle");
   const [activeMathNode, setActiveMathNode] = useState<{
     element: HTMLElement;
     latex: string;
@@ -83,14 +83,40 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
 
   const handleCopySource = useCallback(async () => {
     try {
-      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      if (
+        typeof navigator !== "undefined" &&
+        navigator.clipboard &&
+        typeof navigator.clipboard.writeText === "function"
+      ) {
         await navigator.clipboard.writeText(value);
+        setCopyStatus("copied");
+        setTimeout(() => setCopyStatus("idle"), 2000);
+      } else {
+        // Fallback: document.execCommand copy
+        let copied = false;
+        try {
+          const tempTextArea = document.createElement("textarea");
+          tempTextArea.value = value;
+          tempTextArea.style.position = "fixed";
+          tempTextArea.style.opacity = "0";
+          document.body.appendChild(tempTextArea);
+          tempTextArea.select();
+          copied = document.execCommand("copy");
+          document.body.removeChild(tempTextArea);
+        } catch {
+          copied = false;
+        }
+        if (copied) {
+          setCopyStatus("copied");
+          setTimeout(() => setCopyStatus("idle"), 2000);
+        } else {
+          setCopyStatus("error");
+          setTimeout(() => setCopyStatus("idle"), 3000);
+        }
       }
-      setCopiedSource(true);
-      setTimeout(() => setCopiedSource(false), 2000);
     } catch {
-      setCopiedSource(true);
-      setTimeout(() => setCopiedSource(false), 2000);
+      setCopyStatus("error");
+      setTimeout(() => setCopyStatus("idle"), 3000);
     }
   }, [value]);
 
@@ -234,9 +260,20 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
     const container = editorRef.current;
     if (!container) return;
 
-    // 1. Get/clone target range BEFORE container.focus() to prevent focus stealing or selection reset
+    // 1. Get/clone target range BEFORE container.focus()
     const targetRange = getEffectiveTargetRange(container);
 
+    // 2. Focus editor container
+    container.focus();
+
+    // 3. Restore target range into selection while editor is focused
+    const sel = window.getSelection();
+    if (sel) {
+      sel.removeAllRanges();
+      sel.addRange(targetRange);
+    }
+
+    // 4. Create and insert math node at target range
     const mathSpan = createMathSpan("", (span) =>
       handleOpenMathNode(span, false)
     );
@@ -245,16 +282,15 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
     targetRange.deleteContents();
     targetRange.insertNode(mathSpan);
 
+    // 5. Place afterRange into selection at the very end
     const afterRange = document.createRange();
     afterRange.setStartAfter(mathSpan);
     afterRange.collapse(true);
-    const sel = window.getSelection();
     if (sel) {
       sel.removeAllRanges();
       sel.addRange(afterRange);
     }
     lastValidRangeRef.current = afterRange.cloneRange();
-    container.focus();
 
     handleOpenMathNode(mathSpan, true);
     checkEmpty();
@@ -266,9 +302,20 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
       const container = editorRef.current;
       if (!container) return;
 
-      // 1. Get/clone target range BEFORE container.focus() to prevent focus stealing or selection reset
+      // 1. Get/clone target range BEFORE container.focus()
       const targetRange = getEffectiveTargetRange(container);
 
+      // 2. Focus editor container
+      container.focus();
+
+      // 3. Restore target range into selection while editor is focused
+      const sel = window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(targetRange);
+      }
+
+      // 4. Clean formula and insert math node
       const clean = cleanFormulaForInsertion(latexToInsert);
       const mathSpan = createMathSpan(clean, (span) =>
         handleOpenMathNode(span, false)
@@ -277,16 +324,15 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
       targetRange.deleteContents();
       targetRange.insertNode(mathSpan);
 
+      // 5. Place afterRange into selection at the very end
       const afterRange = document.createRange();
       afterRange.setStartAfter(mathSpan);
       afterRange.collapse(true);
-      const sel = window.getSelection();
       if (sel) {
         sel.removeAllRanges();
         sel.addRange(afterRange);
       }
       lastValidRangeRef.current = afterRange.cloneRange();
-      container.focus();
 
       isLocalChangeRef.current = true;
       const serialized = serializeEditorDom(container);
@@ -302,23 +348,33 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
       const container = editorRef.current;
       if (!container) return;
 
-      // 1. Get/clone target range BEFORE container.focus() to prevent focus stealing or selection reset
+      // 1. Get/clone target range BEFORE container.focus()
       const targetRange = getEffectiveTargetRange(container);
 
+      // 2. Focus editor container
+      container.focus();
+
+      // 3. Restore target range into selection while editor is focused
+      const sel = window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(targetRange);
+      }
+
+      // 4. Insert text node at target range
       const textNode = document.createTextNode(textToInsert);
       targetRange.deleteContents();
       targetRange.insertNode(textNode);
 
+      // 5. Place afterRange into selection at the very end
       const afterRange = document.createRange();
       afterRange.setStartAfter(textNode);
       afterRange.collapse(true);
-      const sel = window.getSelection();
       if (sel) {
         sel.removeAllRanges();
         sel.addRange(afterRange);
       }
       lastValidRangeRef.current = afterRange.cloneRange();
-      container.focus();
 
       isLocalChangeRef.current = true;
       const serialized = serializeEditorDom(container);
@@ -707,17 +763,27 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
                 type="button"
                 id={id ? `${id}-copy-source` : undefined}
                 onClick={handleCopySource}
-                className="px-2 py-0.5 rounded text-[11px] font-medium bg-black/10 hover:bg-black/20 dark:bg-white/10 dark:hover:bg-white/20 text-[var(--rme-text)] transition-colors cursor-pointer"
+                aria-live="polite"
+                className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer ${
+                  copyStatus === "copied"
+                    ? "bg-emerald-500/20 text-emerald-400"
+                    : copyStatus === "error"
+                    ? "bg-rose-500/20 text-rose-400"
+                    : "bg-black/10 hover:bg-black/20 dark:bg-white/10 dark:hover:bg-white/20 text-[var(--rme-text)]"
+                }`}
                 title="Sao chép toàn bộ mã nguồn vào clipboard"
               >
-                {copiedSource ? "✓ Đã sao chép" : "📋 Sao chép"}
+                {copyStatus === "copied"
+                  ? "✓ Đã sao chép"
+                  : copyStatus === "error"
+                  ? "⚠️ Không thể sao chép"
+                  : "📋 Sao chép"}
               </button>
             </div>
             <textarea
               id={id}
               value={value}
               readOnly
-              disabled={disabled}
               onFocus={onFocus}
               style={{ minHeight }}
               rows={singleLine ? 1 : 4}
