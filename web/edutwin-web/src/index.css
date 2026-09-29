@@ -14,7 +14,10 @@ math-field {
 }
 
 math-field.dark,
-.dark math-field {
+.dark math-field,
+.bg-slate-950 math-field,
+.bg-slate-900 math-field,
+[data-theme="dark"] math-field {
   --color: #f8fafc;
   --placeholder-color: #38bdf8;
   --caret-color: #38bdf8;
@@ -24,7 +27,8 @@ math-field.dark,
 
 /* Ensure placeholder boxes like \sqrt{\placeholder} and \left\vert\placeholder\right\vert are clearly visible and styled */
 math-field::part(placeholder),
-math-field .ML__placeholder {
+math-field .ML__placeholder,
+.ML__placeholder {
   opacity: 0.85 !important;
   border-bottom: 1.5px dashed currentColor !important;
   padding: 0 2px !important;

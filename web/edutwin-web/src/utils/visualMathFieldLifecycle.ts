@@ -67,3 +67,115 @@ export function shouldSyncExternalValue(
 ): boolean {
   return propValue !== currentMathFieldValue && propValue !== lastEmittedValue;
 }
+
+export type EventPathNode = {
+  tagName?: string;
+  classList?: { contains: (cls: string) => boolean };
+  getAttribute?: (attr: string) => string | null;
+  closest?: (selector: string) => unknown;
+};
+
+/**
+ * Checks whether an event target path is considered "outside" the active virtual keyboard interaction area.
+ * Returns true if the click was outside all math fields, outside virtual keyboard, and outside virtual keyboard toggles.
+ */
+export function isOutsideVirtualKeyboardClick(composedPath: (EventTarget | EventPathNode)[]): boolean {
+  for (const item of composedPath) {
+    if (!item || typeof item !== "object") continue;
+    const el = item as EventPathNode;
+
+    // 1. Inside the virtual keyboard itself
+    if (
+      el.classList?.contains?.("ML__keyboard") ||
+      el.classList?.contains?.("MLK__plate") ||
+      el.classList?.contains?.("MLK__backdrop") ||
+      el.tagName?.toLowerCase() === "math-virtual-keyboard"
+    ) {
+      return false;
+    }
+
+    // 2. The virtual keyboard toggle button
+    if (
+      el.getAttribute?.("part") === "virtual-keyboard-toggle" ||
+      el.classList?.contains?.("ML__virtual-keyboard-toggle")
+    ) {
+      return false;
+    }
+
+    // 3. Inside a math field or its active contenteditable container
+    if (
+      el.tagName?.toLowerCase() === "math-field" ||
+      el.classList?.contains?.("rich-math-content-editable") ||
+      el.classList?.contains?.("inline-math-node")
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+let activeListenerCount = 0;
+let removeGlobalListener: (() => void) | null = null;
+
+/**
+ * Registers a document-level capture listener that automatically dismisses/closes
+ * the MathLive virtual keyboard when the user taps or clicks anywhere outside the
+ * keyboard and math field.
+ */
+export function registerVirtualKeyboardDismissListener(): () => void {
+  if (typeof window === "undefined") {
+    return () => {};
+  }
+
+  activeListenerCount++;
+  if (activeListenerCount === 1) {
+    const handlePointerDown = (e: PointerEvent | MouseEvent) => {
+      const keyboard = (
+        window as unknown as {
+          mathVirtualKeyboard?: { visible?: boolean; hide: () => void };
+        }
+      ).mathVirtualKeyboard;
+
+      const isVisible = Boolean(
+        keyboard?.visible || document.querySelector?.(".ML__keyboard.is-visible")
+      );
+
+      if (!isVisible) return;
+
+      const path = typeof e.composedPath === "function" ? e.composedPath() : [];
+      if (path.length === 0 && e.target) {
+        let curr: Node | null = e.target as Node;
+        while (curr) {
+          path.push(curr);
+          curr = curr.parentNode;
+        }
+      }
+
+      if (isOutsideVirtualKeyboardClick(path)) {
+        keyboard?.hide?.();
+      }
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown, true);
+    removeGlobalListener = () => {
+      window.removeEventListener("pointerdown", handlePointerDown, true);
+    };
+  }
+
+  return () => {
+    activeListenerCount = Math.max(0, activeListenerCount - 1);
+    if (activeListenerCount === 0 && removeGlobalListener) {
+      removeGlobalListener();
+      removeGlobalListener = null;
+    }
+  };
+}
+
+export function resetVirtualKeyboardListenerForTests(): void {
+  if (removeGlobalListener) {
+    removeGlobalListener();
+    removeGlobalListener = null;
+  }
+  activeListenerCount = 0;
+}

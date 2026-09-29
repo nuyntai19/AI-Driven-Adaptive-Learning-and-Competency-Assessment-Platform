@@ -1,7 +1,11 @@
 import { useEffect, useRef, useImperativeHandle, forwardRef, useState } from "react";
 import { normalizeMathLivePlainText } from "../../utils/mathAnswerValue";
 import { loadMathLive, resetMathLiveLoader } from "../../utils/mathLiveLoader";
-import { hydrateMathFieldInstance, shouldSyncExternalValue } from "../../utils/visualMathFieldLifecycle";
+import {
+  hydrateMathFieldInstance,
+  shouldSyncExternalValue,
+  registerVirtualKeyboardDismissListener,
+} from "../../utils/visualMathFieldLifecycle";
 import { MathFallbackTextarea } from "./answer-editor/MathFallbackTextarea";
 
 interface MathFieldElement extends HTMLElement {
@@ -86,6 +90,12 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
     const latestAutoFocusRef = useRef(autoFocus);
     latestAutoFocusRef.current = autoFocus;
 
+    // Register global outside-click dismissal listener for MathLive virtual keyboard
+    useEffect(() => {
+      const unregister = registerVirtualKeyboardDismissListener();
+      return unregister;
+    }, []);
+
     // Initialize Mathfield element inside container after dynamically loading MathLive
     useEffect(() => {
       let isMounted = true;
@@ -96,6 +106,7 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
       let onInputHandler: (() => void) | null = null;
       let onKeyDownHandler: ((e: KeyboardEvent) => void) | null = null;
       let onFocusHandler: (() => void) | null = null;
+      let themeObserver: MutationObserver | null = null;
 
       loadMathLive()
         .then(() => {
@@ -125,6 +136,24 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
           mf.smartSuperscript = true;
           mf.setAttribute("data-input-mode", "math");
 
+          // Synchronize dark theme class with document or parent container
+          const syncDarkClass = () => {
+            if (typeof document === "undefined") return;
+            const isDark =
+              document.documentElement.classList.contains("dark") ||
+              Boolean(containerRef.current?.closest(".dark, .bg-slate-950, .bg-slate-900, [data-theme='dark']"));
+            mf.classList.toggle("dark", isDark);
+          };
+          syncDarkClass();
+
+          if (typeof MutationObserver !== "undefined") {
+            themeObserver = new MutationObserver(() => syncDarkClass());
+            themeObserver.observe(document.documentElement, {
+              attributes: true,
+              attributeFilter: ["class"],
+            });
+          }
+
           try {
             const shadowStyle = document.createElement("style");
             shadowStyle.setAttribute("data-edutwin-toggle-guard", "true");
@@ -137,6 +166,12 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
                 display: none !important;
                 visibility: hidden !important;
                 pointer-events: none !important;
+              }
+
+              .ML__placeholder {
+                opacity: 0.85 !important;
+                border-bottom: 1.5px dashed currentColor !important;
+                padding: 0 2px !important;
               }
             `;
             mf.shadowRoot?.appendChild(shadowStyle);
@@ -229,6 +264,9 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
             currentMf.removeEventListener("pointerdown", onFocusHandler);
           }
         }
+        if (themeObserver) {
+          themeObserver.disconnect();
+        }
         if (container) {
           container.innerHTML = "";
         }
@@ -285,6 +323,8 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
         if (!mf || mf.readOnly) return;
         mf.focus();
         mf.defaultMode = "math";
+        mf.smartFence = false;
+        mf.smartMode = false;
         mf.executeCommand(["switchMode", "math"]);
         mf.setAttribute("data-input-mode", "math");
         if (typeof mf.insert === "function") {
@@ -339,6 +379,10 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
 
       mf.focus();
       mf.defaultMode = nextMode;
+      if (nextMode === "math") {
+        mf.smartFence = false;
+        mf.smartMode = false;
+      }
       mf.executeCommand(["switchMode", nextMode]);
       mf.setAttribute("data-input-mode", nextMode);
 

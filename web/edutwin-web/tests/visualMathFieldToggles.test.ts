@@ -110,3 +110,222 @@ test("tokenizePlainText preserves Vietnamese sentence spacing and tokenizes set 
   assert.ok(mathTokens.some((m) => m.latex?.includes("\\mathbb{R} \\setminus")), "Set notation must be KaTeX formatted");
 });
 
+test("isOutsideVirtualKeyboardClick correctly differentiates outside clicks vs keyboard interactions", async () => {
+  const { isOutsideVirtualKeyboardClick } = await import(
+    "../src/utils/visualMathFieldLifecycle.ts"
+  );
+
+  // 1. Click inside keyboard plate or backdrop should NOT be considered outside
+  const keyboardPlateMock = {
+    tagName: "div",
+    classList: { contains: (cls: string) => cls === "MLK__plate" },
+  };
+  assert.equal(
+    isOutsideVirtualKeyboardClick([keyboardPlateMock]),
+    false,
+    "Click inside .MLK__plate must return false"
+  );
+
+  const keyboardContainerMock = {
+    tagName: "div",
+    classList: { contains: (cls: string) => cls === "ML__keyboard" },
+  };
+  assert.equal(
+    isOutsideVirtualKeyboardClick([keyboardContainerMock]),
+    false,
+    "Click inside .ML__keyboard must return false"
+  );
+
+  const customKeyboardMock = {
+    tagName: "math-virtual-keyboard",
+    classList: { contains: () => false },
+  };
+  assert.equal(
+    isOutsideVirtualKeyboardClick([customKeyboardMock]),
+    false,
+    "Click on <math-virtual-keyboard> must return false"
+  );
+
+  // 2. Click on the keyboard toggle icon should NOT be considered outside
+  const toggleMock = {
+    tagName: "button",
+    classList: { contains: (cls: string) => cls === "ML__virtual-keyboard-toggle" },
+    getAttribute: (attr: string) => (attr === "part" ? "virtual-keyboard-toggle" : null),
+  };
+  assert.equal(
+    isOutsideVirtualKeyboardClick([toggleMock]),
+    false,
+    "Click on virtual-keyboard-toggle must return false"
+  );
+
+  // 3. Click inside math-field or rich-math contenteditable should NOT be considered outside
+  const mathFieldMock = {
+    tagName: "math-field",
+    classList: { contains: () => false },
+  };
+  assert.equal(
+    isOutsideVirtualKeyboardClick([mathFieldMock]),
+    false,
+    "Click inside <math-field> must return false"
+  );
+
+  const richContentMock = {
+    tagName: "div",
+    classList: { contains: (cls: string) => cls === "rich-math-content-editable" },
+  };
+  assert.equal(
+    isOutsideVirtualKeyboardClick([richContentMock]),
+    false,
+    "Click inside .rich-math-content-editable must return false"
+  );
+
+  // 4. Click outside (on page container, button, card, header) must return true
+  const pageBackgroundMock = {
+    tagName: "div",
+    classList: { contains: (cls: string) => cls === "page-container" },
+  };
+  assert.equal(
+    isOutsideVirtualKeyboardClick([pageBackgroundMock]),
+    true,
+    "Click on regular page background must return true"
+  );
+
+  const submitButtonMock = {
+    tagName: "button",
+    classList: { contains: (cls: string) => cls === "btn-submit" },
+  };
+  assert.equal(
+    isOutsideVirtualKeyboardClick([submitButtonMock]),
+    true,
+    "Click on submit button outside math-field must return true"
+  );
+});
+
+test("registerVirtualKeyboardDismissListener hides visible virtual keyboard on outside click", async () => {
+  const { registerVirtualKeyboardDismissListener, resetVirtualKeyboardListenerForTests } =
+    await import("../src/utils/visualMathFieldLifecycle.ts");
+
+  resetVirtualKeyboardListenerForTests();
+
+  let hideCalled = false;
+  let isVisible = true;
+  let attachedHandler: ((e: unknown) => void) | null = null;
+
+  // Mock browser window and mathVirtualKeyboard environment
+  const mockWindow = {
+    mathVirtualKeyboard: {
+      get visible() {
+        return isVisible;
+      },
+      hide() {
+        hideCalled = true;
+        isVisible = false;
+      },
+    },
+    addEventListener: (_type: string, handler: (e: unknown) => void) => {
+      attachedHandler = handler;
+    },
+    removeEventListener: () => {
+      attachedHandler = null;
+    },
+  };
+
+  (globalThis as unknown as { window: typeof mockWindow }).window = mockWindow;
+
+  const unregister = registerVirtualKeyboardDismissListener();
+  assert.ok(attachedHandler !== null, "Pointerdown listener must be attached to window");
+  const invokeHandler = attachedHandler as (e: unknown) => void;
+
+  // 1. Simulate outside click when keyboard is visible -> hide() should be called
+  hideCalled = false;
+  isVisible = true;
+  const outsideEvent = {
+    composedPath: () => [
+      {
+        tagName: "div",
+        classList: { contains: (cls: string) => cls === "learning-player-main" },
+      },
+    ],
+  };
+  invokeHandler(outsideEvent);
+  assert.equal(hideCalled, true, "Outside click must call hide() on virtual keyboard");
+
+  // 2. Simulate click inside virtual keyboard -> hide() must NOT be called
+  hideCalled = false;
+  isVisible = true;
+  const insideKeyboardEvent = {
+    composedPath: () => [
+      {
+        tagName: "div",
+        classList: { contains: (cls: string) => cls === "ML__keyboard" },
+      },
+    ],
+  };
+  invokeHandler(insideKeyboardEvent);
+  assert.equal(hideCalled, false, "Click inside virtual keyboard must NOT call hide()");
+
+  // 3. Simulate click inside math field -> hide() must NOT be called
+  hideCalled = false;
+  isVisible = true;
+  const insideMathFieldEvent = {
+    composedPath: () => [
+      {
+        tagName: "math-field",
+        classList: { contains: () => false },
+      },
+    ],
+  };
+  invokeHandler(insideMathFieldEvent);
+  assert.equal(hideCalled, false, "Click inside <math-field> must NOT call hide()");
+
+  // 4. Clean up listener
+  unregister();
+  resetVirtualKeyboardListenerForTests();
+});
+
+test("VisualMathField configures smartMode: false and smartFence: false for radical, absolute value, and norm stability", () => {
+  const componentPath = path.resolve(
+    __dirname,
+    "../src/components/math/VisualMathField.tsx"
+  );
+  const componentContent = fs.readFileSync(componentPath, "utf-8");
+
+  assert.match(
+    componentContent,
+    /mf\.smartFence\s*=\s*false/,
+    "mf.smartFence must be explicitly false to prevent vertical pipe auto-pairing interference"
+  );
+  assert.match(
+    componentContent,
+    /mf\.smartMode\s*=\s*false/,
+    "mf.smartMode must be explicitly false to prevent unwanted automatic text mode switching"
+  );
+});
+
+test("VisualMathField shadow DOM and index.css inject border-bottom dashed for placeholder styling", () => {
+  const componentPath = path.resolve(
+    __dirname,
+    "../src/components/math/VisualMathField.tsx"
+  );
+  const componentContent = fs.readFileSync(componentPath, "utf-8");
+
+  assert.match(
+    componentContent,
+    /\.ML__placeholder\s*\{[\s\S]*?border-bottom:\s*1\.5px\s*dashed\s*currentColor\s*!important/,
+    "VisualMathField shadow root must directly style .ML__placeholder with dashed border"
+  );
+
+  const cssPath = path.resolve(__dirname, "../src/index.css");
+  const cssContent = fs.readFileSync(cssPath, "utf-8");
+
+  assert.match(
+    cssContent,
+    /border-bottom:\s*1\.5px\s*dashed\s*currentColor\s*!important/,
+    "index.css must provide fallback dashed border-bottom styling for placeholders"
+  );
+  assert.match(
+    cssContent,
+    /\.bg-slate-950\s+math-field/,
+    "index.css must provide high-contrast text color on dark containers like .bg-slate-950"
+  );
+});
