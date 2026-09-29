@@ -871,4 +871,59 @@ describe("RichMathEditor Caret Preservation and External Insertion", () => {
     assert.match(source, /Không thể sao chép/);
     assert.match(source, /Sao chép/);
   });
+
+  it("cleans up temporary textarea in execCommand fallback using finally block even if an exception occurs", () => {
+    // 1. Static assertion: verify finally block removes tempTextArea
+    assert.match(
+      source,
+      /let\s+tempTextArea:\s*HTMLTextAreaElement\s*\|\s*null\s*=\s*null;\s*try\s*\{[\s\S]*?tempTextArea\s*=\s*document\.createElement\("textarea"\);[\s\S]*?\}\s*catch\s*\{[\s\S]*?\}\s*finally\s*\{\s*if\s*\(tempTextArea\)\s*\{\s*tempTextArea\.remove\(\);\s*\}\s*\}/
+    );
+
+    // 2. Functional behavioral assertion: verify node is removed when execCommand throws
+    let appendedNode: any = null;
+    let removedNode: any = null;
+
+    const mockDoc = {
+      createElement: (tag: string) => {
+        const el = {
+          tag,
+          value: "",
+          style: {},
+          select: () => {},
+          remove: () => {
+            removedNode = el;
+          },
+        };
+        return el;
+      },
+      body: {
+        appendChild: (node: any) => {
+          appendedNode = node;
+        },
+      },
+      execCommand: (_commandId?: string): boolean => {
+        throw new Error("Simulated execCommand permission failure");
+      },
+    };
+
+    let copied = false;
+    let tempTextArea: any = null;
+    try {
+      tempTextArea = mockDoc.createElement("textarea");
+      tempTextArea.value = "test-latex";
+      mockDoc.body.appendChild(tempTextArea);
+      tempTextArea.select();
+      copied = mockDoc.execCommand("copy");
+    } catch {
+      copied = false;
+    } finally {
+      if (tempTextArea) {
+        tempTextArea.remove();
+      }
+    }
+
+    assert.equal(copied, false);
+    assert.ok(appendedNode);
+    assert.equal(removedNode, appendedNode);
+  });
 });

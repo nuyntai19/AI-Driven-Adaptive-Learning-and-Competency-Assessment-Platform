@@ -94,17 +94,21 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
       } else {
         // Fallback: document.execCommand copy
         let copied = false;
+        let tempTextArea: HTMLTextAreaElement | null = null;
         try {
-          const tempTextArea = document.createElement("textarea");
+          tempTextArea = document.createElement("textarea");
           tempTextArea.value = value;
           tempTextArea.style.position = "fixed";
           tempTextArea.style.opacity = "0";
           document.body.appendChild(tempTextArea);
           tempTextArea.select();
           copied = document.execCommand("copy");
-          document.body.removeChild(tempTextArea);
         } catch {
           copied = false;
+        } finally {
+          if (tempTextArea) {
+            tempTextArea.remove();
+          }
         }
         if (copied) {
           setCopyStatus("copied");
