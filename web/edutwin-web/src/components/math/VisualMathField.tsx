@@ -141,16 +141,27 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
           mf.style.setProperty("--caret-color", "var(--rme-accent, #4f46e5)");
           mf.style.setProperty("--selection-background-color", "rgba(99, 102, 241, 0.25)");
 
-          // Configure MathLive settings
+          // 1. Mount to DOM container first so math-field is connected and property getters/setters are active
+          containerRef.current.innerHTML = "";
+          containerRef.current.appendChild(mf);
+          mathfieldRef.current = mf;
+
+          // 2. Configure MathLive settings
           mf.mathVirtualKeyboardPolicy = "manual"; // Prevent unwanted mobile popups on desktop
           mf.defaultMode = "math";
           mf.smartFence = false;
           mf.smartMode = false;
           mf.smartSuperscript = true;
-          mf.inlineShortcuts = {
-            ...mf.inlineShortcuts,
-            ...DEFAULT_MATH_INLINE_SHORTCUTS,
-          };
+          try {
+            mf.inlineShortcuts = {
+              ...(mf.inlineShortcuts || {}),
+              ...DEFAULT_MATH_INLINE_SHORTCUTS,
+            };
+          } catch {
+            mf.inlineShortcuts = {
+              ...DEFAULT_MATH_INLINE_SHORTCUTS,
+            };
+          }
           mf.setAttribute("data-input-mode", "math");
 
           // Synchronize dark theme class with document or parent container
@@ -267,10 +278,6 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
           mf.addEventListener("keydown", handleKeyDown);
           mf.addEventListener("focus", handleFocus);
           mf.addEventListener("pointerdown", handleFocus);
-
-          containerRef.current.innerHTML = "";
-          containerRef.current.appendChild(mf);
-          mathfieldRef.current = mf;
           setLoadError(false);
           setIsReady(true);
         })
