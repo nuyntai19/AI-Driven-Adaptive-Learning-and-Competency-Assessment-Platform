@@ -46,6 +46,15 @@ export const PlainTextAnswerInput = forwardRef<AnswerEditorRef, PlainTextAnswerI
         const next = current.substring(0, start) + text + current.substring(end);
         onChange?.(buildTextExactAnswer(next));
       },
+      insertAtCursor: (text: string) => {
+        if (disabled || readOnly || !inputRef.current) return;
+        const input = inputRef.current;
+        const start = input.selectionStart ?? input.value.length;
+        const end = input.selectionEnd ?? input.value.length;
+        const current = input.value;
+        const next = current.substring(0, start) + text + current.substring(end);
+        onChange?.(buildTextExactAnswer(next));
+      },
       focus: () => {
         inputRef.current?.focus();
       },

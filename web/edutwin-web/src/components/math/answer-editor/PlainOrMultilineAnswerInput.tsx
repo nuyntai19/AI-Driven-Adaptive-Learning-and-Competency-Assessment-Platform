@@ -59,6 +59,18 @@ export const PlainOrMultilineAnswerInput = forwardRef<
 
         onChange?.(buildProseAnswer(next));
       },
+      insertAtCursor: (latex: string) => {
+        if (disabled || readOnly || !textareaRef.current) return;
+        const textarea = textareaRef.current;
+        const start = textarea.selectionStart ?? textarea.value.length;
+        const end = textarea.selectionEnd ?? textarea.value.length;
+        const current = textarea.value;
+
+        const formatted = latex.startsWith("$") && latex.endsWith("$") ? latex : `$${latex}$`;
+        const next = current.substring(0, start) + formatted + current.substring(end);
+
+        onChange?.(buildProseAnswer(next));
+      },
       focus: () => {
         textareaRef.current?.focus();
       },

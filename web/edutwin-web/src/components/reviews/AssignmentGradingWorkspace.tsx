@@ -263,7 +263,10 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
           ? `${matched.optionLabel}. ${matched.optionText}`
           : matched.optionLabel;
       }
-      if (raw) return raw;
+      if (raw) {
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw);
+        return isUuid ? "Phương án đã chọn" : raw;
+      }
     }
 
     // For Math / Short Answer / Essay questions:
@@ -272,11 +275,12 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
     if (latexAns) {
       const isRawOptionId = opts.some((o) => o.optionId === latexAns);
       if (!isRawOptionId) {
-        return latexAns;
+        return latexAns.replace(/\\placeholder(\[[^\]]*\])?(\{[^}]*\})?/g, "___");
       }
     }
 
-    return currentQuestion.finalAnswer?.trim() || "";
+    const finalAns = currentQuestion.finalAnswer?.trim() || "";
+    return finalAns.replace(/\\placeholder(\[[^\]]*\])?(\{[^}]*\})?/g, "___");
   }, [currentQuestion]);
 
   // Resolve genuine student reasoning text

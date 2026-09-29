@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from "react";
 import katex from "katex";
 import {
   cleanFormulaForInsertion,
@@ -25,6 +25,13 @@ export interface RichMathEditorProps {
   className?: string;
   id?: string;
   variant?: "center-manager" | "teacher" | "student" | "neutral";
+  onFocus?: () => void;
+}
+
+export interface RichMathEditorRef {
+  insertLatex: (latex: string) => void;
+  insertText: (text: string) => void;
+  focus: () => void;
 }
 
 /**
@@ -40,18 +47,23 @@ export interface RichMathEditorProps {
  * - Clean whitespace management (no stray NBSP).
  * - Under-the-hood serialization to canonical "prose + $latex$" for API contracts.
  */
-export const RichMathEditor: React.FC<RichMathEditorProps> = ({
-  value,
-  onChange,
-  placeholder = "Nhập văn bản... (Gõ $ hoặc Ctrl+M để chèn công thức toán)",
-  disabled = false,
-  minHeight = "96px",
-  singleLine = false,
-  label,
-  className = "",
-  id,
-  variant = "center-manager",
-}) => {
+export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>(
+  (
+    {
+      value,
+      onChange,
+      placeholder = "Nhập văn bản... (Gõ $ hoặc Ctrl+M để chèn công thức toán)",
+      disabled = false,
+      minHeight = "96px",
+      singleLine = false,
+      label,
+      className = "",
+      id,
+      variant = "center-manager",
+      onFocus,
+    },
+    ref
+  ) => {
   const { isDark } = useThemeMode();
   const [viewMode, setViewMode] = useState<"visual" | "source">("visual");
   const [activeMathNode, setActiveMathNode] = useState<{
@@ -165,6 +177,94 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
     handleOpenMathNode(mathSpan, true);
     checkEmpty();
   }, [disabled, viewMode, handleOpenMathNode, checkEmpty]);
+
+  const insertLatexAtCursor = useCallback(
+    (latexToInsert: string) => {
+      if (disabled || viewMode !== "visual") return;
+      const container = editorRef.current;
+      if (!container) return;
+
+      container.focus();
+      const sel = window.getSelection();
+
+      let targetRange: Range | null = null;
+      if (sel && sel.rangeCount > 0 && container.contains(sel.anchorNode)) {
+        targetRange = sel.getRangeAt(0);
+      } else {
+        targetRange = document.createRange();
+        targetRange.selectNodeContents(container);
+        targetRange.collapse(false);
+      }
+
+      const clean = cleanFormulaForInsertion(latexToInsert);
+      const mathSpan = createMathSpan(clean, (span) =>
+        handleOpenMathNode(span, false)
+      );
+
+      targetRange.deleteContents();
+      targetRange.insertNode(mathSpan);
+
+      const afterRange = document.createRange();
+      afterRange.setStartAfter(mathSpan);
+      afterRange.collapse(true);
+      sel?.removeAllRanges();
+      sel?.addRange(afterRange);
+
+      isLocalChangeRef.current = true;
+      const serialized = serializeEditorDom(container);
+      onChange(serialized);
+      checkEmpty();
+    },
+    [disabled, viewMode, handleOpenMathNode, onChange, checkEmpty]
+  );
+
+  const insertTextAtCursor = useCallback(
+    (textToInsert: string) => {
+      if (disabled || viewMode !== "visual") return;
+      const container = editorRef.current;
+      if (!container) return;
+
+      container.focus();
+      const sel = window.getSelection();
+
+      let targetRange: Range | null = null;
+      if (sel && sel.rangeCount > 0 && container.contains(sel.anchorNode)) {
+        targetRange = sel.getRangeAt(0);
+      } else {
+        targetRange = document.createRange();
+        targetRange.selectNodeContents(container);
+        targetRange.collapse(false);
+      }
+
+      const textNode = document.createTextNode(textToInsert);
+      targetRange.deleteContents();
+      targetRange.insertNode(textNode);
+
+      const afterRange = document.createRange();
+      afterRange.setStartAfter(textNode);
+      afterRange.collapse(true);
+      sel?.removeAllRanges();
+      sel?.addRange(afterRange);
+
+      isLocalChangeRef.current = true;
+      const serialized = serializeEditorDom(container);
+      onChange(serialized);
+      checkEmpty();
+    },
+    [disabled, viewMode, onChange, checkEmpty]
+  );
+
+  useImperativeHandle(ref, () => ({
+    insertLatex: (latex: string) => {
+      insertLatexAtCursor(latex);
+    },
+    insertText: (text: string) => {
+      insertTextAtCursor(text);
+    },
+    focus: () => {
+      editorRef.current?.focus();
+    },
+  }));
 
   // Handle typing inside contenteditable
   const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -510,6 +610,7 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
             onKeyDown={handleEditorKeyDown}
             onInput={handleEditorInput}
             onPaste={handleEditorPaste}
+            onFocus={onFocus}
             data-placeholder={placeholder}
             role="textbox"
             aria-multiline={!singleLine}
@@ -524,6 +625,7 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
             id={id}
             value={value}
             disabled={disabled}
+            onFocus={onFocus}
             onChange={(e) => {
               const val = singleLine ? e.target.value.replace(/[\r\n]+/g, " ") : e.target.value;
               onChange(val);
@@ -743,4 +845,6 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
       )}
     </div>
   );
-};
+});
+
+RichMathEditor.displayName = "RichMathEditor";

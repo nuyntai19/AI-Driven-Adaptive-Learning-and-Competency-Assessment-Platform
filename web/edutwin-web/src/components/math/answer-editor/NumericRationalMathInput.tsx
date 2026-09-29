@@ -56,6 +56,10 @@ export const NumericRationalMathInput = forwardRef<AnswerEditorRef, NumericRatio
         if (disabled || readOnly) return;
         visualRef.current?.insertAtCursor(latex);
       },
+      insertAtCursor: (latex: string) => {
+        if (disabled || readOnly) return;
+        visualRef.current?.insertAtCursor(latex);
+      },
       focus: () => {
         visualRef.current?.focus();
       },

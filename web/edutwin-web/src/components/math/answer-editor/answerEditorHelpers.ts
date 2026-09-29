@@ -40,6 +40,7 @@ export interface InputTypeResolution {
 
 export interface AnswerEditorRef {
   insertLatex: (latex: string) => void;
+  insertAtCursor?: (latex: string) => void;
   focus: () => void;
   clear: () => void;
   getValue: () => AnswerEditorValue;

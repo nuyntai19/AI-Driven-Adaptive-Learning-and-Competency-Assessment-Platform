@@ -4,6 +4,7 @@ import { questionsApi } from "../../api/questionsApi";
 import { organizationApi } from "../../api/organizationApi";
 import { knowledgeGraphApi } from "../../api/knowledgeGraphApi";
 import type { QuestionImportPreviewDataDto } from "../../types/questions";
+import { RichMathText } from "../math/RichMathText";
 import { TeacherModal } from "./TeacherOverlays";
 import "./teacherDesignSystem.css";
 
@@ -371,9 +372,11 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
                             </td>
                             <td className="p-2.5 font-semibold text-teal-600 dark:text-teal-400">Lv {q.difficulty}</td>
                             <td className="p-2.5 max-w-xs truncate text-slate-900 dark:text-slate-100" title={q.questionText}>
-                              {q.questionText}
+                              <RichMathText text={q.questionText} />
                             </td>
-                            <td className="p-2.5 font-bold text-emerald-600 dark:text-emerald-400 font-mono">{q.correctAnswer}</td>
+                            <td className="p-2.5 font-bold text-emerald-600 dark:text-emerald-400 font-mono">
+                              <RichMathText text={q.correctAnswer} />
+                            </td>
                             <td className="p-2.5">
                               <span className="text-[11px] text-slate-500 dark:text-slate-400">
                                 {q.reasoningRequired ? "Bắt buộc tư duy" : "Không"}

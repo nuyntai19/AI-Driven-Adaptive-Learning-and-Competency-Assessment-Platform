@@ -177,10 +177,23 @@ export function AttemptFeedbackHierarchy({
   };
   const displayedAwardedScore = toDisplayedScore(grading.awardedScore);
   const formatAnswer = (answer: string) => {
+    if (!answer) return "";
+    const cleanAnswer = answer.replace(/\\placeholder(\[[^\]]*\])?(\{[^}]*\})?/g, "___");
     const option = answerOptions.find(
-      (candidate) => candidate.optionId === answer || candidate.label === answer
+      (candidate) =>
+        candidate.optionId === answer ||
+        candidate.optionId === cleanAnswer ||
+        candidate.label === answer ||
+        candidate.label === cleanAnswer
     );
-    return option ? `${option.label}. ${option.text}` : answer;
+    if (option) {
+      return `${option.label}. ${option.text}`;
+    }
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(answer.trim());
+    if (isUuid) {
+      return "Phương án đã chọn";
+    }
+    return cleanAnswer;
   };
 
   const formatQualityBand = (band?: string | null): string => {
@@ -238,7 +251,11 @@ export function AttemptFeedbackHierarchy({
               <p className="font-bold text-slate-900 dark:text-white text-base">
                 {studentSubmission?.finalAnswer ? (
                   <RichMathText
-                    content={studentSubmission.answerDisplayLatex || formatAnswer(studentSubmission.finalAnswer)}
+                    content={
+                      studentSubmission.answerDisplayLatex
+                        ? studentSubmission.answerDisplayLatex.replace(/\\placeholder(\[[^\]]*\])?(\{[^}]*\})?/g, "___")
+                        : formatAnswer(studentSubmission.finalAnswer)
+                    }
                   />
                 ) : "Chưa có đáp án"}
               </p>

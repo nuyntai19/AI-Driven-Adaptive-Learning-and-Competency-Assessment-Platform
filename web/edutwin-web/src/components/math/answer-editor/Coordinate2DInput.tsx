@@ -103,6 +103,14 @@ export const Coordinate2DInput = forwardRef<AnswerEditorRef, Coordinate2DInputPr
           xRef.current?.insertAtCursor(latex);
         }
       },
+      insertAtCursor: (latex: string) => {
+        if (disabled || readOnly) return;
+        if (lastActiveAxisRef.current === "y") {
+          yRef.current?.insertAtCursor(latex);
+        } else {
+          xRef.current?.insertAtCursor(latex);
+        }
+      },
       focus: () => {
         if (lastActiveAxisRef.current === "y") {
           yRef.current?.focus();

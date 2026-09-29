@@ -31,6 +31,7 @@ export interface ModeAwareAnswerEditorProps {
   validationError?: string | null;
   ariaLabel?: string;
   showPreview?: boolean;
+  showSyntaxHint?: boolean;
   onFocus?: () => void;
 }
 
@@ -84,6 +85,7 @@ export const ModeAwareAnswerEditor = forwardRef<AnswerEditorRef, ModeAwareAnswer
       validationError = null,
       ariaLabel,
       showPreview = true,
+      showSyntaxHint,
       onFocus,
     },
     ref
@@ -98,6 +100,14 @@ export const ModeAwareAnswerEditor = forwardRef<AnswerEditorRef, ModeAwareAnswer
       insertLatex: (latex: string) => {
         if (disabled || readOnly) return;
         childRef.current?.insertLatex(latex);
+      },
+      insertAtCursor: (latex: string) => {
+        if (disabled || readOnly) return;
+        if (childRef.current?.insertAtCursor) {
+          childRef.current.insertAtCursor(latex);
+        } else {
+          childRef.current?.insertLatex(latex);
+        }
       },
       focus: () => {
         childRef.current?.focus();
@@ -216,6 +226,7 @@ export const ModeAwareAnswerEditor = forwardRef<AnswerEditorRef, ModeAwareAnswer
             placeholder={placeholder}
             autoFocus={autoFocus}
             showPreview={showPreview}
+            showSyntaxHint={showSyntaxHint ?? profile === "authoring"}
             onFocus={onFocus}
             ariaLabel={ariaLabel}
           />
@@ -230,6 +241,7 @@ export const ModeAwareAnswerEditor = forwardRef<AnswerEditorRef, ModeAwareAnswer
             readOnly={readOnly}
             autoFocus={autoFocus}
             showPreview={showPreview}
+            showSyntaxHint={showSyntaxHint ?? profile === "authoring"}
             onFocus={onFocus}
             ariaLabel={ariaLabel}
           />

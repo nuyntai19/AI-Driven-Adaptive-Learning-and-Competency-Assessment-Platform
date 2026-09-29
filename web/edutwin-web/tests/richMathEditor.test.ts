@@ -273,6 +273,24 @@ describe("Cross-Actor Unification (Center Manager, Teacher, Student)", () => {
     assert.ok(!content.includes("Bảng gõ ký hiệu Toán"));
   });
 
+  it("Legacy MathInputToolbar.tsx is completely removed from the codebase", () => {
+    const toolbarPath = path.resolve(__dirname, "../src/components/math/MathInputToolbar.tsx");
+    assert.equal(fs.existsSync(toolbarPath), false, "MathInputToolbar.tsx must be completely removed");
+  });
+
+  it("LearningPlayerPage uses RichMathEditor for student reasoning and ModeAwareAnswerEditor for answer dispatching", () => {
+    const studentPath = path.resolve(__dirname, "../src/pages/LearningPlayerPage.tsx");
+    const content = fs.readFileSync(studentPath, "utf-8");
+
+    assert.ok(content.includes('import { RichMathEditor, type RichMathEditorRef } from "../components/math/RichMathEditor";'));
+    assert.ok(content.includes('import { ModeAwareAnswerEditor } from "../components/math/answer-editor/ModeAwareAnswerEditor";'));
+    assert.ok(content.includes('variant="student"'));
+    assert.ok(content.includes('profile="answering"'));
+    assert.ok(content.includes('showPreview={false}'));
+    assert.ok(content.includes('showSyntaxHint={false}'));
+    assert.ok(!content.includes("KaTeX Preview"));
+  });
+
   it("TeacherQuestionEditorView uses ModeAwareAnswerEditor instead of plain text input", () => {
     const teacherPath = path.resolve(__dirname, "../src/pages/teacher/TeacherQuestionEditorView.tsx");
     const content = fs.readFileSync(teacherPath, "utf-8");

@@ -2,7 +2,6 @@ import React from "react";
 import { useParams, Link, useSearchParams } from "react-router-dom";
 import { isAxiosError } from "axios";
 import { useStudentAssignment } from "../features/assignments/useStudentAssignment";
-import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
 import { RichMathText } from "../components/math/RichMathText";
 import { getSubjectTheme } from "../components/student/subjectTheme";
 import { StudentBadge } from "../components/student/StudentBadge";
@@ -293,7 +292,6 @@ export const StudentAssignmentDetailPage: React.FC = () => {
         {questions.map((question, index) => {
           const formattedId = `Q-${String(index + 1).padStart(2, "0")}`;
           const timeSec = question.estimatedTimeSeconds || 120;
-          const hasMath = /[\\[{^_\\]]/.test(question.questionText);
           const isDone =
             Boolean(question.latestAttempt) ||
             question.attemptStatus === "Completed" ||
@@ -331,16 +329,6 @@ export const StudentAssignmentDetailPage: React.FC = () => {
                 <RichMathText text={question.questionText} />
               </div>
 
-              {/* KaTeX preview if formula detected */}
-              {hasMath && (
-                <div className="pt-1">
-                  <MathFormulaPreview
-                    formula={question.questionText}
-                    label="Công thức toán"
-                  />
-                </div>
-              )}
-
               {/* Options preview if present */}
               {question.options && question.options.length > 0 && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
@@ -352,7 +340,9 @@ export const StudentAssignmentDetailPage: React.FC = () => {
                       <span className="w-5 h-5 rounded-full bg-white dark:bg-stone-800 border border-stone-300 dark:border-stone-700 font-bold text-stone-700 dark:text-stone-300 flex items-center justify-center text-[10px] shrink-0">
                         {opt.label}
                       </span>
-                      <span className="text-stone-800 dark:text-stone-200 truncate">{opt.text}</span>
+                      <span className="text-stone-800 dark:text-stone-200 truncate">
+                        <RichMathText content={opt.text} />
+                      </span>
                     </div>
                   ))}
                 </div>

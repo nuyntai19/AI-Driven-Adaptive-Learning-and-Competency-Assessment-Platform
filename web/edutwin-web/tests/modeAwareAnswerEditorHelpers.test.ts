@@ -481,3 +481,82 @@ test("Gate 2A.1 - Source Wiring Verification: Production components strictly adh
   assert.match(previewCoreSrc, /import \{ renderSafeKatex \} from "\.\/mathPreviewUtils";/);
   assert.doesNotMatch(previewCoreSrc, /export function renderSafeKatex/, "MathPreviewCore must not export renderSafeKatex to avoid fast refresh warnings");
 });
+
+test("Gate 2A.2 - Student Answering UX, Backward-Compatible Casio Ref, and Review Hardening", () => {
+  // 1. AnswerEditorRef exposes insertAtCursor across orchestrator and specialized inputs
+  const answerHelpersSrc = fs.readFileSync(
+    path.resolve(__dirname, "../src/components/math/answer-editor/answerEditorHelpers.ts"),
+    "utf-8"
+  );
+  assert.match(answerHelpersSrc, /insertAtCursor\?: \(latex: string\) => void;/);
+
+  const orchestratorSrc = fs.readFileSync(
+    path.resolve(__dirname, "../src/components/math/answer-editor/ModeAwareAnswerEditor.tsx"),
+    "utf-8"
+  );
+  assert.match(orchestratorSrc, /insertAtCursor: \(latex: string\) =>/);
+  assert.match(orchestratorSrc, /showSyntaxHint\?: boolean;/);
+  assert.match(orchestratorSrc, /showSyntaxHint=\{showSyntaxHint \?\? profile === "authoring"\}/);
+
+  const numericInputSrc = fs.readFileSync(
+    path.resolve(__dirname, "../src/components/math/answer-editor/NumericRationalMathInput.tsx"),
+    "utf-8"
+  );
+  assert.match(numericInputSrc, /insertAtCursor: \(latex: string\) =>/);
+
+  const coordInputSrc = fs.readFileSync(
+    path.resolve(__dirname, "../src/components/math/answer-editor/Coordinate2DInput.tsx"),
+    "utf-8"
+  );
+  assert.match(coordInputSrc, /insertAtCursor: \(latex: string\) =>/);
+
+  const plainInputSrc = fs.readFileSync(
+    path.resolve(__dirname, "../src/components/math/answer-editor/PlainTextAnswerInput.tsx"),
+    "utf-8"
+  );
+  assert.match(plainInputSrc, /insertAtCursor: \(text: string\) =>/);
+
+  // 2. RichMathEditor supports forwardRef, RichMathEditorRef, and onFocus
+  const richMathSrc = fs.readFileSync(
+    path.resolve(__dirname, "../src/components/math/RichMathEditor.tsx"),
+    "utf-8"
+  );
+  assert.match(richMathSrc, /export interface RichMathEditorRef/);
+  assert.match(richMathSrc, /forwardRef<RichMathEditorRef, RichMathEditorProps>/);
+  assert.match(richMathSrc, /insertLatex: \(latex: string\) =>/);
+  assert.match(richMathSrc, /insertText: \(text: string\) =>/);
+  assert.match(richMathSrc, /onFocus=\{onFocus\}/);
+
+  // 3. AttemptFeedbackHierarchy: formatAnswer filters unmapped UUIDs and placeholder tokens
+  const feedbackHierarchySrc = fs.readFileSync(
+    path.resolve(__dirname, "../src/components/student/AttemptFeedbackHierarchy.tsx"),
+    "utf-8"
+  );
+  assert.match(feedbackHierarchySrc, /cleanAnswer = answer\.replace\(/);
+  assert.match(feedbackHierarchySrc, /isUuid = \/\^\[0-9a-f\]\{8\}-\[0-9a-f\]\{4\}/i);
+  assert.match(feedbackHierarchySrc, /return "Phương án đã chọn";/);
+
+  // 4. StudentAssignmentDetailPage renders options with RichMathText and omits redundant preview
+  const studentDetailSrc = fs.readFileSync(
+    path.resolve(__dirname, "../src/pages/StudentAssignmentDetailPage.tsx"),
+    "utf-8"
+  );
+  assert.match(studentDetailSrc, /<RichMathText content=\{opt\.text\} \/>/);
+  assert.doesNotMatch(studentDetailSrc, /<MathFormulaPreview/);
+
+  // 5. AssignmentGradingWorkspace: resolvedStudentAnswer masks unmapped UUIDs and placeholder tokens
+  const gradingWorkspaceSrc = fs.readFileSync(
+    path.resolve(__dirname, "../src/components/reviews/AssignmentGradingWorkspace.tsx"),
+    "utf-8"
+  );
+  assert.match(gradingWorkspaceSrc, /isUuid = \/\^\[0-9a-f\]\{8\}-\[0-9a-f\]\{4\}/i);
+  assert.match(gradingWorkspaceSrc, /return isUuid \? "Phương án đã chọn" : raw;/);
+
+  // 6. QuestionImportModal preview table renders mixed content with RichMathText
+  const importModalSrc = fs.readFileSync(
+    path.resolve(__dirname, "../src/components/teacher/QuestionImportModal.tsx"),
+    "utf-8"
+  );
+  assert.match(importModalSrc, /<RichMathText text=\{q\.questionText\} \/>/);
+  assert.match(importModalSrc, /<RichMathText text=\{q\.correctAnswer\} \/>/);
+});

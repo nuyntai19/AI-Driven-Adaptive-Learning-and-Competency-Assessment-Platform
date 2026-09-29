@@ -378,10 +378,10 @@ Tạo mới file `web/edutwin-web/tests/modeAwareAnswerEditorHelpers.test.ts` ki
      - [AssignmentGradingWorkspace.tsx](file:///d:/AI-Driven%20Adaptive%20Learning%20and%20Competency%20Assessment%20Platform/web/edutwin-web/src/components/reviews/AssignmentGradingWorkspace.tsx)
      - [AttemptFeedbackHierarchy.tsx](file:///d:/AI-Driven%20Adaptive%20Learning%20and%20Competency%20Assessment%20Platform/web/edutwin-web/src/components/student/AttemptFeedbackHierarchy.tsx)
    - Kiểm tra a11y, theme light/dark, chạy full regression test và bundle budget check.
-   - *Tiêu chí nghiệm thu*: `npm run verify` pass hoàn toàn.
-6. **Gate 2A.Extension — Mixed-Content Import Preview & Cleanup (Gate Mở Rộng — ⏳ CHƯA THỰC HIỆN)**:
-   - Render công thức toán trong bảng preview của [QuestionImportModal.tsx](file:///d:/AI-Driven%20Adaptive%20Learning%20and%20Competency%20Assessment%20Platform/web/edutwin-web/src/components/teacher/QuestionImportModal.tsx).
-   - Chạy lệnh `git grep MathInputToolbar` xác nhận không còn bất kỳ import nào trong codebase, sau đó xóa bỏ hoàn toàn file [MathInputToolbar.tsx](file:///d:/AI-Driven%20Adaptive%20Learning%20and%20Competency%20Assessment%20Platform/web/edutwin-web/src/components/math/MathInputToolbar.tsx).
+   - *Tiêu chí nghiệm thu*: `npm run verify` pass hoàn toàn. (**ĐÃ HOÀN THÀNH**)
+6. **Gate 2A.Extension — Mixed-Content Import Preview & Cleanup (Gate Mở Rộng — ✅ ĐÃ HOÀN THÀNH)**:
+   - Render công thức toán và nội dung hỗn hợp trong bảng preview của [QuestionImportModal.tsx](file:///d:/AI-Driven%20Adaptive%20Learning%20and%20Competency%20Assessment%20Platform/web/edutwin-web/src/components/teacher/QuestionImportModal.tsx) bằng [RichMathText](file:///d:/AI-Driven%20Adaptive%20Learning%20and%20Competency%20Assessment%20Platform/web/edutwin-web/src/components/math/RichMathText.tsx).
+   - Đã xác nhận không còn bất kỳ production import nào và xóa bỏ hoàn toàn file legacy [MathInputToolbar.tsx](file:///d:/AI-Driven%20Adaptive%20Learning%20and%20Competency%20Assessment%20Platform/web/edutwin-web/src/components/math/MathInputToolbar.tsx).
 
 ---
 
@@ -445,4 +445,30 @@ Tạo mới file `web/edutwin-web/tests/modeAwareAnswerEditorHelpers.test.ts` ki
 
 ---
 
-*Tài liệu hiệu chỉnh v3.5 hoàn tất. Đã thống nhất ranh giới phạm vi mixed-content composer vào Core Gates, hoàn thiện lifecycle draft store theo question identity và khóa chặt contract của InlineMathComposer. Sẵn sàng triển khai mã nguồn Gate 2A.2.*
+## 14. Tổng Kết Triển Khai Thực Tế Toàn Bộ Phase 2A (Gates 2A.1 – 2A.5 & Extension Đã Hoàn Thành)
+
+1. **Triết lý Student UX: "Thống nhất kiến trúc, không đồng nhất giao diện"**:
+   - Ô đáp án toán học sinh (`NumericRational`): Giữ nguyên vẹn 100% trải nghiệm trực quan của `VisualMathField` (MathLive), bàn phím ảo MathLive và các ô placeholder hình vuông giúp học sinh biết vị trí cần điền.
+   - `ModeAwareAnswerEditor` chỉ đóng vai trò bộ điều phối kiến trúc (`profile="answering"`, `showPreview={false}`, `showSyntaxHint={false}`), không thêm bất kỳ thành phần trang trí hay authoring preview nào vào ô đáp án học sinh.
+   - Hỗ trợ đầy đủ các mode: `NumericRational` (MathLive), `Coordinate2D` (trình nhập tọa độ có cấu trúc X, Y), `TextExact` (input văn bản thường), `Essay/Manual` (multiline prose), MultipleChoice (giữ OptionSelector card layout).
+   - Bảo toàn 100% Casio calculator 1-click insertion thông qua interface `insertAtCursor` trên `AnswerEditorRef` và `RichMathEditorRef`.
+2. **Học sinh Soạn Lập Luận (Reasoning Text)**:
+   - Nâng cấp ô `reasoningText` thành shared `RichMathEditor` với `variant="student"`, cho phép học sinh viết câu tiếng Việt xen công thức toán học KaTeX trực tiếp trong cùng một khung nhập.
+   - Loại bỏ hoàn toàn khối preview KaTeX trùng lặp bên dưới.
+3. **Bảo Vệ Màn Hình Review & Chấm Bài (Zero Raw LaTeX & Zero UUID Leakage)**:
+   - `AttemptFeedbackHierarchy`: `formatAnswer` che giấu UUID phương án chưa khớp thành `"Phương án đã chọn"`, dọn sạch token `\placeholder{}` thành `___`.
+   - `AssignmentGradingWorkspace`: `resolvedStudentAnswer` che giấu UUID phương án trắc nghiệm chưa khớp và lọc sạch placeholder.
+   - `StudentAssignmentDetailPage`: Render các phương án bằng `RichMathText` thay vì raw text, loại bỏ preview công thức thừa.
+4. **Question Import Preview**:
+   - Bảng preview trong `QuestionImportModal` hiển thị mixed-content cho cả `q.questionText` và `q.correctAnswer` thông qua `RichMathText`.
+5. **Dọn Dẹp Mã Nguồn Cũ**:
+   - File legacy `MathInputToolbar.tsx` đã được xóa sạch hoàn toàn khỏi repository sau khi xác nhận không còn bất kỳ production import nào.
+6. **Kết Quả Kiểm Thử & Chất Lượng (Quality Gates)**:
+   - **384/384 Frontend Tests Pass**.
+   - **ESLint**: 0 errors, 30 legacy warnings.
+   - **TypeScript & Vite Production Build**: Thành công 100%.
+   - **Bundle Size Budget**: Main bundle `109.44 kB` (dưới ngân sách 300 kB), pass 1/1 test ngân sách.
+   - **Docker Container Sync**: Đã đồng bộ bundle mới nhất sang container `edutwin-web`.
+   - **Git Status**: Sạch, không có whitespace hay trailing errors.
+
+*Hoàn tất toàn bộ Phase 2A. Sẵn sàng chuyển giao cho Codex kiểm chứng. Không bắt đầu Phase 2B (CAS / MathEquivalent).*

@@ -23,8 +23,11 @@ import {
 import { StudentSubjectRequiredState } from "../components/student/StudentSubjectRequiredState";
 import { AttemptFeedbackHierarchy } from "../components/student/AttemptFeedbackHierarchy";
 import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
-import { VisualMathField, type VisualMathFieldRef } from "../components/math/VisualMathField";
+import { type VisualMathFieldRef } from "../components/math/VisualMathField";
 import { RichMathText } from "../components/math/RichMathText";
+import { RichMathEditor, type RichMathEditorRef } from "../components/math/RichMathEditor";
+import { ModeAwareAnswerEditor } from "../components/math/answer-editor/ModeAwareAnswerEditor";
+import type { AnswerEditorRef } from "../components/math/answer-editor/answerEditorHelpers";
 import { SideAssistantWorkspace, type AssistantToolTab } from "../components/math/SideAssistantWorkspace";
 import {
   clearAttemptSessionId,
@@ -188,7 +191,9 @@ export const LearningPlayerPage = () => {
 
   // Input refs and cursor management
   const reasoningTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const reasoningEditorRef = useRef<RichMathEditorRef>(null);
   const visualMathFieldRef = useRef<VisualMathFieldRef>(null);
+  const answerEditorRef = useRef<AnswerEditorRef>(null);
   const [activeInputTarget, setActiveInputTarget] = useState<"answer" | "reasoning">("answer");
 
   // Client submission token (unique per attempt session)
@@ -905,7 +910,13 @@ export const LearningPlayerPage = () => {
     if (isReadOnly) return;
 
     if (activeInputTarget === "answer") {
-      if (visualMathFieldRef.current) {
+      if (answerEditorRef.current?.insertAtCursor) {
+        answerEditorRef.current.insertAtCursor(textToInsert);
+        setAnswerChanges((prev) => prev + 1);
+      } else if (answerEditorRef.current?.insertLatex) {
+        answerEditorRef.current.insertLatex(textToInsert);
+        setAnswerChanges((prev) => prev + 1);
+      } else if (visualMathFieldRef.current) {
         visualMathFieldRef.current.insertAtCursor(textToInsert);
         setAnswerChanges((prev) => prev + 1);
       } else {
@@ -915,22 +926,31 @@ export const LearningPlayerPage = () => {
     }
 
     if (activeInputTarget === "reasoning") {
-      const textarea = reasoningTextareaRef.current;
-      if (!textarea) {
-        handleReasoningChange(reasoningText + textToInsert);
-        return;
+      if (reasoningEditorRef.current) {
+        if (/[\\[{^_\\]]/.test(textToInsert)) {
+          const formula = textToInsert.replace(/^\$+|\$+$/g, "");
+          reasoningEditorRef.current.insertLatex(formula);
+        } else {
+          reasoningEditorRef.current.insertText(textToInsert);
+        }
+      } else {
+        const textarea = reasoningTextareaRef.current;
+        if (!textarea) {
+          handleReasoningChange(reasoningText + textToInsert);
+          return;
+        }
+
+        const start = textarea.selectionStart ?? textarea.value.length;
+        const end = textarea.selectionEnd ?? textarea.value.length;
+        const currentVal = textarea.value;
+        const updatedVal = currentVal.substring(0, start) + textToInsert + currentVal.substring(end);
+        handleReasoningChange(updatedVal);
+
+        setTimeout(() => {
+          textarea.focus();
+          textarea.setSelectionRange(start + textToInsert.length, start + textToInsert.length);
+        }, 0);
       }
-
-      const start = textarea.selectionStart ?? textarea.value.length;
-      const end = textarea.selectionEnd ?? textarea.value.length;
-      const currentVal = textarea.value;
-      const updatedVal = currentVal.substring(0, start) + textToInsert + currentVal.substring(end);
-      handleReasoningChange(updatedVal);
-
-      setTimeout(() => {
-        textarea.focus();
-        textarea.setSelectionRange(start + textToInsert.length, start + textToInsert.length);
-      }, 0);
       return;
     }
   };
@@ -2229,7 +2249,7 @@ export const LearningPlayerPage = () => {
                           </span>
                           <div className="flex-1 min-w-0">
                             <span className="text-sm font-semibold truncate block">
-                              {option.text}
+                              <RichMathText content={option.text} />
                             </span>
                             {isSelected && isAssignmentSubmitted && (
                               <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 block mt-0.5">
@@ -2243,14 +2263,25 @@ export const LearningPlayerPage = () => {
                   </fieldset>
                 ) : (
                   <div>
-                    {/* Visual Math Field (MathLive) */}
-                    <VisualMathField
-                      ref={visualMathFieldRef}
-                      value={answerDisplayLatex}
-                      onChange={(latex, plainText) => handleAnswerChange(plainText, latex)}
+                    <ModeAwareAnswerEditor
+                      ref={answerEditorRef}
+                      profile="answering"
+                      questionType={question?.questionType || "ShortAnswer"}
+                      evaluationMode={question?.answerEvaluationMode || "NumericRational"}
+                      value={{ rawText: finalAnswer, displayLatex: answerDisplayLatex }}
+                      onChange={(val) => handleAnswerChange(val.rawText, val.displayLatex)}
                       onFocus={() => setActiveInputTarget("answer")}
                       disabled={isReadOnly}
-                      placeholder={isAssignmentSubmitted ? "Chưa có đáp số" : "Gõ công thức hoặc đáp số cuối cùng (hoặc dùng Casio để tự chèn)..."}
+                      readOnly={isAssignmentSubmitted}
+                      placeholder={
+                        isAssignmentSubmitted
+                          ? "Chưa có đáp số"
+                          : question?.questionType === "Essay"
+                          ? "Nhập câu trả lời tự luận hoặc trình bày lời giải chi tiết..."
+                          : "Gõ công thức hoặc đáp số cuối cùng (hoặc dùng Casio để tự chèn)..."
+                      }
+                      showPreview={false}
+                      showSyntaxHint={false}
                       autoFocus={!isReadOnly}
                     />
                   </div>
@@ -2274,41 +2305,23 @@ export const LearningPlayerPage = () => {
                   ) : null}
                 </div>
 
-                <textarea
-                  ref={reasoningTextareaRef}
-                  rows={4}
+                <RichMathEditor
+                  ref={reasoningEditorRef}
+                  variant="student"
                   value={reasoningText}
-                  onFocus={() => setActiveInputTarget("reasoning")}
-                  onChange={(e) => {
-                    if (!isReadOnly) handleReasoningChange(e.target.value);
+                  onChange={(val) => {
+                    if (!isReadOnly) handleReasoningChange(val);
                   }}
+                  onFocus={() => setActiveInputTarget("reasoning")}
                   disabled={isReadOnly}
-                  readOnly={isAssignmentSubmitted}
+                  minHeight="120px"
                   placeholder={
                     isAssignmentSubmitted
                       ? "Chưa có nội dung lập luận cho câu hỏi này."
-                      : "Trình bày các bước biến đổi, suy luận toán học để AI phân tích chất lượng tư duy..."
+                      : "Trình bày các bước biến đổi, suy luận toán học để AI phân tích chất lượng tư duy... (Gõ $ hoặc Ctrl+M để chèn công thức toán)"
                   }
-                  className={`w-full rounded-2xl border p-4 text-sm font-medium leading-relaxed ${
-                    isAssignmentSubmitted
-                      ? "bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 cursor-default select-text"
-                      : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                  }`}
+                  className={isAssignmentSubmitted ? "opacity-90" : ""}
                 />
-
-                {reasoningText.trim() && /[\\[{^_\\]]/.test(reasoningText) && (
-                  <div className="mt-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 p-3 text-xs">
-                    <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                      <span>Xem trước lập luận & công thức</span>
-                      <span className="text-[10px] px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 font-mono font-bold uppercase tracking-wider">
-                        KaTeX Preview
-                      </span>
-                    </div>
-                    <div className="overflow-x-auto text-slate-800 dark:text-slate-200 py-1 text-sm font-medium leading-relaxed">
-                      <RichMathText content={reasoningText} />
-                    </div>
-                  </div>
-                )}
 
                 {/* 6. Attached Scratchpad Snapshot Card (Cố định, không bị ảnh hưởng khi vẽ tiếp hay F5) */}
                 {attachedSnapshotDataUrl && (
