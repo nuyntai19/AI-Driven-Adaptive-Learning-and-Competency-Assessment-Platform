@@ -22,6 +22,7 @@ export interface RichMathEditorProps {
   label?: string;
   className?: string;
   id?: string;
+  variant?: "center-manager" | "teacher" | "student" | "neutral";
 }
 
 /**
@@ -47,6 +48,7 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
   label,
   className = "",
   id,
+  variant = "center-manager",
 }) => {
   const [viewMode, setViewMode] = useState<"visual" | "source">("visual");
   const [activeMathNode, setActiveMathNode] = useState<{
@@ -67,6 +69,17 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
     setActiveMathNode({ element: span, latex: currentLatex, isNew });
     setDialogLatex(currentLatex);
     setDialogError(null);
+  }, []);
+
+  const checkEmpty = useCallback(() => {
+    if (!editorRef.current) return;
+    const hasText = Boolean(editorRef.current.textContent?.trim());
+    const hasMath = Boolean(editorRef.current.querySelector(".inline-math-node"));
+    if (!hasText && !hasMath) {
+      editorRef.current.setAttribute("data-empty", "true");
+    } else {
+      editorRef.current.removeAttribute("data-empty");
+    }
   }, []);
 
   // Update floating popover position anchored directly to the active math node
@@ -109,14 +122,16 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
     if (viewMode !== "visual") return;
     if (isLocalChangeRef.current) {
       isLocalChangeRef.current = false;
+      checkEmpty();
       return;
     }
     if (editorRef.current) {
       hydrateEditorDom(editorRef.current, value, (span) =>
         handleOpenMathNode(span, false)
       );
+      checkEmpty();
     }
-  }, [value, viewMode, handleOpenMathNode]);
+  }, [value, viewMode, handleOpenMathNode, checkEmpty]);
 
   // Insert inline math node at current browser caret
   const handleInsertMathAtCursor = useCallback(() => {
@@ -145,7 +160,8 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
     targetRange.insertNode(mathSpan);
 
     handleOpenMathNode(mathSpan, true);
-  }, [disabled, viewMode, handleOpenMathNode]);
+    checkEmpty();
+  }, [disabled, viewMode, handleOpenMathNode, checkEmpty]);
 
   // Handle typing inside contenteditable
   const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -179,14 +195,18 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
   const handleEditorInput = () => {
     if (disabled || !editorRef.current) return;
     isLocalChangeRef.current = true;
-    const serialized = serializeEditorDom(editorRef.current);
+    const serialized = serializeEditorDom(editorRef.current, singleLine);
     onChange(serialized);
+    checkEmpty();
   };
 
   // Handle paste in visual mode
   const handleEditorPaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
     if (disabled) return;
-    const text = e.clipboardData.getData("text/plain");
+    let text = e.clipboardData.getData("text/plain");
+    if (singleLine) {
+      text = text.replace(/[\r\n]+/g, " ");
+    }
     if (text.includes("$")) {
       e.preventDefault();
       const sel = window.getSelection();
@@ -207,8 +227,16 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
       range.insertNode(frag);
 
       isLocalChangeRef.current = true;
-      const serialized = serializeEditorDom(editorRef.current);
+      const serialized = serializeEditorDom(editorRef.current, singleLine);
       onChange(serialized);
+      checkEmpty();
+    } else if (singleLine && /[\r\n]/.test(e.clipboardData.getData("text/plain"))) {
+      e.preventDefault();
+      document.execCommand("insertText", false, text);
+      isLocalChangeRef.current = true;
+      const serialized = serializeEditorDom(editorRef.current!, singleLine);
+      onChange(serialized);
+      checkEmpty();
     }
   };
 
@@ -220,7 +248,7 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
     if (!validation.isComplete || !validation.cleanLatex) {
       setDialogError(
         validation.error ||
-          "Công thức chưa hoàn thành. Vui lòng kiểm tra lại."
+          "Công thức chưa hoàn thành hoặc cú pháp không hợp lệ. Vui lòng kiểm tra lại."
       );
       return;
     }
@@ -240,12 +268,20 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
       element.innerHTML = `<span class="katex-fallback font-mono text-xs text-rose-300 pointer-events-none">${validation.cleanLatex}</span>`;
     }
 
-    // Position caret right after the confirmed formula node
+    // Return focus to editor and position caret in text node right after the confirmed formula node
+    if (editorRef.current) {
+      editorRef.current.focus();
+    }
     const sel = window.getSelection();
-    if (sel) {
+    if (sel && editorRef.current) {
+      let nextNode = element.nextSibling;
+      if (!nextNode || nextNode.nodeType !== 3) {
+        nextNode = document.createTextNode("");
+        element.after(nextNode);
+      }
       const range = document.createRange();
-      range.setStartAfter(element);
-      range.setEndAfter(element);
+      range.setStart(nextNode, 0);
+      range.setEnd(nextNode, 0);
       sel.removeAllRanges();
       sel.addRange(range);
     }
@@ -255,8 +291,9 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
     setDialogError(null);
 
     isLocalChangeRef.current = true;
-    const serialized = serializeEditorDom(editorRef.current);
+    const serialized = serializeEditorDom(editorRef.current, singleLine);
     onChange(serialized);
+    checkEmpty();
   };
 
   // Delete math node
@@ -270,8 +307,12 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
     setDialogError(null);
 
     isLocalChangeRef.current = true;
-    const serialized = serializeEditorDom(editorRef.current);
+    const serialized = serializeEditorDom(editorRef.current, singleLine);
     onChange(serialized);
+    checkEmpty();
+    if (editorRef.current) {
+      editorRef.current.focus();
+    }
   };
 
   // Cancel popover (removes uncommitted new node cleanly)
@@ -281,29 +322,76 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
       activeMathNode.element.remove();
       if (editorRef.current) {
         isLocalChangeRef.current = true;
-        onChange(serializeEditorDom(editorRef.current));
+        onChange(serializeEditorDom(editorRef.current, singleLine));
+        checkEmpty();
       }
     }
     setActiveMathNode(null);
     setDialogLatex("");
     setDialogError(null);
+    if (editorRef.current) {
+      editorRef.current.focus();
+    }
   };
 
   const hasIncompleteFormulas = hasUnfilledPlaceholder(value);
 
+  const isTeacher = variant === "teacher";
+  const containerTokens: React.CSSProperties = isTeacher
+    ? ({
+        "--rme-border": "var(--th-border-subtle, #cbd5e1)",
+        "--rme-border-focus": "var(--th-primary, #0d9488)",
+        "--rme-surface": "var(--th-surface, #ffffff)",
+        "--rme-surface-subtle": "var(--th-surface-subtle, #f8fafc)",
+        "--rme-surface-toolbar": "var(--th-surface-ground, #e5edf5)",
+        "--rme-text": "var(--th-text-primary, #0f172a)",
+        "--rme-text-muted": "var(--th-text-secondary, #64748b)",
+        "--rme-accent": "var(--th-primary, #0d9488)",
+        "--rme-badge-bg": "rgba(13, 148, 136, 0.12)",
+        "--rme-badge-border": "rgba(13, 148, 136, 0.3)",
+        "--rme-badge-text": "var(--th-teal, #0d9488)",
+        "--rme-math-bg": "rgba(13, 148, 136, 0.12)",
+        "--rme-math-border": "rgba(13, 148, 136, 0.35)",
+        "--rme-math-text": "var(--th-teal, #0f766e)",
+      } as React.CSSProperties)
+    : ({
+        "--rme-border": "var(--cm-border-subtle, #334155)",
+        "--rme-border-focus": "var(--cm-cyan, #06b6d4)",
+        "--rme-surface": "var(--cm-surface-subtle, #0f172a)",
+        "--rme-surface-subtle": "var(--cm-surface-subtle, #0f172a)",
+        "--rme-surface-toolbar": "var(--cm-surface, rgba(0, 0, 0, 0.2))",
+        "--rme-text": "var(--cm-text, #f8fafc)",
+        "--rme-text-muted": "var(--cm-text-muted, #94a3b8)",
+        "--rme-accent": "var(--cm-cyan, #06b6d4)",
+        "--rme-badge-bg": "rgba(6, 182, 212, 0.1)",
+        "--rme-badge-border": "rgba(6, 182, 212, 0.3)",
+        "--rme-badge-text": "var(--cm-cyan, #22d3ee)",
+        "--rme-math-bg": "rgba(6, 182, 212, 0.15)",
+        "--rme-math-border": "rgba(6, 182, 212, 0.35)",
+        "--rme-math-text": "var(--cm-cyan, #67e8f9)",
+      } as React.CSSProperties);
+
   return (
     <div
-      className={`rich-math-editor group flex flex-col rounded-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-subtle)] transition-all focus-within:border-[var(--cm-cyan)] focus-within:ring-1 focus-within:ring-[var(--cm-cyan)] ${className}`}
+      style={containerTokens}
+      className={`rich-math-editor group flex flex-col rounded-xl border border-[var(--rme-border)] bg-[var(--rme-surface)] transition-all focus-within:border-[var(--rme-border-focus)] focus-within:ring-1 focus-within:ring-[var(--rme-border-focus)] ${className}`}
     >
       {/* Micro-toolbar */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--cm-border-subtle)] bg-black/20 text-xs select-none">
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--rme-border)] bg-[var(--rme-surface-toolbar)] text-xs select-none">
         <div className="flex items-center gap-2">
           {label && (
-            <span className="font-semibold text-[var(--cm-text-muted)] tracking-wider uppercase text-[11px]">
+            <span className="font-semibold text-[var(--rme-text-muted)] tracking-wider uppercase text-[11px]">
               {label}
             </span>
           )}
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-cyan-950/60 border border-cyan-500/30 text-cyan-300">
+          <span
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border"
+            style={{
+              backgroundColor: "var(--rme-badge-bg)",
+              borderColor: "var(--rme-badge-border)",
+              color: "var(--rme-badge-text)",
+            }}
+          >
             WYSIWYG
           </span>
           {hasIncompleteFormulas && (
@@ -318,12 +406,17 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
             <button
               type="button"
               onClick={handleInsertMathAtCursor}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold border transition-colors cursor-pointer"
+              style={{
+                backgroundColor: "var(--rme-badge-bg)",
+                borderColor: "var(--rme-badge-border)",
+                color: "var(--rme-badge-text)",
+              }}
               title="Chèn công thức toán tại con trỏ (hoặc gõ $ hoặc phím tắt Ctrl+M)"
             >
               <span>+ Σ</span>
               <span>Chèn công thức</span>
-              <kbd className="hidden sm:inline-block ml-1 text-[10px] font-mono px-1 py-0.2 bg-black/30 rounded text-cyan-400">
+              <kbd className="hidden sm:inline-block ml-1 text-[10px] font-mono px-1 py-0.2 bg-black/20 rounded opacity-80">
                 $ / Ctrl+M
               </kbd>
             </button>
@@ -338,7 +431,7 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
                 setViewMode("visual");
               }
             }}
-            className="text-[11px] font-medium text-[var(--cm-text-muted)] hover:text-[var(--cm-text)] px-2 py-0.5 rounded hover:bg-white/5 transition-colors cursor-pointer"
+            className="text-[11px] font-medium text-[var(--rme-text-muted)] hover:text-[var(--rme-text)] px-2 py-0.5 rounded hover:bg-white/5 transition-colors cursor-pointer"
             title="Chuyển đổi giữa chế độ trực quan WYSIWYG và mã nguồn $...$"
           >
             {viewMode === "visual" ? "⌨️ Mã nguồn" : "👁️ Trực quan"}
@@ -363,7 +456,7 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
             aria-multiline={!singleLine}
             aria-label={label || placeholder}
             style={{ minHeight }}
-            className={`rich-math-content-editable outline-none text-sm text-[var(--cm-text)] leading-relaxed select-text font-sans ${
+            className={`rich-math-content-editable outline-none text-sm text-[var(--rme-text)] leading-relaxed select-text font-sans ${
               disabled ? "opacity-60 cursor-not-allowed" : "cursor-text"
             }`}
           />
@@ -372,11 +465,19 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
             id={id}
             value={value}
             disabled={disabled}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={(e) => {
+              const val = singleLine ? e.target.value.replace(/[\r\n]+/g, " ") : e.target.value;
+              onChange(val);
+            }}
+            onKeyDown={(e) => {
+              if (singleLine && e.key === "Enter") {
+                e.preventDefault();
+              }
+            }}
             style={{ minHeight }}
-            rows={singleLine ? 2 : 4}
-            placeholder="Mã nguồn hỗn hợp (VD: Cho hàm số $f(x)=x^2+1$ liên tục...)"
-            className="w-full bg-transparent outline-none font-mono text-xs text-cyan-300 leading-relaxed resize-y"
+            rows={singleLine ? 1 : 4}
+            placeholder={placeholder}
+            className="w-full bg-transparent outline-none font-mono text-xs text-[var(--rme-text)] leading-relaxed resize-y"
           />
         )}
       </div>
@@ -399,7 +500,7 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
               top: `${popoverPos.top}px`,
               left: `${popoverPos.left}px`,
             }}
-            className="fixed z-50 w-[380px] max-w-[90vw] rounded-2xl border border-cyan-500/50 bg-slate-900/95 shadow-2xl p-4 space-y-3 backdrop-blur-md text-[var(--cm-text)] animate-scale-in"
+            className="fixed z-50 w-[380px] max-w-[90vw] rounded-2xl border border-cyan-500/50 bg-slate-900/95 shadow-2xl p-4 space-y-3 backdrop-blur-md text-slate-100 animate-scale-in"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between pb-2 border-b border-slate-800">
@@ -452,20 +553,33 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
               </div>
             </div>
 
-            {/* Live KaTeX Preview and Placeholder Indicator */}
+            {/* Live KaTeX Preview and Placeholder / Syntax Indicator */}
             <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-2 space-y-1">
               <div className="flex items-center justify-between text-[10px] text-slate-400">
                 <span>Xem trước kết quả:</span>
                 {dialogLatex ? (
-                  hasUnfilledPlaceholder(dialogLatex) ? (
-                    <span className="text-rose-400 font-semibold">
-                      Chưa hoàn thành
-                    </span>
-                  ) : (
-                    <span className="text-emerald-400 font-semibold">
-                      ✓ Hợp lệ
-                    </span>
-                  )
+                  (() => {
+                    const validation = validateAndCleanFormula(dialogLatex);
+                    if (validation.hasPlaceholder) {
+                      return (
+                        <span className="text-rose-400 font-semibold">
+                          Chưa hoàn thành (\placeholder)
+                        </span>
+                      );
+                    }
+                    if (!validation.isComplete) {
+                      return (
+                        <span className="text-amber-400 font-semibold">
+                          ⚠️ Lỗi cú pháp
+                        </span>
+                      );
+                    }
+                    return (
+                      <span className="text-emerald-400 font-semibold">
+                        ✓ Hợp lệ
+                      </span>
+                    );
+                  })()
                 ) : (
                   <span>(trống)</span>
                 )}
@@ -527,11 +641,11 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
                   onClick={handleConfirmMath}
                   disabled={
                     !dialogLatex.trim() ||
-                    hasUnfilledPlaceholder(dialogLatex)
+                    !validateAndCleanFormula(dialogLatex).isComplete
                   }
                   className={`px-3.5 py-1 text-xs font-semibold rounded-lg shadow-sm transition-all flex items-center gap-1.5 ${
                     !dialogLatex.trim() ||
-                    hasUnfilledPlaceholder(dialogLatex)
+                    !validateAndCleanFormula(dialogLatex).isComplete
                       ? "bg-slate-700 text-slate-400 cursor-not-allowed opacity-50"
                       : "bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold cursor-pointer"
                   }`}

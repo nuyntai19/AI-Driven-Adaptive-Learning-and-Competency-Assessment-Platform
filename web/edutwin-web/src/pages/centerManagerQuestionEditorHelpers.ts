@@ -3,6 +3,7 @@
  * Zero DOM dependencies — fully testable via Node test runner.
  */
 
+import katex from "katex";
 import {
   type AnswerEditorValue,
   type QuestionType,
@@ -134,6 +135,20 @@ export function validateAndCleanFormula(latex: string | null | undefined): Formu
     };
   }
 
+  // Real KaTeX syntax validation with throwOnError: true
+  try {
+    katex.renderToString(cleanLatex, { throwOnError: true });
+  } catch (err: unknown) {
+    const rawMsg = err instanceof Error ? err.message : String(err);
+    const cleanMsg = rawMsg.replace(/^KaTeX parse error:\s*/i, "").trim();
+    return {
+      cleanLatex,
+      isComplete: false,
+      hasPlaceholder: false,
+      error: `Công thức sai cú pháp LaTeX (${cleanMsg}).`,
+    };
+  }
+
   return {
     cleanLatex,
     isComplete: true,
@@ -142,7 +157,8 @@ export function validateAndCleanFormula(latex: string | null | undefined): Formu
 }
 
 /**
- * Scans a text string for any inline $...$ or $$...$$ formulas or raw LaTeX that still contain \placeholder{}.
+ * Scans a text string for any inline $...$ or $$...$$ formulas or raw LaTeX that still contain \placeholder{}
+ * or have invalid LaTeX syntax.
  * Used for defensive validation on save, activation, or legacy data hydration.
  */
 export function findIncompleteFormulasInText(text: string | null | undefined): string[] {
@@ -152,12 +168,29 @@ export function findIncompleteFormulasInText(text: string | null | undefined): s
   for (const m of mathMatches) {
     if (hasUnfilledPlaceholder(m)) {
       incomplete.push(m);
+      continue;
+    }
+    const raw = m.replace(/^\$\$|\$\$$|^\$|\$$/g, "");
+    try {
+      katex.renderToString(raw, { throwOnError: true });
+    } catch {
+      incomplete.push(m);
     }
   }
   // If no delimited formula was matched or \placeholder is present in raw LaTeX outside delimiters,
   // also check the whole text so that raw LaTeX placeholders cannot bypass validation.
-  if (incomplete.length === 0 && hasUnfilledPlaceholder(text)) {
-    incomplete.push(text);
+  if (incomplete.length === 0) {
+    if (hasUnfilledPlaceholder(text)) {
+      incomplete.push(text);
+    } else if (text.includes("\\") && (text.includes("{") || text.includes("^") || text.includes("_"))) {
+      if (/^\s*\\[a-zA-Z]+/.test(text)) {
+        try {
+          katex.renderToString(text, { throwOnError: true });
+        } catch {
+          incomplete.push(text);
+        }
+      }
+    }
   }
   return incomplete;
 }

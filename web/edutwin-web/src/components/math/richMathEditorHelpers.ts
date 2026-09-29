@@ -5,7 +5,7 @@ import { cleanFormulaForInsertion } from "../../pages/centerManagerQuestionEdito
  * Serializes the contenteditable DOM tree into a canonical string with $...$ formulas.
  * Normalizes non-breaking spaces (\u00A0) into normal spaces to avoid hidden character accumulation.
  */
-export function serializeEditorDom(container: HTMLElement): string {
+export function serializeEditorDom(container: HTMLElement, singleLine = false): string {
   let result = "";
 
   function walk(node: Node) {
@@ -41,6 +41,10 @@ export function serializeEditorDom(container: HTMLElement): string {
     walk(child);
   }
 
+  if (singleLine) {
+    result = result.replace(/[\r\n]+/g, " ").trim();
+  }
+
   return result;
 }
 
@@ -53,7 +57,7 @@ export function createMathSpan(
 ): HTMLElement {
   const span = document.createElement("span");
   span.className =
-    "inline-math-node inline-flex items-center align-middle mx-1 px-2 py-0.5 rounded-lg border border-cyan-500/40 bg-cyan-950/40 hover:bg-cyan-900/60 hover:border-cyan-400 text-cyan-200 cursor-pointer select-none transition-all group font-normal text-sm shadow-sm";
+    "inline-math-node inline-flex items-center align-middle mx-1 px-2 py-0.5 rounded-lg border cursor-pointer select-none transition-all group font-normal text-sm shadow-sm";
   span.contentEditable = "false";
   span.dataset.latex = latex;
   span.title = "Nhấp để chỉnh sửa công thức toán";

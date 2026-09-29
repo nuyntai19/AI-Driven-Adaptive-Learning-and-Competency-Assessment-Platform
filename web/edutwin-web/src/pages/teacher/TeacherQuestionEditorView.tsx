@@ -28,10 +28,17 @@ import {
   TeacherConcurrencyBanner,
 } from "../../components/teacher";
 import { RichMathEditor } from "../../components/math/RichMathEditor";
+import { ModeAwareAnswerEditor } from "../../components/math/answer-editor/ModeAwareAnswerEditor";
 import {
   hasUnfilledPlaceholder,
   findIncompleteFormulasInText,
+  getAnswerDraftKey,
+  resetAndHydrateDraftStore,
+  hydrateAnswerEditorValue,
+  serializeAnswerEditorValue,
+  type DraftStore,
 } from "../centerManagerQuestionEditorHelpers";
+import type { AnswerEditorValue } from "../../components/math/answer-editor/answerEditorHelpers";
 
 interface QuestionEditorOption {
   optionId?: string;
@@ -68,6 +75,8 @@ export function TeacherQuestionEditorView() {
     { label: "D", text: "", isCorrect: false, orderIndex: 3, misconception: "" },
   ]);
   const [correctAnswer, setCorrectAnswer] = useState("");
+  const [activeDraftValue, setActiveDraftValue] = useState<AnswerEditorValue | null>(null);
+  const [modeDrafts, setModeDrafts] = useState<DraftStore>({});
   const [solution, setSolution] = useState("");
   const [expectedReasoning, setExpectedReasoning] = useState("");
   const [gradingCriteria, setGradingCriteria] = useState("");
@@ -128,6 +137,13 @@ export function TeacherQuestionEditorView() {
         );
       }
       setCorrectAnswer(q.correctAnswer || "");
+      const hydratedStore = resetAndHydrateDraftStore(q, true);
+      setModeDrafts(hydratedStore);
+      const evalMode =
+        q.answerEvaluationMode ||
+        (q.questionType === "MultipleChoice" ? "TextExact" : q.questionType === "Essay" ? "Manual" : "TextExact");
+      const key = getAnswerDraftKey(q.questionType, evalMode);
+      setActiveDraftValue((key ? hydratedStore[key] : null) ?? hydrateAnswerEditorValue(q.correctAnswer, evalMode));
       setSolution(q.solution || "");
       setExpectedReasoning(q.expectedReasoning || "");
       setGradingCriteria(
@@ -202,18 +218,24 @@ export function TeacherQuestionEditorView() {
         return;
       }
       computedCorrectAnswer = correctOpt.label;
-    } else if (questionType === "ShortAnswer") {
-      if (!correctAnswer.trim()) {
-        setFormError({ message: "Vui lòng nhập đáp án chuẩn cho câu hỏi trả lời ngắn." });
+    } else {
+      const evalMode: QuestionAnswerEvaluationMode =
+        questionType === "Essay" ? "Manual" : answerEvaluationMode || "TextExact";
+      const key = getAnswerDraftKey(questionType, evalMode);
+      const draft = (key ? modeDrafts[key] : null) ?? activeDraftValue;
+      computedCorrectAnswer = draft
+        ? serializeAnswerEditorValue(draft, evalMode)
+        : correctAnswer.trim();
+
+      if (!computedCorrectAnswer) {
+        setFormError({
+          message:
+            questionType === "Essay"
+              ? "Vui lòng nhập đáp án chuẩn hoặc hướng dẫn chấm chuẩn cho câu hỏi tự luận."
+              : "Vui lòng nhập đáp án chuẩn cho câu hỏi.",
+        });
         return;
       }
-      computedCorrectAnswer = correctAnswer.trim();
-    } else if (questionType === "Essay") {
-      if (!correctAnswer.trim()) {
-        setFormError({ message: "Vui lòng nhập đáp án chuẩn hoặc kết quả mẫu cho câu hỏi tự luận." });
-        return;
-      }
-      computedCorrectAnswer = correctAnswer.trim();
     }
 
     if (!solution.trim()) {
@@ -488,12 +510,30 @@ export function TeacherQuestionEditorView() {
               onChange={(e) => {
                 const newType = e.target.value as QuestionType;
                 setQuestionType(newType);
+                let newMode = answerEvaluationMode;
                 if (newType === "MultipleChoice") {
+                  newMode = "TextExact";
                   setAnswerEvaluationMode("TextExact");
                 } else if (newType === "Essay") {
+                  newMode = "Manual";
                   setAnswerEvaluationMode("Manual");
                 } else if (newType === "ShortAnswer" && answerEvaluationMode === "Manual") {
+                  newMode = "TextExact";
                   setAnswerEvaluationMode("TextExact");
+                }
+                const key = getAnswerDraftKey(newType, newMode);
+                if (key && modeDrafts[key]) {
+                  setActiveDraftValue(modeDrafts[key]!);
+                  setCorrectAnswer(serializeAnswerEditorValue(modeDrafts[key]!, newMode));
+                } else {
+                  const draft = hydrateAnswerEditorValue("", newMode);
+                  setActiveDraftValue(draft);
+                  if (key) {
+                    setModeDrafts((prev) => ({ ...prev, [key]: draft }));
+                  }
+                  if (newType !== "MultipleChoice") {
+                    setCorrectAnswer("");
+                  }
                 }
               }}
               className="th-select w-full text-xs"
@@ -596,6 +636,7 @@ export function TeacherQuestionEditorView() {
             onChange={setQuestionText}
             placeholder="Nhập nội dung đề bài. Ví dụ: Cho hàm số $f(x) = x^3 - 3x^2 + 2$. Tìm giá trị cực đại của hàm số."
             minHeight="110px"
+            variant="teacher"
           />
         </div>
 
@@ -639,6 +680,7 @@ export function TeacherQuestionEditorView() {
                       singleLine={true}
                       minHeight="38px"
                       className="flex-1"
+                      variant="teacher"
                     />
                   </div>
 
@@ -669,7 +711,22 @@ export function TeacherQuestionEditorView() {
                 </label>
                 <select
                   value={answerEvaluationMode}
-                  onChange={(e) => setAnswerEvaluationMode(e.target.value as QuestionAnswerEvaluationMode)}
+                  onChange={(e) => {
+                    const newMode = e.target.value as QuestionAnswerEvaluationMode;
+                    setAnswerEvaluationMode(newMode);
+                    const key = getAnswerDraftKey("ShortAnswer", newMode);
+                    if (key && modeDrafts[key]) {
+                      setActiveDraftValue(modeDrafts[key]!);
+                      setCorrectAnswer(serializeAnswerEditorValue(modeDrafts[key]!, newMode));
+                    } else {
+                      const draft = hydrateAnswerEditorValue("", newMode);
+                      setActiveDraftValue(draft);
+                      if (key) {
+                        setModeDrafts((prev) => ({ ...prev, [key]: draft }));
+                      }
+                      setCorrectAnswer("");
+                    }
+                  }}
                   className="th-select w-full text-xs"
                 >
                    <option value="TextExact">So khớp chính xác chuỗi (TextExact)</option>
@@ -694,13 +751,30 @@ export function TeacherQuestionEditorView() {
               <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1.5">
                 Đáp án chuẩn / Kết quả cuối cùng <span className="text-rose-400">*</span>
               </label>
-              <input
-                type="text"
-                value={correctAnswer}
-                onChange={(e) => setCorrectAnswer(e.target.value)}
-                placeholder="VD: x = 2 hoặc 4/3 hoặc phân số tối giản..."
-                className="th-input w-full text-xs"
-              />
+              <div className="rounded-xl border border-[var(--th-border-subtle)] bg-[var(--th-surface-subtle)] p-4">
+                <ModeAwareAnswerEditor
+                  profile="authoring"
+                  questionType={questionType}
+                  evaluationMode={questionType === "Essay" ? "Manual" : (answerEvaluationMode || "TextExact")}
+                  value={
+                    activeDraftValue ??
+                    hydrateAnswerEditorValue(
+                      correctAnswer,
+                      questionType === "Essay" ? "Manual" : (answerEvaluationMode || "TextExact")
+                    )
+                  }
+                  onChange={(val) => {
+                    setActiveDraftValue(val);
+                    const evalMode = questionType === "Essay" ? "Manual" : (answerEvaluationMode || "TextExact");
+                    const key = getAnswerDraftKey(questionType, evalMode);
+                    if (key) {
+                      setModeDrafts((prev) => ({ ...prev, [key]: val }));
+                    }
+                    const serialized = serializeAnswerEditorValue(val, evalMode);
+                    setCorrectAnswer(serialized);
+                  }}
+                />
+              </div>
             </div>
 
             <div>
@@ -731,6 +805,7 @@ export function TeacherQuestionEditorView() {
               onChange={setSolution}
               placeholder="Nhập lời giải chuẩn từng bước để hỗ trợ học sinh... (Gõ $ để chèn công thức)"
               minHeight="96px"
+              variant="teacher"
             />
           </div>
 

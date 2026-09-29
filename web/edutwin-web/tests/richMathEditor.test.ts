@@ -269,4 +269,93 @@ describe("Cross-Actor Unification (Center Manager, Teacher, Student)", () => {
     assert.ok(!content.includes("<MathInputToolbar"));
     assert.ok(!content.includes("Bảng gõ ký hiệu Toán"));
   });
+
+  it("TeacherQuestionEditorView uses ModeAwareAnswerEditor instead of plain text input", () => {
+    const teacherPath = path.resolve(__dirname, "../src/pages/teacher/TeacherQuestionEditorView.tsx");
+    const content = fs.readFileSync(teacherPath, "utf-8");
+
+    assert.ok(content.includes('import { ModeAwareAnswerEditor } from "../../components/math/answer-editor/ModeAwareAnswerEditor";'));
+    assert.ok(content.includes("<ModeAwareAnswerEditor"));
+    assert.ok(!content.includes('<input\n                type="text"\n                value={correctAnswer}'));
+    assert.ok(!content.includes('type="text"\n                value={correctAnswer}'));
+    assert.ok(content.includes('variant="teacher"'));
+  });
+});
+
+describe("KaTeX Real Syntax Validation (throwOnError: true)", () => {
+  it("rejects incomplete syntax such as unclosed braces \\frac{1}{", () => {
+    const invalid = "\\frac{1}{";
+    const result = validateAndCleanFormula(invalid);
+
+    assert.equal(result.isComplete, false);
+    assert.equal(result.hasPlaceholder, false);
+    assert.ok(result.error);
+    assert.ok(result.error.toLowerCase().includes("cú pháp") || result.error.includes("KaTeX"));
+  });
+
+  it("rejects incomplete root \\sqrt{", () => {
+    const invalid = "\\sqrt{";
+    const result = validateAndCleanFormula(invalid);
+
+    assert.equal(result.isComplete, false);
+    assert.ok(result.error);
+  });
+
+  it("accepts valid LaTeX expressions with isComplete: true", () => {
+    const valid = "\\frac{1}{2} + \\sqrt{3}";
+    const result = validateAndCleanFormula(valid);
+
+    assert.equal(result.isComplete, true);
+    assert.equal(result.cleanLatex, "\\frac{1}{2} + \\sqrt{3}");
+    assert.equal(result.error, undefined);
+  });
+
+  it("findIncompleteFormulasInText flags syntax-broken formulas in text flow", () => {
+    const text = "Biểu thức $\\frac{1}{$ bị lỗi.";
+    const incomplete = findIncompleteFormulasInText(text);
+
+    assert.equal(incomplete.length, 1);
+    assert.equal(incomplete[0], "$\\frac{1}{$");
+  });
+});
+
+describe("Contenteditable singleLine Enforcement & Placeholder Architecture", () => {
+  it("serializeEditorDom with singleLine=true strips newlines into single spaces", () => {
+    const container = createMockElement("div");
+    container.appendChild(createMockTextNode("Dòng 1\n"));
+    container.appendChild(createMockElement("br"));
+    container.appendChild(createMockTextNode("Dòng 2"));
+
+    const serializedSingle = serializeEditorDom(container, true);
+    assert.ok(!serializedSingle.includes("\n"));
+    assert.equal(serializedSingle, "Dòng 1 Dòng 2");
+
+    const serializedMulti = serializeEditorDom(container, false);
+    assert.ok(serializedMulti.includes("\n"));
+  });
+
+  it("RichMathEditor defines actor-aware CSS tokens for Teacher and Center Manager", () => {
+    const rmePath = path.resolve(__dirname, "../src/components/math/RichMathEditor.tsx");
+    const content = fs.readFileSync(rmePath, "utf-8");
+
+    assert.ok(content.includes('variant === "teacher"'));
+    assert.ok(content.includes('"--rme-border"'));
+    assert.ok(content.includes('"--rme-surface"'));
+    assert.ok(content.includes('"--rme-text"'));
+    assert.ok(content.includes('"--rme-math-bg"'));
+    assert.ok(content.includes('"--rme-math-text"'));
+    assert.ok(content.includes('checkEmpty'));
+    assert.ok(content.includes('data-empty'));
+  });
+
+  it("index.css defines empty placeholder and actor-aware inline math pill styling", () => {
+    const cssPath = path.resolve(__dirname, "../src/index.css");
+    const content = fs.readFileSync(cssPath, "utf-8");
+
+    assert.ok(content.includes(".rich-math-content-editable:empty::before"));
+    assert.ok(content.includes(".rich-math-content-editable[data-empty=\"true\"]::before"));
+    assert.ok(content.includes("content: attr(data-placeholder);"));
+    assert.ok(content.includes(".inline-math-node"));
+    assert.ok(content.includes("var(--rme-math-bg"));
+  });
 });

@@ -32,3 +32,24 @@ math-field[data-input-mode="text"]::part(menu-toggle),
   pointer-events: none !important;
 }
 
+/* RichMathEditor contenteditable empty placeholder styling */
+.rich-math-content-editable:empty::before,
+.rich-math-content-editable[data-empty="true"]::before {
+  content: attr(data-placeholder);
+  color: var(--rme-text-muted, #94a3b8);
+  opacity: 0.65;
+  pointer-events: none;
+  display: block;
+}
+
+/* RichMathEditor inline math pill styling adapting to actor tokens */
+.inline-math-node {
+  background-color: var(--rme-math-bg, rgba(6, 182, 212, 0.15));
+  border-color: var(--rme-math-border, rgba(6, 182, 212, 0.35));
+  color: var(--rme-math-text, #22d3ee);
+}
+
+.inline-math-node:hover {
+  filter: brightness(1.1);
+  border-color: var(--rme-border-focus, #06b6d4);
+}
