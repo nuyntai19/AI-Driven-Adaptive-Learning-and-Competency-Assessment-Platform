@@ -153,8 +153,10 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
           mf.smartMode = false;
           mf.smartSuperscript = true;
           try {
+            const existingShortcuts = { ...(mf.inlineShortcuts || {}) };
+            delete (existingShortcuts as Record<string, unknown>)["|"];
             mf.inlineShortcuts = {
-              ...(mf.inlineShortcuts || {}),
+              ...existingShortcuts,
               ...DEFAULT_MATH_INLINE_SHORTCUTS,
             };
           } catch {

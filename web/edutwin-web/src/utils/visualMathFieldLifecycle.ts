@@ -118,30 +118,72 @@ export function isOutsideVirtualKeyboardClick(composedPath: (EventTarget | Event
 
 let activeListenerCount = 0;
 let removeGlobalListener: (() => void) | null = null;
-let lastVirtualKeyboardDismissedAt = 0;
+let vkDismissalActive = false;
+let vkDismissalTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
- * Records the timestamp of when the virtual keyboard was dismissed to prevent cascading outside-click triggers.
+ * Marks that a virtual keyboard dismissal has occurred, activating one-shot protection
+ * for the immediate subsequent click gesture. A safety timer (600ms) automatically clears
+ * protection if a click event never arrives (e.g., gesture canceled or dragged away).
  */
 export function markVirtualKeyboardDismissed(): void {
-  const now = Date.now();
-  lastVirtualKeyboardDismissedAt = now;
+  vkDismissalActive = true;
   if (typeof window !== "undefined") {
-    (window as unknown as { __edutwin_last_vk_dismissed?: number }).__edutwin_last_vk_dismissed = now;
+    (window as unknown as { __edutwin_vk_dismissal_active?: boolean }).__edutwin_vk_dismissal_active = true;
+    (window as unknown as { __edutwin_last_vk_dismissed?: number }).__edutwin_last_vk_dismissed = Date.now();
+  }
+  if (vkDismissalTimer) {
+    clearTimeout(vkDismissalTimer);
+  }
+  vkDismissalTimer = setTimeout(() => {
+    clearVirtualKeyboardDismissalProtection();
+  }, 600);
+}
+
+/**
+ * Checks whether virtual keyboard dismissal protection is currently pending/active.
+ */
+export function isVirtualKeyboardDismissalActive(): boolean {
+  if (vkDismissalActive) return true;
+  if (typeof window !== "undefined") {
+    return Boolean((window as unknown as { __edutwin_vk_dismissal_active?: boolean }).__edutwin_vk_dismissal_active);
+  }
+  return false;
+}
+
+/**
+ * Consumes the one-shot virtual keyboard dismissal protection.
+ * Returns true if protection was active (meaning this click should be ignored),
+ * and resets protection immediately so subsequent clicks operate normally.
+ */
+export function consumeVirtualKeyboardDismissalProtection(): boolean {
+  const wasActive = isVirtualKeyboardDismissalActive();
+  clearVirtualKeyboardDismissalProtection();
+  return wasActive;
+}
+
+/**
+ * Resets virtual keyboard dismissal protection unconditionally.
+ * Called when opening a new popover or after consuming dismissal.
+ */
+export function clearVirtualKeyboardDismissalProtection(): void {
+  vkDismissalActive = false;
+  if (vkDismissalTimer) {
+    clearTimeout(vkDismissalTimer);
+    vkDismissalTimer = null;
+  }
+  if (typeof window !== "undefined") {
+    delete (window as unknown as { __edutwin_vk_dismissal_active?: boolean }).__edutwin_vk_dismissal_active;
+    delete (window as unknown as { __edutwin_last_vk_dismissed?: number }).__edutwin_last_vk_dismissed;
   }
 }
 
 /**
- * Returns true if the virtual keyboard was dismissed recently (default threshold: 2500ms).
+ * Backward compatibility alias: returns true if virtual keyboard dismissal protection is active.
  */
-export function wasVirtualKeyboardJustDismissed(thresholdMs = 2500): boolean {
-  const localDelta = Date.now() - lastVirtualKeyboardDismissedAt;
-  const windowDelta =
-    typeof window !== "undefined" &&
-    typeof (window as unknown as { __edutwin_last_vk_dismissed?: number }).__edutwin_last_vk_dismissed === "number"
-      ? Date.now() - (window as unknown as { __edutwin_last_vk_dismissed: number }).__edutwin_last_vk_dismissed
-      : Infinity;
-  return localDelta < thresholdMs || windowDelta < thresholdMs;
+export function wasVirtualKeyboardJustDismissed(thresholdMs?: number): boolean {
+  void thresholdMs;
+  return isVirtualKeyboardDismissalActive();
 }
 
 /**
@@ -256,17 +298,13 @@ export function resetVirtualKeyboardListenerForTests(): void {
     removeGlobalListener = null;
   }
   activeListenerCount = 0;
-  lastVirtualKeyboardDismissedAt = 0;
-  if (typeof window !== "undefined") {
-    delete (window as unknown as { __edutwin_last_vk_dismissed?: number }).__edutwin_last_vk_dismissed;
-  }
+  clearVirtualKeyboardDismissalProtection();
 }
 
 export const DEFAULT_MATH_INLINE_SHORTCUTS = {
   sqrt: "\\sqrt{#?}",
   cbrt: "\\sqrt[3]{#?}",
   abs: "\\left|#?\\right|",
-  "|": "\\left|#?\\right|",
   norm: "\\left\\|#?\\right\\|",
 } as const;
 

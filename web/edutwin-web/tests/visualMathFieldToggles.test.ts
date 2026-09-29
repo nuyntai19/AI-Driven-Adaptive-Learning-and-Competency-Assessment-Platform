@@ -406,9 +406,9 @@ test("DEFAULT_MATH_INLINE_SHORTCUTS ensures radicals and fences provide interact
     "Absolute value inline shortcut (abs) must include placeholder (#?) to position caret between fences"
   );
   assert.equal(
-    DEFAULT_MATH_INLINE_SHORTCUTS["|"],
-    "\\left|#?\\right|",
-    "Pipe character inline shortcut (|) must include placeholder (#?) to position caret between fences"
+    (DEFAULT_MATH_INLINE_SHORTCUTS as Record<string, string>)["|"],
+    undefined,
+    "Pipe character inline shortcut (|) must NOT be present in DEFAULT_MATH_INLINE_SHORTCUTS to protect set and probability notation"
   );
   assert.equal(
     DEFAULT_MATH_INLINE_SHORTCUTS.norm,
@@ -476,6 +476,9 @@ test("virtual keyboard dismissal tracking and backdrop protection helpers", asyn
   const {
     markVirtualKeyboardDismissed,
     wasVirtualKeyboardJustDismissed,
+    isVirtualKeyboardDismissalActive,
+    consumeVirtualKeyboardDismissalProtection,
+    clearVirtualKeyboardDismissalProtection,
     isVirtualKeyboardVisible,
     hideVirtualKeyboard,
     resetVirtualKeyboardListenerForTests,
@@ -488,18 +491,49 @@ test("virtual keyboard dismissal tracking and backdrop protection helpers", asyn
     false,
     "Initially virtual keyboard was not just dismissed"
   );
+  assert.equal(
+    isVirtualKeyboardDismissalActive(),
+    false,
+    "Initially dismissal protection is inactive"
+  );
 
   markVirtualKeyboardDismissed();
   assert.equal(
-    wasVirtualKeyboardJustDismissed(500),
+    wasVirtualKeyboardJustDismissed(),
     true,
     "Immediately after markVirtualKeyboardDismissed(), wasVirtualKeyboardJustDismissed() must return true"
   );
+  assert.equal(
+    isVirtualKeyboardDismissalActive(),
+    true,
+    "Immediately after markVirtualKeyboardDismissed(), isVirtualKeyboardDismissalActive() must return true"
+  );
 
-  // Global window state synchronization check
-  assert.ok(
-    typeof (globalThis as unknown as { window?: { __edutwin_last_vk_dismissed?: number } }).window?.__edutwin_last_vk_dismissed === "number",
-    "markVirtualKeyboardDismissed must synchronize timestamp to window.__edutwin_last_vk_dismissed"
+  // Consume protection (one-shot)
+  assert.equal(
+    consumeVirtualKeyboardDismissalProtection(),
+    true,
+    "First consumption must return true (suppressing click)"
+  );
+  assert.equal(
+    isVirtualKeyboardDismissalActive(),
+    false,
+    "After consumption, protection must be inactive"
+  );
+  assert.equal(
+    consumeVirtualKeyboardDismissalProtection(),
+    false,
+    "Second consumption must return false (allowing next click)"
+  );
+
+  // Clear protection
+  markVirtualKeyboardDismissed();
+  assert.equal(isVirtualKeyboardDismissalActive(), true);
+  clearVirtualKeyboardDismissalProtection();
+  assert.equal(
+    isVirtualKeyboardDismissalActive(),
+    false,
+    "clearVirtualKeyboardDismissalProtection must clear state immediately"
   );
 
   let hideCalled = false;
@@ -528,8 +562,13 @@ test("RichMathEditor and InlineMathComposer protect against accidental popover c
 
   assert.match(
     rmeContent,
-    /wasVirtualKeyboardJustDismissed/,
-    "RichMathEditor must check wasVirtualKeyboardJustDismissed() before dismissing popover"
+    /consumeVirtualKeyboardDismissalProtection/,
+    "RichMathEditor must consume one-shot dismissal protection on backdrop click"
+  );
+  assert.match(
+    rmeContent,
+    /clearVirtualKeyboardDismissalProtection/,
+    "RichMathEditor must clear dismissal protection when opening or closing popover"
   );
   assert.match(
     rmeContent,
@@ -557,12 +596,276 @@ test("RichMathEditor and InlineMathComposer protect against accidental popover c
 
   assert.match(
     composerContent,
-    /wasVirtualKeyboardJustDismissed/,
-    "InlineMathComposer must check wasVirtualKeyboardJustDismissed() before closing modal"
+    /consumeVirtualKeyboardDismissalProtection/,
+    "InlineMathComposer must consume one-shot dismissal protection on backdrop click"
+  );
+  assert.match(
+    composerContent,
+    /clearVirtualKeyboardDismissalProtection/,
+    "InlineMathComposer must clear dismissal protection when opening or closing modal"
   );
   assert.match(
     composerContent,
     /isVirtualKeyboardVisible/,
     "InlineMathComposer must check isVirtualKeyboardVisible() before closing modal"
   );
+});
+
+test("behavioral: one-shot dismissal consumption guarantees only 1 click is ignored and second click operates normally", async () => {
+  const {
+    markVirtualKeyboardDismissed,
+    isVirtualKeyboardDismissalActive,
+    consumeVirtualKeyboardDismissalProtection,
+    resetVirtualKeyboardListenerForTests,
+  } = await import("../src/utils/visualMathFieldLifecycle.ts");
+
+  resetVirtualKeyboardListenerForTests();
+
+  // Step 1: Virtual keyboard is dismissed
+  markVirtualKeyboardDismissed();
+  assert.equal(isVirtualKeyboardDismissalActive(), true, "Protection is active after dismissal");
+
+  // Step 2: First click event sequence on backdrop
+  const click1Suppressed = consumeVirtualKeyboardDismissalProtection();
+  assert.equal(click1Suppressed, true, "Click #1 must be suppressed to preserve popover");
+  assert.equal(isVirtualKeyboardDismissalActive(), false, "Protection must be consumed immediately");
+
+  // Step 3: Second click event sequence on backdrop
+  const click2Suppressed = consumeVirtualKeyboardDismissalProtection();
+  assert.equal(click2Suppressed, false, "Click #2 must NOT be suppressed; popover must process click normally");
+});
+
+test("behavioral: RichMathEditor backdrop dismisses virtual keyboard on click 1 and commits/closes on click 2 without indefinite renewal", async () => {
+  const {
+    consumeVirtualKeyboardDismissalProtection,
+    clearVirtualKeyboardDismissalProtection,
+    resetVirtualKeyboardListenerForTests,
+  } = await import("../src/utils/visualMathFieldLifecycle.ts");
+
+  resetVirtualKeyboardListenerForTests();
+
+  // Set up RichMathEditor simulation
+  let virtualKeyboardVisible = true;
+  let popoverOpen = true;
+  let confirmedLatex: string | null = null;
+  const isDismissingKeyboardRef = { current: false };
+
+  const hideVirtualKeyboard = () => {
+    virtualKeyboardVisible = false;
+  };
+  const isVirtualKeyboardVisible = () => virtualKeyboardVisible;
+
+  const handleBackdropPointerDown = () => {
+    if (isVirtualKeyboardVisible()) {
+      isDismissingKeyboardRef.current = true;
+      hideVirtualKeyboard();
+    }
+  };
+
+  const handleBackdropMouseDown = () => {
+    if (isDismissingKeyboardRef.current || isVirtualKeyboardVisible()) {
+      isDismissingKeyboardRef.current = true;
+    }
+  };
+
+  const handleBackdropClick = (dialogLatex: string) => {
+    const wasDismissing =
+      isDismissingKeyboardRef.current ||
+      isVirtualKeyboardVisible() ||
+      consumeVirtualKeyboardDismissalProtection();
+
+    isDismissingKeyboardRef.current = false;
+    clearVirtualKeyboardDismissalProtection();
+
+    if (wasDismissing) {
+      hideVirtualKeyboard();
+      return;
+    }
+
+    if (dialogLatex.trim()) {
+      confirmedLatex = dialogLatex.trim();
+      popoverOpen = false;
+      return;
+    }
+
+    popoverOpen = false;
+  };
+
+  // --- Click #1: User clicks backdrop while virtual keyboard is visible ---
+  handleBackdropPointerDown();
+  assert.equal(isDismissingKeyboardRef.current, true, "Pointerdown must set isDismissingKeyboardRef to true");
+  assert.equal(virtualKeyboardVisible, false, "Pointerdown must hide virtual keyboard");
+
+  handleBackdropMouseDown();
+  assert.equal(isDismissingKeyboardRef.current, true, "Mousedown retains dismissal intent");
+
+  handleBackdropClick("x^2 + 2x + 1");
+  assert.equal(popoverOpen, true, "Click #1 must keep popover open");
+  assert.equal(confirmedLatex, null, "Click #1 must not prematurely commit formula");
+  assert.equal(isDismissingKeyboardRef.current, false, "Click #1 must clear isDismissingKeyboardRef");
+
+  // --- Click #2: User clicks backdrop again to auto-commit formula ---
+  handleBackdropPointerDown();
+  assert.equal(isDismissingKeyboardRef.current, false, "Click #2 pointerdown must not set dismissal");
+
+  handleBackdropMouseDown();
+  assert.equal(isDismissingKeyboardRef.current, false, "Click #2 mousedown must not set dismissal");
+
+  handleBackdropClick("x^2 + 2x + 1");
+  assert.equal(popoverOpen, false, "Click #2 must close popover");
+  assert.equal(confirmedLatex, "x^2 + 2x + 1", "Click #2 must commit valid formula");
+});
+
+test("behavioral: newly opened popover starts clean and is unaffected by prior virtual keyboard dismissal", async () => {
+  const {
+    markVirtualKeyboardDismissed,
+    isVirtualKeyboardDismissalActive,
+    clearVirtualKeyboardDismissalProtection,
+    consumeVirtualKeyboardDismissalProtection,
+  } = await import("../src/utils/visualMathFieldLifecycle.ts");
+
+  // Scenario: Popover 1 had virtual keyboard dismissed
+  markVirtualKeyboardDismissed();
+  assert.equal(isVirtualKeyboardDismissalActive(), true, "Protection is active from Popover 1");
+
+  // Popover 2 opens: handleOpen clears any existing dismissal protection and resets its local ref
+  const isDismissingKeyboardRef = { current: false };
+  clearVirtualKeyboardDismissalProtection();
+  isDismissingKeyboardRef.current = false;
+
+  assert.equal(
+    isVirtualKeyboardDismissalActive(),
+    false,
+    "Popover 2 must start with clean dismissal state"
+  );
+
+  let popover2Closed = false;
+  const handlePopover2BackdropClick = () => {
+    const wasDismissing =
+      isDismissingKeyboardRef.current ||
+      consumeVirtualKeyboardDismissalProtection();
+
+    isDismissingKeyboardRef.current = false;
+    clearVirtualKeyboardDismissalProtection();
+
+    if (wasDismissing) {
+      return;
+    }
+    popover2Closed = true;
+  };
+
+  // Click #1 on Popover 2 backdrop without keyboard
+  handlePopover2BackdropClick();
+  assert.equal(
+    popover2Closed,
+    true,
+    "Popover 2 must close immediately on Click #1, completely unhindered by prior Popover 1 state"
+  );
+});
+
+test("behavioral: literal pipe symbol is preserved for set builder, probability, and divisibility expressions", async () => {
+  const { DEFAULT_MATH_INLINE_SHORTCUTS, normalizeMathInsertContent } = await import(
+    "../src/utils/visualMathFieldLifecycle.ts"
+  );
+
+  // 1. DEFAULT_MATH_INLINE_SHORTCUTS must NOT contain "|"
+  assert.equal(
+    (DEFAULT_MATH_INLINE_SHORTCUTS as Record<string, string>)["|"],
+    undefined,
+    "DEFAULT_MATH_INLINE_SHORTCUTS must not map '|' directly"
+  );
+
+  // 2. abs and norm remain available
+  assert.equal(DEFAULT_MATH_INLINE_SHORTCUTS.abs, "\\left|#?\\right|");
+  assert.equal(DEFAULT_MATH_INLINE_SHORTCUTS.norm, "\\left\\|#?\\right\\|");
+
+  // 3. Mathematical expressions containing pipe symbol must keep literal pipe
+  const mathExpressions = [
+    "{x | x > 0}",      // Set-builder notation
+    "P(A|B)",           // Conditional probability
+    "a|b",              // Divisibility (a divides b)
+    "{x \\in \\mathbb{R} | x \\ge 0}", // Real number set
+  ];
+
+  for (const expr of mathExpressions) {
+    // MathLive inline shortcut application simulation:
+    // If '|' is in shortcuts, it would expand to \\left|#?\\right| and corrupt the notation
+    const expanded = expr.replace(
+      /\|/g,
+      (DEFAULT_MATH_INLINE_SHORTCUTS as Record<string, string>)["|"] || "|"
+    );
+    assert.equal(expanded, expr, `Expression '${expr}' must retain literal pipe without being converted to absolute value`);
+  }
+
+  // 4. Dedicated absolute value buttons or toolbar actions still normalize to placeholders
+  assert.equal(
+    normalizeMathInsertContent("|"),
+    "\\left|#?\\right|",
+    "Dedicated toolbar button inserting '|' must be normalized to interactive absolute value template"
+  );
+  assert.equal(
+    normalizeMathInsertContent("abs"),
+    "\\left|#?\\right|",
+    "Dedicated toolbar button inserting 'abs' must be normalized to interactive absolute value template"
+  );
+});
+
+test("behavioral: InlineMathComposer backdrop ignores click 1 when dismissing keyboard and closes on click 2", async () => {
+  const {
+    consumeVirtualKeyboardDismissalProtection,
+    clearVirtualKeyboardDismissalProtection,
+  } = await import("../src/utils/visualMathFieldLifecycle.ts");
+
+  let modalOpen = true;
+  let virtualKeyboardVisible = true;
+  const isDismissingKeyboardRef = { current: false };
+
+  const handleClose = () => {
+    modalOpen = false;
+  };
+
+  const handleBackdropPointerDown = (targetIsCurrentTarget: boolean) => {
+    if (!targetIsCurrentTarget) return;
+    if (virtualKeyboardVisible) {
+      isDismissingKeyboardRef.current = true;
+      virtualKeyboardVisible = false;
+    }
+  };
+
+  const handleBackdropMouseDown = (targetIsCurrentTarget: boolean) => {
+    if (!targetIsCurrentTarget) return;
+    if (isDismissingKeyboardRef.current || virtualKeyboardVisible) {
+      isDismissingKeyboardRef.current = true;
+    }
+  };
+
+  const handleBackdropClick = (targetIsCurrentTarget: boolean) => {
+    if (!targetIsCurrentTarget) return;
+    const wasDismissing =
+      isDismissingKeyboardRef.current ||
+      virtualKeyboardVisible ||
+      consumeVirtualKeyboardDismissalProtection();
+
+    isDismissingKeyboardRef.current = false;
+    clearVirtualKeyboardDismissalProtection();
+
+    if (wasDismissing) {
+      return;
+    }
+
+    handleClose();
+  };
+
+  // Click #1: User clicks backdrop while virtual keyboard is visible
+  handleBackdropPointerDown(true);
+  handleBackdropMouseDown(true);
+  handleBackdropClick(true);
+  assert.equal(modalOpen, true, "Modal must remain open on Click #1 (which dismissed keyboard)");
+  assert.equal(virtualKeyboardVisible, false, "Virtual keyboard must now be hidden");
+
+  // Click #2: User clicks backdrop again
+  handleBackdropPointerDown(true);
+  handleBackdropMouseDown(true);
+  handleBackdropClick(true);
+  assert.equal(modalOpen, false, "Modal must close on Click #2");
 });

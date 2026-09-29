@@ -16,8 +16,9 @@ import { useThemeMode } from "../../utils/themeMode";
 import {
   hideVirtualKeyboard,
   isVirtualKeyboardVisible,
-  wasVirtualKeyboardJustDismissed,
-  markVirtualKeyboardDismissed,
+  isVirtualKeyboardDismissalActive,
+  consumeVirtualKeyboardDismissalProtection,
+  clearVirtualKeyboardDismissalProtection,
 } from "../../utils/visualMathFieldLifecycle";
 
 export interface RichMathEditorProps {
@@ -86,6 +87,7 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
   const editorRef = useRef<HTMLDivElement>(null);
   const isLocalChangeRef = useRef<boolean>(false);
   const lastValidRangeRef = useRef<Range | null>(null);
+  const isDismissingKeyboardRef = useRef<boolean>(false);
 
   const handleCopySource = useCallback(async () => {
     try {
@@ -131,6 +133,8 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
   }, [value]);
 
   const handleOpenMathNode = useCallback((span: HTMLElement, isNew = false) => {
+    isDismissingKeyboardRef.current = false;
+    clearVirtualKeyboardDismissalProtection();
     const currentLatex = span.dataset.latex || "";
     setActiveMathNode({ element: span, latex: currentLatex, isNew });
     setDialogLatex(currentLatex);
@@ -513,6 +517,8 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
 
     // Return focus to editor and position caret in text node right after the confirmed formula node
     hideVirtualKeyboard();
+    isDismissingKeyboardRef.current = false;
+    clearVirtualKeyboardDismissalProtection();
     if (editorRef.current) {
       editorRef.current.focus();
     }
@@ -544,6 +550,8 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
   // Delete math node
   const handleDeleteMath = () => {
     hideVirtualKeyboard();
+    isDismissingKeyboardRef.current = false;
+    clearVirtualKeyboardDismissalProtection();
     if (!activeMathNode || !editorRef.current) return;
     const el = activeMathNode.element;
     el.remove();
@@ -563,6 +571,8 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
 
   // Cancel popover (removes uncommitted new node cleanly)
   const handleCancelMath = () => {
+    isDismissingKeyboardRef.current = false;
+    clearVirtualKeyboardDismissalProtection();
     hideVirtualKeyboard();
     if (!activeMathNode) return;
     if (activeMathNode.isNew) {
@@ -582,20 +592,23 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
   };
 
   const handleBackdropPointerDown = (e: React.PointerEvent) => {
-    if (isVirtualKeyboardVisible() || wasVirtualKeyboardJustDismissed(2500)) {
+    if (isVirtualKeyboardVisible() || isVirtualKeyboardDismissalActive()) {
+      isDismissingKeyboardRef.current = true;
       e.preventDefault();
       e.stopPropagation();
-      markVirtualKeyboardDismissed();
       hideVirtualKeyboard();
     }
   };
 
   const handleBackdropMouseDown = (e: React.MouseEvent) => {
-    if (isVirtualKeyboardVisible() || wasVirtualKeyboardJustDismissed(2500)) {
+    if (
+      isDismissingKeyboardRef.current ||
+      isVirtualKeyboardVisible() ||
+      isVirtualKeyboardDismissalActive()
+    ) {
+      isDismissingKeyboardRef.current = true;
       e.preventDefault();
       e.stopPropagation();
-      markVirtualKeyboardDismissed();
-      hideVirtualKeyboard();
     }
   };
 
@@ -603,15 +616,24 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
     e.preventDefault();
     e.stopPropagation();
 
-    // 1. If virtual keyboard is visible or was just dismissed by this tap/click,
-    // only hide the virtual keyboard and keep the MathLive formula editor open.
-    if (isVirtualKeyboardVisible() || wasVirtualKeyboardJustDismissed(2500)) {
-      markVirtualKeyboardDismissed();
+    // 1. One-shot dismissal check: if virtual keyboard was visible or dismissed during this click gesture,
+    // only dismiss the virtual keyboard and keep the formula editor open.
+    // Crucially: do NOT call markVirtualKeyboardDismissed() here, preventing any renewal/extension!
+    const wasDismissing =
+      isDismissingKeyboardRef.current ||
+      isVirtualKeyboardVisible() ||
+      consumeVirtualKeyboardDismissalProtection();
+
+    isDismissingKeyboardRef.current = false;
+    clearVirtualKeyboardDismissalProtection();
+
+    if (wasDismissing) {
       hideVirtualKeyboard();
       return;
     }
 
-    // 2. If user already composed a valid formula, auto-commit it rather than destroying it
+    // 2. Click #2 (or normal click when no keyboard was up):
+    // If user already composed a valid formula, auto-commit it rather than destroying it
     if (dialogLatex.trim()) {
       const validation = validateAndCleanFormula(dialogLatex);
       if (validation.isComplete && validation.cleanLatex) {

@@ -8,8 +8,9 @@ import {
 import {
   hideVirtualKeyboard,
   isVirtualKeyboardVisible,
-  wasVirtualKeyboardJustDismissed,
-  markVirtualKeyboardDismissed,
+  isVirtualKeyboardDismissalActive,
+  consumeVirtualKeyboardDismissalProtection,
+  clearVirtualKeyboardDismissalProtection,
 } from "../../utils/visualMathFieldLifecycle";
 
 export interface InlineMathComposerProps {
@@ -52,6 +53,7 @@ export const InlineMathComposer: React.FC<InlineMathComposerProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [formulaLatex, setFormulaLatex] = useState("");
   const visualFieldRef = useRef<VisualMathFieldRef>(null);
+  const isDismissingKeyboardRef = useRef(false);
 
   // Snapshot cursor / selection from target input or textarea
   const savedSelectionRef = useRef<{ start: number; end: number }>({ start: 0, end: 0 });
@@ -67,12 +69,16 @@ export const InlineMathComposer: React.FC<InlineMathComposerProps> = ({
 
   const handleOpen = () => {
     if (disabled) return;
+    isDismissingKeyboardRef.current = false;
+    clearVirtualKeyboardDismissalProtection();
     snapshotSelection();
     setFormulaLatex("");
     setIsOpen(true);
   };
 
   const handleClose = useCallback(() => {
+    isDismissingKeyboardRef.current = false;
+    clearVirtualKeyboardDismissalProtection();
     hideVirtualKeyboard();
     setIsOpen(false);
     setFormulaLatex("");
@@ -93,6 +99,8 @@ export const InlineMathComposer: React.FC<InlineMathComposerProps> = ({
   }, [targetRef]);
 
   const handleConfirm = useCallback(() => {
+    isDismissingKeyboardRef.current = false;
+    clearVirtualKeyboardDismissalProtection();
     hideVirtualKeyboard();
     const clean = cleanFormulaForInsertion(formulaLatex);
     if (!clean) return;
@@ -148,6 +156,54 @@ export const InlineMathComposer: React.FC<InlineMathComposerProps> = ({
 
   const hasContent = !!cleanFormulaForInsertion(formulaLatex);
 
+  const handleBackdropPointerDown = (e: React.PointerEvent) => {
+    if (e.target !== e.currentTarget) return;
+    if (isVirtualKeyboardVisible() || isVirtualKeyboardDismissalActive()) {
+      isDismissingKeyboardRef.current = true;
+      e.preventDefault();
+      e.stopPropagation();
+      hideVirtualKeyboard();
+    }
+  };
+
+  const handleBackdropMouseDown = (e: React.MouseEvent) => {
+    if (e.target !== e.currentTarget) return;
+    if (
+      isDismissingKeyboardRef.current ||
+      isVirtualKeyboardVisible() ||
+      isVirtualKeyboardDismissalActive()
+    ) {
+      isDismissingKeyboardRef.current = true;
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  };
+
+  const handleBackdropClick = (e: React.MouseEvent) => {
+    if (e.target !== e.currentTarget) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    // One-shot backdrop protection check:
+    // If virtual keyboard was visible or dismissed during this click gesture,
+    // only hide the virtual keyboard and keep the composer open.
+    // Crucially: do NOT call markVirtualKeyboardDismissed() here!
+    const wasDismissing =
+      isDismissingKeyboardRef.current ||
+      isVirtualKeyboardVisible() ||
+      consumeVirtualKeyboardDismissalProtection();
+
+    isDismissingKeyboardRef.current = false;
+    clearVirtualKeyboardDismissalProtection();
+
+    if (wasDismissing) {
+      hideVirtualKeyboard();
+      return;
+    }
+
+    handleClose();
+  };
+
   return (
     <>
       {/* Trigger Button */}
@@ -175,34 +231,9 @@ export const InlineMathComposer: React.FC<InlineMathComposerProps> = ({
           aria-modal="true"
           aria-labelledby="math-composer-dialog-title"
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150"
-          onPointerDown={(e) => {
-            if (e.target === e.currentTarget && (isVirtualKeyboardVisible() || wasVirtualKeyboardJustDismissed(2500))) {
-              e.preventDefault();
-              e.stopPropagation();
-              markVirtualKeyboardDismissed();
-              hideVirtualKeyboard();
-            }
-          }}
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget && (isVirtualKeyboardVisible() || wasVirtualKeyboardJustDismissed(2500))) {
-              e.preventDefault();
-              e.stopPropagation();
-              markVirtualKeyboardDismissed();
-              hideVirtualKeyboard();
-            }
-          }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              if (isVirtualKeyboardVisible() || wasVirtualKeyboardJustDismissed(2500)) {
-                e.preventDefault();
-                e.stopPropagation();
-                markVirtualKeyboardDismissed();
-                hideVirtualKeyboard();
-                return;
-              }
-              handleClose();
-            }
-          }}
+          onPointerDown={handleBackdropPointerDown}
+          onMouseDown={handleBackdropMouseDown}
+          onClick={handleBackdropClick}
         >
           <div
             className="w-full max-w-xl rounded-2xl border border-cyan-500/30 bg-slate-900/95 p-5 shadow-2xl space-y-4 text-slate-100 flex flex-col max-h-[90vh] rich-math-popover"
