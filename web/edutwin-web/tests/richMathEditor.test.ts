@@ -901,7 +901,8 @@ describe("RichMathEditor Caret Preservation and External Insertion", () => {
           appendedNode = node;
         },
       },
-      execCommand: (_commandId?: string): boolean => {
+      execCommand: (...args: string[]): boolean => {
+        void args;
         throw new Error("Simulated execCommand permission failure");
       },
     };
