@@ -496,6 +496,12 @@ test("virtual keyboard dismissal tracking and backdrop protection helpers", asyn
     "Immediately after markVirtualKeyboardDismissed(), wasVirtualKeyboardJustDismissed() must return true"
   );
 
+  // Global window state synchronization check
+  assert.ok(
+    typeof (globalThis as unknown as { window?: { __edutwin_last_vk_dismissed?: number } }).window?.__edutwin_last_vk_dismissed === "number",
+    "markVirtualKeyboardDismissed must synchronize timestamp to window.__edutwin_last_vk_dismissed"
+  );
+
   let hideCalled = false;
   (globalThis as unknown as { window: unknown }).window = {
     mathVirtualKeyboard: {
@@ -529,6 +535,16 @@ test("RichMathEditor and InlineMathComposer protect against accidental popover c
     rmeContent,
     /isVirtualKeyboardVisible/,
     "RichMathEditor must check isVirtualKeyboardVisible() before dismissing popover"
+  );
+  assert.match(
+    rmeContent,
+    /handleBackdropMouseDown/,
+    "RichMathEditor backdrop must bind handleBackdropMouseDown"
+  );
+  assert.match(
+    rmeContent,
+    /handleBackdropPointerDown/,
+    "RichMathEditor backdrop must bind handleBackdropPointerDown"
   );
   assert.match(
     rmeContent,

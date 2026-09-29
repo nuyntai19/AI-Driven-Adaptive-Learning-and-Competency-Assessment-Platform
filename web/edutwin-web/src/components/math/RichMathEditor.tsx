@@ -581,19 +581,31 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
     }
   };
 
-  const handleBackdropPointerDown = () => {
-    if (isVirtualKeyboardVisible()) {
+  const handleBackdropPointerDown = (e: React.PointerEvent) => {
+    if (isVirtualKeyboardVisible() || wasVirtualKeyboardJustDismissed(2500)) {
+      e.preventDefault();
+      e.stopPropagation();
+      markVirtualKeyboardDismissed();
+      hideVirtualKeyboard();
+    }
+  };
+
+  const handleBackdropMouseDown = (e: React.MouseEvent) => {
+    if (isVirtualKeyboardVisible() || wasVirtualKeyboardJustDismissed(2500)) {
+      e.preventDefault();
+      e.stopPropagation();
       markVirtualKeyboardDismissed();
       hideVirtualKeyboard();
     }
   };
 
   const handleBackdropClick = (e: React.MouseEvent) => {
+    e.preventDefault();
     e.stopPropagation();
 
     // 1. If virtual keyboard is visible or was just dismissed by this tap/click,
     // only hide the virtual keyboard and keep the MathLive formula editor open.
-    if (isVirtualKeyboardVisible() || wasVirtualKeyboardJustDismissed()) {
+    if (isVirtualKeyboardVisible() || wasVirtualKeyboardJustDismissed(2500)) {
       markVirtualKeyboardDismissed();
       hideVirtualKeyboard();
       return;
@@ -606,9 +618,15 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
         handleConfirmMath();
         return;
       }
+      // If formula is incomplete, do NOT destroy it! Keep popover open and inform user
+      setDialogError(
+        validation.error ||
+          "Công thức chưa hoàn thành. Vui lòng hoàn thành công thức hoặc bấm nút '✕' để hủy."
+      );
+      return;
     }
 
-    // 3. Otherwise (empty or incomplete with no keyboard), cancel and dismiss popover cleanly
+    // 3. Otherwise (completely empty formula with no keyboard), cancel and dismiss popover cleanly
     handleCancelMath();
   };
 
@@ -845,6 +863,7 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
           <div
             className="fixed inset-0 z-40 bg-transparent"
             onPointerDown={handleBackdropPointerDown}
+            onMouseDown={handleBackdropMouseDown}
             onClick={handleBackdropClick}
             aria-hidden="true"
           />

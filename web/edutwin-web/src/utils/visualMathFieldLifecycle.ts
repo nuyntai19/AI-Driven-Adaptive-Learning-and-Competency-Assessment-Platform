@@ -124,14 +124,24 @@ let lastVirtualKeyboardDismissedAt = 0;
  * Records the timestamp of when the virtual keyboard was dismissed to prevent cascading outside-click triggers.
  */
 export function markVirtualKeyboardDismissed(): void {
-  lastVirtualKeyboardDismissedAt = Date.now();
+  const now = Date.now();
+  lastVirtualKeyboardDismissedAt = now;
+  if (typeof window !== "undefined") {
+    (window as unknown as { __edutwin_last_vk_dismissed?: number }).__edutwin_last_vk_dismissed = now;
+  }
 }
 
 /**
- * Returns true if the virtual keyboard was dismissed recently (default threshold: 500ms).
+ * Returns true if the virtual keyboard was dismissed recently (default threshold: 2500ms).
  */
-export function wasVirtualKeyboardJustDismissed(thresholdMs = 500): boolean {
-  return Date.now() - lastVirtualKeyboardDismissedAt < thresholdMs;
+export function wasVirtualKeyboardJustDismissed(thresholdMs = 2500): boolean {
+  const localDelta = Date.now() - lastVirtualKeyboardDismissedAt;
+  const windowDelta =
+    typeof window !== "undefined" &&
+    typeof (window as unknown as { __edutwin_last_vk_dismissed?: number }).__edutwin_last_vk_dismissed === "number"
+      ? Date.now() - (window as unknown as { __edutwin_last_vk_dismissed: number }).__edutwin_last_vk_dismissed
+      : Infinity;
+  return localDelta < thresholdMs || windowDelta < thresholdMs;
 }
 
 /**
@@ -141,13 +151,16 @@ export function isVirtualKeyboardVisible(): boolean {
   if (typeof window === "undefined") return false;
   const keyboard = (
     window as unknown as {
-      mathVirtualKeyboard?: { visible?: boolean; hide?: () => void };
+      mathVirtualKeyboard?: { visible?: boolean; boundingRect?: { height?: number }; hide?: () => void };
     }
   ).mathVirtualKeyboard;
   return Boolean(
-    keyboard?.visible ||
+    keyboard?.visible === true ||
+      (keyboard?.boundingRect?.height || 0) > 0 ||
       document.querySelector?.(".ML__keyboard.is-visible") ||
-      document.querySelector?.("math-virtual-keyboard.is-visible")
+      document.querySelector?.("math-virtual-keyboard.is-visible") ||
+      (document.querySelector?.(".MLK__plate") &&
+        ((document.querySelector?.(".MLK__plate") as HTMLElement)?.offsetHeight || 0) > 0)
   );
 }
 
@@ -174,6 +187,22 @@ export function registerVirtualKeyboardDismissListener(): () => void {
     return () => {};
   }
 
+  // Hook into MathLive's internal virtual-keyboard-toggle event if already initialized
+  const vk = (
+    window as unknown as {
+      mathVirtualKeyboard?: EventTarget & { visible?: boolean };
+    }
+  ).mathVirtualKeyboard;
+  let handleVkToggle: (() => void) | null = null;
+  if (vk && typeof vk.addEventListener === "function") {
+    handleVkToggle = () => {
+      if (!vk.visible) {
+        markVirtualKeyboardDismissed();
+      }
+    };
+    vk.addEventListener("virtual-keyboard-toggle", handleVkToggle);
+  }
+
   activeListenerCount++;
   if (activeListenerCount === 1) {
     const handlePointerDown = (e: PointerEvent | MouseEvent) => {
@@ -183,10 +212,7 @@ export function registerVirtualKeyboardDismissListener(): () => void {
         }
       ).mathVirtualKeyboard;
 
-      const isVisible = Boolean(
-        keyboard?.visible || document.querySelector?.(".ML__keyboard.is-visible")
-      );
-
+      const isVisible = isVirtualKeyboardVisible();
       if (!isVisible) return;
 
       const path = typeof e.composedPath === "function" ? e.composedPath() : [];
@@ -205,8 +231,10 @@ export function registerVirtualKeyboardDismissListener(): () => void {
     };
 
     window.addEventListener("pointerdown", handlePointerDown, true);
+    window.addEventListener("mousedown", handlePointerDown, true);
     removeGlobalListener = () => {
       window.removeEventListener("pointerdown", handlePointerDown, true);
+      window.removeEventListener("mousedown", handlePointerDown, true);
     };
   }
 
@@ -215,6 +243,9 @@ export function registerVirtualKeyboardDismissListener(): () => void {
     if (activeListenerCount === 0 && removeGlobalListener) {
       removeGlobalListener();
       removeGlobalListener = null;
+    }
+    if (vk && handleVkToggle && typeof vk.removeEventListener === "function") {
+      vk.removeEventListener("virtual-keyboard-toggle", handleVkToggle);
     }
   };
 }
@@ -226,6 +257,9 @@ export function resetVirtualKeyboardListenerForTests(): void {
   }
   activeListenerCount = 0;
   lastVirtualKeyboardDismissedAt = 0;
+  if (typeof window !== "undefined") {
+    delete (window as unknown as { __edutwin_last_vk_dismissed?: number }).__edutwin_last_vk_dismissed;
+  }
 }
 
 export const DEFAULT_MATH_INLINE_SHORTCUTS = {

@@ -176,14 +176,26 @@ export const InlineMathComposer: React.FC<InlineMathComposerProps> = ({
           aria-labelledby="math-composer-dialog-title"
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150"
           onPointerDown={(e) => {
-            if (e.target === e.currentTarget && isVirtualKeyboardVisible()) {
+            if (e.target === e.currentTarget && (isVirtualKeyboardVisible() || wasVirtualKeyboardJustDismissed(2500))) {
+              e.preventDefault();
+              e.stopPropagation();
+              markVirtualKeyboardDismissed();
+              hideVirtualKeyboard();
+            }
+          }}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && (isVirtualKeyboardVisible() || wasVirtualKeyboardJustDismissed(2500))) {
+              e.preventDefault();
+              e.stopPropagation();
               markVirtualKeyboardDismissed();
               hideVirtualKeyboard();
             }
           }}
           onClick={(e) => {
             if (e.target === e.currentTarget) {
-              if (isVirtualKeyboardVisible() || wasVirtualKeyboardJustDismissed()) {
+              if (isVirtualKeyboardVisible() || wasVirtualKeyboardJustDismissed(2500)) {
+                e.preventDefault();
+                e.stopPropagation();
                 markVirtualKeyboardDismissed();
                 hideVirtualKeyboard();
                 return;
