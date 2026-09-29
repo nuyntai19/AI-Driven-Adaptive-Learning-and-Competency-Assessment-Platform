@@ -13,6 +13,12 @@ import {
   resolveRichMathPopoverTheme,
 } from "./richMathEditorHelpers";
 import { useThemeMode } from "../../utils/themeMode";
+import {
+  hideVirtualKeyboard,
+  isVirtualKeyboardVisible,
+  wasVirtualKeyboardJustDismissed,
+  markVirtualKeyboardDismissed,
+} from "../../utils/visualMathFieldLifecycle";
 
 export interface RichMathEditorProps {
   value: string;
@@ -506,6 +512,7 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
     }
 
     // Return focus to editor and position caret in text node right after the confirmed formula node
+    hideVirtualKeyboard();
     if (editorRef.current) {
       editorRef.current.focus();
     }
@@ -536,6 +543,7 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
 
   // Delete math node
   const handleDeleteMath = () => {
+    hideVirtualKeyboard();
     if (!activeMathNode || !editorRef.current) return;
     const el = activeMathNode.element;
     el.remove();
@@ -555,6 +563,7 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
 
   // Cancel popover (removes uncommitted new node cleanly)
   const handleCancelMath = () => {
+    hideVirtualKeyboard();
     if (!activeMathNode) return;
     if (activeMathNode.isNew) {
       activeMathNode.element.remove();
@@ -570,6 +579,37 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
     if (editorRef.current) {
       editorRef.current.focus();
     }
+  };
+
+  const handleBackdropPointerDown = () => {
+    if (isVirtualKeyboardVisible()) {
+      markVirtualKeyboardDismissed();
+      hideVirtualKeyboard();
+    }
+  };
+
+  const handleBackdropClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+
+    // 1. If virtual keyboard is visible or was just dismissed by this tap/click,
+    // only hide the virtual keyboard and keep the MathLive formula editor open.
+    if (isVirtualKeyboardVisible() || wasVirtualKeyboardJustDismissed()) {
+      markVirtualKeyboardDismissed();
+      hideVirtualKeyboard();
+      return;
+    }
+
+    // 2. If user already composed a valid formula, auto-commit it rather than destroying it
+    if (dialogLatex.trim()) {
+      const validation = validateAndCleanFormula(dialogLatex);
+      if (validation.isComplete && validation.cleanLatex) {
+        handleConfirmMath();
+        return;
+      }
+    }
+
+    // 3. Otherwise (empty or incomplete with no keyboard), cancel and dismiss popover cleanly
+    handleCancelMath();
   };
 
   const formulaDiagnostics = validateTextMathFormulas(value);
@@ -804,7 +844,8 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
           {/* Transparent click-catcher to dismiss popover on outside click without obscuring text */}
           <div
             className="fixed inset-0 z-40 bg-transparent"
-            onClick={handleCancelMath}
+            onPointerDown={handleBackdropPointerDown}
+            onClick={handleBackdropClick}
             aria-hidden="true"
           />
 
@@ -820,7 +861,7 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
                   top: `${popoverPos.top}px`,
                   left: `${popoverPos.left}px`,
                 }}
-                className={`fixed z-50 w-[390px] max-w-[92vw] rounded-2xl border p-4 space-y-3 backdrop-blur-md transition-all animate-scale-in shadow-2xl ${
+                className={`fixed z-50 w-[390px] max-w-[92vw] rounded-2xl border p-4 space-y-3 backdrop-blur-md transition-all animate-scale-in shadow-2xl rich-math-popover ${
                   popoverTheme.isDark
                     ? `dark bg-slate-900/98 text-slate-100 ${popoverTheme.popoverBorder} ${popoverTheme.popoverShadow}`
                     : `bg-white/98 text-slate-800 ${popoverTheme.popoverBorder} ${popoverTheme.popoverShadow}`

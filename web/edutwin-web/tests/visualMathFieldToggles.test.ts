@@ -179,6 +179,16 @@ test("isOutsideVirtualKeyboardClick correctly differentiates outside clicks vs k
     "Click inside .rich-math-content-editable must return false"
   );
 
+  const richPopoverMock = {
+    tagName: "div",
+    classList: { contains: (cls: string) => cls === "rich-math-popover" },
+  };
+  assert.equal(
+    isOutsideVirtualKeyboardClick([richPopoverMock]),
+    false,
+    "Click inside .rich-math-popover must return false"
+  );
+
   // 4. Click outside (on page container, button, card, header) must return true
   const pageBackgroundMock = {
     tagName: "div",
@@ -459,5 +469,84 @@ test("VisualMathField configures DEFAULT_MATH_INLINE_SHORTCUTS and guards Enter 
     componentContent,
     /mode\s*===\s*"latex"/,
     "Enter key handler must not hijack Enter when MathLive is in LaTeX command mode"
+  );
+});
+
+test("virtual keyboard dismissal tracking and backdrop protection helpers", async () => {
+  const {
+    markVirtualKeyboardDismissed,
+    wasVirtualKeyboardJustDismissed,
+    isVirtualKeyboardVisible,
+    hideVirtualKeyboard,
+    resetVirtualKeyboardListenerForTests,
+  } = await import("../src/utils/visualMathFieldLifecycle.ts");
+
+  resetVirtualKeyboardListenerForTests();
+
+  assert.equal(
+    wasVirtualKeyboardJustDismissed(),
+    false,
+    "Initially virtual keyboard was not just dismissed"
+  );
+
+  markVirtualKeyboardDismissed();
+  assert.equal(
+    wasVirtualKeyboardJustDismissed(500),
+    true,
+    "Immediately after markVirtualKeyboardDismissed(), wasVirtualKeyboardJustDismissed() must return true"
+  );
+
+  let hideCalled = false;
+  (globalThis as unknown as { window: unknown }).window = {
+    mathVirtualKeyboard: {
+      visible: true,
+      hide: () => {
+        hideCalled = true;
+      },
+    },
+  };
+
+  assert.equal(
+    isVirtualKeyboardVisible(),
+    true,
+    "isVirtualKeyboardVisible() must return true when window.mathVirtualKeyboard.visible is true"
+  );
+
+  hideVirtualKeyboard();
+  assert.equal(hideCalled, true, "hideVirtualKeyboard() must invoke window.mathVirtualKeyboard.hide()");
+});
+
+test("RichMathEditor and InlineMathComposer protect against accidental popover closure on virtual keyboard dismissal", () => {
+  const rmePath = path.resolve(__dirname, "../src/components/math/RichMathEditor.tsx");
+  const rmeContent = fs.readFileSync(rmePath, "utf-8");
+
+  assert.match(
+    rmeContent,
+    /wasVirtualKeyboardJustDismissed/,
+    "RichMathEditor must check wasVirtualKeyboardJustDismissed() before dismissing popover"
+  );
+  assert.match(
+    rmeContent,
+    /isVirtualKeyboardVisible/,
+    "RichMathEditor must check isVirtualKeyboardVisible() before dismissing popover"
+  );
+  assert.match(
+    rmeContent,
+    /rich-math-popover/,
+    "RichMathEditor dialog must include rich-math-popover class"
+  );
+
+  const composerPath = path.resolve(__dirname, "../src/components/math/InlineMathComposer.tsx");
+  const composerContent = fs.readFileSync(composerPath, "utf-8");
+
+  assert.match(
+    composerContent,
+    /wasVirtualKeyboardJustDismissed/,
+    "InlineMathComposer must check wasVirtualKeyboardJustDismissed() before closing modal"
+  );
+  assert.match(
+    composerContent,
+    /isVirtualKeyboardVisible/,
+    "InlineMathComposer must check isVirtualKeyboardVisible() before closing modal"
   );
 });

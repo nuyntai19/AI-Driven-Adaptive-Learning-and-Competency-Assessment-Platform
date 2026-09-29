@@ -5,6 +5,12 @@ import {
   cleanFormulaForInsertion,
   insertFormulaAtCursor,
 } from "../../pages/centerManagerQuestionEditorHelpers";
+import {
+  hideVirtualKeyboard,
+  isVirtualKeyboardVisible,
+  wasVirtualKeyboardJustDismissed,
+  markVirtualKeyboardDismissed,
+} from "../../utils/visualMathFieldLifecycle";
 
 export interface InlineMathComposerProps {
   /** Target text element (textarea or input) to insert into and restore focus/caret */
@@ -67,6 +73,7 @@ export const InlineMathComposer: React.FC<InlineMathComposerProps> = ({
   };
 
   const handleClose = useCallback(() => {
+    hideVirtualKeyboard();
     setIsOpen(false);
     setFormulaLatex("");
 
@@ -86,6 +93,7 @@ export const InlineMathComposer: React.FC<InlineMathComposerProps> = ({
   }, [targetRef]);
 
   const handleConfirm = useCallback(() => {
+    hideVirtualKeyboard();
     const clean = cleanFormulaForInsertion(formulaLatex);
     if (!clean) return;
 
@@ -167,12 +175,25 @@ export const InlineMathComposer: React.FC<InlineMathComposerProps> = ({
           aria-modal="true"
           aria-labelledby="math-composer-dialog-title"
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150"
+          onPointerDown={(e) => {
+            if (e.target === e.currentTarget && isVirtualKeyboardVisible()) {
+              markVirtualKeyboardDismissed();
+              hideVirtualKeyboard();
+            }
+          }}
           onClick={(e) => {
-            if (e.target === e.currentTarget) handleClose();
+            if (e.target === e.currentTarget) {
+              if (isVirtualKeyboardVisible() || wasVirtualKeyboardJustDismissed()) {
+                markVirtualKeyboardDismissed();
+                hideVirtualKeyboard();
+                return;
+              }
+              handleClose();
+            }
           }}
         >
           <div
-            className="w-full max-w-xl rounded-2xl border border-cyan-500/30 bg-slate-900/95 p-5 shadow-2xl space-y-4 text-slate-100 flex flex-col max-h-[90vh]"
+            className="w-full max-w-xl rounded-2xl border border-cyan-500/30 bg-slate-900/95 p-5 shadow-2xl space-y-4 text-slate-100 flex flex-col max-h-[90vh] rich-math-popover"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}

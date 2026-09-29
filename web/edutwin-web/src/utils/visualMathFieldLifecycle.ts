@@ -102,11 +102,12 @@ export function isOutsideVirtualKeyboardClick(composedPath: (EventTarget | Event
       return false;
     }
 
-    // 3. Inside a math field or its active contenteditable container
+    // 3. Inside a math field, rich-math contenteditable container, or formula popover dialog
     if (
       el.tagName?.toLowerCase() === "math-field" ||
       el.classList?.contains?.("rich-math-content-editable") ||
-      el.classList?.contains?.("inline-math-node")
+      el.classList?.contains?.("inline-math-node") ||
+      el.classList?.contains?.("rich-math-popover")
     ) {
       return false;
     }
@@ -117,6 +118,51 @@ export function isOutsideVirtualKeyboardClick(composedPath: (EventTarget | Event
 
 let activeListenerCount = 0;
 let removeGlobalListener: (() => void) | null = null;
+let lastVirtualKeyboardDismissedAt = 0;
+
+/**
+ * Records the timestamp of when the virtual keyboard was dismissed to prevent cascading outside-click triggers.
+ */
+export function markVirtualKeyboardDismissed(): void {
+  lastVirtualKeyboardDismissedAt = Date.now();
+}
+
+/**
+ * Returns true if the virtual keyboard was dismissed recently (default threshold: 500ms).
+ */
+export function wasVirtualKeyboardJustDismissed(thresholdMs = 500): boolean {
+  return Date.now() - lastVirtualKeyboardDismissedAt < thresholdMs;
+}
+
+/**
+ * Checks whether MathLive's virtual keyboard is currently visible.
+ */
+export function isVirtualKeyboardVisible(): boolean {
+  if (typeof window === "undefined") return false;
+  const keyboard = (
+    window as unknown as {
+      mathVirtualKeyboard?: { visible?: boolean; hide?: () => void };
+    }
+  ).mathVirtualKeyboard;
+  return Boolean(
+    keyboard?.visible ||
+      document.querySelector?.(".ML__keyboard.is-visible") ||
+      document.querySelector?.("math-virtual-keyboard.is-visible")
+  );
+}
+
+/**
+ * Safely hides the MathLive virtual keyboard if active.
+ */
+export function hideVirtualKeyboard(): void {
+  if (typeof window === "undefined") return;
+  const keyboard = (
+    window as unknown as {
+      mathVirtualKeyboard?: { visible?: boolean; hide?: () => void };
+    }
+  ).mathVirtualKeyboard;
+  keyboard?.hide?.();
+}
 
 /**
  * Registers a document-level capture listener that automatically dismisses/closes
@@ -153,6 +199,7 @@ export function registerVirtualKeyboardDismissListener(): () => void {
       }
 
       if (isOutsideVirtualKeyboardClick(path)) {
+        markVirtualKeyboardDismissed();
         keyboard?.hide?.();
       }
     };
@@ -178,6 +225,7 @@ export function resetVirtualKeyboardListenerForTests(): void {
     removeGlobalListener = null;
   }
   activeListenerCount = 0;
+  lastVirtualKeyboardDismissedAt = 0;
 }
 
 export const DEFAULT_MATH_INLINE_SHORTCUTS = {
