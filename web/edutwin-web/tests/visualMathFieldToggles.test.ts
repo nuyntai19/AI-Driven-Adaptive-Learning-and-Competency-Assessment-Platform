@@ -374,3 +374,90 @@ test("VisualMathField insertAtCursor passes silenceNotifications: true and emits
   assert.equal(nativeInputEventDispatched, 0, "No duplicate native input event should be dispatched");
   assert.equal(onChangeCallbackCount, 1, "onChange must be called exactly once per Casio insertion");
 });
+
+test("DEFAULT_MATH_INLINE_SHORTCUTS ensures radicals and fences provide interactive caret placeholders", async () => {
+  const { DEFAULT_MATH_INLINE_SHORTCUTS } = await import(
+    "../src/utils/visualMathFieldLifecycle.ts"
+  );
+
+  assert.equal(
+    DEFAULT_MATH_INLINE_SHORTCUTS.sqrt,
+    "\\sqrt{#?}",
+    "Square root inline shortcut must include placeholder (#?) to position caret inside root"
+  );
+  assert.equal(
+    DEFAULT_MATH_INLINE_SHORTCUTS.cbrt,
+    "\\sqrt[3]{#?}",
+    "Cube root inline shortcut must include placeholder (#?) to position caret inside root"
+  );
+  assert.equal(
+    DEFAULT_MATH_INLINE_SHORTCUTS.abs,
+    "\\left|#?\\right|",
+    "Absolute value inline shortcut (abs) must include placeholder (#?) to position caret between fences"
+  );
+  assert.equal(
+    DEFAULT_MATH_INLINE_SHORTCUTS["|"],
+    "\\left|#?\\right|",
+    "Pipe character inline shortcut (|) must include placeholder (#?) to position caret between fences"
+  );
+  assert.equal(
+    DEFAULT_MATH_INLINE_SHORTCUTS.norm,
+    "\\left\\|#?\\right\\|",
+    "Norm inline shortcut must include placeholder (#?) to position caret between double fences"
+  );
+});
+
+test("normalizeMathInsertContent maps calculator and toolbar expressions to interactive placeholders", async () => {
+  const { normalizeMathInsertContent } = await import(
+    "../src/utils/visualMathFieldLifecycle.ts"
+  );
+
+  // Radicals
+  assert.equal(normalizeMathInsertContent("sqrt("), "\\sqrt{#?}");
+  assert.equal(normalizeMathInsertContent("\\sqrt{}"), "\\sqrt{#?}");
+  assert.equal(normalizeMathInsertContent("\\sqrt"), "\\sqrt{#?}");
+  assert.equal(normalizeMathInsertContent("sqrt"), "\\sqrt{#?}");
+  assert.equal(normalizeMathInsertContent("cbrt("), "\\sqrt[3]{#?}");
+  assert.equal(normalizeMathInsertContent("\\sqrt[]{}"), "\\sqrt[#?]{#?}");
+
+  // Absolute values and norms
+  assert.equal(normalizeMathInsertContent("abs("), "\\left|#?\\right|");
+  assert.equal(normalizeMathInsertContent("|"), "\\left|#?\\right|");
+  assert.equal(normalizeMathInsertContent("\\abs"), "\\left|#?\\right|");
+  assert.equal(normalizeMathInsertContent("\\left|\\right|"), "\\left|#?\\right|");
+  assert.equal(normalizeMathInsertContent("||"), "\\left\\|#?\\right\\|");
+  assert.equal(normalizeMathInsertContent("norm("), "\\left\\|#?\\right\\|");
+
+  // Fractions and powers
+  assert.equal(normalizeMathInsertContent("\\frac{}{}"), "\\frac{#?}{#?}");
+  assert.equal(normalizeMathInsertContent("^"), "^{#?}");
+
+  // Preserves existing filled content
+  assert.equal(normalizeMathInsertContent("\\sqrt{3}"), "\\sqrt{3}");
+  assert.equal(normalizeMathInsertContent("\\left|x+1\\right|"), "\\left|x+1\\right|");
+  assert.equal(normalizeMathInsertContent(""), "");
+});
+
+test("VisualMathField configures DEFAULT_MATH_INLINE_SHORTCUTS and guards Enter in LaTeX command mode", () => {
+  const componentPath = path.resolve(
+    __dirname,
+    "../src/components/math/VisualMathField.tsx"
+  );
+  const componentContent = fs.readFileSync(componentPath, "utf-8");
+
+  assert.match(
+    componentContent,
+    /DEFAULT_MATH_INLINE_SHORTCUTS/,
+    "VisualMathField must bind DEFAULT_MATH_INLINE_SHORTCUTS to ensure radical and fence shortcuts"
+  );
+  assert.match(
+    componentContent,
+    /normalizeMathInsertContent\(latexOrText\)/,
+    "insertAtCursor must normalize incoming formula text via normalizeMathInsertContent"
+  );
+  assert.match(
+    componentContent,
+    /mode\s*===\s*"latex"/,
+    "Enter key handler must not hijack Enter when MathLive is in LaTeX command mode"
+  );
+});

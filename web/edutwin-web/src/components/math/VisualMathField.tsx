@@ -5,6 +5,8 @@ import {
   hydrateMathFieldInstance,
   shouldSyncExternalValue,
   registerVirtualKeyboardDismissListener,
+  DEFAULT_MATH_INLINE_SHORTCUTS,
+  normalizeMathInsertContent,
 } from "../../utils/visualMathFieldLifecycle";
 import { MathFallbackTextarea } from "./answer-editor/MathFallbackTextarea";
 
@@ -12,10 +14,12 @@ interface MathFieldElement extends HTMLElement {
   readOnly: boolean;
   value: string;
   defaultMode: "inline-math" | "math" | "text";
+  mode?: string;
   mathVirtualKeyboardPolicy: string;
   smartFence: boolean;
   smartMode: boolean;
   smartSuperscript: boolean;
+  inlineShortcuts?: Record<string, string | { mode?: string; after?: string; value: string }>;
   getValue: (format?: string) => string;
   setValue: (value: string, options?: { silenceNotifications?: boolean }) => void;
   insert: (
@@ -29,6 +33,7 @@ interface MathFieldElement extends HTMLElement {
   ) => void;
   executeCommand: (command: [string, string]) => void;
 }
+
 
 export interface VisualMathFieldRef {
   insertAtCursor: (latex: string) => void;
@@ -142,6 +147,10 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
           mf.smartFence = false;
           mf.smartMode = false;
           mf.smartSuperscript = true;
+          mf.inlineShortcuts = {
+            ...mf.inlineShortcuts,
+            ...DEFAULT_MATH_INLINE_SHORTCUTS,
+          };
           mf.setAttribute("data-input-mode", "math");
 
           // Synchronize dark theme class with document or parent container
@@ -213,11 +222,20 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
           // Keyboard Event Isolation: Prevent arrow keys, Tab, Enter, Space from bubbling up to quiz page
           const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === "Enter" && !e.shiftKey && onCommitRef.current) {
+              // If MathLive is in LaTeX command mode or showing suggestion popovers, let MathLive handle Enter
+              const isLatexCommandMode =
+                (mf as unknown as { mode?: string }).mode === "latex" ||
+                Boolean(mf.shadowRoot?.querySelector(".ML__popover, .ML__latex-popover, .ML__suggestion"));
+              if (isLatexCommandMode) {
+                return;
+              }
+
               e.preventDefault();
               e.stopPropagation();
               onCommitRef.current();
               return;
             }
+
 
             if (e.key === "Escape" && onCancelRef.current) {
               e.preventDefault();
@@ -333,17 +351,22 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
         mf.defaultMode = "math";
         mf.smartFence = false;
         mf.smartMode = false;
+        mf.inlineShortcuts = {
+          ...mf.inlineShortcuts,
+          ...DEFAULT_MATH_INLINE_SHORTCUTS,
+        };
         mf.executeCommand(["switchMode", "math"]);
         mf.setAttribute("data-input-mode", "math");
+        const toInsert = normalizeMathInsertContent(latexOrText);
         if (typeof mf.insert === "function") {
-          mf.insert(latexOrText, {
+          mf.insert(toInsert, {
             mode: "math",
             selectionMode: "placeholder",
             focus: true,
             silenceNotifications: true,
           });
         } else {
-          mf.executeCommand(["insert", latexOrText]);
+          mf.executeCommand(["insert", toInsert]);
         }
         const newVal = mf.getValue ? mf.getValue("latex-expanded") : mf.value;
         const rawPlainText = mf.getValue ? mf.getValue("plain-text") : newVal;
@@ -391,6 +414,10 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
       if (nextMode === "math") {
         mf.smartFence = false;
         mf.smartMode = false;
+        mf.inlineShortcuts = {
+          ...mf.inlineShortcuts,
+          ...DEFAULT_MATH_INLINE_SHORTCUTS,
+        };
       }
       mf.executeCommand(["switchMode", nextMode]);
       mf.setAttribute("data-input-mode", nextMode);

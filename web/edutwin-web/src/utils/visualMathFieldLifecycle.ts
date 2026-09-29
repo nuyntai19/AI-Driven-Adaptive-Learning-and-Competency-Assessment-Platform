@@ -179,3 +179,73 @@ export function resetVirtualKeyboardListenerForTests(): void {
   }
   activeListenerCount = 0;
 }
+
+export const DEFAULT_MATH_INLINE_SHORTCUTS = {
+  sqrt: "\\sqrt{#?}",
+  cbrt: "\\sqrt[3]{#?}",
+  abs: "\\left|#?\\right|",
+  "|": "\\left|#?\\right|",
+  norm: "\\left\\|#?\\right\\|",
+} as const;
+
+/**
+ * Normalizes user- or calculator-provided LaTeX/text into structural MathLive commands
+ * containing explicit placeholders (#?) for radicals and fences, ensuring newly created
+ * empty blocks place the caret inside rather than selecting the whole block (which causes
+ * immediate replacement/erasure upon typing).
+ */
+export function normalizeMathInsertContent(latexOrText: string): string {
+  if (!latexOrText) return "";
+  const trimmed = latexOrText.trim();
+
+  // 1. Exact function calls or raw keywords from Casio / Calculator / Toolbar
+  if (trimmed === "sqrt(" || trimmed === "\\sqrt" || trimmed === "\\sqrt{}" || trimmed === "sqrt") {
+    return "\\sqrt{#?}";
+  }
+  if (trimmed === "cbrt(" || trimmed === "\\cbrt" || trimmed === "\\cbrt{}" || trimmed === "cbrt") {
+    return "\\sqrt[3]{#?}";
+  }
+  if (trimmed === "\\sqrt[]{}" || trimmed === "\\sqrt[]") {
+    return "\\sqrt[#?]{#?}";
+  }
+  if (
+    trimmed === "abs(" ||
+    trimmed === "\\abs" ||
+    trimmed === "\\abs{}" ||
+    trimmed === "abs" ||
+    trimmed === "|" ||
+    trimmed === "\\left|\\right|" ||
+    trimmed === "\\left| \\right|" ||
+    trimmed === "\\vert\\vert"
+  ) {
+    return "\\left|#?\\right|";
+  }
+  if (
+    trimmed === "||" ||
+    trimmed === "\\left\\|\\right\\|" ||
+    trimmed === "\\left\\| \\right\\|" ||
+    trimmed === "\\Vert\\Vert" ||
+    trimmed === "norm(" ||
+    trimmed === "norm"
+  ) {
+    return "\\left\\|#?\\right\\|";
+  }
+  if (trimmed === "\\frac" || trimmed === "\\frac{}" || trimmed === "\\frac{}{}") {
+    return "\\frac{#?}{#?}";
+  }
+  if (trimmed === "^" || trimmed === "^{}") {
+    return "^{#?}";
+  }
+  if (trimmed === "_" || trimmed === "_{}") {
+    return "_{#?}";
+  }
+
+  // 2. Structural substitutions for empty containers without placeholders
+  let normalized = latexOrText;
+  normalized = normalized.replace(/\\sqrt\{\s*\}/g, "\\sqrt{#?}");
+  normalized = normalized.replace(/\\left\|\s*\\right\|/g, "\\left|#?\\right|");
+  normalized = normalized.replace(/\\left\\\|\s*\\right\\\|/g, "\\left\\|#?\\right\\|");
+  normalized = normalized.replace(/\\frac\{\s*\}\{\s*\}/g, "\\frac{#?}{#?}");
+
+  return normalized;
+}
