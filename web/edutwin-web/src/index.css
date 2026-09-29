@@ -13,12 +13,21 @@ math-field {
   background-color: transparent !important;
 }
 
+math-field.dark,
 .dark math-field {
   --color: #f8fafc;
-  --placeholder-color: #a5b4fc;
-  --caret-color: #a5b4fc;
-  --selection-background-color: rgba(129, 140, 248, 0.35);
+  --placeholder-color: #38bdf8;
+  --caret-color: #38bdf8;
+  --selection-background-color: rgba(56, 189, 248, 0.35);
   color: #f8fafc !important;
+}
+
+/* Ensure placeholder boxes like \sqrt{\placeholder} and \left\vert\placeholder\right\vert are clearly visible and styled */
+math-field::part(placeholder),
+math-field .ML__placeholder {
+  opacity: 0.85 !important;
+  border-bottom: 1.5px dashed currentColor !important;
+  padding: 0 2px !important;
 }
 
 /* Hide MathLive virtual keyboard toggle and menu toggle when in text (keyboard) mode */

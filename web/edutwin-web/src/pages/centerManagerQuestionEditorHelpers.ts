@@ -184,6 +184,7 @@ export function validateTextMathFormulas(text: string | null | undefined): MathF
   const diagnostics: MathFormulaDiagnostic[] = [];
   const len = text.length;
   let i = 0;
+  let lastEnd = 0;
 
   // Helper: check if character at idx is preceded by an odd number of backslashes
   function isEscaped(idx: number): boolean {
@@ -196,8 +197,47 @@ export function validateTextMathFormulas(text: string | null | undefined): MathF
     return backslashCount % 2 === 1;
   }
 
+  // Validate prose segments outside math formula delimiters ($...$, $$...$$)
+  function validateProseSegment(segment: string, offset: number) {
+    if (!segment) return;
+
+    // 1. Check for unfilled placeholder in prose outside math delimiters
+    if (hasUnfilledPlaceholder(segment)) {
+      diagnostics.push({
+        type: "placeholder",
+        raw: segment.trim(),
+        message: "Nội dung còn chứa ô trống chưa điền (\\placeholder). Vui lòng hoàn thành mọi vị trí.",
+        position: offset,
+      });
+      return;
+    }
+
+    // 2. Check for raw LaTeX command outside delimiters (e.g. \frac{1}{ và $x$)
+    // Match any LaTeX command starting with backslash followed by ASCII letters
+    const cmdMatch = /(?:^|[^\\])(\\[a-zA-Z]+[\s\S]*)/.exec(segment);
+    if (cmdMatch) {
+      const rawCandidate = cmdMatch[1].trim();
+      try {
+        katex.renderToString(rawCandidate, { throwOnError: true });
+      } catch (err: unknown) {
+        const rawMsg = err instanceof Error ? err.message : String(err);
+        const cleanMsg = rawMsg.replace(/^KaTeX parse error:\s*/i, "").trim();
+        diagnostics.push({
+          type: "invalid-syntax",
+          raw: rawCandidate,
+          message: `Công thức sai cú pháp LaTeX (${cleanMsg}).`,
+          position: offset + segment.indexOf(rawCandidate),
+        });
+      }
+    }
+  }
+
   while (i < len) {
     if (text[i] === "$" && !isEscaped(i)) {
+      // Validate prose segment preceding this math formula
+      const prose = text.slice(lastEnd, i);
+      validateProseSegment(prose, lastEnd);
+
       const isDisplay = i + 1 < len && text[i + 1] === "$";
       const delim = isDisplay ? "$$" : "$";
       const delimLen = delim.length;
@@ -235,9 +275,11 @@ export function validateTextMathFormulas(text: string | null | undefined): MathF
           message: `Công thức toán chưa được đóng dấu "${delim}". Vui lòng thêm "${delim}" đóng ở cuối công thức.`,
           position: startIndex,
         });
+        lastEnd = len;
         break;
       }
 
+      lastEnd = i;
       const rawFormula = text.slice(startIndex, i);
       const mathContent = text.slice(contentStart, contentEnd);
       const trimmedMath = mathContent.trim();
@@ -253,7 +295,7 @@ export function validateTextMathFormulas(text: string | null | undefined): MathF
         continue;
       }
 
-      // Check unfilled placeholder
+      // Check unfilled placeholder inside formula
       if (hasUnfilledPlaceholder(trimmedMath)) {
         diagnostics.push({
           type: "placeholder",
@@ -283,27 +325,10 @@ export function validateTextMathFormulas(text: string | null | undefined): MathF
     i++;
   }
 
-  // Defensive fallback: check for raw LaTeX without $ delimiters
-  if (diagnostics.length === 0 && !text.includes("$")) {
-    if (hasUnfilledPlaceholder(text)) {
-      diagnostics.push({
-        type: "placeholder",
-        raw: text,
-        message: "Nội dung còn chứa ô trống chưa điền (\\placeholder). Vui lòng hoàn thành mọi vị trí.",
-      });
-    } else if (/^\s*\\[a-zA-Z]+/.test(text)) {
-      try {
-        katex.renderToString(text.trim(), { throwOnError: true });
-      } catch (err: unknown) {
-        const rawMsg = err instanceof Error ? err.message : String(err);
-        const cleanMsg = rawMsg.replace(/^KaTeX parse error:\s*/i, "").trim();
-        diagnostics.push({
-          type: "invalid-syntax",
-          raw: text,
-          message: `Công thức sai cú pháp LaTeX (${cleanMsg}).`,
-        });
-      }
-    }
+  // Validate trailing prose segment after the last formula (or the entire text if no formulas)
+  if (lastEnd < len) {
+    const trailingProse = text.slice(lastEnd);
+    validateProseSegment(trailingProse, lastEnd);
   }
 
   return diagnostics;

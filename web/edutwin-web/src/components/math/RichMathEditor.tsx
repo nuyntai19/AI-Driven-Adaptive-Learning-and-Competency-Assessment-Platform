@@ -91,8 +91,8 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
 
     const updatePosition = () => {
       const rect = activeMathNode.element.getBoundingClientRect();
-      const popoverWidth = 380;
-      const popoverHeight = 240;
+      const popoverWidth = 390;
+      const popoverHeight = 260;
 
       let left = rect.left;
       if (left + popoverWidth > window.innerWidth - 16) {
@@ -546,170 +546,231 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
             aria-hidden="true"
           />
 
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Chỉnh sửa công thức toán học"
-            style={{
-              top: `${popoverPos.top}px`,
-              left: `${popoverPos.left}px`,
-            }}
-            className="fixed z-50 w-[380px] max-w-[90vw] rounded-2xl border border-cyan-500/50 bg-slate-900/95 shadow-2xl p-4 space-y-3 backdrop-blur-md text-slate-100 animate-scale-in"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-              <div className="flex items-center gap-2">
-                <span className="p-1 rounded-md bg-cyan-500/20 text-cyan-400 font-bold text-xs">
-                  Σ
-                </span>
-                <h4 className="text-xs font-semibold text-white">
-                  Soạn công thức (MathLive)
-                </h4>
-              </div>
-              <button
-                type="button"
-                onClick={handleCancelMath}
-                aria-label="Đóng popover"
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer text-xs"
-              >
-                ✕
-              </button>
-            </div>
+          {(() => {
+            const isDark =
+              variant === "center-manager" ||
+              (typeof document !== "undefined" && document.documentElement.classList.contains("dark"));
 
-            {/* Error banner */}
-            {dialogError && (
+            // Theme-tailored styles for popover container & controls
+            let popoverBorder = "border-slate-300";
+            let popoverShadow = "shadow-slate-900/15";
+            let badgeBg = "bg-indigo-50 border-indigo-200 text-indigo-600";
+            let inputBorder = "border-slate-300 focus-within:border-indigo-600 focus-within:ring-2 focus-within:ring-indigo-500/15";
+            let previewBox = "border-slate-200 bg-slate-50/80 text-slate-800";
+            let previewFormulaColor = "text-indigo-950";
+            let confirmBtn = "bg-indigo-600 hover:bg-indigo-500 text-white";
+
+            if (isDark) {
+              popoverBorder = variant === "center-manager" ? "border-cyan-500/50" : "border-slate-700/80";
+              popoverShadow = variant === "center-manager" ? "shadow-cyan-950/40" : "shadow-slate-950/50";
+              badgeBg = variant === "center-manager" ? "bg-cyan-500/20 border-cyan-500/30 text-cyan-400" : "bg-indigo-500/20 border-indigo-500/30 text-indigo-400";
+              inputBorder = variant === "center-manager" ? "border-cyan-500/40 focus-within:border-cyan-400 focus-within:ring-2 focus-within:ring-cyan-500/20" : "border-slate-700 focus-within:border-indigo-500";
+              previewBox = "border-slate-800 bg-slate-950/80 text-slate-300";
+              previewFormulaColor = variant === "center-manager" ? "text-cyan-200" : "text-indigo-200";
+              confirmBtn = variant === "center-manager" ? "bg-cyan-500 hover:bg-cyan-400 text-slate-950" : "bg-indigo-600 hover:bg-indigo-500 text-white";
+            } else if (variant === "teacher") {
+              popoverBorder = "border-teal-500/40";
+              popoverShadow = "shadow-teal-950/15";
+              badgeBg = "bg-teal-50 border-teal-200 text-teal-700";
+              inputBorder = "border-teal-500/35 focus-within:border-teal-600 focus-within:ring-2 focus-within:ring-teal-500/15";
+              previewBox = "border-teal-100 bg-teal-50/50 text-teal-950";
+              previewFormulaColor = "text-teal-900";
+              confirmBtn = "bg-teal-600 hover:bg-teal-500 text-white";
+            } else if (variant === "student") {
+              popoverBorder = "border-[#6746E8]/35";
+              popoverShadow = "shadow-purple-950/15";
+              badgeBg = "bg-purple-50 border-purple-200 text-[#6746E8]";
+              inputBorder = "border-[#6746E8]/35 focus-within:border-[#6746E8] focus-within:ring-2 focus-within:ring-[#6746E8]/15";
+              previewBox = "border-purple-100 bg-purple-50/50 text-purple-950";
+              previewFormulaColor = "text-purple-900";
+              confirmBtn = "bg-[#6746E8] hover:bg-[#5839ce] text-white";
+            }
+
+            return (
               <div
-                role="alert"
-                className="rounded-lg p-2 bg-rose-950/80 border border-rose-500/50 text-rose-200 text-xs flex items-center gap-1.5"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Chỉnh sửa công thức toán học"
+                style={{
+                  top: `${popoverPos.top}px`,
+                  left: `${popoverPos.left}px`,
+                }}
+                className={`fixed z-50 w-[390px] max-w-[92vw] rounded-2xl border p-4 space-y-3 backdrop-blur-md transition-all animate-scale-in shadow-2xl ${
+                  isDark
+                    ? `dark bg-slate-900/98 text-slate-100 ${popoverBorder} ${popoverShadow}`
+                    : `bg-white/98 text-slate-800 ${popoverBorder} ${popoverShadow}`
+                }`}
+                onClick={(e) => e.stopPropagation()}
               >
-                <span>⚠️</span>
-                <span>{dialogError}</span>
-              </div>
-            )}
+                <div className={`flex items-center justify-between pb-2 border-b ${isDark ? "border-slate-800" : "border-slate-100"}`}>
+                  <div className="flex items-center gap-2">
+                    <span className={`px-1.5 py-0.5 rounded-md border font-bold text-xs ${badgeBg}`}>
+                      Σ
+                    </span>
+                    <h4 className={`text-xs font-semibold ${isDark ? "text-white" : "text-slate-900"}`}>
+                      Soạn công thức (MathLive)
+                    </h4>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCancelMath}
+                    aria-label="Đóng popover"
+                    className={`p-1 rounded-lg transition-colors cursor-pointer text-xs ${
+                      isDark ? "text-slate-400 hover:text-white hover:bg-slate-800" : "text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+                    }`}
+                  >
+                    ✕
+                  </button>
+                </div>
 
-            {/* MathLive Input with onCommit (Enter) and onCancel (Escape) */}
-            <div className="space-y-1">
-              <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider">
-                Nhập công thức trực quan
-              </label>
-              <div className="rounded-xl border border-cyan-500/30 bg-slate-950 p-1.5">
-                <VisualMathField
-                  value={dialogLatex}
-                  onChange={(latex) => {
-                    setDialogLatex(latex);
-                    if (dialogError) setDialogError(null);
-                  }}
-                  onCommit={handleConfirmMath}
-                  onCancel={handleCancelMath}
-                  placeholder="Gõ công thức hoặc chọn ký hiệu..."
-                  autoFocus
-                />
-              </div>
-            </div>
+                {/* Error banner */}
+                {dialogError && (
+                  <div
+                    role="alert"
+                    className={`rounded-lg p-2 text-xs flex items-center gap-1.5 ${
+                      isDark
+                        ? "bg-rose-950/80 border border-rose-500/50 text-rose-200"
+                        : "bg-rose-50 border border-rose-200 text-rose-700"
+                    }`}
+                  >
+                    <span>⚠️</span>
+                    <span>{dialogError}</span>
+                  </div>
+                )}
 
-            {/* Live KaTeX Preview and Placeholder / Syntax Indicator */}
-            <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-2 space-y-1">
-              <div className="flex items-center justify-between text-[10px] text-slate-400">
-                <span>Xem trước kết quả:</span>
-                {dialogLatex ? (
-                  (() => {
-                    const validation = validateAndCleanFormula(dialogLatex);
-                    if (validation.hasPlaceholder) {
-                      return (
-                        <span className="text-rose-400 font-semibold">
-                          Chưa hoàn thành (\placeholder)
-                        </span>
-                      );
-                    }
-                    if (!validation.isComplete) {
-                      return (
-                        <span className="text-amber-400 font-semibold">
-                          ⚠️ Lỗi cú pháp
-                        </span>
-                      );
-                    }
-                    return (
-                      <span className="text-emerald-400 font-semibold">
-                        ✓ Hợp lệ
+                {/* MathLive Input with onCommit (Enter) and onCancel (Escape) */}
+                <div className="space-y-1">
+                  <label className={`block text-[11px] font-semibold uppercase tracking-wider ${isDark ? "text-slate-300" : "text-slate-600"}`}>
+                    Nhập công thức trực quan
+                  </label>
+                  <div className={`rounded-xl border p-1.5 transition-all ${isDark ? "bg-slate-950 text-white" : "bg-slate-50/70 text-slate-900"} ${inputBorder}`}>
+                    <VisualMathField
+                      value={dialogLatex}
+                      onChange={(latex) => {
+                        setDialogLatex(latex);
+                        if (dialogError) setDialogError(null);
+                      }}
+                      onCommit={handleConfirmMath}
+                      onCancel={handleCancelMath}
+                      placeholder="Gõ công thức hoặc chọn ký hiệu..."
+                      autoFocus
+                      showToolbar={false}
+                      compact={true}
+                    />
+                  </div>
+                </div>
+
+                {/* Live KaTeX Preview and Placeholder / Syntax Indicator */}
+                <div className={`rounded-lg border p-2 space-y-1 ${previewBox}`}>
+                  <div className={`flex items-center justify-between text-[10px] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                    <span>Xem trước kết quả:</span>
+                    {dialogLatex ? (
+                      (() => {
+                        const validation = validateAndCleanFormula(dialogLatex);
+                        if (validation.hasPlaceholder) {
+                          return (
+                            <span className="text-rose-500 font-semibold">
+                              Chưa hoàn thành (\placeholder)
+                            </span>
+                          );
+                        }
+                        if (!validation.isComplete) {
+                          return (
+                            <span className="text-amber-500 font-semibold">
+                              ⚠️ Lỗi cú pháp
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="text-emerald-500 font-semibold">
+                            ✓ Hợp lệ
+                          </span>
+                        );
+                      })()
+                    ) : (
+                      <span>(trống)</span>
+                    )}
+                  </div>
+                  <div className={`min-h-[28px] flex items-center justify-center text-sm overflow-x-auto py-1 font-medium ${previewFormulaColor}`}>
+                    {dialogLatex ? (
+                      (() => {
+                        const clean = cleanFormulaForInsertion(dialogLatex);
+                        try {
+                          const html = katex.renderToString(clean, {
+                            throwOnError: false,
+                            displayMode: false,
+                          });
+                          return (
+                            <span
+                              dangerouslySetInnerHTML={{ __html: html }}
+                            />
+                          );
+                        } catch {
+                          return (
+                            <span className="text-xs text-rose-500 font-mono">
+                              {dialogLatex}
+                            </span>
+                          );
+                        }
+                      })()
+                    ) : (
+                      <span className={`text-xs italic ${isDark ? "text-slate-500" : "text-slate-400"}`}>
+                        Chưa có công thức
                       </span>
-                    );
-                  })()
-                ) : (
-                  <span>(trống)</span>
-                )}
-              </div>
-              <div className="min-h-[28px] flex items-center justify-center text-sm text-cyan-200 overflow-x-auto py-1">
-                {dialogLatex ? (
-                  (() => {
-                    const clean = cleanFormulaForInsertion(dialogLatex);
-                    try {
-                      const html = katex.renderToString(clean, {
-                        throwOnError: false,
-                        displayMode: false,
-                      });
-                      return (
-                        <span
-                          dangerouslySetInnerHTML={{ __html: html }}
-                        />
-                      );
-                    } catch {
-                      return (
-                        <span className="text-xs text-rose-300 font-mono">
-                          {dialogLatex}
-                        </span>
-                      );
-                    }
-                  })()
-                ) : (
-                  <span className="text-xs text-slate-500 italic">
-                    Chưa có công thức
-                  </span>
-                )}
-              </div>
-            </div>
+                    )}
+                  </div>
+                </div>
 
-            {/* Actions */}
-            <div className="flex items-center justify-between pt-1">
-              {!activeMathNode.isNew ? (
-                <button
-                  type="button"
-                  onClick={handleDeleteMath}
-                  className="px-2.5 py-1 text-xs font-medium text-rose-400 hover:text-rose-300 hover:bg-rose-950/50 rounded-lg transition-colors cursor-pointer"
-                >
-                  Xóa công thức
-                </button>
-              ) : (
-                <div />
-              )}
+                {/* Actions */}
+                <div className="flex items-center justify-between pt-1">
+                  {!activeMathNode.isNew ? (
+                    <button
+                      type="button"
+                      onClick={handleDeleteMath}
+                      className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-colors cursor-pointer ${
+                        isDark ? "text-rose-400 hover:text-rose-300 hover:bg-rose-950/50" : "text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                      }`}
+                    >
+                      Xóa công thức
+                    </button>
+                  ) : (
+                    <div />
+                  )}
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleCancelMath}
-                  className="px-3 py-1 text-xs font-semibold text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer"
-                >
-                  Hủy (Esc)
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmMath}
-                  disabled={
-                    !dialogLatex.trim() ||
-                    !validateAndCleanFormula(dialogLatex).isComplete
-                  }
-                  className={`px-3.5 py-1 text-xs font-semibold rounded-lg shadow-sm transition-all flex items-center gap-1.5 ${
-                    !dialogLatex.trim() ||
-                    !validateAndCleanFormula(dialogLatex).isComplete
-                      ? "bg-slate-700 text-slate-400 cursor-not-allowed opacity-50"
-                      : "bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold cursor-pointer"
-                  }`}
-                >
-                  <span>Hoàn tất</span>
-                  <kbd className="text-[10px] opacity-75 font-mono">Enter</kbd>
-                </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCancelMath}
+                      className={`px-3 py-1 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
+                        isDark ? "text-slate-400 hover:text-white hover:bg-slate-800" : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                      }`}
+                    >
+                      Hủy (Esc)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleConfirmMath}
+                      disabled={
+                        !dialogLatex.trim() ||
+                        !validateAndCleanFormula(dialogLatex).isComplete
+                      }
+                      className={`px-3.5 py-1 text-xs font-semibold rounded-lg shadow-sm transition-all flex items-center gap-1.5 ${
+                        !dialogLatex.trim() ||
+                        !validateAndCleanFormula(dialogLatex).isComplete
+                          ? isDark
+                            ? "bg-slate-800 text-slate-500 cursor-not-allowed opacity-50"
+                            : "bg-slate-200 text-slate-400 cursor-not-allowed opacity-60"
+                          : `${confirmBtn} font-bold cursor-pointer`
+                      }`}
+                    >
+                      <span>Hoàn tất</span>
+                      <kbd className="text-[10px] opacity-75 font-mono">Enter</kbd>
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+            );
+          })()}
         </>
       )}
     </div>

@@ -456,6 +456,78 @@ describe("Structured Math Formula Diagnostics & State Machine Scanner", () => {
     assert.ok(formatted.includes("còn ô trống \\placeholder"));
   });
 
+  it("detects placeholder in prose outside math delimiters (with or without $)", () => {
+    // Case 1: text with formula and trailing placeholder
+    const case1 = "Tính $x+1$ rồi điền \\placeholder{}";
+    const diags1 = validateTextMathFormulas(case1);
+    assert.equal(diags1.length, 1);
+    assert.equal(diags1[0].type, "placeholder");
+
+    // Case 2: text with escaped dollar and placeholder
+    const case2 = "Giá 5\\$ rồi điền \\placeholder{}";
+    const diags2 = validateTextMathFormulas(case2);
+    assert.equal(diags2.length, 1);
+    assert.equal(diags2[0].type, "placeholder");
+
+    // Case 3: leading placeholder before formula
+    const case3 = "Văn bản \\placeholder{} và $x$";
+    const diags3 = validateTextMathFormulas(case3);
+    assert.equal(diags3.length, 1);
+    assert.equal(diags3[0].type, "placeholder");
+
+    // Case 4: placeholder between two valid formulas
+    const case4 = "$x$ \\placeholder{} $y$";
+    const diags4 = validateTextMathFormulas(case4);
+    assert.equal(diags4.length, 1);
+    assert.equal(diags4[0].type, "placeholder");
+  });
+
+  it("ensures placeholder inside formula generates exactly one diagnostic without duplicates", () => {
+    const input = "Cho $x = \\placeholder{}$ nhé.";
+    const diags = validateTextMathFormulas(input);
+    assert.equal(diags.length, 1);
+    assert.equal(diags[0].type, "placeholder");
+    assert.equal(diags[0].raw, "$x = \\placeholder{}$");
+  });
+
+  it("detects raw LaTeX syntax error outside delimiter even when string contains valid formulas", () => {
+    const input = "\\frac{1}{ và $x$";
+    const diags = validateTextMathFormulas(input);
+    assert.ok(diags.length >= 1);
+    assert.equal(diags[0].type, "invalid-syntax");
+    assert.ok(diags[0].message.includes("sai cú pháp LaTeX"));
+  });
+
+  it("buildAuthoritativeQuestionPayload blocks payloads with prose placeholders outside delimiters", () => {
+    const formDataProsePlaceholder: any = {
+      subjectId: "sub-1",
+      primaryTopicNodeId: "node-1",
+      questionType: "ShortAnswer",
+      difficulty: 3,
+      questionText: "Tính $x+1$ rồi điền \\placeholder{}",
+      maxScore: 10,
+      estimatedTimeSeconds: 60,
+      reasoningRequired: false,
+      languageCode: "vi",
+      answerEvaluationMode: "TextExact",
+    };
+
+    const answerDrafts = {
+      "ShortAnswer:TextExact": {
+        rawText: "x = 1",
+        displayLatex: "",
+      },
+    };
+
+    const result = buildAuthoritativeQuestionPayload({
+      formData: formDataProsePlaceholder,
+      modeDrafts: answerDrafts,
+    });
+
+    assert.ok(result.error);
+    assert.ok(result.error.includes("Nội dung câu hỏi chứa công thức chưa hoàn thành (còn ô trống \\placeholder)"));
+  });
+
   it("buildAuthoritativeQuestionPayload reports exact diagnostic reason in Vietnamese", () => {
     const formDataUnclosed: any = {
       subjectId: "sub-1",
