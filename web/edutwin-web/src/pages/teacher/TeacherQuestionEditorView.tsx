@@ -30,8 +30,8 @@ import {
 import { RichMathEditor } from "../../components/math/RichMathEditor";
 import { ModeAwareAnswerEditor } from "../../components/math/answer-editor/ModeAwareAnswerEditor";
 import {
-  hasUnfilledPlaceholder,
-  findIncompleteFormulasInText,
+  validateTextMathFormulas,
+  formatFormulaDiagnosticMessage,
   getAnswerDraftKey,
   resetAndHydrateDraftStore,
   hydrateAnswerEditorValue,
@@ -243,53 +243,43 @@ export function TeacherQuestionEditorView() {
       return;
     }
 
-    // Defensive check against unfilled MathLive \placeholder{}
-    if (
-      hasUnfilledPlaceholder(questionText) ||
-      findIncompleteFormulasInText(questionText).length > 0
-    ) {
+    // Defensive check against unclosed delimiter, empty, placeholder, or invalid syntax
+    const qTextDiag = validateTextMathFormulas(questionText)[0];
+    if (qTextDiag) {
       setFormError({
-        message:
-          "Nội dung đề bài chứa công thức chưa hoàn thành (còn ô trống \\placeholder). Vui lòng hoàn tất trước khi lưu.",
+        message: formatFormulaDiagnosticMessage("Nội dung đề bài", qTextDiag),
       });
       return;
     }
 
-    if (
-      hasUnfilledPlaceholder(solution) ||
-      findIncompleteFormulasInText(solution).length > 0
-    ) {
+    const solDiag = validateTextMathFormulas(solution)[0];
+    if (solDiag) {
       setFormError({
-        message:
-          "Lời giải chứa công thức chưa hoàn thành (còn ô trống \\placeholder). Vui lòng hoàn tất trước khi lưu.",
+        message: formatFormulaDiagnosticMessage("Lời giải", solDiag),
       });
       return;
     }
 
     if (questionType === "MultipleChoice") {
       for (const opt of options) {
-        if (
-          hasUnfilledPlaceholder(opt.text) ||
-          findIncompleteFormulasInText(opt.text).length > 0
-        ) {
+        const optDiag = validateTextMathFormulas(opt.text)[0];
+        if (optDiag) {
           setFormError({
-            message: `Phương án ${opt.label} chứa công thức chưa hoàn thành (còn ô trống \\placeholder).`,
+            message: formatFormulaDiagnosticMessage(`Phương án ${opt.label}`, optDiag),
           });
           return;
         }
       }
     }
 
-    if (
-      computedCorrectAnswer &&
-      (hasUnfilledPlaceholder(computedCorrectAnswer) ||
-        findIncompleteFormulasInText(computedCorrectAnswer).length > 0)
-    ) {
-      setFormError({
-        message:
-          "Đáp án chuẩn chứa công thức chưa hoàn thành (còn ô trống \\placeholder).",
-      });
-      return;
+    if (computedCorrectAnswer) {
+      const ansDiag = validateTextMathFormulas(computedCorrectAnswer)[0];
+      if (ansDiag) {
+        setFormError({
+          message: formatFormulaDiagnosticMessage("Đáp án chuẩn", ansDiag),
+        });
+        return;
+      }
     }
 
     const evalMode: QuestionAnswerEvaluationMode =

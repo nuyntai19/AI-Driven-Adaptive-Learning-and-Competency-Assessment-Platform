@@ -3,7 +3,7 @@ import katex from "katex";
 import {
   cleanFormulaForInsertion,
   validateAndCleanFormula,
-  hasUnfilledPlaceholder,
+  validateTextMathFormulas,
 } from "../../pages/centerManagerQuestionEditorHelpers";
 import { VisualMathField } from "./VisualMathField";
 import {
@@ -334,42 +334,86 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
     }
   };
 
-  const hasIncompleteFormulas = hasUnfilledPlaceholder(value);
+  const formulaDiagnostics = validateTextMathFormulas(value);
+  const firstDiag = formulaDiagnostics[0];
+  const hasIncompleteFormulas = Boolean(firstDiag);
 
-  const isTeacher = variant === "teacher";
-  const containerTokens: React.CSSProperties = isTeacher
-    ? ({
-        "--rme-border": "var(--th-border-subtle, #cbd5e1)",
-        "--rme-border-focus": "var(--th-primary, #0d9488)",
-        "--rme-surface": "var(--th-surface, #ffffff)",
-        "--rme-surface-subtle": "var(--th-surface-subtle, #f8fafc)",
-        "--rme-surface-toolbar": "var(--th-surface-ground, #e5edf5)",
-        "--rme-text": "var(--th-text-primary, #0f172a)",
-        "--rme-text-muted": "var(--th-text-secondary, #64748b)",
-        "--rme-accent": "var(--th-primary, #0d9488)",
-        "--rme-badge-bg": "rgba(13, 148, 136, 0.12)",
-        "--rme-badge-border": "rgba(13, 148, 136, 0.3)",
-        "--rme-badge-text": "var(--th-teal, #0d9488)",
-        "--rme-math-bg": "rgba(13, 148, 136, 0.12)",
-        "--rme-math-border": "rgba(13, 148, 136, 0.35)",
-        "--rme-math-text": "var(--th-teal, #0f766e)",
-      } as React.CSSProperties)
-    : ({
-        "--rme-border": "var(--cm-border-subtle, #334155)",
-        "--rme-border-focus": "var(--cm-cyan, #06b6d4)",
-        "--rme-surface": "var(--cm-surface-subtle, #0f172a)",
-        "--rme-surface-subtle": "var(--cm-surface-subtle, #0f172a)",
-        "--rme-surface-toolbar": "var(--cm-surface, rgba(0, 0, 0, 0.2))",
-        "--rme-text": "var(--cm-text, #f8fafc)",
-        "--rme-text-muted": "var(--cm-text-muted, #94a3b8)",
-        "--rme-accent": "var(--cm-cyan, #06b6d4)",
-        "--rme-badge-bg": "rgba(6, 182, 212, 0.1)",
-        "--rme-badge-border": "rgba(6, 182, 212, 0.3)",
-        "--rme-badge-text": "var(--cm-cyan, #22d3ee)",
-        "--rme-math-bg": "rgba(6, 182, 212, 0.15)",
-        "--rme-math-border": "rgba(6, 182, 212, 0.35)",
-        "--rme-math-text": "var(--cm-cyan, #67e8f9)",
-      } as React.CSSProperties);
+  const containerTokens: React.CSSProperties = (() => {
+    switch (variant) {
+      case "teacher":
+        return {
+          "--rme-border": "var(--th-border-subtle, #cbd5e1)",
+          "--rme-border-focus": "var(--th-primary, #0d9488)",
+          "--rme-surface": "var(--th-surface, #ffffff)",
+          "--rme-surface-subtle": "var(--th-surface-subtle, #edf2f7)",
+          "--rme-surface-toolbar": "var(--th-surface-ground, #e5edf5)",
+          "--rme-text": "var(--th-text-primary, #0f172a)",
+          "--rme-text-muted": "var(--th-text-secondary, #64748b)",
+          "--rme-accent": "var(--th-primary, #0d9488)",
+          "--rme-badge-bg": "rgba(13, 148, 136, 0.12)",
+          "--rme-badge-border": "rgba(13, 148, 136, 0.3)",
+          "--rme-badge-text": "var(--th-teal, #0d9488)",
+          "--rme-math-bg": "rgba(13, 148, 136, 0.12)",
+          "--rme-math-border": "rgba(13, 148, 136, 0.35)",
+          "--rme-math-text": "var(--th-teal, #0f766e)",
+        } as React.CSSProperties;
+
+      case "student":
+        return {
+          "--rme-border": "var(--student-border, #E8E2D5)",
+          "--rme-border-focus": "var(--student-brand, #6746E8)",
+          "--rme-surface": "var(--student-surface, #FFFFFF)",
+          "--rme-surface-subtle": "var(--student-surface-subtle, #F5F1E8)",
+          "--rme-surface-toolbar": "var(--student-canvas, #FBF8F1)",
+          "--rme-text": "var(--student-ink, #172033)",
+          "--rme-text-muted": "var(--student-muted, #667085)",
+          "--rme-accent": "var(--student-brand, #6746E8)",
+          "--rme-badge-bg": "var(--student-brand-soft, #F1EEFD)",
+          "--rme-badge-border": "var(--student-brand-border, #D8CFFC)",
+          "--rme-badge-text": "var(--student-brand, #6746E8)",
+          "--rme-math-bg": "var(--student-brand-soft, rgba(103, 70, 232, 0.1))",
+          "--rme-math-border": "var(--student-brand-border, rgba(103, 70, 232, 0.3))",
+          "--rme-math-text": "var(--student-brand, #6746E8)",
+        } as React.CSSProperties;
+
+      case "neutral":
+        return {
+          "--rme-border": "#cbd5e1",
+          "--rme-border-focus": "#6366f1",
+          "--rme-surface": "#ffffff",
+          "--rme-surface-subtle": "#f8fafc",
+          "--rme-surface-toolbar": "#f1f5f9",
+          "--rme-text": "#0f172a",
+          "--rme-text-muted": "#64748b",
+          "--rme-accent": "#6366f1",
+          "--rme-badge-bg": "rgba(99, 102, 241, 0.1)",
+          "--rme-badge-border": "rgba(99, 102, 241, 0.25)",
+          "--rme-badge-text": "#6366f1",
+          "--rme-math-bg": "rgba(99, 102, 241, 0.08)",
+          "--rme-math-border": "rgba(99, 102, 241, 0.3)",
+          "--rme-math-text": "#4f46e5",
+        } as React.CSSProperties;
+
+      case "center-manager":
+      default:
+        return {
+          "--rme-border": "var(--cm-border-subtle, #334155)",
+          "--rme-border-focus": "var(--cm-cyan, #06b6d4)",
+          "--rme-surface": "var(--cm-surface-subtle, #0f172a)",
+          "--rme-surface-subtle": "var(--cm-surface-subtle, #0f172a)",
+          "--rme-surface-toolbar": "var(--cm-surface, rgba(0, 0, 0, 0.2))",
+          "--rme-text": "var(--cm-text, #f8fafc)",
+          "--rme-text-muted": "var(--cm-text-muted, #94a3b8)",
+          "--rme-accent": "var(--cm-cyan, #06b6d4)",
+          "--rme-badge-bg": "rgba(6, 182, 212, 0.1)",
+          "--rme-badge-border": "rgba(6, 182, 212, 0.3)",
+          "--rme-badge-text": "var(--cm-cyan, #22d3ee)",
+          "--rme-math-bg": "rgba(6, 182, 212, 0.15)",
+          "--rme-math-border": "rgba(6, 182, 212, 0.35)",
+          "--rme-math-text": "var(--cm-cyan, #67e8f9)",
+        } as React.CSSProperties;
+    }
+  })();
 
   return (
     <div
@@ -395,8 +439,18 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
             WYSIWYG
           </span>
           {hasIncompleteFormulas && (
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-950/70 border border-rose-500/50 text-rose-300 animate-pulse">
-              ⚠️ Có công thức chưa điền xong
+            <span
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-950/70 border border-rose-500/50 text-rose-300 animate-pulse"
+              title={firstDiag?.message}
+            >
+              ⚠️{" "}
+              {firstDiag?.type === "unclosed-delimiter"
+                ? "Dấu công thức chưa đóng"
+                : firstDiag?.type === "empty-formula"
+                ? "Công thức rỗng"
+                : firstDiag?.type === "invalid-syntax"
+                ? "Lỗi cú pháp LaTeX"
+                : "Có công thức chưa điền xong"}
             </span>
           )}
         </div>

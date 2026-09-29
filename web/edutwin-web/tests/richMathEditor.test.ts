@@ -10,6 +10,8 @@ import {
   hasUnfilledPlaceholder,
   validateAndCleanFormula,
   findIncompleteFormulasInText,
+  validateTextMathFormulas,
+  formatFormulaDiagnosticMessage,
   buildAuthoritativeQuestionPayload,
 } from "../src/pages/centerManagerQuestionEditorHelpers.ts";
 import {
@@ -338,7 +340,7 @@ describe("Contenteditable singleLine Enforcement & Placeholder Architecture", ()
     const rmePath = path.resolve(__dirname, "../src/components/math/RichMathEditor.tsx");
     const content = fs.readFileSync(rmePath, "utf-8");
 
-    assert.ok(content.includes('variant === "teacher"'));
+    assert.ok(content.includes('case "teacher":') || content.includes('variant === "teacher"'));
     assert.ok(content.includes('"--rme-border"'));
     assert.ok(content.includes('"--rme-surface"'));
     assert.ok(content.includes('"--rme-text"'));
@@ -357,5 +359,131 @@ describe("Contenteditable singleLine Enforcement & Placeholder Architecture", ()
     assert.ok(content.includes("content: attr(data-placeholder);"));
     assert.ok(content.includes(".inline-math-node"));
     assert.ok(content.includes("var(--rme-math-bg"));
+  });
+
+  it("RichMathEditor defines dedicated theme tokens for all 4 variants", () => {
+    const rmePath = path.resolve(__dirname, "../src/components/math/RichMathEditor.tsx");
+    const content = fs.readFileSync(rmePath, "utf-8");
+
+    assert.ok(content.includes('case "teacher":'));
+    assert.ok(content.includes('case "student":'));
+    assert.ok(content.includes('case "neutral":'));
+    assert.ok(content.includes('case "center-manager":'));
+    assert.ok(content.includes('--student-brand'));
+    assert.ok(content.includes('--th-teal'));
+  });
+});
+
+describe("Structured Math Formula Diagnostics & State Machine Scanner", () => {
+  it("detects unclosed inline dollar delimiter in 'Cho $\\frac{1}{' and 'Cho $\\sqrt{'", () => {
+    const input1 = "Cho $\\frac{1}{";
+    const diags1 = validateTextMathFormulas(input1);
+
+    assert.equal(diags1.length, 1);
+    assert.equal(diags1[0].type, "unclosed-delimiter");
+    assert.equal(diags1[0].raw, "$\\frac{1}{");
+    assert.ok(diags1[0].message.includes('chưa được đóng dấu "$"'));
+
+    const input2 = "Cho $\\sqrt{";
+    const diags2 = validateTextMathFormulas(input2);
+    assert.equal(diags2.length, 1);
+    assert.equal(diags2[0].type, "unclosed-delimiter");
+    assert.equal(diags2[0].raw, "$\\sqrt{");
+
+    const formatted = formatFormulaDiagnosticMessage("Nội dung câu hỏi", diags1[0]);
+    assert.ok(formatted.includes('chưa được đóng dấu "$"'));
+  });
+
+  it("detects unclosed display double-dollar delimiter in 'Cho $$\\sqrt{x}'", () => {
+    const input = "Cho $$\\sqrt{x}";
+    const diags = validateTextMathFormulas(input);
+
+    assert.equal(diags.length, 1);
+    assert.equal(diags[0].type, "unclosed-delimiter");
+    assert.equal(diags[0].raw, "$$\\sqrt{x}");
+    assert.ok(diags[0].message.includes('chưa được đóng dấu "$$"'));
+  });
+
+  it("does not treat escaped dollar \\$ as formula delimiter", () => {
+    const input = "Giá 5\\$ cho học sinh.";
+    const diags = validateTextMathFormulas(input);
+
+    assert.equal(diags.length, 0);
+
+    const inputWithMath = "Giá 5\\$ cho bài toán có $x = 1$.";
+    const diagsWithMath = validateTextMathFormulas(inputWithMath);
+    assert.equal(diagsWithMath.length, 0);
+  });
+
+  it("detects empty formulas for both '$ $' and '$$$$'", () => {
+    const inputSpace = "Công thức $ $ bị rỗng.";
+    const diagsSpace = validateTextMathFormulas(inputSpace);
+    assert.equal(diagsSpace.length, 1);
+    assert.equal(diagsSpace[0].type, "empty-formula");
+    assert.ok(diagsSpace[0].message.includes("không được để trống"));
+
+    const inputEmptyDisplay = "Công thức $$$$ bị rỗng.";
+    const diagsEmptyDisplay = validateTextMathFormulas(inputEmptyDisplay);
+    assert.equal(diagsEmptyDisplay.length, 1);
+    assert.equal(diagsEmptyDisplay[0].type, "empty-formula");
+  });
+
+  it("identifies error in multiple formulas when one formula is invalid", () => {
+    // Case 1: unclosed delimiter among multiple formulas
+    const inputUnclosed = "Cho $x = 1$ và $\\frac{1}{";
+    const diagsUnclosed = validateTextMathFormulas(inputUnclosed);
+    assert.ok(diagsUnclosed.length >= 1);
+    assert.equal(diagsUnclosed[0].type, "unclosed-delimiter");
+
+    // Case 2: syntax error among multiple closed formulas
+    const inputSyntax = "Cho $x = 1$, $\\frac{1}{2$, và $y = 2$";
+    const diagsSyntax = validateTextMathFormulas(inputSyntax);
+    assert.ok(diagsSyntax.length >= 1);
+    assert.equal(diagsSyntax[0].type, "invalid-syntax");
+    assert.equal(diagsSyntax[0].raw, "$\\frac{1}{2$");
+    assert.ok(diagsSyntax[0].message.includes("sai cú pháp LaTeX"));
+  });
+
+  it("classifies placeholder separately from syntax and unclosed delimiters", () => {
+    const placeholderInput = "Tính giá trị $A = \\placeholder{x} + 1$.";
+    const diags = validateTextMathFormulas(placeholderInput);
+
+    assert.equal(diags.length, 1);
+    assert.equal(diags[0].type, "placeholder");
+    assert.ok(diags[0].message.includes("\\placeholder"));
+
+    const formatted = formatFormulaDiagnosticMessage("Đáp án chuẩn", diags[0]);
+    assert.ok(formatted.includes("còn ô trống \\placeholder"));
+  });
+
+  it("buildAuthoritativeQuestionPayload reports exact diagnostic reason in Vietnamese", () => {
+    const formDataUnclosed: any = {
+      subjectId: "sub-1",
+      primaryTopicNodeId: "node-1",
+      questionType: "ShortAnswer",
+      difficulty: 3,
+      questionText: "Cho $\\frac{1}{",
+      maxScore: 10,
+      estimatedTimeSeconds: 60,
+      reasoningRequired: false,
+      languageCode: "vi",
+      answerEvaluationMode: "TextExact",
+    };
+
+    const answerDrafts = {
+      "ShortAnswer:TextExact": {
+        rawText: "x = 1",
+        displayLatex: "",
+      },
+    };
+
+    const result = buildAuthoritativeQuestionPayload({
+      formData: formDataUnclosed,
+      modeDrafts: answerDrafts,
+    });
+
+    assert.ok(result.error);
+    assert.ok(result.error.includes('chưa được đóng dấu "$"'));
+    assert.ok(!result.error.includes("\\placeholder"));
   });
 });

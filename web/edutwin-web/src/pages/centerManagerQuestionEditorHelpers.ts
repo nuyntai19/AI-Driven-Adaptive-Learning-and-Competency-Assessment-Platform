@@ -156,43 +156,185 @@ export function validateAndCleanFormula(latex: string | null | undefined): Formu
   };
 }
 
+export type MathFormulaDiagnosticType =
+  | "unclosed-delimiter"
+  | "empty-formula"
+  | "placeholder"
+  | "invalid-syntax";
+
+export interface MathFormulaDiagnostic {
+  type: MathFormulaDiagnosticType;
+  raw: string;
+  message: string;
+  position?: number;
+}
+
 /**
- * Scans a text string for any inline $...$ or $$...$$ formulas or raw LaTeX that still contain \placeholder{}
- * or have invalid LaTeX syntax.
- * Used for defensive validation on save, activation, or legacy data hydration.
+ * Scans a text string for mathematical formula issues:
+ * - Unclosed $ or $$ delimiters (properly handling escaped \$)
+ * - Empty formulas ($$ or $$$$ or $   $)
+ * - Unfilled \placeholder{}
+ * - Invalid KaTeX syntax (throwOnError: true)
+ *
+ * Returns structured diagnostics categorized by error cause.
  */
-export function findIncompleteFormulasInText(text: string | null | undefined): string[] {
+export function validateTextMathFormulas(text: string | null | undefined): MathFormulaDiagnostic[] {
   if (!text) return [];
-  const mathMatches = text.match(/(\$\$[\s\S]*?\$\$|\$[^$\n]+?\$)/g) || [];
-  const incomplete: string[] = [];
-  for (const m of mathMatches) {
-    if (hasUnfilledPlaceholder(m)) {
-      incomplete.push(m);
+
+  const diagnostics: MathFormulaDiagnostic[] = [];
+  const len = text.length;
+  let i = 0;
+
+  // Helper: check if character at idx is preceded by an odd number of backslashes
+  function isEscaped(idx: number): boolean {
+    let backslashCount = 0;
+    let j = idx - 1;
+    while (j >= 0 && text![j] === "\\") {
+      backslashCount++;
+      j--;
+    }
+    return backslashCount % 2 === 1;
+  }
+
+  while (i < len) {
+    if (text[i] === "$" && !isEscaped(i)) {
+      const isDisplay = i + 1 < len && text[i + 1] === "$";
+      const delim = isDisplay ? "$$" : "$";
+      const delimLen = delim.length;
+      const startIndex = i;
+      const contentStart = i + delimLen;
+
+      i = contentStart;
+      let closed = false;
+      let contentEnd = -1;
+
+      while (i < len) {
+        if (text[i] === "$" && !isEscaped(i)) {
+          if (isDisplay) {
+            if (i + 1 < len && text[i + 1] === "$") {
+              closed = true;
+              contentEnd = i;
+              i += 2;
+              break;
+            }
+          } else {
+            closed = true;
+            contentEnd = i;
+            i += 1;
+            break;
+          }
+        }
+        i++;
+      }
+
+      if (!closed) {
+        const raw = text.slice(startIndex);
+        diagnostics.push({
+          type: "unclosed-delimiter",
+          raw,
+          message: `Công thức toán chưa được đóng dấu "${delim}". Vui lòng thêm "${delim}" đóng ở cuối công thức.`,
+          position: startIndex,
+        });
+        break;
+      }
+
+      const rawFormula = text.slice(startIndex, i);
+      const mathContent = text.slice(contentStart, contentEnd);
+      const trimmedMath = mathContent.trim();
+
+      // Check empty formula
+      if (!trimmedMath) {
+        diagnostics.push({
+          type: "empty-formula",
+          raw: rawFormula,
+          message: `Công thức toán "${rawFormula}" không được để trống.`,
+          position: startIndex,
+        });
+        continue;
+      }
+
+      // Check unfilled placeholder
+      if (hasUnfilledPlaceholder(trimmedMath)) {
+        diagnostics.push({
+          type: "placeholder",
+          raw: rawFormula,
+          message: `Công thức "${rawFormula}" còn ô trống chưa điền (\\placeholder). Vui lòng hoàn tất trước khi lưu.`,
+          position: startIndex,
+        });
+        continue;
+      }
+
+      // Check KaTeX syntax
+      try {
+        katex.renderToString(trimmedMath, { throwOnError: true });
+      } catch (err: unknown) {
+        const rawMsg = err instanceof Error ? err.message : String(err);
+        const cleanMsg = rawMsg.replace(/^KaTeX parse error:\s*/i, "").trim();
+        diagnostics.push({
+          type: "invalid-syntax",
+          raw: rawFormula,
+          message: `Công thức "${rawFormula}" sai cú pháp LaTeX (${cleanMsg}).`,
+          position: startIndex,
+        });
+      }
       continue;
     }
-    const raw = m.replace(/^\$\$|\$\$$|^\$|\$$/g, "");
-    try {
-      katex.renderToString(raw, { throwOnError: true });
-    } catch {
-      incomplete.push(m);
-    }
+
+    i++;
   }
-  // If no delimited formula was matched or \placeholder is present in raw LaTeX outside delimiters,
-  // also check the whole text so that raw LaTeX placeholders cannot bypass validation.
-  if (incomplete.length === 0) {
+
+  // Defensive fallback: check for raw LaTeX without $ delimiters
+  if (diagnostics.length === 0 && !text.includes("$")) {
     if (hasUnfilledPlaceholder(text)) {
-      incomplete.push(text);
-    } else if (text.includes("\\") && (text.includes("{") || text.includes("^") || text.includes("_"))) {
-      if (/^\s*\\[a-zA-Z]+/.test(text)) {
-        try {
-          katex.renderToString(text, { throwOnError: true });
-        } catch {
-          incomplete.push(text);
-        }
+      diagnostics.push({
+        type: "placeholder",
+        raw: text,
+        message: "Nội dung còn chứa ô trống chưa điền (\\placeholder). Vui lòng hoàn thành mọi vị trí.",
+      });
+    } else if (/^\s*\\[a-zA-Z]+/.test(text)) {
+      try {
+        katex.renderToString(text.trim(), { throwOnError: true });
+      } catch (err: unknown) {
+        const rawMsg = err instanceof Error ? err.message : String(err);
+        const cleanMsg = rawMsg.replace(/^KaTeX parse error:\s*/i, "").trim();
+        diagnostics.push({
+          type: "invalid-syntax",
+          raw: text,
+          message: `Công thức sai cú pháp LaTeX (${cleanMsg}).`,
+        });
       }
     }
   }
-  return incomplete;
+
+  return diagnostics;
+}
+
+/**
+ * Formats a user-friendly error message based on the exact diagnostic category.
+ */
+export function formatFormulaDiagnosticMessage(
+  fieldLabel: string,
+  diag: MathFormulaDiagnostic
+): string {
+  switch (diag.type) {
+    case "unclosed-delimiter":
+      return `${fieldLabel}: ${diag.message}`;
+    case "empty-formula":
+      return `${fieldLabel}: ${diag.message}`;
+    case "placeholder":
+      return `${fieldLabel} chứa công thức chưa hoàn thành (còn ô trống \\placeholder). Vui lòng hoàn tất trước khi lưu.`;
+    case "invalid-syntax":
+      return `${fieldLabel}: ${diag.message}`;
+  }
+}
+
+/**
+ * Scans a text string for any inline $...$ or $$...$$ formulas or raw LaTeX that still contain \placeholder{}
+ * or have invalid LaTeX syntax or unclosed delimiters.
+ * Kept for backwards compatibility; maps directly from validateTextMathFormulas.
+ */
+export function findIncompleteFormulasInText(text: string | null | undefined): string[] {
+  return validateTextMathFormulas(text).map((d) => d.raw);
 }
 
 export interface RichSegment {
@@ -432,51 +574,48 @@ export function buildAuthoritativeQuestionPayload({
     }
   }
 
-  // Defensive validation against incomplete MathLive \placeholder{} across all fields
-  if (
-    hasUnfilledPlaceholder(formData.questionText) ||
-    findIncompleteFormulasInText(formData.questionText).length > 0
-  ) {
+  // Defensive validation against unclosed delimiter, empty, placeholder, or invalid syntax across all fields
+  const qTextDiag = validateTextMathFormulas(formData.questionText)[0];
+  if (qTextDiag) {
     return {
       payload: formData,
-      error: "Nội dung câu hỏi chứa công thức chưa hoàn thành (còn ô trống \\placeholder). Vui lòng hoàn tất trước khi lưu.",
+      error: formatFormulaDiagnosticMessage("Nội dung câu hỏi", qTextDiag),
     };
   }
 
-  if (
-    formData.solution &&
-    (hasUnfilledPlaceholder(formData.solution) ||
-      findIncompleteFormulasInText(formData.solution).length > 0)
-  ) {
-    return {
-      payload: formData,
-      error: "Lời giải chứa công thức chưa hoàn thành (còn ô trống \\placeholder). Vui lòng hoàn tất trước khi lưu.",
-    };
+  if (formData.solution) {
+    const solDiag = validateTextMathFormulas(formData.solution)[0];
+    if (solDiag) {
+      return {
+        payload: formData,
+        error: formatFormulaDiagnosticMessage("Lời giải", solDiag),
+      };
+    }
   }
 
   if (formData.options && Array.isArray(formData.options)) {
     for (const opt of formData.options) {
-      if (
-        hasUnfilledPlaceholder(opt.optionText) ||
-        findIncompleteFormulasInText(opt.optionText).length > 0
-      ) {
+      const optDiag = validateTextMathFormulas(opt.optionText)[0];
+      if (optDiag) {
         return {
           payload: formData,
-          error: `Phương án ${opt.optionLabel || ""} chứa công thức chưa hoàn thành (còn ô trống \\placeholder).`,
+          error: formatFormulaDiagnosticMessage(
+            `Phương án ${opt.optionLabel || ""}`,
+            optDiag
+          ),
         };
       }
     }
   }
 
-  if (
-    authoritativeCorrectAnswer &&
-    (hasUnfilledPlaceholder(authoritativeCorrectAnswer) ||
-      findIncompleteFormulasInText(authoritativeCorrectAnswer).length > 0)
-  ) {
-    return {
-      payload: formData,
-      error: "Đáp án chuẩn chứa công thức chưa hoàn thành (còn ô trống \\placeholder).",
-    };
+  if (authoritativeCorrectAnswer) {
+    const ansDiag = validateTextMathFormulas(authoritativeCorrectAnswer)[0];
+    if (ansDiag) {
+      return {
+        payload: formData,
+        error: formatFormulaDiagnosticMessage("Đáp án chuẩn", ansDiag),
+      };
+    }
   }
 
   const payload: CreateQuestionRequest = {
