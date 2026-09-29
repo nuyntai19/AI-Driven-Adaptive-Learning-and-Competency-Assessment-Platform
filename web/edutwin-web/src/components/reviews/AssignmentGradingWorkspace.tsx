@@ -248,7 +248,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
     const opts = currentQuestion.options || [];
 
     // For Multiple Choice questions:
-    if (qType === "MultipleChoice" && opts.length > 0) {
+    if (qType === "MultipleChoice") {
       const raw = (currentQuestion.finalAnswer || "").trim();
       const matched = opts.find(
         (o) =>
@@ -267,14 +267,16 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
         const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw);
         return isUuid ? "Phương án đã chọn" : raw;
       }
+      return "";
     }
 
     // For Math / Short Answer / Essay questions:
     // If student has formatted LaTeX in answerDisplayLatex, use it; otherwise use finalAnswer
     const latexAns = currentQuestion.answerDisplayLatex?.trim();
     if (latexAns) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(latexAns);
       const isRawOptionId = opts.some((o) => o.optionId === latexAns);
-      if (!isRawOptionId) {
+      if (!isRawOptionId && !isUuid) {
         return latexAns.replace(/\\placeholder(\[[^\]]*\])?(\{[^}]*\})?/g, "___");
       }
     }

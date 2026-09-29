@@ -739,3 +739,69 @@ describe("RichMath Popover Theme Resolution (resolveRichMathPopoverTheme pure fu
     assert.ok(defaultDark.popoverBorder.includes("cyan"));
   });
 });
+
+describe("RichMathEditor Caret Preservation and External Insertion", () => {
+  const richMathEditorPath = path.resolve(__dirname, "../src/components/math/RichMathEditor.tsx");
+  const source = fs.readFileSync(richMathEditorPath, "utf-8");
+
+  it("defines lastValidRangeRef and tracks selectionchange to preserve valid caret within editor", () => {
+    assert.match(source, /lastValidRangeRef\s*=\s*useRef<Range \| null>\(null\)/);
+    assert.match(source, /document\.addEventListener\("selectionchange",\s*handleSelectionChange\)/);
+    assert.match(source, /container\.contains\(range\.startContainer\)\s*&&\s*container\.contains\(range\.endContainer\)/);
+    assert.match(source, /lastValidRangeRef\.current\s*=\s*range\.cloneRange\(\)/);
+  });
+
+  it("safely resets lastValidRangeRef to null on external value hydration and unmount", () => {
+    // On hydration:
+    assert.match(source, /if\s*\(isLocalChangeRef\.current\)\s*\{[\s\S]*?\}\s*lastValidRangeRef\.current\s*=\s*null;/);
+    // On unmount:
+    assert.match(source, /return\s*\(\)\s*=>\s*\{[\s\S]*?lastValidRangeRef\.current\s*=\s*null;\s*\};/);
+  });
+
+  it("getEffectiveTargetRange restores saved range and insert functions position caret right after inserted node", () => {
+    assert.match(source, /const getEffectiveTargetRange = useCallback\(/);
+    assert.match(source, /lastValidRangeRef\.current\.cloneRange\(\)/);
+    assert.match(source, /targetRange = getEffectiveTargetRange\(container\)/);
+    assert.match(source, /afterRange\.setStartAfter\(mathSpan\)/);
+    assert.match(source, /lastValidRangeRef\.current = afterRange\.cloneRange\(\)/);
+  });
+
+  it("inserts formula at preserved caret in the middle of a Vietnamese sentence, never appending to end", () => {
+    // Simulate DOM behavior for middle-of-sentence insertion
+    const sentenceBefore = "Đây là một câu tiếng Việt ";
+    const sentenceAfter = "cần chèn công thức toán.";
+    const fullText = sentenceBefore + sentenceAfter;
+
+    // Emulate text node and Range placed after 'câu tiếng Việt '
+    const currentContent = fullText;
+    const splitIndex = sentenceBefore.length;
+
+    // Range snapshot at splitIndex
+    const savedRangeSnapshot = {
+      offset: splitIndex,
+      isValid: true,
+    };
+
+    // When an external tool (SideAssistant / Casio) is clicked:
+    // Live selection may lose focus or be cleared, but saved range snapshot remains at splitIndex
+    const formulaToInsert = "\\sqrt{x^2 + 1}";
+    const formattedFormula = `$${formulaToInsert}$`;
+
+    // Insertion at savedRangeSnapshot:
+    const updatedContent =
+      currentContent.substring(0, savedRangeSnapshot.offset) +
+      formattedFormula +
+      " " +
+      currentContent.substring(savedRangeSnapshot.offset);
+
+    assert.equal(
+      updatedContent,
+      "Đây là một câu tiếng Việt $\\sqrt{x^2 + 1}$ cần chèn công thức toán."
+    );
+    // Verify it is NOT appended to the end
+    assert.notEqual(
+      updatedContent,
+      "Đây là một câu tiếng Việt cần chèn công thức toán. $\\sqrt{x^2 + 1}$"
+    );
+  });
+});

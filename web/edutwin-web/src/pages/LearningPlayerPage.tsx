@@ -668,7 +668,13 @@ export const LearningPlayerPage = () => {
 
   // Persist current question answer into assignmentAnswers & localStorage
   const persistCurrentAnswer = useCallback(
-    (newFinalAnswer?: string, newReasoning?: string, newConf?: number, newAnswerDisplayLatex?: string) => {
+    (
+      newFinalAnswer?: string,
+      newReasoning?: string,
+      newConf?: number,
+      newAnswerDisplayLatex?: string,
+      newAnswerChanges?: number
+    ) => {
       if (!assignmentDraftScope || !question?.questionId) return;
       if (assignmentQuestion?.latestAttempt) return; // Do not overwrite server truth for already-submitted questions
       const qId = question.questionId;
@@ -679,7 +685,7 @@ export const LearningPlayerPage = () => {
         reasoningText: newReasoning !== undefined ? newReasoning : reasoningText,
         confidence: newConf !== undefined ? newConf : confidence,
         timeSpentSeconds,
-        answerChanges,
+        answerChanges: newAnswerChanges !== undefined ? newAnswerChanges : answerChanges,
         snapshotDataUrl: attachedSnapshotDataUrl,
         snapshotTime: attachedSnapshotTime,
         drawingUploadToken,
@@ -887,10 +893,11 @@ export const LearningPlayerPage = () => {
   // Answer change handlers
   const handleAnswerChange = (plainText: string, latex: string) => {
     if (isReadOnly) return;
+    const nextAnswerChanges = answerChanges + 1;
     setFinalAnswer(plainText);
     setAnswerDisplayLatex(latex);
-    setAnswerChanges((prev) => prev + 1);
-    persistCurrentAnswer(plainText, undefined, undefined, latex);
+    setAnswerChanges(nextAnswerChanges);
+    persistCurrentAnswer(plainText, undefined, undefined, latex, nextAnswerChanges);
   };
 
   const handleReasoningChange = (val: string) => {
@@ -912,13 +919,10 @@ export const LearningPlayerPage = () => {
     if (activeInputTarget === "answer") {
       if (answerEditorRef.current?.insertAtCursor) {
         answerEditorRef.current.insertAtCursor(textToInsert);
-        setAnswerChanges((prev) => prev + 1);
       } else if (answerEditorRef.current?.insertLatex) {
         answerEditorRef.current.insertLatex(textToInsert);
-        setAnswerChanges((prev) => prev + 1);
       } else if (visualMathFieldRef.current) {
         visualMathFieldRef.current.insertAtCursor(textToInsert);
-        setAnswerChanges((prev) => prev + 1);
       } else {
         handleAnswerChange(finalAnswer + textToInsert, answerDisplayLatex + textToInsert);
       }
@@ -1586,6 +1590,10 @@ export const LearningPlayerPage = () => {
           {/* 4-Tier Hierarchy: Student Work -> AI Reasoning -> Teacher Solution -> Teacher Evaluation */}
           <AttemptFeedbackHierarchy
             feedbackData={feedbackData}
+            questionType={
+              assignmentQuestions.find((item) => item.questionId === feedbackData.questionId)?.questionType ??
+              question?.questionType
+            }
             answerOptions={
               assignmentQuestions.find((item) => item.questionId === feedbackData.questionId)?.options ??
               question?.options ??
@@ -2402,6 +2410,7 @@ export const LearningPlayerPage = () => {
                     isFeedbackForQuestion(assignmentQuestion?.questionId ?? "", reviewFeedbackQuery.data.questionId) ? (
                     <AttemptFeedbackHierarchy
                       feedbackData={reviewFeedbackQuery.data}
+                      questionType={assignmentQuestion?.questionType}
                       showStudentSubmission={false}
                       answerOptions={assignmentQuestion?.options ?? []}
                       onRefreshFeedback={async () => {

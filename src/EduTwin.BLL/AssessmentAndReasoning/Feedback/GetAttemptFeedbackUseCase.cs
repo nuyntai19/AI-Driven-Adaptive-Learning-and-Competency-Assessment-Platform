@@ -138,6 +138,7 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
                 : attempt.PreliminaryGradingReasonCode;
 
         var finalAnswerDisplay = attempt.FinalAnswer;
+        string? answerDisplayLatex = attempt.AnswerDisplayLatex;
         if (attempt.Question?.QuestionType == EduTwin.Contracts.CurriculumAndQuestions.QuestionType.MultipleChoice)
         {
             var options = await _dbContext.QuestionOptions
@@ -158,13 +159,19 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
                     ? $"{matched.OptionLabel}. {matched.OptionText}"
                     : matched.OptionLabel;
             }
+            else if (Guid.TryParse(raw, out _))
+            {
+                finalAnswerDisplay = "Phương án đã chọn";
+            }
+
+            answerDisplayLatex = null;
         }
 
         // 1. Student Submission
         var studentSubmissionDto = new AttemptFeedbackStudentSubmissionDto
         {
             FinalAnswer = finalAnswerDisplay,
-            AnswerDisplayLatex = attempt.AnswerDisplayLatex,
+            AnswerDisplayLatex = answerDisplayLatex,
             ReasoningText = attempt.ReasoningText,
             Confidence = attempt.Confidence,
             TimeSpentSeconds = attempt.TimeSpentSeconds,

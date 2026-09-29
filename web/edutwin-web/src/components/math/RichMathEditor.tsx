@@ -78,6 +78,7 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
 
   const editorRef = useRef<HTMLDivElement>(null);
   const isLocalChangeRef = useRef<boolean>(false);
+  const lastValidRangeRef = useRef<Range | null>(null);
 
   const handleOpenMathNode = useCallback((span: HTMLElement, isNew = false) => {
     const currentLatex = span.dataset.latex || "";
@@ -140,6 +141,7 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
       checkEmpty();
       return;
     }
+    lastValidRangeRef.current = null;
     if (editorRef.current) {
       hydrateEditorDom(editorRef.current, value, (span) =>
         handleOpenMathNode(span, false)
@@ -148,6 +150,70 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
     }
   }, [value, viewMode, handleOpenMathNode, checkEmpty]);
 
+  // Keep track of the last valid selection range belonging to the editor
+  useEffect(() => {
+    const handleSelectionChange = () => {
+      const container = editorRef.current;
+      if (!container) return;
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        if (
+          container.contains(range.startContainer) &&
+          container.contains(range.endContainer)
+        ) {
+          lastValidRangeRef.current = range.cloneRange();
+        }
+      }
+    };
+
+    document.addEventListener("selectionchange", handleSelectionChange);
+    return () => {
+      document.removeEventListener("selectionchange", handleSelectionChange);
+      lastValidRangeRef.current = null;
+    };
+  }, []);
+
+  const getEffectiveTargetRange = useCallback((container: HTMLElement): Range => {
+    const sel = window.getSelection();
+    // 1. If active selection is inside editor container, prioritize and save it
+    if (
+      sel &&
+      sel.rangeCount > 0 &&
+      container.contains(sel.anchorNode) &&
+      container.contains(sel.focusNode)
+    ) {
+      const liveRange = sel.getRangeAt(0);
+      lastValidRangeRef.current = liveRange.cloneRange();
+      return liveRange;
+    }
+
+    // 2. If saved range is valid and inside container, restore it
+    if (
+      lastValidRangeRef.current &&
+      container.contains(lastValidRangeRef.current.startContainer) &&
+      container.contains(lastValidRangeRef.current.endContainer)
+    ) {
+      const restoredRange = lastValidRangeRef.current.cloneRange();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(restoredRange);
+      }
+      return restoredRange;
+    }
+
+    // 3. Fallback: collapse to end of container
+    const fallbackRange = document.createRange();
+    fallbackRange.selectNodeContents(container);
+    fallbackRange.collapse(false);
+    if (sel) {
+      sel.removeAllRanges();
+      sel.addRange(fallbackRange);
+    }
+    lastValidRangeRef.current = fallbackRange.cloneRange();
+    return fallbackRange;
+  }, []);
+
   // Insert inline math node at current browser caret
   const handleInsertMathAtCursor = useCallback(() => {
     if (disabled || viewMode !== "visual") return;
@@ -155,16 +221,7 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
     if (!container) return;
 
     container.focus();
-    const sel = window.getSelection();
-
-    let targetRange: Range | null = null;
-    if (sel && sel.rangeCount > 0 && container.contains(sel.anchorNode)) {
-      targetRange = sel.getRangeAt(0);
-    } else {
-      targetRange = document.createRange();
-      targetRange.selectNodeContents(container);
-      targetRange.collapse(false);
-    }
+    const targetRange = getEffectiveTargetRange(container);
 
     const mathSpan = createMathSpan("", (span) =>
       handleOpenMathNode(span, false)
@@ -174,9 +231,20 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
     targetRange.deleteContents();
     targetRange.insertNode(mathSpan);
 
+    container.focus();
+    const afterRange = document.createRange();
+    afterRange.setStartAfter(mathSpan);
+    afterRange.collapse(true);
+    const sel = window.getSelection();
+    if (sel) {
+      sel.removeAllRanges();
+      sel.addRange(afterRange);
+    }
+    lastValidRangeRef.current = afterRange.cloneRange();
+
     handleOpenMathNode(mathSpan, true);
     checkEmpty();
-  }, [disabled, viewMode, handleOpenMathNode, checkEmpty]);
+  }, [disabled, viewMode, getEffectiveTargetRange, handleOpenMathNode, checkEmpty]);
 
   const insertLatexAtCursor = useCallback(
     (latexToInsert: string) => {
@@ -185,16 +253,7 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
       if (!container) return;
 
       container.focus();
-      const sel = window.getSelection();
-
-      let targetRange: Range | null = null;
-      if (sel && sel.rangeCount > 0 && container.contains(sel.anchorNode)) {
-        targetRange = sel.getRangeAt(0);
-      } else {
-        targetRange = document.createRange();
-        targetRange.selectNodeContents(container);
-        targetRange.collapse(false);
-      }
+      const targetRange = getEffectiveTargetRange(container);
 
       const clean = cleanFormulaForInsertion(latexToInsert);
       const mathSpan = createMathSpan(clean, (span) =>
@@ -204,18 +263,23 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
       targetRange.deleteContents();
       targetRange.insertNode(mathSpan);
 
+      container.focus();
       const afterRange = document.createRange();
       afterRange.setStartAfter(mathSpan);
       afterRange.collapse(true);
-      sel?.removeAllRanges();
-      sel?.addRange(afterRange);
+      const sel = window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(afterRange);
+      }
+      lastValidRangeRef.current = afterRange.cloneRange();
 
       isLocalChangeRef.current = true;
       const serialized = serializeEditorDom(container);
       onChange(serialized);
       checkEmpty();
     },
-    [disabled, viewMode, handleOpenMathNode, onChange, checkEmpty]
+    [disabled, viewMode, getEffectiveTargetRange, handleOpenMathNode, onChange, checkEmpty]
   );
 
   const insertTextAtCursor = useCallback(
@@ -225,33 +289,29 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
       if (!container) return;
 
       container.focus();
-      const sel = window.getSelection();
-
-      let targetRange: Range | null = null;
-      if (sel && sel.rangeCount > 0 && container.contains(sel.anchorNode)) {
-        targetRange = sel.getRangeAt(0);
-      } else {
-        targetRange = document.createRange();
-        targetRange.selectNodeContents(container);
-        targetRange.collapse(false);
-      }
+      const targetRange = getEffectiveTargetRange(container);
 
       const textNode = document.createTextNode(textToInsert);
       targetRange.deleteContents();
       targetRange.insertNode(textNode);
 
+      container.focus();
       const afterRange = document.createRange();
       afterRange.setStartAfter(textNode);
       afterRange.collapse(true);
-      sel?.removeAllRanges();
-      sel?.addRange(afterRange);
+      const sel = window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(afterRange);
+      }
+      lastValidRangeRef.current = afterRange.cloneRange();
 
       isLocalChangeRef.current = true;
       const serialized = serializeEditorDom(container);
       onChange(serialized);
       checkEmpty();
     },
-    [disabled, viewMode, onChange, checkEmpty]
+    [disabled, viewMode, getEffectiveTargetRange, onChange, checkEmpty]
   );
 
   useImperativeHandle(ref, () => ({
@@ -387,6 +447,7 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
       range.setEnd(nextNode, 0);
       sel.removeAllRanges();
       sel.addRange(range);
+      lastValidRangeRef.current = range.cloneRange();
     }
 
     setActiveMathNode(null);

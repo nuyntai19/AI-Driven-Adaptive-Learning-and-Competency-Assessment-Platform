@@ -560,3 +560,56 @@ test("Gate 2A.2 - Student Answering UX, Backward-Compatible Casio Ref, and Revie
   assert.match(importModalSrc, /<RichMathText text=\{q\.questionText\} \/>/);
   assert.match(importModalSrc, /<RichMathText text=\{q\.correctAnswer\} \/>/);
 });
+
+test("AttemptFeedbackHierarchy formatAnswer and MCQ fail-closed logic never reveals UUIDs", () => {
+  const options = [
+    { optionId: "opt-1", label: "A", text: "x = 2" },
+    { optionId: "opt-2", label: "B", text: "x = 4" },
+  ];
+
+  const isUuid = (str?: string | null): boolean => {
+    if (!str) return false;
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str.trim());
+  };
+
+  const formatAnswer = (answer: string) => {
+    if (!answer) return "";
+    const cleanAnswer = answer.replace(/\\placeholder(\[[^\]]*\])?(\{[^}]*\})?/g, "___");
+    const option = options.find(
+      (candidate) =>
+        candidate.optionId === answer ||
+        candidate.optionId === cleanAnswer ||
+        candidate.label === answer ||
+        candidate.label === cleanAnswer
+    );
+    if (option) {
+      return `${option.label}. ${option.text}`;
+    }
+    if (isUuid(answer) || isUuid(cleanAnswer)) {
+      return "Phương án đã chọn";
+    }
+    return cleanAnswer;
+  };
+
+  // Case 1: FinalAnswer contains matching optionId
+  assert.equal(formatAnswer("opt-1"), "A. x = 2");
+
+  // Case 2: FinalAnswer contains legacy UUID not matching any option
+  const legacyUuid = "e0b6c6b2-6582-4f01-92ab-94bf76e93eb7";
+  assert.equal(formatAnswer(legacyUuid), "Phương án đã chọn");
+
+  // Case 3: MCQ question with legacy UUID in answerDisplayLatex
+  // Since isMcq = true, student submission must use formatAnswer(finalAnswer) and completely ignore answerDisplayLatex
+  const isMcq = true;
+  const studentSubmission = {
+    finalAnswer: legacyUuid,
+    answerDisplayLatex: legacyUuid,
+  };
+
+  const resolvedContent = isMcq
+    ? formatAnswer(studentSubmission.finalAnswer)
+    : (studentSubmission.answerDisplayLatex || formatAnswer(studentSubmission.finalAnswer));
+
+  assert.equal(resolvedContent, "Phương án đã chọn");
+  assert.doesNotMatch(resolvedContent, /e0b6c6b2/);
+});

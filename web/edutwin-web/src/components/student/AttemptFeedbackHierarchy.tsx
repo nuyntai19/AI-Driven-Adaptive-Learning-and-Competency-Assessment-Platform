@@ -25,6 +25,7 @@ interface AttemptFeedbackHierarchyProps {
   showStudentSubmission?: boolean;
   scoreAndFeedbackOnly?: boolean;
   answerOptions?: Array<{ optionId: string; label: string; text: string }>;
+  questionType?: string;
   assignmentQuestionCount?: number;
 }
 
@@ -35,6 +36,7 @@ export function AttemptFeedbackHierarchy({
   showStudentSubmission = true,
   scoreAndFeedbackOnly = false,
   answerOptions = [],
+  questionType,
   assignmentQuestionCount,
 }: AttemptFeedbackHierarchyProps) {
   const {
@@ -72,6 +74,18 @@ export function AttemptFeedbackHierarchy({
 
   // Teacher solution accordion state (collapsed by default)
   const [isTeacherSolutionOpen, setIsTeacherSolutionOpen] = useState(false);
+
+  // Check if string is a raw UUID
+  const isUuid = (str?: string | null): boolean => {
+    if (!str) return false;
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str.trim());
+  };
+
+  const isMcq =
+    questionType === "MultipleChoice" ||
+    (Array.isArray(answerOptions) && answerOptions.length > 0) ||
+    isUuid(studentSubmission?.finalAnswer) ||
+    isUuid(studentSubmission?.answerDisplayLatex);
 
   // Sync cooldown timer
   useEffect(() => {
@@ -252,9 +266,11 @@ export function AttemptFeedbackHierarchy({
                 {studentSubmission?.finalAnswer ? (
                   <RichMathText
                     content={
-                      studentSubmission.answerDisplayLatex
-                        ? studentSubmission.answerDisplayLatex.replace(/\\placeholder(\[[^\]]*\])?(\{[^}]*\})?/g, "___")
-                        : formatAnswer(studentSubmission.finalAnswer)
+                      isMcq
+                        ? formatAnswer(studentSubmission.finalAnswer)
+                        : (studentSubmission.answerDisplayLatex
+                            ? studentSubmission.answerDisplayLatex.replace(/\\placeholder(\[[^\]]*\])?(\{[^}]*\})?/g, "___")
+                            : formatAnswer(studentSubmission.finalAnswer))
                     }
                   />
                 ) : "Chưa có đáp án"}

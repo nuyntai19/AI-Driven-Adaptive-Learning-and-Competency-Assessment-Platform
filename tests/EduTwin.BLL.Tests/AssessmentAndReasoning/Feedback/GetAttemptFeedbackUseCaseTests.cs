@@ -145,4 +145,123 @@ public sealed class GetAttemptFeedbackUseCaseTests : IDisposable
         Assert.Equal("Reasoning", teacherBlock.TeacherErrorType);
         Assert.Equal("Excellent reasoning and clear steps shown", teacherBlock.TeacherFeedback);
     }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenMultipleChoiceHasMatchedOption_ResolvesLabelAndText_AndSetsAnswerDisplayLatexToNull()
+    {
+        // 1. Seed Question
+        var question = new Question
+        {
+            CenterId = _centerId,
+            QuestionId = 1002,
+            SubjectId = _subjectId,
+            QuestionText = "Cho x + 1 = 3. Giá trị của x là?",
+            QuestionType = QuestionType.MultipleChoice,
+            CorrectAnswer = "A",
+            Solution = "x = 2",
+            LanguageCode = "vi",
+            MaxScore = 10m,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        _dbContext.Questions.Add(question);
+
+        var option = new QuestionOption
+        {
+            CenterId = _centerId,
+            QuestionId = 1002,
+            OptionId = 2001UL,
+            OptionLabel = "A",
+            OptionText = "x = 2",
+            IsCorrect = true,
+            OrderIndex = 1,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        _dbContext.QuestionOptions.Add(option);
+
+        // 2. Seed Attempt with option ID in FinalAnswer and legacy UUID in AnswerDisplayLatex
+        var legacyUuid = Guid.NewGuid();
+        var attempt = new Attempt
+        {
+            CenterId = _centerId,
+            AttemptId = 5002,
+            StudentId = _studentId,
+            QuestionId = 1002,
+            FinalAnswer = "2001",
+            AnswerDisplayLatex = legacyUuid.ToString(),
+            AwardedScore = 10m,
+            IsCorrect = true,
+            ReasoningLanguage = "vi",
+            Status = AttemptStatus.Completed,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        _dbContext.Attempts.Add(attempt);
+        await _dbContext.SaveChangesAsync();
+
+        var sut = new GetAttemptFeedbackUseCase(_dbContext, _tenantContext, _guardMock.Object);
+
+        // Act
+        var result = await sut.ExecuteAsync(5002, CancellationToken.None);
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Data);
+        Assert.NotNull(result.Data.StudentSubmission);
+        Assert.Equal("A. x = 2", result.Data.StudentSubmission.FinalAnswer);
+        Assert.Null(result.Data.StudentSubmission.AnswerDisplayLatex);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenMultipleChoiceHasLegacyUnmatchedUuid_ResolvesToPhuongAnDaChon_AndSetsAnswerDisplayLatexToNull()
+    {
+        // 1. Seed Question without matching options
+        var question = new Question
+        {
+            CenterId = _centerId,
+            QuestionId = 1003,
+            SubjectId = _subjectId,
+            QuestionText = "Câu hỏi trắc nghiệm lịch sử",
+            QuestionType = QuestionType.MultipleChoice,
+            CorrectAnswer = "A",
+            Solution = "Lời giải",
+            LanguageCode = "vi",
+            MaxScore = 10m,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        _dbContext.Questions.Add(question);
+
+        var unknownGuid = Guid.NewGuid();
+        var attempt = new Attempt
+        {
+            CenterId = _centerId,
+            AttemptId = 5003,
+            StudentId = _studentId,
+            QuestionId = 1003,
+            FinalAnswer = unknownGuid.ToString(),
+            AnswerDisplayLatex = unknownGuid.ToString(),
+            AwardedScore = 0m,
+            IsCorrect = false,
+            ReasoningLanguage = "vi",
+            Status = AttemptStatus.Completed,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        _dbContext.Attempts.Add(attempt);
+        await _dbContext.SaveChangesAsync();
+
+        var sut = new GetAttemptFeedbackUseCase(_dbContext, _tenantContext, _guardMock.Object);
+
+        // Act
+        var result = await sut.ExecuteAsync(5003, CancellationToken.None);
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Data);
+        Assert.NotNull(result.Data.StudentSubmission);
+        Assert.Equal("Phương án đã chọn", result.Data.StudentSubmission.FinalAnswer);
+        Assert.Null(result.Data.StudentSubmission.AnswerDisplayLatex);
+    }
 }
