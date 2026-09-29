@@ -40,12 +40,16 @@ function resolveChromePath() {
 }
 
 function waitForProcessExit(proc, timeoutMs = 3000) {
+  if (!proc) return Promise.resolve(true);
+  if (proc.exitCode !== null || proc.signalCode !== null || !isProcessAlive(proc.pid)) {
+    return Promise.resolve(true);
+  }
   return new Promise((resolve) => {
     let resolved = false;
     const timer = setTimeout(() => {
       if (!resolved) {
         resolved = true;
-        resolve(false);
+        resolve(!isProcessAlive(proc.pid));
       }
     }, timeoutMs);
 
@@ -372,11 +376,17 @@ async function runChromeCaretSmoke() {
       }
     }
 
+    let cleanupSucceeded = true;
+    const cleanupErrors = [];
+
     // C. Verify process is no longer alive
     if (chromeProc && chromeProc.pid) {
       const alive = isProcessAlive(chromeProc.pid);
       if (alive) {
-        console.warn(`   Warning: Chrome process PID ${chromeProc.pid} is still alive.`);
+        cleanupSucceeded = false;
+        const msg = `Chrome process PID ${chromeProc.pid} is still alive after termination attempts.`;
+        cleanupErrors.push(msg);
+        console.error(`   ERROR: ${msg}`);
       } else {
         console.log(`   Chrome process PID ${chromeProc.pid} confirmed terminated.`);
       }
@@ -399,11 +409,24 @@ async function runChromeCaretSmoke() {
       if (dirRemoved) {
         console.log('   Temporary profile directory cleanly removed.');
       } else {
-        console.warn(`   Warning: Could not remove temporary profile directory: ${userDataDir}`);
+        cleanupSucceeded = false;
+        const msg = `Failed to remove temporary profile directory after retries: ${userDataDir}`;
+        cleanupErrors.push(msg);
+        console.error(`   ERROR: ${msg}`);
       }
     }
 
-    process.exitCode = isTestPassed ? 0 : 1;
+    if (!cleanupSucceeded) {
+      const combined = `Smoke cleanup failed:\n - ${cleanupErrors.join('\n - ')}`;
+      if (!testError) {
+        testError = new Error(combined);
+      } else {
+        testError = new Error(`${testError.message}\nAdditionally, ${combined}`);
+      }
+    }
+
+    const finalSuccess = isTestPassed && cleanupSucceeded;
+    process.exitCode = finalSuccess ? 0 : 1;
     if (testError) {
       throw testError;
     }
