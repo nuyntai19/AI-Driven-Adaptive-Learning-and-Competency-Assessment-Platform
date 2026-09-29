@@ -66,6 +66,7 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
   ) => {
   const { isDark } = useThemeMode();
   const [viewMode, setViewMode] = useState<"visual" | "source">("visual");
+  const [copiedSource, setCopiedSource] = useState(false);
   const [activeMathNode, setActiveMathNode] = useState<{
     element: HTMLElement;
     latex: string;
@@ -79,6 +80,19 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
   const editorRef = useRef<HTMLDivElement>(null);
   const isLocalChangeRef = useRef<boolean>(false);
   const lastValidRangeRef = useRef<Range | null>(null);
+
+  const handleCopySource = useCallback(async () => {
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+      }
+      setCopiedSource(true);
+      setTimeout(() => setCopiedSource(false), 2000);
+    } catch {
+      setCopiedSource(true);
+      setTimeout(() => setCopiedSource(false), 2000);
+    }
+  }, [value]);
 
   const handleOpenMathNode = useCallback((span: HTMLElement, isNew = false) => {
     const currentLatex = span.dataset.latex || "";
@@ -220,7 +234,7 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
     const container = editorRef.current;
     if (!container) return;
 
-    container.focus();
+    // 1. Get/clone target range BEFORE container.focus() to prevent focus stealing or selection reset
     const targetRange = getEffectiveTargetRange(container);
 
     const mathSpan = createMathSpan("", (span) =>
@@ -231,7 +245,6 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
     targetRange.deleteContents();
     targetRange.insertNode(mathSpan);
 
-    container.focus();
     const afterRange = document.createRange();
     afterRange.setStartAfter(mathSpan);
     afterRange.collapse(true);
@@ -241,6 +254,7 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
       sel.addRange(afterRange);
     }
     lastValidRangeRef.current = afterRange.cloneRange();
+    container.focus();
 
     handleOpenMathNode(mathSpan, true);
     checkEmpty();
@@ -252,7 +266,7 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
       const container = editorRef.current;
       if (!container) return;
 
-      container.focus();
+      // 1. Get/clone target range BEFORE container.focus() to prevent focus stealing or selection reset
       const targetRange = getEffectiveTargetRange(container);
 
       const clean = cleanFormulaForInsertion(latexToInsert);
@@ -263,7 +277,6 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
       targetRange.deleteContents();
       targetRange.insertNode(mathSpan);
 
-      container.focus();
       const afterRange = document.createRange();
       afterRange.setStartAfter(mathSpan);
       afterRange.collapse(true);
@@ -273,6 +286,7 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
         sel.addRange(afterRange);
       }
       lastValidRangeRef.current = afterRange.cloneRange();
+      container.focus();
 
       isLocalChangeRef.current = true;
       const serialized = serializeEditorDom(container);
@@ -288,14 +302,13 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
       const container = editorRef.current;
       if (!container) return;
 
-      container.focus();
+      // 1. Get/clone target range BEFORE container.focus() to prevent focus stealing or selection reset
       const targetRange = getEffectiveTargetRange(container);
 
       const textNode = document.createTextNode(textToInsert);
       targetRange.deleteContents();
       targetRange.insertNode(textNode);
 
-      container.focus();
       const afterRange = document.createRange();
       afterRange.setStartAfter(textNode);
       afterRange.collapse(true);
@@ -305,6 +318,7 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
         sel.addRange(afterRange);
       }
       lastValidRangeRef.current = afterRange.cloneRange();
+      container.focus();
 
       isLocalChangeRef.current = true;
       const serialized = serializeEditorDom(container);
@@ -642,20 +656,24 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
             </button>
           )}
 
-          <button
-            type="button"
-            onClick={() => {
-              if (viewMode === "visual") {
-                setViewMode("source");
-              } else {
-                setViewMode("visual");
-              }
-            }}
-            className="text-[11px] font-medium text-[var(--rme-text-muted)] hover:text-[var(--rme-text)] px-2 py-0.5 rounded hover:bg-white/5 transition-colors cursor-pointer"
-            title="Chuyển đổi giữa chế độ trực quan WYSIWYG và mã nguồn $...$"
-          >
-            {viewMode === "visual" ? "⌨️ Mã nguồn" : "👁️ Trực quan"}
-          </button>
+          {/* Hide Source Mode for Student actors; For Teacher/CenterManager, provide read-only "Xem mã" */}
+          {variant !== "student" && (
+            <button
+              type="button"
+              id={id ? `${id}-toggle-source` : undefined}
+              onClick={() => {
+                if (viewMode === "visual") {
+                  setViewMode("source");
+                } else {
+                  setViewMode("visual");
+                }
+              }}
+              className="text-[11px] font-medium text-[var(--rme-text-muted)] hover:text-[var(--rme-text)] px-2 py-0.5 rounded hover:bg-white/5 transition-colors cursor-pointer"
+              title="Chuyển đổi giữa chế độ trực quan WYSIWYG và xem mã nguồn $...$"
+            >
+              {viewMode === "visual" ? "📄 Xem mã" : "👁️ Trực quan"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -682,25 +700,31 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
             }`}
           />
         ) : (
-          <textarea
-            id={id}
-            value={value}
-            disabled={disabled}
-            onFocus={onFocus}
-            onChange={(e) => {
-              const val = singleLine ? e.target.value.replace(/[\r\n]+/g, " ") : e.target.value;
-              onChange(val);
-            }}
-            onKeyDown={(e) => {
-              if (singleLine && e.key === "Enter") {
-                e.preventDefault();
-              }
-            }}
-            style={{ minHeight }}
-            rows={singleLine ? 1 : 4}
-            placeholder={placeholder}
-            className="w-full bg-transparent outline-none font-mono text-xs text-[var(--rme-text)] leading-relaxed resize-y"
-          />
+          <div className="space-y-2">
+            <div className="flex items-center justify-between px-2.5 py-1 rounded bg-black/10 dark:bg-white/5 text-xs text-[var(--rme-text-muted)] border border-black/5 dark:border-white/5">
+              <span className="font-medium text-[11px]">Chế độ xem mã (Chỉ đọc)</span>
+              <button
+                type="button"
+                id={id ? `${id}-copy-source` : undefined}
+                onClick={handleCopySource}
+                className="px-2 py-0.5 rounded text-[11px] font-medium bg-black/10 hover:bg-black/20 dark:bg-white/10 dark:hover:bg-white/20 text-[var(--rme-text)] transition-colors cursor-pointer"
+                title="Sao chép toàn bộ mã nguồn vào clipboard"
+              >
+                {copiedSource ? "✓ Đã sao chép" : "📋 Sao chép"}
+              </button>
+            </div>
+            <textarea
+              id={id}
+              value={value}
+              readOnly
+              disabled={disabled}
+              onFocus={onFocus}
+              style={{ minHeight }}
+              rows={singleLine ? 1 : 4}
+              placeholder={placeholder}
+              className="w-full bg-transparent outline-none font-mono text-xs text-[var(--rme-text)] leading-relaxed resize-y opacity-90 cursor-default"
+            />
+          </div>
         )}
       </div>
 

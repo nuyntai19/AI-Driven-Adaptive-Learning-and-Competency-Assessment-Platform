@@ -329,3 +329,48 @@ test("VisualMathField shadow DOM and index.css inject border-bottom dashed for p
     "index.css must provide high-contrast text color on dark containers like .bg-slate-950"
   );
 });
+
+test("VisualMathField insertAtCursor passes silenceNotifications: true and emits onChange exactly once", () => {
+  const componentPath = path.resolve(
+    __dirname,
+    "../src/components/math/VisualMathField.tsx"
+  );
+  const componentContent = fs.readFileSync(componentPath, "utf-8");
+
+  assert.match(
+    componentContent,
+    /silenceNotifications:\s*true/,
+    "mf.insert must specify silenceNotifications: true to prevent duplicate input event emission"
+  );
+
+  let nativeInputEventDispatched = 0;
+  let onChangeCallbackCount = 0;
+
+  const mockMathfield: any = {
+    value: "2",
+    focus: () => {},
+    setAttribute: () => {},
+    executeCommand: () => {},
+    insert: (text: string, options: { silenceNotifications?: boolean }) => {
+      if (!options?.silenceNotifications) {
+        nativeInputEventDispatched++;
+      }
+      mockMathfield.value = "2 + " + text;
+    },
+    getValue: () => mockMathfield.value,
+  };
+
+  const insertAtCursorSimulation = (latexToInsert: string) => {
+    mockMathfield.insert(latexToInsert, {
+      mode: "math",
+      selectionMode: "placeholder",
+      focus: true,
+      silenceNotifications: true,
+    });
+    onChangeCallbackCount++;
+  };
+
+  insertAtCursorSimulation("\\sqrt{3}");
+  assert.equal(nativeInputEventDispatched, 0, "No duplicate native input event should be dispatched");
+  assert.equal(onChangeCallbackCount, 1, "onChange must be called exactly once per Casio insertion");
+});

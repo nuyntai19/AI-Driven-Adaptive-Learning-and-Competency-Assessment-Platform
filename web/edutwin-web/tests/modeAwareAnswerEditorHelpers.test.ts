@@ -549,8 +549,7 @@ test("Gate 2A.2 - Student Answering UX, Backward-Compatible Casio Ref, and Revie
     path.resolve(__dirname, "../src/components/reviews/AssignmentGradingWorkspace.tsx"),
     "utf-8"
   );
-  assert.match(gradingWorkspaceSrc, /isUuid = \/\^\[0-9a-f\]\{8\}-\[0-9a-f\]\{4\}/i);
-  assert.match(gradingWorkspaceSrc, /return isUuid \? "Phương án đã chọn" : raw;/);
+  assert.match(gradingWorkspaceSrc, /if\s*\(raw\)\s*\{\s*return "Phương án đã chọn";\s*\}/);
 
   // 6. QuestionImportModal preview table renders mixed content with RichMathText
   const importModalSrc = fs.readFileSync(
@@ -566,6 +565,8 @@ test("AttemptFeedbackHierarchy formatAnswer and MCQ fail-closed logic never reve
     { optionId: "opt-1", label: "A", text: "x = 2" },
     { optionId: "opt-2", label: "B", text: "x = 4" },
   ];
+
+  let isMcq = true;
 
   const isUuid = (str?: string | null): boolean => {
     if (!str) return false;
@@ -585,6 +586,9 @@ test("AttemptFeedbackHierarchy formatAnswer and MCQ fail-closed logic never reve
     if (option) {
       return `${option.label}. ${option.text}`;
     }
+    if (isMcq && cleanAnswer.trim()) {
+      return "Phương án đã chọn";
+    }
     if (isUuid(answer) || isUuid(cleanAnswer)) {
       return "Phương án đã chọn";
     }
@@ -600,7 +604,7 @@ test("AttemptFeedbackHierarchy formatAnswer and MCQ fail-closed logic never reve
 
   // Case 3: MCQ question with legacy UUID in answerDisplayLatex
   // Since isMcq = true, student submission must use formatAnswer(finalAnswer) and completely ignore answerDisplayLatex
-  const isMcq = true;
+  isMcq = true;
   const studentSubmission = {
     finalAnswer: legacyUuid,
     answerDisplayLatex: legacyUuid,
@@ -612,4 +616,7 @@ test("AttemptFeedbackHierarchy formatAnswer and MCQ fail-closed logic never reve
 
   assert.equal(resolvedContent, "Phương án đã chọn");
   assert.doesNotMatch(resolvedContent, /e0b6c6b2/);
+
+  // Case 4: FinalAnswer contains obsolete numeric option ID like "9999" (fails closed to generic label)
+  assert.equal(formatAnswer("9999"), "Phương án đã chọn");
 });

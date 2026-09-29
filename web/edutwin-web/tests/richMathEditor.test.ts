@@ -758,50 +758,113 @@ describe("RichMathEditor Caret Preservation and External Insertion", () => {
     assert.match(source, /return\s*\(\)\s*=>\s*\{[\s\S]*?lastValidRangeRef\.current\s*=\s*null;\s*\};/);
   });
 
-  it("getEffectiveTargetRange restores saved range and insert functions position caret right after inserted node", () => {
-    assert.match(source, /const getEffectiveTargetRange = useCallback\(/);
-    assert.match(source, /lastValidRangeRef\.current\.cloneRange\(\)/);
-    assert.match(source, /targetRange = getEffectiveTargetRange\(container\)/);
-    assert.match(source, /afterRange\.setStartAfter\(mathSpan\)/);
-    assert.match(source, /lastValidRangeRef\.current = afterRange\.cloneRange\(\)/);
+  it("calls getEffectiveTargetRange BEFORE container.focus to prevent selection reset upon focus stealing", () => {
+    // In handleInsertMathAtCursor:
+    assert.match(
+      source,
+      /handleInsertMathAtCursor\s*=\s*useCallback\(\(\)\s*=>\s*\{[\s\S]*?const targetRange = getEffectiveTargetRange\(container\);[\s\S]*?targetRange\.deleteContents\(\);/
+    );
+    // In insertLatexAtCursor:
+    assert.match(
+      source,
+      /insertLatexAtCursor\s*=\s*useCallback\([\s\S]*?const targetRange = getEffectiveTargetRange\(container\);[\s\S]*?targetRange\.deleteContents\(\);/
+    );
+    // In insertTextAtCursor:
+    assert.match(
+      source,
+      /insertTextAtCursor\s*=\s*useCallback\([\s\S]*?const targetRange = getEffectiveTargetRange\(container\);[\s\S]*?targetRange\.deleteContents\(\);/
+    );
+    // Ensure container.focus() is NOT called before getEffectiveTargetRange in any of these functions
+    assert.doesNotMatch(
+      source,
+      /container\.focus\(\);\s*const targetRange = getEffectiveTargetRange\(container\);/
+    );
   });
 
-  it("inserts formula at preserved caret in the middle of a Vietnamese sentence, never appending to end", () => {
-    // Simulate DOM behavior for middle-of-sentence insertion
-    const sentenceBefore = "Đây là một câu tiếng Việt ";
-    const sentenceAfter = "cần chèn công thức toán.";
-    const fullText = sentenceBefore + sentenceAfter;
+  it("simulates DOM contentEditable caret: preserves range when focus is lost and inserts node in middle", () => {
+    // Emulate DOM container and nodes
+    const container = createMockElement("div");
+    const part1 = createMockTextNode("Cho hàm số ");
+    const part2 = createMockTextNode(" đồng biến trên R.");
+    container.appendChild(part1);
+    container.appendChild(part2);
 
-    // Emulate text node and Range placed after 'câu tiếng Việt '
-    const currentContent = fullText;
-    const splitIndex = sentenceBefore.length;
-
-    // Range snapshot at splitIndex
-    const savedRangeSnapshot = {
-      offset: splitIndex,
-      isValid: true,
+    // Initial state: Caret placed between part1 and part2
+    let savedRange: any = {
+      startContainer: container,
+      startOffset: 1,
+      endContainer: container,
+      endOffset: 1,
+      isCloned: true,
+      deleteContents() {},
+      insertNode(node: any) {
+        // Insert node at child index 1
+        container.childNodes.splice(1, 0, node);
+      },
+      cloneRange() {
+        return { ...this };
+      },
     };
 
-    // When an external tool (SideAssistant / Casio) is clicked:
-    // Live selection may lose focus or be cleared, but saved range snapshot remains at splitIndex
-    const formulaToInsert = "\\sqrt{x^2 + 1}";
-    const formattedFormula = `$${formulaToInsert}$`;
+    // User clicks external Casio / toolbar button:
+    // Window selection is cleared or points outside container
+    const activeWindowSelection: any = null;
 
-    // Insertion at savedRangeSnapshot:
-    const updatedContent =
-      currentContent.substring(0, savedRangeSnapshot.offset) +
-      formattedFormula +
-      " " +
-      currentContent.substring(savedRangeSnapshot.offset);
+    // Implementation of getEffectiveTargetRange:
+    function getEffectiveTargetRange(cont: any) {
+      if (
+        activeWindowSelection &&
+        activeWindowSelection.rangeCount > 0 &&
+        cont.childNodes.includes(activeWindowSelection.anchorNode)
+      ) {
+        return activeWindowSelection.getRangeAt(0);
+      }
+      if (savedRange) {
+        return savedRange.cloneRange();
+      }
+      return null;
+    }
 
-    assert.equal(
-      updatedContent,
-      "Đây là một câu tiếng Việt $\\sqrt{x^2 + 1}$ cần chèn công thức toán."
-    );
-    // Verify it is NOT appended to the end
-    assert.notEqual(
-      updatedContent,
-      "Đây là một câu tiếng Việt cần chèn công thức toán. $\\sqrt{x^2 + 1}$"
-    );
+    // Step 1: Range is retrieved BEFORE any container.focus()
+    const targetRange = getEffectiveTargetRange(container);
+    assert.ok(targetRange);
+    assert.equal(targetRange.startOffset, 1);
+
+    // Step 2: Create math span
+    const mathSpan = createMockElement("span");
+    mathSpan.classList.add("inline-math-node");
+    mathSpan.dataset.latex = "y=f(x)";
+
+    // Step 3: Insert into targetRange
+    targetRange.deleteContents();
+    targetRange.insertNode(mathSpan);
+
+    // Step 4: After range placed after mathSpan (at index 2)
+    const afterRange = {
+      startContainer: container,
+      startOffset: 2,
+      collapse: true,
+    };
+    savedRange = { ...afterRange, cloneRange: () => ({ ...afterRange }) };
+
+    // Step 5: Serialize container DOM
+    const serialized = serializeEditorDom(container as any);
+    assert.equal(serialized, "Cho hàm số $y=f(x)$ đồng biến trên R.");
+    // Verify it was inserted in the middle, NOT appended at the end
+    assert.notEqual(serialized, "Cho hàm số  đồng biến trên R.$y=f(x)$");
+  });
+
+  it("restricts Source Mode: hidden for Student actor, read-only with copy button for Teacher and Manager", () => {
+    // 1. Student hides source button:
+    assert.match(source, /variant\s*!==\s*"student"\s*&&\s*\(\s*<button/);
+    // 2. Teacher/Manager displays 'Xem mã':
+    assert.match(source, /viewMode\s*===\s*"visual"\s*\?\s*"📄 Xem mã"\s*:\s*"👁️ Trực quan"/);
+    // 3. Textarea is read-only with no mutating onChange:
+    assert.match(source, /<textarea[^>]*?readOnly/);
+    assert.doesNotMatch(source, /<textarea[^>]*?onChange/);
+    // 4. Includes copy button and 'Chế độ xem mã (Chỉ đọc)':
+    assert.match(source, /Chế độ xem mã \(Chỉ đọc\)/);
+    assert.match(source, /handleCopySource/);
+    assert.match(source, /Sao chép/);
   });
 });

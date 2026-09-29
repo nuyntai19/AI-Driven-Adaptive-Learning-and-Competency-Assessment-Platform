@@ -159,8 +159,9 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
                     ? $"{matched.OptionLabel}. {matched.OptionText}"
                     : matched.OptionLabel;
             }
-            else if (Guid.TryParse(raw, out _))
+            else if (!string.IsNullOrWhiteSpace(raw))
             {
+                // Fail-closed for ANY unmatched MultipleChoice answer (numeric option ID, UUID, or obsolete string)
                 finalAnswerDisplay = "Phương án đã chọn";
             }
 

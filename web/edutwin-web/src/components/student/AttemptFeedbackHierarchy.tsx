@@ -203,6 +203,10 @@ export function AttemptFeedbackHierarchy({
     if (option) {
       return `${option.label}. ${option.text}`;
     }
+    // Fail-closed: If question is MultipleChoice, any unmatched non-empty answer is generic
+    if (isMcq && cleanAnswer.trim()) {
+      return "Phương án đã chọn";
+    }
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(answer.trim());
     if (isUuid) {
       return "Phương án đã chọn";

@@ -264,8 +264,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
           : matched.optionLabel;
       }
       if (raw) {
-        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw);
-        return isUuid ? "Phương án đã chọn" : raw;
+        return "Phương án đã chọn";
       }
       return "";
     }

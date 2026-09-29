@@ -264,4 +264,69 @@ public sealed class GetAttemptFeedbackUseCaseTests : IDisposable
         Assert.Equal("Phương án đã chọn", result.Data.StudentSubmission.FinalAnswer);
         Assert.Null(result.Data.StudentSubmission.AnswerDisplayLatex);
     }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenMultipleChoiceHasObsoleteNumericOptionId_ResolvesToPhuongAnDaChon_AndSetsAnswerDisplayLatexToNull()
+    {
+        // 1. Seed Question with option 1001, but student attempt has deleted/obsolete option "9999"
+        var question = new Question
+        {
+            CenterId = _centerId,
+            QuestionId = 1004,
+            SubjectId = _subjectId,
+            QuestionText = "Câu hỏi trắc nghiệm có ID cũ",
+            QuestionType = QuestionType.MultipleChoice,
+            CorrectAnswer = "A",
+            Solution = "Lời giải",
+            LanguageCode = "vi",
+            MaxScore = 10m,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        _dbContext.Questions.Add(question);
+
+        var option = new QuestionOption
+        {
+            CenterId = _centerId,
+            QuestionId = 1004,
+            OptionId = 1001UL,
+            OptionLabel = "A",
+            OptionText = "Đáp án hiện hành",
+            IsCorrect = true,
+            OrderIndex = 1,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        _dbContext.QuestionOptions.Add(option);
+
+        var attempt = new Attempt
+        {
+            CenterId = _centerId,
+            AttemptId = 5004,
+            StudentId = _studentId,
+            QuestionId = 1004,
+            FinalAnswer = "9999", // Obsolete numeric OptionId
+            AnswerDisplayLatex = "9999",
+            AwardedScore = 0m,
+            IsCorrect = false,
+            ReasoningLanguage = "vi",
+            Status = AttemptStatus.Completed,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        _dbContext.Attempts.Add(attempt);
+        await _dbContext.SaveChangesAsync();
+
+        var sut = new GetAttemptFeedbackUseCase(_dbContext, _tenantContext, _guardMock.Object);
+
+        // Act
+        var result = await sut.ExecuteAsync(5004, CancellationToken.None);
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Data);
+        Assert.NotNull(result.Data.StudentSubmission);
+        Assert.Equal("Phương án đã chọn", result.Data.StudentSubmission.FinalAnswer);
+        Assert.Null(result.Data.StudentSubmission.AnswerDisplayLatex);
+    }
 }

@@ -1,15 +1,15 @@
 # Kế Hoạch Triển Khai Phase 2A — Unified Math Input & Authoring Experience
 
 > **Tài liệu**: `docs/plans/POST-R09-MATH-CANONICALIZATION-PHASE2A-PLAN.md`
-> **Trạng thái**: Kế hoạch Phase 2A v3.4 — Đã hoàn thành và nghiệm thu Gate 2A.1 (Commit `6b11f52`, forward commit `9d0d5e4`); Hoàn thiện kế hoạch chi tiết Gate 2A.2 theo đánh giá của Codex trước khi triển khai
-> **Baseline Git**: `9d0d5e4` (`student/answer`)
-> **Phạm vi**: **Chuẩn bị triển khai Gate 2A.2 (CenterManager Authoring Integration)**. Tuyệt đối không sửa đổi Phase 1, không bắt đầu Phase 2B (MathEquivalent/CAS), chưa bắt đầu Gate 2A.3–2A.5, không commit/push code tính năng trong bước lập kế hoạch này.
+> **Trạng thái**: Kế hoạch Phase 2A v3.5 — Đã triển khai và hoàn tất toàn bộ các Gates 2A.1 – 2A.5 & Extension (Presentation & Input Contracts)
+> **Baseline Git**: Nhánh `student/answer` (Local commits đang chờ Codex nghiệm thu cuối trước khi push)
+> **Phạm vi**: Hoàn tất toàn diện phạm vi giao diện và nhập liệu của Phase 2A. Giữ nguyên ranh giới: Tuyệt đối không sửa đổi Phase 1 và KHÔNG bắt đầu Phase 2B (MathEquivalent/CAS/SymPy).
 
 ---
 
-## 1. Khảo Sát Hiện Trạng Tuyến Đường & Dữ Liệu Thực Tế (Current-State Inventory)
+## 1. Khảo Sát Hiện Trạng Tuyến Đường & Dữ Liệu Thực Tế (Baseline Trước Triển Khai)
 
-Dưới đây là bảng kiểm kê chi tiết theo đúng tuyến đường thực tế trong [App.tsx](file:///d:/AI-Driven%20Adaptive%20Learning%20and%20Competency%20Assessment%20Platform/web/edutwin-web/src/App.tsx) và codebase backend (`src/EduTwin.*`):
+Dưới đây là bảng kiểm kê chi tiết baseline hiện trạng trước khi triển khai Phase 2A, theo đúng tuyến đường trong [App.tsx](file:///d:/AI-Driven%20Adaptive%20Learning%20and%20Competency%20Assessment%20Platform/web/edutwin-web/src/App.tsx) và codebase backend (`src/EduTwin.*`):
 
 | Route thực tế trong `App.tsx` | Actor | Trường nhập liệu | Component hiện tại | Format gửi Backend | Evaluation Mode | Vấn đề & Rủi ro phát hiện |
 |---|---|---|---|---|---|---|

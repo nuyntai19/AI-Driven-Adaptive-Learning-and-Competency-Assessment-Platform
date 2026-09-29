@@ -183,6 +183,7 @@ export const LearningPlayerPage = () => {
   const [reasoningText, setReasoningText] = useState<string>("");
   const [confidence, setConfidence] = useState<number>(80);
   const [answerChanges, setAnswerChanges] = useState<number>(0);
+  const answerChangesRef = useRef<number>(0);
   const [timeSpentSeconds, setTimeSpentSeconds] = useState<number>(0);
 
   // Assistant tools state
@@ -322,6 +323,7 @@ export const LearningPlayerPage = () => {
     setReasoningText("");
     setConfidence(80);
     setAnswerChanges(0);
+    answerChangesRef.current = 0;
     setTimeSpentSeconds(0);
     setActiveSideTool(null);
     setDrawingUploadToken(null);
@@ -583,7 +585,9 @@ export const LearningPlayerPage = () => {
       setReasoningText(effectiveSubmittedReasoning || "");
       setConfidence(assignmentQuestion?.latestAttempt?.confidence ?? saved?.confidence ?? 80);
       setTimeSpentSeconds(assignmentQuestion?.latestAttempt?.timeSpentSeconds ?? saved?.timeSpentSeconds ?? 0);
-      setAnswerChanges(assignmentQuestion?.latestAttempt?.answerChanges ?? saved?.answerChanges ?? 0);
+      const initialChanges = assignmentQuestion?.latestAttempt?.answerChanges ?? saved?.answerChanges ?? 0;
+      answerChangesRef.current = initialChanges;
+      setAnswerChanges(initialChanges);
       setAttachedSnapshotDataUrl(saved?.snapshotDataUrl || null);
       setAttachedSnapshotTime(saved?.snapshotTime || null);
       setDrawingUploadToken(saved?.drawingUploadToken || null);
@@ -593,7 +597,9 @@ export const LearningPlayerPage = () => {
       setReasoningText(saved.reasoningText || "");
       setConfidence(saved.confidence ?? 80);
       setTimeSpentSeconds(saved.timeSpentSeconds ?? 0);
-      setAnswerChanges(saved.answerChanges ?? 0);
+      const initialChanges = saved.answerChanges ?? 0;
+      answerChangesRef.current = initialChanges;
+      setAnswerChanges(initialChanges);
       setAttachedSnapshotDataUrl(saved.snapshotDataUrl || null);
       setAttachedSnapshotTime(saved.snapshotTime || null);
       setDrawingUploadToken(saved.drawingUploadToken || null);
@@ -603,7 +609,9 @@ export const LearningPlayerPage = () => {
       setReasoningText(effectiveSubmittedReasoning || "");
       setConfidence(assignmentQuestion?.latestAttempt?.confidence ?? 80);
       setTimeSpentSeconds(assignmentQuestion?.latestAttempt?.timeSpentSeconds ?? 0);
-      setAnswerChanges(assignmentQuestion?.latestAttempt?.answerChanges ?? 0);
+      const initialChanges = assignmentQuestion?.latestAttempt?.answerChanges ?? 0;
+      answerChangesRef.current = initialChanges;
+      setAnswerChanges(initialChanges);
       setAttachedSnapshotDataUrl(null);
       setAttachedSnapshotTime(null);
       setDrawingUploadToken(null);
@@ -613,6 +621,7 @@ export const LearningPlayerPage = () => {
       setReasoningText("");
       setConfidence(80);
       setTimeSpentSeconds(0);
+      answerChangesRef.current = 0;
       setAnswerChanges(0);
       setAttachedSnapshotDataUrl(null);
       setAttachedSnapshotTime(null);
@@ -893,7 +902,8 @@ export const LearningPlayerPage = () => {
   // Answer change handlers
   const handleAnswerChange = (plainText: string, latex: string) => {
     if (isReadOnly) return;
-    const nextAnswerChanges = answerChanges + 1;
+    const nextAnswerChanges = answerChangesRef.current + 1;
+    answerChangesRef.current = nextAnswerChanges;
     setFinalAnswer(plainText);
     setAnswerDisplayLatex(latex);
     setAnswerChanges(nextAnswerChanges);

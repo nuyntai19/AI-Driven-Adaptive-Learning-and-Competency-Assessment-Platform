@@ -332,7 +332,8 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
             mode: "math",
             selectionMode: "placeholder",
             focus: true,
-          });
+            silenceNotifications: true,
+          } as any);
         } else {
           mf.executeCommand(["insert", latexOrText]);
         }
