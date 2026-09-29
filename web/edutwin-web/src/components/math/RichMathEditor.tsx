@@ -10,7 +10,9 @@ import {
   serializeEditorDom,
   createMathSpan,
   hydrateEditorDom,
+  resolveRichMathPopoverTheme,
 } from "./richMathEditorHelpers";
+import { useThemeMode } from "../../utils/themeMode";
 
 export interface RichMathEditorProps {
   value: string;
@@ -50,6 +52,7 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
   id,
   variant = "center-manager",
 }) => {
+  const { isDark } = useThemeMode();
   const [viewMode, setViewMode] = useState<"visual" | "source">("visual");
   const [activeMathNode, setActiveMathNode] = useState<{
     element: HTMLElement;
@@ -450,6 +453,8 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
                 ? "Công thức rỗng"
                 : firstDiag?.type === "invalid-syntax"
                 ? "Lỗi cú pháp LaTeX"
+                : firstDiag?.type === "unwrapped-latex"
+                ? "LaTeX chưa đặt trong công thức"
                 : "Có công thức chưa điền xong"}
             </span>
           )}
@@ -547,44 +552,7 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
           />
 
           {(() => {
-            const isDark =
-              variant === "center-manager" ||
-              (typeof document !== "undefined" && document.documentElement.classList.contains("dark"));
-
-            // Theme-tailored styles for popover container & controls
-            let popoverBorder = "border-slate-300";
-            let popoverShadow = "shadow-slate-900/15";
-            let badgeBg = "bg-indigo-50 border-indigo-200 text-indigo-600";
-            let inputBorder = "border-slate-300 focus-within:border-indigo-600 focus-within:ring-2 focus-within:ring-indigo-500/15";
-            let previewBox = "border-slate-200 bg-slate-50/80 text-slate-800";
-            let previewFormulaColor = "text-indigo-950";
-            let confirmBtn = "bg-indigo-600 hover:bg-indigo-500 text-white";
-
-            if (isDark) {
-              popoverBorder = variant === "center-manager" ? "border-cyan-500/50" : "border-slate-700/80";
-              popoverShadow = variant === "center-manager" ? "shadow-cyan-950/40" : "shadow-slate-950/50";
-              badgeBg = variant === "center-manager" ? "bg-cyan-500/20 border-cyan-500/30 text-cyan-400" : "bg-indigo-500/20 border-indigo-500/30 text-indigo-400";
-              inputBorder = variant === "center-manager" ? "border-cyan-500/40 focus-within:border-cyan-400 focus-within:ring-2 focus-within:ring-cyan-500/20" : "border-slate-700 focus-within:border-indigo-500";
-              previewBox = "border-slate-800 bg-slate-950/80 text-slate-300";
-              previewFormulaColor = variant === "center-manager" ? "text-cyan-200" : "text-indigo-200";
-              confirmBtn = variant === "center-manager" ? "bg-cyan-500 hover:bg-cyan-400 text-slate-950" : "bg-indigo-600 hover:bg-indigo-500 text-white";
-            } else if (variant === "teacher") {
-              popoverBorder = "border-teal-500/40";
-              popoverShadow = "shadow-teal-950/15";
-              badgeBg = "bg-teal-50 border-teal-200 text-teal-700";
-              inputBorder = "border-teal-500/35 focus-within:border-teal-600 focus-within:ring-2 focus-within:ring-teal-500/15";
-              previewBox = "border-teal-100 bg-teal-50/50 text-teal-950";
-              previewFormulaColor = "text-teal-900";
-              confirmBtn = "bg-teal-600 hover:bg-teal-500 text-white";
-            } else if (variant === "student") {
-              popoverBorder = "border-[#6746E8]/35";
-              popoverShadow = "shadow-purple-950/15";
-              badgeBg = "bg-purple-50 border-purple-200 text-[#6746E8]";
-              inputBorder = "border-[#6746E8]/35 focus-within:border-[#6746E8] focus-within:ring-2 focus-within:ring-[#6746E8]/15";
-              previewBox = "border-purple-100 bg-purple-50/50 text-purple-950";
-              previewFormulaColor = "text-purple-900";
-              confirmBtn = "bg-[#6746E8] hover:bg-[#5839ce] text-white";
-            }
+            const popoverTheme = resolveRichMathPopoverTheme(variant, isDark);
 
             return (
               <div
@@ -596,18 +564,18 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
                   left: `${popoverPos.left}px`,
                 }}
                 className={`fixed z-50 w-[390px] max-w-[92vw] rounded-2xl border p-4 space-y-3 backdrop-blur-md transition-all animate-scale-in shadow-2xl ${
-                  isDark
-                    ? `dark bg-slate-900/98 text-slate-100 ${popoverBorder} ${popoverShadow}`
-                    : `bg-white/98 text-slate-800 ${popoverBorder} ${popoverShadow}`
+                  popoverTheme.isDark
+                    ? `dark bg-slate-900/98 text-slate-100 ${popoverTheme.popoverBorder} ${popoverTheme.popoverShadow}`
+                    : `bg-white/98 text-slate-800 ${popoverTheme.popoverBorder} ${popoverTheme.popoverShadow}`
                 }`}
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className={`flex items-center justify-between pb-2 border-b ${isDark ? "border-slate-800" : "border-slate-100"}`}>
+                <div className={`flex items-center justify-between pb-2 border-b ${popoverTheme.isDark ? "border-slate-800" : "border-slate-100"}`}>
                   <div className="flex items-center gap-2">
-                    <span className={`px-1.5 py-0.5 rounded-md border font-bold text-xs ${badgeBg}`}>
+                    <span className={`px-1.5 py-0.5 rounded-md border font-bold text-xs ${popoverTheme.badgeBg}`}>
                       Σ
                     </span>
-                    <h4 className={`text-xs font-semibold ${isDark ? "text-white" : "text-slate-900"}`}>
+                    <h4 className={`text-xs font-semibold ${popoverTheme.isDark ? "text-white" : "text-slate-900"}`}>
                       Soạn công thức (MathLive)
                     </h4>
                   </div>
@@ -616,7 +584,7 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
                     onClick={handleCancelMath}
                     aria-label="Đóng popover"
                     className={`p-1 rounded-lg transition-colors cursor-pointer text-xs ${
-                      isDark ? "text-slate-400 hover:text-white hover:bg-slate-800" : "text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+                      popoverTheme.isDark ? "text-slate-400 hover:text-white hover:bg-slate-800" : "text-slate-400 hover:text-slate-700 hover:bg-slate-100"
                     }`}
                   >
                     ✕
@@ -628,7 +596,7 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
                   <div
                     role="alert"
                     className={`rounded-lg p-2 text-xs flex items-center gap-1.5 ${
-                      isDark
+                      popoverTheme.isDark
                         ? "bg-rose-950/80 border border-rose-500/50 text-rose-200"
                         : "bg-rose-50 border border-rose-200 text-rose-700"
                     }`}
@@ -640,10 +608,10 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
 
                 {/* MathLive Input with onCommit (Enter) and onCancel (Escape) */}
                 <div className="space-y-1">
-                  <label className={`block text-[11px] font-semibold uppercase tracking-wider ${isDark ? "text-slate-300" : "text-slate-600"}`}>
+                  <label className={`block text-[11px] font-semibold uppercase tracking-wider ${popoverTheme.isDark ? "text-slate-300" : "text-slate-600"}`}>
                     Nhập công thức trực quan
                   </label>
-                  <div className={`rounded-xl border p-1.5 transition-all ${isDark ? "bg-slate-950 text-white" : "bg-slate-50/70 text-slate-900"} ${inputBorder}`}>
+                  <div className={`rounded-xl border p-1.5 transition-all ${popoverTheme.isDark ? "bg-slate-950 text-white" : "bg-slate-50/70 text-slate-900"} ${popoverTheme.inputBorder}`}>
                     <VisualMathField
                       value={dialogLatex}
                       onChange={(latex) => {
@@ -661,8 +629,8 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
                 </div>
 
                 {/* Live KaTeX Preview and Placeholder / Syntax Indicator */}
-                <div className={`rounded-lg border p-2 space-y-1 ${previewBox}`}>
-                  <div className={`flex items-center justify-between text-[10px] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                <div className={`rounded-lg border p-2 space-y-1 ${popoverTheme.previewBox}`}>
+                  <div className={`flex items-center justify-between text-[10px] ${popoverTheme.isDark ? "text-slate-400" : "text-slate-500"}`}>
                     <span>Xem trước kết quả:</span>
                     {dialogLatex ? (
                       (() => {
@@ -691,7 +659,7 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
                       <span>(trống)</span>
                     )}
                   </div>
-                  <div className={`min-h-[28px] flex items-center justify-center text-sm overflow-x-auto py-1 font-medium ${previewFormulaColor}`}>
+                  <div className={`min-h-[28px] flex items-center justify-center text-sm overflow-x-auto py-1 font-medium ${popoverTheme.previewFormulaColor}`}>
                     {dialogLatex ? (
                       (() => {
                         const clean = cleanFormulaForInsertion(dialogLatex);
@@ -714,7 +682,7 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
                         }
                       })()
                     ) : (
-                      <span className={`text-xs italic ${isDark ? "text-slate-500" : "text-slate-400"}`}>
+                      <span className={`text-xs italic ${popoverTheme.isDark ? "text-slate-500" : "text-slate-400"}`}>
                         Chưa có công thức
                       </span>
                     )}
@@ -728,7 +696,7 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
                       type="button"
                       onClick={handleDeleteMath}
                       className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-colors cursor-pointer ${
-                        isDark ? "text-rose-400 hover:text-rose-300 hover:bg-rose-950/50" : "text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                        popoverTheme.isDark ? "text-rose-400 hover:text-rose-300 hover:bg-rose-950/50" : "text-rose-600 hover:text-rose-700 hover:bg-rose-50"
                       }`}
                     >
                       Xóa công thức
@@ -742,7 +710,7 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
                       type="button"
                       onClick={handleCancelMath}
                       className={`px-3 py-1 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
-                        isDark ? "text-slate-400 hover:text-white hover:bg-slate-800" : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                        popoverTheme.isDark ? "text-slate-400 hover:text-white hover:bg-slate-800" : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                       }`}
                     >
                       Hủy (Esc)
@@ -757,10 +725,10 @@ export const RichMathEditor: React.FC<RichMathEditorProps> = ({
                       className={`px-3.5 py-1 text-xs font-semibold rounded-lg shadow-sm transition-all flex items-center gap-1.5 ${
                         !dialogLatex.trim() ||
                         !validateAndCleanFormula(dialogLatex).isComplete
-                          ? isDark
+                          ? popoverTheme.isDark
                             ? "bg-slate-800 text-slate-500 cursor-not-allowed opacity-50"
                             : "bg-slate-200 text-slate-400 cursor-not-allowed opacity-60"
-                          : `${confirmBtn} font-bold cursor-pointer`
+                          : `${popoverTheme.confirmBtn} font-bold cursor-pointer`
                       }`}
                     >
                       <span>Hoàn tất</span>

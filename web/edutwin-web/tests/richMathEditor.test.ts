@@ -16,6 +16,7 @@ import {
 } from "../src/pages/centerManagerQuestionEditorHelpers.ts";
 import {
   serializeEditorDom,
+  resolveRichMathPopoverTheme,
 } from "../src/components/math/richMathEditorHelpers.ts";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -557,5 +558,166 @@ describe("Structured Math Formula Diagnostics & State Machine Scanner", () => {
     assert.ok(result.error);
     assert.ok(result.error.includes('chưa được đóng dấu "$"'));
     assert.ok(!result.error.includes("\\placeholder"));
+  });
+
+  it("fails-closed on valid raw LaTeX commands outside delimiters with 'unwrapped-latex' diagnostic", () => {
+    const rawCases = [
+      { input: "Cho \\frac{1}{2}", expectedRaw: "\\frac{1}{2}" },
+      { input: "\\frac{1}{2} và $x$", expectedRaw: "\\frac{1}{2}" },
+      { input: "Văn bản \\sqrt{x} hợp lệ", expectedRaw: "\\sqrt{x}" },
+      { input: "\\alpha và $x$", expectedRaw: "\\alpha" },
+    ];
+
+    for (const { input, expectedRaw } of rawCases) {
+      const diags = validateTextMathFormulas(input);
+      assert.ok(diags.length >= 1, `Expected diagnostics for '${input}'`);
+      const unwrappedDiag = diags.find((d) => d.type === "unwrapped-latex");
+      assert.ok(unwrappedDiag, `Expected 'unwrapped-latex' diagnostic for '${input}', got: ${JSON.stringify(diags)}`);
+      assert.equal(unwrappedDiag.raw, expectedRaw);
+      assert.equal(
+        unwrappedDiag.message,
+        "Công thức LaTeX phải được chèn bằng trình soạn công thức hoặc đặt trong $...$."
+      );
+
+      const formatted = formatFormulaDiagnosticMessage("Nội dung câu hỏi", unwrappedDiag);
+      assert.ok(
+        formatted.includes("Công thức LaTeX phải được chèn bằng trình soạn công thức hoặc đặt trong $...$."),
+        `Formatted message mismatch for '${input}': ${formatted}`
+      );
+    }
+  });
+
+  it("buildAuthoritativeQuestionPayload blocks payloads with unwrapped LaTeX in questionText, solution, or options", () => {
+    // 1. Unwrapped LaTeX in questionText
+    const baseFormData: any = {
+      subjectId: "sub-1",
+      primaryTopicNodeId: "node-1",
+      questionType: "ShortAnswer",
+      difficulty: 3,
+      questionText: "Cho \\frac{1}{2}",
+      maxScore: 10,
+      estimatedTimeSeconds: 60,
+      reasoningRequired: false,
+      languageCode: "vi",
+      answerEvaluationMode: "TextExact",
+    };
+    const answerDrafts = {
+      "ShortAnswer:TextExact": {
+        rawText: "1/2",
+        displayLatex: "",
+      },
+    };
+
+    const resQuestionText = buildAuthoritativeQuestionPayload({
+      formData: baseFormData,
+      modeDrafts: answerDrafts,
+    });
+    assert.ok(resQuestionText.error);
+    assert.ok(
+      resQuestionText.error.includes("Công thức LaTeX phải được chèn bằng trình soạn công thức hoặc đặt trong $...$.")
+    );
+
+    // 2. Unwrapped LaTeX in solution
+    const resSolution = buildAuthoritativeQuestionPayload({
+      formData: {
+        ...baseFormData,
+        questionText: "Tính $x+1$",
+        solution: "Văn bản \\sqrt{x} hợp lệ",
+      },
+      modeDrafts: answerDrafts,
+    });
+    assert.ok(resSolution.error);
+    assert.ok(
+      resSolution.error.includes("Lời giải: Công thức LaTeX phải được chèn bằng trình soạn công thức hoặc đặt trong $...$.")
+    );
+
+    // 3. Unwrapped LaTeX in options
+    const resOption = buildAuthoritativeQuestionPayload({
+      formData: {
+        ...baseFormData,
+        questionType: "MultipleChoice",
+        questionText: "Chọn đáp án đúng",
+        options: [
+          { optionLabel: "A", optionText: "\\alpha và $x$", isCorrect: true, orderIndex: 0 },
+          { optionLabel: "B", optionText: "$y$", isCorrect: false, orderIndex: 1 },
+        ],
+      },
+      modeDrafts: answerDrafts,
+    });
+    assert.ok(resOption.error);
+    assert.ok(
+      resOption.error.includes("Phương án A: Công thức LaTeX phải được chèn bằng trình soạn công thức hoặc đặt trong $...$.")
+    );
+  });
+});
+
+describe("RichMath Popover Theme Resolution (resolveRichMathPopoverTheme pure function)", () => {
+  it("resolves Center Manager light mode with isDark: false and cyan accent styling", () => {
+    const theme = resolveRichMathPopoverTheme("center-manager", false);
+    assert.equal(theme.isDark, false);
+    assert.ok(theme.popoverBorder.includes("cyan"));
+    assert.ok(theme.badgeBg.includes("cyan"));
+    assert.ok(theme.inputBorder.includes("cyan"));
+    assert.ok(theme.previewBox.includes("cyan"));
+    assert.ok(theme.previewFormulaColor.includes("cyan"));
+    assert.ok(theme.confirmBtn.includes("bg-cyan-600"));
+  });
+
+  it("resolves Center Manager dark mode with isDark: true and cyan accent styling", () => {
+    const theme = resolveRichMathPopoverTheme("center-manager", true);
+    assert.equal(theme.isDark, true);
+    assert.ok(theme.popoverBorder.includes("cyan"));
+    assert.ok(theme.badgeBg.includes("cyan"));
+    assert.ok(theme.inputBorder.includes("cyan"));
+    assert.ok(theme.previewFormulaColor.includes("cyan"));
+    assert.ok(theme.confirmBtn.includes("bg-cyan-500"));
+  });
+
+  it("resolves Teacher variants accurately in both light and dark modes", () => {
+    const lightTheme = resolveRichMathPopoverTheme("teacher", false);
+    assert.equal(lightTheme.isDark, false);
+    assert.ok(lightTheme.popoverBorder.includes("teal"));
+    assert.ok(lightTheme.badgeBg.includes("teal"));
+    assert.ok(lightTheme.confirmBtn.includes("bg-teal-600"));
+
+    const darkTheme = resolveRichMathPopoverTheme("teacher", true);
+    assert.equal(darkTheme.isDark, true);
+    assert.ok(darkTheme.popoverBorder.includes("teal"));
+    assert.ok(darkTheme.badgeBg.includes("teal"));
+    assert.ok(darkTheme.confirmBtn.includes("bg-teal-500"));
+  });
+
+  it("resolves Student variants accurately in both light and dark modes", () => {
+    const lightTheme = resolveRichMathPopoverTheme("student", false);
+    assert.equal(lightTheme.isDark, false);
+    assert.ok(lightTheme.popoverBorder.includes("#6746E8"));
+    assert.ok(lightTheme.confirmBtn.includes("#6746E8"));
+
+    const darkTheme = resolveRichMathPopoverTheme("student", true);
+    assert.equal(darkTheme.isDark, true);
+    assert.ok(darkTheme.popoverBorder.includes("#6746E8"));
+    assert.ok(darkTheme.confirmBtn.includes("#6746E8"));
+  });
+
+  it("resolves Neutral variants accurately in both light and dark modes", () => {
+    const lightTheme = resolveRichMathPopoverTheme("neutral", false);
+    assert.equal(lightTheme.isDark, false);
+    assert.ok(lightTheme.popoverBorder.includes("slate-300"));
+    assert.ok(lightTheme.confirmBtn.includes("indigo-600"));
+
+    const darkTheme = resolveRichMathPopoverTheme("neutral", true);
+    assert.equal(darkTheme.isDark, true);
+    assert.ok(darkTheme.popoverBorder.includes("slate-700"));
+    assert.ok(darkTheme.confirmBtn.includes("indigo-600"));
+  });
+
+  it("defaults to Center Manager when variant is omitted or unrecognized", () => {
+    const defaultLight = resolveRichMathPopoverTheme(undefined as any, false);
+    assert.equal(defaultLight.isDark, false);
+    assert.ok(defaultLight.popoverBorder.includes("cyan"));
+
+    const defaultDark = resolveRichMathPopoverTheme(undefined as any, true);
+    assert.equal(defaultDark.isDark, true);
+    assert.ok(defaultDark.popoverBorder.includes("cyan"));
   });
 });

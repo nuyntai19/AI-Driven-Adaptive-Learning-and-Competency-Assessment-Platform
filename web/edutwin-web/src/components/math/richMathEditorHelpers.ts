@@ -129,3 +129,122 @@ export function hydrateEditorDom(
     }
   }
 }
+
+export interface RichMathPopoverTheme {
+  isDark: boolean;
+  popoverBorder: string;
+  popoverShadow: string;
+  badgeBg: string;
+  inputBorder: string;
+  previewBox: string;
+  previewFormulaColor: string;
+  confirmBtn: string;
+}
+
+/**
+ * Pure function mapping editor actor variant & active theme darkness to popover styling tokens.
+ * Handles all 4 actor variants across both Dark and Light modes.
+ */
+export function resolveRichMathPopoverTheme(
+  variant: "center-manager" | "teacher" | "student" | "neutral" = "center-manager",
+  isDark: boolean = false
+): RichMathPopoverTheme {
+  if (isDark) {
+    switch (variant) {
+      case "teacher":
+        return {
+          isDark: true,
+          popoverBorder: "border-teal-500/50",
+          popoverShadow: "shadow-teal-950/40",
+          badgeBg: "bg-teal-500/20 border-teal-500/30 text-teal-400",
+          inputBorder: "border-teal-500/40 focus-within:border-teal-400 focus-within:ring-2 focus-within:ring-teal-500/20",
+          previewBox: "border-slate-800 bg-slate-950/80 text-slate-300",
+          previewFormulaColor: "text-teal-200",
+          confirmBtn: "bg-teal-500 hover:bg-teal-400 text-slate-950",
+        };
+      case "student":
+        return {
+          isDark: true,
+          popoverBorder: "border-[#6746E8]/50",
+          popoverShadow: "shadow-purple-950/40",
+          badgeBg: "bg-[#6746E8]/20 border-[#6746E8]/30 text-[#a5b4fc]",
+          inputBorder: "border-[#6746E8]/40 focus-within:border-[#818cf8] focus-within:ring-2 focus-within:ring-[#6746E8]/20",
+          previewBox: "border-slate-800 bg-slate-950/80 text-slate-300",
+          previewFormulaColor: "text-indigo-200",
+          confirmBtn: "bg-[#6746E8] hover:bg-[#5839ce] text-white",
+        };
+      case "neutral":
+        return {
+          isDark: true,
+          popoverBorder: "border-slate-700/80",
+          popoverShadow: "shadow-slate-950/50",
+          badgeBg: "bg-indigo-500/20 border-indigo-500/30 text-indigo-400",
+          inputBorder: "border-slate-700 focus-within:border-indigo-500",
+          previewBox: "border-slate-800 bg-slate-950/80 text-slate-300",
+          previewFormulaColor: "text-indigo-200",
+          confirmBtn: "bg-indigo-600 hover:bg-indigo-500 text-white",
+        };
+      case "center-manager":
+      default:
+        return {
+          isDark: true,
+          popoverBorder: "border-cyan-500/50",
+          popoverShadow: "shadow-cyan-950/40",
+          badgeBg: "bg-cyan-500/20 border-cyan-500/30 text-cyan-400",
+          inputBorder: "border-cyan-500/40 focus-within:border-cyan-400 focus-within:ring-2 focus-within:ring-cyan-500/20",
+          previewBox: "border-slate-800 bg-slate-950/80 text-slate-300",
+          previewFormulaColor: "text-cyan-200",
+          confirmBtn: "bg-cyan-500 hover:bg-cyan-400 text-slate-950",
+        };
+    }
+  }
+
+  // Light mode
+  switch (variant) {
+    case "teacher":
+      return {
+        isDark: false,
+        popoverBorder: "border-teal-500/40",
+        popoverShadow: "shadow-teal-950/15",
+        badgeBg: "bg-teal-50 border-teal-200 text-teal-700",
+        inputBorder: "border-teal-500/35 focus-within:border-teal-600 focus-within:ring-2 focus-within:ring-teal-500/15",
+        previewBox: "border-teal-100 bg-teal-50/50 text-teal-950",
+        previewFormulaColor: "text-teal-900",
+        confirmBtn: "bg-teal-600 hover:bg-teal-500 text-white",
+      };
+    case "student":
+      return {
+        isDark: false,
+        popoverBorder: "border-[#6746E8]/35",
+        popoverShadow: "shadow-purple-950/15",
+        badgeBg: "bg-purple-50 border-purple-200 text-[#6746E8]",
+        inputBorder: "border-[#6746E8]/35 focus-within:border-[#6746E8] focus-within:ring-2 focus-within:ring-[#6746E8]/15",
+        previewBox: "border-purple-100 bg-purple-50/50 text-purple-950",
+        previewFormulaColor: "text-purple-900",
+        confirmBtn: "bg-[#6746E8] hover:bg-[#5839ce] text-white",
+      };
+    case "neutral":
+      return {
+        isDark: false,
+        popoverBorder: "border-slate-300",
+        popoverShadow: "shadow-slate-900/15",
+        badgeBg: "bg-indigo-50 border-indigo-200 text-indigo-600",
+        inputBorder: "border-slate-300 focus-within:border-indigo-600 focus-within:ring-2 focus-within:ring-indigo-500/15",
+        previewBox: "border-slate-200 bg-slate-50/80 text-slate-800",
+        previewFormulaColor: "text-indigo-950",
+        confirmBtn: "bg-indigo-600 hover:bg-indigo-500 text-white",
+      };
+    case "center-manager":
+    default:
+      return {
+        isDark: false,
+        popoverBorder: "border-cyan-500/40",
+        popoverShadow: "shadow-cyan-950/15",
+        badgeBg: "bg-cyan-50 border-cyan-200 text-cyan-700",
+        inputBorder: "border-cyan-500/35 focus-within:border-cyan-600 focus-within:ring-2 focus-within:ring-cyan-500/15",
+        previewBox: "border-cyan-100 bg-cyan-50/50 text-cyan-950",
+        previewFormulaColor: "text-cyan-900",
+        confirmBtn: "bg-cyan-600 hover:bg-cyan-500 text-white",
+      };
+  }
+}

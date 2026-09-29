@@ -160,7 +160,8 @@ export type MathFormulaDiagnosticType =
   | "unclosed-delimiter"
   | "empty-formula"
   | "placeholder"
-  | "invalid-syntax";
+  | "invalid-syntax"
+  | "unwrapped-latex";
 
 export interface MathFormulaDiagnostic {
   type: MathFormulaDiagnosticType;
@@ -175,6 +176,7 @@ export interface MathFormulaDiagnostic {
  * - Empty formulas ($$ or $$$$ or $   $)
  * - Unfilled \placeholder{}
  * - Invalid KaTeX syntax (throwOnError: true)
+ * - Unwrapped raw LaTeX outside delimiters (e.g. \frac{1}{2}, \sqrt{x}, \alpha)
  *
  * Returns structured diagnostics categorized by error cause.
  */
@@ -197,6 +199,59 @@ export function validateTextMathFormulas(text: string | null | undefined): MathF
     return backslashCount % 2 === 1;
   }
 
+  // Helper: extracts candidate LaTeX command and scans arguments
+  function extractLatexCandidate(str: string, startIdx: number) {
+    const cmdMatch = /^\\([a-zA-Z]+)/.exec(str.slice(startIdx));
+    if (!cmdMatch) return null;
+
+    let pos = startIdx + cmdMatch[0].length;
+    while (pos < str.length) {
+      const ch = str[pos];
+      if (ch === " " || ch === "\t" || ch === "\n" || ch === "$") {
+        break;
+      }
+      if (ch === "{") {
+        let depth = 1;
+        let j = pos + 1;
+        while (j < str.length && depth > 0) {
+          if (str[j] === "{" && str[j - 1] !== "\\") depth++;
+          else if (str[j] === "}" && str[j - 1] !== "\\") depth--;
+          j++;
+        }
+        if (depth > 0) {
+          return { raw: str.slice(startIdx).trim(), isUnclosedBrace: true, pos: startIdx };
+        }
+        pos = j;
+      } else if (ch === "[") {
+        let depth = 1;
+        let j = pos + 1;
+        while (j < str.length && depth > 0) {
+          if (str[j] === "[" && str[j - 1] !== "\\") depth++;
+          else if (str[j] === "]" && str[j - 1] !== "\\") depth--;
+          j++;
+        }
+        if (depth > 0) {
+          return { raw: str.slice(startIdx).trim(), isUnclosedBrace: true, pos: startIdx };
+        }
+        pos = j;
+      } else if (ch === "_" || ch === "^") {
+        pos++;
+        if (pos < str.length && (str[pos] === "{" || str[pos] === "[")) {
+          continue;
+        } else if (pos < str.length && /[a-zA-Z0-9]/.test(str[pos])) {
+          pos++;
+        }
+      } else if (/[a-zA-Z0-9.,=+/*-]/.test(ch)) {
+        pos++;
+      } else {
+        break;
+      }
+    }
+
+    const raw = str.slice(startIdx, pos).trim();
+    return { raw, isUnclosedBrace: false, pos: startIdx };
+  }
+
   // Validate prose segments outside math formula delimiters ($...$, $$...$$)
   function validateProseSegment(segment: string, offset: number) {
     if (!segment) return;
@@ -212,23 +267,45 @@ export function validateTextMathFormulas(text: string | null | undefined): MathF
       return;
     }
 
-    // 2. Check for raw LaTeX command outside delimiters (e.g. \frac{1}{ và $x$)
-    // Match any LaTeX command starting with backslash followed by ASCII letters
-    const cmdMatch = /(?:^|[^\\])(\\[a-zA-Z]+[\s\S]*)/.exec(segment);
-    if (cmdMatch) {
-      const rawCandidate = cmdMatch[1].trim();
-      try {
-        katex.renderToString(rawCandidate, { throwOnError: true });
-      } catch (err: unknown) {
-        const rawMsg = err instanceof Error ? err.message : String(err);
-        const cleanMsg = rawMsg.replace(/^KaTeX parse error:\s*/i, "").trim();
-        diagnostics.push({
-          type: "invalid-syntax",
-          raw: rawCandidate,
-          message: `Công thức sai cú pháp LaTeX (${cleanMsg}).`,
-          position: offset + segment.indexOf(rawCandidate),
-        });
+    // 2. Check for raw LaTeX command outside delimiters (e.g. \frac{1}{2}, \sqrt{x}, \alpha, \frac{1}{)
+    let idx = 0;
+    while (idx < segment.length) {
+      if (segment[idx] === "\\" && !isEscaped(offset + idx)) {
+        const candidate = extractLatexCandidate(segment, idx);
+        if (candidate) {
+          if (candidate.isUnclosedBrace) {
+            diagnostics.push({
+              type: "invalid-syntax",
+              raw: candidate.raw,
+              message: "Công thức sai cú pháp LaTeX (dấu ngoặc nhọn chưa đóng).",
+              position: offset + candidate.pos,
+            });
+            return;
+          }
+
+          try {
+            katex.renderToString(candidate.raw, { throwOnError: true });
+            diagnostics.push({
+              type: "unwrapped-latex",
+              raw: candidate.raw,
+              message: "Công thức LaTeX phải được chèn bằng trình soạn công thức hoặc đặt trong $...$.",
+              position: offset + candidate.pos,
+            });
+            return;
+          } catch (err: unknown) {
+            const rawMsg = err instanceof Error ? err.message : String(err);
+            const cleanMsg = rawMsg.replace(/^KaTeX parse error:\s*/i, "").trim();
+            diagnostics.push({
+              type: "invalid-syntax",
+              raw: candidate.raw,
+              message: `Công thức sai cú pháp LaTeX (${cleanMsg}).`,
+              position: offset + candidate.pos,
+            });
+            return;
+          }
+        }
       }
+      idx++;
     }
   }
 
@@ -349,6 +426,8 @@ export function formatFormulaDiagnosticMessage(
     case "placeholder":
       return `${fieldLabel} chứa công thức chưa hoàn thành (còn ô trống \\placeholder). Vui lòng hoàn tất trước khi lưu.`;
     case "invalid-syntax":
+      return `${fieldLabel}: ${diag.message}`;
+    case "unwrapped-latex":
       return `${fieldLabel}: ${diag.message}`;
   }
 }
@@ -619,13 +698,16 @@ export function buildAuthoritativeQuestionPayload({
   }
 
   if (formData.options && Array.isArray(formData.options)) {
-    for (const opt of formData.options) {
-      const optDiag = validateTextMathFormulas(opt.optionText)[0];
+    for (let index = 0; index < formData.options.length; index++) {
+      const opt = formData.options[index];
+      const optText = opt.optionText ?? (opt as any).text;
+      const optLabel = opt.optionLabel ?? (opt as any).label ?? String.fromCharCode(65 + index);
+      const optDiag = validateTextMathFormulas(optText)[0];
       if (optDiag) {
         return {
           payload: formData,
           error: formatFormulaDiagnosticMessage(
-            `Phương án ${opt.optionLabel || ""}`,
+            `Phương án ${optLabel}`,
             optDiag
           ),
         };
