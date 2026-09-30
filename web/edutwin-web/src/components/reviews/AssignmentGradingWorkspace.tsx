@@ -22,6 +22,7 @@ import { permissions } from "../../auth/permissions";
 import { RichMathText } from "../math/RichMathText";
 import { ScratchpadAttachmentDrawer } from "../ScratchpadAttachmentDrawer";
 import { extractProblemDetails } from "../../utils/problemDetails";
+import { resolveQuestionDefaultFormValues } from "../../utils/gradingWorkspaceHelpers";
 
 export interface AssignmentGradingWorkspaceProps {
   actor: "Teacher" | "CenterManager";
@@ -247,7 +248,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
     const opts = currentQuestion.options || [];
 
     // For Multiple Choice questions:
-    if (qType === "MultipleChoice" && opts.length > 0) {
+    if (qType === "MultipleChoice") {
       const raw = (currentQuestion.finalAnswer || "").trim();
       const matched = opts.find(
         (o) =>
@@ -262,20 +263,25 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
           ? `${matched.optionLabel}. ${matched.optionText}`
           : matched.optionLabel;
       }
-      if (raw) return raw;
+      if (raw) {
+        return "Phương án đã chọn";
+      }
+      return "";
     }
 
     // For Math / Short Answer / Essay questions:
     // If student has formatted LaTeX in answerDisplayLatex, use it; otherwise use finalAnswer
     const latexAns = currentQuestion.answerDisplayLatex?.trim();
     if (latexAns) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(latexAns);
       const isRawOptionId = opts.some((o) => o.optionId === latexAns);
-      if (!isRawOptionId) {
-        return latexAns;
+      if (!isRawOptionId && !isUuid) {
+        return latexAns.replace(/\\placeholder(\[[^\]]*\])?(\{[^}]*\})?/g, "___");
       }
     }
 
-    return currentQuestion.finalAnswer?.trim() || "";
+    const finalAns = currentQuestion.finalAnswer?.trim() || "";
+    return finalAns.replace(/\\placeholder(\[[^\]]*\])?(\{[^}]*\})?/g, "___");
   }, [currentQuestion]);
 
   // Resolve genuine student reasoning text
@@ -295,7 +301,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
 
   // Override Form State for the active question
   const [awardedScore, setAwardedScore] = useState<number>(10);
-  const [isCorrectVal, setIsCorrectVal] = useState<boolean>(true);
+  const [isCorrectVal, setIsCorrectVal] = useState<boolean | null>(null);
   const [reasoningQuality, setReasoningQuality] = useState<number>(80);
   const [errorTypeVal, setErrorTypeVal] = useState<ErrorType>("None");
   const [feedbackVal, setFeedbackVal] = useState<string>("");
@@ -304,21 +310,13 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
   // Populate override form when active question changes
   useEffect(() => {
     if (currentQuestion) {
-      const max = currentQuestion.maxScore ?? 10;
-      setAwardedScore(
-        currentQuestion.overrideAwardedScore ??
-        currentQuestion.awardedScore ??
-        (currentQuestion.evidence?.trustLevel === "Trusted" ? max : 0)
-      );
-      setIsCorrectVal(
-        currentQuestion.isCorrect !== undefined && currentQuestion.isCorrect !== null
-          ? currentQuestion.isCorrect
-          : currentQuestion.evidence?.decisionMode !== "Fallback"
-      );
-      setReasoningQuality(currentQuestion.reasoningQuality ? Math.round(Number(currentQuestion.reasoningQuality)) : 80);
-      setFeedbackVal(currentQuestion.teacherFeedback || currentQuestion.analysisFeedback || "");
-      setOverrideReasonVal(currentQuestion.overrideReason || "");
-      setErrorTypeVal("None");
+      const defaults = resolveQuestionDefaultFormValues(currentQuestion);
+      setAwardedScore(defaults.awardedScore);
+      setIsCorrectVal(defaults.isCorrectVal);
+      setReasoningQuality(defaults.reasoningQuality);
+      setFeedbackVal(defaults.feedbackVal);
+      setOverrideReasonVal(defaults.overrideReasonVal);
+      setErrorTypeVal(defaults.errorTypeVal);
     }
   }, [currentQuestion]);
 
@@ -330,6 +328,8 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
     onSuccess: () => {
       showToast("Đã duyệt kết quả đánh giá của AI thành công!", "success");
       refetchStudentQuestions();
+      refetchProgress();
+      queryClient.invalidateQueries({ queryKey: ["gradingAssignmentProgress", selectedAssignmentId] });
       queryClient.invalidateQueries({ queryKey: ["gradingGlobalQueue"] });
     },
     onError: (err: any) => {
@@ -345,6 +345,8 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
     onSuccess: () => {
       showToast("Đã lưu điểm và đánh giá cho câu hỏi thành công!", "success");
       refetchStudentQuestions();
+      refetchProgress();
+      queryClient.invalidateQueries({ queryKey: ["gradingAssignmentProgress", selectedAssignmentId] });
       queryClient.invalidateQueries({ queryKey: ["gradingGlobalQueue"] });
     },
     onError: (err: any) => {
@@ -355,11 +357,24 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
 
   // C. Final Approve Entire Student Assignment Result
   const finalApproveMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       if (!selectedAssignment || !selectedStudent) throw new Error("Thiếu thông tin bài tập hoặc học sinh.");
+
+      // Fetch fresh progress data to guarantee the latest finalReviewVersion
+      let latestVersion = selectedStudent.finalReviewVersion || 0;
+      try {
+        const freshProgress = await getAssignmentProgress(selectedAssignment.assignmentId);
+        const freshStudent = freshProgress?.data?.find((s) => s.studentId === selectedStudent.studentId);
+        if (freshStudent && freshStudent.finalReviewVersion !== undefined) {
+          latestVersion = freshStudent.finalReviewVersion;
+        }
+      } catch {
+        // Fallback to currently loaded selectedStudent version if fetch fails
+      }
+
       return approveAssignmentResult(selectedAssignment.assignmentId, {
         studentId: selectedStudent.studentId,
-        finalReviewVersion: selectedStudent.finalReviewVersion || 0,
+        finalReviewVersion: latestVersion,
         note: finalApproveNote,
       });
     },
@@ -368,9 +383,11 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
       setIsFinalApproveModalOpen(false);
       refetchProgress();
       refetchStudentQuestions();
+      queryClient.invalidateQueries({ queryKey: ["gradingAssignmentProgress", selectedAssignmentId] });
       queryClient.invalidateQueries({ queryKey: ["gradingGlobalQueue"] });
     },
     onError: (err: any) => {
+      refetchProgress();
       const problem = extractProblemDetails(err);
       showToast(problem.detail || "Lỗi khi phê duyệt kết quả bài làm.", "error");
     },
@@ -441,6 +458,14 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
   // Submit Override Handler
   const handleSaveQuestionGrade = () => {
     if (!currentQuestion) return;
+    if (isCorrectVal === null) {
+      showToast("Vui lòng chọn kết quả Đúng hoặc Sai cho câu hỏi trước khi lưu.", "error");
+      return;
+    }
+    if (!feedbackVal.trim()) {
+      showToast("Vui lòng nhập lời nhận xét của giáo viên gửi học sinh trước khi lưu.", "error");
+      return;
+    }
     if (!overrideReasonVal.trim()) {
       showToast("Vui lòng nhập lý do điều chỉnh điểm số (bắt buộc theo quy định kiểm tra).", "error");
       return;
@@ -1205,7 +1230,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                         <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-800">
                           <span className="text-slate-500 dark:text-slate-400 block mb-1">Chất lượng lập luận</span>
                           <span className="text-base font-extrabold text-slate-900 dark:text-slate-100">
-                            {currentQuestion.reasoningQuality
+                            {currentQuestion.reasoningQuality !== null && currentQuestion.reasoningQuality !== undefined
                               ? `${Math.round(Number(currentQuestion.reasoningQuality))}/100`
                               : "N/A"}
                           </span>
@@ -1328,9 +1353,14 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                               <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
                                 <button
                                   type="button"
-                                  onClick={() => setIsCorrectVal(true)}
+                                  onClick={() => {
+                                    setIsCorrectVal(true);
+                                    if (awardedScore === 0) {
+                                      setAwardedScore(currentQuestion.maxScore ?? 10);
+                                    }
+                                  }}
                                   className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                                    isCorrectVal
+                                    isCorrectVal === true
                                       ? "bg-emerald-600 text-white shadow-sm"
                                       : "text-slate-600 dark:text-slate-400"
                                   }`}
@@ -1339,9 +1369,12 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => setIsCorrectVal(false)}
+                                  onClick={() => {
+                                    setIsCorrectVal(false);
+                                    setAwardedScore(0);
+                                  }}
                                   className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                                    !isCorrectVal
+                                    isCorrectVal === false
                                       ? "bg-rose-600 text-white shadow-sm"
                                       : "text-slate-600 dark:text-slate-400"
                                   }`}
@@ -1394,7 +1427,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                           {/* 3. Nhận xét của giáo viên cho học sinh */}
                           <div>
                             <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
-                              Lời nhận xét của giáo viên gửi học sinh
+                              Lời nhận xét của giáo viên gửi học sinh <span className="text-rose-500">*</span>
                             </label>
                             <textarea
                               rows={2}

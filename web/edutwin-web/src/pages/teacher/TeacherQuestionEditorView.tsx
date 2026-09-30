@@ -26,9 +26,19 @@ import {
   TeacherSkeleton,
   TeacherSafeErrorPanel,
   TeacherConcurrencyBanner,
-  TeacherMathFormulaPreview,
 } from "../../components/teacher";
-import { MathInputToolbar } from "../../components/math/MathInputToolbar";
+import { RichMathEditor } from "../../components/math/RichMathEditor";
+import { ModeAwareAnswerEditor } from "../../components/math/answer-editor/ModeAwareAnswerEditor";
+import {
+  validateTextMathFormulas,
+  formatFormulaDiagnosticMessage,
+  getAnswerDraftKey,
+  resetAndHydrateDraftStore,
+  hydrateAnswerEditorValue,
+  serializeAnswerEditorValue,
+  type DraftStore,
+} from "../centerManagerQuestionEditorHelpers";
+import type { AnswerEditorValue } from "../../components/math/answer-editor/answerEditorHelpers";
 
 interface QuestionEditorOption {
   optionId?: string;
@@ -65,6 +75,8 @@ export function TeacherQuestionEditorView() {
     { label: "D", text: "", isCorrect: false, orderIndex: 3, misconception: "" },
   ]);
   const [correctAnswer, setCorrectAnswer] = useState("");
+  const [activeDraftValue, setActiveDraftValue] = useState<AnswerEditorValue | null>(null);
+  const [modeDrafts, setModeDrafts] = useState<DraftStore>({});
   const [solution, setSolution] = useState("");
   const [expectedReasoning, setExpectedReasoning] = useState("");
   const [gradingCriteria, setGradingCriteria] = useState("");
@@ -125,6 +137,13 @@ export function TeacherQuestionEditorView() {
         );
       }
       setCorrectAnswer(q.correctAnswer || "");
+      const hydratedStore = resetAndHydrateDraftStore(q, true);
+      setModeDrafts(hydratedStore);
+      const evalMode =
+        q.answerEvaluationMode ||
+        (q.questionType === "MultipleChoice" ? "TextExact" : q.questionType === "Essay" ? "Manual" : "TextExact");
+      const key = getAnswerDraftKey(q.questionType, evalMode);
+      setActiveDraftValue((key ? hydratedStore[key] : null) ?? hydrateAnswerEditorValue(q.correctAnswer, evalMode));
       setSolution(q.solution || "");
       setExpectedReasoning(q.expectedReasoning || "");
       setGradingCriteria(
@@ -154,14 +173,6 @@ export function TeacherQuestionEditorView() {
         misconception: i === index ? "" : opt.misconception,
       }))
     );
-  };
-
-  const handleInsertMathToQuestion = (latex: string) => {
-    setQuestionText((prev) => prev + latex);
-  };
-
-  const handleInsertMathToSolution = (latex: string) => {
-    setSolution((prev) => prev + latex);
   };
 
   const handleSave = () => {
@@ -207,23 +218,68 @@ export function TeacherQuestionEditorView() {
         return;
       }
       computedCorrectAnswer = correctOpt.label;
-    } else if (questionType === "ShortAnswer") {
-      if (!correctAnswer.trim()) {
-        setFormError({ message: "Vui lòng nhập đáp án chuẩn cho câu hỏi trả lời ngắn." });
+    } else {
+      const evalMode: QuestionAnswerEvaluationMode =
+        questionType === "Essay" ? "Manual" : answerEvaluationMode || "TextExact";
+      const key = getAnswerDraftKey(questionType, evalMode);
+      const draft = (key ? modeDrafts[key] : null) ?? activeDraftValue;
+      computedCorrectAnswer = draft
+        ? serializeAnswerEditorValue(draft, evalMode)
+        : correctAnswer.trim();
+
+      if (!computedCorrectAnswer) {
+        setFormError({
+          message:
+            questionType === "Essay"
+              ? "Vui lòng nhập đáp án chuẩn hoặc hướng dẫn chấm chuẩn cho câu hỏi tự luận."
+              : "Vui lòng nhập đáp án chuẩn cho câu hỏi.",
+        });
         return;
       }
-      computedCorrectAnswer = correctAnswer.trim();
-    } else if (questionType === "Essay") {
-      if (!correctAnswer.trim()) {
-        setFormError({ message: "Vui lòng nhập đáp án chuẩn hoặc kết quả mẫu cho câu hỏi tự luận." });
-        return;
-      }
-      computedCorrectAnswer = correctAnswer.trim();
     }
 
     if (!solution.trim()) {
       setFormError({ message: "Vui lòng nhập lời giải chi tiết (Solution) cho câu hỏi." });
       return;
+    }
+
+    // Defensive check against unclosed delimiter, empty, placeholder, or invalid syntax
+    const qTextDiag = validateTextMathFormulas(questionText)[0];
+    if (qTextDiag) {
+      setFormError({
+        message: formatFormulaDiagnosticMessage("Nội dung đề bài", qTextDiag),
+      });
+      return;
+    }
+
+    const solDiag = validateTextMathFormulas(solution)[0];
+    if (solDiag) {
+      setFormError({
+        message: formatFormulaDiagnosticMessage("Lời giải", solDiag),
+      });
+      return;
+    }
+
+    if (questionType === "MultipleChoice") {
+      for (const opt of options) {
+        const optDiag = validateTextMathFormulas(opt.text)[0];
+        if (optDiag) {
+          setFormError({
+            message: formatFormulaDiagnosticMessage(`Phương án ${opt.label}`, optDiag),
+          });
+          return;
+        }
+      }
+    }
+
+    if (computedCorrectAnswer) {
+      const ansDiag = validateTextMathFormulas(computedCorrectAnswer)[0];
+      if (ansDiag) {
+        setFormError({
+          message: formatFormulaDiagnosticMessage("Đáp án chuẩn", ansDiag),
+        });
+        return;
+      }
     }
 
     const evalMode: QuestionAnswerEvaluationMode =
@@ -444,12 +500,30 @@ export function TeacherQuestionEditorView() {
               onChange={(e) => {
                 const newType = e.target.value as QuestionType;
                 setQuestionType(newType);
+                let newMode = answerEvaluationMode;
                 if (newType === "MultipleChoice") {
+                  newMode = "TextExact";
                   setAnswerEvaluationMode("TextExact");
                 } else if (newType === "Essay") {
+                  newMode = "Manual";
                   setAnswerEvaluationMode("Manual");
                 } else if (newType === "ShortAnswer" && answerEvaluationMode === "Manual") {
+                  newMode = "TextExact";
                   setAnswerEvaluationMode("TextExact");
+                }
+                const key = getAnswerDraftKey(newType, newMode);
+                if (key && modeDrafts[key]) {
+                  setActiveDraftValue(modeDrafts[key]!);
+                  setCorrectAnswer(serializeAnswerEditorValue(modeDrafts[key]!, newMode));
+                } else {
+                  const draft = hydrateAnswerEditorValue("", newMode);
+                  setActiveDraftValue(draft);
+                  if (key) {
+                    setModeDrafts((prev) => ({ ...prev, [key]: draft }));
+                  }
+                  if (newType !== "MultipleChoice") {
+                    setCorrectAnswer("");
+                  }
                 }
               }}
               className="th-select w-full text-xs"
@@ -544,31 +618,16 @@ export function TeacherQuestionEditorView() {
             <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)]">
               Nội dung Đề bài <span className="text-rose-400">*</span>
             </label>
-            <span className="text-[11px] text-[var(--th-teal)]">Hỗ trợ LaTeX: $công\_thức$ hoặc $$khối\_toán$$</span>
+            <span className="text-[11px] text-[var(--th-teal)]">Hỗ trợ WYSIWYG: Gõ $ hoặc Ctrl+M để nhập công thức</span>
           </div>
 
-          {/* Math toolbar */}
-          <MathInputToolbar onInsert={handleInsertMathToQuestion} />
-
-          <textarea
-            rows={4}
+          <RichMathEditor
             value={questionText}
-            onChange={(e) => setQuestionText(e.target.value)}
+            onChange={setQuestionText}
             placeholder="Nhập nội dung đề bài. Ví dụ: Cho hàm số $f(x) = x^3 - 3x^2 + 2$. Tìm giá trị cực đại của hàm số."
-            className="th-input w-full text-sm font-mono leading-relaxed"
+            minHeight="110px"
+            variant="teacher"
           />
-
-          {/* KaTeX Live Preview */}
-          {questionText.trim() && (
-            <div className="rounded-xl border border-[var(--th-border-subtle)] bg-[var(--th-surface-subtle)] p-4 space-y-1.5">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--th-teal)]">
-                Xem trước đề bài (KaTeX Live Preview):
-              </p>
-              <div className="text-sm text-[var(--th-text)]">
-                <TeacherMathFormulaPreview content={questionText} />
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Row 4: Multiple choice options OR Essay criteria */}
@@ -594,7 +653,7 @@ export function TeacherQuestionEditorView() {
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <label className="flex items-center gap-2 cursor-pointer font-bold text-xs">
+                    <label className="flex items-center gap-2 cursor-pointer font-bold text-xs shrink-0">
                       <input
                         type="radio"
                         name="correctOption"
@@ -604,18 +663,15 @@ export function TeacherQuestionEditorView() {
                       />
                       <span>Phương án {opt.label}:</span>
                     </label>
-                    <input
-                      type="text"
+                    <RichMathEditor
                       value={opt.text}
-                      onChange={(e) => handleOptionTextChange(idx, e.target.value)}
-                      placeholder={`Nội dung đáp án ${opt.label} (hỗ trợ LaTeX)...`}
-                      className="th-input flex-1 text-xs"
+                      onChange={(val) => handleOptionTextChange(idx, val)}
+                      placeholder={`Nội dung đáp án ${opt.label} (gõ $ để chèn công thức)...`}
+                      singleLine={true}
+                      minHeight="38px"
+                      className="flex-1"
+                      variant="teacher"
                     />
-                    {opt.text.trim() && (
-                      <div className="min-w-[120px] text-xs text-[var(--th-text-secondary)]">
-                        <TeacherMathFormulaPreview content={opt.text} />
-                      </div>
-                    )}
                   </div>
 
                   {!opt.isCorrect && (
@@ -645,16 +701,37 @@ export function TeacherQuestionEditorView() {
                 </label>
                 <select
                   value={answerEvaluationMode}
-                  onChange={(e) => setAnswerEvaluationMode(e.target.value as QuestionAnswerEvaluationMode)}
+                  onChange={(e) => {
+                    const newMode = e.target.value as QuestionAnswerEvaluationMode;
+                    setAnswerEvaluationMode(newMode);
+                    const key = getAnswerDraftKey("ShortAnswer", newMode);
+                    if (key && modeDrafts[key]) {
+                      setActiveDraftValue(modeDrafts[key]!);
+                      setCorrectAnswer(serializeAnswerEditorValue(modeDrafts[key]!, newMode));
+                    } else {
+                      const draft = hydrateAnswerEditorValue("", newMode);
+                      setActiveDraftValue(draft);
+                      if (key) {
+                        setModeDrafts((prev) => ({ ...prev, [key]: draft }));
+                      }
+                      setCorrectAnswer("");
+                    }
+                  }}
                   className="th-select w-full text-xs"
                 >
                    <option value="TextExact">So khớp chính xác chuỗi (TextExact)</option>
                    <option value="NumericRational">Tương đương số học / đại số / phân số (NumericRational)</option>
                    <option value="Coordinate2D">Tọa độ 2D — chấp nhận (1,1), (1;1) và dạng tương đương</option>
+                   <option value="Manual">Chấm thủ công / AI Rubric (Manual)</option>
                  </select>
                  {answerEvaluationMode === "Coordinate2D" && (
                    <p className="mt-1.5 text-[11px] text-[var(--th-text-muted)]">
                      Đáp án chuẩn phải là một cặp tọa độ, ví dụ (1, 1) hoặc (1/2; 3/4).
+                   </p>
+                 )}
+                 {answerEvaluationMode === "Manual" && (
+                   <p className="mt-1.5 text-[11px] text-[var(--th-text-muted)]">
+                     Dành cho câu hỏi cần đánh giá qua tiêu chí Rubric hoặc giáo viên chấm duyệt.
                    </p>
                  )}
               </div>
@@ -664,13 +741,30 @@ export function TeacherQuestionEditorView() {
               <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1.5">
                 Đáp án chuẩn / Kết quả cuối cùng <span className="text-rose-400">*</span>
               </label>
-              <input
-                type="text"
-                value={correctAnswer}
-                onChange={(e) => setCorrectAnswer(e.target.value)}
-                placeholder="VD: x = 2 hoặc 4/3 hoặc phân số tối giản..."
-                className="th-input w-full text-xs"
-              />
+              <div className="rounded-xl border border-[var(--th-border-subtle)] bg-[var(--th-surface-subtle)] p-4">
+                <ModeAwareAnswerEditor
+                  profile="authoring"
+                  questionType={questionType}
+                  evaluationMode={questionType === "Essay" ? "Manual" : (answerEvaluationMode || "TextExact")}
+                  value={
+                    activeDraftValue ??
+                    hydrateAnswerEditorValue(
+                      correctAnswer,
+                      questionType === "Essay" ? "Manual" : (answerEvaluationMode || "TextExact")
+                    )
+                  }
+                  onChange={(val) => {
+                    setActiveDraftValue(val);
+                    const evalMode = questionType === "Essay" ? "Manual" : (answerEvaluationMode || "TextExact");
+                    const key = getAnswerDraftKey(questionType, evalMode);
+                    if (key) {
+                      setModeDrafts((prev) => ({ ...prev, [key]: val }));
+                    }
+                    const serialized = serializeAnswerEditorValue(val, evalMode);
+                    setCorrectAnswer(serialized);
+                  }}
+                />
+              </div>
             </div>
 
             <div>
@@ -696,13 +790,12 @@ export function TeacherQuestionEditorView() {
                 Lời giải chi tiết (Solution) <span className="text-rose-400">*</span>
               </label>
             </div>
-            <MathInputToolbar onInsert={handleInsertMathToSolution} />
-            <textarea
-              rows={3}
+            <RichMathEditor
               value={solution}
-              onChange={(e) => setSolution(e.target.value)}
-              placeholder="Nhập lời giải chuẩn từng bước để hỗ trợ học sinh..."
-              className="th-input w-full text-xs font-mono mt-2"
+              onChange={setSolution}
+              placeholder="Nhập lời giải chuẩn từng bước để hỗ trợ học sinh... (Gõ $ để chèn công thức)"
+              minHeight="96px"
+              variant="teacher"
             />
           </div>
 

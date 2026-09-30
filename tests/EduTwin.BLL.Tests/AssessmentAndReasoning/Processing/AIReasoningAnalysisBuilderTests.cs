@@ -42,7 +42,7 @@ public sealed class AIReasoningAnalysisBuilderTests
         Assert.Equal(88m, analysis.AnalysisConfidence);
         Assert.Equal(response.Feedback, analysis.Feedback);
         Assert.False(analysis.IsFallback);
-        Assert.False(analysis.NeedsTeacherReview);
+        Assert.True(analysis.NeedsTeacherReview);
         Assert.Equal(AnalysisProvider.Gemini, analysis.Provider);
         Assert.Null(analysis.ModelName);
         Assert.Null(analysis.OverrideReasoningQuality);

@@ -1,0 +1,6 @@
+export const QUESTION_IMPORT_CSV_TEMPLATE =
+  "QuestionType,Difficulty,QuestionText,OptionA,MisconceptionA,OptionB,MisconceptionB,OptionC,MisconceptionC,OptionD,MisconceptionD,CorrectAnswer,Solution,ExpectedReasoning,MaxScore,EstimatedTimeSeconds,ReasoningRequired,AnswerEvaluationMode\n" +
+  'MultipleChoice,3,"Cho hàm số $y=x^2$. Tính $y\'(2)$.","2","Nhầm đạo hàm của hằng số","4","","8","Nhầm mũ thành nhân","0","Nhầm cực trị","B","Ta có $y\'=2x$, thay $x=2$ được $y\'(2)=4$.","Tính đạo hàm cơ bản và thế số",10,120,TRUE,TextExact\n' +
+  'ShortAnswer,2,"Tính giá trị của biểu thức $\\frac{1}{4} + \\frac{1}{4}$.","","","","","","","","","1/2","Ta có 1/4 + 1/4 = 2/4 = 1/2.","Quy đồng và rút gọn phân số",10,60,TRUE,NumericRational\n' +
+  'ShortAnswer,2,"Tìm tọa độ giao điểm của $y=x$ và $y=2-x$.","","","","","","","","","(1; 1)","Phương trình hoành độ: x = 2 - x <=> 2x = 2 <=> x = 1 => y = 1.","Giải hệ phương trình tọa độ giao điểm",10,90,TRUE,Coordinate2D\n' +
+  'Essay,3,"Trình bày ý nghĩa hình học của đạo hàm tại một điểm.","","","","","","","","","Đạo hàm tại điểm x0 là hệ số góc của tiếp tuyến với đồ thị hàm số tại điểm đó.","Học sinh nêu định nghĩa và liên hệ hệ số góc tiếp tuyến.","Hiểu bản chất hình học của đạo hàm",10,180,TRUE,Manual\n';

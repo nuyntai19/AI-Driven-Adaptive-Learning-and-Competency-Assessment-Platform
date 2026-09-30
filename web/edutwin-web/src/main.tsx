@@ -6,13 +6,11 @@ import App from "./App";
 import "./index.css";
 import "katex/dist/katex.min.css";
 
-// Initialize theme from localStorage or system preference
-const storedTheme = localStorage.getItem("edutwin-theme");
-if (storedTheme === "dark" || (!storedTheme && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
-  document.documentElement.classList.add("dark");
-} else {
-  document.documentElement.classList.remove("dark");
-}
+import { resolveInitialTheme, applyTheme } from "./utils/themeMode";
+
+// Initialize theme from localStorage or system preference using shared resolver
+const initialTheme = resolveInitialTheme();
+applyTheme(initialTheme);
 
 const queryClient = new QueryClient({
   defaultOptions: {

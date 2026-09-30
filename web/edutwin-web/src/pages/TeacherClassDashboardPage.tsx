@@ -10,22 +10,20 @@ export const TeacherClassDashboardPage = () => {
   const { classId: routeClassId } = useParams<{ classId?: string }>();
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
-
-  if (user?.accountType === "Teacher") {
-    return <Navigate to={routeClassId ? `/giao-vien/lop-hoc/${routeClassId}` : "/giao-vien/lop-hoc"} replace />;
-  }
-
+  const isTeacher = user?.accountType === "Teacher";
   const isCenterManager = user?.accountType === "CenterManager";
 
   // Load teacher classes
   const { data: classesData, isLoading: classesLoading } = useQuery({
     queryKey: ["teacherClassesList"],
     queryFn: () => organizationApi.listClasses({ page: 1, pageSize: 50 }),
+    enabled: !isTeacher,
   });
 
   const [selectedClassId, setSelectedClassId] = useState<string>(routeClassId || "");
 
   useEffect(() => {
+    if (isTeacher) return;
     if (routeClassId) {
       setSelectedClassId(routeClassId);
     } else if (classesData?.data && classesData.data.length > 0 && !selectedClassId) {
@@ -33,7 +31,7 @@ export const TeacherClassDashboardPage = () => {
       setSelectedClassId(firstId);
       navigate(`/quan-ly/lop-hoc/${firstId}/tong-quan`, { replace: true });
     }
-  }, [routeClassId, classesData, selectedClassId, navigate]);
+  }, [routeClassId, classesData, selectedClassId, navigate, isTeacher]);
 
   const handleSelectClass = (newId: string) => {
     setSelectedClassId(newId);
@@ -50,8 +48,12 @@ export const TeacherClassDashboardPage = () => {
   } = useQuery<ClassDashboardDataDto>({
     queryKey: ["classDashboard", selectedClassId],
     queryFn: () => getClassDashboard(selectedClassId),
-    enabled: !!selectedClassId,
+    enabled: !!selectedClassId && !isTeacher,
   });
+
+  if (isTeacher) {
+    return <Navigate to={routeClassId ? `/giao-vien/lop-hoc/${routeClassId}` : "/giao-vien/lop-hoc"} replace />;
+  }
 
   if (isCenterManager) {
     return (

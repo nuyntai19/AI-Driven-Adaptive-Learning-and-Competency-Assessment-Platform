@@ -1,21 +1,14 @@
 import React, { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import {
-  ResponsiveContainer,
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-  Radar,
-  Tooltip,
-} from "recharts";
 import { getStudentDashboard } from "../api/dashboardsApi";
 import type { StudentDashboardDataDto } from "../types/dashboards";
 import { getSubjectTheme } from "../components/student/subjectTheme";
 import { StudentProgressTrack } from "../components/student/StudentProgressTrack";
 import { StudentSubjectPattern } from "../components/student/StudentSubjectPattern";
 import { StudentKnowledgeMap, type TopicMapNode } from "../components/student/StudentKnowledgeMap";
+
+const StudentRadarChart = React.lazy(() => import("../components/student/StudentRadarChart"));
 
 export const StudentDashboardPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -318,33 +311,18 @@ export const StudentDashboardPage: React.FC = () => {
               subjectName={subject.subjectName}
             />
           ) : (
-            <div className="h-72 w-full min-w-0 mt-4 relative">
-              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                <RadarChart data={radarChartData} outerRadius="68%">
-                  <PolarGrid stroke="#e5e7eb" className="dark:opacity-20" />
-                  <PolarAngleAxis
-                    dataKey="name"
-                    tick={{ fill: "#6b7280", fontSize: 11, fontWeight: 600 }}
-                  />
-                  <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} stroke="#9ca3af" />
-                  <Radar
-                    name="Năng lực"
-                    dataKey="score"
-                    stroke={currentSubjectTheme.color}
-                    fill={currentSubjectTheme.color}
-                    fillOpacity={0.25}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      borderRadius: "12px",
-                      fontSize: "12px",
-                      border: "1px solid #e5e7eb",
-                      backgroundColor: "rgba(255, 255, 255, 0.95)",
-                    }}
-                  />
-                </RadarChart>
-              </ResponsiveContainer>
-            </div>
+            <React.Suspense
+              fallback={
+                <div className="h-72 w-full flex items-center justify-center text-sm text-stone-400">
+                  Đang tải biểu đồ radar...
+                </div>
+              }
+            >
+              <StudentRadarChart
+                data={radarChartData}
+                themeColor={currentSubjectTheme.color}
+              />
+            </React.Suspense>
           )}
         </div>
 

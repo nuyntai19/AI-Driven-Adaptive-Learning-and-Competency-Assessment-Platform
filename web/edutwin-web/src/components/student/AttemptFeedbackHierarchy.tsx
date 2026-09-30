@@ -25,6 +25,7 @@ interface AttemptFeedbackHierarchyProps {
   showStudentSubmission?: boolean;
   scoreAndFeedbackOnly?: boolean;
   answerOptions?: Array<{ optionId: string; label: string; text: string }>;
+  questionType?: string;
   assignmentQuestionCount?: number;
 }
 
@@ -35,6 +36,7 @@ export function AttemptFeedbackHierarchy({
   showStudentSubmission = true,
   scoreAndFeedbackOnly = false,
   answerOptions = [],
+  questionType,
   assignmentQuestionCount,
 }: AttemptFeedbackHierarchyProps) {
   const {
@@ -72,6 +74,18 @@ export function AttemptFeedbackHierarchy({
 
   // Teacher solution accordion state (collapsed by default)
   const [isTeacherSolutionOpen, setIsTeacherSolutionOpen] = useState(false);
+
+  // Check if string is a raw UUID
+  const isUuid = (str?: string | null): boolean => {
+    if (!str) return false;
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str.trim());
+  };
+
+  const isMcq =
+    questionType === "MultipleChoice" ||
+    (Array.isArray(answerOptions) && answerOptions.length > 0) ||
+    isUuid(studentSubmission?.finalAnswer) ||
+    isUuid(studentSubmission?.answerDisplayLatex);
 
   // Sync cooldown timer
   useEffect(() => {
@@ -177,10 +191,27 @@ export function AttemptFeedbackHierarchy({
   };
   const displayedAwardedScore = toDisplayedScore(grading.awardedScore);
   const formatAnswer = (answer: string) => {
+    if (!answer) return "";
+    const cleanAnswer = answer.replace(/\\placeholder(\[[^\]]*\])?(\{[^}]*\})?/g, "___");
     const option = answerOptions.find(
-      (candidate) => candidate.optionId === answer || candidate.label === answer
+      (candidate) =>
+        candidate.optionId === answer ||
+        candidate.optionId === cleanAnswer ||
+        candidate.label === answer ||
+        candidate.label === cleanAnswer
     );
-    return option ? `${option.label}. ${option.text}` : answer;
+    if (option) {
+      return `${option.label}. ${option.text}`;
+    }
+    // Fail-closed: If question is MultipleChoice, any unmatched non-empty answer is generic
+    if (isMcq && cleanAnswer.trim()) {
+      return "Phương án đã chọn";
+    }
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(answer.trim());
+    if (isUuid) {
+      return "Phương án đã chọn";
+    }
+    return cleanAnswer;
   };
 
   const formatQualityBand = (band?: string | null): string => {
@@ -238,7 +269,13 @@ export function AttemptFeedbackHierarchy({
               <p className="font-bold text-slate-900 dark:text-white text-base">
                 {studentSubmission?.finalAnswer ? (
                   <RichMathText
-                    content={studentSubmission.answerDisplayLatex || formatAnswer(studentSubmission.finalAnswer)}
+                    content={
+                      isMcq
+                        ? formatAnswer(studentSubmission.finalAnswer)
+                        : (studentSubmission.answerDisplayLatex
+                            ? studentSubmission.answerDisplayLatex.replace(/\\placeholder(\[[^\]]*\])?(\{[^}]*\})?/g, "___")
+                            : formatAnswer(studentSubmission.finalAnswer))
+                    }
                   />
                 ) : "Chưa có đáp án"}
               </p>

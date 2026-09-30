@@ -1,5 +1,7 @@
 using System.Globalization;
 using EduTwin.BLL.AssessmentAndReasoning.AI;
+using EduTwin.BLL.AssessmentAndReasoning.PreliminaryGrading;
+using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.DAL.AssessmentAndReasoning;
 using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.KnowledgeGraph;
@@ -10,6 +12,17 @@ public sealed class AIAnalysisRequestFactory : IAIAnalysisRequestFactory
 {
     private static readonly HashSet<string> SupportedLanguages =
         new(["vi", "en"], StringComparer.Ordinal);
+
+    private readonly IMathAnswerNormalizer _mathNormalizer;
+    private readonly ICoordinateAnswerNormalizer _coordinateNormalizer;
+
+    public AIAnalysisRequestFactory(
+        IMathAnswerNormalizer? mathNormalizer = null,
+        ICoordinateAnswerNormalizer? coordinateNormalizer = null)
+    {
+        _mathNormalizer = mathNormalizer ?? new MathAnswerNormalizer();
+        _coordinateNormalizer = coordinateNormalizer ?? new CoordinateAnswerNormalizer(_mathNormalizer);
+    }
 
     public AnalyzeReasoningRequest Create(
         Attempt attempt,
@@ -23,6 +36,9 @@ public sealed class AIAnalysisRequestFactory : IAIAnalysisRequestFactory
 
         Validate(attempt, question, allowedKnowledgeNodes);
 
+        var canonicalCorrect = ResolveCanonicalAnswer(question.AnswerEvaluationMode, question.CorrectAnswer);
+        var canonicalFinal = ResolveCanonicalAnswer(question.AnswerEvaluationMode, attempt.FinalAnswer);
+
         return new AnalyzeReasoningRequest
         {
             SchemaVersion = AIAnalysisContract.SchemaVersion,
@@ -30,8 +46,10 @@ public sealed class AIAnalysisRequestFactory : IAIAnalysisRequestFactory
             Question = new AnalyzeReasoningQuestion
             {
                 QuestionType = question.QuestionType,
+                AnswerEvaluationMode = question.AnswerEvaluationMode,
                 QuestionText = question.QuestionText,
                 CorrectAnswer = question.CorrectAnswer,
+                CanonicalCorrectAnswer = canonicalCorrect,
                 Solution = question.Solution,
                 ExpectedReasoning = question.ExpectedReasoning,
                 GradingCriteria = new AnalyzeReasoningGradingCriteria
@@ -45,6 +63,8 @@ public sealed class AIAnalysisRequestFactory : IAIAnalysisRequestFactory
             StudentSubmission = new AnalyzeReasoningStudentSubmission
             {
                 FinalAnswer = attempt.FinalAnswer,
+                AnswerDisplayLatex = attempt.AnswerDisplayLatex,
+                CanonicalFinalAnswer = canonicalFinal,
                 PreliminaryIsCorrect = attempt.IsCorrect,
                 ReasoningText = attempt.ReasoningText,
                 TimeSpentSeconds = attempt.TimeSpentSeconds,
@@ -59,6 +79,20 @@ public sealed class AIAnalysisRequestFactory : IAIAnalysisRequestFactory
                     NodeName = node.NodeName
                 })
                 .ToArray()
+        };
+    }
+
+    private string? ResolveCanonicalAnswer(QuestionAnswerEvaluationMode mode, string? rawAnswer)
+    {
+        if (string.IsNullOrWhiteSpace(rawAnswer)) return null;
+
+        return mode switch
+        {
+            QuestionAnswerEvaluationMode.NumericRational when _mathNormalizer.TryNormalize(rawAnswer, out var rational) && rational.HasValue =>
+                rational.Value.ToString(),
+            QuestionAnswerEvaluationMode.Coordinate2D when _coordinateNormalizer.TryNormalize(rawAnswer, out var coordinate) && coordinate.HasValue =>
+                $"({coordinate.Value.X}; {coordinate.Value.Y})",
+            _ => rawAnswer.Trim()
         };
     }
 

@@ -262,6 +262,7 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
                 ReasoningQuality = evidence.Analysis.ReasoningQuality,
                 AnalysisFeedback = evidence.Analysis!.Feedback,
                 AnalysisConfidence = evidence.Analysis.AnalysisConfidence,
+                ErrorType = (evidence.Analysis.OverrideErrorType ?? evidence.Analysis.ErrorType).ToString(),
                 Evidence = EvidenceProjectionMapper.Map(evidence),
                 SubmittedAt = NormalizeUtc(evidence.Attempt.CreatedAt),
                 HasStudentReviewRequest = hasRequest,

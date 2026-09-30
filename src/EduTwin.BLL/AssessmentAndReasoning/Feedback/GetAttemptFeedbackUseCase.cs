@@ -138,6 +138,7 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
                 : attempt.PreliminaryGradingReasonCode;
 
         var finalAnswerDisplay = attempt.FinalAnswer;
+        string? answerDisplayLatex = attempt.AnswerDisplayLatex;
         if (attempt.Question?.QuestionType == EduTwin.Contracts.CurriculumAndQuestions.QuestionType.MultipleChoice)
         {
             var options = await _dbContext.QuestionOptions
@@ -158,13 +159,20 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
                     ? $"{matched.OptionLabel}. {matched.OptionText}"
                     : matched.OptionLabel;
             }
+            else if (!string.IsNullOrWhiteSpace(raw))
+            {
+                // Fail-closed for ANY unmatched MultipleChoice answer (numeric option ID, UUID, or obsolete string)
+                finalAnswerDisplay = "Phương án đã chọn";
+            }
+
+            answerDisplayLatex = null;
         }
 
         // 1. Student Submission
         var studentSubmissionDto = new AttemptFeedbackStudentSubmissionDto
         {
             FinalAnswer = finalAnswerDisplay,
-            AnswerDisplayLatex = attempt.AnswerDisplayLatex,
+            AnswerDisplayLatex = answerDisplayLatex,
             ReasoningText = attempt.ReasoningText,
             Confidence = attempt.Confidence,
             TimeSpentSeconds = attempt.TimeSpentSeconds,
@@ -247,9 +255,8 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
                 }
             }
 
-            var effectiveQuality = analysis.OverrideReasoningQuality ?? analysis.ReasoningQuality;
-            int? reasoningQualityInt = effectiveQuality.HasValue
-                ? (int)Math.Round(effectiveQuality.Value, MidpointRounding.AwayFromZero)
+            int? aiReasoningQualityInt = analysis.ReasoningQuality.HasValue
+                ? (int)Math.Round(analysis.ReasoningQuality.Value, MidpointRounding.AwayFromZero)
                 : null;
 
             analysisDto = new AttemptFeedbackAnalysisDto
@@ -257,16 +264,16 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
                 AnalysisId = analysis.AnalysisId.ToString(CultureInfo.InvariantCulture),
                 SchemaVersion = analysis.SchemaVersion,
                 MethodDetected = analysis.MethodDetected,
-                ReasoningQuality = reasoningQualityInt,
-                QualityBand = GetQualityBand(effectiveQuality),
-                ErrorType = (analysis.OverrideErrorType ?? analysis.ErrorType).ToString(),
+                ReasoningQuality = aiReasoningQualityInt,
+                QualityBand = GetQualityBand(analysis.ReasoningQuality),
+                ErrorType = analysis.ErrorType.ToString(),
                 Misconception = analysis.Misconception,
                 MissingSteps = missingSteps,
                 RootCauseNodes = rootCauseNodes,
                 Confidence = analysis.AnalysisConfidence.HasValue
                     ? (int)Math.Round(analysis.AnalysisConfidence.Value, MidpointRounding.AwayFromZero)
                     : null,
-                Feedback = analysis.OverrideFeedback ?? analysis.Feedback,
+                Feedback = analysis.Feedback,
                 IsFallback = analysis.IsFallback,
                 NeedsTeacherReview = analysis.NeedsTeacherReview,
                 HasTeacherOverride = analysis.OverrideVersion > 0,
@@ -284,6 +291,9 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
             var reviewer = analysis.ReviewedByUser ?? analysis.OverriddenByUser;
             var teacherName = reviewer?.DisplayName ?? reviewer?.Username ?? "Giáo viên";
             var isApprovedAsIs = string.Equals(analysis.ReviewDecision, "Approved", StringComparison.OrdinalIgnoreCase) && analysis.OverrideVersion == 0;
+            int? teacherReasoningQualityInt = analysis.OverrideReasoningQuality.HasValue
+                ? (int)Math.Round(analysis.OverrideReasoningQuality.Value, MidpointRounding.AwayFromZero)
+                : null;
 
             teacherEvaluationDto = new AttemptFeedbackTeacherEvaluationDto
             {
@@ -294,6 +304,8 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
                 TeacherIsCorrect = analysis.OverrideIsCorrect ?? attempt.IsCorrect,
                 TeacherScore = analysis.OverrideAwardedScore ?? attempt.AwardedScore,
                 TeacherFeedback = analysis.OverrideFeedback ?? analysis.TeacherReviewNote,
+                TeacherReasoningQuality = teacherReasoningQualityInt,
+                TeacherErrorType = analysis.OverrideErrorType?.ToString(),
                 ReviewedByTeacherName = teacherName,
                 ReviewedAt = analysis.ReviewedAt ?? analysis.OverriddenAt,
                 OriginalAIRawGrade = new AttemptFeedbackGradingDto

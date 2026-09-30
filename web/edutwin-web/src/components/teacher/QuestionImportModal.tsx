@@ -4,13 +4,18 @@ import { questionsApi } from "../../api/questionsApi";
 import { organizationApi } from "../../api/organizationApi";
 import { knowledgeGraphApi } from "../../api/knowledgeGraphApi";
 import type { QuestionImportPreviewDataDto } from "../../types/questions";
+import { RichMathText } from "../math/RichMathText";
 import { TeacherModal } from "./TeacherOverlays";
+import "./teacherDesignSystem.css";
 
 interface QuestionImportModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
 }
+
+import { QUESTION_IMPORT_CSV_TEMPLATE } from "../../utils/questionImportTemplate";
+export { QUESTION_IMPORT_CSV_TEMPLATE };
 
 export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImportModalProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -94,7 +99,6 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
         previewToken: previewData.previewToken,
         subjectId: selectedSubjectId,
         primaryTopicNodeId: selectedTopicNodeId,
-        questions: previewData.validQuestions,
       });
 
       setImportResult(res.data);
@@ -123,10 +127,7 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
   };
 
   const downloadCsvTemplate = () => {
-    const csvContent =
-      "QuestionType,Difficulty,QuestionText,OptionA,MisconceptionA,OptionB,MisconceptionB,OptionC,MisconceptionC,OptionD,MisconceptionD,CorrectAnswer,Solution,ExpectedReasoning,MaxScore,EstimatedTimeSeconds,ReasoningRequired\n" +
-      'MultipleChoice,3,"Cho hàm số $y=x^2$. Tính $y\'(2)$.","2","Nhầm đạo hàm của hằng số","4","","8","Nhầm mũ thành nhân","0","Nhầm cực trị","B","Ta có $y\'=2x$, thay $x=2$ được $y\'(2)=4$.","Tính đạo hàm cơ bản và thế số",10,120,TRUE\n' +
-      'ShortAnswer,2,"Giải phương trình $2x - 6 = 0$.","","","","","","","","","3","Ta có $2x=6 \Rightarrow x=3$.","Chuyển vế đổi dấu",10,60,TRUE\n';
+    const csvContent = QUESTION_IMPORT_CSV_TEMPLATE;
 
     const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -149,10 +150,10 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
     >
       <div className="space-y-6">
         {/* Step 1: Destination Selection */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-xl border border-[var(--th-border-subtle)] bg-[var(--th-surface-subtle)]">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-700/80 bg-slate-50 dark:bg-slate-800/40">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1.5">
-              Môn học đích <span className="text-rose-400">*</span>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+              Môn học đích <span className="text-rose-500">*</span>
             </label>
             <select
               value={selectedSubjectId}
@@ -160,7 +161,7 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
                 setSelectedSubjectId(e.target.value);
                 setSelectedTopicNodeId("");
               }}
-              className="th-select w-full text-xs"
+              className="th-select w-full text-xs rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 p-2.5 focus:ring-2 focus:ring-teal-500 focus:outline-none transition-colors"
               disabled={isLoadingSubjects}
             >
               <option value="">-- Chọn môn học --</option>
@@ -173,13 +174,13 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1.5">
-              Chủ đề Cây Tri Thức (Topic Node) <span className="text-rose-400">*</span>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+              Chủ đề Cây Tri Thức (Topic Node) <span className="text-rose-500">*</span>
             </label>
             <select
               value={selectedTopicNodeId}
               onChange={(e) => setSelectedTopicNodeId(e.target.value)}
-              className="th-select w-full text-xs"
+              className="th-select w-full text-xs rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 p-2.5 focus:ring-2 focus:ring-teal-500 focus:outline-none transition-colors"
               disabled={!selectedSubjectId || isLoadingTopics}
             >
               <option value="">
@@ -189,9 +190,9 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
                   ? "Đang tải danh sách chủ đề..."
                   : "-- Chọn chủ đề cây tri thức --"}
               </option>
-              {topicsData?.nodes?.map((node: any) => (
-                <option key={node.id} value={node.id}>
-                  {node.label || node.name || `Node ${node.id}`}
+              {topicsData?.nodes?.map((node) => (
+                <option key={node.nodeId} value={node.nodeId}>
+                  {node.nodeName} ({node.nodeCode})
                 </option>
               ))}
             </select>
@@ -203,7 +204,7 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
           <div className="space-y-4">
             <div
               onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-[var(--th-border-subtle)] hover:border-[var(--th-teal)] rounded-2xl p-8 text-center cursor-pointer transition-colors bg-[var(--th-surface-subtle)]/40 hover:bg-[var(--th-surface-subtle)]"
+              className="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-teal-500 dark:hover:border-teal-400 rounded-2xl p-8 text-center cursor-pointer transition-colors bg-slate-50/80 hover:bg-slate-100/90 dark:bg-slate-800/40 dark:hover:bg-slate-800/70"
             >
               <input
                 ref={fileInputRef}
@@ -212,17 +213,17 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
                 onChange={handleFileChange}
                 className="hidden"
               />
-              <div className="w-12 h-12 mx-auto rounded-full bg-teal-500/10 text-[var(--th-teal)] flex items-center justify-center text-2xl font-bold mb-3">
+              <div className="w-12 h-12 mx-auto rounded-full bg-teal-500/10 text-teal-600 dark:text-teal-400 flex items-center justify-center text-2xl font-bold mb-3">
                 📥
               </div>
-              <p className="text-sm font-semibold text-[var(--th-text)]">
+              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                 {selectedFile ? selectedFile.name : "Nhấn để chọn file hoặc kéo thả file vào đây"}
               </p>
-              <p className="text-xs text-[var(--th-text-muted)] mt-1">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                 Hỗ trợ định dạng Microsoft Excel (.xlsx) và file CSV (.csv) mã hóa UTF-8
               </p>
               {selectedFile && (
-                <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-500/10 text-[var(--th-teal)] text-xs font-semibold">
+                <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-500/15 text-teal-700 dark:text-teal-300 text-xs font-semibold border border-teal-500/30">
                   <span>✓ Đã chọn: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)</span>
                 </div>
               )}
@@ -232,7 +233,7 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
               <button
                 type="button"
                 onClick={downloadCsvTemplate}
-                className="text-xs text-[var(--th-teal)] hover:underline flex items-center gap-1 font-semibold"
+                className="text-xs text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 hover:underline flex items-center gap-1.5 font-semibold cursor-pointer"
               >
                 <span>📄</span> Tải file mẫu (.CSV) có cấu trúc chuẩn & quan niệm sai
               </button>
@@ -241,7 +242,7 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
                 type="button"
                 disabled={!selectedFile || isLoadingPreview}
                 onClick={handleUploadAndPreview}
-                className="th-button-primary text-xs font-semibold px-5 py-2.5 disabled:opacity-50 flex items-center gap-2"
+                className="th-button-primary text-xs font-semibold px-5 py-2.5 rounded-lg bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white shadow-sm hover:shadow disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all cursor-pointer"
               >
                 {isLoadingPreview ? (
                   <>
@@ -259,7 +260,7 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
 
         {/* Preview Error Alert */}
         {previewError && (
-          <div className="p-3.5 rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-300 text-xs flex items-start gap-2">
+          <div className="p-3.5 rounded-xl border border-rose-500/30 bg-rose-50 dark:bg-rose-950/20 text-rose-700 dark:text-rose-300 text-xs flex items-start gap-2">
             <span className="font-bold">⚠</span>
             <div className="flex-1">{previewError}</div>
           </div>
@@ -269,23 +270,23 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
         {previewData && !importResult && (
           <div className="space-y-4">
             {/* Stats Summary Bar */}
-            <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-xl border border-[var(--th-border-subtle)] bg-[var(--th-surface-subtle)]">
+            <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40">
               <div className="flex items-center gap-4">
                 <div>
-                  <span className="text-[11px] text-[var(--th-text-muted)] uppercase font-semibold block">Tổng số dòng</span>
-                  <span className="text-lg font-bold text-[var(--th-text)]">{previewData.totalRows}</span>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 uppercase font-semibold block">Tổng số dòng</span>
+                  <span className="text-lg font-bold text-slate-900 dark:text-slate-100">{previewData.totalRows}</span>
                 </div>
-                <div className="h-8 w-px bg-[var(--th-border-subtle)]" />
+                <div className="h-8 w-px bg-slate-200 dark:bg-slate-700" />
                 <div>
-                  <span className="text-[11px] text-emerald-400 uppercase font-semibold block">Hợp lệ</span>
-                  <span className="text-lg font-bold text-emerald-400">{previewData.validCount}</span>
+                  <span className="text-[11px] text-emerald-600 dark:text-emerald-400 uppercase font-semibold block">Hợp lệ</span>
+                  <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">{previewData.validCount}</span>
                 </div>
                 {previewData.invalidCount > 0 && (
                   <>
-                    <div className="h-8 w-px bg-[var(--th-border-subtle)]" />
+                    <div className="h-8 w-px bg-slate-200 dark:bg-slate-700" />
                     <div>
-                      <span className="text-[11px] text-rose-400 uppercase font-semibold block">Lỗi không hợp lệ</span>
-                      <span className="text-lg font-bold text-rose-400">{previewData.invalidCount}</span>
+                      <span className="text-[11px] text-rose-600 dark:text-rose-400 uppercase font-semibold block">Lỗi không hợp lệ</span>
+                      <span className="text-lg font-bold text-rose-600 dark:text-rose-400">{previewData.invalidCount}</span>
                     </div>
                   </>
                 )}
@@ -296,10 +297,10 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
                   <button
                     type="button"
                     onClick={() => setShowErrorsOnly(!showErrorsOnly)}
-                    className={`text-xs px-3 py-1.5 rounded-lg border font-semibold transition-colors ${
+                    className={`text-xs px-3 py-1.5 rounded-lg border font-semibold transition-colors cursor-pointer ${
                       showErrorsOnly
-                        ? "bg-rose-500/20 text-rose-300 border-rose-500/40"
-                        : "bg-slate-700/40 text-slate-300 border-slate-600 hover:bg-slate-700"
+                        ? "bg-rose-500/20 text-rose-700 dark:text-rose-300 border-rose-500/40"
+                        : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700"
                     }`}
                   >
                     {showErrorsOnly ? "Hiện tất cả" : `Chỉ xem lỗi (${previewData.errors.length})`}
@@ -308,7 +309,7 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
                 <button
                   type="button"
                   onClick={handleReset}
-                  className="text-xs px-3 py-1.5 rounded-lg border border-[var(--th-border-subtle)] text-[var(--th-text-secondary)] hover:bg-[var(--th-surface-subtle)]"
+                  className="th-button-secondary text-xs px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium transition-colors cursor-pointer"
                 >
                   Chọn file khác
                 </button>
@@ -317,18 +318,18 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
 
             {/* Error Details Box */}
             {previewData.errors.length > 0 && (
-              <div className="rounded-xl border border-rose-500/30 bg-rose-500/5 p-4 space-y-2 max-h-48 overflow-y-auto">
-                <h4 className="text-xs font-bold uppercase text-rose-400 tracking-wider">
+              <div className="rounded-xl border border-rose-500/30 bg-rose-50 dark:bg-rose-950/20 p-4 space-y-2 max-h-48 overflow-y-auto">
+                <h4 className="text-xs font-bold uppercase text-rose-700 dark:text-rose-400 tracking-wider">
                   Danh sách lỗi cần khắc phục ({previewData.errors.length} cảnh báo)
                 </h4>
                 <div className="space-y-1.5">
                   {previewData.errors.map((err, i) => (
-                    <div key={i} className="text-xs text-rose-300 flex items-start gap-2">
-                      <span className="font-mono font-bold bg-rose-500/20 px-1.5 py-0.5 rounded text-[10px]">
+                    <div key={i} className="text-xs text-rose-700 dark:text-rose-300 flex items-start gap-2">
+                      <span className="font-mono font-bold bg-rose-500/20 text-rose-800 dark:text-rose-200 px-1.5 py-0.5 rounded text-[10px]">
                         Dòng {err.rowIndex}
                       </span>
                       <span>
-                        <strong className="text-rose-200">[{err.field}]</strong> {err.errorMessage}
+                        <strong className="text-rose-900 dark:text-rose-200">[{err.field}]</strong> {err.errorMessage}
                         {err.rawValue && <span className="opacity-75 font-mono ml-1">("{err.rawValue}")</span>}
                       </span>
                     </div>
@@ -339,37 +340,45 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
 
             {/* Valid Questions Preview Table */}
             {!showErrorsOnly && previewData.validQuestions.length > 0 && (
-              <div className="rounded-xl border border-[var(--th-border-subtle)] overflow-hidden">
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-900">
                 <div className="max-h-64 overflow-y-auto">
                   <table className="w-full text-left text-xs">
-                    <thead className="bg-[var(--th-surface-subtle)] text-[var(--th-text-muted)] font-semibold uppercase text-[10px] sticky top-0">
+                    <thead className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-semibold uppercase text-[10px] sticky top-0">
                       <tr>
                         <th className="p-2.5">Dòng</th>
                         <th className="p-2.5">Loại</th>
+                        <th className="p-2.5">Chế độ chấm</th>
                         <th className="p-2.5">Độ khó</th>
                         <th className="p-2.5">Nội dung câu hỏi</th>
                         <th className="p-2.5">Đáp án</th>
                         <th className="p-2.5">Tư duy / Quan niệm sai</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-[var(--th-border-subtle)]">
+                    <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                       {previewData.validQuestions.map((q) => {
                         const miscs = q.options.filter((o) => Boolean(o.misconception)).length;
                         return (
-                          <tr key={q.rowIndex} className="hover:bg-[var(--th-surface-subtle)]/40">
-                            <td className="p-2.5 font-mono text-[var(--th-text-muted)]">{q.rowIndex}</td>
+                          <tr key={q.rowIndex} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                            <td className="p-2.5 font-mono text-slate-500 dark:text-slate-400">{q.rowIndex}</td>
                             <td className="p-2.5">
-                              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-700/50 text-slate-300">
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
                                 {q.questionType}
                               </span>
                             </td>
-                            <td className="p-2.5 font-semibold text-[var(--th-teal)]">Lv {q.difficulty}</td>
-                            <td className="p-2.5 max-w-xs truncate text-[var(--th-text)]" title={q.questionText}>
-                              {q.questionText}
-                            </td>
-                            <td className="p-2.5 font-bold text-emerald-400 font-mono">{q.correctAnswer}</td>
                             <td className="p-2.5">
-                              <span className="text-[11px] text-[var(--th-text-muted)]">
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-cyan-50 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-500/30">
+                                {q.answerEvaluationMode || "TextExact"}
+                              </span>
+                            </td>
+                            <td className="p-2.5 font-semibold text-teal-600 dark:text-teal-400">Lv {q.difficulty}</td>
+                            <td className="p-2.5 max-w-xs truncate text-slate-900 dark:text-slate-100" title={q.questionText}>
+                              <RichMathText text={q.questionText} />
+                            </td>
+                            <td className="p-2.5 font-bold text-emerald-600 dark:text-emerald-400 font-mono">
+                              <RichMathText text={q.correctAnswer} />
+                            </td>
+                            <td className="p-2.5">
+                              <span className="text-[11px] text-slate-500 dark:text-slate-400">
                                 {q.reasoningRequired ? "Bắt buộc tư duy" : "Không"}
                                 {miscs > 0 && ` • ${miscs} lỗi sai`}
                               </span>
@@ -385,7 +394,7 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
 
             {/* Confirm Error Alert */}
             {confirmError && (
-              <div className="p-3.5 rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-300 text-xs flex items-start gap-2">
+              <div className="p-3.5 rounded-xl border border-rose-500/30 bg-rose-50 dark:bg-rose-950/20 text-rose-700 dark:text-rose-300 text-xs flex items-start gap-2">
                 <span className="font-bold">⚠</span>
                 <div className="flex-1">{confirmError}</div>
               </div>
@@ -393,7 +402,7 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
 
             {/* Confirmation Actions */}
             <div className="flex items-center justify-between pt-2">
-              <span className="text-xs text-[var(--th-text-muted)]">
+              <span className="text-xs text-slate-500 dark:text-slate-400">
                 {previewData.validCount > 0
                   ? `Sẵn sàng nhập ${previewData.validCount} câu hỏi hợp lệ vào hệ thống.`
                   : "Không có câu hỏi hợp lệ để nhập."}
@@ -403,7 +412,7 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
                 <button
                   type="button"
                   onClick={handleReset}
-                  className="th-button-secondary text-xs px-4 py-2"
+                  className="th-button-secondary text-xs px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium transition-colors cursor-pointer"
                 >
                   Hủy
                 </button>
@@ -411,7 +420,7 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
                   type="button"
                   disabled={previewData.validCount === 0 || isConfirming || !selectedSubjectId || !selectedTopicNodeId}
                   onClick={handleConfirmImport}
-                  className="th-button-primary text-xs font-semibold px-6 py-2.5 disabled:opacity-50 flex items-center gap-2"
+                  className="th-button-primary text-xs font-semibold px-6 py-2.5 rounded-lg bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white shadow-sm hover:shadow disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all cursor-pointer"
                 >
                   {isConfirming ? (
                     <>
@@ -430,21 +439,21 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
 
         {/* Step 4: Import Success Screen */}
         {importResult && (
-          <div className="p-8 text-center space-y-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10">
-            <div className="w-14 h-14 mx-auto rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-3xl">
+          <div className="p-8 text-center space-y-4 rounded-2xl border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/20">
+            <div className="w-14 h-14 mx-auto rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-3xl">
               ✓
             </div>
-            <h3 className="text-base font-bold text-emerald-300">
+            <h3 className="text-base font-bold text-emerald-700 dark:text-emerald-300">
               Nhập câu hỏi thành công!
             </h3>
-            <p className="text-xs text-[var(--th-text)] max-w-md mx-auto">
+            <p className="text-xs text-slate-700 dark:text-slate-300 max-w-md mx-auto">
               Đã nhập thành công <strong>{importResult.importedCount} câu hỏi</strong> vào ngân hàng câu hỏi môn học.
             </p>
             <div className="pt-2">
               <button
                 type="button"
                 onClick={onClose}
-                className="th-button-primary text-xs font-semibold px-6 py-2.5"
+                className="th-button-primary text-xs font-semibold px-6 py-2.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white shadow-sm transition-all cursor-pointer"
               >
                 Hoàn tất & Xem danh sách
               </button>

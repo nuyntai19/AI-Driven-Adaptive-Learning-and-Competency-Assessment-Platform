@@ -11,7 +11,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
 using EduTwin.BLL.IdentityAndTenancy;
+using EduTwin.BLL.AssessmentAndReasoning.PreliminaryGrading;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.DAL.CurriculumAndQuestions;
@@ -21,20 +24,73 @@ namespace EduTwin.BLL.CurriculumAndQuestions.Import;
 
 public sealed class QuestionImportUseCase : IQuestionImportUseCase
 {
-    private static readonly ConcurrentDictionary<string, (DateTime CreatedAt, List<QuestionImportItemDto> Questions)> PreviewCache = new();
+    private const int StatusPending = 0;
+    private const int StatusProcessing = 1;
+    private const int StatusCompleted = 2;
+
+    private sealed class PreviewCacheEntry
+    {
+        public DateTime CreatedAtUtc { get; }
+        public Guid CenterId { get; }
+        public Guid UserId { get; }
+        public List<QuestionImportItemDto> Questions { get; }
+        private int _status;
+
+        public PreviewCacheEntry(
+            DateTime createdAtUtc,
+            Guid centerId,
+            Guid userId,
+            List<QuestionImportItemDto> questions)
+        {
+            CreatedAtUtc = createdAtUtc;
+            CenterId = centerId;
+            UserId = userId;
+            Questions = questions;
+            _status = StatusPending;
+        }
+
+        public bool TryBeginProcessing()
+        {
+            return Interlocked.CompareExchange(ref _status, StatusProcessing, StatusPending) == StatusPending;
+        }
+
+        public void MarkCompleted()
+        {
+            Interlocked.Exchange(ref _status, StatusCompleted);
+        }
+
+        public void ResetToPending()
+        {
+            Interlocked.CompareExchange(ref _status, StatusPending, StatusProcessing);
+        }
+
+        public int Status => Volatile.Read(ref _status);
+    }
+
+    private static readonly ConcurrentDictionary<string, PreviewCacheEntry> PreviewCache = new();
 
     private readonly EduTwinDbContext _dbContext;
     private readonly ITenantContext _tenantContext;
     private readonly TimeProvider _timeProvider;
+    private readonly IQuestionActivationPolicy _activationPolicy;
+    private readonly ILogger<QuestionImportUseCase>? _logger;
 
     public QuestionImportUseCase(
         EduTwinDbContext dbContext,
         ITenantContext tenantContext,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IMathAnswerNormalizer? mathNormalizer = null,
+        ICoordinateAnswerNormalizer? coordinateNormalizer = null,
+        IQuestionActivationPolicy? activationPolicy = null,
+        ILogger<QuestionImportUseCase>? logger = null)
     {
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         _tenantContext = tenantContext ?? throw new ArgumentNullException(nameof(tenantContext));
         _timeProvider = timeProvider ?? TimeProvider.System;
+        var math = mathNormalizer ?? new MathAnswerNormalizer();
+        var coord = coordinateNormalizer ?? new CoordinateAnswerNormalizer(math);
+        _activationPolicy = activationPolicy ?? new QuestionActivationPolicy(math, coord);
+        _logger = logger;
     }
 
     public async Task<QuestionImportPreviewResult> PreviewAsync(
@@ -67,7 +123,8 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
         }
         catch (Exception ex)
         {
-            return QuestionImportPreviewResult.ValidationFailed($"Lỗi khi đọc tệp dữ liệu: {ex.Message}");
+            _logger?.LogError(ex, "Lỗi khi đọc tệp dữ liệu nhập câu hỏi: {FileName}", fileName);
+            return QuestionImportPreviewResult.ValidationFailed("Không thể đọc tệp dữ liệu hoặc cấu trúc tệp không hợp lệ. Vui lòng kiểm tra lại định dạng tệp.");
         }
 
         if (rawRows.Count == 0)
@@ -104,12 +161,13 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
             {
                 if (typeStr.Equals("ShortAnswer", StringComparison.OrdinalIgnoreCase) ||
                     typeStr.Equals("Tuluanngan", StringComparison.OrdinalIgnoreCase) ||
-                    typeStr.Equals("TuLuan", StringComparison.OrdinalIgnoreCase))
+                    typeStr.Equals("TraLoiNgan", StringComparison.OrdinalIgnoreCase) ||
+                    typeStr.Equals("DienKhuyet", StringComparison.OrdinalIgnoreCase))
                 {
                     questionType = QuestionType.ShortAnswer;
                 }
                 else if (typeStr.Equals("Essay", StringComparison.OrdinalIgnoreCase) ||
-                         typeStr.Equals("Tuluan", StringComparison.OrdinalIgnoreCase))
+                         typeStr.Equals("TuLuan", StringComparison.OrdinalIgnoreCase))
                 {
                     questionType = QuestionType.Essay;
                 }
@@ -234,7 +292,55 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
                 }
             }
 
-            // 10. Options (for MultipleChoice)
+            // 10. Answer Evaluation Mode
+            var evalModeStr = GetValue(row, "answerevaluationmode", "evaluationmode", "chedochamdapan", "mode", "evalmode");
+            QuestionAnswerEvaluationMode evalMode = questionType switch
+            {
+                QuestionType.MultipleChoice => QuestionAnswerEvaluationMode.TextExact,
+                QuestionType.Essay => QuestionAnswerEvaluationMode.Manual,
+                _ => QuestionAnswerEvaluationMode.TextExact
+            };
+
+            if (!string.IsNullOrWhiteSpace(evalModeStr))
+            {
+                if (evalModeStr.Equals("TextExact", StringComparison.OrdinalIgnoreCase) ||
+                    evalModeStr.Equals("Exact", StringComparison.OrdinalIgnoreCase) ||
+                    evalModeStr.Equals("ChinhXac", StringComparison.OrdinalIgnoreCase))
+                {
+                    evalMode = QuestionAnswerEvaluationMode.TextExact;
+                }
+                else if (evalModeStr.Equals("NumericRational", StringComparison.OrdinalIgnoreCase) ||
+                         evalModeStr.Equals("Numeric", StringComparison.OrdinalIgnoreCase) ||
+                         evalModeStr.Equals("SoHuuTi", StringComparison.OrdinalIgnoreCase) ||
+                         evalModeStr.Equals("So", StringComparison.OrdinalIgnoreCase))
+                {
+                    evalMode = QuestionAnswerEvaluationMode.NumericRational;
+                }
+                else if (evalModeStr.Equals("Coordinate2D", StringComparison.OrdinalIgnoreCase) ||
+                         evalModeStr.Equals("Coordinate", StringComparison.OrdinalIgnoreCase) ||
+                         evalModeStr.Equals("ToaDo", StringComparison.OrdinalIgnoreCase))
+                {
+                    evalMode = QuestionAnswerEvaluationMode.Coordinate2D;
+                }
+                else if (evalModeStr.Equals("Manual", StringComparison.OrdinalIgnoreCase) ||
+                         evalModeStr.Equals("ThuCong", StringComparison.OrdinalIgnoreCase) ||
+                         evalModeStr.Equals("GiaoVienCham", StringComparison.OrdinalIgnoreCase))
+                {
+                    evalMode = QuestionAnswerEvaluationMode.Manual;
+                }
+                else
+                {
+                    rowErrors.Add(new QuestionImportRowErrorDto
+                    {
+                        RowIndex = rowIndex,
+                        Field = "AnswerEvaluationMode",
+                        ErrorMessage = "Chế độ so khớp đáp án không hợp lệ (hỗ trợ TextExact, NumericRational, Coordinate2D, Manual).",
+                        RawValue = evalModeStr
+                    });
+                }
+            }
+
+            // 11. Options (for MultipleChoice)
             var options = new List<QuestionOptionInput>();
             if (questionType == QuestionType.MultipleChoice)
             {
@@ -272,31 +378,35 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
                         });
                     }
                 }
+            }
 
-                if (options.Count < 2)
+            // 12. Enforce unified activation invariants validation
+            var optionValidationItems = options
+                .Select(o => new QuestionOptionValidationItem(o.OptionLabel, o.OptionText, o.IsCorrect))
+                .ToList();
+
+            if (!_activationPolicy.Validate(questionType, evalMode, correctAnswer, optionValidationItems, out var policyError))
+            {
+                string errorField = "AnswerEvaluationMode";
+                if (policyError != null)
                 {
-                    rowErrors.Add(new QuestionImportRowErrorDto
+                    if (policyError.Contains("NumericRational") || policyError.Contains("Coordinate2D") || policyError.Contains("Đáp án đúng"))
                     {
-                        RowIndex = rowIndex,
-                        Field = "Options",
-                        ErrorMessage = "Câu hỏi trắc nghiệm phải có ít nhất 2 lựa chọn (OptionA, OptionB).",
-                        RawValue = $"Found {options.Count} options"
-                    });
-                }
-                else
-                {
-                    var correctCount = options.Count(o => o.IsCorrect);
-                    if (correctCount != 1)
+                        errorField = "CorrectAnswer";
+                    }
+                    else if (policyError.Contains("lựa chọn") || policyError.Contains("đáp án đúng"))
                     {
-                        rowErrors.Add(new QuestionImportRowErrorDto
-                        {
-                            RowIndex = rowIndex,
-                            Field = "CorrectAnswer",
-                            ErrorMessage = $"Câu hỏi trắc nghiệm phải có đúng 1 đáp án đúng (hiện phát hiện {correctCount} đáp án khớp với '{correctAnswer}').",
-                            RawValue = correctAnswer
-                        });
+                        errorField = "Options";
                     }
                 }
+
+                rowErrors.Add(new QuestionImportRowErrorDto
+                {
+                    RowIndex = rowIndex,
+                    Field = errorField,
+                    ErrorMessage = policyError ?? "Câu hỏi không thỏa mãn điều kiện kích hoạt.",
+                    RawValue = errorField == "CorrectAnswer" ? correctAnswer : evalMode.ToString()
+                });
             }
 
             // 11. Rubrics (RequiredIdeas, CommonErrors)
@@ -328,6 +438,7 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
                     MaxScore = maxScore,
                     EstimatedTimeSeconds = estimatedTimeSeconds,
                     ReasoningRequired = reasoningRequired,
+                    AnswerEvaluationMode = evalMode,
                     Options = options,
                     RequiredIdeas = requiredIdeas,
                     CommonErrors = commonErrors
@@ -336,13 +447,16 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
         }
 
         var previewToken = Guid.NewGuid().ToString("N");
-        PreviewCache[previewToken] = (DateTime.UtcNow, validQuestions);
+        var nowUtc = _timeProvider.GetUtcNow().UtcDateTime;
+        var centerId = _tenantContext.CenterId ?? Guid.Empty;
+        var actorId = _tenantContext.UserId ?? Guid.Empty;
+        PreviewCache[previewToken] = new PreviewCacheEntry(nowUtc, centerId, actorId, validQuestions);
 
-        // Clean up old cache entries (> 1 hour)
-        var threshold = DateTime.UtcNow.AddHours(-1);
+        // Clean up old cache entries (> 30 minutes)
+        var threshold = nowUtc.AddMinutes(-30);
         foreach (var key in PreviewCache.Keys)
         {
-            if (PreviewCache.TryGetValue(key, out var cached) && cached.CreatedAt < threshold)
+            if (PreviewCache.TryGetValue(key, out var cached) && cached.CreatedAtUtc < threshold)
             {
                 PreviewCache.TryRemove(key, out _);
             }
@@ -382,54 +496,76 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
         var centerId = _tenantContext.CenterId.Value;
         var actorId = _tenantContext.UserId.Value;
 
-        if (request.SubjectId == Guid.Empty)
+        // Strictly require valid, non-expired preview token bound to current tenant and actor.
+        // Direct unverified question payloads without a valid preview session are rejected.
+        if (string.IsNullOrWhiteSpace(request.PreviewToken) || !PreviewCache.TryGetValue(request.PreviewToken, out var cached))
         {
-            return QuestionImportConfirmResult.ValidationFailed("Môn học (SubjectId) là bắt buộc.");
+            return QuestionImportConfirmResult.ValidationFailed("Mã xác thực xem trước (PreviewToken) không hợp lệ hoặc đã hết hạn. Vui lòng tải và xem trước lại tệp dữ liệu.");
         }
 
-        if (request.PrimaryTopicNodeId == 0)
+        if (cached.CenterId != centerId || cached.UserId != actorId)
         {
-            return QuestionImportConfirmResult.ValidationFailed("Chủ đề kiến thức (PrimaryTopicNodeId) là bắt buộc.");
+            return QuestionImportConfirmResult.ValidationFailed("Mã xác thực xem trước không khớp với người dùng hoặc trung tâm hiện tại.");
         }
 
-        // Verify subject and topic node exist
-        var subjectExists = await _dbContext.Subjects.AsNoTracking()
-            .AnyAsync(s => s.CenterId == centerId && s.SubjectId == request.SubjectId && !s.IsDeleted, cancellationToken);
-        if (!subjectExists)
+        if (cached.CreatedAtUtc.AddMinutes(30) < _timeProvider.GetUtcNow().UtcDateTime)
         {
-            return QuestionImportConfirmResult.NotFound("Môn học không tồn tại trong trung tâm.");
+            PreviewCache.TryRemove(request.PreviewToken, out _);
+            return QuestionImportConfirmResult.ValidationFailed("Mã xác thực xem trước (PreviewToken) đã hết hạn. Vui lòng tải và xem trước lại tệp dữ liệu.");
         }
 
-        var nodeExists = await _dbContext.KnowledgeNodes.AsNoTracking()
-            .AnyAsync(n => n.CenterId == centerId && n.SubjectId == request.SubjectId && n.NodeId == request.PrimaryTopicNodeId && !n.IsDeleted, cancellationToken);
-        if (!nodeExists)
+        // Atomic transition to prevent concurrent duplicate imports and guarantee idempotency
+        if (!cached.TryBeginProcessing())
         {
-            return QuestionImportConfirmResult.NotFound("Chủ đề kiến thức không tồn tại trong môn học.");
+            return QuestionImportConfirmResult.ValidationFailed("Phiên nhập câu hỏi này đang được xử lý hoặc đã hoàn tất. Vui lòng không gửi yêu cầu trùng lặp.");
         }
 
-        // Retrieve questions from request payload or preview cache
-        List<QuestionImportItemDto>? questionsToImport = request.Questions;
-        if (questionsToImport == null || questionsToImport.Count == 0)
-        {
-            if (!string.IsNullOrWhiteSpace(request.PreviewToken) && PreviewCache.TryGetValue(request.PreviewToken, out var cached))
-            {
-                questionsToImport = cached.Questions;
-            }
-        }
-
-        if (questionsToImport == null || questionsToImport.Count == 0)
-        {
-            return QuestionImportConfirmResult.ValidationFailed("Không có câu hỏi hợp lệ nào để nhập.");
-        }
-
-        var now = _timeProvider.GetUtcNow().UtcDateTime;
-        var importedCount = 0;
-
-        await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var completed = false;
+        IDbContextTransaction? transaction = null;
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var questionsToImport = cached.Questions;
+            if (questionsToImport == null || questionsToImport.Count == 0)
+            {
+                return QuestionImportConfirmResult.ValidationFailed("Không có câu hỏi hợp lệ nào để nhập.");
+            }
+
+            if (request.SubjectId == Guid.Empty)
+            {
+                return QuestionImportConfirmResult.ValidationFailed("Môn học (SubjectId) là bắt buộc.");
+            }
+
+            if (request.PrimaryTopicNodeId == 0)
+            {
+                return QuestionImportConfirmResult.ValidationFailed("Chủ đề kiến thức (PrimaryTopicNodeId) là bắt buộc.");
+            }
+
+            // Verify subject and topic node exist
+            var subjectExists = await _dbContext.Subjects.AsNoTracking()
+                .AnyAsync(s => s.CenterId == centerId && s.SubjectId == request.SubjectId && !s.IsDeleted, cancellationToken);
+            if (!subjectExists)
+            {
+                return QuestionImportConfirmResult.NotFound("Môn học không tồn tại trong trung tâm.");
+            }
+
+            var nodeExists = await _dbContext.KnowledgeNodes.AsNoTracking()
+                .AnyAsync(n => n.CenterId == centerId && n.SubjectId == request.SubjectId && n.NodeId == request.PrimaryTopicNodeId && !n.IsDeleted, cancellationToken);
+            if (!nodeExists)
+            {
+                return QuestionImportConfirmResult.NotFound("Chủ đề kiến thức không tồn tại trong môn học.");
+            }
+
+            var now = _timeProvider.GetUtcNow().UtcDateTime;
+            var importedCount = 0;
+
+            transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+
             foreach (var item in questionsToImport)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 var criteria = new Contracts.CurriculumAndQuestions.GradingCriteria
                 {
                     RequiredIdeas = item.RequiredIdeas,
@@ -437,12 +573,33 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
                     ScoringNotes = item.Solution
                 };
 
-                var evalMode = item.QuestionType switch
+                // Shared comprehensive activation validation policy for importing directly into Active status
+                var optionValidationItems = item.Options?
+                    .Select(o => new QuestionOptionValidationItem(o.OptionLabel, o.OptionText, o.IsCorrect))
+                    .ToList() ?? new List<QuestionOptionValidationItem>();
+
+                if (!_activationPolicy.ValidateCompleteQuestion(
+                    item.QuestionType,
+                    item.AnswerEvaluationMode,
+                    item.Difficulty,
+                    item.QuestionText,
+                    item.CorrectAnswer,
+                    item.Solution,
+                    item.MaxScore,
+                    item.EstimatedTimeSeconds,
+                    optionValidationItems,
+                    out var policyError))
                 {
-                    QuestionType.MultipleChoice => QuestionAnswerEvaluationMode.TextExact,
-                    QuestionType.Essay => QuestionAnswerEvaluationMode.Manual,
-                    _ => QuestionAnswerEvaluationMode.TextExact
-                };
+                    try
+                    {
+                        await transaction.RollbackAsync(CancellationToken.None);
+                    }
+                    catch (Exception rbEx)
+                    {
+                        _logger?.LogWarning(rbEx, "Không thể rollback transaction khi câu hỏi không thỏa điều kiện kích hoạt.");
+                    }
+                    return QuestionImportConfirmResult.ValidationFailed($"Dòng {item.RowIndex}: {policyError}");
+                }
 
                 var question = new Question
                 {
@@ -462,7 +619,7 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
                     ReasoningRequired = item.ReasoningRequired,
                     LanguageCode = "vi",
                     Status = QuestionStatus.Active,
-                    AnswerEvaluationMode = evalMode,
+                    AnswerEvaluationMode = item.AnswerEvaluationMode,
                     CreatedAt = now,
                     CreatedBy = actorId,
                     UpdatedAt = now,
@@ -503,6 +660,8 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
 
             await transaction.CommitAsync(cancellationToken);
 
+            completed = true;
+            cached.MarkCompleted();
             if (!string.IsNullOrWhiteSpace(request.PreviewToken))
             {
                 PreviewCache.TryRemove(request.PreviewToken, out _);
@@ -514,10 +673,54 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
                 Message = $"Đã nhập thành công {importedCount} câu hỏi vào ngân hàng đề."
             });
         }
+        catch (OperationCanceledException)
+        {
+            if (transaction != null)
+            {
+                try
+                {
+                    await transaction.RollbackAsync(CancellationToken.None);
+                }
+                catch (Exception rbEx)
+                {
+                    _logger?.LogWarning(rbEx, "Không thể rollback transaction khi bị hủy (cancellation).");
+                }
+            }
+            throw;
+        }
         catch (Exception ex)
         {
-            await transaction.RollbackAsync(cancellationToken);
-            return QuestionImportConfirmResult.Failure("IMPORT_FAILED", $"Lỗi trong quá trình nhập dữ liệu: {ex.Message}");
+            if (transaction != null)
+            {
+                try
+                {
+                    await transaction.RollbackAsync(CancellationToken.None);
+                }
+                catch (Exception rbEx)
+                {
+                    _logger?.LogWarning(rbEx, "Không thể rollback transaction khi xảy ra lỗi.");
+                }
+            }
+            _logger?.LogError(ex, "Lỗi xảy ra khi lưu câu hỏi nhập dữ liệu cho CenterId {CenterId}, SubjectId {SubjectId}", centerId, request.SubjectId);
+            return QuestionImportConfirmResult.Failure("IMPORT_FAILED", "Đã xảy ra lỗi trong quá trình lưu dữ liệu câu hỏi. Vui lòng kiểm tra lại dữ liệu hoặc thử lại sau.");
+        }
+        finally
+        {
+            if (transaction != null)
+            {
+                try
+                {
+                    await transaction.DisposeAsync();
+                }
+                catch (Exception dispEx)
+                {
+                    _logger?.LogWarning(dispEx, "Không thể dispose transaction.");
+                }
+            }
+            if (!completed)
+            {
+                cached.ResetToPending();
+            }
         }
     }
 

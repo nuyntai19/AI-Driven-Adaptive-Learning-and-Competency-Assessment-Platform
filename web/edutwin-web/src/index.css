@@ -13,12 +13,25 @@ math-field {
   background-color: transparent !important;
 }
 
-.dark math-field {
+math-field.dark,
+.dark math-field,
+.bg-slate-950 math-field,
+.bg-slate-900 math-field,
+[data-theme="dark"] math-field {
   --color: #f8fafc;
-  --placeholder-color: #a5b4fc;
-  --caret-color: #a5b4fc;
-  --selection-background-color: rgba(129, 140, 248, 0.35);
+  --placeholder-color: #38bdf8;
+  --caret-color: #38bdf8;
+  --selection-background-color: rgba(56, 189, 248, 0.35);
   color: #f8fafc !important;
+}
+
+/* Ensure placeholder boxes like \sqrt{\placeholder} and \left\vert\placeholder\right\vert are clearly visible and styled */
+math-field::part(placeholder),
+math-field .ML__placeholder,
+.ML__placeholder {
+  opacity: 0.85 !important;
+  border-bottom: 1.5px dashed currentColor !important;
+  padding: 0 2px !important;
 }
 
 /* Hide MathLive virtual keyboard toggle and menu toggle when in text (keyboard) mode */
@@ -32,3 +45,24 @@ math-field[data-input-mode="text"]::part(menu-toggle),
   pointer-events: none !important;
 }
 
+/* RichMathEditor contenteditable empty placeholder styling */
+.rich-math-content-editable:empty::before,
+.rich-math-content-editable[data-empty="true"]::before {
+  content: attr(data-placeholder);
+  color: var(--rme-text-muted, #94a3b8);
+  opacity: 0.65;
+  pointer-events: none;
+  display: block;
+}
+
+/* RichMathEditor inline math pill styling adapting to actor tokens */
+.inline-math-node {
+  background-color: var(--rme-math-bg, rgba(6, 182, 212, 0.15));
+  border-color: var(--rme-math-border, rgba(6, 182, 212, 0.35));
+  color: var(--rme-math-text, #22d3ee);
+}
+
+.inline-math-node:hover {
+  filter: brightness(1.1);
+  border-color: var(--rme-border-focus, #06b6d4);
+}

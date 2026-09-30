@@ -23,9 +23,11 @@ import {
 import { StudentSubjectRequiredState } from "../components/student/StudentSubjectRequiredState";
 import { AttemptFeedbackHierarchy } from "../components/student/AttemptFeedbackHierarchy";
 import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
-import { MathInputToolbar } from "../components/math/MathInputToolbar";
-import { VisualMathField, type VisualMathFieldRef } from "../components/math/VisualMathField";
+import { type VisualMathFieldRef } from "../components/math/VisualMathField";
 import { RichMathText } from "../components/math/RichMathText";
+import { RichMathEditor, type RichMathEditorRef } from "../components/math/RichMathEditor";
+import { ModeAwareAnswerEditor } from "../components/math/answer-editor/ModeAwareAnswerEditor";
+import type { AnswerEditorRef } from "../components/math/answer-editor/answerEditorHelpers";
 import { SideAssistantWorkspace, type AssistantToolTab } from "../components/math/SideAssistantWorkspace";
 import {
   clearAttemptSessionId,
@@ -181,16 +183,18 @@ export const LearningPlayerPage = () => {
   const [reasoningText, setReasoningText] = useState<string>("");
   const [confidence, setConfidence] = useState<number>(80);
   const [answerChanges, setAnswerChanges] = useState<number>(0);
+  const answerChangesRef = useRef<number>(0);
   const [timeSpentSeconds, setTimeSpentSeconds] = useState<number>(0);
 
   // Assistant tools state
   const [activeSideTool, setActiveSideTool] = useState<AssistantToolTab | null>(null);
-  const [showMathToolbar, setShowMathToolbar] = useState<boolean>(false);
   const [drawingUploadToken, setDrawingUploadToken] = useState<string | null>(null);
 
   // Input refs and cursor management
   const reasoningTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const reasoningEditorRef = useRef<RichMathEditorRef>(null);
   const visualMathFieldRef = useRef<VisualMathFieldRef>(null);
+  const answerEditorRef = useRef<AnswerEditorRef>(null);
   const [activeInputTarget, setActiveInputTarget] = useState<"answer" | "reasoning">("answer");
 
   // Client submission token (unique per attempt session)
@@ -319,9 +323,9 @@ export const LearningPlayerPage = () => {
     setReasoningText("");
     setConfidence(80);
     setAnswerChanges(0);
+    answerChangesRef.current = 0;
     setTimeSpentSeconds(0);
     setActiveSideTool(null);
-    setShowMathToolbar(false);
     setDrawingUploadToken(null);
     setActiveInputTarget("answer");
     clientSubmissionIdRef.current = createClientSubmissionId();
@@ -534,7 +538,7 @@ export const LearningPlayerPage = () => {
           orderIndex: idx,
         })),
         explanation: assignment.instructions || "",
-        answerEvaluationMode: assignmentQuestion.questionType === "Numeric" ? "NumericRational" : "Exact",
+        answerEvaluationMode: assignmentQuestion.answerEvaluationMode || "TextExact",
       };
     }
     return adaptiveQuestion || null;
@@ -581,7 +585,9 @@ export const LearningPlayerPage = () => {
       setReasoningText(effectiveSubmittedReasoning || "");
       setConfidence(assignmentQuestion?.latestAttempt?.confidence ?? saved?.confidence ?? 80);
       setTimeSpentSeconds(assignmentQuestion?.latestAttempt?.timeSpentSeconds ?? saved?.timeSpentSeconds ?? 0);
-      setAnswerChanges(assignmentQuestion?.latestAttempt?.answerChanges ?? saved?.answerChanges ?? 0);
+      const initialChanges = assignmentQuestion?.latestAttempt?.answerChanges ?? saved?.answerChanges ?? 0;
+      answerChangesRef.current = initialChanges;
+      setAnswerChanges(initialChanges);
       setAttachedSnapshotDataUrl(saved?.snapshotDataUrl || null);
       setAttachedSnapshotTime(saved?.snapshotTime || null);
       setDrawingUploadToken(saved?.drawingUploadToken || null);
@@ -591,7 +597,9 @@ export const LearningPlayerPage = () => {
       setReasoningText(saved.reasoningText || "");
       setConfidence(saved.confidence ?? 80);
       setTimeSpentSeconds(saved.timeSpentSeconds ?? 0);
-      setAnswerChanges(saved.answerChanges ?? 0);
+      const initialChanges = saved.answerChanges ?? 0;
+      answerChangesRef.current = initialChanges;
+      setAnswerChanges(initialChanges);
       setAttachedSnapshotDataUrl(saved.snapshotDataUrl || null);
       setAttachedSnapshotTime(saved.snapshotTime || null);
       setDrawingUploadToken(saved.drawingUploadToken || null);
@@ -601,7 +609,9 @@ export const LearningPlayerPage = () => {
       setReasoningText(effectiveSubmittedReasoning || "");
       setConfidence(assignmentQuestion?.latestAttempt?.confidence ?? 80);
       setTimeSpentSeconds(assignmentQuestion?.latestAttempt?.timeSpentSeconds ?? 0);
-      setAnswerChanges(assignmentQuestion?.latestAttempt?.answerChanges ?? 0);
+      const initialChanges = assignmentQuestion?.latestAttempt?.answerChanges ?? 0;
+      answerChangesRef.current = initialChanges;
+      setAnswerChanges(initialChanges);
       setAttachedSnapshotDataUrl(null);
       setAttachedSnapshotTime(null);
       setDrawingUploadToken(null);
@@ -611,6 +621,7 @@ export const LearningPlayerPage = () => {
       setReasoningText("");
       setConfidence(80);
       setTimeSpentSeconds(0);
+      answerChangesRef.current = 0;
       setAnswerChanges(0);
       setAttachedSnapshotDataUrl(null);
       setAttachedSnapshotTime(null);
@@ -666,7 +677,13 @@ export const LearningPlayerPage = () => {
 
   // Persist current question answer into assignmentAnswers & localStorage
   const persistCurrentAnswer = useCallback(
-    (newFinalAnswer?: string, newReasoning?: string, newConf?: number, newAnswerDisplayLatex?: string) => {
+    (
+      newFinalAnswer?: string,
+      newReasoning?: string,
+      newConf?: number,
+      newAnswerDisplayLatex?: string,
+      newAnswerChanges?: number
+    ) => {
       if (!assignmentDraftScope || !question?.questionId) return;
       if (assignmentQuestion?.latestAttempt) return; // Do not overwrite server truth for already-submitted questions
       const qId = question.questionId;
@@ -677,7 +694,7 @@ export const LearningPlayerPage = () => {
         reasoningText: newReasoning !== undefined ? newReasoning : reasoningText,
         confidence: newConf !== undefined ? newConf : confidence,
         timeSpentSeconds,
-        answerChanges,
+        answerChanges: newAnswerChanges !== undefined ? newAnswerChanges : answerChanges,
         snapshotDataUrl: attachedSnapshotDataUrl,
         snapshotTime: attachedSnapshotTime,
         drawingUploadToken,
@@ -885,10 +902,12 @@ export const LearningPlayerPage = () => {
   // Answer change handlers
   const handleAnswerChange = (plainText: string, latex: string) => {
     if (isReadOnly) return;
+    const nextAnswerChanges = answerChangesRef.current + 1;
+    answerChangesRef.current = nextAnswerChanges;
     setFinalAnswer(plainText);
     setAnswerDisplayLatex(latex);
-    setAnswerChanges((prev) => prev + 1);
-    persistCurrentAnswer(plainText, undefined, undefined, latex);
+    setAnswerChanges(nextAnswerChanges);
+    persistCurrentAnswer(plainText, undefined, undefined, latex, nextAnswerChanges);
   };
 
   const handleReasoningChange = (val: string) => {
@@ -908,9 +927,12 @@ export const LearningPlayerPage = () => {
     if (isReadOnly) return;
 
     if (activeInputTarget === "answer") {
-      if (visualMathFieldRef.current) {
+      if (answerEditorRef.current?.insertAtCursor) {
+        answerEditorRef.current.insertAtCursor(textToInsert);
+      } else if (answerEditorRef.current?.insertLatex) {
+        answerEditorRef.current.insertLatex(textToInsert);
+      } else if (visualMathFieldRef.current) {
         visualMathFieldRef.current.insertAtCursor(textToInsert);
-        setAnswerChanges((prev) => prev + 1);
       } else {
         handleAnswerChange(finalAnswer + textToInsert, answerDisplayLatex + textToInsert);
       }
@@ -918,22 +940,31 @@ export const LearningPlayerPage = () => {
     }
 
     if (activeInputTarget === "reasoning") {
-      const textarea = reasoningTextareaRef.current;
-      if (!textarea) {
-        handleReasoningChange(reasoningText + textToInsert);
-        return;
+      if (reasoningEditorRef.current) {
+        if (/[\\[{^_\\]]/.test(textToInsert)) {
+          const formula = textToInsert.replace(/^\$+|\$+$/g, "");
+          reasoningEditorRef.current.insertLatex(formula);
+        } else {
+          reasoningEditorRef.current.insertText(textToInsert);
+        }
+      } else {
+        const textarea = reasoningTextareaRef.current;
+        if (!textarea) {
+          handleReasoningChange(reasoningText + textToInsert);
+          return;
+        }
+
+        const start = textarea.selectionStart ?? textarea.value.length;
+        const end = textarea.selectionEnd ?? textarea.value.length;
+        const currentVal = textarea.value;
+        const updatedVal = currentVal.substring(0, start) + textToInsert + currentVal.substring(end);
+        handleReasoningChange(updatedVal);
+
+        setTimeout(() => {
+          textarea.focus();
+          textarea.setSelectionRange(start + textToInsert.length, start + textToInsert.length);
+        }, 0);
       }
-
-      const start = textarea.selectionStart ?? textarea.value.length;
-      const end = textarea.selectionEnd ?? textarea.value.length;
-      const currentVal = textarea.value;
-      const updatedVal = currentVal.substring(0, start) + textToInsert + currentVal.substring(end);
-      handleReasoningChange(updatedVal);
-
-      setTimeout(() => {
-        textarea.focus();
-        textarea.setSelectionRange(start + textToInsert.length, start + textToInsert.length);
-      }, 0);
       return;
     }
   };
@@ -1419,7 +1450,7 @@ export const LearningPlayerPage = () => {
         maxTotalForDetermined += Number(maxScore);
       }
 
-      if (q.latestAttempt?.isCorrect === true) {
+      if ((q.effectiveIsCorrect ?? q.latestAttempt?.isCorrect) === true) {
         correctCount++;
       }
     }
@@ -1569,6 +1600,10 @@ export const LearningPlayerPage = () => {
           {/* 4-Tier Hierarchy: Student Work -> AI Reasoning -> Teacher Solution -> Teacher Evaluation */}
           <AttemptFeedbackHierarchy
             feedbackData={feedbackData}
+            questionType={
+              assignmentQuestions.find((item) => item.questionId === feedbackData.questionId)?.questionType ??
+              question?.questionType
+            }
             answerOptions={
               assignmentQuestions.find((item) => item.questionId === feedbackData.questionId)?.options ??
               question?.options ??
@@ -2193,27 +2228,7 @@ export const LearningPlayerPage = () => {
                       </span>
                     )}
                   </div>
-                  {question?.questionType !== "MultipleChoice" && !isReadOnly && (
-                    <button
-                      type="button"
-                      onClick={() => setShowMathToolbar(!showMathToolbar)}
-                      className="text-xs font-bold px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800 transition-colors flex items-center gap-1 cursor-pointer"
-                    >
-                      <span>∑ Bảng gõ ký hiệu Toán</span>
-                      <span>{showMathToolbar ? "▲" : "▼"}</span>
-                    </button>
-                  )}
                 </div>
-
-                {showMathToolbar && question?.questionType !== "MultipleChoice" && !isReadOnly && (
-                  <div className="mb-4">
-                    <MathInputToolbar
-                      onInsert={(sym) => insertTextAtCursor(sym)}
-                      disabled={isReadOnly}
-                      inputMode={activeInputTarget === "answer" ? "visual" : "latex"}
-                    />
-                  </div>
-                )}
 
                 {/* Multiple choice grid */}
                 {question?.questionType === "MultipleChoice" ? (
@@ -2252,7 +2267,7 @@ export const LearningPlayerPage = () => {
                           </span>
                           <div className="flex-1 min-w-0">
                             <span className="text-sm font-semibold truncate block">
-                              {option.text}
+                              <RichMathText content={option.text} />
                             </span>
                             {isSelected && isAssignmentSubmitted && (
                               <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 block mt-0.5">
@@ -2266,14 +2281,25 @@ export const LearningPlayerPage = () => {
                   </fieldset>
                 ) : (
                   <div>
-                    {/* Visual Math Field (MathLive) */}
-                    <VisualMathField
-                      ref={visualMathFieldRef}
-                      value={answerDisplayLatex}
-                      onChange={(latex, plainText) => handleAnswerChange(plainText, latex)}
+                    <ModeAwareAnswerEditor
+                      ref={answerEditorRef}
+                      profile="answering"
+                      questionType={question?.questionType || "ShortAnswer"}
+                      evaluationMode={question?.answerEvaluationMode || "NumericRational"}
+                      value={{ rawText: finalAnswer, displayLatex: answerDisplayLatex }}
+                      onChange={(val) => handleAnswerChange(val.rawText, val.displayLatex)}
                       onFocus={() => setActiveInputTarget("answer")}
                       disabled={isReadOnly}
-                      placeholder={isAssignmentSubmitted ? "Chưa có đáp số" : "Gõ công thức hoặc đáp số cuối cùng (hoặc dùng Casio để tự chèn)..."}
+                      readOnly={isAssignmentSubmitted}
+                      placeholder={
+                        isAssignmentSubmitted
+                          ? "Chưa có đáp số"
+                          : question?.questionType === "Essay"
+                          ? "Nhập câu trả lời tự luận hoặc trình bày lời giải chi tiết..."
+                          : "Gõ công thức hoặc đáp số cuối cùng (hoặc dùng Casio để tự chèn)..."
+                      }
+                      showPreview={false}
+                      showSyntaxHint={false}
                       autoFocus={!isReadOnly}
                     />
                   </div>
@@ -2297,41 +2323,23 @@ export const LearningPlayerPage = () => {
                   ) : null}
                 </div>
 
-                <textarea
-                  ref={reasoningTextareaRef}
-                  rows={4}
+                <RichMathEditor
+                  ref={reasoningEditorRef}
+                  variant="student"
                   value={reasoningText}
-                  onFocus={() => setActiveInputTarget("reasoning")}
-                  onChange={(e) => {
-                    if (!isReadOnly) handleReasoningChange(e.target.value);
+                  onChange={(val) => {
+                    if (!isReadOnly) handleReasoningChange(val);
                   }}
+                  onFocus={() => setActiveInputTarget("reasoning")}
                   disabled={isReadOnly}
-                  readOnly={isAssignmentSubmitted}
+                  minHeight="120px"
                   placeholder={
                     isAssignmentSubmitted
                       ? "Chưa có nội dung lập luận cho câu hỏi này."
-                      : "Trình bày các bước biến đổi, suy luận toán học để AI phân tích chất lượng tư duy..."
+                      : "Trình bày các bước biến đổi, suy luận toán học để AI phân tích chất lượng tư duy... (Gõ $ hoặc Ctrl+M để chèn công thức toán)"
                   }
-                  className={`w-full rounded-2xl border p-4 text-sm font-medium leading-relaxed ${
-                    isAssignmentSubmitted
-                      ? "bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 cursor-default select-text"
-                      : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                  }`}
+                  className={isAssignmentSubmitted ? "opacity-90" : ""}
                 />
-
-                {reasoningText.trim() && /[\\[{^_\\]]/.test(reasoningText) && (
-                  <div className="mt-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 p-3 text-xs">
-                    <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                      <span>Bản trình bày toán học</span>
-                      <span className="text-[10px] px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 font-mono font-bold uppercase tracking-wider">
-                        Tự động định dạng
-                      </span>
-                    </div>
-                    <div className="overflow-x-auto text-slate-800 dark:text-slate-200 py-1 text-sm font-medium leading-relaxed">
-                      <RichMathText content={reasoningText} />
-                    </div>
-                  </div>
-                )}
 
                 {/* 6. Attached Scratchpad Snapshot Card (Cố định, không bị ảnh hưởng khi vẽ tiếp hay F5) */}
                 {attachedSnapshotDataUrl && (
@@ -2412,6 +2420,7 @@ export const LearningPlayerPage = () => {
                     isFeedbackForQuestion(assignmentQuestion?.questionId ?? "", reviewFeedbackQuery.data.questionId) ? (
                     <AttemptFeedbackHierarchy
                       feedbackData={reviewFeedbackQuery.data}
+                      questionType={assignmentQuestion?.questionType}
                       showStudentSubmission={false}
                       answerOptions={assignmentQuestion?.options ?? []}
                       onRefreshFeedback={async () => {

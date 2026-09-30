@@ -419,4 +419,135 @@ public class GetStudentAssignmentUseCaseTests
         Assert.True(result.IsSuccess);
         Assert.Equal(120, result.Data!.Data.RemainingSeconds);
     }
+
+    [Fact]
+    public async Task ExecuteAsync_TeacherOverride_OverridesLatestAttemptIsCorrectAndAwardedScore()
+    {
+        // Arrange
+        var centerId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
+        var assignmentId = Guid.NewGuid();
+
+        var options = new DbContextOptionsBuilder<EduTwinDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options;
+
+        var tenantAccessorMock = new Mock<ITenantIdAccessor>();
+        tenantAccessorMock.Setup(x => x.CenterId).Returns(centerId);
+
+        using var context = new EduTwinDbContext(options, tenantAccessorMock.Object);
+
+        var assignment = new Assignment
+        {
+            AssignmentId = assignmentId,
+            CenterId = centerId,
+            Title = "Overridden Assignment",
+            Status = AssignmentStatus.Published,
+            DueAt = DateTime.UtcNow.AddHours(24),
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            RowVersion = 1UL
+        };
+
+        var progress = new StudentAssignmentProgress
+        {
+            ProgressId = 100,
+            AssignmentId = assignmentId,
+            Assignment = assignment,
+            CenterId = centerId,
+            StudentId = studentId,
+            Status = ProgressStatus.InProgress,
+            CompletedQuestionCount = 1,
+            TotalQuestionCount = 1,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        var question = new Question
+        {
+            QuestionId = 20001,
+            CenterId = centerId,
+            QuestionType = QuestionType.MultipleChoice,
+            Difficulty = 1,
+            QuestionText = "Question 1",
+            CorrectAnswer = "A",
+            Solution = "A",
+            ExpectedReasoning = "Reasoning",
+            LanguageCode = "vi",
+            MaxScore = 30m,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        var assignmentQuestion = new AssignmentQuestion
+        {
+            CenterId = centerId,
+            AssignmentId = assignmentId,
+            QuestionId = 20001,
+            OrderIndex = 1,
+            Points = 30m,
+            Question = question,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        var attempt = new Attempt
+        {
+            AttemptId = 555,
+            CenterId = centerId,
+            StudentId = studentId,
+            QuestionId = 20001,
+            AssignmentId = assignmentId,
+            Status = AttemptStatus.Completed,
+            FinalAnswer = "A",
+            ReasoningLanguage = "vi",
+            IsCorrect = true,
+            AwardedScore = 30m,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        var analysis = new ReasoningAnalysis
+        {
+            AnalysisId = 999,
+            CenterId = centerId,
+            AttemptId = 555,
+            SchemaVersion = "v1",
+            Feedback = "Feedback",
+            MissingSteps = System.Text.Json.JsonDocument.Parse("[]"),
+            RootCauseNodeIds = System.Text.Json.JsonDocument.Parse("[]"),
+            OverrideIsCorrect = false,
+            OverrideAwardedScore = 0m,
+            OverrideReason = "Teacher regraded as incorrect",
+            OverrideVersion = 1,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        context.Assignments.Add(assignment);
+        context.StudentAssignmentProgresses.Add(progress);
+        context.Questions.Add(question);
+        context.AssignmentQuestions.Add(assignmentQuestion);
+        context.Attempts.Add(attempt);
+        context.ReasoningAnalyses.Add(analysis);
+        await context.SaveChangesAsync();
+
+        var tenantContextMock = new Mock<ITenantContext>();
+        tenantContextMock.Setup(x => x.CenterId).Returns(centerId);
+        tenantContextMock.Setup(x => x.UserId).Returns(studentId);
+        tenantContextMock.Setup(x => x.Role).Returns("Student");
+        tenantContextMock.Setup(x => x.IsResolved).Returns(true);
+
+        var useCase = new GetStudentAssignmentUseCase(context, tenantContextMock.Object, TimeProvider.System, new AssignmentResultCalculator(context));
+
+        // Act
+        var result = await useCase.ExecuteAsync(assignmentId, CancellationToken.None);
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        var qDto = result.Data!.Data.Questions.Single(q => q.QuestionId == "20001");
+        Assert.NotNull(qDto.LatestAttempt);
+        Assert.False(qDto.LatestAttempt!.IsCorrect);
+        Assert.Equal(0m, qDto.LatestAttempt.AwardedScore);
+        Assert.False(qDto.EffectiveIsCorrect);
+    }
 }
