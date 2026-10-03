@@ -442,10 +442,14 @@ test("normalizeMathInsertContent maps calculator and toolbar expressions to inte
   assert.equal(normalizeMathInsertContent("\\frac{}{}"), "\\frac{#?}{#?}");
   assert.equal(normalizeMathInsertContent("^"), "^{#?}");
 
-  // Preserves existing filled content
+  // Preserves existing filled content and whitespace/raw text
   assert.equal(normalizeMathInsertContent("\\sqrt{3}"), "\\sqrt{3}");
   assert.equal(normalizeMathInsertContent("\\left|x+1\\right|"), "\\left|x+1\\right|");
   assert.equal(normalizeMathInsertContent(""), "");
+  assert.equal(normalizeMathInsertContent(" "), " ");
+  assert.equal(normalizeMathInsertContent(" x "), " x ");
+  assert.equal(normalizeMathInsertContent("5"), "5");
+  assert.equal(normalizeMathInsertContent("y + 2"), "y + 2");
 });
 
 test("VisualMathField configures DEFAULT_MATH_INLINE_SHORTCUTS and guards Enter in LaTeX command mode", () => {

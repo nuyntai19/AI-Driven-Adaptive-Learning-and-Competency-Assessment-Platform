@@ -4,7 +4,7 @@ namespace EduTwin.BLL.DigitalTwin;
 
 public static class MasteryCalculator
 {
-    public const string CalculationVersion = "mastery-v1";
+    public const string CalculationVersion = "mastery-v2";
 
     public static MasteryCalculationResult Calculate(MasteryCalculationInput input)
     {
@@ -62,16 +62,22 @@ public static class MasteryCalculator
         var difficultyMultiplier = GetDifficultyMultiplier(input.Difficulty);
         var learningRate = input.ReasoningWeight == 0m ? 0m : 0.25m;
 
+        // Correctness determines the direction of the mastery update. Reasoning
+        // quality, time quality and calibration only scale how strongly the
+        // evidence moves the profile; they must never make a correct answer
+        // lower mastery or an incorrect answer raise it.
         var evidenceTarget = input.ReasoningWeight == 0m
             ? input.CurrentMastery
-            : 100m * normalizedReasoningQuality!.Value *
-                (0.65m +
-                 0.20m * correctness!.Value +
-                 0.10m * input.TimeQuality +
-                 0.05m * effectiveConfidenceCalibration!.Value);
+            : correctness!.Value == 1m ? 100m : 0m;
+        var evidenceStrength = input.ReasoningWeight == 0m
+            ? 0m
+            : 0.65m
+                + 0.20m * normalizedReasoningQuality!.Value
+                + 0.10m * input.TimeQuality
+                + 0.05m * effectiveConfidenceCalibration!.Value;
 
         var unclampedNewMastery = input.CurrentMastery +
-            learningRate * difficultyMultiplier * input.ReasoningWeight *
+            learningRate * difficultyMultiplier * input.ReasoningWeight * evidenceStrength *
             (evidenceTarget - input.CurrentMastery);
         var clampedNewMastery = Math.Clamp(unclampedNewMastery, 0m, 100m);
         var newMastery = RoundForPersistence(clampedNewMastery);

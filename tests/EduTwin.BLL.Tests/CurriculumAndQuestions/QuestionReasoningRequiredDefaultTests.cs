@@ -13,9 +13,17 @@ namespace EduTwin.BLL.Tests.CurriculumAndQuestions;
 
 public class QuestionReasoningRequiredDefaultTests
 {
-    private static readonly string? MySqlConnectionString =
-        Environment.GetEnvironmentVariable("EDUTWIN_TEST_MYSQL_ADMIN_CONNECTION_STRING")
-        ?? Environment.GetEnvironmentVariable("ConnectionStrings__Default");
+    private sealed class MySqlIntegrationFactAttribute : FactAttribute
+    {
+        public MySqlIntegrationFactAttribute()
+        {
+            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("EDUTWIN_TEST_MYSQL_ADMIN_CONNECTION_STRING"))
+                && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ConnectionStrings__Default")))
+            {
+                Skip = "Set EDUTWIN_TEST_MYSQL_ADMIN_CONNECTION_STRING or ConnectionStrings__Default to run MySQL integration tests.";
+            }
+        }
+    }
 
     [Fact]
     public void EF_Model_HasDefaultValue_False_For_ReasoningRequired()
@@ -46,37 +54,28 @@ public class QuestionReasoningRequiredDefaultTests
         Assert.Contains(".HasDefaultValue(false)", content);
     }
 
-    [Fact]
+    [MySqlIntegrationFact]
     public async Task MySql_Database_Column_Default_Is_False_When_Available()
     {
-        if (string.IsNullOrWhiteSpace(MySqlConnectionString))
-        {
-            return;
-        }
+        var connectionString = Environment.GetEnvironmentVariable("EDUTWIN_TEST_MYSQL_ADMIN_CONNECTION_STRING")
+            ?? Environment.GetEnvironmentVariable("ConnectionStrings__Default")!;
 
-        try
-        {
-            await using var connection = new MySqlConnection(MySqlConnectionString);
-            await connection.OpenAsync();
+        await using var connection = new MySqlConnection(connectionString);
+        await connection.OpenAsync();
 
-            await using var command = connection.CreateCommand();
-            command.CommandText = @"
-                SELECT COLUMN_DEFAULT 
-                FROM information_schema.COLUMNS 
-                WHERE TABLE_SCHEMA = DATABASE() 
-                  AND TABLE_NAME = 'questions' 
-                  AND COLUMN_NAME = 'reasoning_required';";
+        await using var command = connection.CreateCommand();
+        command.CommandText = @"
+SELECT COLUMN_DEFAULT
+FROM information_schema.COLUMNS
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = 'questions'
+  AND COLUMN_NAME = 'reasoning_required';";
 
-            var result = await command.ExecuteScalarAsync();
-            Assert.NotNull(result);
-            // MySQL stores boolean default as '0' or 'b'0''
-            var defaultValue = result.ToString();
-            Assert.True(defaultValue == "0" || defaultValue == "b'0'" || defaultValue == "FALSE",
-                $"Expected reasoning_required column default to be '0' or false, but got '{defaultValue}'.");
-        }
-        catch (MySqlException)
-        {
-            // Skip if MySQL instance is not accessible in this environment
-        }
+        var result = await command.ExecuteScalarAsync();
+        Assert.NotNull(result);
+        // MySQL stores boolean default as '0' or 'b'0''
+        var defaultValue = result.ToString();
+        Assert.True(defaultValue == "0" || defaultValue == "b'0'" || defaultValue == "FALSE",
+            $"Expected reasoning_required column default to be '0' or false, but got '{defaultValue}'.");
     }
 }

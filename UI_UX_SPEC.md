@@ -918,4 +918,3 @@ Toàn bộ các workspace hỗ trợ cấu hình theo thuộc tính `actor` (`"t
 - Trong trình tạo/chỉnh sửa câu hỏi (`QuestionEditorPage.tsx`), tùy chọn "Yêu cầu học sinh trình bày lời giải" được đặt giá trị mặc định là `false` (chế độ opt-in).
 - Bổ sung huy hiệu phân loại trực quan: `TÙY CHỌN LỜI GIẢI` (khi tắt) và `BẮT BUỘC LỜI GIẢI` (khi bật).
 - Học sinh khi làm bài không bị ép buộc phải nhập lời giải ở các câu hỏi thông thường; hệ thống vẫn chấm điểm và cập nhật năng lực bình thường. Nếu học sinh tự nguyện nhập lời giải, AI vẫn phân tích và cập nhật Digital Twin đầy đủ.
-

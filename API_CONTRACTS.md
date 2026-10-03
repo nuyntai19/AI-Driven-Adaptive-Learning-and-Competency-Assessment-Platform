@@ -3080,4 +3080,3 @@ Hệ thống thiết lập ranh giới bảo mật nghiêm ngặt giữa Quản 
   - Khi `reasoningRequired == false`: Học sinh chỉ cần chọn/nhập đáp án chính xác. Nếu bỏ trống trường `reasoningText` và không đính kèm ảnh nháp, bài làm vẫn được chấm điểm hợp lệ và cập nhật độ thành thạo tri thức (Mastery) mà không bị phạt hay từ chối.
   - Khi `reasoningRequired == true`: Học sinh bắt buộc phải có nội dung giải trình hoặc ảnh nháp để nộp bài.
   - *Tự nguyện giải trình:* Nếu câu hỏi có `reasoningRequired == false` nhưng học sinh chủ động nhập lời giải hoặc đính kèm nháp, hệ thống AI vẫn kích hoạt phân tích đa phương thức để ghi nhận các điểm nhận thức sâu sắc vào Digital Twin.
-

@@ -322,93 +322,99 @@ export function normalizeMathInsertContent(
   latexOrText: string,
   options?: NormalizeMathInsertOptions
 ): string {
-  if (!latexOrText) return "";
-  let content = latexOrText.trim();
+  if (!latexOrText) return latexOrText;
 
   // If selection is collapsed (or unspecified), #0/#1 has no selection to wrap,
   // so it must become placeholder #? to avoid an empty body that causes
   // MathLive to select the entire container atom and wipe it on next keystroke.
   const isCollapsed = options?.isSelectionCollapsed !== false;
-  if (isCollapsed) {
-    content = content.replace(/#0/g, "#?");
-    content = content.replace(/#1/g, "#?");
+  let content = latexOrText;
+  if (isCollapsed && (content.includes("#0") || content.includes("#1"))) {
+    content = content.replace(/#0/g, "#?").replace(/#1/g, "#?");
   }
 
   // 1. Exact function calls or raw keywords from Casio / Calculator / Toolbar / Virtual Keyboard
+  // Check against trimmed token only to identify specific known template triggers,
+  // without modifying general text or spaces.
+  const trimmed = content.trim();
+
   if (
-    content === "sqrt(" ||
-    content === "\\sqrt" ||
-    content === "\\sqrt{}" ||
-    content === "\\sqrt{#?}" ||
-    content === "sqrt"
+    trimmed === "sqrt(" ||
+    trimmed === "\\sqrt" ||
+    trimmed === "\\sqrt{}" ||
+    trimmed === "\\sqrt{#?}" ||
+    trimmed === "sqrt"
   ) {
     return "\\sqrt{#?}";
   }
   if (
-    content === "cbrt(" ||
-    content === "\\cbrt" ||
-    content === "\\cbrt{}" ||
-    content === "\\cbrt{#?}" ||
-    content === "cbrt"
+    trimmed === "cbrt(" ||
+    trimmed === "\\cbrt" ||
+    trimmed === "\\cbrt{}" ||
+    trimmed === "\\cbrt{#?}" ||
+    trimmed === "cbrt"
   ) {
     return "\\sqrt[3]{#?}";
   }
   if (
-    content === "\\sqrt[]{}" ||
-    content === "\\sqrt[]" ||
-    content === "\\sqrt[#?]{#?}" ||
-    content === "\\sqrt[#?]{#?}}"
+    trimmed === "\\sqrt[]{}" ||
+    trimmed === "\\sqrt[]" ||
+    trimmed === "\\sqrt[#?]{#?}" ||
+    trimmed === "\\sqrt[#?]{#?}}"
   ) {
     return "\\sqrt[#?]{#?}";
   }
   if (
-    content === "abs(" ||
-    content === "\\abs" ||
-    content === "\\abs{}" ||
-    content === "abs" ||
-    content === "|" ||
-    content === "\\vert" ||
-    content === "\\left|\\right|" ||
-    content === "\\left| \\right|" ||
-    content === "\\left|#?\\right|" ||
-    content === "\\vert\\vert" ||
-    content === "\\left\\vert\\right\\vert" ||
-    content === "\\left\\vert#?\\right\\vert"
+    trimmed === "abs(" ||
+    trimmed === "\\abs" ||
+    trimmed === "\\abs{}" ||
+    trimmed === "abs" ||
+    trimmed === "|" ||
+    trimmed === "\\vert" ||
+    trimmed === "\\left|\\right|" ||
+    trimmed === "\\left| \\right|" ||
+    trimmed === "\\left|#?\\right|" ||
+    trimmed === "\\vert\\vert" ||
+    trimmed === "\\left\\vert\\right\\vert" ||
+    trimmed === "\\left\\vert#?\\right\\vert"
   ) {
     return "\\left|#?\\right|";
   }
   if (
-    content === "||" ||
-    content === "\\left\\|\\right\\|" ||
-    content === "\\left\\| \\right\\|" ||
-    content === "\\left\\|#?\\right\\|" ||
-    content === "\\Vert" ||
-    content === "\\Vert\\Vert" ||
-    content === "\\left\\Vert\\right\\Vert" ||
-    content === "\\left\\Vert#?\\right\\Vert" ||
-    content === "norm(" ||
-    content === "norm"
+    trimmed === "||" ||
+    trimmed === "\\left\\|\\right\\|" ||
+    trimmed === "\\left\\| \\right\\|" ||
+    trimmed === "\\left\\|#?\\right\\|" ||
+    trimmed === "\\Vert" ||
+    trimmed === "\\Vert\\Vert" ||
+    trimmed === "\\left\\Vert\\right\\Vert" ||
+    trimmed === "\\left\\Vert#?\\right\\Vert" ||
+    trimmed === "norm(" ||
+    trimmed === "norm"
   ) {
     return "\\left\\|#?\\right\\|";
   }
-  if (content === "\\frac" || content === "\\frac{}" || content === "\\frac{}{}") {
+  if (trimmed === "\\frac" || trimmed === "\\frac{}" || trimmed === "\\frac{}{}") {
     return "\\frac{#?}{#?}";
   }
-  if (content === "^" || content === "^{}") {
+  if (trimmed === "^" || trimmed === "^{}") {
     return "^{#?}";
   }
-  if (content === "_" || content === "_{}") {
+  if (trimmed === "_" || trimmed === "_{}") {
     return "_{#?}";
   }
 
   // 2. Structural substitutions for empty containers without placeholders or virtual keyboard symbols
-  let normalized = content;
-  normalized = normalized.replace(/\\sqrt\{\s*\}/g, "\\sqrt{#?}");
-  normalized = normalized.replace(/\\left\s*\\vert\s*#?\s*\\right\s*\\vert/g, "\\left|#?\\right|");
-  normalized = normalized.replace(/\\left\s*\\Vert\s*#?\s*\\right\s*\\Vert/g, "\\left\\|#?\\right\\|");
-  normalized = normalized.replace(/\\left\|\s*\\right\|/g, "\\left|#?\\right|");
-  normalized = normalized.replace(/\\left\\\|\s*\\right\\\|/g, "\\left\\|#?\\right\\|");
-  normalized = normalized.replace(/\\frac\{\s*\}\{\s*\}/g, "\\frac{#?}{#?}");
+  if (content.includes("\\sqrt{") || content.includes("\\left") || content.includes("\\frac{")) {
+    let normalized = content;
+    normalized = normalized.replace(/\\sqrt\{\s*\}/g, "\\sqrt{#?}");
+    normalized = normalized.replace(/\\left\s*\\vert\s*#?\s*\\right\s*\\vert/g, "\\left|#?\\right|");
+    normalized = normalized.replace(/\\left\s*\\Vert\s*#?\s*\\right\s*\\Vert/g, "\\left\\|#?\\right\\|");
+    normalized = normalized.replace(/\\left\|\s*\\right\|/g, "\\left|#?\\right|");
+    normalized = normalized.replace(/\\left\\\|\s*\\right\\\|/g, "\\left\\|#?\\right\\|");
+    normalized = normalized.replace(/\\frac\{\s*\}\{\s*\}/g, "\\frac{#?}{#?}");
+    return normalized;
+  }
 
-  return normalized;
+  return content;
 }

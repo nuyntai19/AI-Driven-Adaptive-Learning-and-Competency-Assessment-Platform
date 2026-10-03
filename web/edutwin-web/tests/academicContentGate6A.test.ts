@@ -40,7 +40,7 @@ const studentUser = (grants: string[] = []) => ({
 // ============================================================================
 // 1. ACTOR ISOLATION
 // ============================================================================
-test("1. Actor isolation: CenterManager receives modern view while Teacher and others keep legacy", () => {
+test("1. Actor isolation: CenterManager routes to CenterManager Academic Governance View while Teacher routes to Teacher Workspace", () => {
   const isCenterManager = (user: { accountType: string } | null | undefined): boolean => {
     return user?.accountType === "CenterManager";
   };
@@ -49,10 +49,10 @@ test("1. Actor isolation: CenterManager receives modern view while Teacher and o
   const teacher = teacherUser([permissions.nodesRead, permissions.curriculumsRead]);
   const student = studentUser([]);
 
-  assert.equal(isCenterManager(cm), true, "CenterManager accountType triggers modern Dark Enterprise view");
-  assert.equal(isCenterManager(teacher), false, "Teacher accountType keeps legacy view");
-  assert.equal(isCenterManager(student), false, "Student accountType keeps legacy view");
-  assert.equal(isCenterManager(null), false, "Unauthenticated / null user does not trigger modern view");
+  assert.equal(isCenterManager(cm), true, "CenterManager accountType routes to CenterManager Academic Governance View");
+  assert.equal(isCenterManager(teacher), false, "Teacher accountType routes to Teacher Workspace instead of CenterManager view");
+  assert.equal(isCenterManager(student), false, "Student accountType routes to Student portal instead of CenterManager view");
+  assert.equal(isCenterManager(null), false, "Unauthenticated / null user cannot access CenterManager view");
 
   // Verify that fake role labels (e.g. role: 'Quản lý' with accountType: 'Teacher') do NOT bypass actor isolation
   const fakeManagerTeacher = {

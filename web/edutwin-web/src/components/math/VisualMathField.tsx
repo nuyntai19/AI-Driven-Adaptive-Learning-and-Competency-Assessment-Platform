@@ -211,18 +211,18 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
             // Fallback handled via global CSS
           }
 
-          // Intercept insert and executeCommand to guarantee that commands from the virtual keyboard
+          // Intercept public insert and executeCommand to guarantee that commands from the virtual keyboard
           // (such as \sqrt{#0}, \left\vert#0\right\vert, \left\Vert#0\right\vert) convert #0 to placeholder #?
-          // when selection is collapsed and set selectionMode to "placeholder"
+          // when selection is collapsed and set selectionMode to "placeholder" only for placeholders
           if (typeof mf.insert === "function") {
             const originalInsert = mf.insert.bind(mf);
             mf.insert = (s: string, options?: any) => {
               const isCollapsed = Boolean((mf as any).selectionIsCollapsed ?? true);
               const normalized = normalizeMathInsertContent(s, { isSelectionCollapsed: isCollapsed });
-              return originalInsert(normalized, {
-                selectionMode: "placeholder",
-                ...options,
-              });
+              const insertOptions = normalized.includes("#?")
+                ? { selectionMode: "placeholder", ...options }
+                : options;
+              return originalInsert(normalized, insertOptions);
             };
           }
 
@@ -233,37 +233,13 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
                 const s = command[1];
                 const isCollapsed = Boolean((mf as any).selectionIsCollapsed ?? true);
                 const normalized = normalizeMathInsertContent(s, { isSelectionCollapsed: isCollapsed });
-                return originalExecuteCommand(["insert", normalized] as any);
+                const insertOptions = normalized.includes("#?")
+                  ? { selectionMode: "placeholder" }
+                  : undefined;
+                return originalExecuteCommand(["insert", normalized, insertOptions] as any);
               }
               return originalExecuteCommand(command);
             };
-          }
-
-          const innerMf = (mf as any)._mathfield;
-          if (innerMf) {
-            if (typeof innerMf.insert === "function") {
-              const origInnerInsert = innerMf.insert.bind(innerMf);
-              innerMf.insert = (s: string, options?: any) => {
-                const isCollapsed = Boolean((mf as any).selectionIsCollapsed ?? true);
-                const normalized = normalizeMathInsertContent(s, { isSelectionCollapsed: isCollapsed });
-                return origInnerInsert(normalized, {
-                  selectionMode: "placeholder",
-                  ...options,
-                });
-              };
-            }
-            if (typeof innerMf.executeCommand === "function") {
-              const origInnerExec = innerMf.executeCommand.bind(innerMf);
-              innerMf.executeCommand = (command: any) => {
-                if (Array.isArray(command) && command[0] === "insert" && typeof command[1] === "string") {
-                  const s = command[1];
-                  const isCollapsed = Boolean((mf as any).selectionIsCollapsed ?? true);
-                  const normalized = normalizeMathInsertContent(s, { isSelectionCollapsed: isCollapsed });
-                  return origInnerExec(["insert", normalized] as any);
-                }
-                return origInnerExec(command);
-              };
-            }
           }
 
           // Hydrate with latest value and disabled state (retaining any edits made in fallback textarea)

@@ -1633,4 +1633,3 @@ Nhằm tuân thủ nguyên tắc đặc quyền tối thiểu (Least Privilege) 
 3. **Thứ tự Ràng buộc Khóa ngoại (FK Cascading Constraint Ordering):**
    - Bảng `role_permissions` có ràng buộc khóa ngoại `fk_role_permissions_permission_account_types` trỏ tới `permission_account_types(permission_id, account_type)`.
    - Trong quá trình khởi tạo hoặc đối soát hệ thống (`AuthorizationBootstrapper`), việc dọn dẹp các quyền không còn áp dụng cho một `account_type` bắt buộc phải xóa các bản ghi tương ứng trong `role_permissions` trên toàn bộ các trung tâm trước khi thực hiện xóa trên bảng danh mục `permission_account_types`, ngăn chặn triệt để lỗi vi phạm khóa ngoại MySQL.
-
