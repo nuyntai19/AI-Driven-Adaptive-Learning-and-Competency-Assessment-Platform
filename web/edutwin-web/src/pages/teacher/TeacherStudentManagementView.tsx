@@ -423,7 +423,7 @@ export function TeacherStudentManagementView() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="th-page-container">
       {/* 1. Header with Class Switcher & Report Actions */}
       <TeacherPageHeader
         eyebrow="GIẢNG DẠY & ĐÁNH GIÁ NĂNG LỰC"

@@ -185,7 +185,7 @@ export function TeacherQuestionBankView() {
   }, [response?.data, localSearchText]);
 
   return (
-    <div className="space-y-6">
+    <div className="th-page-container">
       <TeacherPageHeader
         eyebrow="HỌC THUẬT & NỘI DUNG"
         title="Ngân Hàng Câu Hỏi & Đánh Giá"

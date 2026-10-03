@@ -547,7 +547,7 @@ export function TeacherAssignmentEditorView() {
   const isPending = createMutation.isPending || updateMutation.isPending || publishMutation.isPending;
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
+    <div className="th-page-container max-w-5xl">
       <TeacherPageHeader
         eyebrow="GIAO BÀI & ĐÁNH GIÁ"
         title={isEditing ? `Chỉnh Sửa Bài Tập: ${assignment?.title || ""}` : "Soạn Thảo & Giao Bài Tập Mới"}

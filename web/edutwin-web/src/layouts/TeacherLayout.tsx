@@ -337,7 +337,7 @@ export function TeacherLayout() {
         {/* Main Content Area */}
         <div className="min-w-0 lg:col-start-2">
           {/* Top Navbar */}
-          <header className="sticky top-0 z-20 flex h-[4.5rem] items-center justify-between gap-4 border-b border-[var(--th-border-subtle)] bg-[var(--th-surface)]/95 px-4 backdrop-blur sm:px-6">
+          <header className="sticky top-0 z-20 flex h-[4.5rem] items-center justify-between gap-4 border-b border-[var(--th-border-subtle)] bg-[var(--th-surface)]/95 px-4 backdrop-blur sm:px-6 lg:px-8">
             <div className="flex min-w-0 items-center gap-3">
               <button
                 type="button"

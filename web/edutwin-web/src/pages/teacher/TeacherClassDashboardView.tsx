@@ -56,7 +56,7 @@ export function TeacherClassDashboardView() {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="th-page-container">
       {/* Header with class picker */}
       <TeacherPageHeader
         eyebrow="GIẢNG DẠY & GIÁM SÁT"

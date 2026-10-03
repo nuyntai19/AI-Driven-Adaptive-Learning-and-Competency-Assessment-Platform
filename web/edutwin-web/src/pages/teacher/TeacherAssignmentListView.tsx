@@ -132,7 +132,7 @@ export function TeacherAssignmentListView() {
   const totalItems = response?.meta?.totalItems || 0;
 
   return (
-    <div className="space-y-6">
+    <div className="th-page-container">
       <TeacherPageHeader
         eyebrow="GIAO BÀI & ĐÁNH GIÁ"
         title="Quản Lý Bài Tập Lớp Học"

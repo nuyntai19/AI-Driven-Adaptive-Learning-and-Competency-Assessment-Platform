@@ -411,7 +411,7 @@ export function TeacherQuestionEditorView() {
 
   if (isEditing && questionLoading) {
     return (
-      <div className="space-y-4">
+      <div className="th-page-container max-w-5xl">
         <TeacherSkeleton className="h-10 w-1/3" />
         <TeacherSkeleton className="h-64 rounded-2xl" />
       </div>
@@ -419,7 +419,7 @@ export function TeacherQuestionEditorView() {
   }
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
+    <div className="th-page-container max-w-5xl">
       <TeacherPageHeader
         eyebrow="NGÂN HÀNG CÂU HỎI"
         title={isEditing ? `Chỉnh Sửa Câu Hỏi #${id}` : "Soạn Thảo Câu Hỏi Mới"}
