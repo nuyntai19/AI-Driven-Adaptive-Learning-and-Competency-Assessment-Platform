@@ -3056,3 +3056,28 @@ Thêm optional field có thể là non-breaking nhưng vẫn phải cập nhật
 - [ ] Thao tác thay đổi Center/Manager bắt buộc lý do `reason` hợp lệ và audit log redacted.
 - [ ] Evidence Gate fields là server-owned, có policyVersion/reasonCodes và fallback không đổi Knowledge Mastery.
 - [ ] API target v2 chỉ được đánh dấu IMPLEMENTED sau khi schema migration, backend và frontend tương ứng hoàn tất.
+
+# 91. Role Boundary Security Enforcement & Question Reasoning Specification (POST-R09-ROLE-BOUNDARY-UX)
+
+## 91.1. Center Manager Fail-Closed Boundary & Permission Matrix
+
+Hệ thống thiết lập ranh giới bảo mật nghiêm ngặt giữa Quản lý Trung tâm (Center Manager) và Giáo viên (Teacher):
+
+| Nhóm Tài Nguyên | Endpoint / Quyền | Center Manager | Teacher | Quy tắc Xử lý |
+|---|---|:---:|:---:|---|
+| **Hành chính & Tổ chức** | `dashboards.center.read`, `organization.*`, `knowledge.subjects.*`, `authorization.*` | **Cho phép (200)** | Bị từ chối (403) | CM quản trị danh mục và tổng quan vận hành |
+| **Đồ thị tri thức (DAG)** | `knowledge.nodes.*`, `knowledge.edges.*` | **CẤM (403)** | **Cho phép (200)** | Fail-closed: CM gọi use case trả về `ForbiddenResource` |
+| **Giáo trình môn học** | `curriculum.*` | **CẤM (403)** | **Cho phép (200)** | CM không can thiệp cây bài học và chương mục |
+| **Ngân hàng câu hỏi** | `questions.*` | **CẤM (403)** | **Cho phép (200)** | Chỉ giáo viên chuyên môn được tạo và duyệt đề |
+| **Bài tập & Tiến độ** | `assignments.*` | **CẤM (403)** | **Cho phép (200)** | Giáo viên sở hữu lớp giao bài và theo dõi tiến độ |
+| **Chấm bài & Can thiệp AI** | `twin.reasoning.*`, `teacher.reviews.*` | **CẤM (403)** | **Cho phép (200)** | Review Queue và Teacher Override thuộc sư phạm |
+| **Dashboard Sư phạm** | `dashboards.teacher.read_scoped` | **CẤM (403)** | **Cho phép (200)** | Tránh rò rỉ dữ liệu lớp phụ trách của giáo viên khác |
+
+## 91.2. Đặc tả Thuộc tính reasoningRequired và Hành vi Nộp bài
+
+- **Mặc định Opt-in:** Trong payload tạo/sửa câu hỏi (`POST /api/v1/questions`, `PUT /api/v1/questions/{id}`), thuộc tính `reasoningRequired` có kiểu `boolean` và mặc định là `false` nếu client không gửi.
+- **Hành vi nộp bài của học sinh (`POST /api/v1/learning-attempts`):**
+  - Khi `reasoningRequired == false`: Học sinh chỉ cần chọn/nhập đáp án chính xác. Nếu bỏ trống trường `reasoningText` và không đính kèm ảnh nháp, bài làm vẫn được chấm điểm hợp lệ và cập nhật độ thành thạo tri thức (Mastery) mà không bị phạt hay từ chối.
+  - Khi `reasoningRequired == true`: Học sinh bắt buộc phải có nội dung giải trình hoặc ảnh nháp để nộp bài.
+  - *Tự nguyện giải trình:* Nếu câu hỏi có `reasoningRequired == false` nhưng học sinh chủ động nhập lời giải hoặc đính kèm nháp, hệ thống AI vẫn kích hoạt phân tích đa phương thức để ghi nhận các điểm nhận thức sâu sắc vào Digital Twin.
+

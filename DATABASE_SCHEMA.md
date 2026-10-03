@@ -544,7 +544,7 @@ Indexes:
 | grading_criteria | JSON | No | Versioned criteria object |
 | max_score | DECIMAL(5,2) | No | Default 1.00 |
 | estimated_time_seconds | INT UNSIGNED | No | > 0 |
-| reasoning_required | TINYINT(1) | No | Default 1 |
+| reasoning_required | TINYINT(1) | No | Default 0 (Opt-in từ POST-R09-ROLE-BOUNDARY-UX) |
 | language_code | VARCHAR(8) | No | vi hoặc en |
 | status | VARCHAR(32) | No | Draft, Active, Archived |
 | ...MTA | | | Kế thừa audit, soft-delete, tenant và row_version tại mục 2.3 |
@@ -1614,3 +1614,23 @@ Nếu AI Developer cho rằng cần table mới, phải tạo Change Proposal; k
 - [ ] 30 logical questions bao phủ hai Subject và ba loại câu hỏi.
 - [ ] Migration chạy được từ database trống.
 - [ ] Migration v2 và query/index trọng yếu được kiểm tra trên MySQL thật, không chỉ EF InMemory/SQLite.
+
+## 52. Danh mục Phân quyền & Ma trận Account Types (POST-R09-ROLE-BOUNDARY-UX)
+
+### 52.1. Phân định Ranh giới Quyền hạn Fail-Closed
+
+Nhằm tuân thủ nguyên tắc đặc quyền tối thiểu (Least Privilege) và phân tách ranh giới trách nhiệm, `permission_account_types` và `role_permissions` được cấu hình nghiêm ngặt:
+
+1. **CenterManager:**
+   - Được phép gán các quyền: `dashboards.center.read`, `organization.*` (`teachers.*`, `students.*`, `classes.*`), `knowledge.subjects.*`, `authorization.*` (`roles.*`, `users.roles.*`, `audit_logs.read`).
+   - Tước bỏ toàn bộ mã quyền học thuật trực tiếp khỏi danh mục `permission_account_types` của `CenterManager`: `knowledge.nodes.*`, `knowledge.edges.*`, `curriculum.*`, `questions.*`, `assignments.*`, `twin.reasoning.*`, `dashboards.teacher.read_scoped`.
+   - Mọi nỗ lực truy cập hoặc gán quyền học thuật cho CenterManager bị chặn fail-closed ngay tại tầng dữ liệu (`AuthorizationBootstrapper`), nghiệp vụ và giao diện.
+
+2. **Teacher:**
+   - Sở hữu đầy đủ các quyền học thuật phục vụ giảng dạy, khảo thí và sư phạm: `knowledge.nodes.*`, `knowledge.edges.*`, `curriculum.*`, `questions.*`, `assignments.*`, `twin.reasoning.*`, `dashboards.teacher.read_scoped`.
+   - Bị cấm khỏi các quyền quản trị cơ cấu trung tâm diện rộng và phân quyền nền tảng.
+
+3. **Thứ tự Ràng buộc Khóa ngoại (FK Cascading Constraint Ordering):**
+   - Bảng `role_permissions` có ràng buộc khóa ngoại `fk_role_permissions_permission_account_types` trỏ tới `permission_account_types(permission_id, account_type)`.
+   - Trong quá trình khởi tạo hoặc đối soát hệ thống (`AuthorizationBootstrapper`), việc dọn dẹp các quyền không còn áp dụng cho một `account_type` bắt buộc phải xóa các bản ghi tương ứng trong `role_permissions` trên toàn bộ các trung tâm trước khi thực hiện xóa trên bảng danh mục `permission_account_types`, ngăn chặn triệt để lỗi vi phạm khóa ngoại MySQL.
+

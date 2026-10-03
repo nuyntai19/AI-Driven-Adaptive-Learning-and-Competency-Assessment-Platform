@@ -873,3 +873,49 @@ Nhằm mang lại trải nghiệm học tập trực quan, thẩm mỹ và đạ
 #### 20.8.6. Củng cố Kiến trúc React Hooks (Rules of Hooks Hardening)
 - Khắc phục triệt để lỗi crash giao diện `Minified React error #310` bằng việc đảm bảo toàn bộ React hooks (`useMemo`, `useState`, `useEffect`) luôn được khai báo ở đầu component trước bất kỳ câu lệnh `if (...) return` nào.
 - Đảm bảo tính nhất quán tuyệt đối về số lượng và thứ tự hook qua mọi trạng thái render (loading skeleton, polling job, fallback screen, active player).
+
+### 20.9. Chuẩn hóa Giao diện Giáo viên Dark Enterprise SaaS và Không gian Làm việc Học thuật Dùng chung (Teacher Dark SaaS & Shared Academic Workspaces)
+
+Nhằm mang lại trải nghiệm chuyên nghiệp, đồng bộ và đạt chuẩn ứng dụng SaaS doanh nghiệp cao cấp (Enterprise SaaS), phân hệ Giáo viên (`/giao-vien/*`) được tái cấu trúc triệt để, xóa bỏ hoàn toàn phong cách hoài cổ retro và áp dụng hệ thống thiết kế Dark SaaS thống nhất:
+
+#### 20.9.1. Khung Điều hướng và Shell Giáo viên Dark Enterprise SaaS (`TeacherLayout.tsx`)
+- **Loại bỏ phong cách Retro:** Xóa bỏ hoàn toàn hoa cúc daisy, đường viền thô retro, hiệu ứng đổ bóng neo-brutalist; thay thế bằng dải màu Cyan/Emerald (`from-cyan-400 to-emerald-500`) trên nền tối sang trọng.
+- **Thanh điều hướng Sidebar Doanh nghiệp:**
+  - Header: Logo EduTwin kèm badge vai trò gradient Cyan/Emerald nổi bật: "TEACHER WORKSPACE".
+  - Ngữ cảnh đào tạo: Khối hiển thị trung tâm trực thuộc "TRUNG TÂM ĐÀO TẠO / EduTwin Center A - Không gian Sư phạm".
+  - Ba nhóm điều hướng nghiệp vụ chuyên sâu:
+    1. *GIẢNG DẠY & LỚP HỌC:* Lớp học phụ trách (`/giao-vien/lop-hoc`), Quản lý học sinh (`/giao-vien/hoc-sinh`).
+    2. *HỌC THUẬT & ĐỀ THI:* Ngân hàng câu hỏi (`/giao-vien/cau-hoi`), Giáo trình môn học (`/giao-vien/giao-trinh`), Đồ thị tri thức (`/giao-vien/do-thi-tri-thuc`).
+    3. *ĐÁNH GIÁ & CHẤM BÀI:* Danh sách bài tập (`/giao-vien/bai-tap`), Hàng đợi chấm bài (`/giao-vien/cham-bai`).
+  - Chân sidebar: Nút Đăng xuất an toàn có cảnh báo và xác nhận.
+- **Topbar & Menu Người Dùng Đồng Bộ:**
+  - Nút hamburger đóng/mở sidebar trên thiết bị di động.
+  - Breadcrumb phân cấp động phản ánh vị trí làm việc thời gian thực.
+  - Nút chuyển đổi chế độ Sáng/Tối (`ThemeToggle`) đồng bộ toàn cục.
+  - Avatar người dùng dạng tròn với chữ cái viết tắt (ví dụ: `TM` cho Teacher Math), menu dropdown hồ sơ kèm phím tắt `Escape` và tự động khôi phục focus.
+- **Khả năng Tiếp cận Trên Di động (Mobile Accessibility):** Ngăn kéo trượt (Mobile Drawer) tích hợp đầy đủ focus trap, aria-modal="true" và đóng mở mượt mà.
+
+#### 20.9.2. Không gian Làm việc Học thuật Dùng chung (Shared Academic Workspaces)
+Trích xuất toàn bộ giao diện quản trị học thuật thành các presentation workspace độc lập trong thư mục `src/components/academic/`:
+- `KnowledgeGraphWorkspace.tsx`: Trực quan hóa và tương tác đồ thị DAG tri thức, tìm kiếm node, xem chi tiết thuộc tính và tiền đề.
+- `CurriculumWorkspace.tsx`: Cây phân cấp môn học, chương mục, bài học và gắn kết mục tiêu năng lực.
+- `QuestionWorkspace.tsx`: Ngân hàng câu hỏi, bộ lọc độ khó, chủ đề, định dạng, cùng trình soạn thảo công thức KaTeX/MathLive chuyên sâu.
+- `AssignmentWorkspace.tsx`: Danh sách bài tập, trình tạo bài tập thích ứng và bảng giám sát tiến độ hoàn thành.
+- `ClassProgressWorkspace.tsx`: Bảng điều khiển tiến độ lớp học, điểm trung bình dự báo, nhóm học sinh cần can thiệp bổ trợ (Gap Groups).
+- `ReviewQueueWorkspace.tsx`: Hàng đợi chấm bài tập tự luận và can thiệp ghi đè đánh giá suy luận AI (Teacher Override).
+Toàn bộ các workspace hỗ trợ cấu hình theo thuộc tính `actor` (`"teacher" | "centerManager" | "platformAdmin"`), loại bỏ 100% mã nguồn trùng lặp giữa các phân hệ.
+
+#### 20.9.3. Tiêu chuẩn Thước đo Typography Doanh nghiệp & WCAG 2.1 AA
+- Quy chuẩn hệ thống biến CSS token typography trong `centerManagerDesignSystem.css` và `teacherDesignSystem.css`:
+  - `title`: 30px (1.875rem), font-weight: 700 / 800, tracking: -0.025em.
+  - `body`: 16px (1rem), line-height: 1.5.
+  - `nav`: 15px (0.9375rem), font-weight: 500 / 600.
+  - `ui`: 14px (0.875rem), line-height: 1.25.
+  - `meta`: 12px (0.75rem), line-height: 1.2.
+- Quy tắc công thái học: Toàn bộ ô nhập liệu (`input`, `select`, `textarea`), nút hành động (`button`) và nội dung bảng dữ liệu (`table cell`) duy trì kích thước chữ tối thiểu >= 14px. Thay thế toàn bộ các class `text-[10px]` thành `text-xs` nhằm bảo đảm độ sắc nét và tiêu chuẩn tương phản WCAG 2.1 AA.
+
+#### 20.9.4. Mặc định Không Bắt buộc Lời giải (`reasoningRequired: false`)
+- Trong trình tạo/chỉnh sửa câu hỏi (`QuestionEditorPage.tsx`), tùy chọn "Yêu cầu học sinh trình bày lời giải" được đặt giá trị mặc định là `false` (chế độ opt-in).
+- Bổ sung huy hiệu phân loại trực quan: `TÙY CHỌN LỜI GIẢI` (khi tắt) và `BẮT BUỘC LỜI GIẢI` (khi bật).
+- Học sinh khi làm bài không bị ép buộc phải nhập lời giải ở các câu hỏi thông thường; hệ thống vẫn chấm điểm và cập nhật năng lực bình thường. Nếu học sinh tự nguyện nhập lời giải, AI vẫn phân tích và cập nhật Digital Twin đầy đủ.
+
