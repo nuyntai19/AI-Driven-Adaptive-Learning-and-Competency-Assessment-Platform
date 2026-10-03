@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "test": "node --test tests/*.test.ts",
     "test:bundle": "npm run build && node --test tests/bundle/bundleBudget.test.ts",
+    "test:math-browser": "node tests/smoke/chrome_math_input_smoke.cjs",
     "lint": "eslint .",
     "verify": "npm run lint && npm test && npm run test:bundle",
     "preview": "vite preview"

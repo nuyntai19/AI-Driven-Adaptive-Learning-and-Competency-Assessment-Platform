@@ -466,8 +466,8 @@ test("VisualMathField configures DEFAULT_MATH_INLINE_SHORTCUTS and guards Enter 
   );
   assert.match(
     componentContent,
-    /normalizeMathInsertContent\(latexOrText\)/,
-    "insertAtCursor must normalize incoming formula text via normalizeMathInsertContent"
+    /prepareMathFieldInsertion\(mf, latexOrText/,
+    "insertAtCursor must use the tested shared insertion preparation"
   );
   assert.match(
     componentContent,
@@ -990,7 +990,7 @@ test("normalizeMathInsertContent strictly preserves text, escaped hashes, and wh
 });
 
 test("VisualMathField command wrapper preserves and merges original command options", async () => {
-  const { normalizeMathInsertContent } = await import("../src/utils/visualMathFieldLifecycle.ts");
+  const { installMathFieldInsertionGuards } = await import("../src/utils/visualMathFieldLifecycle.ts");
   // Test executeCommand wrapper logic with original command[2] options
   const executedCommands: any[] = [];
   const fakeMf: any = {
@@ -1005,26 +1005,8 @@ test("VisualMathField command wrapper preserves and merges original command opti
     },
   };
 
-  // Simulate VisualMathField wrapper logic
-  const originalExecuteCommand = fakeMf.executeCommand.bind(fakeMf);
-  fakeMf.executeCommand = (command: any) => {
-    if (Array.isArray(command) && command[0] === "insert" && typeof command[1] === "string") {
-      const s = command[1];
-      const isCollapsed = Boolean(fakeMf.selectionIsCollapsed ?? true);
-      const normalized = normalizeMathInsertContent(s, { isSelectionCollapsed: isCollapsed });
-      const originalOptions = typeof command[2] === "object" && command[2] !== null ? command[2] : undefined;
-      const insertOptions = normalized.includes("#?")
-        ? { ...originalOptions, selectionMode: originalOptions?.selectionMode ?? "placeholder" }
-        : command[2];
-      const newCommand = [...command];
-      newCommand[1] = normalized;
-      if (command.length > 2 || normalized.includes("#?")) {
-        newCommand[2] = insertOptions;
-      }
-      return originalExecuteCommand(newCommand as any);
-    }
-    return originalExecuteCommand(command);
-  };
+  // Exercise the exact guard installed on production MathLive instances.
+  installMathFieldInsertionGuards(fakeMf);
 
   // Scenario A: MathLive insert with existing options { mode: "math", focus: true }
   fakeMf.executeCommand(["insert", "\\sqrt{#0}", { mode: "math", focus: true }]);
@@ -1043,4 +1025,77 @@ test("VisualMathField command wrapper preserves and merges original command opti
     "\\text{Mã \\#1}",
     { mode: "text", silenceNotifications: true },
   ]);
+
+  const originalOptions = { mode: "math", selectionMode: "after", focus: true };
+  fakeMf.executeCommand(["insert", "\\sqrt{#0}", originalOptions, "retained-tail"]);
+  assert.deepEqual(executedCommands[2], ["insert", "\\sqrt{#?}", originalOptions, "retained-tail"]);
+  fakeMf.executeCommand("moveToNextChar");
+  assert.equal(executedCommands[3], "moveToNextChar");
+  fakeMf.insert(" ", { mode: "text" });
+  assert.deepEqual(executedCommands[4], ["insert", " ", { mode: "text" }]);
+  fakeMf.insert("|", { mode: "text" });
+  assert.deepEqual(executedCommands[5], ["insert", "|", { mode: "text" }]);
+});
+
+test("toolbar insertion preserves selected content and only targets genuine empty placeholders", async () => {
+  const { prepareMathFieldInsertion, installMathFieldInsertionGuards } = await import("../src/utils/visualMathFieldLifecycle.ts");
+  const inserted: any[] = [];
+  const mf = { selectionIsCollapsed: false, insert: (content: string, options?: any) => inserted.push({ content, options }) };
+  installMathFieldInsertionGuards(mf);
+  const options = { mode: "math", focus: true, silenceNotifications: true };
+  const selected = prepareMathFieldInsertion(mf, "\\sqrt{#0}", options);
+  mf.insert(selected.content, selected.options);
+  assert.deepEqual(inserted[0], { content: "\\sqrt{#0}", options });
+  mf.selectionIsCollapsed = true;
+  const collapsed = prepareMathFieldInsertion(mf, "\\sqrt{#0}", options);
+  mf.insert(collapsed.content, collapsed.options);
+  assert.deepEqual(inserted[1], { content: "\\sqrt{#?}", options: { ...options, selectionMode: "placeholder" } });
+  assert.deepEqual(prepareMathFieldInsertion(mf, "x + y", options), { content: "x + y", options });
+});
+
+test("isMathFieldSelectionCollapsed correctly reports collapsed vs non-collapsed selection state", async () => {
+  const { isMathFieldSelectionCollapsed } = await import("../src/utils/visualMathFieldLifecycle.ts");
+
+  assert.equal(isMathFieldSelectionCollapsed(null), true, "null mathfield defaults to collapsed");
+  assert.equal(isMathFieldSelectionCollapsed(undefined), true, "undefined mathfield defaults to collapsed");
+  assert.equal(isMathFieldSelectionCollapsed({}), true, "mathfield without selection properties defaults to true");
+
+  // MathLive selectionIsCollapsed boolean property
+  assert.equal(isMathFieldSelectionCollapsed({ selectionIsCollapsed: true }), true);
+  assert.equal(isMathFieldSelectionCollapsed({ selectionIsCollapsed: false }), false);
+
+  // MathLive selection ranges
+  assert.equal(isMathFieldSelectionCollapsed({ selection: { ranges: [[3, 3]] } }), true);
+  assert.equal(isMathFieldSelectionCollapsed({ selection: { ranges: [[3, 5]] } }), false);
+  assert.equal(
+    isMathFieldSelectionCollapsed({ selection: { ranges: [[1, 1], [4, 4]] } }),
+    true
+  );
+  assert.equal(
+    isMathFieldSelectionCollapsed({ selection: { ranges: [[1, 1], [4, 6]] } }),
+    false
+  );
+});
+
+test("normalizeMathInsertContent preserves #0 and does not force placeholder when selection is active", async () => {
+  const { normalizeMathInsertContent } = await import("../src/utils/visualMathFieldLifecycle.ts");
+
+  // When selection is active (collapsed === false), #0 must NOT be converted to #?
+  assert.equal(
+    normalizeMathInsertContent("\\sqrt{#0}", { isSelectionCollapsed: false }),
+    "\\sqrt{#0}",
+    "Radical with active selection must keep #0 so MathLive wraps selected content"
+  );
+  assert.equal(
+    normalizeMathInsertContent("\\left|#0\\right|", { isSelectionCollapsed: false }),
+    "\\left|#0\\right|",
+    "Fences with active selection must keep #0"
+  );
+
+  // When selection is collapsed, #0 converts to #? for immediate typing into placeholder
+  assert.equal(
+    normalizeMathInsertContent("\\sqrt{#0}", { isSelectionCollapsed: true }),
+    "\\sqrt{#?}",
+    "Radical with collapsed selection converts #0 to #?"
+  );
 });

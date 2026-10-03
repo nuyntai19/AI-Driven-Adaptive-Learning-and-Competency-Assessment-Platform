@@ -313,6 +313,87 @@ export interface NormalizeMathInsertOptions {
 }
 
 /**
+ * Accurately determines if the MathLive mathfield selection is collapsed (a single caret insertion point)
+ * or if one or more atoms are selected.
+ */
+export function isMathFieldSelectionCollapsed(mf: unknown): boolean {
+  if (!mf || typeof mf !== "object") return true;
+  const anyMf = mf as {
+    selectionIsCollapsed?: boolean;
+    selection?: {
+      ranges?: Array<[number, number] | number[]>;
+      direction?: string;
+    };
+  };
+  if (typeof anyMf.selectionIsCollapsed === "boolean") {
+    return anyMf.selectionIsCollapsed;
+  }
+  if (anyMf.selection && Array.isArray(anyMf.selection.ranges) && anyMf.selection.ranges.length > 0) {
+    return anyMf.selection.ranges.every(
+      (r) => Array.isArray(r) && r.length >= 2 && r[0] === r[1]
+    );
+  }
+  return true;
+}
+
+export interface MathFieldInsertOptions {
+  mode?: string;
+  selectionMode?: string;
+  focus?: boolean;
+  silenceNotifications?: boolean;
+  [key: string]: unknown;
+}
+
+export interface MathFieldInsertionTarget {
+  insert?: (content: string, options?: MathFieldInsertOptions) => unknown;
+  executeCommand?: (command: any) => unknown;
+}
+
+/** Shared by public keyboard commands and the imperative calculator/toolbar API. */
+export function prepareMathFieldInsertion(
+  mf: unknown,
+  content: string,
+  options?: MathFieldInsertOptions,
+  isSelectionCollapsed = isMathFieldSelectionCollapsed(mf)
+): { content: string; options?: MathFieldInsertOptions } {
+  // A text-mode insertion is prose, even if it contains a math command or a pipe.
+  const normalized = options?.mode === "text"
+    ? content
+    : normalizeMathInsertContent(content, { isSelectionCollapsed });
+  return {
+    content: normalized,
+    options: options?.mode !== "text" && normalized.includes("#?")
+      ? { ...options, selectionMode: options?.selectionMode ?? "placeholder" }
+      : options,
+  };
+}
+
+/** Guard public APIs only; never patch MathLive's private _mathfield implementation. */
+export function installMathFieldInsertionGuards(mf: MathFieldInsertionTarget): void {
+  if (mf.insert) {
+    const originalInsert = mf.insert.bind(mf);
+    mf.insert = (content, options) => {
+      const prepared = prepareMathFieldInsertion(mf, content, options);
+      return originalInsert(prepared.content, prepared.options);
+    };
+  }
+  if (mf.executeCommand) {
+    const originalExecuteCommand = mf.executeCommand.bind(mf);
+    mf.executeCommand = (command) => {
+      if (!Array.isArray(command) || command[0] !== "insert" || typeof command[1] !== "string") {
+        return originalExecuteCommand(command);
+      }
+      const options = command[2] && typeof command[2] === "object" ? command[2] : undefined;
+      const prepared = prepareMathFieldInsertion(mf, command[1], options);
+      const nextCommand = [...command];
+      nextCommand[1] = prepared.content;
+      if (prepared.options !== undefined) nextCommand[2] = prepared.options;
+      return originalExecuteCommand(nextCommand);
+    };
+  }
+}
+
+/**
  * Normalizes user-, keyboard-, or calculator-provided LaTeX/text into structural MathLive commands
  * containing explicit placeholders (#?) for radicals and fences, ensuring newly created
  * empty blocks place the caret inside rather than selecting the whole block (which causes

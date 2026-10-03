@@ -6,7 +6,9 @@ import {
   shouldSyncExternalValue,
   registerVirtualKeyboardDismissListener,
   DEFAULT_MATH_INLINE_SHORTCUTS,
-  normalizeMathInsertContent,
+  isMathFieldSelectionCollapsed,
+  installMathFieldInsertionGuards,
+  prepareMathFieldInsertion,
 } from "../../utils/visualMathFieldLifecycle";
 import { MathFallbackTextarea } from "./answer-editor/MathFallbackTextarea";
 
@@ -214,39 +216,7 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
           // Intercept public insert and executeCommand to guarantee that commands from the virtual keyboard
           // (such as \sqrt{#0}, \left\vert#0\right\vert, \left\Vert#0\right\vert) convert #0 to placeholder #?
           // when selection is collapsed and set selectionMode to "placeholder" only for placeholders
-          if (typeof mf.insert === "function") {
-            const originalInsert = mf.insert.bind(mf);
-            mf.insert = (s: string, options?: any) => {
-              const isCollapsed = Boolean((mf as any).selectionIsCollapsed ?? true);
-              const normalized = normalizeMathInsertContent(s, { isSelectionCollapsed: isCollapsed });
-              const insertOptions = normalized.includes("#?")
-                ? { ...options, selectionMode: options?.selectionMode ?? "placeholder" }
-                : options;
-              return originalInsert(normalized, insertOptions);
-            };
-          }
-
-          if (typeof mf.executeCommand === "function") {
-            const originalExecuteCommand = mf.executeCommand.bind(mf);
-            mf.executeCommand = (command: any) => {
-              if (Array.isArray(command) && command[0] === "insert" && typeof command[1] === "string") {
-                const s = command[1];
-                const isCollapsed = Boolean((mf as any).selectionIsCollapsed ?? true);
-                const normalized = normalizeMathInsertContent(s, { isSelectionCollapsed: isCollapsed });
-                const originalOptions = typeof command[2] === "object" && command[2] !== null ? command[2] : undefined;
-                const insertOptions = normalized.includes("#?")
-                  ? { ...originalOptions, selectionMode: originalOptions?.selectionMode ?? "placeholder" }
-                  : command[2];
-                const newCommand = [...command];
-                newCommand[1] = normalized;
-                if (command.length > 2 || normalized.includes("#?")) {
-                  newCommand[2] = insertOptions;
-                }
-                return originalExecuteCommand(newCommand as any);
-              }
-              return originalExecuteCommand(command);
-            };
-          }
+          installMathFieldInsertionGuards(mf);
 
           // Hydrate with latest value and disabled state (retaining any edits made in fallback textarea)
           const { hydratedValue } = hydrateMathFieldInstance(mf, {
@@ -395,6 +365,7 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
         if (disabled) return;
         const mf = mathfieldRef.current;
         if (!mf || mf.readOnly) return;
+        const isCollapsed = isMathFieldSelectionCollapsed(mf);
         mf.focus();
         mf.defaultMode = "math";
         mf.smartFence = false;
@@ -405,16 +376,15 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
         };
         mf.executeCommand(["switchMode", "math"]);
         mf.setAttribute("data-input-mode", "math");
-        const toInsert = normalizeMathInsertContent(latexOrText);
+        const prepared = prepareMathFieldInsertion(mf, latexOrText, {
+          mode: "math",
+          focus: true,
+          silenceNotifications: true,
+        }, isCollapsed);
         if (typeof mf.insert === "function") {
-          mf.insert(toInsert, {
-            mode: "math",
-            selectionMode: "placeholder",
-            focus: true,
-            silenceNotifications: true,
-          });
+          mf.insert(prepared.content, prepared.options);
         } else {
-          mf.executeCommand(["insert", toInsert]);
+          mf.executeCommand(["insert", prepared.content, prepared.options] as any);
         }
         const newVal = mf.getValue ? mf.getValue("latex-expanded") : mf.value;
         const rawPlainText = mf.getValue ? mf.getValue("plain-text") : newVal;
