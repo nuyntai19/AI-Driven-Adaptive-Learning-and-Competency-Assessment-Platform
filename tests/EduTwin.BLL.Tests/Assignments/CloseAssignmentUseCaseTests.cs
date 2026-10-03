@@ -195,6 +195,6 @@ public class CloseAssignmentUseCaseTests
 
         // Assert
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 }

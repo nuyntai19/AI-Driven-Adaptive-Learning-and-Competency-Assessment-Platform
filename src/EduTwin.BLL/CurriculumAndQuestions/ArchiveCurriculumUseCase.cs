@@ -36,6 +36,11 @@ public class ArchiveCurriculumUseCase : IArchiveCurriculumUseCase
             return ArchiveCurriculumResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
+        if (!isTeacher)
+        {
+            return ArchiveCurriculumResult.Failure(ErrorCodes.ForbiddenResource);
+        }
+
         if (!CurriculumGuards.TryParseRowVersion(request.RowVersion, out var rowVersion))
         {
             return ArchiveCurriculumResult.Failure(ErrorCodes.ValidationFailed);

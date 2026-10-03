@@ -17,7 +17,7 @@ public class CreateQuestionRequest
     public GradingCriteria? GradingCriteria { get; set; }
     public decimal MaxScore { get; set; } = 1m;
     public uint EstimatedTimeSeconds { get; set; }
-    public bool ReasoningRequired { get; set; } = true;
+    public bool ReasoningRequired { get; set; } = false;
     public string LanguageCode { get; set; } = "vi";
     public string? AnswerEvaluationMode { get; set; }
     public List<QuestionOptionInput> Options { get; set; } = new();

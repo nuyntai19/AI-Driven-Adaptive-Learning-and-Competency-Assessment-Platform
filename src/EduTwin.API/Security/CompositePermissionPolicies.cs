@@ -29,8 +29,7 @@ public static class CompositePermissionPolicies
             ],
             [DashboardsClassRead] =
             [
-                "dashboards.teacher.read_scoped",
-                "dashboards.center.read"
+                "dashboards.teacher.read_scoped"
             ]
         };
 }

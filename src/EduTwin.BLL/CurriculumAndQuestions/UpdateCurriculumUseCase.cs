@@ -36,6 +36,11 @@ public class UpdateCurriculumUseCase : IUpdateCurriculumUseCase
             return UpdateCurriculumResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
+        if (!isTeacher)
+        {
+            return UpdateCurriculumResult.Failure(ErrorCodes.ForbiddenResource);
+        }
+
         if (string.IsNullOrWhiteSpace(request.Title) || request.Title.Length > 250)
         {
             return UpdateCurriculumResult.Failure(ErrorCodes.ValidationFailed);

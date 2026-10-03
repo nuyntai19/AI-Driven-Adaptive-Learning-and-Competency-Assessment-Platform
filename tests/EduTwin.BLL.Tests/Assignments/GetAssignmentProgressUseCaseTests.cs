@@ -168,7 +168,7 @@ public class GetAssignmentProgressUseCaseTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_CenterManager_ReturnsProgressForAssignmentInCenter()
+    public async Task ExecuteAsync_CenterManager_ReturnsForbiddenResource()
     {
         var centerId = Guid.NewGuid();
         var teacherId = Guid.NewGuid();
@@ -178,12 +178,12 @@ public class GetAssignmentProgressUseCaseTests
 
         var result = await CreateSut(context).ExecuteAsync(assignmentId);
 
-        Assert.True(result.IsSuccess, result.ErrorCode);
-        Assert.Equal(2, result.Data!.Count);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
-    public async Task ExecuteAsync_TeacherWhoDoesNotOwnClass_ReturnsNotFound()
+    public async Task ExecuteAsync_TeacherWhoDoesNotOwnClass_ReturnsForbiddenResource()
     {
         var centerId = Guid.NewGuid();
         SetupTenant(centerId, Guid.NewGuid(), UserRole.Teacher);
@@ -193,7 +193,7 @@ public class GetAssignmentProgressUseCaseTests
         var result = await CreateSut(context).ExecuteAsync(assignmentId);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
         Assert.Null(result.Data);
     }
 
@@ -213,7 +213,7 @@ public class GetAssignmentProgressUseCaseTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_UnresolvedTenant_ReturnsNotFoundWithoutQueryingData()
+    public async Task ExecuteAsync_UnresolvedTenant_ReturnsForbiddenResource()
     {
         _tenantContextMock.SetupGet(context => context.IsResolved).Returns(false);
         await using var context = CreateContext(Guid.NewGuid());
@@ -221,7 +221,7 @@ public class GetAssignmentProgressUseCaseTests
         var result = await CreateSut(context).ExecuteAsync(Guid.NewGuid());
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -236,7 +236,7 @@ public class GetAssignmentProgressUseCaseTests
         var result = await CreateSut(context).ExecuteAsync(assignmentId);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
         Assert.Null(result.Data);
     }
 }

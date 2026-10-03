@@ -33,14 +33,12 @@ public class ListAssignmentsUseCase : IListAssignmentsUseCase
             !_tenantContext.CenterId.HasValue || _tenantContext.CenterId.Value == Guid.Empty ||
             !_tenantContext.UserId.HasValue || _tenantContext.UserId.Value == Guid.Empty ||
             string.IsNullOrWhiteSpace(_tenantContext.Role) ||
-            (!string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal) &&
-             !string.Equals(_tenantContext.Role, nameof(UserRole.CenterManager), StringComparison.Ordinal)))
+            !string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal))
         {
-            return ListAssignmentsResult.Failure(ErrorCodes.ResourceNotFound);
+            return ListAssignmentsResult.Failure(ErrorCodes.ForbiddenResource);
         }
 
         var actorId = _tenantContext.UserId.Value;
-        var isTeacher = string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal);
 
         // 2. Validate pagination
         var page = query.Page < 1 ? 1 : query.Page;
@@ -56,16 +54,9 @@ public class ListAssignmentsUseCase : IListAssignmentsUseCase
         }
 
         // 4. Build query — Global Query Filter handles centerId + !isDeleted
-        var assignmentsQuery = _dbContext.Assignments.AsNoTracking();
-
         // Teacher scope: only assignments for their classes
-        if (isTeacher)
-        {
-            // Use a correlated EXISTS instead of Contains(List<Guid>). The MySQL
-            // provider cannot type-map a Guid collection against varchar(36).
-            assignmentsQuery = assignmentsQuery.Where(a =>
-                _dbContext.Classes.Any(c => c.ClassId == a.ClassId && c.TeacherId == actorId));
-        }
+        var assignmentsQuery = _dbContext.Assignments.AsNoTracking()
+            .Where(a => _dbContext.Classes.Any(c => c.ClassId == a.ClassId && c.TeacherId == actorId));
 
         if (query.ClassId.HasValue && query.ClassId.Value != Guid.Empty)
             assignmentsQuery = assignmentsQuery.Where(a => a.ClassId == query.ClassId.Value);

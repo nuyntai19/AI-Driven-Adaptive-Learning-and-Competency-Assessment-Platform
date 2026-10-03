@@ -29,10 +29,9 @@ public class GetQuestionUseCase : IGetQuestionUseCase
             !_tenantContext.CenterId.HasValue || _tenantContext.CenterId.Value == Guid.Empty ||
             !_tenantContext.UserId.HasValue || _tenantContext.UserId.Value == Guid.Empty ||
             string.IsNullOrWhiteSpace(_tenantContext.Role) ||
-            (!string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal) &&
-             !string.Equals(_tenantContext.Role, nameof(UserRole.CenterManager), StringComparison.Ordinal)))
+            !string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal))
         {
-            return GetQuestionResult.Failure(ErrorCodes.ResourceNotFound);
+            return GetQuestionResult.Failure(ErrorCodes.ForbiddenResource);
         }
 
         // 2. Parse ID
@@ -42,7 +41,6 @@ public class GetQuestionUseCase : IGetQuestionUseCase
 
         var centerId = _tenantContext.CenterId.Value;
         var actorId = _tenantContext.UserId.Value;
-        var isTeacher = string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal);
 
         // 3. Load question (Global Query Filter applies: CenterId + !IsDeleted)
         var question = await _dbContext.Questions
@@ -53,8 +51,8 @@ public class GetQuestionUseCase : IGetQuestionUseCase
             return GetQuestionResult.Failure(ErrorCodes.ResourceNotFound);
 
         // 4. Teacher ownership check
-        if (isTeacher && question.CreatedByTeacherId != actorId)
-            return GetQuestionResult.Failure(ErrorCodes.ResourceNotFound);
+        if (question.CreatedByTeacherId != actorId)
+            return GetQuestionResult.Failure(ErrorCodes.ForbiddenResource);
 
         // 5. Load options and mappings
         var options = await _dbContext.QuestionOptions

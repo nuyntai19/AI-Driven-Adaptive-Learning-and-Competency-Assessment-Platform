@@ -212,29 +212,16 @@ public class ListCurriculumsUseCaseTests : IDisposable
     }
 
     [Fact]
-    public async Task ExecuteAsync_CenterManager_ReturnsAllCurriculumsInCenter()
+    public async Task ExecuteAsync_CenterManager_ReturnsForbiddenResource()
     {
         var centerId = Guid.NewGuid();
         var managerId = Guid.NewGuid();
-        var teacher1Id = Guid.NewGuid();
-        var teacher2Id = Guid.NewGuid();
         SetupTenant(centerId, managerId, nameof(UserRole.CenterManager));
-
-        await SeedBasicEntitiesAsync(centerId, teacher1Id);
-        await SeedCenterManagerAsync(centerId, managerId);
-
-        var now = DateTime.UtcNow;
-        var c1 = new Curriculum { CurriculumId = Guid.NewGuid(), CenterId = centerId, TeacherId = teacher1Id, SubjectId = Guid.NewGuid(), Title = "C1", ReviewStatus = ReviewStatus.Draft, CreatedAt = now, UpdatedAt = now };
-        var c2 = new Curriculum { CurriculumId = Guid.NewGuid(), CenterId = centerId, TeacherId = teacher2Id, SubjectId = Guid.NewGuid(), Title = "C2", ReviewStatus = ReviewStatus.Published, CreatedAt = now, UpdatedAt = now };
-
-        _dbContext.Curriculums.AddRange(c1, c2);
-        await _dbContext.SaveChangesAsync();
 
         var result = await _sut.ExecuteAsync(new CurriculumListQuery());
 
-        Assert.True(result.IsSuccess);
-        Assert.NotNull(result.Data);
-        Assert.Equal(2, result.Data.Count);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -401,12 +388,12 @@ public class ListCurriculumsUseCaseTests : IDisposable
     [InlineData("centerManager")]
     [InlineData("0")]
     [InlineData("Student")]
-    public async Task ExecuteAsync_InvalidOrWrongCasingRole_ReturnsResourceNotFound(string? role)
+    public async Task ExecuteAsync_InvalidOrWrongCasingRole_ReturnsForbiddenResource(string? role)
     {
         SetupTenant(Guid.NewGuid(), Guid.NewGuid(), role);
         var result = await _sut.ExecuteAsync(new CurriculumListQuery());
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     // --- C. Actor Predicates ---
@@ -629,7 +616,7 @@ public class ListCurriculumsUseCaseTests : IDisposable
     }
 
     [Fact]
-    public async Task ExecuteAsync_CenterManagerUserCrossTenant_ReturnsResourceNotFound()
+    public async Task ExecuteAsync_CenterManagerUserCrossTenant_ReturnsForbiddenResource()
     {
         var centerAId = Guid.NewGuid();
         var centerBId = Guid.NewGuid();
@@ -693,7 +680,7 @@ public class ListCurriculumsUseCaseTests : IDisposable
         var result = await _sut.ExecuteAsync(new CurriculumListQuery());
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -705,8 +692,8 @@ public class ListCurriculumsUseCaseTests : IDisposable
         var teacherBId = Guid.NewGuid();
         var managerId = Guid.NewGuid();
 
-        // Use CenterManager at Center A to see all Center A curriculums
-        SetupTenant(centerAId, managerId, nameof(UserRole.CenterManager));
+        // Use Teacher at Center A to see Center A curriculums
+        SetupTenant(centerAId, teacherAId, nameof(UserRole.Teacher));
 
         // Seed full valid fixtures at both Centers
         var seedA = await SeedBasicEntitiesAsync(centerAId, teacherAId);
@@ -833,7 +820,7 @@ public class ListCurriculumsUseCaseTests : IDisposable
 
         var result = await _sut.ExecuteAsync(new CurriculumListQuery());
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -849,7 +836,7 @@ public class ListCurriculumsUseCaseTests : IDisposable
 
         var result = await _sut.ExecuteAsync(new CurriculumListQuery());
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -865,7 +852,7 @@ public class ListCurriculumsUseCaseTests : IDisposable
 
         var result = await _sut.ExecuteAsync(new CurriculumListQuery());
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -881,7 +868,7 @@ public class ListCurriculumsUseCaseTests : IDisposable
 
         var result = await _sut.ExecuteAsync(new CurriculumListQuery());
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -895,7 +882,7 @@ public class ListCurriculumsUseCaseTests : IDisposable
 
         var result = await _sut.ExecuteAsync(new CurriculumListQuery());
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     // --- D. Query Validation ---

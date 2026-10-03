@@ -550,7 +550,7 @@ public class PublishAssignmentUseCaseTests
         var result = await sut.ExecuteAsync(assignment.AssignmentId, new PublishAssignmentRequest { RowVersion = "1" });
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -758,7 +758,7 @@ public class PublishAssignmentUseCaseTests
     // TC-13: CenterManager có thể publish (không cần là Teacher owner)
     // ─────────────────────────────────────────────────────────────────────────
     [Fact]
-    public async Task ExecuteAsync_CenterManagerPublishes_Success()
+    public async Task ExecuteAsync_CenterManagerPublishes_ReturnsForbiddenResource()
     {
         var centerId = Guid.NewGuid();
         var teacherId = Guid.NewGuid();
@@ -775,8 +775,8 @@ public class PublishAssignmentUseCaseTests
 
         var result = await sut.ExecuteAsync(assignment.AssignmentId, new PublishAssignmentRequest { RowVersion = "1" });
 
-        Assert.True(result.IsSuccess, $"Expected success but got: {result.ErrorCode}");
-        Assert.Equal("Published", result.Data!.Status);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -932,7 +932,7 @@ public class PublishAssignmentUseCaseTests
         var result = await sut.ExecuteAsync(Guid.NewGuid(), new PublishAssignmentRequest { RowVersion = "1" });
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -951,7 +951,7 @@ public class PublishAssignmentUseCaseTests
         var result = await sut.ExecuteAsync(Guid.NewGuid(), new PublishAssignmentRequest { RowVersion = "1" });
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

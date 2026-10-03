@@ -86,7 +86,9 @@ public sealed class GetStudentDashboardUseCase : IGetStudentDashboardUseCase
                         : governedGoal?.RemainingDays ?? 0u;
                     var predictedScore = governedGoal?.CurrentPredictedScore ?? 0m;
                     var riskScore = hasTarget
-                        ? StudentSubjectGoalRiskCalculator.CalculateRisk(targetScore, predictedScore, checked((int)remainingDays))
+                        ? (preference is not null
+                            ? StudentSubjectGoalRiskCalculator.CalculateRisk(targetScore, predictedScore, checked((int)remainingDays))
+                            : governedGoal?.RiskScore ?? 0m)
                         : 0m;
                     return new { HasTarget = hasTarget, TargetScore = targetScore, RemainingDays = remainingDays, PredictedScore = predictedScore, RiskScore = riskScore };
                 })

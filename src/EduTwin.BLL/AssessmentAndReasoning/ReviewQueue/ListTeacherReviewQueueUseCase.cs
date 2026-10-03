@@ -47,13 +47,12 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
         }
 
         var isTeacher = _tenantContext.Role == nameof(UserRole.Teacher);
-        var isCenterManager = _tenantContext.Role == nameof(UserRole.CenterManager);
-        if (!isTeacher && !isCenterManager)
+        if (!isTeacher)
         {
-            return ListTeacherReviewQueueResult.NotFound();
+            return ListTeacherReviewQueueResult.Forbidden();
         }
 
-        if (isTeacher && !await _dbContext.Teachers.AsNoTracking().AnyAsync(
+        if (!await _dbContext.Teachers.AsNoTracking().AnyAsync(
                 teacher => teacher.CenterId == centerId && teacher.TeacherId == actorId,
                 cancellationToken))
         {

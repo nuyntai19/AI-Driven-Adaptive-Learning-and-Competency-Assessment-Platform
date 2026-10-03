@@ -45,10 +45,9 @@ public class UpdateQuestionUseCase : IUpdateQuestionUseCase
             !_tenantContext.CenterId.HasValue || _tenantContext.CenterId.Value == Guid.Empty ||
             !_tenantContext.UserId.HasValue || _tenantContext.UserId.Value == Guid.Empty ||
             string.IsNullOrWhiteSpace(_tenantContext.Role) ||
-            (!string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal) &&
-             !string.Equals(_tenantContext.Role, nameof(UserRole.CenterManager), StringComparison.Ordinal)))
+            !string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal))
         {
-            return UpdateQuestionResult.Failure(ErrorCodes.ResourceNotFound);
+            return UpdateQuestionResult.Failure(ErrorCodes.ForbiddenResource);
         }
 
         // 2. Parse question ID
@@ -115,8 +114,8 @@ public class UpdateQuestionUseCase : IUpdateQuestionUseCase
             return UpdateQuestionResult.Failure(ErrorCodes.ResourceNotFound);
 
         // 6. Ownership check
-        if (isTeacher && question.CreatedByTeacherId != actorId)
-            return UpdateQuestionResult.Failure(ErrorCodes.ResourceNotFound);
+        if (question.CreatedByTeacherId != actorId)
+            return UpdateQuestionResult.Failure(ErrorCodes.ForbiddenResource);
 
         // 7. State check removed to allow editing active or archived questions
 

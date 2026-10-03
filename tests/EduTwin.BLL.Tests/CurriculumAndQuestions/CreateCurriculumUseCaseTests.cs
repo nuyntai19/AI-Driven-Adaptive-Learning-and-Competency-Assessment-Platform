@@ -234,7 +234,7 @@ public class CreateCurriculumUseCaseTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_CenterManagerOwner_ValidTeacher_CreatesCurriculumSuccessfully()
+    public async Task ExecuteAsync_CenterManagerOwner_ValidTeacher_ReturnsForbiddenResource()
     {
         var centerId = Guid.NewGuid();
         var managerId = Guid.NewGuid();
@@ -256,16 +256,8 @@ public class CreateCurriculumUseCaseTests
 
         var result = await _sut.ExecuteAsync(request);
 
-        Assert.True(result.IsSuccess);
-        Assert.NotNull(result.Data);
-        Assert.Equal(teacherId.ToString("D").ToLowerInvariant(), result.Data.TeacherId);
-        Assert.Equal(new List<string> { n2Str, n1Str }, result.Data.NodeIds);
-
-        var nodesInDb = await _dbContext.CurriculumNodes.OrderBy(cn => cn.OrderIndex).ToListAsync();
-        Assert.Equal(seed.Node2.NodeId, nodesInDb[0].NodeId);
-        Assert.Equal(1u, nodesInDb[0].OrderIndex);
-        Assert.Equal(seed.Node1.NodeId, nodesInDb[1].NodeId);
-        Assert.Equal(2u, nodesInDb[1].OrderIndex);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     // --- Section B: Tenant & Center Tests ---
@@ -419,7 +411,7 @@ public class CreateCurriculumUseCaseTests
     [InlineData("Student")]
     [InlineData("teacher")]
     [InlineData("ADMIN")]
-    public async Task ExecuteAsync_InvalidOrWrongCasingRole_ReturnsResourceNotFound(string? role)
+    public async Task ExecuteAsync_InvalidOrWrongCasingRole_ReturnsForbiddenResource(string? role)
     {
         _tenantMock.SetupGet(x => x.IsResolved).Returns(true);
         _tenantMock.SetupGet(x => x.CenterId).Returns(Guid.NewGuid());
@@ -430,7 +422,7 @@ public class CreateCurriculumUseCaseTests
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
         Assert.Empty(await _dbContext.Curriculums.ToListAsync());
         Assert.Empty(await _dbContext.CurriculumNodes.ToListAsync());
     }
@@ -572,7 +564,7 @@ public class CreateCurriculumUseCaseTests
     [InlineData(" ")]
     [InlineData("not-a-guid")]
     [InlineData("00000000-0000-0000-0000-000000000000")]
-    public async Task ExecuteAsync_CenterManager_InvalidTeacherId_ReturnsValidationFailed(string? teacherId)
+    public async Task ExecuteAsync_CenterManager_InvalidTeacherId_ReturnsForbiddenResource(string? teacherId)
     {
         var centerId = Guid.NewGuid();
         var managerId = Guid.NewGuid();
@@ -582,7 +574,7 @@ public class CreateCurriculumUseCaseTests
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -599,7 +591,7 @@ public class CreateCurriculumUseCaseTests
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -618,7 +610,7 @@ public class CreateCurriculumUseCaseTests
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -637,7 +629,7 @@ public class CreateCurriculumUseCaseTests
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -656,7 +648,7 @@ public class CreateCurriculumUseCaseTests
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -675,7 +667,7 @@ public class CreateCurriculumUseCaseTests
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -692,7 +684,7 @@ public class CreateCurriculumUseCaseTests
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -711,7 +703,7 @@ public class CreateCurriculumUseCaseTests
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     // --- Section E: Subject References Tests ---
@@ -1162,7 +1154,7 @@ public class CreateCurriculumUseCaseTests
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Theory]
@@ -1188,7 +1180,7 @@ public class CreateCurriculumUseCaseTests
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -1210,7 +1202,7 @@ public class CreateCurriculumUseCaseTests
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -1235,11 +1227,11 @@ public class CreateCurriculumUseCaseTests
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
-    public async Task ExecuteAsync_CenterManager_WithValidTeacher_Succeeds_AndSetsOwnerTeacherId()
+    public async Task ExecuteAsync_CenterManager_WithValidTeacher_ReturnsForbiddenResource()
     {
         var centerId = Guid.NewGuid();
         var managerId = Guid.NewGuid();
@@ -1257,14 +1249,8 @@ public class CreateCurriculumUseCaseTests
 
         var result = await _sut.ExecuteAsync(request);
 
-        Assert.True(result.IsSuccess);
-        Assert.NotNull(result.Data);
-        Assert.Equal(seed.Teacher.TeacherId.ToString(), result.Data.TeacherId);
-        Assert.NotEqual(managerId.ToString(), result.Data.TeacherId);
-
-        var savedInDb = await _dbContext.Curriculums.SingleAsync(c => c.CurriculumId == Guid.Parse(result.Data.CurriculumId));
-        Assert.Equal(seed.Teacher.TeacherId, savedInDb.TeacherId);
-        Assert.Equal(managerId, savedInDb.CreatedBy);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]

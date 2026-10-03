@@ -64,7 +64,7 @@ public sealed class ListTeacherReviewQueueUseCaseTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_CenterManagerRole_ReturnsAllCenterItems()
+    public async Task ExecuteAsync_CenterManagerRole_ReturnsForbiddenResource()
     {
         var fixture = await CreateFixtureAsync(UserRole.CenterManager);
         await using var context = fixture.Context;
@@ -75,11 +75,8 @@ public sealed class ListTeacherReviewQueueUseCaseTests
 
         var result = await sut.ExecuteAsync(new TeacherReviewQueueQuery(), CancellationToken.None);
 
-        Assert.True(result.IsSuccess);
-        Assert.Equal(2, result.TotalItems);
-        Assert.Equal(2, result.Data!.Count);
-        Assert.Contains(result.Data!, item => item.AttemptId == "1");
-        Assert.Contains(result.Data!, item => item.AttemptId == "3");
+        Assert.False(result.IsSuccess);
+        Assert.Equal(EduTwin.Contracts.Common.ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -95,7 +92,7 @@ public sealed class ListTeacherReviewQueueUseCaseTests
         var result = await sut.ExecuteAsync(new TeacherReviewQueueQuery(), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(EduTwin.Contracts.Common.ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(EduTwin.Contracts.Common.ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Theory]

@@ -36,15 +36,13 @@ public class GetAssignmentProgressUseCase : IGetAssignmentProgressUseCase
             !_tenantContext.CenterId.HasValue || _tenantContext.CenterId.Value == Guid.Empty ||
             !_tenantContext.UserId.HasValue || _tenantContext.UserId.Value == Guid.Empty ||
             string.IsNullOrWhiteSpace(_tenantContext.Role) ||
-            (!string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal) &&
-             !string.Equals(_tenantContext.Role, nameof(UserRole.CenterManager), StringComparison.Ordinal)) ||
+            !string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal) ||
             assignmentId == Guid.Empty)
         {
-            return GetAssignmentProgressResult.Failure(ErrorCodes.ResourceNotFound);
+            return GetAssignmentProgressResult.Failure(ErrorCodes.ForbiddenResource);
         }
 
         var actorId = _tenantContext.UserId.Value;
-        var isTeacher = string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal);
 
         var assignment = await _dbContext.Assignments
             .AsNoTracking()
@@ -55,17 +53,14 @@ public class GetAssignmentProgressUseCase : IGetAssignmentProgressUseCase
         if (assignment == null)
             return GetAssignmentProgressResult.Failure(ErrorCodes.ResourceNotFound);
 
-        if (isTeacher)
-        {
-            var ownsClass = await _dbContext.Classes
-                .AsNoTracking()
-                .AnyAsync(
-                    item => item.ClassId == assignment.ClassId && item.TeacherId == actorId,
-                    cancellationToken);
+        var ownsClass = await _dbContext.Classes
+            .AsNoTracking()
+            .AnyAsync(
+                item => item.ClassId == assignment.ClassId && item.TeacherId == actorId,
+                cancellationToken);
 
-            if (!ownsClass)
-                return GetAssignmentProgressResult.Failure(ErrorCodes.ResourceNotFound);
-        }
+        if (!ownsClass)
+            return GetAssignmentProgressResult.Failure(ErrorCodes.ForbiddenResource);
 
         var progressRows = await _dbContext.StudentAssignmentProgresses
             .AsNoTracking()

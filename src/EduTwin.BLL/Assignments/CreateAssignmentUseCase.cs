@@ -40,10 +40,9 @@ public class CreateAssignmentUseCase : ICreateAssignmentUseCase
             !_tenantContext.CenterId.HasValue || _tenantContext.CenterId.Value == Guid.Empty ||
             !_tenantContext.UserId.HasValue || _tenantContext.UserId.Value == Guid.Empty ||
             string.IsNullOrWhiteSpace(_tenantContext.Role) ||
-            (!string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal) &&
-             !string.Equals(_tenantContext.Role, nameof(UserRole.CenterManager), StringComparison.Ordinal)))
+            !string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal))
         {
-            return CreateAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
+            return CreateAssignmentResult.Failure(ErrorCodes.ForbiddenResource);
         }
 
         var centerId = _tenantContext.CenterId.Value;
@@ -128,8 +127,8 @@ public class CreateAssignmentUseCase : ICreateAssignmentUseCase
             return CreateAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
 
         // Teacher ownership: Teacher chỉ được tạo Assignment cho Class của mình
-        if (isTeacher && classEntity.TeacherId != actorId)
-            return CreateAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
+        if (classEntity.TeacherId != actorId)
+            return CreateAssignmentResult.Failure(ErrorCodes.ForbiddenResource);
 
         // Class phải Active
         if (classEntity.Status != ClassStatus.Active)

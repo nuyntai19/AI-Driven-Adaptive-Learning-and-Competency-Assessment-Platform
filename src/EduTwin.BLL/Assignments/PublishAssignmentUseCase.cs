@@ -58,17 +58,15 @@ public class PublishAssignmentUseCase : IPublishAssignmentUseCase
             !_tenantContext.CenterId.HasValue || _tenantContext.CenterId.Value == Guid.Empty ||
             !_tenantContext.UserId.HasValue || _tenantContext.UserId.Value == Guid.Empty ||
             string.IsNullOrWhiteSpace(_tenantContext.Role) ||
-            (!string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal) &&
-             !string.Equals(_tenantContext.Role, nameof(UserRole.CenterManager), StringComparison.Ordinal)))
+            !string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal))
         {
-            return PublishAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
+            return PublishAssignmentResult.Failure(ErrorCodes.ForbiddenResource);
         }
 
         if (assignmentId == Guid.Empty)
             return PublishAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
 
         var actorId = _tenantContext.UserId.Value;
-        var isTeacher = string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal);
 
         // ── 2. Validate rowVersion format: ASCII digits only, > 0 ──────────────
         if (string.IsNullOrEmpty(request.RowVersion))
@@ -92,17 +90,13 @@ public class PublishAssignmentUseCase : IPublishAssignmentUseCase
 
         // ── 4. Ownership guard ──────────────────────────────────────────────────
         // Teacher: chỉ publish Assignment của Class mình sở hữu
-        // CenterManager: toàn Center (Global Query Filter đã scope)
-        if (isTeacher)
-        {
-            var classOwner = await _dbContext.Classes
-                .AsNoTracking()
-                .Select(c => new { c.ClassId, c.TeacherId })
-                .FirstOrDefaultAsync(c => c.ClassId == assignment.ClassId, cancellationToken);
+        var classOwner = await _dbContext.Classes
+            .AsNoTracking()
+            .Select(c => new { c.ClassId, c.TeacherId })
+            .FirstOrDefaultAsync(c => c.ClassId == assignment.ClassId, cancellationToken);
 
-            if (classOwner == null || classOwner.TeacherId != actorId)
-                return PublishAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
-        }
+        if (classOwner == null || classOwner.TeacherId != actorId)
+            return PublishAssignmentResult.Failure(ErrorCodes.ForbiddenResource);
 
         // ── 5. State machine: chỉ Draft được phép publish ───────────────────────
         if (assignment.Status != AssignmentStatus.Draft)

@@ -123,9 +123,9 @@ public sealed class TeacherReviewControllerTests
         Assert.Contains(EduTwin.Contracts.IdentityAndTenancy.UserRole.Teacher, overrideRoles);
         Assert.DoesNotContain(EduTwin.Contracts.IdentityAndTenancy.UserRole.CenterManager, overrideRoles);
 
-        // Both can view/review queue
+        // Only teacher can view/review queue
         Assert.Contains(EduTwin.Contracts.IdentityAndTenancy.UserRole.Teacher, reviewRoles);
-        Assert.Contains(EduTwin.Contracts.IdentityAndTenancy.UserRole.CenterManager, reviewRoles);
+        Assert.DoesNotContain(EduTwin.Contracts.IdentityAndTenancy.UserRole.CenterManager, reviewRoles);
     }
 
     [Fact]

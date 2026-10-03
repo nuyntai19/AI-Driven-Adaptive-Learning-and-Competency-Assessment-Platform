@@ -327,7 +327,7 @@ public class CreateQuestionUseCaseTests : IDisposable
     }
 
     [Fact]
-    public async Task Create_CenterManagerWithoutTeacherId_ReturnsValidationFailed()
+    public async Task Create_CenterManager_ReturnsForbiddenResource()
     {
         await SeedDataAsync();
         _tenantContextMock.Setup(t => t.UserId).Returns(Guid.NewGuid());
@@ -336,23 +336,7 @@ public class CreateQuestionUseCaseTests : IDisposable
         var result = await _sut.ExecuteAsync(ValidShortAnswerRequest());
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
-    }
-
-    [Fact]
-    public async Task Create_CenterManagerWithActiveTeacher_PersistsSelectedOwner()
-    {
-        await SeedDataAsync();
-        _tenantContextMock.Setup(t => t.UserId).Returns(Guid.NewGuid());
-        _tenantContextMock.Setup(t => t.Role).Returns(nameof(UserRole.CenterManager));
-        var request = ValidShortAnswerRequest();
-        request.TeacherId = _teacherId.ToString();
-
-        var result = await _sut.ExecuteAsync(request);
-
-        Assert.True(result.IsSuccess);
-        Assert.Equal(_teacherId.ToString("D"), result.Data!.CreatedByTeacherId);
-        Assert.Equal(_teacherId, (await _dbContext.Questions.SingleAsync()).CreatedByTeacherId);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]

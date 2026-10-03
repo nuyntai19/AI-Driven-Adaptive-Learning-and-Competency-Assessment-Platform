@@ -36,6 +36,11 @@ public class PublishCurriculumUseCase : IPublishCurriculumUseCase
             return PublishCurriculumResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
+        if (!isTeacher)
+        {
+            return PublishCurriculumResult.Failure(ErrorCodes.ForbiddenResource);
+        }
+
         if (!CurriculumGuards.TryParseRowVersion(request.RowVersion, out var rowVersion))
         {
             return PublishCurriculumResult.Failure(ErrorCodes.ValidationFailed);

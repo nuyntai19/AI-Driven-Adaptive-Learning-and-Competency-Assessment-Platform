@@ -38,6 +38,11 @@ public class AssignCurriculumClassesUseCase : IAssignCurriculumClassesUseCase
             return AssignCurriculumClassesResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
+        if (!isTeacher)
+        {
+            return AssignCurriculumClassesResult.Failure(ErrorCodes.ForbiddenResource);
+        }
+
         if (request.ClassIds == null || !CurriculumGuards.TryParseRowVersion(request.RowVersion, out var rowVersion))
         {
             return AssignCurriculumClassesResult.Failure(ErrorCodes.ValidationFailed);

@@ -100,54 +100,37 @@ public class CreateKnowledgeEdgeUseCase : ICreateKnowledgeEdgeUseCase
         if (targetNode == null)
             return CreateKnowledgeEdgeResult.Failure(ErrorCodes.ResourceNotFound);
 
-        var existingEdge = await _dbContext.KnowledgeEdges
-            .IgnoreQueryFilters()
+        var existingEdge = await _dbContext.KnowledgeEdges.AsNoTracking()
             .FirstOrDefaultAsync(e => e.CenterId == _tenantContext.CenterId!.Value &&
                                       e.SourceNodeId == sourceNodeId &&
                                       e.TargetNodeId == targetNodeId &&
-                                      e.RelationType == relationType, cancellationToken);
+                                      e.RelationType == relationType &&
+                                      !e.IsDeleted, cancellationToken);
 
-        if (existingEdge != null && !existingEdge.IsDeleted)
+        if (existingEdge != null)
         {
             return CreateKnowledgeEdgeResult.Failure(ErrorCodes.DuplicateResource);
         }
 
         var now = _timeProvider.GetUtcNow().UtcDateTime;
 
-        KnowledgeEdge edge;
-        if (existingEdge != null && existingEdge.IsDeleted)
+        var edge = new KnowledgeEdge
         {
-            existingEdge.SubjectId = request.SubjectId;
-            existingEdge.Weight = request.Weight.Value;
-            existingEdge.IsDeleted = false;
-            existingEdge.DeletedAt = null;
-            existingEdge.DeletedBy = null;
-            existingEdge.UpdatedAt = now;
-            existingEdge.UpdatedBy = _tenantContext.UserId!.Value;
-            existingEdge.RowVersion++;
-            edge = existingEdge;
-        }
-        else
-        {
-            edge = new KnowledgeEdge
-            {
-                CenterId = _tenantContext.CenterId!.Value,
-                SubjectId = request.SubjectId,
-                SourceNodeId = sourceNodeId,
-                TargetNodeId = targetNodeId,
-                RelationType = relationType,
-                Weight = request.Weight.Value,
-                CreatedAt = now,
-                CreatedBy = _tenantContext.UserId!.Value,
-                UpdatedAt = now,
-                UpdatedBy = _tenantContext.UserId!.Value,
-                IsDeleted = false
-            };
-            _dbContext.KnowledgeEdges.Add(edge);
-        }
+            CenterId = _tenantContext.CenterId!.Value,
+            SubjectId = request.SubjectId,
+            SourceNodeId = sourceNodeId,
+            TargetNodeId = targetNodeId,
+            RelationType = relationType,
+            Weight = request.Weight.Value,
+            CreatedAt = now,
+            CreatedBy = _tenantContext.UserId!.Value,
+            UpdatedAt = now,
+            UpdatedBy = _tenantContext.UserId!.Value,
+            IsDeleted = false
+        };
 
         var existingGraphEdges = await _dbContext.KnowledgeEdges.AsNoTracking()
-            .Where(e => e.CenterId == _tenantContext.CenterId!.Value && e.SubjectId == request.SubjectId && !e.IsDeleted && e.EdgeId != edge.EdgeId)
+            .Where(e => e.CenterId == _tenantContext.CenterId!.Value && e.SubjectId == request.SubjectId && !e.IsDeleted)
             .OrderBy(e => e.SourceNodeId)
             .ThenBy(e => e.TargetNodeId)
             .ThenBy(e => e.RelationType)
@@ -164,6 +147,8 @@ public class CreateKnowledgeEdgeUseCase : ICreateKnowledgeEdgeUseCase
         {
             return CreateKnowledgeEdgeResult.Failure(ErrorCodes.DagCycleDetected);
         }
+
+        _dbContext.KnowledgeEdges.Add(edge);
 
         try
         {

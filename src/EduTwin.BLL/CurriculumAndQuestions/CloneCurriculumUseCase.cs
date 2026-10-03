@@ -37,6 +37,11 @@ public class CloneCurriculumUseCase : ICloneCurriculumUseCase
             return CloneCurriculumResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
+        if (!isTeacher)
+        {
+            return CloneCurriculumResult.Failure(ErrorCodes.ForbiddenResource);
+        }
+
         var sourceCurriculum = await _dbContext.Curriculums
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.CurriculumId == curriculumId &&

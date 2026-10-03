@@ -41,17 +41,15 @@ public class UpdateAssignmentUseCase : IUpdateAssignmentUseCase
             !_tenantContext.CenterId.HasValue || _tenantContext.CenterId.Value == Guid.Empty ||
             !_tenantContext.UserId.HasValue || _tenantContext.UserId.Value == Guid.Empty ||
             string.IsNullOrWhiteSpace(_tenantContext.Role) ||
-            (!string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal) &&
-             !string.Equals(_tenantContext.Role, nameof(UserRole.CenterManager), StringComparison.Ordinal)))
+            !string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal))
         {
-            return UpdateAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
+            return UpdateAssignmentResult.Failure(ErrorCodes.ForbiddenResource);
         }
 
         if (assignmentId == Guid.Empty)
             return UpdateAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
 
         var actorId = _tenantContext.UserId.Value;
-        var isTeacher = string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal);
 
         // 2. Validate rowVersion format (strict: ASCII digits, > 0)
         if (string.IsNullOrWhiteSpace(request.RowVersion))
@@ -74,16 +72,13 @@ public class UpdateAssignmentUseCase : IUpdateAssignmentUseCase
             return UpdateAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
 
         // 4. Ownership guard
-        if (isTeacher)
-        {
-            var classEntity = await _dbContext.Classes
-                .AsNoTracking()
-                .Select(c => new { c.ClassId, c.TeacherId })
-                .FirstOrDefaultAsync(c => c.ClassId == assignment.ClassId, cancellationToken);
+        var classEntity = await _dbContext.Classes
+            .AsNoTracking()
+            .Select(c => new { c.ClassId, c.TeacherId, c.SubjectId })
+            .FirstOrDefaultAsync(c => c.ClassId == assignment.ClassId, cancellationToken);
 
-            if (classEntity == null || classEntity.TeacherId != actorId)
-                return UpdateAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
-        }
+        if (classEntity == null || classEntity.TeacherId != actorId)
+            return UpdateAssignmentResult.Failure(ErrorCodes.ForbiddenResource);
 
         // 5. State machine: only Draft allowed
         if (assignment.Status != AssignmentStatus.Draft)
@@ -137,14 +132,6 @@ public class UpdateAssignmentUseCase : IUpdateAssignmentUseCase
             // Validate each question: Active + same Subject as Class
             if (newParsedQuestionIds.Count > 0)
             {
-                var classEntity = await _dbContext.Classes
-                    .AsNoTracking()
-                    .Select(c => new { c.ClassId, c.SubjectId })
-                    .FirstOrDefaultAsync(c => c.ClassId == assignment.ClassId, cancellationToken);
-
-                if (classEntity == null)
-                    return UpdateAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
-
                 var dbQuestions = await _dbContext.Questions
                     .AsNoTracking()
                     .Where(q => newParsedQuestionIds.Contains(q.QuestionId))

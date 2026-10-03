@@ -37,12 +37,15 @@ public class CreateCurriculumUseCase : ICreateCurriculumUseCase
         // 1. Fail-closed tenant and role gate
         if (!_tenantContext.IsResolved ||
             !_tenantContext.CenterId.HasValue || _tenantContext.CenterId.Value == Guid.Empty ||
-            !_tenantContext.UserId.HasValue || _tenantContext.UserId.Value == Guid.Empty ||
-            string.IsNullOrWhiteSpace(_tenantContext.Role) ||
-            (!string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal) &&
-             !string.Equals(_tenantContext.Role, nameof(UserRole.CenterManager), StringComparison.Ordinal)))
+            !_tenantContext.UserId.HasValue || _tenantContext.UserId.Value == Guid.Empty)
         {
             return CreateCurriculumResult.Failure(ErrorCodes.ResourceNotFound);
+        }
+
+        if (string.IsNullOrWhiteSpace(_tenantContext.Role) ||
+            !string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal))
+        {
+            return CreateCurriculumResult.Failure(ErrorCodes.ForbiddenResource);
         }
 
         // 2. Request Validation

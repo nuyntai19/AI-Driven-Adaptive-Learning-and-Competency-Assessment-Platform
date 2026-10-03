@@ -37,6 +37,11 @@ public class AssignCurriculumNodesUseCase : IAssignCurriculumNodesUseCase
             return AssignCurriculumNodesResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
+        if (!isTeacher)
+        {
+            return AssignCurriculumNodesResult.Failure(ErrorCodes.ForbiddenResource);
+        }
+
         if (request.NodeIds == null || !CurriculumGuards.TryParseRowVersion(request.RowVersion, out var rowVersion))
         {
             return AssignCurriculumNodesResult.Failure(ErrorCodes.ValidationFailed);

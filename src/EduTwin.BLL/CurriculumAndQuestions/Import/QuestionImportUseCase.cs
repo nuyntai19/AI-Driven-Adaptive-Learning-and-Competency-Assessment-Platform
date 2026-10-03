@@ -279,14 +279,16 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
             }
 
             // 9. Reasoning Required
-            var reasoningReqStr = GetValue(row, "reasoningrequired", "yeucaubienluan", "batbuoclapluan");
-            bool reasoningRequired = true;
+            var reasoningReqStr = GetValue(row, "reasoningrequired", "yeucaubienluan", "batbuoclapluan", "yeucautrinhbayloigiai");
+            bool reasoningRequired = false;
             if (!string.IsNullOrWhiteSpace(reasoningReqStr))
             {
-                if (reasoningReqStr.Equals("0", StringComparison.Ordinal) ||
-                    reasoningReqStr.Equals("false", StringComparison.OrdinalIgnoreCase) ||
-                    reasoningReqStr.Equals("khong", StringComparison.OrdinalIgnoreCase) ||
-                    reasoningReqStr.Equals("no", StringComparison.OrdinalIgnoreCase))
+                var lower = reasoningReqStr.Trim().ToLowerInvariant();
+                if (lower is "1" or "true" or "co" or "có" or "yes" or "batbuoc" or "bắt buộc")
+                {
+                    reasoningRequired = true;
+                }
+                else if (lower is "0" or "false" or "khong" or "không" or "no")
                 {
                     reasoningRequired = false;
                 }

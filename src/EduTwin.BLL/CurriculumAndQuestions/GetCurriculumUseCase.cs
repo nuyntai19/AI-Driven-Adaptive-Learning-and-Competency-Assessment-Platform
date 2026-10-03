@@ -30,6 +30,11 @@ public class GetCurriculumUseCase : IGetCurriculumUseCase
             return GetCurriculumResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
+        if (!isTeacher)
+        {
+            return GetCurriculumResult.Failure(ErrorCodes.ForbiddenResource);
+        }
+
         var curriculum = await _dbContext.Curriculums
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.CurriculumId == request.CurriculumId && 
