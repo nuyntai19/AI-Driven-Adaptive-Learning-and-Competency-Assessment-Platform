@@ -46,12 +46,12 @@ const ReviewQueueWorkspace = lazy(() => import("./components/academic").then((m)
 const TeacherStudentTwinView = lazy(() => import("./pages/teacher/TeacherStudentTwinView").then((module) => ({ default: module.TeacherStudentTwinView })));
 const TeacherStudentManagementView = lazy(() => import("./pages/teacher/TeacherStudentManagementView").then((module) => ({ default: module.TeacherStudentManagementView })));
 
+import { resolveAcademicRedirect } from "./routes/academicRoutingHelpers";
+
 function AcademicRedirectRoute({ teacherTarget }: { teacherTarget: string }) {
   const user = useAuthStore((state) => state.user);
-  if (user?.accountType === "Teacher") {
-    return <Navigate to={teacherTarget} replace />;
-  }
-  return <Navigate to="/khong-co-quyen" replace />;
+  const target = resolveAcademicRedirect(user, teacherTarget);
+  return <Navigate to={target} replace />;
 }
 
 const FallbackRoute = () => {

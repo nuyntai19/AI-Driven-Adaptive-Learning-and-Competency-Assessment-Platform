@@ -220,7 +220,7 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
               const isCollapsed = Boolean((mf as any).selectionIsCollapsed ?? true);
               const normalized = normalizeMathInsertContent(s, { isSelectionCollapsed: isCollapsed });
               const insertOptions = normalized.includes("#?")
-                ? { selectionMode: "placeholder", ...options }
+                ? { ...options, selectionMode: options?.selectionMode ?? "placeholder" }
                 : options;
               return originalInsert(normalized, insertOptions);
             };
@@ -233,10 +233,16 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
                 const s = command[1];
                 const isCollapsed = Boolean((mf as any).selectionIsCollapsed ?? true);
                 const normalized = normalizeMathInsertContent(s, { isSelectionCollapsed: isCollapsed });
+                const originalOptions = typeof command[2] === "object" && command[2] !== null ? command[2] : undefined;
                 const insertOptions = normalized.includes("#?")
-                  ? { selectionMode: "placeholder" }
-                  : undefined;
-                return originalExecuteCommand(["insert", normalized, insertOptions] as any);
+                  ? { ...originalOptions, selectionMode: originalOptions?.selectionMode ?? "placeholder" }
+                  : command[2];
+                const newCommand = [...command];
+                newCommand[1] = normalized;
+                if (command.length > 2 || normalized.includes("#?")) {
+                  newCommand[2] = insertOptions;
+                }
+                return originalExecuteCommand(newCommand as any);
               }
               return originalExecuteCommand(command);
             };

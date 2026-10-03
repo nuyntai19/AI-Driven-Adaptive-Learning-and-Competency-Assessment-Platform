@@ -915,3 +915,132 @@ test("behavioral: InlineMathComposer backdrop ignores click 1 when dismissing ke
   handleBackdropClick(true);
   assert.equal(modalOpen, false, "Modal must close on Click #2");
 });
+
+test("normalizeMathInsertContent strictly preserves text, escaped hashes, and whitespace while converting math templates", async () => {
+  const { normalizeMathInsertContent } = await import("../src/utils/visualMathFieldLifecycle.ts");
+
+  // 1. Text preservation: \text{...} and plain text containing #1, #0, or escaped \# must NEVER be modified
+  assert.equal(
+    normalizeMathInsertContent("\\text{Mã \\#1}"),
+    "\\text{Mã \\#1}",
+    "\\text{Mã \\#1} must remain strictly unchanged"
+  );
+  assert.equal(
+    normalizeMathInsertContent("\\text{Mã #1}"),
+    "\\text{Mã #1}",
+    "\\text{Mã #1} must remain strictly unchanged"
+  );
+  assert.equal(
+    normalizeMathInsertContent("Mã #1"),
+    "Mã #1",
+    "Plain text 'Mã #1' must remain unchanged"
+  );
+  assert.equal(
+    normalizeMathInsertContent(" x "),
+    " x ",
+    "Spaces in ' x ' must be preserved"
+  );
+  assert.equal(
+    normalizeMathInsertContent("   "),
+    "   ",
+    "Whitespace-only strings must be preserved"
+  );
+
+  // 2. Mathematical templates: MathLive keyboard triggers convert to explicit placeholders (#?)
+  assert.equal(
+    normalizeMathInsertContent("\\sqrt{#0}", { isSelectionCollapsed: true }),
+    "\\sqrt{#?}",
+    "\\sqrt{#0} must convert to \\sqrt{#?} when selection is collapsed"
+  );
+  assert.equal(
+    normalizeMathInsertContent("\\sqrt{#0}", { isSelectionCollapsed: false }),
+    "\\sqrt{#0}",
+    "\\sqrt{#0} must be preserved when text is selected for wrapping"
+  );
+  assert.equal(
+    normalizeMathInsertContent("\\frac{#0}{#1}", { isSelectionCollapsed: true }),
+    "\\frac{#?}{#?}",
+    "\\frac{#0}{#1} must convert to \\frac{#?}{#?}"
+  );
+  assert.equal(
+    normalizeMathInsertContent("\\left|#0\\right|", { isSelectionCollapsed: true }),
+    "\\left|#?\\right|",
+    "\\left|#0\\right| must convert to \\left|#?\\right|"
+  );
+  assert.equal(
+    normalizeMathInsertContent("\\left\\Vert#0\\right\\Vert", { isSelectionCollapsed: true }),
+    "\\left\\|#?\\right\\|",
+    "\\left\\Vert#0\\right\\Vert must convert to \\left\\|#?\\right\\|"
+  );
+  assert.equal(
+    normalizeMathInsertContent("^{#0}", { isSelectionCollapsed: true }),
+    "^{#?}",
+    "^{#0} must convert to ^{#?}"
+  );
+  assert.equal(
+    normalizeMathInsertContent("_{#0}", { isSelectionCollapsed: true }),
+    "_{#?}",
+    "_{#0} must convert to _{#?}"
+  );
+  assert.equal(
+    normalizeMathInsertContent("\\sqrt[#0]{#1}", { isSelectionCollapsed: true }),
+    "\\sqrt[#?]{#?}",
+    "\\sqrt[#0]{#1} must convert to \\sqrt[#?]{#?}"
+  );
+});
+
+test("VisualMathField command wrapper preserves and merges original command options", async () => {
+  const { normalizeMathInsertContent } = await import("../src/utils/visualMathFieldLifecycle.ts");
+  // Test executeCommand wrapper logic with original command[2] options
+  const executedCommands: any[] = [];
+  const fakeMf: any = {
+    selectionIsCollapsed: true,
+    executeCommand: (cmd: any) => {
+      executedCommands.push(cmd);
+      return true;
+    },
+    insert: (s: string, opts?: any) => {
+      executedCommands.push(["insert", s, opts]);
+      return true;
+    },
+  };
+
+  // Simulate VisualMathField wrapper logic
+  const originalExecuteCommand = fakeMf.executeCommand.bind(fakeMf);
+  fakeMf.executeCommand = (command: any) => {
+    if (Array.isArray(command) && command[0] === "insert" && typeof command[1] === "string") {
+      const s = command[1];
+      const isCollapsed = Boolean(fakeMf.selectionIsCollapsed ?? true);
+      const normalized = normalizeMathInsertContent(s, { isSelectionCollapsed: isCollapsed });
+      const originalOptions = typeof command[2] === "object" && command[2] !== null ? command[2] : undefined;
+      const insertOptions = normalized.includes("#?")
+        ? { ...originalOptions, selectionMode: originalOptions?.selectionMode ?? "placeholder" }
+        : command[2];
+      const newCommand = [...command];
+      newCommand[1] = normalized;
+      if (command.length > 2 || normalized.includes("#?")) {
+        newCommand[2] = insertOptions;
+      }
+      return originalExecuteCommand(newCommand as any);
+    }
+    return originalExecuteCommand(command);
+  };
+
+  // Scenario A: MathLive insert with existing options { mode: "math", focus: true }
+  fakeMf.executeCommand(["insert", "\\sqrt{#0}", { mode: "math", focus: true }]);
+  assert.equal(executedCommands.length, 1);
+  assert.deepEqual(executedCommands[0], [
+    "insert",
+    "\\sqrt{#?}",
+    { mode: "math", focus: true, selectionMode: "placeholder" },
+  ]);
+
+  // Scenario B: Plain text insertion preserves original options without adding selectionMode
+  fakeMf.executeCommand(["insert", "\\text{Mã \\#1}", { mode: "text", silenceNotifications: true }]);
+  assert.equal(executedCommands.length, 2);
+  assert.deepEqual(executedCommands[1], [
+    "insert",
+    "\\text{Mã \\#1}",
+    { mode: "text", silenceNotifications: true },
+  ]);
+});

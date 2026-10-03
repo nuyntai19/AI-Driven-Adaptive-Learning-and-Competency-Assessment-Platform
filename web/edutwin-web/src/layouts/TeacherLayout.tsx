@@ -415,16 +415,15 @@ export function TeacherLayout() {
   );
 }
 
+import { resolveTeacherLayoutAccess } from "../routes/academicRoutingHelpers";
+
 export function TeacherLayoutBoundary() {
   const user = useAuthStore((state) => state.user);
   const location = useLocation();
+  const access = resolveTeacherLayoutAccess(user);
 
-  if (!user) {
-    return <Navigate to="/dang-nhap" replace state={{ attemptedPath: location.pathname }} />;
-  }
-
-  if (user.accountType !== "Teacher") {
-    return <Navigate to="/khong-co-quyen" replace state={{ attemptedPath: location.pathname }} />;
+  if (!access.allowed) {
+    return <Navigate to={access.redirect || "/dang-nhap"} replace state={{ attemptedPath: location.pathname }} />;
   }
 
   return <TeacherLayout />;
