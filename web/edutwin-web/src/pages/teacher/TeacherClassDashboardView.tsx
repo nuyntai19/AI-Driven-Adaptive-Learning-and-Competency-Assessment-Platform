@@ -115,7 +115,12 @@ export function TeacherClassDashboardView() {
         />
       )}
 
-      {!dashboardLoading && !isError && dashboard && (
+      {!dashboardLoading && !isError && dashboard && (() => {
+        const rawCompRate = dashboard.overview.assignmentCompletionRate;
+        const compRatePercent = rawCompRate > 1 ? rawCompRate : rawCompRate * 100;
+        const isHighCompletion = compRatePercent >= 80;
+
+        return (
         <div className="space-y-6">
           {/* Overview Metric Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -127,12 +132,12 @@ export function TeacherClassDashboardView() {
             />
             <TeacherMetricCard
               label="Tỷ lệ nộp bài tập"
-              value={`${(dashboard.overview.assignmentCompletionRate * 100).toFixed(0)}%`}
+              value={`${compRatePercent.toFixed(0)}%`}
               supportingText="Tính trên tổng số bài giao"
               icon="📑"
               trend={{
-                label: dashboard.overview.assignmentCompletionRate >= 0.8 ? "Đạt chỉ tiêu" : "Cần nhắc nhở",
-                tone: dashboard.overview.assignmentCompletionRate >= 0.8 ? "positive" : "negative",
+                label: isHighCompletion ? "Đạt chỉ tiêu" : "Cần nhắc nhở",
+                tone: isHighCompletion ? "positive" : "negative",
               }}
             />
             <TeacherMetricCard
@@ -330,7 +335,8 @@ export function TeacherClassDashboardView() {
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

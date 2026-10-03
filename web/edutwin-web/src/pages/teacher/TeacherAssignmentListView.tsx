@@ -169,10 +169,10 @@ export function TeacherAssignmentListView() {
       )}
 
       {/* Filters */}
-      <div className="rounded-xl border border-[var(--th-border-subtle)] bg-[var(--th-surface)] p-4 shadow-md">
+      <div className="rounded-xl border border-[var(--th-border-subtle)] bg-[var(--th-surface)] p-4 shadow-sm">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div>
-            <label className="block text-[10px] font-semibold uppercase text-[var(--th-text-muted)] mb-1">Lớp học</label>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1.5">Lớp học</label>
             <select
               value={selectedClassId}
               onChange={(e) => {
@@ -180,7 +180,7 @@ export function TeacherAssignmentListView() {
                 setPage(1);
               }}
               disabled={isLoadingClasses}
-              className="th-select w-full text-xs py-1.5"
+              className="th-select w-full text-sm py-2 px-3"
             >
               <option value="">Tất cả các lớp phụ trách</option>
               {classesData?.data?.map((c) => (
@@ -192,14 +192,14 @@ export function TeacherAssignmentListView() {
           </div>
 
           <div>
-            <label className="block text-[10px] font-semibold uppercase text-[var(--th-text-muted)] mb-1">Trạng thái</label>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1.5">Trạng thái</label>
             <select
               value={selectedStatus}
               onChange={(e) => {
                 setSelectedStatus(e.target.value as AssignmentStatus | "");
                 setPage(1);
               }}
-              className="th-select w-full text-xs py-1.5"
+              className="th-select w-full text-sm py-2 px-3"
             >
               <option value="">Tất cả trạng thái</option>
               <option value="Draft">Bản nháp (Draft)</option>
@@ -257,18 +257,24 @@ export function TeacherAssignmentListView() {
                   <button
                     type="button"
                     onClick={() => handleOpenQuickView(assignment.assignmentId, "questions")}
-                    className="hover:text-[var(--th-teal)] hover:underline flex items-center gap-1 transition-colors cursor-pointer text-left"
+                    className="hover:text-[var(--th-teal)] hover:underline flex items-center gap-1.5 transition-colors cursor-pointer text-left font-medium"
                     title="Bấm để xem danh sách câu hỏi trong bài tập"
                   >
-                    <span>📚 <strong>{assignment.questionCount}</strong> câu hỏi</span>
+                    <svg className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <span><strong>{assignment.questionCount}</strong> câu hỏi</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => handleOpenQuickView(assignment.assignmentId, "students")}
-                    className="hover:text-[var(--th-teal)] hover:underline flex items-center gap-1 transition-colors cursor-pointer text-right"
+                    className="hover:text-[var(--th-teal)] hover:underline flex items-center gap-1.5 transition-colors cursor-pointer text-right font-medium"
                     title="Bấm để xem danh sách học sinh được phân công"
                   >
-                    <span>👥 <strong>{assignment.targetStudentCount}</strong> học sinh</span>
+                    <svg className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                    </svg>
+                    <span><strong>{assignment.targetStudentCount}</strong> học sinh</span>
                   </button>
                 </div>
               </div>
@@ -279,10 +285,13 @@ export function TeacherAssignmentListView() {
                   <button
                     type="button"
                     onClick={() => handleOpenQuickView(assignment.assignmentId, "questions")}
-                    className="th-secondary-button text-xs py-1 px-2.5 flex items-center gap-1"
+                    className="th-secondary-button text-xs py-1.5 px-3 flex items-center gap-1.5"
                     title="Xem chi tiết câu hỏi và danh sách học sinh đã phân công"
                   >
-                    <span>👁️</span>
+                    <svg className="w-3.5 h-3.5 text-[var(--th-text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
                     <span>Xem bài</span>
                   </button>
 
@@ -290,7 +299,7 @@ export function TeacherAssignmentListView() {
                     <button
                       type="button"
                       onClick={() => handleOpenDialog(assignment, "publish")}
-                      className="th-primary-button text-xs py-1 px-2.5"
+                      className="th-primary-button text-xs py-1.5 px-3"
                     >
                       Xuất bản
                     </button>
@@ -299,7 +308,7 @@ export function TeacherAssignmentListView() {
                     <button
                       type="button"
                       onClick={() => handleOpenDialog(assignment, "close")}
-                      className="th-secondary-button text-xs py-1 px-2.5 border-rose-500/40 text-rose-300 hover:bg-rose-500/20"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-rose-500/30 text-rose-600 dark:text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 transition-all cursor-pointer shadow-sm"
                     >
                       Đóng bài
                     </button>
@@ -309,7 +318,7 @@ export function TeacherAssignmentListView() {
                 <div className="flex items-center gap-2">
                   <Link
                     to={`/giao-vien/bai-tap/${assignment.assignmentId}/tien-do`}
-                    className="th-secondary-button text-xs py-1 px-2.5"
+                    className="th-secondary-button text-xs py-1.5 px-3 font-semibold"
                   >
                     Tiến độ →
                   </Link>
@@ -317,7 +326,7 @@ export function TeacherAssignmentListView() {
                     canUpdate && (
                       <Link
                         to={`/giao-vien/bai-tap/${assignment.assignmentId}`}
-                        className="th-secondary-button text-xs py-1 px-2.5"
+                        className="th-secondary-button text-xs py-1.5 px-3"
                       >
                         Sửa
                       </Link>
@@ -325,7 +334,7 @@ export function TeacherAssignmentListView() {
                   ) : (
                     <Link
                       to={`/giao-vien/bai-tap/${assignment.assignmentId}`}
-                      className="th-secondary-button text-xs py-1 px-2.5"
+                      className="th-secondary-button text-xs py-1.5 px-3"
                       title="Xem toàn bộ cấu hình bài tập"
                     >
                       Cấu hình

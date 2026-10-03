@@ -565,14 +565,18 @@ export function TeacherStudentManagementView() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           {/* Search box */}
           <div className="flex-1 max-w-md relative">
+            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Tìm kiếm học sinh theo họ tên, tên đăng nhập..."
-              className="th-input w-full text-xs py-2 pl-8"
+              className="th-input w-full text-sm py-2 !pl-10 pr-4 placeholder:text-slate-400"
             />
-            <span className="absolute left-2.5 top-2.5 text-stone-400 text-xs">🔍</span>
           </div>
 
           {/* Grade filter */}
@@ -581,7 +585,7 @@ export function TeacherStudentManagementView() {
             <select
               value={selectedGrade}
               onChange={(e) => setSelectedGrade(e.target.value)}
-              className="th-select text-xs py-1.5"
+              className="th-select text-sm py-1.5 px-3"
             >
               <option value="">Tất cả khối</option>
               <option value="10">Khối 10</option>
@@ -693,7 +697,7 @@ export function TeacherStudentManagementView() {
                       {/* Name & Username (Read-Only) */}
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="h-8 w-8 rounded-full bg-[var(--th-surface-muted)] border border-[var(--th-border)] flex items-center justify-center font-bold text-xs text-[var(--th-text)] shrink-0">
+                          <div className="h-8 w-8 rounded-full bg-teal-500/10 dark:bg-teal-500/20 border border-teal-500/25 flex items-center justify-center font-bold text-xs text-teal-700 dark:text-teal-300 shrink-0">
                             {student.fullName.slice(0, 2).toUpperCase()}
                           </div>
                           <div>
@@ -783,14 +787,14 @@ export function TeacherStudentManagementView() {
                           <button
                             type="button"
                             onClick={() => setSelectedStudent(student)}
-                            className="th-secondary-button text-xs py-1 px-2.5"
+                            className="th-secondary-button text-xs py-1 px-2.5 rounded-lg"
                             title="Xem chi tiết hồ sơ học tập và bảng điểm"
                           >
                             Hồ sơ →
                           </button>
                           <Link
                             to={`/giao-vien/hoc-sinh/${student.studentId}/twin?subjectId=${selectedClass?.subject?.subjectId || ""}`}
-                            className="th-secondary-button text-xs py-1 px-2 text-stone-600 hover:text-[var(--th-teal)]"
+                            className="th-secondary-button text-xs py-1 px-2.5 rounded-lg text-slate-700 dark:text-slate-200 hover:text-teal-600"
                             title="Xem bản sao số năng lực (Digital Twin)"
                           >
                             Twin
@@ -799,20 +803,30 @@ export function TeacherStudentManagementView() {
                             type="button"
                             onClick={() => handleExportIndividualExcel(student)}
                             disabled={isExportingExcel}
-                            className={`th-icon-button h-7 w-7 text-xs text-teal-700 dark:text-teal-400 hover:bg-teal-500/10 ${
+                            className={`th-icon-button h-7 w-7 text-xs rounded-lg text-teal-600 dark:text-teal-400 hover:bg-teal-500/10 ${
                               isExportingExcel ? "opacity-40 cursor-wait" : ""
                             }`}
                             title="Tải bảng điểm cá nhân định dạng Microsoft Excel (.xlsx)"
                           >
-                            📊
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                              <polyline points="14 2 14 8 20 8" />
+                              <line x1="16" y1="13" x2="8" y2="13" />
+                              <line x1="16" y1="17" x2="8" y2="17" />
+                              <polyline points="10 9 9 9 8 9" />
+                            </svg>
                           </button>
                           <button
                             type="button"
                             onClick={() => handleExportIndividualCsv(student)}
-                            className="th-icon-button h-7 w-7 text-xs text-stone-600 hover:bg-stone-500/10"
+                            className="th-icon-button h-7 w-7 text-xs rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-500/10"
                             title="Tải bảng điểm cá nhân định dạng CSV (.csv)"
                           >
-                            📥
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                              <polyline points="7 10 12 15 17 10" />
+                              <line x1="12" y1="15" x2="12" y2="3" />
+                            </svg>
                           </button>
                         </div>
                       </td>
