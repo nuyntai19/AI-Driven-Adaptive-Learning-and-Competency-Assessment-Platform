@@ -19,8 +19,28 @@
   --cm-radius-lg: 1rem;
   --cm-shadow: 0 18px 45px rgba(2, 6, 23, 0.28);
 
+  /* Standardized Typography Tokens */
+  --cm-font-title: 1.875rem; /* 30px, 28-32px range */
+  --cm-font-body: 1rem;      /* 16px */
+  --cm-font-nav: 0.9375rem;  /* 15px */
+  --cm-font-ui: 0.875rem;    /* 14px */
+  --cm-font-meta: 0.75rem;   /* 12px */
+  --cm-line-height-body: 1.5;
+
+  font-size: var(--cm-font-body);
+  line-height: var(--cm-line-height-body);
   color: var(--cm-text);
   color-scheme: dark;
+}
+
+[data-actor="center-manager"] input,
+[data-actor="center-manager"] button,
+[data-actor="center-manager"] select,
+[data-actor="center-manager"] textarea,
+[data-actor="center-manager"] table,
+[data-actor="center-manager"] th,
+[data-actor="center-manager"] td {
+  font-size: var(--cm-font-ui);
 }
 
 [data-actor="center-manager"][data-theme="light"],

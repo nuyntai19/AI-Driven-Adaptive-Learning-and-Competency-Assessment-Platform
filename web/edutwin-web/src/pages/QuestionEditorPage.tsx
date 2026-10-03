@@ -78,7 +78,7 @@ function CenterManagerQuestionEditorView() {
     questionText: "",
     maxScore: 1,
     estimatedTimeSeconds: 60,
-    reasoningRequired: true,
+    reasoningRequired: false,
     languageCode: "vi",
     answerEvaluationMode: "TextExact",
     options: [
@@ -1168,11 +1168,11 @@ function CenterManagerQuestionEditorView() {
                   className="h-4 w-4 rounded border-[var(--cm-border)] bg-[var(--cm-surface-subtle)] text-[var(--cm-cyan)] focus:ring-[var(--cm-cyan)]"
                 />
                 <span className="text-sm font-semibold text-[var(--cm-text)]">
-                  Bắt buộc học sinh trình bày các bước lập luận (Reasoning Required)
+                  Yêu cầu học sinh trình bày lời giải
                 </span>
               </label>
               <p className="mt-1.5 text-xs text-[var(--cm-text-muted)] pl-7">
-                Khi kích hoạt, hệ thống AI sẽ kiểm tra lập luận chi tiết của học sinh trước khi chốt năng lực kiến thức.
+                Khi bật, học sinh bắt buộc phải nhập các bước lập luận trước khi nộp bài. Mặc định tắt (chỉ nộp đáp án; nếu học sinh tự nguyện nhập lời giải thì AI vẫn phân tích và cập nhật Digital Twin).
               </p>
             </div>
           </div>
@@ -1502,7 +1502,7 @@ function LegacyQuestionEditorPage() {
     questionText: "",
     maxScore: 1,
     estimatedTimeSeconds: 60,
-    reasoningRequired: true,
+    reasoningRequired: false,
     languageCode: "vi",
     answerEvaluationMode: "TextExact",
     options: [

@@ -65,7 +65,7 @@ export function TeacherQuestionEditorView() {
   const [questionText, setQuestionText] = useState("");
   const [maxScore, setMaxScore] = useState<number>(10);
   const [estimatedTimeSeconds, setEstimatedTimeSeconds] = useState<number>(120);
-  const [reasoningRequired, setReasoningRequired] = useState<boolean>(true);
+  const [reasoningRequired, setReasoningRequired] = useState<boolean>(false);
   const [languageCode] = useState("vi");
   const [answerEvaluationMode, setAnswerEvaluationMode] = useState<QuestionAnswerEvaluationMode>("TextExact");
   const [options, setOptions] = useState<QuestionEditorOption[]>([
@@ -596,10 +596,10 @@ export function TeacherQuestionEditorView() {
             />
             <label htmlFor="reasoningRequiredToggle" className="cursor-pointer select-none">
               <span className="text-xs font-semibold text-[var(--th-text)]">
-                Bắt buộc giải trình tư duy (AI Reasoning Analysis)
+                Yêu cầu học sinh trình bày lời giải
               </span>
               <p className="text-[11px] text-[var(--th-text-muted)] mt-0.5">
-                Khi kích hoạt, học sinh làm bài sẽ được yêu cầu nhập các bước tư duy/lập luận để hệ thống AI phân tích phương pháp, phát hiện lỗi sai và cập nhật hồ sơ năng lực số (Digital Twin).
+                Khi bật, học sinh bắt buộc phải nhập các bước lập luận trước khi nộp bài. Mặc định tắt (chỉ nộp đáp án; nếu học sinh tự nguyện nhập lời giải thì AI vẫn phân tích và cập nhật Digital Twin).
               </p>
             </label>
           </div>
@@ -608,7 +608,7 @@ export function TeacherQuestionEditorView() {
               ? "bg-teal-500/10 text-[var(--th-teal)] border-teal-500/30"
               : "bg-slate-500/10 text-slate-400 border-slate-500/30"
           }`}>
-            {reasoningRequired ? "Bắt buộc tư duy" : "Chỉ nộp đáp án"}
+            {reasoningRequired ? "Bắt buộc giải trình" : "Tùy chọn lời giải"}
           </span>
         </div>
 

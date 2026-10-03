@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { organizationApi } from "../api/organizationApi";
 import { logout } from "../auth/authApi";
@@ -10,110 +10,81 @@ import { useAuthStore } from "../stores/authStore";
 import { useModalAccessibility } from "../utils/useModalAccessibility";
 
 interface TeacherNavigationItem {
-  number: string;
   label: string;
-  subLabel: string;
-  meta: string;
-  badge: string;
   to: string;
   permissions: readonly string[];
   permissionMode?: "all" | "any";
   match: (pathname: string) => boolean;
-  icon: string;
+  icon?: string;
+}
+
+interface TeacherNavigationGroup {
+  label: string;
+  items: TeacherNavigationItem[];
 }
 
 const startsWith = (prefix: string) => (pathname: string) => pathname.startsWith(prefix);
 
-const allTeacherNavItems: TeacherNavigationItem[] = [
+const teacherNavigationGroups: TeacherNavigationGroup[] = [
   {
-    number: "01",
-    label: "Lớp học phụ trách",
-    subLabel: "Quản lý & Theo dõi lớp",
-    meta: "Niên khóa 2025 - 2026",
-    badge: "Lớp học",
-    to: "/giao-vien/lop-hoc",
-    permissions: [permissions.dashboardsTeacherRead, permissions.classesRead],
-    permissionMode: "any",
-    match: (pathname) => pathname === "/giao-vien/lop-hoc" || /^\/giao-vien\/lop-hoc\/[^/]+/.test(pathname),
-    icon: "👥",
+    label: "Giảng dạy & Lớp học",
+    items: [
+      {
+        label: "Lớp học phụ trách",
+        to: "/giao-vien/lop-hoc",
+        permissions: [permissions.dashboardsTeacherRead, permissions.classesRead],
+        permissionMode: "any",
+        match: (pathname) => pathname === "/giao-vien/lop-hoc" || /^\/giao-vien\/lop-hoc\/[^/]+/.test(pathname),
+      },
+      {
+        label: "Quản lý học sinh",
+        to: "/giao-vien/hoc-sinh",
+        permissions: [permissions.studentsRead, permissions.dashboardsTeacherRead, permissions.classesRead],
+        permissionMode: "any",
+        match: (pathname) => pathname === "/giao-vien/hoc-sinh" || /^\/giao-vien\/hoc-sinh\/[^/]+/.test(pathname),
+      },
+    ],
   },
   {
-    number: "02",
-    label: "Quản lý học sinh",
-    subLabel: "Hồ sơ, Bảng điểm & Báo cáo",
-    meta: "Học sinh & Báo cáo",
-    badge: "Học sinh",
-    to: "/giao-vien/hoc-sinh",
-    permissions: [permissions.studentsRead, permissions.dashboardsTeacherRead, permissions.classesRead],
-    permissionMode: "any",
-    match: (pathname) => pathname === "/giao-vien/hoc-sinh" || /^\/giao-vien\/hoc-sinh\/[^/]+/.test(pathname),
-    icon: "👨‍🎓",
+    label: "Học thuật & Đề thi",
+    items: [
+      {
+        label: "Ngân hàng câu hỏi",
+        to: "/giao-vien/cau-hoi",
+        permissions: [permissions.questionsRead],
+        match: startsWith("/giao-vien/cau-hoi"),
+      },
+      {
+        label: "Giáo trình môn học",
+        to: "/giao-vien/giao-trinh",
+        permissions: [permissions.curriculumsRead],
+        match: startsWith("/giao-vien/giao-trinh"),
+      },
+      {
+        label: "Đồ thị tri thức",
+        to: "/giao-vien/do-thi-tri-thuc",
+        permissions: [permissions.subjectsRead],
+        match: startsWith("/giao-vien/do-thi-tri-thuc"),
+      },
+    ],
   },
   {
-    number: "03",
-    label: "Hàng đợi chấm bài",
-    subLabel: "Chấm điểm & Phản hồi bài tập",
-    meta: "Hàng đợi chấm thi",
-    badge: "Chấm bài",
-    to: "/giao-vien/cham-bai",
-    permissions: [permissions.teacherReviewsRead],
-    match: startsWith("/giao-vien/cham-bai"),
-    icon: "✍️",
-  },
-  {
-    number: "04",
-    label: "Ngân hàng câu hỏi",
-    subLabel: "Kho đề & Quản lý câu hỏi",
-    meta: "Trắc nghiệm & Tự luận",
-    badge: "Ngân hàng",
-    to: "/giao-vien/cau-hoi",
-    permissions: [permissions.questionsRead],
-    match: startsWith("/giao-vien/cau-hoi"),
-    icon: "📚",
-  },
-  {
-    number: "05",
-    label: "Giáo trình môn học",
-    subLabel: "Cấu trúc & Kế hoạch đào tạo",
-    meta: "Khung chương trình",
-    badge: "Giáo trình",
-    to: "/giao-vien/giao-trinh",
-    permissions: [permissions.curriculumsRead],
-    match: startsWith("/giao-vien/giao-trinh"),
-    icon: "📖",
-  },
-  {
-    number: "06",
-    label: "Đồ thị tri thức",
-    subLabel: "Sơ đồ & Mạng lưới năng lực",
-    meta: "Cây tri thức chuẩn",
-    badge: "Đồ thị",
-    to: "/giao-vien/do-thi-tri-thuc",
-    permissions: [permissions.subjectsRead, permissions.nodesRead, permissions.edgesRead],
-    match: startsWith("/giao-vien/do-thi-tri-thuc"),
-    icon: "🕸️",
-  },
-  {
-    number: "07",
-    label: "Danh sách bài tập",
-    subLabel: "Giao bài & Theo dõi tiến độ",
-    meta: "Bài tập & Đề kiểm tra",
-    badge: "Bài tập",
-    to: "/giao-vien/bai-tap",
-    permissions: [permissions.assignmentsRead],
-    match: (pathname) => pathname === "/giao-vien/bai-tap" || /^\/giao-vien\/bai-tap\/[^/]+(?!\/tao-moi)/.test(pathname),
-    icon: "📋",
-  },
-  {
-    number: "08",
-    label: "Tạo bài tập mới",
-    subLabel: "Thiết lập & Phát hành đề",
-    meta: "Soạn thảo nhanh",
-    badge: "Tạo mới",
-    to: "/giao-vien/bai-tap/tao-moi",
-    permissions: [permissions.assignmentsCreate],
-    match: (pathname) => pathname === "/giao-vien/bai-tap/tao-moi",
-    icon: "➕",
+    label: "Đánh giá & Chấm bài",
+    items: [
+      {
+        label: "Danh sách bài tập",
+        to: "/giao-vien/bai-tap",
+        permissions: [permissions.assignmentsRead],
+        match: startsWith("/giao-vien/bai-tap"),
+      },
+      {
+        label: "Hàng đợi chấm bài",
+        to: "/giao-vien/cham-bai",
+        permissions: [permissions.teacherReviewsRead, permissions.twinReasoningReview],
+        permissionMode: "any",
+        match: startsWith("/giao-vien/cham-bai"),
+      },
+    ],
   },
 ];
 
@@ -123,101 +94,87 @@ function initials(displayName?: string, username?: string) {
   return (parts[0] ?? username ?? "GV").slice(0, 2).toUpperCase();
 }
 
-function RetroHeaderTokens() {
-  return (
-    <div className="flex items-center gap-2.5">
-      {/* Cyan/Teal 4-petal flower icon */}
-      <svg className="h-8 w-8 drop-shadow-sm" viewBox="0 0 36 36" fill="none" aria-hidden="true">
-        <circle cx="13" cy="13" r="6" fill="#06b6d4" />
-        <circle cx="23" cy="13" r="6" fill="#06b6d4" />
-        <circle cx="13" cy="23" r="6" fill="#06b6d4" />
-        <circle cx="23" cy="23" r="6" fill="#06b6d4" />
-        <circle cx="18" cy="18" r="4.5" fill="#cffafe" />
-      </svg>
-
-      {/* Ice Cyan donut icon */}
-      <svg className="h-8 w-8 drop-shadow-sm" viewBox="0 0 36 36" fill="none" aria-hidden="true">
-        <circle cx="18" cy="18" r="11" fill="#e0f2fe" />
-        <circle cx="18" cy="18" r="4.5" fill="#0284c7" />
-      </svg>
-
-      {/* Ocean Blue daisy icon */}
-      <svg className="h-8 w-8 drop-shadow-sm" viewBox="0 0 36 36" fill="none" aria-hidden="true">
-        <circle cx="18" cy="10" r="5" fill="#38bdf8" />
-        <circle cx="25.5" cy="15.5" r="5" fill="#38bdf8" />
-        <circle cx="22.5" cy="24.5" r="5" fill="#38bdf8" />
-        <circle cx="13.5" cy="24.5" r="5" fill="#38bdf8" />
-        <circle cx="10.5" cy="15.5" r="5" fill="#38bdf8" />
-        <circle cx="18" cy="18" r="4.5" fill="#ffffff" />
-        <circle cx="18" cy="18" r="2.5" fill="#0284c7" />
-      </svg>
-    </div>
-  );
-}
-
-function TeacherNavCards({
-  items,
+function TeacherNavigation({
+  groups,
   pathname,
   onNavigate,
 }: {
-  items: TeacherNavigationItem[];
+  groups: TeacherNavigationGroup[];
   pathname: string;
   onNavigate: () => void;
 }) {
   return (
-    <nav aria-label="Điều hướng không gian giáo viên" className="space-y-2.5">
-      {items.map((item, index) => {
-        const active = item.match(pathname);
-        const itemNumber = String(index + 1).padStart(2, "0");
-
-        if (active) {
-          return (
-            <Link
-              key={item.to}
-              to={item.to}
-              aria-current="page"
-              onClick={onNavigate}
-              className="group block rounded-2xl bg-white p-4 text-slate-900 shadow-md transition-all duration-200 hover:shadow-lg"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <span className="text-base font-extrabold tracking-tight text-slate-900 group-hover:text-sky-700 transition-colors">
-                  {item.label}
-                </span>
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--th-nav-card-inactive)] text-[11px] font-bold text-sky-950 shadow-inner">
-                  {itemNumber}
-                </span>
-              </div>
-              <p className="mt-1 text-xs font-medium text-slate-600 line-clamp-1">{item.subLabel}</p>
-              <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2 text-[10px] text-slate-400">
-                <span>{item.meta}</span>
-                <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">
-                  <span>{item.icon}</span>
-                  <span>{item.badge}</span>
-                </span>
-              </div>
-            </Link>
-          );
-        }
-
-        return (
-          <Link
-            key={item.to}
-            to={item.to}
-            onClick={onNavigate}
-            className="group flex items-center justify-between rounded-2xl bg-[var(--th-nav-card-inactive)] px-4 py-3 text-[var(--th-nav-text-dark)] shadow-sm transition-all duration-150 hover:bg-[var(--th-nav-card-inactive-hover)] hover:shadow hover:-translate-y-0.5 active:translate-y-0"
+    <nav aria-label="Điều hướng không gian giáo viên" className="space-y-6 px-3 py-5">
+      {groups.map((group) => (
+        <section key={group.label} aria-labelledby={`th-nav-${group.label.replace(/\s+/g, "-").toLowerCase()}`}>
+          <h2
+            id={`th-nav-${group.label.replace(/\s+/g, "-").toLowerCase()}`}
+            className="px-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--th-text-muted)]"
           >
-            <div className="flex items-center gap-2 min-w-0 pr-2">
-              <span className="text-sm font-extrabold tracking-tight truncate text-[var(--th-nav-text-dark)]">
-                {item.label}
-              </span>
-            </div>
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-black/15 bg-black/5 text-[11px] font-bold text-[var(--th-nav-text-dark)]">
-              {itemNumber}
-            </span>
-          </Link>
-        );
-      })}
+            {group.label}
+          </h2>
+          <ul className="mt-2 space-y-1">
+            {group.items.map((item) => {
+              const active = item.match(pathname);
+              return (
+                <li key={item.to}>
+                  <Link
+                    to={item.to}
+                    aria-current={active ? "page" : undefined}
+                    onClick={onNavigate}
+                    className={`th-focus-ring flex min-h-10 items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors ${
+                      active
+                        ? "bg-emerald-500/15 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300 ring-1 ring-inset ring-emerald-400/30 font-semibold"
+                        : "text-[var(--th-text-secondary)] hover:bg-[var(--th-surface-subtle)] hover:text-[var(--th-text)]"
+                    }`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`h-2 w-2 rounded-full ${
+                        active ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]" : "bg-[var(--th-text-muted)]"
+                      }`}
+                    />
+                    {item.label}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ))}
     </nav>
+  );
+}
+
+function ShellSidebar({
+  children,
+  centerContext,
+  footer,
+}: {
+  children: ReactNode;
+  centerContext: ReactNode;
+  footer?: ReactNode;
+}) {
+  return (
+    <div className="flex h-full flex-col bg-[var(--th-surface)] border-r border-[var(--th-border-subtle)]">
+      <div className="flex h-[4.5rem] items-center gap-3 border-b border-[var(--th-border-subtle)] px-5">
+        <span
+          aria-hidden="true"
+          className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-cyan-400 to-emerald-500 text-lg font-black text-white shadow-md shadow-emerald-500/15"
+        >
+          E
+        </span>
+        <div>
+          <p className="font-semibold text-[var(--th-text)]">EduTwin</p>
+          <p className="text-xs uppercase tracking-[0.15em] text-emerald-700 dark:text-emerald-300 font-semibold">
+            Teacher workspace
+          </p>
+        </div>
+      </div>
+      {centerContext}
+      <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+      {footer}
+    </div>
   );
 }
 
@@ -231,7 +188,6 @@ export function TeacherLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
-  const [centerModalOpen, setCenterModalOpen] = useState(false);
   const drawerRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const profileButtonRef = useRef<HTMLButtonElement>(null);
@@ -271,17 +227,22 @@ export function TeacherLayout() {
     };
   }, [profileOpen]);
 
-  const visibleItems = useMemo(
+  const visibleGroups = useMemo(
     () =>
-      allTeacherNavItems.filter((item) =>
-        item.permissionMode === "any"
-          ? hasAnyPermission(item.permissions)
-          : hasAllPermissions(item.permissions)
-      ),
+      teacherNavigationGroups
+        .map((group) => ({
+          ...group,
+          items: group.items.filter((item) =>
+            item.permissionMode === "any"
+              ? hasAnyPermission(item.permissions)
+              : hasAllPermissions(item.permissions)
+          ),
+        }))
+        .filter((group) => group.items.length > 0),
     [hasAllPermissions, hasAnyPermission]
   );
 
-  const activeItem = visibleItems.find((item) => item.match(location.pathname));
+  const activeItem = visibleGroups.flatMap((group) => group.items).find((item) => item.match(location.pathname));
   const centerName = centerQuery.data?.centerName ?? user?.centerName ?? "Trung tâm giáo dục";
   const centerMeta = centerQuery.data
     ? `${centerQuery.data.centerCode} · ${centerQuery.data.status === "Active" ? "Đang hoạt động" : centerQuery.data.status}`
@@ -299,261 +260,162 @@ export function TeacherLayout() {
     }
   };
 
-  const sidebarContent = (
-    <div className="flex h-full flex-col justify-between p-4 sm:p-5 text-white">
-      {/* Top Header & Navigation Cards */}
-      <div className="space-y-5">
-        {/* Retro Header Icons & Title */}
-        <div className="pt-1">
-          <RetroHeaderTokens />
-          <div className="mt-3">
-            <h2 className="text-xl font-black tracking-tight text-white drop-shadow-sm">EduTwin</h2>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-100/90">
-              Teacher Workspace
-            </p>
-          </div>
-        </div>
+  const centerContext = (
+    <div className="mx-3 mt-4 rounded-xl border border-[var(--th-border-subtle)] bg-[var(--th-surface-subtle)] p-3">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-300">
+        Trung tâm đào tạo
+      </p>
+      <p className="truncate text-sm font-semibold text-[var(--th-text)]" title={centerName}>
+        {centerName}
+      </p>
+      <p className="mt-1 truncate text-xs text-[var(--th-text-muted)]" title={centerMeta}>
+        {centerMeta}
+      </p>
+    </div>
+  );
 
-        {/* Navigation Cards */}
-        <div className="max-h-[calc(100vh-22rem)] overflow-y-auto pr-0.5 space-y-2.5 custom-scrollbar">
-          <TeacherNavCards
-            items={visibleItems}
-            pathname={location.pathname}
-            onNavigate={() => setMobileOpen(false)}
-          />
-        </div>
-      </div>
-
-      {/* Bottom CTA Callout & Footer */}
-      <div className="mt-6 space-y-4 pt-4 border-t border-white/20">
-        {/* Callout text */}
-        <div>
-          <p className="text-base font-bold leading-snug text-white drop-shadow-sm">
-            Khu vực Giảng dạy & Đánh giá năng lực
-          </p>
-          <button
-            type="button"
-            onClick={() => setCenterModalOpen(true)}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#0f172a] px-4 py-2.5 text-xs font-bold text-white shadow-lg transition-transform duration-150 hover:bg-slate-900 hover:scale-[1.02] active:scale-[0.98]"
-          >
-            <span>🏫</span>
-            <span className="truncate">{centerName}</span>
-          </button>
-        </div>
-
-        {/* Bottom Card Footer */}
-        <div className="flex items-center justify-between rounded-2xl bg-white px-3.5 py-2.5 text-slate-900 shadow-md">
-          <span className="text-xs font-black tracking-tight text-slate-900">
-            ©2026 EduTwin.
-          </span>
-          <div className="flex items-center gap-2">
-            <ThemeToggle />
-            <button
-              type="button"
-              onClick={handleLogout}
-              disabled={loggingOut}
-              title="Đăng xuất"
-              className="grid h-7 w-7 place-items-center rounded-lg bg-rose-50 text-xs font-bold text-rose-600 transition-colors hover:bg-rose-100"
-              aria-label="Đăng xuất"
-            >
-              🚪
-            </button>
-          </div>
-        </div>
-      </div>
+  const sidebarFooter = (
+    <div className="border-t border-[var(--th-border-subtle)] p-3 bg-[var(--th-surface)]">
+      <button
+        type="button"
+        onClick={handleLogout}
+        disabled={loggingOut}
+        title="Đăng xuất khỏi hệ thống"
+        className="th-focus-ring group flex w-full items-center justify-center gap-2 rounded-xl border border-rose-500/20 bg-rose-500/5 px-4 py-2.5 text-sm font-semibold text-rose-600 transition-all hover:bg-rose-500/15 hover:border-rose-500/40 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300"
+      >
+        <svg className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+        </svg>
+        <span>{loggingOut ? "Đang đăng xuất…" : "Đăng xuất"}</span>
+      </button>
     </div>
   );
 
   return (
     <TeacherThemeScope data-actor="teacher">
-      <div className="flex min-h-screen bg-[var(--th-bg)] text-[var(--th-text)]">
-        {/* Desktop Sidebar with Cool Tone Theme */}
-        <aside
-          aria-label="Thanh điều hướng Giáo viên"
-          className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:block lg:w-80 bg-[var(--th-sidebar-bg)] shadow-2xl overflow-y-auto"
-        >
-          {sidebarContent}
+      <div className="min-h-screen lg:grid lg:grid-cols-[17rem_minmax(0,1fr)] bg-[var(--th-bg)] text-[var(--th-text)]">
+        {/* Desktop Sidebar */}
+        <aside className="fixed inset-y-0 left-0 z-30 hidden w-[17rem] border-r border-[var(--th-border-subtle)] lg:block">
+          <ShellSidebar centerContext={centerContext} footer={sidebarFooter}>
+            <TeacherNavigation groups={visibleGroups} pathname={location.pathname} onNavigate={() => undefined} />
+          </ShellSidebar>
         </aside>
 
         {/* Mobile Navigation Drawer */}
         {mobileOpen && (
-          <div
-            className="fixed inset-0 z-50 flex lg:hidden bg-slate-950/70 backdrop-blur-sm"
-            onMouseDown={(event) => event.target === event.currentTarget && setMobileOpen(false)}
-          >
+          <div className="fixed inset-0 z-50 flex lg:hidden" role="presentation">
+            <button
+              type="button"
+              aria-label="Đóng menu điều hướng"
+              className="absolute inset-0 bg-slate-950/75 backdrop-blur-sm"
+              onClick={() => setMobileOpen(false)}
+            />
             <aside
               ref={drawerRef}
               role="dialog"
               aria-modal="true"
               aria-label="Menu điều hướng giáo viên"
-              className="w-80 max-w-[85vw] bg-[var(--th-sidebar-bg)] shadow-2xl overflow-y-auto"
+              tabIndex={-1}
+              className="relative h-full w-[min(19rem,88vw)] border-r border-[var(--th-border)] shadow-2xl bg-[var(--th-surface)]"
             >
-              <div className="p-3 flex justify-end">
-                <button
-                  ref={closeButtonRef}
-                  type="button"
-                  onClick={() => setMobileOpen(false)}
-                  className="rounded-xl bg-black/20 px-3 py-1.5 text-xs font-bold text-white hover:bg-black/40"
-                >
-                  ✕ Đóng
-                </button>
-              </div>
-              {sidebarContent}
+              <button
+                ref={closeButtonRef}
+                type="button"
+                aria-label="Đóng menu"
+                className="th-icon-button absolute right-3 top-3 z-10 h-10 w-10 border border-[var(--th-border)] bg-[var(--th-surface)]"
+                onClick={() => setMobileOpen(false)}
+              >
+                ×
+              </button>
+              <ShellSidebar centerContext={centerContext} footer={sidebarFooter}>
+                <TeacherNavigation groups={visibleGroups} pathname={location.pathname} onNavigate={() => setMobileOpen(false)} />
+              </ShellSidebar>
             </aside>
           </div>
         )}
 
         {/* Main Content Area */}
-        <div className="flex flex-1 flex-col lg:pl-80">
+        <div className="min-w-0 lg:col-start-2">
           {/* Top Navbar */}
-          <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-[var(--th-border-subtle)] bg-[var(--th-surface)]/90 px-4 sm:px-6 lg:px-8 backdrop-blur-md">
-            <div className="flex items-center gap-3">
+          <header className="sticky top-0 z-20 flex h-[4.5rem] items-center justify-between gap-4 border-b border-[var(--th-border-subtle)] bg-[var(--th-surface)]/95 px-4 backdrop-blur sm:px-6">
+            <div className="flex min-w-0 items-center gap-3">
               <button
                 type="button"
-                onClick={() => setMobileOpen(true)}
                 className="th-icon-button h-10 w-10 border border-[var(--th-border)] lg:hidden"
                 aria-label="Mở menu điều hướng"
+                onClick={() => setMobileOpen(true)}
               >
                 ☰
               </button>
-              <div className="flex items-center gap-2.5">
-                <span className="hidden sm:inline-flex items-center rounded-lg bg-sky-500/10 px-2 py-1 text-xs font-bold text-sky-700 dark:text-sky-300">
-                  {activeItem?.icon ?? "🎓"} Không gian Sư phạm
-                </span>
-                <span className="hidden sm:inline text-xs text-[var(--th-text-muted)]">/</span>
-                <h1 className="text-sm sm:text-base font-bold text-[var(--th-text)]">
-                  {activeItem?.label ?? "Giáo viên"}
-                </h1>
+              <div className="min-w-0">
+                <p className="text-xs text-[var(--th-text-muted)]">Giáo viên /</p>
+                <p className="truncate text-sm font-semibold text-[var(--th-text)]">
+                  {activeItem?.label ?? "Không gian Sư phạm"}
+                </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              <div className="hidden sm:block">
-                <ThemeToggle />
-              </div>
-
+            <div className="flex items-center gap-2 sm:gap-3">
+              <ThemeToggle />
               {/* Profile Dropdown */}
               <div className="relative">
                 <button
                   ref={profileButtonRef}
                   type="button"
-                  onClick={() => setProfileOpen((prev) => !prev)}
-                  className="th-focus-ring flex items-center gap-2.5 rounded-xl border border-[var(--th-border)] bg-[var(--th-surface-raised)] p-1.5 pr-3 text-left transition-colors hover:border-[var(--th-text-muted)]"
                   aria-expanded={profileOpen}
                   aria-haspopup="menu"
+                  className="th-focus-ring flex items-center gap-3 rounded-xl p-1.5 text-left hover:bg-[var(--th-surface-muted)] transition-colors"
+                  onClick={() => setProfileOpen((value) => !value)}
                 >
-                  <span className="grid h-8 w-8 place-items-center rounded-lg bg-[var(--at-accent)] text-xs font-bold text-white shadow-sm">
+                  <span className="grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-cyan-400 to-emerald-500 text-xs font-bold text-slate-950 shadow-sm">
                     {initials(user?.displayName, user?.username)}
                   </span>
-                  <div className="hidden text-xs md:block">
-                    <p className="font-bold text-[var(--th-text)] truncate max-w-[140px]">
+                  <span className="hidden sm:block">
+                    <span className="block max-w-44 truncate text-sm font-semibold text-[var(--th-text)]">
                       {user?.displayName ?? user?.username}
-                    </p>
-                    <p className="text-[10px] text-[var(--th-text-muted)] font-medium">Giáo viên phụ trách</p>
-                  </div>
+                    </span>
+                    <span className="block text-xs text-emerald-600 dark:text-emerald-400 font-medium">Giáo viên</span>
+                  </span>
                 </button>
 
                 {profileOpen && (
                   <div
                     ref={profileMenuRef}
                     role="menu"
-                    className="absolute right-0 mt-2 w-64 rounded-2xl border border-[var(--th-border)] bg-[var(--th-surface)] p-2 shadow-2xl z-50"
+                    className="th-surface absolute right-0 mt-2 w-64 p-2 shadow-xl border border-[var(--th-border-subtle)] bg-[var(--th-surface)] rounded-xl"
                   >
-                    <div className="p-3 border-b border-[var(--th-border-subtle)] text-xs">
-                      <p className="font-bold text-[var(--th-text)]">{user?.displayName}</p>
-                      <p className="text-[11px] text-[var(--th-text-muted)] mt-0.5">@{user?.username}</p>
-                      <p className="text-[10px] text-sky-600 dark:text-sky-400 font-semibold mt-1">
-                        {centerName}
+                    <div className="border-b border-[var(--th-border-subtle)] px-3 py-2">
+                      <p className="truncate text-sm font-semibold text-[var(--th-text)]">{user?.displayName}</p>
+                      <p className="truncate text-xs text-[var(--th-text-muted)]">@{user?.username}</p>
+                      <p className="mt-1 truncate text-xs text-emerald-500 dark:text-emerald-300 font-medium">
+                        {user?.roles[0]?.roleName ?? "Giáo viên giảng dạy"}
                       </p>
                     </div>
-                    <div className="p-1 space-y-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setProfileOpen(false);
-                          setCenterModalOpen(true);
-                        }}
-                        className="w-full text-left rounded-xl p-2 text-xs font-medium text-[var(--th-text)] hover:bg-[var(--th-surface-muted)] transition-colors"
-                      >
-                        🏫 Thông tin trung tâm
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleLogout}
-                        disabled={loggingOut}
-                        className="w-full text-left rounded-xl p-2 text-xs font-bold text-rose-500 hover:bg-rose-500/10 transition-colors"
-                      >
-                        {loggingOut ? "Đang đăng xuất..." : "🚪 Đăng xuất"}
-                      </button>
-                    </div>
+                    <button
+                      role="menuitem"
+                      type="button"
+                      className="th-focus-ring mt-1 w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--th-text-secondary)] hover:bg-[var(--th-surface-muted)] hover:text-[var(--th-text)]"
+                      onClick={handleLogout}
+                      disabled={loggingOut}
+                    >
+                      {loggingOut ? "Đang đăng xuất…" : "Đăng xuất"}
+                    </button>
                   </div>
                 )}
               </div>
             </div>
           </header>
 
-          {/* Main Page Workspace Outlet */}
-          <main className="flex-1 p-4 sm:p-6 lg:p-8">
+          <main className="min-h-[calc(100vh-4.5rem)] bg-[var(--th-bg)]">
             <Outlet />
           </main>
         </div>
       </div>
-
-      {/* Center Details Modal */}
-      {centerModalOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
-          onClick={() => setCenterModalOpen(false)}
-        >
-          <div
-            className="w-full max-w-md rounded-2xl border border-[var(--th-border)] bg-[var(--th-surface)] p-6 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center gap-3">
-              <span className="grid h-10 w-10 place-items-center rounded-xl bg-[var(--at-accent)] text-xl font-bold text-white shadow-md">
-                🏫
-              </span>
-              <div>
-                <h3 className="text-base font-bold text-[var(--th-text)]">{centerName}</h3>
-                <p className="text-xs text-[var(--th-text-muted)]">{centerMeta}</p>
-              </div>
-            </div>
-
-            <div className="mt-5 space-y-3 rounded-xl bg-[var(--th-surface-muted)] p-4 text-xs text-[var(--th-text-secondary)]">
-              <div className="flex justify-between">
-                <span className="text-[var(--th-text-muted)]">Mã trung tâm:</span>
-                <span className="font-semibold text-[var(--th-text)]">{centerQuery.data?.centerCode ?? "N/A"}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[var(--th-text-muted)]">Trạng thái:</span>
-                <span className="font-semibold text-emerald-500">
-                  {centerQuery.data?.status === "Active" ? "Đang hoạt động" : centerQuery.data?.status ?? "Hoạt động"}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[var(--th-text-muted)]">Vai trò của bạn:</span>
-                <span className="font-semibold text-sky-600 dark:text-sky-400">Giáo viên (Teacher)</span>
-              </div>
-            </div>
-
-            <div className="mt-6 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setCenterModalOpen(false)}
-                className="th-primary-button text-xs py-2 px-4 rounded-xl"
-              >
-                Đóng
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </TeacherThemeScope>
   );
 }
 
 export function TeacherLayoutBoundary() {
-  return <TeacherLayout />;
+  const user = useAuthStore((state) => state.user);
+  return user?.accountType === "Teacher" ? <TeacherLayout /> : <Outlet />;
 }
