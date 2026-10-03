@@ -575,6 +575,64 @@ public class CreateKnowledgeNodeUseCaseTests
         Assert.False(result.IsSuccess);
         Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
     }
+
+    [Fact]
+    public async Task ExecuteAsync_SoftDeletedNode_RestoresSuccessfully()
+    {
+        var centerId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+        SetupValidTenant(centerId);
+
+        _dbContext.Centers.Add(new Center { CenterId = centerId, CenterCode = "C01", CenterName = "C", Timezone = "UTC", Status = EduTwin.Contracts.Organization.CenterStatus.Active, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        _dbContext.Subjects.Add(new EduTwin.DAL.Organization.Subject { SubjectId = subjectId, CenterId = centerId, SubjectCode = "S01", SubjectName = "S01", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+
+        // Add soft-deleted node with same code
+        _dbContext.KnowledgeNodes.Add(new KnowledgeNode
+        {
+            CenterId = centerId,
+            SubjectId = subjectId,
+            NodeCode = "N01",
+            NodeName = "Old Deleted Node",
+            NodeType = EduTwin.Contracts.KnowledgeGraph.NodeType.Concept,
+            ExamImportance = 20,
+            EstimatedLearningMinutes = 15,
+            IsActive = false,
+            IsDeleted = true,
+            DeletedAt = DateTime.UtcNow,
+            DeletedBy = Guid.NewGuid(),
+            CreatedAt = DateTime.UtcNow.AddDays(-2),
+            UpdatedAt = DateTime.UtcNow.AddDays(-2),
+            RowVersion = 1
+        });
+        await _dbContext.SaveChangesAsync();
+
+        var request = new CreateKnowledgeNodeRequest
+        {
+            SubjectId = subjectId,
+            NodeCode = "N01",
+            NodeName = "Restored Node",
+            NodeType = "Topic",
+            ExamImportance = 50,
+            EstimatedLearningMinutes = 30,
+            IsActive = true
+        };
+
+        var result = await _sut.ExecuteAsync(request);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Data);
+        Assert.Equal("Restored Node", result.Data.NodeName);
+        Assert.Equal("Topic", result.Data.NodeType);
+
+        var node = await _dbContext.KnowledgeNodes.FirstOrDefaultAsync(n => n.NodeCode == "N01");
+        Assert.NotNull(node);
+        Assert.False(node.IsDeleted);
+        Assert.Null(node.DeletedAt);
+        Assert.Null(node.DeletedBy);
+        Assert.Equal("Restored Node", node.NodeName);
+        Assert.Equal(EduTwin.Contracts.KnowledgeGraph.NodeType.Topic, node.NodeType);
+    }
+
     private class FaultyDbContext : EduTwinDbContext
     {
         private readonly Exception _exceptionToThrow;

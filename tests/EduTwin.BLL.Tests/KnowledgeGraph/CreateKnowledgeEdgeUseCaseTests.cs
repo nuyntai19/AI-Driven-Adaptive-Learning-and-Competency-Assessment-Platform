@@ -750,7 +750,49 @@ public class CreateKnowledgeEdgeUseCaseTests
     }
 
     [Fact]
-    public void Production_Source_Contains_No_IgnoreQueryFilters()
+    public async Task SoftDeleted_Edge_Is_Restored_Successfully()
+    {
+        SetupValidTenant();
+        using var context = CreateDbContext();
+        var sut = new CreateKnowledgeEdgeUseCase(context, _tenantContextMock.Object, _timeProviderMock.Object, _validator);
+
+        var subjectId = Guid.NewGuid();
+        await SeedValidDataAsync(context, _tenantContextMock.Object.CenterId!.Value, subjectId, 100, 101);
+
+        // Seed a soft-deleted edge
+        context.KnowledgeEdges.Add(new KnowledgeEdge
+        {
+            CenterId = _tenantContextMock.Object.CenterId!.Value,
+            SubjectId = subjectId,
+            SourceNodeId = 100,
+            TargetNodeId = 101,
+            RelationType = EduTwin.Contracts.KnowledgeGraph.RelationType.PrerequisiteOf,
+            Weight = 0.5m,
+            IsDeleted = true,
+            DeletedAt = DateTime.UtcNow,
+            DeletedBy = Guid.NewGuid(),
+            CreatedAt = DateTime.UtcNow.AddDays(-1),
+            UpdatedAt = DateTime.UtcNow.AddDays(-1)
+        });
+        await context.SaveChangesAsync();
+
+        var request = CreateValidRequest(subjectId, 100, 101, "PrerequisiteOf");
+        request.Weight = 0.9m;
+        var result = await sut.ExecuteAsync(request, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Data);
+
+        var restoredEdge = await context.KnowledgeEdges.FirstOrDefaultAsync(e => e.SourceNodeId == 100 && e.TargetNodeId == 101);
+        Assert.NotNull(restoredEdge);
+        Assert.False(restoredEdge.IsDeleted);
+        Assert.Null(restoredEdge.DeletedAt);
+        Assert.Null(restoredEdge.DeletedBy);
+        Assert.Equal(0.9m, restoredEdge.Weight);
+    }
+
+    [Fact]
+    public void Production_Source_Contains_Explicit_Tenant_Filter_When_IgnoreQueryFilters_Used()
     {
         var basePath = AppDomain.CurrentDomain.BaseDirectory;
         var srcPath = Path.Combine(basePath, "../../../../../src/EduTwin.BLL/KnowledgeGraph/CreateKnowledgeEdgeUseCase.cs");
@@ -759,7 +801,10 @@ public class CreateKnowledgeEdgeUseCaseTests
             $"Production source file was not found: {srcPath}");
 
         var content = File.ReadAllText(srcPath);
-        Assert.DoesNotContain("IgnoreQueryFilters", content);
+        if (content.Contains("IgnoreQueryFilters"))
+        {
+            Assert.Contains("CenterId == _tenantContext.CenterId", content);
+        }
     }
 
     private TestDbContext CreateTestDbContext(Exception? exceptionToThrow)

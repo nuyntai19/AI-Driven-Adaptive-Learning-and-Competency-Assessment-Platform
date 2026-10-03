@@ -12,6 +12,9 @@ import {
   TeacherSafeErrorPanel,
 } from "../../components/teacher/TeacherPrimitives";
 import type { ClassDashboardDataDto } from "../../types/dashboards";
+import { normalizeCompletionRate } from "./teacherDashboardHelpers";
+
+export { normalizeCompletionRate };
 
 export function TeacherClassDashboardView() {
   const { classId: routeClassId } = useParams<{ classId?: string }>();
@@ -117,7 +120,7 @@ export function TeacherClassDashboardView() {
 
       {!dashboardLoading && !isError && dashboard && (() => {
         const rawCompRate = dashboard.overview.assignmentCompletionRate;
-        const compRatePercent = rawCompRate > 1 ? rawCompRate : rawCompRate * 100;
+        const compRatePercent = normalizeCompletionRate(rawCompRate);
         const isHighCompletion = compRatePercent >= 80;
 
         return (

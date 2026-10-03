@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { organizationApi } from "../api/organizationApi";
 import { logout } from "../auth/authApi";
 import { permissions } from "../auth/permissions";
@@ -417,5 +417,15 @@ export function TeacherLayout() {
 
 export function TeacherLayoutBoundary() {
   const user = useAuthStore((state) => state.user);
-  return user?.accountType === "Teacher" ? <TeacherLayout /> : <Outlet />;
+  const location = useLocation();
+
+  if (!user) {
+    return <Navigate to="/dang-nhap" replace state={{ attemptedPath: location.pathname }} />;
+  }
+
+  if (user.accountType !== "Teacher") {
+    return <Navigate to="/khong-co-quyen" replace state={{ attemptedPath: location.pathname }} />;
+  }
+
+  return <TeacherLayout />;
 }

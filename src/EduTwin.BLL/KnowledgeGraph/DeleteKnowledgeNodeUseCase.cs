@@ -42,7 +42,8 @@ public class DeleteKnowledgeNodeUseCase : IDeleteKnowledgeNodeUseCase
             return DeleteKnowledgeNodeResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
-        if (tenantContext.Role != nameof(UserRole.CenterManager))
+        if (tenantContext.Role != nameof(UserRole.Teacher) &&
+            tenantContext.Role != nameof(UserRole.CenterManager))
         {
             return DeleteKnowledgeNodeResult.Failure(ErrorCodes.ResourceNotFound); // fail closed
         }

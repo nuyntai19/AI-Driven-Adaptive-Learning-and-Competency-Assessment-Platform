@@ -182,8 +182,56 @@ public class DeleteKnowledgeNodeUseCaseTests
         Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_TeacherRole_DeletesNodeSuccessfully()
+    {
+        var centerId = Guid.NewGuid();
+        var teacherId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+        var utcNow = new DateTime(2026, 7, 23, 10, 0, 0, DateTimeKind.Utc);
+        var oldDate = utcNow.AddDays(-1);
+        var nodeId = 200UL;
+
+        SetupTenantContext(centerId, teacherId, nameof(UserRole.Teacher));
+        _timeProviderMock.Setup(x => x.GetUtcNow()).Returns(new DateTimeOffset(utcNow));
+
+        using (var setupContext = CreateDbContext())
+        {
+            setupContext.Centers.Add(new Center { CenterId = centerId, CenterCode = "C", CenterName = "N", Status = CenterStatus.Active, Timezone = "T", CreatedAt = oldDate, UpdatedAt = oldDate, IsDeleted = false });
+            setupContext.Subjects.Add(new Subject { SubjectId = subjectId, CenterId = centerId, SubjectCode = "S", SubjectName = "S", IsActive = true, CreatedAt = oldDate, UpdatedAt = oldDate, IsDeleted = false });
+            setupContext.KnowledgeNodes.Add(new KnowledgeNode
+            {
+                NodeId = nodeId,
+                CenterId = centerId,
+                SubjectId = subjectId,
+                NodeName = "Teacher Managed Node",
+                NodeType = NodeType.Topic,
+                NodeCode = "TEACHER-CODE",
+                CreatedAt = oldDate,
+                CreatedBy = teacherId,
+                UpdatedAt = oldDate,
+                IsDeleted = false,
+                RowVersion = 1UL
+            });
+            await setupContext.SaveChangesAsync();
+        }
+
+        using (var context = CreateDbContext())
+        {
+            var sut = CreateSut(context);
+            var result = await sut.ExecuteAsync(nodeId.ToString(CultureInfo.InvariantCulture));
+            Assert.True(result.IsSuccess);
+        }
+
+        using (var assertContext = CreateDbContext())
+        {
+            var node = await assertContext.KnowledgeNodes.IgnoreQueryFilters().FirstAsync(x => x.NodeId == nodeId);
+            Assert.True(node.IsDeleted);
+            Assert.Equal(teacherId, node.DeletedBy);
+        }
+    }
+
     [Theory]
-    [InlineData("Teacher")]
     [InlineData("Student")]
     [InlineData("Admin")]
     [InlineData("centerManager")]

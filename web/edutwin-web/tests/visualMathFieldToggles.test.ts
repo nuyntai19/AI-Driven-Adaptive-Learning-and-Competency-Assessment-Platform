@@ -808,6 +808,48 @@ test("behavioral: literal pipe symbol is preserved for set builder, probability,
     "\\left|#?\\right|",
     "Dedicated toolbar button inserting 'abs' must be normalized to interactive absolute value template"
   );
+
+  // 5. Virtual Keyboard symbols with selection arg #0 normalize to placeholder #? when collapsed
+  assert.equal(
+    normalizeMathInsertContent("\\sqrt{#0}"),
+    "\\sqrt{#?}",
+    "Virtual keyboard square root \\sqrt{#0} must be converted to \\sqrt{#?} placeholder"
+  );
+  assert.equal(
+    normalizeMathInsertContent("\\sqrt[#0]{#1}"),
+    "\\sqrt[#?]{#?}",
+    "Virtual keyboard root-n \\sqrt[#0]{#1} must convert #0 and #1 to #? placeholders"
+  );
+  assert.equal(
+    normalizeMathInsertContent("\\left\\vert#0\\right\\vert"),
+    "\\left|#?\\right|",
+    "Virtual keyboard absolute value \\left\\vert#0\\right\\vert must be normalized to \\left|#?\\right|"
+  );
+  assert.equal(
+    normalizeMathInsertContent("\\left\\Vert#0\\right\\Vert"),
+    "\\left\\|#?\\right\\|",
+    "Virtual keyboard norm \\left\\Vert#0\\right\\Vert must be normalized to \\left\\|#?\\right\\|"
+  );
+  assert.equal(
+    normalizeMathInsertContent("\\left|#0\\right|"),
+    "\\left|#?\\right|",
+    "Virtual keyboard absolute value \\left|#0\\right| must be normalized to \\left|#?\\right|"
+  );
+  assert.equal(
+    normalizeMathInsertContent("\\left\\|#0\\right\\|"),
+    "\\left\\|#?\\right\\|",
+    "Virtual keyboard norm \\left\\|#0\\right\\| must be normalized to \\left\\|#?\\right\\|"
+  );
+  assert.equal(
+    normalizeMathInsertContent("\\vert"),
+    "\\left|#?\\right|",
+    "Virtual keyboard single pipe symbol \\vert must be normalized to \\left|#?\\right|"
+  );
+  assert.equal(
+    normalizeMathInsertContent("\\Vert"),
+    "\\left\\|#?\\right\\|",
+    "Virtual keyboard double pipe symbol \\Vert must be normalized to \\left\\|#?\\right\\|"
+  );
 });
 
 test("behavioral: InlineMathComposer backdrop ignores click 1 when dismissing keyboard and closes on click 2", async () => {

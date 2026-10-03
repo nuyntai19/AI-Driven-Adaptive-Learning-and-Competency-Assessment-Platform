@@ -101,7 +101,7 @@ public class QuestionConfiguration : IEntityTypeConfiguration<Question>
         builder.Property(q => q.ReasoningRequired)
             .HasColumnName("reasoning_required")
             .HasColumnType("tinyint(1)")
-            .HasDefaultValue(true);
+            .HasDefaultValue(false);
 
         builder.Property(q => q.LanguageCode)
             .HasColumnName("language_code")

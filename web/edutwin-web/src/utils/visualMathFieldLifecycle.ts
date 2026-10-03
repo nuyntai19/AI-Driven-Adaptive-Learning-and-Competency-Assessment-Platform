@@ -308,61 +308,104 @@ export const DEFAULT_MATH_INLINE_SHORTCUTS = {
   norm: "\\left\\|#?\\right\\|",
 } as const;
 
+export interface NormalizeMathInsertOptions {
+  isSelectionCollapsed?: boolean;
+}
+
 /**
- * Normalizes user- or calculator-provided LaTeX/text into structural MathLive commands
+ * Normalizes user-, keyboard-, or calculator-provided LaTeX/text into structural MathLive commands
  * containing explicit placeholders (#?) for radicals and fences, ensuring newly created
  * empty blocks place the caret inside rather than selecting the whole block (which causes
  * immediate replacement/erasure upon typing).
  */
-export function normalizeMathInsertContent(latexOrText: string): string {
+export function normalizeMathInsertContent(
+  latexOrText: string,
+  options?: NormalizeMathInsertOptions
+): string {
   if (!latexOrText) return "";
-  const trimmed = latexOrText.trim();
+  let content = latexOrText.trim();
 
-  // 1. Exact function calls or raw keywords from Casio / Calculator / Toolbar
-  if (trimmed === "sqrt(" || trimmed === "\\sqrt" || trimmed === "\\sqrt{}" || trimmed === "sqrt") {
+  // If selection is collapsed (or unspecified), #0/#1 has no selection to wrap,
+  // so it must become placeholder #? to avoid an empty body that causes
+  // MathLive to select the entire container atom and wipe it on next keystroke.
+  const isCollapsed = options?.isSelectionCollapsed !== false;
+  if (isCollapsed) {
+    content = content.replace(/#0/g, "#?");
+    content = content.replace(/#1/g, "#?");
+  }
+
+  // 1. Exact function calls or raw keywords from Casio / Calculator / Toolbar / Virtual Keyboard
+  if (
+    content === "sqrt(" ||
+    content === "\\sqrt" ||
+    content === "\\sqrt{}" ||
+    content === "\\sqrt{#?}" ||
+    content === "sqrt"
+  ) {
     return "\\sqrt{#?}";
   }
-  if (trimmed === "cbrt(" || trimmed === "\\cbrt" || trimmed === "\\cbrt{}" || trimmed === "cbrt") {
+  if (
+    content === "cbrt(" ||
+    content === "\\cbrt" ||
+    content === "\\cbrt{}" ||
+    content === "\\cbrt{#?}" ||
+    content === "cbrt"
+  ) {
     return "\\sqrt[3]{#?}";
   }
-  if (trimmed === "\\sqrt[]{}" || trimmed === "\\sqrt[]") {
+  if (
+    content === "\\sqrt[]{}" ||
+    content === "\\sqrt[]" ||
+    content === "\\sqrt[#?]{#?}" ||
+    content === "\\sqrt[#?]{#?}}"
+  ) {
     return "\\sqrt[#?]{#?}";
   }
   if (
-    trimmed === "abs(" ||
-    trimmed === "\\abs" ||
-    trimmed === "\\abs{}" ||
-    trimmed === "abs" ||
-    trimmed === "|" ||
-    trimmed === "\\left|\\right|" ||
-    trimmed === "\\left| \\right|" ||
-    trimmed === "\\vert\\vert"
+    content === "abs(" ||
+    content === "\\abs" ||
+    content === "\\abs{}" ||
+    content === "abs" ||
+    content === "|" ||
+    content === "\\vert" ||
+    content === "\\left|\\right|" ||
+    content === "\\left| \\right|" ||
+    content === "\\left|#?\\right|" ||
+    content === "\\vert\\vert" ||
+    content === "\\left\\vert\\right\\vert" ||
+    content === "\\left\\vert#?\\right\\vert"
   ) {
     return "\\left|#?\\right|";
   }
   if (
-    trimmed === "||" ||
-    trimmed === "\\left\\|\\right\\|" ||
-    trimmed === "\\left\\| \\right\\|" ||
-    trimmed === "\\Vert\\Vert" ||
-    trimmed === "norm(" ||
-    trimmed === "norm"
+    content === "||" ||
+    content === "\\left\\|\\right\\|" ||
+    content === "\\left\\| \\right\\|" ||
+    content === "\\left\\|#?\\right\\|" ||
+    content === "\\Vert" ||
+    content === "\\Vert\\Vert" ||
+    content === "\\left\\Vert\\right\\Vert" ||
+    content === "\\left\\Vert#?\\right\\Vert" ||
+    content === "norm(" ||
+    content === "norm"
   ) {
     return "\\left\\|#?\\right\\|";
   }
-  if (trimmed === "\\frac" || trimmed === "\\frac{}" || trimmed === "\\frac{}{}") {
+  if (content === "\\frac" || content === "\\frac{}" || content === "\\frac{}{}") {
     return "\\frac{#?}{#?}";
   }
-  if (trimmed === "^" || trimmed === "^{}") {
+  if (content === "^" || content === "^{}") {
     return "^{#?}";
   }
-  if (trimmed === "_" || trimmed === "_{}") {
+  if (content === "_" || content === "_{}") {
     return "_{#?}";
   }
 
-  // 2. Structural substitutions for empty containers without placeholders
-  let normalized = latexOrText;
+  // 2. Structural substitutions for empty containers without placeholders or virtual keyboard symbols
+  let normalized = content;
   normalized = normalized.replace(/\\sqrt\{\s*\}/g, "\\sqrt{#?}");
+  normalized = normalized.replace(/\\left\s*\\vert\s*#?\s*\\right\s*\\vert/g, "\\left|#?\\right|");
+  normalized = normalized.replace(/\\left\s*\\Vert\s*#?\s*\\right\s*\\Vert/g, "\\left\\|#?\\right\\|");
   normalized = normalized.replace(/\\left\|\s*\\right\|/g, "\\left|#?\\right|");
   normalized = normalized.replace(/\\left\\\|\s*\\right\\\|/g, "\\left\\|#?\\right\\|");
   normalized = normalized.replace(/\\frac\{\s*\}\{\s*\}/g, "\\frac{#?}{#?}");
