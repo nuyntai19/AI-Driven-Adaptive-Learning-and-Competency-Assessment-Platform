@@ -338,6 +338,21 @@ public class AddStudentsToClassUseCaseTests
     }
 
     [Fact]
+    public async Task Request_ExceedsMaxBatchSize_ReturnsValidationFailed_NoDatabaseCall()
+    {
+        var context = CreateContext(Guid.NewGuid().ToString(), Guid.NewGuid());
+        var sut = new AddStudentsToClassUseCase(context, _mockTenantContext.Object, _mockTimeProvider.Object, _mockOwnershipGuard.Object, _mockLogger.Object);
+        var ids = Enumerable.Range(0, AddStudentsToClassUseCase.MaxBatchSize + 1).Select(_ => Guid.NewGuid()).ToArray();
+        var result = await sut.ExecuteAsync(Guid.NewGuid(), new AddStudentsToClassRequest { StudentIds = ids });
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+        _mockOwnershipGuard.Verify(g => g.CheckClassAccessAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.DoesNotContain(context.ChangeTracker.Entries(), e => e.State == EntityState.Added || e.State == EntityState.Modified || e.State == EntityState.Deleted);
+        Assert.Equal(0, await context.ClassStudents.CountAsync());
+    }
+
+    [Fact]
     public async Task InvalidUserStatus_ReturnsResourceNotFound_NoMutation()
     {
         var centerId = _mockTenantContext.Object.CenterId!.Value;

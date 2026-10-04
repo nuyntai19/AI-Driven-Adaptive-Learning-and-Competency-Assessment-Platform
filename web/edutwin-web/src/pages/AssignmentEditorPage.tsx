@@ -166,7 +166,7 @@ function CenterManagerAssignmentEditorView() {
 
   // Classes Query - guarded with canReadClasses
   const classesQuery = useAssignmentClasses(
-    { status: "Active", page: classPage, pageSize: 20 },
+    { page: classPage, pageSize: 20 },
     { enabled: canReadClasses }
   );
 
@@ -413,6 +413,13 @@ function CenterManagerAssignmentEditorView() {
       setStep(0);
       return false;
     }
+    if (selectedClass && selectedClass.status && selectedClass.status !== "Active") {
+      setFormError({
+        message: `Lớp học "${selectedClass.className}" đang ở trạng thái ${(selectedClass.status as string) === "Inactive" ? "Ngừng hoạt động" : "Đã lưu trữ / Ngừng hoạt động"} (không hoạt động). Hệ thống từ chối giao bài tập cho lớp này.`,
+      });
+      setStep(0);
+      return false;
+    }
     if (dueAt) {
       const dueTime = new Date(dueAt).getTime();
       if (isNaN(dueTime)) {
@@ -459,10 +466,10 @@ function CenterManagerAssignmentEditorView() {
         setStep(1);
         return false;
       }
-      if (!gradeMismatchReason.trim()) {
+      if (!gradeMismatchReason.trim() || gradeMismatchReason.trim().length > 500) {
         setFormError({
           message:
-            "Vui lòng nhập lý do ngoại lệ học thuật khi giao nội dung khác khối cho lớp.",
+            "Lý do giao lệch khối là bắt buộc và tối đa 500 ký tự khi có câu hỏi khác khối lớp.",
         });
         setStep(1);
         return false;
@@ -866,7 +873,7 @@ function CenterManagerAssignmentEditorView() {
                       <option value="">-- Chọn lớp học --</option>
                       {classList.map((c) => (
                         <option key={c.classId} value={c.classId}>
-                          {c.className} ({c.academicYear}) - Môn: {c.subject?.subjectName}
+                          {c.className} ({c.academicYear}) - Môn: {c.subject?.subjectName}{c.status !== "Active" ? ` [${(c.status as string) === "Inactive" ? "Ngừng hoạt động" : "Ngừng hoạt động / Đã lưu trữ"}]` : ""}
                         </option>
                       ))}
                     </select>
@@ -1135,19 +1142,29 @@ function CenterManagerAssignmentEditorView() {
 
                   {allowGradeMismatch && (
                     <div>
-                      <label htmlFor="cm-txt-grade-mismatch-reason" className="block font-medium text-amber-200 mb-1">
-                        Lý do ngoại lệ học thuật <span className="text-rose-400">*</span>:
-                      </label>
-                      <input
-                        type="text"
+                      <div className="flex justify-between items-center mb-1">
+                        <label htmlFor="cm-txt-grade-mismatch-reason" className="block font-medium text-amber-200">
+                          Lý do ngoại lệ học thuật <span className="text-rose-400">*</span>:
+                        </label>
+                        <span className={`text-[11px] font-mono ${gradeMismatchReason.length > 500 ? "text-rose-400 font-bold" : "text-amber-200/80"}`}>
+                          {gradeMismatchReason.length}/500 ký tự
+                        </span>
+                      </div>
+                      <textarea
                         id="cm-txt-grade-mismatch-reason"
+                        name="gradeMismatchReason"
                         value={gradeMismatchReason}
                         onChange={(e) => setGradeMismatchReason(e.target.value)}
                         disabled={isReadOnly}
-                        maxLength={500}
+                        rows={2}
                         placeholder="VD: Ôn tập bổ trợ kiến thức phương trình lượng giác lớp 11 cho học sinh lớp 12..."
-                        className="cm-input w-full text-xs"
+                        className={`cm-input w-full text-xs ${gradeMismatchReason.length > 500 ? "!border-rose-500 focus:!border-rose-500" : ""}`}
                       />
+                      {gradeMismatchReason.length > 500 && (
+                        <p className="mt-1 text-[11px] text-rose-400 font-medium">
+                          ⚠ Lý do ngoại lệ đã vượt quá 500 ký tự ({gradeMismatchReason.length}/500). Vui lòng rút ngắn nội dung.
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>

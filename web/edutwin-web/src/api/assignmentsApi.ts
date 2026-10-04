@@ -71,7 +71,7 @@ export interface GetAssignmentClassesParams {
 
 export const getAssignmentClasses = async (params: GetAssignmentClassesParams = {}) => {
   const { data } = await httpClient.get<ApiCollectionResponse<ClassDto>>('/classes', {
-    params: { status: 'Active', page: 1, pageSize: 20, ...params },
+    params: { page: 1, pageSize: 20, ...params },
   });
   return data;
 };

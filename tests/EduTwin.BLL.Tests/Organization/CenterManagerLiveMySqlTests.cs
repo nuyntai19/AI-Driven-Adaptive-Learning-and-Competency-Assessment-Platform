@@ -983,6 +983,189 @@ public sealed class CenterManagerLiveMySqlTests
         }
     }
 
+    [MySqlIntegrationFact]
+    public async Task AddStudentsToClass_LiveMySql_TranslatesGuidFiltersAndEnforcesBatchLimits()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var centerId = Guid.NewGuid();
+        var managerId = Guid.NewGuid();
+        var teacherId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+        var classId = Guid.NewGuid();
+        var studentId1 = Guid.NewGuid();
+        var studentId2 = Guid.NewGuid();
+
+        var tenant = new TenantContext();
+        tenant.Initialize(centerId, managerId, "CenterManager", 1);
+
+        await using (var seedContext = CreateContext(database.ConnectionString, tenant))
+        {
+            await SeedCenterWithManagerAsync(seedContext, centerId, managerId);
+
+            // Seed Teacher & Subject
+            seedContext.Users.Add(new User
+            {
+                UserId = teacherId,
+                CenterId = centerId,
+                Username = $"tc_{Guid.NewGuid():N}"[..12],
+                DisplayName = "Teacher Math",
+                PasswordHash = "hash",
+                RoleName = UserRole.Teacher,
+                Status = UserStatus.Active,
+                AuthVersion = 1,
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow,
+                RowVersion = 1
+            });
+            seedContext.Teachers.Add(new Teacher
+            {
+                TeacherId = teacherId,
+                CenterId = centerId,
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow
+            });
+            seedContext.Subjects.Add(new Subject
+            {
+                SubjectId = subjectId,
+                CenterId = centerId,
+                SubjectCode = "MATH10",
+                SubjectName = "Toán 10",
+                IsActive = true,
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow,
+                RowVersion = 1
+            });
+
+            // Seed active Class with GradeLevel 10
+            seedContext.Classes.Add(new Class
+            {
+                ClassId = classId,
+                CenterId = centerId,
+                TeacherId = teacherId,
+                SubjectId = subjectId,
+                ClassName = "10A1 Live MySQL Class",
+                AcademicYear = "2026-2027",
+                GradeLevel = 10,
+                Status = ClassStatus.Active,
+                IsDeleted = false,
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow,
+                RowVersion = 1
+            });
+
+            // Seed Students & Users
+            seedContext.Users.Add(new User
+            {
+                UserId = studentId1,
+                CenterId = centerId,
+                Username = $"st1_{Guid.NewGuid():N}"[..12],
+                DisplayName = "Student Live 01",
+                PasswordHash = "hash",
+                RoleName = UserRole.Student,
+                Status = UserStatus.Active,
+                AuthVersion = 1,
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow,
+                RowVersion = 1
+            });
+            seedContext.Students.Add(new Student
+            {
+                StudentId = studentId1,
+                CenterId = centerId,
+                FullName = "Student Live 01",
+                GradeLevel = 10,
+                DateOfBirth = new DateOnly(2010, 1, 1),
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow
+            });
+
+            seedContext.Users.Add(new User
+            {
+                UserId = studentId2,
+                CenterId = centerId,
+                Username = $"st2_{Guid.NewGuid():N}"[..12],
+                DisplayName = "Student Live 02",
+                PasswordHash = "hash",
+                RoleName = UserRole.Student,
+                Status = UserStatus.Active,
+                AuthVersion = 1,
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow,
+                RowVersion = 1
+            });
+            seedContext.Students.Add(new Student
+            {
+                StudentId = studentId2,
+                CenterId = centerId,
+                FullName = "Student Live 02",
+                GradeLevel = 11,
+                DateOfBirth = new DateOnly(2010, 1, 1),
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow
+            });
+
+            await seedContext.SaveChangesAsync();
+        }
+
+        await using (var testContext = CreateContext(database.ConnectionString, tenant))
+        {
+            var mockGuard = new Mock<IClassOwnershipGuard>();
+            mockGuard
+                .Setup(g => g.CheckClassAccessAsync(classId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(OwnershipDecision.Allowed);
+            var mockLogger = new Mock<ILogger<AddStudentsToClassUseCase>>();
+
+            var useCase = new AddStudentsToClassUseCase(
+                testContext,
+                tenant,
+                _mockTimeProvider.Object,
+                mockGuard.Object,
+                mockLogger.Object);
+
+            // 1. Test batch size limit > 100 fails validation on live stack
+            var overBatch = Enumerable.Range(0, AddStudentsToClassUseCase.MaxBatchSize + 1)
+                .Select(_ => Guid.NewGuid())
+                .ToArray();
+            var overBatchResult = await useCase.ExecuteAsync(classId, new AddStudentsToClassRequest
+            {
+                StudentIds = overBatch
+            });
+            Assert.False(overBatchResult.IsSuccess);
+            Assert.Equal(ErrorCodes.ValidationFailed, overBatchResult.ErrorCode);
+
+            // 2. Test valid execution: Pomelo MySQL translates BuildIdEqualityFilter without InExpression crash
+            var result = await useCase.ExecuteAsync(classId, new AddStudentsToClassRequest
+            {
+                StudentIds = new[] { studentId1, studentId2 },
+                AllowGradeMismatch = true,
+                GradeMismatchReason = "Live MySQL verification of cross-grade student enrollment"
+            });
+
+            Assert.True(result.IsSuccess, $"AddStudentsToClass failed with {result.ErrorCode}: {result.ErrorMessage}");
+            Assert.Equal(2, result.Data!.AddedCount);
+            Assert.Equal(0, result.Data!.AlreadyMemberCount);
+        }
+
+        // Verify persisted data directly in MySQL
+        await using (var verifyContext = CreateContext(database.ConnectionString, tenant))
+        {
+            var memberships = await verifyContext.ClassStudents
+                .Where(cs => cs.CenterId == centerId && cs.ClassId == classId)
+                .ToListAsync();
+
+            Assert.Equal(2, memberships.Count);
+
+            var s1 = memberships.Single(cs => cs.StudentId == studentId1);
+            Assert.Equal((byte)10, s1.GradeLevelAtEnrollment);
+            Assert.Null(s1.GradeMismatchReason);
+
+            var s2 = memberships.Single(cs => cs.StudentId == studentId2);
+            Assert.Equal((byte)11, s2.GradeLevelAtEnrollment);
+            Assert.Equal("Live MySQL verification of cross-grade student enrollment", s2.GradeMismatchReason);
+            Assert.Equal(managerId, s2.ExceptionApprovedBy);
+        }
+    }
+
     private static async Task SeedCenterWithManagerAsync(EduTwinDbContext context, Guid centerId, Guid managerId)
     {
         var centerCode = $"C_{Guid.NewGuid():N}"[..10].ToUpperInvariant();

@@ -155,7 +155,7 @@ export function TeacherAssignmentEditorView() {
 
   // Classes query
   const { data: classesData, isLoading: isLoadingClasses } = useAssignmentClasses(
-    { status: "Active", page: 1, pageSize: 50 },
+    { page: 1, pageSize: 50 },
     { enabled: canReadClasses }
   );
 
@@ -396,6 +396,13 @@ export function TeacherAssignmentEditorView() {
       setStep(0);
       return false;
     }
+    if (selectedClass && selectedClass.status && selectedClass.status !== "Active") {
+      setFormError({
+        message: `Lớp học "${selectedClass.className}" đang ở trạng thái Ngừng hoạt động / Đã lưu trữ (không hoạt động). Hệ thống từ chối giao bài tập cho lớp này.`,
+      });
+      setStep(0);
+      return false;
+    }
     if (dueAt) {
       const dueTime = new Date(dueAt).getTime();
       if (isNaN(dueTime)) {
@@ -444,6 +451,13 @@ export function TeacherAssignmentEditorView() {
         setFormError({
           message:
             "Vui lòng nhập lý do ngoại lệ học thuật khi giao nội dung khác khối cho lớp.",
+        });
+        return false;
+      }
+      if (gradeMismatchReason.trim().length > 500) {
+        setFormError({
+          message:
+            "Lý do ngoại lệ khác khối không được vượt quá 500 ký tự. Vui lòng rút ngắn nội dung.",
         });
         return false;
       }
@@ -705,6 +719,8 @@ export function TeacherAssignmentEditorView() {
                 <span className="text-[10px] text-[var(--th-text-muted)]">{title.length}/200 ký tự</span>
               </div>
               <input
+                id="title"
+                name="title"
                 type="text"
                 disabled={isReadOnly}
                 value={title}
@@ -728,6 +744,7 @@ export function TeacherAssignmentEditorView() {
                 />
               ) : (
                 <select
+                  id="assignment-class-select"
                   disabled={isReadOnly || isLoadingClasses}
                   value={classId}
                   onChange={(e) => handleClassChange(e.target.value)}
@@ -736,7 +753,7 @@ export function TeacherAssignmentEditorView() {
                   <option value="">-- Chọn lớp học phụ trách --</option>
                   {classesData?.data?.map((c) => (
                     <option key={c.classId} value={c.classId}>
-                      {c.className} ({c.academicYear}) - Môn: {c.subject?.subjectName}
+                      {c.className} ({c.academicYear}) - Môn: {c.subject?.subjectName}{c.status !== "Active" ? " [Ngừng hoạt động]" : ""}
                     </option>
                   ))}
                 </select>
@@ -980,19 +997,29 @@ export function TeacherAssignmentEditorView() {
 
                 {allowGradeMismatch && (
                   <div>
-                    <label htmlFor="txt-grade-mismatch-reason" className="block font-medium text-amber-200 mb-1">
-                      Lý do ngoại lệ học thuật <span className="text-rose-400">*</span>:
-                    </label>
-                    <input
-                      type="text"
+                    <div className="flex justify-between items-center mb-1">
+                      <label htmlFor="txt-grade-mismatch-reason" className="block font-medium text-amber-200">
+                        Lý do ngoại lệ học thuật <span className="text-rose-400">*</span>:
+                      </label>
+                      <span className={`text-[11px] font-mono ${gradeMismatchReason.length > 500 ? "text-rose-400 font-bold" : "text-amber-200/80"}`}>
+                        {gradeMismatchReason.length}/500 ký tự
+                      </span>
+                    </div>
+                    <textarea
                       id="txt-grade-mismatch-reason"
+                      name="gradeMismatchReason"
                       value={gradeMismatchReason}
                       onChange={(e) => setGradeMismatchReason(e.target.value)}
                       disabled={isReadOnly}
-                      maxLength={500}
+                      rows={2}
                       placeholder="VD: Ôn tập kiến thức nền về hàm số lớp 11 cho học sinh lớp 12..."
-                      className="th-input w-full text-xs"
+                      className={`th-input w-full text-xs ${gradeMismatchReason.length > 500 ? "!border-rose-500 focus:!border-rose-500" : ""}`}
                     />
+                    {gradeMismatchReason.length > 500 && (
+                      <p className="mt-1 text-[11px] text-rose-400 font-medium">
+                        ⚠ Lý do ngoại lệ đã vượt quá 500 ký tự ({gradeMismatchReason.length}/500). Vui lòng rút ngắn nội dung.
+                      </p>
+                    )}
                   </div>
                 )}
               </div>

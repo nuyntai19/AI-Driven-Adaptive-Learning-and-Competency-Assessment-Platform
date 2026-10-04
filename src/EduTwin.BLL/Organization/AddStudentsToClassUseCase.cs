@@ -17,6 +17,8 @@ namespace EduTwin.BLL.Organization;
 
 public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
 {
+    public const int MaxBatchSize = 100;
+
     private readonly EduTwinDbContext _context;
     private readonly ITenantContext _tenantContext;
     private readonly TimeProvider _timeProvider;
@@ -57,6 +59,13 @@ public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
         if (request.StudentIds.Distinct().Count() != request.StudentIds.Count)
         {
             return AddStudentsToClassResult.Failure(ErrorCodes.ValidationFailed);
+        }
+
+        if (request.StudentIds.Count > MaxBatchSize)
+        {
+            return AddStudentsToClassResult.Failure(
+                ErrorCodes.ValidationFailed,
+                $"Số lượng học sinh thêm vào lớp không được vượt quá {MaxBatchSize} học sinh mỗi lượt.");
         }
 
         if (!_tenantContext.IsResolved ||
@@ -113,18 +122,7 @@ public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
         }
 
         var requestedStudentIds = request.StudentIds.ToList();
-
-        var studentParam = Expression.Parameter(typeof(Student), "s");
-        var studentIdProp = Expression.Property(studentParam, nameof(Student.StudentId));
-        Expression? orExpr = null;
-        foreach (var id in requestedStudentIds)
-        {
-            var eq = Expression.Equal(studentIdProp, Expression.Constant(id, typeof(Guid)));
-            orExpr = orExpr == null ? eq : Expression.OrElse(orExpr, eq);
-        }
-        var studentFilter = orExpr == null
-            ? (Expression<Func<Student, bool>>)(s => false)
-            : Expression.Lambda<Func<Student, bool>>(orExpr, studentParam);
+        var studentFilter = BuildIdEqualityFilter<Student>(nameof(Student.StudentId), requestedStudentIds);
 
         var validStudents = await _context.Students
             .Include(s => s.User)
@@ -163,11 +161,11 @@ public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
             }
         }
 
-        var existingMemberships = (await _context.ClassStudents
+        var membershipFilter = BuildIdEqualityFilter<ClassStudent>(nameof(ClassStudent.StudentId), requestedStudentIds);
+        var existingMemberships = await _context.ClassStudents
             .Where(cs => cs.CenterId == centerId && cs.ClassId == classId)
-            .ToListAsync(cancellationToken))
-            .Where(cs => requestedStudentIds.Contains(cs.StudentId))
-            .ToList();
+            .Where(membershipFilter)
+            .ToListAsync(cancellationToken);
 
         if (existingMemberships.Any(cs => cs.Status != ClassStudentStatus.Active && cs.Status != ClassStudentStatus.Removed))
         {
@@ -253,5 +251,23 @@ public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
             AddedCount = addedCount,
             AlreadyMemberCount = alreadyMemberCount
         });
+    }
+
+    private static Expression<Func<T, bool>> BuildIdEqualityFilter<T>(
+        string propertyName,
+        IReadOnlyCollection<Guid> ids)
+    {
+        var param = Expression.Parameter(typeof(T), "x");
+        var prop = Expression.Property(param, propertyName);
+        Expression? body = null;
+        foreach (var id in ids)
+        {
+            var eq = Expression.Equal(prop, Expression.Constant(id, typeof(Guid)));
+            body = body == null ? eq : Expression.OrElse(body, eq);
+        }
+
+        return body == null
+            ? Expression.Lambda<Func<T, bool>>(Expression.Constant(false), param)
+            : Expression.Lambda<Func<T, bool>>(body, param);
     }
 }
