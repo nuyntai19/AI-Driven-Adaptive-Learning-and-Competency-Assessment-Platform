@@ -173,6 +173,12 @@ public class CreateAssignmentUseCase : ICreateAssignmentUseCase
             }
         }
 
+        if (!string.IsNullOrWhiteSpace(request.GradeMismatchReason) && request.GradeMismatchReason.Trim().Length > 500)
+        {
+            return CreateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
+        }
+
+
         // 7. Validate StudentIds membership (SelectedStudents mode)
         if (isSelectedStudents && parsedStudentIds.Count > 0)
         {

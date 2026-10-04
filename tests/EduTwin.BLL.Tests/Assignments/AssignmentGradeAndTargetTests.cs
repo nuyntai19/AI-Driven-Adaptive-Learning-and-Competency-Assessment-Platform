@@ -544,4 +544,60 @@ public class AssignmentGradeAndTargetTests
         Assert.True(saved.AllowGradeMismatch);
         Assert.Equal("Ôn tập kiến thức bổ trợ", saved.GradeMismatchReason);
     }
+
+    [Fact]
+    public async Task CreateAssignment_GradeMismatchReasonExceeds500Chars_ReturnsValidationFailed()
+    {
+        await using var ctx = CreateContext();
+        var (_, classEntity, _, _, _, q11) = await SeedBaseAsync(ctx, classGrade: 10);
+
+        var sut = new CreateAssignmentUseCase(ctx, _tenantMock.Object, _timeProviderMock.Object);
+
+        var request = new CreateAssignmentRequest
+        {
+            ClassId = classEntity.ClassId,
+            Title = "Grade Mismatch Exceeding 500",
+            TargetMode = "WholeClass",
+            QuestionIds = new List<string> { q11.QuestionId.ToString() },
+            AllowGradeMismatch = true,
+            GradeMismatchReason = new string('X', 501)
+        };
+
+        var result = await sut.ExecuteAsync(request);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task UpdateAssignment_GradeMismatchReasonExceeds500Chars_ReturnsValidationFailed()
+    {
+        await using var ctx = CreateContext();
+        var (_, classEntity, _, _, q10, q11) = await SeedBaseAsync(ctx, classGrade: 10);
+
+        var createSut = new CreateAssignmentUseCase(ctx, _tenantMock.Object, _timeProviderMock.Object);
+        var createResult = await createSut.ExecuteAsync(new CreateAssignmentRequest
+        {
+            ClassId = classEntity.ClassId,
+            Title = "Draft Assignment",
+            TargetMode = "WholeClass",
+            QuestionIds = new List<string> { q10.QuestionId.ToString() }
+        });
+        Assert.True(createResult.IsSuccess);
+
+        var updateSut = new UpdateAssignmentUseCase(ctx, _tenantMock.Object, _timeProviderMock.Object);
+
+        var updateResult = await updateSut.ExecuteAsync(Guid.Parse(createResult.Data!.AssignmentId), new UpdateAssignmentRequest
+        {
+            Title = "Updated Draft with Too Long Reason",
+            TargetMode = "WholeClass",
+            QuestionIds = new List<string> { q11.QuestionId.ToString() },
+            AllowGradeMismatch = true,
+            GradeMismatchReason = new string('Y', 501),
+            RowVersion = createResult.Data.RowVersion
+        });
+
+        Assert.False(updateResult.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, updateResult.ErrorCode);
+    }
 }

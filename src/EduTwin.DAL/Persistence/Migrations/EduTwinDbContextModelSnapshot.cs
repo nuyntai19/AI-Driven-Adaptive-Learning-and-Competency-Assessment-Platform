@@ -879,7 +879,8 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasColumnName("due_at");
 
                     b.Property<string>("GradeMismatchReason")
-                        .HasColumnType("text")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)")
                         .HasColumnName("grade_mismatch_reason");
 
                     b.Property<string>("Instructions")
@@ -4651,9 +4652,22 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasColumnType("VARCHAR(36)")
                         .HasColumnName("created_by");
 
+                    b.Property<DateTime?>("ExceptionApprovedAt")
+                        .HasColumnType("DATETIME(6)")
+                        .HasColumnName("exception_approved_at");
+
+                    b.Property<string>("ExceptionApprovedBy")
+                        .HasColumnType("VARCHAR(36)")
+                        .HasColumnName("exception_approved_by");
+
                     b.Property<byte?>("GradeLevelAtEnrollment")
                         .HasColumnType("TINYINT UNSIGNED")
                         .HasColumnName("grade_level_at_enrollment");
+
+                    b.Property<string>("GradeMismatchReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("VARCHAR(500)")
+                        .HasColumnName("grade_mismatch_reason");
 
                     b.Property<DateTime>("JoinedAt")
                         .HasColumnType("DATETIME(6)")

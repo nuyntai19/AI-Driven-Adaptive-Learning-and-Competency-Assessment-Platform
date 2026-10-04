@@ -409,6 +409,9 @@ Invariant:
 | student_id | VARCHAR(36) | No | Tenant-safe FK students |
 | joined_at | DATETIME(6) | No | Thời điểm UTC học sinh gia nhập lớp |
 | grade_level_at_enrollment | TINYINT UNSIGNED | Yes | Snapshot khối của học sinh tại thời điểm ghi danh (10, 11, 12) |
+| grade_mismatch_reason | VARCHAR(500) | Yes | Lý do ngoại lệ sư phạm khi ghi danh học sinh khác khối lớp |
+| exception_approved_by | VARCHAR(36) | Yes | User ID của người phê duyệt ngoại lệ ghi danh |
+| exception_approved_at | DATETIME(6) | Yes | Thời điểm UTC phê duyệt ngoại lệ ghi danh |
 | status | VARCHAR(32) | No | Active, Removed |
 | removed_at | DATETIME(6) | Yes | Thời điểm UTC rời/bị loại khỏi lớp |
 | created_by | VARCHAR(36) | Yes | User cùng Center tạo membership |

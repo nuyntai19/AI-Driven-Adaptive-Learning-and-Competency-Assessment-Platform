@@ -206,6 +206,12 @@ public class UpdateAssignmentUseCase : IUpdateAssignmentUseCase
             }
         }
 
+        if (!string.IsNullOrWhiteSpace(effectiveMismatchReason) && effectiveMismatchReason.Length > 500)
+        {
+            return UpdateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
+        }
+
+
         // 9. Validate TargetMode and studentIds if provided (Bug 1 fix)
         List<Guid>? newParsedStudentIds = null;
         string? newTargetMode = null;

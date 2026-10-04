@@ -79,7 +79,8 @@ public class AssignmentConfiguration : IEntityTypeConfiguration<Assignment>
 
         builder.Property(a => a.GradeMismatchReason)
             .HasColumnName("grade_mismatch_reason")
-            .HasColumnType("text");
+            .HasMaxLength(500)
+            .HasColumnType("varchar(500)");
 
         // MTA Properties
         builder.Property(a => a.CreatedAt).HasColumnName("created_at").HasColumnType("datetime(6)").IsRequired();

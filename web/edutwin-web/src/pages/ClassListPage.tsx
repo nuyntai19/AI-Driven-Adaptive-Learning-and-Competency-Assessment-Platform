@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, Navigate } from "react-router-dom";
 import { organizationApi } from "../api/organizationApi";
@@ -18,6 +18,9 @@ import {
   mergePageSelection,
   unmergePageSelection,
   getCandidateListState,
+  updateCandidateGradeCache,
+  hasGradeMismatch,
+  type CandidateGradeCache,
 } from "./classListHelpers";
 import {
   CenterManagerThemeScope,
@@ -105,6 +108,7 @@ const CenterManagerClassListView: React.FC = () => {
   // Add students modal state (SQL anti-join candidate list)
   const [isAddStudentsModalOpen, setIsAddStudentsModalOpen] = useState(false);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
+  const [candidateGradeCache, setCandidateGradeCache] = useState<CandidateGradeCache>({});
   const [candidatePage, setCandidatePage] = useState<number>(1);
   const [candidateSearchInput, setCandidateSearchInput] = useState("");
   const [candidateSearch, setCandidateSearch] = useState("");
@@ -258,6 +262,7 @@ const CenterManagerClassListView: React.FC = () => {
       showFeedback("success", `Đã thêm ${res.addedCount} học sinh vào lớp học${duplicateMsg}.`);
       setIsAddStudentsModalOpen(false);
       setSelectedStudentIds([]);
+      setCandidateGradeCache({});
     },
     onError: (error: unknown) => {
       setAddStudentsError(mapSafeOperationalError(error, "Không thể thêm học sinh vào lớp. Vui lòng thử lại."));
@@ -434,6 +439,7 @@ const CenterManagerClassListView: React.FC = () => {
 
   const handleOpenAddStudents = () => {
     setSelectedStudentIds([]);
+    setCandidateGradeCache({});
     setCandidatePage(1);
     setCandidateSearchInput("");
     setCandidateSearch("");
@@ -457,17 +463,25 @@ const CenterManagerClassListView: React.FC = () => {
   };
 
   const handleToggleSelectStudent = (id: string) => {
+    setCandidateGradeCache((prev) => updateCandidateGradeCache(prev, candidateList));
     setSelectedStudentIds((prev) => toggleStudentSelection(prev, id));
   };
 
-  const candidateList = candidateStudentsData?.data ?? [];
+  const candidateList = useMemo(() => candidateStudentsData?.data ?? [], [candidateStudentsData?.data]);
   const candidateMeta = candidateStudentsData?.meta;
   const currentPageCandidateIds = candidateList.map((c) => c.studentId);
   const allCurrentPageSelected =
     currentPageCandidateIds.length > 0 &&
     currentPageCandidateIds.every((id) => selectedStudentIds.includes(id));
 
+  useEffect(() => {
+    if (candidateList.length > 0) {
+      setCandidateGradeCache((prev) => updateCandidateGradeCache(prev, candidateList));
+    }
+  }, [candidateList]);
+
   const handleToggleSelectCurrentPage = () => {
+    setCandidateGradeCache((prev) => updateCandidateGradeCache(prev, candidateList));
     if (allCurrentPageSelected) {
       setSelectedStudentIds((prev) => unmergePageSelection(prev, currentPageCandidateIds));
     } else {
@@ -487,12 +501,11 @@ const CenterManagerClassListView: React.FC = () => {
     if (!viewingClassId || selectedStudentIds.length === 0) return;
     setAddStudentsError(null);
 
-    const hasMismatch = Boolean(
-      classDetail?.gradeLevel &&
-      selectedStudentIds.some((id) => {
-        const student = candidateList.find((c) => c.studentId === id);
-        return student && student.gradeLevel !== classDetail.gradeLevel;
-      })
+    const hasMismatch = hasGradeMismatch(
+      selectedStudentIds,
+      candidateGradeCache,
+      classDetail?.gradeLevel,
+      candidateList
     );
 
     if (hasMismatch && (!allowGradeMismatch || !gradeMismatchReason.trim())) {
@@ -1400,16 +1413,18 @@ const CenterManagerClassListView: React.FC = () => {
               )}
 
               {/* Cross-grade exception prompt if mismatched students are selected */}
-              {classDetail?.gradeLevel && selectedStudentIds.some((id) => {
-                const student = candidateList.find((c) => c.studentId === id);
-                return student && student.gradeLevel !== classDetail.gradeLevel;
-              }) && (
+              {hasGradeMismatch(
+                selectedStudentIds,
+                candidateGradeCache,
+                classDetail?.gradeLevel,
+                candidateList
+              ) && (
                 <div className="mt-4 rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-xs text-amber-200">
                   <div className="font-semibold mb-1">
                     Cảnh báo học vượt / luyện bù khác khối:
                   </div>
                   <p className="mb-2 text-amber-300/90">
-                    Bạn đang chọn học sinh khác khối {classDetail.gradeLevel}. Cần xác nhận ngoại lệ và ghi rõ lý do trước khi thêm.
+                    Bạn đang chọn học sinh khác khối {classDetail?.gradeLevel}. Cần xác nhận ngoại lệ và ghi rõ lý do trước khi thêm.
                   </p>
                   <label className="flex items-center gap-2 cursor-pointer mb-2 font-medium">
                     <input
@@ -1575,6 +1590,7 @@ const LegacyClassListPage: React.FC = () => {
 
   const [isAddStudentsModalOpen, setIsAddStudentsModalOpen] = useState(false);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
+  const [candidateGradeCache, setCandidateGradeCache] = useState<CandidateGradeCache>({});
   const [candidatePage, setCandidatePage] = useState<number>(1);
   const [candidateSearchInput, setCandidateSearchInput] = useState("");
   const [candidateSearch, setCandidateSearch] = useState("");
@@ -1729,6 +1745,7 @@ const LegacyClassListPage: React.FC = () => {
       showFeedback("success", `Đã thêm ${res.addedCount} học sinh vào lớp học${duplicateMsg}.`);
       setIsAddStudentsModalOpen(false);
       setSelectedStudentIds([]);
+      setCandidateGradeCache({});
     },
     onError: (error: unknown) => {
       const details = extractProblemDetails(error);
@@ -1870,6 +1887,7 @@ const LegacyClassListPage: React.FC = () => {
 
   const handleOpenAddStudents = () => {
     setSelectedStudentIds([]);
+    setCandidateGradeCache({});
     setCandidatePage(1);
     setCandidateSearchInput("");
     setCandidateSearch("");
@@ -1893,17 +1911,25 @@ const LegacyClassListPage: React.FC = () => {
   };
 
   const handleToggleSelectStudent = (id: string) => {
+    setCandidateGradeCache((prev) => updateCandidateGradeCache(prev, candidateList));
     setSelectedStudentIds((prev) => toggleStudentSelection(prev, id));
   };
 
-  const candidateList = candidateStudentsData?.data ?? [];
+  const candidateList = useMemo(() => candidateStudentsData?.data ?? [], [candidateStudentsData?.data]);
   const candidateMeta = candidateStudentsData?.meta;
   const currentPageCandidateIds = candidateList.map((c) => c.studentId);
   const allCurrentPageSelected =
     currentPageCandidateIds.length > 0 &&
     currentPageCandidateIds.every((id) => selectedStudentIds.includes(id));
 
+  useEffect(() => {
+    if (candidateList.length > 0) {
+      setCandidateGradeCache((prev) => updateCandidateGradeCache(prev, candidateList));
+    }
+  }, [candidateList]);
+
   const handleToggleSelectCurrentPage = () => {
+    setCandidateGradeCache((prev) => updateCandidateGradeCache(prev, candidateList));
     if (allCurrentPageSelected) {
       setSelectedStudentIds((prev) => unmergePageSelection(prev, currentPageCandidateIds));
     } else {
@@ -1923,12 +1949,11 @@ const LegacyClassListPage: React.FC = () => {
     if (!viewingClassId || selectedStudentIds.length === 0) return;
     setAddStudentsError(null);
 
-    const hasMismatch = Boolean(
-      classDetail?.gradeLevel &&
-      selectedStudentIds.some((id) => {
-        const student = candidateList.find((c) => c.studentId === id);
-        return student && student.gradeLevel !== classDetail.gradeLevel;
-      })
+    const hasMismatch = hasGradeMismatch(
+      selectedStudentIds,
+      candidateGradeCache,
+      classDetail?.gradeLevel,
+      candidateList
     );
 
     if (hasMismatch && (!allowGradeMismatch || !gradeMismatchReason.trim())) {
@@ -2766,16 +2791,18 @@ const LegacyClassListPage: React.FC = () => {
               )}
 
               {/* Cross-grade exception prompt if mismatched students are selected */}
-              {classDetail?.gradeLevel && selectedStudentIds.some((id) => {
-                const student = candidateList.find((c) => c.studentId === id);
-                return student && student.gradeLevel !== classDetail.gradeLevel;
-              }) && (
+              {hasGradeMismatch(
+                selectedStudentIds,
+                candidateGradeCache,
+                classDetail?.gradeLevel,
+                candidateList
+              ) && (
                 <div className="mt-3 mb-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
                   <div className="font-semibold mb-1">
                     Cảnh báo học vượt / luyện bù khác khối:
                   </div>
                   <p className="mb-2 text-amber-700">
-                    Bạn đang chọn học sinh khác khối {classDetail.gradeLevel}. Cần xác nhận ngoại lệ và ghi rõ lý do trước khi thêm.
+                    Bạn đang chọn học sinh khác khối {classDetail?.gradeLevel}. Cần xác nhận ngoại lệ và ghi rõ lý do trước khi thêm.
                   </p>
                   <label className="flex items-center gap-1.5 cursor-pointer mb-2 font-medium">
                     <input

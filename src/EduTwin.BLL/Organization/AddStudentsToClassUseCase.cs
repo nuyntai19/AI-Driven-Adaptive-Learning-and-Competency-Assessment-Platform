@@ -128,6 +128,13 @@ public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
             return AddStudentsToClassResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
+        if (!string.IsNullOrWhiteSpace(request.GradeMismatchReason) && request.GradeMismatchReason.Trim().Length > 500)
+        {
+            return AddStudentsToClassResult.Failure(
+                ErrorCodes.ValidationFailed,
+                "Lý do ngoại lệ khối lớp không được vượt quá 500 ký tự.");
+        }
+
         if (existingClass.GradeLevel.HasValue)
         {
             var hasMismatch = validStudents.Any(s => s.GradeLevel != existingClass.GradeLevel.Value);
@@ -160,6 +167,7 @@ public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
         {
             var student = validStudents.First(s => s.StudentId == studentId);
             var membership = existingMemberships.FirstOrDefault(cs => cs.StudentId == studentId);
+            var isGradeMismatch = existingClass.GradeLevel.HasValue && student.GradeLevel != existingClass.GradeLevel.Value;
 
             if (membership == null)
             {
@@ -169,6 +177,9 @@ public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
                     ClassId = classId,
                     StudentId = studentId,
                     GradeLevelAtEnrollment = student.GradeLevel,
+                    GradeMismatchReason = isGradeMismatch ? request.GradeMismatchReason?.Trim() : null,
+                    ExceptionApprovedBy = isGradeMismatch ? currentUserId : null,
+                    ExceptionApprovedAt = isGradeMismatch ? currentUtc : null,
                     JoinedAt = currentUtc,
                     Status = ClassStudentStatus.Active,
                     RemovedAt = null,
@@ -185,6 +196,10 @@ public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
             {
                 membership.Status = ClassStudentStatus.Active;
                 membership.GradeLevelAtEnrollment = student.GradeLevel;
+                membership.GradeMismatchReason = isGradeMismatch ? request.GradeMismatchReason?.Trim() : null;
+                membership.ExceptionApprovedBy = isGradeMismatch ? currentUserId : null;
+                membership.ExceptionApprovedAt = isGradeMismatch ? currentUtc : null;
+
                 membership.JoinedAt = currentUtc;
                 membership.RemovedAt = null;
                 membership.CreatedBy = currentUserId;
@@ -192,6 +207,7 @@ public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
                 hasChanges = true;
             }
         }
+
 
         if (hasChanges)
         {

@@ -11,6 +11,9 @@ public class ClassStudent : ITenantJoinEntity
     public ClassStudentStatus Status { get; set; }
     public DateTime? RemovedAt { get; set; }
     public byte? GradeLevelAtEnrollment { get; set; }
+    public string? GradeMismatchReason { get; set; }
+    public Guid? ExceptionApprovedBy { get; set; }
+    public DateTime? ExceptionApprovedAt { get; set; }
 
     // ITenantJoinEntity fields
     public Guid CenterId { get; set; }

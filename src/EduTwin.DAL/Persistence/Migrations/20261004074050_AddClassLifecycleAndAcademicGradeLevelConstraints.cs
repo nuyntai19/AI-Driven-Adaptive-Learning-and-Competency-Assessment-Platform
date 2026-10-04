@@ -35,6 +35,25 @@ namespace EduTwin.DAL.Persistence.Migrations
                 type: "TINYINT UNSIGNED",
                 nullable: true);
 
+            migrationBuilder.AddColumn<string>(
+                name: "grade_mismatch_reason",
+                table: "class_students",
+                type: "VARCHAR(500)",
+                maxLength: 500,
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "exception_approved_by",
+                table: "class_students",
+                type: "VARCHAR(36)",
+                nullable: true);
+
+            migrationBuilder.AddColumn<DateTime>(
+                name: "exception_approved_at",
+                table: "class_students",
+                type: "DATETIME(6)",
+                nullable: true);
+
             migrationBuilder.AddColumn<bool>(
                 name: "allow_grade_mismatch",
                 table: "assignments",
@@ -45,7 +64,8 @@ namespace EduTwin.DAL.Persistence.Migrations
             migrationBuilder.AddColumn<string>(
                 name: "grade_mismatch_reason",
                 table: "assignments",
-                type: "text",
+                type: "varchar(500)",
+                maxLength: 500,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
@@ -61,7 +81,7 @@ namespace EduTwin.DAL.Persistence.Migrations
                 WHERE EXISTS (
                     SELECT 1 FROM assignment_targets at
                     WHERE at.assignment_id = a.assignment_id
-                      AND at.target_source IN ('GapGroup', 2)
+                      AND at.target_source IN ('GapGroup', '2')
                 );
 
                 UPDATE assignments a
@@ -69,9 +89,10 @@ namespace EduTwin.DAL.Persistence.Migrations
                 WHERE EXISTS (
                     SELECT 1 FROM assignment_targets at
                     WHERE at.assignment_id = a.assignment_id
-                      AND at.target_source IN ('SelectedStudents', 1)
+                      AND at.target_source IN ('SelectedStudents', '1')
                 ) AND a.target_mode != 'GapGroup';
             ");
+
 
             migrationBuilder.AddCheckConstraint(
                 name: "ck_assignments_target_mode",
@@ -167,6 +188,18 @@ namespace EduTwin.DAL.Persistence.Migrations
             migrationBuilder.DropColumn(
                 name: "grade_level",
                 table: "classes");
+
+            migrationBuilder.DropColumn(
+                name: "exception_approved_at",
+                table: "class_students");
+
+            migrationBuilder.DropColumn(
+                name: "exception_approved_by",
+                table: "class_students");
+
+            migrationBuilder.DropColumn(
+                name: "grade_mismatch_reason",
+                table: "class_students");
 
             migrationBuilder.DropColumn(
                 name: "grade_level_at_enrollment",
