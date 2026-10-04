@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
@@ -111,11 +112,24 @@ public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
             return AddStudentsToClassResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
-        var requestedStudentIds = request.StudentIds;
+        var requestedStudentIds = request.StudentIds.ToList();
+
+        var studentParam = Expression.Parameter(typeof(Student), "s");
+        var studentIdProp = Expression.Property(studentParam, nameof(Student.StudentId));
+        Expression? orExpr = null;
+        foreach (var id in requestedStudentIds)
+        {
+            var eq = Expression.Equal(studentIdProp, Expression.Constant(id, typeof(Guid)));
+            orExpr = orExpr == null ? eq : Expression.OrElse(orExpr, eq);
+        }
+        var studentFilter = orExpr == null
+            ? (Expression<Func<Student, bool>>)(s => false)
+            : Expression.Lambda<Func<Student, bool>>(orExpr, studentParam);
 
         var validStudents = await _context.Students
             .Include(s => s.User)
-            .Where(s => requestedStudentIds.Contains(s.StudentId) && s.CenterId == centerId && !s.IsDeleted && !s.User.IsDeleted && s.User.RoleName == UserRole.Student)
+            .Where(studentFilter)
+            .Where(s => s.CenterId == centerId && !s.IsDeleted && !s.User.IsDeleted && s.User.RoleName == UserRole.Student)
             .ToListAsync(cancellationToken);
 
         if (validStudents.Any(s => s.User.Status != UserStatus.Active))
@@ -149,9 +163,11 @@ public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
             }
         }
 
-        var existingMemberships = await _context.ClassStudents
-            .Where(cs => cs.CenterId == centerId && cs.ClassId == classId && requestedStudentIds.Contains(cs.StudentId))
-            .ToListAsync(cancellationToken);
+        var existingMemberships = (await _context.ClassStudents
+            .Where(cs => cs.CenterId == centerId && cs.ClassId == classId)
+            .ToListAsync(cancellationToken))
+            .Where(cs => requestedStudentIds.Contains(cs.StudentId))
+            .ToList();
 
         if (existingMemberships.Any(cs => cs.Status != ClassStudentStatus.Active && cs.Status != ClassStudentStatus.Removed))
         {
