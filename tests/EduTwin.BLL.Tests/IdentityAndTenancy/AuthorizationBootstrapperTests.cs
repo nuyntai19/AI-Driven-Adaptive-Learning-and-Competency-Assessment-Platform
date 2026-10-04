@@ -22,10 +22,10 @@ public sealed class AuthorizationBootstrapperTests
         var permissions = AuthorizationPermissionCatalog.CreatePermissions();
         var mappings = AuthorizationPermissionCatalog.CreateAccountTypeMappings();
 
-        Assert.Equal(70, permissions.Count);
-        Assert.Equal(70, permissions.Select(item => item.PermissionCode).Distinct().Count());
-        Assert.Equal(70, permissions.Select(item => item.PermissionId).Distinct().Count());
-        Assert.Equal(79, mappings.Count);
+        Assert.Equal(71, permissions.Count);
+        Assert.Equal(71, permissions.Select(item => item.PermissionCode).Distinct().Count());
+        Assert.Equal(71, permissions.Select(item => item.PermissionId).Distinct().Count());
+        Assert.Equal(80, mappings.Count);
         Assert.Contains(permissions, item => item.PermissionCode == "curriculum.questions.delete");
         Assert.Contains(permissions, item => item.PermissionCode == "twin.student.update_own");
         Assert.Contains(permissions, item => item.PermissionCode == "twin.student.update_scoped");
@@ -78,7 +78,7 @@ public sealed class AuthorizationBootstrapperTests
         await sut.EnsureAsync();
 
         Assert.Equal(3, await context.AuthorizationRoles.IgnoreQueryFilters().CountAsync());
-        Assert.Equal(68, await context.RolePermissions.IgnoreQueryFilters().CountAsync());
+        Assert.Equal(69, await context.RolePermissions.IgnoreQueryFilters().CountAsync());
         Assert.Equal(3, await context.UserRoleAssignments.IgnoreQueryFilters().CountAsync());
         Assert.Single(await context.AuthorizationAuditLogs.IgnoreQueryFilters().ToListAsync());
         Assert.All(

@@ -13,10 +13,13 @@ using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Logging;
 using Moq;
 using MySql.Data.MySqlClient;
+using EduTwin.BLL.Assignments;
+using EduTwin.BLL.CurriculumAndQuestions;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.BLL.Organization;
 using EduTwin.BLL.Seeding;
 using EduTwin.Contracts.AssessmentAndReasoning;
+using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.Common;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.IdentityAndTenancy;
@@ -687,6 +690,296 @@ public sealed class CenterManagerLiveMySqlTests
                 .ToListAsync();
 
             Assert.Single(audits);
+        }
+    }
+
+    [MySqlIntegrationFact]
+    public async Task ConcurrentDeleteClassAndCreateAssignment_OnLiveMySql_SerializesAndPreventsOrphanedAssignments()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var centerId = Guid.NewGuid();
+        var managerId = Guid.NewGuid();
+        var teacherId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+        var classId = Guid.NewGuid();
+
+        var tenant = new TenantContext();
+        await using (var seedContext = CreateContext(database.ConnectionString, tenant))
+        {
+            await SeedCenterWithManagerAsync(seedContext, centerId, managerId);
+
+            var teacherUser = new User
+            {
+                UserId = teacherId,
+                CenterId = centerId,
+                Username = "teacher.assign.occ",
+                DisplayName = "Teacher OCC Test",
+                PasswordHash = "hash",
+                RoleName = UserRole.Teacher,
+                Status = UserStatus.Active,
+                AuthVersion = 1,
+                RowVersion = 1,
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow
+            };
+            seedContext.Users.Add(teacherUser);
+
+            var teacher = new Teacher
+            {
+                TeacherId = teacherId,
+                CenterId = centerId,
+                Department = "Khoa Toan",
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow
+            };
+            seedContext.Teachers.Add(teacher);
+
+            var subject = new Subject
+            {
+                SubjectId = subjectId,
+                CenterId = centerId,
+                SubjectCode = "MATH10",
+                SubjectName = "Toan 10",
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow,
+                RowVersion = 1
+            };
+            seedContext.Subjects.Add(subject);
+
+            var classEntity = new Class
+            {
+                ClassId = classId,
+                CenterId = centerId,
+                ClassName = "10A1 OCC Test",
+                AcademicYear = "2026-2027",
+                SubjectId = subjectId,
+                TeacherId = teacherId,
+                GradeLevel = 10,
+                Status = ClassStatus.Active,
+                IsDeleted = false,
+                RowVersion = 1,
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow,
+                CreatedBy = managerId,
+                UpdatedBy = managerId
+            };
+            seedContext.Classes.Add(classEntity);
+            await seedContext.SaveChangesAsync();
+        }
+
+        var tenantDelete = new TenantContext();
+        tenantDelete.Initialize(centerId, managerId, nameof(UserRole.CenterManager), 1);
+
+        var tenantAssign = new TenantContext();
+        tenantAssign.Initialize(centerId, teacherId, nameof(UserRole.Teacher), 1);
+
+        await using var contextDelete = CreateContext(database.ConnectionString, tenantDelete);
+        await using var contextAssign = CreateContext(database.ConnectionString, tenantAssign);
+
+        var useCaseDelete = new DeleteClassUseCase(
+            contextDelete,
+            tenantDelete,
+            _mockTimeProvider.Object,
+            Mock.Of<ILogger<DeleteClassUseCase>>());
+
+        var useCaseAssign = new CreateAssignmentUseCase(
+            contextAssign,
+            tenantAssign,
+            _mockTimeProvider.Object);
+
+        var assignRequest = new CreateAssignmentRequest
+        {
+            ClassId = classId,
+            Title = "Bài tập kiểm tra đồng thời",
+            Instructions = "Hướng dẫn làm bài",
+            QuestionIds = new List<string>(),
+            TargetMode = "WholeClass"
+        };
+
+        var taskDelete = useCaseDelete.ExecuteAsync(classId, expectedRowVersion: 1);
+        var taskAssign = useCaseAssign.ExecuteAsync(assignRequest);
+
+        await Task.WhenAll(taskDelete, taskAssign);
+        var deleteResult = await taskDelete;
+        var assignResult = await taskAssign;
+
+        // Verify serializability and academic integrity
+        await using (var verifyContext = CreateContext(database.ConnectionString, tenant))
+        {
+            var finalClass = await verifyContext.Classes
+                .IgnoreQueryFilters()
+                .SingleAsync(c => c.ClassId == classId);
+
+            var assignments = await verifyContext.Assignments
+                .IgnoreQueryFilters()
+                .Where(a => a.ClassId == classId)
+                .ToListAsync();
+
+            if (finalClass.IsDeleted)
+            {
+                // Class was safely soft-deleted: NO assignments must exist pointing to the deleted class
+                Assert.Empty(assignments);
+                Assert.False(assignResult.IsSuccess, "CreateAssignment must not succeed when Class is deleted.");
+            }
+            else
+            {
+                // Assignment was created first: DeleteClass must not have soft-deleted the class
+                Assert.NotEmpty(assignments);
+                Assert.False(deleteResult.IsSuccess, "DeleteClass must not succeed when an active assignment exists.");
+            }
+        }
+    }
+
+    [MySqlIntegrationFact]
+    public async Task ConcurrentDeleteClassAndAssignCurriculum_OnLiveMySql_SerializesAndPreventsOrphanedCurriculumClasses()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var centerId = Guid.NewGuid();
+        var managerId = Guid.NewGuid();
+        var teacherId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+        var classId = Guid.NewGuid();
+        var curriculumId = Guid.NewGuid();
+
+        var tenant = new TenantContext();
+        await using (var seedContext = CreateContext(database.ConnectionString, tenant))
+        {
+            await SeedCenterWithManagerAsync(seedContext, centerId, managerId);
+
+            var teacherUser = new User
+            {
+                UserId = teacherId,
+                CenterId = centerId,
+                Username = "teacher.curriculum.occ",
+                DisplayName = "Teacher Curriculum OCC Test",
+                PasswordHash = "hash",
+                RoleName = UserRole.Teacher,
+                Status = UserStatus.Active,
+                AuthVersion = 1,
+                RowVersion = 1,
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow
+            };
+            seedContext.Users.Add(teacherUser);
+
+            var teacher = new Teacher
+            {
+                TeacherId = teacherId,
+                CenterId = centerId,
+                Department = "Khoa Toan",
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow
+            };
+            seedContext.Teachers.Add(teacher);
+
+            var subject = new Subject
+            {
+                SubjectId = subjectId,
+                CenterId = centerId,
+                SubjectCode = "MATH10_CURR",
+                SubjectName = "Toan 10 Curriculum",
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow,
+                RowVersion = 1
+            };
+            seedContext.Subjects.Add(subject);
+
+            var classEntity = new Class
+            {
+                ClassId = classId,
+                CenterId = centerId,
+                ClassName = "10A2 Curriculum OCC Test",
+                AcademicYear = "2026-2027",
+                SubjectId = subjectId,
+                TeacherId = teacherId,
+                GradeLevel = 10,
+                Status = ClassStatus.Active,
+                IsDeleted = false,
+                RowVersion = 1,
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow,
+                CreatedBy = managerId,
+                UpdatedBy = managerId
+            };
+            seedContext.Classes.Add(classEntity);
+
+            var curriculum = new Curriculum
+            {
+                CurriculumId = curriculumId,
+                CenterId = centerId,
+                SubjectId = subjectId,
+                TeacherId = teacherId,
+                Title = "Giáo trình Toán 10 OCC Test",
+                GradeLevel = 10,
+                ReviewStatus = ReviewStatus.Draft,
+                IsDeleted = false,
+                RowVersion = 1,
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow,
+                CreatedBy = teacherId,
+                UpdatedBy = teacherId
+            };
+            seedContext.Curriculums.Add(curriculum);
+            await seedContext.SaveChangesAsync();
+        }
+
+        var tenantDelete = new TenantContext();
+        tenantDelete.Initialize(centerId, managerId, nameof(UserRole.CenterManager), 1);
+
+        var tenantAssign = new TenantContext();
+        tenantAssign.Initialize(centerId, teacherId, nameof(UserRole.Teacher), 1);
+
+        await using var contextDelete = CreateContext(database.ConnectionString, tenantDelete);
+        await using var contextAssign = CreateContext(database.ConnectionString, tenantAssign);
+
+        var useCaseDelete = new DeleteClassUseCase(
+            contextDelete,
+            tenantDelete,
+            _mockTimeProvider.Object,
+            Mock.Of<ILogger<DeleteClassUseCase>>());
+
+        var useCaseAssign = new AssignCurriculumClassesUseCase(
+            contextAssign,
+            tenantAssign,
+            _mockTimeProvider.Object);
+
+        var assignRequest = new AssignCurriculumClassesRequest
+        {
+            ClassIds = new List<Guid> { classId },
+            RowVersion = "1"
+        };
+
+        var taskDelete = useCaseDelete.ExecuteAsync(classId, expectedRowVersion: 1);
+        var taskAssign = useCaseAssign.ExecuteAsync(curriculumId, assignRequest);
+
+        await Task.WhenAll(taskDelete, taskAssign);
+        var deleteResult = await taskDelete;
+        var assignResult = await taskAssign;
+
+        // Verify serializability and no orphaned CurriculumClass on deleted class
+        await using (var verifyContext = CreateContext(database.ConnectionString, tenant))
+        {
+            var finalClass = await verifyContext.Classes
+                .IgnoreQueryFilters()
+                .SingleAsync(c => c.ClassId == classId);
+
+            var attached = await verifyContext.CurriculumClasses
+                .IgnoreQueryFilters()
+                .Where(cc => cc.ClassId == classId)
+                .ToListAsync();
+
+            if (finalClass.IsDeleted)
+            {
+                // Class was safely soft-deleted: NO curriculum links must exist on the deleted class
+                Assert.Empty(attached);
+                Assert.False(assignResult.IsSuccess, "AssignCurriculumClasses must not succeed when Class is deleted.");
+            }
+            else
+            {
+                // Curriculum was assigned first: DeleteClass must not have soft-deleted the class
+                Assert.NotEmpty(attached);
+                Assert.False(deleteResult.IsSuccess, "DeleteClass must not succeed when class is assigned to curriculum.");
+            }
         }
     }
 

@@ -5,6 +5,7 @@ import { hasPermission } from "../auth/capabilities.ts";
 export interface ClassCapabilities {
   canCreateClass: boolean;
   canUpdateClass: boolean;
+  canDeleteClass: boolean;
   canAddMembers: boolean;
   canRemoveMembers: boolean;
   canViewDashboard: boolean;
@@ -21,6 +22,7 @@ export function evaluateClassCapabilities(
     canUpdateClass:
       hasPermission(user, permissions.classesUpdate) &&
       hasPermission(user, permissions.teachersRead),
+    canDeleteClass: hasPermission(user, permissions.classesDelete),
     canAddMembers:
       hasPermission(user, permissions.classesManageMembers) &&
       hasPermission(user, permissions.studentsRead),
