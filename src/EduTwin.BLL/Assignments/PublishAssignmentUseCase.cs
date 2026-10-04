@@ -125,22 +125,27 @@ public class PublishAssignmentUseCase : IPublishAssignmentUseCase
         // Load Subject của Class một lần
         var classEntity = await _dbContext.Classes
             .AsNoTracking()
-            .Select(c => new { c.ClassId, c.SubjectId, c.TeacherId, c.Status })
+            .Select(c => new { c.ClassId, c.SubjectId, c.TeacherId, c.GradeLevel, c.Status })
             .FirstOrDefaultAsync(c => c.ClassId == assignment.ClassId, cancellationToken);
 
         if (classEntity == null)
             return PublishAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
 
+        // Fix Bug 2: Publish requires ClassStatus.Active
+        if (classEntity.Status != ClassStatus.Active)
+            return PublishAssignmentResult.Failure(ErrorCodes.InvalidStateTransition);
+
         var questionIds = orderedQuestions.Select(q => q.QuestionId).ToList();
         var dbQuestions = await _dbContext.Questions
             .AsNoTracking()
             .Where(q => questionIds.Contains(q.QuestionId))
-            .Select(q => new { q.QuestionId, q.SubjectId, q.Status })
+            .Select(q => new { q.QuestionId, q.SubjectId, q.GradeLevel, q.Status })
             .ToListAsync(cancellationToken);
 
         if (dbQuestions.Count != questionIds.Count)
             return PublishAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
 
+        bool hasGradeMismatch = false;
         foreach (var q in dbQuestions)
         {
             if (q.Status != EduTwin.Contracts.CurriculumAndQuestions.QuestionStatus.Active)
@@ -148,10 +153,22 @@ public class PublishAssignmentUseCase : IPublishAssignmentUseCase
 
             if (q.SubjectId != classEntity.SubjectId)
                 return PublishAssignmentResult.Failure(ErrorCodes.ValidationFailed);
+
+            if (classEntity.GradeLevel.HasValue && q.GradeLevel.HasValue && q.GradeLevel.Value != classEntity.GradeLevel.Value)
+            {
+                hasGradeMismatch = true;
+            }
         }
 
-        // SelectedStudents are persisted as draft targets by create/update.
-        // No draft targets means WholeClass, materialized from active membership at publish time.
+        if (hasGradeMismatch)
+        {
+            if (!assignment.AllowGradeMismatch || string.IsNullOrWhiteSpace(assignment.GradeMismatchReason))
+            {
+                return PublishAssignmentResult.Failure(ErrorCodes.ValidationFailed);
+            }
+        }
+
+        // Fix Bug 1: Respect explicit TargetMode. Never fall back to WholeClass if SelectedStudents draft targets are empty.
         var existingDraftTargets = await _dbContext.AssignmentTargets
             .AsNoTracking()
             .Where(at => at.AssignmentId == assignmentId)
@@ -160,13 +177,25 @@ public class PublishAssignmentUseCase : IPublishAssignmentUseCase
         List<Guid> targetStudentIds;
         TargetSource targetSourceEnum;
 
-        if (existingDraftTargets.Count > 0)
+        bool isSelectedStudentsMode = assignment.TargetMode == TargetSource.SelectedStudents ||
+                                      assignment.TargetMode == TargetSource.GapGroup ||
+                                      existingDraftTargets.Count > 0;
+
+        if (isSelectedStudentsMode)
         {
-            // SelectedStudents mode: dùng danh sách đã lưu
-            targetSourceEnum = TargetSource.SelectedStudents;
+            if (existingDraftTargets.Count == 0)
+            {
+                // Draft was intended for SelectedStudents/GapGroup but has no targets: fail-closed!
+                return PublishAssignmentResult.Failure(ErrorCodes.ValidationFailed);
+            }
+
+            targetSourceEnum = existingDraftTargets[0].TargetSource == TargetSource.GapGroup
+                ? TargetSource.GapGroup
+                : TargetSource.SelectedStudents;
+
             targetStudentIds = existingDraftTargets.Select(t => t.StudentId).Distinct().ToList();
 
-            // Validate: tất cả Student phải là active member của Class
+            // Re-validate at publish time: all selected students must still be active members of the class
             var activeMemberIds = await _dbContext.ClassStudents
                 .AsNoTracking()
                 .Where(cs => cs.ClassId == assignment.ClassId &&
@@ -174,15 +203,13 @@ public class PublishAssignmentUseCase : IPublishAssignmentUseCase
                 .Select(cs => cs.StudentId)
                 .ToListAsync(cancellationToken);
 
-            // Compare in memory because the MySQL EF provider cannot type-map
-            // Contains(List<Guid>) against GUID columns stored as varchar(36).
             var activeMemberIdSet = activeMemberIds.ToHashSet();
             if (targetStudentIds.Any(studentId => !activeMemberIdSet.Contains(studentId)))
                 return PublishAssignmentResult.Failure(ErrorCodes.ValidationFailed);
         }
         else
         {
-            // WholeClass mode: lấy active members tại thời điểm publish
+            // WholeClass mode: snapshot active members at publish time
             targetSourceEnum = TargetSource.WholeClass;
             targetStudentIds = await _dbContext.ClassStudents
                 .AsNoTracking()
@@ -300,6 +327,9 @@ public class PublishAssignmentUseCase : IPublishAssignmentUseCase
             Instructions = assignment.Instructions,
             DueAt = assignment.DueAt,
             TimeLimitMinutes = assignment.TimeLimitMinutes,
+            TargetMode = assignment.TargetMode.ToString(),
+            AllowGradeMismatch = assignment.AllowGradeMismatch,
+            GradeMismatchReason = assignment.GradeMismatchReason,
             Status = assignment.Status.ToString(),
             QuestionCount = questionDtos.Count,
             TargetStudentCount = targetDtos.Count,

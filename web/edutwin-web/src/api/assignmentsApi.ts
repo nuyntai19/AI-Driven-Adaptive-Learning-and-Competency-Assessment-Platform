@@ -78,6 +78,7 @@ export const getAssignmentClasses = async (params: GetAssignmentClassesParams = 
 
 export interface GetAssignableQuestionsParams {
   subjectId: string;
+  gradeLevel?: number | null;
   topicId?: string;
   difficulty?: number;
   type?: Question['questionType'];

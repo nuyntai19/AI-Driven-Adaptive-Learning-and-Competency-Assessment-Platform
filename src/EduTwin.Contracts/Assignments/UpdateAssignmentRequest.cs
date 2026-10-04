@@ -21,6 +21,8 @@ public class UpdateAssignmentRequest
 
     public string? TargetMode { get; set; }
     public List<string>? StudentIds { get; set; }
+    public bool? AllowGradeMismatch { get; set; }
+    public string? GradeMismatchReason { get; set; }
 
     /// <summary>
     /// Bắt buộc; phải khớp RowVersion hiện tại trong DB.

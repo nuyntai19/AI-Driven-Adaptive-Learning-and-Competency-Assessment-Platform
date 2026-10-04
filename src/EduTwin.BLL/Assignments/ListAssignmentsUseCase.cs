@@ -83,6 +83,9 @@ public class ListAssignmentsUseCase : IListAssignmentsUseCase
                 a.TimeLimitMinutes,
                 a.Status,
                 a.RowVersion,
+                a.TargetMode,
+                a.AllowGradeMismatch,
+                a.GradeMismatchReason,
                 QuestionCount = _dbContext.AssignmentQuestions.Count(aq => aq.AssignmentId == a.AssignmentId),
                 TargetStudentCount = _dbContext.AssignmentTargets.Count(at => at.AssignmentId == a.AssignmentId)
             })
@@ -101,6 +104,9 @@ public class ListAssignmentsUseCase : IListAssignmentsUseCase
             Instructions = a.Instructions,
             DueAt = a.DueAt,
             TimeLimitMinutes = a.TimeLimitMinutes,
+            TargetMode = a.TargetMode.ToString(),
+            AllowGradeMismatch = a.AllowGradeMismatch,
+            GradeMismatchReason = a.GradeMismatchReason,
             Status = a.Status.ToString(),
             QuestionCount = a.QuestionCount,
             TargetStudentCount = a.TargetStudentCount,

@@ -21,5 +21,8 @@ public class AssignmentDto
     public int TargetStudentCount { get; set; }
     public List<AssignmentQuestionDto> Questions { get; set; } = new();
     public List<AssignmentTargetDto> Targets { get; set; } = new();
+    public string TargetMode { get; set; } = string.Empty;
+    public bool AllowGradeMismatch { get; set; }
+    public string? GradeMismatchReason { get; set; }
     public string RowVersion { get; set; } = string.Empty;
 }

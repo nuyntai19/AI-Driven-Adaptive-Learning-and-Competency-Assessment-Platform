@@ -145,6 +145,9 @@ export function TeacherAssignmentEditorView() {
   const [questionPage, setQuestionPage] = useState(1);
   const [questionDifficulty, setQuestionDifficulty] = useState<number | "">("");
   const [questionTopicId, setQuestionTopicId] = useState<string>("");
+  const [questionGradeFilter, setQuestionGradeFilter] = useState<number | "">("");
+  const [allowGradeMismatch, setAllowGradeMismatch] = useState(false);
+  const [gradeMismatchReason, setGradeMismatchReason] = useState("");
 
   // Student Selector filter & page
   const [studentPage, setStudentPage] = useState(1);
@@ -169,6 +172,13 @@ export function TeacherAssignmentEditorView() {
     return classesData?.data?.find((c) => c.classId === classId);
   }, [classId, classDetailQuery.data, classesData?.data]);
 
+  // Sync default question grade filter to class grade level if available
+  useEffect(() => {
+    if (selectedClass?.gradeLevel && questionGradeFilter === "") {
+      setQuestionGradeFilter(selectedClass.gradeLevel);
+    }
+  }, [selectedClass?.gradeLevel]);
+
   const selectedSubjectId = selectedClass?.subject?.subjectId;
 
   // Knowledge Nodes Query for the subject of the selected class
@@ -184,6 +194,7 @@ export function TeacherAssignmentEditorView() {
     selectedSubjectId
       ? {
           subjectId: selectedSubjectId,
+          gradeLevel: questionGradeFilter !== "" ? Number(questionGradeFilter) : undefined,
           topicId: questionTopicId || undefined,
           page: questionPage,
           pageSize: 10,
@@ -297,10 +308,23 @@ export function TeacherAssignmentEditorView() {
     }
     setQuestionIds(assignment.questions.map((q) => q.questionId));
 
-    const source = assignment.targets[0]?.targetSource;
-    setTargetMode(source === "WholeClass" || !source ? "WholeClass" : "SelectedStudents");
-    setStudentIds(source && source !== "WholeClass" ? assignment.targets.map((t) => t.studentId) : []);
+    const effTargetMode = (assignment.targetMode ?? (assignment.targets[0]?.targetSource === "WholeClass" || !assignment.targets.length ? "WholeClass" : "SelectedStudents")) as TargetMode;
+    setTargetMode(effTargetMode);
+    setStudentIds(effTargetMode === "SelectedStudents" ? assignment.targets.map((t) => t.studentId) : []);
+    setAllowGradeMismatch(assignment.allowGradeMismatch ?? false);
+    setGradeMismatchReason(assignment.gradeMismatchReason ?? "");
   }, [assignment]);
+
+  const hasGradeMismatch = useMemo(() => {
+    if (!selectedClass?.gradeLevel) return false;
+    for (const qId of questionIds) {
+      const q = cachedQuestions.get(qId);
+      if (q && q.gradeLevel !== undefined && q.gradeLevel !== null && q.gradeLevel !== selectedClass.gradeLevel) {
+        return true;
+      }
+    }
+    return false;
+  }, [selectedClass?.gradeLevel, questionIds, cachedQuestions]);
 
   const isReadOnly = isEditing && (assignment?.status !== "Draft" || !canUpdate);
 
@@ -327,6 +351,9 @@ export function TeacherAssignmentEditorView() {
     setQuestionIds([]);
     setStudentIds([]);
     setTargetMode("WholeClass");
+    setQuestionGradeFilter("");
+    setAllowGradeMismatch(false);
+    setGradeMismatchReason("");
     setQuestionPage(1);
     setStudentPage(1);
   };
@@ -405,6 +432,22 @@ export function TeacherAssignmentEditorView() {
       setFormError({ message: "Vui lòng chọn ít nhất 1 câu hỏi cho bài tập." });
       return false;
     }
+    if (hasGradeMismatch) {
+      if (!allowGradeMismatch) {
+        setFormError({
+          message:
+            "Bài tập chứa câu hỏi khác khối so với lớp học. Vui lòng bật 'Cho phép nội dung khác khối' và nêu rõ lý do ngoại lệ.",
+        });
+        return false;
+      }
+      if (!gradeMismatchReason.trim()) {
+        setFormError({
+          message:
+            "Vui lòng nhập lý do ngoại lệ học thuật khi giao nội dung khác khối cho lớp.",
+        });
+        return false;
+      }
+    }
     setFormError(null);
     return true;
   };
@@ -455,6 +498,8 @@ export function TeacherAssignmentEditorView() {
         questionIds,
         targetMode,
         studentIds: targetMode === "SelectedStudents" ? studentIds : undefined,
+        allowGradeMismatch: hasGradeMismatch ? allowGradeMismatch : false,
+        gradeMismatchReason: hasGradeMismatch && allowGradeMismatch ? gradeMismatchReason.trim() : null,
       };
 
       createMutation.mutate(createPayload, {
@@ -487,6 +532,8 @@ export function TeacherAssignmentEditorView() {
         questionIds,
         targetMode,
         studentIds: targetMode === "SelectedStudents" ? studentIds : undefined,
+        allowGradeMismatch: hasGradeMismatch ? allowGradeMismatch : false,
+        gradeMismatchReason: hasGradeMismatch && allowGradeMismatch ? gradeMismatchReason.trim() : null,
         rowVersion: assignment.rowVersion,
       };
 
@@ -519,6 +566,14 @@ export function TeacherAssignmentEditorView() {
 
   const handleConfirmPublish = () => {
     if (!id || !assignment || !canPublish) return;
+    if (targetMode === "SelectedStudents" && studentIds.length === 0) {
+      setFormError({
+        message:
+          "Không thể xuất bản: Chế độ chỉ định học sinh yêu cầu chọn ít nhất 1 học sinh nhận bài.",
+      });
+      setPublishDialogOpen(false);
+      return;
+    }
     setFormError(null);
 
     publishMutation.mutate(
@@ -816,7 +871,7 @@ export function TeacherAssignmentEditorView() {
                 </p>
               </div>
 
-              {/* Topic & Difficulty Filters */}
+              {/* Topic, Grade & Difficulty Filters */}
               <div className="flex flex-wrap items-center gap-3">
                 {/* Knowledge Graph / Topic Filter */}
                 <div className="flex items-center gap-2">
@@ -848,6 +903,27 @@ export function TeacherAssignmentEditorView() {
                   </select>
                 </div>
 
+                {/* Grade Level Filter */}
+                <div className="flex items-center gap-2">
+                  <label htmlFor="teacher-q-grade-filter" className="text-xs text-[var(--th-text-secondary)] whitespace-nowrap">
+                    Khối:
+                  </label>
+                  <select
+                    id="teacher-q-grade-filter"
+                    value={questionGradeFilter}
+                    onChange={(e) => {
+                      setQuestionGradeFilter(e.target.value ? Number(e.target.value) : "");
+                      setQuestionPage(1);
+                    }}
+                    className="th-select text-xs py-1"
+                  >
+                    <option value="">Tất cả khối</option>
+                    <option value="10">Khối 10</option>
+                    <option value="11">Khối 11</option>
+                    <option value="12">Khối 12</option>
+                  </select>
+                </div>
+
                 {/* Difficulty Filter */}
                 <div className="flex items-center gap-2">
                   <label htmlFor="teacher-q-diff-filter" className="text-xs text-[var(--th-text-secondary)] whitespace-nowrap">
@@ -872,6 +948,55 @@ export function TeacherAssignmentEditorView() {
                 </div>
               </div>
             </div>
+
+            {/* Grade Mismatch Exception Banner */}
+            {hasGradeMismatch && (
+              <div className="p-4 rounded-xl border border-amber-500/50 bg-amber-500/10 dark:bg-amber-950/40 text-xs space-y-3">
+                <div className="flex items-start gap-2.5">
+                  <span className="text-base text-amber-400 leading-none mt-0.5">⚠️</span>
+                  <div>
+                    <h4 className="font-semibold text-amber-200">
+                      Phát hiện câu hỏi khác khối so với lớp học ({selectedClass?.gradeLevel ? `Khối ${selectedClass.gradeLevel}` : "Chưa phân loại"})
+                    </h4>
+                    <p className="text-amber-300/90 mt-0.5">
+                      Bạn đang chọn câu hỏi thuộc khối khác với khối của lớp học. Nếu bạn chủ đích muốn học sinh ôn tập kiến thức nền hoặc học nâng cao, hãy bật ngoại lệ và nhập lý do học thuật.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-1 border-t border-amber-500/20">
+                  <input
+                    type="checkbox"
+                    id="chk-allow-grade-mismatch"
+                    checked={allowGradeMismatch}
+                    onChange={(e) => setAllowGradeMismatch(e.target.checked)}
+                    disabled={isReadOnly}
+                    className="h-4 w-4 rounded accent-amber-500"
+                  />
+                  <label htmlFor="chk-allow-grade-mismatch" className="font-medium text-amber-100 cursor-pointer">
+                    Cho phép giao nội dung khác khối (Chế độ ngoại lệ học thuật)
+                  </label>
+                </div>
+
+                {allowGradeMismatch && (
+                  <div>
+                    <label htmlFor="txt-grade-mismatch-reason" className="block font-medium text-amber-200 mb-1">
+                      Lý do ngoại lệ học thuật <span className="text-rose-400">*</span>:
+                    </label>
+                    <input
+                      type="text"
+                      id="txt-grade-mismatch-reason"
+                      value={gradeMismatchReason}
+                      onChange={(e) => setGradeMismatchReason(e.target.value)}
+                      disabled={isReadOnly}
+                      maxLength={500}
+                      placeholder="VD: Ôn tập kiến thức nền về hàm số lớp 11 cho học sinh lớp 12..."
+                      className="th-input w-full text-xs"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
 
             {!classId ? (
               <div className="p-8 rounded-xl border border-[var(--th-border-subtle)] bg-[var(--th-surface-subtle)] text-center text-xs text-[var(--th-text-muted)]">
@@ -920,6 +1045,13 @@ export function TeacherAssignmentEditorView() {
                           <span className="font-mono font-bold text-[var(--th-teal)]">#{q.questionId}</span>
                           <span className="th-badge th-badge-info py-0 px-2 text-[10px]">
                             {q.questionType === "MultipleChoice" ? "Trắc nghiệm" : "Tự luận"}
+                          </span>
+                          <span className={`py-0 px-2 text-[10px] rounded border font-medium ${
+                            q.gradeLevel
+                              ? "bg-indigo-950/60 text-indigo-300 border-indigo-700/50"
+                              : "bg-gray-800 text-gray-400 border-gray-700"
+                          }`}>
+                            {q.gradeLevel ? `Khối ${q.gradeLevel}` : "Chưa phân loại"}
                           </span>
                           <span className="text-[var(--th-text-muted)]">Độ khó: {q.difficulty}/5</span>
                           <span className="text-[var(--th-text-muted)]">Điểm: {q.maxScore}</span>
@@ -1140,6 +1272,23 @@ export function TeacherAssignmentEditorView() {
                   <p className="font-semibold text-[var(--th-text)]">
                     {selectedClass ? `${selectedClass.className} (${selectedClass.academicYear}) - Môn: ${selectedClass.subject?.subjectName}` : classId}
                   </p>
+                  <p className="text-[11px] text-[var(--th-text-muted)] mt-0.5">
+                    Khối lớp: {selectedClass?.gradeLevel ? `Khối ${selectedClass.gradeLevel}` : "Chưa phân loại"}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-[var(--th-text-muted)] uppercase tracking-wider text-[10px] font-semibold block mb-1">
+                    Tương thích khối học thuật:
+                  </span>
+                  {hasGradeMismatch ? (
+                    <p className="font-semibold text-amber-400">
+                      ⚠️ Ngoại lệ khác khối: {gradeMismatchReason || "Đã xác nhận ngoại lệ"}
+                    </p>
+                  ) : (
+                    <p className="font-semibold text-emerald-400">
+                      ✓ Chuẩn khối lớp ({selectedClass?.gradeLevel ? `Khối ${selectedClass.gradeLevel}` : "Chưa phân loại"})
+                    </p>
+                  )}
                 </div>
                 <div>
                   <span className="text-[var(--th-text-muted)] uppercase tracking-wider text-[10px] font-semibold block mb-1">
@@ -1197,9 +1346,14 @@ export function TeacherAssignmentEditorView() {
                         <span className="font-semibold text-[var(--th-text)]">
                           {idx + 1}. {qObj?.questionText ? (qObj.questionText.length > 60 ? qObj.questionText.slice(0, 58) + "..." : qObj.questionText) : `Câu hỏi #${qid}`}
                         </span>
-                        <span className="text-[10px] font-mono text-[var(--th-text-muted)]">
-                          {qObj?.maxScore ?? 10}đ • {qObj?.questionType ?? "Trắc nghiệm"}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-300 border border-gray-700">
+                            {qObj?.gradeLevel ? `Khối ${qObj.gradeLevel}` : "Chưa phân loại"}
+                          </span>
+                          <span className="text-[10px] font-mono text-[var(--th-text-muted)]">
+                            {qObj?.maxScore ?? 10}đ • {qObj?.questionType ?? "Trắc nghiệm"}
+                          </span>
+                        </div>
                       </div>
                     );
                   })}

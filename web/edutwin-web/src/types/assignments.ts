@@ -44,6 +44,9 @@ export interface AssignmentDto {
   dueAt: string | null;
   timeLimitMinutes?: number | null;
   status: AssignmentStatus;
+  targetMode?: TargetMode;
+  allowGradeMismatch?: boolean;
+  gradeMismatchReason?: string | null;
   questionCount: number;
   targetStudentCount: number;
   questions: AssignmentQuestionDto[];
@@ -60,6 +63,8 @@ export interface CreateAssignmentRequest {
   questionIds: string[];
   targetMode: TargetMode;
   studentIds?: string[];
+  allowGradeMismatch?: boolean;
+  gradeMismatchReason?: string | null;
 }
 
 export interface UpdateAssignmentRequest {
@@ -70,6 +75,8 @@ export interface UpdateAssignmentRequest {
   questionIds: string[];
   targetMode: TargetMode;
   studentIds?: string[];
+  allowGradeMismatch?: boolean;
+  gradeMismatchReason?: string | null;
   rowVersion: string;
 }
 

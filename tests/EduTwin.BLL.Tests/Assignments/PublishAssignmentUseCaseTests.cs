@@ -258,6 +258,7 @@ public class PublishAssignmentUseCaseTests
             Title = "Bài kiểm tra",
             DueAt = dueAt,
             Status = AssignmentStatus.Draft,
+            TargetMode = selectedStudentIds != null && selectedStudentIds.Count > 0 ? TargetSource.SelectedStudents : TargetSource.WholeClass,
             IsDeleted = false,
             RowVersion = 1,
             CreatedAt = now,
