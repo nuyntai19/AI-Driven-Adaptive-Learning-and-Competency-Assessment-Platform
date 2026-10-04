@@ -75,6 +75,9 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
         if (request.Difficulty < 1 || request.Difficulty > 5)
             return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
 
+        if (!request.GradeLevel.HasValue || request.GradeLevel.Value < 10 || request.GradeLevel.Value > 12)
+            return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+
         if (string.IsNullOrWhiteSpace(request.QuestionText))
             return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
 
@@ -230,6 +233,7 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
             CreatedByTeacherId = effectiveTeacherId,
             QuestionType = questionType,
             Difficulty = request.Difficulty,
+            GradeLevel = request.GradeLevel,
             QuestionText = request.QuestionText,
             CorrectAnswer = request.CorrectAnswer,
             Solution = request.Solution,

@@ -32,7 +32,7 @@ services:
       - ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Development}
       - ASPNETCORE_URLS=http://+:8080
       - Logging__LogLevel__Default=${Logging__LogLevel__Default:-Information}
-      - ConnectionStrings__Default=${ConnectionStrings__Default}
+      - ConnectionStrings__Default=Server=mysql;Port=3306;Database=${MYSQL_DATABASE};User=${MYSQL_USER};Password=${MYSQL_PASSWORD}
       - Jwt__SigningKey=${Jwt__SigningKey}
       - Jwt__Issuer=${Jwt__Issuer}
       - Jwt__Audience=${Jwt__Audience}

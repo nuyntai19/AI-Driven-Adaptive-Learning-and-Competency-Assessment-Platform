@@ -36,6 +36,7 @@ export function TeacherQuestionBankView() {
 
   // Filters state
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>("");
+  const [selectedGradeLevel, setSelectedGradeLevel] = useState<number | "">("");
   const [selectedTopicId, setSelectedTopicId] = useState<string>("");
   const [selectedType, setSelectedType] = useState<QuestionType | "">("");
   const [selectedDifficulty, setSelectedDifficulty] = useState<number | "">("");
@@ -81,6 +82,7 @@ export function TeacherQuestionBankView() {
   const questionFilter: QuestionFilter = useMemo(
     () => ({
       subjectId: selectedSubjectId || undefined,
+      gradeLevel: selectedGradeLevel !== "" ? Number(selectedGradeLevel) : undefined,
       topicId: selectedTopicId || undefined,
       type: (selectedType as QuestionType) || undefined,
       difficulty: selectedDifficulty !== "" ? Number(selectedDifficulty) : undefined,
@@ -88,7 +90,7 @@ export function TeacherQuestionBankView() {
       page,
       pageSize,
     }),
-    [selectedSubjectId, selectedTopicId, selectedType, selectedDifficulty, selectedStatus, page, pageSize]
+    [selectedSubjectId, selectedGradeLevel, selectedTopicId, selectedType, selectedDifficulty, selectedStatus, page, pageSize]
   );
 
   const { data: response, isLoading, isError, error, refetch } = useQuestions(questionFilter);
@@ -255,6 +257,25 @@ export function TeacherQuestionBankView() {
                   {sub.subjectName} ({sub.subjectCode})
                 </option>
               ))}
+            </select>
+          </div>
+
+          {/* Grade Level Filter */}
+          <div className="min-w-0">
+            <label htmlFor="filter-teacher-grade" className="block text-[10px] font-semibold uppercase text-[var(--th-text-muted)] mb-1">Khối học</label>
+            <select
+              id="filter-teacher-grade"
+              value={selectedGradeLevel}
+              onChange={(e) => {
+                setSelectedGradeLevel(e.target.value ? Number(e.target.value) : "");
+                setPage(1);
+              }}
+              className="th-select w-full text-xs py-1.5"
+            >
+              <option value="">Tất cả khối</option>
+              <option value="10">Khối 10</option>
+              <option value="11">Khối 11</option>
+              <option value="12">Khối 12</option>
             </select>
           </div>
 
@@ -547,7 +568,12 @@ export function TeacherQuestionBankView() {
                       {subjectLabel}
                     </span>
 
-                    {/* Tag 4: Extra meta */}
+                    {/* Tag 4: Grade Level */}
+                    <span className="th-tag-neutral px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase">
+                      {q.gradeLevel ? `KHỐI ${q.gradeLevel}` : "CHƯA PHÂN LOẠI"}
+                    </span>
+
+                    {/* Tag 5: Extra meta */}
                     {q.options && q.options.length > 0 && (
                       <span className="th-tag-neutral px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase">
                         {q.options.length} ĐÁP ÁN

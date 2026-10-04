@@ -24,6 +24,7 @@ internal static class QuestionProjection
             CreatedByTeacherId = q.CreatedByTeacherId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             QuestionType = q.QuestionType.ToString(),
             Difficulty = q.Difficulty,
+            GradeLevel = q.GradeLevel,
             QuestionText = q.QuestionText,
             CorrectAnswer = q.CorrectAnswer,
             Solution = q.Solution,

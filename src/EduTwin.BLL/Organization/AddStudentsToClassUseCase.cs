@@ -90,12 +90,16 @@ public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
         var currentUserId = _tenantContext.UserId.Value;
 
         var existingClass = await _context.Classes
-            .AsNoTracking()
             .FirstOrDefaultAsync(c => c.CenterId == centerId && c.ClassId == classId && !c.IsDeleted, cancellationToken);
 
         if (existingClass == null)
         {
             return AddStudentsToClassResult.Failure(ErrorCodes.ResourceNotFound);
+        }
+
+        if (existingClass.Status != ClassStatus.Active)
+        {
+            return AddStudentsToClassResult.Failure(ErrorCodes.InvalidStateTransition);
         }
 
         var center = await _context.Centers
@@ -124,6 +128,20 @@ public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
             return AddStudentsToClassResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
+        if (existingClass.GradeLevel.HasValue)
+        {
+            var hasMismatch = validStudents.Any(s => s.GradeLevel != existingClass.GradeLevel.Value);
+            if (hasMismatch)
+            {
+                if (!request.AllowGradeMismatch || string.IsNullOrWhiteSpace(request.GradeMismatchReason))
+                {
+                    return AddStudentsToClassResult.Failure(
+                        ErrorCodes.InvalidStateTransition,
+                        $"Học sinh khác khối {existingClass.GradeLevel.Value} không thể thêm vào lớp mà không có lý do ngoại lệ hợp lệ.");
+                }
+            }
+        }
+
         var existingMemberships = await _context.ClassStudents
             .Where(cs => cs.CenterId == centerId && cs.ClassId == classId && requestedStudentIds.Contains(cs.StudentId))
             .ToListAsync(cancellationToken);
@@ -140,6 +158,7 @@ public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
 
         foreach (var studentId in requestedStudentIds)
         {
+            var student = validStudents.First(s => s.StudentId == studentId);
             var membership = existingMemberships.FirstOrDefault(cs => cs.StudentId == studentId);
 
             if (membership == null)
@@ -149,6 +168,7 @@ public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
                     CenterId = centerId,
                     ClassId = classId,
                     StudentId = studentId,
+                    GradeLevelAtEnrollment = student.GradeLevel,
                     JoinedAt = currentUtc,
                     Status = ClassStudentStatus.Active,
                     RemovedAt = null,
@@ -164,6 +184,7 @@ public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
             else if (membership.Status == ClassStudentStatus.Removed)
             {
                 membership.Status = ClassStudentStatus.Active;
+                membership.GradeLevelAtEnrollment = student.GradeLevel;
                 membership.JoinedAt = currentUtc;
                 membership.RemovedAt = null;
                 membership.CreatedBy = currentUserId;
@@ -174,9 +195,18 @@ public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
 
         if (hasChanges)
         {
+            existingClass.UpdatedAt = currentUtc;
+            existingClass.UpdatedBy = currentUserId;
+
             try
             {
                 await _context.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException ex)
+            {
+                _logger.LogWarning(ex, "Concurrency conflict when adding students to class {ClassId}", classId);
+                _context.ChangeTracker.Clear();
+                return AddStudentsToClassResult.Failure(ErrorCodes.ConcurrencyConflict);
             }
             catch (DbUpdateException ex)
             {

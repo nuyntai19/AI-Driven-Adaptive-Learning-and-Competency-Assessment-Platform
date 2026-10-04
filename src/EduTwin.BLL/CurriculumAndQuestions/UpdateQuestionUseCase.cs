@@ -86,6 +86,9 @@ public class UpdateQuestionUseCase : IUpdateQuestionUseCase
         if (request.Difficulty < 1 || request.Difficulty > 5)
             return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
 
+        if (request.GradeLevel.HasValue && (request.GradeLevel.Value < 10 || request.GradeLevel.Value > 12))
+            return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+
         if (string.IsNullOrWhiteSpace(request.QuestionText))
             return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
 
@@ -168,6 +171,7 @@ public class UpdateQuestionUseCase : IUpdateQuestionUseCase
         question.QuestionType = questionType;
         question.AnswerEvaluationMode = evalMode;
         question.Difficulty = request.Difficulty;
+        question.GradeLevel = request.GradeLevel;
         question.QuestionText = request.QuestionText;
         question.CorrectAnswer = request.CorrectAnswer;
         question.Solution = request.Solution;

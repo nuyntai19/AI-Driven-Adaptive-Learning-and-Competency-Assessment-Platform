@@ -58,6 +58,9 @@ public class CreateCurriculumUseCase : ICreateCurriculumUseCase
         if (request.Title.Length > 250)
             return CreateCurriculumResult.Failure(ErrorCodes.ValidationFailed);
 
+        if (!request.GradeLevel.HasValue || request.GradeLevel.Value < 10 || request.GradeLevel.Value > 12)
+            return CreateCurriculumResult.Failure(ErrorCodes.ValidationFailed);
+
         if (request.NodeIds == null)
             return CreateCurriculumResult.Failure(ErrorCodes.ValidationFailed);
 
@@ -180,6 +183,7 @@ public class CreateCurriculumUseCase : ICreateCurriculumUseCase
             CenterId = centerId,
             TeacherId = ownerTeacherId,
             SubjectId = request.SubjectId,
+            GradeLevel = request.GradeLevel,
             Title = request.Title,
             Description = request.Description,
             SourceFile = null,
@@ -228,6 +232,7 @@ public class CreateCurriculumUseCase : ICreateCurriculumUseCase
             CurriculumId = curriculum.CurriculumId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             TeacherId = curriculum.TeacherId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             SubjectId = curriculum.SubjectId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
+            GradeLevel = curriculum.GradeLevel,
             Title = curriculum.Title,
             Description = curriculum.Description,
             SourceFile = null,

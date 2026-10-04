@@ -88,6 +88,7 @@ public class GetClassUseCase : IGetClassUseCase
                 c.ClassId,
                 c.ClassName,
                 c.AcademicYear,
+                c.GradeLevel,
                 c.Status,
                 RowVersion = c.RowVersion,
                 Subject = new { c.Subject.SubjectId, c.Subject.SubjectName },
@@ -106,6 +107,7 @@ public class GetClassUseCase : IGetClassUseCase
             ClassId = classDto.ClassId.ToString("D").ToLowerInvariant(),
             ClassName = classDto.ClassName,
             AcademicYear = classDto.AcademicYear,
+            GradeLevel = classDto.GradeLevel,
             Subject = new ClassSubjectDto
             {
                 SubjectId = classDto.Subject.SubjectId.ToString("D").ToLowerInvariant(),

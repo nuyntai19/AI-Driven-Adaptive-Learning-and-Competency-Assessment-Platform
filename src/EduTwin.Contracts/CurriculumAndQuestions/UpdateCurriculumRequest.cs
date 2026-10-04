@@ -11,6 +11,9 @@ public class UpdateCurriculumRequest
     
     public string? Description { get; set; }
     
+    [Range(10, 12)]
+    public byte? GradeLevel { get; set; }
+
     [Required]
     public string? RowVersion { get; set; }
 }

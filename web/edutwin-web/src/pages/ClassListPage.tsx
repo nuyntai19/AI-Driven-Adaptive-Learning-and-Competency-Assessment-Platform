@@ -47,6 +47,7 @@ const CenterManagerClassListView: React.FC = () => {
   const {
     canCreateClass,
     canUpdateClass,
+    canDeleteClass,
     canAddMembers,
     canRemoveMembers,
     canViewDashboard,
@@ -57,6 +58,8 @@ const CenterManagerClassListView: React.FC = () => {
   const pageSize = 10;
   const [status, setStatus] = useState<ClassStatus | "">("");
   const [statusInput, setStatusInput] = useState<ClassStatus | "">("");
+  const [gradeLevel, setGradeLevel] = useState<number | "">("");
+  const [gradeLevelInput, setGradeLevelInput] = useState<number | "">("");
 
   // Feedback notifications
   const [feedback, setFeedback] = useState<{
@@ -78,6 +81,7 @@ const CenterManagerClassListView: React.FC = () => {
   const [academicYear, setAcademicYear] = useState("");
   const [subjectId, setSubjectId] = useState("");
   const [teacherId, setTeacherId] = useState("");
+  const [createGradeLevel, setCreateGradeLevel] = useState<number | "">("");
   const [createError, setCreateError] = useState<string | null>(null);
 
   // Edit form state
@@ -85,7 +89,12 @@ const CenterManagerClassListView: React.FC = () => {
   const [editClassName, setEditClassName] = useState("");
   const [editTeacherId, setEditTeacherId] = useState("");
   const [editStatus, setEditStatus] = useState<ClassStatus>("Active");
+  const [editGradeLevel, setEditGradeLevel] = useState<number | "">("");
   const [editError, setEditError] = useState<string | null>(null);
+
+  // Delete confirmation state
+  const [deletingClass, setDeletingClass] = useState<ClassDto | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Detail modal/drawer state
   const [viewingClassId, setViewingClassId] = useState<string | null>(null);
@@ -99,12 +108,16 @@ const CenterManagerClassListView: React.FC = () => {
   const [candidatePage, setCandidatePage] = useState<number>(1);
   const [candidateSearchInput, setCandidateSearchInput] = useState("");
   const [candidateSearch, setCandidateSearch] = useState("");
+  const [includeOtherGrades, setIncludeOtherGrades] = useState(false);
+  const [allowGradeMismatch, setAllowGradeMismatch] = useState(false);
+  const [gradeMismatchReason, setGradeMismatchReason] = useState("");
   const [addStudentsError, setAddStudentsError] = useState<string | null>(null);
 
   // Remove student confirmation modal state
   const [removingStudent, setRemovingStudent] = useState<{
     studentId: string;
     fullName: string;
+    fullNameSnapshot?: string;
   } | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
 
@@ -113,6 +126,7 @@ const CenterManagerClassListView: React.FC = () => {
     page,
     pageSize,
     status: status !== "" ? status : undefined,
+    gradeLevel: gradeLevel !== "" ? Number(gradeLevel) : undefined,
   };
 
   const { data, isLoading, isFetching, isError, error: listError, refetch } = useQuery({
@@ -163,12 +177,13 @@ const CenterManagerClassListView: React.FC = () => {
     isError: isErrorCandidates,
     refetch: refetchCandidates,
   } = useQuery({
-    queryKey: ["candidateStudents", viewingClassId, candidatePage, candidateSearch],
+    queryKey: ["candidateStudents", viewingClassId, candidatePage, candidateSearch, includeOtherGrades],
     queryFn: () =>
       organizationApi.getClassCandidateStudents(viewingClassId!, {
         page: candidatePage,
         pageSize: 10,
         search: candidateSearch.trim() || undefined,
+        includeOtherGrades,
       }),
     enabled: isAddStudentsModalOpen && !!viewingClassId && canAddMembers,
   });
@@ -229,8 +244,8 @@ const CenterManagerClassListView: React.FC = () => {
   });
 
   const addStudentsMutation = useMutation({
-    mutationFn: ({ classId, studentIds }: { classId: string; studentIds: string[] }) =>
-      organizationApi.addStudentsToClass(classId, { studentIds }),
+    mutationFn: ({ classId, request }: { classId: string; request: { studentIds: string[]; allowGradeMismatch?: boolean; gradeMismatchReason?: string } }) =>
+      organizationApi.addStudentsToClass(classId, request),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ["classes"] });
       queryClient.invalidateQueries({ queryKey: ["classDetail", res.classId] });
@@ -278,11 +293,46 @@ const CenterManagerClassListView: React.FC = () => {
     },
   });
 
+  const deleteClassMutation = useMutation({
+    mutationFn: ({ classId, rowVersion }: { classId: string; rowVersion?: string }) =>
+      organizationApi.deleteClass(classId, rowVersion),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["classes"] });
+      showFeedback("success", `Đã xóa lớp "${deletingClass?.className}" thành công.`);
+      setDeletingClass(null);
+      setDeleteError(null);
+      if (viewingClassId === deletingClass?.classId) {
+        setViewingClassId(null);
+      }
+    },
+    onError: (error: unknown) => {
+      const details = extractProblemDetails(error);
+      if (details.errorCode === "INVALID_STATE_TRANSITION") {
+        setDeleteError(
+          details.detail ||
+            "Không thể xóa lớp học đã có thành viên, giáo trình hoặc bài tập. Vui lòng chuyển trạng thái lớp sang Lưu trữ (Archived) để bảo toàn lịch sử học tập."
+        );
+      } else if (details.errorCode === "CONCURRENCY_CONFLICT" || isConcurrencyConflict(error)) {
+        showFeedback(
+          "conflict",
+          "Dữ liệu lớp học đã bị thay đổi bởi phiên làm việc khác. Đang tải lại dữ liệu mới nhất...",
+          details.traceId
+        );
+        refetch();
+        setDeletingClass(null);
+        setDeleteError(null);
+      } else {
+        setDeleteError(mapSafeOperationalError(error, "Không thể xóa lớp học. Vui lòng thử lại."));
+      }
+    },
+  });
+
   const resetCreateForm = () => {
     setClassName("");
     setAcademicYear("");
     setSubjectId("");
     setTeacherId("");
+    setCreateGradeLevel("");
     setCreateError(null);
   };
 
@@ -296,6 +346,7 @@ const CenterManagerClassListView: React.FC = () => {
     setEditClassName(cls.className);
     setEditTeacherId(cls.teacher.teacherId);
     setEditStatus(cls.status);
+    setEditGradeLevel(cls.gradeLevel ?? "");
     setEditError(null);
   };
 
@@ -315,6 +366,7 @@ const CenterManagerClassListView: React.FC = () => {
   const handleFilter = (e: React.FormEvent) => {
     e.preventDefault();
     setStatus(statusInput);
+    setGradeLevel(gradeLevelInput);
     setPage(1);
   };
 
@@ -333,9 +385,12 @@ const CenterManagerClassListView: React.FC = () => {
       !normAcademicYear ||
       normAcademicYear.length > 20 ||
       !normSubjectId ||
-      !normTeacherId
+      !normTeacherId ||
+      createGradeLevel === "" ||
+      Number(createGradeLevel) < 10 ||
+      Number(createGradeLevel) > 12
     ) {
-      setCreateError("Vui lòng điền đầy đủ và chính xác các thông tin bắt buộc.");
+      setCreateError("Vui lòng điền đầy đủ và chính xác các thông tin bắt buộc (bao gồm khối lớp 10, 11 hoặc 12).");
       return;
     }
 
@@ -344,6 +399,7 @@ const CenterManagerClassListView: React.FC = () => {
       academicYear: normAcademicYear,
       subjectId: normSubjectId,
       teacherId: normTeacherId,
+      gradeLevel: Number(createGradeLevel),
     });
   };
 
@@ -370,6 +426,7 @@ const CenterManagerClassListView: React.FC = () => {
         className: normClassName,
         teacherId: normTeacherId,
         status: editStatus,
+        gradeLevel: editGradeLevel !== "" ? Number(editGradeLevel) : null,
         rowVersion: editingClass.rowVersion,
       },
     });
@@ -380,6 +437,9 @@ const CenterManagerClassListView: React.FC = () => {
     setCandidatePage(1);
     setCandidateSearchInput("");
     setCandidateSearch("");
+    setIncludeOtherGrades(false);
+    setAllowGradeMismatch(false);
+    setGradeMismatchReason("");
     setAddStudentsError(null);
     setIsAddStudentsModalOpen(true);
   };
@@ -427,9 +487,26 @@ const CenterManagerClassListView: React.FC = () => {
     if (!viewingClassId || selectedStudentIds.length === 0) return;
     setAddStudentsError(null);
 
+    const hasMismatch = Boolean(
+      classDetail?.gradeLevel &&
+      selectedStudentIds.some((id) => {
+        const student = candidateList.find((c) => c.studentId === id);
+        return student && student.gradeLevel !== classDetail.gradeLevel;
+      })
+    );
+
+    if (hasMismatch && (!allowGradeMismatch || !gradeMismatchReason.trim())) {
+      setAddStudentsError("Vui lòng xác nhận cho phép và nhập lý do ngoại lệ khi thêm học sinh khác khối.");
+      return;
+    }
+
     addStudentsMutation.mutate({
       classId: viewingClassId,
-      studentIds: selectedStudentIds,
+      request: {
+        studentIds: selectedStudentIds,
+        allowGradeMismatch: hasMismatch ? allowGradeMismatch : undefined,
+        gradeMismatchReason: hasMismatch && allowGradeMismatch ? gradeMismatchReason.trim() : undefined,
+      },
     });
   };
 
@@ -483,6 +560,22 @@ const CenterManagerClassListView: React.FC = () => {
       ),
     },
     {
+      id: "gradeLevel",
+      header: "Khối",
+      align: "center",
+      render: (cls) => (
+        <span
+          className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+            cls.gradeLevel
+              ? "bg-indigo-900/60 text-indigo-200 border border-indigo-700/50"
+              : "bg-gray-800 text-gray-400 border border-gray-700"
+          }`}
+        >
+          {cls.gradeLevel ? `Khối ${cls.gradeLevel}` : "Chưa phân loại"}
+        </span>
+      ),
+    },
+    {
       id: "status",
       header: "Trạng thái",
       render: (cls) => (
@@ -522,6 +615,19 @@ const CenterManagerClassListView: React.FC = () => {
               className="cm-secondary-button h-8 px-2.5 py-1 text-xs"
             >
               Sửa
+            </button>
+          )}
+          {canDeleteClass && (
+            <button
+              type="button"
+              id={`btn-delete-class-${cls.classId}`}
+              onClick={() => {
+                setDeletingClass(cls);
+                setDeleteError(null);
+              }}
+              className="cm-secondary-button h-8 px-2.5 py-1 text-xs text-rose-400 hover:text-rose-200 hover:border-rose-700/60"
+            >
+              Xóa
             </button>
           )}
         </div>
@@ -590,20 +696,38 @@ const CenterManagerClassListView: React.FC = () => {
 
           <FilterBar
             filters={
-              <div className="flex items-center gap-2">
-                <label htmlFor="filter-class-status" className="text-xs text-[var(--cm-text-secondary)]">
-                  Trạng thái:
-                </label>
-                <select
-                  id="filter-class-status"
-                  value={statusInput}
-                  onChange={(e) => setStatusInput(e.target.value as ClassStatus | "")}
-                  className="cm-field px-3 py-1.5 text-xs"
-                >
-                  <option value="">Tất cả trạng thái</option>
-                  <option value="Active">Hoạt động</option>
-                  <option value="Archived">Đã lưu trữ</option>
-                </select>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <label htmlFor="filter-class-status" className="text-xs text-[var(--cm-text-secondary)]">
+                    Trạng thái:
+                  </label>
+                  <select
+                    id="filter-class-status"
+                    value={statusInput}
+                    onChange={(e) => setStatusInput(e.target.value as ClassStatus | "")}
+                    className="cm-field px-3 py-1.5 text-xs"
+                  >
+                    <option value="">Tất cả trạng thái</option>
+                    <option value="Active">Hoạt động</option>
+                    <option value="Archived">Đã lưu trữ</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label htmlFor="filter-class-grade" className="text-xs text-[var(--cm-text-secondary)]">
+                    Khối:
+                  </label>
+                  <select
+                    id="filter-class-grade"
+                    value={gradeLevelInput}
+                    onChange={(e) => setGradeLevelInput(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="cm-field px-3 py-1.5 text-xs"
+                  >
+                    <option value="">Tất cả khối</option>
+                    <option value="10">Khối 10</option>
+                    <option value="11">Khối 11</option>
+                    <option value="12">Khối 12</option>
+                  </select>
+                </div>
               </div>
             }
             actions={
@@ -617,13 +741,15 @@ const CenterManagerClassListView: React.FC = () => {
                 >
                   Lọc danh sách
                 </button>
-                {(statusInput !== "" || status !== "") && (
+                {(statusInput !== "" || status !== "" || gradeLevelInput !== "" || gradeLevel !== "") && (
                   <button
                     type="button"
                     id="btn-reset-classes"
                     onClick={() => {
                       setStatusInput("");
                       setStatus("");
+                      setGradeLevelInput("");
+                      setGradeLevel("");
                       setPage(1);
                     }}
                     disabled={isFetching}
@@ -749,6 +875,27 @@ const CenterManagerClassListView: React.FC = () => {
                   </select>
                 </div>
 
+                <div>
+                  <label htmlFor="select-grade-level" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
+                    Khối lớp áp dụng
+                  </label>
+                  <select
+                    id="select-grade-level"
+                    value={createGradeLevel}
+                    onChange={(e) => setCreateGradeLevel(e.target.value === "" ? "" : Number(e.target.value))}
+                    disabled={createClassMutation.isPending}
+                    className="cm-field mt-1 w-full px-3 text-sm"
+                  >
+                    <option value="">-- Chọn khối lớp (bắt buộc) --</option>
+                    <option value="10">Khối 10</option>
+                    <option value="11">Khối 11</option>
+                    <option value="12">Khối 12</option>
+                  </select>
+                  <p className="mt-1 text-xs text-[var(--cm-text-secondary)]">
+                    Khối áp dụng giúp gợi ý và kiểm soát nội dung giáo trình, ngân hàng đề bài phù hợp.
+                  </p>
+                </div>
+
                 <div className="flex justify-end gap-3 pt-4">
                   <button
                     type="button"
@@ -838,6 +985,24 @@ const CenterManagerClassListView: React.FC = () => {
                   </select>
                 </div>
 
+                <div>
+                  <label htmlFor="select-edit-grade-level" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
+                    Khối lớp áp dụng
+                  </label>
+                  <select
+                    id="select-edit-grade-level"
+                    value={editGradeLevel}
+                    onChange={(e) => setEditGradeLevel(e.target.value === "" ? "" : Number(e.target.value))}
+                    disabled={updateClassMutation.isPending}
+                    className="cm-field mt-1 w-full px-3 text-sm"
+                  >
+                    <option value="">-- Chưa phân loại --</option>
+                    <option value="10">Khối 10</option>
+                    <option value="11">Khối 11</option>
+                    <option value="12">Khối 12</option>
+                  </select>
+                </div>
+
                 <div className="flex justify-end gap-3 pt-4">
                   <button
                     type="button"
@@ -857,6 +1022,79 @@ const CenterManagerClassListView: React.FC = () => {
                   </button>
                 </div>
               </form>
+            </Modal>
+          )}
+
+          {/* Delete Class Confirmation Modal */}
+          {deletingClass && canDeleteClass && (
+            <Modal
+              isOpen={!!deletingClass}
+              title={`Xác nhận xóa lớp "${deletingClass.className}"`}
+              description="Hành động xóa lớp chỉ dành cho lớp tạo nhầm chưa từng phát sinh dữ liệu nghiệp vụ."
+              onClose={() => {
+                if (!deleteClassMutation.isPending) {
+                  setDeletingClass(null);
+                  setDeleteError(null);
+                }
+              }}
+            >
+              <div className="space-y-4">
+                <div className="p-3 bg-amber-950/40 border border-amber-800/60 rounded-xl text-amber-200 text-xs leading-relaxed space-y-1.5">
+                  <p className="font-semibold text-amber-100">Quy định và điều kiện xóa an toàn:</p>
+                  <ul className="list-disc list-inside space-y-1">
+                    <li>
+                      Chỉ cho phép xóa khi lớp <strong>chưa từng có thành viên</strong> (kể cả thành viên đã rút/removed), <strong>không có giáo trình</strong> và <strong>không có bài tập</strong> liên kết.
+                    </li>
+                    <li>
+                      Nếu lớp học đã phát sinh dữ liệu học tập hoặc lịch sử làm bài, hệ thống sẽ <strong>từ chối xóa</strong> nhằm bảo toàn dữ liệu. Vui lòng chuyển trạng thái lớp sang <strong>Đã lưu trữ (Archived)</strong> thay vì xóa.
+                    </li>
+                  </ul>
+                </div>
+
+                {deleteError && (
+                  <div role="alert" className="rounded-xl border border-rose-400/30 bg-rose-400/10 p-4 text-xs text-rose-200 flex items-start justify-between">
+                    <div>
+                      <p className="font-semibold text-rose-100">Không thể xóa lớp học</p>
+                      <p className="mt-1 leading-relaxed">{deleteError}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDeleteError(null)}
+                      className="text-rose-300 hover:text-rose-100 font-bold ml-3"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    className="cm-secondary-button text-sm"
+                    onClick={() => {
+                      setDeletingClass(null);
+                      setDeleteError(null);
+                    }}
+                    disabled={deleteClassMutation.isPending}
+                  >
+                    Hủy bỏ
+                  </button>
+                  <button
+                    type="button"
+                    id="btn-confirm-delete-class"
+                    className="rounded-xl px-4 py-2 text-sm font-semibold text-white bg-rose-600 hover:bg-rose-500 border border-rose-500/80 shadow-lg shadow-rose-950/50 disabled:opacity-50"
+                    onClick={() => {
+                      deleteClassMutation.mutate({
+                        classId: deletingClass.classId,
+                        rowVersion: deletingClass.rowVersion,
+                      });
+                    }}
+                    disabled={deleteClassMutation.isPending}
+                  >
+                    {deleteClassMutation.isPending ? "Đang xóa..." : "Xác nhận xóa lớp"}
+                  </button>
+                </div>
+              </div>
             </Modal>
           )}
 
@@ -1020,6 +1258,25 @@ const CenterManagerClassListView: React.FC = () => {
                 </div>
               )}
 
+              <div className="flex items-center justify-between mb-3 text-xs">
+                <span className="text-[var(--cm-text-secondary)]">
+                  Khối lớp hiện tại: <strong className="text-[var(--cm-cyan)]">{classDetail?.gradeLevel ? `Khối ${classDetail.gradeLevel}` : "Chưa phân loại"}</strong>
+                </span>
+                <label className="flex items-center gap-2 cursor-pointer text-[var(--cm-text-muted)] hover:text-white">
+                  <input
+                    type="checkbox"
+                    id="checkbox-include-other-grades"
+                    checked={includeOtherGrades}
+                    onChange={(e) => {
+                      setIncludeOtherGrades(e.target.checked);
+                      setCandidatePage(1);
+                    }}
+                    className="rounded border-[var(--cm-border)] text-indigo-500"
+                  />
+                  <span>Hiển thị học sinh khác khối</span>
+                </label>
+              </div>
+
               <form onSubmit={handleCandidateSearchSubmit} className="flex gap-2 mb-4">
                 <input
                   type="search"
@@ -1139,6 +1396,42 @@ const CenterManagerClassListView: React.FC = () => {
                       Sau
                     </button>
                   </div>
+                </div>
+              )}
+
+              {/* Cross-grade exception prompt if mismatched students are selected */}
+              {classDetail?.gradeLevel && selectedStudentIds.some((id) => {
+                const student = candidateList.find((c) => c.studentId === id);
+                return student && student.gradeLevel !== classDetail.gradeLevel;
+              }) && (
+                <div className="mt-4 rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-xs text-amber-200">
+                  <div className="font-semibold mb-1">
+                    Cảnh báo học vượt / luyện bù khác khối:
+                  </div>
+                  <p className="mb-2 text-amber-300/90">
+                    Bạn đang chọn học sinh khác khối {classDetail.gradeLevel}. Cần xác nhận ngoại lệ và ghi rõ lý do trước khi thêm.
+                  </p>
+                  <label className="flex items-center gap-2 cursor-pointer mb-2 font-medium">
+                    <input
+                      type="checkbox"
+                      id="checkbox-allow-grade-mismatch"
+                      checked={allowGradeMismatch}
+                      onChange={(e) => setAllowGradeMismatch(e.target.checked)}
+                      className="rounded border-amber-400/40 text-amber-500"
+                    />
+                    <span>Xác nhận cho phép thêm học sinh khác khối vào lớp</span>
+                  </label>
+                  {allowGradeMismatch && (
+                    <input
+                      type="text"
+                      id="input-grade-mismatch-reason"
+                      placeholder="Nhập lý do ngoại lệ (ví dụ: Học sinh đạt chuẩn bồi dưỡng vượt cấp...)"
+                      value={gradeMismatchReason}
+                      onChange={(e) => setGradeMismatchReason(e.target.value)}
+                      maxLength={500}
+                      className="cm-field w-full px-3 py-1.5 text-xs bg-black/30 border-amber-400/40 text-white placeholder-amber-200/50"
+                    />
+                  )}
                 </div>
               )}
 
@@ -1266,6 +1559,7 @@ const LegacyClassListPage: React.FC = () => {
   const [academicYear, setAcademicYear] = useState("");
   const [subjectId, setSubjectId] = useState("");
   const [teacherId, setTeacherId] = useState("");
+  const [legacyGradeLevel, setLegacyGradeLevel] = useState<number | "">("");
   const [createError, setCreateError] = useState<string | null>(null);
 
   const [editingClass, setEditingClass] = useState<ClassDto | null>(null);
@@ -1284,6 +1578,9 @@ const LegacyClassListPage: React.FC = () => {
   const [candidatePage, setCandidatePage] = useState<number>(1);
   const [candidateSearchInput, setCandidateSearchInput] = useState("");
   const [candidateSearch, setCandidateSearch] = useState("");
+  const [includeOtherGrades, setIncludeOtherGrades] = useState(false);
+  const [allowGradeMismatch, setAllowGradeMismatch] = useState(false);
+  const [gradeMismatchReason, setGradeMismatchReason] = useState("");
   const [addStudentsError, setAddStudentsError] = useState<string | null>(null);
 
   const [removingStudent, setRemovingStudent] = useState<{
@@ -1353,12 +1650,13 @@ const LegacyClassListPage: React.FC = () => {
     isError: isErrorCandidates,
     refetch: refetchCandidates,
   } = useQuery({
-    queryKey: ["candidateStudents", viewingClassId, candidatePage, candidateSearch],
+    queryKey: ["candidateStudents", viewingClassId, candidatePage, candidateSearch, includeOtherGrades],
     queryFn: () =>
       organizationApi.getClassCandidateStudents(viewingClassId!, {
         page: candidatePage,
         pageSize: 10,
         search: candidateSearch.trim() || undefined,
+        includeOtherGrades,
       }),
     enabled: isAddStudentsModalOpen && !!viewingClassId && canAddMembers,
   });
@@ -1417,8 +1715,8 @@ const LegacyClassListPage: React.FC = () => {
   });
 
   const addStudentsMutation = useMutation({
-    mutationFn: ({ classId, studentIds }: { classId: string; studentIds: string[] }) =>
-      organizationApi.addStudentsToClass(classId, { studentIds }),
+    mutationFn: ({ classId, request }: { classId: string; request: { studentIds: string[]; allowGradeMismatch?: boolean; gradeMismatchReason?: string } }) =>
+      organizationApi.addStudentsToClass(classId, request),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ["classes"] });
       queryClient.invalidateQueries({ queryKey: ["classDetail", res.classId] });
@@ -1473,6 +1771,7 @@ const LegacyClassListPage: React.FC = () => {
     setAcademicYear("");
     setSubjectId("");
     setTeacherId("");
+    setLegacyGradeLevel("");
     setCreateError(null);
   };
 
@@ -1523,9 +1822,12 @@ const LegacyClassListPage: React.FC = () => {
       !normAcademicYear ||
       normAcademicYear.length > 20 ||
       !normSubjectId ||
-      !normTeacherId
+      !normTeacherId ||
+      legacyGradeLevel === "" ||
+      Number(legacyGradeLevel) < 10 ||
+      Number(legacyGradeLevel) > 12
     ) {
-      setCreateError("Vui lòng điền đầy đủ và chính xác các thông tin bắt buộc.");
+      setCreateError("Vui lòng điền đầy đủ và chính xác các thông tin bắt buộc (bao gồm khối lớp 10, 11 hoặc 12).");
       return;
     }
 
@@ -1534,6 +1836,7 @@ const LegacyClassListPage: React.FC = () => {
       academicYear: normAcademicYear,
       subjectId: normSubjectId,
       teacherId: normTeacherId,
+      gradeLevel: Number(legacyGradeLevel),
     });
   };
 
@@ -1570,6 +1873,9 @@ const LegacyClassListPage: React.FC = () => {
     setCandidatePage(1);
     setCandidateSearchInput("");
     setCandidateSearch("");
+    setIncludeOtherGrades(false);
+    setAllowGradeMismatch(false);
+    setGradeMismatchReason("");
     setAddStudentsError(null);
     setIsAddStudentsModalOpen(true);
   };
@@ -1617,9 +1923,26 @@ const LegacyClassListPage: React.FC = () => {
     if (!viewingClassId || selectedStudentIds.length === 0) return;
     setAddStudentsError(null);
 
+    const hasMismatch = Boolean(
+      classDetail?.gradeLevel &&
+      selectedStudentIds.some((id) => {
+        const student = candidateList.find((c) => c.studentId === id);
+        return student && student.gradeLevel !== classDetail.gradeLevel;
+      })
+    );
+
+    if (hasMismatch && (!allowGradeMismatch || !gradeMismatchReason.trim())) {
+      setAddStudentsError("Vui lòng xác nhận cho phép và nhập lý do ngoại lệ khi thêm học sinh khác khối.");
+      return;
+    }
+
     addStudentsMutation.mutate({
       classId: viewingClassId,
-      studentIds: selectedStudentIds,
+      request: {
+        studentIds: selectedStudentIds,
+        allowGradeMismatch: hasMismatch ? allowGradeMismatch : undefined,
+        gradeMismatchReason: hasMismatch && allowGradeMismatch ? gradeMismatchReason.trim() : undefined,
+      },
     });
   };
 
@@ -1980,6 +2303,23 @@ const LegacyClassListPage: React.FC = () => {
                     ))}
                   </select>
                 </div>
+                <div>
+                  <label htmlFor="legacy-select-grade" className="block text-sm font-medium text-gray-700">
+                    Khối lớp áp dụng <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    id="legacy-select-grade"
+                    required
+                    value={legacyGradeLevel}
+                    onChange={(e) => setLegacyGradeLevel(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  >
+                    <option value="">-- Chọn khối lớp (bắt buộc) --</option>
+                    <option value="10">Khối 10</option>
+                    <option value="11">Khối 11</option>
+                    <option value="12">Khối 12</option>
+                  </select>
+                </div>
                 <div className="mt-5 sm:mt-6 flex justify-end gap-3">
                   <button
                     type="button"
@@ -2270,6 +2610,25 @@ const LegacyClassListPage: React.FC = () => {
                 </div>
               )}
 
+              <div className="flex items-center justify-between mb-3 text-xs">
+                <span className="text-gray-600">
+                  Khối lớp hiện tại: <strong className="text-indigo-600">{classDetail?.gradeLevel ? `Khối ${classDetail.gradeLevel}` : "Chưa phân loại"}</strong>
+                </span>
+                <label className="flex items-center gap-1.5 cursor-pointer text-gray-500 hover:text-gray-800">
+                  <input
+                    type="checkbox"
+                    id="checkbox-include-other-grades-legacy"
+                    checked={includeOtherGrades}
+                    onChange={(e) => {
+                      setIncludeOtherGrades(e.target.checked);
+                      setCandidatePage(1);
+                    }}
+                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                  />
+                  <span>Hiển thị học sinh khác khối</span>
+                </label>
+              </div>
+
               <form onSubmit={handleCandidateSearchSubmit} className="flex gap-2 mb-3">
                 <input
                   type="text"
@@ -2403,6 +2762,42 @@ const LegacyClassListPage: React.FC = () => {
                       Sau
                     </button>
                   </div>
+                </div>
+              )}
+
+              {/* Cross-grade exception prompt if mismatched students are selected */}
+              {classDetail?.gradeLevel && selectedStudentIds.some((id) => {
+                const student = candidateList.find((c) => c.studentId === id);
+                return student && student.gradeLevel !== classDetail.gradeLevel;
+              }) && (
+                <div className="mt-3 mb-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
+                  <div className="font-semibold mb-1">
+                    Cảnh báo học vượt / luyện bù khác khối:
+                  </div>
+                  <p className="mb-2 text-amber-700">
+                    Bạn đang chọn học sinh khác khối {classDetail.gradeLevel}. Cần xác nhận ngoại lệ và ghi rõ lý do trước khi thêm.
+                  </p>
+                  <label className="flex items-center gap-1.5 cursor-pointer mb-2 font-medium">
+                    <input
+                      type="checkbox"
+                      id="checkbox-allow-grade-mismatch-legacy"
+                      checked={allowGradeMismatch}
+                      onChange={(e) => setAllowGradeMismatch(e.target.checked)}
+                      className="rounded border-amber-300 text-amber-600 focus:ring-amber-500 h-3.5 w-3.5"
+                    />
+                    <span>Xác nhận cho phép thêm học sinh khác khối vào lớp</span>
+                  </label>
+                  {allowGradeMismatch && (
+                    <input
+                      type="text"
+                      id="input-grade-mismatch-reason-legacy"
+                      placeholder="Nhập lý do ngoại lệ (ví dụ: Học sinh đạt chuẩn bồi dưỡng vượt cấp...)"
+                      value={gradeMismatchReason}
+                      onChange={(e) => setGradeMismatchReason(e.target.value)}
+                      maxLength={500}
+                      className="w-full rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs text-gray-900 placeholder-amber-400 focus:border-amber-500 focus:outline-none"
+                    />
+                  )}
                 </div>
               )}
 

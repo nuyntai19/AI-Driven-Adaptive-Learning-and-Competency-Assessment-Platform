@@ -59,6 +59,7 @@ export function TeacherQuestionEditorView() {
 
   // Form State
   const [subjectId, setSubjectId] = useState("");
+  const [gradeLevel, setGradeLevel] = useState<number | "">("");
   const [primaryTopicNodeId, setPrimaryTopicNodeId] = useState("");
   const [questionType, setQuestionType] = useState<QuestionType>("MultipleChoice");
   const [difficulty, setDifficulty] = useState<number>(3);
@@ -106,6 +107,7 @@ export function TeacherQuestionEditorView() {
     if (isEditing && questionData?.data) {
       const q = questionData.data;
       setSubjectId(q.subjectId || "");
+      setGradeLevel(q.gradeLevel ?? "");
       setPrimaryTopicNodeId(q.primaryTopicNodeId ? String(q.primaryTopicNodeId) : "");
       setQuestionType(q.questionType);
       setDifficulty(q.difficulty);
@@ -193,6 +195,10 @@ export function TeacherQuestionEditorView() {
     }
     if (difficulty < 1 || difficulty > 5) {
       setFormError({ message: "Độ khó phải nằm trong khoảng từ 1 đến 5." });
+      return;
+    }
+    if (!isEditing && (gradeLevel === "" || Number(gradeLevel) < 10 || Number(gradeLevel) > 12)) {
+      setFormError({ message: "Vui lòng chọn khối lớp hợp lệ (Khối 10, 11 hoặc 12) cho câu hỏi mới." });
       return;
     }
     if (maxScore <= 0) {
@@ -301,6 +307,7 @@ export function TeacherQuestionEditorView() {
     if (!isEditing) {
       const payload: CreateQuestionRequest = {
         subjectId,
+        gradeLevel: Number(gradeLevel),
         primaryTopicNodeId: primaryTopicNodeId.trim(),
         questionType,
         difficulty,
@@ -352,6 +359,7 @@ export function TeacherQuestionEditorView() {
 
       const updatePayload: UpdateQuestionRequest = {
         primaryTopicNodeId: primaryTopicNodeId.trim(),
+        gradeLevel: gradeLevel !== "" ? Number(gradeLevel) : null,
         questionType,
         difficulty,
         questionText: questionText.trim(),
@@ -535,8 +543,8 @@ export function TeacherQuestionEditorView() {
           </div>
         </div>
 
-        {/* Row 2: Độ khó, Điểm số, Thời gian dự kiến */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 border-t border-[var(--th-border-subtle)] pt-4">
+        {/* Row 2: Độ khó, Khối học, Điểm số, Thời gian dự kiến */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 border-t border-[var(--th-border-subtle)] pt-4">
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1.5">
               Độ khó (1 - Rất dễ → 5 - Rất khó)
@@ -551,6 +559,22 @@ export function TeacherQuestionEditorView() {
               <option value="3">3 - Trung bình</option>
               <option value="4">4 - Khó</option>
               <option value="5">5 - Rất khó / Nâng cao</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1.5">
+              Khối học áp dụng
+            </label>
+            <select
+              value={gradeLevel}
+              onChange={(e) => setGradeLevel(e.target.value ? Number(e.target.value) : "")}
+              className="th-select w-full text-xs"
+            >
+              <option value="">{isEditing ? "-- Chưa phân loại --" : "-- Chọn khối lớp (bắt buộc) --"}</option>
+              <option value="10">Khối 10</option>
+              <option value="11">Khối 11</option>
+              <option value="12">Khối 12</option>
             </select>
           </div>
 

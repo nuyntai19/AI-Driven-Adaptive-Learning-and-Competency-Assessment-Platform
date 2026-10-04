@@ -46,6 +46,11 @@ public class UpdateCurriculumUseCase : IUpdateCurriculumUseCase
             return UpdateCurriculumResult.Failure(ErrorCodes.ValidationFailed);
         }
 
+        if (request.GradeLevel.HasValue && (request.GradeLevel.Value < 10 || request.GradeLevel.Value > 12))
+        {
+            return UpdateCurriculumResult.Failure(ErrorCodes.ValidationFailed);
+        }
+
         if (!CurriculumGuards.TryParseRowVersion(request.RowVersion, out var rowVersion))
         {
             return UpdateCurriculumResult.Failure(ErrorCodes.ValidationFailed);
@@ -78,6 +83,7 @@ public class UpdateCurriculumUseCase : IUpdateCurriculumUseCase
 
         curriculum.Title = request.Title;
         curriculum.Description = request.Description;
+        curriculum.GradeLevel = request.GradeLevel;
         curriculum.UpdatedAt = _timeProvider.GetUtcNow().UtcDateTime;
         curriculum.UpdatedBy = actorId;
         curriculum.RowVersion++;
@@ -110,6 +116,7 @@ public class UpdateCurriculumUseCase : IUpdateCurriculumUseCase
             CurriculumId = curriculum.CurriculumId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             TeacherId = curriculum.TeacherId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             SubjectId = curriculum.SubjectId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
+            GradeLevel = curriculum.GradeLevel,
             Title = curriculum.Title,
             Description = curriculum.Description,
             SourceFile = curriculum.SourceFile,

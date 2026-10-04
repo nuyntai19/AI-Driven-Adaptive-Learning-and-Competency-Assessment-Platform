@@ -71,6 +71,9 @@ public class ListQuestionsUseCase : IListQuestionsUseCase
         if (query.Difficulty.HasValue && (query.Difficulty.Value < 1 || query.Difficulty.Value > 5))
             return ListQuestionsResult.Failure(ErrorCodes.ValidationFailed);
 
+        if (query.GradeLevel.HasValue && (query.GradeLevel.Value < 10 || query.GradeLevel.Value > 12))
+            return ListQuestionsResult.Failure(ErrorCodes.ValidationFailed);
+
         var centerId = _tenantContext.CenterId.Value;
         var actorId = _tenantContext.UserId.Value;
         var isTeacher = string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal);
@@ -85,6 +88,9 @@ public class ListQuestionsUseCase : IListQuestionsUseCase
 
         if (query.SubjectId.HasValue && query.SubjectId.Value != Guid.Empty)
             baseQ = baseQ.Where(q => q.SubjectId == query.SubjectId.Value);
+
+        if (query.GradeLevel.HasValue)
+            baseQ = baseQ.Where(q => q.GradeLevel == query.GradeLevel.Value);
 
         if (topicNodeId.HasValue)
             baseQ = baseQ.Where(q => q.PrimaryTopicNodeId == topicNodeId.Value);

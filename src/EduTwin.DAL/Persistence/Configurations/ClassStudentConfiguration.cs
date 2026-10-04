@@ -46,6 +46,10 @@ public class ClassStudentConfiguration : IEntityTypeConfiguration<Organization.C
             .HasColumnName("created_by")
             .HasColumnType("VARCHAR(36)");
 
+        builder.Property(cs => cs.GradeLevelAtEnrollment)
+            .HasColumnName("grade_level_at_enrollment")
+            .HasColumnType("TINYINT UNSIGNED");
+
         // Indexes
         builder.HasIndex(cs => new { cs.CenterId, cs.StudentId, cs.Status })
             .HasDatabaseName("ix_class_students_center_id_student_id_status");

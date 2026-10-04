@@ -7,6 +7,7 @@ public class UpdateQuestionRequest
     public string PrimaryTopicNodeId { get; set; } = null!;
     public string QuestionType { get; set; } = null!;
     public byte Difficulty { get; set; }
+    public byte? GradeLevel { get; set; }
     public string QuestionText { get; set; } = null!;
     public string CorrectAnswer { get; set; } = null!;
     public string Solution { get; set; } = null!;

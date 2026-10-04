@@ -72,6 +72,7 @@ function CenterManagerQuestionEditorView() {
   const [formData, setFormData] = useState<CreateQuestionRequest>({
     teacherId: null,
     subjectId: "",
+    gradeLevel: null,
     primaryTopicNodeId: "",
     questionType: "MultipleChoice",
     difficulty: 3,
@@ -146,6 +147,7 @@ function CenterManagerQuestionEditorView() {
       setFormData({
         teacherId: q.createdByTeacherId || null,
         subjectId: q.subjectId,
+        gradeLevel: q.gradeLevel ?? null,
         primaryTopicNodeId: q.primaryTopicNodeId || "",
         questionType: q.questionType,
         difficulty: q.difficulty,
@@ -535,6 +537,10 @@ function CenterManagerQuestionEditorView() {
         setFormError({ message: "Vui lòng chỉ định giáo viên phụ trách câu hỏi." });
         return;
       }
+      if (!validatedPayload.gradeLevel || validatedPayload.gradeLevel < 10 || validatedPayload.gradeLevel > 12) {
+        setFormError({ message: "Vui lòng chọn khối lớp hợp lệ (Khối 10, 11 hoặc 12) cho câu hỏi mới." });
+        return;
+      }
 
       const createPayload: CreateQuestionRequest = {
         ...validatedPayload,
@@ -574,6 +580,7 @@ function CenterManagerQuestionEditorView() {
 
       const updatePayload: UpdateQuestionRequest = {
         primaryTopicNodeId: validatedPayload.primaryTopicNodeId,
+        gradeLevel: validatedPayload.gradeLevel !== undefined ? validatedPayload.gradeLevel : null,
         questionType: validatedPayload.questionType,
         difficulty: validatedPayload.difficulty,
         questionText: validatedPayload.questionText.trim(),
@@ -1028,8 +1035,8 @@ function CenterManagerQuestionEditorView() {
             </div>
           </div>
 
-          {/* Question Configuration Row: Type, Difficulty, MaxScore, EstimatedTime */}
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 border-b border-[var(--cm-border-subtle)] pb-6">
+          {/* Question Configuration Row: Type, Grade, Difficulty, MaxScore, EstimatedTime */}
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5 border-b border-[var(--cm-border-subtle)] pb-6">
             <div>
               <label htmlFor="question-type-select" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mb-1">
                 Loại câu hỏi <span className="text-rose-400">*</span>
@@ -1044,6 +1051,24 @@ function CenterManagerQuestionEditorView() {
                 <option value="MultipleChoice">Trắc nghiệm (MultipleChoice)</option>
                 <option value="ShortAnswer">Điền khuyết (ShortAnswer)</option>
                 <option value="Essay">Tự luận (Essay)</option>
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="question-grade-select" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mb-1">
+                Khối học
+              </label>
+              <select
+                id="question-grade-select"
+                disabled={isReadOnly}
+                value={formData.gradeLevel ?? ""}
+                onChange={(e) => handleInputChange("gradeLevel", e.target.value ? Number(e.target.value) : null)}
+                className="cm-select w-full text-sm"
+              >
+                <option value="">{isEditMode ? "-- Chưa phân loại --" : "-- Chọn khối lớp (bắt buộc) --"}</option>
+                <option value="10">Khối 10</option>
+                <option value="11">Khối 11</option>
+                <option value="12">Khối 12</option>
               </select>
             </div>
 

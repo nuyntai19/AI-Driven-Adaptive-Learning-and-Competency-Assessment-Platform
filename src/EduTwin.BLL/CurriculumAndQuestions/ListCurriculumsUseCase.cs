@@ -106,6 +106,15 @@ public class ListCurriculumsUseCase : IListCurriculumsUseCase
             baseQuery = baseQuery.Where(c => c.SubjectId == query.SubjectId.Value);
         }
 
+        if (query.GradeLevel.HasValue)
+        {
+            if (query.GradeLevel.Value < 10 || query.GradeLevel.Value > 12)
+            {
+                return ListCurriculumsResult.Failure(ErrorCodes.ValidationFailed);
+            }
+            baseQuery = baseQuery.Where(c => c.GradeLevel == query.GradeLevel.Value);
+        }
+
         if (filterStatus.HasValue)
         {
             baseQuery = baseQuery.Where(c => c.ReviewStatus == filterStatus.Value);
@@ -170,6 +179,7 @@ public class ListCurriculumsUseCase : IListCurriculumsUseCase
                 CurriculumId = c.CurriculumId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
                 TeacherId = c.TeacherId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
                 SubjectId = c.SubjectId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
+                GradeLevel = c.GradeLevel,
                 Title = c.Title,
                 Description = c.Description,
                 SourceFile = c.SourceFile,

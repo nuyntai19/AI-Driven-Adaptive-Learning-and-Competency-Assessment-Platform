@@ -104,6 +104,11 @@ public class ListClassCandidateStudentsUseCase : IListClassCandidateStudentsUseC
                 s.FullName.Contains(searchStr));
         }
 
+        if (targetClass.GradeLevel.HasValue && !query.IncludeOtherGrades)
+        {
+            studentQuery = studentQuery.Where(s => s.GradeLevel == targetClass.GradeLevel.Value);
+        }
+
         studentQuery = studentQuery
             .OrderBy(s => s.FullName)
             .ThenBy(s => s.StudentId);

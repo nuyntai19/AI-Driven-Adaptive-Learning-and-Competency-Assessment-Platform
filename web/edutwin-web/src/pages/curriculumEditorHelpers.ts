@@ -17,6 +17,7 @@ export function validateCurriculumForm(
     title?: string;
     subjectId?: string;
     teacherId?: string | null;
+    gradeLevel?: number | null;
   },
   options: {
     isEditMode: boolean;
@@ -32,6 +33,10 @@ export function validateCurriculumForm(
       return { isValid: false, errorMessage: "Vui lòng chọn môn học." };
     }
 
+    if (formData.gradeLevel === null || formData.gradeLevel === undefined || ![10, 11, 12].includes(formData.gradeLevel)) {
+      return { isValid: false, errorMessage: "Vui lòng chọn khối học áp dụng (Khối 10, 11 hoặc 12) cho giáo trình mới." };
+    }
+
     if (options.isCenterManager && (!formData.teacherId || !formData.teacherId.trim())) {
       return { isValid: false, errorMessage: "Vui lòng chọn giáo viên phụ trách lộ trình." };
     }
@@ -45,6 +50,7 @@ export function buildCreateCurriculumPayload(
     title: string;
     description?: string;
     subjectId: string;
+    gradeLevel?: number | null;
     teacherId?: string | null;
     nodeIds?: string[];
   },
@@ -54,6 +60,7 @@ export function buildCreateCurriculumPayload(
     title: formData.title.trim(),
     description: formData.description,
     subjectId: formData.subjectId,
+    gradeLevel: formData.gradeLevel !== undefined ? formData.gradeLevel : null,
     teacherId: isCenterManager && formData.teacherId?.trim() ? formData.teacherId.trim() : undefined,
     nodeIds: formData.nodeIds || []
   };
@@ -62,11 +69,13 @@ export function buildCreateCurriculumPayload(
 export function buildUpdateCurriculumPayload(formData: {
   title: string;
   description?: string;
+  gradeLevel?: number | null;
   rowVersion: string;
 }): UpdateCurriculumRequest {
   return {
     title: formData.title.trim(),
     description: formData.description,
+    gradeLevel: formData.gradeLevel !== undefined ? formData.gradeLevel : null,
     rowVersion: formData.rowVersion
   };
 }

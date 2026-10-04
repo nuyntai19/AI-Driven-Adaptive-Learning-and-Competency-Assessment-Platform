@@ -9,6 +9,7 @@ public class ClassListQuery : IValidatableObject
     public Guid? TeacherId { get; set; }
     public Guid? SubjectId { get; set; }
     public ClassStatus? Status { get; set; }
+    public byte? GradeLevel { get; set; }
 
     [Range(1, int.MaxValue, ErrorMessage = "Page must be greater than 0.")]
     public int Page { get; set; } = 1;

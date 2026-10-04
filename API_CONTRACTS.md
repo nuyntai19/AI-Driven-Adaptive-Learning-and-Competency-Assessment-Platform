@@ -646,6 +646,7 @@ Response 200: collection Goal DTO.
   "classId": "de17cff8-a6ce-4e42-9781-a1dc07e2e625",
   "className": "Toán 12A",
   "academicYear": "2026-2027",
+  "gradeLevel": 12,
   "subject": {
     "subjectId": "2ed34b81-0b0d-457c-888d-6a78f50a33d2",
     "subjectName": "Toán"
@@ -662,7 +663,7 @@ Response 200: collection Goal DTO.
 
 ## 29. POST /classes
 
-Quyền: CenterManager.
+Quyền: CenterManager (`organization.classes.manage`).
 
 Request:
 
@@ -670,6 +671,7 @@ Request:
 {
   "className": "Toán 12A",
   "academicYear": "2026-2027",
+  "gradeLevel": 12,
   "subjectId": "2ed34b81-0b0d-457c-888d-6a78f50a33d2",
   "teacherId": "2a584ad0-6ea5-4ff7-a3a9-9baf8cbc2036"
 }
@@ -681,7 +683,7 @@ Response 201: Class DTO.
 
 Quyền: Teacher hoặc CenterManager.
 
-Query: teacherId optional cho CenterManager, subjectId, status, page, pageSize.
+Query: teacherId optional cho CenterManager, subjectId, gradeLevel, status, page, pageSize.
 Teacher chỉ nhận Class của mình.
 
 ## 31. GET /classes/{classId}
@@ -691,7 +693,7 @@ Response 200: Class DTO.
 
 ## 32. PATCH /classes/{classId}
 
-Quyền: CenterManager.
+Quyền: CenterManager (`organization.classes.manage`).
 
 Request:
 
@@ -699,6 +701,7 @@ Request:
 {
   "className": "Toán 12A nâng cao",
   "teacherId": "2a584ad0-6ea5-4ff7-a3a9-9baf8cbc2036",
+  "gradeLevel": 12,
   "status": "Active",
   "rowVersion": "1"
 }
@@ -775,6 +778,34 @@ Responses:
 - `400 Bad Request`: Khi `page < 1`, `pageSize < 1`, `pageSize > 100`, hoặc `search > 200 ký tự`. ErrorCode: `VALIDATION_FAILED`.
 - `403 Forbidden`: Khi actor thiếu quyền `organization.classes.manage_members` hoặc `organization.students.read`, hoặc Teacher không phải chủ nhiệm lớp. ErrorCode: `AUTH_PERMISSION_REQUIRED` hoặc `FORBIDDEN_RESOURCE`.
 - `404 Not Found`: Khi `classId` rỗng (`Guid.Empty`), không tồn tại hoặc thuộc trung tâm khác (cross-tenant fail-closed). ErrorCode: `RESOURCE_NOT_FOUND`.
+
+## 35.2. DELETE /classes/{classId}
+
+Quyền: CenterManager (Bắt buộc permission `organization.classes.delete`). Kiểm tra fail-closed tại backend.
+
+Mục đích: Xóa lớp học tạo nhầm khi chưa có bất kỳ lịch sử học tập hay liên kết dữ liệu nào.
+
+Quy tắc nghiệp vụ và ràng buộc:
+1. **Điều kiện xóa sạch**: Chỉ cho phép xóa khi lớp:
+   - Chưa từng có thành viên (không có bản ghi `class_students` nào, kể cả trạng thái `Removed`).
+   - Chưa từng có bài tập nào (`assignments` count == 0).
+   - Chưa từng được gán giáo trình nào (`curriculum_classes` count == 0).
+2. **Hướng dẫn Lưu trữ khi có lịch sử**: Nếu lớp đã có thành viên (Active hoặc Removed), bài tập hoặc giáo trình, API từ chối với HTTP 409 `INVALID_STATE_TRANSITION`, kèm thông báo hướng dẫn người dùng chuyển lớp sang trạng thái Lưu trữ (Archived) thay vì xóa.
+3. **Soft-delete & Khắc phục Unique Index Conflict**:
+   - Lớp được đánh dấu xóa mềm: `is_deleted = 1`, `deleted_at = UtcNow`, `deleted_by = actorUserId`.
+   - Để tránh xung đột với unique index `(center_id, class_name, academic_year)` khi tạo lại lớp cùng tên trong cùng năm học, `class_name` được đổi tên hậu tố `#del#{class_id:N}` trước khi lưu.
+4. **Audit Log**: Thao tác xóa ghi nhận vào `authorization_audit_logs` với `ActionType = "ClassDeleted"`, snapshot dữ liệu trước và sau xóa.
+5. **Chống Race Condition Concurrency**: Khi thêm học sinh vào lớp (`POST /classes/{classId}/students`), hệ thống chạm vào `existingClass.UpdatedAt` và `UpdatedBy` để kích hoạt OCC RowVersion, bảo đảm không xảy ra tranh chấp thêm học sinh đồng thời với thao tác xóa lớp.
+
+Query parameters (tùy chọn):
+- `expectedRowVersion`: bigint unsigned (kiểm tra OCC nếu client cung cấp).
+
+Responses:
+- `204 No Content`: Xóa mềm lớp thành công.
+- `401 Unauthorized`: Chưa xác thực.
+- `403 Forbidden`: Thiếu quyền `organization.classes.delete` hoặc không phải CenterManager (`AUTH_PERMISSION_REQUIRED` hoặc `FORBIDDEN_RESOURCE`).
+- `404 Not Found`: Lớp không tồn tại, đã bị xóa hoặc thuộc center khác (`RESOURCE_NOT_FOUND`).
+- `409 Conflict`: Lớp đã có dữ liệu lịch sử (`INVALID_STATE_TRANSITION`) hoặc xung đột phiên bản OCC (`CONCURRENCY_CONFLICT`).
 
 # Subjects và Knowledge Graph
 
@@ -1372,15 +1403,22 @@ Request:
   "title": "Bài luyện Mũ và Logarit",
   "instructions": "Trình bày rõ cách làm.",
   "dueAt": "2026-07-20T16:59:59Z",
+  "timeLimitMinutes": 45,
   "questionIds": ["9001", "9002", "9003"],
   "targetMode": "SelectedStudents",
   "studentIds": [
     "baf68743-a272-4983-a9e2-41663734a7c2"
-  ]
+  ],
+  "allowGradeMismatch": false,
+  "gradeMismatchReason": null
 }
 ~~~
 
-targetMode: WholeClass hoặc SelectedStudents. GapGroup UI gửi SelectedStudents và server ghi targetSource GapGroup khi source được chỉ định.
+Quy tắc nghiệp vụ:
+- **targetMode**: Lưu trữ tường minh (`WholeClass` hoặc `SelectedStudents`). Tuyệt đối không suy đoán `WholeClass` khi danh sách target rỗng.
+- **Ràng buộc SelectedStudents (Fail-Closed)**: Khi `targetMode == "SelectedStudents"`, danh sách `studentIds` bắt buộc không được rỗng và toàn bộ học sinh phải là thành viên hoạt động (`Active`) của chính lớp đó tại thời điểm tạo/cập nhật.
+- **Ràng buộc học thuật theo khối**: Mặc định mọi câu hỏi phải cùng môn và cùng khối (`GradeLevel`) với lớp (hoặc câu hỏi chưa phân loại). Nếu giáo viên chủ đích giao câu hỏi khác khối (ví dụ lớp 12 làm bài lớp 11 để bù lỗ hổng), bắt buộc phải gửi `allowGradeMismatch: true` kèm lý do sư phạm `gradeMismatchReason` (không được để trống). Vi phạm sẽ bị từ chối với 400 `VALIDATION_FAILED`.
+- **Ràng buộc Publish từ Draft**: `POST /assignments/{id}/publish` bắt buộc kiểm tra lớp còn `Active` (từ chối 409 `INVALID_STATE_TRANSITION` nếu lớp đã bị Archived) và tái xác thực toàn bộ học sinh trong `SelectedStudents` vẫn đang là thành viên hoạt động của lớp.
 
 Response 201: Assignment DTO Draft.
 
@@ -1391,7 +1429,7 @@ Response 201: Assignment DTO Draft.
 | GET | /assignments | Teacher, CenterManager | Filter classId/status/due range |
 | GET | /assignments/{id} | Teacher owner, CenterManager | Full DTO |
 | PATCH | /assignments/{id} | Teacher owner, CenterManager | Chỉ Draft; payload như create + rowVersion |
-| POST | /assignments/{id}/publish | Teacher owner, CenterManager | Materialize targets/progress |
+| POST | /assignments/{id}/publish | Teacher owner, CenterManager | Materialize targets/progress (kiểm tra lớp Active) |
 | POST | /assignments/{id}/close | Teacher owner, CenterManager | Close |
 | GET | /assignments/{id}/progress | Teacher owner, CenterManager | Student progress collection |
 | GET | /students/me/assignments | Student | Filter status |

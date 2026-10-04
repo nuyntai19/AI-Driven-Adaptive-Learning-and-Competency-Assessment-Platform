@@ -47,7 +47,7 @@ public class ListClassCandidateStudentsUseCaseTests
         return new EduTwinDbContext(options, mockAccessor.Object);
     }
 
-    private async Task SeedCenterAndClassAsync(EduTwinDbContext dbContext, Guid classId, bool isClassDeleted = false)
+    private async Task SeedCenterAndClassAsync(EduTwinDbContext dbContext, Guid classId, bool isClassDeleted = false, byte? gradeLevel = null)
     {
         dbContext.Centers.Add(new Center
         {
@@ -69,6 +69,7 @@ public class ListClassCandidateStudentsUseCaseTests
             SubjectId = Guid.NewGuid(),
             TeacherId = Guid.NewGuid(),
             Status = ClassStatus.Active,
+            GradeLevel = gradeLevel,
             IsDeleted = isClassDeleted,
             CreatedAt = _fixedTime.UtcDateTime,
             UpdatedAt = _fixedTime.UtcDateTime
@@ -85,7 +86,8 @@ public class ListClassCandidateStudentsUseCaseTests
         UserStatus userStatus = UserStatus.Active,
         bool isDeleted = false,
         Guid? classId = null,
-        ClassStudentStatus membershipStatus = ClassStudentStatus.Active)
+        ClassStudentStatus membershipStatus = ClassStudentStatus.Active,
+        byte gradeLevel = 10)
     {
         var user = new User
         {
@@ -109,7 +111,7 @@ public class ListClassCandidateStudentsUseCaseTests
             StudentId = studentId,
             CenterId = _centerId,
             FullName = fullName,
-            GradeLevel = 10,
+            GradeLevel = gradeLevel,
             IsDeleted = isDeleted,
             CreatedAt = _fixedTime.UtcDateTime,
             UpdatedAt = _fixedTime.UtcDateTime
@@ -321,5 +323,63 @@ public class ListClassCandidateStudentsUseCaseTests
 
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
             sut.ExecuteAsync(classId, new CandidateStudentListQuery(), cts.Token));
+    }
+
+    [Fact]
+    public async Task GradeLevelFilter_ClassHasGradeLevel_ExcludesOtherGradesByDefault()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var dbContext = CreateContext(dbName);
+        var classId = Guid.NewGuid();
+        await SeedCenterAndClassAsync(dbContext, classId, gradeLevel: 10);
+
+        _mockOwnershipGuard.Setup(g => g.CheckClassAccessAsync(classId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OwnershipDecision.Allowed);
+
+        var sGrade10 = Guid.NewGuid();
+        var sGrade11 = Guid.NewGuid();
+        var sGrade12 = Guid.NewGuid();
+
+        await SeedStudentAsync(dbContext, sGrade10, "s10", "Student 10", gradeLevel: 10);
+        await SeedStudentAsync(dbContext, sGrade11, "s11", "Student 11", gradeLevel: 11);
+        await SeedStudentAsync(dbContext, sGrade12, "s12", "Student 12", gradeLevel: 12);
+
+        var sut = new ListClassCandidateStudentsUseCase(_mockTenantContext.Object, dbContext, _mockOwnershipGuard.Object);
+        var result = await sut.ExecuteAsync(classId, new CandidateStudentListQuery { IncludeOtherGrades = false }, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Data!);
+        Assert.Contains(result.Data!, s => s.StudentId == sGrade10);
+        Assert.DoesNotContain(result.Data!, s => s.StudentId == sGrade11);
+        Assert.DoesNotContain(result.Data!, s => s.StudentId == sGrade12);
+    }
+
+    [Fact]
+    public async Task GradeLevelFilter_ClassHasGradeLevel_IncludesOtherGradesWhenRequested()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var dbContext = CreateContext(dbName);
+        var classId = Guid.NewGuid();
+        await SeedCenterAndClassAsync(dbContext, classId, gradeLevel: 10);
+
+        _mockOwnershipGuard.Setup(g => g.CheckClassAccessAsync(classId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OwnershipDecision.Allowed);
+
+        var sGrade10 = Guid.NewGuid();
+        var sGrade11 = Guid.NewGuid();
+        var sGrade12 = Guid.NewGuid();
+
+        await SeedStudentAsync(dbContext, sGrade10, "s10", "Student 10", gradeLevel: 10);
+        await SeedStudentAsync(dbContext, sGrade11, "s11", "Student 11", gradeLevel: 11);
+        await SeedStudentAsync(dbContext, sGrade12, "s12", "Student 12", gradeLevel: 12);
+
+        var sut = new ListClassCandidateStudentsUseCase(_mockTenantContext.Object, dbContext, _mockOwnershipGuard.Object);
+        var result = await sut.ExecuteAsync(classId, new CandidateStudentListQuery { IncludeOtherGrades = true }, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(3, result.Data!.Count);
+        Assert.Contains(result.Data!, s => s.StudentId == sGrade10);
+        Assert.Contains(result.Data!, s => s.StudentId == sGrade11);
+        Assert.Contains(result.Data!, s => s.StudentId == sGrade12);
     }
 }

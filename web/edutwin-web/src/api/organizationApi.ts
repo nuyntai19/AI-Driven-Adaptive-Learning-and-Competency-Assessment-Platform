@@ -96,6 +96,10 @@ export const organizationApi = {
       queryParams.status = params.status;
     }
 
+    if (params.gradeLevel) {
+      queryParams.gradeLevel = params.gradeLevel;
+    }
+
     const search = params.search?.trim();
     if (search) {
       queryParams.search = search;
@@ -113,6 +117,7 @@ export const organizationApi = {
       academicYear: request.academicYear.trim(),
       subjectId: request.subjectId.trim(),
       teacherId: request.teacherId.trim(),
+      gradeLevel: request.gradeLevel ?? null,
     };
     const response = await httpClient.post<ClassResponse>("/classes", payload);
     return response.data.data;
@@ -128,10 +133,17 @@ export const organizationApi = {
       className: request.className.trim(),
       teacherId: request.teacherId.trim(),
       status: request.status,
+      gradeLevel: request.gradeLevel,
       rowVersion: request.rowVersion,
     };
     const response = await httpClient.patch<ClassResponse>(`/classes/${classId}`, payload);
     return response.data.data;
+  },
+
+  deleteClass: async (classId: string, rowVersion?: string): Promise<void> => {
+    await httpClient.delete(`/classes/${classId}`, {
+      params: rowVersion ? { rowVersion } : undefined,
+    });
   },
 
   getClassStudents: async (
@@ -148,10 +160,11 @@ export const organizationApi = {
     classId: string,
     params?: CandidateStudentListParams
   ): Promise<StudentListResponse> => {
-    const queryParams: Record<string, string | number> = {};
+    const queryParams: Record<string, string | number | boolean> = {};
     if (params?.page) queryParams.page = params.page;
     if (params?.pageSize) queryParams.pageSize = params.pageSize;
     if (params?.search?.trim()) queryParams.search = params.search.trim();
+    if (params?.includeOtherGrades !== undefined) queryParams.includeOtherGrades = params.includeOtherGrades;
 
     const response = await httpClient.get<StudentListResponse>(
       `/classes/${classId}/candidate-students`,

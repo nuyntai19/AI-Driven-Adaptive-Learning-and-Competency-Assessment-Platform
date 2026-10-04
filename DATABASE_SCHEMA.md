@@ -381,6 +381,7 @@ Subject là tenant-owned để Teacher của Center này không làm thay đổi
 | subject_id | VARCHAR(36) | No | Tenant-safe FK subjects |
 | class_name | VARCHAR(150) | No | Tên lớp hiển thị trong Center |
 | academic_year | VARCHAR(20) | No | Ví dụ 2026-2027 |
+| grade_level | TINYINT UNSIGNED | Yes | 10, 11 hoặc 12; null là Chưa phân loại |
 | status | VARCHAR(32) | No | Active, Archived |
 | ...MTA | | | Kế thừa audit, soft-delete, tenant và row_version tại mục 2.3 |
 
@@ -391,11 +392,13 @@ Indexes:
 - UX(center_id, class_name, academic_year).
 - IX(center_id, teacher_id, status).
 - IX(center_id, subject_id, status).
+- IX(center_id, grade_level).
 
 Invariant:
 
 - Teacher và Subject phải cùng Center.
 - Class trong MVP gắn với đúng một Subject.
+- Soft-delete lớp tạo nhầm (chưa từng có thành viên, bài tập, giáo trình): cập nhật class_name thành `{base}#del#{class_id:N}` để giải phóng UX(center_id, class_name, academic_year).
 
 ## 11. class_students [Tenant join]
 
@@ -405,6 +408,7 @@ Invariant:
 | class_id | VARCHAR(36) | No | Tenant-safe FK classes |
 | student_id | VARCHAR(36) | No | Tenant-safe FK students |
 | joined_at | DATETIME(6) | No | Thời điểm UTC học sinh gia nhập lớp |
+| grade_level_at_enrollment | TINYINT UNSIGNED | Yes | Snapshot khối của học sinh tại thời điểm ghi danh (10, 11, 12) |
 | status | VARCHAR(32) | No | Active, Removed |
 | removed_at | DATETIME(6) | Yes | Thời điểm UTC rời/bị loại khỏi lớp |
 | created_by | VARCHAR(36) | Yes | User cùng Center tạo membership |
@@ -489,6 +493,7 @@ Invariant:
 | subject_id | VARCHAR(36) | No | Tenant-safe FK subjects |
 | title | VARCHAR(250) | No | Tiêu đề curriculum hiển thị |
 | description | TEXT | Yes | Mô tả mục tiêu/phạm vi curriculum |
+| grade_level | TINYINT UNSIGNED | Yes | 10, 11 hoặc 12; null là Chưa phân loại |
 | source_file | VARCHAR(500) | Yes | Reserved; MVP không upload |
 | review_status | VARCHAR(32) | No | Draft, Published, Archived |
 | ...MTA | | | Kế thừa audit, soft-delete, tenant và row_version tại mục 2.3 |
@@ -498,6 +503,7 @@ Indexes:
 - UX(center_id, curriculum_id).
 - IX(center_id, teacher_id, review_status).
 - IX(center_id, subject_id, review_status).
+- IX(center_id, grade_level).
 
 ## 15. curriculum_classes [Tenant join]
 
@@ -537,6 +543,7 @@ Indexes:
 | question_type | VARCHAR(32) | No | MultipleChoice, ShortAnswer, Essay |
 | answer_evaluation_mode | VARCHAR(32) | No | TextExact, NumericRational, Coordinate2D, Manual (Default TextExact) |
 | difficulty | TINYINT UNSIGNED | No | 1–5 |
+| grade_level | TINYINT UNSIGNED | Yes | 10, 11 hoặc 12; null là Chưa phân loại |
 | question_text | LONGTEXT | No | Việt hoặc Anh |
 | correct_answer | TEXT | No | Canonical final answer/model answer |
 | solution | LONGTEXT | No | Teacher-authored explanation |
@@ -623,6 +630,9 @@ BLL invariant:
 | time_limit_minutes | INT | Yes | Giới hạn thời gian làm bài tính bằng phút; null nếu không giới hạn |
 | status | VARCHAR(32) | No | Draft, Published, Closed, Archived |
 | published_at | DATETIME(6) | Yes | Thời điểm UTC publish; null khi chưa publish |
+| target_mode | VARCHAR(32) | No | WholeClass, SelectedStudents, GapGroup; lưu trữ tường minh chế độ giao bài, không suy đoán từ danh sách rỗng |
+| allow_grade_mismatch | TINYINT(1) | No | Default 0; cờ cho phép giáo viên giao câu hỏi khác khối có chủ đích |
+| grade_mismatch_reason | VARCHAR(500) | Yes | Lý do ngoại lệ sư phạm khi allow_grade_mismatch = 1 (ví dụ ôn kiến thức nền, học trước nâng cao) |
 | ...MTA | | | Kế thừa audit, soft-delete, tenant và row_version tại mục 2.3 |
 
 Indexes:

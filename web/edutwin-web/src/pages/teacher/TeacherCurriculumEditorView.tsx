@@ -29,6 +29,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
   // Form State
   const [title, setTitle] = useState("");
   const [subjectId, setSubjectId] = useState("");
+  const [gradeLevel, setGradeLevel] = useState<number | "">("");
   const [description, setDescription] = useState("");
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
@@ -74,6 +75,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
       const c = curriculumData.data;
       setTitle(c.title || "");
       setSubjectId(c.subjectId || "");
+      setGradeLevel(c.gradeLevel ?? "");
       setDescription(c.description || "");
       setSelectedNodeIds(c.nodeIds || []);
       setSelectedClassIds(c.classIds || []);
@@ -126,9 +128,13 @@ export const TeacherCurriculumEditorView: React.FC = () => {
       if (description.trim().length > 2000) throw new Error("Mô tả giáo trình không được vượt quá 2000 ký tự.");
 
       if (isCreateMode) {
+        if (gradeLevel === "" || ![10, 11, 12].includes(Number(gradeLevel))) {
+          throw new Error("Vui lòng chọn khối học áp dụng (Khối 10, 11 hoặc 12) cho giáo trình mới.");
+        }
         const payload: CreateCurriculumRequest = {
           title: title.trim(),
           subjectId,
+          gradeLevel: Number(gradeLevel),
           description: description.trim() || undefined,
           nodeIds: selectedNodeIds,
         };
@@ -141,6 +147,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
         // 1. Update basic info
         const updateRes = await curriculumApi.update(id, {
           title: title.trim(),
+          gradeLevel: gradeLevel !== "" ? Number(gradeLevel) : null,
           description: description.trim() || undefined,
           rowVersion: currentVersion,
         });
@@ -427,6 +434,27 @@ export const TeacherCurriculumEditorView: React.FC = () => {
                 </div>
 
                 <div>
+                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)", marginBottom: "6px" }}>
+                    Khối học áp dụng
+                  </label>
+                  <select
+                    className="th-select"
+                    value={gradeLevel}
+                    onChange={(e) => setGradeLevel(e.target.value ? Number(e.target.value) : "")}
+                    disabled={!isDraft}
+                  >
+                    {isCreateMode ? (
+                      <option value="">-- Chọn khối lớp (bắt buộc) --</option>
+                    ) : (
+                      <option value="">-- Chưa phân loại --</option>
+                    )}
+                    <option value="10">Khối 10</option>
+                    <option value="11">Khối 11</option>
+                    <option value="12">Khối 12</option>
+                  </select>
+                </div>
+
+                <div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
                     <label style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)" }}>
                       Mô tả mục tiêu đào tạo
@@ -481,8 +509,11 @@ export const TeacherCurriculumEditorView: React.FC = () => {
                         style={{ width: "16px", height: "16px", accentColor: "var(--th-primary)" }}
                       />
                       <div>
-                        <div style={{ fontWeight: 600, fontSize: "0.875rem", color: "var(--th-text-primary)" }}>
-                          {cls.className} ({cls.academicYear})
+                        <div style={{ fontWeight: 600, fontSize: "0.875rem", color: "var(--th-text-primary)", display: "flex", alignItems: "center", gap: "6px" }}>
+                          <span>{cls.className} ({cls.academicYear})</span>
+                          <span className="th-badge th-badge-info" style={{ fontSize: "0.7rem", padding: "1px 6px" }}>
+                            {cls.gradeLevel ? `Khối ${cls.gradeLevel}` : "Chưa phân loại"}
+                          </span>
                         </div>
                         <div style={{ fontSize: "0.75rem", color: "var(--th-text-muted)" }}>
                           {cls.studentCount ?? 0} học sinh

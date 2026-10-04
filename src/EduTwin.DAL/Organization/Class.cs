@@ -11,6 +11,7 @@ public class Class : IMutableTenantAggregate
     public string ClassName { get; set; } = null!;
     public string AcademicYear { get; set; } = null!;
     public ClassStatus Status { get; set; }
+    public byte? GradeLevel { get; set; }
 
     // IMutableTenantAggregate fields
     public Guid CenterId { get; set; }

@@ -7,6 +7,7 @@ export interface Curriculum {
   title: string;
   description: string | null;
   reviewStatus: ReviewStatus;
+  gradeLevel?: number | null;
   classIds: string[];
   nodeIds: string[];
   rowVersion: string;
@@ -15,6 +16,7 @@ export interface Curriculum {
 export interface CreateCurriculumRequest {
   teacherId?: string | null;
   subjectId: string;
+  gradeLevel?: number | null;
   title: string;
   description?: string;
   nodeIds: string[];
@@ -23,6 +25,7 @@ export interface CreateCurriculumRequest {
 export interface UpdateCurriculumRequest {
   title: string;
   description?: string;
+  gradeLevel?: number | null;
   rowVersion: string;
 }
 

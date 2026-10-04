@@ -57,6 +57,10 @@ public class CurriculumConfiguration : IEntityTypeConfiguration<Curriculum>
             .HasConversion<string>()
             .IsRequired();
 
+        builder.Property(c => c.GradeLevel)
+            .HasColumnName("grade_level")
+            .HasColumnType("tinyint unsigned");
+
         // MTA Properties
         builder.Property(c => c.CreatedAt).HasColumnName("created_at").HasColumnType("datetime(6)").IsRequired();
         builder.Property(c => c.CreatedBy).HasColumnName("created_by").HasColumnType("varchar(36)");
@@ -74,10 +78,14 @@ public class CurriculumConfiguration : IEntityTypeConfiguration<Curriculum>
         builder.HasIndex(c => new { c.CenterId, c.SubjectId, c.ReviewStatus })
             .HasDatabaseName("ix_curriculums_center_id_subject_id_review_status");
 
+        builder.HasIndex(c => new { c.CenterId, c.SubjectId, c.GradeLevel })
+            .HasDatabaseName("ix_curriculums_center_id_subject_id_grade_level");
+
         // Constraints
         builder.ToTable(t =>
         {
             t.HasCheckConstraint("ck_curriculums_review_status", "review_status IN ('Draft', 'Published', 'Archived')");
+            t.HasCheckConstraint("ck_curriculums_grade_level", "grade_level IS NULL OR (grade_level >= 10 AND grade_level <= 12)");
         });
 
         // Relations

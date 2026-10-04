@@ -7,6 +7,7 @@ using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.Common;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.IdentityAndTenancy;
+using EduTwin.Contracts.Organization;
 using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -71,6 +72,27 @@ public class PublishCurriculumUseCase : IPublishCurriculumUseCase
             return PublishCurriculumResult.Failure(ErrorCodes.InvalidStateTransition);
         }
 
+        if (curriculum.GradeLevel.HasValue)
+        {
+            var assignedClassIds = await _dbContext.CurriculumClasses
+                .Where(cc => cc.CurriculumId == curriculumId && cc.CenterId == centerId)
+                .Select(cc => cc.ClassId)
+                .ToListAsync(cancellationToken);
+
+            if (assignedClassIds.Count > 0)
+            {
+                var assignedClasses = await _dbContext.Classes
+                    .Where(c => c.CenterId == centerId && assignedClassIds.Contains(c.ClassId))
+                    .Select(c => new { c.ClassId, c.GradeLevel, c.Status, c.IsDeleted })
+                    .ToListAsync(cancellationToken);
+
+                if (assignedClasses.Any(c => c.IsDeleted || c.Status != ClassStatus.Active || (c.GradeLevel.HasValue && c.GradeLevel.Value != curriculum.GradeLevel.Value)))
+                {
+                    return PublishCurriculumResult.Failure(ErrorCodes.InvalidStateTransition);
+                }
+            }
+        }
+
         curriculum.ReviewStatus = ReviewStatus.Published;
         curriculum.UpdatedAt = _timeProvider.GetUtcNow().UtcDateTime;
         curriculum.UpdatedBy = actorId;
@@ -103,6 +125,7 @@ public class PublishCurriculumUseCase : IPublishCurriculumUseCase
             CurriculumId = curriculum.CurriculumId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             TeacherId = curriculum.TeacherId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             SubjectId = curriculum.SubjectId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
+            GradeLevel = curriculum.GradeLevel,
             Title = curriculum.Title,
             Description = curriculum.Description,
             SourceFile = curriculum.SourceFile,

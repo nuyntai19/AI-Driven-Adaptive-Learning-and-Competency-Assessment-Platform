@@ -16,6 +16,9 @@ public class CreateCurriculumRequest
     public string? Title { get; set; }
 
     public string? Description { get; set; }
+    [Required]
+    [Range(10, 12)]
+    public byte? GradeLevel { get; set; }
 
     [Required]
     public List<string>? NodeIds { get; set; }

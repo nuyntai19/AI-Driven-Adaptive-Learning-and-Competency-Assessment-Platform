@@ -11,6 +11,7 @@ public class CurriculumDto
     public string? Description { get; set; }
     public string? SourceFile { get; set; }
     public string ReviewStatus { get; set; } = string.Empty;
+    public byte? GradeLevel { get; set; }
     public List<string> ClassIds { get; set; } = new();
     public List<string> NodeIds { get; set; } = new();
     public string RowVersion { get; set; } = string.Empty;

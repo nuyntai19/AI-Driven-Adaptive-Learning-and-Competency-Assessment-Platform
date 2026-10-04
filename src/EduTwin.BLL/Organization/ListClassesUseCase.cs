@@ -93,6 +93,11 @@ public class ListClassesUseCase : IListClassesUseCase
             dbQuery = dbQuery.Where(c => c.Status == query.Status.Value);
         }
 
+        if (query.GradeLevel.HasValue)
+        {
+            dbQuery = dbQuery.Where(c => c.GradeLevel == query.GradeLevel.Value);
+        }
+
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             var search = query.Search.Trim();
@@ -112,6 +117,7 @@ public class ListClassesUseCase : IListClassesUseCase
                 ClassId = c.ClassId.ToString("D").ToLowerInvariant(),
                 ClassName = c.ClassName,
                 AcademicYear = c.AcademicYear,
+                GradeLevel = c.GradeLevel,
                 Subject = new ClassSubjectDto
                 {
                     SubjectId = c.SubjectId.ToString("D").ToLowerInvariant(),

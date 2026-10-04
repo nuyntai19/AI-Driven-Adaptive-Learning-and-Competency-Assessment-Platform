@@ -50,6 +50,7 @@ function CenterManagerQuestionBankView() {
 
   // Filters state (strictly matching backend QuestionListQuery contract: no search param)
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>("");
+  const [selectedGradeLevel, setSelectedGradeLevel] = useState<number | "">("");
   const [selectedTopicId, setSelectedTopicId] = useState<string>("");
   const [selectedType, setSelectedType] = useState<QuestionType | "">("");
   const [selectedDifficulty, setSelectedDifficulty] = useState<number | "">("");
@@ -94,6 +95,7 @@ function CenterManagerQuestionBankView() {
   const questionFilter: QuestionFilter = useMemo(
     () => ({
       subjectId: selectedSubjectId || undefined,
+      gradeLevel: selectedGradeLevel !== "" ? Number(selectedGradeLevel) : undefined,
       topicId: selectedTopicId || undefined,
       type: (selectedType as QuestionType) || undefined,
       difficulty: selectedDifficulty !== "" ? Number(selectedDifficulty) : undefined,
@@ -101,7 +103,7 @@ function CenterManagerQuestionBankView() {
       page,
       pageSize,
     }),
-    [selectedSubjectId, selectedTopicId, selectedType, selectedDifficulty, selectedStatus, page, pageSize]
+    [selectedSubjectId, selectedGradeLevel, selectedTopicId, selectedType, selectedDifficulty, selectedStatus, page, pageSize]
   );
 
   const {
@@ -313,6 +315,24 @@ function CenterManagerQuestionBankView() {
               </select>
             </div>
 
+            {/* Grade Level Selector */}
+            <div className="min-w-0">
+              <label htmlFor="filter-grade" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mb-1">
+                Khối học
+              </label>
+              <select
+                id="filter-grade"
+                value={selectedGradeLevel}
+                onChange={(e) => handleFilterChange(setSelectedGradeLevel, e.target.value)}
+                className="cm-select w-full text-sm"
+              >
+                <option value="">-- Tất cả khối --</option>
+                <option value="10">Khối 10</option>
+                <option value="11">Khối 11</option>
+                <option value="12">Khối 12</option>
+              </select>
+            </div>
+
             {/* Knowledge Graph / Topic Selector */}
             <div className="min-w-0">
               <label htmlFor="filter-topic" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mb-1">
@@ -477,9 +497,14 @@ function CenterManagerQuestionBankView() {
                   <div className="space-y-3">
                     {/* Header badges */}
                     <div className="flex items-center justify-between gap-2">
-                      <span className={`px-2 py-0.5 text-[11px] font-semibold rounded-md border ${typeBadge}`}>
-                        {q.questionType}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className={`px-2 py-0.5 text-[11px] font-semibold rounded-md border ${typeBadge}`}>
+                          {q.questionType}
+                        </span>
+                        <span className="px-2 py-0.5 text-[11px] font-semibold rounded-md border border-cyan-500/30 bg-cyan-500/10 text-cyan-300">
+                          {q.gradeLevel ? `Khối ${q.gradeLevel}` : "Chưa phân loại"}
+                        </span>
+                      </div>
                       <StatusBadge status={q.status} />
                     </div>
 
@@ -764,6 +789,19 @@ function LegacyQuestionBankPage() {
           </select>
         </div>
         <div>
+          <label className="block text-sm font-medium text-slate-600 mb-1">Khối học</label>
+          <select
+            value={filter.gradeLevel ?? ""}
+            onChange={(e) => handleFilterChange("gradeLevel", e.target.value ? Number(e.target.value) : "")}
+            className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+          >
+            <option value="">Tất cả</option>
+            <option value="10">Khối 10</option>
+            <option value="11">Khối 11</option>
+            <option value="12">Khối 12</option>
+          </select>
+        </div>
+        <div>
           <label className="block text-sm font-medium text-slate-600 mb-1">Trạng thái</label>
           <select
             value={filter.status || ""}
@@ -805,17 +843,22 @@ function LegacyQuestionBankPage() {
             >
               <div className="p-5">
                 <div className="flex justify-between items-start mb-3">
-                  <span
-                    className={`px-2 py-1 text-xs font-semibold rounded-md ${
-                      question.questionType === "MultipleChoice"
-                        ? "bg-blue-50 text-blue-700"
-                        : question.questionType === "Essay"
-                        ? "bg-purple-50 text-purple-700"
-                        : "bg-indigo-50 text-indigo-700"
-                    }`}
-                  >
-                    {question.questionType}
-                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span
+                      className={`px-2 py-1 text-xs font-semibold rounded-md ${
+                        question.questionType === "MultipleChoice"
+                          ? "bg-blue-50 text-blue-700"
+                          : question.questionType === "Essay"
+                          ? "bg-purple-50 text-purple-700"
+                          : "bg-indigo-50 text-indigo-700"
+                      }`}
+                    >
+                      {question.questionType}
+                    </span>
+                    <span className="px-2 py-1 text-xs font-semibold rounded-md bg-cyan-50 text-cyan-700 border border-cyan-200">
+                      {question.gradeLevel ? `Khối ${question.gradeLevel}` : "Chưa phân loại"}
+                    </span>
+                  </div>
                   <span
                     className={`px-2 py-1 text-xs font-semibold rounded-full ${
                       question.status === "Active"

@@ -326,9 +326,14 @@ export const TeacherCurriculumListView: React.FC = () => {
               >
                 <div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "10px" }}>
-                    <span className="th-badge th-badge-neutral" style={{ fontSize: "0.75rem" }}>
-                      {subject?.subjectName || "Môn học"}
-                    </span>
+                    <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                      <span className="th-badge th-badge-neutral" style={{ fontSize: "0.75rem" }}>
+                        {subject?.subjectName || "Môn học"}
+                      </span>
+                      <span className="th-badge th-badge-info" style={{ fontSize: "0.75rem" }}>
+                        {curr.gradeLevel ? `Khối ${curr.gradeLevel}` : "Chưa phân loại"}
+                      </span>
+                    </div>
                     <TeacherStatusBadge
                       status={
                         curr.reviewStatus === "Published"

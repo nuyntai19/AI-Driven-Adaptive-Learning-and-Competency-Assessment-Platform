@@ -137,6 +137,7 @@ public class QuestionEvaluationModeCrudTests : IDisposable
             MaxScore = 1m,
             EstimatedTimeSeconds = 60,
             LanguageCode = "vi",
+            GradeLevel = 10,
             Options = new List<QuestionOptionInput>
             {
                 new() { OptionLabel = "A", OptionText = "0.5", IsCorrect = true, OrderIndex = 1 },
@@ -166,7 +167,8 @@ public class QuestionEvaluationModeCrudTests : IDisposable
             Solution = "Long proof",
             MaxScore = 10m,
             EstimatedTimeSeconds = 600,
-            LanguageCode = "vi"
+            LanguageCode = "vi",
+            GradeLevel = 10
         };
 
         var result = await sut.ExecuteAsync(request);
@@ -191,7 +193,8 @@ public class QuestionEvaluationModeCrudTests : IDisposable
             Solution = "2/4 = 1/2",
             MaxScore = 1m,
             EstimatedTimeSeconds = 60,
-            LanguageCode = "vi"
+            LanguageCode = "vi",
+            GradeLevel = 10
         };
 
         var result = await sut.ExecuteAsync(request);
@@ -219,6 +222,7 @@ public class QuestionEvaluationModeCrudTests : IDisposable
             MaxScore = 1m,
             EstimatedTimeSeconds = 60,
             LanguageCode = "vi",
+            GradeLevel = 10,
             Options = new List<QuestionOptionInput>
             {
                 new() { OptionLabel = "A", OptionText = "Opt A", IsCorrect = true, OrderIndex = 1 },
@@ -241,7 +245,8 @@ public class QuestionEvaluationModeCrudTests : IDisposable
             Solution = "Solution",
             MaxScore = 5m,
             EstimatedTimeSeconds = 300,
-            LanguageCode = "vi"
+            LanguageCode = "vi",
+            GradeLevel = 10
         };
         var essayResult = await sut.ExecuteAsync(essayRequest);
         Assert.True(essayResult.IsSuccess);
@@ -259,7 +264,8 @@ public class QuestionEvaluationModeCrudTests : IDisposable
             Solution = "Solution",
             MaxScore = 2m,
             EstimatedTimeSeconds = 90,
-            LanguageCode = "vi"
+            LanguageCode = "vi",
+            GradeLevel = 10
         };
         var saResult = await sut.ExecuteAsync(saRequest);
         Assert.True(saResult.IsSuccess);
@@ -440,7 +446,8 @@ public class QuestionEvaluationModeCrudTests : IDisposable
             Solution = "Solution",
             MaxScore = 1m,
             EstimatedTimeSeconds = 60,
-            LanguageCode = "vi"
+            LanguageCode = "vi",
+            GradeLevel = 10
         };
 
         var result = await sut.ExecuteAsync(request);
@@ -519,7 +526,8 @@ public class QuestionEvaluationModeCrudTests : IDisposable
             Solution = "The vertex is (1, 1).",
             MaxScore = 1m,
             EstimatedTimeSeconds = 60,
-            LanguageCode = "vi"
+            LanguageCode = "vi",
+            GradeLevel = 10
         };
 
         var result = await sut.ExecuteAsync(request);
@@ -548,7 +556,8 @@ public class QuestionEvaluationModeCrudTests : IDisposable
             Solution = "Solution",
             MaxScore = 1m,
             EstimatedTimeSeconds = 60,
-            LanguageCode = "vi"
+            LanguageCode = "vi",
+            GradeLevel = 10
         };
 
         var result = await sut.ExecuteAsync(request);
@@ -573,7 +582,8 @@ public class QuestionEvaluationModeCrudTests : IDisposable
             Solution = "Solution",
             MaxScore = 1m,
             EstimatedTimeSeconds = 60,
-            LanguageCode = "vi"
+            LanguageCode = "vi",
+            GradeLevel = 10
         };
 
         var result = await sut.ExecuteAsync(request);

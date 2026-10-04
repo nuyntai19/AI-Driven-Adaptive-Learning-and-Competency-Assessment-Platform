@@ -41,6 +41,7 @@ export interface Question {
   reasoningRequired: boolean;
   languageCode: string;
   status: QuestionStatus;
+  gradeLevel?: number | null;
   answerEvaluationMode?: QuestionAnswerEvaluationMode;
   options?: QuestionOption[];
   knowledgeMappings: KnowledgeMapping[];
@@ -51,6 +52,7 @@ export interface Question {
 export interface CreateQuestionRequest {
   teacherId?: string | null;
   subjectId: string;
+  gradeLevel?: number | null;
   primaryTopicNodeId: string;
   questionType: QuestionType;
   difficulty: number;
@@ -70,6 +72,7 @@ export interface CreateQuestionRequest {
 
 export interface UpdateQuestionRequest {
   primaryTopicNodeId: string;
+  gradeLevel?: number | null;
   questionType: QuestionType;
   difficulty: number;
   questionText: string;
@@ -97,6 +100,7 @@ export interface ArchiveQuestionRequest {
 
 export interface QuestionFilter {
   subjectId?: string;
+  gradeLevel?: number;
   topicId?: string;
   type?: QuestionType;
   difficulty?: number;

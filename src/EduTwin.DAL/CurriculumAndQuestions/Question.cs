@@ -16,6 +16,7 @@ public class Question : IMutableTenantAggregate
 
     public QuestionType QuestionType { get; set; }
     public byte Difficulty { get; set; }
+    public byte? GradeLevel { get; set; }
     public string QuestionText { get; set; } = null!;
     public string CorrectAnswer { get; set; } = null!;
     public string Solution { get; set; } = null!;
