@@ -10,6 +10,7 @@ public sealed class AssignmentResultSummaryDto
     public int CorrectQuestionCount { get; set; }
     public int IncorrectQuestionCount { get; set; }
     public int PendingQuestionCount { get; set; }
+    public int VoidedQuestionCount { get; set; }
     public string ResultStatus { get; set; } = "Processing";
     public string TeacherFinalReviewStatus { get; set; } = "Pending";
     public decimal? InternalAwardedScore { get; set; }

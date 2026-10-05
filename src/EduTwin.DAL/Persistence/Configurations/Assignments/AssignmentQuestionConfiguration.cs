@@ -40,6 +40,24 @@ public class AssignmentQuestionConfiguration : IEntityTypeConfiguration<Assignme
             .HasColumnType("datetime(6)")
             .IsRequired();
 
+        builder.Property(aq => aq.IsVoided)
+            .HasColumnName("is_voided")
+            .HasColumnType("tinyint(1)")
+            .HasDefaultValue(false)
+            .IsRequired();
+
+        builder.Property(aq => aq.VoidReason)
+            .HasColumnName("void_reason")
+            .HasColumnType("varchar(1000)");
+
+        builder.Property(aq => aq.VoidedAt)
+            .HasColumnName("voided_at")
+            .HasColumnType("datetime(6)");
+
+        builder.Property(aq => aq.VoidedByUserId)
+            .HasColumnName("voided_by_user_id")
+            .HasColumnType("varchar(36)");
+
         // Indexes
         builder.HasIndex(aq => new { aq.CenterId, aq.AssignmentId, aq.OrderIndex })
             .IsUnique()

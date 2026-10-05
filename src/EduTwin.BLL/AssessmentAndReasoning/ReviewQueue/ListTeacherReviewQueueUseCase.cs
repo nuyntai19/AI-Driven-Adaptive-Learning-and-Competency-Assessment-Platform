@@ -84,7 +84,11 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
             .AsNoTracking()
             .Where(evidence =>
                 evidence.CenterId == centerId &&
-                evidence.Attempt.Question.Status != QuestionStatus.Archived &&
+                !_dbContext.AssignmentQuestions.Any(aq =>
+                    aq.CenterId == centerId &&
+                    aq.AssignmentId == evidence.Attempt.AssignmentId!.Value &&
+                    aq.QuestionId == evidence.Attempt.QuestionId &&
+                    aq.IsVoided) &&
                 (query.AssignmentId.HasValue || query.StudentId.HasValue || query.IncludeAllQuestions ||
                  evidence.RequiresTeacherReview || _dbContext.StudentAssignmentProgresses.Any(progress =>
                     progress.CenterId == centerId &&

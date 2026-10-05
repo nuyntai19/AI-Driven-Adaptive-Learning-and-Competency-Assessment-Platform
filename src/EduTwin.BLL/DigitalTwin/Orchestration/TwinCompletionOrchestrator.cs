@@ -81,7 +81,13 @@ public sealed class TwinCompletionOrchestrator : ITwinCompletionOrchestrator
             DiagnosticReasonCodes: consistency.ReasonCodes,
             IsPostFeedback: attempt.IsPostFeedback);
 
-        var isVoidedQuestion = question.Status == QuestionStatus.Archived && attempt.AssignmentId.HasValue;
+        var isVoidedQuestion = false;
+        if (attempt.AssignmentId.HasValue)
+        {
+            isVoidedQuestion = await _dbContext.AssignmentQuestions
+                .AsNoTracking()
+                .AnyAsync(aq => aq.CenterId == attempt.CenterId && aq.AssignmentId == attempt.AssignmentId.Value && aq.QuestionId == question.QuestionId && aq.IsVoided, cancellationToken);
+        }
         if (isVoidedQuestion)
         {
             attempt.IsCorrect = true;
@@ -213,8 +219,20 @@ public sealed class TwinCompletionOrchestrator : ITwinCompletionOrchestrator
                     .Distinct()
                     .Count();
 
+                var voidedQuestionIds = await _dbContext.AssignmentQuestions.AsNoTracking()
+                    .Where(aq => aq.CenterId == attempt.CenterId && aq.AssignmentId == attempt.AssignmentId && aq.IsVoided)
+                    .Select(aq => aq.QuestionId)
+                    .ToListAsync(cancellationToken);
+
+                var resolvedQuestionCount = dbQuestionIds
+                    .Concat(localQuestionIds)
+                    .Append(attempt.QuestionId)
+                    .Concat(voidedQuestionIds)
+                    .Distinct()
+                    .Count();
+
                 progress.CompletedQuestionCount = (uint)answeredQuestionCount;
-                if (progress.CompletedQuestionCount >= progress.TotalQuestionCount && progress.TotalQuestionCount > 0)
+                if (resolvedQuestionCount >= progress.TotalQuestionCount && progress.TotalQuestionCount > 0)
                 {
                     progress.Status = ProgressStatus.Completed;
                     progress.CompletedAt ??= utcNow;

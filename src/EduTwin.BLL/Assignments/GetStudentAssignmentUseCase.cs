@@ -105,14 +105,19 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
                 .Where(a => a.CenterId == centerId && attemptIds.Contains(a.AttemptId))
                 .ToDictionaryAsync(a => a.AttemptId, cancellationToken);
 
+        var totalQuestionCount = assignmentQuestions.Count;
+        var scorePerQuestion = totalQuestionCount > 0 ? 10.0m / totalQuestionCount : 0m;
+
         var questionsDto = assignmentQuestions.Select(aq =>
         {
             var latestAttempt = latestAttemptsByQuestion.TryGetValue(aq.QuestionId, out var att) ? att : null;
             var analysis = latestAttempt != null && analysesByAttemptId.TryGetValue(latestAttempt.AttemptId, out var foundAnalysis)
                 ? foundAnalysis
                 : null;
-            var isVoided = aq.Question?.Status == QuestionStatus.Archived;
-            var fullScore = aq.Points > 0 ? aq.Points : (aq.Question?.MaxScore ?? 1.00m);
+            var isVoided = aq.IsVoided;
+            var voidReason = aq.IsVoided ? aq.VoidReason : null;
+            var voidedScore = aq.IsVoided ? scorePerQuestion : (decimal?)null;
+
             return new StudentQuestionDto
             {
                 QuestionId = aq.QuestionId.ToString(),
@@ -132,7 +137,7 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
                         Label = o.OptionLabel,
                         Text = o.OptionText
                     }).ToList(),
-                AttemptStatus = isVoided ? nameof(AttemptStatus.Completed) : latestAttempt?.Status.ToString(),
+                AttemptStatus = latestAttempt?.Status.ToString(),
                 LatestAttempt = latestAttempt != null ? new StudentQuestionAttemptDto
                 {
                     AttemptId = latestAttempt.AttemptId.ToString(),
@@ -146,7 +151,7 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
                     Skipped = latestAttempt.Skipped,
                     SubmittedAt = latestAttempt.CreatedAt,
                     IsCorrect = isVoided ? true : (analysis?.OverrideIsCorrect ?? latestAttempt.IsCorrect),
-                    AwardedScore = isVoided ? fullScore : (analysis?.OverrideAwardedScore ?? latestAttempt.AwardedScore),
+                    AwardedScore = isVoided ? (aq.Question?.MaxScore ?? 10m) : (analysis?.OverrideAwardedScore ?? latestAttempt.AwardedScore),
                     MaxScore = aq.Question?.MaxScore
                 } : null,
                 SubmittedAnswer = latestAttempt?.FinalAnswer,
@@ -154,7 +159,10 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
                 SubmittedReasoning = latestAttempt?.ReasoningText,
                 SubmittedAttemptId = latestAttempt?.AttemptId,
                 HasAttachment = latestAttempt != null && hasAttachmentSet.Contains(latestAttempt.AttemptId),
-                EffectiveIsCorrect = isVoided ? true : (analysis?.OverrideIsCorrect ?? latestAttempt?.IsCorrect)
+                EffectiveIsCorrect = isVoided ? true : (analysis?.OverrideIsCorrect ?? latestAttempt?.IsCorrect),
+                IsVoided = isVoided,
+                VoidReason = voidReason,
+                VoidedScore = voidedScore
             };
         }).ToList();
 
@@ -163,10 +171,22 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
 
         if (progress.Assignment.TimeLimitMinutes.HasValue && progress.Assignment.TimeLimitMinutes.Value > 0)
         {
-            // For timed assignments, remainingSeconds is strictly the configured active test time limit.
-            // Active test timer pauses on leave/close and resumes on return in the client session.
-            remainingSeconds = progress.Assignment.TimeLimitMinutes.Value * 60;
-            effectiveExpiresAt = progress.Assignment.DueAt;
+            if (progress.StartedAt.HasValue)
+            {
+                var timeLimitExpiresAt = progress.StartedAt.Value.AddMinutes(progress.Assignment.TimeLimitMinutes.Value);
+                effectiveExpiresAt = progress.Assignment.DueAt.HasValue && progress.Assignment.DueAt.Value < timeLimitExpiresAt
+                    ? progress.Assignment.DueAt.Value
+                    : timeLimitExpiresAt;
+
+                var diff = (long)(effectiveExpiresAt.Value - utcNow).TotalSeconds;
+                remainingSeconds = diff > 0 ? (int)Math.Min(diff, int.MaxValue) : 0;
+            }
+            else
+            {
+                // Not started yet: full time limit, countdown begins only when started
+                effectiveExpiresAt = progress.Assignment.DueAt;
+                remainingSeconds = progress.Assignment.TimeLimitMinutes.Value * 60;
+            }
         }
         else
         {
@@ -213,7 +233,10 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
             },
             Questions = questionsDto,
             CanRetake = false,
-            Summary = await _resultCalculator.CalculateForSingleAssignmentAsync(centerId.Value, currentUserId.Value, assignmentId, cancellationToken)
+            Summary = await _resultCalculator.CalculateForSingleAssignmentAsync(centerId.Value, currentUserId.Value, assignmentId, cancellationToken),
+            DraftAnswers = progress.Status != ProgressStatus.Completed && !string.IsNullOrWhiteSpace(progress.DraftAnswersJson)
+                ? System.Text.Json.JsonSerializer.Deserialize<List<AssignmentDraftAnswerItemDto>>(progress.DraftAnswersJson)
+                : null
         };
 
         var response = new StudentAssignmentDetailResponse

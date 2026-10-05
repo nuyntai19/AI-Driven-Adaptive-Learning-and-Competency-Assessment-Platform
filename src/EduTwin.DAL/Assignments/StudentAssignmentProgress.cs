@@ -19,6 +19,9 @@ public class StudentAssignmentProgress : IMutableTenantAggregate
     public DateTime? StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
 
+    public string? DraftAnswersJson { get; set; }
+    public DateTime? DraftSavedAt { get; set; }
+
     public TeacherFinalReviewStatus TeacherFinalReviewStatus { get; set; } = TeacherFinalReviewStatus.Pending;
     public Guid? FinalReviewedByUserId { get; set; }
     public DateTime? FinalReviewedAt { get; set; }

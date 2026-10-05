@@ -19,4 +19,5 @@ public class StudentAssignmentDetailDto
     public List<StudentQuestionDto> Questions { get; set; } = new();
     public bool CanRetake { get; set; }
     public AssignmentResultSummaryDto? Summary { get; set; }
+    public List<AssignmentDraftAnswerItemDto>? DraftAnswers { get; set; }
 }

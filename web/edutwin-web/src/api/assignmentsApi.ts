@@ -10,6 +10,8 @@ import type {
   AssignmentProgressItemDto,
   AssignmentStatus,
   ProgressStatus,
+  AssignmentDraftAnswerItemDto,
+  SubmitAssignmentResponseDto,
 } from '../types/assignments';
 import type { ApiCollectionResponse, ApiResponse } from '../types/api';
 import type { ClassDto, StudentDto } from '../types/organization';
@@ -148,5 +150,26 @@ export const getStudentAssignmentById = async (id: string) => {
 
 export const startStudentAssignment = async (id: string) => {
   const { data } = await httpClient.post<ApiResponse<StudentAssignmentDetailDto>>(`/students/me/assignments/${id}/start`);
+  return data;
+};
+
+export const saveAssignmentDraft = async (
+  id: string,
+  request: { answers: AssignmentDraftAnswerItemDto[] } | AssignmentDraftAnswerItemDto[]
+) => {
+  const body = Array.isArray(request) ? { answers: request } : request;
+  const { data } = await httpClient.put(`/students/me/assignments/${id}/draft`, body);
+  return data;
+};
+
+export const submitStudentAssignment = async (
+  id: string,
+  request?: { answers?: AssignmentDraftAnswerItemDto[] } | AssignmentDraftAnswerItemDto[]
+) => {
+  const body = Array.isArray(request) ? { answers: request } : (request || {});
+  const { data } = await httpClient.post<SubmitAssignmentResponseDto>(
+    `/students/me/assignments/${id}/submit`,
+    body
+  );
   return data;
 };

@@ -14,6 +14,7 @@ export interface AssignmentResultSummaryDto {
   correctQuestionCount: number;
   incorrectQuestionCount: number;
   pendingQuestionCount: number;
+  voidedQuestionCount?: number;
   resultStatus: AssignmentResultStatus;
   teacherFinalReviewStatus: TeacherFinalReviewStatus;
   internalAwardedScore?: number | null;
@@ -134,6 +135,28 @@ export interface StudentAssignmentQuestionDto {
   submittedAttemptId?: string | number | null;
   hasAttachment?: boolean;
   effectiveIsCorrect?: boolean | null;
+  isVoided?: boolean;
+  voidReason?: string | null;
+  voidedScore?: number | null;
+}
+
+export interface AssignmentDraftAnswerItemDto {
+  questionId: number;
+  finalAnswer?: string;
+  answerDisplayLatex?: string;
+  reasoningText?: string;
+  timeSpentSeconds?: number;
+  confidence?: number;
+  answerChanges?: number;
+  drawingUploadToken?: string;
+}
+
+export interface SubmitAssignmentResponseDto {
+  assignmentId: string;
+  submittedAttemptsCount: number;
+  lastAnalysisJobId?: string | null;
+  isCompleted: boolean;
+  message: string;
 }
 
 export interface StudentAssignmentDetailDto {
@@ -151,6 +174,7 @@ export interface StudentAssignmentDetailDto {
   progress: StudentProgressDto;
   questions: StudentAssignmentQuestionDto[];
   summary?: AssignmentResultSummaryDto | null;
+  draftAnswers?: AssignmentDraftAnswerItemDto[] | null;
 }
 
 export interface StudentAssignmentListItemDto {

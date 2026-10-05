@@ -16,6 +16,8 @@ public static class DependencyInjection
         services.AddScoped<IListStudentAssignmentsUseCase, ListStudentAssignmentsUseCase>();
         services.AddScoped<IGetStudentAssignmentUseCase, GetStudentAssignmentUseCase>();
         services.AddScoped<IStartStudentAssignmentUseCase, StartStudentAssignmentUseCase>();
+        services.AddScoped<ISaveAssignmentDraftUseCase, SaveAssignmentDraftUseCase>();
+        services.AddScoped<ISubmitStudentAssignmentUseCase, SubmitStudentAssignmentUseCase>();
         services.AddScoped<IAssignmentResultCalculator, AssignmentResultCalculator>();
         services.AddScoped<IOverallAssignmentCommentWorkflow, OverallAssignmentCommentWorkflow>();
 

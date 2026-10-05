@@ -3,6 +3,7 @@ using System;
 using EduTwin.DAL.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EduTwin.DAL.Persistence.Migrations
 {
     [DbContext(typeof(EduTwinDbContext))]
-    partial class EduTwinDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261005082403_AddScopedVoidedFieldsToAssignmentQuestions")]
+    partial class AddScopedVoidedFieldsToAssignmentQuestions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1094,14 +1097,6 @@ namespace EduTwin.DAL.Persistence.Migrations
                     b.Property<string>("DeletedBy")
                         .HasColumnType("varchar(36)")
                         .HasColumnName("deleted_by");
-
-                    b.Property<string>("DraftAnswersJson")
-                        .HasColumnType("longtext")
-                        .HasColumnName("draft_answers_json");
-
-                    b.Property<DateTime?>("DraftSavedAt")
-                        .HasColumnType("datetime(6)")
-                        .HasColumnName("draft_saved_at");
 
                     b.Property<uint>("FinalReviewVersion")
                         .ValueGeneratedOnAdd()

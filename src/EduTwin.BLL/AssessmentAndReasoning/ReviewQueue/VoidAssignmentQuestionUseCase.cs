@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
+using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.DAL.AssessmentAndReasoning;
@@ -144,7 +145,13 @@ public sealed class VoidAssignmentQuestionUseCase : IVoidAssignmentQuestionUseCa
 
         var now = _timeProvider.GetUtcNow().UtcDateTime;
 
-        // 4. Quarantine question in bank if requested
+        // 4. Mark question as voided specifically in this assignment
+        assignmentQuestion.IsVoided = true;
+        assignmentQuestion.VoidReason = request.VoidReason.Trim();
+        assignmentQuestion.VoidedAt = now;
+        assignmentQuestion.VoidedByUserId = actorId;
+
+        // 5. Quarantine question in bank if requested
         if (request.ArchiveQuestionInBank)
         {
             if (question.Status != QuestionStatus.Archived)
@@ -159,7 +166,7 @@ public sealed class VoidAssignmentQuestionUseCase : IVoidAssignmentQuestionUseCa
         // Points to award
         var fullScore = assignmentQuestion.Points > 0 ? assignmentQuestion.Points : question.MaxScore;
 
-        // 5. Load all attempts for this question in this assignment
+        // 6. Load all attempts for this question in this assignment
         var attempts = await _dbContext.Attempts
             .Where(a => a.CenterId == centerId && a.AssignmentId == assignmentId && a.QuestionId == questionId)
             .ToListAsync(cancellationToken);
@@ -243,6 +250,37 @@ public sealed class VoidAssignmentQuestionUseCase : IVoidAssignmentQuestionUseCa
                 };
 
                 _dbContext.EvidenceAssessments.Add(voidEvidence);
+            }
+        }
+
+        // 8. Unblock in-progress student progress if voiding this question completes the assignment
+        var inProgressList = await _dbContext.StudentAssignmentProgresses
+            .Where(p => p.CenterId == centerId && p.AssignmentId == assignmentId && p.Status == ProgressStatus.InProgress && !p.IsDeleted)
+            .ToListAsync(cancellationToken);
+
+        if (inProgressList.Count > 0)
+        {
+            var assignmentQuestions = await _dbContext.AssignmentQuestions.AsNoTracking()
+                .Where(aq => aq.CenterId == centerId && aq.AssignmentId == assignmentId)
+                .ToListAsync(cancellationToken);
+            var allVoidedIds = assignmentQuestions.Where(aq => aq.IsVoided || aq.QuestionId == questionId).Select(aq => aq.QuestionId).ToHashSet();
+
+            foreach (var p in inProgressList)
+            {
+                var studentAttemptQuestionIds = await _dbContext.Attempts.AsNoTracking()
+                    .Where(a => a.CenterId == centerId && a.AssignmentId == assignmentId && a.StudentId == p.StudentId)
+                    .Select(a => a.QuestionId)
+                    .Distinct()
+                    .ToListAsync(cancellationToken);
+
+                var resolvedCount = studentAttemptQuestionIds.Concat(allVoidedIds).Distinct().Count();
+                if (resolvedCount >= p.TotalQuestionCount && p.TotalQuestionCount > 0)
+                {
+                    p.Status = ProgressStatus.Completed;
+                    p.CompletedAt ??= now;
+                    p.UpdatedAt = now;
+                    p.UpdatedBy = actorId;
+                }
             }
         }
 

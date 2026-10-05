@@ -69,6 +69,8 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
             {
                 aq.AssignmentId,
                 aq.QuestionId,
+                aq.IsVoided,
+                aq.VoidReason,
                 Status = aq.Question != null ? aq.Question.Status : QuestionStatus.Active,
                 MaxScore = aq.Question != null && aq.Question.MaxScore > 0
                     ? aq.Question.MaxScore
@@ -155,10 +157,28 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
             int answeredQuestionCount = 0;
             int evaluatedQuestionCount = 0;
             int correctQuestionCount = 0;
+            int voidedQuestionCount = 0;
 
             foreach (var q in questions)
             {
                 var hasAttempt = latestAttemptsByQuestion.TryGetValue(new { Value = assignmentId, q.QuestionId }, out var attempt);
+
+                if (q.IsVoided)
+                {
+                    // Question was voided specifically for this assignment:
+                    // All targeted students get full score (scorePerQuestion on 10-point scale).
+                    // Distinctly tracked as voided, NOT counted as "answered correctly" (unless actually answered).
+                    voidedQuestionCount++;
+                    evaluatedQuestionCount++;
+                    totalAwardedScore += scorePerQuestion;
+
+                    if (hasAttempt && attempt != null)
+                    {
+                        answeredQuestionCount++;
+                    }
+                    continue;
+                }
+
                 if (!hasAttempt || attempt == null)
                 {
                     continue;
@@ -168,17 +188,15 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
 
                 var analysis = analysesByAttemptId.GetValueOrDefault(attempt.AttemptId);
 
-                var isVoided = q.Status == QuestionStatus.Archived;
-
                 // Effective grade calculation
-                decimal? effectiveScore = isVoided ? q.MaxScore : (analysis?.OverrideAwardedScore ?? attempt.AwardedScore);
-                bool? effectiveIsCorrect = isVoided ? true : (analysis?.OverrideIsCorrect ?? attempt.IsCorrect);
+                decimal? effectiveScore = analysis?.OverrideAwardedScore ?? attempt.AwardedScore;
+                bool? effectiveIsCorrect = analysis?.OverrideIsCorrect ?? attempt.IsCorrect;
 
-                if (isVoided || effectiveScore.HasValue || effectiveIsCorrect.HasValue)
+                if (effectiveScore.HasValue || effectiveIsCorrect.HasValue)
                 {
-                    var earnedRatio = isVoided ? 1m : (effectiveScore.HasValue && q.MaxScore > 0
+                    var earnedRatio = effectiveScore.HasValue && q.MaxScore > 0
                         ? Math.Clamp(effectiveScore.Value / q.MaxScore, 0m, 1m)
-                        : effectiveIsCorrect == true ? 1m : 0m);
+                        : effectiveIsCorrect == true ? 1m : 0m;
                     totalAwardedScore += scorePerQuestion * earnedRatio;
                     evaluatedQuestionCount++;
 
@@ -213,7 +231,8 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
                 AnsweredQuestionCount = answeredQuestionCount,
                 EvaluatedQuestionCount = evaluatedQuestionCount,
                 CorrectQuestionCount = correctQuestionCount,
-                IncorrectQuestionCount = Math.Max(0, evaluatedQuestionCount - correctQuestionCount),
+                IncorrectQuestionCount = Math.Max(0, evaluatedQuestionCount - correctQuestionCount - voidedQuestionCount),
+                VoidedQuestionCount = voidedQuestionCount,
                 PendingQuestionCount = pendingQuestionCount,
                 ResultStatus = resultStatus,
                 TeacherFinalReviewStatus = finalReviewStatus.ToString(),

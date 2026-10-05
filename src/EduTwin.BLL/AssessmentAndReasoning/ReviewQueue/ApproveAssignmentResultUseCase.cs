@@ -19,6 +19,7 @@ public interface IApproveAssignmentResultUseCase
 public sealed class ApproveAssignmentResult
 {
     public TeacherApproveStatus Status { get; private init; }
+    public bool IsSuccess => Status == TeacherApproveStatus.Success;
     public AssignmentFinalReviewDto? Data { get; private init; }
     public string ErrorCode { get; private init; } = string.Empty;
     public string ErrorMessage { get; private init; } = string.Empty;
@@ -67,26 +68,32 @@ public sealed class ApproveAssignmentResultUseCase : IApproveAssignmentResultUse
         if (progress.FinalReviewVersion != request.FinalReviewVersion)
             return ApproveAssignmentResult.Fail(TeacherApproveStatus.Conflict, "CONCURRENCY_CONFLICT", "Kết quả đã được cập nhật. Hãy tải lại trước khi duyệt.");
 
-        var questionIds = await _dbContext.AssignmentQuestions.AsNoTracking()
+        var assignmentQuestions = await _dbContext.AssignmentQuestions.AsNoTracking()
             .Where(q => q.CenterId == centerId && q.AssignmentId == assignmentId)
-            .Select(q => q.QuestionId)
             .ToListAsync(cancellationToken);
+        var questionIds = assignmentQuestions.Select(q => q.QuestionId).ToList();
+        var voidedQuestionIds = assignmentQuestions.Where(q => q.IsVoided).Select(q => q.QuestionId).ToHashSet();
+
         var attempts = await _dbContext.Attempts
             .Where(a => a.CenterId == centerId && a.AssignmentId == assignmentId && a.StudentId == request.StudentId && questionIds.Contains(a.QuestionId))
             .OrderByDescending(a => a.CreatedAt)
             .ToListAsync(cancellationToken);
         var latest = attempts.GroupBy(a => a.QuestionId).Select(g => g.First()).ToList();
-        if (questionIds.Count == 0 || latest.Count != questionIds.Count)
+        var attemptedQuestionIds = latest.Select(a => a.QuestionId).ToHashSet();
+
+        if (questionIds.Count == 0 || questionIds.Any(qid => !attemptedQuestionIds.Contains(qid) && !voidedQuestionIds.Contains(qid)))
         {
             return ApproveAssignmentResult.Fail(TeacherApproveStatus.ValidationFailed, "ASSIGNMENT_INCOMPLETE", "Học sinh chưa hoàn thành tất cả câu hỏi của bài tập.");
         }
 
-        if (latest.Any(a => a.Status == AttemptStatus.NeedsTeacherReview))
+        var nonVoidedLatest = latest.Where(a => !voidedQuestionIds.Contains(a.QuestionId)).ToList();
+
+        if (nonVoidedLatest.Any(a => a.Status == AttemptStatus.NeedsTeacherReview))
         {
             return ApproveAssignmentResult.Fail(TeacherApproveStatus.ValidationFailed, "ASSIGNMENT_HAS_PENDING_REVIEWS", "Bài tập vẫn còn câu hỏi cần giáo viên rà soát trong hàng đợi. Vui lòng phê duyệt hoặc ghi đè điểm từng câu hỏi trước khi duyệt kết quả toàn bài.");
         }
 
-        if (latest.Any(a => a.Status is AttemptStatus.PendingAnalysis or AttemptStatus.Processing or AttemptStatus.AnalysisFailed))
+        if (nonVoidedLatest.Any(a => a.Status is AttemptStatus.PendingAnalysis or AttemptStatus.Processing or AttemptStatus.AnalysisFailed))
         {
             return ApproveAssignmentResult.Fail(TeacherApproveStatus.ValidationFailed, "ASSIGNMENT_NOT_READY", "AI chưa phân tích xong tất cả câu hỏi của bài tập. Vui lòng chờ hoàn tất.");
         }

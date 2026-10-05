@@ -126,6 +126,14 @@ export const StudentAssignmentDetailPage: React.FC = () => {
   };
 
   const renderAttemptStatusBadge = (question: StudentAssignmentQuestionDto) => {
+    if (question.isVoided) {
+      return (
+        <StudentBadge variant="warning" size="xs">
+          Miễn / Tính trọn điểm
+        </StudentBadge>
+      );
+    }
+
     const status = question.attemptStatus;
     const attempt = question.latestAttempt;
 
@@ -328,6 +336,16 @@ export const StudentAssignmentDetailPage: React.FC = () => {
               <div className="text-sm sm:text-base text-stone-800 dark:text-stone-200 leading-relaxed font-medium">
                 <RichMathText text={question.questionText} />
               </div>
+
+              {question.isVoided && (
+                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-400 text-xs">
+                  <span className="font-bold">Được miễn / Tính trọn điểm:</span>
+                  <span>{question.voidReason || "Giáo viên đã hủy câu hỏi này do sự cố đề bài."}</span>
+                  {question.voidedScore != null && (
+                    <span className="ml-auto font-bold shrink-0">+{question.voidedScore} điểm</span>
+                  )}
+                </div>
+              )}
 
               {/* Options preview if present */}
               {question.options && question.options.length > 0 && (

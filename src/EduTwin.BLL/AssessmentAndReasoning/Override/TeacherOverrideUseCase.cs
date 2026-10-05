@@ -244,8 +244,20 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                         .Distinct()
                         .Count();
 
+                    var voidedQuestionIds = await _dbContext.AssignmentQuestions.AsNoTracking()
+                        .Where(aq => aq.CenterId == centerId && aq.AssignmentId == attempt.AssignmentId.Value && aq.IsVoided)
+                        .Select(aq => aq.QuestionId)
+                        .ToListAsync(cancellationToken);
+
+                    var resolvedQuestionCount = dbQuestionIds
+                        .Concat(localQuestionIds)
+                        .Append(attempt.QuestionId)
+                        .Concat(voidedQuestionIds)
+                        .Distinct()
+                        .Count();
+
                     progress.CompletedQuestionCount = (uint)answeredQuestionCount;
-                    if (progress.CompletedQuestionCount >= progress.TotalQuestionCount && progress.TotalQuestionCount > 0)
+                    if (resolvedQuestionCount >= progress.TotalQuestionCount && progress.TotalQuestionCount > 0)
                     {
                         progress.Status = ProgressStatus.Completed;
                         progress.CompletedAt ??= now;

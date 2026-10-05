@@ -28,6 +28,8 @@ public class AssignmentsController : ControllerBase
     private readonly IListStudentAssignmentsUseCase _listStudentAssignmentsUseCase;
     private readonly IGetStudentAssignmentUseCase _getStudentAssignmentUseCase;
     private readonly IStartStudentAssignmentUseCase _startStudentAssignmentUseCase;
+    private readonly ISaveAssignmentDraftUseCase _saveAssignmentDraftUseCase;
+    private readonly ISubmitStudentAssignmentUseCase _submitStudentAssignmentUseCase;
     private readonly TimeProvider _timeProvider;
 
     public AssignmentsController(
@@ -41,6 +43,8 @@ public class AssignmentsController : ControllerBase
         IListStudentAssignmentsUseCase listStudentAssignmentsUseCase,
         IGetStudentAssignmentUseCase getStudentAssignmentUseCase,
         IStartStudentAssignmentUseCase? startStudentAssignmentUseCase = null,
+        ISaveAssignmentDraftUseCase? saveAssignmentDraftUseCase = null,
+        ISubmitStudentAssignmentUseCase? submitStudentAssignmentUseCase = null,
         TimeProvider? timeProvider = null)
     {
         _createAssignmentUseCase = createAssignmentUseCase;
@@ -53,7 +57,38 @@ public class AssignmentsController : ControllerBase
         _listStudentAssignmentsUseCase = listStudentAssignmentsUseCase;
         _getStudentAssignmentUseCase = getStudentAssignmentUseCase;
         _startStudentAssignmentUseCase = startStudentAssignmentUseCase!;
+        _saveAssignmentDraftUseCase = saveAssignmentDraftUseCase!;
+        _submitStudentAssignmentUseCase = submitStudentAssignmentUseCase!;
         _timeProvider = timeProvider ?? TimeProvider.System;
+    }
+
+    public AssignmentsController(
+        ICreateAssignmentUseCase createAssignmentUseCase,
+        IGetAssignmentUseCase getAssignmentUseCase,
+        IListAssignmentsUseCase listAssignmentsUseCase,
+        IUpdateAssignmentUseCase updateAssignmentUseCase,
+        IPublishAssignmentUseCase publishAssignmentUseCase,
+        ICloseAssignmentUseCase closeAssignmentUseCase,
+        IGetAssignmentProgressUseCase getAssignmentProgressUseCase,
+        IListStudentAssignmentsUseCase listStudentAssignmentsUseCase,
+        IGetStudentAssignmentUseCase getStudentAssignmentUseCase,
+        IStartStudentAssignmentUseCase? startStudentAssignmentUseCase,
+        TimeProvider? timeProvider)
+        : this(
+            createAssignmentUseCase,
+            getAssignmentUseCase,
+            listAssignmentsUseCase,
+            updateAssignmentUseCase,
+            publishAssignmentUseCase,
+            closeAssignmentUseCase,
+            getAssignmentProgressUseCase,
+            listStudentAssignmentsUseCase,
+            getStudentAssignmentUseCase,
+            startStudentAssignmentUseCase,
+            null,
+            null,
+            timeProvider)
+    {
     }
 
     /// <summary>
@@ -364,6 +399,48 @@ public class AssignmentsController : ControllerBase
             return Ok(response);
         }
 
+        return MapErrorToResponse(result.ErrorCode);
+    }
+
+    /// <summary>
+    /// PUT /api/v1/students/me/assignments/{id}/draft — Lưu bản nháp câu trả lời trước hạn.
+    /// </summary>
+    [HttpPut("/api/v1/students/me/assignments/{id}/draft")]
+    [Authorize(Policy = "assignments.assignments.read")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> SaveAssignmentDraft(
+        Guid id,
+        [FromBody] SaveAssignmentDraftRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _saveAssignmentDraftUseCase.ExecuteAsync(id, request, cancellationToken);
+        if (result.IsSuccess)
+        {
+            return Ok(new { success = true, timestamp = _timeProvider.GetUtcNow().UtcDateTime });
+        }
+        return MapErrorToResponse(result.ErrorCode);
+    }
+
+    /// <summary>
+    /// POST /api/v1/students/me/assignments/{id}/submit — Nộp bài tập toàn bài với thời điểm tiếp nhận thống nhất.
+    /// </summary>
+    [HttpPost("/api/v1/students/me/assignments/{id}/submit")]
+    [Authorize(Policy = "learning.attempts.submit")]
+    [ProducesResponseType(typeof(SubmitAssignmentResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> SubmitStudentAssignment(
+        Guid id,
+        [FromBody] SubmitAssignmentRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _submitStudentAssignmentUseCase.ExecuteAsync(id, request, cancellationToken);
+        if (result.IsSuccess)
+        {
+            return Ok(result.Data);
+        }
         return MapErrorToResponse(result.ErrorCode);
     }
 
