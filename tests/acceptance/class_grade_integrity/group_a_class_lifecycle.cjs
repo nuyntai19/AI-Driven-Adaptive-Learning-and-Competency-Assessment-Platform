@@ -1,6 +1,15 @@
 const { ChromeClient, loginUser, logoutUser, delay, WEB_URL, SEED_PASSWORD } = require('./chrome_client.cjs');
+const {
+  resetUiaccFixtures,
+  assertClassStudent,
+  assertClassActive,
+  assertClassDeleted,
+} = require('./fixture_helper.cjs');
 
 async function runGroupA() {
+  // 1. Ensure clean, idempotent fixture state for UIACC records
+  resetUiaccFixtures();
+
   const client = new ChromeClient();
   await client.start();
 
@@ -91,64 +100,74 @@ async function runGroupA() {
       }
     }
 
-    // Ensure baseline classes exist
-    const hasG10 = await client.eval(`Boolean(document.body.innerText.includes('UIACC-GRADE10-CLASS'))`);
-    if (!hasG10) {
-      await createClass('UIACC-GRADE10-CLASS', 10);
-    }
+    // Create required baseline classes
+    await createClass('UIACC-GRADE10-CLASS', 10);
+    await createClass('UIACC-GRADE11-CLASS', 11);
+    await createClass('UIACC-INACTIVE-CLASS', 10);
 
-    const hasG11 = await client.eval(`Boolean(document.body.innerText.includes('UIACC-GRADE11-CLASS'))`);
-    if (!hasG11) {
-      await createClass('UIACC-GRADE11-CLASS', 11);
-    }
+    // Archive UIACC-INACTIVE-CLASS
+    await client.eval(`(async (seedPw) => {
+      const loginRes = await fetch('/api/v1/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ centerCode: 'EDUTWIN_A', username: 'manager', password: seedPw })
+      });
+      const { data } = await loginRes.json();
+      const token = data.accessToken;
 
-    const hasInactive = await client.eval(`Boolean(document.body.innerText.includes('UIACC-INACTIVE-CLASS'))`);
-    if (!hasInactive) {
-      await createClass('UIACC-INACTIVE-CLASS', 10);
-      await client.eval(`(async (seedPw) => {
-        const loginRes = await fetch('/api/v1/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ centerCode: 'EDUTWIN_A', username: 'manager', password: seedPw })
-        });
-        const { data } = await loginRes.json();
-        const token = data.accessToken;
-
-        const listRes = await fetch('/api/v1/classes?pageSize=50', {
+      const listRes = await fetch('/api/v1/classes?pageSize=50', {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      const listData = await listRes.json();
+      const inactiveClass = (listData.data || []).find(c => c.className === 'UIACC-INACTIVE-CLASS');
+      if (inactiveClass) {
+        const detailRes = await fetch('/api/v1/classes/' + inactiveClass.classId, {
           headers: { 'Authorization': 'Bearer ' + token }
         });
-        const listData = await listRes.json();
-        const inactiveClass = (listData.data || []).find(c => c.className === 'UIACC-INACTIVE-CLASS');
-        if (inactiveClass) {
-          const detailRes = await fetch('/api/v1/classes/' + inactiveClass.classId, {
-            headers: { 'Authorization': 'Bearer ' + token }
-          });
-          const detail = await detailRes.json();
-          await fetch('/api/v1/classes/' + inactiveClass.classId, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-            body: JSON.stringify({
-              className: 'UIACC-INACTIVE-CLASS',
-              teacherId: detail.data?.teacher?.teacherId || detail.data?.teacherId || 'd0000000-0000-0000-0001-000000000003',
-              gradeLevel: 10,
-              status: 'Archived',
-              rowVersion: detail.data?.rowVersion || ''
-            })
-          });
-        }
-      })(${JSON.stringify(SEED_PASSWORD)})`);
-      await delay(800);
-    }
+        const detail = await detailRes.json();
+        await fetch('/api/v1/classes/' + inactiveClass.classId, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({
+            className: 'UIACC-INACTIVE-CLASS',
+            teacherId: detail.data?.teacher?.teacherId || detail.data?.teacherId || 'd0000000-0000-0000-0001-000000000003',
+            gradeLevel: 10,
+            status: 'Archived',
+            rowVersion: detail.data?.rowVersion || ''
+          })
+        });
+      }
+    })(${JSON.stringify(SEED_PASSWORD)})`);
+    await delay(800);
 
     // Refresh class list to show all classes
     await client.navigate(`${WEB_URL}/quan-ly/lop-hoc`);
     await delay(1200);
 
+    // ──────────────────────────────────────────────────────────────────────────
     // Scenario 01: Class Grade Level Displayed
-    await client.captureScreenshot('01_class_grade_level_displayed.png');
-    console.log('PASS: 01_class_grade_level_displayed.png captured');
+    // ──────────────────────────────────────────────────────────────────────────
+    console.log('Testing Scenario 01: Class grade level display verification...');
+    const s01Assert = await client.eval(`(() => {
+      const rows = Array.from(document.querySelectorAll('tr'));
+      const g10Row = rows.find(r => r.textContent.includes('UIACC-GRADE10-CLASS'));
+      const g11Row = rows.find(r => r.textContent.includes('UIACC-GRADE11-CLASS'));
+      const hasG10Text = g10Row && (g10Row.textContent.includes('Khối 10') || g10Row.textContent.includes('10'));
+      const hasG11Text = g11Row && (g11Row.textContent.includes('Khối 11') || g11Row.textContent.includes('11'));
+      return { g10Found: Boolean(g10Row), g11Found: Boolean(g11Row), hasG10Text, hasG11Text };
+    })()`);
+    if (!s01Assert.g10Found || !s01Assert.g11Found || !s01Assert.hasG10Text || !s01Assert.hasG11Text) {
+      throw new Error(`[ASSERT FAIL Scenario 01] Grade level badges not found in class table: ${JSON.stringify(s01Assert)}`);
+    }
+    assertClassActive('UIACC-GRADE10-CLASS', 10);
+    assertClassActive('UIACC-GRADE11-CLASS', 11);
 
+    await client.captureScreenshot('01_class_grade_level_displayed.png');
+    console.log('PASS: Scenario 01 - 01_class_grade_level_displayed.png captured');
+
+    // ──────────────────────────────────────────────────────────────────────────
     // Scenario 02: Add Student Same Grade Success
+    // ──────────────────────────────────────────────────────────────────────────
     console.log('Testing Scenario 02: Add student same grade...');
     await openAddStudentsModal('UIACC-GRADE10-CLASS', false);
 
@@ -164,12 +183,20 @@ async function runGroupA() {
 
     // Confirm addition
     await client.click('#btn-submit-add-students');
-    await delay(1500);
+    await delay(1800);
+
+    // Assert student01 enrolled in DB
+    assertClassStudent('UIACC-GRADE10-CLASS', 'Duy Bảo Trịnh', {
+      expectedGradeLevel: 10,
+    });
+    console.log('[ASSERT PASS Scenario 02] student01 enrolled in UIACC-GRADE10-CLASS (grade_level_at_enrollment=10)');
 
     await client.captureScreenshot('02_add_student_same_grade_success.png');
-    console.log('PASS: 02_add_student_same_grade_success.png captured');
+    console.log('PASS: Scenario 02 - 02_add_student_same_grade_success.png captured');
 
+    // ──────────────────────────────────────────────────────────────────────────
     // Scenario 03 & 04 & 05: Cross Grade Student Warning, Validation, Success
+    // ──────────────────────────────────────────────────────────────────────────
     console.log('Testing Scenario 03 & 04: Cross-grade warning and validation...');
     await openAddStudentsModal('UIACC-GRADE10-CLASS', true);
 
@@ -184,15 +211,32 @@ async function runGroupA() {
     await delay(600);
 
     // Scenario 03: Warning Displayed
+    const s03WarningAssert = await client.eval(`(() => {
+      const bodyText = document.body.innerText;
+      return bodyText.includes('Lệch khối') || bodyText.includes('Khối 11') || bodyText.includes('khác khối');
+    })()`);
+    if (!s03WarningAssert) {
+      throw new Error('[ASSERT FAIL Scenario 03] Cross-grade warning text not found in modal');
+    }
     await client.captureScreenshot('03_add_student_cross_grade_warning.png');
-    console.log('PASS: 03_add_student_cross_grade_warning.png captured');
+    console.log('PASS: Scenario 03 - 03_add_student_cross_grade_warning.png captured');
 
     // Scenario 04: Empty Reason Validation Rejected
     await client.click('#btn-submit-add-students');
     await delay(600);
 
+    const s04ValidationAssert = await client.eval(`(() => {
+      const errEl = document.querySelector('#add-students-error, [role="alert"]');
+      const text = (errEl ? errEl.innerText : document.body.innerText) || '';
+      const hasErrorText = text.includes('lý do') || text.includes('bắt buộc') || text.includes('ngoại lệ');
+      const modalOpen = Boolean(document.querySelector('#btn-submit-add-students'));
+      return { hasErrorText, modalOpen, text };
+    })()`);
+    if (!s04ValidationAssert.hasErrorText || !s04ValidationAssert.modalOpen) {
+      throw new Error(`[ASSERT FAIL Scenario 04] Validation rejection for empty cross-grade reason not triggered: ${JSON.stringify(s04ValidationAssert)}`);
+    }
     await client.captureScreenshot('04_add_student_cross_grade_validation.png');
-    console.log('PASS: 04_add_student_cross_grade_validation.png captured');
+    console.log('PASS: Scenario 04 - 04_add_student_cross_grade_validation.png captured');
 
     // Scenario 05: Valid Reason Submitted & Success
     console.log('Testing Scenario 05: Add cross-grade student with valid reason...');
@@ -207,16 +251,26 @@ async function runGroupA() {
     await delay(400);
 
     await client.click('#btn-submit-add-students');
-    await delay(1800);
+    await delay(2000);
+
+    // Assert student05 cross-grade enrollment with reason, snapshot, approver, audit timestamp
+    const student05Row = assertClassStudent('UIACC-GRADE10-CLASS', 'Bảo Lễ Hồ', {
+      expectedGradeLevel: 11,
+      expectedReasonSubstr: 'Học sinh vượt lớp',
+      mustHaveApproval: true,
+    });
+    console.log('[ASSERT PASS Scenario 05] Cross-grade audit verified: grade_level_at_enrollment=11, reason preserved, approvedBy=' + student05Row.exception_approved_by + ', approvedAt=' + student05Row.exception_approved_at);
 
     await client.captureScreenshot('05_add_student_cross_grade_success.png');
-    console.log('PASS: 05_add_student_cross_grade_success.png captured');
+    console.log('PASS: Scenario 05 - 05_add_student_cross_grade_success.png captured');
 
+    // ──────────────────────────────────────────────────────────────────────────
     // Scenario 06: Pagination Persistence showing preserved reason text
+    // ──────────────────────────────────────────────────────────────────────────
     console.log('Testing Scenario 06: Pagination persistence with visible reason text...');
     await openAddStudentsModal('UIACC-GRADE11-CLASS', true);
 
-    // Select student02 (Grade 10) or student03 into Grade 11 class
+    // Select Grade 10 candidate into Grade 11 class
     await client.eval(`(() => {
       const labels = Array.from(document.querySelectorAll('label'));
       const lbl = labels.find(l => l.textContent.includes('Khối 10'));
@@ -250,6 +304,35 @@ async function runGroupA() {
     })()`);
     await delay(800);
 
+    // Assert: candidate checkbox is still selected, reason still strictly equals testReason
+    const s06Assert = await client.eval(`((expectedReason) => {
+      const reasonEl = document.querySelector('#input-grade-mismatch-reason, #input-grade-mismatch-reason-legacy, input[id*="grade-mismatch-reason"]');
+      const allowChk = document.querySelector('#checkbox-allow-grade-mismatch, #checkbox-allow-grade-mismatch-legacy, input[type="checkbox"][id*="allow-grade"]');
+      const labels = Array.from(document.querySelectorAll('label'));
+      const candidateChecked = labels.some(l => {
+        const cb = l.querySelector('input[type="checkbox"]');
+        return cb && cb.checked;
+      });
+
+      return {
+        allowChecked: Boolean(allowChk && allowChk.checked),
+        candidateChecked,
+        actualReason: reasonEl ? reasonEl.value : null,
+        matchesReason: Boolean(reasonEl && reasonEl.value === expectedReason)
+      };
+    })(${JSON.stringify(testReason)})`);
+
+    if (!s06Assert.allowChecked) {
+      throw new Error('[ASSERT FAIL Scenario 06] allowGradeMismatch checkbox lost after pagination!');
+    }
+    if (!s06Assert.candidateChecked) {
+      throw new Error('[ASSERT FAIL Scenario 06] Candidate checkbox selection lost after pagination!');
+    }
+    if (!s06Assert.matchesReason) {
+      throw new Error(`[ASSERT FAIL Scenario 06] Reason text mismatch after pagination: expected "${testReason}", got "${s06Assert.actualReason}"`);
+    }
+    console.log('[ASSERT PASS Scenario 06] Pagination state strictly preserved: checkbox=checked, reason=' + testReason);
+
     // Ensure the reason field is scrolled into view so text is clearly captured
     await client.eval(`(() => {
       const el = document.querySelector('#input-grade-mismatch-reason, #input-grade-mismatch-reason-legacy, input[id*="grade-mismatch-reason"]');
@@ -257,9 +340,8 @@ async function runGroupA() {
     })()`);
     await delay(500);
 
-    // Capture screenshot 06 showing the reason text preserved and visible
     await client.captureScreenshot('06_pagination_cross_grade_cache.png');
-    console.log('PASS: 06_pagination_cross_grade_cache.png captured');
+    console.log('PASS: Scenario 06 - 06_pagination_cross_grade_cache.png captured');
 
     // Close modal
     await client.eval(`(() => {
@@ -270,17 +352,16 @@ async function runGroupA() {
     })()`);
     await delay(800);
 
+    // ──────────────────────────────────────────────────────────────────────────
     // Scenario 07: Delete Empty Class Success
+    // ──────────────────────────────────────────────────────────────────────────
     console.log('Testing Scenario 07: Delete empty class...');
     await client.navigate(`${WEB_URL}/quan-ly/lop-hoc`);
     await delay(1200);
 
-    const hasEmpty = await client.eval(`Boolean(document.body.innerText.includes('UIACC-EMPTY-CLASS'))`);
-    if (!hasEmpty) {
-      await createClass('UIACC-EMPTY-CLASS', 10);
-      await client.navigate(`${WEB_URL}/quan-ly/lop-hoc`);
-      await delay(1200);
-    }
+    await createClass('UIACC-EMPTY-CLASS', 10);
+    await client.navigate(`${WEB_URL}/quan-ly/lop-hoc`);
+    await delay(1200);
 
     // Click delete on UIACC-EMPTY-CLASS
     await client.eval(`(() => {
@@ -293,15 +374,20 @@ async function runGroupA() {
     })()`);
     await delay(800);
 
-    // Capture confirmation modal
     await client.captureScreenshot('07_delete_empty_class_success.png');
-    console.log('PASS: 07_delete_empty_class_success.png captured');
+    console.log('PASS: Scenario 07 - 07_delete_empty_class_success.png captured');
 
     // Confirm deletion
     await client.click('#btn-confirm-delete-class');
-    await delay(1800);
+    await delay(2000);
 
+    // Assert UIACC-EMPTY-CLASS is deleted in DB
+    assertClassDeleted('UIACC-EMPTY-CLASS');
+    console.log('[ASSERT PASS Scenario 07] UIACC-EMPTY-CLASS verified deleted in database');
+
+    // ──────────────────────────────────────────────────────────────────────────
     // Scenario 08: Delete Class with Enrolled Students Blocked
+    // ──────────────────────────────────────────────────────────────────────────
     console.log('Testing Scenario 08: Delete class with students blocked...');
     await client.navigate(`${WEB_URL}/quan-ly/lop-hoc`);
     await delay(1200);
@@ -318,10 +404,23 @@ async function runGroupA() {
 
     // Confirm deletion to trigger business error
     await client.click('#btn-confirm-delete-class');
-    await delay(1200);
+    await delay(1500);
+
+    // Assert error banner appears on UI
+    const s08ErrorAssert = await client.eval(`(() => {
+      const bodyText = document.body.innerText;
+      return bodyText.includes('học sinh') || bodyText.includes('không thể xóa') || bodyText.includes('thành viên') || Boolean(document.querySelector('[role="alert"], .border-rose-500, .bg-rose-50'));
+    })()`);
+    if (!s08ErrorAssert) {
+      throw new Error('[ASSERT FAIL Scenario 08] Deletion rejection banner not displayed');
+    }
+
+    // Assert UIACC-GRADE10-CLASS is NOT deleted in DB
+    assertClassActive('UIACC-GRADE10-CLASS', 10);
+    console.log('[ASSERT PASS Scenario 08] UIACC-GRADE10-CLASS is active and deletion was properly blocked');
 
     await client.captureScreenshot('08_delete_class_with_students_blocked.png');
-    console.log('PASS: 08_delete_class_with_students_blocked.png captured');
+    console.log('PASS: Scenario 08 - 08_delete_class_with_students_blocked.png captured');
 
     console.log('=== GROUP A COMPLETED SUCCESSFULLY ===');
   } finally {

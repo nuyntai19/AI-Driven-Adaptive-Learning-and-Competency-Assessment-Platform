@@ -5,7 +5,8 @@ import {
   validateCurriculumForm,
   buildCreateCurriculumPayload,
   buildUpdateCurriculumPayload,
-  isConcurrencyConflictError
+  isConcurrencyConflictError,
+  formatCurriculumSaveError
 } from "../src/pages/curriculumEditorHelpers.ts";
 
 test("shouldDisplayTeacherSelector returns true only for CenterManager in creation mode", () => {
@@ -164,4 +165,66 @@ test("isConcurrencyConflictError accurately identifies HTTP 409 conflict", () =>
   assert.equal(isConcurrencyConflictError({ response: { status: 500 } }), false);
   assert.equal(isConcurrencyConflictError(null), false);
   assert.equal(isConcurrencyConflictError(undefined), false);
+});
+
+test("formatCurriculumSaveError formats HTTP 409 cross-grade error for Axios-shaped error", () => {
+  const axiosError = {
+    response: {
+      status: 409,
+      data: {
+        title: "Trạng thái không hợp lệ",
+        detail: "Không thể thực hiện hành động do sai trạng thái.",
+        errorCode: "INVALID_STATE_TRANSITION"
+      }
+    }
+  };
+
+  const message = formatCurriculumSaveError(axiosError, {
+    classes: [
+      { classId: "cls-11", name: "Lớp 11A", gradeLevel: 11 },
+      { classId: "cls-10", name: "Lớp 10A", gradeLevel: 10 }
+    ],
+    selectedClassIds: ["cls-11"],
+    curriculumGradeLevel: 10
+  });
+
+  assert.equal(message, "Không thể gán lớp Khối 11 vào giáo trình Khối 10.");
+});
+
+test("formatCurriculumSaveError formats HTTP 409 for mapped Error instance without leaking generic Axios status", () => {
+  const mappedError = new Error("Request failed with status code 409");
+  (mappedError as any).status = 409;
+
+  const message = formatCurriculumSaveError(mappedError, {
+    classes: [
+      { classId: "cls-11", name: "UIACC-GRADE11-CLASS", gradeLevel: 11 }
+    ],
+    selectedClassIds: ["cls-11"],
+    curriculumGradeLevel: 10
+  });
+
+  assert.equal(message, "Không thể gán lớp Khối 11 vào giáo trình Khối 10.");
+});
+
+test("formatCurriculumSaveError falls back to business detail or Vietnamese conflict message when context is absent", () => {
+  const axiosWithDetail = {
+    response: {
+      status: 409,
+      data: {
+        title: "Xung đột dữ liệu",
+        detail: "Giáo trình đã được sửa đổi ở phiên khác.",
+        errorCode: "CONCURRENCY_CONFLICT"
+      }
+    }
+  };
+  assert.equal(
+    formatCurriculumSaveError(axiosWithDetail),
+    "Lỗi xung đột (HTTP 409): Giáo trình đã được sửa đổi ở phiên khác."
+  );
+
+  const generic409Error = new Error("Request failed with status code 409");
+  assert.equal(
+    formatCurriculumSaveError(generic409Error),
+    "Không thể gán lớp học khác khối vào giáo trình."
+  );
 });

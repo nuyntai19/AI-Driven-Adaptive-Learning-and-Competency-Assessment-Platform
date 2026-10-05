@@ -72,24 +72,28 @@ Toàn bộ 18 ảnh chụp màn hình bằng chứng thực tế được lưu t
 
 ### 3.2. Giải pháp Forward Corrective
 Tuân thủ nguyên tắc **Forward Corrective Fix Only** (không can thiệp bừa bãi, không rollback):
-1. **Giới hạn mẻ nhập an toàn:** Khai báo hằng số `MaxBatchSize = 100` trong `AddStudentsToClassUseCase.cs`. Khi số lượng học sinh yêu cầu vượt quá 100, hệ thống từ chối ngay lập tức với lỗi `ValidationFailed` và thông điệp chuẩn mực.
+1. **Giới hạn mẻ nhập an toàn:** Khai báo hằng số `public const int MaxBatchSize = 100;` trong `AddStudentsToClassUseCase.cs`. Khi số lượng học sinh yêu cầu vượt quá 100, hệ thống từ chối ngay lập tức với lỗi `ValidationFailed` và thông điệp chuẩn mực.
 2. **Cây biểu thức logic tham số hóa:** Sử dụng phương thức trợ giúp `BuildIdEqualityFilter<T>` để xây dựng cây biểu thức logic `Expression.OrElse` với hằng số tham số hóa chuẩn xác, hỗ trợ cả `Student` và `ClassStudent`.
 3. **Truy vấn SQL vị từ trực tiếp:** Kiểm tra học sinh đã thuộc lớp bằng cách truy vấn trực tiếp bảng `ClassStudents` trong SQL mà không nạp toàn bộ lớp vào bộ nhớ:
 
 ```csharp
 // src/EduTwin.BLL/Organization/AddStudentsToClassUseCase.cs
-private const int MaxBatchSize = 100;
+public const int MaxBatchSize = 100;
 
-if (distinctRequestedIds.Count > MaxBatchSize)
+// ...
+
+if (request.StudentIds.Count > MaxBatchSize)
 {
-    return Result<AddStudentsToClassResponseDto>.Failure(
-        ValidationError.Create(
-            $"Không thể thêm quá {MaxBatchSize} học sinh trong một lần thao tác (đang yêu cầu {distinctRequestedIds.Count} học sinh).",
-            nameof(request.StudentIds),
-            ErrorCodes.ValidationFailed));
+    return AddStudentsToClassResult.Failure(
+        ErrorCodes.ValidationFailed,
+        $"Số lượng học sinh thêm vào lớp không được vượt quá {MaxBatchSize} học sinh mỗi lượt.");
 }
 
-var studentFilter = BuildIdEqualityFilter<Student>(distinctRequestedIds, nameof(Student.StudentId));
+// ...
+
+var requestedStudentIds = request.StudentIds.ToList();
+var studentFilter = BuildIdEqualityFilter<Student>(nameof(Student.StudentId), requestedStudentIds);
+
 var validStudents = await _context.Students
     .Include(s => s.User)
     .Where(studentFilter)
@@ -97,12 +101,10 @@ var validStudents = await _context.Students
     .ToListAsync(cancellationToken);
 
 // Kiểm tra trùng lặp trực tiếp trên bảng ClassStudents mà không tải toàn bộ lớp
-var classStudentFilter = BuildIdEqualityFilter<ClassStudent>(distinctRequestedIds, nameof(ClassStudent.StudentId));
-var existingStudentIds = await _context.ClassStudents
-    .AsNoTracking()
-    .Where(cs => cs.ClassId == request.ClassId && !cs.IsDeleted)
-    .Where(classStudentFilter)
-    .Select(cs => cs.StudentId)
+var membershipFilter = BuildIdEqualityFilter<ClassStudent>(nameof(ClassStudent.StudentId), requestedStudentIds);
+var existingMemberships = await _context.ClassStudents
+    .Where(cs => cs.CenterId == centerId && cs.ClassId == classId)
+    .Where(membershipFilter)
     .ToListAsync(cancellationToken);
 ```
 
@@ -156,10 +158,16 @@ Trước khi đóng băng báo cáo nghiệm thu, toàn bộ các bộ kiểm th
 | STT | Bộ Kiểm Thử | Lệnh Thực Thi | Kết Quả Thực Tế | Thời Gian | Đánh Giá |
 |:---:|---|---|:---:|:---:|:---:|
 | **1** | **Backend .NET Regression** | `dotnet test tests/EduTwin.BLL.Tests/` | **Passed: 3,619**, Failed: 0, Skipped: 60 | 39 giây | **PASS (100%)** |
-| **2** | **AddStudentsToClass Suite** | `dotnet test --filter "AddStudentsToClass"` | **Passed: 44**, Failed: 0, Skipped: 1 | 4 giây | **PASS (100%)** |
-| **3** | **Live MySQL Integration** | `python scratch/run_live_test.py` | **Passed: 1**, Failed: 0 | 39 giây | **PASS (100%)** |
-| **4** | **Acceptance Test Harness (CDP)** | `node tests/acceptance/class_grade_integrity/run_all.cjs` | **18/18 Scenarios Passed** (5 Groups) | ~85 giây | **PASS (100%)** |
-| **5** | **Production Bundle Build** | `npm run build` (edutwin-web) | **0 Errors** (`dist/` generated cleanly) | 17.7 giây | **PASS (100%)** |
+| **2** | **AddStudentsToClass Suite** | `dotnet test tests/EduTwin.BLL.Tests/ --filter "AddStudentsToClass"` | **Passed: 44**, Failed: 0, Skipped: 1 | 5 giây | **PASS (100%)** |
+| **3** | **Live MySQL Integration** | `dotnet test` (với `EDUTWIN_TEST_MYSQL_ADMIN_CONNECTION_STRING`) | **Passed: 1**, Failed: 0 | 24 giây | **PASS (100%)** |
+| **4** | **Frontend Unit/Component** | `npm test` (edutwin-web) | **Passed: 422**, Failed: 0, Skipped: 0 | 4.7 giây | **PASS (100%)** |
+| **5** | **Frontend Static Lint** | `npm run lint` (edutwin-web) | **0 Errors**, 33 Warnings (ESLint) | 14 giây | **PASS (100%)** |
+| **6** | **Production Bundle Build** | `npm run build` (edutwin-web) | **0 Errors** (`dist/` generated cleanly) | 11.4 giây | **PASS (100%)** |
+| **7** | **Acceptance Test Harness (CDP)** | `node tests/acceptance/class_grade_integrity/run_all.cjs` | **18/18 Passed (Run 1: 166.0s, Run 2: 165.8s)** | ~166 giây/lượt | **PASS (100% Idempotent)** |
+
+> [!NOTE]
+> - Bài kiểm thử `AddStudentsToClass_LiveMySql_TranslatesGuidFiltersAndEnforcesBatchLimits` kế thừa thuộc tính `[MySqlIntegrationFact]` nên được chủ động bỏ qua (`SKIP`) trong các lượt chạy test mặc định nếu không cấu hình biến môi trường kết nối MySQL Admin. Khi được cung cấp chuỗi kết nối MySQL cục bộ (`localhost:3307`), bài kiểm thử đã khởi tạo cơ sở dữ liệu tạm thời trên MySQL thật, di chuyển schema và chạy xác thực thành công 100% (`Passed: 1, Failed: 0`).
+> - Bộ nghiệm thu Chrome CDP (`run_all.cjs`) đã được chạy liên tiếp 2 lần trên cùng một cơ sở dữ liệu đang chạy để kiểm chứng tính chất **Idempotent** (khả năng tự dọn dẹp fixture với tiền tố `UIACC` an toàn, không rò rỉ dữ liệu và không làm sập kịch bản khi chạy lại). Cả 2 lượt chạy liên tiếp đều đạt **18/18 kịch bản PASS**.
 
 ---
 

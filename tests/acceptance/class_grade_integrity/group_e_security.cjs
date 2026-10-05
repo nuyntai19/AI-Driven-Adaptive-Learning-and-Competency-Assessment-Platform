@@ -25,14 +25,16 @@ async function runGroupE() {
       });
       const cData = await cRes.json();
       const g10Class = (cData.data || []).find(c => c.className.includes('UIACC-GRADE10-CLASS'));
-      const classId = g10Class?.classId || 'b4a9e742-0b8b-4938-9edc-b77128318854';
+      const classId = g10Class?.classId;
+      if (!classId) throw new Error('UIACC-GRADE10-CLASS not found in classes list');
 
       const curRes = await fetch('/api/v1/curriculums?pageSize=50', {
         headers: { 'Authorization': 'Bearer ' + token }
       });
       const curData = await curRes.json();
-      const cur = (curData.data || []).find(c => c.title.includes('UIACC-ENG-G10')) || curData.data?.[0];
-      const curId = cur?.curriculumId || '65bf4c3d-1758-4c0d-9734-58f87512b131';
+      const cur = (curData.data || []).find(c => c.title.includes('UIACC-ENG-G10'));
+      const curId = cur?.curriculumId;
+      if (!curId) throw new Error('UIACC-ENG-G10 not found in curriculums list');
 
       const qRes = await fetch('/api/v1/questions?pageSize=50', {
         headers: { 'Authorization': 'Bearer ' + token }
@@ -168,7 +170,8 @@ async function runGroupE() {
         const rowVersion = cDetail.data?.rowVersion || 'AAAAAAAAB9k=';
 
         const g11Class = (cData.data || []).find(c => c.className.includes('UIACC-GRADE11-CLASS'));
-        const g11ClassId = g11Class?.classId || '62031a1a-551f-45e9-ac50-a9cf61edae1d';
+        const g11ClassId = g11Class?.classId;
+        if (!g11ClassId) throw new Error('UIACC-GRADE11-CLASS not found for Vector 5');
 
         const res = await fetch('/api/v1/curriculums/' + curId + '/classes', {
           method: 'PUT',

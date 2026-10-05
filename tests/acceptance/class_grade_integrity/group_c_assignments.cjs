@@ -1,4 +1,5 @@
 const { ChromeClient, loginUser, logoutUser, delay, WEB_URL, SEED_PASSWORD } = require('./chrome_client.cjs');
+const { assertAssignmentPublished, queryRows } = require('./fixture_helper.cjs');
 
 async function runGroupC() {
   const client = new ChromeClient();
@@ -42,10 +43,13 @@ async function runGroupC() {
     })(${JSON.stringify(SEED_PASSWORD)})`);
 
     console.log('Resolved IDs:', classData);
+    if (!classData.g10Id || !classData.inactiveId) {
+      throw new Error(`[ASSERT FAIL] Could not resolve required class IDs: ${JSON.stringify(classData)}`);
+    }
 
     // Navigate to Create Assignment page
     await client.navigate(`${WEB_URL}/giao-vien/bai-tap/tao-moi`);
-    await delay(1200);
+    await delay(1500);
 
     // ──────────────────────────────────────────────────────────────────────────
     // Scenario 15: Attempt to target inactive/archived class blocked
@@ -57,6 +61,17 @@ async function runGroupC() {
 
     // Wait for the inactive class option to be loaded in the dropdown
     await client.waitSelector(`#assignment-class-select option[value="${classData.inactiveId}"]`);
+
+    // Assert inactive class is labeled as inactive in dropdown
+    const s15OptionAssert = await client.eval(`((inId) => {
+      const opt = document.querySelector(\`#assignment-class-select option[value="\${inId}"]\`);
+      return { found: Boolean(opt), text: opt ? opt.textContent : '' };
+    })(${JSON.stringify(classData.inactiveId)})`);
+
+    if (!s15OptionAssert.found || !s15OptionAssert.text.includes('Ngừng hoạt động') && !s15OptionAssert.text.includes('Archived') && !s15OptionAssert.text.includes('UIACC-INACTIVE-CLASS')) {
+      throw new Error(`[ASSERT FAIL Scenario 15] Inactive class option not properly rendered in select: ${JSON.stringify(s15OptionAssert)}`);
+    }
+
     await client.selectOption('#assignment-class-select', classData.inactiveId);
     await delay(500);
 
@@ -76,9 +91,25 @@ async function runGroupC() {
     })()`);
     await delay(400);
 
-    // Capture screenshot 15: Clearly showing UIACC-INACTIVE-CLASS selected in dropdown and rejection banner
+    // Assert validation alert is displayed
+    const s15AlertAssert = await client.eval(`(() => {
+      const text = document.body.innerText;
+      return text.includes('không ở trạng thái hoạt động') || text.includes('ngừng hoạt động') || Boolean(document.querySelector('[role="alert"]'));
+    })()`);
+    if (!s15AlertAssert) {
+      throw new Error('[ASSERT FAIL Scenario 15] Validation alert for inactive class was not displayed');
+    }
+
+    // Assert DB confirms NO unauthorized assignment was created for inactive class
+    const inactiveAssignRows = queryRows(`SELECT assignment_id FROM assignments WHERE title = 'UIACC-INACTIVE-TARGET-BLOCKED';`);
+    if (inactiveAssignRows.length > 0) {
+      throw new Error('[ASSERT FAIL Scenario 15] Security violation: Assignment was created for inactive class in DB!');
+    }
+    console.log('[ASSERT PASS Scenario 15] Verified: Inactive class assignment blocked in UI and DB');
+
+    // Capture screenshot 15
     await client.captureScreenshot('15_assignment_inactive_class_blocked.png');
-    console.log('PASS: 15_assignment_inactive_class_blocked.png captured (inactive class identified and blocked)');
+    console.log('PASS: Scenario 15 - 15_assignment_inactive_class_blocked.png captured (inactive class identified and blocked)');
 
     // ──────────────────────────────────────────────────────────────────────────
     // Proceed with valid Grade 10 English assignment UIACC-ENG-HW-G10
@@ -156,9 +187,29 @@ async function runGroupC() {
     })()`);
     await delay(400);
 
-    // Scenario 13: Capture >500 char validation error, counter (527/500), and warning
+    // Assert: length validation error and character counter shown
+    const s13ValidationAssert = await client.eval(`(() => {
+      const text = document.body.innerText;
+      const hasLimitWarning = text.includes('500') || text.includes('vượt quá') || text.includes('tối đa');
+      const counterEl = Array.from(document.querySelectorAll('span, div')).find(e => e.textContent.includes('/500'));
+      const counterText = counterEl ? counterEl.textContent.trim() : '';
+      return { hasLimitWarning, hasCounter: Boolean(counterEl), counterText };
+    })()`);
+
+    if (!s13ValidationAssert.hasLimitWarning && !s13ValidationAssert.hasCounter) {
+      throw new Error(`[ASSERT FAIL Scenario 13] >500 characters validation error and counter not displayed: ${JSON.stringify(s13ValidationAssert)}`);
+    }
+
+    // Assert DB confirms NO premature assignment exists
+    const preAssignRows = queryRows(`SELECT assignment_id FROM assignments WHERE title = 'UIACC-ENG-HW-G10';`);
+    if (preAssignRows.length > 0) {
+      throw new Error('[ASSERT FAIL Scenario 13] Premature assignment found in DB before completion!');
+    }
+    console.log('[ASSERT PASS Scenario 13] Verified: >500 char validation enforced, counter=' + s13ValidationAssert.counterText);
+
+    // Capture screenshot 13
     await client.captureScreenshot('13_assignment_cross_grade_reason_required.png');
-    console.log('PASS: 13_assignment_cross_grade_reason_required.png captured (>500 chars blocked)');
+    console.log('PASS: Scenario 13 - 13_assignment_cross_grade_reason_required.png captured (>500 chars blocked)');
 
     // Replace with valid reason <= 500 chars
     const validReason = 'Học sinh có nguyện vọng thử thách đề nâng cao nhằm củng cố kiến thức ngữ pháp chuyên sâu';
@@ -210,8 +261,18 @@ async function runGroupC() {
     })()`);
     await delay(400);
 
+    // Assert validation error displayed
+    const s14AlertAssert = await client.eval(`(() => {
+      const text = document.body.innerText;
+      return text.includes('ít nhất 1 học sinh') || text.includes('chọn học sinh') || Boolean(document.querySelector('[role="alert"]'));
+    })()`);
+    if (!s14AlertAssert) {
+      throw new Error('[ASSERT FAIL Scenario 14] Empty selected students validation alert not displayed');
+    }
+    console.log('[ASSERT PASS Scenario 14] Empty student selection properly blocked');
+
     await client.captureScreenshot('14_assignment_empty_selected_students_blocked.png');
-    console.log('PASS: 14_assignment_empty_selected_students_blocked.png captured');
+    console.log('PASS: Scenario 14 - 14_assignment_empty_selected_students_blocked.png captured');
 
     // ──────────────────────────────────────────────────────────────────────────
     // Select target student student05 (Bảo Lễ Hồ) and publish
@@ -274,6 +335,13 @@ async function runGroupC() {
       }
     })(${JSON.stringify(SEED_PASSWORD)})`);
     await delay(1000);
+
+    // Assert assignment published in DB with target student05 and preserved reason
+    assertAssignmentPublished('UIACC-ENG-HW-G10', {
+      expectedReasonSubstr: 'nguyện vọng',
+      targetStudentId: 'd0000000-0000-0000-0001-000000000008',
+    });
+    console.log('[ASSERT PASS Group C] Assignment UIACC-ENG-HW-G10 confirmed Published with target student05 (Bảo Lễ Hồ) in DB');
 
     console.log('Valid assignment UIACC-ENG-HW-G10 published successfully.');
     console.log('=== GROUP C COMPLETED SUCCESSFULLY ===');

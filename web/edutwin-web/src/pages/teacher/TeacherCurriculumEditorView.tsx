@@ -15,6 +15,8 @@ import {
   TeacherSafeErrorPanel,
 } from "../../components/teacher/TeacherPrimitives";
 import { TeacherModal, TeacherConfirmDialog } from "../../components/teacher/TeacherOverlays";
+import { formatCurriculumSaveError } from "../curriculumEditorHelpers";
+import { extractProblemDetails, mapSafeOperationalError } from "../../utils/problemDetails";
 
 export const TeacherCurriculumEditorView: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -178,18 +180,12 @@ export const TeacherCurriculumEditorView: React.FC = () => {
         navigate(`/giao-vien/giao-trinh/${data.curriculumId}`);
       }
     },
-    onError: (err: any) => {
-      const status = err.response?.status;
-      const detail = err.response?.data?.detail;
-      const title = err.response?.data?.title;
-      let text = "Không thể lưu giáo trình";
-      if (status === 409) {
-        text = `Lỗi xung đột (HTTP 409 Conflict): ${detail || title || "Xung đột khối lớp học thuật giữa giáo trình và lớp được gán."}`;
-      } else if (detail) {
-        text = `Lỗi (HTTP ${status || "Error"}): ${detail}`;
-      } else if (err.message) {
-        text = err.message;
-      }
+    onError: (err: unknown) => {
+      const text = formatCurriculumSaveError(err, {
+        classes,
+        selectedClassIds,
+        curriculumGradeLevel: gradeLevel,
+      });
       setFeedbackMsg({ type: "error", text });
     },
   });
@@ -208,8 +204,10 @@ export const TeacherCurriculumEditorView: React.FC = () => {
       setFeedbackMsg({ type: "success", text: "Giáo trình đã được xuất bản chính thức!" });
       queryClient.invalidateQueries({ queryKey: ["teacherCurriculums"] });
     },
-    onError: (err: any) => {
-      setFeedbackMsg({ type: "error", text: err.message || "Lỗi khi xuất bản giáo trình" });
+    onError: (err: unknown) => {
+      const details = extractProblemDetails(err);
+      const text = details.detail || mapSafeOperationalError(err, "Lỗi khi xuất bản giáo trình");
+      setFeedbackMsg({ type: "error", text });
     },
   });
 

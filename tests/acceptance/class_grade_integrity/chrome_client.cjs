@@ -210,21 +210,76 @@ class ChromeClient {
   }
 
   async close() {
-    if (this.ws) {
-      try { this.ws.close(); } catch {}
-    }
-    if (this.chrome && this.chrome.pid) {
+    const pid = this.chrome?.pid;
+
+    // 1. Attempt graceful browser close via CDP first
+    if (this.ws && this.ws.readyState === 1 /* OPEN */) {
       try {
-        if (process.platform === 'win32') {
-          execSync(`taskkill /PID ${this.chrome.pid} /T /F`, { stdio: 'ignore' });
-        } else {
-          this.chrome.kill();
-        }
-      } catch {}
+        await this.send('Browser.close');
+        await delay(500);
+      } catch (e) {
+        // Ignored if target already closing
+      }
+      try {
+        this.ws.close();
+      } catch (e) {
+        // Ignored
+      }
     }
-    await delay(400);
+
+    // 2. Terminate the harness Chrome process tree specifically
+    if (pid) {
+      if (process.platform === 'win32') {
+        try {
+          execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore' });
+        } catch (e) {
+          // Process might have already exited via Browser.close
+        }
+      } else {
+        try {
+          this.chrome.kill('SIGKILL');
+        } catch (e) {}
+      }
+
+      // 3. Confirm PID is dead (fail-closed)
+      let isAlive = true;
+      for (let i = 0; i < 25; i++) {
+        try {
+          process.kill(pid, 0); // Throws ESRCH if process is gone
+          await delay(200);
+        } catch (e) {
+          isAlive = false;
+          break;
+        }
+      }
+      if (isAlive) {
+        throw new Error(`[FAIL-CLOSED] Chrome test process (PID ${pid}) failed to terminate`);
+      }
+    }
+
+    // 4. Retry deleting userDataDir and confirm directory is gone (fail-closed)
     if (this.profile) {
-      try { fs.rmSync(this.profile, { recursive: true, force: true }); } catch {}
+      let removed = false;
+      let lastErr = null;
+      for (let attempt = 0; attempt < 25; attempt++) {
+        if (!fs.existsSync(this.profile)) {
+          removed = true;
+          break;
+        }
+        try {
+          fs.rmSync(this.profile, { recursive: true, force: true });
+          if (!fs.existsSync(this.profile)) {
+            removed = true;
+            break;
+          }
+        } catch (err) {
+          lastErr = err;
+        }
+        await delay(300);
+      }
+      if (!removed && fs.existsSync(this.profile)) {
+        throw new Error(`[FAIL-CLOSED] Failed to cleanup Chrome profile directory ${this.profile}: ${lastErr?.message || 'Directory still exists'}`);
+      }
     }
   }
 }
