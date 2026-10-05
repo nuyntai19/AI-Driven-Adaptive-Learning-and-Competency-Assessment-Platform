@@ -56,14 +56,15 @@ async function runGroupB() {
       if (!btn) throw new Error('Cannot find Create Curriculum button');
       btn.click();
     })()`);
-    await delay(2500);
+
+    // Capture created curriculum ID DIRECTLY from the API response (no DB title lookups)
+    const createdCurriculum = await client.waitForCreatedEntity('curriculums', 'UIACC-ENG-G10', 10000);
+    console.log(`[GROUP B] Captured curriculumId '${createdCurriculum.id}' directly from creation API response for 'UIACC-ENG-G10'`);
+    registerCreatedCurriculumId(createdCurriculum.id);
+    await delay(1500);
 
     // Assert curriculum created in DB with grade_level 10
     assertCurriculumCreated('UIACC-ENG-G10', 10);
-    const curDb = queryRows("SELECT curriculum_id FROM curriculums WHERE title = 'UIACC-ENG-G10' ORDER BY created_at DESC LIMIT 1;");
-    if (curDb.length > 0) {
-      registerCreatedCurriculumId(curDb[0].curriculum_id);
-    }
     console.log('[ASSERT PASS Scenario 09] Curriculum UIACC-ENG-G10 confirmed created in DB with grade_level=10');
 
     // ──────────────────────────────────────────────────────────────────────────

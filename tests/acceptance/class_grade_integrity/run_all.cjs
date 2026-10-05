@@ -4,11 +4,11 @@ const { runGroupC } = require('./group_c_assignments.cjs');
 const { runGroupD } = require('./group_d_students.cjs');
 const { runGroupE } = require('./group_e_security.cjs');
 const {
+  preflightCheckAndVerifyOwnership,
   takeDatabaseSnapshot,
-  assertDatabaseSnapshotUnchanged,
-  resetRunRegistry,
+  assertDatabaseIntegrityUnchanged,
   cleanupRunFixtures,
-  cleanPriorRunFixturesIfAny,
+  removeClientConfigFile,
 } = require('./fixture_helper.cjs');
 
 async function main() {
@@ -19,13 +19,13 @@ async function main() {
   console.log('   Branch: student/answer | Mode: Headless Chrome CDP');
   console.log('========================================================================\n');
 
-  // 1. Clean prior leftover test IDs if an earlier process crashed, and reset registry
-  cleanPriorRunFixturesIfAny();
-  resetRunRegistry();
+  // 1. Fail-fast preflight check: verify DB clean or ownership proof in manifest
+  preflightCheckAndVerifyOwnership();
 
-  // 2. Capture baseline snapshot of non-fixture data to verify zero contamination
+  // 2. Capture baseline snapshot and SHA-256 cryptographic content state hash
   const baselineSnapshot = takeDatabaseSnapshot();
-  console.log('[INTEGRITY] Baseline snapshot taken before run:', JSON.stringify(baselineSnapshot));
+  console.log('[INTEGRITY] Baseline row counts:', JSON.stringify(baselineSnapshot.counts));
+  console.log('[INTEGRITY] Baseline cryptographic state hash (SHA-256):', baselineSnapshot.contentHash);
 
   const suiteResults = [];
 
@@ -54,11 +54,18 @@ async function main() {
       }
     }
   } finally {
-    // 3. Clean up ONLY entities with registered IDs created during this run
-    cleanupRunFixtures();
-
-    // 4. Verify non-fixture database records remain completely untouched
-    assertDatabaseSnapshotUnchanged(baselineSnapshot);
+    try {
+      // 3. Clean up ONLY entities registered with proven ownership IDs
+      cleanupRunFixtures();
+    } finally {
+      try {
+        // 4. Verify BOTH row counts AND cryptographic content state hash
+        assertDatabaseIntegrityUnchanged(baselineSnapshot);
+      } finally {
+        // 5. Clean up temporary MySQL credential file inside container
+        removeClientConfigFile();
+      }
+    }
   }
 
   const totalDuration = ((Date.now() - startTime) / 1000).toFixed(1);

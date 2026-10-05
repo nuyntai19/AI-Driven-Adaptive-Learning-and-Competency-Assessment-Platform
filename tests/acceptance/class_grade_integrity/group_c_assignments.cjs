@@ -304,10 +304,15 @@ async function runGroupC() {
       );
       if (pubBtn) pubBtn.click();
     })()`);
-    await delay(2500);
+
+    // Capture created assignment ID DIRECTLY from the API response (no DB title lookups)
+    const createdAssign = await client.waitForCreatedEntity('assignments', 'UIACC-ENG-HW-G10', 10000);
+    console.log(`[GROUP C] Captured assignmentId '${createdAssign.id}' directly from creation API response for 'UIACC-ENG-HW-G10'`);
+    registerCreatedAssignmentId(createdAssign.id);
+    await delay(1500);
 
     // Ensure assignment is published in backend for Group D student visibility
-    await client.eval(`(async (seedPw) => {
+    await client.eval(`(async (seedPw, assignId) => {
       const loginRes = await fetch('/api/v1/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -316,33 +321,24 @@ async function runGroupC() {
       const { data } = await loginRes.json();
       const token = data.accessToken;
 
-      const aRes = await fetch('/api/v1/assignments?pageSize=50', {
+      const detailRes = await fetch('/api/v1/assignments/' + assignId, {
         headers: { 'Authorization': 'Bearer ' + token }
       });
-      const aData = await aRes.json();
-      const assign = (aData.data || []).find(a => a.title.includes('UIACC-ENG-HW-G10'));
-      if (assign && assign.status === 'Draft') {
-        const detailRes = await fetch('/api/v1/assignments/' + assign.assignmentId, {
-          headers: { 'Authorization': 'Bearer ' + token }
-        });
-        const detail = await detailRes.json();
-        await fetch('/api/v1/assignments/' + assign.assignmentId + '/publish', {
+      const detail = await detailRes.json();
+      if (detail.data?.status === 'Draft') {
+        await fetch('/api/v1/assignments/' + assignId + '/publish', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-          body: JSON.stringify({ rowVersion: detail.data?.rowVersion || assign.rowVersion })
+          body: JSON.stringify({ rowVersion: detail.data?.rowVersion || 1 })
         });
       }
-    })(${JSON.stringify(SEED_PASSWORD)})`);
+    })(${JSON.stringify(SEED_PASSWORD)}, ${JSON.stringify(createdAssign.id)})`);
     await delay(1000);
 
     assertAssignmentPublished('UIACC-ENG-HW-G10', {
       expectedReasonSubstr: 'nguyện vọng',
       targetStudentId: 'd0000000-0000-0000-0001-000000000008',
     });
-    const assignRows = queryRows("SELECT assignment_id FROM assignments WHERE title = 'UIACC-ENG-HW-G10' ORDER BY created_at DESC LIMIT 1;");
-    if (assignRows.length > 0) {
-      registerCreatedAssignmentId(assignRows[0].assignment_id);
-    }
     console.log('[ASSERT PASS Group C] Assignment UIACC-ENG-HW-G10 confirmed Published with target student05 (Bảo Lễ Hồ) in DB');
 
     console.log('Valid assignment UIACC-ENG-HW-G10 published successfully.');

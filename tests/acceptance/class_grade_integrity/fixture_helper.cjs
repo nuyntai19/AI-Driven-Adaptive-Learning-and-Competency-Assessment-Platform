@@ -1,36 +1,84 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { execSync } = require('node:child_process');
 
 const WORKSPACE_DIR = process.env.WORKSPACE_ROOT || path.resolve(__dirname, '../../..');
+const MANIFEST_FILE = path.join(__dirname, '.fixture_manifest.json');
 
 // In-memory registry of entities created specifically by this test run
 const runRegistry = {
+  runId: null,
   classIds: new Set(),
   curriculumIds: new Set(),
   assignmentIds: new Set(),
 };
 
+function readManifestFile() {
+  if (fs.existsSync(MANIFEST_FILE)) {
+    try {
+      return JSON.parse(fs.readFileSync(MANIFEST_FILE, 'utf8'));
+    } catch (e) {
+      return null;
+    }
+  }
+  return null;
+}
+
+function writeManifestFile() {
+  const data = {
+    runId: runRegistry.runId,
+    updatedAt: new Date().toISOString(),
+    status: 'RUNNING',
+    ownedEntities: {
+      classIds: Array.from(runRegistry.classIds),
+      curriculumIds: Array.from(runRegistry.curriculumIds),
+      assignmentIds: Array.from(runRegistry.assignmentIds),
+    },
+  };
+  fs.writeFileSync(MANIFEST_FILE, JSON.stringify(data, null, 2), 'utf8');
+}
+
+function initializeRunManifest() {
+  runRegistry.runId = `UIACC-RUN-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+  runRegistry.classIds.clear();
+  runRegistry.curriculumIds.clear();
+  runRegistry.assignmentIds.clear();
+  writeManifestFile();
+  console.log(`[MANIFEST] Initialized fresh test session manifest: ${runRegistry.runId}`);
+}
+
 function resetRunRegistry() {
+  runRegistry.runId = null;
   runRegistry.classIds.clear();
   runRegistry.curriculumIds.clear();
   runRegistry.assignmentIds.clear();
 }
 
 function registerCreatedClassId(id) {
-  if (id) runRegistry.classIds.add(String(id));
+  if (id) {
+    runRegistry.classIds.add(String(id));
+    writeManifestFile();
+  }
 }
 
 function registerCreatedCurriculumId(id) {
-  if (id) runRegistry.curriculumIds.add(String(id));
+  if (id) {
+    runRegistry.curriculumIds.add(String(id));
+    writeManifestFile();
+  }
 }
 
 function registerCreatedAssignmentId(id) {
-  if (id) runRegistry.assignmentIds.add(String(id));
+  if (id) {
+    runRegistry.assignmentIds.add(String(id));
+    writeManifestFile();
+  }
 }
 
 function getTrackedIds() {
   return {
+    runId: runRegistry.runId,
     classIds: Array.from(runRegistry.classIds),
     curriculumIds: Array.from(runRegistry.curriculumIds),
     assignmentIds: Array.from(runRegistry.assignmentIds),
@@ -61,6 +109,18 @@ function ensureClientConfigFile() {
     'docker exec -i edutwin-mysql sh -c "cat > /etc/mysql/fixture_client.cnf && chmod 600 /etc/mysql/fixture_client.cnf"',
     { input: cnfContent, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
   );
+}
+
+function removeClientConfigFile() {
+  try {
+    execSync('docker exec edutwin-mysql rm -f /etc/mysql/fixture_client.cnf', {
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    console.log('[SECURITY] Credential option file /etc/mysql/fixture_client.cnf cleaned up from container.');
+  } catch (err) {
+    // ignore if container is stopped or file already removed
+  }
 }
 
 function executeSql(sql) {
@@ -146,64 +206,135 @@ function cleanupRunFixtures() {
   const tracked = getTrackedIds();
   const count = tracked.classIds.length + tracked.curriculumIds.length + tracked.assignmentIds.length;
   if (count > 0) {
-    console.log(`[FIXTURE] Cleaning up ${count} run-scoped fixtures specifically by ID...`);
+    console.log(`[FIXTURE] Cleaning up ${count} run-scoped fixtures specifically by ID for session ${tracked.runId}...`);
     deleteEntitiesByIds(tracked);
-    resetRunRegistry();
     console.log('[FIXTURE] Run-scoped cleanup complete.');
+  }
+  resetRunRegistry();
+  if (fs.existsSync(MANIFEST_FILE)) {
+    try { fs.unlinkSync(MANIFEST_FILE); } catch (e) {}
   }
 }
 
-// Cleans up any leftover entities from a prior interrupted run by targeting exact test entity names
-function cleanPriorRunFixturesIfAny() {
-  const assignRows = queryRows("SELECT assignment_id FROM assignments WHERE title = 'UIACC-ENG-HW-G10'");
-  const curRows = queryRows("SELECT curriculum_id FROM curriculums WHERE title = 'UIACC-ENG-G10'");
+// Preflight check: If existing fixture names exist without proven manifest ownership, FAIL-FAST (do NOT delete).
+function preflightCheckAndVerifyOwnership() {
+  const assignRows = queryRows("SELECT assignment_id, title FROM assignments WHERE title = 'UIACC-ENG-HW-G10'");
+  const curRows = queryRows("SELECT curriculum_id, title FROM curriculums WHERE title = 'UIACC-ENG-G10'");
   const classRows = queryRows(
-    "SELECT class_id FROM classes WHERE class_name IN ('UIACC-GRADE10-CLASS', 'UIACC-GRADE11-CLASS', 'UIACC-INACTIVE-CLASS', 'UIACC-EMPTY-CLASS') OR class_name LIKE 'UIACC-EMPTY-CLASS#del#%'"
+    "SELECT class_id, class_name FROM classes WHERE class_name IN ('UIACC-GRADE10-CLASS', 'UIACC-GRADE11-CLASS', 'UIACC-INACTIVE-CLASS', 'UIACC-EMPTY-CLASS') OR class_name LIKE 'UIACC-EMPTY-CLASS#del#%'"
   );
 
-  const assignmentIds = assignRows.map((r) => r.assignment_id);
-  const curriculumIds = curRows.map((r) => r.curriculum_id);
-  const classIds = classRows.map((r) => r.class_id);
-
-  if (assignmentIds.length || curriculumIds.length || classIds.length) {
-    deleteEntitiesByIds({ classIds, curriculumIds, assignmentIds });
+  const foundCount = assignRows.length + curRows.length + classRows.length;
+  if (foundCount === 0) {
+    if (fs.existsSync(MANIFEST_FILE)) {
+      try { fs.unlinkSync(MANIFEST_FILE); } catch (e) {}
+    }
+    initializeRunManifest();
+    return;
   }
+
+  const manifest = readManifestFile();
+  if (!manifest || !manifest.ownedEntities) {
+    throw new Error(
+      `[FAIL-FAST OWNERSHIP VIOLATION] Database contains ${foundCount} pre-existing fixture record(s) matching acceptance names, but NO valid manifest file exists on disk to prove ownership. Found: ` +
+      JSON.stringify({ assignments: assignRows, curriculums: curRows, classes: classRows }) +
+      '. Harness will NOT auto-delete unowned records. Please verify the environment manually.'
+    );
+  }
+
+  const ownedClasses = new Set(manifest.ownedEntities.classIds || []);
+  const ownedCurriculums = new Set(manifest.ownedEntities.curriculumIds || []);
+  const ownedAssignments = new Set(manifest.ownedEntities.assignmentIds || []);
+
+  const unowned = [];
+  for (const c of classRows) {
+    if (!ownedClasses.has(String(c.class_id))) unowned.push({ type: 'class', id: c.class_id, name: c.class_name });
+  }
+  for (const cu of curRows) {
+    if (!ownedCurriculums.has(String(cu.curriculum_id))) unowned.push({ type: 'curriculum', id: cu.curriculum_id, title: cu.title });
+  }
+  for (const a of assignRows) {
+    if (!ownedAssignments.has(String(a.assignment_id))) unowned.push({ type: 'assignment', id: a.assignment_id, title: a.title });
+  }
+
+  if (unowned.length > 0) {
+    throw new Error(
+      `[FAIL-FAST OWNERSHIP VIOLATION] Database contains ${unowned.length} fixture record(s) not claimed in manifest ${manifest.runId}: ` +
+      JSON.stringify(unowned) +
+      '. Aborting run to protect shared data! Harness will NOT auto-delete unowned records.'
+    );
+  }
+
+  console.log(`[MANIFEST RECOVERY] Verified ownership of ${foundCount} leftover fixtures from interrupted session ${manifest.runId}. Cleaning specific owned IDs...`);
+  deleteEntitiesByIds(manifest.ownedEntities);
+  if (fs.existsSync(MANIFEST_FILE)) {
+    try { fs.unlinkSync(MANIFEST_FILE); } catch (e) {}
+  }
+  console.log('[MANIFEST RECOVERY] Interrupted session cleanup complete.');
+
+  initializeRunManifest();
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// Database Baseline Snapshot and Integrity Verification
+// Database Baseline Snapshot and Cryptographic Content Hash Verification
 // ──────────────────────────────────────────────────────────────────────────
 
 function takeDatabaseSnapshot() {
-  const rows = queryRows(`
+  const counts = {};
+  const cRows = queryRows(`
     SELECT 'users' as tbl, count(*) as cnt FROM users
     UNION ALL SELECT 'centers', count(*) FROM centers
-    UNION ALL SELECT 'classes', count(*) FROM classes WHERE class_name NOT IN ('UIACC-GRADE10-CLASS', 'UIACC-GRADE11-CLASS', 'UIACC-INACTIVE-CLASS', 'UIACC-EMPTY-CLASS') AND class_name NOT LIKE 'UIACC-EMPTY-CLASS#del#%'
-    UNION ALL SELECT 'curriculums', count(*) FROM curriculums WHERE title != 'UIACC-ENG-G10'
-    UNION ALL SELECT 'assignments', count(*) FROM assignments WHERE title != 'UIACC-ENG-HW-G10'
+    UNION ALL SELECT 'classes', count(*) FROM classes WHERE class_name NOT LIKE 'UIACC%'
+    UNION ALL SELECT 'curriculums', count(*) FROM curriculums WHERE title NOT LIKE 'UIACC%'
+    UNION ALL SELECT 'assignments', count(*) FROM assignments WHERE title NOT LIKE 'UIACC%'
     UNION ALL SELECT 'questions', count(*) FROM questions;
   `);
+  for (const r of cRows) counts[r.tbl] = Number(r.cnt);
 
-  const snapshot = {};
-  for (const r of rows) {
-    snapshot[r.tbl] = Number(r.cnt);
-  }
-  return snapshot;
+  const data = {
+    users: queryRows('SELECT user_id, username, role_name, status, center_id, is_deleted FROM users ORDER BY user_id;'),
+    centers: queryRows('SELECT center_id, center_code, center_name, status, is_deleted FROM centers ORDER BY center_id;'),
+    classes: queryRows("SELECT class_id, class_name, grade_level, status, is_deleted FROM classes WHERE class_name NOT LIKE 'UIACC%' ORDER BY class_id;"),
+    curriculums: queryRows("SELECT curriculum_id, title, grade_level, review_status, is_deleted FROM curriculums WHERE title NOT LIKE 'UIACC%' ORDER BY curriculum_id;"),
+    assignments: queryRows("SELECT assignment_id, title, status, is_deleted FROM assignments WHERE title NOT LIKE 'UIACC%' ORDER BY assignment_id;"),
+    questions: queryRows("SELECT question_id, grade_level, status, is_deleted FROM questions ORDER BY question_id;"),
+  };
+
+  const serialized = JSON.stringify(data);
+  const contentHash = crypto.createHash('sha256').update(serialized).digest('hex');
+
+  return { counts, contentHash, data };
 }
 
-function assertDatabaseSnapshotUnchanged(baseline) {
+function assertDatabaseIntegrityUnchanged(baseline) {
   const current = takeDatabaseSnapshot();
   const mismatches = [];
-  for (const key of Object.keys(baseline)) {
-    if (baseline[key] !== current[key]) {
-      mismatches.push(`${key}: expected ${baseline[key]}, got ${current[key]}`);
+
+  for (const tbl of Object.keys(baseline.counts)) {
+    if (baseline.counts[tbl] !== current.counts[tbl]) {
+      mismatches.push(`Table count mismatch in ${tbl}: baseline=${baseline.counts[tbl]}, current=${current.counts[tbl]}`);
     }
   }
-  if (mismatches.length > 0) {
-    throw new Error(`[ASSERT FAIL] Non-fixture database integrity violation! Mismatches: ${mismatches.join(', ')}`);
+
+  if (baseline.contentHash !== current.contentHash) {
+    for (const tbl of Object.keys(baseline.data)) {
+      const baseJson = JSON.stringify(baseline.data[tbl]);
+      const currJson = JSON.stringify(current.data[tbl]);
+      if (baseJson !== currJson) {
+        mismatches.push(`Content change detected in non-fixture table '${tbl}'!`);
+      }
+    }
   }
-  console.log('[ASSERT PASS] Non-fixture database records strictly preserved across run:', JSON.stringify(current));
+
+  if (mismatches.length > 0) {
+    throw new Error(`[ASSERT FAIL] Non-fixture database integrity violation!\n${mismatches.join('\n')}`);
+  }
+
+  console.log(`[ASSERT PASS] Non-fixture database integrity verified:`);
+  console.log(`  - Row counts matched across all 6 tables: ${JSON.stringify(current.counts)}`);
+  console.log(`  - SHA-256 cryptographic content state hash identical: ${current.contentHash.substring(0, 16)}...`);
 }
+
 
 // ──────────────────────────────────────────────────────────────────────────
 // Programmatic Assertions for Fail-Closed Acceptance
@@ -348,9 +479,10 @@ module.exports = {
   registerCreatedAssignmentId,
   getTrackedIds,
   cleanupRunFixtures,
-  cleanPriorRunFixturesIfAny,
+  preflightCheckAndVerifyOwnership,
+  removeClientConfigFile,
   takeDatabaseSnapshot,
-  assertDatabaseSnapshotUnchanged,
+  assertDatabaseIntegrityUnchanged,
   assertClassStudent,
   assertClassActive,
   assertClassDeleted,

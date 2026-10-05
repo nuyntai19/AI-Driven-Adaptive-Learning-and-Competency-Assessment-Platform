@@ -63,13 +63,12 @@ async function runGroupA() {
 
       // Submit modal
       await client.click('#btn-submit-create-class');
-      await delay(1800);
 
-      // Register the created class ID for scoped cleanup
-      const createdRows = queryRows(`SELECT class_id FROM classes WHERE class_name = '${className}' ORDER BY created_at DESC LIMIT 1;`);
-      if (createdRows.length > 0) {
-        registerCreatedClassId(createdRows[0].class_id);
-      }
+      // Capture created entity ID DIRECTLY from the API response (no DB name lookups)
+      const created = await client.waitForCreatedEntity('classes', className, 10000);
+      console.log(`[GROUP A] Captured classId '${created.id}' directly from creation API response for '${className}'`);
+      registerCreatedClassId(created.id);
+      await delay(1200);
     }
 
     // Helper to open Add Students modal for a class

@@ -110,6 +110,66 @@ class ChromeClient {
         deviceScaleFactor: 1,
         mobile: false,
       });
+
+      // Inject network response hook to capture created entities directly from API responses
+      await this.call('Page.addScriptToEvaluateOnNewDocument', {
+        source: `
+          window.__createdEntities = { classes: [], curriculums: [], assignments: [] };
+          const origOpen = XMLHttpRequest.prototype.open;
+          const origSend = XMLHttpRequest.prototype.send;
+          XMLHttpRequest.prototype.open = function(method, url, ...args) {
+            this.__method = method;
+            this.__url = url;
+            return origOpen.call(this, method, url, ...args);
+          };
+          XMLHttpRequest.prototype.send = function(...args) {
+            this.addEventListener('load', function() {
+              try {
+                if (this.status === 201 || this.status === 200) {
+                  const json = JSON.parse(this.responseText);
+                  const d = json?.data || json;
+                  if (d && typeof d === 'object') {
+                    if (d.classId) {
+                      window.__createdEntities.classes.push({ id: String(d.classId), name: d.className || '', status: this.status });
+                    }
+                    if (d.curriculumId) {
+                      window.__createdEntities.curriculums.push({ id: String(d.curriculumId), title: d.title || '', status: this.status });
+                    }
+                    if (d.assignmentId) {
+                      window.__createdEntities.assignments.push({ id: String(d.assignmentId), title: d.title || '', status: this.status });
+                    }
+                  }
+                }
+              } catch (e) {}
+            });
+            return origSend.apply(this, args);
+          };
+
+          const origFetch = window.fetch;
+          window.fetch = async (...args) => {
+            const res = await origFetch(...args);
+            try {
+              const clone = res.clone();
+              if (res.status === 201 || res.status === 200) {
+                const json = await clone.json();
+                const d = json?.data || json;
+                if (d && typeof d === 'object') {
+                  if (d.classId) {
+                    window.__createdEntities.classes.push({ id: String(d.classId), name: d.className || '', status: res.status });
+                  }
+                  if (d.curriculumId) {
+                    window.__createdEntities.curriculums.push({ id: String(d.curriculumId), title: d.title || '', status: res.status });
+                  }
+                  if (d.assignmentId) {
+                    window.__createdEntities.assignments.push({ id: String(d.assignmentId), title: d.title || '', status: res.status });
+                  }
+                }
+              }
+            } catch (e) {}
+            return res;
+          };
+        `
+      });
     } catch (err) {
       await this.close();
       throw err;
@@ -140,10 +200,36 @@ class ChromeClient {
     return res.result?.value;
   }
 
+  async waitForCreatedEntity(type, expectedMatch = null, timeoutMs = 12000) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const item = await this.eval(`(() => {
+        const list = window.__createdEntities?.['${type}'] || [];
+        if (!list.length) return null;
+        if (${expectedMatch ? 'true' : 'false'}) {
+          const matchStr = ${JSON.stringify(expectedMatch || '')};
+          const idx = list.findIndex(x => (x.name || x.title || '').includes(matchStr));
+          if (idx !== -1) {
+            return list.splice(idx, 1)[0];
+          }
+          return null;
+        }
+        return list.pop() || null;
+      })()`);
+
+      if (item && item.id) {
+        return item;
+      }
+      await delay(200);
+    }
+    throw new Error(`[RESPONSE TIMEOUT] No API response captured for created ${type} (expected: ${expectedMatch || 'any'}) within ${timeoutMs}ms`);
+  }
+
   async navigate(url) {
     await this.call('Page.navigate', { url });
     await delay(1000);
   }
+
 
   async waitSelector(selector, timeoutMs = 10000) {
     const start = Date.now();
