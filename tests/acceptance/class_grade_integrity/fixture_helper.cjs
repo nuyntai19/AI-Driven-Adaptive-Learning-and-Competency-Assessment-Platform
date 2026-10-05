@@ -48,6 +48,32 @@ function initializeRunManifest() {
   console.log(`[MANIFEST] Initialized fresh test session manifest: ${runRegistry.runId}`);
 }
 
+const UUID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+function assertValidUuid(id, entityType = 'entity') {
+  if (typeof id !== 'string' || !UUID_REGEX.test(id.trim())) {
+    throw new Error(`[SECURITY FAIL] Invalid ${entityType} ID format (expected UUID v4): '${id}'`);
+  }
+  return id.trim();
+}
+
+const TARGET_CENTER_ID = '10000000-0000-0000-0000-000000000001';
+
+const ALLOWED_CLASS_NAMES = new Set([
+  'UIACC-GRADE10-CLASS',
+  'UIACC-GRADE11-CLASS',
+  'UIACC-INACTIVE-CLASS',
+  'UIACC-EMPTY-CLASS',
+]);
+
+function isAllowedClassName(name) {
+  if (!name) return false;
+  return ALLOWED_CLASS_NAMES.has(name) || name.startsWith('UIACC-EMPTY-CLASS#del#');
+}
+
+const ALLOWED_CURRICULUM_TITLES = new Set(['UIACC-ENG-G10']);
+const ALLOWED_ASSIGNMENT_TITLES = new Set(['UIACC-ENG-HW-G10']);
+
 function resetRunRegistry() {
   runRegistry.runId = null;
   runRegistry.classIds.clear();
@@ -57,21 +83,24 @@ function resetRunRegistry() {
 
 function registerCreatedClassId(id) {
   if (id) {
-    runRegistry.classIds.add(String(id));
+    const validId = assertValidUuid(id, 'class');
+    runRegistry.classIds.add(validId);
     writeManifestFile();
   }
 }
 
 function registerCreatedCurriculumId(id) {
   if (id) {
-    runRegistry.curriculumIds.add(String(id));
+    const validId = assertValidUuid(id, 'curriculum');
+    runRegistry.curriculumIds.add(validId);
     writeManifestFile();
   }
 }
 
 function registerCreatedAssignmentId(id) {
   if (id) {
-    runRegistry.assignmentIds.add(String(id));
+    const validId = assertValidUuid(id, 'assignment');
+    runRegistry.assignmentIds.add(validId);
     writeManifestFile();
   }
 }
@@ -112,16 +141,69 @@ function ensureClientConfigFile() {
 }
 
 function removeClientConfigFile() {
+  let removeErr = null;
   try {
     execSync('docker exec edutwin-mysql rm -f /etc/mysql/fixture_client.cnf', {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
     });
-    console.log('[SECURITY] Credential option file /etc/mysql/fixture_client.cnf cleaned up from container.');
   } catch (err) {
-    // ignore if container is stopped or file already removed
+    removeErr = err;
   }
+
+  // Fail-closed verification: credential file MUST NOT remain in container
+  let fileCheck = '';
+  try {
+    fileCheck = execSync('docker exec edutwin-mysql test -f /etc/mysql/fixture_client.cnf && echo EXISTS || echo GONE', {
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim();
+  } catch (err) {
+    throw new Error(`[SECURITY FAIL] Failed to verify removal of credential file /etc/mysql/fixture_client.cnf: ${err.message}`);
+  }
+
+  if (fileCheck.includes('EXISTS')) {
+    throw new Error('[SECURITY FAIL] /etc/mysql/fixture_client.cnf still exists in container after deletion attempt!');
+  }
+
+  if (removeErr) {
+    throw new Error(`[SECURITY FAIL] Error executing removal of credential file: ${removeErr.message}`);
+  }
+
+  console.log('[SECURITY] Credential option file /etc/mysql/fixture_client.cnf successfully removed and verified absent from container.');
 }
+
+// Safety-net hooks: Ensure credential file is purged even if standalone script exits or process is interrupted
+process.on('exit', () => {
+  try {
+    const check = execSync('docker exec edutwin-mysql test -f /etc/mysql/fixture_client.cnf && echo EXISTS || echo GONE', {
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim();
+    if (check.includes('EXISTS')) {
+      execSync('docker exec edutwin-mysql rm -f /etc/mysql/fixture_client.cnf', {
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+    }
+  } catch (e) {
+    // Process is exiting
+  }
+});
+
+process.on('SIGINT', () => {
+  try {
+    removeClientConfigFile();
+  } catch (e) {}
+  process.exit(130);
+});
+
+process.on('SIGTERM', () => {
+  try {
+    removeClientConfigFile();
+  } catch (e) {}
+  process.exit(143);
+});
 
 function executeSql(sql) {
   try {
@@ -172,33 +254,123 @@ function queryRows(sql) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// Scoped ID-Based Fixture Cleanup: Only delete entities with specific IDs
+// Scoped ID-Based Fixture Cleanup: Strictly validated UUIDs & two-way ownership
 // ──────────────────────────────────────────────────────────────────────────
 
 function deleteEntitiesByIds({ classIds = [], curriculumIds = [], assignmentIds = [] }) {
   if (assignmentIds.length > 0) {
-    const idList = assignmentIds.map((id) => `'${id}'`).join(',');
+    const validatedIds = assignmentIds.map((id) => assertValidUuid(id, 'assignment'));
+    const idList = validatedIds.map((id) => `'${id}'`).join(',');
     executeSql(`
       DELETE FROM student_assignment_progress WHERE assignment_id IN (${idList});
       DELETE FROM assignment_targets WHERE assignment_id IN (${idList});
       DELETE FROM assignment_questions WHERE assignment_id IN (${idList});
-      DELETE FROM assignments WHERE assignment_id IN (${idList});
+      DELETE FROM assignments WHERE assignment_id IN (${idList}) AND center_id = '${TARGET_CENTER_ID}' AND title LIKE 'UIACC%';
     `);
   }
   if (curriculumIds.length > 0) {
-    const idList = curriculumIds.map((id) => `'${id}'`).join(',');
+    const validatedIds = curriculumIds.map((id) => assertValidUuid(id, 'curriculum'));
+    const idList = validatedIds.map((id) => `'${id}'`).join(',');
     executeSql(`
       DELETE FROM curriculum_classes WHERE curriculum_id IN (${idList});
-      DELETE FROM curriculums WHERE curriculum_id IN (${idList});
+      DELETE FROM curriculums WHERE curriculum_id IN (${idList}) AND center_id = '${TARGET_CENTER_ID}' AND title LIKE 'UIACC%';
     `);
   }
   if (classIds.length > 0) {
-    const idList = classIds.map((id) => `'${id}'`).join(',');
+    const validatedIds = classIds.map((id) => assertValidUuid(id, 'class'));
+    const idList = validatedIds.map((id) => `'${id}'`).join(',');
     executeSql(`
       DELETE FROM curriculum_classes WHERE class_id IN (${idList});
       DELETE FROM class_students WHERE class_id IN (${idList});
-      DELETE FROM classes WHERE class_id IN (${idList});
+      DELETE FROM classes WHERE class_id IN (${idList}) AND center_id = '${TARGET_CENTER_ID}' AND (class_name LIKE 'UIACC%' OR class_name LIKE 'UIACC%#del#%');
     `);
+  }
+}
+
+// Strict Two-Way Verification:
+// 1. Every ID in manifest MUST exist in DB, belong to TARGET_CENTER_ID, and match allowed fixture patterns (rejects extra/foreign IDs).
+// 2. Every fixture entity currently in DB MUST be present in manifest (rejects unowned DB records).
+function verifyManifestOwnershipStrict(manifest) {
+  if (!manifest || typeof manifest !== 'object' || !manifest.ownedEntities) {
+    throw new Error('[FAIL-FAST OWNERSHIP VIOLATION] Invalid or missing manifest object');
+  }
+
+  const { classIds = [], curriculumIds = [], assignmentIds = [] } = manifest.ownedEntities;
+
+  // Direction A (Manifest -> DB): Reject extraneous, non-existent, cross-center, or non-fixture IDs
+  for (const cid of classIds) {
+    assertValidUuid(cid, 'class');
+    const rows = queryRows(`SELECT class_id, class_name, center_id FROM classes WHERE class_id = '${cid}';`);
+    if (rows.length === 0) {
+      throw new Error(`[FAIL-FAST OWNERSHIP VIOLATION] Manifest claims class ID '${cid}' but record does not exist in DB! Aborting.`);
+    }
+    const r = rows[0];
+    if (r.center_id !== TARGET_CENTER_ID) {
+      throw new Error(`[FAIL-FAST OWNERSHIP VIOLATION] Manifest claims class ID '${cid}' belonging to unauthorized center '${r.center_id}'! Aborting.`);
+    }
+    if (!isAllowedClassName(r.class_name)) {
+      throw new Error(`[FAIL-FAST OWNERSHIP VIOLATION] Manifest claims class ID '${cid}' with non-fixture name '${r.class_name}'! Aborting.`);
+    }
+  }
+
+  for (const cuid of curriculumIds) {
+    assertValidUuid(cuid, 'curriculum');
+    const rows = queryRows(`SELECT curriculum_id, title, center_id FROM curriculums WHERE curriculum_id = '${cuid}';`);
+    if (rows.length === 0) {
+      throw new Error(`[FAIL-FAST OWNERSHIP VIOLATION] Manifest claims curriculum ID '${cuid}' but record does not exist in DB! Aborting.`);
+    }
+    const r = rows[0];
+    if (r.center_id !== TARGET_CENTER_ID) {
+      throw new Error(`[FAIL-FAST OWNERSHIP VIOLATION] Manifest claims curriculum ID '${cuid}' belonging to unauthorized center '${r.center_id}'! Aborting.`);
+    }
+    if (!ALLOWED_CURRICULUM_TITLES.has(r.title)) {
+      throw new Error(`[FAIL-FAST OWNERSHIP VIOLATION] Manifest claims curriculum ID '${cuid}' with non-fixture title '${r.title}'! Aborting.`);
+    }
+  }
+
+  for (const aid of assignmentIds) {
+    assertValidUuid(aid, 'assignment');
+    const rows = queryRows(`SELECT assignment_id, title, center_id FROM assignments WHERE assignment_id = '${aid}';`);
+    if (rows.length === 0) {
+      throw new Error(`[FAIL-FAST OWNERSHIP VIOLATION] Manifest claims assignment ID '${aid}' but record does not exist in DB! Aborting.`);
+    }
+    const r = rows[0];
+    if (r.center_id !== TARGET_CENTER_ID) {
+      throw new Error(`[FAIL-FAST OWNERSHIP VIOLATION] Manifest claims assignment ID '${aid}' belonging to unauthorized center '${r.center_id}'! Aborting.`);
+    }
+    if (!ALLOWED_ASSIGNMENT_TITLES.has(r.title)) {
+      throw new Error(`[FAIL-FAST OWNERSHIP VIOLATION] Manifest claims assignment ID '${aid}' with non-fixture title '${r.title}'! Aborting.`);
+    }
+  }
+
+  // Direction B (DB -> Manifest): Reject unowned fixture records in DB
+  const dbClasses = queryRows(`SELECT class_id, class_name FROM classes WHERE center_id = '${TARGET_CENTER_ID}' AND (class_name IN ('UIACC-GRADE10-CLASS', 'UIACC-GRADE11-CLASS', 'UIACC-INACTIVE-CLASS', 'UIACC-EMPTY-CLASS') OR class_name LIKE 'UIACC-EMPTY-CLASS#del#%');`);
+  const dbCurriculums = queryRows(`SELECT curriculum_id, title FROM curriculums WHERE center_id = '${TARGET_CENTER_ID}' AND title = 'UIACC-ENG-G10';`);
+  const dbAssignments = queryRows(`SELECT assignment_id, title FROM assignments WHERE center_id = '${TARGET_CENTER_ID}' AND title = 'UIACC-ENG-HW-G10';`);
+
+  const manifestClassSet = new Set(classIds);
+  const manifestCurriculumSet = new Set(curriculumIds);
+  const manifestAssignmentSet = new Set(assignmentIds);
+
+  const unowned = [];
+  for (const c of dbClasses) {
+    if (!manifestClassSet.has(c.class_id)) {
+      unowned.push({ type: 'class', id: c.class_id, name: c.class_name });
+    }
+  }
+  for (const cu of dbCurriculums) {
+    if (!manifestCurriculumSet.has(cu.curriculum_id)) {
+      unowned.push({ type: 'curriculum', id: cu.curriculum_id, title: cu.title });
+    }
+  }
+  for (const a of dbAssignments) {
+    if (!manifestAssignmentSet.has(a.assignment_id)) {
+      unowned.push({ type: 'assignment', id: a.assignment_id, title: a.title });
+    }
+  }
+
+  if (unowned.length > 0) {
+    throw new Error(`[FAIL-FAST OWNERSHIP VIOLATION] Database contains ${unowned.length} fixture record(s) not claimed in manifest ${manifest.runId}: ${JSON.stringify(unowned)}. Aborting run to protect unowned data!`);
   }
 }
 
@@ -206,7 +378,15 @@ function cleanupRunFixtures() {
   const tracked = getTrackedIds();
   const count = tracked.classIds.length + tracked.curriculumIds.length + tracked.assignmentIds.length;
   if (count > 0) {
-    console.log(`[FIXTURE] Cleaning up ${count} run-scoped fixtures specifically by ID for session ${tracked.runId}...`);
+    console.log(`[FIXTURE] Verifying two-way ownership and cleaning ${count} run-scoped fixtures for session ${tracked.runId}...`);
+    verifyManifestOwnershipStrict({
+      runId: tracked.runId,
+      ownedEntities: {
+        classIds: tracked.classIds,
+        curriculumIds: tracked.curriculumIds,
+        assignmentIds: tracked.assignmentIds,
+      },
+    });
     deleteEntitiesByIds(tracked);
     console.log('[FIXTURE] Run-scoped cleanup complete.');
   }
@@ -216,12 +396,12 @@ function cleanupRunFixtures() {
   }
 }
 
-// Preflight check: If existing fixture names exist without proven manifest ownership, FAIL-FAST (do NOT delete).
+// Preflight check: Strict two-way ownership verification before starting
 function preflightCheckAndVerifyOwnership() {
-  const assignRows = queryRows("SELECT assignment_id, title FROM assignments WHERE title = 'UIACC-ENG-HW-G10'");
-  const curRows = queryRows("SELECT curriculum_id, title FROM curriculums WHERE title = 'UIACC-ENG-G10'");
+  const assignRows = queryRows(`SELECT assignment_id, title FROM assignments WHERE center_id = '${TARGET_CENTER_ID}' AND title = 'UIACC-ENG-HW-G10'`);
+  const curRows = queryRows(`SELECT curriculum_id, title FROM curriculums WHERE center_id = '${TARGET_CENTER_ID}' AND title = 'UIACC-ENG-G10'`);
   const classRows = queryRows(
-    "SELECT class_id, class_name FROM classes WHERE class_name IN ('UIACC-GRADE10-CLASS', 'UIACC-GRADE11-CLASS', 'UIACC-INACTIVE-CLASS', 'UIACC-EMPTY-CLASS') OR class_name LIKE 'UIACC-EMPTY-CLASS#del#%'"
+    `SELECT class_id, class_name FROM classes WHERE center_id = '${TARGET_CENTER_ID}' AND (class_name IN ('UIACC-GRADE10-CLASS', 'UIACC-GRADE11-CLASS', 'UIACC-INACTIVE-CLASS', 'UIACC-EMPTY-CLASS') OR class_name LIKE 'UIACC-EMPTY-CLASS#del#%')`
   );
 
   const foundCount = assignRows.length + curRows.length + classRows.length;
@@ -242,30 +422,10 @@ function preflightCheckAndVerifyOwnership() {
     );
   }
 
-  const ownedClasses = new Set(manifest.ownedEntities.classIds || []);
-  const ownedCurriculums = new Set(manifest.ownedEntities.curriculumIds || []);
-  const ownedAssignments = new Set(manifest.ownedEntities.assignmentIds || []);
+  // Strict two-way validation: manifest <-> DB
+  verifyManifestOwnershipStrict(manifest);
 
-  const unowned = [];
-  for (const c of classRows) {
-    if (!ownedClasses.has(String(c.class_id))) unowned.push({ type: 'class', id: c.class_id, name: c.class_name });
-  }
-  for (const cu of curRows) {
-    if (!ownedCurriculums.has(String(cu.curriculum_id))) unowned.push({ type: 'curriculum', id: cu.curriculum_id, title: cu.title });
-  }
-  for (const a of assignRows) {
-    if (!ownedAssignments.has(String(a.assignment_id))) unowned.push({ type: 'assignment', id: a.assignment_id, title: a.title });
-  }
-
-  if (unowned.length > 0) {
-    throw new Error(
-      `[FAIL-FAST OWNERSHIP VIOLATION] Database contains ${unowned.length} fixture record(s) not claimed in manifest ${manifest.runId}: ` +
-      JSON.stringify(unowned) +
-      '. Aborting run to protect shared data! Harness will NOT auto-delete unowned records.'
-    );
-  }
-
-  console.log(`[MANIFEST RECOVERY] Verified ownership of ${foundCount} leftover fixtures from interrupted session ${manifest.runId}. Cleaning specific owned IDs...`);
+  console.log(`[MANIFEST RECOVERY] Verified strict two-way ownership of ${foundCount} leftover fixtures from interrupted session ${manifest.runId}. Cleaning verified owned IDs...`);
   deleteEntitiesByIds(manifest.ownedEntities);
   if (fs.existsSync(MANIFEST_FILE)) {
     try { fs.unlinkSync(MANIFEST_FILE); } catch (e) {}
@@ -274,6 +434,7 @@ function preflightCheckAndVerifyOwnership() {
 
   initializeRunManifest();
 }
+
 
 // ──────────────────────────────────────────────────────────────────────────
 // Database Baseline Snapshot and Cryptographic Content Hash Verification

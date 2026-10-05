@@ -19,14 +19,7 @@ async function main() {
   console.log('   Branch: student/answer | Mode: Headless Chrome CDP');
   console.log('========================================================================\n');
 
-  // 1. Fail-fast preflight check: verify DB clean or ownership proof in manifest
-  preflightCheckAndVerifyOwnership();
-
-  // 2. Capture baseline snapshot and SHA-256 cryptographic content state hash
-  const baselineSnapshot = takeDatabaseSnapshot();
-  console.log('[INTEGRITY] Baseline row counts:', JSON.stringify(baselineSnapshot.counts));
-  console.log('[INTEGRITY] Baseline cryptographic state hash (SHA-256):', baselineSnapshot.contentHash);
-
+  let baselineSnapshot = null;
   const suiteResults = [];
 
   const groups = [
@@ -38,6 +31,14 @@ async function main() {
   ];
 
   try {
+    // 1. Fail-fast preflight check: strict two-way ownership verification
+    preflightCheckAndVerifyOwnership();
+
+    // 2. Capture baseline snapshot and SHA-256 cryptographic state hash of enumerated core columns
+    baselineSnapshot = takeDatabaseSnapshot();
+    console.log('[INTEGRITY] Baseline row counts:', JSON.stringify(baselineSnapshot.counts));
+    console.log('[INTEGRITY] Baseline cryptographic state hash (SHA-256):', baselineSnapshot.contentHash);
+
     for (const group of groups) {
       const groupStart = Date.now();
       console.log(`\n>>> STARTING: ${group.name}`);
@@ -54,17 +55,37 @@ async function main() {
       }
     }
   } finally {
+    const teardownErrors = [];
+
+    // 3. Clean up ONLY entities registered with proven two-way ownership IDs
     try {
-      // 3. Clean up ONLY entities registered with proven ownership IDs
       cleanupRunFixtures();
-    } finally {
+    } catch (err) {
+      console.error('[TEARDOWN ERROR] Fixture cleanup failed:', err);
+      teardownErrors.push(err);
+    }
+
+    // 4. Verify BOTH row counts AND cryptographic content state hash
+    if (baselineSnapshot) {
       try {
-        // 4. Verify BOTH row counts AND cryptographic content state hash
         assertDatabaseIntegrityUnchanged(baselineSnapshot);
-      } finally {
-        // 5. Clean up temporary MySQL credential file inside container
-        removeClientConfigFile();
+      } catch (err) {
+        console.error('[TEARDOWN ERROR] Database integrity assertion failed:', err);
+        teardownErrors.push(err);
       }
+    }
+
+    // 5. Clean up temporary MySQL credential file inside container (MUST FAIL SUITE IF DELETION FAILS)
+    try {
+      removeClientConfigFile();
+    } catch (err) {
+      console.error('[TEARDOWN ERROR] Credential file removal failed:', err);
+      teardownErrors.push(err);
+    }
+
+    if (teardownErrors.length > 0) {
+      const combinedMsg = teardownErrors.map((e) => e.message || String(e)).join('\n');
+      throw new Error(`[SUITE TEARDOWN FAILURE] Teardown encountered errors:\n${combinedMsg}`);
     }
   }
 

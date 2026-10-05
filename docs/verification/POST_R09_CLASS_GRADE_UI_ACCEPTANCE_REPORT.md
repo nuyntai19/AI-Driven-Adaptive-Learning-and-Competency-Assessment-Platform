@@ -163,17 +163,28 @@ Trước khi đóng băng báo cáo nghiệm thu, toàn bộ các bộ kiểm th
 | **4** | **Frontend Unit/Component** | `npm test` (edutwin-web) | **Passed: 422**, Failed: 0, Skipped: 0 | 8.0 giây | **PASS (100%)** |
 | **5** | **Frontend Static Lint** | `npm run lint` (edutwin-web) | **0 Errors**, 33 Warnings (ESLint) | 14 giây | **PASS (100%)** |
 | **6** | **Production Bundle Build** | `npm run build` (edutwin-web) | **0 Errors** (`dist/` generated cleanly) | 11.4 giây | **PASS (100%)** |
-| **7** | **Acceptance Test Harness (CDP)** | `node tests/acceptance/class_grade_integrity/run_all.cjs` | **18/18 Passed (Run 1: 166.0s, Run 2: 171.4s)** | ~168.7 giây/lượt | **PASS (100% Idempotent)** |
+| **7** | **Acceptance Test Harness (CDP)** | `node tests/acceptance/class_grade_integrity/run_all.cjs` | **18/18 Passed (Run 1: 166.1s, Run 2: 169.3s)** | ~167.7 giây/lượt | **PASS (100% Idempotent)** |
 
 > [!NOTE]
-> - **Cơ chế Manifest ID Bền Vững & Fail-Fast Ownership:** Mỗi phiên chạy acceptance test được gán một mã phiên duy nhất (ví dụ `UIACC-RUN-...`) và ghi nhận danh sách ID tạo ra vào file manifest bền vững trên đĩa (`.fixture_manifest.json`). Bước preflight kiểm tra nếu phát hiện bản ghi mang tên fixture có sẵn trong database nhưng không có bằng chứng sở hữu trong manifest của phiên test trước thì hệ thống lập tức dừng lại (Fail-Fast), tuyệt đối KHÔNG tự động xóa dữ liệu lạ để bảo vệ dữ liệu dùng chung.
+> - **Cơ chế Manifest ID Bền Vững & Kiểm Tra Hai Chiều (Two-Way Ownership Verification):** Mỗi phiên chạy acceptance test được gán một mã phiên duy nhất (ví dụ `UIACC-RUN-...`) và ghi nhận danh sách ID tạo ra vào file manifest bền vững trên đĩa (`.fixture_manifest.json`). Bước preflight và teardown thực hiện kiểm tra quyền sở hữu hai chiều nghiêm ngặt:
+>   1. *Chiều Manifest -> DB:* Mọi ID trong manifest phải có định dạng UUID v4 hợp lệ, tồn tại trong database, thuộc đúng trung tâm chỉ định `EDUTWIN_A` (`10000000-0000-0000-0000-000000000001`), và mang tên/tiêu đề theo đúng mẫu fixture của phiên test. Nếu manifest chứa ID thừa, ID ngoại lai hoặc ID của lớp học khác, harness lập tức từ chối và dừng lại (Fail-Fast), ngăn chặn triệt để nguy cơ xóa nhầm thực thể ngoài phạm vi.
+>   2. *Chiều DB -> Manifest:* Mọi bản ghi mang tên fixture có trong DB phải nằm trong danh sách manifest. Nếu có bản ghi không thuộc manifest, harness lập tức dừng lại (Fail-Fast), tuyệt đối KHÔNG tự động xóa.
+>   3. Các câu lệnh `DELETE` trong SQL luôn áp dụng điều kiện vị từ phòng thủ kép (`WHERE id IN (...) AND center_id = '10000000-0000-0000-0000-000000000001' AND ... LIKE 'UIACC%'`) sau khi kiểm tra định dạng UUID.
 > - **Đăng ký ID trực tiếp từ phản hồi tạo bản ghi (Zero Name Lookups):** Khi tạo lớp, giáo trình, bài tập thông qua giao diện người dùng, harness bắt giữ ID thực thể trực tiếp từ phản hồi HTTP 201/200 của API qua hook XHR/Fetch trong trình duyệt (`waitForCreatedEntity`). Harness tuyệt đối không truy vấn lại DB theo tên để đăng ký ID, loại bỏ triệt để rủi ro nhận nhầm và xóa nhầm bản ghi trùng tên sẵn có khi thao tác tạo trong UI thất bại.
 > - **Bảo toàn Ngân hàng câu hỏi:** Kịch bản 12 kiểm tra hiển thị khối học thuật trên câu hỏi ngân hàng mà hoàn toàn không `UPDATE` hay `INSERT` vào các câu hỏi dùng chung 20030/20031. Dữ liệu câu hỏi được bảo toàn nguyên trạng (read-only).
-> - **Phân định rành mạch giữa Kiểm tra số lượng và Kiểm tra toàn vẹn nội dung dữ liệu:**
+> - **Phân định rành mạch giữa Kiểm tra số lượng và Phạm vi Kiểm tra mã băm SHA-256:**
 >   1. *Kiểm tra số lượng bản ghi (Row Count Verification):* Đối chiếu trước và sau suite số lượng bản ghi của 6 bảng ngoài fixture (`users: 17, centers: 3, classes: 4, curriculums: 4, assignments: 0, questions: 62`), bảo đảm không có bản ghi mồ côi hay hao hụt số lượng.
->   2. *Kiểm tra toàn vẹn trạng thái & nội dung (Cryptographic Content State Integrity Verification):* Toàn bộ các trường dữ liệu định danh và trạng thái cốt lõi của các bản ghi ngoài fixture (`users`, `centers`, `classes`, `curriculums`, `assignments`, `questions`) được tuần tự hóa và tính mã băm SHA-256 (`4638ffe91656df40...`) trước khi chạy. Sau khi dọn dẹp fixture, hàm `assertDatabaseIntegrityUnchanged` tính lại mã băm và so khớp tuyệt đối bằng code, chứng minh không có bất kỳ dòng nào ngoài fixture bị biến đổi giá trị cột.
-> - **Bảo mật kết nối & Dọn dẹp credential MySQL trong `finally`:** Toàn bộ lệnh truy vấn qua MySQL client sử dụng file cấu hình option `--defaults-file=/etc/mysql/fixture_client.cnf` được truyền an toàn qua stdin, loại bỏ hoàn toàn mật khẩu khỏi đối số dòng lệnh (`argv`) và danh sách tiến trình hệ điều hành. File cấu hình này được tự động xóa sạch khỏi container trong khối `finally` sau khi kết thúc suite test hoặc khi gặp sự cố, bảo đảm không lưu lại thông tin xác thực trên hệ thống.
+>   2. *Kiểm tra mã băm trạng thái các cột trọng yếu (Cryptographic Content State Hash):* Phạm vi kiểm tra mã băm SHA-256 (`4638ffe91656df40...`) bao trùm **các cột định danh, phân quyền, khối lớp, liên kết trung tâm và trạng thái xóa được liệt kê cụ thể** của sáu bảng:
+>      - `users`: `user_id, username, role_name, status, center_id, is_deleted`
+>      - `centers`: `center_id, center_code, center_name, status, is_deleted`
+>      - `classes` (ngoài `UIACC%`): `class_id, class_name, grade_level, status, is_deleted`
+>      - `curriculums` (ngoài `UIACC%`): `curriculum_id, title, grade_level, review_status, is_deleted`
+>      - `assignments` (ngoài `UIACC%`): `assignment_id, title, status, is_deleted`
+>      - `questions`: `question_id, grade_level, status, is_deleted`
+>      Hàm `assertDatabaseIntegrityUnchanged` so khớp mã băm trước và sau suite, chứng minh các trường nghiệp vụ cốt lõi này của toàn bộ các bản ghi ngoài fixture không bị đột biến.
+> - **Bảo mật kết nối & Dọn dẹp credential MySQL Fail-Closed trong `finally`:** Toàn bộ các bước thực thi (preflight, snapshot, các nhóm scenario, dọn fixture và kiểm tra toàn vẹn) được bao bọc trọn vẹn trong cấu trúc `try/finally` tại `run_all.cjs`. File cấu hình option `--defaults-file=/etc/mysql/fixture_client.cnf` được dọn sạch khỏi container MySQL trong khối `finally`. Hàm dọn dẹp kiểm tra chủ động sự vắng mặt của file trong container; nếu việc xóa file thất bại hoặc file vẫn tồn tại, hàm sẽ ném lỗi làm toàn bộ suite thất bại (Fail-Closed).
 > - **Fail-Closed Chrome Cleanup:** Lệnh `client.start()` được bảo vệ trong khối try-catch tự dọn dẹp nếu khởi động lỗi; phương thức `client.close()` luôn thực thi cả việc terminate tiến trình Chrome lẫn xóa thư mục profile người dùng `%TEMP%`, tổng hợp và ném lỗi nếu có bất kỳ bước nào thất bại. Hàm chụp ảnh có cơ chế retry chống khóa file trên Windows.
+
 
 ---
 
