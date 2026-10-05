@@ -1,11 +1,10 @@
 const { ChromeClient, loginUser, logoutUser, delay, WEB_URL, SEED_PASSWORD } = require('./chrome_client.cjs');
-const { assertAssignmentPublished, queryRows } = require('./fixture_helper.cjs');
+const { assertAssignmentPublished, queryRows, registerCreatedAssignmentId } = require('./fixture_helper.cjs');
 
 async function runGroupC() {
   const client = new ChromeClient();
-  await client.start();
-
   try {
+    await client.start();
     console.log('=== RUNNING GROUP C: TEACHER - ASSIGNMENT CREATION & VALIDATION GUARDS ===');
     await loginUser(client, 'teacher.english');
 
@@ -336,11 +335,14 @@ async function runGroupC() {
     })(${JSON.stringify(SEED_PASSWORD)})`);
     await delay(1000);
 
-    // Assert assignment published in DB with target student05 and preserved reason
     assertAssignmentPublished('UIACC-ENG-HW-G10', {
       expectedReasonSubstr: 'nguyện vọng',
       targetStudentId: 'd0000000-0000-0000-0001-000000000008',
     });
+    const assignRows = queryRows("SELECT assignment_id FROM assignments WHERE title = 'UIACC-ENG-HW-G10' ORDER BY created_at DESC LIMIT 1;");
+    if (assignRows.length > 0) {
+      registerCreatedAssignmentId(assignRows[0].assignment_id);
+    }
     console.log('[ASSERT PASS Group C] Assignment UIACC-ENG-HW-G10 confirmed Published with target student05 (Bảo Lễ Hồ) in DB');
 
     console.log('Valid assignment UIACC-ENG-HW-G10 published successfully.');

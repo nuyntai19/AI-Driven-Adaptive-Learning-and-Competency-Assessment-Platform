@@ -3,9 +3,8 @@ const { queryRows } = require('./fixture_helper.cjs');
 
 async function runGroupD() {
   const client = new ChromeClient();
-  await client.start();
-
   try {
+    await client.start();
     console.log('=== RUNNING GROUP D: STUDENT - TARGETED DISTRIBUTION & ISOLATION ===');
 
     // ──────────────────────────────────────────────────────────────────────────

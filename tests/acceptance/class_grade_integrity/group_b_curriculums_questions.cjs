@@ -1,6 +1,6 @@
 const { ChromeClient, loginUser, logoutUser, delay, WEB_URL, API_URL, SEED_PASSWORD } = require('./chrome_client.cjs');
 const {
-  ensureQuestions20030And20031,
+  registerCreatedCurriculumId,
   assertCurriculumCreated,
   assertCurriculumClassLink,
   queryRows,
@@ -8,9 +8,8 @@ const {
 
 async function runGroupB() {
   const client = new ChromeClient();
-  await client.start();
-
   try {
+    await client.start();
     console.log('=== RUNNING GROUP B: TEACHER - CURRICULUMS & QUESTIONS GRADE INTEGRITY ===');
     // Log in specifically as teacher.english
     await loginUser(client, 'teacher.english');
@@ -61,6 +60,10 @@ async function runGroupB() {
 
     // Assert curriculum created in DB with grade_level 10
     assertCurriculumCreated('UIACC-ENG-G10', 10);
+    const curDb = queryRows("SELECT curriculum_id FROM curriculums WHERE title = 'UIACC-ENG-G10' ORDER BY created_at DESC LIMIT 1;");
+    if (curDb.length > 0) {
+      registerCreatedCurriculumId(curDb[0].curriculum_id);
+    }
     console.log('[ASSERT PASS Scenario 09] Curriculum UIACC-ENG-G10 confirmed created in DB with grade_level=10');
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -164,7 +167,6 @@ async function runGroupB() {
     // Scenario 12: Question Grade Level Compatibility
     // ──────────────────────────────────────────────────────────────────────────
     console.log('Testing Scenario 12: Question bank grade level display and activation...');
-    ensureQuestions20030And20031();
 
     // Navigate to Question Bank
     await client.navigate(`${WEB_URL}/giao-vien/cau-hoi`);

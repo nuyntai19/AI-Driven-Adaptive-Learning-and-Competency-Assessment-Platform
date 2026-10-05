@@ -1,19 +1,16 @@
 const { ChromeClient, loginUser, logoutUser, delay, WEB_URL, SEED_PASSWORD } = require('./chrome_client.cjs');
 const {
-  resetUiaccFixtures,
+  registerCreatedClassId,
+  queryRows,
   assertClassStudent,
   assertClassActive,
   assertClassDeleted,
 } = require('./fixture_helper.cjs');
 
 async function runGroupA() {
-  // 1. Ensure clean, idempotent fixture state for UIACC records
-  resetUiaccFixtures();
-
   const client = new ChromeClient();
-  await client.start();
-
   try {
+    await client.start();
     console.log('=== RUNNING GROUP A: CENTER MANAGER - CLASS LIFECYCLE & GRADE INTEGRITY ===');
     await loginUser(client, 'manager');
 
@@ -67,6 +64,12 @@ async function runGroupA() {
       // Submit modal
       await client.click('#btn-submit-create-class');
       await delay(1800);
+
+      // Register the created class ID for scoped cleanup
+      const createdRows = queryRows(`SELECT class_id FROM classes WHERE class_name = '${className}' ORDER BY created_at DESC LIMIT 1;`);
+      if (createdRows.length > 0) {
+        registerCreatedClassId(createdRows[0].class_id);
+      }
     }
 
     // Helper to open Add Students modal for a class

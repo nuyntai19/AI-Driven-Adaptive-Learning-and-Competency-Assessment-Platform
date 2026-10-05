@@ -2,9 +2,8 @@ const { ChromeClient, loginUser, delay, SEED_PASSWORD } = require('./chrome_clie
 
 async function runGroupE() {
   const client = new ChromeClient();
-  await client.start();
-
   try {
+    await client.start();
     console.log('=== RUNNING GROUP E: ACCESS CONTROL & BACKEND SECURITY AUDIT ===');
     await loginUser(client, 'teacher.english');
 

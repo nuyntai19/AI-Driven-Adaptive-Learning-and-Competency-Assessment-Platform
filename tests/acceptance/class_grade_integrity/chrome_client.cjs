@@ -50,65 +50,70 @@ class ChromeClient {
   }
 
   async start() {
-    const cp = chromePath();
-    this.profile = fs.mkdtempSync(path.join(os.tmpdir(), 'edutwin_chrome_acc_'));
-    this.chrome = spawn(cp, [
-      '--headless=new',
-      '--remote-debugging-port=0',
-      `--user-data-dir=${this.profile}`,
-      '--no-first-run',
-      '--no-default-browser-check',
-      '--disable-gpu',
-      '--window-size=1440,900',
-      'about:blank',
-    ], { stdio: 'ignore' });
+    try {
+      const cp = chromePath();
+      this.profile = fs.mkdtempSync(path.join(os.tmpdir(), 'edutwin_chrome_acc_'));
+      this.chrome = spawn(cp, [
+        '--headless=new',
+        '--remote-debugging-port=0',
+        `--user-data-dir=${this.profile}`,
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--disable-gpu',
+        '--window-size=1440,900',
+        'about:blank',
+      ], { stdio: 'ignore' });
 
-    const portFile = path.join(this.profile, 'DevToolsActivePort');
-    let lines = null;
-    for (let i = 0; i < 80; i++) {
-      try {
-        if (fs.existsSync(portFile)) {
-          const content = fs.readFileSync(portFile, 'utf8').trim();
-          const parts = content.split(/\r?\n/);
-          if (parts.length >= 2 && parts[0]) {
-            lines = parts;
-            break;
+      const portFile = path.join(this.profile, 'DevToolsActivePort');
+      let lines = null;
+      for (let i = 0; i < 80; i++) {
+        try {
+          if (fs.existsSync(portFile)) {
+            const content = fs.readFileSync(portFile, 'utf8').trim();
+            const parts = content.split(/\r?\n/);
+            if (parts.length >= 2 && parts[0]) {
+              lines = parts;
+              break;
+            }
           }
+        } catch (e) {
+          // file locked, retry
         }
-      } catch (e) {
-        // file locked, retry
+        await delay(200);
       }
-      await delay(200);
+      if (!lines) throw new Error('Chrome startup timed out or DevToolsActivePort unreadable');
+      const [debugPort, browserPath] = lines;
+      this.ws = new WebSocket(`ws://127.0.0.1:${debugPort}${browserPath}`);
+      await new Promise((resolve, reject) => {
+        this.ws.onopen = resolve;
+        this.ws.onerror = reject;
+      });
+
+      this.ws.onmessage = ({ data }) => {
+        const msg = JSON.parse(data);
+        const req = this.pending.get(msg.id);
+        if (!req) return;
+        this.pending.delete(msg.id);
+        if (msg.error) req.reject(new Error(JSON.stringify(msg.error)));
+        else req.resolve(msg.result);
+      };
+
+      const { targetId } = await this.send('Target.createTarget', { url: 'about:blank' });
+      const { sessionId } = await this.send('Target.attachToTarget', { targetId, flatten: true });
+      this.sessionId = sessionId;
+
+      await this.call('Page.enable');
+      await this.call('Runtime.enable');
+      await this.call('Emulation.setDeviceMetricsOverride', {
+        width: 1440,
+        height: 900,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+    } catch (err) {
+      await this.close();
+      throw err;
     }
-    if (!lines) throw new Error('Chrome startup timed out or DevToolsActivePort unreadable');
-    const [debugPort, browserPath] = lines;
-    this.ws = new WebSocket(`ws://127.0.0.1:${debugPort}${browserPath}`);
-    await new Promise((resolve, reject) => {
-      this.ws.onopen = resolve;
-      this.ws.onerror = reject;
-    });
-
-    this.ws.onmessage = ({ data }) => {
-      const msg = JSON.parse(data);
-      const req = this.pending.get(msg.id);
-      if (!req) return;
-      this.pending.delete(msg.id);
-      if (msg.error) req.reject(new Error(JSON.stringify(msg.error)));
-      else req.resolve(msg.result);
-    };
-
-    const { targetId } = await this.send('Target.createTarget', { url: 'about:blank' });
-    const { sessionId } = await this.send('Target.attachToTarget', { targetId, flatten: true });
-    this.sessionId = sessionId;
-
-    await this.call('Page.enable');
-    await this.call('Runtime.enable');
-    await this.call('Emulation.setDeviceMetricsOverride', {
-      width: 1440,
-      height: 900,
-      deviceScaleFactor: 1,
-      mobile: false,
-    });
   }
 
   send(method, params = {}) {
@@ -204,13 +209,29 @@ class ChromeClient {
     await delay(600);
     const { data } = await this.call('Page.captureScreenshot', { format: 'png' });
     const fullPath = path.join(EVIDENCE_DIR, filename);
-    fs.writeFileSync(fullPath, Buffer.from(data, 'base64'));
+    const buf = Buffer.from(data, 'base64');
+    let written = false;
+    let lastErr = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        fs.writeFileSync(fullPath, buf);
+        written = true;
+        break;
+      } catch (err) {
+        lastErr = err;
+        await delay(300 * (attempt + 1));
+      }
+    }
+    if (!written) {
+      throw lastErr;
+    }
     console.log(`[EVIDENCE] Saved screenshot: ${filename}`);
     return fullPath;
   }
 
   async close() {
     const pid = this.chrome?.pid;
+    const errors = [];
 
     // 1. Attempt graceful browser close via CDP first
     if (this.ws && this.ws.readyState === 1 /* OPEN */) {
@@ -241,7 +262,7 @@ class ChromeClient {
         } catch (e) {}
       }
 
-      // 3. Confirm PID is dead (fail-closed)
+      // 3. Confirm PID is dead (fail-closed check)
       let isAlive = true;
       for (let i = 0; i < 25; i++) {
         try {
@@ -253,11 +274,12 @@ class ChromeClient {
         }
       }
       if (isAlive) {
-        throw new Error(`[FAIL-CLOSED] Chrome test process (PID ${pid}) failed to terminate`);
+        errors.push(new Error(`[FAIL-CLOSED] Chrome test process (PID ${pid}) failed to terminate`));
       }
     }
 
-    // 4. Retry deleting userDataDir and confirm directory is gone (fail-closed)
+    // 4. Retry deleting userDataDir and confirm directory is gone (fail-closed check)
+    // ALWAYS ATTEMPTED REGARDLESS OF PID TERMINATION RESULT
     if (this.profile) {
       let removed = false;
       let lastErr = null;
@@ -278,8 +300,14 @@ class ChromeClient {
         await delay(300);
       }
       if (!removed && fs.existsSync(this.profile)) {
-        throw new Error(`[FAIL-CLOSED] Failed to cleanup Chrome profile directory ${this.profile}: ${lastErr?.message || 'Directory still exists'}`);
+        errors.push(new Error(`[FAIL-CLOSED] Failed to cleanup Chrome profile directory ${this.profile}: ${lastErr?.message || 'Directory still exists'}`));
       }
+    }
+
+    // 5. Throw aggregated error if any cleanup operation failed
+    if (errors.length > 0) {
+      const msg = errors.map(e => e.message).join('; ');
+      throw new Error(`[FAIL-CLOSED CLEANUP FAILURE] ${msg}`);
     }
   }
 }

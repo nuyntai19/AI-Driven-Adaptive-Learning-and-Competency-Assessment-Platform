@@ -4,37 +4,100 @@ const { execSync } = require('node:child_process');
 
 const WORKSPACE_DIR = process.env.WORKSPACE_ROOT || path.resolve(__dirname, '../../..');
 
-function getDbPassword() {
-  if (process.env.MYSQL_PASSWORD) {
-    return process.env.MYSQL_PASSWORD.trim();
-  }
+// In-memory registry of entities created specifically by this test run
+const runRegistry = {
+  classIds: new Set(),
+  curriculumIds: new Set(),
+  assignmentIds: new Set(),
+};
+
+function resetRunRegistry() {
+  runRegistry.classIds.clear();
+  runRegistry.curriculumIds.clear();
+  runRegistry.assignmentIds.clear();
+}
+
+function registerCreatedClassId(id) {
+  if (id) runRegistry.classIds.add(String(id));
+}
+
+function registerCreatedCurriculumId(id) {
+  if (id) runRegistry.curriculumIds.add(String(id));
+}
+
+function registerCreatedAssignmentId(id) {
+  if (id) runRegistry.assignmentIds.add(String(id));
+}
+
+function getTrackedIds() {
+  return {
+    classIds: Array.from(runRegistry.classIds),
+    curriculumIds: Array.from(runRegistry.curriculumIds),
+    assignmentIds: Array.from(runRegistry.assignmentIds),
+  };
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Secure MySQL connection: Zero secrets in command-line arguments or logs
+// ──────────────────────────────────────────────────────────────────────────
+
+function ensureClientConfigFile() {
   const envPath = path.join(WORKSPACE_DIR, '.env');
-  if (fs.existsSync(envPath)) {
+  let pw = process.env.MYSQL_PASSWORD;
+  if (!pw && fs.existsSync(envPath)) {
     const envContent = fs.readFileSync(envPath, 'utf8');
     const match = envContent.match(/^MYSQL_PASSWORD=(.*)$/m);
     if (match) {
-      return match[1].trim();
+      pw = match[1].trim();
     }
   }
-  throw new Error('Cannot find MYSQL_PASSWORD in environment or .env');
+  if (!pw) {
+    throw new Error('MYSQL_PASSWORD not found in environment or .env');
+  }
+
+  // Write option file inside container via stdin - NEVER in CLI args or process table
+  const cnfContent = `[client]\nuser=edutwin_user\npassword=${pw}\nhost=localhost\ndefault-character-set=utf8mb4\n`;
+  execSync(
+    'docker exec -i edutwin-mysql sh -c "cat > /etc/mysql/fixture_client.cnf && chmod 600 /etc/mysql/fixture_client.cnf"',
+    { input: cnfContent, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+  );
 }
 
 function executeSql(sql) {
-  const pw = getDbPassword();
-  execSync(`docker exec -i edutwin-mysql mysql --default-character-set=utf8mb4 -uedutwin_user -p${pw} edutwin`, {
-    input: sql,
-    encoding: 'utf8',
-    stdio: ['pipe', 'pipe', 'pipe'],
-  });
+  try {
+    execSync('docker exec -i edutwin-mysql mysql --defaults-file=/etc/mysql/fixture_client.cnf edutwin', {
+      input: sql,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+  } catch (err) {
+    // If the cnf file is missing, initialize it and retry once
+    ensureClientConfigFile();
+    execSync('docker exec -i edutwin-mysql mysql --defaults-file=/etc/mysql/fixture_client.cnf edutwin', {
+      input: sql,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+  }
 }
 
 function queryRows(sql) {
-  const pw = getDbPassword();
-  const raw = execSync(`docker exec -i edutwin-mysql mysql --default-character-set=utf8mb4 -uedutwin_user -p${pw} edutwin`, {
-    input: sql,
-    encoding: 'utf8',
-    stdio: ['pipe', 'pipe', 'pipe'],
-  });
+  let raw = '';
+  try {
+    raw = execSync('docker exec -i edutwin-mysql mysql --defaults-file=/etc/mysql/fixture_client.cnf edutwin', {
+      input: sql,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+  } catch (err) {
+    ensureClientConfigFile();
+    raw = execSync('docker exec -i edutwin-mysql mysql --defaults-file=/etc/mysql/fixture_client.cnf edutwin', {
+      input: sql,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+  }
+
   const lines = raw.trim().split(/\r?\n/).filter(Boolean);
   if (lines.length < 2) return [];
   const headers = lines[0].split('\t');
@@ -48,54 +111,98 @@ function queryRows(sql) {
   });
 }
 
-function resetUiaccFixtures() {
-  console.log('[FIXTURE] Resetting all UIACC-prefixed fixtures safely in database...');
-  const cleanupSql = `
-    DELETE FROM student_assignment_progress WHERE assignment_id IN (SELECT assignment_id FROM assignments WHERE title LIKE 'UIACC%');
-    DELETE FROM assignment_targets WHERE assignment_id IN (SELECT assignment_id FROM assignments WHERE title LIKE 'UIACC%');
-    DELETE FROM assignment_questions WHERE assignment_id IN (SELECT assignment_id FROM assignments WHERE title LIKE 'UIACC%');
-    DELETE FROM assignments WHERE title LIKE 'UIACC%';
-    DELETE FROM curriculum_classes WHERE curriculum_id IN (SELECT curriculum_id FROM curriculums WHERE title LIKE 'UIACC%') OR class_id IN (SELECT class_id FROM classes WHERE class_name LIKE 'UIACC%');
-    DELETE FROM curriculums WHERE title LIKE 'UIACC%';
-    DELETE FROM class_students WHERE class_id IN (SELECT class_id FROM classes WHERE class_name LIKE 'UIACC%');
-    DELETE FROM classes WHERE class_name LIKE 'UIACC%';
-  `;
-  executeSql(cleanupSql);
-  console.log('[FIXTURE] UIACC fixtures reset complete (0 residual UIACC records).');
+// ──────────────────────────────────────────────────────────────────────────
+// Scoped ID-Based Fixture Cleanup: Only delete entities with specific IDs
+// ──────────────────────────────────────────────────────────────────────────
+
+function deleteEntitiesByIds({ classIds = [], curriculumIds = [], assignmentIds = [] }) {
+  if (assignmentIds.length > 0) {
+    const idList = assignmentIds.map((id) => `'${id}'`).join(',');
+    executeSql(`
+      DELETE FROM student_assignment_progress WHERE assignment_id IN (${idList});
+      DELETE FROM assignment_targets WHERE assignment_id IN (${idList});
+      DELETE FROM assignment_questions WHERE assignment_id IN (${idList});
+      DELETE FROM assignments WHERE assignment_id IN (${idList});
+    `);
+  }
+  if (curriculumIds.length > 0) {
+    const idList = curriculumIds.map((id) => `'${id}'`).join(',');
+    executeSql(`
+      DELETE FROM curriculum_classes WHERE curriculum_id IN (${idList});
+      DELETE FROM curriculums WHERE curriculum_id IN (${idList});
+    `);
+  }
+  if (classIds.length > 0) {
+    const idList = classIds.map((id) => `'${id}'`).join(',');
+    executeSql(`
+      DELETE FROM curriculum_classes WHERE class_id IN (${idList});
+      DELETE FROM class_students WHERE class_id IN (${idList});
+      DELETE FROM classes WHERE class_id IN (${idList});
+    `);
+  }
 }
 
-function ensureQuestions20030And20031() {
-  const rows = queryRows(`SELECT question_id, grade_level, status FROM questions WHERE question_id IN (20030, 20031);`);
-  const has10 = rows.some((r) => r.question_id === '20030');
-  const has11 = rows.some((r) => r.question_id === '20031');
-
-  if (has10 && has11) {
-    executeSql(`UPDATE questions SET status = 'Active', is_deleted = 0 WHERE question_id IN (20030, 20031);`);
-    return;
+function cleanupRunFixtures() {
+  const tracked = getTrackedIds();
+  const count = tracked.classIds.length + tracked.curriculumIds.length + tracked.assignmentIds.length;
+  if (count > 0) {
+    console.log(`[FIXTURE] Cleaning up ${count} run-scoped fixtures specifically by ID...`);
+    deleteEntitiesByIds(tracked);
+    resetRunRegistry();
+    console.log('[FIXTURE] Run-scoped cleanup complete.');
   }
+}
 
-  const sql = `
-    INSERT INTO questions (
-      question_id, center_id, subject_id, primary_topic_node_id, question_type,
-      question_text, correct_answer, solution, difficulty, grade_level,
-      estimated_time_seconds, status, created_at, created_by, updated_at,
-      updated_by, is_deleted, row_version
-    ) VALUES
-    (
-      20030, 'c0000000-0000-0000-0001-000000000001', '40000000-0000-0000-0000-000000000004', '10003', 'MultipleChoice',
-      'Choose the best word to complete the sentence: She speaks English very ____.', 'B', 'Well is an adverb describing the verb speaks.', 2, 10,
-      120, 'Active', UTC_TIMESTAMP(6), 'd0000000-0000-0000-0001-000000000003', UTC_TIMESTAMP(6),
-      'd0000000-0000-0000-0001-000000000003', 0, 1
-    ),
-    (
-      20031, 'c0000000-0000-0000-0001-000000000001', '40000000-0000-0000-0000-000000000004', '10003', 'MultipleChoice',
-      'Advanced Grammar: If he had studied harder, he ____ the university entrance exam.', 'C', 'Conditional sentence type 3: If + past perfect, would have + V3/ed.', 3, 11,
-      120, 'Active', UTC_TIMESTAMP(6), 'd0000000-0000-0000-0001-000000000003', UTC_TIMESTAMP(6),
-      'd0000000-0000-0000-0001-000000000003', 0, 1
-    )
-    ON DUPLICATE KEY UPDATE status = 'Active', is_deleted = 0;
-  `;
-  executeSql(sql);
+// Cleans up any leftover entities from a prior interrupted run by targeting exact test entity names
+function cleanPriorRunFixturesIfAny() {
+  const assignRows = queryRows("SELECT assignment_id FROM assignments WHERE title = 'UIACC-ENG-HW-G10'");
+  const curRows = queryRows("SELECT curriculum_id FROM curriculums WHERE title = 'UIACC-ENG-G10'");
+  const classRows = queryRows(
+    "SELECT class_id FROM classes WHERE class_name IN ('UIACC-GRADE10-CLASS', 'UIACC-GRADE11-CLASS', 'UIACC-INACTIVE-CLASS', 'UIACC-EMPTY-CLASS') OR class_name LIKE 'UIACC-EMPTY-CLASS#del#%'"
+  );
+
+  const assignmentIds = assignRows.map((r) => r.assignment_id);
+  const curriculumIds = curRows.map((r) => r.curriculum_id);
+  const classIds = classRows.map((r) => r.class_id);
+
+  if (assignmentIds.length || curriculumIds.length || classIds.length) {
+    deleteEntitiesByIds({ classIds, curriculumIds, assignmentIds });
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Database Baseline Snapshot and Integrity Verification
+// ──────────────────────────────────────────────────────────────────────────
+
+function takeDatabaseSnapshot() {
+  const rows = queryRows(`
+    SELECT 'users' as tbl, count(*) as cnt FROM users
+    UNION ALL SELECT 'centers', count(*) FROM centers
+    UNION ALL SELECT 'classes', count(*) FROM classes WHERE class_name NOT IN ('UIACC-GRADE10-CLASS', 'UIACC-GRADE11-CLASS', 'UIACC-INACTIVE-CLASS', 'UIACC-EMPTY-CLASS') AND class_name NOT LIKE 'UIACC-EMPTY-CLASS#del#%'
+    UNION ALL SELECT 'curriculums', count(*) FROM curriculums WHERE title != 'UIACC-ENG-G10'
+    UNION ALL SELECT 'assignments', count(*) FROM assignments WHERE title != 'UIACC-ENG-HW-G10'
+    UNION ALL SELECT 'questions', count(*) FROM questions;
+  `);
+
+  const snapshot = {};
+  for (const r of rows) {
+    snapshot[r.tbl] = Number(r.cnt);
+  }
+  return snapshot;
+}
+
+function assertDatabaseSnapshotUnchanged(baseline) {
+  const current = takeDatabaseSnapshot();
+  const mismatches = [];
+  for (const key of Object.keys(baseline)) {
+    if (baseline[key] !== current[key]) {
+      mismatches.push(`${key}: expected ${baseline[key]}, got ${current[key]}`);
+    }
+  }
+  if (mismatches.length > 0) {
+    throw new Error(`[ASSERT FAIL] Non-fixture database integrity violation! Mismatches: ${mismatches.join(', ')}`);
+  }
+  console.log('[ASSERT PASS] Non-fixture database records strictly preserved across run:', JSON.stringify(current));
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -233,11 +340,17 @@ function assertAssignmentPublished(assignmentTitle, options = {}) {
 }
 
 module.exports = {
-  getDbPassword,
   executeSql,
   queryRows,
-  resetUiaccFixtures,
-  ensureQuestions20030And20031,
+  resetRunRegistry,
+  registerCreatedClassId,
+  registerCreatedCurriculumId,
+  registerCreatedAssignmentId,
+  getTrackedIds,
+  cleanupRunFixtures,
+  cleanPriorRunFixturesIfAny,
+  takeDatabaseSnapshot,
+  assertDatabaseSnapshotUnchanged,
   assertClassStudent,
   assertClassActive,
   assertClassDeleted,

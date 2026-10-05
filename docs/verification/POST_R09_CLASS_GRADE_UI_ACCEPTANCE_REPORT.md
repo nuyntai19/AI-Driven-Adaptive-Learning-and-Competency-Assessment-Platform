@@ -160,14 +160,17 @@ Trước khi đóng băng báo cáo nghiệm thu, toàn bộ các bộ kiểm th
 | **1** | **Backend .NET Regression** | `dotnet test tests/EduTwin.BLL.Tests/` | **Passed: 3,619**, Failed: 0, Skipped: 60 | 39 giây | **PASS (100%)** |
 | **2** | **AddStudentsToClass Suite** | `dotnet test tests/EduTwin.BLL.Tests/ --filter "AddStudentsToClass"` | **Passed: 44**, Failed: 0, Skipped: 1 | 5 giây | **PASS (100%)** |
 | **3** | **Live MySQL Integration** | `dotnet test` (với `EDUTWIN_TEST_MYSQL_ADMIN_CONNECTION_STRING`) | **Passed: 1**, Failed: 0 | 24 giây | **PASS (100%)** |
-| **4** | **Frontend Unit/Component** | `npm test` (edutwin-web) | **Passed: 422**, Failed: 0, Skipped: 0 | 4.7 giây | **PASS (100%)** |
+| **4** | **Frontend Unit/Component** | `npm test` (edutwin-web) | **Passed: 422**, Failed: 0, Skipped: 0 | 8.0 giây | **PASS (100%)** |
 | **5** | **Frontend Static Lint** | `npm run lint` (edutwin-web) | **0 Errors**, 33 Warnings (ESLint) | 14 giây | **PASS (100%)** |
 | **6** | **Production Bundle Build** | `npm run build` (edutwin-web) | **0 Errors** (`dist/` generated cleanly) | 11.4 giây | **PASS (100%)** |
-| **7** | **Acceptance Test Harness (CDP)** | `node tests/acceptance/class_grade_integrity/run_all.cjs` | **18/18 Passed (Run 1: 166.0s, Run 2: 165.8s)** | ~166 giây/lượt | **PASS (100% Idempotent)** |
+| **7** | **Acceptance Test Harness (CDP)** | `node tests/acceptance/class_grade_integrity/run_all.cjs` | **18/18 Passed (Run 1: 169.1s, Run 2: 174.3s)** | ~171 giây/lượt | **PASS (100% Idempotent)** |
 
 > [!NOTE]
-> - Bài kiểm thử `AddStudentsToClass_LiveMySql_TranslatesGuidFiltersAndEnforcesBatchLimits` kế thừa thuộc tính `[MySqlIntegrationFact]` nên được chủ động bỏ qua (`SKIP`) trong các lượt chạy test mặc định nếu không cấu hình biến môi trường kết nối MySQL Admin. Khi được cung cấp chuỗi kết nối MySQL cục bộ (`localhost:3307`), bài kiểm thử đã khởi tạo cơ sở dữ liệu tạm thời trên MySQL thật, di chuyển schema và chạy xác thực thành công 100% (`Passed: 1, Failed: 0`).
-> - Bộ nghiệm thu Chrome CDP (`run_all.cjs`) đã được chạy liên tiếp 2 lần trên cùng một cơ sở dữ liệu đang chạy để kiểm chứng tính chất **Idempotent** (khả năng tự dọn dẹp fixture với tiền tố `UIACC` an toàn, không rò rỉ dữ liệu và không làm sập kịch bản khi chạy lại). Cả 2 lượt chạy liên tiếp đều đạt **18/18 kịch bản PASS**.
+> - **ID-Scoped Fixture Lifecycle:** Bộ test harness quản lý danh sách ID riêng (`classIds`, `curriculumIds`, `assignmentIds`) được sinh ra trong từng lượt chạy. Khi kết thúc lượt chạy, hệ thống chỉ xóa chính xác các bản ghi có ID đã đăng ký (`DELETE ... WHERE id IN (...)`), tuyệt đối không xóa bằng truy vấn tiền tố rộng (`LIKE 'UIACC%'`) trên cơ sở dữ liệu dùng chung.
+> - **Bảo toàn Ngân hàng câu hỏi:** Kịch bản 12 kiểm tra hiển thị khối học thuật trên câu hỏi ngân hàng mà hoàn toàn không `UPDATE` hay `INSERT` vào các câu hỏi dùng chung 20030/20031. Dữ liệu câu hỏi được bảo toàn nguyên trạng.
+> - **Xác thực toàn vẹn Database Snapshot:** Trước và sau mỗi lượt chạy, harness tự động chụp snapshot số lượng bản ghi ngoài fixture (`users: 17, centers: 3, classes: 4, curriculums: 4, assignments: 0, questions: 62`) và khẳng định bằng code (`assertDatabaseSnapshotUnchanged`) rằng 100% dữ liệu gốc không bị biến đổi hay hao hụt.
+> - **Bảo mật kết nối MySQL:** Toàn bộ lệnh truy vấn qua MySQL client sử dụng file cấu hình option `--defaults-file=/etc/mysql/fixture_client.cnf` được truyền an toàn qua stdin, loại bỏ hoàn toàn mật khẩu khỏi đối số dòng lệnh (`argv`) và danh sách tiến trình hệ điều hành. Mật khẩu lộ trước đó đã được xoay mới an toàn trong MySQL, cập nhật `.env` và tái khởi động container `edutwin-api`.
+> - **Fail-Closed Chrome Cleanup:** Lệnh `client.start()` được bảo vệ trong khối try-catch tự dọn dẹp nếu khởi động lỗi; phương thức `client.close()` luôn thực thi cả việc terminate tiến trình Chrome lẫn xóa thư mục profile người dùng, tổng hợp và ném lỗi nếu có bất kỳ bước nào thất bại. Hàm chụp ảnh có cơ chế retry chống khóa file trên Windows.
 
 ---
 
@@ -176,6 +179,7 @@ Trước khi đóng băng báo cáo nghiệm thu, toàn bộ các bộ kiểm th
 1. **Tuyệt đối KHÔNG có Bulk Import:**
    - Trong toàn bộ quá trình nghiệm thu, không có bất kỳ dòng mã hay API nào liên quan đến Import hàng loạt được kích hoạt hoặc triển khai.
 2. **Không rò rỉ thông tin nhạy cảm:**
+   - Mật khẩu MySQL đã được xoay mới và bảo mật qua option file nội bộ, không đưa lên tham số dòng lệnh hay ghi nhật ký.
    - Mật khẩu hạt giống được đọc trực tiếp từ biến môi trường runtime (`.env`), không bị hardcode trong tài liệu hay commit.
    - Bảng nhật ký kiểm thử bảo mật tầng dữ liệu (`18_backend_security_validation_safe.png`) chứng minh chuẩn RFC 7807 ProblemDetails không làm lộ stack trace hay cú pháp câu lệnh SQL.
 3. **Tính chân thực của bằng chứng:**
