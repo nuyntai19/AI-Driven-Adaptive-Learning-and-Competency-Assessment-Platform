@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   useQuestion,
@@ -41,6 +41,10 @@ import {
 } from "../centerManagerQuestionEditorHelpers";
 import type { AnswerEditorValue } from "../../components/math/answer-editor/answerEditorHelpers";
 import { MATH_EQUIVALENT_HELP } from "../../utils/questionEvaluationModes";
+import { hydrateGradingCriteria, rubricDefinitionError } from "../../utils/rubric";
+import { GradingCriteriaEditor } from "../../components/teacher/GradingCriteriaEditor";
+import { RichMathText } from "../../components/math/RichMathText";
+import type { MaterialVisibility } from "../../types/questions";
 
 interface QuestionEditorOption {
   optionId?: string;
@@ -55,8 +59,13 @@ export function TeacherQuestionEditorView() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const isEditing = Boolean(id);
+  const [searchParams] = useSearchParams();
+  const copyFrom = !isEditing ? searchParams.get("copyFrom") : null;
+  const actorId = useAuthStore(state => state.user?.userId);
+  const [visibility, setVisibility] = useState<MaterialVisibility>("Private");
 
   const hasPermission = useAuthStore((state) => state.hasPermission);
+  const canCreate = hasPermission(permissions.questionsCreate);
   const canReadSubjects = hasPermission(permissions.subjectsRead);
 
   // Form State
@@ -82,7 +91,7 @@ export function TeacherQuestionEditorView() {
   const [modeDrafts, setModeDrafts] = useState<DraftStore>({});
   const [solution, setSolution] = useState("");
   const [expectedReasoning, setExpectedReasoning] = useState("");
-  const [gradingCriteria, setGradingCriteria] = useState("");
+  const [gradingCriteria, setGradingCriteria] = useState(() => hydrateGradingCriteria());
 
   // Feedback States
   const [formError, setFormError] = useState<{ message: string; traceId?: string | null } | null>(null);
@@ -103,10 +112,10 @@ export function TeacherQuestionEditorView() {
   });
 
   // Load existing question for editing
-  const { data: questionData, isLoading: questionLoading, refetch: refetchQuestion } = useQuestion(id || "");
+  const { data: questionData, isLoading: questionLoading, error: questionError, refetch: refetchQuestion } = useQuestion(id || copyFrom || "");
 
   useEffect(() => {
-    if (isEditing && questionData?.data) {
+    if ((isEditing || copyFrom) && questionData?.data) {
       const q = questionData.data;
       setSubjectId(q.subjectId || "");
       setGradeLevel(q.gradeLevel ?? "");
@@ -150,13 +159,10 @@ export function TeacherQuestionEditorView() {
       setActiveDraftValue((key ? hydratedStore[key] : null) ?? hydrateAnswerEditorValue(q.correctAnswer, evalMode));
       setSolution(q.solution || "");
       setExpectedReasoning(q.expectedReasoning || "");
-      setGradingCriteria(
-        typeof q.gradingCriteria === "string"
-          ? q.gradingCriteria
-          : q.gradingCriteria?.scoringNotes || ""
-      );
+      setGradingCriteria(hydrateGradingCriteria(q.gradingCriteria));
+      setVisibility(copyFrom ? "Private" : q.visibility || "Private");
     }
-  }, [isEditing, questionData]);
+  }, [isEditing, copyFrom, questionData]);
 
   const createMutation = useCreateQuestion();
   const updateMutation = useUpdateQuestion();
@@ -297,17 +303,13 @@ export function TeacherQuestionEditorView() {
         ? "Manual"
         : answerEvaluationMode || "TextExact";
 
-    const parsedGradingCriteria = gradingCriteria.trim()
-      ? {
-          schemaVersion: "1.0",
-          requiredIdeas: [gradingCriteria.trim()],
-          commonErrors: [],
-          scoringNotes: gradingCriteria.trim(),
-        }
-      : undefined;
+    const rubricError = rubricDefinitionError(gradingCriteria.criteria || [], maxScore);
+    if (rubricError) { setFormError({ message: rubricError }); return; }
+    const parsedGradingCriteria = gradingCriteria;
 
     if (!isEditing) {
       const payload: CreateQuestionRequest = {
+        visibility,
         subjectId,
         gradeLevel: Number(gradeLevel),
         primaryTopicNodeId: primaryTopicNodeId.trim(),
@@ -360,6 +362,7 @@ export function TeacherQuestionEditorView() {
       }
 
       const updatePayload: UpdateQuestionRequest = {
+        visibility,
         primaryTopicNodeId: primaryTopicNodeId.trim(),
         gradeLevel: gradeLevel !== "" ? Number(gradeLevel) : null,
         questionType,
@@ -407,7 +410,9 @@ export function TeacherQuestionEditorView() {
               setConcurrencyConflict(true);
             } else {
               setFormError({
-                message: mapSafeOperationalError(err, "Không thể cập nhật câu hỏi."),
+                message: details.errorCode === "INVALID_STATE_TRANSITION"
+                  ? "Tiêu chí và điểm gốc đã được dùng để chấm hoặc xuất bản. Hãy tạo bản sao để thay đổi thang chấm."
+                  : mapSafeOperationalError(err, "Không thể cập nhật câu hỏi."),
                 traceId: details.traceId,
               });
             }
@@ -419,13 +424,29 @@ export function TeacherQuestionEditorView() {
 
   const isPending = createMutation.isPending || updateMutation.isPending;
 
-  if (isEditing && questionLoading) {
+  if ((isEditing || copyFrom) && questionLoading) {
     return (
       <div className="th-page-container max-w-5xl">
         <TeacherSkeleton className="h-10 w-1/3" />
         <TeacherSkeleton className="h-64 rounded-2xl" />
       </div>
     );
+  }
+
+  if ((isEditing || copyFrom) && (questionError || !questionData?.data)) {
+    return <div className="th-page-container max-w-5xl"><TeacherSafeErrorPanel error="Không thể tải câu hỏi nguồn hoặc bạn không có quyền truy cập." onRetry={() => refetchQuestion()} /></div>;
+  }
+
+  if (isEditing && questionData?.data && questionData.data.createdByTeacherId !== actorId) {
+    const q = questionData.data;
+    return <div className="th-page-container max-w-5xl space-y-4">
+      <TeacherPageHeader title={`Câu hỏi dùng chung #${q.questionId}`} description="Chỉ xem bản gốc. Sao chép để biên soạn phiên bản của bạn." />
+      <div className="th-surface p-6 space-y-4"><RichMathText text={q.questionText} />
+        {q.options?.map(o => <div key={o.optionId}><RichMathText text={`${o.label || o.optionLabel}. ${o.text || o.optionText}`} /></div>)}
+        <h3 className="font-bold">Đáp án & lời giải tham khảo</h3><RichMathText text={q.solution || ""} />
+        {canCreate && <button type="button" className="th-primary-button" onClick={() => navigate(`/giao-vien/cau-hoi/tao-moi?copyFrom=${q.questionId}`)}>Sao chép & biên soạn</button>}
+      </div>
+    </div>;
   }
 
   return (
@@ -458,6 +479,15 @@ export function TeacherQuestionEditorView() {
       )}
 
       <div className="th-surface p-6 space-y-6">
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="text-sm font-semibold">Phạm vi học liệu
+            <select className="th-select ml-3 text-sm" value={visibility} onChange={e => setVisibility(e.target.value as MaterialVisibility)}>
+              <option value="Private">Private — của tôi</option><option value="Shared">Shared — dùng chung trong trung tâm</option>
+            </select>
+          </label>
+          {isEditing && canCreate && <button type="button" className="th-secondary-button" onClick={() => navigate(`/giao-vien/cau-hoi/tao-moi?copyFrom=${id}`)}>Tạo bản sao mới</button>}
+          <p className="text-sm text-[var(--th-text-secondary)]">Shared chỉ được giáo viên khác xem/dùng khi câu hỏi đã kích hoạt. Tiêu chí/điểm gốc đã dùng trong bài xuất bản hoặc bài nộp được khóa; hãy tạo bản sao để thay đổi.</p>
+        </div>
         {/* Row 1: Môn học & Chủ đề kiến thức */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div>
@@ -798,18 +828,7 @@ export function TeacherQuestionEditorView() {
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1.5">
-                Tiêu chí chấm điểm (Grading Criteria / Rubric)
-              </label>
-              <textarea
-                rows={3}
-                value={gradingCriteria}
-                onChange={(e) => setGradingCriteria(e.target.value)}
-                placeholder="Mô tả các bước tính điểm chi tiết..."
-                className="th-input w-full text-xs"
-              />
-            </div>
+            <GradingCriteriaEditor value={gradingCriteria} onChange={setGradingCriteria} maxScore={maxScore} />
           </div>
         )}
 

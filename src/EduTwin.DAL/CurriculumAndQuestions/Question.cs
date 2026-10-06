@@ -13,6 +13,7 @@ public class Question : IMutableTenantAggregate
     public Guid SubjectId { get; set; }
     public ulong PrimaryTopicNodeId { get; set; }
     public Guid CreatedByTeacherId { get; set; }
+    public MaterialVisibility Visibility { get; set; } = MaterialVisibility.Private;
 
     public QuestionType QuestionType { get; set; }
     public byte Difficulty { get; set; }

@@ -4,12 +4,19 @@ import { buildMathEquivalentAnswer, buildSubmissionAnswerFields, resolveAnswerIn
   resolveReadonlyDisplay, buildTextExactAnswer } from "../src/components/math/answer-editor/answerEditorHelpers.ts";
 import { buildAuthoritativeQuestionPayload, getAnswerDraftKey, resetAndHydrateDraftStore,
   serializeAnswerEditorValue, validateAnswerMathFormulas } from "../src/pages/centerManagerQuestionEditorHelpers.ts";
-import { getAttemptFeedbackPresentation, normalizeQuestionScore } from "../src/utils/attemptFeedbackPresentation.ts";
+import { getAttemptFeedbackPresentation, normalizeQuestionScore, questionAssignmentContribution, toInternalQuestionScore, fallbackAssignmentGrade } from "../src/utils/attemptFeedbackPresentation.ts";
 import { MATH_EQUIVALENT_HELP, validateQuestionImportModes } from "../src/utils/questionEvaluationModes.ts";
 import type { CreateQuestionRequest } from "../src/types/questions.ts";
 import type { AttemptFeedbackAnalysisDto } from "../src/types/learning.ts";
 
 const domain = "D=\\mathbb{R}\\setminus\\{2\\}";
+
+test("assignment fallback uses equal normalized weights, fixed total of ten, and includes unanswered questions", () => {
+  assert.deepEqual(fallbackAssignmentGrade([{ score: 50, maxScore: 100 }, { score: 20, maxScore: 20 }]), { awardedScore: 7.5, maxScore: 10 });
+  assert.deepEqual(fallbackAssignmentGrade([{ score: 100, maxScore: 100 }, { score: null, maxScore: 20 }]), { awardedScore: 5, maxScore: 10 });
+  assert.deepEqual(fallbackAssignmentGrade([{ isVoided: true, maxScore: 100 }, { score: 0, maxScore: 20 }]), { awardedScore: 5, maxScore: 10 });
+  assert.deepEqual(fallbackAssignmentGrade([]), { awardedScore: 0, maxScore: 10 });
+});
 const analysis = (overrides: Partial<AttemptFeedbackAnalysisDto> = {}): AttemptFeedbackAnalysisDto => ({
   analysisId: "analysis", schemaVersion: "1.0", missingSteps: [], rootCauseNodes: [],
   feedback: "Cách giải hợp lệ.", isFallback: false, needsTeacherReview: false,
@@ -121,11 +128,21 @@ test("uncertainty and actual PendingTeacher states are distinct from teacher-res
   assert.equal(reviewed.scoreSourceLabel, "Giáo viên xác nhận");
 });
 
-test("per-question score uses ten-point total consistently across different internal maxima", () => {
-  assert.deepEqual(normalizeQuestionScore(10, 10, 2), { awardedScore: 5, maxScore: 5 });
-  assert.deepEqual(normalizeQuestionScore(20, 20, 2), { awardedScore: 5, maxScore: 5 });
-  assert.deepEqual(normalizeQuestionScore(10, 20, 2), { awardedScore: 2.5, maxScore: 5 });
-  assert.deepEqual(normalizeQuestionScore(null, 20, 2), { awardedScore: null, maxScore: 5 });
-  assert.deepEqual(normalizeQuestionScore(10, 20), { awardedScore: 10, maxScore: 20 });
-  assert.deepEqual(normalizeQuestionScore(10, 20, 0), { awardedScore: 10, maxScore: 20 });
+test("question grade is out of ten in both roles, regardless of internal maximum or question count", () => {
+  assert.deepEqual(normalizeQuestionScore(10, 10, 2), { awardedScore: 10, maxScore: 10 });
+  assert.deepEqual(normalizeQuestionScore(20, 20, 2), { awardedScore: 10, maxScore: 10 });
+  assert.deepEqual(normalizeQuestionScore(10, 20, 2), { awardedScore: 5, maxScore: 10 });
+  assert.deepEqual(normalizeQuestionScore(null, 20, 2), { awardedScore: null, maxScore: 10 });
+  assert.deepEqual(normalizeQuestionScore(10, 20), { awardedScore: 5, maxScore: 10 });
+  assert.deepEqual(normalizeQuestionScore(50, 100, 0), { awardedScore: 5, maxScore: 10 });
+});
+
+test("assignment contribution is explicitly separate; normalization round-trip does not change stored grade", () => {
+  assert.deepEqual(questionAssignmentContribution(10, 20, 2), { awardedScore: 2.5, maxScore: 5 });
+  assert.deepEqual(questionAssignmentContribution(null, 20, 2), { awardedScore: null, maxScore: 5 });
+  assert.equal(questionAssignmentContribution(10, 20, 0), null);
+  for (const max of [10, 20, 100]) {
+    assert.equal(toInternalQuestionScore(7.5, max), max * 0.75);
+    assert.equal(normalizeQuestionScore(max * 0.75, max).awardedScore, 7.5);
+  }
 });

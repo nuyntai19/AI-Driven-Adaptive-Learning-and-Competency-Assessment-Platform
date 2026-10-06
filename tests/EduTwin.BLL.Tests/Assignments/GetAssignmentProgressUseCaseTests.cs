@@ -3,6 +3,8 @@ using System.Threading.Tasks;
 using EduTwin.BLL.Assignments;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.Assignments;
+using EduTwin.Contracts.AssessmentAndReasoning;
+using EduTwin.DAL.AssessmentAndReasoning;
 using EduTwin.Contracts.Common;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.Contracts.Organization;
@@ -165,6 +167,28 @@ public class GetAssignmentProgressUseCaseTests
                 Assert.Equal("Bình Trần", second.FullName);
                 Assert.Equal("Completed", second.Status);
             });
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_EligibilityIsBasedOnEachStudentsActualLatestAttempts()
+    {
+        var centerId = Guid.NewGuid();
+        var teacherId = Guid.NewGuid();
+        SetupTenant(centerId, teacherId, UserRole.Teacher);
+        await using var context = CreateContext(centerId);
+        var assignmentId = await SeedAssignmentAsync(context, centerId, teacherId);
+        var students = await context.StudentAssignmentProgresses.OrderBy(p => p.Student!.FullName).ToListAsync();
+        context.AssignmentQuestions.Add(new AssignmentQuestion { CenterId = centerId, AssignmentId = assignmentId, QuestionId = 1, Points = 10, CreatedAt = _utcNow.UtcDateTime });
+        context.Attempts.AddRange(
+            new Attempt { AttemptId = 1, CenterId = centerId, AssignmentId = assignmentId, StudentId = students[0].StudentId, QuestionId = 1, Status = AttemptStatus.NeedsTeacherReview, FinalAnswer = "x", ReasoningLanguage = "vi", CreatedAt = _utcNow.UtcDateTime, UpdatedAt = _utcNow.UtcDateTime },
+            new Attempt { AttemptId = 2, CenterId = centerId, AssignmentId = assignmentId, StudentId = students[1].StudentId, QuestionId = 1, Status = AttemptStatus.Completed, FinalAnswer = "x", ReasoningLanguage = "vi", CreatedAt = _utcNow.UtcDateTime, UpdatedAt = _utcNow.UtcDateTime });
+        await context.SaveChangesAsync();
+
+        var result = await CreateSut(context).ExecuteAsync(assignmentId);
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Data![0].FinalReviewEligibility.CanApprove);
+        Assert.Equal(1, result.Data[0].FinalReviewEligibility.PendingReviewQuestionCount);
+        Assert.True(result.Data[1].FinalReviewEligibility.CanApprove);
     }
 
     [Fact]

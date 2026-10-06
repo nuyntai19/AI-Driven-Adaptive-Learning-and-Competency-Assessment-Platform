@@ -7,6 +7,7 @@ namespace EduTwin.Contracts.CurriculumAndQuestions;
 public class CreateCurriculumRequest
 {
     public string? TeacherId { get; set; }
+    public string Visibility { get; set; } = "Private";
 
     [Required]
     public Guid SubjectId { get; set; }

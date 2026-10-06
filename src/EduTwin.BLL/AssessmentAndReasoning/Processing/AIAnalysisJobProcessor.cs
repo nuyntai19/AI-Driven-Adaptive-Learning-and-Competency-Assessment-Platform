@@ -972,7 +972,8 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             return ReloadResult.Failed(AIAnalysisJobProcessingOutcome.NotFound);
         }
 
-        if (attempt.RowVersion != initialAttempt.RowVersion
+        if ((attempt.RowVersion != initialAttempt.RowVersion
+                && !OnlySolutionExposureChanged(initialAttempt, attempt))
             || attempt.QuestionId != initialAttempt.QuestionId
             || !CanComplete(attempt.Status))
         {
@@ -1168,6 +1169,37 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
 
     private static bool CanComplete(AttemptStatus status) =>
         status is AttemptStatus.PendingAnalysis or AttemptStatus.Processing;
+
+    // Viewing a solution is observational metadata, not a change to the answer
+    // sent to AI. Keep the fresh tracked row (and its concurrency token) so this
+    // timestamp is preserved while completion remains an optimistic-concurrency
+    // write. Never tolerate changes to submission, grading, retry or audit data.
+    private static bool OnlySolutionExposureChanged(Attempt before, Attempt after) =>
+        !before.SolutionExposedAt.HasValue && after.SolutionExposedAt.HasValue
+        && before.AttemptId == after.AttemptId
+        && before.CenterId == after.CenterId
+        && before.StudentId == after.StudentId
+        && before.QuestionId == after.QuestionId
+        && before.AssignmentId == after.AssignmentId
+        && before.FinalAnswer == after.FinalAnswer
+        && before.AnswerDisplayLatex == after.AnswerDisplayLatex
+        && before.ReasoningText == after.ReasoningText
+        && before.ReasoningLanguage == after.ReasoningLanguage
+        && before.IsCorrect == after.IsCorrect
+        && before.AwardedScore == after.AwardedScore
+        && before.PreliminaryGradingReasonCode == after.PreliminaryGradingReasonCode
+        && before.TimeSpentSeconds == after.TimeSpentSeconds
+        && before.Confidence == after.Confidence
+        && before.AnswerChanges == after.AnswerChanges
+        && before.Skipped == after.Skipped
+        && before.Status == after.Status
+        && before.ClientSubmissionId == after.ClientSubmissionId
+        && before.ManualRetryCount == after.ManualRetryCount
+        && before.LastManualRetryAt == after.LastManualRetryAt
+        && before.IsPostFeedback == after.IsPostFeedback
+        && before.CreatedAt == after.CreatedAt
+        && before.CreatedBy == after.CreatedBy
+        && before.UpdatedAt == after.UpdatedAt;
 
     private static bool IsTerminal(AIJobStatus status) =>
         status is AIJobStatus.Completed

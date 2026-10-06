@@ -46,6 +46,7 @@ public static class DependencyInjection
         services.TryAddScoped<ReviewRequest.ICreateStudentReviewRequestUseCase, ReviewRequest.CreateStudentReviewRequestUseCase>();
         services.TryAddScoped<ITeacherApproveUseCase, TeacherApproveUseCase>();
         services.TryAddScoped<IApproveAssignmentResultUseCase, ApproveAssignmentResultUseCase>();
+        services.TryAddScoped<IReopenAssignmentResultUseCase, ReopenAssignmentResultUseCase>();
         services.TryAddScoped<IVoidAssignmentQuestionUseCase, VoidAssignmentQuestionUseCase>();
 
         return services;

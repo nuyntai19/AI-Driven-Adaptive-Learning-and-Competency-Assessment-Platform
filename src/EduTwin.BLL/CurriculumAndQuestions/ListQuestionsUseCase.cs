@@ -84,7 +84,16 @@ public class ListQuestionsUseCase : IListQuestionsUseCase
             .Where(q => q.CenterId == centerId);
 
         if (isTeacher)
-            baseQ = baseQ.Where(q => q.CreatedByTeacherId == actorId);
+            baseQ = baseQ.Where(q => q.CreatedByTeacherId == actorId ||
+                (q.Visibility == MaterialVisibility.Shared && q.Status == QuestionStatus.Active));
+
+        if (query.OwnedOnly) baseQ = baseQ.Where(q => q.CreatedByTeacherId == actorId);
+        if (query.Visibility != null)
+        {
+            if (!Enum.TryParse<MaterialVisibility>(query.Visibility, out var visibility) || !Enum.IsDefined(visibility) || visibility.ToString() != query.Visibility)
+                return ListQuestionsResult.Failure(ErrorCodes.ValidationFailed);
+            baseQ = baseQ.Where(q => q.Visibility == visibility);
+        }
 
         if (query.SubjectId.HasValue && query.SubjectId.Value != Guid.Empty)
             baseQ = baseQ.Where(q => q.SubjectId == query.SubjectId.Value);

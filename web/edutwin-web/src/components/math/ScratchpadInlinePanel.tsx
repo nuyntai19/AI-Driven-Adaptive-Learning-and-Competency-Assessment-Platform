@@ -21,6 +21,7 @@ import {
   drawStrokes,
   renderPng,
 } from "../../utils/scratchpadRenderer";
+import { scratchpadPoint, scratchpadTransform } from "../../utils/scratchpadViewport";
 
 const MAX_HISTORY_STATES = 30;
 
@@ -56,6 +57,9 @@ export const ScratchpadInlinePanel = ({
   onAttachSnapshot,
 }: ScratchpadInlinePanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const inkCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [viewport, setViewport] = useState({ width: CANVAS_WIDTH, height: CANVAS_HEIGHT });
   const isDrawingRef = useRef(false);
   const currentPointsRef = useRef<ScratchpadPoint[]>([]);
   const startPointRef = useRef<ScratchpadPoint | null>(null);
@@ -129,7 +133,7 @@ export const ScratchpadInlinePanel = ({
         setSaveStatus(error instanceof Error ? error.message : "Không thể lưu nháp");
       }
     },
-    [centerId, clientSubmissionId, userId]
+    [centerId, clientSubmissionId, userId, isReadOnly]
   );
 
   useEffect(() => {
@@ -155,6 +159,16 @@ export const ScratchpadInlinePanel = ({
   }, [centerId, clientSubmissionId, userId]);
 
   // Redraw canvas with current pan and zoom
+  useEffect(() => {
+    const element = viewportRef.current;
+    if (!element) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setViewport({ width: Math.max(1, Math.round(entry.contentRect.width)), height: Math.max(1, Math.round(entry.contentRect.height)) });
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
   const redraw = useCallback(() => {
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d");
@@ -162,16 +176,26 @@ export const ScratchpadInlinePanel = ({
 
     context.save();
     context.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Apply zoom & pan transform
-    context.translate(pan.x, pan.y);
-    context.scale(zoom, zoom);
-
-    // Render grid background on canvas
+    context.fillStyle = "#f1f5f9";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    const transform = scratchpadTransform(viewport.width, viewport.height, zoom, pan);
+    context.translate(transform.x, transform.y);
+    context.scale(transform.scale, transform.scale);
+    // The drawing paper remains white in either theme; never recolour submitted ink.
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     drawGrid(context, grid, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-    // Render committed strokes
-    drawStrokes(context, strokes);
+    const inkCanvas = inkCanvasRef.current ?? document.createElement("canvas");
+    if (!inkCanvasRef.current) {
+      inkCanvas.width = CANVAS_WIDTH;
+      inkCanvas.height = CANVAS_HEIGHT;
+      inkCanvasRef.current = inkCanvas;
+    }
+    const ink = inkCanvas.getContext("2d");
+    if (!ink) { context.restore(); return; }
+    ink.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    // Erasing affects ink only, not the paper or grid.
+    drawStrokes(ink, strokes);
 
     // Render active stroke in-flight
     if (isDrawingRef.current) {
@@ -183,11 +207,11 @@ export const ScratchpadInlinePanel = ({
         startPointRef.current,
         previewPointRef.current
       );
-      if (preview) drawStroke(context, preview);
+      if (preview) drawStroke(ink, preview);
     }
-
+    context.drawImage(inkCanvas, 0, 0);
     context.restore();
-  }, [colour, grid, lineWidth, pan.x, pan.y, strokes, tool, zoom]);
+  }, [colour, grid, lineWidth, pan, strokes, tool, zoom, viewport]);
 
   useEffect(() => {
     redraw();
@@ -198,19 +222,21 @@ export const ScratchpadInlinePanel = ({
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
-    const clientX = (event.clientX - rect.left) * (canvas.width / rect.width);
-    const clientY = (event.clientY - rect.top) * (canvas.height / rect.height);
-    return {
-      x: (clientX - pan.x) / zoom,
-      y: (clientY - pan.y) / zoom,
-    };
+    return scratchpadPoint({ x: (event.clientX - rect.left) * canvas.width / rect.width,
+      y: (event.clientY - rect.top) * canvas.height / rect.height }, viewport.width, viewport.height, zoom, pan);
   };
 
-  const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    const delta = event.deltaY < 0 ? 0.08 : -0.08;
-    setZoom((prev) => Math.min(3.0, Math.max(0.2, Number((prev + delta).toFixed(2)))));
-  };
+  useEffect(() => {
+    const element = viewportRef.current;
+    if (!element) return;
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const delta = event.deltaY < 0 ? 0.08 : -0.08;
+      setZoom((prev) => Math.min(3.0, Math.max(0.2, Number((prev + delta).toFixed(2)))));
+    };
+    element.addEventListener("wheel", handleWheel, { passive: false });
+    return () => element.removeEventListener("wheel", handleWheel);
+  }, []);
 
   const finishDrawing = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (isPanningRef.current) {
@@ -269,10 +295,10 @@ export const ScratchpadInlinePanel = ({
 
     if (isReadOnly) return;
     if (event.button !== 0) return;
+    const point = toCanvasPoint(event);
+    if (point.x < 0 || point.y < 0 || point.x > CANVAS_WIDTH || point.y > CANVAS_HEIGHT) return;
     isDrawingRef.current = true;
     event.currentTarget.setPointerCapture(event.pointerId);
-
-    const point = toCanvasPoint(event);
     startPointRef.current = point;
     previewPointRef.current = point;
 
@@ -371,7 +397,7 @@ export const ScratchpadInlinePanel = ({
           <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
             <span className="text-base leading-none">🔒</span>
             <span className="font-extrabold text-emerald-800 dark:text-emerald-400">
-              Bản nháp đã nộp · Chế độ chỉ đọc
+              Bản nháp trên thiết bị · Chế độ chỉ đọc
             </span>
             <span className="text-[11px] text-slate-500 dark:text-slate-400 hidden sm:inline">
               (Bạn vẫn có thể cuộn, phóng to / thu nhỏ để xem lại nét vẽ)
@@ -506,15 +532,15 @@ export const ScratchpadInlinePanel = ({
 
       {/* Canvas Area with Zoom/Pan Floating Status Bar */}
       <div
-        onWheel={handleWheel}
-        className={`relative flex-1 bg-white dark:bg-slate-950 overflow-hidden select-none touch-none ${
+        ref={viewportRef}
+        className={`relative flex-1 min-h-0 bg-white overflow-hidden select-none touch-none ${
           isSpaceHeld ? "cursor-grab" : isReadOnly ? "cursor-default" : tool === "eraser" ? "cursor-cell" : "cursor-crosshair"
         }`}
       >
         {/* Floating Zoom and Pan Control Bar (Chuẩn theo hình ảnh mockup) */}
         <div className="absolute top-2 left-2 z-20 flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900/85 backdrop-blur-md text-white text-xs shadow-lg border border-slate-700/70 select-none">
           <span className="text-slate-300 text-[11px] font-medium hidden sm:inline">
-            Cuộn để thu phóng · Giữ Space hoặc kéo để di chuyển...
+            Cuộn để thu phóng · Giữ Space và kéo để di chuyển
           </span>
           <div className="flex items-center gap-1 pl-1 border-l border-slate-700">
             <button
@@ -549,8 +575,8 @@ export const ScratchpadInlinePanel = ({
 
         <canvas
           ref={canvasRef}
-          width={CANVAS_WIDTH}
-          height={CANVAS_HEIGHT}
+          width={viewport.width}
+          height={viewport.height}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={finishDrawing}
@@ -562,7 +588,7 @@ export const ScratchpadInlinePanel = ({
       {/* Footer / Action bar */}
       <div className="p-3 bg-slate-100 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs shrink-0">
         <span className="text-slate-500 text-[11px] font-medium">
-          {isReadOnly ? "🔒 Bản vẽ nháp đã được lưu cố định cùng bài nộp" : saveStatus}
+          {isReadOnly ? "Bản nháp cục bộ, không thay thế ảnh bài nộp trên server." : saveStatus}
         </span>
 
         <div className="flex items-center gap-2">

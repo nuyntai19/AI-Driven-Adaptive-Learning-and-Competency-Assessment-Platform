@@ -1,12 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using EduTwin.Contracts.CurriculumAndQuestions;
 
 namespace EduTwin.BLL.CurriculumAndQuestions;
 
 public class GradingCriteriaValidator
 {
-    public static List<string> Validate(GradingCriteria criteria)
+    public static List<string> Validate(GradingCriteria criteria, decimal? maxScore = null)
     {
         var errors = new List<string>();
 
@@ -31,6 +32,25 @@ public class GradingCriteriaValidator
             errors.Add("CommonErrors cannot be null.");
         }
 
+        if (criteria.Criteria == null)
+        {
+            errors.Add("Criteria cannot be null.");
+        }
+        else if (criteria.Criteria.Count > 0)
+        {
+            if (criteria.Criteria.Count > 20) errors.Add("At most 20 rubric criteria are allowed.");
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var item in criteria.Criteria)
+            {
+                if (item == null || string.IsNullOrWhiteSpace(item.CriterionId) || item.CriterionId.Length > 64 ||
+                    !ids.Add(item.CriterionId) || string.IsNullOrWhiteSpace(item.Title) || item.Title.Length > 200 ||
+                    item.Description == null || item.Description.Length > 2000 || item.MaxScore <= 0m ||
+                    item.MaxScore != Math.Round(item.MaxScore, 2))
+                    errors.Add("Invalid or duplicate rubric criterion.");
+            }
+            if (criteria.Criteria.All(c => c != null) && maxScore.HasValue && criteria.Criteria.Sum(c => c.MaxScore) != maxScore.Value)
+                errors.Add("Rubric maximum scores must sum to the question maximum score.");
+        }
         return errors;
     }
 }

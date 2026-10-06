@@ -82,18 +82,6 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
             }
         }
 
-        // Record that student has viewed the solution/feedback if not already set
-        if (!attempt.SolutionExposedAt.HasValue)
-        {
-            var tracked = await _dbContext.Attempts
-                .FirstOrDefaultAsync(a => a.CenterId == centerId && a.AttemptId == attemptId, cancellationToken);
-            if (tracked != null && !tracked.SolutionExposedAt.HasValue)
-            {
-                tracked.SolutionExposedAt = DateTime.UtcNow;
-                await _dbContext.SaveChangesAsync(cancellationToken);
-            }
-        }
-
         // Load ReasoningAnalysis with teacher user info
         var analysis = await _dbContext.ReasoningAnalyses.AsNoTracking()
             .Include(ra => ra.OverriddenByUser)
@@ -122,6 +110,25 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
         var job = await _dbContext.AIAnalysisJobs.AsNoTracking()
             .Where(j => j.CenterId == centerId && j.AttemptId == attemptId)
             .OrderByDescending(j => j.AnalysisJobId).FirstOrDefaultAsync(cancellationToken);
+
+        // The UI polls this endpoint during analysis. Such reads must neither
+        // expose the solution nor mutate the attempt snapshot held by the worker.
+        // A teacher viewing a submission is not a student viewing the solution.
+        var isStudent = currentUserRole == nameof(UserRole.Student);
+        var canExposeSolution = attempt.Status is AttemptStatus.Completed
+                or AttemptStatus.NeedsTeacherReview or AttemptStatus.AnalysisFailed
+            && job?.Status is not (AIJobStatus.Pending or AIJobStatus.Processing);
+        if (isStudent && canExposeSolution && !attempt.SolutionExposedAt.HasValue)
+        {
+            var tracked = await _dbContext.Attempts
+                .FirstOrDefaultAsync(a => a.CenterId == centerId && a.AttemptId == attemptId, cancellationToken);
+            if (tracked != null && !tracked.SolutionExposedAt.HasValue
+                && tracked.Status is AttemptStatus.Completed or AttemptStatus.NeedsTeacherReview or AttemptStatus.AnalysisFailed)
+            {
+                tracked.SolutionExposedAt = DateTime.UtcNow;
+                await _dbContext.SaveChangesAsync(cancellationToken);
+            }
+        }
 
         // Load TwinChange from TwinUpdateHistory
         var twinHistory = await _dbContext.TwinUpdateHistories.AsNoTracking()
@@ -201,7 +208,7 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
 
         // 2. Teacher Solution & Reference
         AttemptFeedbackTeacherSolutionDto? teacherSolutionDto = null;
-        if (attempt.Question != null)
+        if (attempt.Question != null && (!isStudent || canExposeSolution))
         {
             AttemptFeedbackGradingCriteriaDto? criteriaDto = null;
             if (attempt.Question.GradingCriteria != null)
@@ -292,13 +299,7 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
                     : null,
                 // Legacy builder substituted canned correctness messages for AI
                 // feedback. Do not surface a stale wrong statement after a regrade.
-                Feedback = analysis.FeedbackOrigin == "LegacySystem"
-                    ? effectiveCorrectness == true
-                        ? "Đáp án được bộ chấm tự động công nhận đúng. Đây là thông báo hệ thống; nhận xét AI cũ không được lưu riêng."
-                        : effectiveCorrectness == false
-                            ? "Đáp án chưa khớp kết quả bộ chấm tự động. Đây là thông báo hệ thống, không phải nhận xét riêng của AI."
-                            : "Kết quả đang chờ giáo viên xác nhận; nhận xét AI cũ không được lưu riêng."
-                    : analysis.Feedback,
+                Feedback = AnalysisFeedbackPresentation.Resolve(analysis.FeedbackOrigin, analysis.Feedback, effectiveCorrectness),
                 IsFallback = analysis.IsFallback,
                 NeedsTeacherReview = analysis.NeedsTeacherReview,
                 HasTeacherOverride = analysis.OverrideVersion > 0,
@@ -325,6 +326,10 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
 
             teacherEvaluationDto = new AttemptFeedbackTeacherEvaluationDto
             {
+                RubricGrade = RubricGrade.Deserialize(await _dbContext.TeacherReviewHistories.AsNoTracking()
+                    .Where(h => h.CenterId == centerId && h.AnalysisId == analysis.AnalysisId)
+                    .OrderByDescending(h => h.OverrideVersion).ThenByDescending(h => h.HistoryId)
+                    .Select(h => h.RubricResultJson).FirstOrDefaultAsync(cancellationToken)),
                 HasTeacherOverride = analysis.OverrideVersion > 0,
                 IsApprovedAsIs = isApprovedAsIs,
                 ReviewDecision = analysis.ReviewDecision,

@@ -57,6 +57,68 @@ public sealed class GetAttemptFeedbackUseCaseTests : IDisposable
     });
 
     [Theory]
+    [InlineData(AttemptStatus.PendingAnalysis, AIJobStatus.Pending, false)]
+    [InlineData(AttemptStatus.PendingAnalysis, AIJobStatus.Processing, false)]
+    [InlineData(AttemptStatus.Processing, AIJobStatus.Processing, false)]
+    [InlineData(AttemptStatus.Completed, AIJobStatus.Processing, false)]
+    [InlineData(AttemptStatus.NeedsTeacherReview, AIJobStatus.Pending, false)]
+    [InlineData(AttemptStatus.Completed, AIJobStatus.Completed, true)]
+    [InlineData(AttemptStatus.NeedsTeacherReview, AIJobStatus.Completed, true)]
+    [InlineData(AttemptStatus.AnalysisFailed, AIJobStatus.FallbackCompleted, true)]
+    [InlineData(AttemptStatus.AnalysisFailed, AIJobStatus.FailedTerminal, true)]
+    public async Task ExecuteAsync_StudentPolling_DoesNotExposeSolutionOrChangeAttemptUntilProcessingEnds(
+        AttemptStatus status, AIJobStatus jobStatus, bool canViewSolution)
+    {
+        var now = DateTime.UtcNow;
+        AddActionQuestion(now);
+        var attempt = new Attempt { CenterId = _centerId, AttemptId = 20, QuestionId = 10,
+            StudentId = _studentId, Status = status, FinalAnswer = "2", ReasoningLanguage = "vi",
+            CreatedAt = now, UpdatedAt = now };
+        _dbContext.Attempts.Add(attempt);
+        _dbContext.AIAnalysisJobs.Add(new AIAnalysisJob { CenterId = _centerId, AttemptId = 20,
+            Status = jobStatus, CorrelationId = "polling-test", AvailableAt = now,
+            CreatedAt = now, UpdatedAt = now });
+        await _dbContext.SaveChangesAsync();
+        var originalVersion = attempt.RowVersion;
+        var tenant = new TenantContext();
+        tenant.Initialize(_centerId, _studentId, nameof(UserRole.Student), 1);
+        var sut = new GetAttemptFeedbackUseCase(_dbContext, tenant, _guardMock.Object);
+
+        // Repeated GETs reproduce the UI polling while the worker awaits Gemini.
+        for (var i = 0; i < 3; i++)
+        {
+            var result = await sut.ExecuteAsync(20, CancellationToken.None);
+            Assert.True(result.IsSuccess);
+            Assert.Equal(canViewSolution, result.Data!.TeacherSolution is not null);
+        }
+
+        var persisted = await _dbContext.Attempts.AsNoTracking().SingleAsync();
+        Assert.Equal(canViewSolution, persisted.SolutionExposedAt.HasValue);
+        Assert.Equal(originalVersion + (canViewSolution ? 1ul : 0ul), persisted.RowVersion);
+        Assert.Equal(status, persisted.Status);
+        Assert.Equal("2", persisted.FinalAnswer);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_TeacherViewingCompletedWork_DoesNotMarkStudentSolutionExposure()
+    {
+        var now = DateTime.UtcNow;
+        AddActionQuestion(now);
+        _dbContext.Attempts.Add(new Attempt { CenterId = _centerId, AttemptId = 20, QuestionId = 10,
+            StudentId = _studentId, Status = AttemptStatus.Completed, FinalAnswer = "2",
+            ReasoningLanguage = "vi", CreatedAt = now, UpdatedAt = now });
+        await _dbContext.SaveChangesAsync();
+
+        var result = await new GetAttemptFeedbackUseCase(_dbContext, _tenantContext, _guardMock.Object)
+            .ExecuteAsync(20, CancellationToken.None);
+
+        Assert.NotNull(result.Data!.TeacherSolution);
+        var persisted = await _dbContext.Attempts.AsNoTracking().SingleAsync();
+        Assert.Null(persisted.SolutionExposedAt);
+        Assert.Equal(1ul, persisted.RowVersion);
+    }
+
+    [Theory]
     [InlineData(false, false, false)]
     [InlineData(true, false, true)]
     [InlineData(false, true, true)]

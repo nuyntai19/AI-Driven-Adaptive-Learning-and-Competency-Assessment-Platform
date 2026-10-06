@@ -43,6 +43,7 @@ public class GetAssignmentProgressUseCase : IGetAssignmentProgressUseCase
         }
 
         var actorId = _tenantContext.UserId.Value;
+        var centerId = _tenantContext.CenterId.Value;
 
         var assignment = await _dbContext.Assignments
             .AsNoTracking()
@@ -81,6 +82,15 @@ public class GetAssignmentProgressUseCase : IGetAssignmentProgressUseCase
             .ToListAsync(cancellationToken);
 
         var utcNow = _timeProvider.GetUtcNow().UtcDateTime;
+        var questions = await _dbContext.AssignmentQuestions.AsNoTracking()
+            .Where(q => q.CenterId == centerId && q.AssignmentId == assignmentId).ToListAsync(cancellationToken);
+        // Load the owned assignment once. Avoid parameterized Guid-list Contains,
+        // which the MySQL EF provider cannot reliably map. Only progress rows are projected below.
+        var attempts = await _dbContext.Attempts.AsNoTracking()
+            .Where(a => a.CenterId == centerId && a.AssignmentId == assignmentId)
+            .ToListAsync(cancellationToken);
+        var attemptsByStudent = attempts.ToLookup(a => a.StudentId);
+        var rubric = await AssignmentRubricReviewState.LoadAsync(_dbContext, centerId, assignmentId, null, cancellationToken);
         var data = progressRows
             .Select(item => new AssignmentProgressItemDto
             {
@@ -93,7 +103,8 @@ public class GetAssignmentProgressUseCase : IGetAssignmentProgressUseCase
                 TotalQuestionCount = checked((int)item.TotalQuestionCount),
                 TeacherFinalReviewStatus = item.TeacherFinalReviewStatus.ToString(),
                 FinalReviewVersion = item.FinalReviewVersion,
-                CompletedAt = item.CompletedAt
+                CompletedAt = item.CompletedAt,
+                FinalReviewEligibility = AssignmentFinalReviewPolicy.Evaluate(questions, attemptsByStudent[item.StudentId], rubric.QuestionIds, rubric.GradedAttemptIds)
             })
             .ToList();
 

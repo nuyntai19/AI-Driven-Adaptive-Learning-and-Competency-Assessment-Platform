@@ -46,7 +46,7 @@ public class GetCurriculumUseCase : IGetCurriculumUseCase
             return GetCurriculumResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
-        if (!CurriculumGuards.CanAccess(curriculum, actorId, isTeacher))
+        if (!CurriculumGuards.CanRead(curriculum, actorId, isTeacher))
         {
             return GetCurriculumResult.Failure(ErrorCodes.ResourceNotFound);
         }
@@ -60,7 +60,7 @@ public class GetCurriculumUseCase : IGetCurriculumUseCase
 
         var classes = await _dbContext.CurriculumClasses
             .AsNoTracking()
-            .Where(cc => cc.CurriculumId == request.CurriculumId && cc.CenterId == centerId)
+            .Where(cc => cc.CurriculumId == request.CurriculumId && cc.CenterId == centerId && curriculum.TeacherId == actorId)
             .Select(cc => cc.ClassId)
             .ToListAsync(cancellationToken);
 
@@ -68,6 +68,7 @@ public class GetCurriculumUseCase : IGetCurriculumUseCase
         {
             CurriculumId = curriculum.CurriculumId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             TeacherId = curriculum.TeacherId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
+            Visibility = curriculum.Visibility.ToString(),
             SubjectId = curriculum.SubjectId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             GradeLevel = curriculum.GradeLevel,
             Title = curriculum.Title,

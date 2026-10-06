@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using EduTwin.BLL.AssessmentAndReasoning.Attachments;
 using EduTwin.BLL.AssessmentAndReasoning.Evidence;
+using EduTwin.BLL.AssessmentAndReasoning.ReviewQueue;
 using EduTwin.BLL.DigitalTwin;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.BLL.Recommendations;
@@ -143,15 +144,6 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
         var attempt = analysis.Attempt;
         var question = attempt.Question;
 
-        if (request.AwardedScore.HasValue)
-        {
-            var maxScore = question.MaxScore;
-            if (request.AwardedScore.Value < 0m || request.AwardedScore.Value > maxScore)
-            {
-                return TeacherOverrideResult.ValidationFailed("INVALID_AWARDED_SCORE", $"Awarded score must be between 0 and {maxScore}.");
-            }
-        }
-
         // 3. Validate Teacher / CenterManager Ownership via Fail-Closed Scope Guard
         var canAccess = await _scopeGuard.CanAccessAttemptAsync(
             centerId,
@@ -164,6 +156,17 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
         {
             return TeacherOverrideResult.Forbidden();
         }
+
+        if (!RubricGrading.TryGrade(question.GradingCriteria, question.MaxScore, request.RubricScores, out var rubricGrade, out var rubricError))
+            return TeacherOverrideResult.ValidationFailed("INVALID_RUBRIC_SCORES", rubricError!);
+        if (rubricGrade != null)
+        {
+            if (request.AwardedScore.HasValue && request.AwardedScore.Value != rubricGrade.AwardedScore)
+                return TeacherOverrideResult.ValidationFailed("RUBRIC_TOTAL_MISMATCH", "Tổng điểm phải bằng tổng các tiêu chí rubric.");
+            request.AwardedScore = rubricGrade.AwardedScore;
+        }
+        if (request.AwardedScore is < 0m || request.AwardedScore > question.MaxScore)
+            return TeacherOverrideResult.ValidationFailed("INVALID_AWARDED_SCORE", $"Awarded score must be between 0 and {question.MaxScore}.");
 
         // 4. Optimistic concurrency check on OverrideVersion
         if (analysis.OverrideVersion != request.OverrideVersion)
@@ -180,8 +183,19 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
         DateTime recommendationTriggerAt = default;
         try
         {
+            if (await AssignmentFinalReviewWorkflow.IsLockedAsync(_dbContext, centerId, attempt.AssignmentId, attempt.StudentId, cancellationToken))
+                return TeacherOverrideResult.Conflict("ASSIGNMENT_RESULT_LOCKED", AssignmentFinalReviewWorkflow.LockedMessage);
             var now = _timeProvider.GetUtcNow().UtcDateTime;
             var newOverrideVersion = analysis.OverrideVersion + 1;
+
+            _dbContext.TeacherReviewHistories.Add(new TeacherReviewHistory
+            {
+                CenterId = centerId, AnalysisId = analysis.AnalysisId, AttemptId = attempt.AttemptId, TeacherId = actorId,
+                Decision = TeacherReviewDecision.Adjusted, PreviousScore = analysis.OverrideAwardedScore ?? attempt.AwardedScore,
+                NewScore = request.AwardedScore ?? attempt.AwardedScore, PreviousIsCorrect = analysis.OverrideIsCorrect ?? attempt.IsCorrect,
+                NewIsCorrect = request.IsCorrect, Note = request.Reason, OverrideVersion = newOverrideVersion,
+                RubricResultJson = rubricGrade == null ? null : RubricGrade.Serialize(rubricGrade), CreatedAt = now, CreatedBy = actorId
+            });
 
             // A. Update ReasoningAnalysis override fields (full-state semantics: null AwardedScore clears override)
             analysis.OverrideReasoningQuality = request.ReasoningQuality;
@@ -193,6 +207,10 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
             analysis.OverriddenByUserId = actorId;
             analysis.OverriddenAt = now;
             analysis.OverrideVersion = newOverrideVersion;
+            analysis.ReviewDecision = TeacherReviewDecision.Adjusted;
+            analysis.ReviewedByUserId = actorId;
+            analysis.ReviewedAt = now;
+            analysis.TeacherReviewNote = request.Reason;
             analysis.NeedsTeacherReview = false;
             analysis.UpdatedAt = now;
 

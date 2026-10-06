@@ -165,6 +165,7 @@ public class AssignCurriculumClassesUseCase : IAssignCurriculumClassesUseCase
         {
             CurriculumId = curriculum.CurriculumId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             TeacherId = curriculum.TeacherId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
+            Visibility = curriculum.Visibility.ToString(),
             SubjectId = curriculum.SubjectId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             GradeLevel = curriculum.GradeLevel,
             Title = curriculum.Title,

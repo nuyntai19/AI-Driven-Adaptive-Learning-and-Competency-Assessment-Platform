@@ -53,7 +53,7 @@ public class CloneCurriculumUseCase : ICloneCurriculumUseCase
             return CloneCurriculumResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
-        if (!CurriculumGuards.CanAccess(sourceCurriculum, actorId, isTeacher))
+        if (!CurriculumGuards.CanRead(sourceCurriculum, actorId, isTeacher))
         {
             return CloneCurriculumResult.Failure(ErrorCodes.ResourceNotFound);
         }
@@ -107,6 +107,8 @@ public class CloneCurriculumUseCase : ICloneCurriculumUseCase
             CurriculumId = newCurriculumId,
             CenterId = centerId,
             TeacherId = isTeacher ? actorId : sourceCurriculum.TeacherId,
+            Visibility = MaterialVisibility.Private,
+            GradeLevel = sourceCurriculum.GradeLevel,
             SubjectId = sourceCurriculum.SubjectId,
             Title = newTitle,
             Description = sourceCurriculum.Description,
@@ -154,6 +156,8 @@ public class CloneCurriculumUseCase : ICloneCurriculumUseCase
         {
             CurriculumId = newCurriculum.CurriculumId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             TeacherId = newCurriculum.TeacherId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
+            Visibility = newCurriculum.Visibility.ToString(),
+            GradeLevel = newCurriculum.GradeLevel,
             SubjectId = newCurriculum.SubjectId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             Title = newCurriculum.Title,
             Description = newCurriculum.Description,

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Linq.Expressions;
 using EduTwin.BLL.AssessmentAndReasoning.Evidence;
+using EduTwin.BLL.AssessmentAndReasoning.Feedback;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.Assignments;
@@ -147,9 +148,11 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
                 [], query.Page, query.PageSize, totalItems, totalPages);
         }
 
-        var entities = await reviewItems
-            .OrderBy(evidence => evidence.EvaluatedAt)
-            .ThenBy(evidence => evidence.EvidenceAssessmentId)
+        // A student's question list is ordered by the published assignment, not
+        // by mutable evidence timestamps. Keep chronological order in the queue.
+        var orderedItems = TeacherReviewQueueOrdering.Apply(reviewItems, _dbContext, centerId,
+            query.IncludeAllQuestions && query.AssignmentId.HasValue && query.StudentId.HasValue);
+        var entities = await orderedItems
             .Skip((int)offset)
             .Take(query.PageSize)
             .Include(evidence => evidence.Analysis)
@@ -160,6 +163,13 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
             .ToListAsync(cancellationToken);
 
         var attemptIds = entities.Select(e => e.AttemptId).Distinct().ToList();
+        var rubricHistories = await WhereIn(_dbContext.TeacherReviewHistories.AsNoTracking()
+            .Where(h => h.CenterId == centerId), h => h.AttemptId, attemptIds).ToListAsync(cancellationToken);
+        var rubricByAnalysis = rubricHistories.GroupBy(h => h.AnalysisId).ToDictionary(g => g.Key,
+            g => RubricGrade.Deserialize(g.OrderByDescending(h => h.OverrideVersion).ThenByDescending(h => h.HistoryId).First().RubricResultJson));
+        var attachedAttemptIds = (await WhereIn(_dbContext.AttemptAttachments.AsNoTracking()
+            .Where(a => a.CenterId == centerId), a => a.AttemptId, attemptIds)
+            .Select(a => a.AttemptId).Distinct().ToListAsync(cancellationToken)).ToHashSet();
         var reviewRequests = attemptIds.Count > 0
             ? await _dbContext.StudentReviewRequests
                 .AsNoTracking()
@@ -168,6 +178,11 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
             : new Dictionary<ulong, StudentReviewRequest>();
 
         var assignmentIds = entities.Select(e => e.Attempt.AssignmentId!.Value).Distinct().ToList();
+        var assignmentQuestions = await WhereIn(_dbContext.AssignmentQuestions.AsNoTracking()
+            .Where(aq => aq.CenterId == centerId), aq => aq.AssignmentId, assignmentIds)
+            .ToListAsync(cancellationToken);
+        var questionOrder = assignmentQuestions.ToDictionary(aq => (aq.AssignmentId, aq.QuestionId), aq => aq.OrderIndex);
+        var questionCounts = assignmentQuestions.GroupBy(aq => aq.AssignmentId).ToDictionary(g => g.Key, g => g.Count());
         var studentIds = entities.Select(e => e.Attempt.StudentId).Distinct().ToList();
         var progressQuery = _dbContext.StudentAssignmentProgresses
             .AsNoTracking()
@@ -254,16 +269,30 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
                 StudentId = evidence.Attempt.StudentId.ToString("D").ToLowerInvariant(),
                 StudentName = evidence.Attempt.Student.FullName,
                 QuestionId = evidence.Attempt.QuestionId.ToString(CultureInfo.InvariantCulture),
+                QuestionOrderIndex = questionOrder.TryGetValue((evidence.Attempt.AssignmentId.Value, evidence.Attempt.QuestionId), out var orderIndex) ? orderIndex : null,
+                AssignmentQuestionCount = questionCounts.GetValueOrDefault(evidence.Attempt.AssignmentId.Value),
                 SubjectId = evidence.Attempt.Question.SubjectId.ToString("D").ToLowerInvariant(),
                 QuestionText = evidence.Attempt.Question.QuestionText,
                 QuestionType = qType.ToString(),
+                AttemptStatus = evidence.Attempt.Status.ToString(),
+                AnswerEvaluationMode = evidence.Attempt.Question.AnswerEvaluationMode.ToString(),
+                TeacherSolution = evidence.Attempt.Question.Solution,
+                ExpectedReasoning = evidence.Attempt.Question.ExpectedReasoning,
+                GradingCriteria = evidence.Attempt.Question.GradingCriteria,
+                RubricGrade = rubricByAnalysis.GetValueOrDefault(evidence.AnalysisId!.Value),
+                MethodDetected = evidence.Analysis!.MethodDetected,
+                HasAttachment = attachedAttemptIds.Contains(evidence.AttemptId),
                 AnalysisId = evidence.AnalysisId!.Value.ToString(CultureInfo.InvariantCulture),
                 FinalAnswer = resolvedFinalAnswer,
                 AnswerDisplayLatex = resolvedDisplayLatex,
                 ReasoningText = resolvedReasoning,
                 IsFallback = evidence.Analysis!.IsFallback,
-                ReasoningQuality = evidence.Analysis.ReasoningQuality,
-                AnalysisFeedback = evidence.Analysis!.Feedback,
+                ReasoningQuality = evidence.Analysis.OverrideReasoningQuality ?? evidence.Analysis.ReasoningQuality,
+                OriginalReasoningQuality = evidence.Analysis.ReasoningQuality,
+                AnalysisFeedback = AnalysisFeedbackPresentation.Resolve(evidence.Analysis.FeedbackOrigin,
+                    evidence.Analysis.Feedback, evidence.Analysis.OverrideIsCorrect ?? evidence.Attempt.IsCorrect),
+                FeedbackOrigin = evidence.Analysis.FeedbackOrigin,
+                AiSolution = evidence.Analysis.AiSolution,
                 AnalysisConfidence = evidence.Analysis.AnalysisConfidence,
                 ErrorType = (evidence.Analysis.OverrideErrorType ?? evidence.Analysis.ErrorType).ToString(),
                 Evidence = EvidenceProjectionMapper.Map(evidence),

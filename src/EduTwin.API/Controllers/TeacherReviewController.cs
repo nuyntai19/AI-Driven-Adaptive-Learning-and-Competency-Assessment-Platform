@@ -25,6 +25,7 @@ public sealed class TeacherReviewController : ControllerBase
     private readonly ITeacherOverrideUseCase? _overrideUseCase;
     private readonly ITeacherApproveUseCase? _approveUseCase;
     private readonly IApproveAssignmentResultUseCase? _approveAssignmentResultUseCase;
+    private readonly IReopenAssignmentResultUseCase? _reopenAssignmentResultUseCase;
     private readonly IVoidAssignmentQuestionUseCase? _voidAssignmentQuestionUseCase;
     private readonly IGetTeacherStudentTwinUseCase? _teacherStudentTwinUseCase;
     private readonly TimeProvider _timeProvider;
@@ -37,7 +38,8 @@ public sealed class TeacherReviewController : ControllerBase
         IApproveAssignmentResultUseCase? approveAssignmentResultUseCase,
         IGetTeacherStudentTwinUseCase teacherStudentTwinUseCase,
         TimeProvider timeProvider,
-        IVoidAssignmentQuestionUseCase? voidAssignmentQuestionUseCase = null)
+        IVoidAssignmentQuestionUseCase? voidAssignmentQuestionUseCase = null,
+        IReopenAssignmentResultUseCase? reopenAssignmentResultUseCase = null)
     {
         _reviewQueueUseCase = reviewQueueUseCase ?? throw new ArgumentNullException(nameof(reviewQueueUseCase));
         _overrideUseCase = overrideUseCase;
@@ -46,6 +48,7 @@ public sealed class TeacherReviewController : ControllerBase
         _teacherStudentTwinUseCase = teacherStudentTwinUseCase;
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
         _voidAssignmentQuestionUseCase = voidAssignmentQuestionUseCase;
+        _reopenAssignmentResultUseCase = reopenAssignmentResultUseCase;
     }
 
     public TeacherReviewController(
@@ -284,6 +287,28 @@ public sealed class TeacherReviewController : ControllerBase
             TeacherApproveStatus.Forbidden => ProblemResponse(403, "forbidden", "Không có quyền phê duyệt", result.ErrorMessage, result.ErrorCode, traceId),
             TeacherApproveStatus.NotFound => ProblemResponse(404, "not-found", "Không tìm thấy dữ liệu", result.ErrorMessage, result.ErrorCode, traceId),
             TeacherApproveStatus.Conflict => ProblemResponse(409, "conflict", "Xung đột phiên bản", result.ErrorMessage, result.ErrorCode, traceId),
+            _ => throw new InvalidOperationException($"Unexpected status: {result.Status}")
+        };
+    }
+
+    [HttpPost("assignments/{assignmentId:guid}/reopen-result")]
+    [Authorize(Policy = "twin.reasoning.override")]
+    [ProducesResponseType(typeof(AssignmentFinalReviewResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ReopenAssignmentResult(Guid assignmentId, [FromBody] ReopenAssignmentResultRequest request, CancellationToken cancellationToken)
+    {
+        if (_reopenAssignmentResultUseCase is null) throw new InvalidOperationException("ReopenAssignmentResultUseCase is not configured.");
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        var result = await _reopenAssignmentResultUseCase.ExecuteAsync(assignmentId, request, cancellationToken);
+        if (result.IsSuccess) return Ok(new AssignmentFinalReviewResponse
+        {
+            Data = result.Data!, Meta = new MetaDto { TraceId = traceId, Timestamp = _timeProvider.GetUtcNow().UtcDateTime }
+        });
+        return result.Status switch
+        {
+            TeacherApproveStatus.ValidationFailed => ProblemResponse(400, "validation", "Chưa thể mở lại kết quả", result.ErrorMessage, result.ErrorCode, traceId),
+            TeacherApproveStatus.Forbidden => ProblemResponse(403, "forbidden", "Không có quyền mở lại", result.ErrorMessage, result.ErrorCode, traceId),
+            TeacherApproveStatus.NotFound => ProblemResponse(404, "not-found", "Không tìm thấy dữ liệu", result.ErrorMessage, result.ErrorCode, traceId),
+            TeacherApproveStatus.Conflict => ProblemResponse(409, "conflict", "Kết quả đã thay đổi", result.ErrorMessage, result.ErrorCode, traceId),
             _ => throw new InvalidOperationException($"Unexpected status: {result.Status}")
         };
     }

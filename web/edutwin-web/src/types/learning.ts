@@ -114,6 +114,7 @@ export interface AttemptFeedbackTeacherSolutionDto {
 }
 
 export interface AttemptFeedbackTeacherFinalEvaluationDto {
+  rubricGrade?: import("./reviews").RubricGrade | null;
   hasTeacherOverride: boolean;
   isApprovedAsIs?: boolean;
   reviewDecision?: string | null;

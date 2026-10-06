@@ -81,6 +81,11 @@ public class UpdateCurriculumUseCase : IUpdateCurriculumUseCase
             return UpdateCurriculumResult.Failure(ErrorCodes.InvalidStateTransition);
         }
 
+        var visibility = curriculum.Visibility;
+        if (request.Visibility != null && (!Enum.TryParse(request.Visibility, out visibility) || !Enum.IsDefined(visibility) || visibility.ToString() != request.Visibility))
+            return UpdateCurriculumResult.Failure(ErrorCodes.ValidationFailed);
+
+        curriculum.Visibility = visibility;
         curriculum.Title = request.Title;
         curriculum.Description = request.Description;
         curriculum.GradeLevel = request.GradeLevel;
@@ -115,6 +120,7 @@ public class UpdateCurriculumUseCase : IUpdateCurriculumUseCase
         {
             CurriculumId = curriculum.CurriculumId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             TeacherId = curriculum.TeacherId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
+            Visibility = curriculum.Visibility.ToString(),
             SubjectId = curriculum.SubjectId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             GradeLevel = curriculum.GradeLevel,
             Title = curriculum.Title,

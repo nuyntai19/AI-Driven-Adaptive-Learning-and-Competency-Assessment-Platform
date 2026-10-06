@@ -12,6 +12,10 @@ public class QuestionConfiguration : IEntityTypeConfiguration<Question>
     public void Configure(EntityTypeBuilder<Question> builder)
     {
         builder.ToTable("questions");
+        builder.Property(q => q.Visibility).HasColumnName("visibility").HasColumnType("varchar(16)")
+            .HasConversion<string>().HasDefaultValue(MaterialVisibility.Private).IsRequired();
+        builder.HasIndex(q => new { q.CenterId, q.Visibility, q.Status }).HasDatabaseName("ix_questions_center_visibility_status");
+        builder.ToTable(t => t.HasCheckConstraint("ck_questions_visibility", "visibility IN ('Private', 'Shared')"));
 
         // Primary Key
         builder.HasKey(q => q.QuestionId).HasName("pk_questions");

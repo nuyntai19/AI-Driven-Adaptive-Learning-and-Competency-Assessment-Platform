@@ -22,6 +22,7 @@ internal static class QuestionProjection
             SubjectId = q.SubjectId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             PrimaryTopicNodeId = q.PrimaryTopicNodeId.ToString(CultureInfo.InvariantCulture),
             CreatedByTeacherId = q.CreatedByTeacherId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
+            Visibility = q.Visibility.ToString(),
             QuestionType = q.QuestionType.ToString(),
             Difficulty = q.Difficulty,
             GradeLevel = q.GradeLevel,

@@ -1,4 +1,5 @@
 using EduTwin.BLL.AssessmentAndReasoning.Jobs;
+using EduTwin.BLL.AssessmentAndReasoning.Feedback;
 using EduTwin.BLL.AssessmentAndReasoning.AI;
 using EduTwin.BLL.AssessmentAndReasoning.Evidence;
 using EduTwin.BLL.AssessmentAndReasoning.Processing;
@@ -6,6 +7,7 @@ using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.CurriculumAndQuestions;
+using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.Contracts.KnowledgeGraph;
 using EduTwin.DAL.AssessmentAndReasoning;
 using EduTwin.DAL.Assignments;
@@ -15,6 +17,7 @@ using EduTwin.DAL.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Storage;
+using Moq;
 using Xunit;
 
 namespace EduTwin.BLL.Tests.AssessmentAndReasoning.Processing;
@@ -266,6 +269,12 @@ public sealed class AIAnalysisJobProcessorTests
     [InlineData("question")]
     [InlineData("mapping")]
     [InlineData("attempt")]
+    [InlineData("answer")]
+    [InlineData("grade")]
+    [InlineData("retry")]
+    [InlineData("assignment")]
+    [InlineData("post-feedback")]
+    [InlineData("exposure-and-answer")]
     public async Task ExecuteAsync_ContextOrAggregateDriftsDuringProvider_DiscardsResult(
         string driftKind)
     {
@@ -286,6 +295,75 @@ public sealed class AIAnalysisJobProcessorTests
         Assert.Empty(persisted.Analyses);
         Assert.NotEqual(AIJobStatus.Completed, persisted.Job.Status);
         Assert.NotEqual(AIJobStatus.FallbackCompleted, persisted.Job.Status);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_OnlySolutionExposureChangesDuringProvider_PreservesResultWithoutSecondAICall()
+    {
+        var store = new InMemoryDatabaseRoot();
+        var databaseName = Guid.NewGuid().ToString();
+        var centerId = Guid.NewGuid();
+        await SeedAsync(store, databaseName, centerId, retryCount: 0);
+        var aiService = new RecordingAIService(async (_, _) =>
+        {
+            await ApplyDriftAsync(store, databaseName, centerId, "solution-exposure");
+            return ValidResponse("vi");
+        });
+
+        var result = await ExecuteWithAIAsync(store, databaseName, centerId, aiService);
+
+        Assert.Equal(AIAnalysisJobProcessingOutcome.Completed, result.Outcome);
+        var persisted = await ReloadAsync(store, databaseName, centerId);
+        Assert.Equal(AIJobStatus.Completed, persisted.Job.Status);
+        Assert.Null(persisted.Job.LeaseUntil);
+        Assert.Equal((byte)0, persisted.Job.RetryCount);
+        Assert.Equal(UtcNow, persisted.Attempt.SolutionExposedAt);
+        Assert.Equal(3ul, persisted.Attempt.RowVersion);
+        Assert.Single(persisted.Analyses);
+        Assert.Single(persisted.Evidence);
+
+        var second = await ExecuteWithAIAsync(store, databaseName, centerId, aiService);
+        Assert.Equal(AIAnalysisJobProcessingOutcome.AlreadyTerminal, second.Outcome);
+        Assert.Equal(1, aiService.CallCount);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_StudentPollsFeedbackDuringAI_PersistsFirstResponseAndSingleCheckpoint()
+    {
+        var store = new InMemoryDatabaseRoot();
+        var databaseName = Guid.NewGuid().ToString();
+        var centerId = Guid.NewGuid();
+        await SeedAsync(store, databaseName, centerId, retryCount: 0);
+        var before = await ReloadAsync(store, databaseName, centerId);
+        var aiService = new RecordingAIService(async (_, _) =>
+        {
+            var studentTenant = new TenantContext();
+            studentTenant.Initialize(centerId, before.Attempt.StudentId, nameof(UserRole.Student), 1);
+            await using var studentDb = CreateContext(store, databaseName, studentTenant);
+            var feedback = new GetAttemptFeedbackUseCase(studentDb, studentTenant, Mock.Of<IStudentOwnershipGuard>());
+            for (var i = 0; i < 3; i++)
+            {
+                var result = await feedback.ExecuteAsync(1, CancellationToken.None);
+                Assert.True(result.IsSuccess);
+                Assert.Null(result.Data!.TeacherSolution);
+            }
+            var polled = await studentDb.Attempts.AsNoTracking().SingleAsync();
+            Assert.Equal(before.Attempt.RowVersion, polled.RowVersion);
+            Assert.Null(polled.SolutionExposedAt);
+            return ValidResponse("vi");
+        });
+
+        var completed = await ExecuteWithAIAsync(store, databaseName, centerId, aiService);
+
+        Assert.Equal(AIAnalysisJobProcessingOutcome.Completed, completed.Outcome);
+        Assert.Equal(1, aiService.CallCount);
+        var persisted = await ReloadAsync(store, databaseName, centerId);
+        Assert.Equal(AIJobStatus.Completed, persisted.Job.Status);
+        Assert.Equal((byte)0, persisted.Job.RetryCount);
+        Assert.Null(persisted.Job.LeaseUntil);
+        Assert.Equal(2ul, persisted.Attempt.RowVersion);
+        Assert.Single(persisted.Analyses);
+        Assert.Single(persisted.Evidence);
     }
 
     [Fact]
@@ -912,6 +990,29 @@ public sealed class AIAnalysisJobProcessorTests
                 break;
             case "attempt":
                 (await context.Attempts.SingleAsync()).ReasoningText = "concurrently changed";
+                break;
+            case "answer":
+                (await context.Attempts.SingleAsync()).FinalAnswer = "changed answer";
+                break;
+            case "grade":
+                (await context.Attempts.SingleAsync()).AwardedScore = 0;
+                break;
+            case "retry":
+                (await context.Attempts.SingleAsync()).ManualRetryCount++;
+                break;
+            case "assignment":
+                (await context.Attempts.SingleAsync()).AssignmentId = Guid.NewGuid();
+                break;
+            case "post-feedback":
+                (await context.Attempts.SingleAsync()).IsPostFeedback = true;
+                break;
+            case "solution-exposure":
+                (await context.Attempts.SingleAsync()).SolutionExposedAt = UtcNow;
+                break;
+            case "exposure-and-answer":
+                var exposed = await context.Attempts.SingleAsync();
+                exposed.SolutionExposedAt = UtcNow;
+                exposed.FinalAnswer = "changed answer";
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(driftKind));

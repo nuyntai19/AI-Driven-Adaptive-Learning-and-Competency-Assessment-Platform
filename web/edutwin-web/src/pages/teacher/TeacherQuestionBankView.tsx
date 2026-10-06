@@ -25,6 +25,8 @@ import { RichMathText } from "../../components/math/RichMathText";
 
 export function TeacherQuestionBankView() {
   const navigate = useNavigate();
+  const actorId = useAuthStore(state => state.user?.userId);
+  const [libraryScope, setLibraryScope] = useState<"all" | "owned" | "Shared">("all");
   const hasPermission = useAuthStore((state) => state.hasPermission);
 
   const canCreate = hasPermission(permissions.questionsCreate);
@@ -81,6 +83,8 @@ export function TeacherQuestionBankView() {
 
   const questionFilter: QuestionFilter = useMemo(
     () => ({
+      ownedOnly: libraryScope === "owned" || undefined,
+      visibility: libraryScope === "Shared" ? "Shared" : undefined,
       subjectId: selectedSubjectId || undefined,
       gradeLevel: selectedGradeLevel !== "" ? Number(selectedGradeLevel) : undefined,
       topicId: selectedTopicId || undefined,
@@ -90,7 +94,7 @@ export function TeacherQuestionBankView() {
       page,
       pageSize,
     }),
-    [selectedSubjectId, selectedGradeLevel, selectedTopicId, selectedType, selectedDifficulty, selectedStatus, page, pageSize]
+    [libraryScope, selectedSubjectId, selectedGradeLevel, selectedTopicId, selectedType, selectedDifficulty, selectedStatus, page, pageSize]
   );
 
   const { data: response, isLoading, isError, error, refetch } = useQuestions(questionFilter);
@@ -188,6 +192,11 @@ export function TeacherQuestionBankView() {
 
   return (
     <div className="th-page-container">
+      <label className="block text-sm font-semibold mb-4">Thư viện câu hỏi
+        <select className="th-select ml-3" value={libraryScope} onChange={e => { setLibraryScope(e.target.value as typeof libraryScope); setPage(1); }}>
+          <option value="all">Của tôi & dùng chung</option><option value="owned">Của tôi</option><option value="Shared">Shared — trong trung tâm</option>
+        </select>
+      </label>
       <TeacherPageHeader
         eyebrow="HỌC THUẬT & NỘI DUNG"
         title="Ngân Hàng Câu Hỏi & Đánh Giá"
@@ -447,6 +456,7 @@ export function TeacherQuestionBankView() {
                           <span className="font-mono text-xs font-bold text-[var(--at-accent-text)]">
                             #{q.questionId}
                           </span>
+                          <span className="th-badge th-badge-info">{q.visibility || "Private"}</span>
                           <span className="text-xs font-bold text-[var(--th-text)] truncate">
                             {subjectName}
                           </span>
@@ -583,7 +593,8 @@ export function TeacherQuestionBankView() {
 
                   {/* Action Buttons */}
                   <div className="flex items-center gap-2">
-                    {canPublish && q.status === "Draft" && (
+                    {canCreate && <button type="button" className="th-secondary-button text-sm" onClick={() => navigate(`/giao-vien/cau-hoi/tao-moi?copyFrom=${q.questionId}`)}>Sao chép</button>}
+                    {canPublish && q.createdByTeacherId === actorId && q.status === "Draft" && (
                       <button
                         type="button"
                         onClick={() => handleOpenDialog(q, "activate")}
@@ -592,7 +603,7 @@ export function TeacherQuestionBankView() {
                         Kích hoạt
                       </button>
                     )}
-                    {canPublish && q.status === "Active" && (
+                    {canPublish && q.createdByTeacherId === actorId && q.status === "Active" && (
                       <button
                         type="button"
                         onClick={() => handleOpenDialog(q, "archive")}
@@ -601,7 +612,7 @@ export function TeacherQuestionBankView() {
                         Lưu trữ
                       </button>
                     )}
-                    {canDelete && q.status !== "Active" && (
+                    {canDelete && q.createdByTeacherId === actorId && q.status !== "Active" && (
                       <button
                         type="button"
                         onClick={() => handleOpenDialog(q, "delete")}
@@ -611,13 +622,13 @@ export function TeacherQuestionBankView() {
                       </button>
                     )}
 
-                    {canUpdate && (
+                    {(canUpdate || q.createdByTeacherId !== actorId) && (
                       <button
                         type="button"
                         onClick={() => navigate(`/giao-vien/cau-hoi/${q.questionId}`)}
                         className="th-secondary-button text-xs py-1 px-3 font-bold hover:bg-[var(--at-secondary-wash)]"
                       >
-                        Chỉnh sửa →
+                        {q.createdByTeacherId === actorId ? "Chỉnh sửa →" : "Xem bản gốc →"}
                       </button>
                     )}
                   </div>

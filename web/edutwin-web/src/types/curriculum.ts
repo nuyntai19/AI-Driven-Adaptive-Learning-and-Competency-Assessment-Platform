@@ -1,6 +1,7 @@
 export type ReviewStatus = "Draft" | "Published" | "Archived";
 
 export interface Curriculum {
+  visibility?: import("./questions").MaterialVisibility;
   curriculumId: string;
   subjectId: string;
   teacherId: string | null;
@@ -14,6 +15,7 @@ export interface Curriculum {
 }
 
 export interface CreateCurriculumRequest {
+  visibility?: import("./questions").MaterialVisibility;
   teacherId?: string | null;
   subjectId: string;
   gradeLevel?: number | null;
@@ -23,6 +25,7 @@ export interface CreateCurriculumRequest {
 }
 
 export interface UpdateCurriculumRequest {
+  visibility?: import("./questions").MaterialVisibility;
   title: string;
   description?: string;
   gradeLevel?: number | null;

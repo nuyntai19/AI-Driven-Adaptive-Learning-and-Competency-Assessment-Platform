@@ -10,6 +10,10 @@ public class CurriculumConfiguration : IEntityTypeConfiguration<Curriculum>
     public void Configure(EntityTypeBuilder<Curriculum> builder)
     {
         builder.ToTable("curriculums");
+        builder.Property(c => c.Visibility).HasColumnName("visibility").HasColumnType("varchar(16)")
+            .HasConversion<string>().HasDefaultValue(MaterialVisibility.Private).IsRequired();
+        builder.HasIndex(c => new { c.CenterId, c.Visibility, c.ReviewStatus }).HasDatabaseName("ix_curriculums_center_visibility_status");
+        builder.ToTable(t => t.HasCheckConstraint("ck_curriculums_visibility", "visibility IN ('Private', 'Shared')"));
 
         // Primary Key
         builder.HasKey(c => c.CurriculumId).HasName("pk_curriculums");

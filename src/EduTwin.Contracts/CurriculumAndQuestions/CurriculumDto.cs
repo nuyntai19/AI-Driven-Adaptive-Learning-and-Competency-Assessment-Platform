@@ -4,6 +4,7 @@ namespace EduTwin.Contracts.CurriculumAndQuestions;
 
 public class CurriculumDto
 {
+    public string Visibility { get; set; } = "Private";
     public string CurriculumId { get; set; } = string.Empty;
     public string TeacherId { get; set; } = string.Empty;
     public string SubjectId { get; set; } = string.Empty;

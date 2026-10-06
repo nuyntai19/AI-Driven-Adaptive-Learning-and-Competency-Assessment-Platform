@@ -26,6 +26,11 @@ internal static class CurriculumGuards
     public static bool CanAccess(Curriculum curriculum, Guid actorId, bool isTeacher) =>
         isTeacher && curriculum.TeacherId == actorId;
 
+    public static bool CanRead(Curriculum curriculum, Guid actorId, bool isTeacher) =>
+        CanAccess(curriculum, actorId, isTeacher) || (isTeacher &&
+            curriculum.Visibility == Contracts.CurriculumAndQuestions.MaterialVisibility.Shared &&
+            curriculum.ReviewStatus == Contracts.CurriculumAndQuestions.ReviewStatus.Published);
+
     public static bool TryParseRowVersion(string? raw, out ulong rowVersion)
     {
         rowVersion = 0;

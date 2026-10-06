@@ -5,6 +5,7 @@ namespace EduTwin.Contracts.CurriculumAndQuestions;
 
 public class UpdateCurriculumRequest
 {
+    public string? Visibility { get; set; }
     [Required]
     [StringLength(250)]
     public string? Title { get; set; }

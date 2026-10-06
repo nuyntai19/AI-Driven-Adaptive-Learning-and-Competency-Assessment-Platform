@@ -819,6 +819,10 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasDefaultValue(1ul)
                         .HasColumnName("row_version");
 
+                    b.Property<string>("RubricResultJson")
+                        .HasColumnType("json")
+                        .HasColumnName("rubric_result");
+
                     b.Property<string>("TeacherId")
                         .IsRequired()
                         .HasColumnType("varchar(36)")
@@ -1303,6 +1307,13 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasColumnType("varchar(36)")
                         .HasColumnName("updated_by");
 
+                    b.Property<string>("Visibility")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("varchar(16)")
+                        .HasDefaultValue("Private")
+                        .HasColumnName("visibility");
+
                     b.HasKey("CurriculumId")
                         .HasName("pk_curriculums");
 
@@ -1318,11 +1329,16 @@ namespace EduTwin.DAL.Persistence.Migrations
                     b.HasIndex("CenterId", "TeacherId", "ReviewStatus")
                         .HasDatabaseName("ix_curriculums_center_id_teacher_id_review_status");
 
+                    b.HasIndex("CenterId", "Visibility", "ReviewStatus")
+                        .HasDatabaseName("ix_curriculums_center_visibility_status");
+
                     b.ToTable("curriculums", null, t =>
                         {
                             t.HasCheckConstraint("ck_curriculums_grade_level", "grade_level IS NULL OR (grade_level >= 10 AND grade_level <= 12)");
 
                             t.HasCheckConstraint("ck_curriculums_review_status", "review_status IN ('Draft', 'Published', 'Archived')");
+
+                            t.HasCheckConstraint("ck_curriculums_visibility", "visibility IN ('Private', 'Shared')");
                         });
                 });
 
@@ -1526,6 +1542,13 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasColumnType("varchar(36)")
                         .HasColumnName("updated_by");
 
+                    b.Property<string>("Visibility")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("varchar(16)")
+                        .HasDefaultValue("Private")
+                        .HasColumnName("visibility");
+
                     b.HasKey("QuestionId")
                         .HasName("pk_questions");
 
@@ -1540,6 +1563,9 @@ namespace EduTwin.DAL.Persistence.Migrations
 
                     b.HasIndex("CenterId", "SubjectId", "GradeLevel")
                         .HasDatabaseName("ix_questions_center_id_subject_id_grade_level");
+
+                    b.HasIndex("CenterId", "Visibility", "Status")
+                        .HasDatabaseName("ix_questions_center_visibility_status");
 
                     b.HasIndex("CenterId", "SubjectId", "PrimaryTopicNodeId", "Status", "Difficulty")
                         .HasDatabaseName("ix_questions_center_id_subject_id_topic_id_status_difficulty");
@@ -1561,6 +1587,8 @@ namespace EduTwin.DAL.Persistence.Migrations
                             t.HasCheckConstraint("ck_questions_question_type", "question_type IN ('MultipleChoice', 'ShortAnswer', 'Essay')");
 
                             t.HasCheckConstraint("ck_questions_status", "status IN ('Draft', 'Active', 'Archived')");
+
+                            t.HasCheckConstraint("ck_questions_visibility", "visibility IN ('Private', 'Shared')");
                         });
                 });
 

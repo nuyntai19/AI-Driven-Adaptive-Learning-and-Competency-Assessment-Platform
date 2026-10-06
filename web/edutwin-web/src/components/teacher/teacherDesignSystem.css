@@ -570,6 +570,15 @@
 }
 
 /* Custom Scrollbar */
+/* Readability floor for legacy small utility classes, scoped to Teacher only. */
+[data-actor="teacher"] :is(.th-page-container, .academic-workspace) :is([class~="text-[9px]"], [class~="text-[10px]"], [class~="text-[11px]"]) {
+  font-size: var(--th-font-meta) !important;
+  line-height: 1.5;
+}
+[data-actor="teacher"] :is(.th-page-container, .academic-workspace) :is(button, input, select, textarea, label):is([class~="text-xs"], [class~="text-[10px]"], [class~="text-[11px]"]) {
+  font-size: var(--th-font-ui) !important;
+}
+
 [data-actor="teacher"] .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
   height: 6px;

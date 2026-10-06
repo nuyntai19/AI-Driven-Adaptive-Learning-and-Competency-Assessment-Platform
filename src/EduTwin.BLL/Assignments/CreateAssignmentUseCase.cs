@@ -141,7 +141,8 @@ public class CreateAssignmentUseCase : ICreateAssignmentUseCase
         {
             var dbQuestions = await _dbContext.Questions
                 .AsNoTracking()
-                .Where(q => parsedQuestionIds.Contains(q.QuestionId))
+                .Where(q => q.CenterId == centerId && parsedQuestionIds.Contains(q.QuestionId) &&
+                    (q.CreatedByTeacherId == actorId || q.Visibility == EduTwin.Contracts.CurriculumAndQuestions.MaterialVisibility.Shared))
                 .Select(q => new { q.QuestionId, q.SubjectId, q.GradeLevel, q.Status })
                 .ToListAsync(cancellationToken);
 

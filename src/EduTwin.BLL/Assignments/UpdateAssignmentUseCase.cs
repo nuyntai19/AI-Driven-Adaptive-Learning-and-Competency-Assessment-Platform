@@ -136,6 +136,7 @@ public class UpdateAssignmentUseCase : IUpdateAssignmentUseCase
                 var dbQuestions = await _dbContext.Questions
                     .AsNoTracking()
                     .Where(q => newParsedQuestionIds.Contains(q.QuestionId))
+                    .Where(q => q.CenterId == assignment.CenterId && (q.CreatedByTeacherId == actorId || q.Visibility == EduTwin.Contracts.CurriculumAndQuestions.MaterialVisibility.Shared))
                     .Select(q => new { q.QuestionId, q.SubjectId, q.GradeLevel, q.Status })
                     .ToListAsync(cancellationToken);
 

@@ -23,13 +23,15 @@ import {
   isSuccessfulTerminalStatus,
   isTerminalStatus,
   shouldContinuePolling,
+  ANALYSIS_FOREGROUND_WAIT_MS,
+  shouldShowAnalysisWaitingScreen,
 } from "../utils/polling";
 import { StudentSubjectRequiredState } from "../components/student/StudentSubjectRequiredState";
 import { AttemptFeedbackHierarchy } from "../components/student/AttemptFeedbackHierarchy";
 import { AttemptScratchpadAttachment } from "../components/student/AttemptScratchpadAttachment";
 import { AssignmentReviewReceipt } from "../components/student/AssignmentReviewReceipt";
 import { isAssignmentWorkSubmitted, shouldStartAssignment, getAssignmentReviewTiming, isActiveAssignmentExpired } from "../utils/assignmentReviewTiming";
-import { getAttemptFeedbackPresentation, normalizeQuestionScore } from "../utils/attemptFeedbackPresentation";
+import { getAttemptFeedbackPresentation, normalizeQuestionScore, fallbackAssignmentGrade } from "../utils/attemptFeedbackPresentation";
 import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
 import { type VisualMathFieldRef } from "../components/math/VisualMathField";
 import { RichMathText } from "../components/math/RichMathText";
@@ -225,6 +227,7 @@ export const LearningPlayerPage = () => {
   // Workflow state
   const [isSubmitting, setIsSubmitting] = useState<boolean>(Boolean(persistedJobId));
   const [pollingJobId, setPollingJobId] = useState<string | null>(persistedJobId);
+  const [backgroundAnalysisJobId, setBackgroundAnalysisJobId] = useState<string | null>(null);
   const [pollingStatus, setPollingStatus] = useState<string>("Đang xử lý...");
   const [feedbackData, setFeedbackData] = useState<AttemptFeedbackDataDto | null>(null);
   const [isRefreshingAssignmentReview, setIsRefreshingAssignmentReview] = useState(false);
@@ -1160,14 +1163,32 @@ export const LearningPlayerPage = () => {
   }, [attemptSessionScope]);
 
 
+  // Do not keep a submitted assignment behind a full-screen spinner indefinitely.
+  // Polling continues and the submitted question workspace is read-only.
+  useEffect(() => {
+    if (!assignmentId || !pollingJobId || networkErrorPaused) return;
+    const timeout = setTimeout(() => {
+      setBackgroundAnalysisJobId(pollingJobId);
+      setIsSubmitting(false);
+      setAiBanner({
+        type: "info",
+        message: "✓ Bài làm đã được lưu. AI đang tiếp tục phân tích ở chế độ nền; bạn có thể xem lại bài đã nộp. Kết quả sẽ cập nhật khi hoàn tất.",
+        action: null,
+      });
+    }, ANALYSIS_FOREGROUND_WAIT_MS);
+    return () => clearTimeout(timeout);
+  }, [assignmentId, pollingJobId, networkErrorPaused]);
+
   // Polling Job Status Mechanism
   useEffect(() => {
     if (!pollingJobId || feedbackData || networkErrorPaused) return;
 
     let isSubscribed = true;
     let pollInterval = 1000;
+    let pollTimeout: ReturnType<typeof setTimeout>;
 
     const poll = async () => {
+      if (!isSubscribed) return;
       try {
         const result = await getAnalysisJobStatus(pollingJobId);
         if (!isSubscribed) return;
@@ -1236,7 +1257,7 @@ export const LearningPlayerPage = () => {
             currentStatus === "Processing" ? "AI đang phân tích toàn bộ câu trả lời..." : "Đang trong hàng đợi đánh giá..."
           );
           pollInterval = Math.min(pollInterval + 500, 3000);
-          setTimeout(poll, pollInterval);
+          pollTimeout = setTimeout(poll, pollInterval);
         } else {
           // Polling threshold reached: Frontend stops waiting in foreground.
           // Submission is confirmed SAVED. AI job continues in background.
@@ -1245,7 +1266,7 @@ export const LearningPlayerPage = () => {
           if (isSubscribed) {
             setAiBanner({
               type: "info",
-              message: "✓ Bài làm đã được ghi nhận. AI đang mất nhiều thời gian hơn dự kiến để phân tích. Bạn vẫn có thể xem bài làm và lời giải của giáo viên. Kết quả AI sẽ được cập nhật khi hoàn tất.",
+              message: "✓ Bài làm đã được ghi nhận. AI đang mất nhiều thời gian hơn dự kiến để phân tích. Bạn vẫn có thể xem bài đã nộp. Lời giải và kết quả AI sẽ hiển thị khi quá trình xử lý hoàn tất.",
               action: null,
             });
             try {
@@ -1275,14 +1296,14 @@ export const LearningPlayerPage = () => {
           return;
         }
         pollInterval = Math.min(pollInterval + 1000, 5000);
-        setTimeout(poll, pollInterval);
+        pollTimeout = setTimeout(poll, pollInterval);
       }
     };
 
-    const initialTimeout = setTimeout(poll, 1000);
+    pollTimeout = setTimeout(poll, 1000);
     return () => {
       isSubscribed = false;
-      clearTimeout(initialTimeout);
+      clearTimeout(pollTimeout);
     };
   }, [pollingJobId, feedbackData, networkErrorPaused, searchParams, setSearchParams, attemptSessionScope, assignmentId, refreshSubmittedAssignmentData, storeAttemptFeedback]);
 
@@ -1882,26 +1903,16 @@ export const LearningPlayerPage = () => {
     }
 
     // Fallback when summary not yet populated: maintain consistent score scales
-    let awardedTotal = 0;
-    let maxTotalForDetermined = 0;
-    let overallMaxTotal = 0;
+    const fallbackGrade = fallbackAssignmentGrade(assignmentQuestions.map(q => ({
+      isVoided: q.isVoided, score: q.latestAttempt?.awardedScore, maxScore: q.latestAttempt?.maxScore ?? 10,
+    })));
     let correctCount = 0;
     let voidedCount = 0;
 
     for (const q of assignmentQuestions) {
-      const maxScore = q.latestAttempt?.maxScore ?? 10;
-      overallMaxTotal += Number(maxScore);
-
       if (q.isVoided) {
         voidedCount++;
-        awardedTotal += Number(maxScore);
-        maxTotalForDetermined += Number(maxScore);
         continue;
-      }
-
-      if (q.latestAttempt?.awardedScore !== null && q.latestAttempt?.awardedScore !== undefined) {
-        awardedTotal += Number(q.latestAttempt.awardedScore);
-        maxTotalForDetermined += Number(maxScore);
       }
 
       if ((q.effectiveIsCorrect ?? q.latestAttempt?.isCorrect) === true) {
@@ -1910,9 +1921,9 @@ export const LearningPlayerPage = () => {
     }
 
     return {
-      awardedTotal: Math.round(awardedTotal * 100) / 100,
-      maxTotalForDetermined: Math.round(maxTotalForDetermined * 100) / 100,
-      overallMaxTotal: Math.round(overallMaxTotal * 100) / 100,
+      awardedTotal: fallbackGrade.awardedScore,
+      maxTotalForDetermined: fallbackGrade.maxScore,
+      overallMaxTotal: fallbackGrade.maxScore,
       correctCount,
       voidedCount,
       evaluatedCount,
@@ -1928,6 +1939,7 @@ export const LearningPlayerPage = () => {
     isAssignmentSubmitted ||
     isCurrentQuestionSubmitted ||
     isSubmitting ||
+    Boolean(pollingJobId) ||
     isAssignmentExpired ||
     Boolean(assignmentQuestion?.isVoided);
 
@@ -1986,7 +1998,7 @@ export const LearningPlayerPage = () => {
   }
 
   // 1. Polling Screen (Waiting for AI evaluation)
-  if (pollingJobId) {
+  if (shouldShowAnalysisWaitingScreen(pollingJobId, backgroundAnalysisJobId, networkErrorPaused)) {
     return (
       <div className="min-h-screen bg-[#f8fafc] dark:bg-[#090d16] p-6 flex items-center justify-center text-slate-800 dark:text-slate-100">
         <div className="mx-auto max-w-xl rounded-3xl bg-white dark:bg-[#0f172a] p-10 sm:p-12 text-center shadow-xs border border-slate-200/80 dark:border-slate-800 space-y-4">
@@ -1995,6 +2007,7 @@ export const LearningPlayerPage = () => {
           </div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-white">Đang Đối Soát Đáp Án & Phân Tích Lập Luận</h2>
           <p className="text-sm text-slate-500 dark:text-slate-400">{pollingStatus}</p>
+          <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">✓ Bài làm đã được lưu an toàn. Bạn không cần nộp lại.</p>
           <div className="flex justify-center gap-2 pt-2">
             <span className="inline-block h-2.5 w-2.5 animate-bounce rounded-full bg-indigo-400" />
             <span className="inline-block h-2.5 w-2.5 animate-bounce rounded-full bg-indigo-500 [animation-delay:0.2s]" />
@@ -2003,6 +2016,10 @@ export const LearningPlayerPage = () => {
           <p className="text-xs text-slate-400 dark:text-slate-500 pt-4 border-t border-slate-100 dark:border-slate-800">
             Hệ thống đang kiểm chứng các bước suy luận, phát hiện lỗ hổng kiến thức và cập nhật Hồ sơ Năng lực (Twin).
           </p>
+          <Link to={assignmentId ? "/hoc-tap/bai-tap" : "/hoc-tap/tong-quan"}
+            className="inline-flex rounded-xl border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-800">
+            {assignmentId ? "Về danh sách bài tập · AI tiếp tục xử lý" : "Về tổng quan · AI tiếp tục xử lý"}
+          </Link>
         </div>
       </div>
     );
@@ -3158,6 +3175,8 @@ export const LearningPlayerPage = () => {
                 clientSubmissionId={getClientSubmissionId()}
                 isScratchpadAttached={Boolean(attachedSnapshotDataUrl)}
                 isReadOnly={isReadOnly}
+                submittedAttemptId={reviewAttemptId}
+                hasSubmittedScratchpad={Boolean(assignmentQuestion?.hasAttachment || reviewFeedbackQuery.data?.studentSubmission?.attachmentUrl || immediateQuestionFeedback?.studentSubmission?.attachmentUrl)}
                 onAttachSnapshot={!isReadOnly ? handleAttachSnapshot : undefined}
               />
             </div>

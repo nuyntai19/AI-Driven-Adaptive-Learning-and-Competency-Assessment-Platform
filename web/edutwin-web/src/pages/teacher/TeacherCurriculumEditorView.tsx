@@ -5,6 +5,7 @@ import { curriculumApi } from "../../api/curriculumApi";
 import { knowledgeGraphApi } from "../../api/knowledgeGraphApi";
 import { organizationApi } from "../../api/organizationApi";
 import type { Curriculum, CreateCurriculumRequest } from "../../types/curriculum";
+import type { MaterialVisibility } from "../../types/questions";
 import type { KnowledgeNodeDto } from "../../types/knowledgeGraph";
 import { useAuthStore } from "../../stores/authStore";
 import { permissions } from "../../auth/permissions";
@@ -23,6 +24,8 @@ export const TeacherCurriculumEditorView: React.FC = () => {
   const isCreateMode = !id || id === "tao-moi";
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const actorId = useAuthStore(state => state.user?.userId);
+  const [visibility, setVisibility] = useState<MaterialVisibility>("Private");
 
   const hasPermission = useAuthStore((state) => state.hasPermission);
   const canPublish = hasPermission(permissions.curriculumsPublish);
@@ -83,6 +86,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
       setSelectedClassIds(c.classIds || []);
       setRowVersion(c.rowVersion || "");
       setStatus(c.reviewStatus || "Draft");
+      setVisibility(c.visibility || "Private");
     } else if (isCreateMode && subjects.length > 0 && !subjectId) {
       setSubjectId(subjects[0].subjectId);
     }
@@ -134,6 +138,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
           throw new Error("Vui lòng chọn khối học áp dụng (Khối 10, 11 hoặc 12) cho giáo trình mới.");
         }
         const payload: CreateCurriculumRequest = {
+          visibility,
           title: title.trim(),
           subjectId,
           gradeLevel: Number(gradeLevel),
@@ -148,6 +153,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
 
         // 1. Update basic info
         const updateRes = await curriculumApi.update(id, {
+          visibility,
           title: title.trim(),
           gradeLevel: gradeLevel !== "" ? Number(gradeLevel) : null,
           description: description.trim() || undefined,
@@ -250,7 +256,8 @@ export const TeacherCurriculumEditorView: React.FC = () => {
     },
   });
 
-  const isDraft = isCreateMode || status === "Draft";
+  const isOwned = isCreateMode || curriculumData?.data?.teacherId === actorId;
+  const isDraft = isOwned && (isCreateMode || status === "Draft");
 
   // Filtered available nodes
   const filteredAvailableNodes = availableNodes.filter((n) =>
@@ -269,7 +276,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
               Quay lại danh sách
             </Link>
 
-            {!isCreateMode && canPublish && status === "Draft" && (
+            {!isCreateMode && isOwned && canPublish && status === "Draft" && (
               <button
                 type="button"
                 className="th-button-secondary"
@@ -280,7 +287,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
               </button>
             )}
 
-            {!isCreateMode && canPublish && status === "Published" && (
+            {!isCreateMode && isOwned && canPublish && status === "Published" && (
               <button
                 type="button"
                 className="th-button-secondary"
@@ -403,6 +410,12 @@ export const TeacherCurriculumEditorView: React.FC = () => {
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                <label className="text-sm font-semibold">Phạm vi học liệu
+                  <select className="th-select w-full mt-1" disabled={!isDraft} value={visibility} onChange={e => setVisibility(e.target.value as MaterialVisibility)}>
+                    <option value="Private">Private — của tôi</option><option value="Shared">Shared — dùng chung trong trung tâm</option>
+                  </select>
+                  <p className="text-sm font-normal mt-2">Giáo viên khác chỉ xem/sao chép giáo trình Shared đã xuất bản; không sửa bản gốc hoặc xem lớp của bạn. Bản sao mặc định Private.</p>
+                </label>
                 <div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
                     <label style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)" }}>

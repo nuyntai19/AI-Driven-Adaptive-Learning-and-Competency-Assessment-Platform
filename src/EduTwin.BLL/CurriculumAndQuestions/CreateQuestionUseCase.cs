@@ -143,6 +143,11 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
             }
         }
 
+        if (!Enum.TryParse<MaterialVisibility>(request.Visibility, out var visibility) || !Enum.IsDefined(visibility) || visibility.ToString() != request.Visibility)
+            return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+        if (request.GradingCriteria != null && GradingCriteriaValidator.Validate(request.GradingCriteria, request.MaxScore).Count > 0)
+            return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+
         // 3. Actor validation
         Guid effectiveTeacherId = actorId;
         if (isTeacher)
@@ -231,6 +236,7 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
             SubjectId = request.SubjectId,
             PrimaryTopicNodeId = topicNodeId,
             CreatedByTeacherId = effectiveTeacherId,
+            Visibility = visibility,
             QuestionType = questionType,
             Difficulty = request.Difficulty,
             GradeLevel = request.GradeLevel,

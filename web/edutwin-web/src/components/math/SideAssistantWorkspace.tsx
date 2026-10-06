@@ -2,6 +2,7 @@ import React from "react";
 import { CasioInlinePanel } from "./CasioInlinePanel";
 import { ScratchpadInlinePanel } from "./ScratchpadInlinePanel";
 import { FunctionGrapher } from "./FunctionGrapher";
+import { AttemptScratchpadAttachment } from "../student/AttemptScratchpadAttachment";
 
 export type AssistantToolTab = "casio" | "scratchpad" | "graph";
 
@@ -15,6 +16,8 @@ export interface SideAssistantWorkspaceProps {
   clientSubmissionId: string;
   isScratchpadAttached?: boolean;
   isReadOnly?: boolean;
+  submittedAttemptId?: string | number | null;
+  hasSubmittedScratchpad?: boolean;
   onExportScratchpadPng?: (blob: Blob) => void;
   onAttachSnapshot?: (blob: Blob, dataUrl: string) => void;
 }
@@ -29,6 +32,8 @@ export const SideAssistantWorkspace: React.FC<SideAssistantWorkspaceProps> = ({
   clientSubmissionId,
   isScratchpadAttached,
   isReadOnly = false,
+  submittedAttemptId,
+  hasSubmittedScratchpad = false,
   onExportScratchpadPng,
   onAttachSnapshot,
 }) => {
@@ -107,7 +112,16 @@ export const SideAssistantWorkspace: React.FC<SideAssistantWorkspaceProps> = ({
           <CasioInlinePanel onInsertResult={onInsertResult} />
         )}
 
-        {activeTab === "scratchpad" && (
+        {activeTab === "scratchpad" && isReadOnly && (
+          <div className="overflow-auto flex-1">
+            {submittedAttemptId && hasSubmittedScratchpad ? (
+              <AttemptScratchpadAttachment key={String(submittedAttemptId)} attemptId={submittedAttemptId} />
+            ) : (
+              <p role="status" className="p-4 text-sm text-slate-300">Câu này không có ảnh nháp được đính kèm trong bài nộp.</p>
+            )}
+          </div>
+        )}
+        {activeTab === "scratchpad" && !isReadOnly && (
           <ScratchpadInlinePanel
             centerId={centerId}
             userId={userId}

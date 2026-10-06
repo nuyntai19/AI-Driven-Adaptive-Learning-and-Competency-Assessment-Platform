@@ -143,6 +143,13 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
                 "Bài tự luận chưa có kết quả xác định. Giáo viên phải chấm và xác nhận điểm trước khi hoàn tất.");
         }
 
+        var previousRubric = await _dbContext.TeacherReviewHistories.AsNoTracking()
+            .Where(h => h.CenterId == centerId && h.AnalysisId == analysisId)
+            .OrderByDescending(h => h.OverrideVersion).ThenByDescending(h => h.HistoryId)
+            .Select(h => h.RubricResultJson).FirstOrDefaultAsync(cancellationToken);
+        if (question.GradingCriteria.Criteria.Count > 0 && previousRubric == null)
+            return TeacherApproveResult.ValidationFailed("RUBRIC_GRADING_REQUIRED", "Câu hỏi có rubric. Hãy chấm đủ điểm từng tiêu chí trước khi xác nhận.");
+
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
         TeacherApproveDataDto? committedResponse = null;
         Guid recommendationStudentId = default;
@@ -152,6 +159,8 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
 
         try
         {
+            if (await AssignmentFinalReviewWorkflow.IsLockedAsync(_dbContext, centerId, attempt.AssignmentId, attempt.StudentId, cancellationToken))
+                return TeacherApproveResult.Conflict("ASSIGNMENT_RESULT_LOCKED", AssignmentFinalReviewWorkflow.LockedMessage);
             var now = _timeProvider.GetUtcNow().UtcDateTime;
             var newOverrideVersion = analysis.OverrideVersion + 1;
 
@@ -208,6 +217,7 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
                 NewIsCorrect = effectiveCorrectness,
                 Note = request.Note,
                 OverrideVersion = newOverrideVersion,
+                RubricResultJson = previousRubric,
                 CreatedAt = now,
                 CreatedBy = actorId
             };

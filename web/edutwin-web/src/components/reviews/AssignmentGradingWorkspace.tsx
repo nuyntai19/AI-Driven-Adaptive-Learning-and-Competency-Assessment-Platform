@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -6,6 +6,7 @@ import {
   overrideReasoningAnalysis,
   approveReasoningAnalysis,
   approveAssignmentResult,
+  reopenAssignmentResult,
   voidAssignmentQuestion,
 } from "../../api/teacherReviewsApi";
 import { getAssignments, getAssignmentProgress } from "../../api/assignmentsApi";
@@ -22,7 +23,11 @@ import { permissions } from "../../auth/permissions";
 import { RichMathText } from "../math/RichMathText";
 import { ScratchpadAttachmentDrawer } from "../ScratchpadAttachmentDrawer";
 import { extractProblemDetails } from "../../utils/problemDetails";
-import { resolveQuestionDefaultFormValues } from "../../utils/gradingWorkspaceHelpers";
+import { resolveQuestionDefaultFormValues, questionGradingActions, gradingFormIsDirty, finalApprovalBlockReason } from "../../utils/gradingWorkspaceHelpers";
+import { hydrateRubricForm, buildRubricScores, type RubricForm } from "../../utils/rubric";
+import { RubricGradeView } from "./RubricGradeView";
+import { getAnalysisFeedbackLabel, normalizeQuestionScore, questionAssignmentContribution, toInternalQuestionScore } from "../../utils/attemptFeedbackPresentation";
+import { normalizeAITextLineBreaks } from "../../utils/aiTextFormatting";
 
 export interface AssignmentGradingWorkspaceProps {
   actor: "Teacher" | "CenterManager";
@@ -31,6 +36,7 @@ export interface AssignmentGradingWorkspaceProps {
 type DateFilterPreset = "all" | "today" | "7days" | "30days" | "custom";
 
 const formatConfidence = (confidence?: number | string | null, isFallback?: boolean) => {
+  if (isFallback) return "Không có phân tích AI";
   if (confidence !== null && confidence !== undefined && confidence !== "") {
     const num = Number(confidence);
     if (!isNaN(num)) {
@@ -38,9 +44,6 @@ const formatConfidence = (confidence?: number | string | null, isFallback?: bool
       const pct = num > 0 && num <= 1 ? Math.round(num * 100) : Math.round(num);
       return `${pct}%`;
     }
-  }
-  if (isFallback) {
-    return "100% (Quy tắc)";
   }
   return "N/A";
 };
@@ -50,6 +53,8 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
   const queryClient = useQueryClient();
 
   const hasPermission = useAuthStore((state) => state.hasPermission);
+  const user = useAuthStore((state) => state.user);
+  const actorScope = `${user?.centerId ?? ""}:${user?.userId ?? ""}`;
 
   // Strictly enforce: ONLY Teacher with override permission can grade.
   // CenterManager NEVER has grading/override capabilities.
@@ -68,7 +73,8 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
   const [studentStatusFilter, setStudentStatusFilter] = useState<"all" | "pending" | "approved">("all");
 
   // Detailed Workspace State
-  const [activeQuestionIndex, setActiveQuestionIndex] = useState<number>(0);
+  const [activeQuestionSelection, setActiveQuestionSelection] = useState<{ scope: string; attemptId: string } | null>(null);
+  const workspaceScope = `${actorScope}|${selectedAssignmentId}|${selectedStudentId}`;
 
   // Scratchpad Drawer State
   const [isScratchpadOpen, setIsScratchpadOpen] = useState(false);
@@ -78,6 +84,9 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
   const [isVoidModalOpen, setIsVoidModalOpen] = useState(false);
   const [voidReason, setVoidReason] = useState("Đề bài có sai sót kỹ thuật / thiếu dữ kiện.");
   const [quarantineInBank, setQuarantineInBank] = useState(true);
+  const [voidImpactAcknowledged, setVoidImpactAcknowledged] = useState(false);
+  const [isReopenModalOpen, setIsReopenModalOpen] = useState(false);
+  const [reopenReason, setReopenReason] = useState("");
 
   // Final Review Modal State (Teacher Only)
   const [isFinalApproveModalOpen, setIsFinalApproveModalOpen] = useState(false);
@@ -95,7 +104,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
 
   // 1. Load Classes List
   const { data: classesData } = useQuery({
-    queryKey: ["gradingClassesList"],
+    queryKey: ["gradingClassesList", actorScope],
     queryFn: () => organizationApi.listClasses({ page: 1, pageSize: 100 }),
   });
 
@@ -103,7 +112,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
 
   // 2. Load Assignments List
   const { data: assignmentsData, isLoading: isLoadingAssignments } = useQuery({
-    queryKey: ["gradingAssignmentsList", selectedClassId],
+    queryKey: ["gradingAssignmentsList", actorScope, selectedClassId],
     queryFn: () => getAssignments({ classId: selectedClassId || undefined, page: 1, pageSize: 100 }),
   });
 
@@ -111,7 +120,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
 
   // 3. Load general review queue stats for badge counters
   const { data: globalQueueData } = useQuery({
-    queryKey: ["gradingGlobalQueue", selectedClassId],
+    queryKey: ["gradingGlobalQueue", actorScope, selectedClassId],
     queryFn: () => listTeacherReviewQueue({ classId: selectedClassId || undefined, pageSize: 100 }),
   });
 
@@ -182,7 +191,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
     isLoading: isLoadingProgress,
     refetch: refetchProgress,
   } = useQuery({
-    queryKey: ["gradingAssignmentProgress", selectedAssignmentId],
+    queryKey: ["gradingAssignmentProgress", actorScope, selectedAssignmentId],
     queryFn: () => getAssignmentProgress(selectedAssignmentId),
     enabled: !!selectedAssignmentId,
   });
@@ -220,7 +229,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
     isLoading: isLoadingStudentQuestions,
     refetch: refetchStudentQuestions,
   } = useQuery({
-    queryKey: ["gradingStudentQuestions", selectedAssignmentId, selectedStudentId],
+    queryKey: ["gradingStudentQuestions", actorScope, selectedAssignmentId, selectedStudentId],
     queryFn: () =>
       listTeacherReviewQueue({
         assignmentId: selectedAssignmentId,
@@ -232,14 +241,33 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
   });
 
   const studentQuestions: TeacherReviewQueueItemDto[] = useMemo(() => {
-    return studentQuestionsData?.data ?? [];
-  }, [studentQuestionsData]);
+    if (!selectedAssignmentId || !selectedStudentId) return [];
+    return [...(studentQuestionsData?.data ?? [])].sort((a, b) =>
+      (a.questionOrderIndex ?? Number.MAX_SAFE_INTEGER) - (b.questionOrderIndex ?? Number.MAX_SAFE_INTEGER));
+  }, [studentQuestionsData, selectedAssignmentId, selectedStudentId]);
 
-  // Active question in workspace
+  // Preserve the selected attempt, even when refreshed evidence changes order.
+  const selectedQuestionIndex = activeQuestionSelection?.scope === workspaceScope
+    ? studentQuestions.findIndex(q => q.attemptId === activeQuestionSelection.attemptId) : -1;
+  const activeQuestionIndex = Math.max(0, selectedQuestionIndex);
   const currentQuestion: TeacherReviewQueueItemDto | null = useMemo(() => {
     if (studentQuestions.length === 0) return null;
     return studentQuestions[activeQuestionIndex] || studentQuestions[0] || null;
   }, [studentQuestions, activeQuestionIndex]);
+  useEffect(() => {
+    if (currentQuestion && selectedQuestionIndex < 0) {
+      setActiveQuestionSelection({ scope: workspaceScope, attemptId: currentQuestion.attemptId });
+    }
+  }, [currentQuestion, selectedQuestionIndex, workspaceScope]);
+  useEffect(() => {
+    setIsScratchpadOpen(false);
+    setScratchpadAttemptId(null);
+    setIsVoidModalOpen(false);
+    setIsFinalApproveModalOpen(false);
+    setIsReopenModalOpen(false);
+    setReopenReason("");
+    setVoidImpactAcknowledged(false);
+  }, [workspaceScope]);
 
   // Resolve formatted student final answer (for multiple choice or math formulas)
   const resolvedStudentAnswer = useMemo(() => {
@@ -299,6 +327,10 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
     return raw;
   }, [currentQuestion]);
 
+  const resolvedTeacherAnswer = currentQuestion?.questionType === "MultipleChoice"
+    ? currentQuestion.options?.filter(o => o.isCorrect).map(o => `${o.optionLabel}. ${o.optionText}`).join("; ") || "Chưa có phương án đúng."
+    : currentQuestion?.correctAnswer || "Chưa có đáp án chuẩn.";
+
   // Override Form State for the active question
   const [awardedScore, setAwardedScore] = useState<number>(10);
   const [isCorrectVal, setIsCorrectVal] = useState<boolean | null>(null);
@@ -306,30 +338,63 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
   const [errorTypeVal, setErrorTypeVal] = useState<ErrorType>("None");
   const [feedbackVal, setFeedbackVal] = useState<string>("");
   const [overrideReasonVal, setOverrideReasonVal] = useState<string>("");
+  const [rubricForm, setRubricForm] = useState<RubricForm>({});
+  const rubricBaseline = useRef<RubricForm>({});
+  const rubricCriteria = currentQuestion?.gradingCriteria?.criteria || [];
+  const rubricResult = buildRubricScores(rubricCriteria, rubricForm, currentQuestion?.maxScore ?? 10);
+  const [isEditingGrade, setIsEditingGrade] = useState(false);
+  const loadedFormKey = useRef("");
+  const loadedFormContext = useRef("");
+  const formBaseline = useRef(resolveQuestionDefaultFormValues(null));
+  const formContext = currentQuestion ? `${workspaceScope}|${currentQuestion.attemptId}|${currentQuestion.analysisId}` : "";
+  const formKey = currentQuestion ? `${formContext}|${currentQuestion.overrideVersion ?? currentQuestion.evidence?.analysisOverrideVersion ?? 0}` : "";
+  const questionActions = questionGradingActions(currentQuestion);
+  const finalResultLocked = selectedStudent?.teacherFinalReviewStatus === "Approved" || currentQuestion?.teacherFinalReviewStatus === "Approved";
+  const displayedQuestionGrade = normalizeQuestionScore(currentQuestion?.overrideAwardedScore ?? currentQuestion?.awardedScore, currentQuestion?.maxScore ?? 10);
+  const assignmentContribution = questionAssignmentContribution(currentQuestion?.overrideAwardedScore ?? currentQuestion?.awardedScore,
+    currentQuestion?.maxScore ?? 10, currentQuestion?.assignmentQuestionCount);
+  const originalReasoningQuality = currentQuestion?.hasTeacherOverride
+    ? currentQuestion.originalReasoningQuality
+    : currentQuestion?.originalReasoningQuality ?? currentQuestion?.reasoningQuality;
+  const formDefaults = useMemo(() => resolveQuestionDefaultFormValues(currentQuestion), [currentQuestion]);
+  const showGradeForm = !finalResultLocked && (isEditingGrade || questionActions.needsManualGrade);
+  // Dirty means a visible, initialized form was actually edited. Never compare
+  // retained input state with another student's/question's server defaults.
+  const hasUnsavedGrade = Boolean(currentQuestion && showGradeForm && loadedFormContext.current === formContext &&
+    (gradingFormIsDirty({ awardedScore, isCorrectVal, reasoningQuality, errorTypeVal, feedbackVal, overrideReasonVal }, formBaseline.current) ||
+      JSON.stringify(rubricForm) !== JSON.stringify(rubricBaseline.current)));
+  const gradeChangedOnServer = Boolean(hasUnsavedGrade && loadedFormKey.current !== formKey);
+  const loadGradeForm = useCallback(() => {
+    loadedFormKey.current = formKey;
+    loadedFormContext.current = formContext;
+    formBaseline.current = { ...formDefaults };
+    setAwardedScore(formDefaults.awardedScore); setIsCorrectVal(formDefaults.isCorrectVal);
+    setReasoningQuality(formDefaults.reasoningQuality); setErrorTypeVal(formDefaults.errorTypeVal);
+    setFeedbackVal(formDefaults.feedbackVal); setOverrideReasonVal(formDefaults.overrideReasonVal);
+    const initialRubric = hydrateRubricForm(currentQuestion?.gradingCriteria?.criteria || [], currentQuestion?.rubricGrade);
+    rubricBaseline.current = initialRubric; setRubricForm(initialRubric);
+    setIsEditingGrade(false);
+  }, [formKey, formContext, formDefaults, currentQuestion]);
 
   // Populate override form when active question changes
   useEffect(() => {
-    if (currentQuestion) {
-      const defaults = resolveQuestionDefaultFormValues(currentQuestion);
-      setAwardedScore(defaults.awardedScore);
-      setIsCorrectVal(defaults.isCorrectVal);
-      setReasoningQuality(defaults.reasoningQuality);
-      setFeedbackVal(defaults.feedbackVal);
-      setOverrideReasonVal(defaults.overrideReasonVal);
-      setErrorTypeVal(defaults.errorTypeVal);
-    }
-  }, [currentQuestion]);
+    if (loadedFormKey.current === formKey && loadedFormContext.current === formContext) return;
+    // Keep real edits if a concurrent teacher update arrives in this context.
+    if (gradeChangedOnServer) return;
+    loadGradeForm();
+  }, [formKey, formContext, gradeChangedOnServer, loadGradeForm]);
 
   // MUTATIONS (Teacher Only)
   // A. Quick Approve AI Analysis
   const approveMutation = useMutation({
     mutationFn: ({ analysisId, version }: { analysisId: string; version: number }) =>
-      approveReasoningAnalysis(analysisId, { overrideVersion: version, note: "Giáo viên xác nhận đánh giá của AI chính xác." }),
-    onSuccess: () => {
-      showToast("Đã duyệt kết quả đánh giá của AI thành công!", "success");
-      refetchStudentQuestions();
-      refetchProgress();
-      queryClient.invalidateQueries({ queryKey: ["gradingAssignmentProgress", selectedAssignmentId] });
+      approveReasoningAnalysis(analysisId, { overrideVersion: version, note: "Giáo viên đã kiểm tra và xác nhận kết quả câu hỏi." }),
+    onSuccess: async () => {
+      showToast("Đã xác nhận kết quả câu hỏi. Chốt toàn bài là bước riêng sau khi rà soát xong.", "success");
+      loadGradeForm();
+      loadedFormKey.current = "";
+      await Promise.all([refetchStudentQuestions(), refetchProgress()]);
+      queryClient.invalidateQueries({ queryKey: ["gradingAssignmentProgress", actorScope, selectedAssignmentId] });
       queryClient.invalidateQueries({ queryKey: ["gradingGlobalQueue"] });
     },
     onError: (err: any) => {
@@ -342,11 +407,12 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
   const overrideMutation = useMutation({
     mutationFn: ({ analysisId, payload }: { analysisId: string; payload: TeacherOverrideRequest }) =>
       overrideReasoningAnalysis(analysisId, payload),
-    onSuccess: () => {
+    onSuccess: async () => {
       showToast("Đã lưu điểm và đánh giá cho câu hỏi thành công!", "success");
-      refetchStudentQuestions();
-      refetchProgress();
-      queryClient.invalidateQueries({ queryKey: ["gradingAssignmentProgress", selectedAssignmentId] });
+      loadGradeForm();
+      loadedFormKey.current = "";
+      await Promise.all([refetchStudentQuestions(), refetchProgress()]);
+      queryClient.invalidateQueries({ queryKey: ["gradingAssignmentProgress", actorScope, selectedAssignmentId] });
       queryClient.invalidateQueries({ queryKey: ["gradingGlobalQueue"] });
     },
     onError: (err: any) => {
@@ -359,37 +425,30 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
   const finalApproveMutation = useMutation({
     mutationFn: async () => {
       if (!selectedAssignment || !selectedStudent) throw new Error("Thiếu thông tin bài tập hoặc học sinh.");
-
-      // Fetch fresh progress data to guarantee the latest finalReviewVersion
-      let latestVersion = selectedStudent.finalReviewVersion || 0;
-      try {
-        const freshProgress = await getAssignmentProgress(selectedAssignment.assignmentId);
-        const freshStudent = freshProgress?.data?.find((s) => s.studentId === selectedStudent.studentId);
-        if (freshStudent && freshStudent.finalReviewVersion !== undefined) {
-          latestVersion = freshStudent.finalReviewVersion;
-        }
-      } catch {
-        // Fallback to currently loaded selectedStudent version if fetch fails
-      }
-
+      if (hasUnsavedGrade || approveMutation.isPending || overrideMutation.isPending || voidQuestionMutation.isPending || reopenMutation.isPending) throw new Error("Hãy lưu đánh giá đang sửa trước khi chốt bài.");
+      // Fail closed: a failed refresh must never fall back to stale eligibility/version.
+      const freshProgress = await getAssignmentProgress(selectedAssignment.assignmentId);
+      const freshStudent = freshProgress.data.find((s) => s.studentId === selectedStudent.studentId);
+      const blockReason = finalApprovalBlockReason(freshStudent, false, false);
+      if (blockReason || freshStudent?.finalReviewVersion == null) throw new Error(blockReason || "Thiếu phiên bản kết quả.");
       return approveAssignmentResult(selectedAssignment.assignmentId, {
         studentId: selectedStudent.studentId,
-        finalReviewVersion: latestVersion,
+        finalReviewVersion: freshStudent.finalReviewVersion,
         note: finalApproveNote,
       });
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       showToast("Đã phê duyệt toàn bộ kết quả bài tập cho học sinh này!", "success");
       setIsFinalApproveModalOpen(false);
-      refetchProgress();
-      refetchStudentQuestions();
-      queryClient.invalidateQueries({ queryKey: ["gradingAssignmentProgress", selectedAssignmentId] });
+      loadGradeForm();
+      await Promise.all([refetchStudentQuestions(), refetchProgress()]);
+      queryClient.invalidateQueries({ queryKey: ["gradingAssignmentProgress", actorScope, selectedAssignmentId] });
       queryClient.invalidateQueries({ queryKey: ["gradingGlobalQueue"] });
     },
     onError: (err: any) => {
       refetchProgress();
       const problem = extractProblemDetails(err);
-      showToast(problem.detail || "Lỗi khi phê duyệt kết quả bài làm.", "error");
+      showToast(problem.detail || (err instanceof Error ? err.message : "Lỗi khi phê duyệt kết quả bài làm."), "error");
     },
   });
 
@@ -397,16 +456,19 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
   const voidQuestionMutation = useMutation({
     mutationFn: () => {
       if (!selectedAssignment || !currentQuestion) throw new Error("Thiếu thông tin câu hỏi.");
+      if (finalResultLocked || !voidImpactAcknowledged) throw new Error("Hãy mở lại kết quả và xác nhận phạm vi ảnh hưởng trước khi hủy câu.");
       return voidAssignmentQuestion(selectedAssignment.assignmentId, currentQuestion.questionId, {
         reason: voidReason,
         quarantineInBank,
+        reopenFinalizedResults: voidImpactAcknowledged,
       });
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       showToast("Đã hủy câu hỏi khỏi bài tập thành công!", "success");
       setIsVoidModalOpen(false);
-      refetchStudentQuestions();
-      refetchProgress();
+      loadGradeForm();
+      loadedFormKey.current = "";
+      await Promise.all([refetchStudentQuestions(), refetchProgress()]);
     },
     onError: (err: any) => {
       const problem = extractProblemDetails(err);
@@ -414,16 +476,64 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
     },
   });
 
+  const reopenMutation = useMutation({
+    mutationFn: async () => {
+      if (!canGrade || !selectedAssignment || !selectedStudent || reopenReason.trim().length < 5 || reopenReason.trim().length > 1000)
+        throw new Error("Lý do mở lại phải từ 5 đến 1000 ký tự.");
+      const fresh = await getAssignmentProgress(selectedAssignment.assignmentId);
+      const target = fresh.data.find(s => s.studentId === selectedStudent.studentId);
+      if (!target || target.teacherFinalReviewStatus !== "Approved" || target.finalReviewVersion == null)
+        throw new Error("Kết quả đã thay đổi hoặc đã được mở lại. Hãy tải lại.");
+      return reopenAssignmentResult(selectedAssignment.assignmentId, { studentId: target.studentId,
+        finalReviewVersion: target.finalReviewVersion, reason: reopenReason.trim() });
+    },
+    onSuccess: async () => {
+      setIsReopenModalOpen(false); setReopenReason(""); loadGradeForm(); loadedFormKey.current = "";
+      await Promise.all([refetchStudentQuestions(), refetchProgress()]);
+      queryClient.invalidateQueries({ queryKey: ["gradingGlobalQueue", actorScope] });
+      showToast("Đã mở lại kết quả để điều chỉnh. Sau khi sửa, cần chốt lại toàn bài. Bài nộp của học sinh được giữ nguyên.", "success");
+    },
+    onError: (err: any) => { const problem = extractProblemDetails(err);
+      showToast(problem.detail || (err instanceof Error ? err.message : "Không thể mở lại kết quả."), "error"); }
+  });
+
   // Navigation Helpers
+  const gradingBusy = approveMutation.isPending || overrideMutation.isPending || finalApproveMutation.isPending || voidQuestionMutation.isPending || reopenMutation.isPending;
+  const finalBlockReason = finalApprovalBlockReason(selectedStudent, hasUnsavedGrade, gradingBusy);
+  useEffect(() => {
+    if (!hasUnsavedGrade && !gradingBusy) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [hasUnsavedGrade, gradingBusy]);
+  const allowNavigation = () => {
+    if (gradingBusy) { showToast("Đang cập nhật kết quả. Vui lòng chờ trước khi chuyển câu."); return false; }
+    if (hasUnsavedGrade && !window.confirm("Đánh giá đang sửa chưa được lưu. Bạn muốn bỏ thay đổi và chuyển trang/câu?")) return false;
+    loadedFormKey.current = "";
+    loadedFormContext.current = "";
+    setIsEditingGrade(false);
+    return true;
+  };
+  const handleSelectQuestion = (index: number) => {
+    if (index !== activeQuestionIndex && studentQuestions[index] && allowNavigation()) {
+      setActiveQuestionSelection({ scope: workspaceScope, attemptId: studentQuestions[index].attemptId });
+    }
+  };
+  const resetGradeForm = () => {
+    if (gradingBusy || (hasUnsavedGrade && !window.confirm("Bỏ những thay đổi chưa lưu của câu này?"))) return;
+    loadGradeForm();
+  };
   const handleSelectAssignment = (assignmentId: string) => {
+    if (!allowNavigation()) return;
     const params = new URLSearchParams(searchParams);
     params.set("assignmentId", assignmentId);
     params.delete("studentId");
     setSearchParams(params);
-    setActiveQuestionIndex(0);
+    setActiveQuestionSelection(null);
   };
 
   const handleBackToAssignments = () => {
+    if (!allowNavigation()) return;
     const params = new URLSearchParams(searchParams);
     params.delete("assignmentId");
     params.delete("studentId");
@@ -431,19 +541,22 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
   };
 
   const handleSelectStudent = (studentId: string) => {
+    if (!allowNavigation()) return;
     const params = new URLSearchParams(searchParams);
     params.set("studentId", studentId);
     setSearchParams(params);
-    setActiveQuestionIndex(0);
+    setActiveQuestionSelection(null);
   };
 
   const handleBackToStudents = () => {
+    if (!allowNavigation()) return;
     const params = new URLSearchParams(searchParams);
     params.delete("studentId");
     setSearchParams(params);
   };
 
   const handleClassChange = (classId: string) => {
+    if (!allowNavigation()) return;
     const params = new URLSearchParams(searchParams);
     if (classId) {
       params.set("classId", classId);
@@ -457,7 +570,11 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
 
   // Submit Override Handler
   const handleSaveQuestionGrade = () => {
-    if (!currentQuestion) return;
+    if (!currentQuestion || !canGrade || finalResultLocked || !questionActions.canEdit || gradingBusy) return;
+    if (gradeChangedOnServer) { showToast("Kết quả câu này đã được cập nhật trên server. Hãy hủy thay đổi và rà soát phiên bản mới trước khi lưu.", "error"); return; }
+    if (!Number.isFinite(awardedScore) || awardedScore < 0 || awardedScore > 10) {
+      showToast("Điểm phải nằm trong khoảng 0 đến điểm tối đa của câu hỏi.", "error"); return;
+    }
     if (isCorrectVal === null) {
       showToast("Vui lòng chọn kết quả Đúng hoặc Sai cho câu hỏi trước khi lưu.", "error");
       return;
@@ -466,18 +583,21 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
       showToast("Vui lòng nhập lời nhận xét của giáo viên gửi học sinh trước khi lưu.", "error");
       return;
     }
-    if (!overrideReasonVal.trim()) {
+    if (!overrideReasonVal.trim() && !questionActions.needsManualGrade) {
       showToast("Vui lòng nhập lý do điều chỉnh điểm số (bắt buộc theo quy định kiểm tra).", "error");
       return;
     }
 
+    if (rubricCriteria.length && rubricResult.error) { showToast(rubricResult.error, "error"); return; }
+
     const payload: TeacherOverrideRequest = {
-      awardedScore: awardedScore,
+      awardedScore: rubricCriteria.length ? rubricResult.total : toInternalQuestionScore(awardedScore, currentQuestion.maxScore ?? 10),
+      rubricScores: rubricCriteria.length ? rubricResult.scores : undefined,
       isCorrect: isCorrectVal,
       reasoningQuality: reasoningQuality,
       errorType: errorTypeVal,
       feedback: feedbackVal.trim(),
-      reason: overrideReasonVal.trim(),
+      reason: overrideReasonVal.trim() || "Giáo viên chấm trực tiếp câu chưa có điểm xác định.",
       overrideVersion: currentQuestion.overrideVersion ?? currentQuestion.evidence?.analysisOverrideVersion ?? 0,
     };
 
@@ -985,20 +1105,23 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
             </div>
 
             {/* Final Approve Action Button (Only Teacher with permissions) */}
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col items-end gap-2 max-w-md">
               {canGrade && (
                 <button
                   type="button"
-                  onClick={() => setIsFinalApproveModalOpen(true)}
-                  disabled={finalApproveMutation.isPending}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-md shadow-emerald-600/20 active:scale-95 transition-all"
+                  onClick={() => { if (!finalBlockReason) setIsFinalApproveModalOpen(true); }}
+                  disabled={Boolean(finalBlockReason)}
+                  title={finalBlockReason ?? "Chốt kết quả cuối cùng của toàn bài"}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-md transition-all"
                 >
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <span>Duyệt & Chốt bài tập cho học sinh</span>
+                  <span>{selectedStudent.teacherFinalReviewStatus === "Approved" ? "✓ Đã chốt kết quả toàn bài" : "Chốt kết quả toàn bài"}</span>
                 </button>
               )}
+              {canGrade && <p role="status" className="text-xs text-slate-500 dark:text-slate-400 text-right">{finalBlockReason ?? "Các câu đã được xử lý. Rà soát kết quả rồi chốt toàn bài."}</p>}
+              {canGrade && finalResultLocked && <button type="button" disabled={gradingBusy} onClick={() => { setReopenReason(""); setIsReopenModalOpen(true); }} className="rounded-xl bg-amber-600 hover:bg-amber-500 px-4 py-2 font-bold text-sm text-white disabled:opacity-50">Mở lại để điều chỉnh</button>}
             </div>
           </div>
 
@@ -1018,26 +1141,25 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                 {studentQuestions.map((q, idx) => {
                   const isActive = idx === activeQuestionIndex;
                   const isCorrect = q.isCorrect;
-                  const conf = q.analysisConfidence ? Number(q.analysisConfidence) : null;
-                  const isLowConfidence = conf !== null ? (conf <= 1 ? conf < 0.7 : conf < 70) : false;
-                  const needsReview = q.evidence?.requiresTeacherReview || q.isFallback || isLowConfidence;
-                  const isOverridden = q.hasTeacherOverride;
+                  const needsReview = questionGradingActions(q).needsReview;
+                  const statusLabel = needsReview ? "Cần giáo viên chấm hoặc xác nhận"
+                    : q.hasTeacherOverride ? "Giáo viên đã điều chỉnh điểm"
+                    : isCorrect === true ? "Đáp án đúng" : isCorrect === false ? "Đáp án chưa đúng"
+                    : questionGradingActions(q).reviewed ? "Giáo viên đã xác nhận" : "Chưa có kết quả";
 
                   return (
                     <button
-                      key={q.analysisId || idx}
-                      onClick={() => setActiveQuestionIndex(idx)}
+                      key={q.attemptId}
+                      title={statusLabel}
+                      onClick={() => handleSelectQuestion(idx)}
                       className={`shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all border ${
                         isActive
                           ? "bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-600/25"
                           : "bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-indigo-300"
                       }`}
                     >
-                      <span>Câu {idx + 1}</span>
-                      {isCorrect === true && <span className={isActive ? "text-emerald-200" : "text-emerald-600"}>✓</span>}
-                      {isCorrect === false && <span className={isActive ? "text-rose-200" : "text-rose-600"}>✗</span>}
-                      {needsReview && <span title="AI độ tin cậy thấp / cần duyệt">⚠️</span>}
-                      {isOverridden && <span title="Giáo viên đã điều chỉnh điểm">✏️</span>}
+                      <span>Câu {q.questionOrderIndex ?? idx + 1}</span>
+                      <span aria-label={statusLabel}>{needsReview ? "⚠️" : q.hasTeacherOverride ? "✏️" : isCorrect === true ? "✓" : isCorrect === false ? "✗" : questionGradingActions(q).reviewed ? "✓" : "…"}</span>
                     </button>
                   );
                 })}
@@ -1053,14 +1175,14 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                       <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
                         <div className="flex items-center gap-2">
                           <span className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-extrabold flex items-center justify-center text-sm">
-                            {activeQuestionIndex + 1}
+                            {currentQuestion.questionOrderIndex ?? activeQuestionIndex + 1}
                           </span>
                           <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
                             Loại: {currentQuestion.questionType || "Trắc nghiệm"}
                           </span>
                         </div>
                         <div className="text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full">
-                          Điểm tối đa: {currentQuestion.maxScore ?? 10} điểm
+                          Điểm câu hỏi: thang 10
                         </div>
                       </div>
 
@@ -1161,6 +1283,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
 
                       {/* Scratchpad Button if attempt has attachments */}
                       <div className="pt-2 flex items-center justify-between">
+                        {currentQuestion.hasAttachment ? (
                         <button
                           type="button"
                           onClick={() => {
@@ -1174,11 +1297,13 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                           </svg>
                           <span>Xem bản nháp / vẽ tay (Scratchpad)</span>
                         </button>
+                        ) : <span className="text-xs text-slate-500">Không có ảnh nháp đính kèm.</span>}
 
-                        {canGrade && (
+                        {canGrade && !finalResultLocked && (
                           <button
                             type="button"
-                            onClick={() => setIsVoidModalOpen(true)}
+                            disabled={gradingBusy}
+                            onClick={() => { if (allowNavigation()) { setVoidImpactAcknowledged(false); setIsVoidModalOpen(true); } }}
                             className="inline-flex items-center gap-1.5 text-xs text-rose-600 hover:text-rose-700 dark:text-rose-400 font-bold"
                           >
                             Hủy câu hỏi do lỗi đề
@@ -1228,25 +1353,43 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                           </span>
                         </div>
                         <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-800">
-                          <span className="text-slate-500 dark:text-slate-400 block mb-1">Chất lượng lập luận</span>
+                          <span className="text-slate-500 dark:text-slate-400 block mb-1">Chỉ số chất lượng lập luận (không phải điểm bài)</span>
                           <span className="text-base font-extrabold text-slate-900 dark:text-slate-100">
-                            {currentQuestion.reasoningQuality !== null && currentQuestion.reasoningQuality !== undefined
-                              ? `${Math.round(Number(currentQuestion.reasoningQuality))}/100`
+                            {originalReasoningQuality !== null && originalReasoningQuality !== undefined
+                              ? `${Math.round(Number(originalReasoningQuality))}/100`
                               : "N/A"}
                           </span>
                         </div>
                       </div>
 
                       {/* AI Feedback */}
+                      {currentQuestion.methodDetected && <p className="text-xs text-slate-600 dark:text-slate-300">Phương pháp nhận diện: <strong>{currentQuestion.methodDetected}</strong></p>}
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Điểm câu hỏi: thang 10. Chỉ số lập luận: thang 100, không cộng vào điểm bài tập.</p>
                       {currentQuestion.analysisFeedback && (
                         <div className="space-y-1.5">
-                          <span className="text-xs font-bold text-slate-500 uppercase">Nhận xét của AI cho học sinh:</span>
+                          <span className="text-xs font-bold text-slate-500 dark:text-slate-300 uppercase">{getAnalysisFeedbackLabel(currentQuestion)}:</span>
                           <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-                            <RichMathText text={currentQuestion.analysisFeedback} />
+                            <RichMathText text={normalizeAITextLineBreaks(currentQuestion.analysisFeedback)} />
                           </div>
                         </div>
                       )}
+                      <div className="space-y-2 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/30 p-4">
+                        <h4 className="text-xs font-bold text-indigo-700 dark:text-indigo-300">Lời giải đề xuất từ AI (AI Solution)</h4>
+                        {currentQuestion.aiSolution?.trim()
+                          ? <RichMathText text={normalizeAITextLineBreaks(currentQuestion.aiSolution)} />
+                          : <p className="text-xs text-slate-500 dark:text-slate-400">Chưa có lời giải AI được lưu cho lượt làm này.</p>}
+                      </div>
                     </div>
+
+                    <details className="rounded-2xl border border-emerald-200 dark:border-emerald-900 bg-white dark:bg-slate-900 p-5 text-sm">
+                      <summary className="cursor-pointer font-bold text-emerald-700 dark:text-emerald-300">Đáp án & lời giải tham khảo của giáo viên</summary>
+                      <div className="mt-4 space-y-3">
+                        <p className="text-xs text-slate-500">Lời giải mẫu không phải cách giải duy nhất. Công nhận phương pháp khác nếu các bước suy luận hợp lệ.</p>
+                        <div><h4 className="text-xs font-bold mb-1">Đáp án chuẩn</h4><RichMathText text={resolvedTeacherAnswer} /></div>
+                        <div><h4 className="text-xs font-bold mb-1">Lời giải tham khảo</h4><RichMathText text={currentQuestion.teacherSolution || "Chưa có lời giải tham khảo."} /></div>
+                        {currentQuestion.expectedReasoning && <div><h4 className="text-xs font-bold mb-1">Gợi ý lập luận / tiêu chí</h4><RichMathText text={currentQuestion.expectedReasoning} /></div>}
+                      </div>
+                    </details>
 
                     {/* GRADING ACTION PANEL */}
                     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm space-y-4">
@@ -1265,19 +1408,20 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                       </div>
 
                       {/* IF MANAGER: READ-ONLY DISPLAY */}
-                      {isManager ? (
+                      {!canGrade || finalResultLocked ? (
                         <div className="space-y-4">
                           <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl space-y-2">
                             <div className="flex items-center justify-between text-xs">
-                              <span className="text-slate-500">Điểm số hiện tại:</span>
+                              <span className="text-slate-500">Điểm câu hỏi (thang 10):</span>
                               <span className="font-bold text-base text-indigo-600 dark:text-indigo-400">
-                                {currentQuestion.overrideAwardedScore ?? currentQuestion.awardedScore ?? 0} / {currentQuestion.maxScore ?? 10} điểm
+                                {displayedQuestionGrade.awardedScore ?? "Chưa chấm"} / 10
                               </span>
                             </div>
+                            {assignmentContribution && <p className="text-xs text-slate-500 dark:text-slate-400">Đóng góp vào tổng bài (thang 10): {assignmentContribution.awardedScore ?? "Chưa chấm"} / {assignmentContribution.maxScore} điểm. Mỗi câu có trọng số bằng nhau.</p>}
                             <div className="flex items-center justify-between text-xs">
                               <span className="text-slate-500">Kết luận:</span>
                               <span className="font-bold">
-                                {currentQuestion.isCorrect ? "✓ Chính xác" : "✗ Chưa chính xác"}
+                                {currentQuestion.isCorrect == null ? "Chưa có kết luận" : currentQuestion.isCorrect ? "✓ Chính xác" : "✗ Chưa chính xác"}
                               </span>
                             </div>
                             {currentQuestion.teacherFeedback && (
@@ -1296,13 +1440,18 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
 
                           <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl text-xs text-amber-800 dark:text-amber-200 flex items-start gap-2">
                             <span>🔒</span>
-                            <span>Quản lý trung tâm chỉ có quyền giám sát và theo dõi. Giáo viên phụ trách lớp sẽ thực hiện chấm điểm và điều chỉnh bài làm.</span>
+                            <span>{finalResultLocked ? "Kết quả đã chốt, hiện chỉ xem. Muốn thay đổi, hãy chọn Mở lại để điều chỉnh và nhập lý do." : "Bạn không có quyền chấm hoặc điều chỉnh bài làm này."}</span>
                           </div>
                         </div>
                       ) : (
                         /* IF TEACHER: INTERACTIVE GRADING FORM */
                         <div className="space-y-4">
+                          <p className="text-sm font-bold">Điểm câu hỏi (thang 10): {displayedQuestionGrade.awardedScore ?? "Chưa chấm"} / 10</p>
+                          {assignmentContribution && <p className="text-xs text-slate-500 dark:text-slate-400">Đóng góp vào tổng bài (thang 10): {assignmentContribution.awardedScore ?? "Chưa chấm"} / {assignmentContribution.maxScore} điểm. Mỗi câu có trọng số bằng nhau.</p>}
+                          {questionActions.reviewed && <p className="text-xs text-emerald-700 dark:text-emerald-300">✓ Giáo viên đã xác nhận/chấm câu này.</p>}
+                          {!questionActions.canEdit && <p role="status" className="text-xs text-amber-700 dark:text-amber-300">Đang chờ dữ liệu phân tích. Tải lại kết quả trước khi chấm câu này.</p>}
                           {/* Quick Approve AI Button */}
+                          {!showGradeForm && questionActions.canConfirm && (
                           <button
                             type="button"
                             onClick={() =>
@@ -1311,38 +1460,57 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                                 version: currentQuestion.overrideVersion ?? currentQuestion.evidence?.analysisOverrideVersion ?? 0,
                               })
                             }
-                            disabled={approveMutation.isPending}
-                            className="w-full py-2.5 px-4 rounded-xl text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 transition-colors flex items-center justify-center gap-2"
+                            disabled={gradingBusy || hasUnsavedGrade}
+                            className="w-full py-2.5 px-4 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
                           >
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                             </svg>
-                            <span>Xác nhận kết quả AI đánh giá đúng (Quick Approve)</span>
+                            <span>{approveMutation.isPending ? "Đang xác nhận…" : currentQuestion.hasStudentReviewRequest ? "Xác nhận sau khi xem xét yêu cầu" : "Xác nhận kết quả câu này"}</span>
                           </button>
-
-                          <div className="relative flex py-1 items-center">
-                            <div className="flex-grow border-t border-slate-200 dark:border-slate-800"></div>
-                            <span className="flex-shrink mx-2 text-[11px] font-bold text-slate-400 uppercase tracking-wider">Hoặc chấm lại câu này</span>
-                            <div className="flex-grow border-t border-slate-200 dark:border-slate-800"></div>
-                          </div>
+                          )}
+                          {currentQuestion.rubricGrade && !showGradeForm && <RubricGradeView grade={currentQuestion.rubricGrade} />}
+                          {!showGradeForm && questionActions.canEdit && <button type="button" disabled={gradingBusy} onClick={() => { loadGradeForm(); setIsEditingGrade(true); }} className="text-xs font-bold text-indigo-600 dark:text-indigo-300 underline disabled:opacity-50">{questionActions.reviewed ? "Chỉnh sửa đánh giá đã lưu" : "Điều chỉnh điểm / chấm trực tiếp"}</button>}
+                          {showGradeForm && <fieldset disabled={gradingBusy} className="space-y-4 disabled:opacity-60">
+                          {gradeChangedOnServer && <p role="alert" className="text-xs text-amber-700 dark:text-amber-300">Kết quả trên server đã thay đổi. Nội dung đang sửa được giữ lại, nhưng không thể lưu đè. Hãy hủy thay đổi để xem phiên bản mới.</p>}
+                          <p className="text-xs text-slate-500">{questionActions.needsManualGrade ? "Câu này chưa có điểm xác định. Giáo viên chấm trực tiếp dựa trên bài làm." : "Lưu ở đây thay cho thao tác xác nhận. Kết quả toàn bài sẽ cần được chốt lại sau khi chỉnh sửa."}</p>
 
                           {/* 1. Điểm số & Đúng/Sai */}
+                          {rubricCriteria.length > 0 && <section className="rounded-xl border border-indigo-300 dark:border-indigo-700 p-4 space-y-3">
+                            <h3 className="font-bold text-sm">Chấm từng tiêu chí (quy đổi thang 10)</h3>
+                            <p className="text-sm text-slate-600 dark:text-slate-300">Công nhận mọi phương pháp hợp lệ đạt mục tiêu. Không trừ điểm chỉ vì khác lời giải mẫu.</p>
+                            {rubricCriteria.map(c => <div key={c.criterionId} className="space-y-1">
+                              <label className="flex justify-between gap-3 items-center text-sm font-semibold">{c.title}
+                                <span className="flex items-center gap-2"><input aria-label={`Điểm tiêu chí ${c.title}`} type="number" min="0" max={Number((c.maxScore / (currentQuestion.maxScore ?? 10) * 10).toFixed(2))} step="0.01"
+                                  value={rubricForm[c.criterionId]?.score ?? ''} className="w-24 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 p-2"
+                                  onChange={e => setRubricForm(prev => ({ ...prev, [c.criterionId]: { comment: prev[c.criterionId]?.comment || '', score: e.target.value } }))} />
+                                  / {Number((c.maxScore / (currentQuestion.maxScore ?? 10) * 10).toFixed(2))}</span>
+                              </label>
+                              {c.description && <p className="text-sm text-slate-600 dark:text-slate-300">{c.description}</p>}
+                              <input aria-label={`Nhận xét tiêu chí ${c.title}`} placeholder="Nhận xét tiêu chí (tùy chọn)" maxLength={2000} value={rubricForm[c.criterionId]?.comment || ''}
+                                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 p-2 text-sm"
+                                onChange={e => setRubricForm(prev => ({ ...prev, [c.criterionId]: { score: prev[c.criterionId]?.score || '', comment: e.target.value } }))} />
+                            </div>)}
+                            <p className="font-bold text-sm">Tổng điểm: {rubricResult.error ? 'Chưa chấm đủ' : Number((rubricResult.total / (currentQuestion.maxScore ?? 10) * 10).toFixed(2))} / 10</p>
+                          </section>}
+                          <p className="text-xs text-slate-500">Có thể chấm điểm từng phần khi đáp án chưa đúng; hãy nhập số điểm phù hợp với các bước giải hợp lệ.</p>
                           <div className="grid grid-cols-2 gap-3">
                             <div>
                               <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
-                                Điểm cho câu này
+                                Điểm câu hỏi (thang 10)
                               </label>
                               <div className="flex items-center">
                                 <input
                                   type="number"
                                   min={0}
-                                  max={currentQuestion.maxScore ?? 10}
+                                  max={10}
                                   step={0.5}
-                                  value={awardedScore}
+                                  value={rubricCriteria.length ? (rubricResult.error ? "" : normalizeQuestionScore(rubricResult.total, currentQuestion.maxScore ?? 10).awardedScore ?? 0) : awardedScore}
+                                  disabled={rubricCriteria.length > 0}
                                   onChange={(e) => setAwardedScore(Number(e.target.value))}
                                   className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm font-bold text-indigo-600 dark:text-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                                 />
-                                <span className="ml-2 text-xs font-medium text-slate-400">/{currentQuestion.maxScore ?? 10}</span>
+                                <span className="ml-2 text-xs font-medium text-slate-400">/10</span>
                               </div>
                             </div>
 
@@ -1356,7 +1524,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                                   onClick={() => {
                                     setIsCorrectVal(true);
                                     if (awardedScore === 0) {
-                                      setAwardedScore(currentQuestion.maxScore ?? 10);
+                                      setAwardedScore(10);
                                     }
                                   }}
                                   className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
@@ -1386,13 +1554,15 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                           </div>
 
                           {/* 2. Điểm chất lượng lập luận & Phân loại lỗi */}
+                          <details className="rounded-xl border border-slate-200 dark:border-slate-700 p-3">
+                          <summary className="text-xs font-bold cursor-pointer">Chi tiết lập luận & phân loại lỗi</summary>
                           <div className="grid grid-cols-2 gap-3">
                             <div>
                               <div className="flex items-center justify-between mb-1">
                                 <label className="text-xs font-bold text-slate-600 dark:text-slate-400">
                                   Chất lượng lập luận
                                 </label>
-                                <span className="text-xs font-bold text-indigo-600">{reasoningQuality}%</span>
+                                <span className="text-xs font-bold text-indigo-600">{reasoningQuality}/100 (chỉ số lập luận)</span>
                               </div>
                               <input
                                 type="range"
@@ -1423,6 +1593,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                               </select>
                             </div>
                           </div>
+                          </details>
 
                           {/* 3. Nhận xét của giáo viên cho học sinh */}
                           <div>
@@ -1441,7 +1612,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                           {/* 4. Lý do điều chỉnh (OCC Reason) */}
                           <div>
                             <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
-                              Lý do điều chỉnh điểm <span className="text-rose-500">*</span>
+                              Căn cứ chấm / lý do điều chỉnh {!questionActions.needsManualGrade && <span className="text-rose-500">*</span>}
                             </label>
                             <input
                               type="text"
@@ -1455,8 +1626,8 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                               {[
                                 "Học sinh lập luận đúng theo cách giải khác",
                                 "AI chấm nhầm đáp án tương đương",
-                                "Cộng điểm khuyến khích sáng tạo",
-                                "Trừ điểm do trình bày cẩu thả",
+                                "Phát hiện bước biến đổi không hợp lệ",
+                                "Chấm điểm từng phần theo tiêu chí của câu hỏi",
                               ].map((preset) => (
                                 <button
                                   key={preset}
@@ -1474,11 +1645,14 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                           <button
                             type="button"
                             onClick={handleSaveQuestionGrade}
-                            disabled={overrideMutation.isPending}
+                            disabled={gradingBusy || gradeChangedOnServer || !questionActions.canEdit}
                             className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-600/25 active:scale-98 transition-all flex items-center justify-center gap-2"
                           >
-                            {overrideMutation.isPending ? "Đang lưu..." : "Lưu điểm & Đánh giá câu này"}
+                            {overrideMutation.isPending ? "Đang lưu..." : "Lưu đánh giá câu này"}
                           </button>
+                          <button type="button" onClick={resetGradeForm} className="rounded-lg border border-slate-300 dark:border-slate-500 bg-slate-100 dark:bg-slate-700 px-4 py-2 text-xs font-bold text-slate-800 dark:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-600 focus-visible:outline-2 focus-visible:outline-indigo-400">{questionActions.needsManualGrade ? "Đặt lại form" : "Hủy thay đổi"}</button>
+                          {hasUnsavedGrade && <p role="status" className="text-xs text-amber-700 dark:text-amber-300">Có thay đổi chưa lưu.</p>}
+                          </fieldset>}
                         </div>
                       )}
                     </div>
@@ -1491,20 +1665,20 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                 <button
                   type="button"
                   disabled={activeQuestionIndex <= 0}
-                  onClick={() => setActiveQuestionIndex((prev) => Math.max(0, prev - 1))}
+                  onClick={() => handleSelectQuestion(Math.max(0, activeQuestionIndex - 1))}
                   className="px-4 py-2 rounded-xl text-xs font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
                 >
                   ← Câu trước
                 </button>
 
                 <span className="text-xs font-bold text-slate-500">
-                  Câu {activeQuestionIndex + 1} / {studentQuestions.length}
+                  Câu {currentQuestion?.questionOrderIndex ?? activeQuestionIndex + 1} · {activeQuestionIndex + 1} / {studentQuestions.length} câu có bài làm
                 </span>
 
                 <button
                   type="button"
                   disabled={activeQuestionIndex >= studentQuestions.length - 1}
-                  onClick={() => setActiveQuestionIndex((prev) => Math.min(studentQuestions.length - 1, prev + 1))}
+                  onClick={() => handleSelectQuestion(Math.min(studentQuestions.length - 1, activeQuestionIndex + 1))}
                   className="px-4 py-2 rounded-xl text-xs font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
                 >
                   Câu tiếp theo →
@@ -1532,7 +1706,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
               Hủy câu hỏi do lỗi kỹ thuật
             </h3>
             <p className="text-xs text-slate-600 dark:text-slate-300">
-              Thao tác này sẽ hủy điểm câu hỏi này và phân bổ lại tổng điểm bài làm cho tất cả học sinh trong bài tập.
+              Thao tác ảnh hưởng TẤT CẢ học sinh trong bài tập này, không chỉ học sinh đang xem. Câu lỗi được tính trọn điểm, kể cả học sinh chưa làm. Các bài tập khác không bị hủy theo. Kết quả đã chốt sẽ được mở lại và cần chốt lại sau khi rà soát.
             </p>
             <div>
               <label className="block text-xs font-bold mb-1">Lý do hủy câu hỏi:</label>
@@ -1552,6 +1726,10 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
               />
               <span>Cách ly câu hỏi trong ngân hàng câu hỏi để chỉnh sửa</span>
             </label>
+            <label className="flex items-start gap-2 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 p-3 text-xs text-amber-900 dark:text-amber-200">
+              <input type="checkbox" checked={voidImpactAcknowledged} onChange={e => setVoidImpactAcknowledged(e.target.checked)} />
+              <span>Tôi xác nhận phạm vi toàn bộ học sinh và đồng ý mở lại các kết quả đã chốt bị ảnh hưởng.</span>
+            </label>
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
                 type="button"
@@ -1563,11 +1741,27 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
               <button
                 type="button"
                 onClick={() => voidQuestionMutation.mutate()}
-                disabled={voidQuestionMutation.isPending}
+                disabled={gradingBusy || !voidImpactAcknowledged}
                 className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl"
               >
                 {voidQuestionMutation.isPending ? "Đang xử lý..." : "Xác nhận hủy câu hỏi"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isReopenModalOpen && selectedStudent && selectedAssignment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div role="dialog" aria-modal="true" aria-label="Mở lại kết quả đã chốt" className="max-w-md w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6 space-y-4">
+            <h3 className="text-lg font-bold text-amber-700 dark:text-amber-300">Mở lại để điều chỉnh</h3>
+            <p className="text-sm">Mở lại kết quả của <strong>{selectedStudent.fullName}</strong> trong <strong>{selectedAssignment.title}</strong>. Bài làm đã nộp được giữ nguyên; đây không phải yêu cầu học sinh làm lại. Sau khi sửa đánh giá, cần chốt lại toàn bài.</p>
+            <label className="block text-sm font-bold">Lý do mở lại (bắt buộc)
+              <textarea rows={3} maxLength={1000} value={reopenReason} onChange={e => setReopenReason(e.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 p-3 text-sm text-slate-900 dark:text-slate-100" />
+            </label>
+            <div className="flex justify-end gap-2">
+              <button type="button" disabled={gradingBusy} onClick={() => setIsReopenModalOpen(false)} className="rounded-lg border border-slate-300 dark:border-slate-500 bg-slate-100 dark:bg-slate-700 px-4 py-2 text-sm">Hủy</button>
+              <button type="button" disabled={gradingBusy || reopenReason.trim().length < 5} onClick={() => reopenMutation.mutate()} className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Xác nhận mở lại</button>
             </div>
           </div>
         </div>
@@ -1583,6 +1777,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
             <p className="text-xs text-slate-600 dark:text-slate-300">
               Bạn đang chốt kết quả bài tập <strong>"{selectedAssignment.title}"</strong> cho học sinh <strong>"{selectedStudent.fullName}"</strong>. Trạng thái sẽ được cập nhật thành Đã duyệt (Approved) và thông báo tới học sinh.
             </p>
+            <p role="status" className="text-xs text-slate-500">{finalBlockReason ?? "Không còn câu chưa nộp, đang phân tích hoặc cần giáo viên xử lý. Server sẽ kiểm tra lại trước khi chốt."}</p>
             <div>
               <label className="block text-xs font-bold mb-1">Ghi chú tổng kết của giáo viên:</label>
               <textarea
@@ -1603,7 +1798,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
               <button
                 type="button"
                 onClick={() => finalApproveMutation.mutate()}
-                disabled={finalApproveMutation.isPending}
+                disabled={Boolean(finalBlockReason)}
                 className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-md"
               >
                 {finalApproveMutation.isPending ? "Đang duyệt..." : "Xác nhận duyệt bài"}

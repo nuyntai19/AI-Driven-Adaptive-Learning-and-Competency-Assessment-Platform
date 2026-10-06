@@ -99,7 +99,8 @@ public class ListCurriculumsUseCase : IListCurriculumsUseCase
         // 4. Base Query & Filters (Scoped to Teacher's own curriculums)
         var baseQuery = _dbContext.Curriculums
             .AsNoTracking()
-            .Where(c => c.CenterId == centerId && !c.IsDeleted && c.TeacherId == actorId);
+            .Where(c => c.CenterId == centerId && !c.IsDeleted && (c.TeacherId == actorId ||
+                (c.Visibility == MaterialVisibility.Shared && c.ReviewStatus == ReviewStatus.Published)));
 
         if (query.SubjectId.HasValue)
         {
@@ -178,13 +179,14 @@ public class ListCurriculumsUseCase : IListCurriculumsUseCase
             {
                 CurriculumId = c.CurriculumId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
                 TeacherId = c.TeacherId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
+                Visibility = c.Visibility.ToString(),
                 SubjectId = c.SubjectId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
                 GradeLevel = c.GradeLevel,
                 Title = c.Title,
                 Description = c.Description,
                 SourceFile = c.SourceFile,
                 ReviewStatus = c.ReviewStatus.ToString(),
-                ClassIds = classesMap.TryGetValue(c.CurriculumId, out var classList) ? classList : new List<string>(),
+                ClassIds = c.TeacherId == actorId && classesMap.TryGetValue(c.CurriculumId, out var classList) ? classList : new List<string>(),
                 NodeIds = nodesMap.TryGetValue(c.CurriculumId, out var nodeList) ? nodeList : new List<string>(),
                 RowVersion = c.RowVersion.ToString(CultureInfo.InvariantCulture)
             });

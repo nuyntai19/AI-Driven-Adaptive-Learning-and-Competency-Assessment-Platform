@@ -81,6 +81,9 @@ public class PublishAssignmentUseCase : IPublishAssignmentUseCase
         if (!ulong.TryParse(request.RowVersion, NumberStyles.None, CultureInfo.InvariantCulture, out var clientRowVersion) || clientRowVersion == 0)
             return PublishAssignmentResult.Failure(ErrorCodes.ValidationFailed);
 
+        // Validation and publication share a serializable transaction so a
+        // question's rubric/visibility cannot change between checking and publishing.
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
         // ── 3. Load Assignment (Global Query Filter: centerId + !isDeleted) ─────
         var assignment = await _dbContext.Assignments
             .FirstOrDefaultAsync(a => a.AssignmentId == assignmentId, cancellationToken);
@@ -139,6 +142,7 @@ public class PublishAssignmentUseCase : IPublishAssignmentUseCase
         var dbQuestions = await _dbContext.Questions
             .AsNoTracking()
             .Where(q => questionIds.Contains(q.QuestionId))
+            .Where(q => q.CenterId == assignment.CenterId && (q.CreatedByTeacherId == actorId || q.Visibility == EduTwin.Contracts.CurriculumAndQuestions.MaterialVisibility.Shared))
             .Select(q => new { q.QuestionId, q.SubjectId, q.GradeLevel, q.Status })
             .ToListAsync(cancellationToken);
 
@@ -225,7 +229,6 @@ public class PublishAssignmentUseCase : IPublishAssignmentUseCase
 
         var totalQuestionCount = (uint)orderedQuestions.Count;
         // ── 10. Atomic publish transaction ──────────────────────────────────────
-        await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
         try
         {
             // 10a. Xóa Draft targets (nếu có) — sẽ thay bằng materialized targets

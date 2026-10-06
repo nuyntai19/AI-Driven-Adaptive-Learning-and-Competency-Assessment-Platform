@@ -19,6 +19,8 @@ import { TeacherModal, TeacherConfirmDialog } from "../../components/teacher/Tea
 export const TeacherCurriculumListView: React.FC = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const actorId = useAuthStore(state => state.user?.userId);
+  const [libraryScope, setLibraryScope] = useState("all");
   const [searchParams, setSearchParams] = useSearchParams();
 
   const selectedSubjectId = searchParams.get("subjectId") || "";
@@ -61,14 +63,15 @@ export const TeacherCurriculumListView: React.FC = () => {
 
   // Filter curriculums locally by search term
   const filteredCurriculums = useMemo(() => {
-    if (!searchTerm.trim()) return curriculums;
+    const scoped = curriculums.filter(c => libraryScope === "all" || (libraryScope === "owned" ? c.teacherId === actorId : c.visibility === "Shared"));
+    if (!searchTerm.trim()) return scoped;
     const q = searchTerm.toLowerCase();
-    return curriculums.filter(
+    return scoped.filter(
       (c) =>
         c.title.toLowerCase().includes(q) ||
         c.description?.toLowerCase().includes(q)
     );
-  }, [curriculums, searchTerm]);
+  }, [curriculums, searchTerm, libraryScope, actorId]);
 
   // Publish mutation
   const publishMutation = useMutation({
@@ -130,6 +133,12 @@ export const TeacherCurriculumListView: React.FC = () => {
   const totalNodesCount = curriculums.reduce((acc, curr) => acc + (curr.nodeIds?.length ?? 0), 0);
 
   return (
+    <>
+      <label className="block text-sm font-semibold mb-4">Thư viện giáo trình
+        <select className="th-select ml-3" value={libraryScope} onChange={e => setLibraryScope(e.target.value)}>
+          <option value="all">Của tôi & dùng chung</option><option value="owned">Của tôi</option><option value="Shared">Shared — trong trung tâm</option>
+        </select>
+      </label>
     <div className="th-page-container">
       <TeacherPageHeader
         title="Soạn Thảo Giáo Trình & Khung Đào Tạo"
@@ -328,7 +337,7 @@ export const TeacherCurriculumListView: React.FC = () => {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "10px" }}>
                     <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
                       <span className="th-badge th-badge-neutral" style={{ fontSize: "0.75rem" }}>
-                        {subject?.subjectName || "Môn học"}
+                        {subject?.subjectName || "Môn học"} · {curr.visibility || "Private"}
                       </span>
                       <span className="th-badge th-badge-info" style={{ fontSize: "0.75rem" }}>
                         {curr.gradeLevel ? `Khối ${curr.gradeLevel}` : "Chưa phân loại"}
@@ -384,7 +393,7 @@ export const TeacherCurriculumListView: React.FC = () => {
                   </div>
 
                   <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", flexWrap: "wrap" }}>
-                    {canPublish && curr.reviewStatus === "Draft" && (
+                    {canPublish && curr.teacherId === actorId && curr.reviewStatus === "Draft" && (
                       <button
                         className="th-button-secondary"
                         onClick={() => publishMutation.mutate(curr)}
@@ -395,7 +404,7 @@ export const TeacherCurriculumListView: React.FC = () => {
                       </button>
                     )}
 
-                    {canPublish && curr.reviewStatus === "Published" && (
+                    {canPublish && curr.teacherId === actorId && curr.reviewStatus === "Published" && (
                       <button
                         className="th-button-secondary"
                         onClick={() => setArchiveTarget(curr)}
@@ -507,5 +516,6 @@ export const TeacherCurriculumListView: React.FC = () => {
         </div>
       </TeacherModal>
     </div>
+    </>
   );
 };

@@ -51,7 +51,8 @@ public class GetQuestionUseCase : IGetQuestionUseCase
             return GetQuestionResult.Failure(ErrorCodes.ResourceNotFound);
 
         // 4. Teacher ownership check
-        if (question.CreatedByTeacherId != actorId)
+        if (question.CreatedByTeacherId != actorId &&
+            !(question.Visibility == Contracts.CurriculumAndQuestions.MaterialVisibility.Shared && question.Status == Contracts.CurriculumAndQuestions.QuestionStatus.Active))
             return GetQuestionResult.Failure(ErrorCodes.ForbiddenResource);
 
         // 5. Load options and mappings

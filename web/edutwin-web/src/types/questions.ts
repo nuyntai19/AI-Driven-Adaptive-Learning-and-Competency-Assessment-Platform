@@ -1,5 +1,7 @@
 export type QuestionType = "MultipleChoice" | "ShortAnswer" | "Essay";
 export type QuestionStatus = "Draft" | "Active" | "Archived";
+export type MaterialVisibility = "Private" | "Shared";
+export interface RubricCriterion { criterionId: string; title: string; description: string; maxScore: number; }
 export type QuestionAnswerEvaluationMode = "TextExact" | "NumericRational" | "Coordinate2D" | "MathEquivalent" | "Manual";
 
 export interface QuestionOption {
@@ -23,6 +25,7 @@ export interface GradingCriteria {
   requiredIdeas: string[];
   commonErrors: string[];
   scoringNotes: string;
+  criteria?: RubricCriterion[];
 }
 
 export interface Question {
@@ -46,10 +49,12 @@ export interface Question {
   options?: QuestionOption[];
   knowledgeMappings: KnowledgeMapping[];
   createdByTeacherId: string;
+  visibility?: MaterialVisibility;
   rowVersion: string;
 }
 
 export interface CreateQuestionRequest {
+  visibility?: MaterialVisibility;
   teacherId?: string | null;
   subjectId: string;
   gradeLevel?: number | null;
@@ -71,6 +76,7 @@ export interface CreateQuestionRequest {
 }
 
 export interface UpdateQuestionRequest {
+  visibility?: MaterialVisibility;
   primaryTopicNodeId: string;
   gradeLevel?: number | null;
   questionType: QuestionType;
@@ -99,6 +105,8 @@ export interface ArchiveQuestionRequest {
 }
 
 export interface QuestionFilter {
+  visibility?: MaterialVisibility;
+  ownedOnly?: boolean;
   subjectId?: string;
   gradeLevel?: number;
   topicId?: string;

@@ -5,6 +5,8 @@ namespace EduTwin.Contracts.AssessmentAndReasoning;
 
 public sealed class VoidAssignmentQuestionRequest
 {
+    /// <summary>Explicit consent to reopen finalized results for all affected students.</summary>
+    public bool ReopenFinalizedResults { get; set; }
     private string _voidReason = string.Empty;
 
     [Required(ErrorMessage = "Lý do hủy câu không được để trống.")]

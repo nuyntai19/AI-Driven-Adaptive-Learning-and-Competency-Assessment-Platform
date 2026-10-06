@@ -5,6 +5,7 @@ namespace EduTwin.Contracts.CurriculumAndQuestions;
 public class UpdateQuestionRequest
 {
     public string PrimaryTopicNodeId { get; set; } = null!;
+    public string? Visibility { get; set; }
     public string QuestionType { get; set; } = null!;
     public byte Difficulty { get; set; }
     public byte? GradeLevel { get; set; }

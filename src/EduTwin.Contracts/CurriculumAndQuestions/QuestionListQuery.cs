@@ -4,6 +4,8 @@ namespace EduTwin.Contracts.CurriculumAndQuestions;
 
 public class QuestionListQuery
 {
+    public string? Visibility { get; set; }
+    public bool OwnedOnly { get; set; }
     public Guid? SubjectId { get; set; }
     public string? TopicId { get; set; }
     public string? Type { get; set; }

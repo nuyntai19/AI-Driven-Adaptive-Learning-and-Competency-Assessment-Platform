@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using EduTwin.BLL.AssessmentAndReasoning.ReviewQueue;
+using EduTwin.BLL.AssessmentAndReasoning.Feedback;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.IdentityAndTenancy;
@@ -39,10 +40,33 @@ public sealed class ListTeacherReviewQueueUseCaseTests
         Assert.Equal("answer", item.FinalAnswer);
         Assert.False(item.IsFallback);
         Assert.Equal("Teacher review required", item.AnalysisFeedback);
+        Assert.Equal("Gemini", item.FeedbackOrigin);
+        Assert.Equal("Saved AI solution", item.AiSolution);
+        Assert.Equal(AttemptStatus.PendingAnalysis.ToString(), item.AttemptStatus);
+        Assert.Equal("Reasoned solution", item.TeacherSolution);
+        Assert.Equal("A valid alternative method is accepted", item.ExpectedReasoning);
+        Assert.Equal("Alternative algebra", item.MethodDetected);
+        Assert.True(item.HasAttachment);
         Assert.Equal(EvidenceTrustLevel.ReviewOnly.ToString(), item.Evidence.TrustLevel);
         Assert.Equal(0m, item.Evidence.ReasoningWeight);
         Assert.True(item.Evidence.RequiresTeacherReview);
         Assert.Equal(1, result.TotalItems);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_TeacherQualityOverrideKeepsOriginalAiQualitySeparate()
+    {
+        var fixture = await CreateFixtureAsync(UserRole.Teacher);
+        await using var context = fixture.Context;
+        var analysis = await context.ReasoningAnalyses.SingleAsync(a => a.AnalysisId == 11);
+        analysis.ReasoningQuality = 82;
+        analysis.OverrideReasoningQuality = 0;
+        await context.SaveChangesAsync();
+        var sut = new ListTeacherReviewQueueUseCase(context, fixture.Tenant, new StubClassOwnershipGuard(OwnershipDecision.Allowed));
+        var result = await sut.ExecuteAsync(new TeacherReviewQueueQuery(), CancellationToken.None);
+        var item = Assert.Single(result.Data!);
+        Assert.Equal(0m, item.ReasoningQuality);
+        Assert.Equal(82m, item.OriginalReasoningQuality);
     }
 
     [Fact]
@@ -314,7 +338,56 @@ public sealed class ListTeacherReviewQueueUseCaseTests
         Assert.Contains(item.Options, o => o.OptionLabel == "B" && o.OptionText == "5" && !o.IsCorrect);
     }
 
-    private static async Task<Fixture> CreateFixtureAsync(UserRole role)
+    [Fact]
+    public async Task ExecuteAsync_LegacyFeedbackMatchesStudentPresentationIncludingTeacherOverride()
+    {
+        var fixture = await CreateFixtureAsync(UserRole.Teacher);
+        await using var context = fixture.Context;
+        var analysis = await context.ReasoningAnalyses.SingleAsync(a => a.AnalysisId == 11);
+        analysis.FeedbackOrigin = "LegacySystem";
+        analysis.Feedback = "Đáp án của bạn chưa đúng theo kết quả chấm xác định.";
+        analysis.OverrideIsCorrect = true;
+        await context.SaveChangesAsync();
+        var sut = new ListTeacherReviewQueueUseCase(context, fixture.Tenant, new StubClassOwnershipGuard(OwnershipDecision.Allowed));
+        var result = await sut.ExecuteAsync(new TeacherReviewQueueQuery(), CancellationToken.None);
+        var item = Assert.Single(result.Data!);
+        Assert.Equal(AnalysisFeedbackPresentation.Resolve(analysis.FeedbackOrigin, analysis.Feedback, true), item.AnalysisFeedback);
+        Assert.StartsWith("Đáp án được bộ chấm tự động công nhận đúng", item.AnalysisFeedback);
+        Assert.Equal("LegacySystem", item.FeedbackOrigin);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_StudentDetailKeepsAssignmentOrderBeforePaginationAfterNewEvidence()
+    {
+        var fixture = await CreateFixtureAsync(UserRole.Teacher, orderedQuestions: true);
+        await using var context = fixture.Context;
+        var assignmentId = (await context.Assignments.SingleAsync(a => a.Title == "Owned Assignment")).AssignmentId;
+        var sut = new ListTeacherReviewQueueUseCase(context, fixture.Tenant, new StubClassOwnershipGuard(OwnershipDecision.Allowed));
+        var query = new TeacherReviewQueueQuery { AssignmentId = assignmentId, StudentId = fixture.StudentId, IncludeAllQuestions = true, PageSize = 1 };
+        var first = await sut.ExecuteAsync(query, CancellationToken.None);
+        Assert.Equal("1", Assert.Single(first.Data!).AttemptId);
+        var previous = await context.EvidenceAssessments.SingleAsync(e => e.EvidenceAssessmentId == 101);
+        context.EvidenceAssessments.Add(new EvidenceAssessment
+        {
+            EvidenceAssessmentId = 106, CenterId = previous.CenterId, AttemptId = previous.AttemptId,
+            AnalysisId = previous.AnalysisId, AnalysisOverrideVersion = previous.AnalysisOverrideVersion,
+            SupersedesAssessmentId = previous.EvidenceAssessmentId, SourceType = EvidenceSourceType.TeacherOverride,
+            TrustLevel = EvidenceTrustLevel.Trusted, DecisionMode = EvidenceDecisionMode.DeterministicOnly,
+            ReasonCodes = JsonDocument.Parse("[]"), PolicyVersion = previous.PolicyVersion,
+            EvaluatedAt = DateTime.UtcNow, CreatedAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+        var refreshed = await sut.ExecuteAsync(query, CancellationToken.None);
+        var firstQuestion = Assert.Single(refreshed.Data!);
+        Assert.Equal("1", firstQuestion.AttemptId);
+        Assert.Equal(1u, firstQuestion.QuestionOrderIndex);
+        query.Page = 2;
+        var secondQuestion = Assert.Single((await sut.ExecuteAsync(query, CancellationToken.None)).Data!);
+        Assert.Equal("2", secondQuestion.AttemptId);
+        Assert.Equal(2u, secondQuestion.QuestionOrderIndex);
+    }
+
+    private static async Task<Fixture> CreateFixtureAsync(UserRole role, bool orderedQuestions = false)
     {
         var centerId = Guid.NewGuid();
         var teacherId = Guid.NewGuid();
@@ -343,6 +416,7 @@ public sealed class ListTeacherReviewQueueUseCaseTests
             QuestionText = "Explain the solution",
             CorrectAnswer = "42",
             Solution = "Reasoned solution",
+            ExpectedReasoning = "A valid alternative method is accepted",
             LanguageCode = "en",
             MaxScore = 10,
             CreatedAt = now,
@@ -392,6 +466,17 @@ public sealed class ListTeacherReviewQueueUseCaseTests
 
         var ownedAssignmentId = Guid.NewGuid();
         var otherAssignmentId = Guid.NewGuid();
+        if (orderedQuestions)
+        {
+            context.Questions.Add(new Question
+            {
+                CenterId = centerId, QuestionId = 2, SubjectId = Guid.NewGuid(), QuestionText = "Second question",
+                CorrectAnswer = "Answer", Solution = "Second solution", LanguageCode = "en", MaxScore = 10, CreatedAt = now, UpdatedAt = now
+            });
+            context.AssignmentQuestions.AddRange(
+                new AssignmentQuestion { CenterId = centerId, AssignmentId = ownedAssignmentId, QuestionId = 1, OrderIndex = 1, Points = 10, CreatedAt = now },
+                new AssignmentQuestion { CenterId = centerId, AssignmentId = ownedAssignmentId, QuestionId = 2, OrderIndex = 2, Points = 10, CreatedAt = now });
+        }
         context.Assignments.AddRange(
             new EduTwin.DAL.Assignments.Assignment
             {
@@ -435,12 +520,17 @@ public sealed class ListTeacherReviewQueueUseCaseTests
             Attempt(1, studentId, now, ownedAssignmentId),
             Attempt(2, studentId, now.AddMinutes(1), ownedAssignmentId),
             Attempt(3, otherStudentId, now.AddMinutes(2), otherAssignmentId),
-            Attempt(4, studentId, now.AddMinutes(3), ownedAssignmentId));
+            Attempt(4, orderedQuestions ? otherStudentId : studentId, now.AddMinutes(3), orderedQuestions ? otherAssignmentId : ownedAssignmentId));
         context.ReasoningAnalyses.AddRange(
             Analysis(11, 1, now),
             Analysis(12, 2, now.AddMinutes(1)),
             Analysis(13, 3, now.AddMinutes(2)),
             Analysis(14, 4, now.AddMinutes(3)));
+        context.AttemptAttachments.Add(new AttemptAttachment
+        {
+            AttachmentId = 1, AttemptId = 1, CenterId = centerId, FileName = "scratchpad.png",
+            ContentType = "image/png", FileSizeBytes = 100, StorageKey = "test-scratchpad", UploadNonce = "test-nonce", CreatedAt = now
+        });
         context.EvidenceAssessments.AddRange(
             Evidence(101, 1, 11, true, null, now),
             Evidence(102, 2, 12, false, null, now.AddMinutes(1)),
@@ -456,7 +546,7 @@ public sealed class ListTeacherReviewQueueUseCaseTests
             CenterId = centerId,
             AttemptId = attemptId,
             StudentId = ownerStudentId,
-            QuestionId = 1,
+            QuestionId = orderedQuestions && attemptId == 2 ? 2UL : 1UL,
             AssignmentId = assignmentId,
             FinalAnswer = "answer",
             ReasoningLanguage = "en",
@@ -474,6 +564,9 @@ public sealed class ListTeacherReviewQueueUseCaseTests
             MissingSteps = JsonDocument.Parse("[]"),
             RootCauseNodeIds = JsonDocument.Parse("[]"),
             Feedback = "Teacher review required",
+            FeedbackOrigin = "Gemini",
+            AiSolution = "Saved AI solution",
+            MethodDetected = "Alternative algebra",
             AnalysisConfidence = 40m,
             OverrideVersion = 0,
             CreatedAt = createdAt,

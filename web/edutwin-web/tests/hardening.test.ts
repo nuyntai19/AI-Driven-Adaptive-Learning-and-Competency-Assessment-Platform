@@ -16,6 +16,8 @@ import {
   isTerminalStatus,
   isSuccessfulTerminalStatus,
   shouldContinuePolling,
+  ANALYSIS_FOREGROUND_WAIT_MS,
+  shouldShowAnalysisWaitingScreen,
 } from "../src/utils/polling.ts";
 import {
   isChartDataEmpty,
@@ -179,6 +181,18 @@ test("terminal-based polling recognizes completed, failed, and in-progress jobs"
   assert.equal(shouldContinuePolling("processing", 10, 60), true);
   assert.equal(shouldContinuePolling("completed", 10, 60), false);
   assert.equal(shouldContinuePolling("processing", 60, 60), false); // Max attempts reached
+});
+
+test("analysis waiting screen unblocks after foreground timeout or network pause without canceling the job", () => {
+  assert.equal(ANALYSIS_FOREGROUND_WAIT_MS, 45_000);
+  assert.equal(shouldShowAnalysisWaitingScreen("job-8", null, false), true);
+  assert.equal(shouldShowAnalysisWaitingScreen("job-8", "job-8", false), false);
+  assert.equal(shouldShowAnalysisWaitingScreen("job-8", null, true), false);
+  assert.equal(shouldShowAnalysisWaitingScreen(null, "job-8", false), false);
+  // A different job is not incorrectly treated as already timed out.
+  assert.equal(shouldShowAnalysisWaitingScreen("job-9", "job-8", false), true);
+  // Unblocking foreground UI must not terminate the actual analysis polling.
+  assert.equal(shouldContinuePolling("Processing", 20), true);
 });
 
 test("logout clears session and resets auth store to anonymous state", () => {

@@ -31,7 +31,6 @@ public class AssignmentGradeAndTargetTests
     private readonly DateTimeOffset _fixedUtcNow;
     private readonly Guid _centerId = Guid.NewGuid();
     private readonly Guid _teacherUserId = Guid.NewGuid();
-    private readonly Guid _teacherId = Guid.NewGuid();
 
     public AssignmentGradeAndTargetTests()
     {
@@ -99,7 +98,7 @@ public class AssignmentGradeAndTargetTests
 
         var teacher = new Teacher
         {
-            TeacherId = _teacherId,
+            TeacherId = _teacherUserId,
             CenterId = _centerId,
             CreatedAt = now,
             UpdatedAt = now,
@@ -199,7 +198,7 @@ public class AssignmentGradeAndTargetTests
             QuestionId = q10Id,
             CenterId = _centerId,
             SubjectId = subjectId,
-            CreatedByTeacherId = _teacherId,
+            CreatedByTeacherId = _teacherUserId,
             QuestionText = "Question Grade 10",
             CorrectAnswer = "A",
             Solution = "Solution 10",
@@ -220,7 +219,7 @@ public class AssignmentGradeAndTargetTests
             QuestionId = q11Id,
             CenterId = _centerId,
             SubjectId = subjectId,
-            CreatedByTeacherId = _teacherId,
+            CreatedByTeacherId = _teacherUserId,
             QuestionText = "Question Grade 11",
             CorrectAnswer = "B",
             Solution = "Solution 11",
@@ -419,6 +418,31 @@ public class AssignmentGradeAndTargetTests
 
         Assert.False(publishResult.IsSuccess);
         Assert.Equal(ErrorCodes.InvalidStateTransition, publishResult.ErrorCode);
+    }
+
+    [Fact]
+    public async Task AssignmentCannotUseAnotherTeachersPrivateQuestion_AndPublishRechecksSharing()
+    {
+        await using var ctx = CreateContext();
+        var (_, classEntity, _, _, question, _) = await SeedBaseAsync(ctx);
+        question.CreatedByTeacherId = Guid.NewGuid();
+        await ctx.SaveChangesAsync();
+        var create = new CreateAssignmentUseCase(ctx, _tenantMock.Object, _timeProviderMock.Object);
+        var request = new CreateAssignmentRequest { ClassId = classEntity.ClassId, Title = "Library assignment",
+            TargetMode = "WholeClass", QuestionIds = [question.QuestionId.ToString()] };
+        Assert.False((await create.ExecuteAsync(request)).IsSuccess);
+        question.Visibility = MaterialVisibility.Shared;
+        await ctx.SaveChangesAsync();
+        var draft = await create.ExecuteAsync(request);
+        Assert.True(draft.IsSuccess);
+        question.Visibility = MaterialVisibility.Private;
+        await ctx.SaveChangesAsync();
+        var publish = new PublishAssignmentUseCase(ctx, _tenantMock.Object, _timeProviderMock.Object);
+        var command = new PublishAssignmentRequest { RowVersion = draft.Data!.RowVersion };
+        Assert.False((await publish.ExecuteAsync(Guid.Parse(draft.Data.AssignmentId), command)).IsSuccess);
+        question.Visibility = MaterialVisibility.Shared;
+        await ctx.SaveChangesAsync();
+        Assert.True((await publish.ExecuteAsync(Guid.Parse(draft.Data.AssignmentId), command)).IsSuccess);
     }
 
     // ── Academic Grade Level Constraints Tests ──

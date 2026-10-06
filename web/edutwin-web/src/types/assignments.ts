@@ -206,4 +206,12 @@ export interface AssignmentProgressItemDto {
   teacherFinalReviewStatus?: "Pending" | "Approved";
   finalReviewVersion?: number;
   completedAt?: string | null;
+  finalReviewEligibility?: {
+    canApprove: boolean;
+    missingQuestionCount: number;
+    pendingReviewQuestionCount: number;
+    processingQuestionCount: number;
+    failedQuestionCount: number;
+    blockReason?: string | null;
+  };
 }

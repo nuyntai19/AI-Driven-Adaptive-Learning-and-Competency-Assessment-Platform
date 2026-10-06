@@ -56,6 +56,7 @@ public sealed class AttemptFeedbackGradingCriteriaDto
 
 public sealed class AttemptFeedbackTeacherEvaluationDto
 {
+    public RubricGrade? RubricGrade { get; set; }
     public bool HasTeacherOverride { get; set; }
     public string? ReviewDecision { get; set; }
     public bool IsApprovedAsIs { get; set; }

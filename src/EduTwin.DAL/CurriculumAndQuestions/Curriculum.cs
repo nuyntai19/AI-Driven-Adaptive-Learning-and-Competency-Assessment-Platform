@@ -10,6 +10,7 @@ public class Curriculum : IMutableTenantAggregate
     public Guid CurriculumId { get; set; }
     public Guid CenterId { get; set; }
     public Guid TeacherId { get; set; }
+    public MaterialVisibility Visibility { get; set; } = MaterialVisibility.Private;
     public Guid SubjectId { get; set; }
     public string Title { get; set; } = null!;
     public string? Description { get; set; }

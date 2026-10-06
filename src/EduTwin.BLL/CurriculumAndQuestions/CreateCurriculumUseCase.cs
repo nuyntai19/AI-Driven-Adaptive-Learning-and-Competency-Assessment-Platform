@@ -142,6 +142,9 @@ public class CreateCurriculumUseCase : ICreateCurriculumUseCase
             ownerTeacherId = targetTeacherId;
         }
 
+        if (!Enum.TryParse<MaterialVisibility>(request.Visibility, out var visibility) || !Enum.IsDefined(visibility) || visibility.ToString() != request.Visibility)
+            return CreateCurriculumResult.Failure(ErrorCodes.ValidationFailed);
+
         // 4. Reference Validation
         var center = await _dbContext.Centers
             .AsNoTracking()
@@ -182,6 +185,7 @@ public class CreateCurriculumUseCase : ICreateCurriculumUseCase
             CurriculumId = curriculumId,
             CenterId = centerId,
             TeacherId = ownerTeacherId,
+            Visibility = visibility,
             SubjectId = request.SubjectId,
             GradeLevel = request.GradeLevel,
             Title = request.Title,
@@ -231,6 +235,7 @@ public class CreateCurriculumUseCase : ICreateCurriculumUseCase
         {
             CurriculumId = curriculum.CurriculumId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             TeacherId = curriculum.TeacherId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
+            Visibility = curriculum.Visibility.ToString(),
             SubjectId = curriculum.SubjectId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             GradeLevel = curriculum.GradeLevel,
             Title = curriculum.Title,
