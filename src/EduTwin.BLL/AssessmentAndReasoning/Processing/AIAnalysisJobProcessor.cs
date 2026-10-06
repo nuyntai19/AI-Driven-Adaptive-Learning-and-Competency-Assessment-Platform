@@ -1,6 +1,7 @@
 using EduTwin.BLL.AssessmentAndReasoning.AI;
 using EduTwin.BLL.AssessmentAndReasoning.Attachments;
 using EduTwin.BLL.AssessmentAndReasoning.Evidence;
+using EduTwin.BLL.AssessmentAndReasoning.Feedback;
 using EduTwin.BLL.AssessmentAndReasoning.Jobs;
 using EduTwin.BLL.DigitalTwin;
 using EduTwin.BLL.DigitalTwin.Orchestration;
@@ -8,6 +9,7 @@ using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.BLL.Recommendations;
 using EduTwin.BLL.Assignments;
 using EduTwin.Contracts.AssessmentAndReasoning;
+using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.DigitalTwin;
 using EduTwin.DAL.AssessmentAndReasoning;
@@ -161,13 +163,7 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                 AIAnalysisJobProcessingOutcome.NotEligible);
         }
 
-        var analysisAlreadyExists = await _dbContext.ReasoningAnalyses
-            .AsNoTracking()
-            .AnyAsync(
-                analysis => analysis.CenterId == centerId
-                    && analysis.AttemptId == initialAttempt.AttemptId,
-                cancellationToken);
-        if (analysisAlreadyExists)
+        if (await AnalysisBlocksProcessingAsync(initialAttempt, cancellationToken))
         {
             return Result(
                 analysisJobId,
@@ -523,8 +519,16 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                         transactionalUtcNow,
                         createdBy: null);
 
-                    _dbContext.ReasoningAnalyses.Add(fallback);
-                    _dbContext.EvidenceAssessments.Add(evidence);
+                    // If context disappeared during recovery, retain the old
+                    // fallback and immutable evidence instead of inserting a
+                    // second analysis into the unique attempt checkpoint.
+                    var existing = await _dbContext.ReasoningAnalyses.AnyAsync(a =>
+                        a.CenterId == attempt.CenterId && a.AttemptId == attempt.AttemptId, cancellationToken);
+                    if (!existing)
+                    {
+                        _dbContext.ReasoningAnalyses.Add(fallback);
+                        _dbContext.EvidenceAssessments.Add(evidence);
+                    }
                     attempt.Status = AttemptStatus.NeedsTeacherReview;
                     attempt.UpdatedAt = transactionalUtcNow;
                 }
@@ -783,8 +787,13 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                         transactionalUtcNow,
                         createdBy: null);
 
-                    _dbContext.ReasoningAnalyses.Add(fallback);
-                    _dbContext.EvidenceAssessments.Add(evidence);
+                    var existing = await _dbContext.ReasoningAnalyses.AnyAsync(a =>
+                        a.CenterId == attempt.CenterId && a.AttemptId == attempt.AttemptId, cancellationToken);
+                    if (!existing)
+                    {
+                        _dbContext.ReasoningAnalyses.Add(fallback);
+                        _dbContext.EvidenceAssessments.Add(evidence);
+                    }
 
                     outcome = AIAnalysisJobProcessingOutcome.FallbackCompleted;
                 }
@@ -970,12 +979,7 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             return ReloadResult.Failed(AIAnalysisJobProcessingOutcome.NotEligible);
         }
 
-        var analysisAlreadyExists = await _dbContext.ReasoningAnalyses
-            .AnyAsync(
-                analysis => analysis.CenterId == centerId
-                    && analysis.AttemptId == attempt.AttemptId,
-                cancellationToken);
-        if (analysisAlreadyExists)
+        if (await AnalysisBlocksProcessingAsync(attempt, cancellationToken))
         {
             return ReloadResult.Failed(AIAnalysisJobProcessingOutcome.NotEligible);
         }
@@ -991,6 +995,22 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         }
 
         return ReloadResult.Valid(job, attempt, utcNow);
+    }
+
+    private async Task<bool> AnalysisBlocksProcessingAsync(Attempt attempt, CancellationToken cancellationToken)
+    {
+        var analysis = await _dbContext.ReasoningAnalyses.AsNoTracking().FirstOrDefaultAsync(a =>
+            a.CenterId == attempt.CenterId && a.AttemptId == attempt.AttemptId, cancellationToken);
+        if (analysis is null) return false;
+        if (!AttemptFeedbackActionPolicy.CanRecoverFallback(attempt, analysis)) return true;
+        if (await _dbContext.StudentReviewRequests.AnyAsync(r => r.CenterId == attempt.CenterId &&
+            r.AttemptId == attempt.AttemptId && r.Status == StudentReviewRequestStatus.Pending, cancellationToken)) return true;
+        if (!attempt.AssignmentId.HasValue) return false;
+        return await _dbContext.StudentAssignmentProgresses.AnyAsync(p => p.CenterId == attempt.CenterId &&
+            p.AssignmentId == attempt.AssignmentId && p.StudentId == attempt.StudentId && !p.IsDeleted &&
+            p.TeacherFinalReviewStatus == TeacherFinalReviewStatus.Approved, cancellationToken) ||
+            await _dbContext.AssignmentQuestions.AnyAsync(q => q.CenterId == attempt.CenterId &&
+                q.AssignmentId == attempt.AssignmentId && q.QuestionId == attempt.QuestionId && q.IsVoided, cancellationToken);
     }
 
     private async Task<RequestContext?> LoadRequestContextAsync(

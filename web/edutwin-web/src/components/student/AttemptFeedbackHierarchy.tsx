@@ -5,6 +5,9 @@ import { retryAttemptAIAnalysis, createStudentReviewRequest } from "../../api/le
 import { extractProblemDetails } from "../../utils/problemDetails";
 import { formatAwardedScore, formatPreliminaryResult } from "../../utils/gradingDisplay";
 import { getAttemptFeedbackPresentation, normalizeQuestionScore } from "../../utils/attemptFeedbackPresentation";
+import { normalizeAITextLineBreaks } from "../../utils/aiTextFormatting";
+import { AttemptScratchpadAttachment } from "./AttemptScratchpadAttachment";
+import { getAttemptFeedbackActions } from "../../utils/attemptFeedbackActions";
 
 function safeClientErrorMessage(error: unknown, fallback: string): string {
   const details = extractProblemDetails(error);
@@ -57,6 +60,7 @@ export function AttemptFeedbackHierarchy({
   const [cooldownSeconds, setCooldownSeconds] = useState<number>(
     retryQuota?.cooldownRemainingSeconds ?? 0
   );
+  const actions = getAttemptFeedbackActions(feedbackData, cooldownSeconds);
 
   // Review request modal state
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
@@ -90,10 +94,8 @@ export function AttemptFeedbackHierarchy({
 
   // Sync cooldown timer
   useEffect(() => {
-    if (retryQuota?.cooldownRemainingSeconds) {
-      setCooldownSeconds(retryQuota.cooldownRemainingSeconds);
-    }
-  }, [retryQuota?.cooldownRemainingSeconds]);
+    setCooldownSeconds(retryQuota?.cooldownRemainingSeconds ?? 0);
+  }, [attemptId, retryQuota?.cooldownRemainingSeconds]);
 
   // Tick down cooldown timer
   useEffect(() => {
@@ -105,16 +107,17 @@ export function AttemptFeedbackHierarchy({
   }, [cooldownSeconds]);
 
   const handleRetryAI = async () => {
-    if (cooldownSeconds > 0 || !retryQuota?.canRetry) return;
+    if (!actions.canRetryAI || isRetryingAI) return;
     try {
       setIsRetryingAI(true);
       setRetryError(null);
       const res = await retryAttemptAIAnalysis(attemptId);
-      if (res.analysisJobId && onPollJob) {
-        onPollJob(res.analysisJobId);
-      } else {
-        await onRefreshFeedback();
-      }
+      setCooldownSeconds(res.cooldownRemainingSeconds);
+      await onRefreshFeedback().catch(() => {
+        // The retry was accepted; a transient refresh failure must not prevent
+        // polling the returned job or imply that the saved submission was lost.
+      });
+      if (res.jobId && onPollJob) onPollJob(res.jobId);
     } catch (error: unknown) {
       setRetryError(
         safeClientErrorMessage(error, "Không thể kích hoạt chấm lại AI. Vui lòng thử lại sau."),
@@ -125,6 +128,7 @@ export function AttemptFeedbackHierarchy({
   };
 
   const handleSubmitReviewRequest = async () => {
+    if (!actions.canRequestTeacherReview || isSubmittingReview) return;
     if (!reviewReason.trim() || reviewReason.trim().length < 10) {
       setReviewModalError("Vui lòng nhập lý do cụ thể (tối thiểu 10 ký tự).");
       return;
@@ -151,6 +155,7 @@ export function AttemptFeedbackHierarchy({
   };
 
   const handleSubmitDispute = async () => {
+    if (!actions.canReportQuestion || isSubmittingDispute) return;
     if (!disputeComment.trim() || disputeComment.trim().length < 10) {
       setDisputeModalError("Vui lòng nhập mô tả sự cố cụ thể (tối thiểu 10 ký tự).");
       return;
@@ -289,16 +294,7 @@ export function AttemptFeedbackHierarchy({
           )}
 
           {studentSubmission?.attachmentUrl && (
-            <div>
-              <span className="text-xs font-semibold text-slate-400 block mb-1">Bản vẽ nháp đính kèm:</span>
-              <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-slate-900 max-w-sm">
-                <img
-                  src={studentSubmission.attachmentUrl}
-                  alt="Bản nháp của học sinh"
-                  className="w-full h-auto object-contain max-h-48"
-                />
-              </div>
-            </div>
+            <AttemptScratchpadAttachment attemptId={attemptId} />
           )}
 
           {studentSubmission && (
@@ -330,8 +326,7 @@ export function AttemptFeedbackHierarchy({
         {presentation.needsReview && (
           <div role="status" className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 p-3 text-sm text-amber-900 dark:text-amber-200">
             <p className="font-bold">{presentation.pendingTeacher ? "Đang chờ giáo viên xem xét" : "Cần giáo viên xem xét"}</p>
-            <p>{presentation.answerDisagreement ? "Phân tích nhận thấy đáp án có thể khác kết quả chấm theo quy tắc. " : "Có điểm chưa chắc chắn hoặc cần kiểm tra trong lập luận. "}
-              Phân tích không tự thay đổi điểm. {presentation.pendingTeacher ? "Kết quả chưa được chốt bởi giáo viên." : "Bạn có thể gửi yêu cầu xem xét bên dưới."}</p>
+            <p>{presentation.reviewExplanation}</p>
           </div>
         )}
       </section>
@@ -411,7 +406,7 @@ export function AttemptFeedbackHierarchy({
                 {presentation.feedbackLabel}
               </p>
               <div className="mt-1 text-sm text-indigo-950 dark:text-indigo-200 leading-relaxed font-medium">
-                <RichMathText content={analysis.feedback} />
+                <RichMathText content={normalizeAITextLineBreaks(analysis.feedback)} />
               </div>
             </div>
 
@@ -463,7 +458,7 @@ export function AttemptFeedbackHierarchy({
                   )}
                 </div>
                 <div className="text-sm text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-wrap pt-1 font-medium">
-                  <RichMathText content={analysis.aiSolution} />
+                  <RichMathText content={normalizeAITextLineBreaks(analysis.aiSolution)} />
                 </div>
               </div>
             )}
@@ -525,10 +520,10 @@ export function AttemptFeedbackHierarchy({
         {/* Action Buttons: Retry AI & Review Request / Dispute */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
           <div className="flex items-center gap-2">
-            {feedbackData.status === "AnalysisFailed" && retryQuota?.canRetry && (
+            {actions.showRetryAI && !actions.retryExhausted && retryQuota && (
               <button
                 type="button"
-                disabled={cooldownSeconds > 0 || isRetryingAI}
+                disabled={!actions.canRetryAI || isRetryingAI}
                 onClick={handleRetryAI}
                 className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold border transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-800 dark:text-rose-200 border-rose-300 dark:border-rose-700"
               >
@@ -543,7 +538,7 @@ export function AttemptFeedbackHierarchy({
               </button>
             )}
 
-            {feedbackData.status === "AnalysisFailed" && !retryQuota?.canRetry && (
+            {actions.retryExhausted && (
               <span className="text-xs font-semibold text-rose-500 dark:text-rose-400">
                 ⚠️ Đã hết lượt kích hoạt chấm lại AI. Vui lòng liên hệ giáo viên để được hỗ trợ.
               </span>
@@ -554,15 +549,18 @@ export function AttemptFeedbackHierarchy({
             )}
           </div>
 
-          {!reviewRequest && (
+          {(actions.canRequestTeacherReview || actions.canReportQuestion) && (
             <div className="flex items-center gap-2">
+              {actions.canRequestTeacherReview && (
               <button
                 type="button"
                 onClick={() => setIsReviewModalOpen(true)}
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border border-purple-500/40 text-purple-600 dark:text-purple-300 hover:bg-purple-500/10 transition-colors cursor-pointer"
               >
-                <span>🙋</span> Yêu cầu giáo viên xem xét kết quả
+                <span>🙋</span> Yêu cầu giáo viên xem xét lại kết quả
               </button>
+              )}
+              {actions.canReportQuestion && (
               <button
                 type="button"
                 onClick={() => setIsDisputeModalOpen(true)}
@@ -570,6 +568,7 @@ export function AttemptFeedbackHierarchy({
               >
                 <span>🚩</span> Báo cáo đề bài bị sai
               </button>
+              )}
             </div>
           )}
         </div>

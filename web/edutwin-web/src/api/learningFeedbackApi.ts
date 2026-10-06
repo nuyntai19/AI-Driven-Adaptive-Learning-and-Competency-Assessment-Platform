@@ -1,4 +1,5 @@
 import { httpClient } from "./httpClient";
+import { getAttemptAttachmentPath } from "../utils/attemptAttachment";
 import type {
   SubmitAttemptRequest,
   SubmitAttemptDataDto,
@@ -28,6 +29,20 @@ interface PrepareAttemptAttachmentUploadDataDto {
   drawingUploadToken: string;
   expiresAtUtc: string;
 }
+
+export const getAttemptAttachment = async (
+  attemptId: string | number,
+  signal?: AbortSignal
+): Promise<Blob> => {
+  const response = await httpClient.get<Blob>(getAttemptAttachmentPath(attemptId), {
+    responseType: "blob", signal,
+  });
+  if (!(response.data instanceof Blob) || response.data.size === 0 ||
+      response.data.type.split(";")[0] !== "image/png") {
+    throw new Error("Ảnh nháp trả về không hợp lệ. Vui lòng tải lại.");
+  }
+  return response.data;
+};
 
 export const prepareAttemptAttachmentUpload = async (
   png: Blob

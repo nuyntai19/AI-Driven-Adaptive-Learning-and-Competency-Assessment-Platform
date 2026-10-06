@@ -5,7 +5,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using EduTwin.BLL.IdentityAndTenancy;
+using EduTwin.BLL.AssessmentAndReasoning.Feedback;
 using EduTwin.Contracts.AssessmentAndReasoning;
+using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.DAL.AssessmentAndReasoning;
 using EduTwin.DAL.Persistence;
@@ -114,10 +116,26 @@ public sealed class RetryAttemptAIAnalysisUseCase : IRetryAttemptAIAnalysisUseCa
             return RetryAIAnalysisResult.JobProcessing();
         }
 
-        // If job is already Completed or FallbackCompleted, reject duplicate retry
-        if (job != null && (job.Status == AIJobStatus.Completed || job.Status == AIJobStatus.FallbackCompleted))
+        if (job?.Status == AIJobStatus.Completed)
         {
             return RetryAIAnalysisResult.JobAlreadyCompleted();
+        }
+
+        var analysis = await _dbContext.ReasoningAnalyses
+            .FirstOrDefaultAsync(a => a.CenterId == centerId && a.AttemptId == attemptId, cancellationToken);
+        var assignmentApproved = attempt.AssignmentId.HasValue &&
+            await _dbContext.StudentAssignmentProgresses.AnyAsync(p => p.CenterId == centerId &&
+                p.AssignmentId == attempt.AssignmentId && p.StudentId == attempt.StudentId && !p.IsDeleted &&
+                p.TeacherFinalReviewStatus == TeacherFinalReviewStatus.Approved, cancellationToken);
+        var pendingRequest = await _dbContext.StudentReviewRequests.AnyAsync(r => r.CenterId == centerId &&
+            r.AttemptId == attemptId && r.Status == StudentReviewRequestStatus.Pending, cancellationToken);
+        var voided = attempt.AssignmentId.HasValue && await _dbContext.AssignmentQuestions.AnyAsync(q =>
+            q.CenterId == centerId && q.AssignmentId == attempt.AssignmentId && q.QuestionId == attempt.QuestionId &&
+            q.IsVoided, cancellationToken);
+        if (!AttemptFeedbackActionPolicy.CanRetryAI(attempt, job, analysis, assignmentApproved, pendingRequest, voided))
+        {
+            return RetryAIAnalysisResult.Failure("RETRY_NOT_ELIGIBLE",
+                "Chỉ được thử lại khi AI thất bại hoặc dùng kết quả dự phòng, trước khi giáo viên xử lý.");
         }
 
         // Apply retry on existing attempt
@@ -149,10 +167,22 @@ public sealed class RetryAttemptAIAnalysisUseCase : IRetryAttemptAIAnalysisUseCa
             job.AvailableAt = now;
             job.LastErrorCode = null;
             job.LastErrorMessage = null;
+            job.StartedAt = null;
+            job.CompletedAt = null;
+            job.LeaseOwner = null;
+            job.LeaseUntil = null;
             job.UpdatedAt = now;
         }
 
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            _dbContext.ChangeTracker.Clear();
+            return RetryAIAnalysisResult.JobProcessing();
+        }
 
         var retriesRemaining = (byte)Math.Max(0, MaxManualRetries - attempt.ManualRetryCount);
         var nextAllowedAt = now.AddSeconds(CooldownSeconds);

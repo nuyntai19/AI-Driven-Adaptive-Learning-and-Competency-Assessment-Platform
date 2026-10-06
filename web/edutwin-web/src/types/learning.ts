@@ -142,6 +142,7 @@ export interface StudentReviewRequestDto {
 }
 
 export interface RetryQuotaDto {
+  isEligible?: boolean;
   manualRetriesUsed: number;
   manualRetriesRemaining: number;
   cooldownRemainingSeconds: number;
@@ -160,6 +161,7 @@ export interface AttemptFeedbackDataDto {
   teacherFinalEvaluation?: AttemptFeedbackTeacherFinalEvaluationDto | null;
   reviewRequest?: StudentReviewRequestDto | null;
   retryQuota?: RetryQuotaDto | null;
+  actions?: { canRequestTeacherReview: boolean; canReportQuestion: boolean };
   twinChange?: AttemptFeedbackTwinChangeDto | null;
   recommendation?: AttemptFeedbackRecommendationDto | null;
 }
@@ -190,11 +192,11 @@ export interface NextQuestionDataDto {
 
 export interface RetryAIAnalysisResponse {
   attemptId: string;
-  analysisJobId?: string | null;
-  status: string;
-  pollUrl?: string | null;
-  feedbackUrl?: string | null;
-  retryQuota?: RetryQuotaDto | null;
+  jobId: string;
+  manualRetriesUsed: number;
+  manualRetriesRemaining: number;
+  cooldownRemainingSeconds: number;
+  nextRetryAllowedAt?: string | null;
 }
 
 export interface CreateStudentReviewRequestDto {

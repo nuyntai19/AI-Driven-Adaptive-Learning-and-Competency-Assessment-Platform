@@ -305,6 +305,66 @@ public sealed class AIAnalysisJobProcessorTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExecuteAsync_ManualFallbackRecovery_ReusesCheckpointAndReplaysWithoutDoubleCounting(bool providerFails)
+    {
+        var store = new InMemoryDatabaseRoot(); var name = Guid.NewGuid().ToString(); var center = Guid.NewGuid();
+        await SeedAsync(store, name, center, retryCount: 1);
+        var failed = new RecordingAIService((_, _) => throw new InvalidOperationException("Provider unavailable"));
+        Assert.Equal(AIAnalysisJobProcessingOutcome.FallbackCompleted,
+            (await ExecuteWithAIAsync(store, name, center, failed)).Outcome);
+        var before = await ReloadAsync(store, name, center);
+        var originalId = Assert.Single(before.Analyses).AnalysisId;
+        var originalEvidenceId = Assert.Single(before.Evidence).EvidenceAssessmentId;
+        var tenant = new TenantContext(); using var scope = tenant.BeginScope(center);
+        await using (var db = CreateContext(store, name, tenant))
+        {
+            var attempt = await db.Attempts.SingleAsync();
+            attempt.ManualRetryCount = 1; attempt.Status = AttemptStatus.PendingAnalysis;
+            var job = await db.AIAnalysisJobs.SingleAsync();
+            job.Status = AIJobStatus.Processing; job.LeaseOwner = "worker-current";
+            job.LeaseUntil = UtcNow.AddMinutes(5); job.CompletedAt = null;
+            await db.SaveChangesAsync();
+        }
+        var provider = providerFails ? failed : new RecordingAIService((_, _) => Task.FromResult(ValidResponse("vi")));
+        var result = await ExecuteWithAIAsync(store, name, center, provider);
+        Assert.Equal(providerFails ? AIAnalysisJobProcessingOutcome.FallbackCompleted : AIAnalysisJobProcessingOutcome.Completed,
+            result.Outcome);
+        var after = await ReloadAsync(store, name, center);
+        Assert.Equal(originalId, Assert.Single(after.Analyses).AnalysisId);
+        Assert.Equal(providerFails, after.Analyses.Single().IsFallback);
+        Assert.Equal(2, after.Evidence.Count);
+        Assert.Contains(after.Evidence, e => e.EvidenceAssessmentId == originalEvidenceId);
+        Assert.Contains(after.Evidence, e => e.SupersedesAssessmentId == originalEvidenceId);
+        await using var inspect = CreateContext(store, name, tenant);
+        Assert.Single(inspect.Attempts);
+        Assert.Equal(1u, (await inspect.BehaviorTwins.SingleAsync()).AttemptCount);
+        Assert.Equal(1u, (await inspect.KnowledgeTwins.SingleAsync()).EvidenceCount);
+        Assert.Contains(await inspect.TwinUpdateHistories.ToListAsync(), h =>
+            h.CalculationBreakdown.RootElement.TryGetProperty("PreviousFallbackAnalysis", out _));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_TeacherEvaluatesFallbackWhileRetryQueued_DoesNotCallProvider()
+    {
+        var store = new InMemoryDatabaseRoot(); var name = Guid.NewGuid().ToString(); var center = Guid.NewGuid();
+        await SeedAsync(store, name, center);
+        await AddExistingAnalysisAsync(store, name, center);
+        var tenant = new TenantContext(); using var scope = tenant.BeginScope(center);
+        await using (var db = CreateContext(store, name, tenant))
+        {
+            (await db.Attempts.SingleAsync()).ManualRetryCount = 1;
+            (await db.ReasoningAnalyses.SingleAsync()).ReviewDecision = TeacherReviewDecision.Approved;
+            await db.SaveChangesAsync();
+        }
+        var ai = new RecordingAIService((_, _) => Task.FromResult(ValidResponse("vi")));
+        var result = await ExecuteWithAIAsync(store, name, center, ai);
+        Assert.Equal(AIAnalysisJobProcessingOutcome.NotEligible, result.Outcome);
+        Assert.Equal(0, ai.CallCount);
+    }
+
+    [Theory]
     [InlineData(AIJobStatus.Completed)]
     [InlineData(AIJobStatus.FallbackCompleted)]
     [InlineData(AIJobStatus.FailedTerminal)]

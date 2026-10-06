@@ -57,10 +57,10 @@ export function createMathSpan(
 ): HTMLElement {
   const span = document.createElement("span");
   span.className =
-    "inline-math-node inline-flex items-center align-middle mx-1 px-2 py-0.5 rounded-lg border cursor-pointer select-none transition-all group font-normal text-sm shadow-sm";
+    `inline-math-node inline-flex items-center align-middle mx-1 px-2 py-0.5 rounded-lg border ${onEdit ? "cursor-pointer select-none" : "cursor-text"} transition-all group font-normal text-sm shadow-sm`;
   span.contentEditable = "false";
   span.dataset.latex = latex;
-  span.title = "Nhấp để chỉnh sửa công thức toán";
+  span.title = onEdit ? "Nhấp để chỉnh sửa công thức toán" : "Công thức toán (chỉ đọc)";
 
   const clean = cleanFormulaForInsertion(latex);
   if (clean) {

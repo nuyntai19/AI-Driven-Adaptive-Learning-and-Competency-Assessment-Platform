@@ -7,9 +7,11 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using EduTwin.BLL.AssessmentAndReasoning.Feedback;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
+using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.DAL.AssessmentAndReasoning;
+using EduTwin.DAL.Assignments;
 using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.Persistence;
 using EduTwin.DAL.Persistence.Tenancy;
@@ -46,6 +48,106 @@ public sealed class GetAttemptFeedbackUseCaseTests : IDisposable
     }
 
     public void Dispose() => _dbContext.Dispose();
+
+    private void AddActionQuestion(DateTime now) => _dbContext.Questions.Add(new Question
+    {
+        CenterId = _centerId, QuestionId = 10, SubjectId = _subjectId, QuestionText = "Tính x.",
+        CorrectAnswer = "2", Solution = "x = 2", LanguageCode = "vi", MaxScore = 10m,
+        CreatedAt = now, UpdatedAt = now
+    });
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, true)]
+    [InlineData(false, true, true)]
+    public async Task ExecuteAsync_ActionEligibility_RequiresTeacherEvaluationOrWholeAssignmentApproval(
+        bool teacherEvaluated, bool assignmentApproved, bool expected)
+    {
+        var now = DateTime.UtcNow; var assignment = Guid.NewGuid();
+        AddActionQuestion(now);
+        _dbContext.Attempts.Add(new Attempt { CenterId = _centerId, AttemptId = 20, QuestionId = 10,
+            StudentId = _studentId, AssignmentId = assignment, Status = AttemptStatus.Completed,
+            FinalAnswer = "2", ReasoningLanguage = "vi", CreatedAt = now, UpdatedAt = now });
+        if (teacherEvaluated) _dbContext.ReasoningAnalyses.Add(new ReasoningAnalysis
+        {
+            CenterId = _centerId, AttemptId = 20, SchemaVersion = "v1", Feedback = "Đã duyệt",
+            ReviewDecision = TeacherReviewDecision.Approved, MissingSteps = JsonDocument.Parse("[]"),
+            RootCauseNodeIds = JsonDocument.Parse("[]"), CreatedAt = now, UpdatedAt = now
+        });
+        if (assignmentApproved) _dbContext.StudentAssignmentProgresses.Add(new StudentAssignmentProgress
+        { CenterId = _centerId, StudentId = _studentId, AssignmentId = assignment,
+            TeacherFinalReviewStatus = TeacherFinalReviewStatus.Approved, CreatedAt = now, UpdatedAt = now });
+        await _dbContext.SaveChangesAsync();
+        var result = await new GetAttemptFeedbackUseCase(_dbContext, _tenantContext, _guardMock.Object)
+            .ExecuteAsync(20, CancellationToken.None);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(expected, result.Data!.Actions.CanRequestTeacherReview);
+        Assert.True(result.Data.Actions.CanReportQuestion);
+        Assert.False(result.Data.RetryQuota!.IsEligible);
+    }
+
+    [Theory]
+    [InlineData(1, true, false)]
+    [InlineData(3, true, false)]
+    [InlineData(1, false, true)]
+    public async Task ExecuteAsync_RetryEligibility_IsSeparateFromQuotaAndCooldown(int used, bool cooling, bool canRetry)
+    {
+        var now = DateTime.UtcNow;
+        AddActionQuestion(now);
+        _dbContext.Attempts.Add(new Attempt { CenterId = _centerId, AttemptId = 20, QuestionId = 10,
+            StudentId = _studentId, Status = AttemptStatus.AnalysisFailed, ManualRetryCount = (byte)used,
+            LastManualRetryAt = now.AddSeconds(cooling ? -5 : -60), FinalAnswer = "2", ReasoningLanguage = "vi",
+            CreatedAt = now, UpdatedAt = now });
+        _dbContext.AIAnalysisJobs.Add(new AIAnalysisJob { CenterId = _centerId, AttemptId = 20,
+            Status = AIJobStatus.FailedTerminal, CorrelationId = "test", AvailableAt = now,
+            CreatedAt = now, UpdatedAt = now });
+        await _dbContext.SaveChangesAsync();
+        var result = await new GetAttemptFeedbackUseCase(_dbContext, _tenantContext, _guardMock.Object)
+            .ExecuteAsync(20, CancellationToken.None);
+        Assert.True(result.Data!.RetryQuota!.IsEligible);
+        Assert.Equal(canRetry, result.Data.RetryQuota.CanRetry);
+        Assert.Equal(3 - used, result.Data.RetryQuota.ManualRetriesRemaining);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WithScratchpad_ReturnsAuthenticatedLearningAttachmentRoute()
+    {
+        var now = DateTime.UtcNow;
+        var question = new Question
+        {
+            CenterId = _centerId, QuestionId = 1014, SubjectId = _subjectId,
+            QuestionText = "Tính nguyên hàm.", QuestionType = QuestionType.Essay,
+            AnswerEvaluationMode = QuestionAnswerEvaluationMode.Manual,
+            CorrectAnswer = "F(x) + C", Solution = "Nguyên hàm từng phần.",
+            LanguageCode = "vi", MaxScore = 10m, CreatedAt = now, UpdatedAt = now
+        };
+        var attempt = new Attempt
+        {
+            CenterId = _centerId, AttemptId = 5014, StudentId = _studentId,
+            QuestionId = 1014, FinalAnswer = "F(x) + C", ReasoningLanguage = "vi",
+            Status = AttemptStatus.NeedsTeacherReview,
+            PreliminaryGradingReasonCode = "MANUAL_MODE", CreatedAt = now, UpdatedAt = now
+        };
+        _dbContext.Questions.Add(question);
+        _dbContext.Attempts.Add(attempt);
+        _dbContext.AttemptAttachments.Add(new AttemptAttachment
+        {
+            CenterId = _centerId, AttemptId = 5014, Attempt = attempt,
+            FileName = "scratchpad.png", ContentType = "image/png",
+            StorageKey = "test/scratchpad.png", FileSizeBytes = 100,
+            UploadNonce = Guid.NewGuid().ToString("N"), CreatedAt = now
+        });
+        await _dbContext.SaveChangesAsync();
+
+        var sut = new GetAttemptFeedbackUseCase(_dbContext, _tenantContext, _guardMock.Object);
+        var result = await sut.ExecuteAsync(5014, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("/api/v1/learning/attempts/5014/attachment", result.Data!.StudentSubmission!.AttachmentUrl);
+        Assert.Equal("PendingTeacher", result.Data.Grading.Source);
+        Assert.Null(result.Data.Grading.IsCorrect);
+        Assert.Null(result.Data.Grading.AwardedScore);
+    }
 
     [Fact]
     public async Task ExecuteAsync_WhenTeacherOverrideExists_KeepsRawAIFeedbackPure_AndPopulatesTeacherEvaluationDto()

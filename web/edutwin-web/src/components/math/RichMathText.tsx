@@ -52,16 +52,17 @@ export const RichMathText: React.FC<RichMathTextProps> = ({
 
     if (isPureLatex) {
       const formulaOnly = rawContent.replace(/^(\$\$|\\\[)|(\$\$|\\\])$/g, "");
+      const blockFormula = displayMode || rawContent.startsWith("$$") || rawContent.startsWith("\\[");
       try {
         const html = katex.renderToString(formulaOnly, {
           throwOnError: false,
-          displayMode: displayMode || isPureLatex,
+          displayMode: blockFormula,
           trust: false,
           output: "htmlAndMathml",
         });
         return (
           <span
-            className={displayMode ? "katex-block my-1 block text-center" : "katex-inline inline-block align-middle mx-0.5"}
+            className={blockFormula ? "katex-block my-1 block text-center" : "katex-inline inline-block align-middle mx-0.5"}
             dangerouslySetInnerHTML={{ __html: html }}
           />
         );

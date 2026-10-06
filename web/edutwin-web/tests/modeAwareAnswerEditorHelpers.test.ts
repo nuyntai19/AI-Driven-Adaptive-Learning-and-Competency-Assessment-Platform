@@ -418,13 +418,13 @@ test("Gate 2A.1 - Source Wiring Verification: Production components strictly adh
   assert.doesNotMatch(proseSrc, /displayLatex:\s*next/, "MultilineProseAnswerEditor must NOT pass next as displayLatex");
   assert.match(proseSrc, /onFocus=\{onFocus\}/, "MultilineProseAnswerEditor must wire onFocus");
 
-  // 3. PlainOrMultilineAnswerInput uses buildProseAnswer
+  // 3. Manual short answers delegate to the same visual prose contract, not a second implementation.
   const manualSrc = fs.readFileSync(
     path.resolve(__dirname, "../src/components/math/answer-editor/PlainOrMultilineAnswerInput.tsx"),
     "utf-8"
   );
-  assert.match(manualSrc, /buildProseAnswer/, "PlainOrMultilineAnswerInput must use buildProseAnswer");
-  assert.match(manualSrc, /onFocus=\{onFocus\}/, "PlainOrMultilineAnswerInput must wire onFocus");
+  assert.match(manualSrc, /<MultilineProseAnswerEditor/, "Manual short answers must reuse the prose editor");
+  assert.match(manualSrc, /\{\.\.\.props\}/, "Manual short answers must forward onFocus and all editor props");
 
   // 4. NumericRationalMathInput wires latestValueRef for fresh getValue()
   const numSrc = fs.readFileSync(

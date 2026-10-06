@@ -168,6 +168,9 @@ export interface StudentAssignmentDetailDto {
   subjectName?: string | null;
   timeLimitMinutes?: number | null;
   startedAt?: string | null;
+  isSubmitted?: boolean;
+  submittedAt?: string | null;
+  elapsedSeconds?: number | null;
   effectiveExpiresAt?: string | null;
   remainingSeconds?: number | null;
   canRetake?: boolean;

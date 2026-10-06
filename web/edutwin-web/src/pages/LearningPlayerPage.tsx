@@ -26,6 +26,9 @@ import {
 } from "../utils/polling";
 import { StudentSubjectRequiredState } from "../components/student/StudentSubjectRequiredState";
 import { AttemptFeedbackHierarchy } from "../components/student/AttemptFeedbackHierarchy";
+import { AttemptScratchpadAttachment } from "../components/student/AttemptScratchpadAttachment";
+import { AssignmentReviewReceipt } from "../components/student/AssignmentReviewReceipt";
+import { isAssignmentWorkSubmitted, shouldStartAssignment, getAssignmentReviewTiming, isActiveAssignmentExpired } from "../utils/assignmentReviewTiming";
 import { getAttemptFeedbackPresentation, normalizeQuestionScore } from "../utils/attemptFeedbackPresentation";
 import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
 import { type VisualMathFieldRef } from "../components/math/VisualMathField";
@@ -41,11 +44,12 @@ import {
   setAttemptSessionId,
 } from "../utils/attemptSessionStorage";
 import { useAuthStore } from "../stores/authStore";
-import { httpClient } from "../api/httpClient";
 import {
   isAssignmentReviewHydrated,
   isFeedbackForQuestion,
   resolveQuestionReviewAttemptId,
+  isQuestionSubmissionLocked,
+  canSubmitLearningWork,
 } from "../utils/questionReview";
 import {
   buildAssignmentDraftKey,
@@ -269,6 +273,19 @@ export const LearningPlayerPage = () => {
     () => assignment?.questions || [],
     [assignment?.questions]
   );
+  const isAssignmentSubmitted = isAssignmentWorkSubmitted(assignment, isLocallySubmitted);
+  const canStartAssignment = shouldStartAssignment(assignment, isLocallySubmitted);
+  const submissionTiming = getAssignmentReviewTiming(assignment);
+  const assignmentReviewRef = useRef(isAssignmentSubmitted);
+  assignmentReviewRef.current = isAssignmentSubmitted;
+
+  const storeAttemptFeedback = useCallback((data: AttemptFeedbackDataDto) => {
+    queryClient.setQueryData(
+      ["attempt-feedback", currentUser?.centerId, currentUser?.userId, String(data.attemptId)],
+      data,
+    );
+    setFeedbackData(data);
+  }, [queryClient, currentUser?.centerId, currentUser?.userId]);
 
   const refreshSubmittedAssignmentData = useCallback(async (): Promise<boolean> => {
     if (!assignmentId) return false;
@@ -277,6 +294,7 @@ export const LearningPlayerPage = () => {
       const [detailResult] = await Promise.all([
         refetchAssignment(),
         queryClient.invalidateQueries({ queryKey: ["student-assignments"] }),
+        queryClient.invalidateQueries({ queryKey: ["attempt-feedback", currentUser?.centerId, currentUser?.userId] }),
       ]);
       const refreshedQuestions = detailResult.data?.data?.questions ?? [];
       const isHydrated = detailResult.isSuccess && isAssignmentReviewHydrated(
@@ -302,13 +320,15 @@ export const LearningPlayerPage = () => {
     assignmentDraftScope,
     assignmentId,
     assignmentQuestions.length,
+    currentUser?.centerId,
+    currentUser?.userId,
     queryClient,
     refetchAssignment,
     setAssignmentAnswers,
   ]);
 
   // Assignment Timers:
-  // - assignmentRemainingSeconds: active test time limit countdown (paused on exit/close, resumes on continue).
+  // - assignmentRemainingSeconds: absolute server deadline; stops in review mode.
   // - dueRemainingSeconds: due date countdown (ONLY shown when assignment has no active time limit, but has a due date).
   const [assignmentRemainingSeconds, setAssignmentRemainingSeconds] = useState<number | null>(null);
   const [dueRemainingSeconds, setDueRemainingSeconds] = useState<number | null>(null);
@@ -321,6 +341,7 @@ export const LearningPlayerPage = () => {
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const isDraftSavingRef = useRef<boolean>(false);
   const hasAutoSubmittedRef = useRef(false);
+  const submissionInFlightRef = useRef(false);
   const isInitializedRef = useRef(false);
   const timerInitializedForAssignmentRef = useRef<string | null>(null);
   const previousAssignmentDraftKeyRef = useRef(assignmentDraftKey);
@@ -391,6 +412,8 @@ export const LearningPlayerPage = () => {
     frozenPayloadRef.current = null;
     setAssignmentRemainingSeconds(null);
     setDueRemainingSeconds(null);
+    targetEndTimestampRef.current = null;
+    setStartAssignmentError(null);
     hasAutoSubmittedRef.current = false;
     isInitializedRef.current = false;
     timerInitializedForAssignmentRef.current = null;
@@ -402,42 +425,33 @@ export const LearningPlayerPage = () => {
     setAssignmentAnswers,
   ]);
 
-  // Call idempotent start assignment API upon opening assignment
+  // Start only unsubmitted work, after the detail query has established its state.
   useEffect(() => {
-    if (!assignmentId || !assignmentDraftKey) return;
+    if (!assignmentId || !assignmentDraftKey || assignmentLoading ||
+        assignment?.assignmentId !== assignmentId || !canStartAssignment) return;
+    let cancelled = false;
     startStudentAssignment(assignmentId)
       .then((res) => {
+        if (cancelled || assignmentReviewRef.current) return;
         setStartAssignmentError(null);
-        if (res?.data?.remainingSeconds !== undefined && res?.data?.remainingSeconds !== null) {
-          setAssignmentRemainingSeconds(res.data.remainingSeconds);
-          if (res.data.effectiveExpiresAt) {
-            targetEndTimestampRef.current = new Date(res.data.effectiveExpiresAt).getTime();
-          } else {
-            targetEndTimestampRef.current = Date.now() + res.data.remainingSeconds * 1000;
-          }
-        }
+        queryClient.setQueryData(["student-assignment", currentUser?.centerId, currentUser?.userId, assignmentId], res);
       })
-      .catch((err: unknown) => {
+      .catch(async (err: unknown) => {
+        if (cancelled || assignmentReviewRef.current) return;
+        const latest = await refetchAssignment();
+        if (cancelled || assignmentReviewRef.current || isAssignmentWorkSubmitted(latest.data?.data)) return;
         const errObj = err as { response?: { data?: { error?: { message?: string }; message?: string } } };
         const msg =
           errObj?.response?.data?.error?.message ||
           errObj?.response?.data?.message ||
           "Không thể bắt đầu làm bài tập hoặc bài tập đã hết hạn.";
         setStartAssignmentError(msg);
-        refetchAssignment();
       });
-  }, [assignmentId, assignmentDraftKey, refetchAssignment]);
+    return () => { cancelled = true; };
+  }, [assignmentId, assignmentDraftKey, assignmentLoading, assignment?.assignmentId, canStartAssignment,
+    isAssignmentSubmitted, queryClient, currentUser?.centerId, currentUser?.userId, refetchAssignment]);
 
 
-
-  // Question Timer
-  useEffect(() => {
-    if (pollingJobId || feedbackData) return;
-    const timer = setInterval(() => {
-      setTimeSpentSeconds((prev) => prev + 1);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [pollingJobId, feedbackData]);
 
   // Initialize or update activeQuestionId when assignment loads
   useEffect(() => {
@@ -468,37 +482,42 @@ export const LearningPlayerPage = () => {
     (q) => q.questionId === assignmentQuestion?.questionId
   );
 
-  const reviewAttemptId = resolveQuestionReviewAttemptId(assignmentQuestion);
+  const immediateQuestionFeedback = feedbackData && assignmentQuestion &&
+    isFeedbackForQuestion(assignmentQuestion.questionId, feedbackData.questionId)
+    ? feedbackData : null;
+  const reviewAttemptId = resolveQuestionReviewAttemptId(assignmentQuestion) ??
+    immediateQuestionFeedback?.attemptId ?? null;
 
   const reviewFeedbackQuery = useQuery<AttemptFeedbackDataDto>({
-    queryKey: ["attempt-feedback", reviewAttemptId == null ? "none" : String(reviewAttemptId)],
+    queryKey: ["attempt-feedback", currentUser?.centerId, currentUser?.userId, reviewAttemptId == null ? "none" : String(reviewAttemptId)],
     queryFn: () => getAttemptFeedback(reviewAttemptId!),
     enabled: Boolean(assignmentId && reviewAttemptId),
+    initialData: immediateQuestionFeedback ?? undefined,
     retry: 1,
+    refetchInterval: ({ state }) => ["PendingAnalysis", "Processing"].includes(state.data?.status ?? "") ? 3000 : false,
   });
 
-  const isAssignmentSubmitted = useMemo(() => {
-    if (isLocallySubmitted) return true;
-    if (!assignment) return false;
-    if (assignment.progress?.status === "Completed") return true;
-    return (
-      assignmentQuestions.length > 0 &&
-      assignmentQuestions.every(
-        (q) =>
-          Boolean(q?.isVoided) ||
-          Boolean(q?.latestAttempt) ||
-          Boolean(q?.submittedAttemptId) ||
-          q?.attemptStatus === "Completed" ||
-          q?.attemptStatus === "NeedsTeacherReview" ||
-          q?.attemptStatus === "PendingAnalysis" ||
-          q?.attemptStatus === "Processing"
-      )
-    );
-  }, [isLocallySubmitted, assignment, assignmentQuestions]);
+  const isCurrentQuestionSubmitted = isQuestionSubmissionLocked(assignmentQuestion) ||
+    Boolean(immediateQuestionFeedback);
+
+  // Reviewing submitted work must not change the recorded working time.
+  useEffect(() => {
+    if (pollingJobId || feedbackData || isAssignmentSubmitted || isCurrentQuestionSubmitted) return;
+    const timer = setInterval(() => setTimeSpentSeconds((prev) => prev + 1), 1000);
+    return () => clearInterval(timer);
+  }, [pollingJobId, feedbackData, isAssignmentSubmitted, isCurrentQuestionSubmitted]);
 
   // Initialize timer for timed or untimed assignments from server authoritative remainingSeconds or effectiveExpiresAt
   useEffect(() => {
     if (!assignment || !assignmentId) return;
+    if (isAssignmentSubmitted) {
+      targetEndTimestampRef.current = null;
+      setAssignmentRemainingSeconds(null);
+      setDueRemainingSeconds(null);
+      setStartAssignmentError(null);
+      if (assignmentDraftScope) removeAssignmentRemainingSeconds(assignmentDraftScope);
+      return;
+    }
 
     if (hasTimeLimit) {
       if (assignment.effectiveExpiresAt) {
@@ -535,7 +554,7 @@ export const LearningPlayerPage = () => {
       setAssignmentRemainingSeconds(null);
       timerInitializedForAssignmentRef.current = assignmentId;
     }
-  }, [assignment, assignmentId, hasTimeLimit, assignmentDraftScope]);
+  }, [assignment, assignmentId, hasTimeLimit, assignmentDraftScope, isAssignmentSubmitted]);
 
   const isTimerTicking =
     hasTimeLimit &&
@@ -595,9 +614,8 @@ export const LearningPlayerPage = () => {
   }, [hasTimeLimit, assignment?.dueAt, isAssignmentSubmitted, isLocallySubmitted]);
 
   // Separation: True authoritative expiration timestamp vs integer seconds for display
-  const isAssignmentExpired =
-    (hasTimeLimit && Boolean(targetEndTimestampRef.current && Date.now() >= targetEndTimestampRef.current)) ||
-    (!hasTimeLimit && Boolean(assignment?.dueAt && Date.now() >= new Date(assignment.dueAt).getTime()));
+  const isAssignmentExpired = isActiveAssignmentExpired(isAssignmentSubmitted,
+    hasTimeLimit ? targetEndTimestampRef.current : assignment?.dueAt ? Date.parse(assignment.dueAt) : null);
 
   // Hydrate draft answers from server if local draft is empty
   useEffect(() => {
@@ -1002,9 +1020,10 @@ export const LearningPlayerPage = () => {
       const initialChanges = assignmentQuestion?.latestAttempt?.answerChanges ?? saved?.answerChanges ?? 0;
       answerChangesRef.current = initialChanges;
       setAnswerChanges(initialChanges);
-      setAttachedSnapshotDataUrl(saved?.snapshotDataUrl || null);
-      setAttachedSnapshotTime(saved?.snapshotTime || null);
-      setDrawingUploadToken(saved?.drawingUploadToken || null);
+      // Submitted images are downloaded separately and never become draft uploads.
+      setAttachedSnapshotDataUrl(null);
+      setAttachedSnapshotTime(null);
+      setDrawingUploadToken(null);
     } else if (saved) {
       setFinalAnswer(saved.finalAnswer || "");
       setAnswerDisplayLatex(question?.questionType === "MultipleChoice" ? "" : (saved.answerDisplayLatex || saved.finalAnswer || ""));
@@ -1056,39 +1075,6 @@ export const LearningPlayerPage = () => {
     assignmentDraftLoadVersion,
   ]);
 
-  // If question is submitted and has an attachment, load attachment if not already loaded
-  useEffect(() => {
-    const attemptId =
-      assignmentQuestion?.submittedAttemptId ??
-      (assignmentQuestion?.latestAttempt?.attemptId ? Number(assignmentQuestion.latestAttempt.attemptId) : null);
-    if (!assignmentQuestion?.hasAttachment || !attemptId) return;
-    let isCancelled = false;
-    let objectUrl: string | null = null;
-
-    httpClient
-      .get<Blob>(`/learning/attempts/${attemptId}/attachment`, { responseType: "blob" })
-      .then((res) => {
-        if (!isCancelled) {
-          objectUrl = URL.createObjectURL(res.data);
-          setAttachedSnapshotDataUrl(objectUrl);
-        }
-      })
-      .catch(() => {
-        // Silently catch attachment load error
-      });
-
-    return () => {
-      isCancelled = true;
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
-      }
-    };
-  }, [
-    assignmentQuestion?.submittedAttemptId,
-    assignmentQuestion?.latestAttempt?.attemptId,
-    assignmentQuestion?.hasAttachment,
-  ]);
-
   // Persist current question answer into assignmentAnswers & localStorage
   const persistCurrentAnswer = useCallback(
     (
@@ -1099,7 +1085,7 @@ export const LearningPlayerPage = () => {
       newAnswerChanges?: number
     ) => {
       if (!assignmentDraftScope || !question?.questionId) return;
-      if (assignmentQuestion?.latestAttempt) return; // Do not overwrite server truth for already-submitted questions
+      if (isQuestionSubmissionLocked(assignmentQuestion)) return;
       const qId = question.questionId;
       const updatedEntry: StoredAnswer = {
         finalAnswer: newFinalAnswer !== undefined ? newFinalAnswer : finalAnswer,
@@ -1123,7 +1109,7 @@ export const LearningPlayerPage = () => {
     [
       assignmentDraftScope,
       question?.questionId,
-      assignmentQuestion?.latestAttempt,
+      assignmentQuestion,
       finalAnswer,
       answerDisplayLatex,
       reasoningText,
@@ -1195,7 +1181,7 @@ export const LearningPlayerPage = () => {
           try {
             const feedbackRes = await getAttemptFeedback(result.attemptId);
             if (isSubscribed) {
-              setFeedbackData(feedbackRes);
+              storeAttemptFeedback(feedbackRes);
               setIsSubmitting(false);
               setPollingJobId(null);
               setAiBanner(null);
@@ -1233,7 +1219,7 @@ export const LearningPlayerPage = () => {
             try {
               const feedbackRes = await getAttemptFeedback(result.attemptId);
               if (isSubscribed) {
-                setFeedbackData(feedbackRes);
+                storeAttemptFeedback(feedbackRes);
               }
             } catch {
               // fallback
@@ -1265,7 +1251,7 @@ export const LearningPlayerPage = () => {
             try {
               const feedbackRes = await getAttemptFeedback(result.attemptId);
               if (isSubscribed) {
-                setFeedbackData(feedbackRes);
+                storeAttemptFeedback(feedbackRes);
               }
             } catch {
               // fallback
@@ -1298,7 +1284,7 @@ export const LearningPlayerPage = () => {
       isSubscribed = false;
       clearTimeout(initialTimeout);
     };
-  }, [pollingJobId, feedbackData, networkErrorPaused, searchParams, setSearchParams, attemptSessionScope, assignmentId, refreshSubmittedAssignmentData]);
+  }, [pollingJobId, feedbackData, networkErrorPaused, searchParams, setSearchParams, attemptSessionScope, assignmentId, refreshSubmittedAssignmentData, storeAttemptFeedback]);
 
   // Answer change handlers
   const handleAnswerChange = (plainText: string, latex: string) => {
@@ -1450,7 +1436,16 @@ export const LearningPlayerPage = () => {
   // - Adaptive Mode: Submit single active question
   const handleFinalSubmit = async (autoSubmitArg?: boolean | React.MouseEvent) => {
     const isAutoSubmit = typeof autoSubmitArg === "boolean" ? autoSubmitArg : false;
-    if (!question) return;
+    if (!question || submissionInFlightRef.current || !canSubmitLearningWork({
+      submitted: isAssignmentSubmitted || Boolean(feedbackData),
+      submitting: isSubmitting,
+      pendingAnalysis: Boolean(pollingJobId),
+      expired: isAssignmentExpired,
+      autoSubmit: isAutoSubmit,
+    })) return;
+    const pendingQuestions = assignmentQuestions.filter((q) => !isQuestionSubmissionLocked(q));
+    if (assignmentId && pendingQuestions.length === 0) return;
+    submissionInFlightRef.current = true;
     persistCurrentAnswer();
     setShowBatchConfirmModal(false);
     setActiveSideTool(null);
@@ -1482,7 +1477,7 @@ export const LearningPlayerPage = () => {
         };
 
         let currentToken = drawingUploadToken;
-        if (attachedSnapshotDataUrl && !currentToken) {
+        if (!isQuestionSubmissionLocked(assignmentQuestion) && attachedSnapshotDataUrl && !currentToken) {
           setPollingStatus("Đang tải lên bản vẽ nháp đính kèm...");
           try {
             currentToken = await uploadScratchpadAttachmentIfAny();
@@ -1499,8 +1494,7 @@ export const LearningPlayerPage = () => {
         currentSaved.drawingUploadToken = currentToken;
 
         // Ensure all questions with attached drawings have uploaded tokens before submission
-        // Ensure all questions with attached drawings have uploaded tokens before submission
-        for (const q of assignmentQuestions) {
+        for (const q of pendingQuestions) {
           const ans = allAnswersMap[q.questionId];
           if (ans && !ans.drawingUploadToken && ans.snapshotDataUrl) {
             setPollingStatus(`Đang tải lên bản vẽ nháp câu ${assignmentQuestions.indexOf(q) + 1}...`);
@@ -1566,8 +1560,7 @@ export const LearningPlayerPage = () => {
 
         setPollingStatus(isAutoSubmit ? "Hết giờ: Đang tự động nộp bài làm..." : "Đang nộp toàn bộ bài làm lên hệ thống...");
 
-        const answersToSubmit = assignmentQuestions
-          .filter((q) => !q.isVoided && !q.latestAttempt && q.attemptStatus !== "Completed" && q.attemptStatus !== "NeedsTeacherReview")
+        const answersToSubmit = pendingQuestions
           .map((q) => {
             const qAnswer = frozenPayloadRef.current?.[q.questionId] || allAnswersMap[q.questionId];
             const rawAnswer = qAnswer?.finalAnswer?.trim();
@@ -1598,11 +1591,11 @@ export const LearningPlayerPage = () => {
 
         // Hydrate the detail query before discarding the local fallback. Without
         // this refetch, review mode sees the pre-submit cache until a full reload.
-        await refreshSubmittedAssignmentData();
-
-        // Mark local submission as complete: Immediately transitions UI to Assignment Result overview!
+        // Stop active work immediately on server acceptance, even if refetch is slow/offline.
+        assignmentReviewRef.current = true;
         setIsLocallySubmitted(true);
         setIsSubmitting(false);
+        await refreshSubmittedAssignmentData();
         if (assignmentDraftScope) {
           removeAssignmentDraft(assignmentDraftScope);
           removeAssignmentRemainingSeconds(assignmentDraftScope);
@@ -1673,7 +1666,7 @@ export const LearningPlayerPage = () => {
       } else if (resData.attemptId) {
         setPollingStatus("Đang tải kết quả bài làm...");
         const fbRes = await getAttemptFeedback(resData.attemptId);
-        setFeedbackData(fbRes);
+        storeAttemptFeedback(fbRes);
         setIsSubmitting(false);
       } else {
         setIsSubmitting(false);
@@ -1687,6 +1680,8 @@ export const LearningPlayerPage = () => {
         errObj?.response?.data?.detail || errObj?.message || "Nộp bài thất bại. Vui lòng kiểm tra kết nối mạng và thử nộp lại."
       );
       setCanRetrySubmission(true);
+    } finally {
+      submissionInFlightRef.current = false;
     }
   };
 
@@ -1725,14 +1720,22 @@ export const LearningPlayerPage = () => {
   ]);
 
   const handleRetryAiFromBanner = async (attemptId: string) => {
+    if (isRetryingAiFromBanner) return;
     try {
       setIsRetryingAiFromBanner(true);
+      const current = await getAttemptFeedback(attemptId);
+      if (!current.retryQuota?.canRetry) {
+        storeAttemptFeedback(current);
+        setAiBanner(null);
+        return;
+      }
       const res = await retryAttemptAIAnalysis(attemptId);
       setIsRetryingAiFromBanner(false);
       setAiBanner(null);
-      if (res.analysisJobId) {
+      if (res.jobId) {
+        setFeedbackData(null);
         pollingAttemptRef.current = 0;
-        setPollingJobId(res.analysisJobId);
+        setPollingJobId(res.jobId);
         setIsSubmitting(true);
       } else {
         if (assignmentId) {
@@ -1748,6 +1751,8 @@ export const LearningPlayerPage = () => {
         action: "retry_ai",
         attemptIdForRetry: attemptId,
       });
+    } finally {
+      setIsRetryingAiFromBanner(false);
     }
   };
 
@@ -1919,15 +1924,6 @@ export const LearningPlayerPage = () => {
     };
   }, [assignment, isAssignmentSubmitted, assignmentQuestions]);
 
-  const isCurrentQuestionSubmitted =
-    Boolean(assignmentQuestion?.latestAttempt) ||
-    Boolean(assignmentQuestion?.submittedAnswer) ||
-    Boolean(assignmentQuestion?.submittedAttemptId) ||
-    assignmentQuestion?.attemptStatus === "Completed" ||
-    assignmentQuestion?.attemptStatus === "NeedsTeacherReview" ||
-    assignmentQuestion?.attemptStatus === "PendingAnalysis" ||
-    assignmentQuestion?.attemptStatus === "Processing";
-
   const isReadOnly =
     isAssignmentSubmitted ||
     isCurrentQuestionSubmitted ||
@@ -2012,8 +2008,9 @@ export const LearningPlayerPage = () => {
     );
   }
 
-  // 2. Feedback Screen (Results after submission)
-  if (feedbackData) {
+  // Assignments stay in the same read-only question workspace after submission
+  // and when reopened. Only independent adaptive practice uses this result screen.
+  if (feedbackData && !assignmentId) {
     const { grading, twinChange, recommendation } = feedbackData;
     const displayedGrade = normalizeQuestionScore(grading.awardedScore, grading.maxScore,
       assignmentId ? assignmentQuestions.length : undefined);
@@ -2071,9 +2068,12 @@ export const LearningPlayerPage = () => {
             }
             onRefreshFeedback={async () => {
               const res = await getAttemptFeedback(feedbackData.attemptId);
-              setFeedbackData(res);
+              storeAttemptFeedback(res);
             }}
             onPollJob={(jobId) => {
+              setFeedbackData(null);
+              pollingAttemptRef.current = 0;
+              setNetworkErrorPaused(false);
               setPollingJobId(jobId);
               searchParams.set("analysisJobId", jobId);
               setSearchParams(searchParams, { replace: true });
@@ -2204,6 +2204,9 @@ export const LearningPlayerPage = () => {
 
           <div className="flex items-center gap-2.5">
             {/* Timer / Countdown */}
+            {isAssignmentSubmitted ? (
+              <AssignmentReviewReceipt {...submissionTiming} />
+            ) : (
             <div
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-bold border ${
                 isAssignmentExpired
@@ -2237,6 +2240,7 @@ export const LearningPlayerPage = () => {
                 <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 ml-1">HẾT GIỜ</span>
               )}
             </div>
+            )}
 
             {/* Draft Auto-save status badge */}
             {assignmentId && !isAssignmentSubmitted && !isLocallySubmitted && (
@@ -2365,12 +2369,12 @@ export const LearningPlayerPage = () => {
         >
           {/* Left / Main Question Area ~70% */}
           <div className={activeSideTool ? "lg:col-span-8 xl:col-span-8 space-y-6" : "space-y-6"}>
-            {isAssignmentExpired && (
+            {!isAssignmentSubmitted && isAssignmentExpired && (
               <div className="rounded-2xl bg-rose-50 dark:bg-rose-950/60 p-4 text-xs font-bold text-rose-800 dark:text-rose-300 border border-rose-300 dark:border-rose-800 flex items-center justify-between">
                 <span>⏰ Đã hết thời gian làm bài. Bài làm không thể nộp thêm câu mới. Các câu đã nộp trước đó được giữ nguyên.</span>
               </div>
             )}
-            {startAssignmentError && (
+            {!isAssignmentSubmitted && startAssignmentError && (
               <div className="rounded-2xl bg-amber-50 dark:bg-amber-950/40 p-4 text-sm font-semibold text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-800 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <span className="text-base">⚠️</span>
@@ -2489,7 +2493,9 @@ export const LearningPlayerPage = () => {
                             </span>
                           </>
                         ) : (
-                          <span className="text-sm font-bold text-slate-500 dark:text-slate-400">Chờ phân tích</span>
+                          <span className="text-sm font-bold text-slate-500 dark:text-slate-400">
+                            {assignmentStats.aiProcessingCount > 0 ? "Chờ phân tích" : "Chờ giáo viên chấm"}
+                          </span>
                         )}
                       </div>
                     </div>
@@ -2893,6 +2899,7 @@ export const LearningPlayerPage = () => {
                     <ModeAwareAnswerEditor
                       ref={answerEditorRef}
                       profile="answering"
+                      variant="student"
                       questionType={question?.questionType || "ShortAnswer"}
                       evaluationMode={question?.answerEvaluationMode || "NumericRational"}
                       value={{ rawText: finalAnswer, displayLatex: answerDisplayLatex }}
@@ -2904,7 +2911,9 @@ export const LearningPlayerPage = () => {
                         isAssignmentSubmitted
                           ? "Chưa có đáp số"
                           : question?.questionType === "Essay"
-                          ? "Nhập câu trả lời tự luận hoặc trình bày lời giải chi tiết..."
+                          ? "Nhập kết luận hoặc đáp án; dùng Chèn công thức để thêm biểu thức toán..."
+                          : question?.answerEvaluationMode === "Manual"
+                          ? "Nhập câu trả lời ngắn; có thể kết hợp chữ và công thức toán..."
                           : "Gõ công thức hoặc đáp số cuối cùng (hoặc dùng Casio để tự chèn)..."
                       }
                       showPreview={false}
@@ -2951,7 +2960,10 @@ export const LearningPlayerPage = () => {
                 />
 
                 {/* 6. Attached Scratchpad Snapshot Card (Cố định, không bị ảnh hưởng khi vẽ tiếp hay F5) */}
-                {attachedSnapshotDataUrl && (
+                {isCurrentQuestionSubmitted && reviewAttemptId &&
+                  (assignmentQuestion?.hasAttachment || reviewFeedbackQuery.data?.studentSubmission?.attachmentUrl || immediateQuestionFeedback?.studentSubmission?.attachmentUrl) ? (
+                  <AttemptScratchpadAttachment attemptId={reviewAttemptId} />
+                ) : !isCurrentQuestionSubmitted && attachedSnapshotDataUrl ? (
                   <div className="mt-4 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 p-4 flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
                       <img
@@ -2985,7 +2997,7 @@ export const LearningPlayerPage = () => {
                       >
                         🔍 Xem to
                       </button>
-                      {!isAssignmentSubmitted && (
+                      {!isReadOnly && (
                         <button
                           type="button"
                           onClick={handleRemoveSnapshot}
@@ -2997,7 +3009,7 @@ export const LearningPlayerPage = () => {
                       )}
                     </div>
                   </div>
-                )}
+                ) : null}
               </div>
 
               {/* Persisted question-level grading. Navigation only changes the attempt GET key. */}
@@ -3035,6 +3047,12 @@ export const LearningPlayerPage = () => {
                       answerOptions={assignmentQuestion?.options ?? []}
                       onRefreshFeedback={async () => {
                         await reviewFeedbackQuery.refetch();
+                      }}
+                      onPollJob={(jobId) => {
+                        setFeedbackData(null);
+                        pollingAttemptRef.current = 0;
+                        setNetworkErrorPaused(false);
+                        setPollingJobId(jobId);
                       }}
                     />
                   ) : reviewFeedbackQuery.data ? (
@@ -3096,6 +3114,12 @@ export const LearningPlayerPage = () => {
                       Câu tiếp theo →
                     </button>
                   </div>
+                ) : isReadOnly ? (
+                  <p role="status" className="text-xs text-slate-500 dark:text-slate-400">
+                    {isCurrentQuestionSubmitted || isAssignmentSubmitted
+                      ? "Bài làm đã nộp — chỉ có thể xem lại."
+                      : isAssignmentExpired ? "Bài tập đã hết hạn." : "Đang nộp bài…"}
+                  </p>
                 ) : (
                   <div className="flex items-center justify-between w-full">
                     <button

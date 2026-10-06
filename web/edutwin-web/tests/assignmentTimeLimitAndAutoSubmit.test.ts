@@ -145,7 +145,11 @@ test("8. Separation of authoritative expiration timestamp vs display ceil-roundi
   const content = fs.readFileSync(path.join(pagesDir, "LearningPlayerPage.tsx"), "utf-8");
 
   // Expiration is checked against actual absolute timestamp, not truncated integer
-  assert.ok(content.includes("Date.now() >= targetEndTimestampRef.current"), "Must check expiration against targetEndTimestampRef");
+  assert.match(content, /isActiveAssignmentExpired\(isAssignmentSubmitted,\s*hasTimeLimit \? targetEndTimestampRef.current/,
+    "Must check authoritative deadline through the submitted-aware expiration policy");
+  const timing = fs.readFileSync(path.join(__dirname, "../src/utils/assignmentReviewTiming.ts"), "utf-8");
+  assert.ok(timing.includes("now >= expiresAt"), "Must compare exact timestamp, not rounded display seconds");
+  assert.ok(timing.includes("!submitted"), "Submitted work must not expire during review");
 
   // Display uses ceil so fractional seconds do not display 0
   assert.ok(content.includes("Math.ceil(msLeft / 1000)"), "Must use Math.ceil for display countdown");

@@ -1304,6 +1304,7 @@ function CenterManagerQuestionEditorView() {
               <div className="rounded-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-subtle)] p-4">
                 <ModeAwareAnswerEditor
                   profile="authoring"
+                  variant="center-manager"
                   questionType="ShortAnswer"
                   evaluationMode={formData.answerEvaluationMode || "TextExact"}
                   value={
@@ -1348,6 +1349,7 @@ function CenterManagerQuestionEditorView() {
                 </label>
                 <ModeAwareAnswerEditor
                   profile="authoring"
+                  variant="center-manager"
                   questionType="Essay"
                   evaluationMode="Manual"
                   value={

@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
+using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.DAL.Persistence;
 
@@ -106,6 +107,22 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
             .OrderByDescending(r => r.RequestId)
             .FirstOrDefaultAsync(cancellationToken);
 
+        var pendingRequest = await _dbContext.StudentReviewRequests.AsNoTracking()
+            .AnyAsync(r => r.CenterId == centerId && r.AttemptId == attemptId &&
+                r.Status == StudentReviewRequestStatus.Pending, cancellationToken);
+        var assignmentApproved = attempt.AssignmentId.HasValue &&
+            await _dbContext.StudentAssignmentProgresses.AsNoTracking().AnyAsync(p =>
+                p.CenterId == centerId && p.AssignmentId == attempt.AssignmentId &&
+                p.StudentId == attempt.StudentId && !p.IsDeleted &&
+                p.TeacherFinalReviewStatus == TeacherFinalReviewStatus.Approved, cancellationToken);
+        var voided = attempt.AssignmentId.HasValue &&
+            await _dbContext.AssignmentQuestions.AsNoTracking().AnyAsync(q =>
+                q.CenterId == centerId && q.AssignmentId == attempt.AssignmentId &&
+                q.QuestionId == attempt.QuestionId && q.IsVoided, cancellationToken);
+        var job = await _dbContext.AIAnalysisJobs.AsNoTracking()
+            .Where(j => j.CenterId == centerId && j.AttemptId == attemptId)
+            .OrderByDescending(j => j.AnalysisJobId).FirstOrDefaultAsync(cancellationToken);
+
         // Load TwinChange from TwinUpdateHistory
         var twinHistory = await _dbContext.TwinUpdateHistories.AsNoTracking()
             .Include(h => h.TopicNode)
@@ -178,7 +195,7 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
             TimeSpentSeconds = attempt.TimeSpentSeconds,
             AnswerChanges = attempt.AnswerChanges,
             AttachmentUrl = attempt.Attachment != null
-                ? $"/api/v1/attachments/attempts/{attempt.AttemptId}"
+                ? $"/api/v1/learning/attempts/{attempt.AttemptId}/attachment"
                 : null
         };
 
@@ -369,9 +386,12 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
             }
         }
 
-        var canRetry = retriesRemaining > 0 && cooldownRemaining == 0;
+        var retryEligible = AttemptFeedbackActionPolicy.CanRetryAI(
+            attempt, job, analysis, assignmentApproved, pendingRequest, voided);
+        var canRetry = retryEligible && retriesRemaining > 0 && cooldownRemaining == 0;
         var retryQuotaDto = new RetryQuotaDto
         {
+            IsEligible = retryEligible,
             ManualRetriesUsed = retriesUsed,
             ManualRetriesRemaining = retriesRemaining,
             CooldownRemainingSeconds = cooldownRemaining,
@@ -427,6 +447,12 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
             TeacherFinalEvaluation = teacherEvaluationDto,
             ReviewRequest = reviewRequestDto,
             RetryQuota = retryQuotaDto,
+            Actions = new AttemptFeedbackActionsDto
+            {
+                CanRequestTeacherReview = AttemptFeedbackActionPolicy.CanRequestReview(
+                    attempt, analysis, assignmentApproved, pendingRequest, voided),
+                CanReportQuestion = AttemptFeedbackActionPolicy.CanReportQuestion(attempt, pendingRequest, voided)
+            },
             TwinChange = twinChangeDto,
             Recommendation = recommendationDto
         };

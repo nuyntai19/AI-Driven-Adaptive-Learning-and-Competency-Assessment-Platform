@@ -774,6 +774,7 @@ export function TeacherQuestionEditorView() {
               <div className="rounded-xl border border-[var(--th-border-subtle)] bg-[var(--th-surface-subtle)] p-4">
                 <ModeAwareAnswerEditor
                   profile="authoring"
+                  variant="teacher"
                   questionType={questionType}
                   evaluationMode={questionType === "Essay" ? "Manual" : (answerEvaluationMode || "TextExact")}
                   value={

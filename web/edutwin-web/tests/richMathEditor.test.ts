@@ -753,7 +753,7 @@ describe("RichMathEditor Caret Preservation and External Insertion", () => {
 
   it("safely resets lastValidRangeRef to null on external value hydration and unmount", () => {
     // On hydration:
-    assert.match(source, /if\s*\(isLocalChangeRef\.current\)\s*\{[\s\S]*?\}\s*lastValidRangeRef\.current\s*=\s*null;/);
+    assert.match(source, /if\s*\(isLocalChangeRef\.current && !disabled\)\s*\{[\s\S]*?\}\s*lastValidRangeRef\.current\s*=\s*null;/);
     // On unmount:
     assert.match(source, /return\s*\(\)\s*=>\s*\{[\s\S]*?lastValidRangeRef\.current\s*=\s*null;\s*\};/);
   });

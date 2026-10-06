@@ -3,6 +3,7 @@ import test from "node:test";
 import fs from "node:fs";
 import vm from "node:vm";
 import ts from "typescript";
+import { isQuestionSubmissionLocked } from "../src/utils/questionReview.ts";
 import {
   executeSnapshotUpload,
   pruneMismatchedSnapshotUploads,
@@ -235,7 +236,7 @@ function pageHarness() {
   const writes: string[] = [];
   const c: Record<string, any> = {
     useCallback: (callback: unknown) => callback,
-    executeSnapshotUpload, pruneMismatchedSnapshotUploads,
+    executeSnapshotUpload, pruneMismatchedSnapshotUploads, isQuestionSubmissionLocked,
     currentUser: { userId: "student", centerId: "center" },
     assignmentDraftScope: { assignmentId: "A" }, snapshotScopeKey: "A", snapshotScopeRef: { current: "A" },
     question: { questionId: "1" }, assignmentQuestion: { questionId: "1", questionType: "ShortAnswer" },

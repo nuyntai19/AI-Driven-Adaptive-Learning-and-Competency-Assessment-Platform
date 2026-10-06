@@ -13,6 +13,9 @@ public class StudentAssignmentDetailDto
     public DateTime? DueAt { get; set; }
     public int? TimeLimitMinutes { get; set; }
     public DateTime? StartedAt { get; set; }
+    public bool IsSubmitted { get; set; }
+    public DateTime? SubmittedAt { get; set; }
+    public int? ElapsedSeconds { get; set; }
     public DateTime? EffectiveExpiresAt { get; set; }
     public int? RemainingSeconds { get; set; }
     public StudentAssignmentProgressDto Progress { get; set; } = new();

@@ -24,6 +24,173 @@ namespace EduTwin.BLL.Tests.Assignments;
 
 public class GetStudentAssignmentUseCaseTests
 {
+    [Theory]
+    [InlineData(60)]
+    [InlineData(null)]
+    public async Task ExecuteAsync_CompletedBeforeDeadline_FreezesTimingWhenReopenedAfterDeadline(int? timeLimit)
+    {
+        var fixture = await CreateTimingFixture(ProgressStatus.Completed, timeLimit, completedAt: true);
+        await using var context = fixture.Context;
+        var first = await fixture.UseCase.ExecuteAsync(fixture.Progress.AssignmentId, CancellationToken.None);
+        Assert.True(first.IsSuccess);
+        var detail = first.Data!.Data;
+        Assert.True(detail.IsSubmitted);
+        Assert.Equal(new DateTime(2026, 10, 6, 8, 10, 0, DateTimeKind.Utc), detail.SubmittedAt);
+        Assert.Equal(600, detail.ElapsedSeconds);
+        Assert.Equal(3000, detail.RemainingSeconds);
+        Assert.Equal("Completed", detail.Progress.Status);
+
+        fixture.Clock.Setup(c => c.GetUtcNow()).Returns(new DateTimeOffset(2026, 10, 7, 10, 0, 0, TimeSpan.Zero));
+        var reopened = await fixture.UseCase.ExecuteAsync(fixture.Progress.AssignmentId, CancellationToken.None);
+        Assert.True(reopened.IsSuccess);
+        Assert.Equal(detail.SubmittedAt, reopened.Data!.Data.SubmittedAt);
+        Assert.Equal(detail.ElapsedSeconds, reopened.Data.Data.ElapsedSeconds);
+        Assert.Equal(detail.RemainingSeconds, reopened.Data.Data.RemainingSeconds);
+        Assert.Equal("Completed", reopened.Data.Data.Progress.Status);
+        Assert.Equal(detail.SubmittedAt, fixture.Progress.CompletedAt);
+        Assert.False(context.ChangeTracker.HasChanges());
+    }
+
+    [Theory]
+    [InlineData(AttemptStatus.PendingAnalysis)]
+    [InlineData(AttemptStatus.Processing)]
+    [InlineData(AttemptStatus.AnalysisFailed)]
+    [InlineData(AttemptStatus.NeedsTeacherReview)]
+    public async Task ExecuteAsync_AllQuestionsPersisted_IsSubmittedBeforeAIOrTeacherFinishes(AttemptStatus status)
+    {
+        var fixture = await CreateTimingFixture(ProgressStatus.InProgress, 60, attemptStatus: status, attemptCount: 2);
+        await using var context = fixture.Context;
+        var result = await fixture.UseCase.ExecuteAsync(fixture.Progress.AssignmentId, CancellationToken.None);
+        Assert.True(result.IsSuccess);
+        var detail = result.Data!.Data;
+        Assert.True(detail.IsSubmitted);
+        Assert.Equal("Completed", detail.Progress.Status);
+        Assert.Equal(new DateTime(2026, 10, 6, 8, 10, 0, DateTimeKind.Utc), detail.SubmittedAt);
+        Assert.Equal(600, detail.ElapsedSeconds);
+        Assert.Equal(3000, detail.RemainingSeconds);
+        Assert.All(detail.Questions, q => Assert.Equal(status.ToString(), q.AttemptStatus));
+        Assert.Null(fixture.Progress.CompletedAt); // GET must not mutate evidence/progress.
+        Assert.Equal(ProgressStatus.InProgress, fixture.Progress.Status);
+        Assert.False(context.ChangeTracker.HasChanges());
+    }
+
+    [Theory]
+    [InlineData(60)]
+    [InlineData(null)]
+    public async Task ExecuteAsync_PartialSubmission_StillUsesActiveDeadline(int? timeLimit)
+    {
+        var fixture = await CreateTimingFixture(ProgressStatus.InProgress, timeLimit, attemptCount: 1);
+        await using var context = fixture.Context;
+        fixture.Clock.Setup(c => c.GetUtcNow()).Returns(new DateTimeOffset(2026, 10, 6, 8, 30, 0, TimeSpan.Zero));
+        var active = await fixture.UseCase.ExecuteAsync(fixture.Progress.AssignmentId, CancellationToken.None);
+        Assert.True(active.IsSuccess);
+        Assert.False(active.Data!.Data.IsSubmitted);
+        Assert.Null(active.Data.Data.SubmittedAt);
+        Assert.Null(active.Data.Data.ElapsedSeconds);
+        Assert.Equal(1800, active.Data.Data.RemainingSeconds);
+        Assert.Equal("InProgress", active.Data.Data.Progress.Status);
+
+        fixture.Clock.Setup(c => c.GetUtcNow()).Returns(new DateTimeOffset(2026, 10, 6, 10, 0, 0, TimeSpan.Zero));
+        var expired = await fixture.UseCase.ExecuteAsync(fixture.Progress.AssignmentId, CancellationToken.None);
+        Assert.True(expired.IsSuccess);
+        Assert.False(expired.Data!.Data.IsSubmitted);
+        Assert.Equal(0, expired.Data.Data.RemainingSeconds);
+        Assert.Equal("Overdue", expired.Data.Data.Progress.Status);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_LegacyCompletedWithoutTimestamps_DoesNotFabricateSubmissionTime()
+    {
+        var fixture = await CreateTimingFixture(ProgressStatus.Completed, 60, startedAt: false);
+        await using var context = fixture.Context;
+        var result = await fixture.UseCase.ExecuteAsync(fixture.Progress.AssignmentId, CancellationToken.None);
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Data!.Data.IsSubmitted);
+        Assert.Null(result.Data.Data.SubmittedAt);
+        Assert.Null(result.Data.Data.ElapsedSeconds);
+        Assert.Null(result.Data.Data.RemainingSeconds);
+        Assert.Equal("Completed", result.Data.Data.Progress.Status);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_VoidedQuestionAndSubmittedAnswer_AreResolvedWithoutAnotherStart()
+    {
+        var fixture = await CreateTimingFixture(ProgressStatus.InProgress, 60, attemptCount: 1, voidLastQuestion: true);
+        await using var context = fixture.Context;
+        var result = await fixture.UseCase.ExecuteAsync(fixture.Progress.AssignmentId, CancellationToken.None);
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Data!.Data.IsSubmitted);
+        Assert.Equal("Completed", result.Data.Data.Progress.Status);
+        Assert.Equal(600, result.Data.Data.ElapsedSeconds);
+        Assert.True(result.Data.Data.Questions.Last().IsVoided);
+    }
+
+    private static async Task<(EduTwinDbContext Context, GetStudentAssignmentUseCase UseCase,
+        StudentAssignmentProgress Progress, Mock<TimeProvider> Clock)> CreateTimingFixture(
+        ProgressStatus status, int? timeLimit, bool startedAt = true, bool completedAt = false,
+        AttemptStatus attemptStatus = AttemptStatus.PendingAnalysis, int attemptCount = 0, bool voidLastQuestion = false)
+    {
+        var centerId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
+        var start = new DateTime(2026, 10, 6, 8, 0, 0, DateTimeKind.Utc);
+        var submitted = start.AddMinutes(10);
+        var accessor = new Mock<ITenantIdAccessor>();
+        accessor.SetupGet(a => a.CenterId).Returns(centerId);
+        var options = new DbContextOptionsBuilder<EduTwinDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        var context = new EduTwinDbContext(options, accessor.Object);
+        var assignment = new Assignment
+        {
+            AssignmentId = Guid.NewGuid(), CenterId = centerId, Title = "Timing regression",
+            Status = AssignmentStatus.Published, DueAt = start.AddHours(1), TimeLimitMinutes = timeLimit,
+            CreatedAt = start, UpdatedAt = start
+        };
+        var progress = new StudentAssignmentProgress
+        {
+            ProgressId = 1, AssignmentId = assignment.AssignmentId, Assignment = assignment,
+            CenterId = centerId, StudentId = studentId, Status = status,
+            StartedAt = startedAt ? start : null, CompletedAt = completedAt ? submitted : null,
+            TotalQuestionCount = 2, CreatedAt = start, UpdatedAt = start
+        };
+        context.Assignments.Add(assignment);
+        context.StudentAssignmentProgresses.Add(progress);
+        for (var i = 1; i <= 2; i++)
+        {
+            var question = new Question
+            {
+                QuestionId = (ulong)i, CenterId = centerId, QuestionType = QuestionType.ShortAnswer,
+                Difficulty = 1, QuestionText = "1 + 1?", CorrectAnswer = "2", Solution = "2",
+                ExpectedReasoning = "Addition", LanguageCode = "vi", CreatedAt = start, UpdatedAt = start
+            };
+            context.Questions.Add(question);
+            context.AssignmentQuestions.Add(new AssignmentQuestion
+            {
+                CenterId = centerId, AssignmentId = assignment.AssignmentId, QuestionId = question.QuestionId,
+                Question = question, Points = 1, OrderIndex = (uint)i, CreatedAt = start,
+                IsVoided = voidLastQuestion && i == 2, VoidReason = voidLastQuestion && i == 2 ? "Invalid question" : null
+            });
+            if (i <= attemptCount)
+            {
+                context.Attempts.Add(new Attempt
+                {
+                    AttemptId = (ulong)i, CenterId = centerId, StudentId = studentId,
+                    AssignmentId = assignment.AssignmentId, QuestionId = question.QuestionId,
+                    Status = attemptStatus, FinalAnswer = "2", ReasoningLanguage = "vi",
+                    CreatedAt = submitted, UpdatedAt = submitted
+                });
+            }
+        }
+        await context.SaveChangesAsync();
+        var tenant = new Mock<ITenantContext>();
+        tenant.SetupGet(t => t.IsResolved).Returns(true);
+        tenant.SetupGet(t => t.CenterId).Returns(centerId);
+        tenant.SetupGet(t => t.UserId).Returns(studentId);
+        tenant.SetupGet(t => t.Role).Returns("Student");
+        var clock = new Mock<TimeProvider>();
+        clock.Setup(c => c.GetUtcNow()).Returns(new DateTimeOffset(2026, 10, 6, 10, 0, 0, TimeSpan.Zero));
+        return (context, new GetStudentAssignmentUseCase(context, tenant.Object, clock.Object,
+            new AssignmentResultCalculator(context)), progress, clock);
+    }
+
     [Fact]
     public async Task ExecuteAsync_TeacherAccountType_FailsClosed()
     {

@@ -23,6 +23,7 @@ public sealed class AttemptFeedbackDataDto
     public AttemptFeedbackTeacherEvaluationDto? TeacherFinalEvaluation { get; set; }
     public StudentReviewRequestDto? ReviewRequest { get; set; }
     public RetryQuotaDto? RetryQuota { get; set; }
+    public AttemptFeedbackActionsDto Actions { get; set; } = new();
     public AttemptFeedbackTwinChangeDto? TwinChange { get; set; }
     public AttemptFeedbackRecommendationDto? Recommendation { get; set; }
 }
@@ -71,11 +72,18 @@ public sealed class AttemptFeedbackTeacherEvaluationDto
 
 public sealed class RetryQuotaDto
 {
+    public bool IsEligible { get; set; }
     public byte ManualRetriesUsed { get; set; }
     public byte ManualRetriesRemaining { get; set; }
     public int CooldownRemainingSeconds { get; set; }
     public bool CanRetry { get; set; }
     public DateTime? NextRetryAllowedAt { get; set; }
+}
+
+public sealed class AttemptFeedbackActionsDto
+{
+    public bool CanRequestTeacherReview { get; set; }
+    public bool CanReportQuestion { get; set; }
 }
 
 public sealed class AttemptFeedbackGradingDto

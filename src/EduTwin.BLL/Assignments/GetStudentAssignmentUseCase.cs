@@ -169,6 +169,22 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
         DateTime? effectiveExpiresAt = null;
         int? remainingSeconds = null;
 
+        var allQuestionsSubmitted = assignmentQuestions.Count > 0 && assignmentQuestions.All(q =>
+            q.IsVoided || latestAttemptsByQuestion.ContainsKey(q.QuestionId));
+        var isSubmitted = progress.Status == ProgressStatus.Completed || allQuestionsSubmitted;
+        DateTime? submittedAt = isSubmitted ? progress.CompletedAt : null;
+        if (isSubmitted && !submittedAt.HasValue)
+        {
+            // Legacy or still-processing submissions may not have CompletedAt.
+            // Use only persisted attempts belonging to this assignment's questions.
+            submittedAt = latestAttemptsByQuestion.Values.Where(a => questionIds.Contains(a.QuestionId))
+                .Select(a => (DateTime?)a.CreatedAt).Max();
+        }
+        int? elapsedSeconds = isSubmitted && submittedAt.HasValue && progress.StartedAt.HasValue
+            ? (int)Math.Clamp((submittedAt.Value - progress.StartedAt.Value).TotalSeconds, 0, int.MaxValue)
+            : null;
+        var clockAt = isSubmitted ? submittedAt : utcNow;
+
         if (progress.Assignment.TimeLimitMinutes.HasValue && progress.Assignment.TimeLimitMinutes.Value > 0)
         {
             if (progress.StartedAt.HasValue)
@@ -178,14 +194,17 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
                     ? progress.Assignment.DueAt.Value
                     : timeLimitExpiresAt;
 
-                var diff = (long)(effectiveExpiresAt.Value - utcNow).TotalSeconds;
-                remainingSeconds = diff > 0 ? (int)Math.Min(diff, int.MaxValue) : 0;
+                if (clockAt.HasValue)
+                {
+                    var diff = (long)(effectiveExpiresAt.Value - clockAt.Value).TotalSeconds;
+                    remainingSeconds = diff > 0 ? (int)Math.Min(diff, int.MaxValue) : 0;
+                }
             }
             else
             {
                 // Not started yet: full time limit, countdown begins only when started
                 effectiveExpiresAt = progress.Assignment.DueAt;
-                remainingSeconds = progress.Assignment.TimeLimitMinutes.Value * 60;
+                remainingSeconds = isSubmitted ? null : progress.Assignment.TimeLimitMinutes.Value * 60;
             }
         }
         else
@@ -194,8 +213,11 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
             if (progress.Assignment.DueAt.HasValue)
             {
                 effectiveExpiresAt = progress.Assignment.DueAt.Value;
-                var diff = (long)(progress.Assignment.DueAt.Value - utcNow).TotalSeconds;
-                remainingSeconds = diff > 0 ? (int)Math.Min(diff, int.MaxValue) : 0;
+                if (clockAt.HasValue)
+                {
+                    var diff = (long)(progress.Assignment.DueAt.Value - clockAt.Value).TotalSeconds;
+                    remainingSeconds = diff > 0 ? (int)Math.Min(diff, int.MaxValue) : 0;
+                }
             }
             else
             {
@@ -223,11 +245,15 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
             SubjectName = assignmentClass?.Subject?.SubjectName,
             TimeLimitMinutes = progress.Assignment.TimeLimitMinutes,
             StartedAt = progress.StartedAt,
+            IsSubmitted = isSubmitted,
+            SubmittedAt = submittedAt,
+            ElapsedSeconds = elapsedSeconds,
             EffectiveExpiresAt = effectiveExpiresAt,
             RemainingSeconds = remainingSeconds,
             Progress = new StudentAssignmentProgressDto
             {
-                Status = AssignmentStatusHelper.GetEffectiveProgressStatus(progress.Status, effectiveExpiresAt, utcNow).ToString(),
+                Status = isSubmitted ? nameof(ProgressStatus.Completed)
+                    : AssignmentStatusHelper.GetEffectiveProgressStatus(progress.Status, effectiveExpiresAt, utcNow).ToString(),
                 CompletedQuestionCount = (int)progress.CompletedQuestionCount,
                 TotalQuestionCount = (int)progress.TotalQuestionCount
             },

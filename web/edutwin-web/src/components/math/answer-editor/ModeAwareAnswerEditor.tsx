@@ -16,6 +16,7 @@ import { Coordinate2DInput } from "./Coordinate2DInput";
 import { PlainOrMultilineAnswerInput } from "./PlainOrMultilineAnswerInput";
 import { MultilineProseAnswerEditor } from "./MultilineProseAnswerEditor";
 import { MathPreviewCore } from "../MathPreviewCore";
+import type { RichMathEditorProps } from "../RichMathEditor";
 
 export interface ModeAwareAnswerEditorProps {
   profile?: AnswerEditorProfile;
@@ -33,6 +34,7 @@ export interface ModeAwareAnswerEditorProps {
   showPreview?: boolean;
   showSyntaxHint?: boolean;
   onFocus?: () => void;
+  variant?: RichMathEditorProps["variant"];
 }
 
 /**
@@ -87,10 +89,12 @@ export const ModeAwareAnswerEditor = forwardRef<AnswerEditorRef, ModeAwareAnswer
       showPreview = true,
       showSyntaxHint,
       onFocus,
+      variant,
     },
     ref
   ) => {
     const childRef = useRef<AnswerEditorRef>(null);
+    const proseVariant = variant ?? (profile === "answering" ? "student" : "neutral");
 
     // 1. Resolve compatible input type
     const resolution = resolveAnswerInputType(questionType, evaluationMode);
@@ -251,6 +255,7 @@ export const ModeAwareAnswerEditor = forwardRef<AnswerEditorRef, ModeAwareAnswer
         {resolution.type === "manual-short-answer" && (
           <PlainOrMultilineAnswerInput
             ref={childRef}
+            variant={proseVariant}
             value={value}
             onChange={handleChildChange}
             disabled={disabled}
@@ -266,6 +271,7 @@ export const ModeAwareAnswerEditor = forwardRef<AnswerEditorRef, ModeAwareAnswer
         {resolution.type === "essay-prose" && (
           <MultilineProseAnswerEditor
             ref={childRef}
+            variant={proseVariant}
             value={value}
             onChange={handleChildChange}
             disabled={disabled}

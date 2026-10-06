@@ -24,14 +24,27 @@ export function getAttemptFeedbackPresentation(
   );
   const uncertain = analysis?.answerAssessment === "Uncertain" || analysis?.reasoningVerdict === "Uncertain";
   const hasReasoningConcerns = analysis?.reasoningVerdict === "Invalid" || uncertain ||
+    (analysis?.confidence != null && analysis.confidence < 80) ||
     Boolean(analysis?.misconception?.trim()) || Boolean(analysis?.missingSteps?.length) ||
     Boolean(analysis?.errorType && !["None", "NONE", "NoError"].includes(analysis.errorType));
   const pendingTeacher = grading.source === "PendingTeacher" || status === "NeedsTeacherReview";
   const needsReview = pendingTeacher || (grading.source !== "Teacher" && Boolean(
     analysis?.needsTeacherReview || answerDisagreement || uncertain || analysis?.reasoningVerdict === "Invalid",
   ));
+  const manualReview = pendingTeacher && grading.reasonCode === "MANUAL_MODE";
+  const reviewExplanation = answerDisagreement
+    ? "Phân tích nhận thấy đáp án có thể khác kết quả chấm theo quy tắc. Giáo viên cần đối chiếu để chốt kết quả."
+    : hasReasoningConcerns
+    ? "Có điểm cần kiểm tra trong đáp án hoặc lập luận. Giáo viên sẽ xem xét các điểm này trước khi chốt kết quả."
+    : manualReview
+    ? analysis?.reasoningVerdict === "Valid"
+      ? "AI đánh giá lập luận hợp lệ. Câu trả lời này dùng chế độ chấm thủ công nên giáo viên cần xác nhận điểm cuối cùng; đây không phải cảnh báo AI thiếu tự tin."
+      : "Câu trả lời này dùng chế độ chấm thủ công. Giáo viên cần xác nhận điểm cuối cùng; phân tích AI chỉ là thông tin hỗ trợ."
+    : pendingTeacher
+    ? "Bài làm đang chờ giáo viên xác nhận kết quả cuối cùng. Phân tích AI không tự thay đổi điểm."
+    : "Bạn có thể gửi yêu cầu để giáo viên đối chiếu bài làm. Phân tích AI không tự thay đổi điểm.";
   return { isGemini, feedbackLabel, scoreSourceLabel, answerDisagreement, hasReasoningConcerns,
-    needsReview, pendingTeacher };
+    needsReview, pendingTeacher, manualReview, reviewExplanation };
 }
 
 /** Equal per-question normalization matches the assignment total of ten points. */
