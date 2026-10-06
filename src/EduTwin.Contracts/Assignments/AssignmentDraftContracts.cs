@@ -17,6 +17,7 @@ public class AssignmentDraftAnswerItemDto
 public class SaveAssignmentDraftRequest
 {
     public List<AssignmentDraftAnswerItemDto> Answers { get; set; } = new();
+    public int? DraftVersion { get; set; }
 }
 
 public class SubmitAssignmentRequest

@@ -11,6 +11,7 @@ import {
   buildTextExactAnswer,
   buildProseAnswer,
   buildNumericRationalAnswer,
+  buildMathEquivalentAnswer,
   deserializeCoordinate,
   serializeCoordinateParts,
 } from "../components/math/answer-editor/answerEditorHelpers.ts";
@@ -25,6 +26,7 @@ export type AnswerDraftKey =
   | "ShortAnswer:TextExact"
   | "ShortAnswer:NumericRational"
   | "ShortAnswer:Coordinate2D"
+  | "ShortAnswer:MathEquivalent"
   | "ShortAnswer:Manual"
   | "Essay:Manual";
 
@@ -46,6 +48,8 @@ export function getAnswerDraftKey(
         return "ShortAnswer:NumericRational";
       case "Coordinate2D":
         return "ShortAnswer:Coordinate2D";
+      case "MathEquivalent":
+        return "ShortAnswer:MathEquivalent";
       case "Manual":
         return "ShortAnswer:Manual";
       default:
@@ -441,6 +445,13 @@ export function findIncompleteFormulasInText(text: string | null | undefined): s
   return validateTextMathFormulas(text).map((d) => d.raw);
 }
 
+/** MathEquivalent answers are a single formula, not prose requiring dollar delimiters. */
+export function validateAnswerMathFormulas(answer: string, evaluationMode: string): MathFormulaDiagnostic[] {
+  return validateTextMathFormulas(
+    evaluationMode === "MathEquivalent" && !answer.includes("$") ? `$${answer}$` : answer,
+  );
+}
+
 export interface RichSegment {
   id: string;
   type: "text" | "math";
@@ -552,6 +563,8 @@ export function hydrateAnswerEditorValue(
   switch (evaluationMode) {
     case "NumericRational":
       return buildNumericRationalAnswer(raw, raw);
+    case "MathEquivalent":
+      return buildMathEquivalentAnswer(raw, raw);
     case "Coordinate2D": {
       const { x, y } = deserializeCoordinate(raw);
       return serializeCoordinateParts(
@@ -578,6 +591,8 @@ export function serializeAnswerEditorValue(
   if (!val) return "";
   if (typeof val === "string") return val.trim();
   const raw = (val.rawText ?? "").trim();
+
+  if (evaluationMode === "MathEquivalent") return (val.displayLatex || raw).trim();
 
   if (evaluationMode === "Coordinate2D") {
     // rawText is already serialized as (xPlain; yPlain)
@@ -716,7 +731,7 @@ export function buildAuthoritativeQuestionPayload({
   }
 
   if (authoritativeCorrectAnswer) {
-    const ansDiag = validateTextMathFormulas(authoritativeCorrectAnswer)[0];
+    const ansDiag = validateAnswerMathFormulas(authoritativeCorrectAnswer, evalMode)[0];
     if (ansDiag) {
       return {
         payload: formData,

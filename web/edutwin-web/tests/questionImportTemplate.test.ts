@@ -20,13 +20,14 @@ test("contains examples covering all supported evaluation modes", () => {
   assert.ok(QUESTION_IMPORT_CSV_TEMPLATE.includes("TextExact"));
   assert.ok(QUESTION_IMPORT_CSV_TEMPLATE.includes("NumericRational"));
   assert.ok(QUESTION_IMPORT_CSV_TEMPLATE.includes("Coordinate2D"));
+  assert.ok(QUESTION_IMPORT_CSV_TEMPLATE.includes("MathEquivalent"));
   assert.ok(QUESTION_IMPORT_CSV_TEMPLATE.includes("Manual"));
 });
 
 test("ensures every example row contains valid matching question types and evaluation modes", () => {
   const lines = QUESTION_IMPORT_CSV_TEMPLATE.trim().split("\n");
-  // Row 0 is header, rows 1..4 are data rows
-  assert.equal(lines.length, 5);
+  // Row 0 is header, rows 1..5 are data rows
+  assert.equal(lines.length, 6);
 
   // Row 1: MultipleChoice + TextExact
   assert.match(lines[1], /^MultipleChoice,.*TextExact$/);
@@ -39,6 +40,7 @@ test("ensures every example row contains valid matching question types and evalu
 
   // Row 4: Essay + Manual
   assert.match(lines[4], /^Essay,.*Manual$/);
+  assert.match(lines[5], /^ShortAnswer,.*MathEquivalent$/);
 });
 
 test("matches public canonical CSV template file byte-for-byte to prevent template drift", () => {

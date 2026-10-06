@@ -311,6 +311,10 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
                 {
                     evalMode = QuestionAnswerEvaluationMode.TextExact;
                 }
+                else if (evalModeStr.Equals("MathEquivalent", StringComparison.OrdinalIgnoreCase))
+                {
+                    evalMode = QuestionAnswerEvaluationMode.MathEquivalent;
+                }
                 else if (evalModeStr.Equals("NumericRational", StringComparison.OrdinalIgnoreCase) ||
                          evalModeStr.Equals("Numeric", StringComparison.OrdinalIgnoreCase) ||
                          evalModeStr.Equals("SoHuuTi", StringComparison.OrdinalIgnoreCase) ||
@@ -336,7 +340,7 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
                     {
                         RowIndex = rowIndex,
                         Field = "AnswerEvaluationMode",
-                        ErrorMessage = "Chế độ so khớp đáp án không hợp lệ (hỗ trợ TextExact, NumericRational, Coordinate2D, Manual).",
+                        ErrorMessage = "Chế độ so khớp đáp án không hợp lệ (hỗ trợ TextExact, NumericRational, Coordinate2D, MathEquivalent, Manual).",
                         RawValue = evalModeStr
                     });
                 }

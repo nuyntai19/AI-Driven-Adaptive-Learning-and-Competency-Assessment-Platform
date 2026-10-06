@@ -20,4 +20,5 @@ public class StudentAssignmentDetailDto
     public bool CanRetake { get; set; }
     public AssignmentResultSummaryDto? Summary { get; set; }
     public List<AssignmentDraftAnswerItemDto>? DraftAnswers { get; set; }
+    public int? DraftVersion { get; set; }
 }

@@ -14,6 +14,7 @@ import {
   TeacherSafeErrorPanel,
 } from "./TeacherPrimitives";
 import { RichMathText } from "../math/RichMathText";
+import { getAssignmentQuestionNumber } from "../../utils/teacherAssignmentHelpers";
 
 interface TeacherAssignmentQuickViewModalProps {
   assignmentId: string | null;
@@ -340,7 +341,7 @@ export function TeacherAssignmentQuickViewModal({
                 <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
                   {filteredQuestions.map((aq, index) => {
                     const qDetail = questionDetailsMap.get(aq.questionId);
-                    const orderNum = aq.orderIndex !== undefined ? aq.orderIndex + 1 : index + 1;
+                    const orderNum = getAssignmentQuestionNumber(aq.orderIndex, index);
                     const maxScore = aq.points || qDetail?.maxScore || 10;
                     const qType = qDetail?.questionType || "MultipleChoice";
 

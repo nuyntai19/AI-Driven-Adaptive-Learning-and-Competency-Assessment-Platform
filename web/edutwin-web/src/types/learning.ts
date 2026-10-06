@@ -65,6 +65,10 @@ export interface AttemptFeedbackAnalysisDto {
   hasTeacherOverride: boolean;
   solutionType?: "REFINED" | "CORRECTED" | "GENERATED" | "MODEL_ANSWER" | string | null;
   aiSolution?: string | null;
+  answerAssessment?: "Correct" | "Incorrect" | "Uncertain" | null;
+  reasoningVerdict?: "Valid" | "Invalid" | "Uncertain" | null;
+  feedbackOrigin?: "Gemini" | "RuleBased" | "LegacySystem" | null;
+  isRawAI?: boolean;
 }
 
 export interface AttemptFeedbackTwinChangeDto {

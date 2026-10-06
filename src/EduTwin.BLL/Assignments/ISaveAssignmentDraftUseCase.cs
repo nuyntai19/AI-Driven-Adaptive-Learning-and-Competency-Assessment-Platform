@@ -9,9 +9,10 @@ public class SaveAssignmentDraftResult
 {
     public bool IsSuccess { get; private init; }
     public string? ErrorCode { get; private init; }
+    public int DraftVersion { get; private init; }
 
-    public static SaveAssignmentDraftResult Success() => new() { IsSuccess = true };
-    public static SaveAssignmentDraftResult Failure(string errorCode) => new() { IsSuccess = false, ErrorCode = errorCode };
+    public static SaveAssignmentDraftResult Success(int version = 0) => new() { IsSuccess = true, DraftVersion = version };
+    public static SaveAssignmentDraftResult Failure(string errorCode, int currentVersion = 0) => new() { IsSuccess = false, ErrorCode = errorCode, DraftVersion = currentVersion };
 }
 
 public interface ISaveAssignmentDraftUseCase

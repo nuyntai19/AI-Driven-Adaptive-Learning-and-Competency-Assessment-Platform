@@ -469,6 +469,10 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasColumnType("decimal(5,2)")
                         .HasColumnName("analysis_confidence");
 
+                    b.Property<string>("AnswerAssessment")
+                        .HasColumnType("varchar(16)")
+                        .HasColumnName("answer_assessment");
+
                     b.Property<ulong>("AttemptId")
                         .HasColumnType("bigint unsigned")
                         .HasColumnName("attempt_id");
@@ -495,6 +499,13 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("longtext")
                         .HasColumnName("feedback");
+
+                    b.Property<string>("FeedbackOrigin")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("varchar(24)")
+                        .HasDefaultValue("LegacySystem")
+                        .HasColumnName("feedback_origin");
 
                     b.Property<bool>("IsFallback")
                         .HasColumnType("tinyint(1)")
@@ -567,6 +578,10 @@ namespace EduTwin.DAL.Persistence.Migrations
                     b.Property<decimal?>("ReasoningQuality")
                         .HasColumnType("decimal(5,2)")
                         .HasColumnName("reasoning_quality");
+
+                    b.Property<string>("ReasoningVerdict")
+                        .HasColumnType("varchar(16)")
+                        .HasColumnName("reasoning_verdict");
 
                     b.Property<string>("ReviewDecision")
                         .HasColumnType("varchar(32)")
@@ -1531,7 +1546,7 @@ namespace EduTwin.DAL.Persistence.Migrations
 
                     b.ToTable("questions", null, t =>
                         {
-                            t.HasCheckConstraint("ck_questions_answer_evaluation_mode", "answer_evaluation_mode IN ('TextExact', 'NumericRational', 'Manual', 'Coordinate2D')");
+                            t.HasCheckConstraint("ck_questions_answer_evaluation_mode", "answer_evaluation_mode IN ('TextExact', 'NumericRational', 'Manual', 'Coordinate2D', 'MathEquivalent')");
 
                             t.HasCheckConstraint("ck_questions_difficulty", "difficulty BETWEEN 1 AND 5");
 

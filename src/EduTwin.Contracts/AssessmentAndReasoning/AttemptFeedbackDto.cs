@@ -107,6 +107,9 @@ public sealed class AttemptFeedbackAnalysisDto
     public string? Model { get; set; }
     public string? SolutionType { get; set; }
     public string? AiSolution { get; set; }
+    public string? AnswerAssessment { get; set; }
+    public string? ReasoningVerdict { get; set; }
+    public string? FeedbackOrigin { get; set; }
 }
 
 public sealed class AttemptFeedbackRootCauseNodeDto

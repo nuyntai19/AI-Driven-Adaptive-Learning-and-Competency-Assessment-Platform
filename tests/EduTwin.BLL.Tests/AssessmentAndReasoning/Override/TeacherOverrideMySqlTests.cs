@@ -245,7 +245,7 @@ public sealed class TeacherOverrideMySqlTests
     }
 
     [MySqlIntegrationFact]
-    public async Task ExecuteAsync_CenterManagerWithoutTeacherProfile_PersistsUserActor()
+    public async Task ExecuteAsync_CenterManagerWithoutTeacherProfile_IsForbiddenWithoutMutation()
     {
         await using var database = await MySqlTestDatabase.CreateAsync();
         var centerId = Guid.NewGuid();
@@ -298,12 +298,15 @@ public sealed class TeacherOverrideMySqlTests
             },
             CancellationToken.None);
 
-        Assert.Equal(TeacherOverrideStatus.Success, result.Status);
+        Assert.Equal(TeacherOverrideStatus.Forbidden, result.Status);
 
         await using var verifyContext = CreateContext(database.ConnectionString, tenant);
         var analysis = await verifyContext.ReasoningAnalyses
             .SingleAsync(item => item.CenterId == centerId && item.AnalysisId == 2001);
-        Assert.Equal(managerId, analysis.OverriddenByUserId);
+        Assert.Null(analysis.OverriddenByUserId);
+        Assert.Equal(0u, analysis.OverrideVersion);
+        Assert.False(await verifyContext.EvidenceAssessments.AnyAsync(item =>
+            item.CenterId == centerId && item.SourceType == EvidenceSourceType.TeacherOverride));
         Assert.False(await verifyContext.Teachers.AnyAsync(item => item.TeacherId == managerId));
     }
 

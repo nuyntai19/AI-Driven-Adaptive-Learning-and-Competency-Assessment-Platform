@@ -96,6 +96,7 @@ public sealed class GetAttemptFeedbackUseCaseTests : IDisposable
             ErrorType = ErrorType.Knowledge, // Raw AI error type
             AnalysisConfidence = 85m,
             Feedback = "AI says check your arithmetic",
+            FeedbackOrigin = "Gemini",
             IsFallback = false,
             NeedsTeacherReview = false,
             MissingSteps = JsonDocument.Parse("[]"),

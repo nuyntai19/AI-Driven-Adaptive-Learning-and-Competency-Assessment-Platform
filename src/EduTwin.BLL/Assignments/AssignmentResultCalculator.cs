@@ -158,6 +158,7 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
             int evaluatedQuestionCount = 0;
             int correctQuestionCount = 0;
             int voidedQuestionCount = 0;
+            int gradedAwaitingReviewCount = 0;
 
             foreach (var q in questions)
             {
@@ -194,6 +195,7 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
 
                 if (effectiveScore.HasValue || effectiveIsCorrect.HasValue)
                 {
+                    if (analysis?.NeedsTeacherReview == true && analysis.OverrideVersion == 0) gradedAwaitingReviewCount++;
                     var earnedRatio = effectiveScore.HasValue && q.MaxScore > 0
                         ? Math.Clamp(effectiveScore.Value / q.MaxScore, 0m, 1m)
                         : effectiveIsCorrect == true ? 1m : 0m;
@@ -210,10 +212,10 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
             // Read cached overall AI comment (never calls LLM here)
             var progress = progressesByAssignment.GetValueOrDefault(assignmentId);
             var finalReviewStatus = progress?.TeacherFinalReviewStatus ?? TeacherFinalReviewStatus.Pending;
-            var pendingQuestionCount = Math.Max(0, totalQuestionCount - evaluatedQuestionCount);
+            var pendingQuestionCount = Math.Max(0, totalQuestionCount - evaluatedQuestionCount) + gradedAwaitingReviewCount;
             var resultStatus = finalReviewStatus == TeacherFinalReviewStatus.Approved
                 ? "Final"
-                : evaluatedQuestionCount > 0 && pendingQuestionCount == 0
+                : evaluatedQuestionCount > 0 && evaluatedQuestionCount == totalQuestionCount
                     ? "Provisional"
                     : "Processing";
             string? cachedComment = null;

@@ -175,6 +175,12 @@ export interface StudentAssignmentDetailDto {
   questions: StudentAssignmentQuestionDto[];
   summary?: AssignmentResultSummaryDto | null;
   draftAnswers?: AssignmentDraftAnswerItemDto[] | null;
+  draftVersion?: number | null;
+}
+
+export interface SaveAssignmentDraftRequest {
+  answers: AssignmentDraftAnswerItemDto[];
+  draftVersion?: number;
 }
 
 export interface StudentAssignmentListItemDto {

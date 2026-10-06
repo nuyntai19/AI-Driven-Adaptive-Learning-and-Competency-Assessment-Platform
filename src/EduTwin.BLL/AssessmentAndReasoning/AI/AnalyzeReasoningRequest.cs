@@ -1,4 +1,5 @@
 using EduTwin.Contracts.CurriculumAndQuestions;
+using System.Text.Json.Serialization;
 
 namespace EduTwin.BLL.AssessmentAndReasoning.AI;
 
@@ -67,6 +68,7 @@ public sealed record AnalyzeReasoningStudentSubmission
 
     public uint AnswerChanges { get; init; }
 
+    [JsonIgnore] // Images are sent as multimodal parts, never duplicated as base64 prompt text.
     public IReadOnlyList<AnalyzeReasoningImagePart> ImageParts { get; init; } = [];
 }
 

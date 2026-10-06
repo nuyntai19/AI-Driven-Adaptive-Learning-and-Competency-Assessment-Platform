@@ -159,7 +159,9 @@ public sealed class AIAnalysisJobProcessorMySqlTests
     {
         await using var database = await MySqlTestDatabase.CreateAsync();
         var centerId = Guid.NewGuid();
-        await SeedAsync(database.ConnectionString, centerId);
+        // This scenario exercises ReviewOnly for an unscored Essay, not the
+        // Reduced deterministic branch for already-known preliminary correctness.
+        await SeedAsync(database.ConnectionString, centerId, preliminaryCorrectness: null);
         var tenant = new TenantContext();
         using var tenantScope = tenant.BeginScope(centerId);
 
@@ -408,7 +410,7 @@ public sealed class AIAnalysisJobProcessorMySqlTests
     {
         await using var database = await MySqlTestDatabase.CreateAsync();
         var centerId = Guid.NewGuid();
-        await SeedAsync(database.ConnectionString, centerId);
+        await SeedAsync(database.ConnectionString, centerId, preliminaryCorrectness: null);
 
         var tenant = new TenantContext();
         using (tenant.BeginScope(centerId))
@@ -805,7 +807,8 @@ public sealed class AIAnalysisJobProcessorMySqlTests
 
     private static async Task SeedAsync(
         string connectionString,
-        Guid centerId)
+        Guid centerId,
+        bool? preliminaryCorrectness = true)
     {
         var tenant = new TenantContext();
         using var tenantScope = tenant.BeginScope(centerId);
@@ -857,8 +860,8 @@ public sealed class AIAnalysisJobProcessorMySqlTests
                 QuestionId = 1,
                 FinalAnswer = "relational-test-answer",
                 ReasoningText = "relational-test-reasoning",
-                IsCorrect = true,
-                AwardedScore = 1,
+                IsCorrect = preliminaryCorrectness,
+                AwardedScore = preliminaryCorrectness == true ? 1 : 0,
                 TimeSpentSeconds = 20,
                 Confidence = 80,
                 AnswerChanges = 0,

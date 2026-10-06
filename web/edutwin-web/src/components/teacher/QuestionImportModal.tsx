@@ -7,6 +7,7 @@ import type { QuestionImportPreviewDataDto } from "../../types/questions";
 import { RichMathText } from "../math/RichMathText";
 import { TeacherModal } from "./TeacherOverlays";
 import "./teacherDesignSystem.css";
+import { MATH_EQUIVALENT_HELP, validateQuestionImportModes } from "../../utils/questionEvaluationModes";
 
 interface QuestionImportModalProps {
   isOpen: boolean;
@@ -83,6 +84,11 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
 
   const handleConfirmImport = async () => {
     if (!previewData) return;
+    const modeErrors = validateQuestionImportModes(previewData.validQuestions);
+    if (modeErrors.length) {
+      setConfirmError(modeErrors.join("\n"));
+      return;
+    }
     if (!selectedSubjectId) {
       setConfirmError("Vui lòng chọn môn học đích cho các câu hỏi nhập vào.");
       return;
@@ -269,6 +275,7 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
         {/* Step 3: Preview and Validation Results */}
         {previewData && !importResult && (
           <div className="space-y-4">
+            <p className="text-xs text-slate-600 dark:text-slate-300">TextExact giữ nguyên so khớp văn bản. MathEquivalent: {MATH_EQUIVALENT_HELP}</p>
             {/* Stats Summary Bar */}
             <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40">
               <div className="flex items-center gap-4">
@@ -367,7 +374,7 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
                             </td>
                             <td className="p-2.5">
                               <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-cyan-50 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-500/30">
-                                {q.answerEvaluationMode || "TextExact"}
+                                {q.answerEvaluationMode || (q.questionType === "Essay" ? "Manual" : "TextExact")}
                               </span>
                             </td>
                             <td className="p-2.5 font-semibold text-teal-600 dark:text-teal-400">Lv {q.difficulty}</td>

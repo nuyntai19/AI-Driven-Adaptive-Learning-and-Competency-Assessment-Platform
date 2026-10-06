@@ -10,6 +10,8 @@ public static class PreliminaryGradingReasonCodes
     public const string NumericMismatch = "NUMERIC_MISMATCH";
     public const string CoordinateEquivalent = "COORDINATE_EQUIVALENT";
     public const string CoordinateMismatch = "COORDINATE_MISMATCH";
+    public const string MathEquivalent = "MATH_EQUIVALENT";
+    public const string MathMismatch = "MATH_MISMATCH";
     public const string ManualMode = "MANUAL_MODE";
     public const string InvalidReferenceAnswer = "INVALID_REFERENCE_ANSWER";
     public const string UnsupportedMathFormat = "UNSUPPORTED_MATH_FORMAT";

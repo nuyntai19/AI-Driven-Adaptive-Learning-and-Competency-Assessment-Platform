@@ -31,6 +31,7 @@ import { RichMathEditor } from "../../components/math/RichMathEditor";
 import { ModeAwareAnswerEditor } from "../../components/math/answer-editor/ModeAwareAnswerEditor";
 import {
   validateTextMathFormulas,
+  validateAnswerMathFormulas,
   formatFormulaDiagnosticMessage,
   getAnswerDraftKey,
   resetAndHydrateDraftStore,
@@ -39,6 +40,7 @@ import {
   type DraftStore,
 } from "../centerManagerQuestionEditorHelpers";
 import type { AnswerEditorValue } from "../../components/math/answer-editor/answerEditorHelpers";
+import { MATH_EQUIVALENT_HELP } from "../../utils/questionEvaluationModes";
 
 interface QuestionEditorOption {
   optionId?: string;
@@ -279,7 +281,7 @@ export function TeacherQuestionEditorView() {
     }
 
     if (computedCorrectAnswer) {
-      const ansDiag = validateTextMathFormulas(computedCorrectAnswer)[0];
+      const ansDiag = validateAnswerMathFormulas(computedCorrectAnswer, answerEvaluationMode)[0];
       if (ansDiag) {
         setFormError({
           message: formatFormulaDiagnosticMessage("Đáp án chuẩn", ansDiag),
@@ -744,10 +746,14 @@ export function TeacherQuestionEditorView() {
                   className="th-select w-full text-xs"
                 >
                    <option value="TextExact">So khớp chính xác chuỗi (TextExact)</option>
-                   <option value="NumericRational">Tương đương số học / đại số / phân số (NumericRational)</option>
+                   <option value="NumericRational">Số hữu tỉ / phân số tương đương (NumericRational)</option>
                    <option value="Coordinate2D">Tọa độ 2D — chấp nhận (1,1), (1;1) và dạng tương đương</option>
+                   <option value="MathEquivalent">So khớp toán học giới hạn (MathEquivalent)</option>
                    <option value="Manual">Chấm thủ công / AI Rubric (Manual)</option>
                  </select>
+                 <p className="mt-1.5 text-[11px] text-[var(--th-text-muted)]">
+                   {answerEvaluationMode === "MathEquivalent" ? MATH_EQUIVALENT_HELP : answerEvaluationMode === "TextExact" ? "So khớp văn bản theo ký tự, không kiểm tra tương đương toán học. Với đáp án số hoặc tập hợp, hãy chọn chế độ toán phù hợp." : null}
+                 </p>
                  {answerEvaluationMode === "Coordinate2D" && (
                    <p className="mt-1.5 text-[11px] text-[var(--th-text-muted)]">
                      Đáp án chuẩn phải là một cặp tọa độ, ví dụ (1, 1) hoặc (1/2; 3/4).

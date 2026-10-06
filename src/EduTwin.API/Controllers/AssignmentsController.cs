@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using EduTwin.BLL.Assignments;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.Assignments;
@@ -32,6 +33,7 @@ public class AssignmentsController : ControllerBase
     private readonly ISubmitStudentAssignmentUseCase _submitStudentAssignmentUseCase;
     private readonly TimeProvider _timeProvider;
 
+    [ActivatorUtilitiesConstructor]
     public AssignmentsController(
         ICreateAssignmentUseCase createAssignmentUseCase,
         IGetAssignmentUseCase getAssignmentUseCase,
@@ -418,8 +420,33 @@ public class AssignmentsController : ControllerBase
         var result = await _saveAssignmentDraftUseCase.ExecuteAsync(id, request, cancellationToken);
         if (result.IsSuccess)
         {
-            return Ok(new { success = true, timestamp = _timeProvider.GetUtcNow().UtcDateTime });
+            return Ok(new
+            {
+                success = true,
+                draftVersion = result.DraftVersion,
+                timestamp = _timeProvider.GetUtcNow().UtcDateTime
+            });
         }
+
+        if (result.ErrorCode == ErrorCodes.ConcurrencyConflict)
+        {
+            var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+            return Conflict(new ProblemDetails
+            {
+                Type = "https://edutwin.local/problems/concurrency",
+                Title = "Xung đột phiên bản bản nháp",
+                Status = StatusCodes.Status409Conflict,
+                Detail = "Phiên bản bản nháp không khớp với phiên bản mới nhất trên máy chủ.",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = traceId,
+                    ["errorCode"] = ErrorCodes.ConcurrencyConflict,
+                    ["draftVersion"] = result.DraftVersion
+                }
+            });
+        }
+
         return MapErrorToResponse(result.ErrorCode);
     }
 
@@ -470,6 +497,36 @@ public class AssignmentsController : ControllerBase
                 Detail = "Một hoặc nhiều trường không hợp lệ.",
                 Instance = HttpContext.Request.Path,
                 Extensions = { ["traceId"] = traceId, ["errorCode"] = ErrorCodes.ValidationFailed }
+            }),
+
+            ErrorCodes.AssignmentNotAvailable => Conflict(new ProblemDetails
+            {
+                Type = "https://edutwin.local/problems/assignment-not-available",
+                Title = "Bài tập không còn khả dụng",
+                Status = StatusCodes.Status409Conflict,
+                Detail = "Bài tập chưa bắt đầu, đã hết hạn hoặc đã hoàn thành. Vui lòng tải lại trạng thái mới nhất.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = traceId, ["errorCode"] = ErrorCodes.AssignmentNotAvailable }
+            }),
+
+            ErrorCodes.QuestionReasoningRequired => UnprocessableEntity(new ProblemDetails
+            {
+                Type = "https://edutwin.local/problems/reasoning-required",
+                Title = "Thiếu phần giải thích",
+                Status = StatusCodes.Status422UnprocessableEntity,
+                Detail = "Câu hỏi này yêu cầu học sinh nhập phần giải thích trước khi gửi.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = traceId, ["errorCode"] = ErrorCodes.QuestionReasoningRequired }
+            }),
+
+            ErrorCodes.UploadTokenAlreadyUsed => Conflict(new ProblemDetails
+            {
+                Type = "https://edutwin.local/problems/upload-token-already-used",
+                Title = "Mã tải lên đã được sử dụng",
+                Status = StatusCodes.Status409Conflict,
+                Detail = "Mã tải lên đính kèm đã được sử dụng cho một bài nộp khác.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = traceId, ["errorCode"] = ErrorCodes.UploadTokenAlreadyUsed }
             }),
 
             ErrorCodes.InvalidStateTransition => Conflict(new ProblemDetails

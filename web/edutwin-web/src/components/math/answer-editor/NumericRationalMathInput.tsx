@@ -1,10 +1,11 @@
 import { useRef, useEffect, useImperativeHandle, forwardRef } from "react";
 import type { AnswerEditorValue, AnswerEditorRef } from "./answerEditorHelpers";
-import { getAnswerSyntaxHint, buildNumericRationalAnswer } from "./answerEditorHelpers";
+import { getAnswerSyntaxHint, buildNumericRationalAnswer, buildMathEquivalentAnswer } from "./answerEditorHelpers";
 import { VisualMathField, type VisualMathFieldRef } from "../VisualMathField";
 import { MathFormulaPreview } from "../MathFormulaPreview";
 
 export interface NumericRationalMathInputProps {
+  evaluationMode?: "NumericRational" | "MathEquivalent";
   value: AnswerEditorValue;
   onChange?: (val: AnswerEditorValue) => void;
   disabled?: boolean;
@@ -28,6 +29,7 @@ export const NumericRationalMathInput = forwardRef<AnswerEditorRef, NumericRatio
   (
     {
       value,
+      evaluationMode = "NumericRational",
       onChange,
       disabled = false,
       readOnly = false,
@@ -49,7 +51,7 @@ export const NumericRationalMathInput = forwardRef<AnswerEditorRef, NumericRatio
       latestValueRef.current = value;
     }, [value]);
 
-    const syntaxHint = showSyntaxHint ? getAnswerSyntaxHint("NumericRational", value) : null;
+    const syntaxHint = showSyntaxHint ? getAnswerSyntaxHint(evaluationMode, value) : null;
 
     useImperativeHandle(ref, () => ({
       insertLatex: (latex: string) => {
@@ -83,7 +85,9 @@ export const NumericRationalMathInput = forwardRef<AnswerEditorRef, NumericRatio
           ref={visualRef}
           value={mathValue}
           onChange={(latex, plainText) => {
-            const nextVal = buildNumericRationalAnswer(plainText, latex);
+            const nextVal = evaluationMode === "MathEquivalent"
+              ? buildMathEquivalentAnswer(plainText, latex)
+              : buildNumericRationalAnswer(plainText, latex);
             latestValueRef.current = nextVal;
             onChange?.(nextVal);
           }}

@@ -158,11 +158,11 @@ public sealed class GeminiAIServiceTests
         Assert.NotNull(client.Prompt);
         Assert.Contains("INPUT_JSON_BEGIN", client.Prompt, StringComparison.Ordinal);
         Assert.Contains("untrusted data", client.Prompt, StringComparison.Ordinal);
-        Assert.DoesNotContain("methodDetected", client.Prompt, StringComparison.Ordinal);
+        Assert.Contains("actual method in methodDetected", client.Prompt, StringComparison.Ordinal);
         Assert.NotNull(client.Config?.ResponseJsonSchema);
         using var schemaDocument = JsonDocument.Parse(JsonSerializer.Serialize(client.Config.ResponseJsonSchema));
         Assert.Equal(
-            12,
+            14,
             schemaDocument.RootElement.GetProperty("properties").EnumerateObject().Count());
     }
 

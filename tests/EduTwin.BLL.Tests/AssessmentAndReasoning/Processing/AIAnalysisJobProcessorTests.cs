@@ -117,6 +117,29 @@ public sealed class AIAnalysisJobProcessorTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_InvalidReasoningWithCorrectAnswer_DefersEvidenceToTeacher()
+    {
+        var store = new InMemoryDatabaseRoot();
+        var databaseName = Guid.NewGuid().ToString();
+        var centerId = Guid.NewGuid();
+        await SeedAsync(store, databaseName, centerId, retryCount: 0);
+        var ai = new RecordingAIService((_, _) => Task.FromResult(ValidResponse("vi") with
+        {
+            AnswerAssessment = "Correct", ReasoningVerdict = "Invalid", ErrorType = ErrorType.Reasoning,
+            ReasoningQuality = 20, Feedback = "Đáp số đúng nhưng phép gạch bỏ chữ số trong phân số không hợp lệ."
+        }));
+        await ExecuteWithAIAsync(store, databaseName, centerId, ai);
+        var persisted = await ReloadAsync(store, databaseName, centerId);
+        Assert.True(persisted.Attempt.IsCorrect);
+        Assert.Equal(AttemptStatus.NeedsTeacherReview, persisted.Attempt.Status);
+        Assert.True(Assert.Single(persisted.Analyses).NeedsTeacherReview);
+        var evidence = Assert.Single(persisted.Evidence);
+        Assert.True(evidence.RequiresTeacherReview);
+        Assert.Equal(0m, evidence.ReasoningWeight);
+        Assert.Equal(EvidenceTrustLevel.ReviewOnly, evidence.TrustLevel);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_FirstProviderFailure_PersistsSingleSanitizedRetryWithoutAnalysis()
     {
         var store = new InMemoryDatabaseRoot();
@@ -796,12 +819,12 @@ public sealed class AIAnalysisJobProcessorTests
         Language = language,
         MethodDetected = "worked-example",
         ReasoningQuality = 84,
-        ErrorType = ErrorType.Reasoning,
-        Misconception = "missed transition",
-        MissingSteps = ["show transition", "verify result"],
-        RootCauseNodeIds = ["20"],
+        ErrorType = ErrorType.None,
+        Misconception = null,
+        MissingSteps = [],
+        RootCauseNodeIds = [],
         Confidence = 91,
-        Feedback = "Show the transition explicitly."
+        Feedback = "Valid argument."
     };
 
     private static async Task ApplyDriftAsync(

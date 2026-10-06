@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using EduTwin.API.Controllers;
 using EduTwin.BLL.Assignments;
 using EduTwin.Contracts.Assignments;
+using EduTwin.Contracts.Common;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
@@ -52,6 +53,32 @@ public class AssignmentsControllerTests
         Assert.NotNull(response.Meta);
         Assert.Equal("student-assignment-detail-trace", response.Meta.TraceId);
         Assert.Equal(fixedTime.UtcDateTime, response.Meta.Timestamp);
+    }
+
+    [Theory]
+    [InlineData(ErrorCodes.AssignmentNotAvailable, 409)]
+    [InlineData(ErrorCodes.QuestionReasoningRequired, 422)]
+    [InlineData(ErrorCodes.UploadTokenAlreadyUsed, 409)]
+    public async Task StudentAssignment_DomainError_ReturnsStructuredProblemNot500(string errorCode, int status)
+    {
+        var useCase = new Mock<IGetStudentAssignmentUseCase>();
+        useCase.Setup(x => x.ExecuteAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(GetStudentAssignmentResult.Failure(errorCode));
+        var controller = CreateController(useCase.Object, TimeProvider.System);
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext { TraceIdentifier = "domain-error-trace" }
+        };
+        controller.HttpContext.Request.Path = "/api/v1/students/me/assignments/test";
+
+        var result = Assert.IsAssignableFrom<ObjectResult>(
+            await controller.GetStudentAssignment(Guid.NewGuid(), CancellationToken.None));
+        Assert.Equal(status, result.StatusCode);
+        var problem = Assert.IsType<ProblemDetails>(result.Value);
+        Assert.Equal(status, problem.Status);
+        Assert.Equal(errorCode, problem.Extensions["errorCode"]);
+        Assert.Equal("domain-error-trace", problem.Extensions["traceId"]);
+        Assert.Equal(controller.HttpContext.Request.Path.Value, problem.Instance);
     }
 
     private static AssignmentsController CreateController(

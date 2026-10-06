@@ -235,7 +235,10 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
             CanRetake = false,
             Summary = await _resultCalculator.CalculateForSingleAssignmentAsync(centerId.Value, currentUserId.Value, assignmentId, cancellationToken),
             DraftAnswers = progress.Status != ProgressStatus.Completed && !string.IsNullOrWhiteSpace(progress.DraftAnswersJson)
-                ? System.Text.Json.JsonSerializer.Deserialize<List<AssignmentDraftAnswerItemDto>>(progress.DraftAnswersJson)
+                ? DraftAnswersHelper.ParseDraft(progress.DraftAnswersJson).Answers
+                : null,
+            DraftVersion = progress.Status != ProgressStatus.Completed && !string.IsNullOrWhiteSpace(progress.DraftAnswersJson)
+                ? DraftAnswersHelper.ParseDraft(progress.DraftAnswersJson).Version
                 : null
         };
 

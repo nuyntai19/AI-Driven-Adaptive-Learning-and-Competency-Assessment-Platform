@@ -22,6 +22,7 @@ coverage/
 .env.*
 !.env.example
 /storage/
+src/EduTwin.API/storage/
 
 # === AI Agent workspaces ===
 .agents/

@@ -155,7 +155,7 @@ export const startStudentAssignment = async (id: string) => {
 
 export const saveAssignmentDraft = async (
   id: string,
-  request: { answers: AssignmentDraftAnswerItemDto[] } | AssignmentDraftAnswerItemDto[]
+  request: { answers: AssignmentDraftAnswerItemDto[]; draftVersion?: number } | AssignmentDraftAnswerItemDto[]
 ) => {
   const body = Array.isArray(request) ? { answers: request } : request;
   const { data } = await httpClient.put(`/students/me/assignments/${id}/draft`, body);

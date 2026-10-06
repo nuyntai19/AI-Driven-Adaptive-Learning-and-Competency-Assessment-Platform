@@ -273,11 +273,22 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
                 Confidence = analysis.AnalysisConfidence.HasValue
                     ? (int)Math.Round(analysis.AnalysisConfidence.Value, MidpointRounding.AwayFromZero)
                     : null,
-                Feedback = analysis.Feedback,
+                // Legacy builder substituted canned correctness messages for AI
+                // feedback. Do not surface a stale wrong statement after a regrade.
+                Feedback = analysis.FeedbackOrigin == "LegacySystem"
+                    ? effectiveCorrectness == true
+                        ? "Đáp án được bộ chấm tự động công nhận đúng. Đây là thông báo hệ thống; nhận xét AI cũ không được lưu riêng."
+                        : effectiveCorrectness == false
+                            ? "Đáp án chưa khớp kết quả bộ chấm tự động. Đây là thông báo hệ thống, không phải nhận xét riêng của AI."
+                            : "Kết quả đang chờ giáo viên xác nhận; nhận xét AI cũ không được lưu riêng."
+                    : analysis.Feedback,
                 IsFallback = analysis.IsFallback,
                 NeedsTeacherReview = analysis.NeedsTeacherReview,
                 HasTeacherOverride = analysis.OverrideVersion > 0,
-                IsRawAI = true,
+                IsRawAI = analysis.FeedbackOrigin == "Gemini",
+                FeedbackOrigin = analysis.FeedbackOrigin,
+                AnswerAssessment = analysis.AnswerAssessment,
+                ReasoningVerdict = analysis.ReasoningVerdict,
                 Model = analysis.ModelName ?? "Gemini AI",
                 SolutionType = analysis.SolutionType,
                 AiSolution = analysis.AiSolution

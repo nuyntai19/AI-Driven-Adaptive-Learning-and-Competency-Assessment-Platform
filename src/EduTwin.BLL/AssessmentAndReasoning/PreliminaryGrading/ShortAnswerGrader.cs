@@ -86,6 +86,23 @@ public class ShortAnswerGrader : IQuestionGrader
             };
         }
 
+        if (context.EvaluationMode == QuestionAnswerEvaluationMode.MathEquivalent)
+        {
+            var normalizer = new BoundedMathAnswerNormalizer();
+            if (!normalizer.TryNormalize(correctAnswer, out var expected))
+                return new PreliminaryGradingResult { IsCorrect = null, Score = null,
+                    Feedback = "Reference is outside the supported mathematical grammar. Requires teacher review.",
+                    ReasonCode = PreliminaryGradingReasonCodes.InvalidReferenceAnswer };
+            if (!normalizer.TryNormalize(studentAnswer, out var actual))
+                return new PreliminaryGradingResult { IsCorrect = null, Score = null,
+                    Feedback = "Mathematical answer is outside the supported grammar. Requires teacher review.",
+                    ReasonCode = PreliminaryGradingReasonCodes.UnsupportedMathFormat };
+            var matches = actual == expected;
+            return new PreliminaryGradingResult { IsCorrect = matches, Score = matches ? context.MaxScore : 0m,
+                Feedback = matches ? "Equivalent mathematical answer." : "Different mathematical value or set.",
+                ReasonCode = matches ? PreliminaryGradingReasonCodes.MathEquivalent : PreliminaryGradingReasonCodes.MathMismatch };
+        }
+
         if (context.EvaluationMode == QuestionAnswerEvaluationMode.Coordinate2D)
         {
             if (!_coordinateNormalizer.TryNormalize(correctAnswer, out var expectedCoordinate))

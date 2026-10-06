@@ -9,6 +9,31 @@ namespace EduTwin.BLL.Tests.AssessmentAndReasoning.AI;
 public sealed class StrictAIAnalysisResponseParserTests
 {
     [Fact]
+    public void ParseAndValidate_AdvisoryAssessments_AreTypedAndOptionalOnlyAsPair()
+    {
+        var json = JsonNode.Parse(ValidResponseJson)!.AsObject();
+        json["answerAssessment"] = "Correct";
+        Assert.Throws<AIAnalysisValidationException>(() => CreateParser().ParseAndValidate(json.ToJsonString(), CreateRequest()));
+        json["reasoningVerdict"] = "Invalid";
+        var response = CreateParser().ParseAndValidate(json.ToJsonString(), CreateRequest());
+        Assert.Equal("Correct", response.AnswerAssessment);
+        Assert.Equal("Invalid", response.ReasoningVerdict);
+        Assert.Null(CreateParser().ParseAndValidate(ValidResponseJson, CreateRequest()).ReasoningVerdict);
+    }
+
+    [Theory]
+    [InlineData("correct", "Valid")]
+    [InlineData("Correct", "Invented")]
+    [InlineData("Correct", null)]
+    public void ParseAndValidate_InvalidAdvisoryValue_IsRejected(string answer, string? verdict)
+    {
+        var json = JsonNode.Parse(ValidResponseJson)!.AsObject();
+        json["answerAssessment"] = answer;
+        json["reasoningVerdict"] = verdict;
+        Assert.Throws<AIAnalysisValidationException>(() => CreateParser().ParseAndValidate(json.ToJsonString(), CreateRequest()));
+    }
+
+    [Fact]
     public void ParseAndValidate_ValidVietnameseJson_ReturnsExactTypedResponse()
     {
         var response = CreateParser().ParseAndValidate(ValidResponseJson, CreateRequest());
