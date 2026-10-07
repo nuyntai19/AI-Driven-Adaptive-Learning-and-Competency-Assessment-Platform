@@ -45,10 +45,9 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
             !_tenantContext.CenterId.HasValue || _tenantContext.CenterId.Value == Guid.Empty ||
             !_tenantContext.UserId.HasValue || _tenantContext.UserId.Value == Guid.Empty ||
             string.IsNullOrWhiteSpace(_tenantContext.Role) ||
-            (!string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal) &&
-             !string.Equals(_tenantContext.Role, nameof(UserRole.CenterManager), StringComparison.Ordinal)))
+            !string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal))
         {
-            return CreateQuestionResult.Failure(ErrorCodes.ResourceNotFound);
+            return CreateQuestionResult.Failure(ErrorCodes.ForbiddenResource);
         }
 
         var centerId = _tenantContext.CenterId.Value;
@@ -74,6 +73,9 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
             return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
 
         if (request.Difficulty < 1 || request.Difficulty > 5)
+            return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+
+        if (!request.GradeLevel.HasValue || request.GradeLevel.Value < 10 || request.GradeLevel.Value > 12)
             return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
 
         if (string.IsNullOrWhiteSpace(request.QuestionText))
@@ -140,6 +142,11 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
                     return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
             }
         }
+
+        if (!Enum.TryParse<MaterialVisibility>(request.Visibility, out var visibility) || !Enum.IsDefined(visibility) || visibility.ToString() != request.Visibility)
+            return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+        if (request.GradingCriteria != null && GradingCriteriaValidator.Validate(request.GradingCriteria, request.MaxScore).Count > 0)
+            return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
 
         // 3. Actor validation
         Guid effectiveTeacherId = actorId;
@@ -229,8 +236,10 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
             SubjectId = request.SubjectId,
             PrimaryTopicNodeId = topicNodeId,
             CreatedByTeacherId = effectiveTeacherId,
+            Visibility = visibility,
             QuestionType = questionType,
             Difficulty = request.Difficulty,
+            GradeLevel = request.GradeLevel,
             QuestionText = request.QuestionText,
             CorrectAnswer = request.CorrectAnswer,
             Solution = request.Solution,

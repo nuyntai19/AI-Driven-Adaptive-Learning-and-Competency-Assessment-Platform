@@ -36,6 +36,11 @@ public class ArchiveCurriculumUseCase : IArchiveCurriculumUseCase
             return ArchiveCurriculumResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
+        if (!isTeacher)
+        {
+            return ArchiveCurriculumResult.Failure(ErrorCodes.ForbiddenResource);
+        }
+
         if (!CurriculumGuards.TryParseRowVersion(request.RowVersion, out var rowVersion))
         {
             return ArchiveCurriculumResult.Failure(ErrorCodes.ValidationFailed);
@@ -97,6 +102,7 @@ public class ArchiveCurriculumUseCase : IArchiveCurriculumUseCase
         {
             CurriculumId = curriculum.CurriculumId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             TeacherId = curriculum.TeacherId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
+            Visibility = curriculum.Visibility.ToString(),
             SubjectId = curriculum.SubjectId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             Title = curriculum.Title,
             Description = curriculum.Description,

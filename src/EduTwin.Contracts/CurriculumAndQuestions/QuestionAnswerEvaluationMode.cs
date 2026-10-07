@@ -12,5 +12,6 @@ public enum QuestionAnswerEvaluationMode
     TextExact = 1,
     NumericRational = 2,
     Manual = 3,
-    Coordinate2D = 4
+    Coordinate2D = 4,
+    MathEquivalent = 5
 }

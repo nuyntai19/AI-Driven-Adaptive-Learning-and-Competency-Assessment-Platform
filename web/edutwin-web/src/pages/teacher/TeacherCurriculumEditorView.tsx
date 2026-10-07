@@ -5,6 +5,7 @@ import { curriculumApi } from "../../api/curriculumApi";
 import { knowledgeGraphApi } from "../../api/knowledgeGraphApi";
 import { organizationApi } from "../../api/organizationApi";
 import type { Curriculum, CreateCurriculumRequest } from "../../types/curriculum";
+import type { MaterialVisibility } from "../../types/questions";
 import type { KnowledgeNodeDto } from "../../types/knowledgeGraph";
 import { useAuthStore } from "../../stores/authStore";
 import { permissions } from "../../auth/permissions";
@@ -15,12 +16,16 @@ import {
   TeacherSafeErrorPanel,
 } from "../../components/teacher/TeacherPrimitives";
 import { TeacherModal, TeacherConfirmDialog } from "../../components/teacher/TeacherOverlays";
+import { formatCurriculumSaveError } from "../curriculumEditorHelpers";
+import { extractProblemDetails, mapSafeOperationalError } from "../../utils/problemDetails";
 
 export const TeacherCurriculumEditorView: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const isCreateMode = !id || id === "tao-moi";
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const actorId = useAuthStore(state => state.user?.userId);
+  const [visibility, setVisibility] = useState<MaterialVisibility>("Private");
 
   const hasPermission = useAuthStore((state) => state.hasPermission);
   const canPublish = hasPermission(permissions.curriculumsPublish);
@@ -29,6 +34,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
   // Form State
   const [title, setTitle] = useState("");
   const [subjectId, setSubjectId] = useState("");
+  const [gradeLevel, setGradeLevel] = useState<number | "">("");
   const [description, setDescription] = useState("");
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
@@ -74,11 +80,13 @@ export const TeacherCurriculumEditorView: React.FC = () => {
       const c = curriculumData.data;
       setTitle(c.title || "");
       setSubjectId(c.subjectId || "");
+      setGradeLevel(c.gradeLevel ?? "");
       setDescription(c.description || "");
       setSelectedNodeIds(c.nodeIds || []);
       setSelectedClassIds(c.classIds || []);
       setRowVersion(c.rowVersion || "");
       setStatus(c.reviewStatus || "Draft");
+      setVisibility(c.visibility || "Private");
     } else if (isCreateMode && subjects.length > 0 && !subjectId) {
       setSubjectId(subjects[0].subjectId);
     }
@@ -126,9 +134,14 @@ export const TeacherCurriculumEditorView: React.FC = () => {
       if (description.trim().length > 2000) throw new Error("Mô tả giáo trình không được vượt quá 2000 ký tự.");
 
       if (isCreateMode) {
+        if (gradeLevel === "" || ![10, 11, 12].includes(Number(gradeLevel))) {
+          throw new Error("Vui lòng chọn khối học áp dụng (Khối 10, 11 hoặc 12) cho giáo trình mới.");
+        }
         const payload: CreateCurriculumRequest = {
+          visibility,
           title: title.trim(),
           subjectId,
+          gradeLevel: Number(gradeLevel),
           description: description.trim() || undefined,
           nodeIds: selectedNodeIds,
         };
@@ -140,7 +153,9 @@ export const TeacherCurriculumEditorView: React.FC = () => {
 
         // 1. Update basic info
         const updateRes = await curriculumApi.update(id, {
+          visibility,
           title: title.trim(),
+          gradeLevel: gradeLevel !== "" ? Number(gradeLevel) : null,
           description: description.trim() || undefined,
           rowVersion: currentVersion,
         });
@@ -171,8 +186,13 @@ export const TeacherCurriculumEditorView: React.FC = () => {
         navigate(`/giao-vien/giao-trinh/${data.curriculumId}`);
       }
     },
-    onError: (err: any) => {
-      setFeedbackMsg({ type: "error", text: err.message || "Không thể lưu giáo trình" });
+    onError: (err: unknown) => {
+      const text = formatCurriculumSaveError(err, {
+        classes,
+        selectedClassIds,
+        curriculumGradeLevel: gradeLevel,
+      });
+      setFeedbackMsg({ type: "error", text });
     },
   });
 
@@ -190,8 +210,10 @@ export const TeacherCurriculumEditorView: React.FC = () => {
       setFeedbackMsg({ type: "success", text: "Giáo trình đã được xuất bản chính thức!" });
       queryClient.invalidateQueries({ queryKey: ["teacherCurriculums"] });
     },
-    onError: (err: any) => {
-      setFeedbackMsg({ type: "error", text: err.message || "Lỗi khi xuất bản giáo trình" });
+    onError: (err: unknown) => {
+      const details = extractProblemDetails(err);
+      const text = details.detail || mapSafeOperationalError(err, "Lỗi khi xuất bản giáo trình");
+      setFeedbackMsg({ type: "error", text });
     },
   });
 
@@ -234,7 +256,8 @@ export const TeacherCurriculumEditorView: React.FC = () => {
     },
   });
 
-  const isDraft = isCreateMode || status === "Draft";
+  const isOwned = isCreateMode || curriculumData?.data?.teacherId === actorId;
+  const isDraft = isOwned && (isCreateMode || status === "Draft");
 
   // Filtered available nodes
   const filteredAvailableNodes = availableNodes.filter((n) =>
@@ -253,7 +276,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
               Quay lại danh sách
             </Link>
 
-            {!isCreateMode && canPublish && status === "Draft" && (
+            {!isCreateMode && isOwned && canPublish && status === "Draft" && (
               <button
                 type="button"
                 className="th-button-secondary"
@@ -264,7 +287,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
               </button>
             )}
 
-            {!isCreateMode && canPublish && status === "Published" && (
+            {!isCreateMode && isOwned && canPublish && status === "Published" && (
               <button
                 type="button"
                 className="th-button-secondary"
@@ -306,6 +329,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
 
       {feedbackMsg && (
         <div
+          id="curriculum-feedback-banner"
           style={{
             padding: "12px 16px",
             borderRadius: "8px",
@@ -386,6 +410,12 @@ export const TeacherCurriculumEditorView: React.FC = () => {
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                <label className="text-sm font-semibold">Phạm vi học liệu
+                  <select className="th-select w-full mt-1" disabled={!isDraft} value={visibility} onChange={e => setVisibility(e.target.value as MaterialVisibility)}>
+                    <option value="Private">Private — của tôi</option><option value="Shared">Shared — dùng chung trong trung tâm</option>
+                  </select>
+                  <p className="text-sm font-normal mt-2">Giáo viên khác chỉ xem/sao chép giáo trình Shared đã xuất bản; không sửa bản gốc hoặc xem lớp của bạn. Bản sao mặc định Private.</p>
+                </label>
                 <div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
                     <label style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)" }}>
@@ -423,6 +453,27 @@ export const TeacherCurriculumEditorView: React.FC = () => {
                         {sub.subjectName}
                       </option>
                     ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)", marginBottom: "6px" }}>
+                    Khối học áp dụng
+                  </label>
+                  <select
+                    className="th-select"
+                    value={gradeLevel}
+                    onChange={(e) => setGradeLevel(e.target.value ? Number(e.target.value) : "")}
+                    disabled={!isDraft}
+                  >
+                    {isCreateMode ? (
+                      <option value="">-- Chọn khối lớp (bắt buộc) --</option>
+                    ) : (
+                      <option value="">-- Chưa phân loại --</option>
+                    )}
+                    <option value="10">Khối 10</option>
+                    <option value="11">Khối 11</option>
+                    <option value="12">Khối 12</option>
                   </select>
                 </div>
 
@@ -481,8 +532,11 @@ export const TeacherCurriculumEditorView: React.FC = () => {
                         style={{ width: "16px", height: "16px", accentColor: "var(--th-primary)" }}
                       />
                       <div>
-                        <div style={{ fontWeight: 600, fontSize: "0.875rem", color: "var(--th-text-primary)" }}>
-                          {cls.className} ({cls.academicYear})
+                        <div style={{ fontWeight: 600, fontSize: "0.875rem", color: "var(--th-text-primary)", display: "flex", alignItems: "center", gap: "6px" }}>
+                          <span>{cls.className} ({cls.academicYear})</span>
+                          <span className="th-badge th-badge-info" style={{ fontSize: "0.7rem", padding: "1px 6px" }}>
+                            {cls.gradeLevel ? `Khối ${cls.gradeLevel}` : "Chưa phân loại"}
+                          </span>
                         </div>
                         <div style={{ fontSize: "0.75rem", color: "var(--th-text-muted)" }}>
                           {cls.studentCount ?? 0} học sinh

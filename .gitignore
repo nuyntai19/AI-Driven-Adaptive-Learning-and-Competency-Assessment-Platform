@@ -22,6 +22,7 @@ coverage/
 .env.*
 !.env.example
 /storage/
+src/EduTwin.API/storage/
 
 # === AI Agent workspaces ===
 .agents/
@@ -35,3 +36,6 @@ Desktop.ini
 # === Unofficial/Local Specs ===
 docs/EduTwin-Project-Specification-Chi-Tiet-De-Hieu.docx
 folder ko dc push/
+
+# === Acceptance Test Manifest ===
+.fixture_manifest.json

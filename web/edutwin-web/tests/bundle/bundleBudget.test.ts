@@ -8,6 +8,28 @@ const distDir = fileURLToPath(new URL("../../dist", import.meta.url));
 const distAssetsDir = join(distDir, "assets");
 const indexHtmlPath = join(distDir, "index.html");
 
+function getEntryAssetName(indexHtml: string): string {
+  const scripts = indexHtml.match(/<script\b[^>]*>/gi) ?? [];
+  const entries = scripts.filter((tag) => /\btype\s*=\s*(["'])module\1/i.test(tag));
+  assert.equal(entries.length, 1, "Production HTML must identify exactly one module entry");
+  const source = /\bsrc\s*=\s*(["'])(.*?)\1/i.exec(entries[0])?.[2];
+  assert.ok(source, "Production module entry must reference an asset");
+  const url = new URL(source, "http://bundle.local");
+  assert.equal(url.origin, "http://bundle.local", "Module entry must be local");
+  assert.match(url.pathname, /^\/assets\/[\w.-]+\.js$/, "Module entry must be a JavaScript asset");
+  return url.pathname.slice("/assets/".length);
+}
+
+test("Entry selection follows index.html rather than the first index-named chunk", () => {
+  assert.equal(getEntryAssetName('<script type="module" src="/assets/index-real.js"></script>'), "index-real.js");
+  assert.equal(getEntryAssetName("<script src='/assets/index--hash.js' crossorigin type='module'></script>"), "index--hash.js");
+});
+
+test("Missing or ambiguous module entries fail closed", () => {
+  assert.throws(() => getEntryAssetName('<link rel="modulepreload" href="/assets/index-other.js">'));
+  assert.throws(() => getEntryAssetName('<script type="module" src="/assets/a.js"></script><script type="module" src="/assets/b.js"></script>'));
+});
+
 function getAssetFiles(): { name: string; sizeKb: number }[] {
   assert.ok(
     existsSync(distAssetsDir),
@@ -54,8 +76,9 @@ test("Bundle Budget Regression: Verifies initial preload budget, deferred code-s
   );
 
   // 2. Main entry chunk: must stay strictly under 150 KB (currently ~109 KB)
-  const mainBundle = assets.find((a) => a.name.startsWith("index-"));
-  assert.ok(mainBundle, "Main entry chunk (index-*.js) must exist in dist/assets");
+  const entryName = getEntryAssetName(indexHtml);
+  const mainBundle = assets.find((a) => a.name === entryName);
+  assert.ok(mainBundle, `Module entry ${entryName} referenced by index.html must exist in dist/assets`);
   assert.ok(
     mainBundle.sizeKb <= 150,
     `Main entry chunk size ${mainBundle.sizeKb} KB exceeds budget limit of 150 KB`

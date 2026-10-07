@@ -70,8 +70,10 @@ public sealed class TeacherOverrideUseCaseTests : IDisposable
         });
     }
 
-    [Fact]
-    public async Task ExecuteAsync_ValidOverride_ReplaysAttemptsChronologicallyAndReturnsReplaySummary()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExecuteAsync_ValidOverride_ReplaysAttemptsChronologicallyAndReturnsReplaySummary(bool useRubric)
     {
         // 1. Seed Teacher, Class, Student, ClassStudent, Assignment, AssignmentTarget
         var classId = Guid.NewGuid();
@@ -101,6 +103,11 @@ public sealed class TeacherOverrideUseCaseTests : IDisposable
 
         // 2. Seed Question with Topic 101
         SeedQuestion();
+        if (useRubric) _dbContext.Questions.Local.Single().GradingCriteria = new()
+        {
+            Criteria = [new() { CriterionId = "method", Title = "Phương pháp", Description = "Mọi phương pháp hợp lệ", MaxScore = 4 },
+                new() { CriterionId = "result", Title = "Kết quả", Description = "Kết quả đúng", MaxScore = 6 }]
+        };
 
         // 3. Seed Attempt with Analysis needing review
         var attempt = new Attempt
@@ -183,6 +190,17 @@ public sealed class TeacherOverrideUseCaseTests : IDisposable
 
         var result = await useCase.ExecuteAsync(2001, request, CancellationToken.None);
 
+        if (useRubric)
+        {
+            Assert.Equal(TeacherOverrideStatus.ValidationFailed, result.Status);
+            request.RubricScores = [new() { CriterionId = "method", AwardedScore = 4, Comment = "Cách giải khác hợp lệ" },
+                new() { CriterionId = "result", AwardedScore = 6 }];
+            request.AwardedScore = 9;
+            Assert.Equal("RUBRIC_TOTAL_MISMATCH", (await useCase.ExecuteAsync(2001, request, CancellationToken.None)).ErrorCode);
+            request.AwardedScore = null; // Server, not the client, calculates the total.
+            result = await useCase.ExecuteAsync(2001, request, CancellationToken.None);
+        }
+
         Assert.Equal(TeacherOverrideStatus.Success, result.Status);
         Assert.NotNull(result.Data);
         Assert.Equal("2001", result.Data.AnalysisId);
@@ -197,6 +215,19 @@ public sealed class TeacherOverrideUseCaseTests : IDisposable
         Assert.Equal(1u, analysis.OverrideVersion);
         Assert.False(analysis.NeedsTeacherReview);
         Assert.Equal(_teacherId, analysis.OverriddenByUserId);
+        Assert.Equal(TeacherReviewDecision.Adjusted, analysis.ReviewDecision);
+        var history = await _dbContext.TeacherReviewHistories.SingleAsync();
+        Assert.Equal(1u, history.OverrideVersion);
+        Assert.Equal(_teacherId, history.TeacherId);
+        if (useRubric)
+        {
+            Assert.Equal(10m, analysis.OverrideAwardedScore);
+            var rubric = RubricGrade.Deserialize(history.RubricResultJson)!;
+            Assert.Equal(10m, rubric.AwardedScore);
+            Assert.Equal("Phương pháp", rubric.Criteria[0].Title);
+            Assert.Equal("Cách giải khác hợp lệ", rubric.Criteria[0].Comment);
+        }
+        else Assert.Null(history.RubricResultJson);
 
         // Verify preliminary correctness provenance is preserved, and override is recorded in analysis
         Assert.False(attempt.IsCorrect);

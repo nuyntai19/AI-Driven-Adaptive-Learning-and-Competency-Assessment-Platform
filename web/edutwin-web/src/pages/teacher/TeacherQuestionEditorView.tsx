@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   useQuestion,
@@ -31,6 +31,7 @@ import { RichMathEditor } from "../../components/math/RichMathEditor";
 import { ModeAwareAnswerEditor } from "../../components/math/answer-editor/ModeAwareAnswerEditor";
 import {
   validateTextMathFormulas,
+  validateAnswerMathFormulas,
   formatFormulaDiagnosticMessage,
   getAnswerDraftKey,
   resetAndHydrateDraftStore,
@@ -39,6 +40,11 @@ import {
   type DraftStore,
 } from "../centerManagerQuestionEditorHelpers";
 import type { AnswerEditorValue } from "../../components/math/answer-editor/answerEditorHelpers";
+import { MATH_EQUIVALENT_HELP } from "../../utils/questionEvaluationModes";
+import { hydrateGradingCriteria, rubricDefinitionError } from "../../utils/rubric";
+import { GradingCriteriaEditor } from "../../components/teacher/GradingCriteriaEditor";
+import { RichMathText } from "../../components/math/RichMathText";
+import type { MaterialVisibility } from "../../types/questions";
 
 interface QuestionEditorOption {
   optionId?: string;
@@ -53,19 +59,25 @@ export function TeacherQuestionEditorView() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const isEditing = Boolean(id);
+  const [searchParams] = useSearchParams();
+  const copyFrom = !isEditing ? searchParams.get("copyFrom") : null;
+  const actorId = useAuthStore(state => state.user?.userId);
+  const [visibility, setVisibility] = useState<MaterialVisibility>("Private");
 
   const hasPermission = useAuthStore((state) => state.hasPermission);
+  const canCreate = hasPermission(permissions.questionsCreate);
   const canReadSubjects = hasPermission(permissions.subjectsRead);
 
   // Form State
   const [subjectId, setSubjectId] = useState("");
+  const [gradeLevel, setGradeLevel] = useState<number | "">("");
   const [primaryTopicNodeId, setPrimaryTopicNodeId] = useState("");
   const [questionType, setQuestionType] = useState<QuestionType>("MultipleChoice");
   const [difficulty, setDifficulty] = useState<number>(3);
   const [questionText, setQuestionText] = useState("");
   const [maxScore, setMaxScore] = useState<number>(10);
   const [estimatedTimeSeconds, setEstimatedTimeSeconds] = useState<number>(120);
-  const [reasoningRequired, setReasoningRequired] = useState<boolean>(true);
+  const [reasoningRequired, setReasoningRequired] = useState<boolean>(false);
   const [languageCode] = useState("vi");
   const [answerEvaluationMode, setAnswerEvaluationMode] = useState<QuestionAnswerEvaluationMode>("TextExact");
   const [options, setOptions] = useState<QuestionEditorOption[]>([
@@ -79,7 +91,7 @@ export function TeacherQuestionEditorView() {
   const [modeDrafts, setModeDrafts] = useState<DraftStore>({});
   const [solution, setSolution] = useState("");
   const [expectedReasoning, setExpectedReasoning] = useState("");
-  const [gradingCriteria, setGradingCriteria] = useState("");
+  const [gradingCriteria, setGradingCriteria] = useState(() => hydrateGradingCriteria());
 
   // Feedback States
   const [formError, setFormError] = useState<{ message: string; traceId?: string | null } | null>(null);
@@ -100,12 +112,13 @@ export function TeacherQuestionEditorView() {
   });
 
   // Load existing question for editing
-  const { data: questionData, isLoading: questionLoading, refetch: refetchQuestion } = useQuestion(id || "");
+  const { data: questionData, isLoading: questionLoading, error: questionError, refetch: refetchQuestion } = useQuestion(id || copyFrom || "");
 
   useEffect(() => {
-    if (isEditing && questionData?.data) {
+    if ((isEditing || copyFrom) && questionData?.data) {
       const q = questionData.data;
       setSubjectId(q.subjectId || "");
+      setGradeLevel(q.gradeLevel ?? "");
       setPrimaryTopicNodeId(q.primaryTopicNodeId ? String(q.primaryTopicNodeId) : "");
       setQuestionType(q.questionType);
       setDifficulty(q.difficulty);
@@ -146,13 +159,10 @@ export function TeacherQuestionEditorView() {
       setActiveDraftValue((key ? hydratedStore[key] : null) ?? hydrateAnswerEditorValue(q.correctAnswer, evalMode));
       setSolution(q.solution || "");
       setExpectedReasoning(q.expectedReasoning || "");
-      setGradingCriteria(
-        typeof q.gradingCriteria === "string"
-          ? q.gradingCriteria
-          : q.gradingCriteria?.scoringNotes || ""
-      );
+      setGradingCriteria(hydrateGradingCriteria(q.gradingCriteria));
+      setVisibility(copyFrom ? "Private" : q.visibility || "Private");
     }
-  }, [isEditing, questionData]);
+  }, [isEditing, copyFrom, questionData]);
 
   const createMutation = useCreateQuestion();
   const updateMutation = useUpdateQuestion();
@@ -193,6 +203,10 @@ export function TeacherQuestionEditorView() {
     }
     if (difficulty < 1 || difficulty > 5) {
       setFormError({ message: "Độ khó phải nằm trong khoảng từ 1 đến 5." });
+      return;
+    }
+    if (!isEditing && (gradeLevel === "" || Number(gradeLevel) < 10 || Number(gradeLevel) > 12)) {
+      setFormError({ message: "Vui lòng chọn khối lớp hợp lệ (Khối 10, 11 hoặc 12) cho câu hỏi mới." });
       return;
     }
     if (maxScore <= 0) {
@@ -273,7 +287,7 @@ export function TeacherQuestionEditorView() {
     }
 
     if (computedCorrectAnswer) {
-      const ansDiag = validateTextMathFormulas(computedCorrectAnswer)[0];
+      const ansDiag = validateAnswerMathFormulas(computedCorrectAnswer, answerEvaluationMode)[0];
       if (ansDiag) {
         setFormError({
           message: formatFormulaDiagnosticMessage("Đáp án chuẩn", ansDiag),
@@ -289,18 +303,15 @@ export function TeacherQuestionEditorView() {
         ? "Manual"
         : answerEvaluationMode || "TextExact";
 
-    const parsedGradingCriteria = gradingCriteria.trim()
-      ? {
-          schemaVersion: "1.0",
-          requiredIdeas: [gradingCriteria.trim()],
-          commonErrors: [],
-          scoringNotes: gradingCriteria.trim(),
-        }
-      : undefined;
+    const rubricError = rubricDefinitionError(gradingCriteria.criteria || [], maxScore);
+    if (rubricError) { setFormError({ message: rubricError }); return; }
+    const parsedGradingCriteria = gradingCriteria;
 
     if (!isEditing) {
       const payload: CreateQuestionRequest = {
+        visibility,
         subjectId,
+        gradeLevel: Number(gradeLevel),
         primaryTopicNodeId: primaryTopicNodeId.trim(),
         questionType,
         difficulty,
@@ -351,7 +362,9 @@ export function TeacherQuestionEditorView() {
       }
 
       const updatePayload: UpdateQuestionRequest = {
+        visibility,
         primaryTopicNodeId: primaryTopicNodeId.trim(),
+        gradeLevel: gradeLevel !== "" ? Number(gradeLevel) : null,
         questionType,
         difficulty,
         questionText: questionText.trim(),
@@ -397,7 +410,9 @@ export function TeacherQuestionEditorView() {
               setConcurrencyConflict(true);
             } else {
               setFormError({
-                message: mapSafeOperationalError(err, "Không thể cập nhật câu hỏi."),
+                message: details.errorCode === "INVALID_STATE_TRANSITION"
+                  ? "Tiêu chí và điểm gốc đã được dùng để chấm hoặc xuất bản. Hãy tạo bản sao để thay đổi thang chấm."
+                  : mapSafeOperationalError(err, "Không thể cập nhật câu hỏi."),
                 traceId: details.traceId,
               });
             }
@@ -409,17 +424,33 @@ export function TeacherQuestionEditorView() {
 
   const isPending = createMutation.isPending || updateMutation.isPending;
 
-  if (isEditing && questionLoading) {
+  if ((isEditing || copyFrom) && questionLoading) {
     return (
-      <div className="space-y-4">
+      <div className="th-page-container max-w-5xl">
         <TeacherSkeleton className="h-10 w-1/3" />
         <TeacherSkeleton className="h-64 rounded-2xl" />
       </div>
     );
   }
 
+  if ((isEditing || copyFrom) && (questionError || !questionData?.data)) {
+    return <div className="th-page-container max-w-5xl"><TeacherSafeErrorPanel error="Không thể tải câu hỏi nguồn hoặc bạn không có quyền truy cập." onRetry={() => refetchQuestion()} /></div>;
+  }
+
+  if (isEditing && questionData?.data && questionData.data.createdByTeacherId !== actorId) {
+    const q = questionData.data;
+    return <div className="th-page-container max-w-5xl space-y-4">
+      <TeacherPageHeader title={`Câu hỏi dùng chung #${q.questionId}`} description="Chỉ xem bản gốc. Sao chép để biên soạn phiên bản của bạn." />
+      <div className="th-surface p-6 space-y-4"><RichMathText text={q.questionText} />
+        {q.options?.map(o => <div key={o.optionId}><RichMathText text={`${o.label || o.optionLabel}. ${o.text || o.optionText}`} /></div>)}
+        <h3 className="font-bold">Đáp án & lời giải tham khảo</h3><RichMathText text={q.solution || ""} />
+        {canCreate && <button type="button" className="th-primary-button" onClick={() => navigate(`/giao-vien/cau-hoi/tao-moi?copyFrom=${q.questionId}`)}>Sao chép & biên soạn</button>}
+      </div>
+    </div>;
+  }
+
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
+    <div className="th-page-container max-w-5xl">
       <TeacherPageHeader
         eyebrow="NGÂN HÀNG CÂU HỎI"
         title={isEditing ? `Chỉnh Sửa Câu Hỏi #${id}` : "Soạn Thảo Câu Hỏi Mới"}
@@ -448,6 +479,15 @@ export function TeacherQuestionEditorView() {
       )}
 
       <div className="th-surface p-6 space-y-6">
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="text-sm font-semibold">Phạm vi học liệu
+            <select className="th-select ml-3 text-sm" value={visibility} onChange={e => setVisibility(e.target.value as MaterialVisibility)}>
+              <option value="Private">Private — của tôi</option><option value="Shared">Shared — dùng chung trong trung tâm</option>
+            </select>
+          </label>
+          {isEditing && canCreate && <button type="button" className="th-secondary-button" onClick={() => navigate(`/giao-vien/cau-hoi/tao-moi?copyFrom=${id}`)}>Tạo bản sao mới</button>}
+          <p className="text-sm text-[var(--th-text-secondary)]">Shared chỉ được giáo viên khác xem/dùng khi câu hỏi đã kích hoạt. Tiêu chí/điểm gốc đã dùng trong bài xuất bản hoặc bài nộp được khóa; hãy tạo bản sao để thay đổi.</p>
+        </div>
         {/* Row 1: Môn học & Chủ đề kiến thức */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div>
@@ -535,8 +575,8 @@ export function TeacherQuestionEditorView() {
           </div>
         </div>
 
-        {/* Row 2: Độ khó, Điểm số, Thời gian dự kiến */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 border-t border-[var(--th-border-subtle)] pt-4">
+        {/* Row 2: Độ khó, Khối học, Điểm số, Thời gian dự kiến */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 border-t border-[var(--th-border-subtle)] pt-4">
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1.5">
               Độ khó (1 - Rất dễ → 5 - Rất khó)
@@ -551,6 +591,22 @@ export function TeacherQuestionEditorView() {
               <option value="3">3 - Trung bình</option>
               <option value="4">4 - Khó</option>
               <option value="5">5 - Rất khó / Nâng cao</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1.5">
+              Khối học áp dụng
+            </label>
+            <select
+              value={gradeLevel}
+              onChange={(e) => setGradeLevel(e.target.value ? Number(e.target.value) : "")}
+              className="th-select w-full text-xs"
+            >
+              <option value="">{isEditing ? "-- Chưa phân loại --" : "-- Chọn khối lớp (bắt buộc) --"}</option>
+              <option value="10">Khối 10</option>
+              <option value="11">Khối 11</option>
+              <option value="12">Khối 12</option>
             </select>
           </div>
 
@@ -596,10 +652,10 @@ export function TeacherQuestionEditorView() {
             />
             <label htmlFor="reasoningRequiredToggle" className="cursor-pointer select-none">
               <span className="text-xs font-semibold text-[var(--th-text)]">
-                Bắt buộc giải trình tư duy (AI Reasoning Analysis)
+                Yêu cầu học sinh trình bày lời giải
               </span>
               <p className="text-[11px] text-[var(--th-text-muted)] mt-0.5">
-                Khi kích hoạt, học sinh làm bài sẽ được yêu cầu nhập các bước tư duy/lập luận để hệ thống AI phân tích phương pháp, phát hiện lỗi sai và cập nhật hồ sơ năng lực số (Digital Twin).
+                Khi bật, học sinh bắt buộc phải nhập các bước lập luận trước khi nộp bài. Mặc định tắt (chỉ nộp đáp án; nếu học sinh tự nguyện nhập lời giải thì AI vẫn phân tích và cập nhật Digital Twin).
               </p>
             </label>
           </div>
@@ -608,7 +664,7 @@ export function TeacherQuestionEditorView() {
               ? "bg-teal-500/10 text-[var(--th-teal)] border-teal-500/30"
               : "bg-slate-500/10 text-slate-400 border-slate-500/30"
           }`}>
-            {reasoningRequired ? "Bắt buộc tư duy" : "Chỉ nộp đáp án"}
+            {reasoningRequired ? "Bắt buộc giải trình" : "Tùy chọn lời giải"}
           </span>
         </div>
 
@@ -720,10 +776,14 @@ export function TeacherQuestionEditorView() {
                   className="th-select w-full text-xs"
                 >
                    <option value="TextExact">So khớp chính xác chuỗi (TextExact)</option>
-                   <option value="NumericRational">Tương đương số học / đại số / phân số (NumericRational)</option>
+                   <option value="NumericRational">Số hữu tỉ / phân số tương đương (NumericRational)</option>
                    <option value="Coordinate2D">Tọa độ 2D — chấp nhận (1,1), (1;1) và dạng tương đương</option>
+                   <option value="MathEquivalent">So khớp toán học giới hạn (MathEquivalent)</option>
                    <option value="Manual">Chấm thủ công / AI Rubric (Manual)</option>
                  </select>
+                 <p className="mt-1.5 text-[11px] text-[var(--th-text-muted)]">
+                   {answerEvaluationMode === "MathEquivalent" ? MATH_EQUIVALENT_HELP : answerEvaluationMode === "TextExact" ? "So khớp văn bản theo ký tự, không kiểm tra tương đương toán học. Với đáp án số hoặc tập hợp, hãy chọn chế độ toán phù hợp." : null}
+                 </p>
                  {answerEvaluationMode === "Coordinate2D" && (
                    <p className="mt-1.5 text-[11px] text-[var(--th-text-muted)]">
                      Đáp án chuẩn phải là một cặp tọa độ, ví dụ (1, 1) hoặc (1/2; 3/4).
@@ -744,6 +804,7 @@ export function TeacherQuestionEditorView() {
               <div className="rounded-xl border border-[var(--th-border-subtle)] bg-[var(--th-surface-subtle)] p-4">
                 <ModeAwareAnswerEditor
                   profile="authoring"
+                  variant="teacher"
                   questionType={questionType}
                   evaluationMode={questionType === "Essay" ? "Manual" : (answerEvaluationMode || "TextExact")}
                   value={
@@ -767,18 +828,7 @@ export function TeacherQuestionEditorView() {
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1.5">
-                Tiêu chí chấm điểm (Grading Criteria / Rubric)
-              </label>
-              <textarea
-                rows={3}
-                value={gradingCriteria}
-                onChange={(e) => setGradingCriteria(e.target.value)}
-                placeholder="Mô tả các bước tính điểm chi tiết..."
-                className="th-input w-full text-xs"
-              />
-            </div>
+            <GradingCriteriaEditor value={gradingCriteria} onChange={setGradingCriteria} maxScore={maxScore} />
           </div>
         )}
 

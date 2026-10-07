@@ -21,7 +21,9 @@ public sealed class GeminiResponseJsonSchemaTests
         "confidence",
         "feedback",
         "solutionType",
-        "aiSolution"
+        "aiSolution",
+        "answerAssessment",
+        "reasoningVerdict"
     ];
 
     [Fact]
@@ -43,7 +45,7 @@ public sealed class GeminiResponseJsonSchemaTests
             .Select(property => property.Name)
             .ToArray();
 
-        Assert.Equal(CanonicalProperties, propertyNames);
+        Assert.Equal(CanonicalProperties.Order(), propertyNames.Order());
     }
 
     [Fact]

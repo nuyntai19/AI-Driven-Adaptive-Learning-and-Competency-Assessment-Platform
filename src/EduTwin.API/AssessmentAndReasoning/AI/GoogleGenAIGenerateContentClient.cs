@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
+using System.Text;
+using EduTwin.BLL.AssessmentAndReasoning.AI;
+using EduTwin.BLL.AssessmentAndReasoning.Processing;
 using Google.GenAI;
 using Google.GenAI.Types;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace EduTwin.API.AssessmentAndReasoning.AI;
@@ -10,197 +12,154 @@ public sealed class GoogleGenAIGenerateContentClient : IGeminiGenerateContentCli
 {
     private readonly GeminiOptions _options;
     private readonly ILogger<GoogleGenAIGenerateContentClient>? _logger;
+    private readonly GeminiQuotaCoordinator? _quota;
+    private readonly GeminiCredentialAvailability _availability;
     private readonly ConcurrentDictionary<string, Client> _clients = new();
     private int _requestCounter;
     private bool _disposed;
 
-    public GoogleGenAIGenerateContentClient(
-        IOptions<GeminiOptions> options,
-        ILogger<GoogleGenAIGenerateContentClient>? logger = null)
+    public GoogleGenAIGenerateContentClient(IOptions<GeminiOptions> options,
+        ILogger<GoogleGenAIGenerateContentClient>? logger = null, GeminiQuotaCoordinator? quota = null,
+        TimeProvider? timeProvider = null)
     {
-        ArgumentNullException.ThrowIfNull(options);
         _options = options.Value;
         _logger = logger;
+        _quota = quota;
+        _availability = new(timeProvider ?? TimeProvider.System);
     }
 
-    public async Task<GeminiGenerateContentResult> GenerateContentAsync(
-        string model,
-        string prompt,
-        GenerateContentConfig config,
-        CancellationToken cancellationToken)
+    public Task<GeminiGenerateContentResult> GenerateContentAsync(string model, string prompt,
+        GenerateContentConfig config, CancellationToken token) => GenerateAsync(model, prompt, [], config, token);
+
+    public Task<GeminiGenerateContentResult> GenerateContentWithImagesAsync(string model, string prompt,
+        IReadOnlyList<GeminiInlineImagePart> images, GenerateContentConfig config, CancellationToken token) =>
+        GenerateAsync(model, prompt, images, config, token);
+
+    private async Task<GeminiGenerateContentResult> GenerateAsync(string model, string prompt,
+        IReadOnlyList<GeminiInlineImagePart> images, GenerateContentConfig config, CancellationToken token)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _options.Validate();
+        if (model.StartsWith("gemini-3", StringComparison.Ordinal)) config.Temperature = 1;
         var keys = _options.GetAllApiKeys();
-        if (keys.Count == 0)
-        {
-            throw GeminiAdapterException.ConfigurationInvalid();
-        }
-
-        var startIndex = Interlocked.Increment(ref _requestCounter);
-        Exception? lastException = null;
-
-        for (var i = 0; i < keys.Count; i++)
-        {
-            var keyIndex = Math.Abs((startIndex + i) % keys.Count);
-            var apiKey = keys[keyIndex];
-
-            try
-            {
-                var client = GetOrCreateClient(apiKey);
-                var response = await client.Models.GenerateContentAsync(
-                    model,
-                    prompt,
-                    config,
-                    cancellationToken);
-                cancellationToken.ThrowIfCancellationRequested();
-
-                return new GeminiGenerateContentResult(
-                    response.Text ?? string.Empty,
-                    response.UsageMetadata?.PromptTokenCount,
-                    response.UsageMetadata?.CandidatesTokenCount,
-                    response.UsageMetadata?.TotalTokenCount);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (GeminiAdapterException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                lastException = ex;
-                _logger?.LogWarning(
-                    ex,
-                    "Gemini API request failed using key index {KeyIndex} ({KeyPreview}...). Trying next key ({Attempt}/{TotalKeys}). Error: {ErrorMessage}",
-                    keyIndex,
-                    apiKey[..Math.Min(10, apiKey.Length)],
-                    i + 1,
-                    keys.Count,
-                    ex.Message);
-            }
-        }
-
-        _logger?.LogError(
-            lastException,
-            "All {TotalKeys} Gemini API keys failed during GenerateContentAsync.",
-            keys.Count);
-
-        throw GeminiAdapterException.RequestFailed();
-    }
-
-    public async Task<GeminiGenerateContentResult> GenerateContentWithImagesAsync(
-        string model,
-        string prompt,
-        IReadOnlyList<GeminiInlineImagePart> images,
-        GenerateContentConfig config,
-        CancellationToken cancellationToken)
-    {
-        if (images is null || images.Count == 0)
-        {
-            return await GenerateContentAsync(model, prompt, config, cancellationToken);
-        }
-
-        var keys = _options.GetAllApiKeys();
-        if (keys.Count == 0)
-        {
-            throw GeminiAdapterException.ConfigurationInvalid();
-        }
-
+        var pools = _options.GetQuotaPools(keys.Count);
+        var start = (uint)Interlocked.Increment(ref _requestCounter);
         var parts = new List<Part> { new() { Text = prompt } };
         foreach (var image in images)
         {
-            if (image.Data is null || image.Data.Length == 0 ||
-                !string.Equals(image.MimeType, "image/png", StringComparison.Ordinal))
-            {
-                throw GeminiAdapterException.RequestFailed();
-            }
-            parts.Add(new Part { InlineData = new Blob { MimeType = image.MimeType, Data = image.Data } });
+            if (image.Data.Length == 0 || image.MimeType != "image/png") throw GeminiAdapterException.RequestFailed();
+            parts.Add(new Part { InlineData = new Blob { Data = image.Data, MimeType = image.MimeType } });
         }
 
-        var content = new Content { Parts = parts };
-        var startIndex = Interlocked.Increment(ref _requestCounter);
-        Exception? lastException = null;
-
-        for (var i = 0; i < keys.Count; i++)
+        // Admission estimate, reconciled from provider usage; it is not an exact tokenizer.
+        var estimatedTokens = Encoding.UTF8.GetByteCount(prompt) / 2L + 1 + images.Count * 8192L;
+        var unavailablePools = new HashSet<string>(StringComparer.Ordinal);
+        var deferredCall = false;
+        var sawDailyQuota = false;
+        TimeSpan retryAfter = TimeSpan.FromSeconds(2);
+        for (var n = 0; n < keys.Count; n++)
         {
-            var keyIndex = Math.Abs((startIndex + i) % keys.Count);
-            var apiKey = keys[keyIndex];
-
+            token.ThrowIfCancellationRequested();
+            var index = (int)((start + (uint)n) % (uint)keys.Count);
+            if (!_availability.IsAvailable(keys[index], model)) continue;
+            var pool = pools.Single(p => p.KeyIndexes.Contains(index));
+            if (unavailablePools.Contains(pool.ProjectId)) continue;
+            GeminiQuotaLease? lease = null;
+            var transient = false;
+            var quotaFailure = false;
+            var dailyQuota = false;
+            TimeSpan? providerRetryAfter = null;
+            int? actualTokens = null;
             try
             {
-                var client = GetOrCreateClient(apiKey);
-                var response = await client.Models.GenerateContentAsync(
-                    model,
-                    content,
-                    config,
-                    cancellationToken);
-                cancellationToken.ThrowIfCancellationRequested();
-
-                return new GeminiGenerateContentResult(
-                    response.Text ?? string.Empty,
-                    response.UsageMetadata?.PromptTokenCount,
-                    response.UsageMetadata?.CandidatesTokenCount,
+                if (_quota is not null)
+                {
+                    try { lease = await _quota.AcquireAsync(pool, model, estimatedTokens, _options.Timeout, token); }
+                    catch (Exception exception) when (exception is not OperationCanceledException and not AIAnalysisDeferredException and not GeminiAdapterException)
+                    { throw new AIAnalysisInfrastructureException(); }
+                }
+                var client = _clients.GetOrAdd(keys[index], key => new Client(apiKey: key,
+                    httpOptions: new HttpOptions { RetryOptions = new HttpRetryOptions { Attempts = 1 } }));
+                var response = images.Count == 0
+                    ? await client.Models.GenerateContentAsync(model, prompt, config, token)
+                    : await client.Models.GenerateContentAsync(model, new Content { Parts = parts }, config, token);
+                token.ThrowIfCancellationRequested();
+                actualTokens = response.UsageMetadata?.PromptTokenCount;
+                RecordTokens("input", actualTokens);
+                RecordTokens("output", response.UsageMetadata?.CandidatesTokenCount);
+                RecordTokens("thinking", response.UsageMetadata?.ThoughtsTokenCount);
+                RecordTokens("cached_input", response.UsageMetadata?.CachedContentTokenCount);
+                return new(response.Text ?? "", actualTokens, response.UsageMetadata?.CandidatesTokenCount,
                     response.UsageMetadata?.TotalTokenCount);
             }
-            catch (OperationCanceledException)
+            catch (AIAnalysisDeferredException deferred)
             {
-                throw;
+                deferredCall = true;
+                unavailablePools.Add(pool.ProjectId);
+                retryAfter = deferred.RetryAfter;
             }
-            catch (GeminiAdapterException)
-            {
-                throw;
-            }
+            catch (OperationCanceledException) { throw; }
+            catch (AIAnalysisInfrastructureException) { throw; }
+            catch (GeminiAdapterException) { throw; }
             catch (Exception ex)
             {
-                lastException = ex;
-                _logger?.LogWarning(
-                    ex,
-                    "Gemini multimodal API request failed using key index {KeyIndex} ({KeyPreview}...). Trying next key ({Attempt}/{TotalKeys}). Error: {ErrorMessage}",
-                    keyIndex,
-                    apiKey[..Math.Min(10, apiKey.Length)],
-                    i + 1,
-                    keys.Count,
-                    ex.Message);
+                var status = StatusCode(ex);
+                transient = status is 408 or 429 or >= 500 || (ex is HttpRequestException && status == 0);
+                quotaFailure = status == 429;
+                if (quotaFailure)
+                {
+                    var failure = GeminiQuotaFailureClassifier.Classify(ex.Message);
+                    dailyQuota = failure.Daily;
+                    sawDailyQuota |= dailyQuota;
+                    providerRetryAfter = failure.RetryAfter;
+                }
+                _logger?.LogWarning("Gemini request failed at credential index {KeyIndex}; status {Status}, type {ExceptionType}.",
+                    index, status, ex.GetType().Name);
+                // In particular, newer projects may not have access to legacy 2.5 models (404).
+                // Try another eligible project, never repeat the rejected key or switch model silently.
+                if (_availability.MarkFailure(keys[index], model, status))
+                {
+                    AIProcessingMetrics.Outcomes.Add(1, new KeyValuePair<string, object?>("outcome", "credential_model_unavailable"));
+                    continue;
+                }
+                if (!transient) throw GeminiAdapterException.RequestFailed();
+                deferredCall = true;
+                unavailablePools.Add(pool.ProjectId);
+                retryAfter = TimeSpan.FromSeconds(quotaFailure ? 60 : 2);
+                AIProcessingMetrics.Outcomes.Add(1, new KeyValuePair<string, object?>("outcome", dailyQuota ? "provider_daily_quota" : quotaFailure ? "provider_429" : "provider_transient"));
+            }
+            finally
+            {
+                if (lease is not null && _quota is not null)
+                {
+                    using var releaseTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                    try { await _quota.CompleteAsync(lease, actualTokens, transient, quotaFailure, releaseTimeout.Token, providerRetryAfter, dailyQuota); }
+                    catch (Exception ex) { _logger?.LogWarning("Provider reservation release failed with {ExceptionType}; reservation will expire.", ex.GetType().Name); }
+                }
             }
         }
-
-        _logger?.LogError(
-            lastException,
-            "All {TotalKeys} Gemini API keys failed during GenerateContentWithImagesAsync.",
-            keys.Count);
-
+        if (deferredCall) throw new AIAnalysisDeferredException(retryAfter, sawDailyQuota ? "AI_PROVIDER_DAILY_QUOTA_WAIT" : "AI_PROVIDER_CAPACITY_WAIT");
         throw GeminiAdapterException.RequestFailed();
+    }
+
+    private static int StatusCode(Exception ex) => ex switch
+    {
+        ClientError error => error.StatusCode,
+        ServerError error => error.StatusCode,
+        HttpRequestException error => (int?)error.StatusCode ?? 0,
+        _ => 0
+    };
+
+    private static void RecordTokens(string kind, int? count)
+    {
+        if (count.HasValue) AIProcessingMetrics.Tokens.Add(count.Value, new KeyValuePair<string, object?>("kind", kind));
     }
 
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
-
-        foreach (var client in _clients.Values)
-        {
-            try
-            {
-                client.Dispose();
-            }
-            catch
-            {
-                // ignore
-            }
-        }
+        foreach (var client in _clients.Values) client.Dispose();
         _clients.Clear();
-    }
-
-    private Client GetOrCreateClient(string apiKey)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
-        if (string.IsNullOrWhiteSpace(apiKey))
-        {
-            throw GeminiAdapterException.ConfigurationInvalid();
-        }
-
-        return _clients.GetOrAdd(apiKey, key => new Client(apiKey: key));
     }
 }

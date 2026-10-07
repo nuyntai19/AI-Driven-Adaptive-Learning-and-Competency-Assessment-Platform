@@ -84,10 +84,45 @@ public class CreateClassRequestValidationTests
             ClassName = "Math 101",
             AcademicYear = "2026-2027",
             SubjectId = Guid.NewGuid(),
-            TeacherId = Guid.NewGuid()
+            TeacherId = Guid.NewGuid(),
+            GradeLevel = 10
         };
 
         var results = ValidateModel(request);
         Assert.Empty(results);
+    }
+
+    [Fact]
+    public void GradeLevel_Null_FailsValidation()
+    {
+        var request = new CreateClassRequest
+        {
+            ClassName = "Math 101",
+            AcademicYear = "2026-2027",
+            SubjectId = Guid.NewGuid(),
+            TeacherId = Guid.NewGuid(),
+            GradeLevel = null
+        };
+
+        var results = ValidateModel(request);
+        Assert.Contains(results, v => v.MemberNames.Contains("GradeLevel") && v.ErrorMessage != null);
+    }
+
+    [Theory]
+    [InlineData(9)]
+    [InlineData(13)]
+    public void GradeLevel_OutOfRange_FailsValidation(byte grade)
+    {
+        var request = new CreateClassRequest
+        {
+            ClassName = "Math 101",
+            AcademicYear = "2026-2027",
+            SubjectId = Guid.NewGuid(),
+            TeacherId = Guid.NewGuid(),
+            GradeLevel = grade
+        };
+
+        var results = ValidateModel(request);
+        Assert.Contains(results, v => v.MemberNames.Contains("GradeLevel") && v.ErrorMessage != null);
     }
 }

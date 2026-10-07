@@ -86,7 +86,7 @@ export function drawGrid(context: CanvasRenderingContext2D, grid: ScratchpadGrid
   const minor = grid === "o_ly" ? 20 : 24;
   const major = grid === "o_ly" ? 100 : 0;
   context.save();
-  context.strokeStyle = "#e2e8f0";
+  context.strokeStyle = "#edf0f4";
   context.lineWidth = 1;
   for (let x = 0; x <= width; x += minor) {
     context.beginPath();
@@ -101,7 +101,7 @@ export function drawGrid(context: CanvasRenderingContext2D, grid: ScratchpadGrid
     context.stroke();
   }
   if (major) {
-    context.strokeStyle = "#cbd5e1";
+    context.strokeStyle = "#dde3eb";
     for (let x = 0; x <= width; x += major) {
       context.beginPath();
       context.moveTo(x, 0);

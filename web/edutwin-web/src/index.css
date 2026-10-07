@@ -32,6 +32,8 @@ math-field .ML__placeholder,
   opacity: 0.85 !important;
   border-bottom: 1.5px dashed currentColor !important;
   padding: 0 2px !important;
+  pointer-events: auto !important;
+  cursor: pointer !important;
 }
 
 /* Hide MathLive virtual keyboard toggle and menu toggle when in text (keyboard) mode */

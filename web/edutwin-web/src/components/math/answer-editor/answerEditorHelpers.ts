@@ -12,6 +12,7 @@ export type QuestionAnswerEvaluationMode =
   | "TextExact"
   | "NumericRational"
   | "Coordinate2D"
+  | "MathEquivalent"
   | "Manual";
 
 export type QuestionType = "MultipleChoice" | "ShortAnswer" | "Essay";
@@ -28,6 +29,7 @@ export type ResolvedInputType =
   | "plain-text"
   | "numeric-rational"
   | "coordinate-2d"
+  | "math-equivalent"
   | "manual-short-answer"
   | "essay-prose"
   | "unsupported";
@@ -80,6 +82,14 @@ export function buildNumericRationalAnswer(
     rawText: rawText ?? "",
     displayLatex: displayLatex ?? "",
   };
+}
+
+/** Preserve mathematical notation for the bounded backend parser, not an ASCII approximation. */
+export function buildMathEquivalentAnswer(
+  rawText: string | null | undefined,
+  displayLatex: string | null | undefined,
+): AnswerEditorValue {
+  return { rawText: displayLatex || rawText || "", displayLatex: displayLatex ?? "" };
 }
 
 /**
@@ -237,6 +247,7 @@ export function deserializeCoordinateWithLatex(
  * - TextExact: finalAnswer = rawText, answerDisplayLatex = ""
  * - NumericRational: finalAnswer = rawText, answerDisplayLatex = displayLatex
  * - Coordinate2D: finalAnswer = rawText, answerDisplayLatex = displayLatex
+ * - MathEquivalent: finalAnswer = displayLatex (when available), answerDisplayLatex = displayLatex
  * - Manual / Essay: finalAnswer = rawText, answerDisplayLatex = ""
  */
 export function buildSubmissionAnswerFields(
@@ -255,6 +266,10 @@ export function buildSubmissionAnswerFields(
   const editorVal = value as AnswerEditorValue;
   const rawText = editorVal?.rawText ?? "";
   const displayLatex = editorVal?.displayLatex ?? "";
+
+  if (evaluationMode === "MathEquivalent") {
+    return { finalAnswer: displayLatex || rawText, answerDisplayLatex: displayLatex };
+  }
 
   if (evaluationMode === "NumericRational" || evaluationMode === "Coordinate2D") {
     return {
@@ -298,6 +313,8 @@ export function resolveAnswerInputType(
         return { type: "numeric-rational", isValid: true };
       case "Coordinate2D":
         return { type: "coordinate-2d", isValid: true };
+      case "MathEquivalent":
+        return { type: "math-equivalent", isValid: true };
       case "Manual":
         return { type: "manual-short-answer", isValid: true };
       default:
@@ -343,7 +360,7 @@ export function resolveReadonlyDisplay(
   const raw = value?.rawText?.trim() ?? "";
   const latex = value?.displayLatex?.trim() ?? "";
 
-  if (evaluationMode === "NumericRational" || evaluationMode === "Coordinate2D") {
+  if (evaluationMode === "NumericRational" || evaluationMode === "Coordinate2D" || evaluationMode === "MathEquivalent") {
     if (latex) {
       return { content: latex, mode: "formula" };
     }

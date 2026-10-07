@@ -304,7 +304,7 @@ public class CreateAssignmentUseCaseTests
         });
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -547,7 +547,7 @@ public class CreateAssignmentUseCaseTests
         });
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -575,7 +575,7 @@ public class CreateAssignmentUseCaseTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_CenterManager_CanCreateForAnyClassInCenter()
+    public async Task ExecuteAsync_CenterManager_ReturnsForbiddenResource()
     {
         var centerId = Guid.NewGuid();
         var managerId = Guid.NewGuid();
@@ -595,9 +595,8 @@ public class CreateAssignmentUseCaseTests
             QuestionIds = new List<string> { question.QuestionId.ToString(CultureInfo.InvariantCulture) }
         });
 
-        Assert.True(result.IsSuccess, $"Expected success but got: {result.ErrorCode}");
-        Assert.NotNull(result.Data);
-        Assert.Equal("Draft", result.Data!.Status);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Theory]

@@ -29,7 +29,7 @@ public class ArchiveCurriculumUseCaseTests
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
         _tenantMock = new Mock<ITenantContext>();
-        _tenantMock.Setup(t => t.Role).Returns(nameof(UserRole.CenterManager));
+        _tenantMock.Setup(t => t.Role).Returns(nameof(UserRole.Teacher));
         _tenantAccessorMock = new Mock<ITenantIdAccessor>();
         _tenantAccessorMock.Setup(x => x.CenterId).Returns(() => _tenantMock.Object.CenterId);
         _timeProviderMock = new Mock<TimeProvider>();

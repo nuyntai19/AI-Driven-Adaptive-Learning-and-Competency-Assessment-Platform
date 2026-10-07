@@ -1,6 +1,7 @@
 using EduTwin.BLL.AssessmentAndReasoning.AI;
 using EduTwin.BLL.AssessmentAndReasoning.Attachments;
 using EduTwin.BLL.AssessmentAndReasoning.Evidence;
+using EduTwin.BLL.AssessmentAndReasoning.Feedback;
 using EduTwin.BLL.AssessmentAndReasoning.Jobs;
 using EduTwin.BLL.DigitalTwin;
 using EduTwin.BLL.DigitalTwin.Orchestration;
@@ -8,6 +9,7 @@ using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.BLL.Recommendations;
 using EduTwin.BLL.Assignments;
 using EduTwin.Contracts.AssessmentAndReasoning;
+using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.DigitalTwin;
 using EduTwin.DAL.AssessmentAndReasoning;
@@ -44,6 +46,8 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<AIAnalysisJobProcessor> _logger;
     private readonly IOverallAssignmentCommentWorkflow? _overallCommentWorkflow;
+    private readonly IAIAnalysisCheckpointStore? _checkpointStore;
+    private readonly IAIStudentPostProcessingQueue? _postProcessing;
 
     public AIAnalysisJobProcessor(
         EduTwinDbContext dbContext,
@@ -61,7 +65,9 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         IRecommendationEngine? recommendationEngine = null,
         IAttemptAttachmentStorage? attachmentStorage = null,
         ILogger<AIAnalysisJobProcessor>? logger = null,
-        IOverallAssignmentCommentWorkflow? overallCommentWorkflow = null)
+        IOverallAssignmentCommentWorkflow? overallCommentWorkflow = null,
+        IAIAnalysisCheckpointStore? checkpointStore = null,
+        IAIStudentPostProcessingQueue? postProcessing = null)
     {
         _dbContext = dbContext;
         _tenantContext = tenantContext;
@@ -88,9 +94,30 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         _attachmentStorage = attachmentStorage;
         _logger = logger ?? NullLogger<AIAnalysisJobProcessor>.Instance;
         _overallCommentWorkflow = overallCommentWorkflow;
+        _checkpointStore = checkpointStore;
+        _postProcessing = postProcessing;
     }
 
     public async Task<AIAnalysisJobProcessingResult> ExecuteAsync(
+        ulong analysisJobId,
+        string workerId,
+        CancellationToken cancellationToken)
+    {
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        try
+        {
+            var result = await ExecuteCoreAsync(analysisJobId, workerId, cancellationToken);
+            AIProcessingMetrics.Outcomes.Add(1, new KeyValuePair<string, object?>("outcome", result.Outcome.ToString()));
+            return result;
+        }
+        finally
+        {
+            AIProcessingMetrics.Duration.Record(System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds,
+                new KeyValuePair<string, object?>("stage", "job"));
+        }
+    }
+
+    private async Task<AIAnalysisJobProcessingResult> ExecuteCoreAsync(
         ulong analysisJobId,
         string workerId,
         CancellationToken cancellationToken)
@@ -161,13 +188,7 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                 AIAnalysisJobProcessingOutcome.NotEligible);
         }
 
-        var analysisAlreadyExists = await _dbContext.ReasoningAnalyses
-            .AsNoTracking()
-            .AnyAsync(
-                analysis => analysis.CenterId == centerId
-                    && analysis.AttemptId == initialAttempt.AttemptId,
-                cancellationToken);
-        if (analysisAlreadyExists)
+        if (await AnalysisBlocksProcessingAsync(initialAttempt, cancellationToken))
         {
             return Result(
                 analysisJobId,
@@ -223,6 +244,10 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         }
 
         ReasoningAnalysis analysis;
+        AnalyzeReasoningResponse? response = null;
+        string? fingerprint = null;
+        var checkpointHit = false;
+        var providerFailure = true;
         try
         {
             var imageParts = await LoadAttachmentImagePartsAsync(
@@ -235,11 +260,35 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                 requestContext.AllowedNodes,
                 imageParts);
             cancellationToken.ThrowIfCancellationRequested();
-
-            var response = await _aiService.AnalyzeReasoningAsync(
-                request,
-                cancellationToken);
+            fingerprint = AIAnalysisCheckpointStore.Fingerprint(request,
+                (_aiService as IAIAnalysisProfile)?.AnalysisProfileVersion ?? AIAnalysisContract.SchemaVersion, requestContext.Question.RowVersion);
+            if (_checkpointStore is not null)
+            {
+                providerFailure = false;
+                response = await _checkpointStore.ReadAsync(centerId, initialAttempt.AttemptId, fingerprint, cancellationToken);
+                providerFailure = true;
+                if (response is not null)
+                {
+                    try { new AnalyzeReasoningResponseValidator().Validate(request, response); }
+                    catch (AIAnalysisValidationException) { response = null; }
+                }
+            }
+            checkpointHit = response is not null;
+            if (response is not null) AIProcessingMetrics.CheckpointHits.Add(1);
+            else
+            {
+                var providerStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+                try
+                {
+                    response = _aiService is IPartitionedAIService partitioned && initialAttempt.AssignmentId.HasValue
+                        ? await partitioned.AnalyzeReasoningAsync(request,
+                            new(centerId, initialAttempt.StudentId, initialAttempt.AssignmentId.Value), cancellationToken)
+                        : await _aiService.AnalyzeReasoningAsync(request, cancellationToken);
+                }
+                finally { AIProcessingMetrics.Duration.Record(System.Diagnostics.Stopwatch.GetElapsedTime(providerStarted).TotalMilliseconds, new KeyValuePair<string, object?>("stage", "provider")); }
+            }
             cancellationToken.ThrowIfCancellationRequested();
+            if (_checkpointStore is not null) new AnalyzeReasoningResponseValidator().Validate(request, response);
 
             var analysisUtcNow = _timeProvider.GetUtcNow().UtcDateTime;
             analysis = _analysisBuilder.Build(
@@ -249,10 +298,22 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                 analysisUtcNow,
                 initialAttempt.IsCorrect,
                 initialAttempt.ReasoningLanguage);
+            if (_aiService is IAIAnalysisProvenance provenance)
+            {
+                analysis.FeedbackOrigin = provenance.ProviderName;
+                analysis.Provider = provenance.ProviderName == "Groq" ? AnalysisProvider.Groq : AnalysisProvider.Gemini;
+                analysis.ModelName = provenance.ModelName;
+                analysis.AnalysisProfileVersion = (_aiService as IAIAnalysisProfile)?.AnalysisProfileVersion;
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
+        }
+        catch (AIAnalysisDeferredException deferred)
+        {
+            return await PersistDeferralAsync(initialJob, initialAttempt, requestContext, workerId,
+                deferred.RetryAfter, deferred.ErrorCode, cancellationToken);
         }
         catch (AttemptAttachmentStorageUnavailableException)
         {
@@ -263,7 +324,7 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                 workerId,
                 cancellationToken);
         }
-        catch
+        catch (Exception exception) when (providerFailure && exception is not AIAnalysisInfrastructureException)
         {
             return await PersistAnalysisFailureAsync(
                 initialJob,
@@ -272,6 +333,11 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                 workerId,
                 cancellationToken);
         }
+
+        // Save outside the provider-failure catch: a database outage must not be graded as an AI failure.
+        if (_checkpointStore is not null && !checkpointHit && !await _checkpointStore.SaveAsync(initialJob, workerId, fingerprint!, response!,
+            _timeProvider.GetUtcNow().UtcDateTime, cancellationToken))
+            return Result(analysisJobId, initialAttempt.AttemptId, AIAnalysisJobProcessingOutcome.NotEligible);
 
         return await PersistSuccessAsync(
             initialJob,
@@ -295,6 +361,7 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         cancellationToken.ThrowIfCancellationRequested();
         await using var transaction = await _dbContext.Database
             .BeginTransactionAsync(cancellationToken);
+        var commitStarted = System.Diagnostics.Stopwatch.GetTimestamp();
         Guid recommendationCenterId = default;
         Guid recommendationStudentId = default;
         Guid recommendationSubjectId = default;
@@ -303,6 +370,8 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
 
         try
         {
+            if (_checkpointStore is not null)
+                await StudentLockHelper.AcquireStudentLockAsync(_dbContext, initialJob.CenterId, initialAttempt.StudentId, cancellationToken);
             var reload = await ReloadAndRevalidateAsync(
                 initialJob,
                 initialAttempt,
@@ -319,6 +388,18 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             var job = reload.Job!;
             var attempt = reload.Attempt!;
             var transactionalUtcNow = reload.UtcNow;
+
+            // Inference can finish out of order; mastery updates must retain the submission order.
+            // The later response is already checkpointed, so this wait never needs another AI call.
+            if (_checkpointStore is not null && await HasEarlierUnfinishedAnalysisAsync(job, attempt, cancellationToken))
+            {
+                // Discovery blocks this checkpoint until its predecessor is terminal;
+                // it can then be committed immediately, without another timer delay.
+                Defer(job, transactionalUtcNow, TimeSpan.Zero, "AI_WAITING_FOR_EARLIER_EVIDENCE");
+                await _dbContext.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                return Result(job.AnalysisJobId, attempt.AttemptId, AIAnalysisJobProcessingOutcome.RetryScheduled);
+            }
 
             await _twinCompletionOrchestrator.CompleteAsync(
                 attempt,
@@ -339,6 +420,18 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                         AIAnalysisJobProcessingOutcome.NotEligible));
             }
 
+            if (_postProcessing is not null)
+                await _postProcessing.EnqueueAsync(attempt.CenterId, attempt.StudentId, requestContext.Question.SubjectId,
+                    attempt.AssignmentId, attempt.AttemptId, transactionalUtcNow, cancellationToken);
+
+            // The authoritative analysis now carries the diagnostic evidence; the recovery copy is no longer needed.
+            if (_checkpointStore is not null)
+            {
+                var checkpoint = await _dbContext.AIAnalysisCheckpoints.SingleOrDefaultAsync(x =>
+                    x.CenterId == attempt.CenterId && x.AttemptId == attempt.AttemptId, cancellationToken);
+                if (checkpoint is not null) _dbContext.AIAnalysisCheckpoints.Remove(checkpoint);
+            }
+
             cancellationToken.ThrowIfCancellationRequested();
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
@@ -351,7 +444,11 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         catch (DbUpdateConcurrencyException)
         {
             await transaction.RollbackAsync(CancellationToken.None);
+            await transaction.DisposeAsync();
             _dbContext.ChangeTracker.Clear();
+            if (_checkpointStore is not null)
+                return await PersistDeferralAsync(initialJob, initialAttempt, requestContext, workerId,
+                    TimeSpan.FromSeconds(1), "AI_DATABASE_RETRY", cancellationToken);
             return Result(
                 initialJob.AnalysisJobId,
                 initialAttempt.AttemptId,
@@ -382,14 +479,19 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             _dbContext.ChangeTracker.Clear();
             throw;
         }
+        finally
+        {
+            AIProcessingMetrics.Duration.Record(System.Diagnostics.Stopwatch.GetElapsedTime(commitStarted).TotalMilliseconds,
+                new KeyValuePair<string, object?>("stage", "commit"));
+        }
 
-        await TryGenerateRecommendationAfterCommitAsync(
+        if (_postProcessing is null) await TryGenerateRecommendationAfterCommitAsync(
             recommendationCenterId,
             recommendationStudentId,
             recommendationSubjectId,
             recommendationAttemptId,
             recommendationTriggerAt);
-        await TryGenerateOverallCommentAfterCommitAsync(
+        if (_postProcessing is null) await TryGenerateOverallCommentAfterCommitAsync(
             recommendationCenterId,
             initialAttempt.AssignmentId,
             recommendationStudentId);
@@ -442,6 +544,8 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
 
         try
         {
+            if (_checkpointStore is not null)
+                await StudentLockHelper.AcquireStudentLockAsync(_dbContext, initialJob.CenterId, initialAttempt.StudentId, cancellationToken);
             var reload = await ReloadAndRevalidateAsync(
                 initialJob,
                 initialAttempt,
@@ -523,8 +627,16 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                         transactionalUtcNow,
                         createdBy: null);
 
-                    _dbContext.ReasoningAnalyses.Add(fallback);
-                    _dbContext.EvidenceAssessments.Add(evidence);
+                    // If context disappeared during recovery, retain the old
+                    // fallback and immutable evidence instead of inserting a
+                    // second analysis into the unique attempt checkpoint.
+                    var existing = await _dbContext.ReasoningAnalyses.AnyAsync(a =>
+                        a.CenterId == attempt.CenterId && a.AttemptId == attempt.AttemptId, cancellationToken);
+                    if (!existing)
+                    {
+                        _dbContext.ReasoningAnalyses.Add(fallback);
+                        _dbContext.EvidenceAssessments.Add(evidence);
+                    }
                     attempt.Status = AttemptStatus.NeedsTeacherReview;
                     attempt.UpdatedAt = transactionalUtcNow;
                 }
@@ -557,6 +669,9 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             }
 
             attempt.UpdatedAt = transactionalUtcNow;
+            if (outcome == AIAnalysisJobProcessingOutcome.FallbackCompleted && _postProcessing is not null && requestContext is not null)
+                await _postProcessing.EnqueueAsync(attempt.CenterId, attempt.StudentId, requestContext.Question.SubjectId,
+                    attempt.AssignmentId, attempt.AttemptId, transactionalUtcNow, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
@@ -605,7 +720,7 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             throw;
         }
 
-        if (committedOutcome == AIAnalysisJobProcessingOutcome.FallbackCompleted)
+        if (committedOutcome == AIAnalysisJobProcessingOutcome.FallbackCompleted && _postProcessing is null)
         {
             if (recommendationSubjectId == Guid.Empty)
             {
@@ -697,6 +812,8 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
 
         try
         {
+            if (_checkpointStore is not null)
+                await StudentLockHelper.AcquireStudentLockAsync(_dbContext, initialJob.CenterId, initialAttempt.StudentId, cancellationToken);
             var reload = await ReloadAndRevalidateAsync(
                 initialJob,
                 initialAttempt,
@@ -783,8 +900,13 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                         transactionalUtcNow,
                         createdBy: null);
 
-                    _dbContext.ReasoningAnalyses.Add(fallback);
-                    _dbContext.EvidenceAssessments.Add(evidence);
+                    var existing = await _dbContext.ReasoningAnalyses.AnyAsync(a =>
+                        a.CenterId == attempt.CenterId && a.AttemptId == attempt.AttemptId, cancellationToken);
+                    if (!existing)
+                    {
+                        _dbContext.ReasoningAnalyses.Add(fallback);
+                        _dbContext.EvidenceAssessments.Add(evidence);
+                    }
 
                     outcome = AIAnalysisJobProcessingOutcome.FallbackCompleted;
                 }
@@ -812,6 +934,9 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             }
 
             attempt.UpdatedAt = transactionalUtcNow;
+            if (outcome == AIAnalysisJobProcessingOutcome.FallbackCompleted && _postProcessing is not null)
+                await _postProcessing.EnqueueAsync(attempt.CenterId, attempt.StudentId, requestContext.Question.SubjectId,
+                    attempt.AssignmentId, attempt.AttemptId, transactionalUtcNow, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
@@ -884,6 +1009,47 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             _logger.LogWarning(ex, "Post-commit assignment comment generation failed for assignment {AssignmentId} and student {StudentId}.", assignmentId, studentId);
         }
     }
+
+    private async Task<AIAnalysisJobProcessingResult> PersistDeferralAsync(AIAnalysisJob initialJob, Attempt initialAttempt,
+        RequestContext? context, string worker, TimeSpan delay, string code, CancellationToken token)
+    {
+        _dbContext.ChangeTracker.Clear();
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(token);
+        await StudentLockHelper.AcquireStudentLockAsync(_dbContext, initialJob.CenterId, initialAttempt.StudentId, token);
+        var reload = await ReloadAndRevalidateAsync(initialJob, initialAttempt, context, worker, token);
+        if (reload.Outcome.HasValue)
+            return await RollbackResultAsync(transaction, Result(initialJob.AnalysisJobId, initialAttempt.AttemptId, reload.Outcome.Value));
+        var now = reload.UtcNow;
+        var job = reload.Job!;
+        Defer(job, now, delay, code);
+        await _dbContext.SaveChangesAsync(token);
+        await transaction.CommitAsync(token);
+        return Result(job.AnalysisJobId, initialAttempt.AttemptId, AIAnalysisJobProcessingOutcome.RetryScheduled);
+    }
+
+    private static void Defer(AIAnalysisJob job, DateTime now, TimeSpan delay, string code)
+    {
+        job.Status = AIJobStatus.Pending;
+        job.AvailableAt = now.AddSeconds(Math.Clamp(delay.TotalSeconds, 1, 3600));
+        job.StartedAt = null;
+        job.LeaseOwner = null;
+        job.LeaseUntil = null;
+        job.LastErrorCode = code;
+        job.LastErrorMessage = "Waiting for processing capacity; submission is preserved.";
+        job.UpdatedAt = now;
+    }
+
+    private Task<bool> HasEarlierUnfinishedAnalysisAsync(AIAnalysisJob job, Attempt attempt, CancellationToken token) =>
+        (from earlier in _dbContext.AIAnalysisJobs.AsNoTracking()
+         join submission in _dbContext.Attempts.AsNoTracking()
+             on new { earlier.CenterId, earlier.AttemptId } equals new { submission.CenterId, submission.AttemptId }
+         where earlier.CenterId == job.CenterId && submission.StudentId == attempt.StudentId
+             && (submission.CreatedAt < attempt.CreatedAt ||
+                 (submission.CreatedAt == attempt.CreatedAt && submission.AttemptId < attempt.AttemptId))
+             && (earlier.Status == AIJobStatus.Pending || earlier.Status == AIJobStatus.Processing)
+             && (submission.Status == AttemptStatus.PendingAnalysis || submission.Status == AttemptStatus.Processing)
+             && !_dbContext.ReasoningAnalyses.Any(a => a.CenterId == job.CenterId && a.AttemptId == earlier.AttemptId)
+         select earlier.AnalysisJobId).AnyAsync(token);
 
     private async Task TryGenerateRecommendationAfterCommitAsync(
         Guid centerId,
@@ -963,19 +1129,15 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             return ReloadResult.Failed(AIAnalysisJobProcessingOutcome.NotFound);
         }
 
-        if (attempt.RowVersion != initialAttempt.RowVersion
+        if ((attempt.RowVersion != initialAttempt.RowVersion
+                && !OnlySolutionExposureChanged(initialAttempt, attempt))
             || attempt.QuestionId != initialAttempt.QuestionId
             || !CanComplete(attempt.Status))
         {
             return ReloadResult.Failed(AIAnalysisJobProcessingOutcome.NotEligible);
         }
 
-        var analysisAlreadyExists = await _dbContext.ReasoningAnalyses
-            .AnyAsync(
-                analysis => analysis.CenterId == centerId
-                    && analysis.AttemptId == attempt.AttemptId,
-                cancellationToken);
-        if (analysisAlreadyExists)
+        if (await AnalysisBlocksProcessingAsync(attempt, cancellationToken))
         {
             return ReloadResult.Failed(AIAnalysisJobProcessingOutcome.NotEligible);
         }
@@ -991,6 +1153,22 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         }
 
         return ReloadResult.Valid(job, attempt, utcNow);
+    }
+
+    private async Task<bool> AnalysisBlocksProcessingAsync(Attempt attempt, CancellationToken cancellationToken)
+    {
+        var analysis = await _dbContext.ReasoningAnalyses.AsNoTracking().FirstOrDefaultAsync(a =>
+            a.CenterId == attempt.CenterId && a.AttemptId == attempt.AttemptId, cancellationToken);
+        if (analysis is null) return false;
+        if (!AttemptFeedbackActionPolicy.CanRecoverFallback(attempt, analysis)) return true;
+        if (await _dbContext.StudentReviewRequests.AnyAsync(r => r.CenterId == attempt.CenterId &&
+            r.AttemptId == attempt.AttemptId && r.Status == StudentReviewRequestStatus.Pending, cancellationToken)) return true;
+        if (!attempt.AssignmentId.HasValue) return false;
+        return await _dbContext.StudentAssignmentProgresses.AnyAsync(p => p.CenterId == attempt.CenterId &&
+            p.AssignmentId == attempt.AssignmentId && p.StudentId == attempt.StudentId && !p.IsDeleted &&
+            p.TeacherFinalReviewStatus == TeacherFinalReviewStatus.Approved, cancellationToken) ||
+            await _dbContext.AssignmentQuestions.AnyAsync(q => q.CenterId == attempt.CenterId &&
+                q.AssignmentId == attempt.AssignmentId && q.QuestionId == attempt.QuestionId && q.IsVoided, cancellationToken);
     }
 
     private async Task<RequestContext?> LoadRequestContextAsync(
@@ -1148,6 +1326,37 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
 
     private static bool CanComplete(AttemptStatus status) =>
         status is AttemptStatus.PendingAnalysis or AttemptStatus.Processing;
+
+    // Viewing a solution is observational metadata, not a change to the answer
+    // sent to AI. Keep the fresh tracked row (and its concurrency token) so this
+    // timestamp is preserved while completion remains an optimistic-concurrency
+    // write. Never tolerate changes to submission, grading, retry or audit data.
+    private static bool OnlySolutionExposureChanged(Attempt before, Attempt after) =>
+        !before.SolutionExposedAt.HasValue && after.SolutionExposedAt.HasValue
+        && before.AttemptId == after.AttemptId
+        && before.CenterId == after.CenterId
+        && before.StudentId == after.StudentId
+        && before.QuestionId == after.QuestionId
+        && before.AssignmentId == after.AssignmentId
+        && before.FinalAnswer == after.FinalAnswer
+        && before.AnswerDisplayLatex == after.AnswerDisplayLatex
+        && before.ReasoningText == after.ReasoningText
+        && before.ReasoningLanguage == after.ReasoningLanguage
+        && before.IsCorrect == after.IsCorrect
+        && before.AwardedScore == after.AwardedScore
+        && before.PreliminaryGradingReasonCode == after.PreliminaryGradingReasonCode
+        && before.TimeSpentSeconds == after.TimeSpentSeconds
+        && before.Confidence == after.Confidence
+        && before.AnswerChanges == after.AnswerChanges
+        && before.Skipped == after.Skipped
+        && before.Status == after.Status
+        && before.ClientSubmissionId == after.ClientSubmissionId
+        && before.ManualRetryCount == after.ManualRetryCount
+        && before.LastManualRetryAt == after.LastManualRetryAt
+        && before.IsPostFeedback == after.IsPostFeedback
+        && before.CreatedAt == after.CreatedAt
+        && before.CreatedBy == after.CreatedBy
+        && before.UpdatedAt == after.UpdatedAt;
 
     private static bool IsTerminal(AIJobStatus status) =>
         status is AIJobStatus.Completed

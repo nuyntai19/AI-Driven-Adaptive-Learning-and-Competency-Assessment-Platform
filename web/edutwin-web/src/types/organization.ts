@@ -162,6 +162,7 @@ export interface ClassDto {
   classId: string;
   className: string;
   academicYear: string;
+  gradeLevel?: number | null;
   subject: ClassSubjectDto;
   teacher: ClassTeacherDto;
   studentCount: number;
@@ -179,6 +180,7 @@ export interface ClassListParams {
   pageSize: number;
   teacherId?: string;
   subjectId?: string;
+  gradeLevel?: number;
   status?: ClassStatus;
   search?: string;
 }
@@ -188,17 +190,21 @@ export interface CreateClassRequest {
   academicYear: string;
   subjectId: string;
   teacherId: string;
+  gradeLevel?: number | null;
 }
 
 export interface UpdateClassRequest {
   className: string;
   teacherId: string;
   status: ClassStatus;
+  gradeLevel?: number | null;
   rowVersion: string;
 }
 
 export interface AddStudentsToClassRequest {
   studentIds: string[];
+  allowGradeMismatch?: boolean;
+  gradeMismatchReason?: string;
 }
 
 export interface AddStudentsToClassData {
@@ -223,6 +229,7 @@ export interface CandidateStudentListParams {
   page?: number;
   pageSize?: number;
   search?: string;
+  includeOtherGrades?: boolean;
 }
 
 export interface ClassResponse {

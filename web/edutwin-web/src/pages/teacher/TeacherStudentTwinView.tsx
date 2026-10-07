@@ -282,13 +282,9 @@ export const TeacherStudentTwinView: React.FC = () => {
 
                         {t.lastReasoningQuality !== null && t.lastReasoningQuality !== undefined && (
                           <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "var(--th-text-muted)", marginTop: "6px" }}>
-                            <span>Chất lượng lập luận bài gần nhất:</span>
+                            <span>Chỉ số lập luận gần nhất (không phải điểm bài):</span>
                             <span style={{ fontWeight: 600 }}>
-                              {Math.round(
-                                t.lastReasoningQuality <= 1 && t.lastReasoningQuality > 0
-                                  ? t.lastReasoningQuality * 100
-                                  : t.lastReasoningQuality
-                              )}%
+                              {Math.round(t.lastReasoningQuality)}/100
                             </span>
                           </div>
                         )}

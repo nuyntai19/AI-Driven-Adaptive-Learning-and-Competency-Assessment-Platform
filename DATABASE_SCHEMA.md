@@ -381,6 +381,7 @@ Subject là tenant-owned để Teacher của Center này không làm thay đổi
 | subject_id | VARCHAR(36) | No | Tenant-safe FK subjects |
 | class_name | VARCHAR(150) | No | Tên lớp hiển thị trong Center |
 | academic_year | VARCHAR(20) | No | Ví dụ 2026-2027 |
+| grade_level | TINYINT UNSIGNED | Yes | 10, 11 hoặc 12; null là Chưa phân loại |
 | status | VARCHAR(32) | No | Active, Archived |
 | ...MTA | | | Kế thừa audit, soft-delete, tenant và row_version tại mục 2.3 |
 
@@ -391,11 +392,13 @@ Indexes:
 - UX(center_id, class_name, academic_year).
 - IX(center_id, teacher_id, status).
 - IX(center_id, subject_id, status).
+- IX(center_id, grade_level).
 
 Invariant:
 
 - Teacher và Subject phải cùng Center.
 - Class trong MVP gắn với đúng một Subject.
+- Soft-delete lớp tạo nhầm (chưa từng có thành viên, bài tập, giáo trình): cập nhật class_name thành `{base}#del#{class_id:N}` để giải phóng UX(center_id, class_name, academic_year).
 
 ## 11. class_students [Tenant join]
 
@@ -405,6 +408,10 @@ Invariant:
 | class_id | VARCHAR(36) | No | Tenant-safe FK classes |
 | student_id | VARCHAR(36) | No | Tenant-safe FK students |
 | joined_at | DATETIME(6) | No | Thời điểm UTC học sinh gia nhập lớp |
+| grade_level_at_enrollment | TINYINT UNSIGNED | Yes | Snapshot khối của học sinh tại thời điểm ghi danh (10, 11, 12) |
+| grade_mismatch_reason | VARCHAR(500) | Yes | Lý do ngoại lệ sư phạm khi ghi danh học sinh khác khối lớp |
+| exception_approved_by | VARCHAR(36) | Yes | User ID của người phê duyệt ngoại lệ ghi danh |
+| exception_approved_at | DATETIME(6) | Yes | Thời điểm UTC phê duyệt ngoại lệ ghi danh |
 | status | VARCHAR(32) | No | Active, Removed |
 | removed_at | DATETIME(6) | Yes | Thời điểm UTC rời/bị loại khỏi lớp |
 | created_by | VARCHAR(36) | Yes | User cùng Center tạo membership |
@@ -489,6 +496,7 @@ Invariant:
 | subject_id | VARCHAR(36) | No | Tenant-safe FK subjects |
 | title | VARCHAR(250) | No | Tiêu đề curriculum hiển thị |
 | description | TEXT | Yes | Mô tả mục tiêu/phạm vi curriculum |
+| grade_level | TINYINT UNSIGNED | Yes | 10, 11 hoặc 12; null là Chưa phân loại |
 | source_file | VARCHAR(500) | Yes | Reserved; MVP không upload |
 | review_status | VARCHAR(32) | No | Draft, Published, Archived |
 | ...MTA | | | Kế thừa audit, soft-delete, tenant và row_version tại mục 2.3 |
@@ -498,6 +506,7 @@ Indexes:
 - UX(center_id, curriculum_id).
 - IX(center_id, teacher_id, review_status).
 - IX(center_id, subject_id, review_status).
+- IX(center_id, grade_level).
 
 ## 15. curriculum_classes [Tenant join]
 
@@ -537,6 +546,7 @@ Indexes:
 | question_type | VARCHAR(32) | No | MultipleChoice, ShortAnswer, Essay |
 | answer_evaluation_mode | VARCHAR(32) | No | TextExact, NumericRational, Coordinate2D, Manual (Default TextExact) |
 | difficulty | TINYINT UNSIGNED | No | 1–5 |
+| grade_level | TINYINT UNSIGNED | Yes | 10, 11 hoặc 12; null là Chưa phân loại |
 | question_text | LONGTEXT | No | Việt hoặc Anh |
 | correct_answer | TEXT | No | Canonical final answer/model answer |
 | solution | LONGTEXT | No | Teacher-authored explanation |
@@ -544,7 +554,7 @@ Indexes:
 | grading_criteria | JSON | No | Versioned criteria object |
 | max_score | DECIMAL(5,2) | No | Default 1.00 |
 | estimated_time_seconds | INT UNSIGNED | No | > 0 |
-| reasoning_required | TINYINT(1) | No | Default 1 |
+| reasoning_required | TINYINT(1) | No | Default 0 (Opt-in từ POST-R09-ROLE-BOUNDARY-UX) |
 | language_code | VARCHAR(8) | No | vi hoặc en |
 | status | VARCHAR(32) | No | Draft, Active, Archived |
 | ...MTA | | | Kế thừa audit, soft-delete, tenant và row_version tại mục 2.3 |
@@ -623,6 +633,9 @@ BLL invariant:
 | time_limit_minutes | INT | Yes | Giới hạn thời gian làm bài tính bằng phút; null nếu không giới hạn |
 | status | VARCHAR(32) | No | Draft, Published, Closed, Archived |
 | published_at | DATETIME(6) | Yes | Thời điểm UTC publish; null khi chưa publish |
+| target_mode | VARCHAR(32) | No | WholeClass, SelectedStudents, GapGroup; lưu trữ tường minh chế độ giao bài, không suy đoán từ danh sách rỗng |
+| allow_grade_mismatch | TINYINT(1) | No | Default 0; cờ cho phép giáo viên giao câu hỏi khác khối có chủ đích |
+| grade_mismatch_reason | VARCHAR(500) | Yes | Lý do ngoại lệ sư phạm khi allow_grade_mismatch = 1 (ví dụ ôn kiến thức nền, học trước nâng cao) |
 | ...MTA | | | Kế thừa audit, soft-delete, tenant và row_version tại mục 2.3 |
 
 Indexes:
@@ -1614,3 +1627,38 @@ Nếu AI Developer cho rằng cần table mới, phải tạo Change Proposal; k
 - [ ] 30 logical questions bao phủ hai Subject và ba loại câu hỏi.
 - [ ] Migration chạy được từ database trống.
 - [ ] Migration v2 và query/index trọng yếu được kiểm tra trên MySQL thật, không chỉ EF InMemory/SQLite.
+
+## 52. Danh mục Phân quyền & Ma trận Account Types (POST-R09-ROLE-BOUNDARY-UX)
+
+### 52.1. Phân định Ranh giới Quyền hạn Fail-Closed
+
+Nhằm tuân thủ nguyên tắc đặc quyền tối thiểu (Least Privilege) và phân tách ranh giới trách nhiệm, `permission_account_types` và `role_permissions` được cấu hình nghiêm ngặt:
+
+1. **CenterManager:**
+   - Được phép gán các quyền: `dashboards.center.read`, `organization.*` (`teachers.*`, `students.*`, `classes.*`), `knowledge.subjects.*`, `authorization.*` (`roles.*`, `users.roles.*`, `audit_logs.read`).
+   - Tước bỏ toàn bộ mã quyền học thuật trực tiếp khỏi danh mục `permission_account_types` của `CenterManager`: `knowledge.nodes.*`, `knowledge.edges.*`, `curriculum.*`, `questions.*`, `assignments.*`, `twin.reasoning.*`, `dashboards.teacher.read_scoped`.
+   - Mọi nỗ lực truy cập hoặc gán quyền học thuật cho CenterManager bị chặn fail-closed ngay tại tầng dữ liệu (`AuthorizationBootstrapper`), nghiệp vụ và giao diện.
+
+2. **Teacher:**
+   - Sở hữu đầy đủ các quyền học thuật phục vụ giảng dạy, khảo thí và sư phạm: `knowledge.nodes.*`, `knowledge.edges.*`, `curriculum.*`, `questions.*`, `assignments.*`, `twin.reasoning.*`, `dashboards.teacher.read_scoped`.
+   - Bị cấm khỏi các quyền quản trị cơ cấu trung tâm diện rộng và phân quyền nền tảng.
+
+3. **Thứ tự Ràng buộc Khóa ngoại (FK Cascading Constraint Ordering):**
+   - Bảng `role_permissions` có ràng buộc khóa ngoại `fk_role_permissions_permission_account_types` trỏ tới `permission_account_types(permission_id, account_type)`.
+   - Trong quá trình khởi tạo hoặc đối soát hệ thống (`AuthorizationBootstrapper`), việc dọn dẹp các quyền không còn áp dụng cho một `account_type` bắt buộc phải xóa các bản ghi tương ứng trong `role_permissions` trên toàn bộ các trung tâm trước khi thực hiện xóa trên bảng danh mục `permission_account_types`, ngăn chặn triệt để lỗi vi phạm khóa ngoại MySQL.
+
+## 53. Điều phối xử lý AI và tổng hợp lộ trình (2026-10-07)
+
+Migration `20261006173556_AddAIProcessingCoordination` bổ sung:
+
+| Bảng | Khóa/phạm vi | Mục đích |
+|---|---|---|
+| `ai_analysis_checkpoints` | `(center_id, attempt_id)`; FK tenant-composite tới attempts | Lưu kết quả AI hợp lệ và fingerprint trước commit. Worker phải giữ đúng version/lease để ghi. Xóa sau commit chính thức cùng transaction. |
+| `ai_student_post_processing_jobs` | `(center_id, student_id, subject_id, assignment_scope_id)`; FK tenant-composite tới students | Hàng đợi bền vững, gom các lần cần cập nhật gợi ý và nhận xét. `Guid.Empty` biểu thị luyện tập không thuộc bài tập. Revision/processed revision, lease, thời điểm chạy và lỗi giúp phục hồi sau restart. |
+| `ai_provider_quota_states` | `pool_id`, băm project + model; dùng chung giữa tenant | Bộ đếm/cuộc gọi/lease/cooldown cho quota provider. Không lưu API key hoặc dữ liệu học sinh. |
+
+Hai bảng chứa dữ liệu nghiệp vụ có query filter theo trung tâm; bảng quota chứa metadata năng lực provider nên không có filter tenant. Cả ba có row version. Chỉ khóa SQL trong bước điều phối/ghi dữ liệu; không giữ transaction qua cuộc gọi Gemini. Phân tích từng câu và evidence/history vẫn lưu ở các bảng chính thức hiện có.
+
+## 54. AI analysis profile provenance — 2026-10-07
+
+Migration `20261007054616_AddAIAnalysisProfileProvenance` thêm `reasoning_analyses.analysis_profile_version` (`varchar(200) NULL`). Các dòng cũ giữ NULL; phân tích mới lưu provider/model/policy/schema và chiến lược microbatch. `model_name` sẵn có được điền từ adapter server. Metadata không được nhận từ JSON của AI hoặc request học sinh. Provider enum bổ sung `Groq` nhưng vẫn lưu dạng chuỗi trong cột `provider` hiện có, không đổi kiểu/cắt dữ liệu. Evidence liên kết analysis như trước; không thêm điểm AI hoặc thay thuật toán Mastery.

@@ -25,6 +25,8 @@ import { RichMathText } from "../../components/math/RichMathText";
 
 export function TeacherQuestionBankView() {
   const navigate = useNavigate();
+  const actorId = useAuthStore(state => state.user?.userId);
+  const [libraryScope, setLibraryScope] = useState<"all" | "owned" | "Shared">("all");
   const hasPermission = useAuthStore((state) => state.hasPermission);
 
   const canCreate = hasPermission(permissions.questionsCreate);
@@ -36,6 +38,7 @@ export function TeacherQuestionBankView() {
 
   // Filters state
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>("");
+  const [selectedGradeLevel, setSelectedGradeLevel] = useState<number | "">("");
   const [selectedTopicId, setSelectedTopicId] = useState<string>("");
   const [selectedType, setSelectedType] = useState<QuestionType | "">("");
   const [selectedDifficulty, setSelectedDifficulty] = useState<number | "">("");
@@ -80,7 +83,10 @@ export function TeacherQuestionBankView() {
 
   const questionFilter: QuestionFilter = useMemo(
     () => ({
+      ownedOnly: libraryScope === "owned" || undefined,
+      visibility: libraryScope === "Shared" ? "Shared" : undefined,
       subjectId: selectedSubjectId || undefined,
+      gradeLevel: selectedGradeLevel !== "" ? Number(selectedGradeLevel) : undefined,
       topicId: selectedTopicId || undefined,
       type: (selectedType as QuestionType) || undefined,
       difficulty: selectedDifficulty !== "" ? Number(selectedDifficulty) : undefined,
@@ -88,7 +94,7 @@ export function TeacherQuestionBankView() {
       page,
       pageSize,
     }),
-    [selectedSubjectId, selectedTopicId, selectedType, selectedDifficulty, selectedStatus, page, pageSize]
+    [libraryScope, selectedSubjectId, selectedGradeLevel, selectedTopicId, selectedType, selectedDifficulty, selectedStatus, page, pageSize]
   );
 
   const { data: response, isLoading, isError, error, refetch } = useQuestions(questionFilter);
@@ -185,7 +191,12 @@ export function TeacherQuestionBankView() {
   }, [response?.data, localSearchText]);
 
   return (
-    <div className="space-y-6">
+    <div className="th-page-container">
+      <label className="block text-sm font-semibold mb-4">Thư viện câu hỏi
+        <select className="th-select ml-3" value={libraryScope} onChange={e => { setLibraryScope(e.target.value as typeof libraryScope); setPage(1); }}>
+          <option value="all">Của tôi & dùng chung</option><option value="owned">Của tôi</option><option value="Shared">Shared — trong trung tâm</option>
+        </select>
+      </label>
       <TeacherPageHeader
         eyebrow="HỌC THUẬT & NỘI DUNG"
         title="Ngân Hàng Câu Hỏi & Đánh Giá"
@@ -255,6 +266,25 @@ export function TeacherQuestionBankView() {
                   {sub.subjectName} ({sub.subjectCode})
                 </option>
               ))}
+            </select>
+          </div>
+
+          {/* Grade Level Filter */}
+          <div className="min-w-0">
+            <label htmlFor="filter-teacher-grade" className="block text-[10px] font-semibold uppercase text-[var(--th-text-muted)] mb-1">Khối học</label>
+            <select
+              id="filter-teacher-grade"
+              value={selectedGradeLevel}
+              onChange={(e) => {
+                setSelectedGradeLevel(e.target.value ? Number(e.target.value) : "");
+                setPage(1);
+              }}
+              className="th-select w-full text-xs py-1.5"
+            >
+              <option value="">Tất cả khối</option>
+              <option value="10">Khối 10</option>
+              <option value="11">Khối 11</option>
+              <option value="12">Khối 12</option>
             </select>
           </div>
 
@@ -426,6 +456,7 @@ export function TeacherQuestionBankView() {
                           <span className="font-mono text-xs font-bold text-[var(--at-accent-text)]">
                             #{q.questionId}
                           </span>
+                          <span className="th-badge th-badge-info">{q.visibility || "Private"}</span>
                           <span className="text-xs font-bold text-[var(--th-text)] truncate">
                             {subjectName}
                           </span>
@@ -547,7 +578,12 @@ export function TeacherQuestionBankView() {
                       {subjectLabel}
                     </span>
 
-                    {/* Tag 4: Extra meta */}
+                    {/* Tag 4: Grade Level */}
+                    <span className="th-tag-neutral px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase">
+                      {q.gradeLevel ? `KHỐI ${q.gradeLevel}` : "CHƯA PHÂN LOẠI"}
+                    </span>
+
+                    {/* Tag 5: Extra meta */}
                     {q.options && q.options.length > 0 && (
                       <span className="th-tag-neutral px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase">
                         {q.options.length} ĐÁP ÁN
@@ -557,7 +593,8 @@ export function TeacherQuestionBankView() {
 
                   {/* Action Buttons */}
                   <div className="flex items-center gap-2">
-                    {canPublish && q.status === "Draft" && (
+                    {canCreate && <button type="button" className="th-secondary-button text-sm" onClick={() => navigate(`/giao-vien/cau-hoi/tao-moi?copyFrom=${q.questionId}`)}>Sao chép</button>}
+                    {canPublish && q.createdByTeacherId === actorId && q.status === "Draft" && (
                       <button
                         type="button"
                         onClick={() => handleOpenDialog(q, "activate")}
@@ -566,7 +603,7 @@ export function TeacherQuestionBankView() {
                         Kích hoạt
                       </button>
                     )}
-                    {canPublish && q.status === "Active" && (
+                    {canPublish && q.createdByTeacherId === actorId && q.status === "Active" && (
                       <button
                         type="button"
                         onClick={() => handleOpenDialog(q, "archive")}
@@ -575,7 +612,7 @@ export function TeacherQuestionBankView() {
                         Lưu trữ
                       </button>
                     )}
-                    {canDelete && q.status !== "Active" && (
+                    {canDelete && q.createdByTeacherId === actorId && q.status !== "Active" && (
                       <button
                         type="button"
                         onClick={() => handleOpenDialog(q, "delete")}
@@ -585,13 +622,13 @@ export function TeacherQuestionBankView() {
                       </button>
                     )}
 
-                    {canUpdate && (
+                    {(canUpdate || q.createdByTeacherId !== actorId) && (
                       <button
                         type="button"
                         onClick={() => navigate(`/giao-vien/cau-hoi/${q.questionId}`)}
                         className="th-secondary-button text-xs py-1 px-3 font-bold hover:bg-[var(--at-secondary-wash)]"
                       >
-                        Chỉnh sửa →
+                        {q.createdByTeacherId === actorId ? "Chỉnh sửa →" : "Xem bản gốc →"}
                       </button>
                     )}
                   </div>

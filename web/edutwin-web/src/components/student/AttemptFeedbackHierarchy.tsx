@@ -4,6 +4,11 @@ import { RichMathText } from "../math/RichMathText";
 import { retryAttemptAIAnalysis, createStudentReviewRequest } from "../../api/learningFeedbackApi";
 import { extractProblemDetails } from "../../utils/problemDetails";
 import { formatAwardedScore, formatPreliminaryResult } from "../../utils/gradingDisplay";
+import { getAttemptFeedbackPresentation, normalizeQuestionScore, questionAssignmentContribution } from "../../utils/attemptFeedbackPresentation";
+import { normalizeAITextLineBreaks } from "../../utils/aiTextFormatting";
+import { AttemptScratchpadAttachment } from "./AttemptScratchpadAttachment";
+import { getAttemptFeedbackActions } from "../../utils/attemptFeedbackActions";
+import { RubricGradeView } from "../reviews/RubricGradeView";
 
 function safeClientErrorMessage(error: unknown, fallback: string): string {
   const details = extractProblemDetails(error);
@@ -56,6 +61,7 @@ export function AttemptFeedbackHierarchy({
   const [cooldownSeconds, setCooldownSeconds] = useState<number>(
     retryQuota?.cooldownRemainingSeconds ?? 0
   );
+  const actions = getAttemptFeedbackActions(feedbackData, cooldownSeconds);
 
   // Review request modal state
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
@@ -89,10 +95,8 @@ export function AttemptFeedbackHierarchy({
 
   // Sync cooldown timer
   useEffect(() => {
-    if (retryQuota?.cooldownRemainingSeconds) {
-      setCooldownSeconds(retryQuota.cooldownRemainingSeconds);
-    }
-  }, [retryQuota?.cooldownRemainingSeconds]);
+    setCooldownSeconds(retryQuota?.cooldownRemainingSeconds ?? 0);
+  }, [attemptId, retryQuota?.cooldownRemainingSeconds]);
 
   // Tick down cooldown timer
   useEffect(() => {
@@ -104,16 +108,17 @@ export function AttemptFeedbackHierarchy({
   }, [cooldownSeconds]);
 
   const handleRetryAI = async () => {
-    if (cooldownSeconds > 0 || !retryQuota?.canRetry) return;
+    if (!actions.canRetryAI || isRetryingAI) return;
     try {
       setIsRetryingAI(true);
       setRetryError(null);
       const res = await retryAttemptAIAnalysis(attemptId);
-      if (res.analysisJobId && onPollJob) {
-        onPollJob(res.analysisJobId);
-      } else {
-        await onRefreshFeedback();
-      }
+      setCooldownSeconds(res.cooldownRemainingSeconds);
+      await onRefreshFeedback().catch(() => {
+        // The retry was accepted; a transient refresh failure must not prevent
+        // polling the returned job or imply that the saved submission was lost.
+      });
+      if (res.jobId && onPollJob) onPollJob(res.jobId);
     } catch (error: unknown) {
       setRetryError(
         safeClientErrorMessage(error, "Không thể kích hoạt chấm lại AI. Vui lòng thử lại sau."),
@@ -124,6 +129,7 @@ export function AttemptFeedbackHierarchy({
   };
 
   const handleSubmitReviewRequest = async () => {
+    if (!actions.canRequestTeacherReview || isSubmittingReview) return;
     if (!reviewReason.trim() || reviewReason.trim().length < 10) {
       setReviewModalError("Vui lòng nhập lý do cụ thể (tối thiểu 10 ký tự).");
       return;
@@ -150,6 +156,7 @@ export function AttemptFeedbackHierarchy({
   };
 
   const handleSubmitDispute = async () => {
+    if (!actions.canReportQuestion || isSubmittingDispute) return;
     if (!disputeComment.trim() || disputeComment.trim().length < 10) {
       setDisputeModalError("Vui lòng nhập mô tả sự cố cụ thể (tối thiểu 10 ký tự).");
       return;
@@ -181,15 +188,12 @@ export function AttemptFeedbackHierarchy({
   const isPending = feedbackData.status === "PendingAnalysis" || feedbackData.status === "Processing";
   const isUnavailable = !analysis && !isPending;
   const isDegradedOrFallback = !analysis || analysis.isFallback || isPending;
-  const displayedMaxScore = assignmentQuestionCount && assignmentQuestionCount > 0
-    ? Math.round((10 / assignmentQuestionCount) * 100) / 100
-    : grading.maxScore;
-  const toDisplayedScore = (score?: number | null) => {
-    if (score === null || score === undefined) return null;
-    if (!assignmentQuestionCount || assignmentQuestionCount <= 0 || grading.maxScore <= 0) return score;
-    return Math.round((score / grading.maxScore) * displayedMaxScore * 100) / 100;
-  };
+  const presentation = getAttemptFeedbackPresentation(grading, analysis, feedbackData.status);
+  const displayedMaxScore = normalizeQuestionScore(null, grading.maxScore, assignmentQuestionCount).maxScore;
+  const toDisplayedScore = (score?: number | null) =>
+    normalizeQuestionScore(score, grading.maxScore, assignmentQuestionCount).awardedScore;
   const displayedAwardedScore = toDisplayedScore(grading.awardedScore);
+  const assignmentContribution = questionAssignmentContribution(grading.awardedScore, grading.maxScore, assignmentQuestionCount);
   const formatAnswer = (answer: string) => {
     if (!answer) return "";
     const cleanAnswer = answer.replace(/\\placeholder(\[[^\]]*\])?(\{[^}]*\})?/g, "___");
@@ -292,16 +296,7 @@ export function AttemptFeedbackHierarchy({
           )}
 
           {studentSubmission?.attachmentUrl && (
-            <div>
-              <span className="text-xs font-semibold text-slate-400 block mb-1">Bản vẽ nháp đính kèm:</span>
-              <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-slate-900 max-w-sm">
-                <img
-                  src={studentSubmission.attachmentUrl}
-                  alt="Bản nháp của học sinh"
-                  className="w-full h-auto object-contain max-h-48"
-                />
-              </div>
-            </div>
+            <AttemptScratchpadAttachment attemptId={attemptId} />
           )}
 
           {studentSubmission && (
@@ -314,7 +309,32 @@ export function AttemptFeedbackHierarchy({
         </div>
       </div>}
 
-      {/* TIER 2: AI PHÂN TÍCH & ĐÁNH GIÁ (AI Analysis) */}
+      {/* Score provenance is independent from AI reasoning; no AI-based correctness inference. */}
+      <section aria-label="Kết quả chấm đáp án" className="rounded-3xl bg-white dark:bg-[#0f172a] p-6 border border-slate-200/80 dark:border-slate-800 space-y-3">
+        <h3 className="text-base font-extrabold text-slate-900 dark:text-white">Kết quả chấm đáp án</h3>
+        <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">Nguồn điểm: {presentation.scoreSourceLabel}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`rounded-full px-3 py-1 text-xs font-bold ${grading.isCorrect === true
+            ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300"
+            : grading.isCorrect === false ? "bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300"
+            : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"}`}>
+            {formatPreliminaryResult(grading.isCorrect)}
+          </span>
+          <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 text-xs font-bold text-slate-700 dark:text-slate-300">
+            {formatAwardedScore(displayedAwardedScore, displayedMaxScore)}
+          </span>
+        </div>
+        <p className="text-xs text-slate-500 dark:text-slate-400">Điểm câu hỏi: thang 10. Chỉ số chất lượng lập luận: thang 100, không cộng vào điểm bài tập.</p>
+        {assignmentContribution && <p className="text-xs text-slate-500 dark:text-slate-400">Đóng góp vào tổng bài (thang 10): {assignmentContribution.awardedScore ?? "Chưa chấm"} / {assignmentContribution.maxScore} điểm. Mỗi câu có trọng số bằng nhau.</p>}
+        {presentation.needsReview && (
+          <div role="status" className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 p-3 text-sm text-amber-900 dark:text-amber-200">
+            <p className="font-bold">{presentation.pendingTeacher ? "Đang chờ giáo viên xem xét" : "Cần giáo viên xem xét"}</p>
+            <p>{presentation.reviewExplanation}</p>
+          </div>
+        )}
+      </section>
+
+      {/* TIER 2: PHÂN TÍCH LẬP LUẬN (separate from score) */}
       <div className="rounded-3xl bg-white dark:bg-[#0f172a] p-6 sm:p-7 shadow-xs border border-slate-200/80 dark:border-slate-800 space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
           <div className="flex items-center gap-2.5">
@@ -322,7 +342,7 @@ export function AttemptFeedbackHierarchy({
               2
             </span>
             <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
-              AI Phân Tích & Chẩn Đoán Tư Duy (AI Reasoning)
+              {presentation.isAI ? "AI Phân Tích & Chẩn Đoán Tư Duy" : "Phân tích lập luận & Nhận xét"}
             </h3>
           </div>
           {analysis?.qualityBand && (
@@ -340,21 +360,6 @@ export function AttemptFeedbackHierarchy({
               Bậc tư duy: {formatQualityBand(analysis.qualityBand)}
             </span>
           )}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <span className={`rounded-full px-3 py-1 text-xs font-bold ${
-            grading.isCorrect === true
-              ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300"
-              : grading.isCorrect === false
-              ? "bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300"
-              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
-          }`}>
-            {formatPreliminaryResult(grading.isCorrect)}
-          </span>
-          <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 text-xs font-bold text-slate-700 dark:text-slate-300">
-            {formatAwardedScore(displayedAwardedScore, displayedMaxScore)}
-          </span>
         </div>
 
         {/* Graceful Degradation / Fallback Notice */}
@@ -391,9 +396,9 @@ export function AttemptFeedbackHierarchy({
               )}
               {analysis.reasoningQuality !== null && analysis.reasoningQuality !== undefined && (
                 <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-4 border border-slate-100 dark:border-slate-700/60">
-                  <p className="text-xs font-medium text-slate-400">Chất lượng lập luận</p>
+                  <p className="text-xs font-medium text-slate-400">Chỉ số chất lượng lập luận (không phải điểm bài)</p>
                   <p className="mt-1 text-sm font-black text-indigo-600 dark:text-indigo-400">
-                    {analysis.reasoningQuality} / 100 điểm
+                    {analysis.reasoningQuality} / 100
                   </p>
                 </div>
               )}
@@ -401,17 +406,27 @@ export function AttemptFeedbackHierarchy({
 
             <div className="rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/50 p-4 border border-indigo-200/60 dark:border-indigo-800">
               <p className="text-xs font-extrabold text-indigo-900 dark:text-indigo-300 uppercase tracking-wider">
-                Nhận xét từ AI
+                {presentation.feedbackLabel}
               </p>
               <div className="mt-1 text-sm text-indigo-950 dark:text-indigo-200 leading-relaxed font-medium">
-                <RichMathText content={analysis.feedback} />
+                <RichMathText content={normalizeAITextLineBreaks(analysis.feedback)} />
               </div>
             </div>
 
-            {!scoreAndFeedbackOnly && analysis.missingSteps && analysis.missingSteps.length > 0 && (
+            {analysis.reasoningVerdict && (
+              <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                Kết luận về lập luận: {analysis.reasoningVerdict === "Valid" ? "Hợp lệ" : analysis.reasoningVerdict === "Invalid" ? "Có lỗi logic cần kiểm tra" : "Chưa đủ chắc chắn"}
+              </p>
+            )}
+
+            {presentation.hasReasoningConcerns && analysis.errorType && !["None", "NONE", "NoError"].includes(analysis.errorType) && (
+              <p className="text-sm text-rose-800 dark:text-rose-300">Loại vấn đề cần kiểm tra: {analysis.errorType}</p>
+            )}
+
+            {analysis.missingSteps && analysis.missingSteps.length > 0 && (
               <div>
                 <p className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Các bước còn thiếu hoặc cần bổ sung:
+                  Các điểm cần kiểm tra hoặc làm rõ:
                 </p>
                 <ul className="list-inside list-disc space-y-1 text-sm text-slate-600 dark:text-slate-400">
                   {analysis.missingSteps.map((step, idx) => (
@@ -423,9 +438,9 @@ export function AttemptFeedbackHierarchy({
               </div>
             )}
 
-            {!scoreAndFeedbackOnly && analysis.misconception && (
+            {analysis.misconception && (
               <div className="rounded-2xl bg-rose-50 dark:bg-rose-950/40 p-4 text-xs text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
-                <span className="font-bold">Quan niệm sai lầm nhận diện: </span>
+                <span className="font-bold">Vấn đề trong lập luận cần đối chiếu: </span>
                 <RichMathText content={analysis.misconception} />
               </div>
             )}
@@ -446,7 +461,7 @@ export function AttemptFeedbackHierarchy({
                   )}
                 </div>
                 <div className="text-sm text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-wrap pt-1 font-medium">
-                  <RichMathText content={analysis.aiSolution} />
+                  <RichMathText content={normalizeAITextLineBreaks(analysis.aiSolution)} />
                 </div>
               </div>
             )}
@@ -508,10 +523,10 @@ export function AttemptFeedbackHierarchy({
         {/* Action Buttons: Retry AI & Review Request / Dispute */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
           <div className="flex items-center gap-2">
-            {feedbackData.status === "AnalysisFailed" && retryQuota?.canRetry && (
+            {actions.showRetryAI && !actions.retryExhausted && retryQuota && (
               <button
                 type="button"
-                disabled={cooldownSeconds > 0 || isRetryingAI}
+                disabled={!actions.canRetryAI || isRetryingAI}
                 onClick={handleRetryAI}
                 className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold border transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-800 dark:text-rose-200 border-rose-300 dark:border-rose-700"
               >
@@ -526,7 +541,7 @@ export function AttemptFeedbackHierarchy({
               </button>
             )}
 
-            {feedbackData.status === "AnalysisFailed" && !retryQuota?.canRetry && (
+            {actions.retryExhausted && (
               <span className="text-xs font-semibold text-rose-500 dark:text-rose-400">
                 ⚠️ Đã hết lượt kích hoạt chấm lại AI. Vui lòng liên hệ giáo viên để được hỗ trợ.
               </span>
@@ -537,15 +552,18 @@ export function AttemptFeedbackHierarchy({
             )}
           </div>
 
-          {!reviewRequest && (
+          {(actions.canRequestTeacherReview || actions.canReportQuestion) && (
             <div className="flex items-center gap-2">
+              {actions.canRequestTeacherReview && (
               <button
                 type="button"
                 onClick={() => setIsReviewModalOpen(true)}
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border border-purple-500/40 text-purple-600 dark:text-purple-300 hover:bg-purple-500/10 transition-colors cursor-pointer"
               >
-                <span>🙋</span> Yêu cầu xem xét kết quả AI
+                <span>🙋</span> Yêu cầu giáo viên xem xét lại kết quả
               </button>
+              )}
+              {actions.canReportQuestion && (
               <button
                 type="button"
                 onClick={() => setIsDisputeModalOpen(true)}
@@ -553,6 +571,7 @@ export function AttemptFeedbackHierarchy({
               >
                 <span>🚩</span> Báo cáo đề bài bị sai
               </button>
+              )}
             </div>
           )}
         </div>
@@ -673,8 +692,8 @@ export function AttemptFeedbackHierarchy({
               </span>
               <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
                 {teacherFinalEvaluation.isApprovedAsIs
-                  ? "Giáo Viên Đã Phê Duyệt Kết Quả AI (Teacher Approved)"
-                  : "Đánh Giá Chính Thức Của Giáo Viên (Teacher Final Evaluation)"}
+                  ? "Giáo viên đã xác nhận kết quả câu hỏi"
+                  : "Giáo viên đã chấm và điều chỉnh câu hỏi"}
               </h3>
             </div>
             <span className={`text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border ${
@@ -683,8 +702,8 @@ export function AttemptFeedbackHierarchy({
                 : "text-purple-600 dark:text-purple-300 bg-purple-500/10 border-purple-500/30"
             }`}>
               {teacherFinalEvaluation.isApprovedAsIs
-                ? "✓ Đã duyệt kết quả AI"
-                : "Kết quả chấm đè chính thức"}
+                ? "✓ Đã xác nhận câu này"
+                : "Đã điều chỉnh câu này"}
             </span>
           </div>
 
@@ -692,7 +711,7 @@ export function AttemptFeedbackHierarchy({
             <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/60 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
               <div>
                 <span className="text-xs text-slate-500 dark:text-slate-400 block">
-                  {teacherFinalEvaluation.isApprovedAsIs ? "Điểm số chính thức (được xác nhận):" : "Điểm số sau khi giáo viên chấm đè:"}
+                  {teacherFinalEvaluation.isApprovedAsIs ? "Điểm câu hỏi được giáo viên xác nhận (thang 10):" : "Điểm câu hỏi sau khi giáo viên điều chỉnh (thang 10):"}
                 </span>
                 <span className="text-xl font-black text-slate-900 dark:text-white">
                   {toDisplayedScore(teacherFinalEvaluation.teacherScore ?? grading.awardedScore) ?? "Chưa chấm"} / {displayedMaxScore}
@@ -717,6 +736,7 @@ export function AttemptFeedbackHierarchy({
               </p>
             )}
 
+            {teacherFinalEvaluation.rubricGrade && <RubricGradeView grade={teacherFinalEvaluation.rubricGrade} />}
             {(teacherFinalEvaluation.teacherFeedback || teacherFinalEvaluation.teacherReviewNote) && (
               <div className="rounded-xl bg-white dark:bg-slate-800/60 p-4 border border-slate-200 dark:border-slate-700">
                 <span className="text-xs font-bold text-slate-400 block mb-1 uppercase tracking-wider">

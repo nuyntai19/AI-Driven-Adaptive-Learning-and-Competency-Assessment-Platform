@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using EduTwin.BLL.AssessmentAndReasoning.Retry;
+using EduTwin.BLL.AssessmentAndReasoning.Processing;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.IdentityAndTenancy;
@@ -158,6 +159,44 @@ public sealed class RetryAttemptAIAnalysisUseCaseTests
         await context.SaveChangesAsync();
 
         return (attempt, job);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExecuteAsync_FallbackRetry_KeepsSubmissionAndEvidence_RejectsTeacherReviewed(bool reviewed)
+    {
+        await using var context = CreateContext();
+        var (attempt, job) = await SeedAttemptWithJobAsync(context, AIJobStatus.FallbackCompleted);
+        attempt.Status = AttemptStatus.NeedsTeacherReview;
+        var fallback = new RuleBasedFallbackBuilder().Build(new RuleBasedFallbackInput(_centerId,
+            attempt.AttemptId, true, 1m, false, "vi", FixedNow.UtcDateTime));
+        if (reviewed) fallback.ReviewDecision = TeacherReviewDecision.Approved;
+        context.ReasoningAnalyses.Add(fallback);
+        job.LeaseOwner = "old-worker"; job.LeaseUntil = FixedNow.UtcDateTime.AddMinutes(-1);
+        job.CompletedAt = FixedNow.UtcDateTime.AddMinutes(-1);
+        await context.SaveChangesAsync();
+        var result = await new RetryAttemptAIAnalysisUseCase(context, _tenantContext.Object, _guard.Object,
+            _timeProvider.Object).ExecuteAsync(attempt.AttemptId, CancellationToken.None);
+        Assert.Equal(!reviewed, result.IsSuccess);
+        Assert.Single(context.Attempts); Assert.Single(context.ReasoningAnalyses);
+        if (reviewed) Assert.Equal("RETRY_NOT_ELIGIBLE", result.ErrorCode);
+        else { Assert.Equal(AIJobStatus.Pending, job.Status); Assert.Null(job.LeaseOwner);
+            Assert.Null(job.LeaseUntil); Assert.Null(job.CompletedAt); Assert.Equal(1, attempt.ManualRetryCount); }
+    }
+
+    [Theory]
+    [InlineData(2, 20, "RETRY_COOLDOWN_ACTIVE")]
+    [InlineData(3, 60, "RETRY_QUOTA_EXCEEDED")]
+    public async Task ExecuteAsync_RetryLimits_ReturnDistinctErrors(int used, int seconds, string error)
+    {
+        await using var context = CreateContext();
+        var (attempt, _) = await SeedAttemptWithJobAsync(context, AIJobStatus.FailedTerminal);
+        attempt.ManualRetryCount = (byte)used; attempt.LastManualRetryAt = FixedNow.UtcDateTime.AddSeconds(-seconds);
+        await context.SaveChangesAsync();
+        var result = await new RetryAttemptAIAnalysisUseCase(context, _tenantContext.Object, _guard.Object,
+            _timeProvider.Object).ExecuteAsync(attempt.AttemptId, CancellationToken.None);
+        Assert.Equal(error, result.ErrorCode); Assert.Equal(used, attempt.ManualRetryCount);
     }
 
     private EduTwinDbContext CreateContext()

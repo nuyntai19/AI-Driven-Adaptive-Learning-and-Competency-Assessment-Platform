@@ -110,6 +110,66 @@ public sealed class GeminiOptionsTests
         Assert.Equal("key4", allKeys[3]);
     }
 
+    [Fact]
+    public void GeminiOptions_JsonList_PreservesSevenKeysAndTakesPrecedenceOverLegacy()
+    {
+        var options = CreateValidOptions();
+        options.ListKey = "[\"key-1\",\"key-2\",\"key-3\",\"key-4\",\"key-5\",\"key-6\",\"key-7\"]";
+        options.BackupKeys = "legacy-backup";
+        options.BackupKeys_2 = "legacy-backup-2";
+
+        options.Validate();
+        Assert.Equal(Enumerable.Range(1, 7).Select(i => $"key-{i}"), options.GetAllApiKeys());
+    }
+
+    [Fact]
+    public void GeminiOptions_JsonList_TrimsAndDeduplicatesWithoutReordering()
+    {
+        var options = CreateValidOptions();
+        options.ListKey = "[\" key-2 \",\"key-1\",\"key-2\",\"key-3\"]";
+
+        Assert.Equal(new[] { "key-2", "key-1", "key-3" }, options.GetAllApiKeys());
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  ")]
+    public void GeminiOptions_AbsentJsonList_PreservesLegacyKeys(string? listKey)
+    {
+        var options = CreateValidOptions();
+        options.ListKey = listKey;
+
+        Assert.Equal(new[] { "test-api-key" }, options.GetAllApiKeys());
+    }
+
+    [Fact]
+    public void GeminiOptions_ExplicitEmptyList_DoesNotSilentlyUseLegacyKey()
+    {
+        var options = CreateValidOptions();
+        options.ListKey = "[]";
+
+        Assert.Empty(options.GetAllApiKeys());
+        AssertSanitizedConfigurationError(Assert.Throws<GeminiAdapterException>(options.Validate), options.ApiKey!);
+    }
+
+    [Theory]
+    [InlineData("[JSON_SECRET_MUST_NOT_LEAK]")]
+    [InlineData("{\"key\":\"JSON_SECRET_MUST_NOT_LEAK\"}")]
+    [InlineData("\"JSON_SECRET_MUST_NOT_LEAK\"")]
+    [InlineData("null")]
+    [InlineData("[null]")]
+    [InlineData("[123]")]
+    [InlineData("[\"JSON_SECRET_MUST_NOT_LEAK\",\"\"]")]
+    [InlineData("[\"JSON_SECRET_MUST_NOT_LEAK\",\"  \"]")]
+    public void GeminiOptions_InvalidJsonList_FailsWithSanitizedError(string listKey)
+    {
+        var options = CreateValidOptions();
+        options.ListKey = listKey;
+
+        AssertSanitizedConfigurationError(Assert.Throws<GeminiAdapterException>(options.Validate), "JSON_SECRET_MUST_NOT_LEAK");
+    }
+
     private static GeminiOptions CreateValidOptions() =>
         new()
         {

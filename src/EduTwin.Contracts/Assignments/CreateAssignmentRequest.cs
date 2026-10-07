@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 
 namespace EduTwin.Contracts.Assignments;
 
@@ -36,4 +37,8 @@ public class CreateAssignmentRequest
     /// Null hoặc rỗng hợp lệ khi TargetMode == WholeClass (server ignore).
     /// </summary>
     public List<string>? StudentIds { get; set; }
+    public bool AllowGradeMismatch { get; set; }
+
+    [MaxLength(500)]
+    public string? GradeMismatchReason { get; set; }
 }

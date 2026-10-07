@@ -30,7 +30,7 @@ using Xunit;
 namespace EduTwin.BLL.Tests.AssessmentAndReasoning.Override;
 
 [Collection("MySqlDatabase")]
-public sealed class TeacherOverrideMySqlTests
+public sealed partial class TeacherOverrideMySqlTests
 {
     private const string AdminConnectionVariable = "EDUTWIN_TEST_MYSQL_ADMIN_CONNECTION_STRING";
     private static readonly DateTime UtcNow = new(2026, 9, 10, 10, 0, 0, DateTimeKind.Utc);
@@ -245,7 +245,7 @@ public sealed class TeacherOverrideMySqlTests
     }
 
     [MySqlIntegrationFact]
-    public async Task ExecuteAsync_CenterManagerWithoutTeacherProfile_PersistsUserActor()
+    public async Task ExecuteAsync_CenterManagerWithoutTeacherProfile_IsForbiddenWithoutMutation()
     {
         await using var database = await MySqlTestDatabase.CreateAsync();
         var centerId = Guid.NewGuid();
@@ -298,12 +298,15 @@ public sealed class TeacherOverrideMySqlTests
             },
             CancellationToken.None);
 
-        Assert.Equal(TeacherOverrideStatus.Success, result.Status);
+        Assert.Equal(TeacherOverrideStatus.Forbidden, result.Status);
 
         await using var verifyContext = CreateContext(database.ConnectionString, tenant);
         var analysis = await verifyContext.ReasoningAnalyses
             .SingleAsync(item => item.CenterId == centerId && item.AnalysisId == 2001);
-        Assert.Equal(managerId, analysis.OverriddenByUserId);
+        Assert.Null(analysis.OverriddenByUserId);
+        Assert.Equal(0u, analysis.OverrideVersion);
+        Assert.False(await verifyContext.EvidenceAssessments.AnyAsync(item =>
+            item.CenterId == centerId && item.SourceType == EvidenceSourceType.TeacherOverride));
         Assert.False(await verifyContext.Teachers.AnyAsync(item => item.TeacherId == managerId));
     }
 

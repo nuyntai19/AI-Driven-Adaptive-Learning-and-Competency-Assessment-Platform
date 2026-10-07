@@ -7,8 +7,10 @@ using System.Threading.Tasks;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using EduTwin.BLL.AssessmentAndReasoning.Evidence;
+using EduTwin.BLL.AssessmentAndReasoning.Feedback;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
+using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.DAL.AssessmentAndReasoning;
 using EduTwin.DAL.Persistence;
@@ -47,8 +49,18 @@ public sealed class CreateStudentReviewRequestUseCase : ICreateStudentReviewRequ
             return CreateStudentReviewRequestResult.ValidationFailed("Lý do yêu cầu xem xét không được để trống.");
         }
 
-        var comment = !string.IsNullOrWhiteSpace(request.DisputeCategory) && !rawComment.StartsWith($"[{request.DisputeCategory}]", StringComparison.OrdinalIgnoreCase)
-            ? $"[{request.DisputeCategory}] {rawComment.Trim()}"
+        var category = request.DisputeCategory?.Trim().ToUpperInvariant();
+        string[] categories = ["DEFECTIVE_QUESTION", "QUESTION_TYPO", "DEFECTIVE_QUESTION_WRONG_CONTENT",
+            "DEFECTIVE_QUESTION_WRONG_OPTIONS", "DEFECTIVE_QUESTION_TYPO_LATEX", "DEFECTIVE_QUESTION_OTHER"];
+        if (!string.IsNullOrEmpty(category) && !categories.Contains(category))
+        {
+            return CreateStudentReviewRequestResult.ValidationFailed("Loại báo cáo đề bài không hợp lệ.");
+        }
+        // Keep older clients which sent a category prefix without the DTO field compatible.
+        var isQuestionReport = !string.IsNullOrEmpty(category) || categories.Any(value =>
+            rawComment.StartsWith($"[{value}]", StringComparison.OrdinalIgnoreCase));
+        var comment = !string.IsNullOrEmpty(category) && !rawComment.StartsWith($"[{category}]", StringComparison.OrdinalIgnoreCase)
+            ? $"[{category}] {rawComment.Trim()}"
             : rawComment.Trim();
 
         if (comment.Length > 1000)
@@ -93,6 +105,27 @@ public sealed class CreateStudentReviewRequestUseCase : ICreateStudentReviewRequ
             return CreateStudentReviewRequestResult.Success(Map(existingRequest));
         }
 
+        var analysis = await _dbContext.ReasoningAnalyses
+            .FirstOrDefaultAsync(ra => ra.CenterId == centerId && ra.AttemptId == attemptId, cancellationToken);
+        var assignmentApproved = attempt.AssignmentId.HasValue &&
+            await _dbContext.StudentAssignmentProgresses.AnyAsync(p =>
+                p.CenterId == centerId && p.AssignmentId == attempt.AssignmentId &&
+                p.StudentId == attempt.StudentId && !p.IsDeleted &&
+                p.TeacherFinalReviewStatus == TeacherFinalReviewStatus.Approved, cancellationToken);
+        var voided = attempt.AssignmentId.HasValue &&
+            await _dbContext.AssignmentQuestions.AnyAsync(q =>
+                q.CenterId == centerId && q.AssignmentId == attempt.AssignmentId &&
+                q.QuestionId == attempt.QuestionId && q.IsVoided, cancellationToken);
+        var allowed = isQuestionReport
+            ? AttemptFeedbackActionPolicy.CanReportQuestion(attempt, false, voided)
+            : AttemptFeedbackActionPolicy.CanRequestReview(attempt, analysis, assignmentApproved, false, voided);
+        if (!allowed)
+        {
+            return CreateStudentReviewRequestResult.ValidationFailed(isQuestionReport
+                ? "Không thể báo cáo câu đã hủy hoặc bài đang phân tích. Vui lòng đợi kết quả."
+                : "Chỉ có thể yêu cầu xem xét lại sau khi giáo viên đã chấm hoặc duyệt kết quả.");
+        }
+
         var now = _timeProvider.GetUtcNow().UtcDateTime;
         var reviewRequest = new StudentReviewRequest
         {
@@ -110,10 +143,6 @@ public sealed class CreateStudentReviewRequestUseCase : ICreateStudentReviewRequ
         _dbContext.StudentReviewRequests.Add(reviewRequest);
 
         // Flag the mutable analysis/attempt as requiring teacher review.
-        var analysis = await _dbContext.ReasoningAnalyses
-            .Where(ra => ra.CenterId == centerId && ra.AttemptId == attemptId)
-            .FirstOrDefaultAsync(cancellationToken);
-
         if (analysis != null)
         {
             analysis.NeedsTeacherReview = true;
@@ -156,7 +185,15 @@ public sealed class CreateStudentReviewRequestUseCase : ICreateStudentReviewRequ
             });
         }
 
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            _dbContext.ChangeTracker.Clear();
+            return CreateStudentReviewRequestResult.ValidationFailed("Kết quả vừa thay đổi. Vui lòng tải lại trước khi gửi yêu cầu.");
+        }
 
         return CreateStudentReviewRequestResult.Success(Map(reviewRequest));
     }

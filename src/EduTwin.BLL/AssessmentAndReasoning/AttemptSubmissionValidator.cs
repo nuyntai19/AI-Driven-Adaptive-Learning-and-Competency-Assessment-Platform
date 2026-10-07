@@ -161,6 +161,11 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
                 return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
             }
 
+            if (assignment.Status != AssignmentStatus.Published)
+            {
+                return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
+            }
+
             var progress = await _dbContext.StudentAssignmentProgresses
                 .AsNoTracking()
                 .SingleOrDefaultAsync(
@@ -170,14 +175,41 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
                         candidate.StudentId == studentId,
                     cancellationToken);
 
-            var now = _timeProvider.GetUtcNow().UtcDateTime;
-            if (assignment.DueAt.HasValue && now > assignment.DueAt.Value.AddSeconds(120))
+            if (progress != null && progress.Status == ProgressStatus.Completed)
             {
                 return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
             }
+
+            var now = _timeProvider.GetUtcNow().UtcDateTime;
+
+            // Enforce exact authoritative expiration without arbitrary grace period
+            if (assignment.TimeLimitMinutes.HasValue && assignment.TimeLimitMinutes.Value > 0)
+            {
+                if (progress == null || progress.StartedAt == null)
+                {
+                    return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
+                }
+
+                var timeLimitExpiresAt = progress.StartedAt.Value.AddMinutes(assignment.TimeLimitMinutes.Value);
+                var effectiveExpiresAt = assignment.DueAt.HasValue && assignment.DueAt.Value < timeLimitExpiresAt
+                    ? assignment.DueAt.Value
+                    : timeLimitExpiresAt;
+
+                if (now > effectiveExpiresAt)
+                {
+                    return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
+                }
+            }
+            else if (assignment.DueAt.HasValue)
+            {
+                if (now > assignment.DueAt.Value)
+                {
+                    return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
+                }
+            }
         }
 
-        var isVoidedQuestion = request.AssignmentId.HasValue && question.Status == QuestionStatus.Archived;
+        var isVoidedQuestion = assignmentQuestion?.IsVoided == true;
 
         if (!request.Skipped && !isVoidedQuestion && question.ReasoningRequired && string.IsNullOrWhiteSpace(request.ReasoningText))
         {

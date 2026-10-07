@@ -7,12 +7,14 @@ namespace EduTwin.Contracts.CurriculumAndQuestions;
 /// </summary>
 public class QuestionDto
 {
+    public string Visibility { get; set; } = "Private";
     public string QuestionId { get; set; } = null!;
     public string SubjectId { get; set; } = null!;
     public string PrimaryTopicNodeId { get; set; } = null!;
     public string CreatedByTeacherId { get; set; } = null!;
     public string QuestionType { get; set; } = null!;
     public byte Difficulty { get; set; }
+    public byte? GradeLevel { get; set; }
     public string QuestionText { get; set; } = null!;
     public string CorrectAnswer { get; set; } = null!;
     public string Solution { get; set; } = null!;

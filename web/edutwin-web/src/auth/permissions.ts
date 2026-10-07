@@ -15,6 +15,7 @@ export const permissions = {
   classesRead: "organization.classes.read",
   classesCreate: "organization.classes.create",
   classesUpdate: "organization.classes.update",
+  classesDelete: "organization.classes.delete",
   classesManageMembers: "organization.classes.manage_members",
   subjectsRead: "knowledge.subjects.read",
   subjectsCreate: "knowledge.subjects.create",

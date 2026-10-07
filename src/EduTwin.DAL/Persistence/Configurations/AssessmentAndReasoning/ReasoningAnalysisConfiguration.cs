@@ -72,11 +72,15 @@ public class ReasoningAnalysisConfiguration : IEntityTypeConfiguration<Reasoning
             .IsRequired();
 
         builder.Property(r => r.ModelName).HasColumnName("model_name").HasColumnType("varchar(100)");
+        builder.Property(r => r.AnalysisProfileVersion).HasColumnName("analysis_profile_version").HasColumnType("varchar(200)");
         builder.Property(r => r.SolutionType)
             .HasColumnName("solution_type")
             .HasColumnType("varchar(32)")
             .HasMaxLength(32);
         builder.Property(r => r.AiSolution).HasColumnName("ai_solution").HasColumnType("longtext");
+        builder.Property(r => r.AnswerAssessment).HasColumnName("answer_assessment").HasColumnType("varchar(16)");
+        builder.Property(r => r.ReasoningVerdict).HasColumnName("reasoning_verdict").HasColumnType("varchar(16)");
+        builder.Property(r => r.FeedbackOrigin).HasColumnName("feedback_origin").HasColumnType("varchar(24)").HasDefaultValue("LegacySystem");
         builder.Property(r => r.OverrideReasoningQuality).HasColumnName("override_reasoning_quality").HasColumnType("decimal(5,2)");
 
         builder.Property(r => r.OverrideErrorType)

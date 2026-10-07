@@ -13,10 +13,15 @@ public class StudentAssignmentDetailDto
     public DateTime? DueAt { get; set; }
     public int? TimeLimitMinutes { get; set; }
     public DateTime? StartedAt { get; set; }
+    public bool IsSubmitted { get; set; }
+    public DateTime? SubmittedAt { get; set; }
+    public int? ElapsedSeconds { get; set; }
     public DateTime? EffectiveExpiresAt { get; set; }
     public int? RemainingSeconds { get; set; }
     public StudentAssignmentProgressDto Progress { get; set; } = new();
     public List<StudentQuestionDto> Questions { get; set; } = new();
     public bool CanRetake { get; set; }
     public AssignmentResultSummaryDto? Summary { get; set; }
+    public List<AssignmentDraftAnswerItemDto>? DraftAnswers { get; set; }
+    public int? DraftVersion { get; set; }
 }

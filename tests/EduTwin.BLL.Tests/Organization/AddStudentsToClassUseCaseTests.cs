@@ -338,6 +338,21 @@ public class AddStudentsToClassUseCaseTests
     }
 
     [Fact]
+    public async Task Request_ExceedsMaxBatchSize_ReturnsValidationFailed_NoDatabaseCall()
+    {
+        var context = CreateContext(Guid.NewGuid().ToString(), Guid.NewGuid());
+        var sut = new AddStudentsToClassUseCase(context, _mockTenantContext.Object, _mockTimeProvider.Object, _mockOwnershipGuard.Object, _mockLogger.Object);
+        var ids = Enumerable.Range(0, AddStudentsToClassUseCase.MaxBatchSize + 1).Select(_ => Guid.NewGuid()).ToArray();
+        var result = await sut.ExecuteAsync(Guid.NewGuid(), new AddStudentsToClassRequest { StudentIds = ids });
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+        _mockOwnershipGuard.Verify(g => g.CheckClassAccessAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.DoesNotContain(context.ChangeTracker.Entries(), e => e.State == EntityState.Added || e.State == EntityState.Modified || e.State == EntityState.Deleted);
+        Assert.Equal(0, await context.ClassStudents.CountAsync());
+    }
+
+    [Fact]
     public async Task InvalidUserStatus_ReturnsResourceNotFound_NoMutation()
     {
         var centerId = _mockTenantContext.Object.CenterId!.Value;
@@ -442,5 +457,184 @@ public class AddStudentsToClassUseCaseTests
         Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
         Assert.DoesNotContain(context.ChangeTracker.Entries(), e => e.State == EntityState.Added || e.State == EntityState.Modified || e.State == EntityState.Deleted);
         Assert.Equal(0, await context.ClassStudents.CountAsync());
+    }
+
+    [Fact]
+    public async Task AddStudents_MismatchedGradeWithoutAllowGradeMismatch_FailsWithInvalidStateTransition()
+    {
+        var centerId = _mockTenantContext.Object.CenterId!.Value;
+        var classId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
+        var context = CreateContext(Guid.NewGuid().ToString(), centerId);
+
+        await SeedBaseDataAsync(context, centerId, classId, new List<Guid> { studentId });
+        var targetClass = await context.Classes.FirstAsync(c => c.ClassId == classId);
+        targetClass.GradeLevel = 12; // Class is Grade 12
+        var student = await context.Students.FirstAsync(s => s.StudentId == studentId);
+        student.GradeLevel = 11; // Student is Grade 11
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        var sut = new AddStudentsToClassUseCase(context, _mockTenantContext.Object, _mockTimeProvider.Object, _mockOwnershipGuard.Object, _mockLogger.Object);
+        var request = new AddStudentsToClassRequest
+        {
+            StudentIds = new[] { studentId },
+            AllowGradeMismatch = false
+        };
+
+        var result = await sut.ExecuteAsync(classId, request);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.InvalidStateTransition, result.ErrorCode);
+        Assert.Contains("Học sinh khác khối 12", result.ErrorMessage);
+        Assert.Equal(0, await context.ClassStudents.CountAsync());
+    }
+
+    [Fact]
+    public async Task AddStudents_MismatchedGradeWithAllowGradeMismatchAndReason_Succeeds()
+    {
+        var centerId = _mockTenantContext.Object.CenterId!.Value;
+        var classId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
+        var context = CreateContext(Guid.NewGuid().ToString(), centerId);
+
+        await SeedBaseDataAsync(context, centerId, classId, new List<Guid> { studentId });
+        var targetClass = await context.Classes.FirstAsync(c => c.ClassId == classId);
+        targetClass.GradeLevel = 12; // Class is Grade 12
+        var student = await context.Students.FirstAsync(s => s.StudentId == studentId);
+        student.GradeLevel = 11; // Student is Grade 11
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        var sut = new AddStudentsToClassUseCase(context, _mockTenantContext.Object, _mockTimeProvider.Object, _mockOwnershipGuard.Object, _mockLogger.Object);
+        var request = new AddStudentsToClassRequest
+        {
+            StudentIds = new[] { studentId },
+            AllowGradeMismatch = true,
+            GradeMismatchReason = "Học sinh học vượt cấp theo xác nhận của phụ huynh và trung tâm."
+        };
+
+        var result = await sut.ExecuteAsync(classId, request);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, result.Data!.AddedCount);
+        var membership = await context.ClassStudents.FirstOrDefaultAsync(cs => cs.ClassId == classId && cs.StudentId == studentId);
+        Assert.NotNull(membership);
+        Assert.Equal(ClassStudentStatus.Active, membership.Status);
+        Assert.Equal("Học sinh học vượt cấp theo xác nhận của phụ huynh và trung tâm.", membership.GradeMismatchReason);
+        Assert.Equal(_mockTenantContext.Object.UserId!.Value, membership.ExceptionApprovedBy);
+        Assert.NotNull(membership.ExceptionApprovedAt);
+    }
+
+    [Fact]
+    public async Task AddStudents_MatchingGrade_SucceedsWithoutAllowGradeMismatch()
+    {
+        var centerId = _mockTenantContext.Object.CenterId!.Value;
+        var classId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
+        var context = CreateContext(Guid.NewGuid().ToString(), centerId);
+
+        await SeedBaseDataAsync(context, centerId, classId, new List<Guid> { studentId });
+        var targetClass = await context.Classes.FirstAsync(c => c.ClassId == classId);
+        targetClass.GradeLevel = 10; // Class is Grade 10
+        var student = await context.Students.FirstAsync(s => s.StudentId == studentId);
+        student.GradeLevel = 10; // Student is Grade 10
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        var sut = new AddStudentsToClassUseCase(context, _mockTenantContext.Object, _mockTimeProvider.Object, _mockOwnershipGuard.Object, _mockLogger.Object);
+        var request = new AddStudentsToClassRequest
+        {
+            StudentIds = new[] { studentId }
+        };
+
+        var result = await sut.ExecuteAsync(classId, request);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, result.Data!.AddedCount);
+        var membership = await context.ClassStudents.FirstOrDefaultAsync(cs => cs.ClassId == classId && cs.StudentId == studentId);
+        Assert.NotNull(membership);
+        Assert.Equal(ClassStudentStatus.Active, membership.Status);
+        Assert.Null(membership.GradeMismatchReason);
+        Assert.Null(membership.ExceptionApprovedBy);
+        Assert.Null(membership.ExceptionApprovedAt);
+    }
+
+    [Fact]
+    public async Task AddStudents_GradeMismatchReasonExceeds500Chars_ReturnsValidationFailed()
+    {
+        var centerId = _mockTenantContext.Object.CenterId!.Value;
+        var classId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
+        var context = CreateContext(Guid.NewGuid().ToString(), centerId);
+
+        await SeedBaseDataAsync(context, centerId, classId, new List<Guid> { studentId });
+        var targetClass = await context.Classes.FirstAsync(c => c.ClassId == classId);
+        targetClass.GradeLevel = 12;
+        var student = await context.Students.FirstAsync(s => s.StudentId == studentId);
+        student.GradeLevel = 11;
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        var sut = new AddStudentsToClassUseCase(context, _mockTenantContext.Object, _mockTimeProvider.Object, _mockOwnershipGuard.Object, _mockLogger.Object);
+        var request = new AddStudentsToClassRequest
+        {
+            StudentIds = new[] { studentId },
+            AllowGradeMismatch = true,
+            GradeMismatchReason = new string('A', 501)
+        };
+
+        var result = await sut.ExecuteAsync(classId, request);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task AddStudents_ReactivateRemovedMemberWithGradeMismatch_PersistsExceptionMetadata()
+    {
+        var centerId = _mockTenantContext.Object.CenterId!.Value;
+        var classId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
+        var context = CreateContext(Guid.NewGuid().ToString(), centerId);
+
+        await SeedBaseDataAsync(context, centerId, classId, new List<Guid> { studentId });
+        var targetClass = await context.Classes.FirstAsync(c => c.ClassId == classId);
+        targetClass.GradeLevel = 12;
+        var student = await context.Students.FirstAsync(s => s.StudentId == studentId);
+        student.GradeLevel = 11;
+
+        context.ClassStudents.Add(new ClassStudent
+        {
+            CenterId = centerId,
+            ClassId = classId,
+            StudentId = studentId,
+            GradeLevelAtEnrollment = 11,
+            JoinedAt = DateTime.UtcNow.AddMonths(-1),
+            Status = ClassStudentStatus.Removed,
+            RemovedAt = DateTime.UtcNow.AddDays(-5),
+            CreatedBy = Guid.NewGuid()
+        });
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        var sut = new AddStudentsToClassUseCase(context, _mockTenantContext.Object, _mockTimeProvider.Object, _mockOwnershipGuard.Object, _mockLogger.Object);
+        var request = new AddStudentsToClassRequest
+        {
+            StudentIds = new[] { studentId },
+            AllowGradeMismatch = true,
+            GradeMismatchReason = "Tái ghi danh học sinh học vượt cấp."
+        };
+
+        var result = await sut.ExecuteAsync(classId, request);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, result.Data!.AddedCount);
+        var membership = await context.ClassStudents.FirstOrDefaultAsync(cs => cs.ClassId == classId && cs.StudentId == studentId);
+        Assert.NotNull(membership);
+        Assert.Equal(ClassStudentStatus.Active, membership.Status);
+        Assert.Equal("Tái ghi danh học sinh học vượt cấp.", membership.GradeMismatchReason);
+        Assert.Equal(_mockTenantContext.Object.UserId!.Value, membership.ExceptionApprovedBy);
+        Assert.NotNull(membership.ExceptionApprovedAt);
     }
 }

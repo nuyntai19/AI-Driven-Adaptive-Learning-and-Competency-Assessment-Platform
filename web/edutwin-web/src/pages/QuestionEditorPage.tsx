@@ -32,6 +32,7 @@ import {
   type DraftStore,
 } from "./centerManagerQuestionEditorHelpers";
 import type { AnswerEditorValue } from "../components/math/answer-editor/answerEditorHelpers";
+import { MATH_EQUIVALENT_HELP } from "../utils/questionEvaluationModes";
 import { useAuthStore } from "../stores/authStore";
 import { permissions } from "../auth/permissions";
 import {
@@ -72,13 +73,14 @@ function CenterManagerQuestionEditorView() {
   const [formData, setFormData] = useState<CreateQuestionRequest>({
     teacherId: null,
     subjectId: "",
+    gradeLevel: null,
     primaryTopicNodeId: "",
     questionType: "MultipleChoice",
     difficulty: 3,
     questionText: "",
     maxScore: 1,
     estimatedTimeSeconds: 60,
-    reasoningRequired: true,
+    reasoningRequired: false,
     languageCode: "vi",
     answerEvaluationMode: "TextExact",
     options: [
@@ -146,6 +148,7 @@ function CenterManagerQuestionEditorView() {
       setFormData({
         teacherId: q.createdByTeacherId || null,
         subjectId: q.subjectId,
+        gradeLevel: q.gradeLevel ?? null,
         primaryTopicNodeId: q.primaryTopicNodeId || "",
         questionType: q.questionType,
         difficulty: q.difficulty,
@@ -294,6 +297,7 @@ function CenterManagerQuestionEditorView() {
           formData.answerEvaluationMode === "TextExact" ||
           formData.answerEvaluationMode === "NumericRational" ||
           formData.answerEvaluationMode === "Coordinate2D" ||
+          formData.answerEvaluationMode === "MathEquivalent" ||
           formData.answerEvaluationMode === "Manual"
             ? formData.answerEvaluationMode
             : "TextExact";
@@ -535,6 +539,10 @@ function CenterManagerQuestionEditorView() {
         setFormError({ message: "Vui lòng chỉ định giáo viên phụ trách câu hỏi." });
         return;
       }
+      if (!validatedPayload.gradeLevel || validatedPayload.gradeLevel < 10 || validatedPayload.gradeLevel > 12) {
+        setFormError({ message: "Vui lòng chọn khối lớp hợp lệ (Khối 10, 11 hoặc 12) cho câu hỏi mới." });
+        return;
+      }
 
       const createPayload: CreateQuestionRequest = {
         ...validatedPayload,
@@ -574,6 +582,7 @@ function CenterManagerQuestionEditorView() {
 
       const updatePayload: UpdateQuestionRequest = {
         primaryTopicNodeId: validatedPayload.primaryTopicNodeId,
+        gradeLevel: validatedPayload.gradeLevel !== undefined ? validatedPayload.gradeLevel : null,
         questionType: validatedPayload.questionType,
         difficulty: validatedPayload.difficulty,
         questionText: validatedPayload.questionText.trim(),
@@ -1028,8 +1037,8 @@ function CenterManagerQuestionEditorView() {
             </div>
           </div>
 
-          {/* Question Configuration Row: Type, Difficulty, MaxScore, EstimatedTime */}
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 border-b border-[var(--cm-border-subtle)] pb-6">
+          {/* Question Configuration Row: Type, Grade, Difficulty, MaxScore, EstimatedTime */}
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5 border-b border-[var(--cm-border-subtle)] pb-6">
             <div>
               <label htmlFor="question-type-select" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mb-1">
                 Loại câu hỏi <span className="text-rose-400">*</span>
@@ -1044,6 +1053,24 @@ function CenterManagerQuestionEditorView() {
                 <option value="MultipleChoice">Trắc nghiệm (MultipleChoice)</option>
                 <option value="ShortAnswer">Điền khuyết (ShortAnswer)</option>
                 <option value="Essay">Tự luận (Essay)</option>
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="question-grade-select" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mb-1">
+                Khối học
+              </label>
+              <select
+                id="question-grade-select"
+                disabled={isReadOnly}
+                value={formData.gradeLevel ?? ""}
+                onChange={(e) => handleInputChange("gradeLevel", e.target.value ? Number(e.target.value) : null)}
+                className="cm-select w-full text-sm"
+              >
+                <option value="">{isEditMode ? "-- Chưa phân loại --" : "-- Chọn khối lớp (bắt buộc) --"}</option>
+                <option value="10">Khối 10</option>
+                <option value="11">Khối 11</option>
+                <option value="12">Khối 12</option>
               </select>
             </div>
 
@@ -1144,6 +1171,7 @@ function CenterManagerQuestionEditorView() {
                 <option value="TextExact">TextExact - Khớp chuỗi chính xác</option>
                 <option value="NumericRational">NumericRational - Chuẩn hóa phân số & số thực</option>
                 <option value="Coordinate2D">Coordinate2D - Tọa độ 2D</option>
+                <option value="MathEquivalent">MathEquivalent - So khớp toán học giới hạn</option>
                 <option value="Manual">Manual - Chấm thủ công / AI Rubric</option>
               </select>
               <p className="mt-1.5 text-xs text-[var(--cm-text-muted)] leading-relaxed">
@@ -1151,9 +1179,11 @@ function CenterManagerQuestionEditorView() {
                   ? "Chấp nhận các biểu diễn tương đương toán học như 3/4 = 0.75 hoặc 6/8."
                   : formData.answerEvaluationMode === "Coordinate2D"
                   ? "Dành cho tọa độ 2D; chấp nhận (1,1), (1, 1), (1;1) và các thành phần số tương đương."
+                  : formData.answerEvaluationMode === "MathEquivalent"
+                  ? MATH_EQUIVALENT_HELP
                   : formData.answerEvaluationMode === "Manual"
                   ? "Dành cho câu hỏi tự luận cần đánh giá qua tiêu chí Rubric hoặc giáo viên duyệt."
-                  : "So khớp chính xác ký tự chữ hoa/thường theo chuẩn trắc nghiệm."}
+                  : "So khớp văn bản theo ký tự, không kiểm tra tương đương toán học. Với đáp án số hoặc tập hợp, hãy chọn chế độ toán phù hợp."}
               </p>
             </div>
 
@@ -1168,11 +1198,11 @@ function CenterManagerQuestionEditorView() {
                   className="h-4 w-4 rounded border-[var(--cm-border)] bg-[var(--cm-surface-subtle)] text-[var(--cm-cyan)] focus:ring-[var(--cm-cyan)]"
                 />
                 <span className="text-sm font-semibold text-[var(--cm-text)]">
-                  Bắt buộc học sinh trình bày các bước lập luận (Reasoning Required)
+                  Yêu cầu học sinh trình bày lời giải
                 </span>
               </label>
               <p className="mt-1.5 text-xs text-[var(--cm-text-muted)] pl-7">
-                Khi kích hoạt, hệ thống AI sẽ kiểm tra lập luận chi tiết của học sinh trước khi chốt năng lực kiến thức.
+                Khi bật, học sinh bắt buộc phải nhập các bước lập luận trước khi nộp bài. Mặc định tắt (chỉ nộp đáp án; nếu học sinh tự nguyện nhập lời giải thì AI vẫn phân tích và cập nhật Digital Twin).
               </p>
             </div>
           </div>
@@ -1274,6 +1304,7 @@ function CenterManagerQuestionEditorView() {
               <div className="rounded-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-subtle)] p-4">
                 <ModeAwareAnswerEditor
                   profile="authoring"
+                  variant="center-manager"
                   questionType="ShortAnswer"
                   evaluationMode={formData.answerEvaluationMode || "TextExact"}
                   value={
@@ -1318,6 +1349,7 @@ function CenterManagerQuestionEditorView() {
                 </label>
                 <ModeAwareAnswerEditor
                   profile="authoring"
+                  variant="center-manager"
                   questionType="Essay"
                   evaluationMode="Manual"
                   value={
@@ -1502,7 +1534,7 @@ function LegacyQuestionEditorPage() {
     questionText: "",
     maxScore: 1,
     estimatedTimeSeconds: 60,
-    reasoningRequired: true,
+    reasoningRequired: false,
     languageCode: "vi",
     answerEvaluationMode: "TextExact",
     options: [

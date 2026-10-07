@@ -41,7 +41,7 @@ export function TeacherPageHeader({ title, description, subtitle, eyebrow, bread
           </nav>
         )}
         {eyebrow && (
-          <span className="mb-2 inline-block rounded-md border border-[var(--th-border)] bg-[var(--th-surface-muted)] px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--th-text-secondary)] shadow-sm">
+          <span className="mb-2 inline-block rounded-full border border-teal-500/25 bg-teal-500/10 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider text-teal-700 dark:text-teal-300">
             {eyebrow}
           </span>
         )}
@@ -71,10 +71,8 @@ export function TeacherMetricCard({ label, value, icon, unit, supportingText, tr
       : "text-[var(--th-text-secondary)] font-medium";
 
   return (
-    <article className="th-surface relative overflow-hidden p-5 transition-transform hover:-translate-y-0.5">
-      {/* Neo-brutalist top accent line */}
-      <div aria-hidden="true" className="absolute inset-x-0 top-0 h-1 bg-[var(--th-terracotta)]" />
-      <div className="flex items-start justify-between gap-4 pt-1">
+    <article className="th-surface relative overflow-hidden p-5 transition-all hover:-translate-y-0.5 hover:shadow-md">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-xs font-bold uppercase tracking-wider text-[var(--th-text-muted)]">{label}</p>
           <div className="mt-2 flex items-baseline gap-1.5">
@@ -83,7 +81,7 @@ export function TeacherMetricCard({ label, value, icon, unit, supportingText, tr
           </div>
         </div>
         {icon && (
-          <span className="grid h-10 w-10 place-items-center rounded-lg border border-[var(--th-border)] bg-[var(--th-surface-muted)] text-base shadow-sm">
+          <span className="grid h-10 w-10 place-items-center rounded-xl border border-teal-500/20 bg-teal-500/10 dark:bg-teal-500/20 text-teal-700 dark:text-teal-300 text-base shadow-sm">
             {icon}
           </span>
         )}

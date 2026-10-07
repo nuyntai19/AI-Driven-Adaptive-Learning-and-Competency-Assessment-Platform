@@ -16,4 +16,8 @@ public class CreateClassRequest
     public Guid SubjectId { get; set; }
 
     public Guid TeacherId { get; set; }
+
+    [Required]
+    [Range(10, 12)]
+    public byte? GradeLevel { get; set; }
 }

@@ -38,6 +38,11 @@ public class AssignCurriculumClassesUseCase : IAssignCurriculumClassesUseCase
             return AssignCurriculumClassesResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
+        if (!isTeacher)
+        {
+            return AssignCurriculumClassesResult.Failure(ErrorCodes.ForbiddenResource);
+        }
+
         if (request.ClassIds == null || !CurriculumGuards.TryParseRowVersion(request.RowVersion, out var rowVersion))
         {
             return AssignCurriculumClassesResult.Failure(ErrorCodes.ValidationFailed);
@@ -74,19 +79,31 @@ public class AssignCurriculumClassesUseCase : IAssignCurriculumClassesUseCase
             return AssignCurriculumClassesResult.Failure(ErrorCodes.ValidationFailed);
         }
 
+        var dbClasses = new List<EduTwin.DAL.Organization.Class>();
         if (distinctClassIds.Count > 0)
         {
-            var dbClassesCount = await _dbContext.Classes
+            var classIdSet = distinctClassIds.ToHashSet();
+            var candidateClasses = await _dbContext.Classes
                 .Where(c => c.CenterId == centerId &&
                             c.SubjectId == curriculum.SubjectId &&
                             c.Status == ClassStatus.Active &&
-                            !c.IsDeleted &&
-                            distinctClassIds.Contains(c.ClassId))
-                .CountAsync(cancellationToken);
+                            !c.IsDeleted)
+                .ToListAsync(cancellationToken);
 
-            if (dbClassesCount != distinctClassIds.Count)
+            dbClasses = candidateClasses.Where(c => classIdSet.Contains(c.ClassId)).ToList();
+
+            if (dbClasses.Count != distinctClassIds.Count)
             {
                 return AssignCurriculumClassesResult.Failure(ErrorCodes.ResourceNotFound);
+            }
+
+            if (curriculum.GradeLevel.HasValue)
+            {
+                var hasMismatch = dbClasses.Any(c => c.GradeLevel.HasValue && c.GradeLevel.Value != curriculum.GradeLevel.Value);
+                if (hasMismatch)
+                {
+                    return AssignCurriculumClassesResult.Failure(ErrorCodes.InvalidStateTransition);
+                }
             }
         }
 
@@ -116,6 +133,13 @@ public class AssignCurriculumClassesUseCase : IAssignCurriculumClassesUseCase
             curriculum.UpdatedBy = actorId;
             curriculum.RowVersion++;
 
+            foreach (var cls in dbClasses)
+            {
+                cls.UpdatedAt = now;
+                cls.UpdatedBy = actorId;
+                cls.RowVersion++;
+            }
+
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         }
@@ -141,7 +165,9 @@ public class AssignCurriculumClassesUseCase : IAssignCurriculumClassesUseCase
         {
             CurriculumId = curriculum.CurriculumId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             TeacherId = curriculum.TeacherId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
+            Visibility = curriculum.Visibility.ToString(),
             SubjectId = curriculum.SubjectId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
+            GradeLevel = curriculum.GradeLevel,
             Title = curriculum.Title,
             Description = curriculum.Description,
             SourceFile = curriculum.SourceFile,

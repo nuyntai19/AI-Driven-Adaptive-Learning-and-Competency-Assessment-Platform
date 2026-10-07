@@ -40,10 +40,9 @@ public class CreateAssignmentUseCase : ICreateAssignmentUseCase
             !_tenantContext.CenterId.HasValue || _tenantContext.CenterId.Value == Guid.Empty ||
             !_tenantContext.UserId.HasValue || _tenantContext.UserId.Value == Guid.Empty ||
             string.IsNullOrWhiteSpace(_tenantContext.Role) ||
-            (!string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal) &&
-             !string.Equals(_tenantContext.Role, nameof(UserRole.CenterManager), StringComparison.Ordinal)))
+            !string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal))
         {
-            return CreateAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
+            return CreateAssignmentResult.Failure(ErrorCodes.ForbiddenResource);
         }
 
         var centerId = _tenantContext.CenterId.Value;
@@ -119,17 +118,16 @@ public class CreateAssignmentUseCase : ICreateAssignmentUseCase
             }
         }
 
-        // 5. Load and verify Class ownership
+        // 5. Load and verify Class ownership (tracked for OCC coordination with class lifecycle)
         var classEntity = await _dbContext.Classes
-            .AsNoTracking()
-            .FirstOrDefaultAsync(c => c.ClassId == request.ClassId, cancellationToken);
+            .FirstOrDefaultAsync(c => c.ClassId == request.ClassId && !c.IsDeleted, cancellationToken);
 
         if (classEntity == null)
             return CreateAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
 
         // Teacher ownership: Teacher chỉ được tạo Assignment cho Class của mình
-        if (isTeacher && classEntity.TeacherId != actorId)
-            return CreateAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
+        if (classEntity.TeacherId != actorId)
+            return CreateAssignmentResult.Failure(ErrorCodes.ForbiddenResource);
 
         // Class phải Active
         if (classEntity.Status != ClassStatus.Active)
@@ -137,13 +135,15 @@ public class CreateAssignmentUseCase : ICreateAssignmentUseCase
 
         var classSubjectId = classEntity.SubjectId;
 
-        // 6. Validate Questions: Active + cùng SubjectId với Class
+        // 6. Validate Questions: Active + cùng SubjectId với Class + GradeLevel check
+        bool gradeMismatchDetected = false;
         if (parsedQuestionIds.Count > 0)
         {
             var dbQuestions = await _dbContext.Questions
                 .AsNoTracking()
-                .Where(q => parsedQuestionIds.Contains(q.QuestionId))
-                .Select(q => new { q.QuestionId, q.SubjectId, q.Status })
+                .Where(q => q.CenterId == centerId && parsedQuestionIds.Contains(q.QuestionId) &&
+                    (q.CreatedByTeacherId == actorId || q.Visibility == EduTwin.Contracts.CurriculumAndQuestions.MaterialVisibility.Shared))
+                .Select(q => new { q.QuestionId, q.SubjectId, q.GradeLevel, q.Status })
                 .ToListAsync(cancellationToken);
 
             if (dbQuestions.Count != parsedQuestionIds.Count)
@@ -158,8 +158,27 @@ public class CreateAssignmentUseCase : ICreateAssignmentUseCase
                 // Must belong to same subject as Class
                 if (q.SubjectId != classSubjectId)
                     return CreateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
+
+                if (classEntity.GradeLevel.HasValue && q.GradeLevel.HasValue && q.GradeLevel.Value != classEntity.GradeLevel.Value)
+                {
+                    gradeMismatchDetected = true;
+                }
             }
         }
+
+        if (gradeMismatchDetected)
+        {
+            if (!request.AllowGradeMismatch || string.IsNullOrWhiteSpace(request.GradeMismatchReason))
+            {
+                return CreateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.GradeMismatchReason) && request.GradeMismatchReason.Trim().Length > 500)
+        {
+            return CreateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
+        }
+
 
         // 7. Validate StudentIds membership (SelectedStudents mode)
         if (isSelectedStudents && parsedStudentIds.Count > 0)
@@ -192,6 +211,9 @@ public class CreateAssignmentUseCase : ICreateAssignmentUseCase
             Instructions = request.Instructions,
             DueAt = request.DueAt,
             TimeLimitMinutes = request.TimeLimitMinutes,
+            TargetMode = isSelectedStudents ? EduTwin.Contracts.Assignments.TargetSource.SelectedStudents : EduTwin.Contracts.Assignments.TargetSource.WholeClass,
+            AllowGradeMismatch = request.AllowGradeMismatch,
+            GradeMismatchReason = string.IsNullOrWhiteSpace(request.GradeMismatchReason) ? null : request.GradeMismatchReason.Trim(),
             Status = AssignmentStatus.Draft,
             PublishedAt = null,
             IsDeleted = false,
@@ -238,6 +260,11 @@ public class CreateAssignmentUseCase : ICreateAssignmentUseCase
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
         try
         {
+            // Touch class entity to bump RowVersion, preventing race with concurrent DeleteClass
+            classEntity.UpdatedAt = now;
+            classEntity.UpdatedBy = actorId;
+            classEntity.RowVersion++;
+
             _dbContext.Assignments.Add(assignment);
             if (assignmentQuestions.Count > 0)
                 _dbContext.AssignmentQuestions.AddRange(assignmentQuestions);
@@ -246,6 +273,11 @@ public class CreateAssignmentUseCase : ICreateAssignmentUseCase
 
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return CreateAssignmentResult.Failure(ErrorCodes.ConcurrencyConflict);
         }
         catch
         {
@@ -281,6 +313,9 @@ public class CreateAssignmentUseCase : ICreateAssignmentUseCase
             Instructions = assignment.Instructions,
             DueAt = assignment.DueAt,
             TimeLimitMinutes = assignment.TimeLimitMinutes,
+            TargetMode = assignment.TargetMode.ToString(),
+            AllowGradeMismatch = assignment.AllowGradeMismatch,
+            GradeMismatchReason = assignment.GradeMismatchReason,
             Status = assignment.Status.ToString(),
             QuestionCount = questionDtos.Count,
             TargetStudentCount = targetDtos.Count,

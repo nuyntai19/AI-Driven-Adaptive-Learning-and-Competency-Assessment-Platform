@@ -16,6 +16,7 @@ import { Coordinate2DInput } from "./Coordinate2DInput";
 import { PlainOrMultilineAnswerInput } from "./PlainOrMultilineAnswerInput";
 import { MultilineProseAnswerEditor } from "./MultilineProseAnswerEditor";
 import { MathPreviewCore } from "../MathPreviewCore";
+import type { RichMathEditorProps } from "../RichMathEditor";
 
 export interface ModeAwareAnswerEditorProps {
   profile?: AnswerEditorProfile;
@@ -33,6 +34,7 @@ export interface ModeAwareAnswerEditorProps {
   showPreview?: boolean;
   showSyntaxHint?: boolean;
   onFocus?: () => void;
+  variant?: RichMathEditorProps["variant"];
 }
 
 /**
@@ -87,10 +89,12 @@ export const ModeAwareAnswerEditor = forwardRef<AnswerEditorRef, ModeAwareAnswer
       showPreview = true,
       showSyntaxHint,
       onFocus,
+      variant,
     },
     ref
   ) => {
     const childRef = useRef<AnswerEditorRef>(null);
+    const proseVariant = variant ?? (profile === "answering" ? "student" : "neutral");
 
     // 1. Resolve compatible input type
     const resolution = resolveAnswerInputType(questionType, evaluationMode);
@@ -216,19 +220,20 @@ export const ModeAwareAnswerEditor = forwardRef<AnswerEditorRef, ModeAwareAnswer
           />
         )}
 
-        {resolution.type === "numeric-rational" && (
+        {(resolution.type === "numeric-rational" || resolution.type === "math-equivalent") && (
           <NumericRationalMathInput
             ref={childRef}
+            evaluationMode={resolution.type === "math-equivalent" ? "MathEquivalent" : "NumericRational"}
             value={value}
             onChange={handleChildChange}
             disabled={disabled}
             readOnly={readOnly}
-            placeholder={placeholder}
+            placeholder={placeholder ?? (resolution.type === "math-equivalent" ? "Nhập số, tọa độ hoặc tập hợp bằng bàn phím toán trực quan..." : undefined)}
             autoFocus={autoFocus}
             showPreview={showPreview}
             showSyntaxHint={showSyntaxHint ?? profile === "authoring"}
             onFocus={onFocus}
-            ariaLabel={ariaLabel}
+            ariaLabel={ariaLabel ?? (resolution.type === "math-equivalent" ? "Ô nhập đáp án toán học" : undefined)}
           />
         )}
 
@@ -250,6 +255,7 @@ export const ModeAwareAnswerEditor = forwardRef<AnswerEditorRef, ModeAwareAnswer
         {resolution.type === "manual-short-answer" && (
           <PlainOrMultilineAnswerInput
             ref={childRef}
+            variant={proseVariant}
             value={value}
             onChange={handleChildChange}
             disabled={disabled}
@@ -265,6 +271,7 @@ export const ModeAwareAnswerEditor = forwardRef<AnswerEditorRef, ModeAwareAnswer
         {resolution.type === "essay-prose" && (
           <MultilineProseAnswerEditor
             ref={childRef}
+            variant={proseVariant}
             value={value}
             onChange={handleChildChange}
             disabled={disabled}

@@ -42,6 +42,10 @@ public class ClassConfiguration : IEntityTypeConfiguration<Organization.Class>
             .HasConversion<string>()
             .IsRequired();
 
+        builder.Property(c => c.GradeLevel)
+            .HasColumnName("grade_level")
+            .HasColumnType("TINYINT UNSIGNED");
+
         // MTA fields
         builder.Property(c => c.CenterId)
             .HasColumnName("center_id")
@@ -102,8 +106,12 @@ public class ClassConfiguration : IEntityTypeConfiguration<Organization.Class>
         builder.HasIndex(c => new { c.CenterId, c.SubjectId, c.Status })
             .HasDatabaseName("ix_classes_center_id_subject_id_status");
 
+        builder.HasIndex(c => new { c.CenterId, c.GradeLevel })
+            .HasDatabaseName("ix_classes_center_id_grade_level");
+
         // CHECK Constraint
         builder.ToTable(t => t.HasCheckConstraint("ck_classes_status", "status IN ('Active', 'Archived')"));
+        builder.ToTable(t => t.HasCheckConstraint("ck_classes_grade_level", "grade_level IS NULL OR (grade_level >= 10 AND grade_level <= 12)"));
 
         // Relations
         // Tenant-safe FK to teachers

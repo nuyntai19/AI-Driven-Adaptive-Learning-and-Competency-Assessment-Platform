@@ -39,10 +39,10 @@ public class DeleteQuestionUseCase : IDeleteQuestionUseCase
             return DeleteQuestionResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
-        // Only CenterManager is allowed to delete
-        if (!string.Equals(_tenantContext.Role, nameof(UserRole.CenterManager), StringComparison.Ordinal))
+        // Only Teacher is allowed to delete questions within ownership bounds
+        if (!string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal))
         {
-            return DeleteQuestionResult.Failure(ErrorCodes.ResourceNotFound); // or ForbiddenResource
+            return DeleteQuestionResult.Failure(ErrorCodes.ForbiddenResource);
         }
 
         // 2. Parse question ID
@@ -60,11 +60,15 @@ public class DeleteQuestionUseCase : IDeleteQuestionUseCase
         if (question == null)
             return DeleteQuestionResult.Failure(ErrorCodes.ResourceNotFound);
 
+        // Teacher ownership guard: Teacher cannot delete questions created by other teachers
+        if (question.CreatedByTeacherId != actorId && question.CreatedBy != actorId)
+            return DeleteQuestionResult.Failure(ErrorCodes.ForbiddenResource);
+
         // 4. State check - only Draft
         if (question.Status != QuestionStatus.Draft)
             return DeleteQuestionResult.Failure(ErrorCodes.InvalidStateTransition);
 
-        // 5. Check attempts and assignment dependencies
+        // 5. Check attempts, assignment, and evidence dependencies
         var hasAttempts = await _dbContext.Attempts
             .AnyAsync(a => a.QuestionId == qId && a.CenterId == centerId, cancellationToken);
         if (hasAttempts)
@@ -73,6 +77,11 @@ public class DeleteQuestionUseCase : IDeleteQuestionUseCase
         var hasAssignments = await _dbContext.AssignmentQuestions
             .AnyAsync(aq => aq.QuestionId == qId && aq.CenterId == centerId, cancellationToken);
         if (hasAssignments)
+            return DeleteQuestionResult.Failure(ErrorCodes.InvalidStateTransition);
+
+        var hasEvidence = await _dbContext.EvidenceAssessments
+            .AnyAsync(e => e.Attempt.QuestionId == qId && e.CenterId == centerId, cancellationToken);
+        if (hasEvidence)
             return DeleteQuestionResult.Failure(ErrorCodes.InvalidStateTransition);
 
         // 6. Delete (Soft delete for MTA)

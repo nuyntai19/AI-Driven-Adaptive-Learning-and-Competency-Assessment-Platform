@@ -23,6 +23,7 @@ public sealed class AttemptFeedbackDataDto
     public AttemptFeedbackTeacherEvaluationDto? TeacherFinalEvaluation { get; set; }
     public StudentReviewRequestDto? ReviewRequest { get; set; }
     public RetryQuotaDto? RetryQuota { get; set; }
+    public AttemptFeedbackActionsDto Actions { get; set; } = new();
     public AttemptFeedbackTwinChangeDto? TwinChange { get; set; }
     public AttemptFeedbackRecommendationDto? Recommendation { get; set; }
 }
@@ -55,6 +56,7 @@ public sealed class AttemptFeedbackGradingCriteriaDto
 
 public sealed class AttemptFeedbackTeacherEvaluationDto
 {
+    public RubricGrade? RubricGrade { get; set; }
     public bool HasTeacherOverride { get; set; }
     public string? ReviewDecision { get; set; }
     public bool IsApprovedAsIs { get; set; }
@@ -71,11 +73,18 @@ public sealed class AttemptFeedbackTeacherEvaluationDto
 
 public sealed class RetryQuotaDto
 {
+    public bool IsEligible { get; set; }
     public byte ManualRetriesUsed { get; set; }
     public byte ManualRetriesRemaining { get; set; }
     public int CooldownRemainingSeconds { get; set; }
     public bool CanRetry { get; set; }
     public DateTime? NextRetryAllowedAt { get; set; }
+}
+
+public sealed class AttemptFeedbackActionsDto
+{
+    public bool CanRequestTeacherReview { get; set; }
+    public bool CanReportQuestion { get; set; }
 }
 
 public sealed class AttemptFeedbackGradingDto
@@ -107,6 +116,9 @@ public sealed class AttemptFeedbackAnalysisDto
     public string? Model { get; set; }
     public string? SolutionType { get; set; }
     public string? AiSolution { get; set; }
+    public string? AnswerAssessment { get; set; }
+    public string? ReasoningVerdict { get; set; }
+    public string? FeedbackOrigin { get; set; }
 }
 
 public sealed class AttemptFeedbackRootCauseNodeDto

@@ -308,64 +308,216 @@ export const DEFAULT_MATH_INLINE_SHORTCUTS = {
   norm: "\\left\\|#?\\right\\|",
 } as const;
 
+export interface NormalizeMathInsertOptions {
+  isSelectionCollapsed?: boolean;
+}
+
 /**
- * Normalizes user- or calculator-provided LaTeX/text into structural MathLive commands
+ * Accurately determines if the MathLive mathfield selection is collapsed (a single caret insertion point)
+ * or if one or more atoms are selected.
+ */
+export function isMathFieldSelectionCollapsed(mf: unknown): boolean {
+  if (!mf || typeof mf !== "object") return true;
+  const anyMf = mf as {
+    selectionIsCollapsed?: boolean;
+    selection?: {
+      ranges?: Array<[number, number] | number[]>;
+      direction?: string;
+    };
+  };
+  if (typeof anyMf.selectionIsCollapsed === "boolean") {
+    return anyMf.selectionIsCollapsed;
+  }
+  if (anyMf.selection && Array.isArray(anyMf.selection.ranges) && anyMf.selection.ranges.length > 0) {
+    return anyMf.selection.ranges.every(
+      (r) => Array.isArray(r) && r.length >= 2 && r[0] === r[1]
+    );
+  }
+  return true;
+}
+
+export interface MathFieldInsertOptions {
+  mode?: string;
+  selectionMode?: string;
+  focus?: boolean;
+  silenceNotifications?: boolean;
+  [key: string]: unknown;
+}
+
+export interface MathFieldInsertionTarget {
+  insert?: (content: string, options?: MathFieldInsertOptions) => unknown;
+  executeCommand?: (command: any) => unknown;
+}
+
+/** Shared by public keyboard commands and the imperative calculator/toolbar API. */
+export function prepareMathFieldInsertion(
+  mf: unknown,
+  content: string,
+  options?: MathFieldInsertOptions,
+  isSelectionCollapsed = isMathFieldSelectionCollapsed(mf)
+): { content: string; options?: MathFieldInsertOptions } {
+  // A text-mode insertion is prose, even if it contains a math command or a pipe.
+  const normalized = options?.mode === "text"
+    ? content
+    : normalizeMathInsertContent(content, { isSelectionCollapsed });
+  return {
+    content: normalized,
+    options: options?.mode !== "text" && normalized.includes("#?")
+      ? { ...options, selectionMode: options?.selectionMode ?? "placeholder" }
+      : options,
+  };
+}
+
+/** Guard public APIs only; never patch MathLive's private _mathfield implementation. */
+export function installMathFieldInsertionGuards(mf: MathFieldInsertionTarget): void {
+  if (mf.insert) {
+    const originalInsert = mf.insert.bind(mf);
+    mf.insert = (content, options) => {
+      const prepared = prepareMathFieldInsertion(mf, content, options);
+      return originalInsert(prepared.content, prepared.options);
+    };
+  }
+  if (mf.executeCommand) {
+    const originalExecuteCommand = mf.executeCommand.bind(mf);
+    mf.executeCommand = (command) => {
+      if (!Array.isArray(command) || command[0] !== "insert" || typeof command[1] !== "string") {
+        return originalExecuteCommand(command);
+      }
+      const options = command[2] && typeof command[2] === "object" ? command[2] : undefined;
+      const prepared = prepareMathFieldInsertion(mf, command[1], options);
+      const nextCommand = [...command];
+      nextCommand[1] = prepared.content;
+      if (prepared.options !== undefined) nextCommand[2] = prepared.options;
+      return originalExecuteCommand(nextCommand);
+    };
+  }
+}
+
+/**
+ * Normalizes user-, keyboard-, or calculator-provided LaTeX/text into structural MathLive commands
  * containing explicit placeholders (#?) for radicals and fences, ensuring newly created
  * empty blocks place the caret inside rather than selecting the whole block (which causes
  * immediate replacement/erasure upon typing).
  */
-export function normalizeMathInsertContent(latexOrText: string): string {
-  if (!latexOrText) return "";
+export function normalizeMathInsertContent(
+  latexOrText: string,
+  options?: NormalizeMathInsertOptions
+): string {
+  if (!latexOrText) return latexOrText;
+
+  const isCollapsed = options?.isSelectionCollapsed !== false;
   const trimmed = latexOrText.trim();
 
-  // 1. Exact function calls or raw keywords from Casio / Calculator / Toolbar
-  if (trimmed === "sqrt(" || trimmed === "\\sqrt" || trimmed === "\\sqrt{}" || trimmed === "sqrt") {
-    return "\\sqrt{#?}";
-  }
-  if (trimmed === "cbrt(" || trimmed === "\\cbrt" || trimmed === "\\cbrt{}" || trimmed === "cbrt") {
-    return "\\sqrt[3]{#?}";
-  }
-  if (trimmed === "\\sqrt[]{}" || trimmed === "\\sqrt[]") {
-    return "\\sqrt[#?]{#?}";
-  }
-  if (
-    trimmed === "abs(" ||
-    trimmed === "\\abs" ||
-    trimmed === "\\abs{}" ||
-    trimmed === "abs" ||
-    trimmed === "|" ||
-    trimmed === "\\left|\\right|" ||
-    trimmed === "\\left| \\right|" ||
-    trimmed === "\\vert\\vert"
-  ) {
-    return "\\left|#?\\right|";
-  }
-  if (
-    trimmed === "||" ||
-    trimmed === "\\left\\|\\right\\|" ||
-    trimmed === "\\left\\| \\right\\|" ||
-    trimmed === "\\Vert\\Vert" ||
-    trimmed === "norm(" ||
-    trimmed === "norm"
-  ) {
-    return "\\left\\|#?\\right\\|";
-  }
-  if (trimmed === "\\frac" || trimmed === "\\frac{}" || trimmed === "\\frac{}{}") {
-    return "\\frac{#?}{#?}";
-  }
-  if (trimmed === "^" || trimmed === "^{}") {
-    return "^{#?}";
-  }
-  if (trimmed === "_" || trimmed === "_{}") {
-    return "_{#?}";
+  // 1. Exact function calls or raw keywords from Casio / Calculator / Toolbar / Virtual Keyboard
+  if (isCollapsed) {
+    if (
+      trimmed === "sqrt(" ||
+      trimmed === "\\sqrt" ||
+      trimmed === "\\sqrt{}" ||
+      trimmed === "\\sqrt{#0}" ||
+      trimmed === "\\sqrt{#?}" ||
+      trimmed === "sqrt"
+    ) {
+      return "\\sqrt{#?}";
+    }
+    if (
+      trimmed === "cbrt(" ||
+      trimmed === "\\cbrt" ||
+      trimmed === "\\cbrt{}" ||
+      trimmed === "\\cbrt{#0}" ||
+      trimmed === "\\cbrt{#?}" ||
+      trimmed === "cbrt"
+    ) {
+      return "\\sqrt[3]{#?}";
+    }
+    if (
+      trimmed === "\\sqrt[]{}" ||
+      trimmed === "\\sqrt[]" ||
+      trimmed === "\\sqrt[#0]{#1}" ||
+      trimmed === "\\sqrt[#1]{#0}" ||
+      trimmed === "\\sqrt[#?]{#?}" ||
+      trimmed === "\\sqrt[#?]{#?}}"
+    ) {
+      return "\\sqrt[#?]{#?}";
+    }
+    if (
+      trimmed === "abs(" ||
+      trimmed === "\\abs" ||
+      trimmed === "\\abs{}" ||
+      trimmed === "abs" ||
+      trimmed === "|" ||
+      trimmed === "\\vert" ||
+      trimmed === "\\left|\\right|" ||
+      trimmed === "\\left| \\right|" ||
+      trimmed === "\\left|#0\\right|" ||
+      trimmed === "\\left|#?\\right|" ||
+      trimmed === "\\vert\\vert" ||
+      trimmed === "\\left\\vert\\right\\vert" ||
+      trimmed === "\\left\\vert#0\\right\\vert" ||
+      trimmed === "\\left\\vert#?\\right\\vert"
+    ) {
+      return "\\left|#?\\right|";
+    }
+    if (
+      trimmed === "||" ||
+      trimmed === "\\left\\|\\right\\|" ||
+      trimmed === "\\left\\| \\right\\|" ||
+      trimmed === "\\left\\|#0\\right\\|" ||
+      trimmed === "\\left\\|#?\\right\\|" ||
+      trimmed === "\\Vert" ||
+      trimmed === "\\Vert\\Vert" ||
+      trimmed === "\\left\\Vert\\right\\Vert" ||
+      trimmed === "\\left\\Vert#0\\right\\Vert" ||
+      trimmed === "\\left\\Vert#?\\right\\Vert" ||
+      trimmed === "norm(" ||
+      trimmed === "norm"
+    ) {
+      return "\\left\\|#?\\right\\|";
+    }
+    if (
+      trimmed === "\\frac" ||
+      trimmed === "\\frac{}" ||
+      trimmed === "\\frac{}{}" ||
+      trimmed === "\\frac{#0}{#1}" ||
+      trimmed === "\\frac{#?}{#?}"
+    ) {
+      return "\\frac{#?}{#?}";
+    }
+    if (trimmed === "^" || trimmed === "^{}" || trimmed === "^{#0}" || trimmed === "^{#?}") {
+      return "^{#?}";
+    }
+    if (trimmed === "_" || trimmed === "_{}" || trimmed === "_{#0}" || trimmed === "_{#?}") {
+      return "_{#?}";
+    }
   }
 
-  // 2. Structural substitutions for empty containers without placeholders
-  let normalized = latexOrText;
-  normalized = normalized.replace(/\\sqrt\{\s*\}/g, "\\sqrt{#?}");
-  normalized = normalized.replace(/\\left\|\s*\\right\|/g, "\\left|#?\\right|");
-  normalized = normalized.replace(/\\left\\\|\s*\\right\\\|/g, "\\left\\|#?\\right\\|");
-  normalized = normalized.replace(/\\frac\{\s*\}\{\s*\}/g, "\\frac{#?}{#?}");
+  // 2. Structural substitutions strictly restricted to recognized mathematical templates:
+  // Only convert #0/#1 or empty containers into #? within recognized math commands
+  // when selection is collapsed. Never modify \text{...} or general text (e.g. \text{Mã \#1}).
+  if (
+    isCollapsed &&
+    (latexOrText.includes("\\sqrt") ||
+      latexOrText.includes("\\left") ||
+      latexOrText.includes("\\frac") ||
+      latexOrText.includes("^{") ||
+      latexOrText.includes("_{"))
+  ) {
+    let normalized = latexOrText;
+    // Radicals with empty or #0/#1 argument
+    normalized = normalized.replace(/\\sqrt\{\s*(?:#0|#1)?\s*\}/g, "\\sqrt{#?}");
+    normalized = normalized.replace(/\\sqrt\[\s*(?:#0|#1)?\s*\]\{\s*(?:#0|#1)?\s*\}/g, "\\sqrt[#?]{#?}");
+    // Fractions with empty or #0/#1 arguments
+    normalized = normalized.replace(/\\frac\{\s*(?:#0|#1)?\s*\}\{\s*(?:#0|#1)?\s*\}/g, "\\frac{#?}{#?}");
+    // Absolute values with empty, #0/#1, or #? argument
+    normalized = normalized.replace(/\\left\s*\\vert\s*(?:#0|#1)?\s*\\right\s*\\vert/g, "\\left|#?\\right|");
+    normalized = normalized.replace(/\\left\s*\\Vert\s*(?:#0|#1)?\s*\\right\s*\\Vert/g, "\\left\\|#?\\right\\|");
+    normalized = normalized.replace(/\\left\|\s*(?:#0|#1)?\s*\\right\|/g, "\\left|#?\\right|");
+    normalized = normalized.replace(/\\left\\\|\s*(?:#0|#1)?\s*\\right\\\|/g, "\\left\\|#?\\right\\|");
+    // Exponent and subscript with #0/#1 argument
+    normalized = normalized.replace(/\^\{\s*(?:#0|#1)\s*\}/g, "^{#?}");
+    normalized = normalized.replace(/_\{\s*(?:#0|#1)\s*\}/g, "_{#?}");
+    return normalized;
+  }
 
-  return normalized;
+  return latexOrText;
 }

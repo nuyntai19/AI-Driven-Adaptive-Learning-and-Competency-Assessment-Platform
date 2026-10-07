@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using EduTwin.BLL.AssessmentAndReasoning.Evidence;
+using EduTwin.BLL.AssessmentAndReasoning.Feedback;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.CurriculumAndQuestions;
@@ -61,6 +62,20 @@ public sealed class TwinCompletionOrchestrator : ITwinCompletionOrchestrator
         ArgumentNullException.ThrowIfNull(question);
         ArgumentNullException.ThrowIfNull(analysis);
 
+        var existingAnalysis = await _dbContext.ReasoningAnalyses.SingleOrDefaultAsync(a =>
+            a.CenterId == attempt.CenterId && a.AttemptId == attempt.AttemptId, cancellationToken);
+        object? previousFallback = null;
+        if (existingAnalysis is not null)
+        {
+            if (!AttemptFeedbackActionPolicy.CanRecoverFallback(attempt, existingAnalysis))
+                throw new InvalidOperationException("Cannot replace a completed or teacher-reviewed analysis.");
+            previousFallback = FallbackAnalysisRecovery.Replace(existingAnalysis, analysis, utcNow);
+            analysis = existingAnalysis;
+        }
+        var superseded = existingAnalysis is null ? null : await _dbContext.EvidenceAssessments
+            .Where(e => e.CenterId == attempt.CenterId && e.AttemptId == attempt.AttemptId)
+            .OrderByDescending(e => e.EvidenceAssessmentId).FirstOrDefaultAsync(cancellationToken);
+
         // 1. Evaluate Evidence Consistency and Gate
         var gateSource = eventSource == TwinEventSource.RuleFallback
             ? EvidenceSourceType.RuleFallback
@@ -81,7 +96,13 @@ public sealed class TwinCompletionOrchestrator : ITwinCompletionOrchestrator
             DiagnosticReasonCodes: consistency.ReasonCodes,
             IsPostFeedback: attempt.IsPostFeedback);
 
-        var isVoidedQuestion = question.Status == QuestionStatus.Archived && attempt.AssignmentId.HasValue;
+        var isVoidedQuestion = false;
+        if (attempt.AssignmentId.HasValue)
+        {
+            isVoidedQuestion = await _dbContext.AssignmentQuestions
+                .AsNoTracking()
+                .AnyAsync(aq => aq.CenterId == attempt.CenterId && aq.AssignmentId == attempt.AssignmentId.Value && aq.QuestionId == question.QuestionId && aq.IsVoided, cancellationToken);
+        }
         if (isVoidedQuestion)
         {
             attempt.IsCorrect = true;
@@ -118,23 +139,28 @@ public sealed class TwinCompletionOrchestrator : ITwinCompletionOrchestrator
         var evidence = _evidenceAssessmentFactory.Create(
             attempt,
             analysis,
-            supersedes: null,
+            supersedes: superseded,
             decision,
             utcNow,
             createdBy: null);
 
-        _dbContext.ReasoningAnalyses.Add(analysis);
+        if (existingAnalysis is null) _dbContext.ReasoningAnalyses.Add(analysis);
         _dbContext.EvidenceAssessments.Add(evidence);
 
         // 3. Update Behavior Twin from observed telemetry
-        var behaviorTwin = await _behaviorTwinUpdater.UpdateAsync(
+        var existingBehavior = existingAnalysis is null ? null : await _dbContext.BehaviorTwins.SingleOrDefaultAsync(b =>
+            b.CenterId == attempt.CenterId && b.StudentId == attempt.StudentId &&
+            b.SubjectId == question.SubjectId && !b.IsDeleted, cancellationToken);
+        var behaviorTwin = existingBehavior ?? await _behaviorTwinUpdater.UpdateAsync(
             attempt,
             question.SubjectId,
             utcNow,
             cancellationToken);
 
         // 4. Update Knowledge Twin via MasteryCalculator
-        var knowledgeResult = await _knowledgeTwinUpdater.UpdateAsync(
+        var knowledgeResult = existingAnalysis is not null
+            ? await FallbackAnalysisRecovery.ReplayAsync(_dbContext, attempt, question, evidence, utcNow, cancellationToken)
+            : await _knowledgeTwinUpdater.UpdateAsync(
             attempt,
             question,
             analysis,
@@ -152,7 +178,10 @@ public sealed class TwinCompletionOrchestrator : ITwinCompletionOrchestrator
             attempt.AttemptId,
             analysis.AnalysisId,
             eventSource,
-            knowledgeResult.Calculation,
+            previousFallback is null ? knowledgeResult.Calculation : knowledgeResult.Calculation with
+            {
+                HistoryBreakdown = new { PreviousFallbackAnalysis = previousFallback, Replay = knowledgeResult.Calculation.Breakdown }
+            },
             utcNow,
             createdBy: null,
             cancellationToken);
@@ -213,8 +242,20 @@ public sealed class TwinCompletionOrchestrator : ITwinCompletionOrchestrator
                     .Distinct()
                     .Count();
 
+                var voidedQuestionIds = await _dbContext.AssignmentQuestions.AsNoTracking()
+                    .Where(aq => aq.CenterId == attempt.CenterId && aq.AssignmentId == attempt.AssignmentId && aq.IsVoided)
+                    .Select(aq => aq.QuestionId)
+                    .ToListAsync(cancellationToken);
+
+                var resolvedQuestionCount = dbQuestionIds
+                    .Concat(localQuestionIds)
+                    .Append(attempt.QuestionId)
+                    .Concat(voidedQuestionIds)
+                    .Distinct()
+                    .Count();
+
                 progress.CompletedQuestionCount = (uint)answeredQuestionCount;
-                if (progress.CompletedQuestionCount >= progress.TotalQuestionCount && progress.TotalQuestionCount > 0)
+                if (resolvedQuestionCount >= progress.TotalQuestionCount && progress.TotalQuestionCount > 0)
                 {
                     progress.Status = ProgressStatus.Completed;
                     progress.CompletedAt ??= utcNow;

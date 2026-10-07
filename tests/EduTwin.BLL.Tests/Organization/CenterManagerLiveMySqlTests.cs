@@ -13,10 +13,13 @@ using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Logging;
 using Moq;
 using MySql.Data.MySqlClient;
+using EduTwin.BLL.Assignments;
+using EduTwin.BLL.CurriculumAndQuestions;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.BLL.Organization;
 using EduTwin.BLL.Seeding;
 using EduTwin.Contracts.AssessmentAndReasoning;
+using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.Common;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.IdentityAndTenancy;
@@ -687,6 +690,479 @@ public sealed class CenterManagerLiveMySqlTests
                 .ToListAsync();
 
             Assert.Single(audits);
+        }
+    }
+
+    [MySqlIntegrationFact]
+    public async Task ConcurrentDeleteClassAndCreateAssignment_OnLiveMySql_SerializesAndPreventsOrphanedAssignments()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var centerId = Guid.NewGuid();
+        var managerId = Guid.NewGuid();
+        var teacherId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+        var classId = Guid.NewGuid();
+
+        var tenant = new TenantContext();
+        await using (var seedContext = CreateContext(database.ConnectionString, tenant))
+        {
+            await SeedCenterWithManagerAsync(seedContext, centerId, managerId);
+
+            var teacherUser = new User
+            {
+                UserId = teacherId,
+                CenterId = centerId,
+                Username = "teacher.assign.occ",
+                DisplayName = "Teacher OCC Test",
+                PasswordHash = "hash",
+                RoleName = UserRole.Teacher,
+                Status = UserStatus.Active,
+                AuthVersion = 1,
+                RowVersion = 1,
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow
+            };
+            seedContext.Users.Add(teacherUser);
+
+            var teacher = new Teacher
+            {
+                TeacherId = teacherId,
+                CenterId = centerId,
+                Department = "Khoa Toan",
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow
+            };
+            seedContext.Teachers.Add(teacher);
+
+            var subject = new Subject
+            {
+                SubjectId = subjectId,
+                CenterId = centerId,
+                SubjectCode = "MATH10",
+                SubjectName = "Toan 10",
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow,
+                RowVersion = 1
+            };
+            seedContext.Subjects.Add(subject);
+
+            var classEntity = new Class
+            {
+                ClassId = classId,
+                CenterId = centerId,
+                ClassName = "10A1 OCC Test",
+                AcademicYear = "2026-2027",
+                SubjectId = subjectId,
+                TeacherId = teacherId,
+                GradeLevel = 10,
+                Status = ClassStatus.Active,
+                IsDeleted = false,
+                RowVersion = 1,
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow,
+                CreatedBy = managerId,
+                UpdatedBy = managerId
+            };
+            seedContext.Classes.Add(classEntity);
+            await seedContext.SaveChangesAsync();
+        }
+
+        var tenantDelete = new TenantContext();
+        tenantDelete.Initialize(centerId, managerId, nameof(UserRole.CenterManager), 1);
+
+        var tenantAssign = new TenantContext();
+        tenantAssign.Initialize(centerId, teacherId, nameof(UserRole.Teacher), 1);
+
+        await using var contextDelete = CreateContext(database.ConnectionString, tenantDelete);
+        await using var contextAssign = CreateContext(database.ConnectionString, tenantAssign);
+
+        var useCaseDelete = new DeleteClassUseCase(
+            contextDelete,
+            tenantDelete,
+            _mockTimeProvider.Object,
+            Mock.Of<ILogger<DeleteClassUseCase>>());
+
+        var useCaseAssign = new CreateAssignmentUseCase(
+            contextAssign,
+            tenantAssign,
+            _mockTimeProvider.Object);
+
+        var assignRequest = new CreateAssignmentRequest
+        {
+            ClassId = classId,
+            Title = "Bài tập kiểm tra đồng thời",
+            Instructions = "Hướng dẫn làm bài",
+            QuestionIds = new List<string>(),
+            TargetMode = "WholeClass"
+        };
+
+        var taskDelete = useCaseDelete.ExecuteAsync(classId, expectedRowVersion: 1);
+        var taskAssign = useCaseAssign.ExecuteAsync(assignRequest);
+
+        await Task.WhenAll(taskDelete, taskAssign);
+        var deleteResult = await taskDelete;
+        var assignResult = await taskAssign;
+
+        // Verify serializability and academic integrity
+        await using (var verifyContext = CreateContext(database.ConnectionString, tenant))
+        {
+            var finalClass = await verifyContext.Classes
+                .IgnoreQueryFilters()
+                .SingleAsync(c => c.ClassId == classId);
+
+            var assignments = await verifyContext.Assignments
+                .IgnoreQueryFilters()
+                .Where(a => a.ClassId == classId)
+                .ToListAsync();
+
+            if (finalClass.IsDeleted)
+            {
+                // Class was safely soft-deleted: NO assignments must exist pointing to the deleted class
+                Assert.Empty(assignments);
+                Assert.False(assignResult.IsSuccess, "CreateAssignment must not succeed when Class is deleted.");
+            }
+            else
+            {
+                // Assignment was created first: DeleteClass must not have soft-deleted the class
+                Assert.NotEmpty(assignments);
+                Assert.False(deleteResult.IsSuccess, "DeleteClass must not succeed when an active assignment exists.");
+            }
+        }
+    }
+
+    [MySqlIntegrationFact]
+    public async Task ConcurrentDeleteClassAndAssignCurriculum_OnLiveMySql_SerializesAndPreventsOrphanedCurriculumClasses()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var centerId = Guid.NewGuid();
+        var managerId = Guid.NewGuid();
+        var teacherId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+        var classId = Guid.NewGuid();
+        var curriculumId = Guid.NewGuid();
+
+        var tenant = new TenantContext();
+        await using (var seedContext = CreateContext(database.ConnectionString, tenant))
+        {
+            await SeedCenterWithManagerAsync(seedContext, centerId, managerId);
+
+            var teacherUser = new User
+            {
+                UserId = teacherId,
+                CenterId = centerId,
+                Username = "teacher.curriculum.occ",
+                DisplayName = "Teacher Curriculum OCC Test",
+                PasswordHash = "hash",
+                RoleName = UserRole.Teacher,
+                Status = UserStatus.Active,
+                AuthVersion = 1,
+                RowVersion = 1,
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow
+            };
+            seedContext.Users.Add(teacherUser);
+
+            var teacher = new Teacher
+            {
+                TeacherId = teacherId,
+                CenterId = centerId,
+                Department = "Khoa Toan",
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow
+            };
+            seedContext.Teachers.Add(teacher);
+
+            var subject = new Subject
+            {
+                SubjectId = subjectId,
+                CenterId = centerId,
+                SubjectCode = "MATH10_CURR",
+                SubjectName = "Toan 10 Curriculum",
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow,
+                RowVersion = 1
+            };
+            seedContext.Subjects.Add(subject);
+
+            var classEntity = new Class
+            {
+                ClassId = classId,
+                CenterId = centerId,
+                ClassName = "10A2 Curriculum OCC Test",
+                AcademicYear = "2026-2027",
+                SubjectId = subjectId,
+                TeacherId = teacherId,
+                GradeLevel = 10,
+                Status = ClassStatus.Active,
+                IsDeleted = false,
+                RowVersion = 1,
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow,
+                CreatedBy = managerId,
+                UpdatedBy = managerId
+            };
+            seedContext.Classes.Add(classEntity);
+
+            var curriculum = new Curriculum
+            {
+                CurriculumId = curriculumId,
+                CenterId = centerId,
+                SubjectId = subjectId,
+                TeacherId = teacherId,
+                Title = "Giáo trình Toán 10 OCC Test",
+                GradeLevel = 10,
+                ReviewStatus = ReviewStatus.Draft,
+                IsDeleted = false,
+                RowVersion = 1,
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow,
+                CreatedBy = teacherId,
+                UpdatedBy = teacherId
+            };
+            seedContext.Curriculums.Add(curriculum);
+            await seedContext.SaveChangesAsync();
+        }
+
+        var tenantDelete = new TenantContext();
+        tenantDelete.Initialize(centerId, managerId, nameof(UserRole.CenterManager), 1);
+
+        var tenantAssign = new TenantContext();
+        tenantAssign.Initialize(centerId, teacherId, nameof(UserRole.Teacher), 1);
+
+        await using var contextDelete = CreateContext(database.ConnectionString, tenantDelete);
+        await using var contextAssign = CreateContext(database.ConnectionString, tenantAssign);
+
+        var useCaseDelete = new DeleteClassUseCase(
+            contextDelete,
+            tenantDelete,
+            _mockTimeProvider.Object,
+            Mock.Of<ILogger<DeleteClassUseCase>>());
+
+        var useCaseAssign = new AssignCurriculumClassesUseCase(
+            contextAssign,
+            tenantAssign,
+            _mockTimeProvider.Object);
+
+        var assignRequest = new AssignCurriculumClassesRequest
+        {
+            ClassIds = new List<Guid> { classId },
+            RowVersion = "1"
+        };
+
+        var taskDelete = useCaseDelete.ExecuteAsync(classId, expectedRowVersion: 1);
+        var taskAssign = useCaseAssign.ExecuteAsync(curriculumId, assignRequest);
+
+        await Task.WhenAll(taskDelete, taskAssign);
+        var deleteResult = await taskDelete;
+        var assignResult = await taskAssign;
+
+        // Verify serializability and no orphaned CurriculumClass on deleted class
+        await using (var verifyContext = CreateContext(database.ConnectionString, tenant))
+        {
+            var finalClass = await verifyContext.Classes
+                .IgnoreQueryFilters()
+                .SingleAsync(c => c.ClassId == classId);
+
+            var attached = await verifyContext.CurriculumClasses
+                .IgnoreQueryFilters()
+                .Where(cc => cc.ClassId == classId)
+                .ToListAsync();
+
+            if (finalClass.IsDeleted)
+            {
+                // Class was safely soft-deleted: NO curriculum links must exist on the deleted class
+                Assert.Empty(attached);
+                Assert.False(assignResult.IsSuccess, "AssignCurriculumClasses must not succeed when Class is deleted.");
+            }
+            else
+            {
+                // Curriculum was assigned first: DeleteClass must not have soft-deleted the class
+                Assert.NotEmpty(attached);
+                Assert.False(deleteResult.IsSuccess, "DeleteClass must not succeed when class is assigned to curriculum.");
+            }
+        }
+    }
+
+    [MySqlIntegrationFact]
+    public async Task AddStudentsToClass_LiveMySql_TranslatesGuidFiltersAndEnforcesBatchLimits()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var centerId = Guid.NewGuid();
+        var managerId = Guid.NewGuid();
+        var teacherId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+        var classId = Guid.NewGuid();
+        var studentId1 = Guid.NewGuid();
+        var studentId2 = Guid.NewGuid();
+
+        var tenant = new TenantContext();
+        tenant.Initialize(centerId, managerId, "CenterManager", 1);
+
+        await using (var seedContext = CreateContext(database.ConnectionString, tenant))
+        {
+            await SeedCenterWithManagerAsync(seedContext, centerId, managerId);
+
+            // Seed Teacher & Subject
+            seedContext.Users.Add(new User
+            {
+                UserId = teacherId,
+                CenterId = centerId,
+                Username = $"tc_{Guid.NewGuid():N}"[..12],
+                DisplayName = "Teacher Math",
+                PasswordHash = "hash",
+                RoleName = UserRole.Teacher,
+                Status = UserStatus.Active,
+                AuthVersion = 1,
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow,
+                RowVersion = 1
+            });
+            seedContext.Teachers.Add(new Teacher
+            {
+                TeacherId = teacherId,
+                CenterId = centerId,
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow
+            });
+            seedContext.Subjects.Add(new Subject
+            {
+                SubjectId = subjectId,
+                CenterId = centerId,
+                SubjectCode = "MATH10",
+                SubjectName = "Toán 10",
+                IsActive = true,
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow,
+                RowVersion = 1
+            });
+
+            // Seed active Class with GradeLevel 10
+            seedContext.Classes.Add(new Class
+            {
+                ClassId = classId,
+                CenterId = centerId,
+                TeacherId = teacherId,
+                SubjectId = subjectId,
+                ClassName = "10A1 Live MySQL Class",
+                AcademicYear = "2026-2027",
+                GradeLevel = 10,
+                Status = ClassStatus.Active,
+                IsDeleted = false,
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow,
+                RowVersion = 1
+            });
+
+            // Seed Students & Users
+            seedContext.Users.Add(new User
+            {
+                UserId = studentId1,
+                CenterId = centerId,
+                Username = $"st1_{Guid.NewGuid():N}"[..12],
+                DisplayName = "Student Live 01",
+                PasswordHash = "hash",
+                RoleName = UserRole.Student,
+                Status = UserStatus.Active,
+                AuthVersion = 1,
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow,
+                RowVersion = 1
+            });
+            seedContext.Students.Add(new Student
+            {
+                StudentId = studentId1,
+                CenterId = centerId,
+                FullName = "Student Live 01",
+                GradeLevel = 10,
+                DateOfBirth = new DateOnly(2010, 1, 1),
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow
+            });
+
+            seedContext.Users.Add(new User
+            {
+                UserId = studentId2,
+                CenterId = centerId,
+                Username = $"st2_{Guid.NewGuid():N}"[..12],
+                DisplayName = "Student Live 02",
+                PasswordHash = "hash",
+                RoleName = UserRole.Student,
+                Status = UserStatus.Active,
+                AuthVersion = 1,
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow,
+                RowVersion = 1
+            });
+            seedContext.Students.Add(new Student
+            {
+                StudentId = studentId2,
+                CenterId = centerId,
+                FullName = "Student Live 02",
+                GradeLevel = 11,
+                DateOfBirth = new DateOnly(2010, 1, 1),
+                CreatedAt = FixedUtcNow,
+                UpdatedAt = FixedUtcNow
+            });
+
+            await seedContext.SaveChangesAsync();
+        }
+
+        await using (var testContext = CreateContext(database.ConnectionString, tenant))
+        {
+            var mockGuard = new Mock<IClassOwnershipGuard>();
+            mockGuard
+                .Setup(g => g.CheckClassAccessAsync(classId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(OwnershipDecision.Allowed);
+            var mockLogger = new Mock<ILogger<AddStudentsToClassUseCase>>();
+
+            var useCase = new AddStudentsToClassUseCase(
+                testContext,
+                tenant,
+                _mockTimeProvider.Object,
+                mockGuard.Object,
+                mockLogger.Object);
+
+            // 1. Test batch size limit > 100 fails validation on live stack
+            var overBatch = Enumerable.Range(0, AddStudentsToClassUseCase.MaxBatchSize + 1)
+                .Select(_ => Guid.NewGuid())
+                .ToArray();
+            var overBatchResult = await useCase.ExecuteAsync(classId, new AddStudentsToClassRequest
+            {
+                StudentIds = overBatch
+            });
+            Assert.False(overBatchResult.IsSuccess);
+            Assert.Equal(ErrorCodes.ValidationFailed, overBatchResult.ErrorCode);
+
+            // 2. Test valid execution: Pomelo MySQL translates BuildIdEqualityFilter without InExpression crash
+            var result = await useCase.ExecuteAsync(classId, new AddStudentsToClassRequest
+            {
+                StudentIds = new[] { studentId1, studentId2 },
+                AllowGradeMismatch = true,
+                GradeMismatchReason = "Live MySQL verification of cross-grade student enrollment"
+            });
+
+            Assert.True(result.IsSuccess, $"AddStudentsToClass failed with {result.ErrorCode}: {result.ErrorMessage}");
+            Assert.Equal(2, result.Data!.AddedCount);
+            Assert.Equal(0, result.Data!.AlreadyMemberCount);
+        }
+
+        // Verify persisted data directly in MySQL
+        await using (var verifyContext = CreateContext(database.ConnectionString, tenant))
+        {
+            var memberships = await verifyContext.ClassStudents
+                .Where(cs => cs.CenterId == centerId && cs.ClassId == classId)
+                .ToListAsync();
+
+            Assert.Equal(2, memberships.Count);
+
+            var s1 = memberships.Single(cs => cs.StudentId == studentId1);
+            Assert.Equal((byte)10, s1.GradeLevelAtEnrollment);
+            Assert.Null(s1.GradeMismatchReason);
+
+            var s2 = memberships.Single(cs => cs.StudentId == studentId2);
+            Assert.Equal((byte)11, s2.GradeLevelAtEnrollment);
+            Assert.Equal("Live MySQL verification of cross-grade student enrollment", s2.GradeMismatchReason);
+            Assert.Equal(managerId, s2.ExceptionApprovedBy);
         }
     }
 

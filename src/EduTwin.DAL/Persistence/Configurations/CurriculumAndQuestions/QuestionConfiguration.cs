@@ -12,6 +12,10 @@ public class QuestionConfiguration : IEntityTypeConfiguration<Question>
     public void Configure(EntityTypeBuilder<Question> builder)
     {
         builder.ToTable("questions");
+        builder.Property(q => q.Visibility).HasColumnName("visibility").HasColumnType("varchar(16)")
+            .HasConversion<string>().HasDefaultValue(MaterialVisibility.Private).IsRequired();
+        builder.HasIndex(q => new { q.CenterId, q.Visibility, q.Status }).HasDatabaseName("ix_questions_center_visibility_status");
+        builder.ToTable(t => t.HasCheckConstraint("ck_questions_visibility", "visibility IN ('Private', 'Shared')"));
 
         // Primary Key
         builder.HasKey(q => q.QuestionId).HasName("pk_questions");
@@ -53,6 +57,10 @@ public class QuestionConfiguration : IEntityTypeConfiguration<Question>
 
         builder.Property(q => q.Difficulty)
             .HasColumnName("difficulty")
+            .HasColumnType("tinyint unsigned");
+
+        builder.Property(q => q.GradeLevel)
+            .HasColumnName("grade_level")
             .HasColumnType("tinyint unsigned");
 
         builder.Property(q => q.QuestionText)
@@ -101,7 +109,7 @@ public class QuestionConfiguration : IEntityTypeConfiguration<Question>
         builder.Property(q => q.ReasoningRequired)
             .HasColumnName("reasoning_required")
             .HasColumnType("tinyint(1)")
-            .HasDefaultValue(true);
+            .HasDefaultValue(false);
 
         builder.Property(q => q.LanguageCode)
             .HasColumnName("language_code")
@@ -142,16 +150,20 @@ public class QuestionConfiguration : IEntityTypeConfiguration<Question>
         builder.HasIndex(q => new { q.CenterId, q.PrimaryTopicNodeId })
             .HasDatabaseName("ix_questions_center_id_primary_topic_node_id");
 
+        builder.HasIndex(q => new { q.CenterId, q.SubjectId, q.GradeLevel })
+            .HasDatabaseName("ix_questions_center_id_subject_id_grade_level");
+
         // Constraints
         builder.ToTable(t =>
         {
             t.HasCheckConstraint("ck_questions_question_type", "question_type IN ('MultipleChoice', 'ShortAnswer', 'Essay')");
             t.HasCheckConstraint("ck_questions_difficulty", "difficulty BETWEEN 1 AND 5");
+            t.HasCheckConstraint("ck_questions_grade_level", "grade_level IS NULL OR (grade_level >= 10 AND grade_level <= 12)");
             t.HasCheckConstraint("ck_questions_max_score", "max_score > 0");
             t.HasCheckConstraint("ck_questions_estimated_time_seconds", "estimated_time_seconds > 0");
             t.HasCheckConstraint("ck_questions_language_code", "language_code IN ('vi', 'en')");
             t.HasCheckConstraint("ck_questions_status", "status IN ('Draft', 'Active', 'Archived')");
-            t.HasCheckConstraint("ck_questions_answer_evaluation_mode", "answer_evaluation_mode IN ('TextExact', 'NumericRational', 'Manual', 'Coordinate2D')");
+            t.HasCheckConstraint("ck_questions_answer_evaluation_mode", "answer_evaluation_mode IN ('TextExact', 'NumericRational', 'Manual', 'Coordinate2D', 'MathEquivalent')");
         });
 
         // Relations

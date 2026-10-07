@@ -13,9 +13,11 @@ public class Question : IMutableTenantAggregate
     public Guid SubjectId { get; set; }
     public ulong PrimaryTopicNodeId { get; set; }
     public Guid CreatedByTeacherId { get; set; }
+    public MaterialVisibility Visibility { get; set; } = MaterialVisibility.Private;
 
     public QuestionType QuestionType { get; set; }
     public byte Difficulty { get; set; }
+    public byte? GradeLevel { get; set; }
     public string QuestionText { get; set; } = null!;
     public string CorrectAnswer { get; set; } = null!;
     public string Solution { get; set; } = null!;

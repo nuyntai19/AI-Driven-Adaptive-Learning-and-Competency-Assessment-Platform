@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
@@ -16,6 +17,8 @@ namespace EduTwin.BLL.Organization;
 
 public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
 {
+    public const int MaxBatchSize = 100;
+
     private readonly EduTwinDbContext _context;
     private readonly ITenantContext _tenantContext;
     private readonly TimeProvider _timeProvider;
@@ -58,6 +61,13 @@ public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
             return AddStudentsToClassResult.Failure(ErrorCodes.ValidationFailed);
         }
 
+        if (request.StudentIds.Count > MaxBatchSize)
+        {
+            return AddStudentsToClassResult.Failure(
+                ErrorCodes.ValidationFailed,
+                $"Số lượng học sinh thêm vào lớp không được vượt quá {MaxBatchSize} học sinh mỗi lượt.");
+        }
+
         if (!_tenantContext.IsResolved ||
             _tenantContext.CenterId == null ||
             _tenantContext.CenterId == Guid.Empty ||
@@ -90,12 +100,16 @@ public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
         var currentUserId = _tenantContext.UserId.Value;
 
         var existingClass = await _context.Classes
-            .AsNoTracking()
             .FirstOrDefaultAsync(c => c.CenterId == centerId && c.ClassId == classId && !c.IsDeleted, cancellationToken);
 
         if (existingClass == null)
         {
             return AddStudentsToClassResult.Failure(ErrorCodes.ResourceNotFound);
+        }
+
+        if (existingClass.Status != ClassStatus.Active)
+        {
+            return AddStudentsToClassResult.Failure(ErrorCodes.InvalidStateTransition);
         }
 
         var center = await _context.Centers
@@ -107,11 +121,13 @@ public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
             return AddStudentsToClassResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
-        var requestedStudentIds = request.StudentIds;
+        var requestedStudentIds = request.StudentIds.ToList();
+        var studentFilter = BuildIdEqualityFilter<Student>(nameof(Student.StudentId), requestedStudentIds);
 
         var validStudents = await _context.Students
             .Include(s => s.User)
-            .Where(s => requestedStudentIds.Contains(s.StudentId) && s.CenterId == centerId && !s.IsDeleted && !s.User.IsDeleted && s.User.RoleName == UserRole.Student)
+            .Where(studentFilter)
+            .Where(s => s.CenterId == centerId && !s.IsDeleted && !s.User.IsDeleted && s.User.RoleName == UserRole.Student)
             .ToListAsync(cancellationToken);
 
         if (validStudents.Any(s => s.User.Status != UserStatus.Active))
@@ -124,8 +140,31 @@ public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
             return AddStudentsToClassResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
+        if (!string.IsNullOrWhiteSpace(request.GradeMismatchReason) && request.GradeMismatchReason.Trim().Length > 500)
+        {
+            return AddStudentsToClassResult.Failure(
+                ErrorCodes.ValidationFailed,
+                "Lý do ngoại lệ khối lớp không được vượt quá 500 ký tự.");
+        }
+
+        if (existingClass.GradeLevel.HasValue)
+        {
+            var hasMismatch = validStudents.Any(s => s.GradeLevel != existingClass.GradeLevel.Value);
+            if (hasMismatch)
+            {
+                if (!request.AllowGradeMismatch || string.IsNullOrWhiteSpace(request.GradeMismatchReason))
+                {
+                    return AddStudentsToClassResult.Failure(
+                        ErrorCodes.InvalidStateTransition,
+                        $"Học sinh khác khối {existingClass.GradeLevel.Value} không thể thêm vào lớp mà không có lý do ngoại lệ hợp lệ.");
+                }
+            }
+        }
+
+        var membershipFilter = BuildIdEqualityFilter<ClassStudent>(nameof(ClassStudent.StudentId), requestedStudentIds);
         var existingMemberships = await _context.ClassStudents
-            .Where(cs => cs.CenterId == centerId && cs.ClassId == classId && requestedStudentIds.Contains(cs.StudentId))
+            .Where(cs => cs.CenterId == centerId && cs.ClassId == classId)
+            .Where(membershipFilter)
             .ToListAsync(cancellationToken);
 
         if (existingMemberships.Any(cs => cs.Status != ClassStudentStatus.Active && cs.Status != ClassStudentStatus.Removed))
@@ -140,7 +179,9 @@ public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
 
         foreach (var studentId in requestedStudentIds)
         {
+            var student = validStudents.First(s => s.StudentId == studentId);
             var membership = existingMemberships.FirstOrDefault(cs => cs.StudentId == studentId);
+            var isGradeMismatch = existingClass.GradeLevel.HasValue && student.GradeLevel != existingClass.GradeLevel.Value;
 
             if (membership == null)
             {
@@ -149,6 +190,10 @@ public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
                     CenterId = centerId,
                     ClassId = classId,
                     StudentId = studentId,
+                    GradeLevelAtEnrollment = student.GradeLevel,
+                    GradeMismatchReason = isGradeMismatch ? request.GradeMismatchReason?.Trim() : null,
+                    ExceptionApprovedBy = isGradeMismatch ? currentUserId : null,
+                    ExceptionApprovedAt = isGradeMismatch ? currentUtc : null,
                     JoinedAt = currentUtc,
                     Status = ClassStudentStatus.Active,
                     RemovedAt = null,
@@ -164,6 +209,11 @@ public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
             else if (membership.Status == ClassStudentStatus.Removed)
             {
                 membership.Status = ClassStudentStatus.Active;
+                membership.GradeLevelAtEnrollment = student.GradeLevel;
+                membership.GradeMismatchReason = isGradeMismatch ? request.GradeMismatchReason?.Trim() : null;
+                membership.ExceptionApprovedBy = isGradeMismatch ? currentUserId : null;
+                membership.ExceptionApprovedAt = isGradeMismatch ? currentUtc : null;
+
                 membership.JoinedAt = currentUtc;
                 membership.RemovedAt = null;
                 membership.CreatedBy = currentUserId;
@@ -172,11 +222,21 @@ public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
             }
         }
 
+
         if (hasChanges)
         {
+            existingClass.UpdatedAt = currentUtc;
+            existingClass.UpdatedBy = currentUserId;
+
             try
             {
                 await _context.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException ex)
+            {
+                _logger.LogWarning(ex, "Concurrency conflict when adding students to class {ClassId}", classId);
+                _context.ChangeTracker.Clear();
+                return AddStudentsToClassResult.Failure(ErrorCodes.ConcurrencyConflict);
             }
             catch (DbUpdateException ex)
             {
@@ -191,5 +251,23 @@ public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
             AddedCount = addedCount,
             AlreadyMemberCount = alreadyMemberCount
         });
+    }
+
+    private static Expression<Func<T, bool>> BuildIdEqualityFilter<T>(
+        string propertyName,
+        IReadOnlyCollection<Guid> ids)
+    {
+        var param = Expression.Parameter(typeof(T), "x");
+        var prop = Expression.Property(param, propertyName);
+        Expression? body = null;
+        foreach (var id in ids)
+        {
+            var eq = Expression.Equal(prop, Expression.Constant(id, typeof(Guid)));
+            body = body == null ? eq : Expression.OrElse(body, eq);
+        }
+
+        return body == null
+            ? Expression.Lambda<Func<T, bool>>(Expression.Constant(false), param)
+            : Expression.Lambda<Func<T, bool>>(body, param);
     }
 }

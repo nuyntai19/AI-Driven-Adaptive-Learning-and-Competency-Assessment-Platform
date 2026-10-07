@@ -39,6 +39,7 @@ export interface RichMathEditorRef {
   insertLatex: (latex: string) => void;
   insertText: (text: string) => void;
   focus: () => void;
+  clear: () => void;
 }
 
 /**
@@ -85,6 +86,9 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
   const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null);
 
   const editorRef = useRef<HTMLDivElement>(null);
+  // Native math-node listeners can outlive a render; consult the current lock.
+  const disabledRef = useRef(disabled);
+  disabledRef.current = disabled;
   const isLocalChangeRef = useRef<boolean>(false);
   const lastValidRangeRef = useRef<Range | null>(null);
   const isDismissingKeyboardRef = useRef<boolean>(false);
@@ -133,6 +137,7 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
   }, [value]);
 
   const handleOpenMathNode = useCallback((span: HTMLElement, isNew = false) => {
+    if (disabledRef.current) return;
     isDismissingKeyboardRef.current = false;
     clearVirtualKeyboardDismissalProtection();
     const currentLatex = span.dataset.latex || "";
@@ -190,19 +195,28 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
   // Hydrate DOM on initial mount or external value changes
   useEffect(() => {
     if (viewMode !== "visual") return;
-    if (isLocalChangeRef.current) {
+    if (isLocalChangeRef.current && !disabled) {
       isLocalChangeRef.current = false;
       checkEmpty();
       return;
     }
     lastValidRangeRef.current = null;
+    isLocalChangeRef.current = false;
     if (editorRef.current) {
-      hydrateEditorDom(editorRef.current, value, (span) =>
-        handleOpenMathNode(span, false)
-      );
+      hydrateEditorDom(editorRef.current, value, disabled ? undefined : (span) =>
+        handleOpenMathNode(span, false));
       checkEmpty();
     }
-  }, [value, viewMode, handleOpenMathNode, checkEmpty]);
+  }, [value, viewMode, disabled, handleOpenMathNode, checkEmpty]);
+
+  useEffect(() => {
+    if (!disabled || !activeMathNode) return;
+    hideVirtualKeyboard();
+    clearVirtualKeyboardDismissalProtection();
+    setActiveMathNode(null);
+    setDialogLatex("");
+    setDialogError(null);
+  }, [disabled, activeMathNode]);
 
   // Keep track of the last valid selection range belonging to the editor
   useEffect(() => {
@@ -408,6 +422,20 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
     focus: () => {
       editorRef.current?.focus();
     },
+    clear: () => {
+      if (disabled || viewMode !== "visual" || !editorRef.current) return;
+      if (activeMathNode) hideVirtualKeyboard();
+      clearVirtualKeyboardDismissalProtection();
+      isDismissingKeyboardRef.current = false;
+      setActiveMathNode(null);
+      setDialogLatex("");
+      setDialogError(null);
+      lastValidRangeRef.current = null;
+      editorRef.current.replaceChildren();
+      isLocalChangeRef.current = true;
+      onChange("");
+      checkEmpty();
+    },
   }));
 
   // Handle typing inside contenteditable
@@ -489,7 +517,7 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
 
   // Confirm and commit formula from the popover
   const handleConfirmMath = () => {
-    if (!activeMathNode || !editorRef.current) return;
+    if (disabledRef.current || !activeMathNode || !editorRef.current) return;
 
     const validation = validateAndCleanFormula(dialogLatex);
     if (!validation.isComplete || !validation.cleanLatex) {
@@ -549,6 +577,7 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
 
   // Delete math node
   const handleDeleteMath = () => {
+    if (disabledRef.current) return;
     hideVirtualKeyboard();
     isDismissingKeyboardRef.current = false;
     clearVirtualKeyboardDismissalProtection();
@@ -575,7 +604,7 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
     clearVirtualKeyboardDismissalProtection();
     hideVirtualKeyboard();
     if (!activeMathNode) return;
-    if (activeMathNode.isNew) {
+    if (activeMathNode.isNew && !disabledRef.current) {
       activeMathNode.element.remove();
       if (editorRef.current) {
         isLocalChangeRef.current = true;
@@ -586,7 +615,7 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
     setActiveMathNode(null);
     setDialogLatex("");
     setDialogError(null);
-    if (editorRef.current) {
+    if (editorRef.current && !disabledRef.current) {
       editorRef.current.focus();
     }
   };
@@ -879,7 +908,7 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
       </div>
 
       {/* In-place Anchored Math Editing Popover (No fullscreen blur veil!) */}
-      {activeMathNode && popoverPos && (
+      {!disabled && activeMathNode && popoverPos && (
         <>
           {/* Transparent click-catcher to dismiss popover on outside click without obscuring text */}
           <div

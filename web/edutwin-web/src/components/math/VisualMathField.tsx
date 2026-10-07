@@ -6,7 +6,9 @@ import {
   shouldSyncExternalValue,
   registerVirtualKeyboardDismissListener,
   DEFAULT_MATH_INLINE_SHORTCUTS,
-  normalizeMathInsertContent,
+  isMathFieldSelectionCollapsed,
+  installMathFieldInsertionGuards,
+  prepareMathFieldInsertion,
 } from "../../utils/visualMathFieldLifecycle";
 import { MathFallbackTextarea } from "./answer-editor/MathFallbackTextarea";
 
@@ -202,12 +204,19 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
                 opacity: 0.85 !important;
                 border-bottom: 1.5px dashed currentColor !important;
                 padding: 0 2px !important;
+                pointer-events: auto !important;
+                cursor: pointer !important;
               }
             `;
             mf.shadowRoot?.appendChild(shadowStyle);
           } catch {
             // Fallback handled via global CSS
           }
+
+          // Intercept public insert and executeCommand to guarantee that commands from the virtual keyboard
+          // (such as \sqrt{#0}, \left\vert#0\right\vert, \left\Vert#0\right\vert) convert #0 to placeholder #?
+          // when selection is collapsed and set selectionMode to "placeholder" only for placeholders
+          installMathFieldInsertionGuards(mf);
 
           // Hydrate with latest value and disabled state (retaining any edits made in fallback textarea)
           const { hydratedValue } = hydrateMathFieldInstance(mf, {
@@ -356,6 +365,7 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
         if (disabled) return;
         const mf = mathfieldRef.current;
         if (!mf || mf.readOnly) return;
+        const isCollapsed = isMathFieldSelectionCollapsed(mf);
         mf.focus();
         mf.defaultMode = "math";
         mf.smartFence = false;
@@ -366,16 +376,15 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
         };
         mf.executeCommand(["switchMode", "math"]);
         mf.setAttribute("data-input-mode", "math");
-        const toInsert = normalizeMathInsertContent(latexOrText);
+        const prepared = prepareMathFieldInsertion(mf, latexOrText, {
+          mode: "math",
+          focus: true,
+          silenceNotifications: true,
+        }, isCollapsed);
         if (typeof mf.insert === "function") {
-          mf.insert(toInsert, {
-            mode: "math",
-            selectionMode: "placeholder",
-            focus: true,
-            silenceNotifications: true,
-          });
+          mf.insert(prepared.content, prepared.options);
         } else {
-          mf.executeCommand(["insert", toInsert]);
+          mf.executeCommand(["insert", prepared.content, prepared.options] as any);
         }
         const newVal = mf.getValue ? mf.getValue("latex-expanded") : mf.value;
         const rawPlainText = mf.getValue ? mf.getValue("plain-text") : newVal;

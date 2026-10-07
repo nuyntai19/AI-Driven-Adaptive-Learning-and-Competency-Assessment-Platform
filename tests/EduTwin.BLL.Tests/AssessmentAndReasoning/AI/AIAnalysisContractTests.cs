@@ -76,7 +76,9 @@ public sealed class AIAnalysisContractTests
             ("Confidence", typeof(int), NullabilityState.NotNull, false),
             ("Feedback", typeof(string), NullabilityState.NotNull, true),
             ("SolutionType", typeof(string), NullabilityState.Nullable, false),
-            ("AiSolution", typeof(string), NullabilityState.Nullable, false));
+            ("AiSolution", typeof(string), NullabilityState.Nullable, false),
+            ("AnswerAssessment", typeof(string), NullabilityState.Nullable, false),
+            ("ReasoningVerdict", typeof(string), NullabilityState.Nullable, false));
     }
 
     [Fact]
@@ -125,8 +127,8 @@ public sealed class AIAnalysisContractTests
             "reasoningText",
             "timeSpentSeconds",
             "confidence",
-            "answerChanges",
-            "imageParts");
+            "answerChanges");
+        Assert.False(submission.TryGetProperty("imageParts", out _)); // Images are sent as multimodal parts, never duplicated in JSON.
         Assert.Equal("B", submission.GetProperty("finalAnswer").GetString());
         Assert.Null(submission.GetProperty("answerDisplayLatex").GetString());
         Assert.Null(submission.GetProperty("canonicalFinalAnswer").GetString());
@@ -161,7 +163,9 @@ public sealed class AIAnalysisContractTests
             "confidence",
             "feedback",
             "solutionType",
-            "aiSolution");
+            "aiSolution",
+            "answerAssessment",
+            "reasoningVerdict");
         Assert.Equal("ai-analysis-v1", root.GetProperty("schemaVersion").GetString());
         Assert.Equal("vi", root.GetProperty("language").GetString());
         Assert.Equal("Đưa hai vế về cùng cơ số", root.GetProperty("methodDetected").GetString());

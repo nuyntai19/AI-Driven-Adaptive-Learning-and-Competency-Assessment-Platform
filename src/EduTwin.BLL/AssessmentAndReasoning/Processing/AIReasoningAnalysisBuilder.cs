@@ -27,25 +27,14 @@ public sealed class AIReasoningAnalysisBuilder : IAIReasoningAnalysisBuilder
 
         ArgumentNullException.ThrowIfNull(response);
 
-        var deterministicFeedback = preliminaryIsCorrect switch
-        {
-            true when string.Equals(language, "vi", StringComparison.OrdinalIgnoreCase) =>
-                "Đáp án của bạn đã được hệ thống chấm đúng. AI chỉ phân tích phương pháp và gợi ý lời giải tối ưu; kết quả đúng/sai không bị AI chấm lại.",
-            true =>
-                "Your answer was graded correct by the deterministic grader. AI only analyzes the method and suggests an improved solution; it does not re-grade correctness.",
-            false when string.Equals(language, "vi", StringComparison.OrdinalIgnoreCase) =>
-                "Đáp án của bạn chưa đúng theo kết quả chấm xác định. Hãy đối chiếu lời giải đề xuất để tìm bước cần điều chỉnh.",
-            false =>
-                "Your answer was graded incorrect by the deterministic grader. Compare it with the suggested solution to identify the step to revise.",
-            _ => response.Feedback
-        };
-
-        var errorType = preliminaryIsCorrect switch
-        {
-            true => ErrorType.None,
-            false when response.ErrorType == ErrorType.None => ErrorType.Unknown,
-            _ => response.ErrorType
-        };
+        // A fallacious derivation can accidentally produce the right number.
+        // Preserve observations; the AI never writes a final grade.
+        var disagrees = (preliminaryIsCorrect == true && response.AnswerAssessment == "Incorrect")
+            || (preliminaryIsCorrect == false && response.AnswerAssessment == "Correct");
+        var needsReview = preliminaryIsCorrect is null || disagrees
+            || response.AnswerAssessment == "Uncertain" || response.ReasoningVerdict == "Uncertain"
+            || response.Confidence < 80
+            || (preliminaryIsCorrect == true && response.ReasoningVerdict == "Invalid");
 
         return new ReasoningAnalysis
         {
@@ -54,18 +43,21 @@ public sealed class AIReasoningAnalysisBuilder : IAIReasoningAnalysisBuilder
             SchemaVersion = response.SchemaVersion,
             MethodDetected = response.MethodDetected,
             ReasoningQuality = response.ReasoningQuality,
-            ErrorType = errorType,
-            Misconception = preliminaryIsCorrect == true ? null : response.Misconception,
+            ErrorType = response.ErrorType,
+            Misconception = response.Misconception,
             MissingSteps = JsonSerializer.SerializeToDocument(
-                preliminaryIsCorrect == true ? Array.Empty<string>() : response.MissingSteps),
+                response.MissingSteps),
             RootCauseNodeIds = JsonSerializer.SerializeToDocument(
-                preliminaryIsCorrect == true ? Array.Empty<string>() : response.RootCauseNodeIds),
+                response.RootCauseNodeIds),
             AnalysisConfidence = response.Confidence,
-            Feedback = deterministicFeedback,
+            Feedback = response.Feedback,
+            FeedbackOrigin = "Gemini",
+            AnswerAssessment = response.AnswerAssessment,
+            ReasoningVerdict = response.ReasoningVerdict,
             SolutionType = response.SolutionType,
             AiSolution = response.AiSolution,
             IsFallback = false,
-            NeedsTeacherReview = preliminaryIsCorrect is null,
+            NeedsTeacherReview = needsReview,
             Provider = AnalysisProvider.Gemini,
             ModelName = null,
             OverrideReasoningQuality = null,

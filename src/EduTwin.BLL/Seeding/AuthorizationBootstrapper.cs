@@ -29,6 +29,8 @@ public sealed class AuthorizationBootstrapper(
         {
             await EnsureCenterAsync(centerId, permissions, cancellationToken);
         }
+
+        await ReconcileGlobalPermissionAccountTypesAsync(cancellationToken);
     }
 
     public async Task EnsureCenterAsync(
@@ -36,9 +38,45 @@ public sealed class AuthorizationBootstrapper(
         IReadOnlyCollection<PermissionAccountType>? permissionMappings = null,
         CancellationToken cancellationToken = default)
     {
-        permissionMappings ??= await dbContext.PermissionAccountTypes
-            .AsNoTracking()
-            .ToArrayAsync(cancellationToken);
+        var changed = false;
+        var utcNow = timeProvider.GetUtcNow().UtcDateTime;
+
+        // 1. Reconcile base permissions from catalog
+        var catalogPermissions = AuthorizationPermissionCatalog.CreatePermissions();
+        var existingPermissions = await dbContext.Permissions
+            .IgnoreQueryFilters()
+            .ToDictionaryAsync(p => p.PermissionCode, cancellationToken);
+
+        foreach (var perm in catalogPermissions)
+        {
+            if (!existingPermissions.TryGetValue(perm.PermissionCode, out var existing))
+            {
+                dbContext.Permissions.Add(perm);
+                existingPermissions.Add(perm.PermissionCode, perm);
+                changed = true;
+            }
+        }
+
+        // 2. Reconcile PermissionAccountTypes from catalog
+        var catalogMappings = AuthorizationPermissionCatalog.CreateAccountTypeMappings();
+        var existingMappings = await dbContext.PermissionAccountTypes
+            .IgnoreQueryFilters()
+            .ToListAsync(cancellationToken);
+        var existingMappingKeys = existingMappings
+            .Select(m => (m.PermissionId, m.AccountType))
+            .ToHashSet();
+
+        foreach (var mapping in catalogMappings)
+        {
+            if (existingMappingKeys.Add((mapping.PermissionId, mapping.AccountType)))
+            {
+                dbContext.PermissionAccountTypes.Add(mapping);
+                existingMappings.Add(mapping);
+                changed = true;
+            }
+        }
+
+
 
         var users = await dbContext.Users
             .IgnoreQueryFilters()
@@ -54,11 +92,13 @@ public sealed class AuthorizationBootstrapper(
 
         var roles = await dbContext.AuthorizationRoles
             .IgnoreQueryFilters()
-            .Where(role => role.CenterId == centerId && role.IsSystemRole)
+            .Where(role => role.CenterId == centerId)
+            .Include(r => r.RolePermissions)
             .ToListAsync(cancellationToken);
-        var changed = false;
-        var utcNow = timeProvider.GetUtcNow().UtcDateTime;
 
+        var usersToBumpAuthVersion = new HashSet<Guid>();
+
+        // 3. Reconcile System Roles using explicit default permission sets
         foreach (var accountType in Enum.GetValues<UserRole>())
         {
             if (accountType == UserRole.PlatformAdmin)
@@ -66,7 +106,7 @@ public sealed class AuthorizationBootstrapper(
                 continue;
             }
 
-            var role = roles.SingleOrDefault(item => item.AccountType == accountType);
+            var role = roles.SingleOrDefault(item => item.IsSystemRole && item.AccountType == accountType);
             if (role is null)
             {
                 role = CreateSystemRole(centerId, accountType, utcNow);
@@ -75,20 +115,43 @@ public sealed class AuthorizationBootstrapper(
                 changed = true;
             }
 
-            var existingPermissionIds = await dbContext.RolePermissions
-                .IgnoreQueryFilters()
-                .Where(item => item.CenterId == centerId && item.RoleId == role.RoleId)
-                .Select(item => item.PermissionId)
-                .ToHashSetAsync(cancellationToken);
-            foreach (var mapping in permissionMappings.Where(item => item.AccountType == accountType))
+            var defaultCodes = AuthorizationPermissionCatalog.GetDefaultSystemRoleCodes(accountType);
+            var targetPermissionIds = defaultCodes
+                .Where(code => existingPermissions.ContainsKey(code))
+                .Select(code => existingPermissions[code].PermissionId)
+                .ToHashSet();
+
+            var currentRolePermissions = role.RolePermissions.ToList();
+
+            // Revoke permissions no longer in the explicit default set for this system role
+            foreach (var rp in currentRolePermissions)
             {
-                if (existingPermissionIds.Add(mapping.PermissionId))
+                if (!targetPermissionIds.Contains(rp.PermissionId))
+                {
+                    dbContext.RolePermissions.Remove(rp);
+                    changed = true;
+                    foreach (var u in users.Where(u => u.RoleName == accountType))
+                    {
+                        usersToBumpAuthVersion.Add(u.UserId);
+                    }
+                }
+            }
+
+            var currentPermIds = currentRolePermissions
+                .Where(rp => targetPermissionIds.Contains(rp.PermissionId))
+                .Select(rp => rp.PermissionId)
+                .ToHashSet();
+
+            // Grant missing default permissions
+            foreach (var permId in targetPermissionIds)
+            {
+                if (!currentPermIds.Contains(permId))
                 {
                     dbContext.RolePermissions.Add(new RolePermission
                     {
                         CenterId = centerId,
                         RoleId = role.RoleId,
-                        PermissionId = mapping.PermissionId,
+                        PermissionId = permId,
                         AccountType = accountType,
                         GrantedAt = utcNow,
                         GrantedByUserId = actor.UserId
@@ -98,6 +161,47 @@ public sealed class AuthorizationBootstrapper(
             }
         }
 
+        // 4. Reconcile Custom Roles: purge permissions no longer compatible with account type
+        var customRoles = roles.Where(r => !r.IsSystemRole).ToList();
+        foreach (var customRole in customRoles)
+        {
+            var validCompatibleIds = catalogMappings
+                .Where(m => m.AccountType == customRole.AccountType)
+                .Select(m => m.PermissionId)
+                .ToHashSet();
+
+            foreach (var rp in customRole.RolePermissions.ToList())
+            {
+                if (!validCompatibleIds.Contains(rp.PermissionId))
+                {
+                    dbContext.RolePermissions.Remove(rp);
+                    changed = true;
+                    var assignedUserIds = await dbContext.UserRoleAssignments
+                        .IgnoreQueryFilters()
+                        .Where(a => a.RoleId == customRole.RoleId && a.CenterId == centerId)
+                        .Select(a => a.UserId)
+                        .ToListAsync(cancellationToken);
+                    foreach (var uid in assignedUserIds)
+                    {
+                        usersToBumpAuthVersion.Add(uid);
+                    }
+                }
+            }
+        }
+
+        // 5. Invalidate existing sessions for affected users
+        if (usersToBumpAuthVersion.Count > 0)
+        {
+            var affectedUsers = users.Where(u => usersToBumpAuthVersion.Contains(u.UserId)).ToList();
+            foreach (var u in affectedUsers)
+            {
+                u.AuthVersion = checked(u.AuthVersion + 1);
+                u.UpdatedAt = utcNow;
+            }
+            changed = true;
+        }
+
+        // 6. Ensure default system role assignment for each user
         var existingAssignments = await dbContext.UserRoleAssignments
             .IgnoreQueryFilters()
             .Where(item => item.CenterId == centerId)
@@ -113,7 +217,7 @@ public sealed class AuthorizationBootstrapper(
                 continue;
             }
 
-            var role = roles.Single(item => item.AccountType == user.RoleName);
+            var role = roles.Single(item => item.IsSystemRole && item.AccountType == user.RoleName);
             if (assignmentKeys.Add((user.UserId, role.RoleId)))
             {
                 dbContext.UserRoleAssignments.Add(new UserRoleAssignment
@@ -142,13 +246,53 @@ public sealed class AuthorizationBootstrapper(
             ActionType = "AuthorizationBootstrap",
             TargetType = "Center",
             TargetId = centerId.ToString("D"),
-            AfterData = "{\"catalogVersion\":\"v1\",\"systemRoles\":3}",
-            Reason = "Khởi tạo phân quyền động cho dữ liệu seed hoặc Center mới.",
+            AfterData = "{\"catalogVersion\":\"v2\",\"reconciliation\":\"role-boundaries-separated\"}",
+            Reason = "Khởi tạo hoặc đối soát phân quyền động theo ranh giới vai trò chuẩn hóa.",
             TraceId = "runtime-seed:authorization-bootstrap",
             CreatedAt = utcNow
         });
 
         await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task ReconcileGlobalPermissionAccountTypesAsync(CancellationToken cancellationToken)
+    {
+        var catalogMappings = AuthorizationPermissionCatalog.CreateAccountTypeMappings();
+        var catalogMappingKeys = catalogMappings
+            .Select(m => (m.PermissionId, m.AccountType))
+            .ToHashSet();
+
+        var existingMappings = await dbContext.PermissionAccountTypes
+            .IgnoreQueryFilters()
+            .ToListAsync(cancellationToken);
+
+        var obsoleteMappings = existingMappings
+            .Where(m => !catalogMappingKeys.Contains((m.PermissionId, m.AccountType)))
+            .ToList();
+
+        if (obsoleteMappings.Count > 0)
+        {
+            var obsoleteKeys = obsoleteMappings
+                .Select(m => (m.PermissionId, m.AccountType))
+                .ToHashSet();
+
+            var allRolePermissions = await dbContext.RolePermissions
+                .IgnoreQueryFilters()
+                .ToListAsync(cancellationToken);
+
+            var orphanedRolePermissions = allRolePermissions
+                .Where(rp => obsoleteKeys.Contains((rp.PermissionId, rp.AccountType)))
+                .ToList();
+
+            if (orphanedRolePermissions.Count > 0)
+            {
+                dbContext.RolePermissions.RemoveRange(orphanedRolePermissions);
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+
+            dbContext.PermissionAccountTypes.RemoveRange(obsoleteMappings);
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
     }
 
     public async Task BootstrapPlatformAsync(

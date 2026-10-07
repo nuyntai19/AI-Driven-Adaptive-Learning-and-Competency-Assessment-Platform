@@ -27,4 +27,8 @@ public sealed record AnalyzeReasoningResponse
     public string? SolutionType { get; init; }
 
     public string? AiSolution { get; init; }
+
+    // Advisory observations, never final grades. Null supports legacy responses.
+    public string? AnswerAssessment { get; init; }
+    public string? ReasoningVerdict { get; init; }
 }

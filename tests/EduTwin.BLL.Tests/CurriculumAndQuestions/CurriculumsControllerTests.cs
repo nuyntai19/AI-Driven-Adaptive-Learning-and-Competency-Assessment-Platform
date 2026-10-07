@@ -79,6 +79,7 @@ public class CurriculumsControllerTests
         {
             SubjectId = Guid.NewGuid(),
             Title = "Toán 12 Cơ Bản",
+            GradeLevel = 12,
             NodeIds = new List<string> { "1" }
         };
         var expectedDto = new CurriculumDto

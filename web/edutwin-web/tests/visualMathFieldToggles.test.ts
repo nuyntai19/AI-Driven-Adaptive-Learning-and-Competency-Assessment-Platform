@@ -442,10 +442,14 @@ test("normalizeMathInsertContent maps calculator and toolbar expressions to inte
   assert.equal(normalizeMathInsertContent("\\frac{}{}"), "\\frac{#?}{#?}");
   assert.equal(normalizeMathInsertContent("^"), "^{#?}");
 
-  // Preserves existing filled content
+  // Preserves existing filled content and whitespace/raw text
   assert.equal(normalizeMathInsertContent("\\sqrt{3}"), "\\sqrt{3}");
   assert.equal(normalizeMathInsertContent("\\left|x+1\\right|"), "\\left|x+1\\right|");
   assert.equal(normalizeMathInsertContent(""), "");
+  assert.equal(normalizeMathInsertContent(" "), " ");
+  assert.equal(normalizeMathInsertContent(" x "), " x ");
+  assert.equal(normalizeMathInsertContent("5"), "5");
+  assert.equal(normalizeMathInsertContent("y + 2"), "y + 2");
 });
 
 test("VisualMathField configures DEFAULT_MATH_INLINE_SHORTCUTS and guards Enter in LaTeX command mode", () => {
@@ -462,8 +466,8 @@ test("VisualMathField configures DEFAULT_MATH_INLINE_SHORTCUTS and guards Enter 
   );
   assert.match(
     componentContent,
-    /normalizeMathInsertContent\(latexOrText\)/,
-    "insertAtCursor must normalize incoming formula text via normalizeMathInsertContent"
+    /prepareMathFieldInsertion\(mf, latexOrText/,
+    "insertAtCursor must use the tested shared insertion preparation"
   );
   assert.match(
     componentContent,
@@ -808,6 +812,48 @@ test("behavioral: literal pipe symbol is preserved for set builder, probability,
     "\\left|#?\\right|",
     "Dedicated toolbar button inserting 'abs' must be normalized to interactive absolute value template"
   );
+
+  // 5. Virtual Keyboard symbols with selection arg #0 normalize to placeholder #? when collapsed
+  assert.equal(
+    normalizeMathInsertContent("\\sqrt{#0}"),
+    "\\sqrt{#?}",
+    "Virtual keyboard square root \\sqrt{#0} must be converted to \\sqrt{#?} placeholder"
+  );
+  assert.equal(
+    normalizeMathInsertContent("\\sqrt[#0]{#1}"),
+    "\\sqrt[#?]{#?}",
+    "Virtual keyboard root-n \\sqrt[#0]{#1} must convert #0 and #1 to #? placeholders"
+  );
+  assert.equal(
+    normalizeMathInsertContent("\\left\\vert#0\\right\\vert"),
+    "\\left|#?\\right|",
+    "Virtual keyboard absolute value \\left\\vert#0\\right\\vert must be normalized to \\left|#?\\right|"
+  );
+  assert.equal(
+    normalizeMathInsertContent("\\left\\Vert#0\\right\\Vert"),
+    "\\left\\|#?\\right\\|",
+    "Virtual keyboard norm \\left\\Vert#0\\right\\Vert must be normalized to \\left\\|#?\\right\\|"
+  );
+  assert.equal(
+    normalizeMathInsertContent("\\left|#0\\right|"),
+    "\\left|#?\\right|",
+    "Virtual keyboard absolute value \\left|#0\\right| must be normalized to \\left|#?\\right|"
+  );
+  assert.equal(
+    normalizeMathInsertContent("\\left\\|#0\\right\\|"),
+    "\\left\\|#?\\right\\|",
+    "Virtual keyboard norm \\left\\|#0\\right\\| must be normalized to \\left\\|#?\\right\\|"
+  );
+  assert.equal(
+    normalizeMathInsertContent("\\vert"),
+    "\\left|#?\\right|",
+    "Virtual keyboard single pipe symbol \\vert must be normalized to \\left|#?\\right|"
+  );
+  assert.equal(
+    normalizeMathInsertContent("\\Vert"),
+    "\\left\\|#?\\right\\|",
+    "Virtual keyboard double pipe symbol \\Vert must be normalized to \\left\\|#?\\right\\|"
+  );
 });
 
 test("behavioral: InlineMathComposer backdrop ignores click 1 when dismissing keyboard and closes on click 2", async () => {
@@ -868,4 +914,188 @@ test("behavioral: InlineMathComposer backdrop ignores click 1 when dismissing ke
   handleBackdropMouseDown(true);
   handleBackdropClick(true);
   assert.equal(modalOpen, false, "Modal must close on Click #2");
+});
+
+test("normalizeMathInsertContent strictly preserves text, escaped hashes, and whitespace while converting math templates", async () => {
+  const { normalizeMathInsertContent } = await import("../src/utils/visualMathFieldLifecycle.ts");
+
+  // 1. Text preservation: \text{...} and plain text containing #1, #0, or escaped \# must NEVER be modified
+  assert.equal(
+    normalizeMathInsertContent("\\text{Mã \\#1}"),
+    "\\text{Mã \\#1}",
+    "\\text{Mã \\#1} must remain strictly unchanged"
+  );
+  assert.equal(
+    normalizeMathInsertContent("\\text{Mã #1}"),
+    "\\text{Mã #1}",
+    "\\text{Mã #1} must remain strictly unchanged"
+  );
+  assert.equal(
+    normalizeMathInsertContent("Mã #1"),
+    "Mã #1",
+    "Plain text 'Mã #1' must remain unchanged"
+  );
+  assert.equal(
+    normalizeMathInsertContent(" x "),
+    " x ",
+    "Spaces in ' x ' must be preserved"
+  );
+  assert.equal(
+    normalizeMathInsertContent("   "),
+    "   ",
+    "Whitespace-only strings must be preserved"
+  );
+
+  // 2. Mathematical templates: MathLive keyboard triggers convert to explicit placeholders (#?)
+  assert.equal(
+    normalizeMathInsertContent("\\sqrt{#0}", { isSelectionCollapsed: true }),
+    "\\sqrt{#?}",
+    "\\sqrt{#0} must convert to \\sqrt{#?} when selection is collapsed"
+  );
+  assert.equal(
+    normalizeMathInsertContent("\\sqrt{#0}", { isSelectionCollapsed: false }),
+    "\\sqrt{#0}",
+    "\\sqrt{#0} must be preserved when text is selected for wrapping"
+  );
+  assert.equal(
+    normalizeMathInsertContent("\\frac{#0}{#1}", { isSelectionCollapsed: true }),
+    "\\frac{#?}{#?}",
+    "\\frac{#0}{#1} must convert to \\frac{#?}{#?}"
+  );
+  assert.equal(
+    normalizeMathInsertContent("\\left|#0\\right|", { isSelectionCollapsed: true }),
+    "\\left|#?\\right|",
+    "\\left|#0\\right| must convert to \\left|#?\\right|"
+  );
+  assert.equal(
+    normalizeMathInsertContent("\\left\\Vert#0\\right\\Vert", { isSelectionCollapsed: true }),
+    "\\left\\|#?\\right\\|",
+    "\\left\\Vert#0\\right\\Vert must convert to \\left\\|#?\\right\\|"
+  );
+  assert.equal(
+    normalizeMathInsertContent("^{#0}", { isSelectionCollapsed: true }),
+    "^{#?}",
+    "^{#0} must convert to ^{#?}"
+  );
+  assert.equal(
+    normalizeMathInsertContent("_{#0}", { isSelectionCollapsed: true }),
+    "_{#?}",
+    "_{#0} must convert to _{#?}"
+  );
+  assert.equal(
+    normalizeMathInsertContent("\\sqrt[#0]{#1}", { isSelectionCollapsed: true }),
+    "\\sqrt[#?]{#?}",
+    "\\sqrt[#0]{#1} must convert to \\sqrt[#?]{#?}"
+  );
+});
+
+test("VisualMathField command wrapper preserves and merges original command options", async () => {
+  const { installMathFieldInsertionGuards } = await import("../src/utils/visualMathFieldLifecycle.ts");
+  // Test executeCommand wrapper logic with original command[2] options
+  const executedCommands: any[] = [];
+  const fakeMf: any = {
+    selectionIsCollapsed: true,
+    executeCommand: (cmd: any) => {
+      executedCommands.push(cmd);
+      return true;
+    },
+    insert: (s: string, opts?: any) => {
+      executedCommands.push(["insert", s, opts]);
+      return true;
+    },
+  };
+
+  // Exercise the exact guard installed on production MathLive instances.
+  installMathFieldInsertionGuards(fakeMf);
+
+  // Scenario A: MathLive insert with existing options { mode: "math", focus: true }
+  fakeMf.executeCommand(["insert", "\\sqrt{#0}", { mode: "math", focus: true }]);
+  assert.equal(executedCommands.length, 1);
+  assert.deepEqual(executedCommands[0], [
+    "insert",
+    "\\sqrt{#?}",
+    { mode: "math", focus: true, selectionMode: "placeholder" },
+  ]);
+
+  // Scenario B: Plain text insertion preserves original options without adding selectionMode
+  fakeMf.executeCommand(["insert", "\\text{Mã \\#1}", { mode: "text", silenceNotifications: true }]);
+  assert.equal(executedCommands.length, 2);
+  assert.deepEqual(executedCommands[1], [
+    "insert",
+    "\\text{Mã \\#1}",
+    { mode: "text", silenceNotifications: true },
+  ]);
+
+  const originalOptions = { mode: "math", selectionMode: "after", focus: true };
+  fakeMf.executeCommand(["insert", "\\sqrt{#0}", originalOptions, "retained-tail"]);
+  assert.deepEqual(executedCommands[2], ["insert", "\\sqrt{#?}", originalOptions, "retained-tail"]);
+  fakeMf.executeCommand("moveToNextChar");
+  assert.equal(executedCommands[3], "moveToNextChar");
+  fakeMf.insert(" ", { mode: "text" });
+  assert.deepEqual(executedCommands[4], ["insert", " ", { mode: "text" }]);
+  fakeMf.insert("|", { mode: "text" });
+  assert.deepEqual(executedCommands[5], ["insert", "|", { mode: "text" }]);
+});
+
+test("toolbar insertion preserves selected content and only targets genuine empty placeholders", async () => {
+  const { prepareMathFieldInsertion, installMathFieldInsertionGuards } = await import("../src/utils/visualMathFieldLifecycle.ts");
+  const inserted: any[] = [];
+  const mf = { selectionIsCollapsed: false, insert: (content: string, options?: any) => inserted.push({ content, options }) };
+  installMathFieldInsertionGuards(mf);
+  const options = { mode: "math", focus: true, silenceNotifications: true };
+  const selected = prepareMathFieldInsertion(mf, "\\sqrt{#0}", options);
+  mf.insert(selected.content, selected.options);
+  assert.deepEqual(inserted[0], { content: "\\sqrt{#0}", options });
+  mf.selectionIsCollapsed = true;
+  const collapsed = prepareMathFieldInsertion(mf, "\\sqrt{#0}", options);
+  mf.insert(collapsed.content, collapsed.options);
+  assert.deepEqual(inserted[1], { content: "\\sqrt{#?}", options: { ...options, selectionMode: "placeholder" } });
+  assert.deepEqual(prepareMathFieldInsertion(mf, "x + y", options), { content: "x + y", options });
+});
+
+test("isMathFieldSelectionCollapsed correctly reports collapsed vs non-collapsed selection state", async () => {
+  const { isMathFieldSelectionCollapsed } = await import("../src/utils/visualMathFieldLifecycle.ts");
+
+  assert.equal(isMathFieldSelectionCollapsed(null), true, "null mathfield defaults to collapsed");
+  assert.equal(isMathFieldSelectionCollapsed(undefined), true, "undefined mathfield defaults to collapsed");
+  assert.equal(isMathFieldSelectionCollapsed({}), true, "mathfield without selection properties defaults to true");
+
+  // MathLive selectionIsCollapsed boolean property
+  assert.equal(isMathFieldSelectionCollapsed({ selectionIsCollapsed: true }), true);
+  assert.equal(isMathFieldSelectionCollapsed({ selectionIsCollapsed: false }), false);
+
+  // MathLive selection ranges
+  assert.equal(isMathFieldSelectionCollapsed({ selection: { ranges: [[3, 3]] } }), true);
+  assert.equal(isMathFieldSelectionCollapsed({ selection: { ranges: [[3, 5]] } }), false);
+  assert.equal(
+    isMathFieldSelectionCollapsed({ selection: { ranges: [[1, 1], [4, 4]] } }),
+    true
+  );
+  assert.equal(
+    isMathFieldSelectionCollapsed({ selection: { ranges: [[1, 1], [4, 6]] } }),
+    false
+  );
+});
+
+test("normalizeMathInsertContent preserves #0 and does not force placeholder when selection is active", async () => {
+  const { normalizeMathInsertContent } = await import("../src/utils/visualMathFieldLifecycle.ts");
+
+  // When selection is active (collapsed === false), #0 must NOT be converted to #?
+  assert.equal(
+    normalizeMathInsertContent("\\sqrt{#0}", { isSelectionCollapsed: false }),
+    "\\sqrt{#0}",
+    "Radical with active selection must keep #0 so MathLive wraps selected content"
+  );
+  assert.equal(
+    normalizeMathInsertContent("\\left|#0\\right|", { isSelectionCollapsed: false }),
+    "\\left|#0\\right|",
+    "Fences with active selection must keep #0"
+  );
+
+  // When selection is collapsed, #0 converts to #? for immediate typing into placeholder
+  assert.equal(
+    normalizeMathInsertContent("\\sqrt{#0}", { isSelectionCollapsed: true }),
+    "\\sqrt{#?}",
+    "Radical with collapsed selection converts #0 to #?"
+  );
 });

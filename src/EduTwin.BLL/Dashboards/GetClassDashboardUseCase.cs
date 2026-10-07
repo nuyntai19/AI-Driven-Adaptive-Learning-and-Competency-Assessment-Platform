@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.Dashboards;
+using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.Contracts.Organization;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.KnowledgeGraph;
@@ -51,9 +52,14 @@ public sealed class GetClassDashboardUseCase : IGetClassDashboardUseCase
             return ClassDashboardResult.NotFound();
         }
 
+        if (!string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal))
+        {
+            return ClassDashboardResult.Forbidden();
+        }
+
         var centerId = _tenantContext.CenterId.Value;
 
-        // Verify access via ClassOwnershipGuard (Teacher ownership vs CenterManager)
+        // Verify access via ClassOwnershipGuard (Teacher ownership)
         var accessDecision = await _classOwnershipGuard.CheckClassAccessAsync(classId, cancellationToken);
         if (accessDecision == OwnershipDecision.NotFound)
         {

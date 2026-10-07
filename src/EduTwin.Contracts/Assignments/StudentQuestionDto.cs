@@ -22,4 +22,7 @@ public class StudentQuestionDto
     public ulong? SubmittedAttemptId { get; set; }
     public bool HasAttachment { get; set; }
     public bool? EffectiveIsCorrect { get; set; }
+    public bool IsVoided { get; set; }
+    public string? VoidReason { get; set; }
+    public decimal? VoidedScore { get; set; }
 }

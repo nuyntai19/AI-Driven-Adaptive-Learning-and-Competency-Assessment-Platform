@@ -67,7 +67,7 @@ public sealed class AttemptTeacherReviewScopeGuard : IAttemptTeacherReviewScopeG
 
         if (string.Equals(role, nameof(UserRole.CenterManager), StringComparison.OrdinalIgnoreCase))
         {
-            return true;
+            return false;
         }
 
         if (string.Equals(role, nameof(UserRole.Student), StringComparison.OrdinalIgnoreCase))

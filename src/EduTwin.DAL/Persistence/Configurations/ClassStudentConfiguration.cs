@@ -46,6 +46,23 @@ public class ClassStudentConfiguration : IEntityTypeConfiguration<Organization.C
             .HasColumnName("created_by")
             .HasColumnType("VARCHAR(36)");
 
+        builder.Property(cs => cs.GradeLevelAtEnrollment)
+            .HasColumnName("grade_level_at_enrollment")
+            .HasColumnType("TINYINT UNSIGNED");
+
+        builder.Property(cs => cs.GradeMismatchReason)
+            .HasColumnName("grade_mismatch_reason")
+            .HasMaxLength(500)
+            .HasColumnType("VARCHAR(500)");
+
+        builder.Property(cs => cs.ExceptionApprovedBy)
+            .HasColumnName("exception_approved_by")
+            .HasColumnType("VARCHAR(36)");
+
+        builder.Property(cs => cs.ExceptionApprovedAt)
+            .HasColumnName("exception_approved_at")
+            .HasColumnType("DATETIME(6)");
+
         // Indexes
         builder.HasIndex(cs => new { cs.CenterId, cs.StudentId, cs.Status })
             .HasDatabaseName("ix_class_students_center_id_student_id_status");

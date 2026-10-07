@@ -22,6 +22,7 @@ public class ClassDto
     public required ClassSubjectDto Subject { get; set; }
     public required ClassTeacherDto Teacher { get; set; }
     public int StudentCount { get; set; }
+    public byte? GradeLevel { get; set; }
     public required string Status { get; set; }
     public required string RowVersion { get; set; }
 }

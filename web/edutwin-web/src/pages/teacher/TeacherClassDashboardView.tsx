@@ -12,6 +12,9 @@ import {
   TeacherSafeErrorPanel,
 } from "../../components/teacher/TeacherPrimitives";
 import type { ClassDashboardDataDto } from "../../types/dashboards";
+import { normalizeCompletionRate } from "./teacherDashboardHelpers";
+
+export { normalizeCompletionRate };
 
 export function TeacherClassDashboardView() {
   const { classId: routeClassId } = useParams<{ classId?: string }>();
@@ -56,7 +59,7 @@ export function TeacherClassDashboardView() {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="th-page-container">
       {/* Header with class picker */}
       <TeacherPageHeader
         eyebrow="GIẢNG DẠY & GIÁM SÁT"
@@ -115,7 +118,12 @@ export function TeacherClassDashboardView() {
         />
       )}
 
-      {!dashboardLoading && !isError && dashboard && (
+      {!dashboardLoading && !isError && dashboard && (() => {
+        const rawCompRate = dashboard.overview.assignmentCompletionRate;
+        const compRatePercent = normalizeCompletionRate(rawCompRate);
+        const isHighCompletion = compRatePercent >= 80;
+
+        return (
         <div className="space-y-6">
           {/* Overview Metric Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -127,12 +135,12 @@ export function TeacherClassDashboardView() {
             />
             <TeacherMetricCard
               label="Tỷ lệ nộp bài tập"
-              value={`${(dashboard.overview.assignmentCompletionRate * 100).toFixed(0)}%`}
+              value={`${compRatePercent.toFixed(0)}%`}
               supportingText="Tính trên tổng số bài giao"
               icon="📑"
               trend={{
-                label: dashboard.overview.assignmentCompletionRate >= 0.8 ? "Đạt chỉ tiêu" : "Cần nhắc nhở",
-                tone: dashboard.overview.assignmentCompletionRate >= 0.8 ? "positive" : "negative",
+                label: isHighCompletion ? "Đạt chỉ tiêu" : "Cần nhắc nhở",
+                tone: isHighCompletion ? "positive" : "negative",
               }}
             />
             <TeacherMetricCard
@@ -330,7 +338,8 @@ export function TeacherClassDashboardView() {
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

@@ -472,9 +472,9 @@ export const StudentKnowledgeMap: React.FC<StudentKnowledgeMapProps> = ({
             </div>
             {activeTooltip.lastReasoningQuality !== null && activeTooltip.lastReasoningQuality !== undefined && (
               <div className="flex items-center justify-between gap-4 text-[11px] text-stone-500 dark:text-stone-400">
-                <span>Chất lượng tư duy:</span>
+                <span>Chỉ số chất lượng lập luận (không phải điểm bài):</span>
                 <span className="font-bold text-indigo-600 dark:text-indigo-400">
-                  {activeTooltip.lastReasoningQuality}đ
+                  {activeTooltip.lastReasoningQuality}/100
                 </span>
               </div>
             )}

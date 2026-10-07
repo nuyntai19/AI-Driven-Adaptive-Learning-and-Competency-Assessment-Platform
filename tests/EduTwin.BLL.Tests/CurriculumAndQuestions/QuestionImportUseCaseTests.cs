@@ -577,7 +577,7 @@ public sealed class QuestionImportUseCaseTests : IDisposable
         Assert.True(previewResult.IsSuccess);
         Assert.NotNull(previewResult.Data);
         Assert.Empty(previewResult.Data.Errors);
-        Assert.Equal(4, previewResult.Data.ValidQuestions.Count);
+        Assert.Equal(5, previewResult.Data.ValidQuestions.Count);
 
         var confirmRequest = new QuestionImportConfirmRequest
         {
@@ -588,14 +588,14 @@ public sealed class QuestionImportUseCaseTests : IDisposable
 
         var confirmResult = await sut.ConfirmAsync(confirmRequest, CancellationToken.None);
         Assert.True(confirmResult.IsSuccess);
-        Assert.Equal(4, confirmResult.Data?.ImportedCount);
+        Assert.Equal(5, confirmResult.Data?.ImportedCount);
 
         var savedQuestions = await _dbContext.Questions
             .Where(q => q.CenterId == _centerId && q.SubjectId == _subjectId)
             .OrderBy(q => q.QuestionId)
             .ToListAsync();
 
-        Assert.Equal(4, savedQuestions.Count);
+        Assert.Equal(5, savedQuestions.Count);
 
         // 1. MultipleChoice
         var qMc = savedQuestions[0];
@@ -626,6 +626,8 @@ public sealed class QuestionImportUseCaseTests : IDisposable
         Assert.Equal(QuestionType.Essay, qEssay.QuestionType);
         Assert.Equal(QuestionAnswerEvaluationMode.Manual, qEssay.AnswerEvaluationMode);
         Assert.Equal(QuestionStatus.Active, qEssay.Status);
+        Assert.Equal(QuestionAnswerEvaluationMode.MathEquivalent, savedQuestions[4].AnswerEvaluationMode);
+        Assert.Equal(QuestionStatus.Active, savedQuestions[4].Status);
     }
 
     [Fact]

@@ -33,12 +33,15 @@ public class ListCurriculumsUseCase : IListCurriculumsUseCase
         // 1. Fail-closed tenant and role gate
         if (!_tenantContext.IsResolved ||
             !_tenantContext.CenterId.HasValue || _tenantContext.CenterId.Value == Guid.Empty ||
-            !_tenantContext.UserId.HasValue || _tenantContext.UserId.Value == Guid.Empty ||
-            string.IsNullOrWhiteSpace(_tenantContext.Role) ||
-            (!string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal) &&
-             !string.Equals(_tenantContext.Role, nameof(UserRole.CenterManager), StringComparison.Ordinal)))
+            !_tenantContext.UserId.HasValue || _tenantContext.UserId.Value == Guid.Empty)
         {
             return ListCurriculumsResult.Failure(ErrorCodes.ResourceNotFound);
+        }
+
+        if (string.IsNullOrWhiteSpace(_tenantContext.Role) ||
+            !string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal))
+        {
+            return ListCurriculumsResult.Failure(ErrorCodes.ForbiddenResource);
         }
 
         // 2. Query Validation
@@ -68,7 +71,6 @@ public class ListCurriculumsUseCase : IListCurriculumsUseCase
         // 3. Center and Actor Validation
         var centerId = _tenantContext.CenterId.Value;
         var actorId = _tenantContext.UserId.Value;
-        var isTeacher = string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal);
 
         var center = await _dbContext.Centers
             .AsNoTracking()
@@ -79,48 +81,39 @@ public class ListCurriculumsUseCase : IListCurriculumsUseCase
             return ListCurriculumsResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
-        if (isTeacher)
-        {
-            var teacherEntity = await _dbContext.Teachers
-                .AsNoTracking()
-                .Include(t => t.User)
-                .FirstOrDefaultAsync(t => t.TeacherId == actorId && t.CenterId == centerId && !t.IsDeleted, cancellationToken);
+        var teacherEntity = await _dbContext.Teachers
+            .AsNoTracking()
+            .Include(t => t.User)
+            .FirstOrDefaultAsync(t => t.TeacherId == actorId && t.CenterId == centerId && !t.IsDeleted, cancellationToken);
 
-            if (teacherEntity == null ||
-                teacherEntity.User == null ||
-                teacherEntity.User.CenterId != centerId ||
-                teacherEntity.User.IsDeleted ||
-                teacherEntity.User.RoleName != UserRole.Teacher ||
-                teacherEntity.User.Status != UserStatus.Active)
-            {
-                return ListCurriculumsResult.Failure(ErrorCodes.ResourceNotFound);
-            }
-        }
-        else
+        if (teacherEntity == null ||
+            teacherEntity.User == null ||
+            teacherEntity.User.CenterId != centerId ||
+            teacherEntity.User.IsDeleted ||
+            teacherEntity.User.RoleName != UserRole.Teacher ||
+            teacherEntity.User.Status != UserStatus.Active)
         {
-            var managerUser = await _dbContext.Users
-                .AsNoTracking()
-                .FirstOrDefaultAsync(u => u.UserId == actorId && u.CenterId == centerId && !u.IsDeleted && u.RoleName == UserRole.CenterManager && u.Status == UserStatus.Active, cancellationToken);
-
-            if (managerUser == null)
-            {
-                return ListCurriculumsResult.Failure(ErrorCodes.ResourceNotFound);
-            }
+            return ListCurriculumsResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
-        // 4. Base Query & Filters
+        // 4. Base Query & Filters (Scoped to Teacher's own curriculums)
         var baseQuery = _dbContext.Curriculums
             .AsNoTracking()
-            .Where(c => c.CenterId == centerId && !c.IsDeleted);
-
-        if (isTeacher)
-        {
-            baseQuery = baseQuery.Where(c => c.TeacherId == actorId);
-        }
+            .Where(c => c.CenterId == centerId && !c.IsDeleted && (c.TeacherId == actorId ||
+                (c.Visibility == MaterialVisibility.Shared && c.ReviewStatus == ReviewStatus.Published)));
 
         if (query.SubjectId.HasValue)
         {
             baseQuery = baseQuery.Where(c => c.SubjectId == query.SubjectId.Value);
+        }
+
+        if (query.GradeLevel.HasValue)
+        {
+            if (query.GradeLevel.Value < 10 || query.GradeLevel.Value > 12)
+            {
+                return ListCurriculumsResult.Failure(ErrorCodes.ValidationFailed);
+            }
+            baseQuery = baseQuery.Where(c => c.GradeLevel == query.GradeLevel.Value);
         }
 
         if (filterStatus.HasValue)
@@ -186,12 +179,14 @@ public class ListCurriculumsUseCase : IListCurriculumsUseCase
             {
                 CurriculumId = c.CurriculumId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
                 TeacherId = c.TeacherId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
+                Visibility = c.Visibility.ToString(),
                 SubjectId = c.SubjectId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
+                GradeLevel = c.GradeLevel,
                 Title = c.Title,
                 Description = c.Description,
                 SourceFile = c.SourceFile,
                 ReviewStatus = c.ReviewStatus.ToString(),
-                ClassIds = classesMap.TryGetValue(c.CurriculumId, out var classList) ? classList : new List<string>(),
+                ClassIds = c.TeacherId == actorId && classesMap.TryGetValue(c.CurriculumId, out var classList) ? classList : new List<string>(),
                 NodeIds = nodesMap.TryGetValue(c.CurriculumId, out var nodeList) ? nodeList : new List<string>(),
                 RowVersion = c.RowVersion.ToString(CultureInfo.InvariantCulture)
             });

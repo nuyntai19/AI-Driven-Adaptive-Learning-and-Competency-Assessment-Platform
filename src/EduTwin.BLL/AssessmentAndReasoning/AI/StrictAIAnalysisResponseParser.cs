@@ -24,6 +24,7 @@ public sealed class StrictAIAnalysisResponseParser : IAIAnalysisResponseParser
 
     private static readonly HashSet<string> CanonicalProperties =
         new(CanonicalPropertyNames, StringComparer.Ordinal);
+    private static readonly HashSet<string> AdvisoryProperties = new(["answerAssessment", "reasoningVerdict"], StringComparer.Ordinal);
 
     private static readonly HashSet<string> ErrorTypeNames =
         new(Enum.GetNames<ErrorType>(), StringComparer.Ordinal);
@@ -79,7 +80,9 @@ public sealed class StrictAIAnalysisResponseParser : IAIAnalysisResponseParser
                 Confidence = ReadLexicalInteger(root, "confidence"),
                 Feedback = ReadRequiredString(root, "feedback"),
                 SolutionType = ReadNullableString(root, "solutionType"),
-                AiSolution = ReadNullableString(root, "aiSolution")
+                AiSolution = ReadNullableString(root, "aiSolution"),
+                AnswerAssessment = root.TryGetProperty("answerAssessment", out _) ? ReadRequiredString(root, "answerAssessment") : null,
+                ReasoningVerdict = root.TryGetProperty("reasoningVerdict", out _) ? ReadRequiredString(root, "reasoningVerdict") : null
             };
 
             _validator.Validate(request, response);
@@ -99,14 +102,14 @@ public sealed class StrictAIAnalysisResponseParser : IAIAnalysisResponseParser
         foreach (var property in root.EnumerateObject())
         {
             if (!seenProperties.Add(property.Name)
-                || !CanonicalProperties.Contains(property.Name))
+                || (!CanonicalProperties.Contains(property.Name) && !AdvisoryProperties.Contains(property.Name)))
             {
                 throw AIAnalysisValidationException.ShapeInvalid();
             }
         }
 
-        if (seenProperties.Count != CanonicalPropertyNames.Length
-            || CanonicalPropertyNames.Any(propertyName => !seenProperties.Contains(propertyName)))
+        if (CanonicalPropertyNames.Any(propertyName => !seenProperties.Contains(propertyName))
+            || seenProperties.Contains("answerAssessment") != seenProperties.Contains("reasoningVerdict"))
         {
             throw AIAnalysisValidationException.ShapeInvalid();
         }

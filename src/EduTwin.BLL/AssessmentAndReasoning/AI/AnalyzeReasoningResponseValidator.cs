@@ -44,6 +44,10 @@ public sealed class AnalyzeReasoningResponseValidator : IAnalyzeReasoningRespons
         }
 
         ValidateText(response);
+        if (response.AnswerAssessment is not null && response.AnswerAssessment is not ("Correct" or "Incorrect" or "Uncertain"))
+            throw AIAnalysisValidationException.SemanticInvalid();
+        if (response.ReasoningVerdict is not null && response.ReasoningVerdict is not ("Valid" or "Invalid" or "Uncertain"))
+            throw AIAnalysisValidationException.SemanticInvalid();
         ValidateRootCauseNodeIds(response.RootCauseNodeIds, allowedNodeIds);
     }
 

@@ -65,6 +65,22 @@ public sealed class AIAnalysisJobCandidateDiscovery : IAIAnalysisJobCandidateDis
                     || (job.Status == AIJobStatus.Processing
                         && job.LeaseUntil.HasValue
                         && job.LeaseUntil.Value < utcNow))
+                // A later result already has a durable checkpoint. Do not repeatedly
+                // claim/reload/requeue it while an older submission is unfinished.
+                // Fresh inference remains parallel; commit-time fencing is still authoritative.
+                .Where(job => job.Status != AIJobStatus.Pending
+                    || !_dbContext.AIAnalysisCheckpoints.Any(c => c.CenterId == centerId && c.AttemptId == job.AttemptId)
+                    || !(from current in _dbContext.Attempts
+                         from earlier in _dbContext.Attempts
+                         join predecessor in _dbContext.AIAnalysisJobs
+                             on new { earlier.CenterId, earlier.AttemptId } equals new { predecessor.CenterId, predecessor.AttemptId }
+                         where current.CenterId == centerId && current.AttemptId == job.AttemptId
+                             && earlier.CenterId == centerId && earlier.StudentId == current.StudentId
+                             && (earlier.CreatedAt < current.CreatedAt || earlier.CreatedAt == current.CreatedAt && earlier.AttemptId < current.AttemptId)
+                             && (predecessor.Status == AIJobStatus.Pending || predecessor.Status == AIJobStatus.Processing)
+                             && (earlier.Status == AttemptStatus.PendingAnalysis || earlier.Status == AttemptStatus.Processing)
+                             && !_dbContext.ReasoningAnalyses.Any(a => a.CenterId == centerId && a.AttemptId == earlier.AttemptId)
+                         select predecessor.AnalysisJobId).Any())
                 .Select(job => new
                 {
                     job.AnalysisJobId,

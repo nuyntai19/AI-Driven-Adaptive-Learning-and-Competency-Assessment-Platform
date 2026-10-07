@@ -55,8 +55,7 @@ public sealed class GeminiPromptBuilderTests
             "reasoningText",
             "timeSpentSeconds",
             "confidence",
-            "answerChanges",
-            "imageParts");
+            "answerChanges");
         AssertObjectProperties(root.GetProperty("allowedKnowledgeNodes")[0], "nodeId", "nodeName");
     }
 
@@ -119,8 +118,6 @@ public sealed class GeminiPromptBuilderTests
     {
         var prompt = new GeminiPromptBuilder().Build(CreateRequest());
 
-        Assert.DoesNotContain("methodDetected", prompt, StringComparison.Ordinal);
-        Assert.DoesNotContain("reasoningQuality", prompt, StringComparison.Ordinal);
         Assert.DoesNotContain("additionalProperties", prompt, StringComparison.Ordinal);
         Assert.DoesNotContain("minimum", prompt, StringComparison.Ordinal);
         Assert.DoesNotContain("maximum", prompt, StringComparison.Ordinal);
@@ -143,12 +140,27 @@ public sealed class GeminiPromptBuilderTests
     }
 
     [Fact]
-    public void Build_PreliminaryGrade_InstructsAiNotToRegradeOrContradictIt()
+    public void Build_PreliminaryGrade_AllowsAdvisoryDisagreementButNeverFinalGrading()
     {
         var prompt = new GeminiPromptBuilder().Build(CreateRequest());
 
         Assert.Contains("preliminaryIsCorrect", prompt, StringComparison.Ordinal);
-        Assert.Contains("Do NOT re-grade or contradict it", prompt, StringComparison.Ordinal);
+        Assert.Contains("never assign a final score", prompt, StringComparison.Ordinal);
+        Assert.Contains("request teacher review", prompt, StringComparison.Ordinal);
+        Assert.Contains("16/64", prompt, StringComparison.Ordinal);
+        Assert.Contains("Method-Agnostic", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Build_ScratchpadBytes_AreNotDuplicatedInTextPrompt()
+    {
+        var original = CreateRequest();
+        var image = new byte[50000];
+        var request = original with { StudentSubmission = original.StudentSubmission with { ImageParts = [new(image, "image/png")] } };
+        var prompt = new GeminiPromptBuilder().Build(request);
+        Assert.False(ExtractInputJson(prompt).RootElement.GetProperty("studentSubmission").TryGetProperty("imageParts", out _));
+        Assert.DoesNotContain(Convert.ToBase64String(image), prompt, StringComparison.Ordinal);
+        Assert.True(prompt.Length < 18000);
     }
 
     private static AnalyzeReasoningRequest CreateRequest(

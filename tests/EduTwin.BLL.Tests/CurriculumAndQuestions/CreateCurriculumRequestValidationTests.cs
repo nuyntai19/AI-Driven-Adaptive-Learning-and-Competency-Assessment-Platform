@@ -24,6 +24,7 @@ public class CreateCurriculumRequestValidationTests
             SubjectId = Guid.NewGuid(),
             Title = "Lộ trình Toán 12",
             Description = "Mô tả chi tiết",
+            GradeLevel = 12,
             NodeIds = new List<string> { "100", "101" }
         };
 
@@ -40,6 +41,7 @@ public class CreateCurriculumRequestValidationTests
         {
             SubjectId = Guid.NewGuid(),
             Title = title,
+            GradeLevel = 10,
             NodeIds = new List<string>()
         };
 
@@ -55,6 +57,7 @@ public class CreateCurriculumRequestValidationTests
         {
             SubjectId = Guid.NewGuid(),
             Title = "   ",
+            GradeLevel = 10,
             NodeIds = new List<string>()
         };
 
@@ -70,6 +73,7 @@ public class CreateCurriculumRequestValidationTests
         {
             SubjectId = Guid.NewGuid(),
             Title = new string('X', 250),
+            GradeLevel = 11,
             NodeIds = new List<string>()
         };
 
@@ -84,6 +88,7 @@ public class CreateCurriculumRequestValidationTests
         {
             SubjectId = Guid.NewGuid(),
             Title = new string('X', 251),
+            GradeLevel = 11,
             NodeIds = new List<string>()
         };
 
@@ -99,6 +104,7 @@ public class CreateCurriculumRequestValidationTests
         {
             SubjectId = Guid.NewGuid(),
             Title = "Valid Title",
+            GradeLevel = 10,
             NodeIds = null
         };
 
@@ -114,6 +120,7 @@ public class CreateCurriculumRequestValidationTests
         {
             SubjectId = Guid.NewGuid(),
             Title = "Valid Title",
+            GradeLevel = 10,
             NodeIds = new List<string>()
         };
 
@@ -130,6 +137,59 @@ public class CreateCurriculumRequestValidationTests
             SubjectId = Guid.NewGuid(),
             Title = "Valid Title",
             Description = longDescription,
+            GradeLevel = 10,
+            NodeIds = new List<string>()
+        };
+
+        var errors = ValidateModel(request);
+        Assert.Empty(errors);
+    }
+
+    [Fact]
+    public void NullGradeLevel_FailsValidation()
+    {
+        var request = new CreateCurriculumRequest
+        {
+            SubjectId = Guid.NewGuid(),
+            Title = "Valid Title",
+            GradeLevel = null,
+            NodeIds = new List<string>()
+        };
+
+        var errors = ValidateModel(request);
+        Assert.NotEmpty(errors);
+        Assert.Contains(errors, e => e.MemberNames.Contains(nameof(CreateCurriculumRequest.GradeLevel)));
+    }
+
+    [Theory]
+    [InlineData((byte)9)]
+    [InlineData((byte)13)]
+    public void OutOfRangeGradeLevel_FailsValidation(byte gradeLevel)
+    {
+        var request = new CreateCurriculumRequest
+        {
+            SubjectId = Guid.NewGuid(),
+            Title = "Valid Title",
+            GradeLevel = gradeLevel,
+            NodeIds = new List<string>()
+        };
+
+        var errors = ValidateModel(request);
+        Assert.NotEmpty(errors);
+        Assert.Contains(errors, e => e.MemberNames.Contains(nameof(CreateCurriculumRequest.GradeLevel)));
+    }
+
+    [Theory]
+    [InlineData((byte)10)]
+    [InlineData((byte)11)]
+    [InlineData((byte)12)]
+    public void ValidGradeLevels_PassValidation(byte gradeLevel)
+    {
+        var request = new CreateCurriculumRequest
+        {
+            SubjectId = Guid.NewGuid(),
+            Title = "Valid Title",
+            GradeLevel = gradeLevel,
             NodeIds = new List<string>()
         };
 

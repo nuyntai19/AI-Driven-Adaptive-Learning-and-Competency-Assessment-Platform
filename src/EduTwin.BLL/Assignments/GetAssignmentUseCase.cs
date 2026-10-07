@@ -33,17 +33,15 @@ public class GetAssignmentUseCase : IGetAssignmentUseCase
             !_tenantContext.CenterId.HasValue || _tenantContext.CenterId.Value == Guid.Empty ||
             !_tenantContext.UserId.HasValue || _tenantContext.UserId.Value == Guid.Empty ||
             string.IsNullOrWhiteSpace(_tenantContext.Role) ||
-            (!string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal) &&
-             !string.Equals(_tenantContext.Role, nameof(UserRole.CenterManager), StringComparison.Ordinal)))
+            !string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal))
         {
-            return GetAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
+            return GetAssignmentResult.Failure(ErrorCodes.ForbiddenResource);
         }
 
         if (assignmentId == Guid.Empty)
             return GetAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
 
         var actorId = _tenantContext.UserId.Value;
-        var isTeacher = string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal);
 
         // 2. Load assignment with navigations (Global Query Filter applies: centerId + !isDeleted)
         var assignment = await _dbContext.Assignments
@@ -54,17 +52,13 @@ public class GetAssignmentUseCase : IGetAssignmentUseCase
             return GetAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
 
         // 3. Ownership guard: Teacher chỉ xem Assignment thuộc Class mình
-        if (isTeacher)
-        {
-            // Load class to check TeacherId
-            var classEntity = await _dbContext.Classes
-                .AsNoTracking()
-                .Select(c => new { c.ClassId, c.TeacherId })
-                .FirstOrDefaultAsync(c => c.ClassId == assignment.ClassId, cancellationToken);
+        var classEntity = await _dbContext.Classes
+            .AsNoTracking()
+            .Select(c => new { c.ClassId, c.TeacherId })
+            .FirstOrDefaultAsync(c => c.ClassId == assignment.ClassId, cancellationToken);
 
-            if (classEntity == null || classEntity.TeacherId != actorId)
-                return GetAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
-        }
+        if (classEntity == null || classEntity.TeacherId != actorId)
+            return GetAssignmentResult.Failure(ErrorCodes.ForbiddenResource);
 
         // 4. Load questions
         var assignmentQuestions = await _dbContext.AssignmentQuestions
@@ -105,6 +99,9 @@ public class GetAssignmentUseCase : IGetAssignmentUseCase
             Instructions = assignment.Instructions,
             DueAt = assignment.DueAt,
             TimeLimitMinutes = assignment.TimeLimitMinutes,
+            TargetMode = assignment.TargetMode.ToString(),
+            AllowGradeMismatch = assignment.AllowGradeMismatch,
+            GradeMismatchReason = assignment.GradeMismatchReason,
             Status = assignment.Status.ToString(),
             QuestionCount = questionDtos.Count,
             TargetStudentCount = targetDtos.Count,

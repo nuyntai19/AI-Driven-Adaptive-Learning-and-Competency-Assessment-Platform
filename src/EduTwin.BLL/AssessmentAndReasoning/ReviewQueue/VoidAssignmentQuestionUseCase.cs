@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
+using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.DAL.AssessmentAndReasoning;
@@ -142,9 +143,33 @@ public sealed class VoidAssignmentQuestionUseCase : IVoidAssignmentQuestionUseCa
                 "Không tìm thấy câu hỏi trong hệ thống.");
         }
 
-        var now = _timeProvider.GetUtcNow().UtcDateTime;
+        if (assignmentQuestion.IsVoided)
+            return VoidAssignmentQuestionResult.Fail(VoidAssignmentQuestionStatus.Conflict, "QUESTION_ALREADY_VOIDED", "Câu hỏi đã được hủy trong bài tập này.");
+        // Load every affected progress row before any mutation. RowVersion protects
+        // against a concurrent final approval; SaveChanges commits all rows atomically.
+        var affectedProgresses = await _dbContext.StudentAssignmentProgresses
+            .Where(p => p.CenterId == centerId && p.AssignmentId == assignmentId && !p.IsDeleted)
+            .ToListAsync(cancellationToken);
+        if (affectedProgresses.Any(p => p.TeacherFinalReviewStatus == TeacherFinalReviewStatus.Approved) && !request.ReopenFinalizedResults)
+            return VoidAssignmentQuestionResult.Fail(VoidAssignmentQuestionStatus.Conflict, "FINAL_RESULTS_REQUIRE_REOPEN_ACKNOWLEDGEMENT",
+                "Hủy câu ảnh hưởng tất cả học sinh trong bài tập. Hãy xác nhận mở lại các kết quả đã chốt trước khi tiếp tục.");
 
-        // 4. Quarantine question in bank if requested
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
+        foreach (var progress in affectedProgresses)
+        {
+            var before = AssignmentFinalReviewWorkflow.Snapshot(progress);
+            AssignmentFinalReviewWorkflow.Reopen(progress, actorId, now);
+            AssignmentFinalReviewWorkflow.Audit(_dbContext, progress, actorId, "AssignmentQuestionVoided", before,
+                request.VoidReason.Trim(), now);
+        }
+
+        // 4. Mark question as voided specifically in this assignment
+        assignmentQuestion.IsVoided = true;
+        assignmentQuestion.VoidReason = request.VoidReason.Trim();
+        assignmentQuestion.VoidedAt = now;
+        assignmentQuestion.VoidedByUserId = actorId;
+
+        // 5. Quarantine question in bank if requested
         if (request.ArchiveQuestionInBank)
         {
             if (question.Status != QuestionStatus.Archived)
@@ -157,9 +182,10 @@ public sealed class VoidAssignmentQuestionUseCase : IVoidAssignmentQuestionUseCa
         }
 
         // Points to award
-        var fullScore = assignmentQuestion.Points > 0 ? assignmentQuestion.Points : question.MaxScore;
+        // Attempt scores use the question's internal scale, not assignment weight.
+        var fullScore = question.MaxScore;
 
-        // 5. Load all attempts for this question in this assignment
+        // 6. Load all attempts for this question in this assignment
         var attempts = await _dbContext.Attempts
             .Where(a => a.CenterId == centerId && a.AssignmentId == assignmentId && a.QuestionId == questionId)
             .ToListAsync(cancellationToken);
@@ -246,7 +272,43 @@ public sealed class VoidAssignmentQuestionUseCase : IVoidAssignmentQuestionUseCa
             }
         }
 
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        // 8. Unblock in-progress student progress if voiding this question completes the assignment
+        var inProgressList = await _dbContext.StudentAssignmentProgresses
+            .Where(p => p.CenterId == centerId && p.AssignmentId == assignmentId && p.Status == ProgressStatus.InProgress && !p.IsDeleted)
+            .ToListAsync(cancellationToken);
+
+        if (inProgressList.Count > 0)
+        {
+            var assignmentQuestions = await _dbContext.AssignmentQuestions.AsNoTracking()
+                .Where(aq => aq.CenterId == centerId && aq.AssignmentId == assignmentId)
+                .ToListAsync(cancellationToken);
+            var allVoidedIds = assignmentQuestions.Where(aq => aq.IsVoided || aq.QuestionId == questionId).Select(aq => aq.QuestionId).ToHashSet();
+
+            foreach (var p in inProgressList)
+            {
+                var studentAttemptQuestionIds = await _dbContext.Attempts.AsNoTracking()
+                    .Where(a => a.CenterId == centerId && a.AssignmentId == assignmentId && a.StudentId == p.StudentId)
+                    .Select(a => a.QuestionId)
+                    .Distinct()
+                    .ToListAsync(cancellationToken);
+
+                var resolvedCount = studentAttemptQuestionIds.Concat(allVoidedIds).Distinct().Count();
+                if (resolvedCount >= p.TotalQuestionCount && p.TotalQuestionCount > 0)
+                {
+                    p.Status = ProgressStatus.Completed;
+                    p.CompletedAt ??= now;
+                    p.UpdatedAt = now;
+                    p.UpdatedBy = actorId;
+                }
+            }
+        }
+
+        try { await _dbContext.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException)
+        {
+            return VoidAssignmentQuestionResult.Fail(VoidAssignmentQuestionStatus.Conflict, "CONCURRENCY_CONFLICT",
+                "Kết quả bài tập đã thay đổi. Hãy tải lại và xác nhận phạm vi ảnh hưởng trước khi hủy câu.");
+        }
 
         return VoidAssignmentQuestionResult.Success(new VoidAssignmentQuestionResultDto
         {
@@ -254,7 +316,7 @@ public sealed class VoidAssignmentQuestionUseCase : IVoidAssignmentQuestionUseCa
             QuestionId = questionId.ToString(CultureInfo.InvariantCulture),
             VoidedAttemptsCount = attempts.Count,
             QuestionArchived = question.Status == QuestionStatus.Archived,
-            Message = $"Đã hủy câu hỏi #{questionId} trong bài tập thành công. Đã cộng trọn {fullScore:0.##} điểm cho {attempts.Count} lượt làm bài và cách ly câu hỏi."
+            Message = $"Đã hủy câu hỏi #{questionId} trong bài tập này. Tất cả học sinh được tính trọn điểm đóng góp của câu (điểm câu: 10/10). Các kết quả đã chốt bị ảnh hưởng cần được chốt lại."
         });
     }
 }

@@ -5,12 +5,16 @@ namespace EduTwin.Contracts.CurriculumAndQuestions;
 
 public class UpdateCurriculumRequest
 {
+    public string? Visibility { get; set; }
     [Required]
     [StringLength(250)]
     public string? Title { get; set; }
     
     public string? Description { get; set; }
     
+    [Range(10, 12)]
+    public byte? GradeLevel { get; set; }
+
     [Required]
     public string? RowVersion { get; set; }
 }

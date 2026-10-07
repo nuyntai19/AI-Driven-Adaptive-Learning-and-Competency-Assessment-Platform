@@ -34,7 +34,11 @@ public sealed class AIAnalysisJobBackgroundService : BackgroundService
         {
             try
             {
-                await RunBatchOnceAsync(stoppingToken);
+                var batch = await RunBatchOnceAsync(stoppingToken);
+                // Drain newly-unblocked checkpoints without paying a poll interval per question.
+                // No progress (quota wait/empty queue/failure) still backs off below.
+                if (batch.CompletedCount > 0 || batch.FallbackCompletedCount > 0 || batch.RecoveredCount > 0)
+                    continue;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -84,7 +88,16 @@ public sealed class AIAnalysisJobBackgroundService : BackgroundService
         var processingLostRace = 0;
         var exceptions = 0;
 
-        foreach (var workItem in discoveryResult.WorkItems)
+        // Round-robin centers inside the bounded batch; do not let one large exam take every slot.
+        var centerQueues = discoveryResult.WorkItems.GroupBy(x => x.CenterId)
+            .Select(g => new Queue<AIAnalysisJobWorkItem>(g)).ToArray();
+        var fairItems = new List<AIAnalysisJobWorkItem>();
+        while (centerQueues.Any(q => q.Count > 0))
+            foreach (var queue in centerQueues) if (queue.TryDequeue(out var item)) fairItems.Add(item);
+
+        await Parallel.ForEachAsync(fairItems,
+            new ParallelOptions { MaxDegreeOfParallelism = _options.MaxConcurrentJobs, CancellationToken = cancellationToken },
+            async (workItem, cancellationToken) =>
         {
             cancellationToken.ThrowIfCancellationRequested();
             using var loggingScope = _logger.BeginScope(
@@ -118,30 +131,31 @@ public sealed class AIAnalysisJobBackgroundService : BackgroundService
                 switch (result.Outcome)
                 {
                     case AIAnalysisJobLeaseOutcome.Claimed:
-                        claimed++;
+                        Interlocked.Increment(ref claimed);
+                        AIProcessingMetrics.QueueWait.Record(Math.Max(0, (_timeProvider.GetUtcNow().UtcDateTime - workItem.EligibleAt).TotalMilliseconds));
                         var processingResult = await ProcessClaimedAsync(
                             workItem,
                             cancellationToken);
                         switch (processingResult.Outcome)
                         {
                             case AIAnalysisJobProcessingOutcome.Completed:
-                                completed++;
+                                Interlocked.Increment(ref completed);
                                 break;
                             case AIAnalysisJobProcessingOutcome.RetryScheduled:
-                                retryScheduled++;
+                                Interlocked.Increment(ref retryScheduled);
                                 break;
                             case AIAnalysisJobProcessingOutcome.FallbackCompleted:
-                                fallbackCompleted++;
+                                Interlocked.Increment(ref fallbackCompleted);
                                 break;
                             case AIAnalysisJobProcessingOutcome.AlreadyTerminal:
-                                alreadyTerminal++;
+                                Interlocked.Increment(ref alreadyTerminal);
                                 break;
                             case AIAnalysisJobProcessingOutcome.NotFound:
                             case AIAnalysisJobProcessingOutcome.NotEligible:
-                                processingStale++;
+                                Interlocked.Increment(ref processingStale);
                                 break;
                             case AIAnalysisJobProcessingOutcome.LostRace:
-                                processingLostRace++;
+                                Interlocked.Increment(ref processingLostRace);
                                 break;
                             default:
                                 throw new ArgumentOutOfRangeException(
@@ -150,11 +164,12 @@ public sealed class AIAnalysisJobBackgroundService : BackgroundService
                                     null);
                         }
 
-                        var errorCode = processingResult.Outcome is
-                            AIAnalysisJobProcessingOutcome.RetryScheduled or
-                            AIAnalysisJobProcessingOutcome.FallbackCompleted
-                                ? "AI_ANALYSIS_ATTEMPT_FAILED"
-                                : null;
+                        var errorCode = processingResult.Outcome switch
+                        {
+                            AIAnalysisJobProcessingOutcome.RetryScheduled => "AI_PROCESSING_DEFERRED",
+                            AIAnalysisJobProcessingOutcome.FallbackCompleted => "AI_ANALYSIS_ATTEMPT_FAILED",
+                            _ => null
+                        };
                         _logger.LogDebug(
                             "AI analysis job processing outcome {Outcome} with error code {ErrorCode} for job {AnalysisJobId}, attempt {AttemptId}, center {CenterId}, correlation {CorrelationId}, worker {WorkerId}.",
                             processingResult.Outcome,
@@ -166,14 +181,14 @@ public sealed class AIAnalysisJobBackgroundService : BackgroundService
                             _identity.Value);
                         break;
                     case AIAnalysisJobLeaseOutcome.Recovered:
-                        recovered++;
+                        Interlocked.Increment(ref recovered);
                         break;
                     case AIAnalysisJobLeaseOutcome.LostRace:
-                        lostRace++;
+                        Interlocked.Increment(ref lostRace);
                         break;
                     case AIAnalysisJobLeaseOutcome.NotFound:
                     case AIAnalysisJobLeaseOutcome.NotEligible:
-                        stale++;
+                        Interlocked.Increment(ref stale);
                         break;
                     default:
                         throw new ArgumentOutOfRangeException(nameof(result), result.Outcome, null);
@@ -194,7 +209,7 @@ public sealed class AIAnalysisJobBackgroundService : BackgroundService
             }
             catch (Exception exception)
             {
-                exceptions++;
+                Interlocked.Increment(ref exceptions);
                 _logger.LogError(
                     "AI analysis job candidate failed for job {AnalysisJobId}, attempt {AttemptId}, center {CenterId}, correlation {CorrelationId}, worker {WorkerId} with {ExceptionType}.",
                     workItem.AnalysisJobId,
@@ -204,7 +219,7 @@ public sealed class AIAnalysisJobBackgroundService : BackgroundService
                     _identity.Value,
                     exception.GetType().Name);
             }
-        }
+        });
 
         return new AIAnalysisJobBackgroundBatchResult(
             discoveryResult.WorkItems.Count,

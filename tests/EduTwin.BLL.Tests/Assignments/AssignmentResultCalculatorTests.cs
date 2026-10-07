@@ -271,5 +271,10 @@ public class AssignmentResultCalculatorTests
 
         Assert.Equal("Pending", summary.TeacherFinalReviewStatus);
         Assert.Equal("Provisional", summary.ResultStatus);
+        analysis.NeedsTeacherReview = true;
+        await context.SaveChangesAsync();
+        var awaitingReview = await calculator.CalculateForSingleAssignmentAsync(centerId, studentId, assignmentId, CancellationToken.None);
+        Assert.Equal(1, awaitingReview.PendingQuestionCount);
+        Assert.Equal("Provisional", awaitingReview.ResultStatus); // Graded, but not final until teacher confirmation.
     }
 }

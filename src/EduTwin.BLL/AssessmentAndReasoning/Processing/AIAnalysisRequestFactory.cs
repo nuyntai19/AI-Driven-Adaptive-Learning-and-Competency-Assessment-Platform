@@ -88,6 +88,7 @@ public sealed class AIAnalysisRequestFactory : IAIAnalysisRequestFactory
 
         return mode switch
         {
+            QuestionAnswerEvaluationMode.MathEquivalent when new BoundedMathAnswerNormalizer().TryNormalize(rawAnswer, out var mathematical) => mathematical,
             QuestionAnswerEvaluationMode.NumericRational when _mathNormalizer.TryNormalize(rawAnswer, out var rational) && rational.HasValue =>
                 rational.Value.ToString(),
             QuestionAnswerEvaluationMode.Coordinate2D when _coordinateNormalizer.TryNormalize(rawAnswer, out var coordinate) && coordinate.HasValue =>

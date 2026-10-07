@@ -3,8 +3,15 @@ using Microsoft.Extensions.Options;
 
 namespace EduTwin.API.AssessmentAndReasoning.AI;
 
-public sealed class GeminiAIService : IAIService
+public sealed class GeminiAIService : IAIService, IAIAnalysisProfile, IPartitionedAIService, IAIAnalysisProvenance
 {
+    public string ProviderName => _batcher?.ProviderName ?? "Gemini";
+    public string ModelName => _batcher?.ModelName ?? _options.Model ?? "";
+    public Task<AnalyzeReasoningResponse> AnalyzeReasoningAsync(AnalyzeReasoningRequest request,
+        AIAnalysisBatchPartition partition, CancellationToken cancellationToken) =>
+        _batcher is null ? AnalyzeReasoningAsync(request, cancellationToken) : _batcher.AnalyzeAsync(request, cancellationToken, partition);
+    public string AnalysisProfileVersion => _batcher?.ProfileVersion ?? $"Gemini:{_options.Model}:method-agnostic-v2:temperature-{(_options.Model?.StartsWith("gemini-3", StringComparison.Ordinal) == true ? 1 : 0)}:{AIAnalysisContract.SchemaVersion}";
+    private readonly ReasoningMicroBatcher? _batcher;
     private readonly GeminiOptions _options;
     private readonly IGeminiGenerateContentClient _client;
     private readonly GeminiPromptBuilder _promptBuilder;
@@ -20,7 +27,8 @@ public sealed class GeminiAIService : IAIService
         GeminiResponseJsonSchema responseJsonSchema,
         IAIAnalysisResponseParser responseParser,
         ILogger<GeminiAIService> logger,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        ReasoningMicroBatcher? batcher = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(client);
@@ -37,6 +45,7 @@ public sealed class GeminiAIService : IAIService
         _responseParser = responseParser;
         _logger = logger;
         _timeProvider = timeProvider;
+        _batcher = batcher;
     }
 
     public async Task<AnalyzeReasoningResponse> AnalyzeReasoningAsync(
@@ -44,6 +53,7 @@ public sealed class GeminiAIService : IAIService
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (_batcher is not null) return await _batcher.AnalyzeAsync(request, cancellationToken);
         var startedTimestamp = _timeProvider.GetTimestamp();
         string? model = null;
         GeminiGenerateContentResult? providerResult = null;
@@ -55,6 +65,7 @@ public sealed class GeminiAIService : IAIService
 
             var prompt = _promptBuilder.Build(request);
             var config = _responseJsonSchema.CreateGenerateContentConfig();
+            if (model.StartsWith("gemini-3", StringComparison.Ordinal)) config.Temperature = 1;
             using var linkedCancellation =
                 CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             linkedCancellation.CancelAfter(_options.Timeout);
@@ -89,6 +100,14 @@ public sealed class GeminiAIService : IAIService
             catch (OperationCanceledException)
             {
                 throw GeminiAdapterException.Timeout();
+            }
+            catch (AIAnalysisDeferredException)
+            {
+                throw;
+            }
+            catch (AIAnalysisInfrastructureException)
+            {
+                throw;
             }
             catch (GeminiAdapterException)
             {
@@ -129,6 +148,15 @@ public sealed class GeminiAIService : IAIService
                 "Canceled",
                 "AI_PROVIDER_CALL_CANCELED");
             cancellationToken.ThrowIfCancellationRequested();
+            throw;
+        }
+        catch (AIAnalysisInfrastructureException)
+        {
+            throw;
+        }
+        catch (AIAnalysisDeferredException exception)
+        {
+            LogTerminalEvent(LogLevel.Information, startedTimestamp, model, providerResult, "Deferred", exception.ErrorCode);
             throw;
         }
         catch (GeminiAdapterException exception)

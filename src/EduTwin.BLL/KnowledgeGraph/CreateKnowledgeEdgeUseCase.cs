@@ -143,7 +143,6 @@ public class CreateKnowledgeEdgeUseCase : ICreateKnowledgeEdgeUseCase
                 UpdatedBy = _tenantContext.UserId!.Value,
                 IsDeleted = false
             };
-            _dbContext.KnowledgeEdges.Add(edge);
         }
 
         var existingGraphEdges = await _dbContext.KnowledgeEdges.AsNoTracking()
@@ -162,7 +161,13 @@ public class CreateKnowledgeEdgeUseCase : ICreateKnowledgeEdgeUseCase
         }
         catch (InvalidOperationException)
         {
+            _dbContext.ChangeTracker.Clear();
             return CreateKnowledgeEdgeResult.Failure(ErrorCodes.DagCycleDetected);
+        }
+
+        if (existingEdge == null)
+        {
+            _dbContext.KnowledgeEdges.Add(edge);
         }
 
         try

@@ -1,6 +1,8 @@
 export type QuestionType = "MultipleChoice" | "ShortAnswer" | "Essay";
 export type QuestionStatus = "Draft" | "Active" | "Archived";
-export type QuestionAnswerEvaluationMode = "TextExact" | "NumericRational" | "Coordinate2D" | "Manual";
+export type MaterialVisibility = "Private" | "Shared";
+export interface RubricCriterion { criterionId: string; title: string; description: string; maxScore: number; }
+export type QuestionAnswerEvaluationMode = "TextExact" | "NumericRational" | "Coordinate2D" | "MathEquivalent" | "Manual";
 
 export interface QuestionOption {
   optionId: string;
@@ -23,6 +25,7 @@ export interface GradingCriteria {
   requiredIdeas: string[];
   commonErrors: string[];
   scoringNotes: string;
+  criteria?: RubricCriterion[];
 }
 
 export interface Question {
@@ -41,16 +44,20 @@ export interface Question {
   reasoningRequired: boolean;
   languageCode: string;
   status: QuestionStatus;
+  gradeLevel?: number | null;
   answerEvaluationMode?: QuestionAnswerEvaluationMode;
   options?: QuestionOption[];
   knowledgeMappings: KnowledgeMapping[];
   createdByTeacherId: string;
+  visibility?: MaterialVisibility;
   rowVersion: string;
 }
 
 export interface CreateQuestionRequest {
+  visibility?: MaterialVisibility;
   teacherId?: string | null;
   subjectId: string;
+  gradeLevel?: number | null;
   primaryTopicNodeId: string;
   questionType: QuestionType;
   difficulty: number;
@@ -69,7 +76,9 @@ export interface CreateQuestionRequest {
 }
 
 export interface UpdateQuestionRequest {
+  visibility?: MaterialVisibility;
   primaryTopicNodeId: string;
+  gradeLevel?: number | null;
   questionType: QuestionType;
   difficulty: number;
   questionText: string;
@@ -96,7 +105,10 @@ export interface ArchiveQuestionRequest {
 }
 
 export interface QuestionFilter {
+  visibility?: MaterialVisibility;
+  ownedOnly?: boolean;
   subjectId?: string;
+  gradeLevel?: number;
   topicId?: string;
   type?: QuestionType;
   difficulty?: number;

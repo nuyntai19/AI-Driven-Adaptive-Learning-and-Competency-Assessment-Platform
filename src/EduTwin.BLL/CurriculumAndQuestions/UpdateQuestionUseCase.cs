@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using EduTwin.BLL.IdentityAndTenancy;
@@ -45,10 +46,9 @@ public class UpdateQuestionUseCase : IUpdateQuestionUseCase
             !_tenantContext.CenterId.HasValue || _tenantContext.CenterId.Value == Guid.Empty ||
             !_tenantContext.UserId.HasValue || _tenantContext.UserId.Value == Guid.Empty ||
             string.IsNullOrWhiteSpace(_tenantContext.Role) ||
-            (!string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal) &&
-             !string.Equals(_tenantContext.Role, nameof(UserRole.CenterManager), StringComparison.Ordinal)))
+            !string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal))
         {
-            return UpdateQuestionResult.Failure(ErrorCodes.ResourceNotFound);
+            return UpdateQuestionResult.Failure(ErrorCodes.ForbiddenResource);
         }
 
         // 2. Parse question ID
@@ -87,6 +87,9 @@ public class UpdateQuestionUseCase : IUpdateQuestionUseCase
         if (request.Difficulty < 1 || request.Difficulty > 5)
             return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
 
+        if (request.GradeLevel.HasValue && (request.GradeLevel.Value < 10 || request.GradeLevel.Value > 12))
+            return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+
         if (string.IsNullOrWhiteSpace(request.QuestionText))
             return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
 
@@ -107,6 +110,9 @@ public class UpdateQuestionUseCase : IUpdateQuestionUseCase
              !string.Equals(request.LanguageCode, "en", StringComparison.Ordinal)))
             return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
 
+        // Serialize the used-basis check with assignment publication. A read/check
+        // outside this transaction could race with a teacher publishing the draft.
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
         // 5. Load question
         var question = await _dbContext.Questions
             .FirstOrDefaultAsync(q => q.QuestionId == qId && q.CenterId == centerId, cancellationToken);
@@ -115,10 +121,27 @@ public class UpdateQuestionUseCase : IUpdateQuestionUseCase
             return UpdateQuestionResult.Failure(ErrorCodes.ResourceNotFound);
 
         // 6. Ownership check
-        if (isTeacher && question.CreatedByTeacherId != actorId)
-            return UpdateQuestionResult.Failure(ErrorCodes.ResourceNotFound);
+        if (question.CreatedByTeacherId != actorId)
+            return UpdateQuestionResult.Failure(ErrorCodes.ForbiddenResource);
 
-        // 7. State check removed to allow editing active or archived questions
+        var visibility = question.Visibility;
+        if (request.Visibility != null && (!Enum.TryParse(request.Visibility, out visibility) || !Enum.IsDefined(visibility) || visibility.ToString() != request.Visibility))
+            return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+        var criteria = request.GradingCriteria ?? question.GradingCriteria;
+        if (GradingCriteriaValidator.Validate(criteria, request.MaxScore).Count > 0)
+            return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+
+        // Preserve criteria omitted by older clients. Never rewrite a grading basis
+        // already used in a published assignment or submitted attempt: create a copy.
+        if (question.MaxScore != request.MaxScore || JsonSerializer.Serialize(question.GradingCriteria) != JsonSerializer.Serialize(criteria))
+        {
+            var gradingBasisUsed = await _dbContext.Attempts.AnyAsync(a => a.CenterId == centerId && a.QuestionId == qId, cancellationToken) ||
+                await _dbContext.AssignmentQuestions.AnyAsync(aq => aq.CenterId == centerId && aq.QuestionId == qId &&
+                    aq.Assignment != null && aq.Assignment.Status != Contracts.Assignments.AssignmentStatus.Draft, cancellationToken);
+            if (gradingBasisUsed) return UpdateQuestionResult.Failure(ErrorCodes.InvalidStateTransition);
+        }
+
+        // 7. Active or archived questions may be edited, except their used grading basis.
 
 
         // 8. Concurrency
@@ -169,11 +192,13 @@ public class UpdateQuestionUseCase : IUpdateQuestionUseCase
         question.QuestionType = questionType;
         question.AnswerEvaluationMode = evalMode;
         question.Difficulty = request.Difficulty;
+        question.GradeLevel = request.GradeLevel;
         question.QuestionText = request.QuestionText;
         question.CorrectAnswer = request.CorrectAnswer;
         question.Solution = request.Solution;
         question.ExpectedReasoning = request.ExpectedReasoning;
-        question.GradingCriteria = request.GradingCriteria ?? new Contracts.CurriculumAndQuestions.GradingCriteria();
+        question.GradingCriteria = criteria;
+        question.Visibility = visibility;
         question.MaxScore = request.MaxScore;
         question.EstimatedTimeSeconds = request.EstimatedTimeSeconds;
         question.ReasoningRequired = request.ReasoningRequired;
@@ -265,6 +290,7 @@ public class UpdateQuestionUseCase : IUpdateQuestionUseCase
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
         return UpdateQuestionResult.Success(QuestionProjection.ToDto(question, newOptions, newMappings));
     }

@@ -368,6 +368,32 @@ public class ClassesController : ControllerBase
             });
         }
 
+        if (result.ErrorCode == ErrorCodes.InvalidStateTransition)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.10",
+                Status = StatusCodes.Status409Conflict,
+                Title = "Không thể thêm học viên vào lớp học.",
+                Detail = result.ErrorMessage ?? "Lớp học đã bị đóng hoặc lưu trữ.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier, ["errorCode"] = result.ErrorCode }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ConcurrencyConflict)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.10",
+                Status = StatusCodes.Status409Conflict,
+                Title = "Lỗi đồng bộ dữ liệu.",
+                Detail = "Dữ liệu đã bị thay đổi bởi người khác, vui lòng tải lại trang và thử lại.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier, ["errorCode"] = result.ErrorCode }
+            });
+        }
+
         throw new System.InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
     }
 
@@ -653,6 +679,90 @@ public class ClassesController : ControllerBase
                 Detail = result.ErrorMessage ?? "Bạn không có quyền truy cập bảng điều khiển lớp học này.",
                 Instance = HttpContext.Request.Path,
                 Extensions = { ["traceId"] = traceId, ["errorCode"] = ErrorCodes.ForbiddenResource }
+            });
+        }
+
+        return BadRequest(new ProblemDetails
+        {
+            Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.1",
+            Status = StatusCodes.Status400BadRequest,
+            Title = "Dữ liệu không hợp lệ.",
+            Detail = result.ErrorMessage ?? "Yêu cầu không hợp lệ.",
+            Instance = HttpContext.Request.Path,
+            Extensions = { ["traceId"] = traceId, ["errorCode"] = result.ErrorCode ?? ErrorCodes.ValidationFailed }
+        });
+    }
+
+    [HttpDelete("{classId:guid}")]
+    [Authorize(Policy = "organization.classes.delete")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> DeleteClass(
+        [FromRoute] Guid classId,
+        [FromQuery] uint? rowVersion,
+        [FromServices] IDeleteClassUseCase deleteClassUseCase,
+        CancellationToken cancellationToken)
+    {
+        var traceId = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        var result = await deleteClassUseCase.ExecuteAsync(classId, rowVersion, traceId, cancellationToken);
+
+        if (result.IsSuccess)
+        {
+            return NoContent();
+        }
+
+        if (result.ErrorCode == ErrorCodes.ResourceNotFound)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.5",
+                Status = StatusCodes.Status404NotFound,
+                Title = "Không tìm thấy dữ liệu.",
+                Detail = result.ErrorMessage ?? "Tài nguyên bạn yêu cầu không tồn tại hoặc đã bị xóa.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = traceId, ["errorCode"] = result.ErrorCode }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ForbiddenResource)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.4",
+                Status = StatusCodes.Status403Forbidden,
+                Title = "Không có quyền truy cập.",
+                Detail = result.ErrorMessage ?? "Bạn không có quyền xóa lớp học này.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = traceId, ["errorCode"] = result.ErrorCode }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.InvalidStateTransition)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.10",
+                Status = StatusCodes.Status409Conflict,
+                Title = "Không thể xóa lớp học có dữ liệu liên kết.",
+                Detail = result.ErrorMessage ?? "Lớp học đã có thành viên, giáo trình hoặc bài tập. Vui lòng chuyển trạng thái lớp sang Lưu trữ.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = traceId, ["errorCode"] = result.ErrorCode }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ConcurrencyConflict)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.10",
+                Status = StatusCodes.Status409Conflict,
+                Title = "Lỗi đồng bộ dữ liệu.",
+                Detail = "Dữ liệu đã bị thay đổi bởi người khác, vui lòng tải lại trang và thử lại.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = traceId, ["errorCode"] = result.ErrorCode }
             });
         }
 

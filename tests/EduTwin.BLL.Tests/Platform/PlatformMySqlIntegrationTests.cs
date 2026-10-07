@@ -1385,7 +1385,7 @@ public sealed class PlatformMySqlIntegrationTests
         var count = await context.Permissions.IgnoreQueryFilters().CountAsync();
         // The forward CenterManager lifecycle migration adds the two canonical
         // teacher/student reset-password permissions after the Platform baseline.
-        Assert.Equal(70, count);
+        Assert.Equal(71, count);
     }
 
     [MySqlIntegrationFact]

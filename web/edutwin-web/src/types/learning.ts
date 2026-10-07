@@ -65,6 +65,10 @@ export interface AttemptFeedbackAnalysisDto {
   hasTeacherOverride: boolean;
   solutionType?: "REFINED" | "CORRECTED" | "GENERATED" | "MODEL_ANSWER" | string | null;
   aiSolution?: string | null;
+  answerAssessment?: "Correct" | "Incorrect" | "Uncertain" | null;
+  reasoningVerdict?: "Valid" | "Invalid" | "Uncertain" | null;
+  feedbackOrigin?: "Gemini" | "Groq" | "RuleBased" | "LegacySystem" | null;
+  isRawAI?: boolean;
 }
 
 export interface AttemptFeedbackTwinChangeDto {
@@ -110,6 +114,7 @@ export interface AttemptFeedbackTeacherSolutionDto {
 }
 
 export interface AttemptFeedbackTeacherFinalEvaluationDto {
+  rubricGrade?: import("./reviews").RubricGrade | null;
   hasTeacherOverride: boolean;
   isApprovedAsIs?: boolean;
   reviewDecision?: string | null;
@@ -138,6 +143,7 @@ export interface StudentReviewRequestDto {
 }
 
 export interface RetryQuotaDto {
+  isEligible?: boolean;
   manualRetriesUsed: number;
   manualRetriesRemaining: number;
   cooldownRemainingSeconds: number;
@@ -156,6 +162,7 @@ export interface AttemptFeedbackDataDto {
   teacherFinalEvaluation?: AttemptFeedbackTeacherFinalEvaluationDto | null;
   reviewRequest?: StudentReviewRequestDto | null;
   retryQuota?: RetryQuotaDto | null;
+  actions?: { canRequestTeacherReview: boolean; canReportQuestion: boolean };
   twinChange?: AttemptFeedbackTwinChangeDto | null;
   recommendation?: AttemptFeedbackRecommendationDto | null;
 }
@@ -186,11 +193,11 @@ export interface NextQuestionDataDto {
 
 export interface RetryAIAnalysisResponse {
   attemptId: string;
-  analysisJobId?: string | null;
-  status: string;
-  pollUrl?: string | null;
-  feedbackUrl?: string | null;
-  retryQuota?: RetryQuotaDto | null;
+  jobId: string;
+  manualRetriesUsed: number;
+  manualRetriesRemaining: number;
+  cooldownRemainingSeconds: number;
+  nextRetryAllowedAt?: string | null;
 }
 
 export interface CreateStudentReviewRequestDto {

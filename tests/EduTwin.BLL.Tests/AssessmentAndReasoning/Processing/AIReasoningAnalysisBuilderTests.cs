@@ -72,12 +72,13 @@ public sealed class AIReasoningAnalysisBuilderTests
     }
 
     [Fact]
-    public void Build_CorrectDeterministicGrade_CannotBeContradictedByAiResponse()
+    public void Build_CorrectAnswer_WithInvalidReasoning_PreservesConcernForTeacher()
     {
         var response = ValidResponse() with
         {
             ErrorType = ErrorType.Reasoning,
             Misconception = "AI incorrectly claims an error",
+            ReasoningVerdict = "Invalid",
             MissingSteps = ["missing"],
             RootCauseNodeIds = ["42"],
             Feedback = "Incorrect answer."
@@ -86,25 +87,58 @@ public sealed class AIReasoningAnalysisBuilderTests
         var analysis = new AIReasoningAnalysisBuilder().Build(
             Guid.NewGuid(), 7, response, DateTime.UtcNow, true, "vi");
 
-        Assert.Equal(ErrorType.None, analysis.ErrorType);
-        Assert.Null(analysis.Misconception);
-        Assert.Empty(analysis.MissingSteps.RootElement.EnumerateArray());
-        Assert.Empty(analysis.RootCauseNodeIds.RootElement.EnumerateArray());
-        Assert.Contains("chấm đúng", analysis.Feedback, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("Incorrect", analysis.Feedback, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(ErrorType.Reasoning, analysis.ErrorType);
+        Assert.Equal(response.Misconception, analysis.Misconception);
+        Assert.Single(analysis.MissingSteps.RootElement.EnumerateArray());
+        Assert.Single(analysis.RootCauseNodeIds.RootElement.EnumerateArray());
+        Assert.Equal(response.Feedback, analysis.Feedback);
+        Assert.True(analysis.NeedsTeacherReview);
+        Assert.Equal("Gemini", analysis.FeedbackOrigin);
     }
 
     [Fact]
-    public void Build_IncorrectDeterministicGrade_CannotBeChangedToNoErrorByAiResponse()
+    public void Build_DeterministicMismatch_WithAiDisagreement_IsNotSilenced()
     {
-        var response = ValidResponse() with { ErrorType = ErrorType.None, Feedback = "Correct." };
+        var response = ValidResponse() with { ErrorType = ErrorType.None, Feedback = "Equivalent notation.", AnswerAssessment = "Correct", ReasoningVerdict = "Valid" };
 
         var analysis = new AIReasoningAnalysisBuilder().Build(
             Guid.NewGuid(), 8, response, DateTime.UtcNow, false, "vi");
 
-        Assert.Equal(ErrorType.Unknown, analysis.ErrorType);
-        Assert.Contains("chưa đúng", analysis.Feedback, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("Correct", analysis.Feedback, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(ErrorType.None, analysis.ErrorType);
+        Assert.Equal(response.Feedback, analysis.Feedback);
+        Assert.True(analysis.NeedsTeacherReview);
+    }
+
+    [Fact]
+    public void Build_ValidAlternativeMethod_KeepsFullQualityAndSpecificFeedback()
+    {
+        var response = ValidResponse() with { MethodDetected = "Geometry", AnswerAssessment = "Correct", ReasoningVerdict = "Valid", Feedback = "Valid geometric proof, no need to use the sample algebraic method." };
+        var analysis = new AIReasoningAnalysisBuilder().Build(Guid.NewGuid(), 9, response, DateTime.UtcNow, true);
+        Assert.Equal(100m, analysis.ReasoningQuality);
+        Assert.False(analysis.NeedsTeacherReview);
+        Assert.Equal(response.Feedback, analysis.Feedback);
+    }
+
+    [Fact]
+    public void Build_DigitCancellationFallacy_DoesNotPassBecauseAnswerIsCorrect()
+    {
+        var response = ValidResponse() with { AnswerAssessment = "Correct", ReasoningVerdict = "Invalid", ErrorType = ErrorType.Reasoning,
+            ReasoningQuality = 20, Misconception = "Cancelling the digit 6 in 16/64 is not a valid operation.", Feedback = "Correct number, invalid derivation." };
+        var analysis = new AIReasoningAnalysisBuilder().Build(Guid.NewGuid(), 10, response, DateTime.UtcNow, true);
+        Assert.True(analysis.NeedsTeacherReview);
+        Assert.Equal(ErrorType.Reasoning, analysis.ErrorType);
+        Assert.Equal(response.Misconception, analysis.Misconception);
+        Assert.Equal(20m, analysis.ReasoningQuality);
+    }
+
+    [Theory]
+    [InlineData("Uncertain", "Valid", 100)]
+    [InlineData("Correct", "Uncertain", 100)]
+    [InlineData("Correct", "Valid", 79)]
+    public void Build_UnverifiedOrLowConfidenceAnalysis_RequiresTeacher(string answer, string verdict, int confidence)
+    {
+        var response = ValidResponse() with { AnswerAssessment = answer, ReasoningVerdict = verdict, Confidence = confidence };
+        Assert.True(new AIReasoningAnalysisBuilder().Build(Guid.NewGuid(), 11, response, DateTime.UtcNow, true).NeedsTeacherReview);
     }
 
     private static AnalyzeReasoningResponse ValidResponse() => new()

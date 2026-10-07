@@ -30,7 +30,7 @@ using Xunit;
 namespace EduTwin.BLL.Tests.AssessmentAndReasoning.Processing;
 
 [Collection("MySqlDatabase")]
-public sealed class AIAnalysisJobProcessorMySqlTests
+public sealed partial class AIAnalysisJobProcessorMySqlTests
 {
     private const string AdminConnectionVariable =
         "EDUTWIN_TEST_MYSQL_ADMIN_CONNECTION_STRING";
@@ -159,7 +159,9 @@ public sealed class AIAnalysisJobProcessorMySqlTests
     {
         await using var database = await MySqlTestDatabase.CreateAsync();
         var centerId = Guid.NewGuid();
-        await SeedAsync(database.ConnectionString, centerId);
+        // This scenario exercises ReviewOnly for an unscored Essay, not the
+        // Reduced deterministic branch for already-known preliminary correctness.
+        await SeedAsync(database.ConnectionString, centerId, preliminaryCorrectness: null);
         var tenant = new TenantContext();
         using var tenantScope = tenant.BeginScope(centerId);
 
@@ -408,7 +410,7 @@ public sealed class AIAnalysisJobProcessorMySqlTests
     {
         await using var database = await MySqlTestDatabase.CreateAsync();
         var centerId = Guid.NewGuid();
-        await SeedAsync(database.ConnectionString, centerId);
+        await SeedAsync(database.ConnectionString, centerId, preliminaryCorrectness: null);
 
         var tenant = new TenantContext();
         using (tenant.BeginScope(centerId))
@@ -766,7 +768,8 @@ public sealed class AIAnalysisJobProcessorMySqlTests
         IAIService? aiService = null,
         IRecommendationEngine? recommendationEngine = null,
         TimeProvider? timeProvider = null,
-        IAttemptAttachmentStorage? attachmentStorage = null) =>
+        IAttemptAttachmentStorage? attachmentStorage = null,
+        bool durable = false) =>
         new(
             context,
             tenant,
@@ -779,7 +782,9 @@ public sealed class AIAnalysisJobProcessorMySqlTests
             new EvidenceAssessmentFactory(),
             timeProvider ?? new FixedTimeProvider(UtcNow),
             recommendationEngine: recommendationEngine,
-            attachmentStorage: attachmentStorage);
+            attachmentStorage: attachmentStorage,
+            checkpointStore: durable ? new AIAnalysisCheckpointStore(context, timeProvider ?? new FixedTimeProvider(UtcNow)) : null,
+            postProcessing: durable ? new AIStudentPostProcessingQueue(context) : null);
 
     private static RecommendationEngine CreateRecommendationEngine(EduTwinDbContext context) =>
         new(
@@ -805,7 +810,8 @@ public sealed class AIAnalysisJobProcessorMySqlTests
 
     private static async Task SeedAsync(
         string connectionString,
-        Guid centerId)
+        Guid centerId,
+        bool? preliminaryCorrectness = true)
     {
         var tenant = new TenantContext();
         using var tenantScope = tenant.BeginScope(centerId);
@@ -857,8 +863,8 @@ public sealed class AIAnalysisJobProcessorMySqlTests
                 QuestionId = 1,
                 FinalAnswer = "relational-test-answer",
                 ReasoningText = "relational-test-reasoning",
-                IsCorrect = true,
-                AwardedScore = 1,
+                IsCorrect = preliminaryCorrectness,
+                AwardedScore = preliminaryCorrectness == true ? 1 : 0,
                 TimeSpentSeconds = 20,
                 Confidence = 80,
                 AnswerChanges = 0,

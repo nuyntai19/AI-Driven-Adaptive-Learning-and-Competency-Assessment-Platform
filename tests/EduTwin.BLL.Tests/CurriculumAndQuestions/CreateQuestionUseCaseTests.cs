@@ -117,7 +117,8 @@ public class CreateQuestionUseCaseTests : IDisposable
             Solution = "Sol",
             MaxScore = 1,
             EstimatedTimeSeconds = 60,
-            LanguageCode = "vi"
+            LanguageCode = "vi",
+            GradeLevel = 10
         };
 
         var result = await _sut.ExecuteAsync(request);
@@ -146,6 +147,7 @@ public class CreateQuestionUseCaseTests : IDisposable
             MaxScore = 1,
             EstimatedTimeSeconds = 60,
             LanguageCode = "vi",
+            GradeLevel = 10,
             Options = new List<QuestionOptionInput>() // Empty options
         };
 
@@ -172,6 +174,7 @@ public class CreateQuestionUseCaseTests : IDisposable
             MaxScore = 1,
             EstimatedTimeSeconds = 60,
             LanguageCode = "vi",
+            GradeLevel = 10,
             Options = new List<QuestionOptionInput>
             {
                 new QuestionOptionInput { OptionLabel = "A", OptionText = "Opt A", IsCorrect = true, OrderIndex = 1 },
@@ -217,7 +220,8 @@ public class CreateQuestionUseCaseTests : IDisposable
             Solution = "Sol",
             MaxScore = 1,
             EstimatedTimeSeconds = 60,
-            LanguageCode = "vi"
+            LanguageCode = "vi",
+            GradeLevel = 10
         };
 
         var result = await _sut.ExecuteAsync(request);
@@ -242,7 +246,8 @@ public class CreateQuestionUseCaseTests : IDisposable
             Solution = "Sol",
             MaxScore = 1,
             EstimatedTimeSeconds = 60,
-            LanguageCode = "vi"
+            LanguageCode = "vi",
+            GradeLevel = 10
         };
 
         var result = await _sut.ExecuteAsync(request);
@@ -313,6 +318,7 @@ public class CreateQuestionUseCaseTests : IDisposable
             MaxScore = 1,
             EstimatedTimeSeconds = 60,
             LanguageCode = "vi",
+            GradeLevel = 10,
             GradingCriteria = criteria
         };
 
@@ -327,7 +333,7 @@ public class CreateQuestionUseCaseTests : IDisposable
     }
 
     [Fact]
-    public async Task Create_CenterManagerWithoutTeacherId_ReturnsValidationFailed()
+    public async Task Create_CenterManager_ReturnsForbiddenResource()
     {
         await SeedDataAsync();
         _tenantContextMock.Setup(t => t.UserId).Returns(Guid.NewGuid());
@@ -336,23 +342,7 @@ public class CreateQuestionUseCaseTests : IDisposable
         var result = await _sut.ExecuteAsync(ValidShortAnswerRequest());
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
-    }
-
-    [Fact]
-    public async Task Create_CenterManagerWithActiveTeacher_PersistsSelectedOwner()
-    {
-        await SeedDataAsync();
-        _tenantContextMock.Setup(t => t.UserId).Returns(Guid.NewGuid());
-        _tenantContextMock.Setup(t => t.Role).Returns(nameof(UserRole.CenterManager));
-        var request = ValidShortAnswerRequest();
-        request.TeacherId = _teacherId.ToString();
-
-        var result = await _sut.ExecuteAsync(request);
-
-        Assert.True(result.IsSuccess);
-        Assert.Equal(_teacherId.ToString("D"), result.Data!.CreatedByTeacherId);
-        Assert.Equal(_teacherId, (await _dbContext.Questions.SingleAsync()).CreatedByTeacherId);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -379,8 +369,33 @@ public class CreateQuestionUseCaseTests : IDisposable
         Solution = "Sol",
         MaxScore = 1,
         EstimatedTimeSeconds = 60,
-        LanguageCode = "vi"
+        LanguageCode = "vi",
+            GradeLevel = 10
     };
+
+    [Fact]
+    public async Task CreateQuestion_WithoutGradeLevel_ReturnsValidationFailed()
+    {
+        await SeedDataAsync();
+        var request = ValidShortAnswerRequest();
+        request.GradeLevel = null;
+        var result = await _sut.ExecuteAsync(request);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
+
+    [Theory]
+    [InlineData(9)]
+    [InlineData(13)]
+    public async Task CreateQuestion_WithInvalidGradeLevel_ReturnsValidationFailed(byte grade)
+    {
+        await SeedDataAsync();
+        var request = ValidShortAnswerRequest();
+        request.GradeLevel = grade;
+        var result = await _sut.ExecuteAsync(request);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
 
     public void Dispose()
     {
