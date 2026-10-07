@@ -12,6 +12,33 @@ namespace EduTwin.BLL.Tests.AssessmentAndReasoning.Jobs;
 
 public sealed class AIAnalysisJobCandidateDiscoveryTests
 {
+    [Fact]
+    public async Task DiscoverAsync_BlockedCheckpointWaitsWithoutReclaimingWhileFreshInferenceRemainsParallel()
+    {
+        var tenant = new TenantContext(); await using var db = CreateContext(tenant);
+        var center = Guid.NewGuid(); var student = Guid.NewGuid(); db.Centers.Add(CreateCenter(center));
+        var first = CreateJob(1, center, AIJobStatus.Pending, UtcNow.AddMinutes(-1));
+        var second = CreateJob(2, center, AIJobStatus.Pending, UtcNow.AddMinutes(-1));
+        var third = CreateJob(3, center, AIJobStatus.Pending, UtcNow.AddMinutes(-1));
+        db.AIAnalysisJobs.AddRange(first, second, third);
+        foreach (var job in new[] { first, second, third })
+            db.Attempts.Add(new Attempt { CenterId = center, StudentId = student, AttemptId = job.AttemptId,
+                QuestionId = 1, FinalAnswer = "7", ReasoningText = "Substitution", ReasoningLanguage = "en",
+                ClientSubmissionId = Guid.NewGuid(), Status = AttemptStatus.PendingAnalysis,
+                CreatedAt = UtcNow.AddMinutes(-2).AddSeconds((long)job.AnalysisJobId), UpdatedAt = UtcNow.AddMinutes(-1) });
+        db.AIAnalysisCheckpoints.Add(new() { CenterId = center, AttemptId = second.AttemptId, RequestFingerprint = "synthetic", ResponseJson = "{}", CreatedAt = UtcNow });
+        await db.SaveChangesAsync(); db.ChangeTracker.Clear();
+        var sut = new AIAnalysisJobCandidateDiscovery(db, tenant, tenant, new FixedTimeProvider(UtcNow));
+        Assert.Equal([1ul, 3ul], (await sut.DiscoverAsync(10, 10, default)).WorkItems.Select(w => w.AnalysisJobId));
+        using (tenant.BeginScope(center))
+        {
+            var earlier = await db.AIAnalysisJobs.SingleAsync(j => j.AnalysisJobId == 1); earlier.Status = AIJobStatus.Completed;
+            var attempt = await db.Attempts.SingleAsync(a => a.AttemptId == first.AttemptId); attempt.Status = AttemptStatus.Completed;
+            await db.SaveChangesAsync(); db.ChangeTracker.Clear();
+        }
+        Assert.Equal([2ul, 3ul], (await sut.DiscoverAsync(10, 10, default)).WorkItems.Select(w => w.AnalysisJobId));
+    }
+
     private static readonly DateTime UtcNow =
         new(2026, 8, 14, 6, 0, 0, DateTimeKind.Utc);
 

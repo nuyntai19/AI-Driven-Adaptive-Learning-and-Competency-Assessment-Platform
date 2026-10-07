@@ -67,7 +67,7 @@ export interface AttemptFeedbackAnalysisDto {
   aiSolution?: string | null;
   answerAssessment?: "Correct" | "Incorrect" | "Uncertain" | null;
   reasoningVerdict?: "Valid" | "Invalid" | "Uncertain" | null;
-  feedbackOrigin?: "Gemini" | "RuleBased" | "LegacySystem" | null;
+  feedbackOrigin?: "Gemini" | "Groq" | "RuleBased" | "LegacySystem" | null;
   isRawAI?: boolean;
 }
 

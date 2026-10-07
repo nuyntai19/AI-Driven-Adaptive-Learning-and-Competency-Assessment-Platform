@@ -11,7 +11,7 @@ using Xunit;
 
 namespace EduTwin.BLL.Tests.AssessmentAndReasoning.AI;
 
-public sealed class GeminiAIServiceTests
+public sealed partial class GeminiAIServiceTests
 {
     [Fact]
     public async Task AnalyzeReasoningAsync_ValidProviderJson_ReturnsParserValidatedResponse()

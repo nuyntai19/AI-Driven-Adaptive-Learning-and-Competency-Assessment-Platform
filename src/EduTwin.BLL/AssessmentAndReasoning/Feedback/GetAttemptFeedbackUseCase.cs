@@ -303,7 +303,7 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
                 IsFallback = analysis.IsFallback,
                 NeedsTeacherReview = analysis.NeedsTeacherReview,
                 HasTeacherOverride = analysis.OverrideVersion > 0,
-                IsRawAI = analysis.FeedbackOrigin == "Gemini",
+                IsRawAI = analysis.FeedbackOrigin is "Gemini" or "Groq",
                 FeedbackOrigin = analysis.FeedbackOrigin,
                 AnswerAssessment = analysis.AnswerAssessment,
                 ReasoningVerdict = analysis.ReasoningVerdict,

@@ -1,8 +1,8 @@
 import type { AttemptFeedbackAnalysisDto, AttemptFeedbackGradingDto } from "../types/learning.ts";
 
 export function getAnalysisFeedbackLabel(analysis: { feedbackOrigin?: string | null; isFallback?: boolean; isRawAI?: boolean } | null | undefined) {
-  return analysis?.feedbackOrigin === "Gemini" && !analysis.isFallback && analysis.isRawAI !== false
-    ? "Nhận xét từ AI (Gemini)"
+  return ["Gemini", "Groq"].includes(analysis?.feedbackOrigin ?? "") && !analysis?.isFallback && analysis?.isRawAI !== false
+    ? `Nhận xét từ AI (${analysis?.feedbackOrigin})`
     : analysis?.feedbackOrigin === "RuleBased" || analysis?.isFallback ? "Nhận xét theo quy tắc hệ thống"
     : analysis?.feedbackOrigin === "LegacySystem" ? "Thông báo hệ thống (dữ liệu cũ)"
     : "Nhận xét (chưa xác định nguồn)";
@@ -18,6 +18,8 @@ export function getAttemptFeedbackPresentation(
   // Only explicit text provenance is sufficient to label the feedback as Gemini.
   const isGemini = Boolean(analysis && !analysis.isFallback && analysis.isRawAI !== false &&
     analysis.feedbackOrigin === "Gemini");
+  const isAI = Boolean(analysis && !analysis.isFallback && analysis.isRawAI !== false &&
+    ["Gemini", "Groq"].includes(analysis.feedbackOrigin ?? ""));
   const feedbackLabel = getAnalysisFeedbackLabel(analysis);
   const scoreSourceLabel = grading.source === "Teacher" ? "Giáo viên xác nhận"
     : grading.source === "Deterministic" ? "Bộ chấm tự động theo quy tắc"
@@ -48,7 +50,7 @@ export function getAttemptFeedbackPresentation(
     : pendingTeacher
     ? "Bài làm đang chờ giáo viên xác nhận kết quả cuối cùng. Phân tích AI không tự thay đổi điểm."
     : "Bạn có thể gửi yêu cầu để giáo viên đối chiếu bài làm. Phân tích AI không tự thay đổi điểm.";
-  return { isGemini, feedbackLabel, scoreSourceLabel, answerDisagreement, hasReasoningConcerns,
+  return { isGemini, isAI, feedbackLabel, scoreSourceLabel, answerDisagreement, hasReasoningConcerns,
     needsReview, pendingTeacher, manualReview, reviewExplanation };
 }
 

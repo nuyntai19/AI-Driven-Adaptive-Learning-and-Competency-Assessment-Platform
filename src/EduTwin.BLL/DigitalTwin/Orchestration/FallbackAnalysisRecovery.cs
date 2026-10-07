@@ -20,7 +20,7 @@ internal static class FallbackAnalysisRecovery
             MissingSteps = existing.MissingSteps.RootElement.Clone(),
             RootCauseNodeIds = existing.RootCauseNodeIds.RootElement.Clone(),
             existing.AnalysisConfidence, existing.Feedback, existing.IsFallback,
-            existing.NeedsTeacherReview, existing.Provider, existing.ModelName,
+            existing.NeedsTeacherReview, existing.Provider, existing.ModelName, existing.AnalysisProfileVersion,
             existing.SolutionType, existing.AiSolution, existing.AnswerAssessment,
             existing.ReasoningVerdict, existing.FeedbackOrigin, existing.CreatedAt, existing.UpdatedAt
         };
@@ -37,6 +37,7 @@ internal static class FallbackAnalysisRecovery
         existing.NeedsTeacherReview = next.NeedsTeacherReview;
         existing.Provider = next.Provider;
         existing.ModelName = next.ModelName;
+        existing.AnalysisProfileVersion = next.AnalysisProfileVersion;
         existing.SolutionType = next.SolutionType;
         existing.AiSolution = next.AiSolution;
         existing.AnswerAssessment = next.AnswerAssessment;

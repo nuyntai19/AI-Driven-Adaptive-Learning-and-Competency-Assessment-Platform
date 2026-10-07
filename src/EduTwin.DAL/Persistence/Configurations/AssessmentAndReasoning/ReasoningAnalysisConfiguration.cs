@@ -72,6 +72,7 @@ public class ReasoningAnalysisConfiguration : IEntityTypeConfiguration<Reasoning
             .IsRequired();
 
         builder.Property(r => r.ModelName).HasColumnName("model_name").HasColumnType("varchar(100)");
+        builder.Property(r => r.AnalysisProfileVersion).HasColumnName("analysis_profile_version").HasColumnType("varchar(200)");
         builder.Property(r => r.SolutionType)
             .HasColumnName("solution_type")
             .HasColumnType("varchar(32)")

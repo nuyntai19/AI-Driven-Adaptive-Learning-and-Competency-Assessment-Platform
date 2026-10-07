@@ -35,7 +35,7 @@ public class GlobalQueryFilterTests
         using var context = CreateContext();
         var entityTypes = context.Model.GetEntityTypes().Where(e => typeof(ITenantOwnedEntity).IsAssignableFrom(e.ClrType)).ToList();
 
-        Assert.Equal(40, entityTypes.Count); // 30 legacy + role, role permission, user role, authorization audit, evidence assessment, recommendation generation state, attempt attachment, student review request, learning path preference, and teacher review history
+        Assert.Equal(42, entityTypes.Count); // 40 prior entities + AI checkpoint and student post-processing queue
 
         foreach (var entityType in entityTypes)
         {
@@ -85,7 +85,7 @@ public class GlobalQueryFilterTests
         using var context = CreateContext();
         var entityTypes = context.Model.GetEntityTypes().Where(e => typeof(ITenantJoinEntity).IsAssignableFrom(e.ClrType)).ToList();
 
-        Assert.Equal(9, entityTypes.Count); // 6 legacy + role permission, user role, and recommendation generation state
+        Assert.Equal(11, entityTypes.Count); // 9 prior joins + AI checkpoint and student post-processing queue
 
         foreach (var entityType in entityTypes)
         {

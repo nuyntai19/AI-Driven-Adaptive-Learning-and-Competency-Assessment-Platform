@@ -91,6 +91,32 @@ public sealed class GeminiResponseJsonSchema
             Temperature = 0
         };
 
+    public GenerateContentConfig CreateBatchConfig(IEnumerable<string> ids) => new()
+    {
+        ResponseMimeType = "application/json", CandidateCount = 1, Temperature = 0,
+        ResponseJsonSchema = new JsonObject
+        {
+            ["type"] = "object", ["additionalProperties"] = false,
+            ["required"] = CreateStringArray(["results"]),
+            ["properties"] = new JsonObject
+            {
+                ["results"] = new JsonObject
+                {
+                    ["type"] = "array", ["items"] = new JsonObject
+                    {
+                        ["type"] = "object", ["additionalProperties"] = false,
+                        ["required"] = CreateStringArray(["itemId", "analysis"]),
+                        ["properties"] = new JsonObject
+                        {
+                            ["itemId"] = new JsonObject { ["type"] = "string", ["enum"] = CreateStringArray(ids) },
+                            ["analysis"] = CreateSchema()
+                        }
+                    }
+                }
+            }
+        }
+    };
+
     private static JsonObject CreatePercentageSchema() =>
         new()
         {

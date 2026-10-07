@@ -342,7 +342,7 @@ export function AttemptFeedbackHierarchy({
               2
             </span>
             <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
-              {presentation.isGemini ? "AI Phân Tích & Chẩn Đoán Tư Duy" : "Phân tích lập luận & Nhận xét"}
+              {presentation.isAI ? "AI Phân Tích & Chẩn Đoán Tư Duy" : "Phân tích lập luận & Nhận xét"}
             </h3>
           </div>
           {analysis?.qualityBand && (

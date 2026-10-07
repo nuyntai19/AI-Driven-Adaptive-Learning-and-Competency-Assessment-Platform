@@ -23,6 +23,14 @@ const analysis = (overrides: Partial<AttemptFeedbackAnalysisDto> = {}): AttemptF
   hasTeacherOverride: false, ...overrides,
 });
 
+test("Groq analysis is labeled with its actual provider, never Gemini or system fallback", () => {
+  const presentation = getAttemptFeedbackPresentation({ source: "Deterministic", isCorrect: true, maxScore: 10 },
+    analysis({ feedbackOrigin: "Groq", isRawAI: true }), "Completed");
+  assert.equal(presentation.feedbackLabel, "Nhận xét từ AI (Groq)");
+  assert.equal(presentation.isAI, true);
+  assert.equal(presentation.isGemini, false);
+});
+
 test("MathEquivalent uses visual math input only for ShortAnswer; MCQ and Essay fail closed", () => {
   assert.deepEqual(resolveAnswerInputType("ShortAnswer", "MathEquivalent"), { type: "math-equivalent", isValid: true });
   assert.equal(resolveAnswerInputType("Essay", "MathEquivalent").isValid, false);

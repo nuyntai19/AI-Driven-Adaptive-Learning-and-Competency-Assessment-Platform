@@ -9,9 +9,12 @@ public sealed class AIAnalysisJobWorkerOptions
     public TimeSpan LeaseDuration { get; set; } = TimeSpan.FromMinutes(5);
     public int BatchSize { get; set; } = 50;
     public int PerCenterBatchSize { get; set; } = 25;
+    public int MaxConcurrentJobs { get; set; } = 1;
 
     public void Validate()
     {
+        if (MaxConcurrentJobs is < 1 or > 32)
+            throw new InvalidOperationException("AI job concurrency must be between 1 and 32.");
         if (PollInterval <= TimeSpan.Zero || PollInterval > MaximumTimerInterval)
         {
             throw new InvalidOperationException(

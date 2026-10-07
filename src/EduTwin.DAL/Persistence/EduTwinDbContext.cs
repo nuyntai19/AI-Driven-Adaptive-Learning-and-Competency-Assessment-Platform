@@ -85,6 +85,9 @@ public class EduTwinDbContext : DbContext
     public DbSet<ReasoningAnalysis> ReasoningAnalyses => Set<ReasoningAnalysis>();
     public DbSet<EvidenceAssessment> EvidenceAssessments => Set<EvidenceAssessment>();
     public DbSet<AIAnalysisJob> AIAnalysisJobs => Set<AIAnalysisJob>();
+    public DbSet<AIAnalysisCheckpoint> AIAnalysisCheckpoints => Set<AIAnalysisCheckpoint>();
+    public DbSet<AIStudentPostProcessingJob> AIStudentPostProcessingJobs => Set<AIStudentPostProcessingJob>();
+    public DbSet<AIProviderQuotaState> AIProviderQuotaStates => Set<AIProviderQuotaState>();
     public DbSet<StudentReviewRequest> StudentReviewRequests => Set<StudentReviewRequest>();
     public DbSet<TeacherReviewHistory> TeacherReviewHistories => Set<TeacherReviewHistory>();
 

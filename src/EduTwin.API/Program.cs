@@ -167,7 +167,11 @@ builder.Services.AddAttemptAttachmentStorage(builder.Configuration);
 
 // We also need TimeProvider
 builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddAIAnalysisJobBackgroundWorker();
+builder.Services.AddAIAnalysisJobBackgroundWorker(options =>
+{
+    options.MaxConcurrentJobs = 4;
+    builder.Configuration.GetSection("AIAnalysisWorker").Bind(options);
+});
 
 // --- Rate Limiting (Single-Instance Ingress Defense) ---
 builder.Services.AddRateLimiter(options =>

@@ -32,6 +32,9 @@ public static class DependencyInjection
         services.TryAddScoped<IAIAnalysisJobCandidateDiscovery, AIAnalysisJobCandidateDiscovery>();
         services.TryAddScoped<IAIAnalysisJobLeaseOperation, AIAnalysisJobLeaseOperation>();
         services.TryAddScoped<IAIAnalysisJobProcessor, AIAnalysisJobProcessor>();
+        services.TryAddScoped<IAIAnalysisCheckpointStore, AIAnalysisCheckpointStore>();
+        services.TryAddScoped<IAIStudentPostProcessingQueue, AIStudentPostProcessingQueue>();
+        services.TryAddScoped<AIStudentPostProcessor>();
         services.TryAddScoped<IListAttemptsUseCase, ListAttemptsUseCase>();
         services.TryAddScoped<IListTeacherReviewQueueUseCase, ListTeacherReviewQueueUseCase>();
         services.TryAddScoped<ITeacherOverrideUseCase, TeacherOverrideUseCase>();

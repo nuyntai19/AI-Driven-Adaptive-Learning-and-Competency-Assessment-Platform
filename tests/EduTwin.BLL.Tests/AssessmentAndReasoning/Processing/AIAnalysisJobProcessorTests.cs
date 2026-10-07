@@ -22,7 +22,7 @@ using Xunit;
 
 namespace EduTwin.BLL.Tests.AssessmentAndReasoning.Processing;
 
-public sealed class AIAnalysisJobProcessorTests
+public sealed partial class AIAnalysisJobProcessorTests
 {
     private static readonly DateTime UtcNow =
         new(2026, 8, 14, 10, 0, 0, DateTimeKind.Utc);
@@ -1045,7 +1045,10 @@ public sealed class AIAnalysisJobProcessorTests
         EduTwinDbContext context,
         TenantContext tenant,
         DateTime utcNow,
-        IAIService? aiService = null) =>
+        IAIService? aiService = null,
+        bool durable = false,
+        IAIAnalysisCheckpointStore? checkpoints = null,
+        EduTwin.BLL.DigitalTwin.Orchestration.ITwinCompletionOrchestrator? completion = null) =>
         new(
             context,
             tenant,
@@ -1056,7 +1059,10 @@ public sealed class AIAnalysisJobProcessorTests
             new AIAnalysisJobStateMachine(),
             new EvidenceGate(),
             new EvidenceAssessmentFactory(),
-            new FixedTimeProvider(utcNow));
+            new FixedTimeProvider(utcNow),
+            twinCompletionOrchestrator: completion,
+            checkpointStore: checkpoints ?? (durable ? new AIAnalysisCheckpointStore(context, new FixedTimeProvider(utcNow)) : null),
+            postProcessing: durable ? new AIStudentPostProcessingQueue(context) : null);
 
     private static EduTwinDbContext CreateContext(
         InMemoryDatabaseRoot store,

@@ -19,6 +19,42 @@ namespace EduTwin.DAL.Persistence.Migrations
                 .HasAnnotation("ProductVersion", "10.0.7")
                 .HasAnnotation("Relational:MaxIdentifierLength", 64);
 
+            modelBuilder.Entity("EduTwin.DAL.AssessmentAndReasoning.AIAnalysisCheckpoint", b =>
+                {
+                    b.Property<string>("CenterId")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("center_id");
+
+                    b.Property<ulong>("AttemptId")
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("attempt_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("RequestFingerprint")
+                        .IsRequired()
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("request_fingerprint");
+
+                    b.Property<string>("ResponseJson")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("response_json");
+
+                    b.Property<ulong>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint unsigned")
+                        .HasDefaultValue(1ul)
+                        .HasColumnName("row_version");
+
+                    b.HasKey("CenterId", "AttemptId");
+
+                    b.ToTable("ai_analysis_checkpoints", (string)null);
+                });
+
             modelBuilder.Entity("EduTwin.DAL.AssessmentAndReasoning.AIAnalysisJob", b =>
                 {
                     b.Property<ulong>("AnalysisJobId")
@@ -117,6 +153,101 @@ namespace EduTwin.DAL.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_ai_analysis_jobs_status", "`status` IN ('Pending', 'Processing', 'Completed', 'FallbackCompleted', 'FailedTerminal')");
                         });
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.AssessmentAndReasoning.AIProviderQuotaState", b =>
+                {
+                    b.Property<string>("PoolId")
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("pool_id");
+
+                    b.Property<ulong>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint unsigned")
+                        .HasDefaultValue(1ul)
+                        .HasColumnName("row_version");
+
+                    b.Property<string>("StateJson")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("state_json");
+
+                    b.HasKey("PoolId");
+
+                    b.ToTable("ai_provider_quota_states", (string)null);
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.AssessmentAndReasoning.AIStudentPostProcessingJob", b =>
+                {
+                    b.Property<string>("CenterId")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("center_id");
+
+                    b.Property<string>("StudentId")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("student_id");
+
+                    b.Property<string>("SubjectId")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("subject_id");
+
+                    b.Property<string>("AssignmentScopeId")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("assignment_scope_id");
+
+                    b.Property<DateTime>("AvailableAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("available_at");
+
+                    b.Property<int>("FailureCount")
+                        .HasColumnType("int")
+                        .HasColumnName("failure_count");
+
+                    b.Property<string>("LastErrorCode")
+                        .HasColumnType("varchar(100)")
+                        .HasColumnName("last_error_code");
+
+                    b.Property<string>("LeaseOwner")
+                        .HasColumnType("varchar(100)")
+                        .HasColumnName("lease_owner");
+
+                    b.Property<DateTime?>("LeaseUntil")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("lease_until");
+
+                    b.Property<ulong>("ProcessedRevision")
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("processed_revision");
+
+                    b.Property<ulong>("Revision")
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("revision");
+
+                    b.Property<ulong>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint unsigned")
+                        .HasDefaultValue(1ul)
+                        .HasColumnName("row_version");
+
+                    b.Property<ulong>("SourceAttemptId")
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("source_attempt_id");
+
+                    b.Property<DateTime>("TriggerAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("trigger_at");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("CenterId", "StudentId", "SubjectId", "AssignmentScopeId");
+
+                    b.HasIndex("CenterId", "AvailableAt", "LeaseUntil");
+
+                    b.ToTable("ai_student_post_processing_jobs", (string)null);
                 });
 
             modelBuilder.Entity("EduTwin.DAL.AssessmentAndReasoning.Attempt", b =>
@@ -468,6 +599,10 @@ namespace EduTwin.DAL.Persistence.Migrations
                     b.Property<decimal?>("AnalysisConfidence")
                         .HasColumnType("decimal(5,2)")
                         .HasColumnName("analysis_confidence");
+
+                    b.Property<string>("AnalysisProfileVersion")
+                        .HasColumnType("varchar(200)")
+                        .HasColumnName("analysis_profile_version");
 
                     b.Property<string>("AnswerAssessment")
                         .HasColumnType("varchar(16)")
@@ -5543,6 +5678,16 @@ namespace EduTwin.DAL.Persistence.Migrations
                     b.ToTable("student_learning_path_preferences", (string)null);
                 });
 
+            modelBuilder.Entity("EduTwin.DAL.AssessmentAndReasoning.AIAnalysisCheckpoint", b =>
+                {
+                    b.HasOne("EduTwin.DAL.AssessmentAndReasoning.Attempt", null)
+                        .WithMany()
+                        .HasForeignKey("CenterId", "AttemptId")
+                        .HasPrincipalKey("CenterId", "AttemptId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("EduTwin.DAL.AssessmentAndReasoning.AIAnalysisJob", b =>
                 {
                     b.HasOne("EduTwin.DAL.AssessmentAndReasoning.Attempt", "Attempt")
@@ -5554,6 +5699,16 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasConstraintName("fk_ai_analysis_jobs_attempts_attempt");
 
                     b.Navigation("Attempt");
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.AssessmentAndReasoning.AIStudentPostProcessingJob", b =>
+                {
+                    b.HasOne("EduTwin.DAL.Organization.Student", null)
+                        .WithMany()
+                        .HasForeignKey("CenterId", "StudentId")
+                        .HasPrincipalKey("CenterId", "StudentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("EduTwin.DAL.AssessmentAndReasoning.Attempt", b =>

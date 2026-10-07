@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using EduTwin.BLL.AssessmentAndReasoning.Attachments;
 using EduTwin.BLL.AssessmentAndReasoning.Evidence;
 using EduTwin.BLL.AssessmentAndReasoning.Override;
+using EduTwin.BLL.AssessmentAndReasoning.Processing;
 using EduTwin.BLL.DigitalTwin;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.BLL.Recommendations;
@@ -41,6 +42,7 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
     private readonly IAttemptTeacherReviewScopeGuard _scopeGuard;
     private readonly ILogger<TeacherApproveUseCase> _logger;
     private readonly IOverallAssignmentCommentWorkflow? _overallCommentWorkflow;
+    private readonly IAIStudentPostProcessingQueue? _postProcessing;
 
     public TeacherApproveUseCase(
         EduTwinDbContext dbContext,
@@ -56,7 +58,8 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
         IRecommendationEngine? recommendationEngine = null,
         IAttemptTeacherReviewScopeGuard? scopeGuard = null,
         ILogger<TeacherApproveUseCase>? logger = null,
-        IOverallAssignmentCommentWorkflow? overallCommentWorkflow = null)
+        IOverallAssignmentCommentWorkflow? overallCommentWorkflow = null,
+        IAIStudentPostProcessingQueue? postProcessing = null)
     {
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         _tenantContext = tenantContext ?? throw new ArgumentNullException(nameof(tenantContext));
@@ -72,6 +75,7 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
         _scopeGuard = scopeGuard ?? new AttemptTeacherReviewScopeGuard(_dbContext);
         _logger = logger ?? NullLogger<TeacherApproveUseCase>.Instance;
         _overallCommentWorkflow = overallCommentWorkflow;
+        _postProcessing = postProcessing;
     }
 
     public async Task<TeacherApproveResult> ExecuteAsync(
@@ -159,6 +163,15 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
 
         try
         {
+            if (_postProcessing is not null)
+            {
+                await StudentLockHelper.AcquireStudentLockAsync(_dbContext, centerId, attempt.StudentId, cancellationToken);
+                if (!await _dbContext.ReasoningAnalyses.AsNoTracking().AnyAsync(a => a.CenterId == centerId &&
+                    a.AnalysisId == analysisId && a.RowVersion == analysis.RowVersion, cancellationToken) ||
+                    !await _dbContext.Attempts.AsNoTracking().AnyAsync(a => a.CenterId == centerId &&
+                    a.AttemptId == attempt.AttemptId && a.RowVersion == attempt.RowVersion, cancellationToken))
+                    return TeacherApproveResult.Conflict();
+            }
             if (await AssignmentFinalReviewWorkflow.IsLockedAsync(_dbContext, centerId, attempt.AssignmentId, attempt.StudentId, cancellationToken))
                 return TeacherApproveResult.Conflict("ASSIGNMENT_RESULT_LOCKED", AssignmentFinalReviewWorkflow.LockedMessage);
             var now = _timeProvider.GetUtcNow().UtcDateTime;
@@ -488,6 +501,9 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
                 actorId,
                 cancellationToken);
 
+            if (_postProcessing is not null)
+                await _postProcessing.EnqueueAsync(centerId, attempt.StudentId, question.SubjectId,
+                    attempt.AssignmentId, attempt.AttemptId, now, cancellationToken);
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
 
@@ -531,7 +547,7 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
             throw;
         }
 
-        if (_recommendationEngine is not null)
+        if (_postProcessing is null && _recommendationEngine is not null)
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             try
@@ -556,7 +572,7 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
             }
         }
 
-        if (_overallCommentWorkflow is not null && attempt.AssignmentId.HasValue)
+        if (_postProcessing is null && _overallCommentWorkflow is not null && attempt.AssignmentId.HasValue)
         {
             await _overallCommentWorkflow.GenerateAndCacheOverallCommentAsync(centerId, attempt.AssignmentId.Value, attempt.StudentId, cancellationToken);
         }

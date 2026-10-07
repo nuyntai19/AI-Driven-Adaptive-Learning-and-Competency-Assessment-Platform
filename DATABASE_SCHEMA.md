@@ -1646,3 +1646,19 @@ Nhằm tuân thủ nguyên tắc đặc quyền tối thiểu (Least Privilege) 
 3. **Thứ tự Ràng buộc Khóa ngoại (FK Cascading Constraint Ordering):**
    - Bảng `role_permissions` có ràng buộc khóa ngoại `fk_role_permissions_permission_account_types` trỏ tới `permission_account_types(permission_id, account_type)`.
    - Trong quá trình khởi tạo hoặc đối soát hệ thống (`AuthorizationBootstrapper`), việc dọn dẹp các quyền không còn áp dụng cho một `account_type` bắt buộc phải xóa các bản ghi tương ứng trong `role_permissions` trên toàn bộ các trung tâm trước khi thực hiện xóa trên bảng danh mục `permission_account_types`, ngăn chặn triệt để lỗi vi phạm khóa ngoại MySQL.
+
+## 53. Điều phối xử lý AI và tổng hợp lộ trình (2026-10-07)
+
+Migration `20261006173556_AddAIProcessingCoordination` bổ sung:
+
+| Bảng | Khóa/phạm vi | Mục đích |
+|---|---|---|
+| `ai_analysis_checkpoints` | `(center_id, attempt_id)`; FK tenant-composite tới attempts | Lưu kết quả AI hợp lệ và fingerprint trước commit. Worker phải giữ đúng version/lease để ghi. Xóa sau commit chính thức cùng transaction. |
+| `ai_student_post_processing_jobs` | `(center_id, student_id, subject_id, assignment_scope_id)`; FK tenant-composite tới students | Hàng đợi bền vững, gom các lần cần cập nhật gợi ý và nhận xét. `Guid.Empty` biểu thị luyện tập không thuộc bài tập. Revision/processed revision, lease, thời điểm chạy và lỗi giúp phục hồi sau restart. |
+| `ai_provider_quota_states` | `pool_id`, băm project + model; dùng chung giữa tenant | Bộ đếm/cuộc gọi/lease/cooldown cho quota provider. Không lưu API key hoặc dữ liệu học sinh. |
+
+Hai bảng chứa dữ liệu nghiệp vụ có query filter theo trung tâm; bảng quota chứa metadata năng lực provider nên không có filter tenant. Cả ba có row version. Chỉ khóa SQL trong bước điều phối/ghi dữ liệu; không giữ transaction qua cuộc gọi Gemini. Phân tích từng câu và evidence/history vẫn lưu ở các bảng chính thức hiện có.
+
+## 54. AI analysis profile provenance — 2026-10-07
+
+Migration `20261007054616_AddAIAnalysisProfileProvenance` thêm `reasoning_analyses.analysis_profile_version` (`varchar(200) NULL`). Các dòng cũ giữ NULL; phân tích mới lưu provider/model/policy/schema và chiến lược microbatch. `model_name` sẵn có được điền từ adapter server. Metadata không được nhận từ JSON của AI hoặc request học sinh. Provider enum bổ sung `Groq` nhưng vẫn lưu dạng chuỗi trong cột `provider` hiện có, không đổi kiểu/cắt dữ liệu. Evidence liên kết analysis như trước; không thêm điểm AI hoặc thay thuật toán Mastery.

@@ -14,10 +14,21 @@ public static class DependencyInjection
         ArgumentNullException.ThrowIfNull(configuration);
 
         services.AddOptions<GeminiOptions>()
-            .Bind(configuration.GetSection(GeminiOptions.SectionName));
+            .Bind(configuration.GetSection(GeminiOptions.SectionName))
+            .Configure(options =>
+            {
+                options.ListKey = configuration[GeminiOptions.ListKeyConfigurationName];
+                options.LoadQuotaPoolsJson(configuration["GEMINI_QUOTA_POOLS"]);
+            });
         services.TryAddSingleton<IAnalyzeReasoningResponseValidator, AnalyzeReasoningResponseValidator>();
+        services.AddOptions<AIGradingOptions>().Bind(configuration.GetSection("AIGrading"));
+        services.AddHttpClient("GroqGrading", client => client.Timeout = Timeout.InfiniteTimeSpan);
+        services.TryAddSingleton<GroqGenerateContentClient>();
+        services.TryAddSingleton<IReasoningBatchExecutor, ReasoningBatchExecutor>();
+        services.TryAddSingleton<ReasoningMicroBatcher>();
         services.TryAddSingleton<IAIAnalysisResponseParser, StrictAIAnalysisResponseParser>();
         services.TryAddSingleton<IGeminiGenerateContentClient, GoogleGenAIGenerateContentClient>();
+        services.TryAddSingleton<GeminiQuotaCoordinator>();
         services.TryAddSingleton<GeminiPromptBuilder>();
         services.TryAddSingleton<GeminiResponseJsonSchema>();
         services.TryAddSingleton<IAIService, GeminiAIService>();
