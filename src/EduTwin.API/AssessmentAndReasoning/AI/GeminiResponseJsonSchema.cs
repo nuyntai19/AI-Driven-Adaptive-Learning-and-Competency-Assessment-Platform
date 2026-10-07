@@ -22,13 +22,31 @@ public sealed class GeminiResponseJsonSchema
         "solutionType",
         "aiSolution",
         "answerAssessment",
-        "reasoningVerdict"
+        "reasoningVerdict",
+        "suggestedScore",
+        "usesAlternativeMethod",
+        "suggestedRubricScores",
+        "reasoningIssues"
     ];
 
     public JsonObject CreateSchema()
     {
         var properties = new JsonObject
         {
+            ["reasoningIssues"] = new JsonObject { ["type"] = "array", ["maxItems"] = 8,
+                ["items"] = new JsonObject { ["type"] = "object", ["additionalProperties"] = false,
+                    ["required"] = CreateStringArray(["verdict", "studentClaim", "explanation"]),
+                    ["properties"] = new JsonObject {
+                        ["verdict"] = new JsonObject { ["type"] = "string", ["enum"] = CreateStringArray(["Invalid", "Uncertain"]) },
+                        ["studentClaim"] = new JsonObject { ["type"] = "string" },
+                        ["explanation"] = new JsonObject { ["type"] = "string" } } } },
+            ["suggestedScore"] = new JsonObject { ["type"] = "number", ["minimum"] = 0, ["nullable"] = true },
+            ["usesAlternativeMethod"] = new JsonObject { ["type"] = "boolean" },
+            ["suggestedRubricScores"] = new JsonObject { ["type"] = "array", ["items"] = new JsonObject
+                { ["type"] = "object", ["additionalProperties"] = false, ["required"] = CreateStringArray(["criterionId", "awardedScore", "comment"]),
+                  ["properties"] = new JsonObject { ["criterionId"] = new JsonObject { ["type"] = "string" },
+                    ["awardedScore"] = new JsonObject { ["type"] = "number", ["minimum"] = 0 },
+                    ["comment"] = new JsonObject { ["type"] = "string", ["nullable"] = true } } } },
             ["answerAssessment"] = new JsonObject { ["type"] = "string", ["enum"] = CreateStringArray(["Correct", "Incorrect", "Uncertain"]) },
             ["reasoningVerdict"] = new JsonObject { ["type"] = "string", ["enum"] = CreateStringArray(["Valid", "Invalid", "Uncertain"]) },
             ["schemaVersion"] = new JsonObject
@@ -39,7 +57,7 @@ public sealed class GeminiResponseJsonSchema
             ["language"] = new JsonObject
             {
                 ["type"] = "string",
-                ["enum"] = CreateStringArray(["vi", "en"])
+                ["enum"] = CreateStringArray(["vi"])
             },
             ["methodDetected"] = new JsonObject
             {

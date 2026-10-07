@@ -29,6 +29,10 @@ public sealed class TeacherReviewQueueItemDto
     public string? AnalysisFeedback { get; set; }
     public string? FeedbackOrigin { get; set; }
     public string? AiSolution { get; set; }
+    public decimal? SuggestedScore { get; set; }
+    public RubricGrade? SuggestedRubricGrade { get; set; }
+    public bool UsesAlternativeMethod { get; set; }
+    public string? AnswerAssessment { get; set; }
     public decimal? AnalysisConfidence { get; set; }
     public string? ErrorType { get; set; }
     public EvidenceDecisionDto Evidence { get; set; } = new();

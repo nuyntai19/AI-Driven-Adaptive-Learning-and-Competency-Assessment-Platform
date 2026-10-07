@@ -305,6 +305,33 @@ public sealed class AnalyzeReasoningResponseValidatorTests
             CreateResponse());
     }
 
+    [Fact]
+    public void Validate_Proposal_UsesQuestionPointsNotReasoningPercentage_AndVietnameseExplanation()
+    {
+        var request = CreateRequest() with { Question = CreateRequest().Question with { MaxScore = 2m } };
+        var response = CreateResponse() with { SuggestedScore = 2m, Feedback = "Dùng thì hiện tại đơn nên chọn goes.", AiSolution = "Chủ ngữ she ở ngôi thứ ba số ít nên dùng goes." };
+        _validator.Validate(request, response);
+        AssertSemanticFailure(request, response with { SuggestedScore = 100m });
+        AssertSemanticFailure(request, response with { SuggestedScore = -1m });
+        AssertSemanticFailure(request, response with { SuggestedScore = 1.234m });
+        AssertSemanticFailure(request, response with { Feedback = "Your answer is correct." });
+        AssertSemanticFailure(request, response with { AiSolution = "Use the simple present tense." });
+    }
+
+    [Fact]
+    public void Validate_RubricProposal_RejectsMissingDuplicateInventedOrOutOfRangeCriteria()
+    {
+        var original = CreateRequest();
+        var request = original with { Question = original.Question with { MaxScore = 2m,
+            GradingCriteria = original.Question.GradingCriteria with { Criteria = [new("method", "Phương pháp", "Lập luận hợp lệ", 1m), new("answer", "Kết quả", "Đáp án đúng", 1m)] } } };
+        var response = CreateResponse() with { SuggestedScore = 2m, SuggestedRubricScores = [new() { CriterionId = "method", AwardedScore = 1m, Comment = "Phương pháp đúng." }, new() { CriterionId = "answer", AwardedScore = 1m, Comment = "Kết quả đúng." }] };
+        _validator.Validate(request, response);
+        AssertSemanticFailure(request, response with { SuggestedRubricScores = [] });
+        AssertSemanticFailure(request, response with { SuggestedRubricScores = [response.SuggestedRubricScores[0], response.SuggestedRubricScores[0]] });
+        AssertSemanticFailure(request, response with { SuggestedRubricScores = [new() { CriterionId = "invented", AwardedScore = 1m }, response.SuggestedRubricScores[1]] });
+        AssertSemanticFailure(request, response with { SuggestedRubricScores = [new() { CriterionId = "method", AwardedScore = 2m }, response.SuggestedRubricScores[1]] });
+    }
+
     private void AssertSemanticFailure(
         AnalyzeReasoningRequest request,
         AnalyzeReasoningResponse response)

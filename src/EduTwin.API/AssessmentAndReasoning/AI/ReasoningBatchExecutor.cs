@@ -88,7 +88,12 @@ public sealed class ReasoningBatchExecutor(
         {
             return new(parser.ParseAndValidate(json, request), null);
         }
-        catch (AIAnalysisValidationException ex) { return new(null, ex); }
+        catch (AIAnalysisValidationException ex)
+        {
+            logger?.LogWarning("AI response validation failed for {Provider}, model {Model}; code {ErrorCode}, rule {ValidationRule}.",
+                ProviderName, model, ex.ErrorCode, ex.ValidationRule);
+            return new(null, ex);
+        }
     }
 
     private IReadOnlyDictionary<string, ReasoningBatchResult> ParseBatch(string json, IReadOnlyList<ReasoningBatchItem> items, string model)

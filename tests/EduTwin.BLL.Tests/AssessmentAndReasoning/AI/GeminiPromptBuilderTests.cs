@@ -31,6 +31,9 @@ public sealed class GeminiPromptBuilderTests
         var question = root.GetProperty("question");
         AssertObjectProperties(
             question,
+            "maxScore",
+            "contentLanguage",
+            "options",
             "questionType",
             "answerEvaluationMode",
             "questionText",
@@ -42,6 +45,7 @@ public sealed class GeminiPromptBuilderTests
         Assert.Equal("MultipleChoice", question.GetProperty("questionType").GetString());
         AssertObjectProperties(
             question.GetProperty("gradingCriteria"),
+            "criteria",
             "schemaVersion",
             "requiredIdeas",
             "commonErrors",
@@ -65,20 +69,21 @@ public sealed class GeminiPromptBuilderTests
         var prompt = new GeminiPromptBuilder().Build(CreateRequest(language: "vi"));
         using var document = ExtractInputJson(prompt);
 
-        Assert.Contains("vi means Vietnamese", prompt, StringComparison.Ordinal);
-        Assert.Contains("Use input.language for every free-text response field", prompt, StringComparison.Ordinal);
+        Assert.Contains("Always return language 'vi'", prompt, StringComparison.Ordinal);
+        Assert.Contains("natural Vietnamese", prompt, StringComparison.Ordinal);
         Assert.Equal("vi", document.RootElement.GetProperty("language").GetString());
     }
 
     [Fact]
-    public void Build_EnglishRequest_InstructsEnglishFreeText()
+    public void Build_EnglishContent_InstructsVietnameseFeedbackWithoutTranslatingAnswers()
     {
         var prompt = new GeminiPromptBuilder().Build(CreateRequest(language: "en"));
         using var document = ExtractInputJson(prompt);
 
-        Assert.Contains("en means English", prompt, StringComparison.Ordinal);
-        Assert.Contains("Use input.language for every free-text response field", prompt, StringComparison.Ordinal);
-        Assert.Equal("en", document.RootElement.GetProperty("language").GetString());
+        Assert.Contains("Always return language 'vi'", prompt, StringComparison.Ordinal);
+        Assert.Contains("Keep necessary English answers", prompt, StringComparison.Ordinal);
+        Assert.Contains("Manual means the teacher approves your proposal", prompt, StringComparison.Ordinal);
+        Assert.Equal("en", document.RootElement.GetProperty("question").GetProperty("contentLanguage").GetString());
     }
 
     [Fact]
@@ -169,10 +174,11 @@ public sealed class GeminiPromptBuilderTests
         new()
         {
             SchemaVersion = AIAnalysisContract.SchemaVersion,
-            Language = language,
+            Language = "vi",
             Question = new AnalyzeReasoningQuestion
             {
                 QuestionType = QuestionType.MultipleChoice,
+                ContentLanguage = language,
                 QuestionText = "Giải phương trình ...",
                 CorrectAnswer = "B",
                 Solution = "Lời giải chuẩn",

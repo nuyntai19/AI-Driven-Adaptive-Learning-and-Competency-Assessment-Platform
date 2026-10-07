@@ -62,6 +62,10 @@ export interface TeacherReviewQueueItemDto {
   analysisFeedback?: string | null;
   feedbackOrigin?: string | null;
   aiSolution?: string | null;
+  suggestedScore?: number | null;
+  suggestedRubricGrade?: RubricGrade | null;
+  usesAlternativeMethod?: boolean;
+  answerAssessment?: "Correct" | "Incorrect" | "Uncertain" | null;
   analysisConfidence?: number | null;
   errorType?: string | null;
   evidence: EvidenceDecisionDto;

@@ -31,7 +31,7 @@ public sealed class AIReasoningAnalysisBuilder : IAIReasoningAnalysisBuilder
         // Preserve observations; the AI never writes a final grade.
         var disagrees = (preliminaryIsCorrect == true && response.AnswerAssessment == "Incorrect")
             || (preliminaryIsCorrect == false && response.AnswerAssessment == "Correct");
-        var needsReview = preliminaryIsCorrect is null || disagrees
+        var needsReview = preliminaryIsCorrect is null || disagrees || response.UsesAlternativeMethod
             || response.AnswerAssessment == "Uncertain" || response.ReasoningVerdict == "Uncertain"
             || response.Confidence < 80
             || (preliminaryIsCorrect == true && response.ReasoningVerdict == "Invalid");
@@ -54,6 +54,8 @@ public sealed class AIReasoningAnalysisBuilder : IAIReasoningAnalysisBuilder
             FeedbackOrigin = "Gemini",
             AnswerAssessment = response.AnswerAssessment,
             ReasoningVerdict = response.ReasoningVerdict,
+            SuggestedScore = response.SuggestedScore,
+            UsesAlternativeMethod = response.UsesAlternativeMethod,
             SolutionType = response.SolutionType,
             AiSolution = response.AiSolution,
             IsFallback = false,

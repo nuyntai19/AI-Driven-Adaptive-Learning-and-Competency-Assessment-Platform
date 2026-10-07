@@ -24,12 +24,33 @@ public sealed partial class AIAnalysisJobProcessorTests
         var tenant = new TenantContext(); using var scope = tenant.BeginScope(center);
         await using var db = CreateContext(store, name, tenant);
         var question = await db.Questions.SingleAsync(); question.QuestionType = QuestionType.MultipleChoice;
+        var attempt = await db.Attempts.SingleAsync(); attempt.FinalAnswer = "1001";
+        db.QuestionOptions.Add(new QuestionOption { CenterId = center, QuestionId = question.QuestionId, OptionId = 1001,
+            OptionLabel = "A", OptionText = "42", IsCorrect = true, OrderIndex = 1, CreatedAt = UtcNow, UpdatedAt = UtcNow });
         await db.SaveChangesAsync(); db.ChangeTracker.Clear();
         var ai = new RecordingAIService((_, _) => Task.FromResult(ValidResponse("vi")));
         Assert.Equal(AIAnalysisJobProcessingOutcome.Completed,
             (await CreateSut(db, tenant, UtcNow, ai, durable: true).ExecuteAsync(1, "worker-current", CancellationToken.None)).Outcome);
         Assert.Equal(1, ai.CallCount); Assert.Equal(QuestionType.MultipleChoice, ai.Request!.Question.QuestionType);
+        Assert.Equal("A. 42", ai.Request.StudentSubmission.FinalAnswer);
+        Assert.Equal("A. 42", ai.Request.Question.CorrectAnswer);
         Assert.Equal(1, await db.EvidenceAssessments.CountAsync());
+    }
+
+    [Fact]
+    public async Task Durable_LegacyQuestionWithoutMapping_UsesOnlyItsActiveSameTenantPrimaryTopic()
+    {
+        var store = new InMemoryDatabaseRoot(); var name = Guid.NewGuid().ToString(); var center = Guid.NewGuid();
+        await SeedAsync(store, name, center);
+        var tenant = new TenantContext(); using var scope = tenant.BeginScope(center);
+        await using var db = CreateContext(store, name, tenant);
+        db.QuestionKnowledgeNodes.RemoveRange(await db.QuestionKnowledgeNodes.ToListAsync());
+        await db.SaveChangesAsync(); db.ChangeTracker.Clear();
+        var ai = new RecordingAIService((_, _) => Task.FromResult(ValidResponse("vi")));
+        Assert.Equal(AIAnalysisJobProcessingOutcome.Completed,
+            (await CreateSut(db, tenant, UtcNow, ai, durable: true).ExecuteAsync(1, "worker-current", default)).Outcome);
+        Assert.Equal(new[] { "20" }, ai.Request!.AllowedKnowledgeNodes.Select(n => n.NodeId));
+        Assert.False((await db.ReasoningAnalyses.SingleAsync()).IsFallback);
     }
 
     [Fact]

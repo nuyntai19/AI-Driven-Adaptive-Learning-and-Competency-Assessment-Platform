@@ -12,8 +12,10 @@ namespace EduTwin.BLL.Tests.AssessmentAndReasoning.Jobs;
 
 public sealed class AIAnalysisJobCandidateDiscoveryTests
 {
-    [Fact]
-    public async Task DiscoverAsync_BlockedCheckpointWaitsWithoutReclaimingWhileFreshInferenceRemainsParallel()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DiscoverAsync_BlockedCheckpointWaitsWithoutReclaimingWhileFreshInferenceRemainsParallel(bool fallbackDecision)
     {
         var tenant = new TenantContext(); await using var db = CreateContext(tenant);
         var center = Guid.NewGuid(); var student = Guid.NewGuid(); db.Centers.Add(CreateCenter(center));
@@ -26,7 +28,8 @@ public sealed class AIAnalysisJobCandidateDiscoveryTests
                 QuestionId = 1, FinalAnswer = "7", ReasoningText = "Substitution", ReasoningLanguage = "en",
                 ClientSubmissionId = Guid.NewGuid(), Status = AttemptStatus.PendingAnalysis,
                 CreatedAt = UtcNow.AddMinutes(-2).AddSeconds((long)job.AnalysisJobId), UpdatedAt = UtcNow.AddMinutes(-1) });
-        db.AIAnalysisCheckpoints.Add(new() { CenterId = center, AttemptId = second.AttemptId, RequestFingerprint = "synthetic", ResponseJson = "{}", CreatedAt = UtcNow });
+        if (fallbackDecision) { second.LastErrorCode = "AI_FALLBACK_WAITING_FOR_EARLIER_EVIDENCE"; second.RetryCount = 1; }
+        else db.AIAnalysisCheckpoints.Add(new() { CenterId = center, AttemptId = second.AttemptId, RequestFingerprint = "synthetic", ResponseJson = "{}", CreatedAt = UtcNow });
         await db.SaveChangesAsync(); db.ChangeTracker.Clear();
         var sut = new AIAnalysisJobCandidateDiscovery(db, tenant, tenant, new FixedTimeProvider(UtcNow));
         Assert.Equal([1ul, 3ul], (await sut.DiscoverAsync(10, 10, default)).WorkItems.Select(w => w.AnalysisJobId));

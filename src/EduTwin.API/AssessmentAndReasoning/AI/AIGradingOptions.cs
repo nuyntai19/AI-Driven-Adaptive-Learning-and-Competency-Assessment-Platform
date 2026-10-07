@@ -11,7 +11,9 @@ public sealed class AIGradingOptions
     public int MaxImages { get; set; } = 3;
     public int MaxInputCharacters { get; set; } = 24000;
     public int MaxPendingItems { get; set; } = 128;
-    public TimeSpan BatchWindow { get; set; } = TimeSpan.FromMilliseconds(150);
+    public TimeSpan BatchWindow { get; set; } = TimeSpan.FromMilliseconds(500);
+    public int RecommendedJobConcurrency => MicroBatchEnabled ? Math.Clamp(2 * BatchSize, 2, 10) : 4;
+    public int RecommendedPerCenterJobs => MicroBatchEnabled && BatchSize is >= 1 and <= 5 ? 25 / BatchSize * BatchSize : 25;
     public string? GroqApiKey { get; set; }
     public string GroqModel { get; set; } = "qwen/qwen3.8-27b";
     public string GroqOrganizationId { get; set; } = "unverified-groq-organization";
@@ -23,7 +25,7 @@ public sealed class AIGradingOptions
     public string Model(GeminiOptions gemini) => Provider == "Groq" ? GroqModel
         : string.IsNullOrWhiteSpace(GeminiModel) ? gemini.Model ?? "" : GeminiModel;
     public string Profile(GeminiOptions gemini) =>
-        $"{Provider}:{Model(gemini)}:method-agnostic-v2:temperature-{(Provider == "Gemini" && Model(gemini).StartsWith("gemini-3", StringComparison.Ordinal) ? 1 : 0)}:microbatch-v1:{(MicroBatchEnabled ? BatchSize : 1)}:{EduTwin.BLL.AssessmentAndReasoning.AI.AIAnalysisContract.SchemaVersion}";
+        $"{Provider}:{Model(gemini)}:vietnamese-grade-proposal-v4:temperature-{(Provider == "Gemini" && Model(gemini).StartsWith("gemini-3", StringComparison.Ordinal) ? 1 : 0)}:microbatch-v1:{(MicroBatchEnabled ? BatchSize : 1)}:{EduTwin.BLL.AssessmentAndReasoning.AI.AIAnalysisContract.SchemaVersion}";
 
     public void Validate(GeminiOptions gemini)
     {

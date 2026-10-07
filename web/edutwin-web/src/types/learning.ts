@@ -68,6 +68,9 @@ export interface AttemptFeedbackAnalysisDto {
   answerAssessment?: "Correct" | "Incorrect" | "Uncertain" | null;
   reasoningVerdict?: "Valid" | "Invalid" | "Uncertain" | null;
   feedbackOrigin?: "Gemini" | "Groq" | "RuleBased" | "LegacySystem" | null;
+  suggestedScore?: number | null;
+  suggestedRubricGrade?: import("./reviews").RubricGrade | null;
+  usesAlternativeMethod?: boolean;
   isRawAI?: boolean;
 }
 
@@ -163,6 +166,7 @@ export interface AttemptFeedbackDataDto {
   reviewRequest?: StudentReviewRequestDto | null;
   retryQuota?: RetryQuotaDto | null;
   actions?: { canRequestTeacherReview: boolean; canReportQuestion: boolean };
+  aiProcessing?: { status: string; reason?: string | null; nextAttemptAt?: string | null } | null;
   twinChange?: AttemptFeedbackTwinChangeDto | null;
   recommendation?: AttemptFeedbackRecommendationDto | null;
 }

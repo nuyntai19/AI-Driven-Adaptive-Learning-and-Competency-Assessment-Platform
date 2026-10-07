@@ -752,6 +752,14 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasColumnType("varchar(32)")
                         .HasColumnName("solution_type");
 
+                    b.Property<string>("SuggestedRubricGradeJson")
+                        .HasColumnType("longtext")
+                        .HasColumnName("suggested_rubric_grade_json");
+
+                    b.Property<decimal?>("SuggestedScore")
+                        .HasColumnType("decimal(10,2)")
+                        .HasColumnName("suggested_score");
+
                     b.Property<string>("TeacherReviewNote")
                         .HasColumnType("varchar(1000)")
                         .HasColumnName("teacher_review_note");
@@ -759,6 +767,12 @@ namespace EduTwin.DAL.Persistence.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime(6)")
                         .HasColumnName("updated_at");
+
+                    b.Property<bool>("UsesAlternativeMethod")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(false)
+                        .HasColumnName("uses_alternative_method");
 
                     b.HasKey("AnalysisId")
                         .HasName("pk_reasoning_analyses");

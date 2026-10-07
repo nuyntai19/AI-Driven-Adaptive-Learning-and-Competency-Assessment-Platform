@@ -72,6 +72,12 @@ public sealed partial class AIAnalysisJobProcessorMySqlTests
                     var a = i == 1 ? first : (Attempt)db.Entry(first).CurrentValues.ToObject();
                     a.AttemptId = (ulong)i; a.QuestionId = (ulong)i; a.AssignmentId = assignment;
                     a.FinalAnswer = "7"; a.ReasoningText = $"$y=2*3+1=7$. [submission:{i}]";
+                    if (q.QuestionType == QuestionType.MultipleChoice)
+                    {
+                        db.QuestionOptions.Add(new() { CenterId = center, QuestionId = q.QuestionId, OptionId = (ulong)(10000+i),
+                            OptionLabel = "A", OptionText = "7", IsCorrect = true, OrderIndex = 1, CreatedAt = UtcNow, UpdatedAt = UtcNow });
+                        a.FinalAnswer = (10000+i).ToString();
+                    }
                     a.AwardedScore = q.MaxScore; a.ClientSubmissionId = Guid.NewGuid(); a.RowVersion = 1;
                     a.CreatedAt = UtcNow.AddMinutes(-2).AddMilliseconds(i); a.UpdatedAt = a.CreatedAt;
                     if (i > 1) db.Attempts.Add(a);
@@ -117,8 +123,9 @@ public sealed partial class AIAnalysisJobProcessorMySqlTests
         services.AddScoped<AIAnalysisJobProcessor>();
         services.AddScoped<IAIAnalysisJobProcessor, BulkTracingProcessor>();
         await using var provider = services.BuildServiceProvider(validateScopes: true);
+        var grading = provider.GetRequiredService<IOptions<AIGradingOptions>>().Value;
         var worker = new AIAnalysisJobBackgroundService(provider.GetRequiredService<IServiceScopeFactory>(), clock,
-            new() { BatchSize = 50, PerCenterBatchSize = 50, MaxConcurrentJobs = 4 },
+            new() { BatchSize = 50, PerCenterBatchSize = grading.RecommendedPerCenterJobs, MaxConcurrentJobs = grading.RecommendedJobConcurrency },
             new("synthetic-bulk-worker"), NullLogger<AIAnalysisJobBackgroundService>.Instance);
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(6));
         observations.Elapsed.Start(); var cycles = 0; var retryScheduled = 0;
@@ -163,7 +170,8 @@ public sealed partial class AIAnalysisJobProcessorMySqlTests
         Assert.Equal(1, observations.CommentCalls); Assert.NotNull((await verify.StudentAssignmentProgresses.SingleAsync()).OverallAiComment);
         Assert.Equal((ulong)count, (await verify.RecommendationGenerationStates.SingleAsync()).LastSourceAttemptId);
         var report = new { kind = "real-mysql-processing-pipeline-synthetic-provider", count, injectFaults, cycles,
-            providerCalls = observations.ProviderCalls, images = observations.ImageHashes.Count, retryScheduled,
+            providerCalls = observations.ProviderCalls, singletonBatches = observations.GroupSizes.Count(n => n == 1),
+            averageBatchSize = observations.GroupSizes.Average(), images = observations.ImageHashes.Count, retryScheduled,
             elapsedMs = observations.Elapsed.ElapsedMilliseconds, completionP50Ms = Percentile(observations.CompletionMs, .5),
             completionP95Ms = Percentile(observations.CompletionMs, .95), evidence = count, twinHistory = count,
             duplicateEvidence = 0, duplicateHistory = 0, fallback = 0, productionDataTouched = false };
@@ -196,7 +204,7 @@ public sealed partial class AIAnalysisJobProcessorMySqlTests
         {
             var pool = new GeminiQuotaPoolOptions { ProjectId = "synthetic-bulk-test", KeyIndexes = [0], MaxConcurrentRequests = 2 };
             GeminiQuotaLease lease;
-            try { lease = await quota.AcquireAsync(pool, model, 100, TimeSpan.FromSeconds(30), token); }
+            try { lease = await quota.AcquireAsync(pool, model, 100, TimeSpan.FromSeconds(30), token, globalMaxConcurrentRequests: 2); }
             catch (Exception ex) when (ex is not (OperationCanceledException or AIAnalysisDeferredException or GeminiAdapterException))
             { throw new AIAnalysisInfrastructureException(); }
             var call = Interlocked.Increment(ref observations.ProviderCalls); var fail = faults && call == 1;
@@ -224,10 +232,12 @@ public sealed partial class AIAnalysisJobProcessorMySqlTests
                     foreach (var position in positions) observations.ImageHashes[i] = Convert.ToHexString(SHA256.HashData(images[position].Data));
                     observations.Delivered.AddOrUpdate(i, 1, (_, old) => old+1);
                     var bad = faults && i == 10 && Interlocked.Exchange(ref _badResponse, 1) == 0;
-                    single = new { schemaVersion = AIAnalysisContract.SchemaVersion, language = "en", methodDetected = "Substitution",
+                    single = new { schemaVersion = AIAnalysisContract.SchemaVersion, language = "vi", methodDetected = "Thay giá trị",
                         reasoningQuality = bad ? 101 : 90, errorType = "None", misconception = (string?)null, missingSteps = Array.Empty<string>(),
-                        rootCauseNodeIds = Array.Empty<string>(), confidence = 95, feedback = $"reference:{i};submission:{i}; synthetic feedback.",
-                        solutionType = "REFINED", aiSolution = "$y=2(3)+1=7$.", answerAssessment = "Correct", reasoningVerdict = "Valid" };
+                        rootCauseNodeIds = Array.Empty<string>(), confidence = 95, feedback = $"Lập luận đúng. reference:{i};submission:{i}; phản hồi giả lập.",
+                        solutionType = "REFINED", aiSolution = "Thay giá trị: $y=2(3)+1=7$.", answerAssessment = "Correct", reasoningVerdict = "Valid",
+                        suggestedScore = question.GetProperty("maxScore").GetDecimal(), usesAlternativeMethod = false, suggestedRubricScores = Array.Empty<object>(),
+                        reasoningIssues = Array.Empty<object>() };
                     if (batch) results.Add(new { itemId = item.GetProperty("itemId").GetString(), analysis = single });
                 }
                 return new(JsonSerializer.Serialize(batch ? new { results = results.AsEnumerable().Reverse().ToArray() } : single), 100, 100, 200);

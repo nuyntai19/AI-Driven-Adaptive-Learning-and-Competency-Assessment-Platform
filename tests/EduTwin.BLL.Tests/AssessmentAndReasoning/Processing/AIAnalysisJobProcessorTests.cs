@@ -50,7 +50,7 @@ public sealed partial class AIAnalysisJobProcessorTests
         {
             Assert.Null(context.Database.CurrentTransaction);
             Assert.Equal(cancellation.Token, token);
-            return Task.FromResult(ValidResponse(language));
+            return Task.FromResult(ValidResponse("vi"));
         });
 
         var result = await CreateSut(context, tenant, UtcNow, aiService).ExecuteAsync(
@@ -61,7 +61,8 @@ public sealed partial class AIAnalysisJobProcessorTests
         Assert.Equal(AIAnalysisJobProcessingOutcome.Completed, result.Outcome);
         Assert.Equal(1, aiService.CallCount);
         var request = Assert.IsType<AnalyzeReasoningRequest>(aiService.Request);
-        Assert.Equal(language, request.Language);
+        Assert.Equal("vi", request.Language);
+        Assert.Equal(language, request.Question.ContentLanguage);
         Assert.Equal(["10", "20"], request.AllowedKnowledgeNodes.Select(node => node.NodeId));
         Assert.Equal(["Secondary mapped", "Primary mapped"], request.AllowedKnowledgeNodes.Select(node => node.NodeName));
         var persisted = await ReloadAsync(store, databaseName, centerId);
@@ -206,13 +207,47 @@ public sealed partial class AIAnalysisJobProcessorTests
         Assert.Equal(retryCount == 0 ? 0 : 1, persisted.Analyses.Count);
     }
 
-    [Fact]
-    public async Task ExecuteAsync_SecondProviderFailure_PersistsFallbackWithoutThirdRetry()
+    [Theory]
+    [InlineData((byte)0, AIAnalysisJobProcessingOutcome.RetryScheduled)]
+    [InlineData((byte)1, AIAnalysisJobProcessingOutcome.FallbackCompleted)]
+    public async Task ExecuteAsync_InvalidResponsePreservesSafeReasonAndHasOneBoundedRepair(byte retries, AIAnalysisJobProcessingOutcome expected)
+    {
+        var store = new InMemoryDatabaseRoot(); var databaseName = Guid.NewGuid().ToString(); var centerId = Guid.NewGuid();
+        await SeedAsync(store, databaseName, centerId, retryCount: retries);
+        if (retries == 1)
+        {
+            var tenant = new TenantContext(); using var scope = tenant.BeginScope(centerId);
+            await using var context = CreateContext(store, databaseName, tenant);
+            var job = await context.AIAnalysisJobs.SingleAsync();
+            job.LastErrorCode = "AI_RESPONSE_SEMANTIC_INVALID";
+            job.LastErrorMessage = nameof(AIResponseValidationRule.ProposalRange);
+            await context.SaveChangesAsync();
+        }
+        var service = new RecordingAIService((request, _) => {
+            new AnalyzeReasoningResponseValidator().Validate(request, ValidResponse("vi") with { SuggestedScore = 10000 });
+            throw new InvalidOperationException("Validation must reject the range.");
+        });
+        var result = await ExecuteWithAIAsync(store, databaseName, centerId, service);
+        Assert.Equal(expected, result.Outcome);
+        Assert.Equal(1, service.CallCount);
+        Assert.Equal(retries == 1 ? AIResponseValidationRule.ProposalRange : null, service.Request!.ResponseRepairRule);
+        var persisted = await ReloadAsync(store, databaseName, centerId);
+        Assert.Equal("AI_RESPONSE_SEMANTIC_INVALID", persisted.Job.LastErrorCode);
+        Assert.Equal("ProposalRange", persisted.Job.LastErrorMessage);
+        Assert.Equal((byte)1, persisted.Job.RetryCount);
+        Assert.Equal(retries == 0 ? 0 : 1, persisted.Analyses.Count);
+    }
+
+    [Theory]
+    [InlineData((byte)1)]
+    [InlineData((byte)2)]
+    [InlineData((byte)3)]
+    public async Task ExecuteAsync_SecondProviderFailure_PersistsFallbackWithoutThirdRetry(byte retries)
     {
         var store = new InMemoryDatabaseRoot();
         var databaseName = Guid.NewGuid().ToString();
         var centerId = Guid.NewGuid();
-        await SeedAsync(store, databaseName, centerId, retryCount: 1);
+        await SeedAsync(store, databaseName, centerId, retryCount: retries);
         var aiService = new RecordingAIService();
 
         var result = await ExecuteWithAIAsync(store, databaseName, centerId, aiService);
@@ -221,7 +256,7 @@ public sealed partial class AIAnalysisJobProcessorTests
         Assert.Equal(1, aiService.CallCount);
         var persisted = await ReloadAsync(store, databaseName, centerId);
         Assert.Equal(AIJobStatus.FallbackCompleted, persisted.Job.Status);
-        Assert.Equal((byte)1, persisted.Job.RetryCount);
+        Assert.Equal(retries, persisted.Job.RetryCount);
         Assert.Equal(AttemptStatus.NeedsTeacherReview, persisted.Attempt.Status);
         Assert.Equal("AI_ANALYSIS_ATTEMPT_FAILED", persisted.Job.LastErrorCode);
         Assert.Equal("AI analysis attempt failed.", persisted.Job.LastErrorMessage);
@@ -419,8 +454,10 @@ public sealed partial class AIAnalysisJobProcessorTests
         Assert.Single(inspect.Attempts);
         Assert.Equal(1u, (await inspect.BehaviorTwins.SingleAsync()).AttemptCount);
         Assert.Equal(1u, (await inspect.KnowledgeTwins.SingleAsync()).EvidenceCount);
-        Assert.Contains(await inspect.TwinUpdateHistories.ToListAsync(), h =>
+        var recoveryHistory = Assert.Single(await inspect.TwinUpdateHistories.ToListAsync(), h =>
             h.CalculationBreakdown.RootElement.TryGetProperty("PreviousFallbackAnalysis", out _));
+        Assert.Equal("fallback-replay-v1", recoveryHistory.CalculationVersion);
+        Assert.True(recoveryHistory.CalculationVersion.Length <= 20);
     }
 
     [Fact]

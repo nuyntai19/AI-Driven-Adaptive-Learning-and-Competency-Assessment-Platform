@@ -27,6 +27,7 @@ import {
   shouldShowAnalysisWaitingScreen,
 } from "../utils/polling";
 import { StudentSubjectRequiredState } from "../components/student/StudentSubjectRequiredState";
+import { areSubmittedAnalysesTerminal, isAIProcessingPending } from "../utils/aiProcessingNotice";
 import { AttemptFeedbackHierarchy } from "../components/student/AttemptFeedbackHierarchy";
 import { AttemptScratchpadAttachment } from "../components/student/AttemptScratchpadAttachment";
 import { AssignmentReviewReceipt } from "../components/student/AssignmentReviewReceipt";
@@ -240,6 +241,7 @@ export const LearningPlayerPage = () => {
 
   // Asynchronous AI Analysis Banner state (completely separate from submission status)
   const [aiBanner, setAiBanner] = useState<{
+    kind?: "waiting" | "failure" | "network";
     type: "info" | "warning";
     message: string;
     action?: "retry_ai" | "resume_poll" | null;
@@ -277,6 +279,20 @@ export const LearningPlayerPage = () => {
     [assignment?.questions]
   );
   const isAssignmentSubmitted = isAssignmentWorkSubmitted(assignment, isLocallySubmitted);
+  // A teacher review is a terminal AI state, not a reason to keep a waiting banner.
+  useEffect(() => {
+    if (aiBanner?.kind !== "waiting") return;
+    const finished = assignmentId
+      ? isAssignmentSubmitted && areSubmittedAnalysesTerminal(assignmentQuestions)
+      : feedbackData != null && !isAIProcessingPending(feedbackData) &&
+        ["Completed", "NeedsTeacherReview", "AnalysisFailed"].includes(feedbackData.status);
+    if (finished) {
+      setAiBanner(null);
+      setBackgroundAnalysisJobId(null);
+      setPollingJobId(null);
+      setIsSubmitting(false);
+    }
+  }, [aiBanner?.kind, assignmentId, isAssignmentSubmitted, assignmentQuestions, feedbackData]);
   const canStartAssignment = shouldStartAssignment(assignment, isLocallySubmitted);
   const submissionTiming = getAssignmentReviewTiming(assignment);
   const assignmentReviewRef = useRef(isAssignmentSubmitted);
@@ -329,6 +345,34 @@ export const LearningPlayerPage = () => {
     refetchAssignment,
     setAssignmentAnswers,
   ]);
+
+  // Feedback for one finished question must not stop updates for the rest of the
+  // submitted assignment. Poll one bounded detail request, not all question jobs.
+  useEffect(() => {
+    if (!assignmentId || !isAssignmentSubmitted || areSubmittedAnalysesTerminal(assignmentQuestions)) return;
+    let active = true;
+    let failures = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    const refresh = async () => {
+      try {
+        const result = await refetchAssignment();
+        if (!active) return;
+        if (result.isError) failures++;
+        else failures = 0;
+        if (result.isSuccess && areSubmittedAnalysesTerminal(result.data?.data?.questions ?? [])) {
+          setAiBanner(current => current?.kind === "waiting" ? null : current);
+          setBackgroundAnalysisJobId(null);
+          setPollingJobId(null);
+          setIsSubmitting(false);
+          await queryClient.invalidateQueries({ queryKey: ["attempt-feedback", currentUser?.centerId, currentUser?.userId] });
+          return;
+        }
+      } catch { failures++; }
+      if (active && failures < 5) timer = setTimeout(refresh, Math.min(5_000 * (failures + 1), 20_000));
+    };
+    timer = setTimeout(refresh, 5_000);
+    return () => { active = false; clearTimeout(timer); };
+  }, [assignmentId, isAssignmentSubmitted, assignmentQuestions, refetchAssignment, queryClient, currentUser?.centerId, currentUser?.userId]);
 
   // Assignment Timers:
   // - assignmentRemainingSeconds: absolute server deadline; stops in review mode.
@@ -1173,6 +1217,7 @@ export const LearningPlayerPage = () => {
       setAiBanner({
         type: "info",
         message: "✓ Bài làm đã được lưu. AI đang tiếp tục phân tích ở chế độ nền; bạn có thể xem lại bài đã nộp. Kết quả sẽ cập nhật khi hoàn tất.",
+        kind: "waiting",
         action: null,
       });
     }, ANALYSIS_FOREGROUND_WAIT_MS);
@@ -1267,6 +1312,7 @@ export const LearningPlayerPage = () => {
             setAiBanner({
               type: "info",
               message: "✓ Bài làm đã được ghi nhận. AI đang mất nhiều thời gian hơn dự kiến để phân tích. Bạn vẫn có thể xem bài đã nộp. Lời giải và kết quả AI sẽ hiển thị khi quá trình xử lý hoàn tất.",
+              kind: "waiting",
               action: null,
             });
             try {
@@ -1635,6 +1681,7 @@ export const LearningPlayerPage = () => {
           setAiBanner({
             type: "info",
             message: `✓ Đã nộp thành công ${submittedCount > 0 ? `${submittedCount} câu hỏi` : "bài làm"}. Hệ thống đang đối soát đáp án và phân tích lập luận...`,
+            kind: "waiting",
             action: null,
           });
         }
@@ -1894,6 +1941,7 @@ export const LearningPlayerPage = () => {
         correctCount: summary.correctQuestionCount,
         voidedCount: summary.voidedQuestionCount ?? 0,
         evaluatedCount,
+        aiAnalyzedCount: summary.aiAnalyzedQuestionCount ?? 0,
         aiProcessingCount,
         teacherReviewCount,
         pendingCount: teacherReviewCount,
@@ -1927,6 +1975,7 @@ export const LearningPlayerPage = () => {
       correctCount,
       voidedCount,
       evaluatedCount,
+      aiAnalyzedCount: 0,
       aiProcessingCount,
       teacherReviewCount,
       pendingCount: teacherReviewCount,
@@ -2545,10 +2594,11 @@ export const LearningPlayerPage = () => {
                   </div>
 
                   <div className="rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800 p-3.5">
-                    <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Đã chấm xong</div>
+                    <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">AI đã phân tích</div>
                     <div className="text-base sm:text-lg font-black text-slate-800 dark:text-slate-200 mt-0.5">
-                      {assignmentStats.evaluatedCount} / {assignmentStats.totalCount} câu
+                      {assignmentStats.aiAnalyzedCount} / {assignmentStats.totalCount} câu
                     </div>
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Đã xác định điểm: {assignmentStats.evaluatedCount}/{assignmentStats.totalCount} · Giáo viên chốt là bước riêng</div>
                   </div>
 
                   <div className="rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800 p-3.5">

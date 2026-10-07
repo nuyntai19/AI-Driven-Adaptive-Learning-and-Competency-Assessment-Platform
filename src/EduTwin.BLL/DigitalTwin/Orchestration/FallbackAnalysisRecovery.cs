@@ -11,6 +11,10 @@ namespace EduTwin.BLL.DigitalTwin.Orchestration;
 // append-only history and its evidence is superseded, never deleted or updated.
 internal static class FallbackAnalysisRecovery
 {
+    // twin_update_history.calculation_version is varchar(20). Keep the replay
+    // identifier stable and within that contract; the full context is in history.
+    private const string CalculationVersion = "fallback-replay-v1";
+
     public static object Replace(ReasoningAnalysis existing, ReasoningAnalysis next, DateTime now)
     {
         var snapshot = new
@@ -22,7 +26,8 @@ internal static class FallbackAnalysisRecovery
             existing.AnalysisConfidence, existing.Feedback, existing.IsFallback,
             existing.NeedsTeacherReview, existing.Provider, existing.ModelName, existing.AnalysisProfileVersion,
             existing.SolutionType, existing.AiSolution, existing.AnswerAssessment,
-            existing.ReasoningVerdict, existing.FeedbackOrigin, existing.CreatedAt, existing.UpdatedAt
+            existing.ReasoningVerdict, existing.FeedbackOrigin, existing.CreatedAt, existing.UpdatedAt,
+            existing.SuggestedScore, existing.SuggestedRubricGradeJson, existing.UsesAlternativeMethod
         };
         existing.SchemaVersion = next.SchemaVersion;
         existing.MethodDetected = next.MethodDetected;
@@ -42,6 +47,9 @@ internal static class FallbackAnalysisRecovery
         existing.AiSolution = next.AiSolution;
         existing.AnswerAssessment = next.AnswerAssessment;
         existing.ReasoningVerdict = next.ReasoningVerdict;
+        existing.SuggestedScore = next.SuggestedScore;
+        existing.SuggestedRubricGradeJson = next.SuggestedRubricGradeJson;
+        existing.UsesAlternativeMethod = next.UsesAlternativeMethod;
         existing.FeedbackOrigin = next.FeedbackOrigin;
         existing.UpdatedAt = now;
         return snapshot;
@@ -118,7 +126,7 @@ internal static class FallbackAnalysisRecovery
             last?.DifficultyMultiplier ?? 1m, last?.LearningRate ?? 0m, lastQuality ?? 0m,
             mastery, mastery, mastery - previous, steps);
         return new KnowledgeTwinUpdateResult(twin, new MasteryCalculationResult(previous, mastery, mastery - previous,
-            lastQuality, "fallback-recovery-replay-v1", breakdown,
+            lastQuality, CalculationVersion, breakdown,
             "AI recovered after a provider failure; existing attempts replayed once, not duplicated."));
     }
 }

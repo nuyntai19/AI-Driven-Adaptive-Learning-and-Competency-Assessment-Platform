@@ -5,6 +5,9 @@ namespace EduTwin.BLL.AssessmentAndReasoning.AI;
 
 public sealed record AnalyzeReasoningRequest
 {
+    // Server-owned repair hint, not student data and not part of checkpoint identity.
+    [JsonIgnore]
+    public AIResponseValidationRule? ResponseRepairRule { get; init; }
     public required string SchemaVersion { get; init; }
 
     public required string Language { get; init; }
@@ -18,6 +21,9 @@ public sealed record AnalyzeReasoningRequest
 
 public sealed record AnalyzeReasoningQuestion
 {
+    public decimal MaxScore { get; init; } = 10m;
+    public string ContentLanguage { get; init; } = "vi";
+    public IReadOnlyList<AnalyzeReasoningOption> Options { get; init; } = [];
     public QuestionType QuestionType { get; init; }
 
     public QuestionAnswerEvaluationMode AnswerEvaluationMode { get; init; } = QuestionAnswerEvaluationMode.TextExact;
@@ -37,6 +43,7 @@ public sealed record AnalyzeReasoningQuestion
 
 public sealed record AnalyzeReasoningGradingCriteria
 {
+    public IReadOnlyList<AnalyzeReasoningRubricCriterion> Criteria { get; init; } = [];
     public required string SchemaVersion { get; init; }
 
     public required IReadOnlyList<string> RequiredIdeas { get; init; }
@@ -44,6 +51,15 @@ public sealed record AnalyzeReasoningGradingCriteria
     public required IReadOnlyList<string> CommonErrors { get; init; }
 
     public required string ScoringNotes { get; init; }
+}
+
+public sealed record AnalyzeReasoningOption(string Label, string Text)
+{
+    public AnalyzeReasoningOption() : this(string.Empty, string.Empty) { }
+}
+public sealed record AnalyzeReasoningRubricCriterion(string CriterionId, string Title, string Description, decimal MaxScore)
+{
+    public AnalyzeReasoningRubricCriterion() : this(string.Empty, string.Empty, string.Empty, 0m) { }
 }
 
 public sealed record AnalyzeReasoningStudentSubmission

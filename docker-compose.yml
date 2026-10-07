@@ -41,12 +41,12 @@ services:
       - Gemini__BackupKeys=${Gemini__BackupKeys:-}
       - Gemini__BackupKeys_2=${Gemini__BackupKeys_2:-}
       - Gemini__Model=${Gemini__Model}
-      - AIAnalysisWorker__MaxConcurrentJobs=${AIAnalysisWorker__MaxConcurrentJobs:-4}
+      - AIAnalysisWorker__MaxConcurrentJobs=${AIAnalysisWorker__MaxConcurrentJobs:-6}
       - Gemini__MaxConcurrentRequests=${Gemini__MaxConcurrentRequests:-2}
       - GEMINI_QUOTA_POOLS=${GEMINI_QUOTA_POOLS:-}
       - AIGrading__MicroBatchEnabled=${AIGrading__MicroBatchEnabled:-true}
       - AIGrading__BatchSize=${AIGrading__BatchSize:-3}
-      - AIGrading__BatchWindow=${AIGrading__BatchWindow:-00:00:00.150}
+      - AIGrading__BatchWindow=${AIGrading__BatchWindow:-00:00:00.500}
       - AIGrading__Provider=${AIGrading__Provider:-Gemini}
       - AIGrading__GeminiModel=${AIGrading__GeminiModel:-}
       - AIGrading__AlternativeProfileApproved=${AIGrading__AlternativeProfileApproved:-false}

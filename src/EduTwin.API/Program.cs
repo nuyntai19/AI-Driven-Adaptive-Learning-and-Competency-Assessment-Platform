@@ -169,7 +169,11 @@ builder.Services.AddAttemptAttachmentStorage(builder.Configuration);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddAIAnalysisJobBackgroundWorker(options =>
 {
-    options.MaxConcurrentJobs = 4;
+    var grading = builder.Configuration.GetSection("AIGrading").Get<AIGradingOptions>() ?? new();
+    // Feed two full microbatches rather than a 3+1 wave. This is job preparation
+    // concurrency, not provider concurrency (quota admission remains authoritative).
+    options.MaxConcurrentJobs = grading.RecommendedJobConcurrency;
+    options.PerCenterBatchSize = grading.RecommendedPerCenterJobs;
     builder.Configuration.GetSection("AIAnalysisWorker").Bind(options);
 });
 

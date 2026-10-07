@@ -23,7 +23,11 @@ public sealed class GeminiResponseJsonSchemaTests
         "solutionType",
         "aiSolution",
         "answerAssessment",
-        "reasoningVerdict"
+        "reasoningVerdict",
+        "suggestedScore",
+        "usesAlternativeMethod",
+        "suggestedRubricScores",
+        "reasoningIssues"
     ];
 
     [Fact]
@@ -72,13 +76,13 @@ public sealed class GeminiResponseJsonSchemaTests
     }
 
     [Fact]
-    public void Language_EnumIsExactlyViAndEn()
+    public void Language_IsVietnameseRegardlessOfSubject()
     {
         using var document = CreateDocument();
         var schema = PropertySchema(document, "language");
 
         Assert.Equal("string", schema.GetProperty("type").GetString());
-        Assert.Equal(["vi", "en"], StringValues(schema.GetProperty("enum")));
+        Assert.Equal(["vi"], StringValues(schema.GetProperty("enum")));
     }
 
     [Fact]

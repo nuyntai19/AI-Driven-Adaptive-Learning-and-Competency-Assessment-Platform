@@ -23,7 +23,7 @@ import { permissions } from "../../auth/permissions";
 import { RichMathText } from "../math/RichMathText";
 import { ScratchpadAttachmentDrawer } from "../ScratchpadAttachmentDrawer";
 import { extractProblemDetails } from "../../utils/problemDetails";
-import { resolveQuestionDefaultFormValues, questionGradingActions, gradingFormIsDirty, finalApprovalBlockReason } from "../../utils/gradingWorkspaceHelpers";
+import { resolveQuestionDefaultFormValues, questionGradingActions, questionAnswerVerdictBadge, gradingFormIsDirty, finalApprovalBlockReason } from "../../utils/gradingWorkspaceHelpers";
 import { hydrateRubricForm, buildRubricScores, type RubricForm } from "../../utils/rubric";
 import { RubricGradeView } from "./RubricGradeView";
 import { getAnalysisFeedbackLabel, normalizeQuestionScore, questionAssignmentContribution, toInternalQuestionScore } from "../../utils/attemptFeedbackPresentation";
@@ -349,6 +349,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
   const formContext = currentQuestion ? `${workspaceScope}|${currentQuestion.attemptId}|${currentQuestion.analysisId}` : "";
   const formKey = currentQuestion ? `${formContext}|${currentQuestion.overrideVersion ?? currentQuestion.evidence?.analysisOverrideVersion ?? 0}` : "";
   const questionActions = questionGradingActions(currentQuestion);
+  const answerVerdictBadge = questionAnswerVerdictBadge(currentQuestion);
   const finalResultLocked = selectedStudent?.teacherFinalReviewStatus === "Approved" || currentQuestion?.teacherFinalReviewStatus === "Approved";
   const displayedQuestionGrade = normalizeQuestionScore(currentQuestion?.overrideAwardedScore ?? currentQuestion?.awardedScore, currentQuestion?.maxScore ?? 10);
   const assignmentContribution = questionAssignmentContribution(currentQuestion?.overrideAwardedScore ?? currentQuestion?.awardedScore,
@@ -371,7 +372,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
     setAwardedScore(formDefaults.awardedScore); setIsCorrectVal(formDefaults.isCorrectVal);
     setReasoningQuality(formDefaults.reasoningQuality); setErrorTypeVal(formDefaults.errorTypeVal);
     setFeedbackVal(formDefaults.feedbackVal); setOverrideReasonVal(formDefaults.overrideReasonVal);
-    const initialRubric = hydrateRubricForm(currentQuestion?.gradingCriteria?.criteria || [], currentQuestion?.rubricGrade);
+    const initialRubric = hydrateRubricForm(currentQuestion?.gradingCriteria?.criteria || [], currentQuestion?.rubricGrade ?? currentQuestion?.suggestedRubricGrade);
     rubricBaseline.current = initialRubric; setRubricForm(initialRubric);
     setIsEditingGrade(false);
   }, [formKey, formContext, formDefaults, currentQuestion]);
@@ -1243,15 +1244,15 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                           </h3>
                         </div>
                         <div className="flex items-center gap-2">
-                          {currentQuestion.isCorrect ? (
-                            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                              ✓ Học sinh làm đúng
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
-                              ✗ Học sinh làm sai
-                            </span>
-                          )}
+                          <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold ${
+                            answerVerdictBadge.tone === "correct"
+                              ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                              : answerVerdictBadge.tone === "incorrect"
+                                ? "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300"
+                                : "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200"
+                          }`}>
+                            {answerVerdictBadge.label}
+                          </span>
                         </div>
                       </div>
 
@@ -1363,6 +1364,12 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                       </div>
 
                       {/* AI Feedback */}
+                      {currentQuestion.suggestedScore != null && !currentQuestion.isFallback && <div className="rounded-xl border border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-950/40 p-4 space-y-2">
+                        <p className="font-bold text-indigo-800 dark:text-indigo-200">AI đã chấm · Điểm đề xuất: {normalizeQuestionScore(currentQuestion.suggestedScore, currentQuestion.maxScore ?? 10).awardedScore} / 10</p>
+                        <p className="text-xs text-slate-600 dark:text-slate-300">Đây là điểm đề xuất, chưa phải điểm cuối cùng. Giáo viên xác nhận hoặc điều chỉnh trước khi chốt.</p>
+                        {currentQuestion.usesAlternativeMethod && <p className="text-xs font-semibold text-amber-800 dark:text-amber-200">Cách giải khác lời giải tham khảo: cần giáo viên thẩm định phương pháp; không tự trừ điểm.</p>}
+                        {currentQuestion.suggestedRubricGrade && <RubricGradeView grade={currentQuestion.suggestedRubricGrade} />}
+                      </div>}
                       {currentQuestion.methodDetected && <p className="text-xs text-slate-600 dark:text-slate-300">Phương pháp nhận diện: <strong>{currentQuestion.methodDetected}</strong></p>}
                       <p className="text-xs text-slate-500 dark:text-slate-400">Điểm câu hỏi: thang 10. Chỉ số lập luận: thang 100, không cộng vào điểm bài tập.</p>
                       {currentQuestion.analysisFeedback && (

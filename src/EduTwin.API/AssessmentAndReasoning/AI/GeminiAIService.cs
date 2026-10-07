@@ -10,7 +10,7 @@ public sealed class GeminiAIService : IAIService, IAIAnalysisProfile, IPartition
     public Task<AnalyzeReasoningResponse> AnalyzeReasoningAsync(AnalyzeReasoningRequest request,
         AIAnalysisBatchPartition partition, CancellationToken cancellationToken) =>
         _batcher is null ? AnalyzeReasoningAsync(request, cancellationToken) : _batcher.AnalyzeAsync(request, cancellationToken, partition);
-    public string AnalysisProfileVersion => _batcher?.ProfileVersion ?? $"Gemini:{_options.Model}:method-agnostic-v2:temperature-{(_options.Model?.StartsWith("gemini-3", StringComparison.Ordinal) == true ? 1 : 0)}:{AIAnalysisContract.SchemaVersion}";
+    public string AnalysisProfileVersion => _batcher?.ProfileVersion ?? $"Gemini:{_options.Model}:vietnamese-grade-proposal-v4:temperature-{(_options.Model?.StartsWith("gemini-3", StringComparison.Ordinal) == true ? 1 : 0)}:{AIAnalysisContract.SchemaVersion}";
     private readonly ReasoningMicroBatcher? _batcher;
     private readonly GeminiOptions _options;
     private readonly IGeminiGenerateContentClient _client;

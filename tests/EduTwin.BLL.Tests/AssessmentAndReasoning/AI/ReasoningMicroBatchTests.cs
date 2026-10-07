@@ -17,14 +17,30 @@ public sealed class ReasoningMicroBatchTests
     public async Task ManyQuestionsKeepSeparateResultsWithFewerCalls(int count, int size, int expectedCalls)
     {
         var executor = new FakeExecutor();
-        using var batcher = Create(executor, size);
+        var clock = new ManualBatchClock();
+        using var batcher = Create(executor, size, clock);
         var partition = Partition();
         var requests = Enumerable.Range(0, count).Select(i => Request(partition, i.ToString())).ToArray();
-        var responses = await Task.WhenAll(requests.Select(r => batcher.AnalyzeAsync(r, default, partition)));
+        var pending = requests.Select(r => batcher.AnalyzeAsync(r, default, partition)).ToArray();
+        clock.Advance(TimeSpan.FromMilliseconds(20));
+        var responses = await Task.WhenAll(pending);
         Assert.Equal(expectedCalls, executor.Groups.Count);
         Assert.Equal(count, responses.Length);
         Assert.Equal(requests.Select(r => r.StudentSubmission.FinalAnswer), responses.Select(r => r.Feedback));
         Assert.All(executor.Groups, g => Assert.InRange(g.Length, 1, size));
+    }
+
+    [Fact]
+    public async Task PartialBatchFlushesAtItsConfiguredWindow_NotBefore()
+    {
+        var clock = new ManualBatchClock(); var executor = new FakeExecutor();
+        using var batcher = Create(executor, clock: clock); var p = Partition();
+        var pending = batcher.AnalyzeAsync(Request(p), default, p);
+        clock.Advance(TimeSpan.FromMilliseconds(19));
+        Assert.Empty(executor.Groups); Assert.False(pending.IsCompleted);
+        clock.Advance(TimeSpan.FromMilliseconds(1));
+        Assert.Equal("7", (await pending).Feedback);
+        Assert.Single(executor.Groups);
     }
 
     [Fact]
@@ -87,6 +103,46 @@ public sealed class ReasoningMicroBatchTests
         var executor = new FakeExecutor(); using var batcher = Create(executor);
         await Task.WhenAll(Enumerable.Range(0, 3).Select(_ => batcher.AnalyzeAsync(Request(null), default)));
         Assert.Equal(3, executor.Groups.Count);
+    }
+
+    [Fact]
+    public async Task RepairExecutesOnlyTheFailedItemWithoutSplittingTheFreshBatch()
+    {
+        var executor = new FakeExecutor(); using var batcher = Create(executor);
+        var p = Partition();
+        var repair = batcher.AnalyzeAsync(Request(p, "repair") with { ResponseRepairRule = AIResponseValidationRule.Rubric }, default, p);
+        var fresh = Enumerable.Range(0, 3).Select(i => batcher.AnalyzeAsync(Request(p, i.ToString()), default, p)).ToArray();
+        await Task.WhenAll(fresh.Append(repair));
+        Assert.Equal(2, executor.Groups.Count);
+        Assert.Contains(executor.Groups, g => g.Length == 1 && g[0].Request.StudentSubmission.FinalAnswer == "repair");
+        Assert.Contains(executor.Groups, g => g.Length == 3 && g.All(i => i.Request.ResponseRepairRule is null));
+    }
+
+    [Fact]
+    public async Task TwoFullWavesOfJobsAvoidThreePlusOneSingletonBatches()
+    {
+        var executor = new FakeExecutor(); using var batcher = Create(executor);
+        var p = Partition();
+        for (var wave = 0; wave < 8; wave++)
+            await Task.WhenAll(Enumerable.Range(wave * 6, 6).Select(i => batcher.AnalyzeAsync(Request(p, i.ToString()), default, p)));
+        await Task.WhenAll(Enumerable.Range(48, 2).Select(i => batcher.AnalyzeAsync(Request(p, i.ToString()), default, p)));
+        Assert.Equal(17, executor.Groups.Count);
+        Assert.Equal(16, executor.Groups.Count(g => g.Length == 3));
+        Assert.Single(executor.Groups, g => g.Length == 2);
+        Assert.DoesNotContain(executor.Groups, g => g.Length == 1);
+    }
+
+    [Theory]
+    [InlineData(3, 6, 24)]
+    [InlineData(5, 10, 25)]
+    public void ProductionDefaultsFeedWholeBatchesAndDoNotSplitAtTwentyFive(int batchSize, int jobs, int centerJobs)
+    {
+        var options = new AIGradingOptions { MicroBatchEnabled = true, BatchSize = batchSize };
+        Assert.Equal(jobs, options.RecommendedJobConcurrency);
+        Assert.Equal(centerJobs, options.RecommendedPerCenterJobs);
+        Assert.Equal(0, jobs % batchSize);
+        Assert.Equal(0, centerJobs % batchSize);
+        Assert.Equal(TimeSpan.FromMilliseconds(500), options.BatchWindow);
     }
 
     [Fact]
@@ -157,8 +213,54 @@ public sealed class ReasoningMicroBatchTests
         errorType = "None", misconception = (string?)null, missingSteps = Array.Empty<string>(), rootCauseNodeIds = Array.Empty<string>(),
         confidence = 95, feedback, solutionType = "REFINED", aiSolution = "Thay số ta được $7$.", answerAssessment = "Correct", reasoningVerdict = "Valid"
     };
-    private static ReasoningMicroBatcher Create(FakeExecutor executor, int size = 3) => new(executor,
-        Options.Create(new AIGradingOptions { MicroBatchEnabled = true, BatchSize = size, BatchWindow = TimeSpan.FromMilliseconds(20) }));
+    private static ReasoningMicroBatcher Create(FakeExecutor executor, int size = 3, TimeProvider? clock = null) => new(executor,
+        Options.Create(new AIGradingOptions { MicroBatchEnabled = true, BatchSize = size, BatchWindow = TimeSpan.FromMilliseconds(20) }), clock);
+
+    private sealed class ManualBatchClock : TimeProvider
+    {
+        private readonly object _gate = new();
+        private readonly List<ManualTimer> _timers = [];
+        private TimeSpan _elapsed;
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            Assert.Equal(Timeout.InfiniteTimeSpan, period); // Task.Delay uses one-shot timers.
+            lock (_gate)
+            {
+                var timer = new ManualTimer(this, callback, state) { Due = _elapsed + dueTime };
+                _timers.Add(timer); return timer;
+            }
+        }
+        public void Advance(TimeSpan delta)
+        {
+            ManualTimer[] due;
+            lock (_gate)
+            {
+                _elapsed += delta;
+                due = _timers.Where(t => !t.Disposed && t.Due <= _elapsed).ToArray();
+                foreach (var timer in due) timer.Disposed = true;
+                _timers.RemoveAll(t => t.Disposed);
+            }
+            foreach (var timer in due) timer.Callback(timer.State);
+        }
+        private sealed class ManualTimer(ManualBatchClock owner, TimerCallback callback, object? state) : ITimer
+        {
+            public TimerCallback Callback { get; } = callback;
+            public object? State { get; } = state;
+            public TimeSpan Due { get; set; }
+            public bool Disposed { get; set; }
+            public bool Change(TimeSpan dueTime, TimeSpan period)
+            {
+                lock (owner._gate)
+                {
+                    if (Disposed) return false;
+                    Due = dueTime == Timeout.InfiniteTimeSpan ? TimeSpan.MaxValue : owner._elapsed + dueTime;
+                    return true;
+                }
+            }
+            public void Dispose() { lock (owner._gate) Disposed = true; }
+            public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
+        }
+    }
     private static ReasoningBatchExecutor Executor(string raw) => new(
         Options.Create(new GeminiOptions { ApiKey = "fake", Model = "test-model" }), Options.Create(new AIGradingOptions()),
         new FakeClient(raw), null!, new(), new(), new StrictAIAnalysisResponseParser(new AnalyzeReasoningResponseValidator()));
