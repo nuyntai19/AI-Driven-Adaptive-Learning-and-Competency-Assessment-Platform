@@ -28,14 +28,20 @@ try
     if (size is < 3 or > 5) throw new InvalidOperationException("Use batch size 3 through 5.");
     var gemini = new GeminiOptions { ApiKey = configured.GetAllApiKeys()[keyIndex], Model = model, Timeout = TimeSpan.FromSeconds(60) };
     var providerLog = new SafeStatusLogger();
-    using var client = new GoogleGenAIGenerateContentClient(Options.Create(gemini), providerLog);
+    using var providerClient = new GoogleGenAIGenerateContentClient(Options.Create(gemini), providerLog);
+    var client = new CapturingSyntheticClient(providerClient);
     var settings = new AIGradingOptions { MicroBatchEnabled = true, BatchSize = size };
     var executor = new ReasoningBatchExecutor(Options.Create(gemini), Options.Create(settings), client, null!,
         new(), new(), new StrictAIAnalysisResponseParser(new AnalyzeReasoningResponseValidator()));
     var reports = new List<object>();
     var calls = 0;
     var matches = 0;
-    var cases = (args.Contains("--probe") ? Cases().Take(1) : Cases().Concat(args.Contains("--expanded") ? ExpandedCases() : [])).ToArray();
+    var selectedCase = Argument("--case", "");
+    var cases = (args.Contains("--consistency") ? ConsistencyCases() : args.Contains("--probe") ? Cases().Take(1) : Cases().Concat(args.Contains("--expanded") ? ExpandedCases() : []))
+        .Where(c => selectedCase.Length == 0 || c.Id == selectedCase).ToArray();
+    if (Enum.TryParse<AIResponseValidationRule>(Argument("--repair-rule", ""), out var repairRule) && Enum.IsDefined(repairRule))
+        cases = cases.Select(c => c with { Request = c.Request with { ResponseRepairRule = repairRule } }).ToArray();
+    if (cases.Length == 0) throw new InvalidOperationException("No synthetic case matched.");
     if ((int)Math.Ceiling(cases.Length / (double)size) > 5) throw new InvalidOperationException("Call cap exceeded.");
     foreach (var group in cases.Chunk(size))
     {
@@ -51,12 +57,20 @@ try
         foreach (var test in group)
         {
             var item = result[test.Id]; var r = item.Response;
-            if (r?.AnswerAssessment == test.Answer && r.ReasoningVerdict == test.Reasoning) matches++;
+            var match = r?.AnswerAssessment == test.Answer && r.ReasoningVerdict == test.Reasoning
+                && r.Language == "vi" && VietnameseFeedbackPolicy.HasVietnameseExplanation(r.Feedback)
+                && r.SuggestedScore.HasValue && r.SuggestedScore >= 0 && r.SuggestedScore <= test.Request.Question.MaxScore
+                && (!test.ExpectedScore.HasValue || r.SuggestedScore == test.ExpectedScore)
+                && (!test.Alternative.HasValue || r.UsesAlternativeMethod == test.Alternative)
+                && (r.ErrorType != EduTwin.Contracts.AssessmentAndReasoning.ErrorType.None || r.AnswerAssessment != "Correct"
+                    || r.ReasoningVerdict != "Valid" || r.RootCauseNodeIds.Count == 0);
+            if (match) matches++;
             reports.Add(new
             {
                 caseId = test.Id, expectedAnswer = test.Answer, expectedReasoning = test.Reasoning,
-                validContract = r is not null, observationsMatch = r?.AnswerAssessment == test.Answer && r?.ReasoningVerdict == test.Reasoning,
-                response = r, errorCode = item.Error is AIAnalysisValidationException e ? e.ErrorCode : item.Error?.GetType().Name
+                validContract = r is not null, observationsMatch = match,
+                response = r, errorCode = item.Error is AIAnalysisValidationException e ? e.ErrorCode : item.Error?.GetType().Name,
+                validationRule = item.Error is AIAnalysisValidationException validation ? validation.ValidationRule.ToString() : null
             });
         }
         Console.WriteLine(JsonSerializer.Serialize(new { model, questions = group.Length, milliseconds = Stopwatch.GetElapsedTime(started).TotalMilliseconds }));
@@ -64,7 +78,8 @@ try
     var directory = Path.Combine(Directory.GetCurrentDirectory(), "storage", "verification"); Directory.CreateDirectory(directory);
     var safeModel = System.Text.RegularExpressions.Regex.Replace(model, @"[^A-Za-z0-9._-]", "_");
     var path = Path.Combine(directory, $"AI-GRADING-MICROBATCH-{safeModel}-key{keyIndex+1}-{size}-{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}.json");
-    await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { syntheticOnly = true, model, keyIndex, size, calls, matches, total = cases.Length, reports }, new JsonSerializerOptions { WriteIndented = true }));
+    await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { syntheticOnly = true, model, keyIndex, size, calls, matches, total = cases.Length, reports,
+        syntheticProviderResponses = client.Responses }, new JsonSerializerOptions { WriteIndented = true }));
     Console.WriteLine(JsonSerializer.Serialize(new { model, keyIndex, calls, matches, total = cases.Length, report = path, productionModelUnchanged = true }));
     if (matches != cases.Length) Environment.ExitCode = 1;
 }
@@ -82,8 +97,20 @@ static IEnumerable<Case> Cases()
     yield return Build("mcq-valid", "Cho y=2x+1, tính y tại x=3", "7", "7", "Thay x=3: y=2*3+1=7.", "Thay giá trị", "Correct", "Valid", QuestionType.MultipleChoice);
     yield return Build("equivalent-domain", "Tìm tập xác định của y=1/(x-2)", @"R\{2}", @"D=\mathbb{R}\setminus\{2\}", "Mẫu số khác 0 nên x-2 khác 0, suy ra x khác 2.", "Mẫu khác không", "Correct", "Valid", QuestionType.ShortAnswer);
     yield return Build("digit-cancel-fallacy", "Rút gọn phân số 16/64 và giải thích", "1/4", "1/4", "Gạch bỏ chữ số 6 ở tử 16 và mẫu 64, còn 1/4.", "Chia tử và mẫu cho 16.", "Correct", "Invalid");
-    yield return Build("alternative-method", "Giải x^2-5x+6=0", "x=2 hoặc x=3", "x=2 hoặc x=3", "Ta phân tích (x-2)(x-3)=0 nên x=2 hoặc x=3.", "Dùng công thức nghiệm với delta=25-24=1.", "Correct", "Valid");
+    yield return Build("alternative-method", "Giải x^2-5x+6=0", "x=2 hoặc x=3", "x=2 hoặc x=3", "Ta phân tích (x-2)(x-3)=0 nên x=2 hoặc x=3.", "Dùng công thức nghiệm với delta=25-24=1.", "Correct", "Valid") with { Alternative = true, ExpectedScore = 10m };
     yield return Build("missing-root", "Giải x^2=4 trên tập số thực", "x=2 hoặc x=-2", "x=2", "Lấy căn hai vế được x=2.", "x^2=4 tương đương x=2 hoặc x=-2.", "Incorrect", "Invalid");
+    var english = Build("english-options-vietnamese-feedback", "She ___ to school every day.", "A. goes", "A. goes",
+        "Dùng thì hiện tại đơn, chủ ngữ she là ngôi thứ ba số ít nên chọn goes.", "Dùng thì hiện tại đơn và hòa hợp chủ ngữ động từ.", "Correct", "Valid", QuestionType.MultipleChoice);
+    yield return english with { ExpectedScore = 10m, Alternative = false, Request = english.Request with { Question = english.Request.Question with
+        { ContentLanguage = "en", Options = [new("A", "goes"), new("B", "go"), new("C", "going"), new("D", "gone")] },
+        StudentSubmission = english.Request.StudentSubmission with { PreliminaryIsCorrect = true } } };
+    var rubric = Build("english-manual-rubric-proposal", "Rewrite: I started learning English in 2020. Use present perfect continuous.",
+        "I have been learning English since 2020.", "I have been learning English since 2020.",
+        "Hành động bắt đầu trong quá khứ và tiếp diễn đến hiện tại nên dùng have been learning; since đi với mốc 2020.",
+        "Dùng have been learning và since trước mốc 2020.", "Correct", "Valid");
+    yield return rubric with { ExpectedScore = 2m, Alternative = false, Request = rubric.Request with { Question = rubric.Request.Question with
+        { MaxScore = 2m, ContentLanguage = "en", GradingCriteria = rubric.Request.Question.GradingCriteria with { Criteria = [
+            new("tense", "Cấu trúc thì", "Dùng đúng thì hiện tại hoàn thành tiếp diễn.", 1m), new("time", "Mốc thời gian", "Dùng since với mốc 2020.", 1m)] } } } };
 }
 static IEnumerable<Case> ExpandedCases()
 {
@@ -113,6 +140,28 @@ static IEnumerable<Case> ExpandedCases()
             { ReasoningText = null, ImageParts = [new(bytes, "image/png")] } } };
     }
 }
+static IEnumerable<Case> ConsistencyCases()
+{
+    var whom = Build("english-whom-invalid-rule", "Choose: I have two brothers, both of ___ live in Hanoi. A. whom; B. who; C. which; D. whose.",
+        "A. whom", "A. whom", "Whom luôn là đại từ chủ ngữ nên dùng sau both of.", "Whom dùng làm tân ngữ sau giới từ of để chỉ người.",
+        "Correct", "Invalid", QuestionType.MultipleChoice, "Đại từ quan hệ");
+    yield return whom with { ExpectedScore = 10m, Request = whom.Request with { Question = whom.Request.Question with {
+        ContentLanguage = "en", Options = [new("A", "whom"), new("B", "who"), new("C", "which"), new("D", "whose")] },
+        StudentSubmission = whom.Request.StudentSubmission with { PreliminaryIsCorrect = true } } };
+    var tense = Build("english-last-night-invalid-rule", "At eight o'clock last night, I ___ for my English test. A. study; B. studied; C. am studying; D. was studying.",
+        "D. was studying", "D. was studying", "Cứ có last night thì phải dùng quá khứ tiếp diễn, không cần xét hành động hay thời điểm cụ thể.",
+        "Dùng quá khứ tiếp diễn vì hành động đang diễn ra tại thời điểm xác định at eight o'clock trong quá khứ.",
+        "Correct", "Invalid", QuestionType.MultipleChoice, "Thì quá khứ tiếp diễn");
+    yield return tense with { ExpectedScore = 10m, Request = tense.Request with { Question = tense.Request.Question with {
+        ContentLanguage = "en", Options = [new("A", "study"), new("B", "studied"), new("C", "am studying"), new("D", "was studying")] },
+        StudentSubmission = tense.Request.StudentSubmission with { PreliminaryIsCorrect = true } } };
+    var conserve = Build("english-conserve-valid-example", "Explain what it means to conserve energy and give one practical example.",
+        "Conserve energy means to use energy carefully and reduce waste. Turn off unused lights.",
+        "To conserve energy is to use less energy and avoid wasting it. Replace old light bulbs with LED bulbs.",
+        "Conserve nghĩa là tiết kiệm, sử dụng hợp lí. Dùng đèn LED là ví dụ đúng vì giảm điện tiêu thụ, không cần giống câu chữ lời giải mẫu.",
+        "Định nghĩa đúng và một ví dụ thực tế tiết kiệm năng lượng đều được chấp nhận.", "Correct", "Valid", node: "Tiết kiệm năng lượng");
+    yield return conserve with { ExpectedScore = 10m, Alternative = false, Request = conserve.Request with { Question = conserve.Request.Question with { ContentLanguage = "en" } } };
+}
 static Case Build(string id, string question, string correct, string answer, string reasoning, string solution,
     string answerVerdict, string reasoningVerdict, QuestionType type = QuestionType.Essay,
     string node = "Điều kiện xác định và biến đổi tương đương") => new(id, new()
@@ -125,7 +174,20 @@ static Case Build(string id, string question, string correct, string answer, str
     StudentSubmission = new() { FinalAnswer = answer, ReasoningText = reasoning, Confidence = 80 },
     AllowedKnowledgeNodes = [new() { NodeId = "1", NodeName = node }]
 }, answerVerdict, reasoningVerdict);
-sealed record Case(string Id, AnalyzeReasoningRequest Request, string Answer, string Reasoning);
+sealed record Case(string Id, AnalyzeReasoningRequest Request, string Answer, string Reasoning)
+{
+    public decimal? ExpectedScore { get; init; }
+    public bool? Alternative { get; init; }
+}
+// Only this opt-in synthetic harness retains provider text, for diagnosing contract failures.
+sealed class CapturingSyntheticClient(IGeminiGenerateContentClient inner) : IGeminiGenerateContentClient
+{
+    public List<string> Responses { get; } = [];
+    public async Task<GeminiGenerateContentResult> GenerateContentAsync(string model, string prompt, Google.GenAI.Types.GenerateContentConfig config, CancellationToken token)
+    { var result = await inner.GenerateContentAsync(model, prompt, config, token); Responses.Add(result.ResponseText); return result; }
+    public async Task<GeminiGenerateContentResult> GenerateContentWithImagesAsync(string model, string prompt, IReadOnlyList<GeminiInlineImagePart> images, Google.GenAI.Types.GenerateContentConfig config, CancellationToken token)
+    { var result = await inner.GenerateContentWithImagesAsync(model, prompt, images, config, token); Responses.Add(result.ResponseText); return result; }
+}
 sealed class SafeStatusLogger : ILogger<GoogleGenAIGenerateContentClient>
 {
     public int? LastStatus { get; private set; }

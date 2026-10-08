@@ -159,6 +159,7 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
             int correctQuestionCount = 0;
             int voidedQuestionCount = 0;
             int gradedAwaitingReviewCount = 0;
+            int aiAnalyzedQuestionCount = 0;
 
             foreach (var q in questions)
             {
@@ -188,6 +189,7 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
                 answeredQuestionCount++;
 
                 var analysis = analysesByAttemptId.GetValueOrDefault(attempt.AttemptId);
+                if (analysis is not null && !analysis.IsFallback) aiAnalyzedQuestionCount++;
 
                 // Effective grade calculation
                 decimal? effectiveScore = analysis?.OverrideAwardedScore ?? attempt.AwardedScore;
@@ -232,6 +234,7 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
                 TotalQuestionCount = totalQuestionCount,
                 AnsweredQuestionCount = answeredQuestionCount,
                 EvaluatedQuestionCount = evaluatedQuestionCount,
+                AiAnalyzedQuestionCount = aiAnalyzedQuestionCount,
                 CorrectQuestionCount = correctQuestionCount,
                 IncorrectQuestionCount = Math.Max(0, evaluatedQuestionCount - correctQuestionCount - voidedQuestionCount),
                 VoidedQuestionCount = voidedQuestionCount,

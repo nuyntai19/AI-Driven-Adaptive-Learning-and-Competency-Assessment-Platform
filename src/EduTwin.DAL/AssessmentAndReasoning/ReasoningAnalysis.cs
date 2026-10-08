@@ -29,6 +29,9 @@ public class ReasoningAnalysis : ITenantAppendOnlyEntity, IHasRowVersion
     public string? AiSolution { get; set; }
     public string? AnswerAssessment { get; set; }
     public string? ReasoningVerdict { get; set; }
+    public decimal? SuggestedScore { get; set; }
+    public string? SuggestedRubricGradeJson { get; set; }
+    public bool UsesAlternativeMethod { get; set; }
     public string FeedbackOrigin { get; set; } = "LegacySystem";
 
     public decimal? OverrideReasoningQuality { get; set; }

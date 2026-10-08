@@ -28,7 +28,8 @@ public sealed class AIAnalysisRequestFactory : IAIAnalysisRequestFactory
         Attempt attempt,
         Question question,
         IReadOnlyList<KnowledgeNode> allowedKnowledgeNodes,
-        IReadOnlyList<AnalyzeReasoningImagePart>? imageParts = null)
+        IReadOnlyList<AnalyzeReasoningImagePart>? imageParts = null,
+        IReadOnlyList<QuestionOption>? options = null)
     {
         ArgumentNullException.ThrowIfNull(attempt);
         ArgumentNullException.ThrowIfNull(question);
@@ -36,19 +37,36 @@ public sealed class AIAnalysisRequestFactory : IAIAnalysisRequestFactory
 
         Validate(attempt, question, allowedKnowledgeNodes);
 
-        var canonicalCorrect = ResolveCanonicalAnswer(question.AnswerEvaluationMode, question.CorrectAnswer);
-        var canonicalFinal = ResolveCanonicalAnswer(question.AnswerEvaluationMode, attempt.FinalAnswer);
+        var safeOptions = (options ?? []).Where(o => o.CenterId == question.CenterId && o.QuestionId == question.QuestionId && !o.IsDeleted)
+            .OrderBy(o => o.OrderIndex).ThenBy(o => o.OptionId).ToArray();
+        var correctAnswer = question.CorrectAnswer;
+        var finalAnswer = attempt.FinalAnswer;
+        if (question.QuestionType == QuestionType.MultipleChoice)
+        {
+            var selected = safeOptions.FirstOrDefault(o => o.OptionId.ToString(CultureInfo.InvariantCulture) == finalAnswer.Trim()
+                || string.Equals(o.OptionLabel, finalAnswer.Trim(), StringComparison.OrdinalIgnoreCase));
+            var correct = safeOptions.SingleOrDefault(o => o.IsCorrect);
+            if (!attempt.Skipped && (selected is null || correct is null))
+                throw new ArgumentException("Multiple-choice answer context is invalid.");
+            if (selected is not null) finalAnswer = $"{selected.OptionLabel}. {selected.OptionText}";
+            if (correct is not null) correctAnswer = $"{correct.OptionLabel}. {correct.OptionText}";
+        }
+        var canonicalCorrect = ResolveCanonicalAnswer(question.AnswerEvaluationMode, correctAnswer);
+        var canonicalFinal = ResolveCanonicalAnswer(question.AnswerEvaluationMode, finalAnswer);
 
         return new AnalyzeReasoningRequest
         {
             SchemaVersion = AIAnalysisContract.SchemaVersion,
-            Language = attempt.ReasoningLanguage,
+            Language = "vi", // Feedback language is independent of the English question/answer language.
             Question = new AnalyzeReasoningQuestion
             {
                 QuestionType = question.QuestionType,
                 AnswerEvaluationMode = question.AnswerEvaluationMode,
                 QuestionText = question.QuestionText,
-                CorrectAnswer = question.CorrectAnswer,
+                MaxScore = question.MaxScore > 0 ? question.MaxScore : 10m,
+                ContentLanguage = question.LanguageCode,
+                Options = safeOptions.Select(o => new AnalyzeReasoningOption(o.OptionLabel, o.OptionText)).ToArray(),
+                CorrectAnswer = correctAnswer,
                 CanonicalCorrectAnswer = canonicalCorrect,
                 Solution = question.Solution,
                 ExpectedReasoning = question.ExpectedReasoning,
@@ -57,12 +75,13 @@ public sealed class AIAnalysisRequestFactory : IAIAnalysisRequestFactory
                     SchemaVersion = question.GradingCriteria.SchemaVersion,
                     RequiredIdeas = question.GradingCriteria.RequiredIdeas.ToArray(),
                     CommonErrors = question.GradingCriteria.CommonErrors.ToArray(),
-                    ScoringNotes = question.GradingCriteria.ScoringNotes
+                    ScoringNotes = question.GradingCriteria.ScoringNotes,
+                    Criteria = question.GradingCriteria.Criteria.Select(c => new AnalyzeReasoningRubricCriterion(c.CriterionId, c.Title, c.Description, c.MaxScore)).ToArray()
                 }
             },
             StudentSubmission = new AnalyzeReasoningStudentSubmission
             {
-                FinalAnswer = attempt.FinalAnswer,
+                FinalAnswer = finalAnswer,
                 AnswerDisplayLatex = attempt.AnswerDisplayLatex,
                 CanonicalFinalAnswer = canonicalFinal,
                 PreliminaryIsCorrect = attempt.IsCorrect,

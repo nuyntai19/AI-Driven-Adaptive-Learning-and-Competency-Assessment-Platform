@@ -24,8 +24,17 @@ public sealed class AttemptFeedbackDataDto
     public StudentReviewRequestDto? ReviewRequest { get; set; }
     public RetryQuotaDto? RetryQuota { get; set; }
     public AttemptFeedbackActionsDto Actions { get; set; } = new();
+    public AttemptAIProcessingDto? AIProcessing { get; set; }
     public AttemptFeedbackTwinChangeDto? TwinChange { get; set; }
     public AttemptFeedbackRecommendationDto? Recommendation { get; set; }
+}
+
+public sealed class AttemptAIProcessingDto
+{
+    public string Status { get; set; } = null!;
+    // Safe presentation category, never exception bodies, credentials, or project IDs.
+    public string? Reason { get; set; }
+    public DateTime? NextAttemptAt { get; set; }
 }
 
 public sealed class AttemptFeedbackStudentSubmissionDto
@@ -119,6 +128,9 @@ public sealed class AttemptFeedbackAnalysisDto
     public string? AnswerAssessment { get; set; }
     public string? ReasoningVerdict { get; set; }
     public string? FeedbackOrigin { get; set; }
+    public decimal? SuggestedScore { get; set; }
+    public RubricGrade? SuggestedRubricGrade { get; set; }
+    public bool UsesAlternativeMethod { get; set; }
 }
 
 public sealed class AttemptFeedbackRootCauseNodeDto

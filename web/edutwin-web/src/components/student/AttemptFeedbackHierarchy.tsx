@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import type { AttemptFeedbackDataDto } from "../../types/learning";
 import { RichMathText } from "../math/RichMathText";
 import { retryAttemptAIAnalysis, createStudentReviewRequest } from "../../api/learningFeedbackApi";
+import { getAIProcessingNotice } from "../../utils/aiProcessingNotice";
 import { extractProblemDetails } from "../../utils/problemDetails";
 import { formatAwardedScore, formatPreliminaryResult } from "../../utils/gradingDisplay";
 import { getAttemptFeedbackPresentation, normalizeQuestionScore, questionAssignmentContribution } from "../../utils/attemptFeedbackPresentation";
@@ -185,9 +186,7 @@ export function AttemptFeedbackHierarchy({
     }
   };
 
-  const isPending = feedbackData.status === "PendingAnalysis" || feedbackData.status === "Processing";
-  const isUnavailable = !analysis && !isPending;
-  const isDegradedOrFallback = !analysis || analysis.isFallback || isPending;
+  const processingNotice = getAIProcessingNotice(feedbackData, scoreAndFeedbackOnly);
   const presentation = getAttemptFeedbackPresentation(grading, analysis, feedbackData.status);
   const displayedMaxScore = normalizeQuestionScore(null, grading.maxScore, assignmentQuestionCount).maxScore;
   const toDisplayedScore = (score?: number | null) =>
@@ -328,8 +327,9 @@ export function AttemptFeedbackHierarchy({
         {assignmentContribution && <p className="text-xs text-slate-500 dark:text-slate-400">Đóng góp vào tổng bài (thang 10): {assignmentContribution.awardedScore ?? "Chưa chấm"} / {assignmentContribution.maxScore} điểm. Mỗi câu có trọng số bằng nhau.</p>}
         {presentation.needsReview && (
           <div role="status" className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 p-3 text-sm text-amber-900 dark:text-amber-200">
-            <p className="font-bold">{presentation.pendingTeacher ? "Đang chờ giáo viên xem xét" : "Cần giáo viên xem xét"}</p>
-            <p>{presentation.reviewExplanation}</p>
+            <p className="font-bold">{presentation.pendingTeacher && !analysis?.isFallback && analysis?.suggestedScore != null ? "AI đã chấm · Chờ giáo viên duyệt điểm" : presentation.pendingTeacher ? "Đang chờ giáo viên xem xét" : "Cần giáo viên xem xét"}</p>
+            <p>{presentation.pendingTeacher && !analysis?.isFallback && analysis?.suggestedScore != null
+              ? "AI đã đưa ra điểm và nhận xét đề xuất bên dưới. Giáo viên kiểm tra, duyệt hoặc điều chỉnh trước khi chốt điểm chính thức." : presentation.reviewExplanation}</p>
           </div>
         )}
       </section>
@@ -363,30 +363,26 @@ export function AttemptFeedbackHierarchy({
         </div>
 
         {/* Graceful Degradation / Fallback Notice */}
-        {isDegradedOrFallback && (
+        {processingNotice && (
           <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-900 dark:text-amber-200 space-y-2">
             <div className="flex items-center gap-2 font-bold">
               <span>ℹ</span>
-              <span>{isPending ? "AI đang phân tích câu trả lời" : "AI hiện đang tạm thời không khả dụng"}</span>
+              <span>{processingNotice.title}</span>
             </div>
             <p className="leading-relaxed">
-              {isPending
-                ? scoreAndFeedbackOnly
-                  ? "Bài làm của bạn đã được lưu. Điểm số và nhận xét của câu này đang được xử lý."
-                  : "Bài làm của bạn đã được lưu. Kết quả phân tích của riêng câu này đang được xử lý; đáp án và lời giải giáo viên vẫn hiển thị bên dưới."
-                : isUnavailable
-                ? scoreAndFeedbackOnly
-                  ? "AI hiện đang tạm thời không khả dụng. Bài làm của bạn đã được lưu để giáo viên xem xét."
-                  : "AI hiện đang tạm thời không khả dụng. Bài làm của bạn đã được lưu. Đáp án và lời giải giáo viên vẫn hiển thị bên dưới."
-                : scoreAndFeedbackOnly
-                  ? "AI đã trả về kết quả dự phòng hoặc cần giáo viên xem xét. Bài làm của bạn đã được lưu."
-                  : "AI đã trả về kết quả dự phòng hoặc cần giáo viên xem xét. Bài làm của bạn đã được lưu; đáp án và lời giải giáo viên vẫn hiển thị bên dưới."}
+              {processingNotice.message}
             </p>
           </div>
         )}
 
         {analysis && (
           <div className="space-y-4">
+            {!analysis.isFallback && analysis.suggestedScore != null && <section className="rounded-2xl border border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-950/40 p-4 space-y-2">
+              <p className="font-bold text-indigo-900 dark:text-indigo-200">AI đã chấm · Điểm đề xuất: {normalizeQuestionScore(analysis.suggestedScore, grading.maxScore).awardedScore} / 10</p>
+              <p className="text-sm text-slate-600 dark:text-slate-300">Giáo viên sẽ duyệt hoặc điều chỉnh trước khi chốt điểm cuối cùng. Chất lượng lập luận /100 là chỉ số riêng.</p>
+              {analysis.usesAlternativeMethod && <p className="text-sm text-amber-800 dark:text-amber-200">Cách giải khác lời giải tham khảo được ghi nhận; giáo viên sẽ thẩm định, không tự trừ điểm vì khác phương pháp.</p>}
+              {analysis.suggestedRubricGrade && <RubricGradeView grade={analysis.suggestedRubricGrade} />}
+            </section>}
             {!scoreAndFeedbackOnly && <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {analysis.methodDetected && (
                 <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-4 border border-slate-100 dark:border-slate-700/60">

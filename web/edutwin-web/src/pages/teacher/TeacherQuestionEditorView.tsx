@@ -857,9 +857,10 @@ export function TeacherQuestionEditorView() {
               rows={2}
               value={expectedReasoning}
               onChange={(e) => setExpectedReasoning(e.target.value)}
-              placeholder="Các bước lập luận dự kiến mà AI hoặc giáo viên cần kiểm tra..."
+              placeholder="Giải thích bằng tiếng Việt; có thể giữ từ/câu tiếng Anh. Ví dụ: Dùng thì hiện tại đơn, chủ ngữ she nên chọn goes."
               className="th-input w-full text-xs"
             />
+            <p className="mt-1.5 text-xs text-[var(--th-text-muted)]">Đáp án có thể bằng tiếng Anh. Lời giải và lập luận nên giải thích bằng tiếng Việt, giữ nguyên các từ tiếng Anh cần phân tích. AI luôn nhận xét bằng tiếng Việt và chấp nhận cách giải hợp lệ khác lời giải mẫu.</p>
           </div>
         </div>
 

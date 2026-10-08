@@ -5,9 +5,10 @@ using Microsoft.Extensions.Options;
 namespace EduTwin.API.AssessmentAndReasoning.AI;
 
 // A bounded, short coalescing window only. Durable ownership/retries/checkpoints stay in SQL.
-public sealed class ReasoningMicroBatcher(IReasoningBatchExecutor executor, IOptions<AIGradingOptions> options) : IDisposable
+public sealed class ReasoningMicroBatcher(IReasoningBatchExecutor executor, IOptions<AIGradingOptions> options, TimeProvider? clock = null) : IDisposable
 {
     private readonly AIGradingOptions _options = options.Value;
+    private readonly TimeProvider _clock = clock ?? TimeProvider.System;
     private readonly object _gate = new();
     private readonly Dictionary<Partition, Group> _groups = [];
     private readonly CancellationTokenSource _shutdown = new();
@@ -29,7 +30,7 @@ public sealed class ReasoningMicroBatcher(IReasoningBatchExecutor executor, IOpt
         var item = new Pending(new(id, request), token);
         var characters = JsonSerializer.Serialize(request).Length;
         var images = request.StudentSubmission.ImageParts.Count;
-        if (!_options.MicroBatchEnabled || _options.BatchSize == 1 || partition is null
+        if (request.ResponseRepairRule.HasValue || !_options.MicroBatchEnabled || _options.BatchSize == 1 || partition is null
             || partition.CenterId == Guid.Empty || partition.StudentId == Guid.Empty || partition.AssignmentId == Guid.Empty
             || characters > _options.MaxInputCharacters || images > _options.MaxImages)
         {
@@ -70,7 +71,7 @@ public sealed class ReasoningMicroBatcher(IReasoningBatchExecutor executor, IOpt
 
     private async Task FlushAfterWindowAsync(Partition key, Group group)
     {
-        try { await Task.Delay(_options.BatchWindow, _shutdown.Token); }
+        try { await Task.Delay(_options.BatchWindow, _clock, _shutdown.Token); }
         catch (OperationCanceledException) { return; }
         lock (_gate)
         {

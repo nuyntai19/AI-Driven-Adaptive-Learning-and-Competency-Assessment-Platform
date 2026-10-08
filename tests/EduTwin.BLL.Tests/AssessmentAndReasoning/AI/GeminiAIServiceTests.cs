@@ -162,7 +162,7 @@ public sealed partial class GeminiAIServiceTests
         Assert.NotNull(client.Config?.ResponseJsonSchema);
         using var schemaDocument = JsonDocument.Parse(JsonSerializer.Serialize(client.Config.ResponseJsonSchema));
         Assert.Equal(
-            14,
+            18,
             schemaDocument.RootElement.GetProperty("properties").EnumerateObject().Count());
     }
 

@@ -15,6 +15,7 @@ public sealed class GoogleGenAIGenerateContentClient : IGeminiGenerateContentCli
     private readonly GeminiQuotaCoordinator? _quota;
     private readonly GeminiCredentialAvailability _availability;
     private readonly ConcurrentDictionary<string, Client> _clients = new();
+    private readonly SemaphoreSlim _localSlots;
     private int _requestCounter;
     private bool _disposed;
 
@@ -26,6 +27,9 @@ public sealed class GoogleGenAIGenerateContentClient : IGeminiGenerateContentCli
         _logger = logger;
         _quota = quota;
         _availability = new(timeProvider ?? TimeProvider.System);
+        // Production uses the shared SQL gate. Standalone clients still respect
+        // the same limit locally instead of silently having no capacity guard.
+        _localSlots = new(Math.Clamp(_options.MaxConcurrentRequests, 1, 32));
     }
 
     public Task<GeminiGenerateContentResult> GenerateContentAsync(string model, string prompt,
@@ -40,6 +44,18 @@ public sealed class GoogleGenAIGenerateContentClient : IGeminiGenerateContentCli
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         _options.Validate();
+        // Every caller, including learning-path enrichment, must stop before its
+        // SQL capacity lease expires. The deadline spans all credential rotation.
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+        deadline.CancelAfter(_options.Timeout);
+        try { return await GenerateCoreAsync(model, prompt, images, config, deadline.Token); }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        { throw GeminiAdapterException.Timeout(); }
+    }
+
+    private async Task<GeminiGenerateContentResult> GenerateCoreAsync(string model, string prompt,
+        IReadOnlyList<GeminiInlineImagePart> images, GenerateContentConfig config, CancellationToken token)
+    {
         if (model.StartsWith("gemini-3", StringComparison.Ordinal)) config.Temperature = 1;
         var keys = _options.GetAllApiKeys();
         var pools = _options.GetQuotaPools(keys.Count);
@@ -54,9 +70,7 @@ public sealed class GoogleGenAIGenerateContentClient : IGeminiGenerateContentCli
         // Admission estimate, reconciled from provider usage; it is not an exact tokenizer.
         var estimatedTokens = Encoding.UTF8.GetByteCount(prompt) / 2L + 1 + images.Count * 8192L;
         var unavailablePools = new HashSet<string>(StringComparer.Ordinal);
-        var deferredCall = false;
-        var sawDailyQuota = false;
-        TimeSpan retryAfter = TimeSpan.FromSeconds(2);
+        var waits = new List<(TimeSpan Delay, bool Daily)>();
         for (var n = 0; n < keys.Count; n++)
         {
             token.ThrowIfCancellationRequested();
@@ -65,18 +79,25 @@ public sealed class GoogleGenAIGenerateContentClient : IGeminiGenerateContentCli
             var pool = pools.Single(p => p.KeyIndexes.Contains(index));
             if (unavailablePools.Contains(pool.ProjectId)) continue;
             GeminiQuotaLease? lease = null;
+            var localSlot = false;
             var transient = false;
             var quotaFailure = false;
             var dailyQuota = false;
             TimeSpan? providerRetryAfter = null;
             int? actualTokens = null;
+            TimeSpan? failedPoolDelay = null;
             try
             {
                 if (_quota is not null)
                 {
-                    try { lease = await _quota.AcquireAsync(pool, model, estimatedTokens, _options.Timeout, token); }
+                    try { lease = await _quota.AcquireAsync(pool, model, estimatedTokens, _options.Timeout, token, _options.MaxConcurrentRequests); }
                     catch (Exception exception) when (exception is not OperationCanceledException and not AIAnalysisDeferredException and not GeminiAdapterException)
                     { throw new AIAnalysisInfrastructureException(); }
+                }
+                else
+                {
+                    localSlot = await _localSlots.WaitAsync(0, token);
+                    if (!localSlot) throw new AIAnalysisDeferredException(TimeSpan.FromSeconds(2), blocksAllPools: true);
                 }
                 var client = _clients.GetOrAdd(keys[index], key => new Client(apiKey: key,
                     httpOptions: new HttpOptions { RetryOptions = new HttpRetryOptions { Attempts = 1 } }));
@@ -94,9 +115,9 @@ public sealed class GoogleGenAIGenerateContentClient : IGeminiGenerateContentCli
             }
             catch (AIAnalysisDeferredException deferred)
             {
-                deferredCall = true;
+                if (deferred.BlocksAllPools) throw; // A full global gate cannot be helped by rotating keys.
                 unavailablePools.Add(pool.ProjectId);
-                retryAfter = deferred.RetryAfter;
+                waits.Add((deferred.RetryAfter, deferred.ErrorCode == "AI_PROVIDER_DAILY_QUOTA_WAIT"));
             }
             catch (OperationCanceledException) { throw; }
             catch (AIAnalysisInfrastructureException) { throw; }
@@ -110,7 +131,6 @@ public sealed class GoogleGenAIGenerateContentClient : IGeminiGenerateContentCli
                 {
                     var failure = GeminiQuotaFailureClassifier.Classify(ex.Message);
                     dailyQuota = failure.Daily;
-                    sawDailyQuota |= dailyQuota;
                     providerRetryAfter = failure.RetryAfter;
                 }
                 _logger?.LogWarning("Gemini request failed at credential index {KeyIndex}; status {Status}, type {ExceptionType}.",
@@ -123,9 +143,9 @@ public sealed class GoogleGenAIGenerateContentClient : IGeminiGenerateContentCli
                     continue;
                 }
                 if (!transient) throw GeminiAdapterException.RequestFailed();
-                deferredCall = true;
                 unavailablePools.Add(pool.ProjectId);
-                retryAfter = TimeSpan.FromSeconds(quotaFailure ? 60 : 2);
+                failedPoolDelay = TimeSpan.FromSeconds(quotaFailure ? 60 : 2);
+                if (providerRetryAfter > failedPoolDelay) failedPoolDelay = providerRetryAfter;
                 AIProcessingMetrics.Outcomes.Add(1, new KeyValuePair<string, object?>("outcome", dailyQuota ? "provider_daily_quota" : quotaFailure ? "provider_429" : "provider_transient"));
             }
             finally
@@ -133,12 +153,21 @@ public sealed class GoogleGenAIGenerateContentClient : IGeminiGenerateContentCli
                 if (lease is not null && _quota is not null)
                 {
                     using var releaseTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-                    try { await _quota.CompleteAsync(lease, actualTokens, transient, quotaFailure, releaseTimeout.Token, providerRetryAfter, dailyQuota); }
+                    try
+                    {
+                        var cooldown = await _quota.CompleteAsync(lease, actualTokens, transient, quotaFailure,
+                            releaseTimeout.Token, providerRetryAfter, dailyQuota);
+                        if (failedPoolDelay.HasValue && cooldown.HasValue) failedPoolDelay = cooldown;
+                    }
                     catch (Exception ex) { _logger?.LogWarning("Provider reservation release failed with {ExceptionType}; reservation will expire.", ex.GetType().Name); }
                 }
+                if (localSlot) _localSlots.Release();
+                if (failedPoolDelay.HasValue) waits.Add((failedPoolDelay.Value, dailyQuota));
             }
         }
-        if (deferredCall) throw new AIAnalysisDeferredException(retryAfter, sawDailyQuota ? "AI_PROVIDER_DAILY_QUOTA_WAIT" : "AI_PROVIDER_CAPACITY_WAIT");
+        if (waits.Count > 0)
+            throw new AIAnalysisDeferredException(waits.Min(w => w.Delay),
+                waits.All(w => w.Daily) ? "AI_PROVIDER_DAILY_QUOTA_WAIT" : "AI_PROVIDER_CAPACITY_WAIT");
         throw GeminiAdapterException.RequestFailed();
     }
 
@@ -161,5 +190,6 @@ public sealed class GoogleGenAIGenerateContentClient : IGeminiGenerateContentCli
         _disposed = true;
         foreach (var client in _clients.Values) client.Dispose();
         _clients.Clear();
+        _localSlots.Dispose();
     }
 }

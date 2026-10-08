@@ -20,6 +20,33 @@ namespace EduTwin.BLL.Tests.Assignments;
 
 public class AssignmentResultCalculatorTests
 {
+    [Fact]
+    public async Task AIProposal_IsAnalyzedButNotFinalScore_AndAwaitingApprovalIsNotIncorrect()
+    {
+        var (context, center) = CreateInMemoryContext(); await using var db = context;
+        var assignment = Guid.NewGuid(); var student = Guid.NewGuid(); var now = DateTime.UtcNow;
+        db.Assignments.Add(new Assignment { AssignmentId = assignment, CenterId = center, Title = "Synthetic English", Status = AssignmentStatus.Published, CreatedAt = now, UpdatedAt = now });
+        db.Questions.Add(new Question { CenterId = center, QuestionId = 1, QuestionType = QuestionType.Essay, MaxScore = 2,
+            QuestionText = "Rewrite the sentence", CorrectAnswer = "I have been learning English since 2020.",
+            Solution = "Dùng thì hiện tại hoàn thành tiếp diễn.", LanguageCode = "en", CreatedAt = now, UpdatedAt = now });
+        db.AssignmentQuestions.Add(new AssignmentQuestion { CenterId = center, AssignmentId = assignment, QuestionId = 1, OrderIndex = 1, Points = 2, CreatedAt = now });
+        db.Attempts.Add(new Attempt { CenterId = center, AttemptId = 1, AssignmentId = assignment, StudentId = student, QuestionId = 1,
+            FinalAnswer = "I have been learning English since 2020.", ReasoningLanguage = "vi", Status = AttemptStatus.NeedsTeacherReview, CreatedAt = now, UpdatedAt = now });
+        db.ReasoningAnalyses.Add(new ReasoningAnalysis { CenterId = center, AnalysisId = 1, AttemptId = 1, SuggestedScore = 2,
+            AnswerAssessment = "Correct", ReasoningVerdict = "Valid", NeedsTeacherReview = true, Feedback = "Đáp án đúng.",
+            SchemaVersion = "ai-analysis-v1", MissingSteps = JsonDocument.Parse("[]"), RootCauseNodeIds = JsonDocument.Parse("[]"), CreatedAt = now, UpdatedAt = now });
+        db.StudentAssignmentProgresses.Add(new StudentAssignmentProgress { CenterId = center, AssignmentId = assignment, StudentId = student,
+            IsOverallAiCommentStale = true, CreatedAt = now, UpdatedAt = now });
+        await db.SaveChangesAsync();
+        var result = await new AssignmentResultCalculator(db).CalculateForSingleAssignmentAsync(center, student, assignment, default);
+        Assert.Equal(1, result.AiAnalyzedQuestionCount); Assert.Equal(0, result.EvaluatedQuestionCount);
+        Assert.Equal(0, result.IncorrectQuestionCount); Assert.Null(result.InternalAwardedScore);
+        var comment = await new OverallAssignmentCommentWorkflow(db, TimeProvider.System).GenerateAndCacheOverallCommentAsync(center, assignment, student, default);
+        Assert.Contains("1 câu đang chờ giáo viên duyệt điểm", comment);
+        Assert.Contains("chưa được kết luận là sai", comment);
+        Assert.DoesNotContain("Gợi ý cải thiện", comment);
+    }
+
     private (EduTwinDbContext context, Guid centerId) CreateInMemoryContext()
     {
         var centerId = Guid.NewGuid();

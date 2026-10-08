@@ -1,5 +1,20 @@
 # Tối ưu chấm và phân tích AI — giai đoạn 1
 
+> Cập nhật hiện tại — 08/10/2026: các giai đoạn phía dưới là lịch sử triển khai.
+> Bản mới chuẩn bị tối đa 6 job, gom tối đa 3 câu/gói trong 500 ms, dùng gate SQL
+> chung tối đa 2 request Gemini đồng thời và vẫn kiểm tra quota từng project/model.
+> Kết quả từng câu được kiểm tra tiếng Việt, rubric và tính nhất quán lập luận;
+> chỉ sửa riêng item lỗi có giới hạn, không gửi lại toàn bài. Checkpoint và cả
+> nhánh fallback giữ thứ tự evidence/Twin; điểm tự luận AI là đề xuất để giáo viên duyệt.
+> Xem [kiến trúc và ba bản sửa](../verification/AI-GRADING-THREE-FIXES-2026-10-07.md)
+> và [kiểm thử 50 câu mới nhất](../verification/AI-GRADING-50-STUDENT4-UI-2026-10-08.md):
+> 73,76 giây từ server nhận bài đến đủ 50 job, 19 request, 0 fallback.
+> Đây là một lượt đo, không phải SLA hoặc kết luận về tải nhiều học sinh.
+> Kiểm tra trước push: backend 3.904 passed / 72 skipped / 0 failed;
+> frontend 562 passed / 0 failed; production build đạt. Test MySQL opt-in đã
+> kiểm tra riêng, không bật trong lượt full này. Migration
+> `20261007091024_AddAIGradingProposals` phải đi cùng code mới.
+
 Triển khai local ngày 2026-10-07. Phạm vi: tăng khả năng xử lý nhiều câu hỏi, giữ nguyên chấm đáp án, phân tích lập luận và bằng chứng phục vụ Digital Twin/lộ trình cá nhân. Chưa chuyển mô hình hay gom nhiều học sinh/câu hỏi vào một prompt.
 
 ## Luồng xử lý

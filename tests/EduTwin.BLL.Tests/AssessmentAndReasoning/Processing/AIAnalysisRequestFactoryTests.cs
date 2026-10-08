@@ -33,7 +33,8 @@ public sealed class AIAnalysisRequestFactoryTests
         var request = new AIAnalysisRequestFactory().Create(attempt, question, nodes);
 
         Assert.Equal(AIAnalysisContract.SchemaVersion, request.SchemaVersion);
-        Assert.Equal(language, request.Language);
+        Assert.Equal("vi", request.Language);
+        Assert.Equal(language, request.Question.ContentLanguage);
         Assert.Equal(question.QuestionType, request.Question.QuestionType);
         Assert.Equal(question.QuestionText, request.Question.QuestionText);
         Assert.Equal(question.CorrectAnswer, request.Question.CorrectAnswer);
@@ -193,6 +194,39 @@ public sealed class AIAnalysisRequestFactoryTests
         Assert.Equal(QuestionAnswerEvaluationMode.TextExact, request.Question.AnswerEvaluationMode);
         Assert.Equal("Photosynthesis", request.Question.CanonicalCorrectAnswer);
         Assert.Equal("photosynthesis", request.StudentSubmission.CanonicalFinalAnswer);
+    }
+
+    [Theory]
+    [InlineData("701")]
+    [InlineData("A")]
+    public void Create_MultipleChoice_ResolvesOptionIdentityIntoLabelAndText(string selectedAnswer)
+    {
+        var center = Guid.NewGuid(); var subject = Guid.NewGuid();
+        var attempt = CreateAttempt(center, "en"); attempt.FinalAnswer = selectedAnswer;
+        var question = CreateQuestion(center, subject, "en");
+        question.QuestionType = QuestionType.MultipleChoice; question.CorrectAnswer = "A";
+        var options = new[] {
+            new QuestionOption { CenterId = center, QuestionId = 7, OptionId = 701, OptionLabel = "A", OptionText = "goes", IsCorrect = true, OrderIndex = 1 },
+            new QuestionOption { CenterId = center, QuestionId = 7, OptionId = 702, OptionLabel = "B", OptionText = "go", OrderIndex = 2 },
+            new QuestionOption { CenterId = Guid.NewGuid(), QuestionId = 7, OptionId = 703, OptionLabel = "C", OptionText = "foreign", OrderIndex = 3 }
+        };
+        var request = new AIAnalysisRequestFactory().Create(attempt, question, [CreateNode(9, center, subject, "English")], options: options);
+        Assert.Equal("A. goes", request.StudentSubmission.FinalAnswer);
+        Assert.Equal("A. goes", request.Question.CorrectAnswer);
+        Assert.Equal(2, request.Question.Options.Count);
+        Assert.Equal("vi", request.Language);
+        Assert.Equal(selectedAnswer, attempt.FinalAnswer);
+        options[0].OptionText = "changed";
+        Assert.Equal("goes", request.Question.Options[0].Text);
+    }
+
+    [Fact]
+    public void Create_MultipleChoice_MissingOptionsDoesNotCompareInternalIdWithAnswerLabel()
+    {
+        var center = Guid.NewGuid(); var subject = Guid.NewGuid();
+        var attempt = CreateAttempt(center, "vi"); attempt.FinalAnswer = "701";
+        var question = CreateQuestion(center, subject, "en"); question.QuestionType = QuestionType.MultipleChoice;
+        Assert.Throws<ArgumentException>(() => new AIAnalysisRequestFactory().Create(attempt, question, [CreateNode(9, center, subject, "English")]));
     }
 
     private static Attempt CreateAttempt(Guid centerId, string language) => new()

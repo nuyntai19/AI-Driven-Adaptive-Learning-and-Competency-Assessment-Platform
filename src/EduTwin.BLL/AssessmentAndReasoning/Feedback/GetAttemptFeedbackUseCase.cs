@@ -309,7 +309,10 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
                 ReasoningVerdict = analysis.ReasoningVerdict,
                 Model = analysis.ModelName ?? "Gemini AI",
                 SolutionType = analysis.SolutionType,
-                AiSolution = analysis.AiSolution
+                AiSolution = analysis.AiSolution,
+                SuggestedScore = analysis.SuggestedScore,
+                SuggestedRubricGrade = RubricGrade.Deserialize(analysis.SuggestedRubricGradeJson),
+                UsesAlternativeMethod = analysis.UsesAlternativeMethod
             };
         }
 
@@ -452,6 +455,12 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
             TeacherFinalEvaluation = teacherEvaluationDto,
             ReviewRequest = reviewRequestDto,
             RetryQuota = retryQuotaDto,
+            AIProcessing = job is null ? null : new AttemptAIProcessingDto
+            {
+                Status = job.Status.ToString(),
+                Reason = AIProcessingPresentation.Reason(job.LastErrorCode),
+                NextAttemptAt = job.Status == AIJobStatus.Pending ? job.AvailableAt : null
+            },
             Actions = new AttemptFeedbackActionsDto
             {
                 CanRequestTeacherReview = AttemptFeedbackActionPolicy.CanRequestReview(

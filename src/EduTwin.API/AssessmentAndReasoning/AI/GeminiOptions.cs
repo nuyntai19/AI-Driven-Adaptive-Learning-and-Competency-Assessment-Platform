@@ -19,6 +19,7 @@ public sealed class GeminiOptions
     public string? Model { get; set; }
 
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(30);
+    // Global across configured Gemini pools/models/callers; pool limits still apply.
     public int MaxConcurrentRequests { get; set; } = 2;
     public List<GeminiQuotaPoolOptions> QuotaPools { get; set; } = [];
 
@@ -118,7 +119,7 @@ public sealed class GeminiQuotaPoolOptions
     public bool RollingDailyWindow { get; set; }
 }
 
-public sealed class GeminiAdapterException : Exception
+public sealed class GeminiAdapterException : Exception, EduTwin.BLL.AssessmentAndReasoning.AI.IAIAnalysisFailure
 {
     private GeminiAdapterException(string errorCode, string message)
         : base(message)

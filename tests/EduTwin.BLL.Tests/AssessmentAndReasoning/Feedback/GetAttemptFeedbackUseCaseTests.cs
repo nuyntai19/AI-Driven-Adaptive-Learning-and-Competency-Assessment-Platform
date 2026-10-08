@@ -57,6 +57,33 @@ public sealed class GetAttemptFeedbackUseCaseTests : IDisposable
     });
 
     [Theory]
+    [InlineData("AI_RESPONSE_SEMANTIC_INVALID", "ResponseInvalid")]
+    [InlineData("AI_PROVIDER_DAILY_QUOTA_WAIT", "QuotaWait")]
+    [InlineData("AI_PROVIDER_CAPACITY_WAIT", "CapacityWait")]
+    [InlineData("AI_PROVIDER_TIMEOUT", "Timeout")]
+    [InlineData("AttachmentStorageUnavailable", "AttachmentUnavailable")]
+    [InlineData("AI_ORDERED_TWIN_WAIT", null)]
+    [InlineData("raw-provider-secret-sentinel", null)]
+    public async Task ExecuteAsync_ProcessingReasonExposesOnlySafeCategory(string code, string? reason)
+    {
+        var now = DateTime.UtcNow; AddActionQuestion(now);
+        _dbContext.Attempts.Add(new Attempt { CenterId = _centerId, AttemptId = 20, QuestionId = 10,
+            StudentId = _studentId, Status = AttemptStatus.PendingAnalysis, FinalAnswer = "2", ReasoningLanguage = "vi", CreatedAt = now, UpdatedAt = now });
+        _dbContext.AIAnalysisJobs.Add(new AIAnalysisJob { CenterId = _centerId, AttemptId = 20, Status = AIJobStatus.Pending,
+            CorrelationId = "notice-test", AvailableAt = now.AddMinutes(1), LastErrorCode = code,
+            LastErrorMessage = "secret-provider-body", CreatedAt = now, UpdatedAt = now });
+        await _dbContext.SaveChangesAsync();
+        var result = await new GetAttemptFeedbackUseCase(_dbContext, _tenantContext, _guardMock.Object).ExecuteAsync(20, default);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(reason, result.Data!.AIProcessing!.Reason);
+        Assert.Equal("Pending", result.Data.AIProcessing.Status);
+        Assert.Equal(now.AddMinutes(1), result.Data.AIProcessing.NextAttemptAt);
+        var json = JsonSerializer.Serialize(result.Data);
+        Assert.DoesNotContain("secret", json);
+        Assert.DoesNotContain(code, json);
+    }
+
+    [Theory]
     [InlineData(AttemptStatus.PendingAnalysis, AIJobStatus.Pending, false)]
     [InlineData(AttemptStatus.PendingAnalysis, AIJobStatus.Processing, false)]
     [InlineData(AttemptStatus.Processing, AIJobStatus.Processing, false)]

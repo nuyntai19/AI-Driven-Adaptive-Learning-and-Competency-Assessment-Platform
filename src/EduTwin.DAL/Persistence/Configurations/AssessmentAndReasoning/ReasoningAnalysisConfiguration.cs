@@ -80,6 +80,9 @@ public class ReasoningAnalysisConfiguration : IEntityTypeConfiguration<Reasoning
         builder.Property(r => r.AiSolution).HasColumnName("ai_solution").HasColumnType("longtext");
         builder.Property(r => r.AnswerAssessment).HasColumnName("answer_assessment").HasColumnType("varchar(16)");
         builder.Property(r => r.ReasoningVerdict).HasColumnName("reasoning_verdict").HasColumnType("varchar(16)");
+        builder.Property(r => r.SuggestedScore).HasColumnName("suggested_score").HasColumnType("decimal(10,2)");
+        builder.Property(r => r.SuggestedRubricGradeJson).HasColumnName("suggested_rubric_grade_json").HasColumnType("longtext");
+        builder.Property(r => r.UsesAlternativeMethod).HasColumnName("uses_alternative_method").HasColumnType("tinyint(1)").HasDefaultValue(false);
         builder.Property(r => r.FeedbackOrigin).HasColumnName("feedback_origin").HasColumnType("varchar(24)").HasDefaultValue("LegacySystem");
         builder.Property(r => r.OverrideReasoningQuality).HasColumnName("override_reasoning_quality").HasColumnType("decimal(5,2)");
 

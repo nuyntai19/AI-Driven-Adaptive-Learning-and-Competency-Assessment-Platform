@@ -21,6 +21,48 @@ public sealed class StrictAIAnalysisResponseParserTests
         Assert.Null(CreateParser().ParseAndValidate(ValidResponseJson, CreateRequest()).ReasoningVerdict);
     }
 
+    [Fact]
+    public void ParseAndValidate_CorrectValidWork_ClearsTestedTopicMetadataButStillRejectsForeignNodeIds()
+    {
+        var json = JsonNode.Parse(ValidResponseJson)!.AsObject();
+        json["answerAssessment"] = "Correct"; json["reasoningVerdict"] = "Valid"; json["errorType"] = "None";
+        json["misconception"] = "Kiến thức được kiểm tra";
+        var response = CreateParser().ParseAndValidate(json.ToJsonString(), CreateRequest());
+        Assert.Empty(response.RootCauseNodeIds); Assert.Null(response.Misconception);
+        json["rootCauseNodeIds"] = new JsonArray("999");
+        Assert.Throws<AIAnalysisValidationException>(() => CreateParser().ParseAndValidate(json.ToJsonString(), CreateRequest()));
+    }
+
+    [Fact]
+    public void ParseAndValidate_EnglishModelAnswerRemainsEnglishInsideVietnameseExplanation()
+    {
+        var original = CreateRequest();
+        var request = original with { Question = original.Question with { CorrectAnswer = "I have been learning English since 2020." } };
+        var json = JsonNode.Parse(ValidResponseJson)!.AsObject();
+        json["suggestedScore"] = 10; json["usesAlternativeMethod"] = false; json["suggestedRubricScores"] = new JsonArray();
+        json["answerAssessment"] = "Correct"; json["reasoningVerdict"] = "Invalid";
+        json["reasoningIssues"] = JsonNode.Parse("""[{"verdict":"Invalid","studentClaim":"Bỏ qua điều kiện","explanation":"Chưa đối chiếu điều kiện xác định."}]""");
+        json["aiSolution"] = request.Question.CorrectAnswer;
+        var response = CreateParser().ParseAndValidate(json.ToJsonString(), request);
+        Assert.Contains(request.Question.CorrectAnswer, response.AiSolution);
+        Assert.Contains("Đáp án tham khảo:", response.AiSolution);
+        Assert.Contains("Em đã chọn đúng phương pháp.", response.AiSolution);
+        json["aiSolution"] = "Use the present perfect continuous tense.";
+        Assert.Throws<AIAnalysisValidationException>(() => CreateParser().ParseAndValidate(json.ToJsonString(), request));
+    }
+
+    [Fact]
+    public void ParseAndValidate_UnscorableModernResponse_StillRequiresVietnameseFeedback()
+    {
+        var json = JsonNode.Parse(ValidResponseJson)!.AsObject(); json["suggestedScore"] = null;
+        json["answerAssessment"] = "Uncertain"; json["reasoningVerdict"] = "Uncertain";
+        json["reasoningIssues"] = JsonNode.Parse("""[{"verdict":"Uncertain","studentClaim":"Biến đổi chưa rõ","explanation":"Chưa thể xác minh phép biến đổi này."}]""");
+        json["feedback"] = "I cannot evaluate the response.";
+        Assert.Throws<AIAnalysisValidationException>(() => CreateParser().ParseAndValidate(json.ToJsonString(), CreateRequest()));
+        json["feedback"] = "Chưa thể xác minh đầy đủ bài làm; cần giáo viên kiểm tra.";
+        Assert.Null(CreateParser().ParseAndValidate(json.ToJsonString(), CreateRequest()).SuggestedScore);
+    }
+
     [Theory]
     [InlineData("correct", "Valid")]
     [InlineData("Correct", "Invented")]

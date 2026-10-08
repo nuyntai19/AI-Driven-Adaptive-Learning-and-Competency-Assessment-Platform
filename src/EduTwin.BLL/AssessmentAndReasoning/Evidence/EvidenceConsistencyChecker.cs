@@ -88,6 +88,7 @@ public sealed class EvidenceConsistencyChecker : IEvidenceConsistencyChecker
             hasContradiction = true;
             reasons.Add("CORRECT_ANSWER_INVALID_REASONING");
         }
+        if (analysis.UsesAlternativeMethod) reasons.Add("ALTERNATIVE_METHOD_REVIEW");
         if (analysis.NeedsTeacherReview) reasons.Add("AI_REQUESTED_TEACHER_REVIEW");
 
         // Contradiction 1: Student is incorrect, but AI says ErrorType.None

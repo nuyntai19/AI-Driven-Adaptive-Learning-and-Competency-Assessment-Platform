@@ -11,6 +11,7 @@ export interface AssignmentResultSummaryDto {
   totalQuestionCount: number;
   answeredQuestionCount: number;
   evaluatedQuestionCount: number;
+  aiAnalyzedQuestionCount?: number;
   correctQuestionCount: number;
   incorrectQuestionCount: number;
   pendingQuestionCount: number;

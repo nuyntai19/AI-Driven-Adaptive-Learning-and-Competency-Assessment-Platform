@@ -138,19 +138,29 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
             return TeacherApproveResult.Conflict();
         }
 
-        var confirmedCorrectness = analysis.OverrideIsCorrect ?? attempt.IsCorrect;
-        var confirmedScore = analysis.OverrideAwardedScore ?? attempt.AwardedScore;
+        var proposalCorrectness = !analysis.IsFallback && analysis.SuggestedScore.HasValue
+            ? analysis.AnswerAssessment == "Correct" ? (bool?)true : analysis.AnswerAssessment == "Incorrect" ? false : null : null;
+        var confirmedCorrectness = analysis.OverrideIsCorrect ?? attempt.IsCorrect ?? proposalCorrectness;
+        var confirmedScore = analysis.OverrideAwardedScore ?? attempt.AwardedScore ?? (!analysis.IsFallback ? analysis.SuggestedScore : null);
         if (!confirmedCorrectness.HasValue || !confirmedScore.HasValue)
         {
             return TeacherApproveResult.ValidationFailed(
                 "MANUAL_GRADING_REQUIRED",
-                "Bài tự luận chưa có kết quả xác định. Giáo viên phải chấm và xác nhận điểm trước khi hoàn tất.");
+                "Chưa có điểm đề xuất AI đáng tin cậy. Giáo viên cần điều chỉnh điểm hoặc yêu cầu phân tích lại trước khi duyệt.");
         }
 
         var previousRubric = await _dbContext.TeacherReviewHistories.AsNoTracking()
             .Where(h => h.CenterId == centerId && h.AnalysisId == analysisId)
             .OrderByDescending(h => h.OverrideVersion).ThenByDescending(h => h.HistoryId)
             .Select(h => h.RubricResultJson).FirstOrDefaultAsync(cancellationToken);
+        if (question.GradingCriteria.Criteria.Count > 0 && previousRubric is null && !analysis.IsFallback)
+        {
+            var proposal = RubricGrade.Deserialize(analysis.SuggestedRubricGradeJson);
+            if (proposal is not null && RubricGrading.TryGrade(question.GradingCriteria, question.MaxScore,
+                proposal.Criteria.Cast<RubricScoreInput>().ToArray(), out var checkedGrade, out _) && checkedGrade is not null
+                && checkedGrade.AwardedScore == confirmedScore)
+                previousRubric = RubricGrade.Serialize(checkedGrade);
+        }
         if (question.GradingCriteria.Criteria.Count > 0 && previousRubric == null)
             return TeacherApproveResult.ValidationFailed("RUBRIC_GRADING_REQUIRED", "Câu hỏi có rubric. Hãy chấm đủ điểm từng tiêu chí trước khi xác nhận.");
 
@@ -179,6 +189,8 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
 
             var effectiveCorrectness = confirmedCorrectness.Value;
             var effectiveScore = confirmedScore.Value;
+            if (effectiveScore < 0 || effectiveScore > question.MaxScore)
+                return TeacherApproveResult.ValidationFailed("INVALID_SCORE", "Điểm đề xuất vượt thang điểm câu hỏi.");
 
             // 1. Update ReasoningAnalysis review fields
             analysis.ReviewDecision = TeacherReviewDecision.Approved;
@@ -188,6 +200,10 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
             analysis.NeedsTeacherReview = false;
             analysis.OverrideVersion = newOverrideVersion;
             analysis.UpdatedAt = now;
+            // Only this explicit teacher action promotes a manual AI proposal to a grade.
+            // Deterministic grades are never overwritten by an AI proposal.
+            if (!attempt.IsCorrect.HasValue && !analysis.OverrideIsCorrect.HasValue) analysis.OverrideIsCorrect = effectiveCorrectness;
+            if (!attempt.AwardedScore.HasValue && !analysis.OverrideAwardedScore.HasValue) analysis.OverrideAwardedScore = effectiveScore;
 
             // 2. Set Attempt Status to Completed
             attempt.Status = AttemptStatus.Completed;

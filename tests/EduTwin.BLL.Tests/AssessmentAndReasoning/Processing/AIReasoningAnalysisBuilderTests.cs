@@ -120,6 +120,19 @@ public sealed class AIReasoningAnalysisBuilderTests
     }
 
     [Fact]
+    public void Build_AIProposal_IsNotFinalGrade_AndMateriallyDifferentMethodNeedsReview()
+    {
+        var response = ValidResponse() with { AnswerAssessment = "Correct", ReasoningVerdict = "Valid", SuggestedScore = 8m, UsesAlternativeMethod = true };
+        var analysis = new AIReasoningAnalysisBuilder().Build(Guid.NewGuid(), 19, response, DateTime.UtcNow, true);
+        Assert.True(analysis.NeedsTeacherReview);
+        Assert.Equal(8m, analysis.SuggestedScore);
+        Assert.Null(analysis.OverrideAwardedScore);
+        Assert.True(analysis.UsesAlternativeMethod);
+        Assert.False(new AIReasoningAnalysisBuilder().Build(Guid.NewGuid(), 20, response with { UsesAlternativeMethod = false }, DateTime.UtcNow, true).NeedsTeacherReview);
+        Assert.True(new AIReasoningAnalysisBuilder().Build(Guid.NewGuid(), 21, response with { UsesAlternativeMethod = false }, DateTime.UtcNow, null).NeedsTeacherReview);
+    }
+
+    [Fact]
     public void Build_DigitCancellationFallacy_DoesNotPassBecauseAnswerIsCorrect()
     {
         var response = ValidResponse() with { AnswerAssessment = "Correct", ReasoningVerdict = "Invalid", ErrorType = ErrorType.Reasoning,

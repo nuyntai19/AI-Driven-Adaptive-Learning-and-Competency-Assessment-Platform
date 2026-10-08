@@ -200,6 +200,12 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             centerId,
             initialAttempt.QuestionId,
             cancellationToken);
+        if (DeferredFallbackDecision.Read(initialJob) is { } deferredFallback)
+        {
+            // Resume the exhausted decision before reading attachments or calling AI.
+            return await PersistAnalysisFailureAsync(initialJob, initialAttempt, requestContext,
+                workerId, cancellationToken, deferredFallback.FailureCode, deferredFallback.FailureDetail);
+        }
         if (requestContext is null)
         {
             return await PersistAnalysisFailureAsync(
@@ -258,7 +264,8 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                 initialAttempt,
                 requestContext.Question,
                 requestContext.AllowedNodes,
-                imageParts);
+                imageParts,
+                requestContext.Options);
             cancellationToken.ThrowIfCancellationRequested();
             fingerprint = AIAnalysisCheckpointStore.Fingerprint(request,
                 (_aiService as IAIAnalysisProfile)?.AnalysisProfileVersion ?? AIAnalysisContract.SchemaVersion, requestContext.Question.RowVersion);
@@ -277,13 +284,20 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             if (response is not null) AIProcessingMetrics.CheckpointHits.Add(1);
             else
             {
+                // Retry only the failed item with a server-owned repair hint. Preserve the
+                // original request fingerprint so valid checkpoints never trigger another call.
+                var providerRequest = request;
+                if (AIResponseRepairPolicy.Resolve(initialJob.RetryCount, initialJob.LastErrorCode, initialJob.LastErrorMessage) is { } repairRule)
+                {
+                    providerRequest = request with { ResponseRepairRule = repairRule };
+                }
                 var providerStarted = System.Diagnostics.Stopwatch.GetTimestamp();
                 try
                 {
                     response = _aiService is IPartitionedAIService partitioned && initialAttempt.AssignmentId.HasValue
-                        ? await partitioned.AnalyzeReasoningAsync(request,
+                        ? await partitioned.AnalyzeReasoningAsync(providerRequest,
                             new(centerId, initialAttempt.StudentId, initialAttempt.AssignmentId.Value), cancellationToken)
-                        : await _aiService.AnalyzeReasoningAsync(request, cancellationToken);
+                        : await _aiService.AnalyzeReasoningAsync(providerRequest, cancellationToken);
                 }
                 finally { AIProcessingMetrics.Duration.Record(System.Diagnostics.Stopwatch.GetElapsedTime(providerStarted).TotalMilliseconds, new KeyValuePair<string, object?>("stage", "provider")); }
             }
@@ -298,6 +312,13 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                 analysisUtcNow,
                 initialAttempt.IsCorrect,
                 initialAttempt.ReasoningLanguage);
+            if (response.SuggestedScore.HasValue && requestContext.Question.GradingCriteria.Criteria.Count > 0
+                && EduTwin.BLL.AssessmentAndReasoning.Override.RubricGrading.TryGrade(requestContext.Question.GradingCriteria,
+                    requestContext.Question.MaxScore, response.SuggestedRubricScores, out var grade, out _) && grade is not null)
+            {
+                analysis.SuggestedScore = grade.AwardedScore; // Total is computed by the server.
+                analysis.SuggestedRubricGradeJson = RubricGrade.Serialize(grade);
+            }
             if (_aiService is IAIAnalysisProvenance provenance)
             {
                 analysis.FeedbackOrigin = provenance.ProviderName;
@@ -326,12 +347,19 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         }
         catch (Exception exception) when (providerFailure && exception is not AIAnalysisInfrastructureException)
         {
+            var failureCode = exception is IAIAnalysisFailure failure ? failure.ErrorCode
+                : exception is ArgumentException ? "AI_REQUEST_CONTEXT_INVALID" : AnalysisFailureCode;
+            var validationRule = exception is AIAnalysisValidationException validation ? validation.ValidationRule.ToString() : AnalysisFailureMessage;
+            _logger.LogWarning("AI analysis failed for attempt {AttemptId}; category {Category}; validation rule {ValidationRule}; exception type {ExceptionType}.",
+                initialAttempt.AttemptId, failureCode, validationRule, exception.GetType().Name); // Never log provider bodies, credentials, or submissions.
             return await PersistAnalysisFailureAsync(
                 initialJob,
                 initialAttempt,
                 requestContext,
                 workerId,
-                cancellationToken);
+                cancellationToken,
+                failureCode,
+                validationRule);
         }
 
         // Save outside the provider-failure catch: a database outage must not be graded as an AI failure.
@@ -507,18 +535,14 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
         Attempt initialAttempt,
         RequestContext? requestContext,
         string workerId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string failureCode = AnalysisFailureCode,
+        string failureDetail = AnalysisFailureMessage)
     {
-        if (initialJob.RetryCount > 1)
-        {
-            return Result(
-                initialJob.AnalysisJobId,
-                initialAttempt.AttemptId,
-                AIAnalysisJobProcessingOutcome.NotEligible);
-        }
-
         ReasoningAnalysis? fallback = null;
-        if (initialJob.RetryCount == 1)
+        // Storage retries share this counter. An exhausted AI response must still
+        // reach a terminal state after those retries, never remain leased forever.
+        if (initialJob.RetryCount >= 1)
         {
             var fallbackUtcNow = _timeProvider.GetUtcNow().UtcDateTime;
             fallback = _fallbackBuilder.Build(new RuleBasedFallbackInput(
@@ -571,13 +595,21 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                     job,
                     transactionalUtcNow,
                     transactionalUtcNow,
-                    AnalysisFailureCode,
-                    AnalysisFailureMessage);
+                    failureCode,
+                    failureDetail);
                 attempt.Status = AttemptStatus.PendingAnalysis;
                 outcome = AIAnalysisJobProcessingOutcome.RetryScheduled;
             }
-            else if (job.RetryCount == 1 && fallback is not null)
+            else if (job.RetryCount >= 1 && fallback is not null)
             {
+                if (_checkpointStore is not null && await HasEarlierUnfinishedAnalysisAsync(job, attempt, cancellationToken))
+                {
+                    Defer(job, transactionalUtcNow, TimeSpan.Zero, DeferredFallbackDecision.WaitingCode);
+                    DeferredFallbackDecision.Write(job, failureCode, failureDetail);
+                    await _dbContext.SaveChangesAsync(cancellationToken);
+                    await transaction.CommitAsync(cancellationToken);
+                    return Result(job.AnalysisJobId, attempt.AttemptId, AIAnalysisJobProcessingOutcome.RetryScheduled);
+                }
                 var allowedIds = requestContext?.AllowedNodes?.Select(n => n.NodeId).ToArray();
                 var question = requestContext?.Question
                     ?? attempt.Question
@@ -644,8 +676,8 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                 transition = _stateMachine.CompleteFallback(
                     job,
                     transactionalUtcNow,
-                    AnalysisFailureCode,
-                    AnalysisFailureMessage);
+                    failureCode,
+                    failureDetail);
                 outcome = AIAnalysisJobProcessingOutcome.FallbackCompleted;
             }
             else
@@ -1029,13 +1061,15 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
 
     private static void Defer(AIAnalysisJob job, DateTime now, TimeSpan delay, string code)
     {
+        var repair = AIResponseRepairPolicy.Resolve(job.RetryCount, job.LastErrorCode, job.LastErrorMessage);
         job.Status = AIJobStatus.Pending;
         job.AvailableAt = now.AddSeconds(Math.Clamp(delay.TotalSeconds, 1, 3600));
         job.StartedAt = null;
         job.LeaseOwner = null;
         job.LeaseUntil = null;
         job.LastErrorCode = code;
-        job.LastErrorMessage = "Waiting for processing capacity; submission is preserved.";
+        // Quota waits do not consume or erase the one pending semantic repair.
+        job.LastErrorMessage = repair.HasValue ? $"Repair:{repair.Value}" : "Waiting for processing capacity; submission is preserved.";
         job.UpdatedAt = now;
     }
 
@@ -1199,7 +1233,10 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             return null;
         }
 
-        return new RequestContext(question, allowedNodes);
+        var options = await _dbContext.QuestionOptions.AsNoTracking()
+            .Where(o => o.CenterId == centerId && o.QuestionId == questionId && !o.IsDeleted)
+            .OrderBy(o => o.OrderIndex).ThenBy(o => o.OptionId).ToArrayAsync(cancellationToken);
+        return new RequestContext(question, allowedNodes, options);
     }
 
     private async Task<KnowledgeNode[]> LoadAllowedNodesAsync(
@@ -1225,6 +1262,15 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             select node)
             .ToListAsync(cancellationToken);
 
+        // Legacy questions can lack a mapping; their own topic remains authoritative.
+        // Enforce center/subject/activity checks, never borrow another tenant's topic.
+        var primaryNodes = await (from q in _dbContext.Questions.AsNoTracking()
+            join node in _dbContext.KnowledgeNodes.AsNoTracking()
+                on new { q.CenterId, NodeId = q.PrimaryTopicNodeId } equals new { node.CenterId, node.NodeId }
+            where q.CenterId == centerId && q.QuestionId == questionId && q.SubjectId == subjectId && !q.IsDeleted
+                && node.SubjectId == subjectId && node.IsActive && !node.IsDeleted
+            select node).ToListAsync(cancellationToken);
+        mappedNodes.AddRange(primaryNodes);
         return mappedNodes
             .GroupBy(node => node.NodeId)
             .Select(group => group.First())
@@ -1259,6 +1305,11 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
             question.SubjectId,
             cancellationToken);
 
+        var options = await _dbContext.QuestionOptions.AsNoTracking()
+            .Where(o => o.CenterId == centerId && o.QuestionId == questionId && !o.IsDeleted)
+            .OrderBy(o => o.OrderIndex).ThenBy(o => o.OptionId).ToArrayAsync(cancellationToken);
+        if (!options.Select(o => (o.OptionId, o.OptionLabel, o.OptionText, o.IsCorrect, o.RowVersion))
+            .SequenceEqual(initialContext.Options.Select(o => (o.OptionId, o.OptionLabel, o.OptionText, o.IsCorrect, o.RowVersion)))) return false;
         return allowedNodes
             .Select(node => new AllowedNodeSnapshot(node.NodeId, node.NodeName))
             .SequenceEqual(initialContext.AllowedNodes.Select(
@@ -1371,7 +1422,8 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
 
     private sealed record RequestContext(
         Question Question,
-        IReadOnlyList<KnowledgeNode> AllowedNodes);
+        IReadOnlyList<KnowledgeNode> AllowedNodes,
+        IReadOnlyList<QuestionOption> Options);
 
     private sealed record AllowedNodeSnapshot(ulong NodeId, string NodeName);
 

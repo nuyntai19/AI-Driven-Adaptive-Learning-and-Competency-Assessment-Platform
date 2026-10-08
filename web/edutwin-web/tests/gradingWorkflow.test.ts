@@ -86,6 +86,34 @@ function nodes(tree: any): any[] {
 function label(node: any): string { return renderToStaticMarkup(node).replace(/<[^>]+>/g, ""); }
 function button(tree: any, text: string) { return nodes(tree).find(n => n.type === "button" && label(n).includes(text)); }
 
+test("actual workspace does not label a legacy ungraded correct essay as student wrong", () => {
+  const q = question({ questionType: "Essay", attemptStatus: "NeedsTeacherReview", isCorrect: null,
+    awardedScore: null, suggestedScore: null, answerAssessment: "Correct", isFallback: false,
+    reasoningQuality: 100, analysisFeedback: "Lập luận đúng và hợp lệ." });
+  const html = harness(q).html();
+  assert.match(html, /AI đánh giá đúng · Chờ giáo viên duyệt/);
+  assert.match(html, /Chưa chấm/);
+  assert.doesNotMatch(html, /Học sinh làm sai/);
+  assert.equal(q.awardedScore, null);
+  assert.equal(q.isCorrect, null);
+});
+
+test("actual workspace separates AI incorrect opinion, unknown result and authoritative wrong verdict", () => {
+  for (const extra of [
+    { isCorrect: null, answerAssessment: "Incorrect", isFallback: false, expected: "AI đánh giá chưa đúng · Chờ giáo viên duyệt" },
+    { isCorrect: null, answerAssessment: "Uncertain", isFallback: false, expected: "Chưa có kết luận · Chờ giáo viên duyệt" },
+    { isCorrect: null, answerAssessment: "Incorrect", isFallback: true, expected: "Chưa có kết luận · Chờ giáo viên duyệt" },
+    { isCorrect: undefined, answerAssessment: undefined, isFallback: false, expected: "Chưa có kết luận · Chờ giáo viên duyệt" },
+  ]) {
+    const html = harness(question({ ...extra, attemptStatus: "NeedsTeacherReview", awardedScore: null })).html();
+    assert.ok(html.includes(extra.expected));
+    assert.doesNotMatch(html, /Học sinh làm sai/);
+    assert.match(html, /dark:text-amber-200/);
+  }
+  assert.match(harness(question({ isCorrect: false, answerAssessment: "Correct", isFallback: false })).html(), /✗ Học sinh làm sai/);
+  assert.match(harness(question({ isCorrect: true, answerAssessment: "Incorrect", isFallback: false })).html(), /✓ Học sinh làm đúng/);
+});
+
 test("the shared teacher/student rubric view renders the same /10 breakdown without editable controls", () => {
   const code = ts.transpileModule(fs.readFileSync(new URL("../src/components/reviews/RubricGradeView.tsx", import.meta.url), "utf8"),
     { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2020 } }).outputText;

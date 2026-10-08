@@ -22,6 +22,7 @@ public sealed class AIAnalysisContractTests
     {
         AssertExactProperties(
             typeof(AnalyzeReasoningRequest),
+            ("ResponseRepairRule", typeof(AIResponseValidationRule?), NullabilityState.Nullable, false),
             ("SchemaVersion", typeof(string), NullabilityState.NotNull, true),
             ("Language", typeof(string), NullabilityState.NotNull, true),
             ("Question", typeof(AnalyzeReasoningQuestion), NullabilityState.NotNull, true),
@@ -29,6 +30,9 @@ public sealed class AIAnalysisContractTests
             ("AllowedKnowledgeNodes", typeof(IReadOnlyList<AnalyzeReasoningAllowedKnowledgeNode>), NullabilityState.NotNull, true));
         AssertExactProperties(
             typeof(AnalyzeReasoningQuestion),
+            ("MaxScore", typeof(decimal), NullabilityState.NotNull, false),
+            ("ContentLanguage", typeof(string), NullabilityState.NotNull, false),
+            ("Options", typeof(IReadOnlyList<AnalyzeReasoningOption>), NullabilityState.NotNull, false),
             ("QuestionType", typeof(QuestionType), NullabilityState.NotNull, false),
             ("AnswerEvaluationMode", typeof(QuestionAnswerEvaluationMode), NullabilityState.NotNull, false),
             ("QuestionText", typeof(string), NullabilityState.NotNull, true),
@@ -39,6 +43,7 @@ public sealed class AIAnalysisContractTests
             ("GradingCriteria", typeof(AnalyzeReasoningGradingCriteria), NullabilityState.NotNull, true));
         AssertExactProperties(
             typeof(AnalyzeReasoningGradingCriteria),
+            ("Criteria", typeof(IReadOnlyList<AnalyzeReasoningRubricCriterion>), NullabilityState.NotNull, false),
             ("SchemaVersion", typeof(string), NullabilityState.NotNull, true),
             ("RequiredIdeas", typeof(IReadOnlyList<string>), NullabilityState.NotNull, true),
             ("CommonErrors", typeof(IReadOnlyList<string>), NullabilityState.NotNull, true),
@@ -78,7 +83,11 @@ public sealed class AIAnalysisContractTests
             ("SolutionType", typeof(string), NullabilityState.Nullable, false),
             ("AiSolution", typeof(string), NullabilityState.Nullable, false),
             ("AnswerAssessment", typeof(string), NullabilityState.Nullable, false),
-            ("ReasoningVerdict", typeof(string), NullabilityState.Nullable, false));
+            ("ReasoningVerdict", typeof(string), NullabilityState.Nullable, false),
+            ("SuggestedScore", typeof(decimal?), NullabilityState.Nullable, false),
+            ("UsesAlternativeMethod", typeof(bool), NullabilityState.NotNull, false),
+            ("SuggestedRubricScores", typeof(IReadOnlyList<RubricScoreInput>), NullabilityState.NotNull, false),
+            ("ReasoningIssues", typeof(IReadOnlyList<AIReasoningIssue>), NullabilityState.Nullable, false));
     }
 
     [Fact]
@@ -94,6 +103,9 @@ public sealed class AIAnalysisContractTests
         var question = root.GetProperty("question");
         AssertObjectProperties(
             question,
+            "maxScore",
+            "contentLanguage",
+            "options",
             "questionType",
             "answerEvaluationMode",
             "questionText",
@@ -111,7 +123,7 @@ public sealed class AIAnalysisContractTests
         Assert.Equal("Các ý mong đợi", question.GetProperty("expectedReasoning").GetString());
 
         var gradingCriteria = question.GetProperty("gradingCriteria");
-        AssertObjectProperties(gradingCriteria, "schemaVersion", "requiredIdeas", "commonErrors", "scoringNotes");
+        AssertObjectProperties(gradingCriteria, "criteria", "schemaVersion", "requiredIdeas", "commonErrors", "scoringNotes");
         Assert.Equal("1.0", gradingCriteria.GetProperty("schemaVersion").GetString());
         Assert.Equal("Xác định điều kiện", gradingCriteria.GetProperty("requiredIdeas")[0].GetString());
         Assert.Equal("Quên điều kiện", gradingCriteria.GetProperty("commonErrors")[0].GetString());
@@ -165,7 +177,11 @@ public sealed class AIAnalysisContractTests
             "solutionType",
             "aiSolution",
             "answerAssessment",
-            "reasoningVerdict");
+            "reasoningVerdict",
+            "suggestedScore",
+            "usesAlternativeMethod",
+            "suggestedRubricScores",
+            "reasoningIssues");
         Assert.Equal("ai-analysis-v1", root.GetProperty("schemaVersion").GetString());
         Assert.Equal("vi", root.GetProperty("language").GetString());
         Assert.Equal("Đưa hai vế về cùng cơ số", root.GetProperty("methodDetected").GetString());
