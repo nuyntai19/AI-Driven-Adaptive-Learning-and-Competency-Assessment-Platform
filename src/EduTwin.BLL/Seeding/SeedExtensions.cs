@@ -27,6 +27,7 @@ public static class SeedExtensions
         services.AddScoped<IManifestEvaluator, ManifestEvaluator>();
         services.AddScoped<EduTwinRuntimeSeeder>();
         services.AddScoped<AuthorizationBootstrapper>();
+        services.AddScoped<DefaultSystemRolePermissionBackfill>();
         services.AddScoped<PlatformAdminProvisioner>();
 
         return services;
@@ -43,6 +44,11 @@ public static class SeedExtensions
         // 2. Ensure Root Tenant PLATFORM and Platform Administrator are provisioned
         var platformAdminProvisioner = scope.ServiceProvider.GetRequiredService<PlatformAdminProvisioner>();
         await platformAdminProvisioner.EnsureAsync();
+
+        // Existing system roles need default grants after a code upgrade even in
+        // Production / Seed:Enabled=false. This path is additive and preserves
+        // custom roles, revoked assignments and inactive roles/permissions.
+        await scope.ServiceProvider.GetRequiredService<DefaultSystemRolePermissionBackfill>().EnsureAsync();
 
         // 3. Demo/Development data seeding (only if enabled in configuration)
         bool seedEnabled = config.GetValue<bool>("Seed:Enabled");

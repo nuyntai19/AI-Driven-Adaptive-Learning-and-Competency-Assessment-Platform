@@ -20,4 +20,7 @@ public class UpdateClassRequest
 
     [Range(10, 12)]
     public byte? GradeLevel { get; init; }
+
+    [MaxLength(500)]
+    public string? LifecycleReason { get; init; }
 }

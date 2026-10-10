@@ -32,6 +32,9 @@ public sealed class GetStudentDashboardUseCase : IGetStudentDashboardUseCase
     }
 
     public async Task<StudentDashboardResult> ExecuteAsync(Guid? subjectId, CancellationToken cancellationToken)
+        => await ExecuteAsync(subjectId, null, false, cancellationToken);
+
+    public async Task<StudentDashboardResult> ExecuteAsync(Guid? subjectId, Guid? classId, bool history, CancellationToken cancellationToken)
     {
         if (!_tenantContext.IsResolved ||
             !_tenantContext.CenterId.HasValue ||
@@ -54,6 +57,9 @@ public sealed class GetStudentDashboardUseCase : IGetStudentDashboardUseCase
         {
             return StudentDashboardResult.NotFound();
         }
+
+        var scope = await new StudentAcademicScopeReader(_dbContext).ReadAsync(centerId, studentId, subjectId, classId, history, cancellationToken);
+        if (scope is null) return StudentDashboardResult.NotFound("Lớp không thuộc phạm vi học tập của bạn.");
 
         // Branch A: When subjectId is null or empty, aggregate data across ALL subjects
         if (!subjectId.HasValue || subjectId.Value == Guid.Empty)
@@ -111,13 +117,15 @@ public sealed class GetStudentDashboardUseCase : IGetStudentDashboardUseCase
                 .ToListAsync(cancellationToken);
 
             var allTopicIds = allTopics.Select(t => t.NodeId).ToList();
+            allTopics = allTopics.Where(t => scope.TopicIds.Contains(t.NodeId)).ToList();
+            allTopicIds = allTopics.Select(t => t.NodeId).ToList();
 
             var allTwins = await _dbContext.KnowledgeTwins.AsNoTracking()
                 .Where(kt => kt.CenterId == centerId &&
                              kt.StudentId == studentId &&
                              allTopicIds.Contains(kt.TopicNodeId) &&
                              !kt.IsDeleted)
-                .ToDictionaryAsync(kt => kt.TopicNodeId, kt => kt.MasteryPercentage, cancellationToken);
+                .ToDictionaryAsync(kt => kt.TopicNodeId, cancellationToken);
 
             var masteryRadar = new List<TopicMasteryRadarDto>();
             foreach (var sub in activeSubjects)
@@ -127,12 +135,12 @@ public sealed class GetStudentDashboardUseCase : IGetStudentDashboardUseCase
                 var totalImportance = subTopics.Sum(t => t.ExamImportance);
                 if (totalImportance > 0m)
                 {
-                    var weightedSum = subTopics.Sum(t => (allTwins.TryGetValue(t.NodeId, out var m) ? m : 0m) * t.ExamImportance);
+                    var weightedSum = subTopics.Sum(t => (allTwins.TryGetValue(t.NodeId, out var m) ? m.MasteryPercentage : 0m) * t.ExamImportance);
                     subMastery = Math.Round(weightedSum / totalImportance, 1, MidpointRounding.AwayFromZero);
                 }
                 else if (subTopics.Count > 0)
                 {
-                    var sum = subTopics.Sum(t => allTwins.TryGetValue(t.NodeId, out var m) ? m : 0m);
+                    var sum = subTopics.Sum(t => allTwins.TryGetValue(t.NodeId, out var m) ? m.MasteryPercentage : 0m);
                     subMastery = Math.Round(sum / subTopics.Count, 1, MidpointRounding.AwayFromZero);
                 }
 
@@ -141,6 +149,8 @@ public sealed class GetStudentDashboardUseCase : IGetStudentDashboardUseCase
                     TopicNodeId = sub.SubjectId.ToString(),
                     TopicName = sub.SubjectName,
                     Mastery = subMastery
+                    , EvidenceCount = (uint)subTopics.Sum(t => allTwins.TryGetValue(t.NodeId, out var twin) ? (long)twin.EvidenceCount : 0L),
+                    ExamImportance = totalImportance, GroupNodeId = sub.SubjectId.ToString(), GroupName = sub.SubjectName
                 });
             }
 
@@ -176,7 +186,7 @@ public sealed class GetStudentDashboardUseCase : IGetStudentDashboardUseCase
 
             // Opportunity Action: Top active recommendation across all subjects
             var activeRec = await _dbContext.Recommendations.AsNoTracking()
-                .Where(r => r.CenterId == centerId &&
+                .Where(r => allTopicIds.Contains(r.TopicNodeId) && r.CenterId == centerId &&
                             r.StudentId == studentId &&
                             r.Status == RecommendationStatus.Active &&
                             !r.IsDeleted)
@@ -226,6 +236,7 @@ public sealed class GetStudentDashboardUseCase : IGetStudentDashboardUseCase
                 ProgressLine = progressLine,
                 Action = actionDto,
                 GeneratedAt = _timeProvider.GetUtcNow().UtcDateTime
+                , AcademicContext = scope.Context
             };
 
             return StudentDashboardResult.Success(resultDto);
@@ -275,8 +286,10 @@ public sealed class GetStudentDashboardUseCase : IGetStudentDashboardUseCase
         var activeTopics = await _dbContext.KnowledgeNodes.AsNoTracking()
             .Where(n => n.CenterId == centerId && n.SubjectId == targetSubjectId && n.NodeType == NodeType.Topic && n.IsActive && !n.IsDeleted)
             .OrderBy(n => n.OrderIndex)
-            .Select(n => new { n.NodeId, n.NodeName, n.ExamImportance })
+            .Select(n => new { n.NodeId, n.NodeName, n.ExamImportance, n.ParentNodeId })
             .ToListAsync(cancellationToken);
+
+        activeTopics = activeTopics.Where(t => scope.TopicIds.Contains(t.NodeId)).ToList();
 
         var activeTopicIds = activeTopics.Select(t => t.NodeId).ToList();
 
@@ -286,13 +299,21 @@ public sealed class GetStudentDashboardUseCase : IGetStudentDashboardUseCase
                          kt.SubjectId == targetSubjectId &&
                          activeTopicIds.Contains(kt.TopicNodeId) &&
                          !kt.IsDeleted)
-            .ToDictionaryAsync(kt => kt.TopicNodeId, kt => kt.MasteryPercentage, cancellationToken);
+            .ToDictionaryAsync(kt => kt.TopicNodeId, cancellationToken);
+
+        var chapterNames = await _dbContext.KnowledgeNodes.AsNoTracking()
+            .Where(n => n.CenterId == centerId && n.SubjectId == targetSubjectId && n.NodeType == NodeType.Chapter && !n.IsDeleted)
+            .ToDictionaryAsync(n => n.NodeId, n => n.NodeName, cancellationToken);
 
         var singleMasteryRadar = activeTopics.Select(t => new TopicMasteryRadarDto
         {
             TopicNodeId = t.NodeId.ToString(CultureInfo.InvariantCulture),
             TopicName = t.NodeName,
-            Mastery = twins.TryGetValue(t.NodeId, out var mastery) ? mastery : 0m
+            Mastery = twins.TryGetValue(t.NodeId, out var twin) ? twin.MasteryPercentage : 0m,
+            EvidenceCount = twin?.EvidenceCount ?? 0,
+            ExamImportance = t.ExamImportance,
+            GroupNodeId = t.ParentNodeId?.ToString(CultureInfo.InvariantCulture) ?? "legacy",
+            GroupName = t.ParentNodeId.HasValue && chapterNames.TryGetValue(t.ParentNodeId.Value, out var chapter) ? chapter : "Chuyên đề nền tảng"
         }).ToList();
 
         // 3. ProgressLine Reconstruction
@@ -332,7 +353,7 @@ public sealed class GetStudentDashboardUseCase : IGetStudentDashboardUseCase
 
         // 4. Opportunity Action (Active Recommendation)
         var singleActiveRec = await _dbContext.Recommendations.AsNoTracking()
-            .Where(r => r.CenterId == centerId &&
+            .Where(r => activeTopicIds.Contains(r.TopicNodeId) && r.CenterId == centerId &&
                         r.StudentId == studentId &&
                         r.SubjectId == targetSubjectId &&
                         r.Status == RecommendationStatus.Active &&
@@ -382,6 +403,7 @@ public sealed class GetStudentDashboardUseCase : IGetStudentDashboardUseCase
             ProgressLine = singleProgressLine,
             Action = singleActionDto,
             GeneratedAt = _timeProvider.GetUtcNow().UtcDateTime
+            , AcademicContext = scope.Context
         };
 
         return StudentDashboardResult.Success(singleResultDto);

@@ -35,7 +35,7 @@ public class GlobalQueryFilterTests
         using var context = CreateContext();
         var entityTypes = context.Model.GetEntityTypes().Where(e => typeof(ITenantOwnedEntity).IsAssignableFrom(e.ClrType)).ToList();
 
-        Assert.Equal(42, entityTypes.Count); // 40 prior entities + AI checkpoint and student post-processing queue
+        Assert.Equal(44, entityTypes.Count); // prior 43 + class curriculum application ledger
 
         foreach (var entityType in entityTypes)
         {
@@ -85,7 +85,7 @@ public class GlobalQueryFilterTests
         using var context = CreateContext();
         var entityTypes = context.Model.GetEntityTypes().Where(e => typeof(ITenantJoinEntity).IsAssignableFrom(e.ClrType)).ToList();
 
-        Assert.Equal(11, entityTypes.Count); // 9 prior joins + AI checkpoint and student post-processing queue
+        Assert.Equal(13, entityTypes.Count); // prior 12 + class curriculum application ledger
 
         foreach (var entityType in entityTypes)
         {
@@ -254,6 +254,8 @@ public class GlobalQueryFilterTests
             "src/EduTwin.BLL/Platform/PlatformAuditService.cs",
             "src/EduTwin.BLL/Platform/PlatformCenterService.cs",
             "src/EduTwin.BLL/Seeding/AuthorizationBootstrapper.cs",
+            // Startup-only additive role repair, not callable as a business endpoint.
+            "src/EduTwin.BLL/Seeding/DefaultSystemRolePermissionBackfill.cs",
             "src/EduTwin.BLL/Seeding/ManifestEvaluator.cs",
             "src/EduTwin.BLL/Seeding/PlatformAdminProvisioner.cs",
             "src/EduTwin.DAL/IdentityAndTenancy/RefreshTokenStore.cs"

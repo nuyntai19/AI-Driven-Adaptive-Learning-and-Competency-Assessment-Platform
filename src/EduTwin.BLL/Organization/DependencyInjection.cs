@@ -21,6 +21,7 @@ public static class DependencyInjection
         services.AddScoped<IResetAccountPasswordUseCase, ResetAccountPasswordUseCase>();
         services.AddScoped<IListClassesUseCase, ListClassesUseCase>();
         services.AddScoped<IGetClassUseCase, GetClassUseCase>();
+        services.AddScoped<ClassReportsUseCase>();
         services.AddScoped<ICreateClassUseCase, CreateClassUseCase>();
         services.AddScoped<IUpdateClassUseCase, UpdateClassUseCase>();
         services.AddScoped<IAddStudentsToClassUseCase, AddStudentsToClassUseCase>();

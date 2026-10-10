@@ -24,7 +24,8 @@ public sealed record NextQuestionQuestionDto(
     bool ReasoningRequired,
     string LanguageCode,
     IReadOnlyList<StudentQuestionOptionDto> Options,
-    QuestionAnswerEvaluationMode AnswerEvaluationMode = QuestionAnswerEvaluationMode.TextExact);
+    QuestionAnswerEvaluationMode AnswerEvaluationMode = QuestionAnswerEvaluationMode.TextExact,
+    bool HasImage = false);
 
 public sealed class NextQuestionDto
 {

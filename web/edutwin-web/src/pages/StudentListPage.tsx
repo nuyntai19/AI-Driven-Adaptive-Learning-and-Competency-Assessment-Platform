@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, Navigate } from "react-router-dom";
 import { organizationApi } from "../api/organizationApi";
+import { initialEnrollmentClasses } from "../utils/studentClassGrades";
 import type { UserStatus } from "../types/auth";
 import type {
   StudentListParams,
@@ -139,6 +140,12 @@ const CenterManagerStudentListView: React.FC = () => {
     queryFn: () => organizationApi.listClasses({ page: 1, pageSize: 100, status: "Active" }),
     enabled: isCreating,
   });
+
+  const initialClasses = useMemo(() => initialEnrollmentClasses(classesData?.data ?? [], createGradeLevel), [classesData?.data, createGradeLevel]);
+  useEffect(() => {
+    if (!classesData?.data) return;
+    setCreateClassIds(prev => prev.filter(id => initialClasses.some(c => c.classId === id)));
+  }, [classesData?.data, initialClasses]);
 
   const { data: studentDetail, isLoading: isDetailLoading } = useQuery<StudentDetailDto>({
     queryKey: ["studentDetail", viewingStudentId],
@@ -682,7 +689,7 @@ const CenterManagerStudentListView: React.FC = () => {
                       Gán vào lớp học ban đầu
                     </label>
                     <div className="max-h-36 overflow-y-auto rounded-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-raised)] p-2 space-y-1">
-                      {classesData.data.map((c) => (
+                      {initialClasses.map((c) => (
                         <label key={c.classId} className="flex items-center text-xs text-[var(--cm-text)] gap-2 cursor-pointer hover:bg-white/5 p-1 rounded">
                           <input
                             type="checkbox"
@@ -696,10 +703,11 @@ const CenterManagerStudentListView: React.FC = () => {
                             }}
                             className="rounded border-[var(--cm-border)] text-indigo-500"
                           />
-                          <span>{c.className} ({c.subject.subjectName})</span>
+                          <span>{c.className} ({c.subject.subjectName}) · Khối {c.gradeLevel}</span>
                         </label>
                       ))}
                     </div>
+                    <p className="text-xs mt-2 text-[var(--cm-text-muted)]">Chỉ hiển thị lớp cùng Khối {createGradeLevel}. Lớp dữ liệu cũ chưa phân khối không nhận học sinh mới.</p>
                   </div>
                 )}
 
@@ -1158,6 +1166,12 @@ const LegacyStudentListPage: React.FC = () => {
     enabled: isCreating,
   });
 
+  const initialClasses = useMemo(() => initialEnrollmentClasses(classesData?.data ?? [], createGradeLevel), [classesData?.data, createGradeLevel]);
+  useEffect(() => {
+    if (!classesData?.data) return;
+    setCreateClassIds(prev => prev.filter(id => initialClasses.some(c => c.classId === id)));
+  }, [classesData?.data, initialClasses]);
+
   const { data: legacySubjectsData } = useQuery({
     queryKey: ["subjects", "for-legacy-student-detail"],
     queryFn: () => organizationApi.listSubjects(true),
@@ -1500,7 +1514,7 @@ const LegacyStudentListPage: React.FC = () => {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Gán vào lớp học ban đầu</label>
                     <div className="max-h-36 overflow-y-auto border border-gray-200 rounded-md p-2 space-y-1">
-                      {classesData.data.map((c) => (
+                      {initialClasses.map((c) => (
                         <label key={c.classId} className="flex items-center text-xs text-gray-700 gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
                           <input
                             type="checkbox"
@@ -1514,7 +1528,7 @@ const LegacyStudentListPage: React.FC = () => {
                             }}
                             className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                           />
-                          <span>{c.className} ({c.subject.subjectName})</span>
+                          <span>{c.className} ({c.subject.subjectName}) · Khối {c.gradeLevel}</span>
                         </label>
                       ))}
                     </div>

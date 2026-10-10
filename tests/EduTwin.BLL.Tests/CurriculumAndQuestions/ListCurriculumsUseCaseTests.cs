@@ -1220,6 +1220,10 @@ public class ListCurriculumsUseCaseTests : IDisposable
         var cc2 = new CurriculumClass { CenterId = centerId, CurriculumId = cId, ClassId = classId2, AssignedAt = now, AssignedBy = teacherId };
         var cc1 = new CurriculumClass { CenterId = centerId, CurriculumId = cId, ClassId = classId1, AssignedAt = now, AssignedBy = teacherId };
 
+        foreach (var classId in new[]{classId1,classId2})
+            _dbContext.Classes.Add(new Class {ClassId=classId,CenterId=centerId,TeacherId=teacherId,SubjectId=seed.Subject.SubjectId,
+                ClassName=classId.ToString(),AcademicYear="2026",Status=ClassStatus.Active,CreatedAt=now,UpdatedAt=now});
+
         _dbContext.Curriculums.Add(c);
         _dbContext.CurriculumClasses.AddRange(cc2, cc1);
         await _dbContext.SaveChangesAsync();

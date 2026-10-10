@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { organizationApi } from "../api/organizationApi";
 import { logout } from "../auth/authApi";
 import { permissions } from "../auth/permissions";
@@ -8,6 +8,7 @@ import { CenterManagerThemeScope } from "../components/centerManager";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { useAuthStore } from "../stores/authStore";
 import { useModalAccessibility } from "../utils/useModalAccessibility";
+import { resolveCenterManagerLayoutAccess } from "../routes/academicRoutingHelpers";
 
 interface NavigationItem {
   label: string;
@@ -37,7 +38,7 @@ const navigationGroups: NavigationGroup[] = [
     items: [
       { label: "Giáo viên", to: "/quan-ly/giao-vien", permissions: [permissions.teachersRead], match: startsWith("/quan-ly/giao-vien") },
       { label: "Học sinh", to: "/quan-ly/hoc-sinh", permissions: [permissions.studentsRead], match: startsWith("/quan-ly/hoc-sinh") },
-      { label: "Lớp học", to: "/quan-ly/lop-hoc", permissions: [permissions.classesRead], match: (pathname) => pathname === "/quan-ly/lop-hoc" },
+      { label: "Lớp học", to: "/quan-ly/lop-hoc", permissions: [permissions.classesRead], match: startsWith("/quan-ly/lop-hoc") },
       { label: "Môn học", to: "/quan-ly/mon-hoc", permissions: [permissions.subjectsRead], match: startsWith("/quan-ly/mon-hoc") },
     ],
   },
@@ -293,5 +294,10 @@ export function CenterManagerLayout() {
 
 export function CenterManagerLayoutBoundary() {
   const user = useAuthStore((state) => state.user);
-  return user?.accountType === "CenterManager" ? <CenterManagerLayout /> : <Outlet />;
+  const location = useLocation();
+  const access = resolveCenterManagerLayoutAccess(user);
+  if (!access.allowed) {
+    return <Navigate to={access.redirect || "/khong-co-quyen"} replace state={{ attemptedPath: location.pathname }} />;
+  }
+  return <CenterManagerLayout />;
 }

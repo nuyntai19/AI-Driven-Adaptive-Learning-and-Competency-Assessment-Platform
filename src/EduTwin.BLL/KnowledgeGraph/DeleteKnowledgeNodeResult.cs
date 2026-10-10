@@ -4,6 +4,7 @@ public class DeleteKnowledgeNodeResult
 {
     public bool IsSuccess { get; }
     public string ErrorCode { get; }
+    public string? Message { get; private set; }
 
     private DeleteKnowledgeNodeResult(bool isSuccess, string errorCode)
     {
@@ -12,5 +13,5 @@ public class DeleteKnowledgeNodeResult
     }
 
     public static DeleteKnowledgeNodeResult Success() => new(true, string.Empty);
-    public static DeleteKnowledgeNodeResult Failure(string errorCode) => new(false, errorCode);
+    public static DeleteKnowledgeNodeResult Failure(string errorCode, string? message = null) => new(false, errorCode) { Message = message };
 }

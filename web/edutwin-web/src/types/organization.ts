@@ -160,6 +160,7 @@ export interface ClassTeacherDto {
 
 export interface ClassDto {
   classId: string;
+  learningScope?: "Current" | "History";
   className: string;
   academicYear: string;
   gradeLevel?: number | null;
@@ -199,6 +200,7 @@ export interface UpdateClassRequest {
   status: ClassStatus;
   gradeLevel?: number | null;
   rowVersion: string;
+  lifecycleReason?: string;
 }
 
 export interface AddStudentsToClassRequest {

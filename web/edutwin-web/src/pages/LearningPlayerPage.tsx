@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Link, useSearchParams, useParams } from "react-router-dom";
+import { useStudentLearningAccess } from "../hooks/useStudentLearningAccess";
+import { StudentLearningReadOnlyNotice } from "../components/student/StudentLearningReadOnlyNotice";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getNextQuestion,
@@ -15,6 +17,7 @@ import {
   submitStudentAssignment,
 } from "../api/assignmentsApi";
 import { useStudentAssignment } from "../features/assignments/useStudentAssignment";
+import { studentScopeUrl } from "../utils/studentAcademicNavigation";
 import type {
   NextQuestionDataDto,
   AttemptFeedbackDataDto,
@@ -36,6 +39,7 @@ import { getAttemptFeedbackPresentation, normalizeQuestionScore, fallbackAssignm
 import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
 import { type VisualMathFieldRef } from "../components/math/VisualMathField";
 import { RichMathText } from "../components/math/RichMathText";
+import { QuestionImage } from "../components/QuestionImage";
 import { RichMathEditor, type RichMathEditorRef } from "../components/math/RichMathEditor";
 import { ModeAwareAnswerEditor } from "../components/math/answer-editor/ModeAwareAnswerEditor";
 import type { AnswerEditorRef } from "../components/math/answer-editor/answerEditorHelpers";
@@ -124,6 +128,8 @@ export const LearningPlayerPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const assignmentId = searchParams.get("assignmentId");
   const subjectId = searchParams.get("subjectId") || "";
+  const isHistory = searchParams.get("history") === "true";
+  const learningAccess = useStudentLearningAccess(subjectId);
   const persistedJobId = searchParams.get("analysisJobId");
 
   const currentUser = useAuthStore((state) => state.user);
@@ -274,6 +280,9 @@ export const LearningPlayerPage = () => {
   } = useStudentAssignment(assignmentId || undefined);
 
   const assignment = assignmentResponse?.data;
+  const classReadOnly = isHistory || assignment?.isReadOnly === true;
+  const classReadOnlyRef = useRef(classReadOnly);
+  classReadOnlyRef.current = classReadOnly;
   const assignmentQuestions = useMemo(
     () => assignment?.questions || [],
     [assignment?.questions]
@@ -293,7 +302,7 @@ export const LearningPlayerPage = () => {
       setIsSubmitting(false);
     }
   }, [aiBanner?.kind, assignmentId, isAssignmentSubmitted, assignmentQuestions, feedbackData]);
-  const canStartAssignment = shouldStartAssignment(assignment, isLocallySubmitted);
+  const canStartAssignment = !classReadOnly && shouldStartAssignment(assignment, isLocallySubmitted);
   const submissionTiming = getAssignmentReviewTiming(assignment);
   const assignmentReviewRef = useRef(isAssignmentSubmitted);
   assignmentReviewRef.current = isAssignmentSubmitted;
@@ -549,14 +558,20 @@ export const LearningPlayerPage = () => {
 
   // Reviewing submitted work must not change the recorded working time.
   useEffect(() => {
-    if (pollingJobId || feedbackData || isAssignmentSubmitted || isCurrentQuestionSubmitted) return;
+    if (classReadOnly || (!assignmentId && !learningAccess.writable) || pollingJobId || feedbackData || isAssignmentSubmitted || isCurrentQuestionSubmitted) return;
     const timer = setInterval(() => setTimeSpentSeconds((prev) => prev + 1), 1000);
     return () => clearInterval(timer);
-  }, [pollingJobId, feedbackData, isAssignmentSubmitted, isCurrentQuestionSubmitted]);
+  }, [classReadOnly, assignmentId, learningAccess.writable, pollingJobId, feedbackData, isAssignmentSubmitted, isCurrentQuestionSubmitted]);
 
   // Initialize timer for timed or untimed assignments from server authoritative remainingSeconds or effectiveExpiresAt
   useEffect(() => {
     if (!assignment || !assignmentId) return;
+    if (classReadOnly) {
+      targetEndTimestampRef.current = null;
+      setAssignmentRemainingSeconds(null);
+      setDueRemainingSeconds(null);
+      return;
+    }
     if (isAssignmentSubmitted) {
       targetEndTimestampRef.current = null;
       setAssignmentRemainingSeconds(null);
@@ -601,10 +616,11 @@ export const LearningPlayerPage = () => {
       setAssignmentRemainingSeconds(null);
       timerInitializedForAssignmentRef.current = assignmentId;
     }
-  }, [assignment, assignmentId, hasTimeLimit, assignmentDraftScope, isAssignmentSubmitted]);
+  }, [assignment, assignmentId, hasTimeLimit, assignmentDraftScope, isAssignmentSubmitted, classReadOnly]);
 
   const isTimerTicking =
     hasTimeLimit &&
+    !classReadOnly &&
     !isAssignmentSubmitted &&
     !isLocallySubmitted &&
     assignmentRemainingSeconds !== null &&
@@ -644,7 +660,7 @@ export const LearningPlayerPage = () => {
 
   // Countdown to deadline ONLY when teacher configured NO time limit (không giới hạn thời gian)
   useEffect(() => {
-    if (hasTimeLimit || !assignment?.dueAt || isAssignmentSubmitted || isLocallySubmitted) {
+    if (classReadOnly || hasTimeLimit || !assignment?.dueAt || isAssignmentSubmitted || isLocallySubmitted) {
       setDueRemainingSeconds(null);
       return;
     }
@@ -658,10 +674,10 @@ export const LearningPlayerPage = () => {
     calcDueRemaining();
     const interval = setInterval(calcDueRemaining, 1000);
     return () => clearInterval(interval);
-  }, [hasTimeLimit, assignment?.dueAt, isAssignmentSubmitted, isLocallySubmitted]);
+  }, [classReadOnly, hasTimeLimit, assignment?.dueAt, isAssignmentSubmitted, isLocallySubmitted]);
 
   // Separation: True authoritative expiration timestamp vs integer seconds for display
-  const isAssignmentExpired = isActiveAssignmentExpired(isAssignmentSubmitted,
+  const isAssignmentExpired = !classReadOnly && isActiveAssignmentExpired(isAssignmentSubmitted,
     hasTimeLimit ? targetEndTimestampRef.current : assignment?.dueAt ? Date.parse(assignment.dueAt) : null);
 
   // Hydrate draft answers from server if local draft is empty
@@ -740,13 +756,14 @@ export const LearningPlayerPage = () => {
 
   const performSaveDraft = useCallback(
     async (answersToSave: Record<string, StoredAnswer>, version: number) => {
-      if (!assignmentId || isAssignmentSubmitted || isLocallySubmitted || isAssignmentExpired) return;
+      if (classReadOnlyRef.current || !assignmentId || isAssignmentSubmitted || isLocallySubmitted || isAssignmentExpired) return;
       if (isDraftConflictRef.current) return;
       if (Object.keys(answersToSave).length === 0) return;
 
       latestQueuedVersionRef.current = Math.max(latestQueuedVersionRef.current, version);
 
       saveQueueRef.current = saveQueueRef.current.then(async () => {
+        if (classReadOnlyRef.current) return;
         if (isDraftConflictRef.current) return;
         if (version < latestQueuedVersionRef.current) {
           // A newer version was queued while this task was waiting
@@ -987,9 +1004,9 @@ export const LearningPlayerPage = () => {
     isError: adaptiveError,
     refetch: refetchAdaptiveQuestion,
   } = useQuery<NextQuestionDataDto>({
-    queryKey: ["nextQuestion", subjectId],
-    queryFn: () => getNextQuestion(subjectId),
-    enabled: !assignmentId && !!subjectId && !feedbackData && !pollingJobId && !persistedJobId,
+    queryKey: ["nextQuestion", currentUser?.centerId, currentUser?.userId, subjectId, learningAccess.classId],
+    queryFn: () => getNextQuestion(subjectId, learningAccess.classId, isHistory),
+    enabled: learningAccess.writable && !assignmentId && !!subjectId && !feedbackData && !pollingJobId && !persistedJobId,
   });
 
   // Effective unified question object
@@ -1005,6 +1022,7 @@ export const LearningPlayerPage = () => {
         questionType: assignmentQuestion.questionType,
         difficulty: assignmentQuestion.difficulty,
         questionText: assignmentQuestion.questionText,
+        hasImage: assignmentQuestion.hasImage,
         maxScore: 10,
         estimatedTimeSeconds: assignmentQuestion.estimatedTimeSeconds || 120,
         reasoningRequired: assignmentQuestion.reasoningRequired,
@@ -1179,7 +1197,7 @@ export const LearningPlayerPage = () => {
       window.history.replaceState(
         null,
         "",
-        `/hoc-tap/luyen-tap/${targetQId}?assignmentId=${assignmentId}${subjectId ? `&subjectId=${subjectId}` : ""}`
+        studentScopeUrl(`/hoc-tap/luyen-tap/${targetQId}`, searchParams, { assignmentId })
       );
     }
   };
@@ -1502,6 +1520,7 @@ export const LearningPlayerPage = () => {
   // - Assignment Mode: Sequentially submit each question attempt (generating 1 prompt per question + scratchpad)
   // - Adaptive Mode: Submit single active question
   const handleFinalSubmit = async (autoSubmitArg?: boolean | React.MouseEvent) => {
+    if (classReadOnly || (!assignmentId && !learningAccess.writable)) return;
     const isAutoSubmit = typeof autoSubmitArg === "boolean" ? autoSubmitArg : false;
     if (!question || submissionInFlightRef.current || !canSubmitLearningWork({
       submitted: isAssignmentSubmitted || Boolean(feedbackData),
@@ -1649,6 +1668,7 @@ export const LearningPlayerPage = () => {
         const submitRes = await submitStudentAssignment(assignmentId, {
           answers: answersToSubmit,
         });
+        void queryClient.invalidateQueries({ queryKey: ["student-workspace-summary"] });
 
         const lastJobId = submitRes.lastAnalysisJobId || null;
         const submittedCount = submitRes.submittedAttemptsCount ?? answersToSubmit.length;
@@ -1708,6 +1728,8 @@ export const LearningPlayerPage = () => {
       const submitted = await submitAttempt({
         questionId: question.questionId,
         assignmentId: undefined,
+        classId: learningAccess.classId || undefined,
+        history: isHistory,
         finalAnswer: finalAnswer.trim() || "SKIPPED",
         reasoningText: reasoningToSubmit,
         timeSpentSeconds,
@@ -1720,6 +1742,7 @@ export const LearningPlayerPage = () => {
       });
 
       const resData = submitted.data;
+      void queryClient.invalidateQueries({ queryKey: ["student-workspace-summary"] });
       const targetJobId = resData.analysisJobId || resData.jobId;
 
       if (targetJobId) {
@@ -1840,7 +1863,7 @@ export const LearningPlayerPage = () => {
         window.history.replaceState(
           null,
           "",
-          `/hoc-tap/luyen-tap/${firstQuestionId}?assignmentId=${assignmentId}${subjectId ? `&subjectId=${subjectId}` : ""}`
+          studentScopeUrl(`/hoc-tap/luyen-tap/${firstQuestionId}`, searchParams, { assignmentId })
         );
       }
     } finally {
@@ -1985,6 +2008,7 @@ export const LearningPlayerPage = () => {
   }, [assignment, isAssignmentSubmitted, assignmentQuestions]);
 
   const isReadOnly =
+    classReadOnly || (!assignmentId && !learningAccess.writable) ||
     isAssignmentSubmitted ||
     isCurrentQuestionSubmitted ||
     isSubmitting ||
@@ -1995,6 +2019,10 @@ export const LearningPlayerPage = () => {
   // Guard: if adaptive mode and no subject selected
   if (!assignmentId && !subjectId) {
     return <StudentSubjectRequiredState onSelect={(id) => setSearchParams({ subjectId: id })} />;
+  }
+  if (!assignmentId && !feedbackData && !pollingJobId) {
+    if (learningAccess.pending) return <p role="status" className="p-6">Đang kiểm tra lớp và giáo trình đang áp dụng…</p>;
+    if (learningAccess.readOnly) return <StudentLearningReadOnlyNotice reason={learningAccess.reason} />;
   }
 
   // Loading skeleton
@@ -2029,7 +2057,7 @@ export const LearningPlayerPage = () => {
 
           <div className="pt-4 flex flex-wrap justify-center gap-3">
             <Link
-              to="/hoc-tap/bai-tap"
+              to={studentScopeUrl("/hoc-tap/bai-tap", searchParams)}
               className="rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-500 transition-colors cursor-pointer"
             >
               📋 Làm bài tập được giao
@@ -2065,7 +2093,7 @@ export const LearningPlayerPage = () => {
           <p className="text-xs text-slate-400 dark:text-slate-500 pt-4 border-t border-slate-100 dark:border-slate-800">
             Hệ thống đang kiểm chứng các bước suy luận, phát hiện lỗ hổng kiến thức và cập nhật Hồ sơ Năng lực (Twin).
           </p>
-          <Link to={assignmentId ? "/hoc-tap/bai-tap" : "/hoc-tap/tong-quan"}
+          <Link to={studentScopeUrl(assignmentId ? "/hoc-tap/bai-tap" : "/hoc-tap/tong-quan", searchParams)}
             className="inline-flex rounded-xl border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-800">
             {assignmentId ? "Về danh sách bài tập · AI tiếp tục xử lý" : "Về tổng quan · AI tiếp tục xử lý"}
           </Link>
@@ -2194,8 +2222,8 @@ export const LearningPlayerPage = () => {
             <Link
               to={
                 assignmentId
-                  ? `/hoc-tap/bai-tap/${assignmentId}${subjectId ? `?subjectId=${subjectId}` : ""}`
-                  : `/hoc-tap/tong-quan?subjectId=${subjectId}`
+                  ? studentScopeUrl(`/hoc-tap/bai-tap/${assignmentId}`, searchParams)
+                  : studentScopeUrl("/hoc-tap/tong-quan", searchParams)
               }
               className="w-full sm:w-auto rounded-xl bg-white dark:bg-slate-800 px-5 py-2.5 text-xs font-bold text-slate-700 dark:text-slate-200 shadow-2xs border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-center cursor-pointer"
             >
@@ -2205,7 +2233,9 @@ export const LearningPlayerPage = () => {
             {!assignmentId ? (
               <button
                 type="button"
+                disabled={!learningAccess.writable}
                 onClick={() => {
+                  if (!learningAccess.writable) return;
                   setFeedbackData(null);
                   setFinalAnswer("");
                   setReasoningText("");
@@ -2230,7 +2260,7 @@ export const LearningPlayerPage = () => {
                   {isRefreshingAssignmentReview ? "Đang tải bài làm..." : "Xem lại từng câu →"}
                 </button>
                 <Link
-                  to="/hoc-tap/bai-tap"
+                  to={studentScopeUrl("/hoc-tap/bai-tap", searchParams)}
                   className="w-full sm:w-auto rounded-xl bg-white dark:bg-slate-800 px-5 py-2.5 text-xs font-bold text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-center cursor-pointer"
                 >
                   Bài tập khác
@@ -2252,8 +2282,8 @@ export const LearningPlayerPage = () => {
             <Link
               to={
                 assignmentId
-                  ? `/hoc-tap/bai-tap/${assignmentId}${subjectId ? `?subjectId=${subjectId}` : ""}`
-                  : `/hoc-tap/tong-quan?subjectId=${subjectId}`
+                  ? studentScopeUrl(`/hoc-tap/bai-tap/${assignmentId}`, searchParams)
+                  : studentScopeUrl("/hoc-tap/tong-quan", searchParams)
               }
               className="text-xs sm:text-sm font-semibold text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 flex items-center gap-1.5 transition-colors cursor-pointer"
             >
@@ -2272,6 +2302,8 @@ export const LearningPlayerPage = () => {
             {/* Timer / Countdown */}
             {isAssignmentSubmitted ? (
               <AssignmentReviewReceipt {...submissionTiming} />
+            ) : classReadOnly ? (
+              <span className="rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-3 py-1.5 text-xs font-semibold text-amber-950 dark:text-amber-100">Chỉ xem bài đã lưu</span>
             ) : (
             <div
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-bold border ${
@@ -2309,7 +2341,7 @@ export const LearningPlayerPage = () => {
             )}
 
             {/* Draft Auto-save status badge */}
-            {assignmentId && !isAssignmentSubmitted && !isLocallySubmitted && (
+            {assignmentId && !classReadOnly && !isAssignmentSubmitted && !isLocallySubmitted && (
               draftConflict ? (
                 <div
                   className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-950/60 dark:text-amber-200 dark:border-amber-800 cursor-pointer"
@@ -2368,7 +2400,7 @@ export const LearningPlayerPage = () => {
                   <span>✓</span>
                   <span>Đã nộp bài (Chỉ đọc)</span>
                 </div>
-                {assignment?.canRetake && (
+                {assignment?.canRetake && !classReadOnly && (
                   <button
                     type="button"
                     onClick={() => {
@@ -2407,7 +2439,7 @@ export const LearningPlayerPage = () => {
             )}
 
             {/* If assignment is NOT submitted yet: show prominent submit button on ALL viewports */}
-            {assignmentId && !isAssignmentSubmitted && (
+            {assignmentId && !classReadOnly && !isAssignmentSubmitted && (
               <button
                 type="button"
                 onClick={() => setShowBatchConfirmModal(true)}
@@ -2440,7 +2472,10 @@ export const LearningPlayerPage = () => {
                 <span>⏰ Đã hết thời gian làm bài. Bài làm không thể nộp thêm câu mới. Các câu đã nộp trước đó được giữ nguyên.</span>
               </div>
             )}
-            {!isAssignmentSubmitted && startAssignmentError && (
+            {classReadOnly && <p role="status" className="rounded-2xl border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 p-4 text-sm text-amber-950 dark:text-amber-100">
+              {assignment?.readOnlyReason || "Phạm vi lịch sử — chỉ xem bài làm và câu hỏi cũ."}
+            </p>}
+            {!classReadOnly && !isAssignmentSubmitted && startAssignmentError && (
               <div className="rounded-2xl bg-amber-50 dark:bg-amber-950/40 p-4 text-sm font-semibold text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-800 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <span className="text-base">⚠️</span>
@@ -2822,6 +2857,7 @@ export const LearningPlayerPage = () => {
               <div>
                 <div className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-relaxed whitespace-pre-wrap">
                   <RichMathText content={question?.questionText} text={question?.questionText} />
+                  {question && <QuestionImage questionId={question.questionId} hasImage={question.hasImage} />}
                 </div>
                 {question?.questionText && /[\\[{^_\\]]/.test(question.questionText) && (
                   <div className="mt-3">
@@ -3185,6 +3221,7 @@ export const LearningPlayerPage = () => {
                   <p role="status" className="text-xs text-slate-500 dark:text-slate-400">
                     {isCurrentQuestionSubmitted || isAssignmentSubmitted
                       ? "Bài làm đã nộp — chỉ có thể xem lại."
+                      : classReadOnly ? assignment?.readOnlyReason || "Phạm vi lịch sử — chỉ xem bài làm và câu hỏi cũ."
                       : isAssignmentExpired ? "Bài tập đã hết hạn." : "Đang nộp bài…"}
                   </p>
                 ) : (
@@ -3235,7 +3272,7 @@ export const LearningPlayerPage = () => {
       </main>
 
       {/* Confirmation Modal when submitting all questions in Assignment Mode */}
-      {showBatchConfirmModal && (
+      {showBatchConfirmModal && !classReadOnly && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4">
             <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-2xl font-bold mx-auto">

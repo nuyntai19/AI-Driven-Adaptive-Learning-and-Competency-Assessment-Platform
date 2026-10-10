@@ -63,6 +63,7 @@ function harness(q: TeacherReviewQueueItemDto | TeacherReviewQueueItemDto[] = qu
       overrideReasoningAnalysis: (_id: string, payload: any) => { overridePayload = payload; },
       reopenAssignmentResult: (_id: string, payload: any) => { reopenPayload = payload; } };
     if (name.endsWith("RichMathText")) return { RichMathText: ({ text }: any) => React.createElement("span", null, text) };
+    if (name.endsWith("QuestionImage")) return { QuestionImage: ({ hasImage }: any) => hasImage ? React.createElement("span", null, "Ảnh đề bài") : null };
     if (name.endsWith("ScratchpadAttachmentDrawer")) return { ScratchpadAttachmentDrawer: () => null };
     if (name.endsWith("problemDetails")) return { extractProblemDetails: () => ({}) };
     return {};
@@ -118,15 +119,23 @@ test("the shared teacher/student rubric view renders the same /10 breakdown with
   const code = ts.transpileModule(fs.readFileSync(new URL("../src/components/reviews/RubricGradeView.tsx", import.meta.url), "utf8"),
     { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2020 } }).outputText;
   const exports = {};
-  vm.runInNewContext(code, { exports, require });
+  vm.runInNewContext(code, { exports, require: (name: string) => name.endsWith("RichMathText")
+    ? { RichMathText: ({ text }: { text: string }) => React.createElement("span", null, text) } : require(name) });
   const View = (exports as any).RubricGradeView;
   const html = renderToStaticMarkup(React.createElement(View, { grade: { maxScore: 2, awardedScore: 1,
     criteria: [{ criterionId: "method", title: "Phương pháp", maxScore: 0.5, awardedScore: 0.5, comment: "Cách giải hợp lệ" },
-      { criterionId: "result", title: "Kết quả", maxScore: 1.5, awardedScore: 0.5 }] } }));
+      { criterionId: "result", title: "Kết quả", maxScore: 1.5, awardedScore: 0.5 }], visualEvidence: [
+        { criterionId: 'method', requirementIndex: 1, status: 'Missing', studentImageIndex: 1, observation: 'Không có nhãn M trên ảnh.' },
+        { criterionId: 'method', requirementIndex: 2, status: 'Unclear', studentImageIndex: 1, observation: 'Dấu góc vuông chưa đọc rõ.' },
+        { criterionId: 'result', requirementIndex: 1, status: 'Present', studentImageIndex: 1, observation: 'Có đoạn AM trong ảnh.' }] } }));
   assert.match(html, /2.5 \/ 2.5/);
   assert.match(html, /2.5 \/ 7.5/);
   assert.match(html, /Tổng: 5 \/ 10/);
   assert.match(html, /Cách giải hợp lệ/);
+  assert.match(html, /Còn thiếu/);
+  assert.match(html, /Không có nhãn M trên ảnh/);
+  assert.match(html, /Chưa rõ/);
+  assert.match(html, /Đã thấy/);
   assert.doesNotMatch(html, /<(?:input|textarea|button)/);
 });
 

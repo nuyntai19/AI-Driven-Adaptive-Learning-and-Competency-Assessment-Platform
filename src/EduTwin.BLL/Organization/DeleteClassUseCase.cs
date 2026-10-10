@@ -109,7 +109,7 @@ public class DeleteClassUseCase : IDeleteClassUseCase
             var hasCurriculum = await _dbContext.CurriculumClasses
                 .AnyAsync(cc => cc.CenterId == centerId && cc.ClassId == classId, cancellationToken);
 
-            if (hasCurriculum)
+            if (hasCurriculum || await _dbContext.ClassCurriculumApplications.AnyAsync(a => a.CenterId == centerId && a.ClassId == classId, cancellationToken))
             {
                 await transaction.RollbackAsync(cancellationToken);
                 return DeleteClassResult.Failure(

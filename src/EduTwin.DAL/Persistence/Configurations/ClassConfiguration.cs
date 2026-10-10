@@ -92,6 +92,10 @@ public class ClassConfiguration : IEntityTypeConfiguration<Organization.Class>
             .IsRequired();
 
         // Alternate Key
+        builder.Property(c => c.LearningScope).HasColumnName("learning_scope").HasColumnType("VARCHAR(16)")
+            .HasConversion<string>().HasDefaultValue(EduTwin.Contracts.Organization.ClassLearningScope.Current);
+        builder.ToTable(t => t.HasCheckConstraint("ck_classes_learning_scope", "learning_scope IN ('Current','History')"));
+        builder.ToTable(t => t.HasCheckConstraint("ck_classes_lifecycle_scope", "(status='Active' AND learning_scope='Current') OR (status='Archived' AND learning_scope='History')"));
         builder.HasAlternateKey(c => new { c.CenterId, c.ClassId })
             .HasName("ux_classes_center_id_class_id");
 

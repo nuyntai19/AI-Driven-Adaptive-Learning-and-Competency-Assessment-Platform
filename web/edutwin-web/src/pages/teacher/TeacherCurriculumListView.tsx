@@ -14,12 +14,15 @@ import {
   TeacherSafeErrorPanel,
 } from "../../components/teacher/TeacherPrimitives";
 import { TeacherFilterBar } from "../../components/teacher/TeacherFilterBar";
-import { TeacherModal, TeacherConfirmDialog } from "../../components/teacher/TeacherOverlays";
+import { TeacherModal } from "../../components/teacher/TeacherOverlays";
+import { CurriculumArchiveDialog } from "../../components/teacher/CurriculumArchiveDialog";
+import { academicLifecycleError } from "../../utils/academicLifecycleError";
 
 export const TeacherCurriculumListView: React.FC = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const actorId = useAuthStore(state => state.user?.userId);
+  const centerId = useAuthStore(state => state.user?.centerId);
   const [libraryScope, setLibraryScope] = useState("all");
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -51,7 +54,7 @@ export const TeacherCurriculumListView: React.FC = () => {
     error,
     refetch,
   } = useQuery({
-    queryKey: ["teacherCurriculums", selectedSubjectId, selectedStatus],
+    queryKey: ["teacherCurriculums", selectedSubjectId, selectedStatus, centerId, actorId],
     queryFn: () =>
       curriculumApi.getAll({
         subjectId: selectedSubjectId || undefined,
@@ -91,9 +94,10 @@ export const TeacherCurriculumListView: React.FC = () => {
 
   // Archive mutation
   const archiveMutation = useMutation({
-    mutationFn: async (curriculum: Curriculum) => {
+    mutationFn: async ({ curriculum, reason }: { curriculum: Curriculum; reason: string }) => {
       return await curriculumApi.archive(curriculum.curriculumId, {
         rowVersion: curriculum.rowVersion,
+        reason,
       });
     },
     onSuccess: () => {
@@ -102,7 +106,7 @@ export const TeacherCurriculumListView: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ["teacherCurriculums"] });
     },
     onError: (err: any) => {
-      setActionError(err.message || "Không thể lưu trữ giáo trình.");
+      setActionError(academicLifecycleError(err, "Không thể lưu trữ giáo trình."));
     },
   });
 
@@ -133,13 +137,12 @@ export const TeacherCurriculumListView: React.FC = () => {
   const totalNodesCount = curriculums.reduce((acc, curr) => acc + (curr.nodeIds?.length ?? 0), 0);
 
   return (
-    <>
+    <div className="th-page-container">
       <label className="block text-sm font-semibold mb-4">Thư viện giáo trình
         <select className="th-select ml-3" value={libraryScope} onChange={e => setLibraryScope(e.target.value)}>
           <option value="all">Của tôi & dùng chung</option><option value="owned">Của tôi</option><option value="Shared">Shared — trong trung tâm</option>
         </select>
       </label>
-    <div className="th-page-container">
       <TeacherPageHeader
         title="Soạn Thảo Giáo Trình & Khung Đào Tạo"
         subtitle="Quản lý cấu trúc bài giảng, phân bổ cây chủ đề tri thức và xuất bản giáo trình cho các lớp học"
@@ -197,7 +200,7 @@ export const TeacherCurriculumListView: React.FC = () => {
           }
         />
         <TeacherMetricCard
-          label="Đang Áp Dụng (Published)"
+          label="Đã Xuất Bản (Published)"
           value={publishedCount}
           unit="giáo trình"
           color="cyan"
@@ -388,7 +391,7 @@ export const TeacherCurriculumListView: React.FC = () => {
                     </div>
                     <div>
                       <strong style={{ color: "var(--th-text-primary)", display: "block" }}>{curr.classIds?.length ?? 0}</strong>
-                      Lớp áp dụng
+                      {curr.reviewStatus === "Draft" ? "Lớp dự kiến" : "Lớp đang áp dụng"}
                     </div>
                   </div>
 
@@ -447,19 +450,18 @@ export const TeacherCurriculumListView: React.FC = () => {
       )}
 
       {/* Archive Confirm Dialog */}
-      <TeacherConfirmDialog
+      <CurriculumArchiveDialog
         isOpen={Boolean(archiveTarget)}
         onClose={() => setArchiveTarget(null)}
-        onConfirm={() => {
+        onConfirm={(reason) => {
           if (archiveTarget) {
-            archiveMutation.mutate(archiveTarget);
+            archiveMutation.mutate({ curriculum: archiveTarget, reason });
           }
         }}
-        title="Lưu trữ giáo trình (Archive)"
-        description={`Bạn có chắc chắn muốn lưu trữ giáo trình "${archiveTarget?.title}"? Sau khi lưu trữ, cấu trúc các điểm tri thức sẽ được đóng băng để bảo toàn lịch sử học tập của các lớp học đã qua. Bạn có thể sử dụng chức năng "Nhân bản (Clone V2)" để tạo phiên bản mới cho năm học tiếp theo.`}
-        confirmLabel="Xác nhận lưu trữ"
-        tone="danger"
-        isConfirming={archiveMutation.isPending}
+        curriculumId={archiveTarget?.curriculumId}
+        title={archiveTarget?.title ?? ""}
+        isPending={archiveMutation.isPending}
+        error={actionError}
       />
 
       {/* Clone Curriculum Modal */}
@@ -516,6 +518,5 @@ export const TeacherCurriculumListView: React.FC = () => {
         </div>
       </TeacherModal>
     </div>
-    </>
   );
 };

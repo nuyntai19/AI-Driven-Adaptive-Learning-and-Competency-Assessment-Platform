@@ -118,6 +118,7 @@ public class ListClassesUseCase : IListClassesUseCase
                 ClassName = c.ClassName,
                 AcademicYear = c.AcademicYear,
                 GradeLevel = c.GradeLevel,
+                LearningScope = c.LearningScope.ToString(),
                 Subject = new ClassSubjectDto
                 {
                     SubjectId = c.SubjectId.ToString("D").ToLowerInvariant(),

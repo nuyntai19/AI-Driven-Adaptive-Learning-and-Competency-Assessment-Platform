@@ -8,10 +8,12 @@ public static class CompositePermissionPolicies
     public const string StudentTwinRead = "permissions:any:twin.student.read";
     public const string StudentTwinUpdate = "permissions:any:twin.student.update";
     public const string DashboardsClassRead = "permissions:any:dashboards.class.read";
+    public const string QuestionImagesRead = "permissions:any:curriculum.question_images.read";
 
     public static IReadOnlyDictionary<string, string[]> GetAnyPermissionPolicies() =>
         new Dictionary<string, string[]>
         {
+            [QuestionImagesRead] = ["curriculum.questions.read", "learning.attempts.read_own", "learning.attempts.read_scoped"],
             [AttemptsRead] =
             [
                 "learning.attempts.read_own",

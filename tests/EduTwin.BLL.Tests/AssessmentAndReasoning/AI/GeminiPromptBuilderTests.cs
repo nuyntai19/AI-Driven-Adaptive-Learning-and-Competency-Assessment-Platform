@@ -168,6 +168,31 @@ public sealed class GeminiPromptBuilderTests
         Assert.True(prompt.Length < 18000);
     }
 
+    [Fact]
+    public void ProblemImage_IsSeparateFromScratchpadAndNotBase64PromptText()
+    {
+        var original = CreateRequest();
+        var questionImage = new AnalyzeReasoningImagePart(new byte[50000], "image/png");
+        var scratchpad = new AnalyzeReasoningImagePart([1, 2], "image/png");
+        var request = original with { Question = original.Question with { ImageParts = [questionImage] },
+            StudentSubmission = original.StudentSubmission with { ImageParts = [scratchpad] } };
+        var prompt = new GeminiPromptBuilder().Build(request);
+        using var json = ExtractInputJson(prompt);
+        Assert.Equal(1, json.RootElement.GetProperty("question").GetProperty("imageCount").GetInt32());
+        Assert.False(json.RootElement.GetProperty("question").TryGetProperty("imageParts", out _));
+        Assert.DoesNotContain(Convert.ToBase64String(questionImage.Data), prompt);
+        Assert.Contains("visual scale alone is NOT evidence", prompt);
+        Assert.Equal(new[] { questionImage, scratchpad }, request.AllImages());
+        var batch = new GeminiPromptBuilder().BuildBatch([new("first", request), new("second", request)]);
+        var start = batch.IndexOf("BATCH_INPUT_JSON_BEGIN\n", StringComparison.Ordinal) + "BATCH_INPUT_JSON_BEGIN\n".Length;
+        using var batchJson = JsonDocument.Parse(batch[start..batch.LastIndexOf("\nBATCH_INPUT_JSON_END", StringComparison.Ordinal)]);
+        var first = batchJson.RootElement[0]; var second = batchJson.RootElement[1];
+        Assert.Equal(1, first.GetProperty("questionImageIndexes")[0].GetInt32());
+        Assert.Equal(2, first.GetProperty("studentImageIndexes")[0].GetInt32());
+        Assert.Equal(3, second.GetProperty("questionImageIndexes")[0].GetInt32());
+        Assert.Equal(4, second.GetProperty("studentImageIndexes")[0].GetInt32());
+    }
+
     private static AnalyzeReasoningRequest CreateRequest(
         string language = "vi",
         string? reasoningText = "Em đặt điều kiện rồi biến đổi biểu thức.") =>

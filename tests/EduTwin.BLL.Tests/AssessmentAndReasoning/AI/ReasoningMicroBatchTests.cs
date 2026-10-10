@@ -85,6 +85,18 @@ public sealed class ReasoningMicroBatchTests
     }
 
     [Fact]
+    public async Task ProblemAndScratchpadImages_BothCountTowardBatchBudget()
+    {
+        var executor = new FakeExecutor(); using var batcher = Create(executor, 5);
+        var p = Partition(); var original = Request(p);
+        var request = original with { Question = original.Question with { ImageParts = [new([1], "image/png")] },
+            StudentSubmission = original.StudentSubmission with { ImageParts = [new([2], "image/png")] } };
+        await Task.WhenAll(Enumerable.Range(0, 3).Select(_ => batcher.AnalyzeAsync(request, default, p)));
+        Assert.Equal(3, executor.Groups.Count);
+        Assert.All(executor.Groups, g => Assert.Equal(2, g.Single().Request.AllImages().Count()));
+    }
+
+    [Fact]
     public async Task CancellationOfOneItemDoesNotCancelOtherItems()
     {
         var executor = new FakeExecutor(); using var batcher = Create(executor);

@@ -1375,6 +1375,133 @@ namespace EduTwin.DAL.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("EduTwin.DAL.CurriculumAndQuestions.ClassCurriculumApplication", b =>
+                {
+                    b.Property<string>("ApplicationId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("application_id");
+
+                    b.Property<string>("ApplicationRole")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)")
+                        .HasColumnName("application_role");
+
+                    b.Property<string>("AssignedBy")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("assigned_by");
+
+                    b.Property<string>("CenterId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("center_id");
+
+                    b.Property<string>("ChangeReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)")
+                        .HasColumnName("change_reason");
+
+                    b.Property<byte?>("ClassGradeAtStart")
+                        .HasColumnType("tinyint unsigned")
+                        .HasColumnName("class_grade_at_start");
+
+                    b.Property<string>("ClassId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("class_id");
+
+                    b.Property<string>("CurrentCurriculumKey")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("current_curriculum_key")
+                        .HasComputedColumnSql("CASE WHEN ended_at IS NULL THEN curriculum_id ELSE NULL END", true);
+
+                    b.Property<string>("CurrentPrimaryKey")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("current_primary_key")
+                        .HasComputedColumnSql("CASE WHEN ended_at IS NULL AND application_role='Primary' THEN class_id ELSE NULL END", true);
+
+                    b.Property<byte?>("CurriculumGradeAtStart")
+                        .HasColumnType("tinyint unsigned")
+                        .HasColumnName("curriculum_grade_at_start");
+
+                    b.Property<string>("CurriculumId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("curriculum_id");
+
+                    b.Property<string>("EndReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)")
+                        .HasColumnName("end_reason");
+
+                    b.Property<DateTime?>("EndedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("ended_at");
+
+                    b.Property<string>("EndedBy")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("ended_by");
+
+                    b.Property<DateTime?>("ExceptionApprovedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("exception_approved_at");
+
+                    b.Property<string>("ExceptionApprovedBy")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("exception_approved_by");
+
+                    b.Property<string>("GradeMismatchReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)")
+                        .HasColumnName("grade_mismatch_reason");
+
+                    b.Property<bool>("IsGradeException")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("is_grade_exception");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("started_at");
+
+                    b.Property<string>("SubjectId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("subject_id");
+
+                    b.HasKey("ApplicationId");
+
+                    b.HasIndex("CenterId", "AssignedBy");
+
+                    b.HasIndex("CenterId", "CurrentPrimaryKey")
+                        .IsUnique();
+
+                    b.HasIndex("CenterId", "CurriculumId");
+
+                    b.HasIndex("CenterId", "EndedBy");
+
+                    b.HasIndex("CenterId", "ExceptionApprovedBy");
+
+                    b.HasIndex("CenterId", "ClassId", "CurrentCurriculumKey")
+                        .IsUnique();
+
+                    b.HasIndex("CenterId", "ClassId", "StartedAt");
+
+                    b.ToTable("class_curriculum_applications", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_class_curriculum_application_dates", "(ended_at IS NULL AND ended_by IS NULL) OR (ended_at IS NOT NULL AND ended_at >= started_at AND ended_by IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_class_curriculum_application_exception", "(is_grade_exception=0 AND grade_mismatch_reason IS NULL AND exception_approved_by IS NULL AND exception_approved_at IS NULL) OR (is_grade_exception=1 AND grade_mismatch_reason IS NOT NULL AND CHAR_LENGTH(TRIM(grade_mismatch_reason))>0 AND exception_approved_by IS NOT NULL AND exception_approved_at IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_class_curriculum_application_grades", "(class_grade_at_start IS NULL OR class_grade_at_start BETWEEN 10 AND 12) AND (curriculum_grade_at_start IS NULL OR curriculum_grade_at_start BETWEEN 10 AND 12)");
+
+                            t.HasCheckConstraint("ck_class_curriculum_application_role", "application_role IN ('Primary','Supplemental')");
+                        });
+                });
+
             modelBuilder.Entity("EduTwin.DAL.CurriculumAndQuestions.Curriculum", b =>
                 {
                     b.Property<string>("CurriculumId")
@@ -1624,6 +1751,12 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasColumnType("json")
                         .HasColumnName("grading_criteria");
 
+                    b.Property<bool>("HasImage")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(false)
+                        .HasColumnName("has_image");
+
                     b.Property<bool>("IsDeleted")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("tinyint(1)")
@@ -1738,6 +1871,43 @@ namespace EduTwin.DAL.Persistence.Migrations
                             t.HasCheckConstraint("ck_questions_status", "status IN ('Draft', 'Active', 'Archived')");
 
                             t.HasCheckConstraint("ck_questions_visibility", "visibility IN ('Private', 'Shared')");
+                        });
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.CurriculumAndQuestions.QuestionImage", b =>
+                {
+                    b.Property<string>("CenterId")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("center_id");
+
+                    b.Property<ulong>("QuestionId")
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("question_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("created_by");
+
+                    b.Property<byte[]>("Data")
+                        .IsRequired()
+                        .HasColumnType("mediumblob")
+                        .HasColumnName("data");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("sha256");
+
+                    b.HasKey("CenterId", "QuestionId")
+                        .HasName("pk_question_images");
+
+                    b.ToTable("question_images", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_question_images_size", "OCTET_LENGTH(`data`) BETWEEN 1 AND 2097152");
                         });
                 });
 
@@ -4795,6 +4965,13 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasDefaultValue(false)
                         .HasColumnName("is_deleted");
 
+                    b.Property<string>("LearningScope")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("VARCHAR(16)")
+                        .HasDefaultValue("Current")
+                        .HasColumnName("learning_scope");
+
                     b.Property<ulong>("RowVersion")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAdd()
@@ -4847,6 +5024,10 @@ namespace EduTwin.DAL.Persistence.Migrations
                     b.ToTable("classes", null, t =>
                         {
                             t.HasCheckConstraint("ck_classes_grade_level", "grade_level IS NULL OR (grade_level >= 10 AND grade_level <= 12)");
+
+                            t.HasCheckConstraint("ck_classes_learning_scope", "learning_scope IN ('Current','History')");
+
+                            t.HasCheckConstraint("ck_classes_lifecycle_scope", "(status='Active' AND learning_scope='Current') OR (status='Archived' AND learning_scope='History')");
 
                             t.HasCheckConstraint("ck_classes_status", "status IN ('Active', 'Archived')");
                         });
@@ -4908,6 +5089,10 @@ namespace EduTwin.DAL.Persistence.Migrations
 
                     b.ToTable("class_students", null, t =>
                         {
+                            t.HasCheckConstraint("ck_class_students_enrollment_grade", "grade_level_at_enrollment IS NULL OR grade_level_at_enrollment BETWEEN 10 AND 12");
+
+                            t.HasCheckConstraint("ck_class_students_exception_complete", "(grade_mismatch_reason IS NULL AND exception_approved_by IS NULL AND exception_approved_at IS NULL) OR (grade_mismatch_reason IS NOT NULL AND CHAR_LENGTH(TRIM(grade_mismatch_reason))>0 AND exception_approved_by IS NOT NULL AND exception_approved_at IS NOT NULL)");
+
                             t.HasCheckConstraint("ck_class_students_status", "status IN ('Active', 'Removed')");
                         });
                 });
@@ -5999,6 +6184,46 @@ namespace EduTwin.DAL.Persistence.Migrations
                     b.Navigation("Student");
                 });
 
+            modelBuilder.Entity("EduTwin.DAL.CurriculumAndQuestions.ClassCurriculumApplication", b =>
+                {
+                    b.HasOne("EduTwin.DAL.IdentityAndTenancy.User", null)
+                        .WithMany()
+                        .HasForeignKey("CenterId", "AssignedBy")
+                        .HasPrincipalKey("CenterId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("EduTwin.DAL.Organization.Class", "Class")
+                        .WithMany()
+                        .HasForeignKey("CenterId", "ClassId")
+                        .HasPrincipalKey("CenterId", "ClassId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("EduTwin.DAL.CurriculumAndQuestions.Curriculum", "Curriculum")
+                        .WithMany()
+                        .HasForeignKey("CenterId", "CurriculumId")
+                        .HasPrincipalKey("CenterId", "CurriculumId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("EduTwin.DAL.IdentityAndTenancy.User", null)
+                        .WithMany()
+                        .HasForeignKey("CenterId", "EndedBy")
+                        .HasPrincipalKey("CenterId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("EduTwin.DAL.IdentityAndTenancy.User", null)
+                        .WithMany()
+                        .HasForeignKey("CenterId", "ExceptionApprovedBy")
+                        .HasPrincipalKey("CenterId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Class");
+
+                    b.Navigation("Curriculum");
+                });
+
             modelBuilder.Entity("EduTwin.DAL.CurriculumAndQuestions.Curriculum", b =>
                 {
                     b.HasOne("EduTwin.DAL.Organization.Subject", "Subject")
@@ -6099,6 +6324,19 @@ namespace EduTwin.DAL.Persistence.Migrations
                     b.Navigation("PrimaryTopicNode");
 
                     b.Navigation("Subject");
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.CurriculumAndQuestions.QuestionImage", b =>
+                {
+                    b.HasOne("EduTwin.DAL.CurriculumAndQuestions.Question", "Question")
+                        .WithMany()
+                        .HasForeignKey("CenterId", "QuestionId")
+                        .HasPrincipalKey("CenterId", "QuestionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_question_images_questions_question");
+
+                    b.Navigation("Question");
                 });
 
             modelBuilder.Entity("EduTwin.DAL.CurriculumAndQuestions.QuestionKnowledgeNode", b =>

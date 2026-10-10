@@ -21,6 +21,7 @@ public class SeedDataContainer
     public List<KnowledgeEdge> Edges { get; set; } = new();
     public List<Curriculum> Curriculums { get; set; } = new();
     public List<CurriculumClass> CurriculumClasses { get; set; } = new();
+    public List<ClassCurriculumApplication> CurriculumApplications { get; set; } = new();
     public List<CurriculumNode> CurriculumNodes { get; set; } = new();
     public List<Question> Questions { get; set; } = new();
     public List<QuestionKnowledgeNode> QuestionNodes { get; set; } = new();

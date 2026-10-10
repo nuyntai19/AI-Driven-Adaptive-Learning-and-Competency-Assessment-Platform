@@ -71,6 +71,7 @@ public class CreateStudentUseCaseTests
     private async Task SeedCenterAsync(EduTwinDbContext context, Guid centerId, CenterStatus status = CenterStatus.Active, bool isDeleted = false)
     {
         var centerSuffix = centerId.ToString("N")[..8];
+        AccountRoleTestSeed.Add(context, centerId, UserRole.Student, _fixedTime);
         context.Centers.Add(new Center
         {
             CenterId = centerId,
@@ -109,6 +110,7 @@ public class CreateStudentUseCaseTests
             ClassId = Guid.NewGuid(),
             CenterId = centerId,
             ClassName = "C1",
+            GradeLevel = 10,
             AcademicYear = "2025",
             TeacherId = tId,
             SubjectId = subjectId,
@@ -131,6 +133,28 @@ public class CreateStudentUseCaseTests
         GradeLevel = 10,
         ClassIds = classIds.ToList()
     };
+
+    [Theory]
+    [InlineData(11)]
+    [InlineData(12)]
+    [InlineData(null)]
+    public async Task InitialEnrollment_RejectsWrongOrMissingClassGrade_WithoutCreatingAccount(int? classGrade)
+    {
+        using var db = CreateContext(Guid.NewGuid().ToString());
+        await SeedCenterAsync(db, _centerId);
+        var cls = await SeedClassAsync(db, _centerId);
+        cls.GradeLevel = classGrade.HasValue ? (byte)classGrade.Value : null;
+        await db.SaveChangesAsync();
+        var usersBefore = await db.Users.CountAsync();
+        var sut = new CreateStudentUseCase(db, _mockTenantContext.Object, _mockPasswordHasher.Object, _mockTimeProvider.Object, _mockLogger.Object);
+        var result = await sut.ExecuteAsync(CreateValidRequest(cls.ClassId));
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+        Assert.Contains("khối", result.ErrorMessage);
+        Assert.Equal(usersBefore, await db.Users.CountAsync());
+        Assert.Empty(await db.Students.ToListAsync());
+        Assert.Empty(await db.ClassStudents.ToListAsync());
+    }
 
     [Fact]
     public async Task Success_UsesTimeProviderForEveryTimestamp()

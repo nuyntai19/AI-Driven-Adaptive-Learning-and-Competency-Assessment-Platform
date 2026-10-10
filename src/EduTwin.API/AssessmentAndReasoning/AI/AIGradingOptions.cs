@@ -25,7 +25,7 @@ public sealed class AIGradingOptions
     public string Model(GeminiOptions gemini) => Provider == "Groq" ? GroqModel
         : string.IsNullOrWhiteSpace(GeminiModel) ? gemini.Model ?? "" : GeminiModel;
     public string Profile(GeminiOptions gemini) =>
-        $"{Provider}:{Model(gemini)}:vietnamese-grade-proposal-v4:temperature-{(Provider == "Gemini" && Model(gemini).StartsWith("gemini-3", StringComparison.Ordinal) ? 1 : 0)}:microbatch-v1:{(MicroBatchEnabled ? BatchSize : 1)}:{EduTwin.BLL.AssessmentAndReasoning.AI.AIAnalysisContract.SchemaVersion}";
+        $"{Provider}:{Model(gemini)}:{GeminiVisualEvidenceInspector.ProfileVersion(gemini)}:temperature-{(Provider == "Gemini" && Model(gemini).StartsWith("gemini-3", StringComparison.Ordinal) ? 1 : 0)}:microbatch-v1:{(MicroBatchEnabled ? BatchSize : 1)}:{EduTwin.BLL.AssessmentAndReasoning.AI.AIAnalysisContract.SchemaVersion}";
 
     public void Validate(GeminiOptions gemini)
     {
@@ -37,6 +37,6 @@ public sealed class AIGradingOptions
             || Provider == "Groq" && (string.IsNullOrWhiteSpace(GroqApiKey) || string.IsNullOrWhiteSpace(GroqOrganizationId)
                 || GroqRequestsPerMinute < 1 || GroqRequestsPerDay < 1 || GroqTokensPerMinute < 1 || GroqTokensPerDay < 1))
             throw GeminiAdapterException.ConfigurationInvalid();
-        if (Provider == "Gemini") gemini.Validate();
+        if (Provider == "Gemini" || gemini.IndependentVisualEvidenceEnabled) gemini.Validate();
     }
 }

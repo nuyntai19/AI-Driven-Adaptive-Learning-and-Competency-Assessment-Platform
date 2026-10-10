@@ -12,6 +12,34 @@ namespace EduTwin.BLL.Tests.AssessmentAndReasoning.Processing;
 
 public sealed class AIAnalysisRequestFactoryTests
 {
+    [Fact]
+    public void Create_CopiesVisualObjectivesAndKeepsStudentImageBytes()
+    {
+        var center = Guid.NewGuid(); var subject = Guid.NewGuid(); var question = CreateQuestion(center, subject, "vi");
+        question.GradingCriteria.Criteria = [new() { CriterionId = "image", Title = "Ký hiệu", Description = "Chấm ảnh", MaxScore = 10,
+            VisualRequirements = ["Có nhãn M", "Có dấu góc vuông"] }];
+        var bytes = new byte[] { 1, 2, 3 };
+        var request = new AIAnalysisRequestFactory().Create(CreateAttempt(center, "vi"), question,
+            [CreateNode(9, center, subject, "Primary")], [new(bytes, "image/png")]);
+        question.GradingCriteria.Criteria[0].VisualRequirements[0] = "changed";
+        Assert.Equal("Có nhãn M", request.Question.GradingCriteria.Criteria[0].VisualRequirements![0]);
+        Assert.Equal(bytes, Assert.Single(request.StudentSubmission.ImageParts).Data);
+    }
+
+    [Fact]
+    public void ProblemImage_ChangesCheckpointIdentity_WithoutChangingLegacyTextOnlyFingerprint()
+    {
+        var center = Guid.NewGuid(); var subject = Guid.NewGuid(); var q = CreateQuestion(center, subject, "vi");
+        var request = new AIAnalysisRequestFactory().Create(CreateAttempt(center, "vi"), q, [CreateNode(9, center, subject, "Primary")]);
+        var legacy = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(
+            JsonSerializer.Serialize(new { Profile = "profile", QuestionVersion = 1UL, Request = request }))));
+        Assert.Equal(legacy, AIAnalysisCheckpointStore.Fingerprint(request, "profile", 1));
+        var pictured = request with { Question = request.Question with { ImageParts = [new([1, 2], "image/png")] } };
+        var differentImage = pictured with { Question = pictured.Question with { ImageParts = [new([1, 3], "image/png")] } };
+        Assert.NotEqual(legacy, AIAnalysisCheckpointStore.Fingerprint(pictured, "profile", 1));
+        Assert.NotEqual(AIAnalysisCheckpointStore.Fingerprint(pictured, "profile", 1), AIAnalysisCheckpointStore.Fingerprint(differentImage, "profile", 1));
+    }
+
     [Theory]
     [InlineData("vi")]
     [InlineData("en")]

@@ -44,6 +44,10 @@ import { MATH_EQUIVALENT_HELP } from "../../utils/questionEvaluationModes";
 import { hydrateGradingCriteria, rubricDefinitionError } from "../../utils/rubric";
 import { GradingCriteriaEditor } from "../../components/teacher/GradingCriteriaEditor";
 import { RichMathText } from "../../components/math/RichMathText";
+import { QuestionImageEditor } from "../../components/teacher/QuestionImageEditor";
+import { QuestionImage } from "../../components/QuestionImage";
+import { IMAGE_ONLY_QUESTION_TEXT } from "../../utils/questionImage";
+import { KnowledgeTopicPicker } from "../../components/teacher/KnowledgeTopicPicker";
 import type { MaterialVisibility } from "../../types/questions";
 
 interface QuestionEditorOption {
@@ -75,6 +79,9 @@ export function TeacherQuestionEditorView() {
   const [questionType, setQuestionType] = useState<QuestionType>("MultipleChoice");
   const [difficulty, setDifficulty] = useState<number>(3);
   const [questionText, setQuestionText] = useState("");
+  const [imageDataUrl, setImageDataUrl] = useState<string | undefined>();
+  const [removeImage, setRemoveImage] = useState(false);
+  const [imageBusy, setImageBusy] = useState(false);
   const [maxScore, setMaxScore] = useState<number>(10);
   const [estimatedTimeSeconds, setEstimatedTimeSeconds] = useState<number>(120);
   const [reasoningRequired, setReasoningRequired] = useState<boolean>(false);
@@ -113,6 +120,7 @@ export function TeacherQuestionEditorView() {
 
   // Load existing question for editing
   const { data: questionData, isLoading: questionLoading, error: questionError, refetch: refetchQuestion } = useQuestion(id || copyFrom || "");
+  const hasExistingImage = Boolean(questionData?.data?.hasImage && !removeImage);
 
   useEffect(() => {
     if ((isEditing || copyFrom) && questionData?.data) {
@@ -123,6 +131,7 @@ export function TeacherQuestionEditorView() {
       setQuestionType(q.questionType);
       setDifficulty(q.difficulty);
       setQuestionText(q.questionText || "");
+      setImageDataUrl(undefined); setRemoveImage(false);
       setMaxScore(q.maxScore || 10);
       setEstimatedTimeSeconds(q.estimatedTimeSeconds || 120);
       setReasoningRequired(Boolean(q.reasoningRequired));
@@ -197,8 +206,9 @@ export function TeacherQuestionEditorView() {
       setFormError({ message: "Vui lòng chọn chủ đề Cây Tri thức (Topic Node) cho câu hỏi." });
       return;
     }
-    if (!questionText.trim()) {
-      setFormError({ message: "Vui lòng nhập nội dung đề bài câu hỏi." });
+    if (imageBusy) return;
+    if (!questionText.trim() && !imageDataUrl && !hasExistingImage) {
+      setFormError({ message: "Vui lòng nhập nội dung đề bài hoặc đính kèm ảnh chứa đề." });
       return;
     }
     if (difficulty < 1 || difficulty > 5) {
@@ -309,6 +319,8 @@ export function TeacherQuestionEditorView() {
 
     if (!isEditing) {
       const payload: CreateQuestionRequest = {
+        imageDataUrl,
+        copyImageFromQuestionId: !imageDataUrl && hasExistingImage ? copyFrom || undefined : undefined,
         visibility,
         subjectId,
         gradeLevel: Number(gradeLevel),
@@ -362,6 +374,8 @@ export function TeacherQuestionEditorView() {
       }
 
       const updatePayload: UpdateQuestionRequest = {
+        imageDataUrl,
+        removeImage,
         visibility,
         primaryTopicNodeId: primaryTopicNodeId.trim(),
         gradeLevel: gradeLevel !== "" ? Number(gradeLevel) : null,
@@ -422,7 +436,7 @@ export function TeacherQuestionEditorView() {
     }
   };
 
-  const isPending = createMutation.isPending || updateMutation.isPending;
+  const isPending = createMutation.isPending || updateMutation.isPending || imageBusy;
 
   if ((isEditing || copyFrom) && questionLoading) {
     return (
@@ -442,6 +456,7 @@ export function TeacherQuestionEditorView() {
     return <div className="th-page-container max-w-5xl space-y-4">
       <TeacherPageHeader title={`Câu hỏi dùng chung #${q.questionId}`} description="Chỉ xem bản gốc. Sao chép để biên soạn phiên bản của bạn." />
       <div className="th-surface p-6 space-y-4"><RichMathText text={q.questionText} />
+        <QuestionImage questionId={q.questionId} hasImage={q.hasImage} />
         {q.options?.map(o => <div key={o.optionId}><RichMathText text={`${o.label || o.optionLabel}. ${o.text || o.optionText}`} /></div>)}
         <h3 className="font-bold">Đáp án & lời giải tham khảo</h3><RichMathText text={q.solution || ""} />
         {canCreate && <button type="button" className="th-primary-button" onClick={() => navigate(`/giao-vien/cau-hoi/tao-moi?copyFrom=${q.questionId}`)}>Sao chép & biên soạn</button>}
@@ -516,19 +531,13 @@ export function TeacherQuestionEditorView() {
             <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1.5">
               Chủ đề Cây Tri thức (Topic Node) <span className="text-rose-400">*</span>
             </label>
-            <select
+            <KnowledgeTopicPicker
+              nodes={topicsData?.nodes || []}
               value={primaryTopicNodeId}
               disabled={!subjectId || topicsLoading}
-              onChange={(e) => setPrimaryTopicNodeId(e.target.value)}
-              className="th-select w-full text-xs"
-            >
-              <option value="">-- Chọn chủ đề kiến thức --</option>
-              {topicsData?.nodes?.map((node: any) => (
-                <option key={node.nodeId} value={node.nodeId}>
-                  {node.nodeName} ({node.nodeCode})
-                </option>
-              ))}
-            </select>
+              onChange={setPrimaryTopicNodeId}
+              placeholder={topicsLoading ? "Đang tải chủ đề…" : "Chọn chủ đề kiến thức"}
+            />
           </div>
 
           <div>
@@ -672,7 +681,7 @@ export function TeacherQuestionEditorView() {
         <div className="space-y-3 border-t border-[var(--th-border-subtle)] pt-4">
           <div className="flex items-center justify-between">
             <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)]">
-              Nội dung Đề bài <span className="text-rose-400">*</span>
+              Nội dung Đề bài {imageDataUrl || hasExistingImage ? <span className="normal-case">(tùy chọn khi có ảnh)</span> : <span className="text-rose-400">*</span>}
             </label>
             <span className="text-[11px] text-[var(--th-teal)]">Hỗ trợ WYSIWYG: Gõ $ hoặc Ctrl+M để nhập công thức</span>
           </div>
@@ -684,6 +693,11 @@ export function TeacherQuestionEditorView() {
             minHeight="110px"
             variant="teacher"
           />
+          <QuestionImageEditor value={imageDataUrl} existingQuestionId={id || copyFrom || undefined} hasExistingImage={hasExistingImage}
+            onChange={(value, remove) => {
+              setImageDataUrl(value); setRemoveImage(remove);
+              if (remove && questionText.trim() === IMAGE_ONLY_QUESTION_TEXT) setQuestionText("");
+            }} onBusyChange={setImageBusy} />
         </div>
 
         {/* Row 4: Multiple choice options OR Essay criteria */}

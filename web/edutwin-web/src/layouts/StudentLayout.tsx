@@ -4,9 +4,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../stores/authStore";
 import { logout } from "../auth/authApi";
 import { organizationApi } from "../api/organizationApi";
+import { getStudentWorkspaceSummary } from "../api/dashboardsApi";
+import { studentWorkspaceLabels } from "../utils/studentWorkspaceSummary";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { PlatformSecurityModal } from "../components/PlatformSecurityModal";
 import { useModalAccessibility } from "../utils/useModalAccessibility";
+import { StudentAcademicContext } from "../components/student/StudentAcademicContext";
+import { studentScopeChangeUrl } from "../utils/studentAcademicNavigation";
 
 function getInitials(displayName?: string, username?: string): string {
   if (displayName) {
@@ -28,10 +32,19 @@ export const StudentLayout: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const activeSubjectId = searchParams.get("subjectId") || "";
 
   const user = useAuthStore((state) => state.user);
+  const workspaceQuery = useQuery({
+    queryKey: ["student-workspace-summary", user?.centerId, user?.userId, activeSubjectId || "all", searchParams.get("classId"), searchParams.get("history") === "true"],
+    queryFn: () => getStudentWorkspaceSummary(activeSubjectId || undefined, searchParams.get("classId") || undefined, searchParams.get("history") === "true"),
+    enabled: !!user,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: "always",
+  });
+  const workspaceLabels = studentWorkspaceLabels(workspaceQuery.data, workspaceQuery.isError);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
@@ -47,13 +60,15 @@ export const StudentLayout: React.FC = () => {
   const subjects = subjectsQuery.data?.data || [];
 
   const handleSubjectChange = (subjectId: string) => {
+    if (subjectId === activeSubjectId) return;
     const newParams = new URLSearchParams(searchParams);
+    newParams.delete("classId");
     if (!subjectId) {
       newParams.delete("subjectId");
     } else {
       newParams.set("subjectId", subjectId);
     }
-    setSearchParams(newParams);
+    navigate(studentScopeChangeUrl(location.pathname, newParams));
   };
 
   const handleLogout = async () => {
@@ -81,15 +96,17 @@ export const StudentLayout: React.FC = () => {
 
   // Helper to preserve subjectId when navigating tabs
   const getTabUrl = (path: string) => {
-    return activeSubjectId ? `${path}?subjectId=${activeSubjectId}` : path;
+    const p = new URLSearchParams();
+    for (const key of ["subjectId", "classId", "history"]) { const value = searchParams.get(key); if (value) p.set(key, value); }
+    return p.size ? `${path}?${p}` : path;
   };
 
   return (
     <div className="student-shell min-h-screen bg-[var(--student-canvas)] text-[var(--student-ink)] flex flex-col antialiased transition-colors duration-200">
       {/* Top Global Navigation Bar - Responsive 2-Tier Layout */}
       <header className="sticky top-0 z-40 bg-white/95 dark:bg-[#172033]/95 backdrop-blur-md border-b border-[var(--student-border,#E8E6DF)] shadow-2xs">
-        <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Row 1: Brand Logo, Main Nav Tabs (>= 1024px), Core Utilities */}
+        <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8">
+          {/* Row 1: Brand Logo, Main Nav Tabs (>= 1440px), Core Utilities */}
           <div className="flex items-center justify-between h-16 sm:h-18 lg:h-20 gap-3 sm:gap-4 min-w-0">
             {/* Left: Logo and Desktop Nav */}
             <div className="flex items-center gap-3 xl:gap-6 min-w-0">
@@ -105,7 +122,7 @@ export const StudentLayout: React.FC = () => {
                     <span className="text-base sm:text-lg font-bold tracking-tight text-slate-900 dark:text-white">
                       EduTwin
                     </span>
-                    <span className="rounded-md bg-slate-100 dark:bg-slate-800/90 px-1.5 py-0.5 text-[10px] sm:text-xs font-semibold text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                    <span className="hidden sm:inline-flex rounded-md bg-slate-100 dark:bg-slate-800/90 px-1.5 py-0.5 text-[10px] sm:text-xs font-semibold text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
                       Học thích ứng
                     </span>
                   </div>
@@ -115,8 +132,8 @@ export const StudentLayout: React.FC = () => {
                 </div>
               </Link>
 
-              {/* Desktop Nav Tabs - Responsive labels, seamless lg (1024px+) display */}
-              <nav className="hidden lg:flex items-center gap-1 xl:gap-2 min-w-0">
+              {/* Larger labels use a matching desktop/menu breakpoint. */}
+              <nav className="hidden min-[1440px]:flex items-center gap-1 xl:gap-2 min-w-0">
                 <NavLink
                   to={getTabUrl("/hoc-tap/tong-quan")}
                   className={({ isActive }) =>
@@ -157,7 +174,7 @@ export const StudentLayout: React.FC = () => {
                   <span className="hidden xl:inline">Bài tập của tôi</span>
                   <span className="inline xl:hidden">Bài tập</span>
                   <span className="ml-0.5 rounded-full bg-[var(--student-brand,#6546D7)] dark:bg-[#856BEE] px-1.5 py-0.2 text-[10px] xl:text-xs font-bold text-white leading-tight shrink-0">
-                    3
+                    {workspaceLabels.assignmentCount}
                   </span>
                 </NavLink>
 
@@ -191,40 +208,8 @@ export const StudentLayout: React.FC = () => {
               </nav>
             </div>
 
-            {/* Right: Subject selector (min-[1760px] only), Streak (min-[1760px] only), Theme, Bell, Profile, Mobile hamburger */}
+            {/* Context controls use a separate row at every width to preserve larger readable navigation. */}
             <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-              {/* Row 1 Subject Selector - Only displayed on ultra-wide desktop (>= 1760px) where 1 row has abundant room */}
-              <div className="relative hidden min-[1760px]:block shrink-0">
-                <select
-                  value={activeSubjectId}
-                  onChange={(e) => handleSubjectChange(e.target.value)}
-                  className="appearance-none rounded-xl border border-[var(--student-border,#E8E6DF)] bg-white dark:bg-[#172033] hover:bg-slate-50 dark:hover:bg-slate-800 pl-3.5 pr-8 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-200 transition-colors focus:border-[var(--student-brand,#6546D7)] focus:outline-none cursor-pointer shadow-2xs max-w-[170px] truncate"
-                  title="Chuyển đổi môn học đang theo dõi"
-                  data-testid="student-subject-selector-desktop"
-                >
-                  <option value="">Toàn bộ</option>
-                  {subjects.map((sub) => (
-                    <option key={sub.subjectId} value={sub.subjectId}>
-                      {sub.subjectName}
-                    </option>
-                  ))}
-                </select>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-slate-400">
-                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                  </svg>
-                </div>
-              </div>
-
-              {/* Study Streak Badge - Only on ultra-wide desktop >= 1760px */}
-              <div
-                className="hidden min-[1760px]:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--student-surface-subtle,#F4F3EE)] dark:bg-[var(--student-surface-subtle,#1C2738)] border border-[var(--student-border,#E8E6DF)] text-slate-700 dark:text-slate-300 text-xs font-semibold whitespace-nowrap shrink-0"
-                title="Chuỗi học tập liên tiếp của bạn"
-              >
-                <span className="w-2 h-2 rounded-full bg-[#16835B] dark:bg-[#29AC7B]" />
-                <span>Chuỗi 7 ngày</span>
-              </div>
-
               {/* Dark / Light Theme Toggle - Sleek Compact Icon Button */}
               <ThemeToggle />
 
@@ -317,7 +302,7 @@ export const StudentLayout: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setIsMobileMenuOpen(true)}
-                className="lg:hidden p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline-indigo-600"
+                className="min-[1440px]:hidden p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline-indigo-600"
                 aria-label="Mở menu điều hướng"
               >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -328,9 +313,9 @@ export const StudentLayout: React.FC = () => {
           </div>
         </div>
 
-        {/* Row 2 Context Sub-bar: Active on viewports < 1760px (min-[1760px]:hidden), covering laptop (1024px-1759px), tablet and mobile */}
-        <div className="min-[1760px]:hidden border-t border-slate-200/80 dark:border-slate-800/80 bg-slate-50/90 dark:bg-[#0b1329]/90 backdrop-blur-xs py-2">
-          <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-3 min-w-0">
+        {/* Row 2 Context Sub-bar keeps subject and streak readable without squeezing the navigation. */}
+        <div className="border-t border-slate-200/80 dark:border-slate-800/80 bg-slate-50/90 dark:bg-[#0b1329]/90 backdrop-blur-xs py-2">
+          <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-3 min-w-0">
             {/* Left: Subject Selector with Icon and Label */}
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-xs font-semibold text-slate-600 dark:text-slate-400 flex items-center gap-1.5 shrink-0">
@@ -363,19 +348,20 @@ export const StudentLayout: React.FC = () => {
             {/* Right: Streak status badge on sub-bar */}
             <div
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-[var(--student-border,#E8E6DF)] text-slate-700 dark:text-slate-300 text-xs font-semibold shrink-0"
-              title="Chuỗi học tập liên tiếp của bạn"
+              title={workspaceLabels.streakTitle}
             >
               <span className="w-1.5 h-1.5 rounded-full bg-[#16835B] dark:bg-[#29AC7B]" />
-              <span className="hidden sm:inline">Chuỗi 7 ngày</span>
-              <span className="sm:hidden">7 ngày</span>
+              <span className="hidden sm:inline">{workspaceLabels.streak}</span>
+              <span className="sm:hidden">{workspaceLabels.shortStreak}</span>
             </div>
           </div>
         </div>
+        <StudentAcademicContext />
       </header>
 
       {/* Mobile Drawer Navigation */}
       {isMobileMenuOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden flex">
+        <div className="fixed inset-0 z-50 min-[1440px]:hidden flex">
           <div
             className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity"
             onClick={() => setIsMobileMenuOpen(false)}
@@ -447,7 +433,7 @@ export const StudentLayout: React.FC = () => {
                   className="flex items-center justify-between px-3 py-2 rounded-lg text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-[var(--student-surface-subtle)] hover:text-slate-900 dark:hover:text-white"
                 >
                   <span>Bài tập của tôi</span>
-                  <span className="rounded-full bg-[var(--student-brand)] px-2 py-0.5 text-xs text-white">3</span>
+                  <span className="rounded-full bg-[var(--student-brand)] px-2 py-0.5 text-xs text-white">{workspaceLabels.assignmentCount}</span>
                 </Link>
                 <Link
                   to={getTabUrl("/hoc-tap/ho-so-nang-luc")}

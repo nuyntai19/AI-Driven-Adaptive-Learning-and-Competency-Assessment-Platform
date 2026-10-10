@@ -29,7 +29,8 @@ public sealed class AIAnalysisRequestFactory : IAIAnalysisRequestFactory
         Question question,
         IReadOnlyList<KnowledgeNode> allowedKnowledgeNodes,
         IReadOnlyList<AnalyzeReasoningImagePart>? imageParts = null,
-        IReadOnlyList<QuestionOption>? options = null)
+        IReadOnlyList<QuestionOption>? options = null,
+        IReadOnlyList<AnalyzeReasoningImagePart>? questionImageParts = null)
     {
         ArgumentNullException.ThrowIfNull(attempt);
         ArgumentNullException.ThrowIfNull(question);
@@ -63,6 +64,7 @@ public sealed class AIAnalysisRequestFactory : IAIAnalysisRequestFactory
                 QuestionType = question.QuestionType,
                 AnswerEvaluationMode = question.AnswerEvaluationMode,
                 QuestionText = question.QuestionText,
+                ImageParts = questionImageParts ?? [],
                 MaxScore = question.MaxScore > 0 ? question.MaxScore : 10m,
                 ContentLanguage = question.LanguageCode,
                 Options = safeOptions.Select(o => new AnalyzeReasoningOption(o.OptionLabel, o.OptionText)).ToArray(),
@@ -76,7 +78,8 @@ public sealed class AIAnalysisRequestFactory : IAIAnalysisRequestFactory
                     RequiredIdeas = question.GradingCriteria.RequiredIdeas.ToArray(),
                     CommonErrors = question.GradingCriteria.CommonErrors.ToArray(),
                     ScoringNotes = question.GradingCriteria.ScoringNotes,
-                    Criteria = question.GradingCriteria.Criteria.Select(c => new AnalyzeReasoningRubricCriterion(c.CriterionId, c.Title, c.Description, c.MaxScore)).ToArray()
+                    Criteria = question.GradingCriteria.Criteria.Select(c => new AnalyzeReasoningRubricCriterion(c.CriterionId, c.Title, c.Description, c.MaxScore)
+                    { VisualRequirements = c.VisualRequirements.Count > 0 ? c.VisualRequirements.ToArray() : null }).ToArray()
                 }
             },
             StudentSubmission = new AnalyzeReasoningStudentSubmission

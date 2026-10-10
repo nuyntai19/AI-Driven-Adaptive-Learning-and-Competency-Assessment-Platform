@@ -128,14 +128,14 @@ public class PublishAssignmentUseCase : IPublishAssignmentUseCase
         // Load Subject của Class một lần
         var classEntity = await _dbContext.Classes
             .AsNoTracking()
-            .Select(c => new { c.ClassId, c.SubjectId, c.TeacherId, c.GradeLevel, c.Status })
+            .Select(c => new { c.ClassId, c.SubjectId, c.TeacherId, c.GradeLevel, c.Status, c.LearningScope })
             .FirstOrDefaultAsync(c => c.ClassId == assignment.ClassId, cancellationToken);
 
         if (classEntity == null)
             return PublishAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
 
         // Fix Bug 2: Publish requires ClassStatus.Active
-        if (classEntity.Status != ClassStatus.Active)
+        if (classEntity.Status != ClassStatus.Active || classEntity.LearningScope != ClassLearningScope.Current)
             return PublishAssignmentResult.Failure(ErrorCodes.InvalidStateTransition);
 
         var questionIds = orderedQuestions.Select(q => q.QuestionId).ToList();

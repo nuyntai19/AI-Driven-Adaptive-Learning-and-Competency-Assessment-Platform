@@ -1,7 +1,7 @@
 export type QuestionType = "MultipleChoice" | "ShortAnswer" | "Essay";
 export type QuestionStatus = "Draft" | "Active" | "Archived";
 export type MaterialVisibility = "Private" | "Shared";
-export interface RubricCriterion { criterionId: string; title: string; description: string; maxScore: number; }
+export interface RubricCriterion { criterionId: string; title: string; description: string; maxScore: number; visualRequirements?: string[]; }
 export type QuestionAnswerEvaluationMode = "TextExact" | "NumericRational" | "Coordinate2D" | "MathEquivalent" | "Manual";
 
 export interface QuestionOption {
@@ -29,6 +29,7 @@ export interface GradingCriteria {
 }
 
 export interface Question {
+  hasImage?: boolean;
   questionId: string;
   subjectId: string;
   primaryTopicNodeId: string;
@@ -54,6 +55,8 @@ export interface Question {
 }
 
 export interface CreateQuestionRequest {
+  imageDataUrl?: string;
+  copyImageFromQuestionId?: string;
   visibility?: MaterialVisibility;
   teacherId?: string | null;
   subjectId: string;
@@ -76,6 +79,8 @@ export interface CreateQuestionRequest {
 }
 
 export interface UpdateQuestionRequest {
+  imageDataUrl?: string;
+  removeImage?: boolean;
   visibility?: MaterialVisibility;
   primaryTopicNodeId: string;
   gradeLevel?: number | null;

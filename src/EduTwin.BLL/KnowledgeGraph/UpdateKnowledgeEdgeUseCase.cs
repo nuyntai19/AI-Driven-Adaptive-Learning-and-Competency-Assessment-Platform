@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using EduTwin.BLL.CurriculumAndQuestions;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.Common;
 using EduTwin.Contracts.IdentityAndTenancy;
@@ -87,26 +88,47 @@ public class UpdateKnowledgeEdgeUseCase : IUpdateKnowledgeEdgeUseCase
             return UpdateKnowledgeEdgeResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
+        await using var transaction = await GraphMutationTransaction.BeginAsync(_dbContext, _tenantContext.CenterId.Value, edge.SubjectId, cancellationToken);
+        if (transaction is not null) await _dbContext.Entry(edge).ReloadAsync(cancellationToken);
+        if (edge.IsDeleted) return UpdateKnowledgeEdgeResult.Failure(ErrorCodes.ResourceNotFound);
+
         if (edge.RowVersion != parsedRowVersion)
         {
             return UpdateKnowledgeEdgeResult.Failure(ErrorCodes.ConcurrencyConflict);
         }
 
+        if (edge.Weight != request.Weight.Value)
+        {
+            var usages = await AcademicDependencyGuards.NodeUsageAsync(_dbContext, _tenantContext.CenterId.Value, edge.SourceNodeId, edge.TargetNodeId, cancellationToken);
+            if (usages.Count > 0)
+                return UpdateKnowledgeEdgeResult.Failure(ErrorCodes.InvalidStateTransition, AcademicDependencyGuards.ClassBlockMessage(usages));
+        }
+        var before = new { edge.SourceNodeId, edge.TargetNodeId, RelationType = edge.RelationType.ToString(), edge.Weight, edge.IsDeleted, edge.RowVersion };
         edge.Weight = request.Weight.Value;
         edge.UpdatedAt = _timeProvider.GetUtcNow().UtcDateTime;
         edge.UpdatedBy = _tenantContext.UserId!.Value;
 
         edge.RowVersion = parsedRowVersion + 1;
         _dbContext.Entry(edge).Property(x => x.RowVersion).OriginalValue = parsedRowVersion;
+        AcademicDependencyGuards.Audit(_dbContext, _tenantContext.CenterId.Value, _tenantContext.UserId.Value,
+            "KnowledgeEdgeUpdated", "KnowledgeEdge", edgeId, before,
+            new { edge.SourceNodeId, edge.TargetNodeId, RelationType = edge.RelationType.ToString(), edge.Weight, edge.IsDeleted, edge.RowVersion },
+            edge.UpdatedAt, "Cập nhật trọng số liên kết tri thức.");
 
         try
         {
             await _dbContext.SaveChangesAsync(cancellationToken);
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         }
         catch (DbUpdateConcurrencyException)
         {
             _dbContext.ChangeTracker.Clear();
             return UpdateKnowledgeEdgeResult.Failure(ErrorCodes.ConcurrencyConflict);
+        }
+        catch (DbUpdateException ex) when (AcademicDependencyGuards.IsDatabaseGuard(ex))
+        {
+            _dbContext.ChangeTracker.Clear();
+            return UpdateKnowledgeEdgeResult.Failure(ErrorCodes.InvalidStateTransition, AcademicDependencyGuards.ConcurrentDependencyMessage);
         }
 
         var dto = new KnowledgeEdgeDto

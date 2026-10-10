@@ -56,17 +56,49 @@ public sealed class ReasoningBatchExecutor(
         _options.Validate(_gemini);
         if (items.Count is < 1 or > 5 || items.Select(x => x.ItemId).Distinct(StringComparer.Ordinal).Count() != items.Count)
             throw GeminiAdapterException.ConfigurationInvalid();
-        var images = items.SelectMany(x => x.Request.StudentSubmission.ImageParts)
+        var originalImageCount = items.Sum(i => i.Request.AllImages().Count());
+        if (items.Count > 1 && originalImageCount > _options.MaxImages || _options.Provider == "Groq" && originalImageCount > 3)
+            throw GeminiAdapterException.ConfigurationInvalid();
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+        timeout.CancelAfter(_gemini.Timeout); // One deadline spans inspection + grading, not two unbounded waits.
+        var combined = new Dictionary<string, ReasoningBatchResult>(StringComparer.Ordinal);
+        IReadOnlyDictionary<string, VisualInspectionResult> inspections;
+        try { inspections = await new GeminiVisualEvidenceInspector(gemini, _gemini, logger).InspectAsync(items, timeout.Token); }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested) { throw GeminiAdapterException.Timeout(); }
+        var gradingItems = new List<ReasoningBatchItem>();
+        foreach (var item in items)
+        {
+            if (inspections.TryGetValue(item.ItemId, out var inspection))
+            {
+                if (inspection.Error is not null) { combined.Add(item.ItemId, new(null, inspection.Error)); continue; }
+                gradingItems.Add(item with { Request = item.Request with { VerifiedVisualEvidence = inspection.Evidence } });
+            }
+            else gradingItems.Add(item);
+        }
+        if (gradingItems.Count == 0) return combined;
+        items = gradingItems;
+        var images = items.SelectMany(x => x.Request.AllImages())
             .Select(x => new GeminiInlineImagePart(x.Data, x.MimeType)).ToArray();
+        var imageIndex = 0;
+        foreach (var item in items)
+        {
+            var itemImageIndex = 0;
+            foreach (var image in item.Request.AllImages())
+            {
+                var role = itemImageIndex++ < item.Request.Question.ImageParts.Count ? "Question" : "Student";
+                logger?.LogInformation("AI image manifest item {ItemId}, image {ImageIndex}, role {Role}, bytes {Bytes}, sha256 {Sha256}.",
+                    item.ItemId, ++imageIndex, role, image.Data.Length,
+                    Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(image.Data)));
+            }
+        }
         if (items.Count > 1 && images.Length > _options.MaxImages) throw GeminiAdapterException.ConfigurationInvalid();
         if (_options.Provider == "Groq" && images.Length > 3) throw GeminiAdapterException.ConfigurationInvalid();
         var prompt = items.Count == 1 ? prompts.Build(items[0].Request) : prompts.BuildBatch(items);
-        var config = items.Count == 1 ? schemas.CreateGenerateContentConfig() : schemas.CreateBatchConfig(items.Select(x => x.ItemId));
+        var requireDeductions = items.Any(i => i.Request.VerifiedVisualEvidence is not null);
+        var config = items.Count == 1 ? schemas.CreateGenerateContentConfig(requireDeductions) : schemas.CreateBatchConfig(items.Select(x => x.ItemId), requireDeductions);
         var model = _options.Model(_gemini);
         // Google recommends keeping the default temperature for Gemini 3.x reasoning.
         if (model.StartsWith("gemini-3", StringComparison.Ordinal)) config.Temperature = 1;
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
-        timeout.CancelAfter(_gemini.Timeout);
         GeminiGenerateContentResult raw;
         try
         {
@@ -78,8 +110,9 @@ public sealed class ReasoningBatchExecutor(
         catch (OperationCanceledException) when (!token.IsCancellationRequested) { throw GeminiAdapterException.Timeout(); }
         AIProcessingMetrics.BatchSize.Record(items.Count, new KeyValuePair<string, object?>("provider", _options.Provider));
         if (items.Count == 1)
-            return new Dictionary<string, ReasoningBatchResult> { [items[0].ItemId] = Parse(raw.ResponseText, items[0].Request, model) };
-        return ParseBatch(raw.ResponseText, items, model);
+            combined.Add(items[0].ItemId, Parse(raw.ResponseText, items[0].Request, model));
+        else foreach (var result in ParseBatch(raw.ResponseText, items, model)) combined.Add(result.Key, result.Value);
+        return combined;
     }
 
     private ReasoningBatchResult Parse(string json, AnalyzeReasoningRequest request, string model)
@@ -90,8 +123,8 @@ public sealed class ReasoningBatchExecutor(
         }
         catch (AIAnalysisValidationException ex)
         {
-            logger?.LogWarning("AI response validation failed for {Provider}, model {Model}; code {ErrorCode}, rule {ValidationRule}.",
-                ProviderName, model, ex.ErrorCode, ex.ValidationRule);
+            logger?.LogWarning("AI response validation failed for {Provider}, model {Model}; code {ErrorCode}, rule {ValidationRule}, detail {DiagnosticDetail}.",
+                ProviderName, model, ex.ErrorCode, ex.ValidationRule, ex.DiagnosticDetail);
             return new(null, ex);
         }
     }

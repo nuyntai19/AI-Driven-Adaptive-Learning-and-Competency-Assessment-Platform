@@ -7,6 +7,7 @@ public class UpdateKnowledgeNodeResult
     public bool IsSuccess { get; }
     public string? ErrorCode { get; }
     public KnowledgeNodeDto? Data { get; }
+    public string? Message { get; private set; }
 
     private UpdateKnowledgeNodeResult(bool isSuccess, string? errorCode, KnowledgeNodeDto? data)
     {
@@ -16,5 +17,5 @@ public class UpdateKnowledgeNodeResult
     }
 
     public static UpdateKnowledgeNodeResult Success(KnowledgeNodeDto data) => new(true, null, data);
-    public static UpdateKnowledgeNodeResult Failure(string errorCode) => new(false, errorCode, null);
+    public static UpdateKnowledgeNodeResult Failure(string errorCode, string? message = null) => new(false, errorCode, null) { Message = message };
 }

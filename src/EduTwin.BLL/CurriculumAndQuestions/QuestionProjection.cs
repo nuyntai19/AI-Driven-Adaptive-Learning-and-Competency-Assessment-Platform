@@ -27,6 +27,7 @@ internal static class QuestionProjection
             Difficulty = q.Difficulty,
             GradeLevel = q.GradeLevel,
             QuestionText = q.QuestionText,
+            HasImage = q.HasImage,
             CorrectAnswer = q.CorrectAnswer,
             Solution = q.Solution,
             ExpectedReasoning = q.ExpectedReasoning,

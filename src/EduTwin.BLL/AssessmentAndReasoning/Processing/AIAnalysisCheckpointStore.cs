@@ -20,6 +20,16 @@ public sealed class AIAnalysisCheckpointStore(EduTwinDbContext db, TimeProvider 
     {
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         hash.AppendData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { Profile = profile, QuestionVersion = questionVersion, Request = request })));
+        if (request.Question.ImageParts.Count > 0)
+        {
+            hash.AppendData("question-images"u8);
+            foreach (var image in request.Question.ImageParts)
+            {
+                hash.AppendData(Encoding.UTF8.GetBytes(image.MimeType));
+                hash.AppendData(SHA256.HashData(image.Data));
+            }
+            hash.AppendData("student-images"u8);
+        }
         foreach (var image in request.StudentSubmission.ImageParts)
         {
             hash.AppendData(Encoding.UTF8.GetBytes(image.MimeType));

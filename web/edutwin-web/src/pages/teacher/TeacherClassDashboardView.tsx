@@ -166,6 +166,19 @@ export function TeacherClassDashboardView() {
           </div>
 
           {/* GAP GROUPS (Adaptive Interventions) */}
+          <section className="th-surface p-5 space-y-2" aria-label="Phạm vi giáo trình và bằng chứng đánh giá">
+            <h2 className="text-sm font-semibold">Phạm vi giáo trình đang áp dụng</h2>
+            {!dashboard.academicCoverage.hasAppliedCurriculum ? (
+              <p className="text-sm text-[var(--th-text-secondary)]">
+                Lớp chưa có giáo trình đã xuất bản được áp dụng. Hãy gán giáo trình; hệ thống không lấy toàn bộ đồ thị môn thay thế.
+              </p>
+            ) : (
+              <p className="text-sm text-[var(--th-text-secondary)]">
+                {dashboard.academicCoverage.applicableTopicCount} chủ đề trong giáo trình · {dashboard.academicCoverage.assessedTopicCount} chủ đề có bằng chứng đánh giá.
+                {" "}{dashboard.academicCoverage.unassessedStudentTopicCount} cặp học sinh–chủ đề chưa được đánh giá, không tính là điểm 0 hay nhóm yếu.
+              </p>
+            )}
+          </section>
           <section className="th-surface p-6 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[var(--th-border-subtle)] pb-4">
               <div>
@@ -174,7 +187,7 @@ export function TeacherClassDashboardView() {
                   <span>Nhóm Học Sinh Cần Can Thiệp Bổ Trợ (Gap Groups)</span>
                 </h2>
                 <p className="mt-1 text-xs text-[var(--th-text-secondary)]">
-                  Hệ thống AI tự động gom nhóm học sinh có cùng lỗ hổng kiến thức để giáo viên giao bài tập thích ứng đúng trọng tâm.
+                  Nhóm chỉ gồm học sinh đã có bằng chứng năng lực dưới ngưỡng trong giáo trình của lớp. Chưa đánh giá không có nghĩa là học yếu.
                 </p>
               </div>
               <span className="th-badge th-badge-info">
@@ -184,7 +197,7 @@ export function TeacherClassDashboardView() {
 
             {dashboard.gapGroups.length === 0 ? (
               <div className="p-8 text-center text-xs text-[var(--th-text-muted)] border border-dashed border-[var(--th-border)] rounded-xl">
-                Không có nhóm học sinh nào bị hổng kiến thức nghiêm trọng tại thời điểm này.
+                Chưa ghi nhận nhóm dưới ngưỡng từ bằng chứng đã có. Chủ đề chưa đánh giá không được coi là hổng kiến thức.
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -296,7 +309,7 @@ export function TeacherClassDashboardView() {
                   Chuyên Đề Yếu Cần Củng Cố
                 </h2>
                 <p className="text-xs text-[var(--th-text-secondary)]">
-                  Xếp hạng theo độ thuần thục trung bình của cả lớp từ thấp lên cao.
+                  Độ thuần thục trung bình trên học sinh đã có bằng chứng; học sinh chưa đánh giá được thống kê riêng.
                 </p>
               </div>
 
@@ -330,6 +343,7 @@ export function TeacherClassDashboardView() {
                       </div>
                       <p className="text-[11px] text-[var(--th-text-muted)]">
                         {topic.affectedStudentCount} học sinh chưa đạt yêu cầu
+                        {" "}· {topic.assessedStudentCount} đã đánh giá · {topic.unassessedStudentCount} chưa đánh giá
                       </p>
                     </div>
                   ))}

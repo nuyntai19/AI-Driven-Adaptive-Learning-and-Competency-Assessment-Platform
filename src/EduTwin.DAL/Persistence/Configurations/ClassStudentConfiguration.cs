@@ -69,6 +69,8 @@ public class ClassStudentConfiguration : IEntityTypeConfiguration<Organization.C
 
         // CHECK Constraint
         builder.ToTable(t => t.HasCheckConstraint("ck_class_students_status", "status IN ('Active', 'Removed')"));
+        builder.ToTable(t => t.HasCheckConstraint("ck_class_students_enrollment_grade", "grade_level_at_enrollment IS NULL OR grade_level_at_enrollment BETWEEN 10 AND 12"));
+        builder.ToTable(t => t.HasCheckConstraint("ck_class_students_exception_complete", "(grade_mismatch_reason IS NULL AND exception_approved_by IS NULL AND exception_approved_at IS NULL) OR (grade_mismatch_reason IS NOT NULL AND CHAR_LENGTH(TRIM(grade_mismatch_reason))>0 AND exception_approved_by IS NOT NULL AND exception_approved_at IS NOT NULL)"));
 
         // Relations
         // Tenant-safe FK to classes

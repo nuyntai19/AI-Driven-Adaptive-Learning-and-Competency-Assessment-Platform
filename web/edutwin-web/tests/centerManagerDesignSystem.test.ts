@@ -41,7 +41,10 @@ test("drawer and confirm dialog enforce modal semantics and shared focus managem
 });
 
 test("CenterManager shell is capability-first, tenant-bound and isolated from other actors", () => {
-  assert.match(layout, /user\?\.accountType === "CenterManager" \? <CenterManagerLayout \/> : <Outlet \/>/);
+  assert.match(layout, /const access = resolveCenterManagerLayoutAccess\(user\)/);
+  assert.match(layout, /if \(!access.allowed\)/);
+  assert.match(layout, /return <Navigate to=\{access.redirect/);
+  assert.doesNotMatch(layout, /<CenterManagerLayout \/> : <Outlet \/>/);
   assert.match(layout, /item\.permissionMode === "any"/);
   assert.match(layout, /hasAnyPermission\(item\.permissions\)/);
   assert.match(layout, /hasAllPermissions\(item\.permissions\)/);

@@ -22,6 +22,7 @@ import {
   renderPng,
 } from "../../utils/scratchpadRenderer";
 import { scratchpadPoint, scratchpadTransform } from "../../utils/scratchpadViewport";
+import { readScratchpadPng } from "../../utils/scratchpadPngImport";
 
 const MAX_HISTORY_STATES = 30;
 
@@ -57,6 +58,8 @@ export const ScratchpadInlinePanel = ({
   onAttachSnapshot,
 }: ScratchpadInlinePanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isImporting, setIsImporting] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
   const inkCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [viewport, setViewport] = useState({ width: CANVAS_WIDTH, height: CANVAS_HEIGHT });
@@ -586,12 +589,12 @@ export const ScratchpadInlinePanel = ({
       </div>
 
       {/* Footer / Action bar */}
-      <div className="p-3 bg-slate-100 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs shrink-0">
+      <div className="p-3 bg-slate-100 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 flex flex-wrap gap-2 items-center justify-between text-xs shrink-0">
         <span className="text-slate-500 text-[11px] font-medium">
           {isReadOnly ? "Bản nháp cục bộ, không thay thế ảnh bài nộp trên server." : saveStatus}
         </span>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {exportStatus && (
             <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold animate-in fade-in">
               {exportStatus}
@@ -603,6 +606,24 @@ export const ScratchpadInlinePanel = ({
               🔒 Đã khóa chỉnh sửa
             </span>
           ) : (
+            <>
+            <input ref={fileInputRef} type="file" accept="image/png" className="hidden" aria-label="Chọn ảnh nháp PNG có sẵn"
+              onChange={async e => {
+                const file = e.currentTarget.files?.[0]; e.currentTarget.value = '';
+                if (!file || isReadOnly || isImporting) return;
+                setIsImporting(true); setExportStatus('Đang kiểm tra ảnh PNG…');
+                try {
+                  const image = await readScratchpadPng(file);
+                  onAttachSnapshot?.(image.blob, image.dataUrl); onExportPng?.(image.blob);
+                  setExportStatus('Đã đính kèm PNG gốc; nét vẽ trên bảng không đổi.');
+                } catch (error) { setExportStatus(error instanceof Error ? error.message : 'Không thể đọc ảnh PNG.'); }
+                finally { setIsImporting(false); }
+              }} />
+            <button type="button" disabled={isImporting} onClick={() => fileInputRef.current?.click()}
+              className="rounded-xl border border-slate-300 dark:border-slate-600 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 disabled:opacity-50"
+              title="Đính kèm PNG nguyên bản vào bài làm, không thay đổi nét vẽ trên bảng">
+              Đính kèm PNG có sẵn
+            </button>
             <button
               type="button"
               onClick={handleAttachSnapshot}
@@ -610,6 +631,7 @@ export const ScratchpadInlinePanel = ({
             >
               <span>{isAttached ? "✓ Cập nhật ảnh đính kèm" : "📎 Đính kèm vào bài làm"}</span>
             </button>
+            </>
           )}
         </div>
       </div>

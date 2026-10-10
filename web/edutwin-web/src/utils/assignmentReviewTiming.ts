@@ -9,7 +9,7 @@ export function isAssignmentWorkSubmitted(assignment: StudentAssignmentDetailDto
 
 export function shouldStartAssignment(assignment: StudentAssignmentDetailDto | null | undefined,
   locallySubmitted = false): boolean {
-  return Boolean(assignment && !isAssignmentWorkSubmitted(assignment, locallySubmitted) && !assignment.startedAt);
+  return Boolean(assignment && !assignment.isReadOnly && !isAssignmentWorkSubmitted(assignment, locallySubmitted) && !assignment.startedAt);
 }
 
 export function getAssignmentReviewTiming(assignment: StudentAssignmentDetailDto | null | undefined) {

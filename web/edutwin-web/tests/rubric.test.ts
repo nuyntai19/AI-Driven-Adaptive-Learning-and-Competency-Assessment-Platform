@@ -30,3 +30,15 @@ test("saved native rubric scores hydrate into a consistent /10 form", () => {
   assert.equal(form.method.score, '2.5'); assert.equal(form.result.score, '7.5');
   assert.equal(buildRubricScores(criteria, form, 2).total, 2);
 });
+
+test("visual objectives survive hydration and reject blank, duplicate or oversized requirements", () => {
+  const drawing = { ...criteria[0], visualRequirements: ['Có nhãn M', 'Có dấu góc vuông'] };
+  const visual = [drawing, criteria[1]];
+  const hydrated = hydrateGradingCriteria({ schemaVersion: '2.0', requiredIdeas: [], commonErrors: [], scoringNotes: '', criteria: visual });
+  assert.deepEqual(hydrated.criteria![0].visualRequirements, drawing.visualRequirements);
+  hydrated.criteria![0].visualRequirements![0] = 'changed';
+  assert.equal(drawing.visualRequirements[0], 'Có nhãn M');
+  assert.equal(rubricDefinitionError(visual, 2), null);
+  for (const requirements of [[''], ['M', 'M'], ['a'.repeat(501)], Array.from({ length: 13 }, (_, i) => `M${i}`)])
+    assert.ok(rubricDefinitionError([{ ...criteria[0], visualRequirements: requirements }, criteria[1]], 2));
+});

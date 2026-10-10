@@ -16,6 +16,7 @@ public class QuestionDto
     public byte Difficulty { get; set; }
     public byte? GradeLevel { get; set; }
     public string QuestionText { get; set; } = null!;
+    public bool HasImage { get; set; }
     public string CorrectAnswer { get; set; } = null!;
     public string Solution { get; set; } = null!;
     public string? ExpectedReasoning { get; set; }

@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useState, useMemo, useEffect } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   useQuestions,
@@ -22,10 +22,16 @@ import {
 } from "../../components/teacher";
 import { TeacherConfirmDialog } from "../../components/teacher/TeacherOverlays";
 import { RichMathText } from "../../components/math/RichMathText";
+import { KnowledgeTopicPicker } from "../../components/teacher/KnowledgeTopicPicker";
+import { parseKnowledgeTopicContext, sameSubject, validateKnowledgeTopicContext, withoutTopicContext } from "../../utils/knowledgeTopicContext";
 
 export function TeacherQuestionBankView() {
   const navigate = useNavigate();
-  const actorId = useAuthStore(state => state.user?.userId);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const user = useAuthStore(state => state.user);
+  const actorId = user?.userId;
+  const topicContext = parseKnowledgeTopicContext(searchParams);
+  const contextKey = searchParams.toString();
   const [libraryScope, setLibraryScope] = useState<"all" | "owned" | "Shared">("all");
   const hasPermission = useAuthStore((state) => state.hasPermission);
 
@@ -35,11 +41,14 @@ export function TeacherQuestionBankView() {
   const canDelete = hasPermission(permissions.questionsDelete);
   const canReadSubjects = hasPermission(permissions.subjectsRead);
   const canReadNodes = hasPermission(permissions.nodesRead);
+  const canRead = hasPermission(permissions.questionsRead);
 
   // Filters state
-  const [selectedSubjectId, setSelectedSubjectId] = useState<string>("");
+  const [manualSubjectId, setSelectedSubjectId] = useState<string>("");
+  const selectedSubjectId = topicContext.kind === "topic" ? topicContext.subjectId : manualSubjectId;
   const [selectedGradeLevel, setSelectedGradeLevel] = useState<number | "">("");
-  const [selectedTopicId, setSelectedTopicId] = useState<string>("");
+  const [manualTopicId, setSelectedTopicId] = useState<string>("");
+  const selectedTopicId = topicContext.kind === "topic" ? topicContext.topicId : manualTopicId;
   const [selectedType, setSelectedType] = useState<QuestionType | "">("");
   const [selectedDifficulty, setSelectedDifficulty] = useState<number | "">("");
   const [selectedStatus, setSelectedStatus] = useState<QuestionStatus | "">("");
@@ -59,19 +68,40 @@ export function TeacherQuestionBankView() {
   const [isImportOpen, setIsImportOpen] = useState(false);
 
   // Canonical subject list query
-  const { data: subjectsData, isLoading: isLoadingSubjects } = useQuery({
-    queryKey: ["subjects", "active-for-teacher-question-bank"],
+  const subjectsQuery = useQuery({
+    queryKey: ["subjects", "active-for-teacher-question-bank", user?.centerId, user?.userId],
     queryFn: () => organizationApi.listSubjects(true),
-    enabled: canReadSubjects,
+    enabled: Boolean(user?.centerId && user?.userId) && canReadSubjects,
   });
+  const { data: subjectsData, isLoading: isLoadingSubjects } = subjectsQuery;
 
   // Canonical knowledge nodes query for selected subject
-  const { data: knowledgeNodesData, isLoading: isLoadingKnowledgeNodes } = useQuery({
-    queryKey: ["knowledge-nodes-for-teacher-filter", selectedSubjectId],
+  const knowledgeNodesQuery = useQuery({
+    queryKey: ["knowledge-nodes-for-teacher-filter", user?.centerId, user?.userId, selectedSubjectId],
     queryFn: () => knowledgeGraphApi.listNodes(selectedSubjectId),
-    enabled: canReadNodes && Boolean(selectedSubjectId),
+    enabled: Boolean(user?.centerId && user?.userId) && canReadNodes && Boolean(selectedSubjectId)
+      && (topicContext.kind === "none" || Boolean(subjectsData?.data.some(s => s.isActive && sameSubject(s.subjectId, selectedSubjectId)))),
     staleTime: 60_000,
   });
+  const { data: knowledgeNodesData, isLoading: isLoadingKnowledgeNodes } = knowledgeNodesQuery;
+  const topicValidation = validateKnowledgeTopicContext(topicContext, {
+    canRead: canRead && canReadSubjects && canReadNodes,
+    isError: subjectsQuery.isError || knowledgeNodesQuery.isError,
+    subjects: subjectsData?.data,
+    nodes: knowledgeNodesData,
+  });
+  const questionsReady = Boolean(user?.centerId && user?.userId) && canRead
+    && (topicValidation.status === "none" || topicValidation.status === "ready");
+
+  // URL navigation (including Back/Forward) changes the filter immediately; reset its page too.
+  useEffect(() => { setPage(1); }, [contextKey, user?.centerId, user?.userId]);
+
+  const clearTopicContext = () => {
+    setSelectedSubjectId(selectedSubjectId);
+    setSelectedTopicId("");
+    setPage(1);
+    setSearchParams(withoutTopicContext(searchParams), { replace: true });
+  };
 
   const subjectMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -97,7 +127,10 @@ export function TeacherQuestionBankView() {
     [libraryScope, selectedSubjectId, selectedGradeLevel, selectedTopicId, selectedType, selectedDifficulty, selectedStatus, page, pageSize]
   );
 
-  const { data: response, isLoading, isError, error, refetch } = useQuestions(questionFilter);
+  const questionsQuery = useQuestions(questionFilter, { enabled: questionsReady });
+  const { data: response, error, refetch } = questionsQuery;
+  const isLoading = questionsReady && questionsQuery.isLoading;
+  const isError = questionsReady && questionsQuery.isError;
 
   const activateMutation = useActivateQuestion();
   const archiveMutation = useArchiveQuestion();
@@ -180,7 +213,7 @@ export function TeacherQuestionBankView() {
 
   // Filter items locally by search text
   const displayedQuestions = useMemo(() => {
-    if (!response?.data) return [];
+    if (!questionsReady || !response?.data) return [];
     if (!localSearchText.trim()) return response.data;
     const lower = localSearchText.toLowerCase();
     return response.data.filter(
@@ -188,7 +221,7 @@ export function TeacherQuestionBankView() {
         q.questionText.toLowerCase().includes(lower) ||
         (q.solution && q.solution.toLowerCase().includes(lower))
     );
-  }, [response?.data, localSearchText]);
+  }, [questionsReady, response?.data, localSearchText]);
 
   return (
     <div className="th-page-container">
@@ -228,6 +261,22 @@ export function TeacherQuestionBankView() {
         }
       />
 
+      {topicValidation.status !== "none" && (
+        <div role="status" className="th-surface p-3 text-xs space-y-2">
+          <p>{topicValidation.message}</p>
+          <div className="flex gap-2">
+            {topicValidation.status === "error" && canReadSubjects && canReadNodes && (
+              <button type="button" className="th-secondary-button" onClick={() => {
+                subjectsQuery.refetch();
+                if (selectedSubjectId && subjectsData?.data.some(s => s.isActive && sameSubject(s.subjectId, selectedSubjectId))) knowledgeNodesQuery.refetch();
+              }}>Thử lại</button>
+            )}
+            <button type="button" className="th-secondary-button" onClick={clearTopicContext}>Bỏ lọc từ đồ thị</button>
+          </div>
+        </div>
+      )}
+      {!canRead && <p role="status" className="text-xs">Bạn không có quyền xem ngân hàng câu hỏi.</p>}
+
       {/* Operational Feedback */}
       {actionSuccess && (
         <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-xs font-semibold text-emerald-300 flex items-center justify-between">
@@ -253,6 +302,7 @@ export function TeacherQuestionBankView() {
               id="filter-teacher-subject"
               value={selectedSubjectId}
               onChange={(e) => {
+                if (topicContext.kind !== "none") setSearchParams(withoutTopicContext(searchParams), { replace: true });
                 setSelectedSubjectId(e.target.value);
                 setSelectedTopicId("");
                 setPage(1);
@@ -291,29 +341,26 @@ export function TeacherQuestionBankView() {
           {/* Knowledge Graph / Topic Filter */}
           <div className="min-w-0">
             <label htmlFor="filter-teacher-topic" className="block text-[10px] font-semibold uppercase text-[var(--th-text-muted)] mb-1">Đồ thị tri thức</label>
-            <select
+            <KnowledgeTopicPicker
               id="filter-teacher-topic"
+              nodes={knowledgeNodesData || []}
               value={selectedTopicId}
-              onChange={(e) => {
-                setSelectedTopicId(e.target.value);
+              onChange={(value) => {
+                if (topicContext.kind !== "none") {
+                  setSelectedSubjectId(selectedSubjectId);
+                  setSearchParams(withoutTopicContext(searchParams), { replace: true });
+                }
+                setSelectedTopicId(value);
                 setPage(1);
               }}
-              disabled={!selectedSubjectId || isLoadingKnowledgeNodes}
-              className="th-select w-full text-xs py-1.5"
-            >
-              <option value="">
-                {!selectedSubjectId
+              disabled={!canReadNodes || !selectedSubjectId || isLoadingKnowledgeNodes || knowledgeNodesQuery.isError || topicValidation.status === "pending"}
+              emptyLabel="Tất cả chủ đề"
+              placeholder={!selectedSubjectId
                   ? "-- Chọn môn học trước --"
                   : isLoadingKnowledgeNodes
                   ? "Đang tải nút..."
-                  : "Tất cả nút tri thức"}
-              </option>
-              {knowledgeNodesData?.map((node) => (
-                <option key={node.nodeId} value={node.nodeId}>
-                  [{node.nodeType}] {node.nodeName} ({node.nodeCode})
-                </option>
-              ))}
-            </select>
+                  : "Tất cả chủ đề"}
+            />
           </div>
 
           {/* Type Filter */}
@@ -407,14 +454,14 @@ export function TeacherQuestionBankView() {
         />
       )}
 
-      {!isLoading && !isError && displayedQuestions.length === 0 && (
+      {questionsReady && !isLoading && !isError && displayedQuestions.length === 0 && (
         <div className="p-12 text-center text-xs text-[var(--th-text-muted)] th-surface border border-dashed border-[var(--th-border)]">
           <p className="text-base font-semibold text-[var(--th-text)] mb-1">Chưa tìm thấy câu hỏi nào</p>
           <p>Thử điều chỉnh bộ lọc hoặc bấm nút "Soạn câu hỏi mới" ở phía trên.</p>
         </div>
       )}
 
-      {!isLoading && !isError && displayedQuestions.length > 0 && (
+      {questionsReady && !isLoading && !isError && displayedQuestions.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {displayedQuestions.map((q) => {
             const subjectName = subjectMap.get(q.subjectId) || "Môn học";
@@ -472,6 +519,7 @@ export function TeacherQuestionBankView() {
                   {/* Question text with math formulas */}
                   <div className="text-sm font-semibold text-[var(--th-text)] leading-relaxed pt-1">
                     <RichMathText text={q.questionText} />
+                    {q.hasImage && <span className="inline-block mt-2 rounded-md bg-indigo-500/10 px-2 py-1 text-xs font-semibold text-indigo-500">Có ảnh đề bài · Mở chi tiết để xem</span>}
                   </div>
 
                   {/* Options & Answers preview for all question types */}
@@ -640,7 +688,7 @@ export function TeacherQuestionBankView() {
       )}
 
       {/* Pagination Styled like Reference Mockup */}
-      {!isLoading && !isError && totalItems > 0 && (
+      {questionsReady && !isLoading && !isError && totalItems > 0 && (
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 rounded-xl border border-[var(--th-border)] bg-[var(--th-surface)] p-3 text-xs text-[var(--th-text-secondary)] shadow-sm">
           <span className="font-semibold text-[var(--th-text)]">
             Hiển thị <strong>{displayedQuestions.length}</strong> / <strong>{totalItems}</strong> câu hỏi

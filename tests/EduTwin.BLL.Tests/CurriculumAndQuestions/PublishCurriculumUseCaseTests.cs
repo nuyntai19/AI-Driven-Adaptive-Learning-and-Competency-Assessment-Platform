@@ -26,6 +26,7 @@ public class PublishCurriculumUseCaseTests
     {
         _dbOptions = new DbContextOptionsBuilder<EduTwinDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning))
             .Options;
         _tenantMock = new Mock<ITenantContext>();
         _tenantMock.Setup(t => t.Role).Returns(nameof(UserRole.Teacher));

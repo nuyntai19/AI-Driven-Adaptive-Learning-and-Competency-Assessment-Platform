@@ -5,6 +5,8 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using MySql.Data.MySqlClient;
 using EduTwin.BLL.AssessmentAndReasoning.Feedback;
 using EduTwin.BLL.Dashboards;
@@ -36,6 +38,188 @@ public sealed class DashboardMySqlIntegrationTests
     private const string AdminConnectionVariable = "EDUTWIN_TEST_MYSQL_ADMIN_CONNECTION_STRING";
     private static readonly DateTime UtcNow = new(2026, 9, 11, 10, 0, 0, DateTimeKind.Utc);
 
+    [MySqlIntegrationFact]
+    public async Task AcademicLifecycleDependencies_RealSql_TriggersAndAuditedMutations()
+    {
+        await using var database=await MySqlTestDatabase.CreateAsync();
+        var center=Guid.NewGuid();var teacher=Guid.NewGuid();var otherTeacher=Guid.NewGuid();var student=Guid.NewGuid();
+        var subject=Guid.NewGuid();var classId=Guid.NewGuid();var curriculumId=Guid.NewGuid();var manager=Guid.NewGuid();
+        await SeedHierarchyAsync(database.ConnectionString,center,teacher,[student],subject,classId,[otherTeacher]);
+        var tenant=new TestTenantContext {CenterId=center,UserId=teacher,Role="Teacher"};
+        await using var db=CreateContext(database.ConnectionString,tenant);
+        var cls=await db.Classes.SingleAsync();cls.TeacherId=otherTeacher;cls.GradeLevel=12;
+        db.Users.Add(new User {CenterId=center,UserId=manager,Username="synthetic.manager",DisplayName="Synthetic Manager",PasswordHash="H",
+            RoleName=UserRole.CenterManager,Status=UserStatus.Active,CreatedAt=UtcNow,UpdatedAt=UtcNow});
+        await db.SaveChangesAsync();
+        var createEdge=new EduTwin.BLL.KnowledgeGraph.CreateKnowledgeEdgeUseCase(db,tenant,TimeProvider.System,new EduTwin.BLL.KnowledgeGraph.KnowledgeGraphValidator());
+        var created=await createEdge.ExecuteAsync(new(){SubjectId=subject,SourceNodeId="1",TargetNodeId="2",RelationType="PrerequisiteOf",Weight=1},default);
+        Assert.True(created.IsSuccess,created.ErrorCode);
+        var edge=await db.KnowledgeEdges.SingleAsync();
+        db.Curriculums.Add(new Curriculum {CenterId=center,CurriculumId=curriculumId,TeacherId=teacher,SubjectId=subject,Title="Synthetic Shared",
+            Visibility=MaterialVisibility.Shared,GradeLevel=12,ReviewStatus=ReviewStatus.Published,CreatedAt=UtcNow,UpdatedAt=UtcNow});
+        db.CurriculumNodes.Add(new CurriculumNode {CenterId=center,CurriculumId=curriculumId,NodeId=1,CreatedAt=UtcNow});
+        db.ClassCurriculumApplications.Add(new ClassCurriculumApplication {CenterId=center,ApplicationId=Guid.NewGuid(),ClassId=classId,CurriculumId=curriculumId,
+            SubjectId=subject,ApplicationRole="Primary",AssignedBy=otherTeacher,StartedAt=UtcNow,ClassGradeAtStart=12,CurriculumGradeAtStart=12});
+        await db.SaveChangesAsync();
+        var usage=await new EduTwin.BLL.CurriculumAndQuestions.CurriculumApplicationUseCase(db,tenant,TimeProvider.System).UsageAsync(curriculumId,default);
+        Assert.Single(usage!); // shared use by another teacher still blocks the author.
+        var archive=new EduTwin.BLL.CurriculumAndQuestions.ArchiveCurriculumUseCase(db,tenant,TimeProvider.System);
+        Assert.Equal(EduTwin.Contracts.Common.ErrorCodes.InvalidStateTransition,(await archive.ExecuteAsync(curriculumId,new(){RowVersion="1",Reason="Synthetic archive"})).ErrorCode);
+        await Assert.ThrowsAsync<MySqlException>(()=>db.Database.ExecuteSqlInterpolatedAsync($"UPDATE curriculums SET review_status='Archived' WHERE curriculum_id={curriculumId.ToString()}"));
+        await Assert.ThrowsAsync<MySqlException>(()=>db.Database.ExecuteSqlRawAsync("UPDATE knowledge_nodes SET node_name='tamper' WHERE node_id=1"));
+        await Assert.ThrowsAsync<MySqlException>(()=>db.Database.ExecuteSqlRawAsync("UPDATE knowledge_nodes SET is_active=0 WHERE node_id=1"));
+        await Assert.ThrowsAsync<MySqlException>(()=>db.Database.ExecuteSqlRawAsync("UPDATE knowledge_nodes SET is_deleted=1 WHERE node_id=1"));
+        await Assert.ThrowsAsync<MySqlException>(()=>db.Database.ExecuteSqlRawAsync("UPDATE knowledge_edges SET weight=.5"));
+        await Assert.ThrowsAsync<MySqlException>(()=>db.Database.ExecuteSqlRawAsync("UPDATE knowledge_edges SET is_deleted=1"));
+        var updateNode=new EduTwin.BLL.KnowledgeGraph.UpdateKnowledgeNodeUseCase(db,tenant,TimeProvider.System,new EduTwin.BLL.KnowledgeGraph.KnowledgeNodeHierarchyCycleDetector());
+        var node=await db.KnowledgeNodes.SingleAsync(n=>n.NodeId==1);
+        var nodeRequest=new UpdateKnowledgeNodeRequest {NodeName=node.NodeName,Description=node.Description,ParentNodeId=null,IsActive=true,
+            OrderIndex=node.OrderIndex,ExamImportance=75,EstimatedLearningMinutes=90,RowVersion=node.RowVersion.ToString()};
+        Assert.True((await updateNode.ExecuteAsync("1",nodeRequest)).IsSuccess);
+        nodeRequest.NodeName="Changed meaning";nodeRequest.RowVersion=node.RowVersion.ToString();
+        Assert.Equal(EduTwin.Contracts.Common.ErrorCodes.InvalidStateTransition,(await updateNode.ExecuteAsync("1",nodeRequest)).ErrorCode);
+        var updateEdge=new EduTwin.BLL.KnowledgeGraph.UpdateKnowledgeEdgeUseCase(db,tenant,TimeProvider.System);
+        Assert.Equal(EduTwin.Contracts.Common.ErrorCodes.InvalidStateTransition,(await updateEdge.ExecuteAsync(edge.EdgeId.ToString(),new(){Weight=.5m,RowVersion=edge.RowVersion.ToString()})).ErrorCode);
+        tenant.UserId=manager;tenant.Role="CenterManager";
+        var reports=new EduTwin.BLL.Organization.ClassReportsUseCase(db,tenant,new EduTwin.BLL.Organization.GetClassUseCase(db,tenant,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<EduTwin.BLL.Organization.GetClassUseCase>.Instance,new OrganizationOwnershipGuard(db,tenant)),
+            new EduTwin.BLL.Assignments.AssignmentResultCalculator(db),TimeProvider.System);
+        Assert.NotNull(await reports.AcademicAsync(classId,default));
+        var classUpdate=new EduTwin.BLL.Organization.UpdateClassUseCase(db,tenant,TimeProvider.System,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<EduTwin.BLL.Organization.UpdateClassUseCase>.Instance);
+        Assert.True((await classUpdate.ExecuteAsync(classId,new(){ClassName=cls.ClassName,TeacherId=otherTeacher,Status=ClassStatus.Archived,
+            GradeLevel=12,RowVersion=cls.RowVersion.ToString(),LifecycleReason="Synthetic end of class"})).IsSuccess);
+        Assert.NotNull(await reports.AcademicAsync(classId,default)); // archived report remains available to Manager.
+        tenant.UserId=teacher;tenant.Role="Teacher";
+        Assert.Empty((await new EduTwin.BLL.CurriculumAndQuestions.CurriculumApplicationUseCase(db,tenant,TimeProvider.System).UsageAsync(curriculumId,default))!);
+        Assert.True((await updateEdge.ExecuteAsync(edge.EdgeId.ToString(),new(){Weight=.5m,RowVersion=edge.RowVersion.ToString()})).IsSuccess);
+        Assert.True((await archive.ExecuteAsync(curriculumId,new(){RowVersion="1",Reason="Synthetic archive after class end"})).IsSuccess);
+        Assert.Equal("Synthetic archive after class end",(await db.ClassCurriculumApplications.SingleAsync()).EndReason);
+        Assert.Single(await db.CurriculumNodes.ToListAsync());Assert.Equal(2,await db.KnowledgeNodes.CountAsync());
+        Assert.Contains(await db.AuthorizationAuditLogs.ToListAsync(),a=>a.ActionType=="KnowledgeNodeUpdated"&&a.ActorUserId==teacher);
+        Assert.Contains(await db.AuthorizationAuditLogs.ToListAsync(),a=>a.ActionType=="KnowledgeEdgeUpdated"&&a.ActorUserId==teacher);
+        Assert.Contains(await db.AuthorizationAuditLogs.ToListAsync(),a=>a.ActionType=="CurriculumArchived"&&a.ActorUserId==teacher);
+        await Assert.ThrowsAsync<MySqlException>(()=>db.Database.ExecuteSqlRawAsync("UPDATE knowledge_nodes SET description='overwrite history' WHERE node_id=1"));
+        await db.Database.ExecuteSqlRawAsync("UPDATE knowledge_nodes SET is_active=0 WHERE node_id=2");
+        Assert.Equal(EduTwin.Contracts.Common.ErrorCodes.InvalidStateTransition,(await createEdge.ExecuteAsync(new(){SubjectId=subject,SourceNodeId="2",TargetNodeId="1",RelationType="RelatedTo",Weight=1},default)).ErrorCode);
+        var fresh=await new EduTwin.BLL.KnowledgeGraph.CreateKnowledgeNodeUseCase(db,tenant,TimeProvider.System).ExecuteAsync(new(){
+            SubjectId=subject,NodeCode="NEW-TOPIC",NodeType="Topic",NodeName="New independent topic",IsActive=true,ExamImportance=0,EstimatedLearningMinutes=30});
+        Assert.True(fresh.IsSuccess,fresh.ErrorCode);
+        Assert.True((await new EduTwin.BLL.KnowledgeGraph.DeleteKnowledgeNodeUseCase(db,tenant,TimeProvider.System).ExecuteAsync(fresh.Data!.NodeId)).IsSuccess);
+        Assert.Contains(await db.AuthorizationAuditLogs.ToListAsync(),a=>a.ActionType=="KnowledgeNodeCreated"&&a.ActorUserId==teacher);
+        Assert.Contains(await db.AuthorizationAuditLogs.ToListAsync(),a=>a.ActionType=="KnowledgeNodeDeleted"&&a.ActorUserId==teacher);
+        tenant.CenterId=Guid.NewGuid();
+        Assert.Null(await reports.AcademicAsync(classId,default));
+    }
+
+    [MySqlIntegrationFact]
+    public async Task AcademicLifecycleDependencies_RealSql_ConcurrentEditsCannotCreateCycles()
+    {
+        await using var database=await MySqlTestDatabase.CreateAsync();
+        var center=Guid.NewGuid();var teacher=Guid.NewGuid();var subject=Guid.NewGuid();
+        await SeedHierarchyAsync(database.ConnectionString,center,teacher,[],subject,Guid.NewGuid());
+        var tenant=new TestTenantContext {CenterId=center,UserId=teacher,Role="Teacher"};
+        await using var a=CreateContext(database.ConnectionString,tenant);
+        await using var b=CreateContext(database.ConnectionString,tenant);
+        async Task<EduTwin.BLL.KnowledgeGraph.CreateKnowledgeEdgeResult> Edge(EduTwinDbContext context,string source,string target)=>
+            await new EduTwin.BLL.KnowledgeGraph.CreateKnowledgeEdgeUseCase(context,tenant,TimeProvider.System,new EduTwin.BLL.KnowledgeGraph.KnowledgeGraphValidator())
+                .ExecuteAsync(new(){SubjectId=subject,SourceNodeId=source,TargetNodeId=target,RelationType="PrerequisiteOf",Weight=1},default);
+        var edges=await Task.WhenAll(Edge(a,"1","2"),Edge(b,"2","1"));
+        Assert.Single(edges,x=>x.IsSuccess);
+        Assert.Single(edges,x=>x.ErrorCode==EduTwin.Contracts.Common.ErrorCodes.DagCycleDetected);
+        async Task<EduTwin.BLL.KnowledgeGraph.UpdateKnowledgeNodeResult> Parent(EduTwinDbContext context,string node,string parent)=>
+            await new EduTwin.BLL.KnowledgeGraph.UpdateKnowledgeNodeUseCase(context,tenant,TimeProvider.System,new EduTwin.BLL.KnowledgeGraph.KnowledgeNodeHierarchyCycleDetector())
+                .ExecuteAsync(node,new(){NodeName=node=="1"?"Topic One":"Topic Two",ParentNodeId=parent,RowVersion="1",IsActive=true,ExamImportance=50,EstimatedLearningMinutes=60});
+        var nodes=await Task.WhenAll(Parent(a,"1","2"),Parent(b,"2","1"));
+        Assert.Single(nodes,x=>x.IsSuccess);
+        Assert.Single(nodes,x=>x.ErrorCode==EduTwin.Contracts.Common.ErrorCodes.DagCycleDetected);
+        await using var proof=CreateContext(database.ConnectionString,tenant);
+        Assert.Equal(1,await proof.KnowledgeEdges.CountAsync());
+        Assert.Equal(1,await proof.KnowledgeNodes.CountAsync(n=>n.ParentNodeId!=null));
+        Assert.Equal(2,await proof.AuthorizationAuditLogs.CountAsync());
+    }
+
+    [MySqlIntegrationFact]
+    public async Task ClassLifecycle_RealSql_MigrationAudit_ActorTransition_AndReportScore()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync("20261008162602_AddAcademicClassScopeAndCurriculumApplications");
+        var center=Guid.NewGuid();var teacher=Guid.NewGuid();var student=Guid.NewGuid();var subject=Guid.NewGuid();var classId=Guid.NewGuid();
+        await SeedHierarchyAsync(database.ConnectionString,center,teacher,[student],subject,classId);
+        var tenant=new TestTenantContext {CenterId=center,UserId=teacher,Role="Teacher"};
+        await using var db=CreateContext(database.ConnectionString,tenant);
+        await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE classes SET learning_scope='History' WHERE class_id={classId.ToString()}");
+        await db.GetService<IMigrator>().MigrateAsync();
+        var cls=await db.Classes.SingleAsync(c=>c.ClassId==classId);
+        Assert.Equal(ClassStatus.Active,cls.Status);Assert.Equal(ClassLearningScope.Current,cls.LearningScope);
+        var correction=await db.AuthorizationAuditLogs.SingleAsync(a=>a.ActionType=="ClassScopeCorrected");
+        Assert.Null(correction.ActorUserId);Assert.Null(correction.CreatedBy);Assert.Equal(classId.ToString(),correction.TargetId);
+        Assert.Contains("System/Migration",correction.AfterData!);
+        await Assert.ThrowsAsync<MySqlException>(()=>db.Database.ExecuteSqlInterpolatedAsync($"UPDATE classes SET learning_scope='History' WHERE class_id={classId.ToString()}"));
+        var manager=Guid.NewGuid();
+        db.Users.Add(new User {CenterId=center,UserId=manager,Username="synthetic.manager",DisplayName="Synthetic Manager",PasswordHash="H",RoleName=UserRole.CenterManager,Status=UserStatus.Active,CreatedAt=UtcNow,UpdatedAt=UtcNow});
+        var assignment=Guid.NewGuid();
+        db.Assignments.Add(new Assignment {CenterId=center,AssignmentId=assignment,ClassId=classId,CreatedByTeacherId=teacher,Title="Synthetic zero-score",Status=AssignmentStatus.Published,CreatedAt=UtcNow,UpdatedAt=UtcNow});
+        db.Questions.Add(new Question {CenterId=center,QuestionId=100,SubjectId=subject,PrimaryTopicNodeId=1,CreatedByTeacherId=teacher,QuestionType=QuestionType.MultipleChoice,
+            QuestionText="Synthetic question",CorrectAnswer="A",Solution="Synthetic reference",LanguageCode="vi",Difficulty=2,MaxScore=2,EstimatedTimeSeconds=60,Status=QuestionStatus.Active,CreatedAt=UtcNow,UpdatedAt=UtcNow});
+        db.AssignmentQuestions.Add(new AssignmentQuestion {CenterId=center,AssignmentId=assignment,QuestionId=100,OrderIndex=1,Points=2,CreatedAt=UtcNow});
+        db.AssignmentTargets.Add(new AssignmentTarget {CenterId=center,AssignmentId=assignment,StudentId=student,CreatedAt=UtcNow,CreatedBy=teacher});
+        db.Attempts.Add(new Attempt {CenterId=center,AttemptId=100,StudentId=student,AssignmentId=assignment,QuestionId=100,FinalAnswer="B",ReasoningLanguage="vi",AwardedScore=0,IsCorrect=false,Status=AttemptStatus.Completed,CreatedAt=UtcNow,UpdatedAt=UtcNow});
+        db.StudentAssignmentProgresses.Add(new StudentAssignmentProgress {CenterId=center,StudentId=student,AssignmentId=assignment,Status=ProgressStatus.Completed,CompletedQuestionCount=1,TotalQuestionCount=1,
+            TeacherFinalReviewStatus=TeacherFinalReviewStatus.Approved,CreatedAt=UtcNow,UpdatedAt=UtcNow});
+        await db.SaveChangesAsync();
+        tenant.UserId=student;tenant.Role="Student";
+        var studentList=new EduTwin.BLL.Assignments.ListStudentAssignmentsUseCase(db,tenant,TimeProvider.System,new EduTwin.BLL.Assignments.AssignmentResultCalculator(db));
+        Assert.Empty((await studentList.ExecuteAsync(new(){SubjectId=subject,History=true},default)).Data!.Data);
+        Assert.Equal(0,(await new GetStudentWorkspaceSummaryUseCase(db,tenant,TimeProvider.System).ExecuteAsync(subject,null,true))!.AssignmentCount);
+        var emptyHistory=await new StudentAcademicScopeReader(db).ReadAsync(center,student,subject,null,true,default);
+        Assert.Null(emptyHistory!.Context.SelectedClassId);Assert.Empty(emptyHistory.TopicIds);
+        tenant.UserId=teacher;tenant.Role="Teacher";
+        var logger=Microsoft.Extensions.Logging.Abstractions.NullLogger<EduTwin.BLL.Organization.UpdateClassUseCase>.Instance;
+        var update=new EduTwin.BLL.Organization.UpdateClassUseCase(db,tenant,TimeProvider.System,logger);
+        UpdateClassRequest Request(ClassStatus status,string version,string reason)=>new(){ClassName=cls.ClassName,TeacherId=teacher,Status=status,GradeLevel=cls.GradeLevel,RowVersion=version,LifecycleReason=reason};
+        Assert.False((await update.ExecuteAsync(classId,Request(ClassStatus.Archived,cls.RowVersion.ToString(),"Teacher may not archive"))).IsSuccess);
+        tenant.UserId=manager;tenant.Role="CenterManager";
+        var archived=await update.ExecuteAsync(classId,Request(ClassStatus.Archived,cls.RowVersion.ToString(),"Kết thúc lớp thử nghiệm"));
+        Assert.True(archived.IsSuccess,archived.ErrorCode);
+        Assert.Equal("History",archived.Data!.LearningScope);
+        Assert.True(await EduTwin.BLL.Assignments.StudentAssignmentScope.SuspendedAsync(db,center,classId,default));
+        Assert.Equal(1,await db.Attempts.CountAsync());
+        tenant.UserId=teacher;tenant.Role="Teacher";
+        var access=new EduTwin.BLL.Organization.GetClassUseCase(db,tenant,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<EduTwin.BLL.Organization.GetClassUseCase>.Instance,new OrganizationOwnershipGuard(db,tenant));
+        var reports=new EduTwin.BLL.Organization.ClassReportsUseCase(db,tenant,access,new EduTwin.BLL.Assignments.AssignmentResultCalculator(db),TimeProvider.System);
+        var report=await reports.AcademicAsync(classId,default);
+        Assert.NotNull(report);Assert.Equal(100,report.Students.Single().Summary.CompletionRate);
+        Assert.Equal(0,report.Students.Single().Summary.AverageScore); // all questions answered is NOT full score.
+        Assert.Equal("HighRisk",report.Students.Single().Summary.AssessmentStatus);
+        var history=await reports.HistoryAsync(classId,1,default);
+        Assert.Contains(history!.Data,a=>a.ActionType=="ClassArchived"&&a.ActorUserId==manager);
+        tenant.UserId=student;tenant.Role="Student";
+        var current=await new GetStudentWorkspaceSummaryUseCase(db,tenant,TimeProvider.System).ExecuteAsync(subject,classId,false);
+        var historical=await new GetStudentWorkspaceSummaryUseCase(db,tenant,TimeProvider.System).ExecuteAsync(subject,classId,true);
+        Assert.Null(current);Assert.Equal(1,historical!.AssignmentCount);
+        Assert.Single((await studentList.ExecuteAsync(new(){SubjectId=subject,ClassId=classId,History=true},default)).Data!.Data);
+        Assert.Empty((await studentList.ExecuteAsync(new(){SubjectId=subject,History=false},default)).Data!.Data);
+        Assert.Equal(classId,(await new StudentAcademicScopeReader(db).ReadAsync(center,student,subject,null,true,default))!.Context.SelectedClassId);
+        var savedSubmission=await new EduTwin.BLL.Assignments.GetStudentAssignmentUseCase(db,tenant,TimeProvider.System,new EduTwin.BLL.Assignments.AssignmentResultCalculator(db)).ExecuteAsync(assignment,default);
+        Assert.True(savedSubmission.IsSuccess);Assert.True(savedSubmission.Data!.Data.IsReadOnly);
+        Assert.Equal(classId.ToString(),savedSubmission.Data.Data.ClassId);Assert.Equal(1,await db.Attempts.CountAsync());
+        tenant.UserId=manager;tenant.Role="CenterManager";
+        var reopened=await update.ExecuteAsync(classId,Request(ClassStatus.Active,archived.Data.RowVersion,"Học tiếp"));
+        Assert.True(reopened.IsSuccess,reopened.ErrorCode);Assert.Equal("Current",reopened.Data!.LearningScope);
+        tenant.UserId=student;tenant.Role="Student";
+        Assert.Empty((await studentList.ExecuteAsync(new(){SubjectId=subject,History=true},default)).Data!.Data);
+        Assert.Equal(0,(await new GetStudentWorkspaceSummaryUseCase(db,tenant,TimeProvider.System).ExecuteAsync(subject,null,true))!.AssignmentCount);
+        Assert.Single((await studentList.ExecuteAsync(new(){SubjectId=subject,History=false},default)).Data!.Data);
+        var member=await db.ClassStudents.SingleAsync(m=>m.ClassId==classId&&m.StudentId==student);
+        member.Status=ClassStudentStatus.Removed;member.RemovedAt=DateTime.UtcNow;await db.SaveChangesAsync();
+        Assert.Single((await studentList.ExecuteAsync(new(){SubjectId=subject,ClassId=classId,History=true},default)).Data!.Data);
+        Assert.Equal(1,(await new GetStudentWorkspaceSummaryUseCase(db,tenant,TimeProvider.System).ExecuteAsync(subject,classId,true))!.AssignmentCount);
+        Assert.Equal(classId,(await new StudentAcademicScopeReader(db).ReadAsync(center,student,subject,null,true,default))!.Context.SelectedClassId);
+        Assert.Equal(ClassStatus.Active,(await db.Classes.SingleAsync(c=>c.ClassId==classId)).Status);
+        Assert.Equal(1,await db.Attempts.CountAsync());
+    }
+
     private sealed class TestTenantContext : ITenantContext, ITenantIdAccessor
     {
         public Guid? CenterId { get; set; }
@@ -46,7 +230,318 @@ public sealed class DashboardMySqlIntegrationTests
     }
 
     [MySqlIntegrationFact]
-    public async Task ZeroFill_WeightedMastery_And_AssignmentCompletion_CalculatedCorrectly()
+    public async Task WorkspaceSummaryAndNewAccountRoles_RealSql_NoProviderCalls()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var centerId = Guid.NewGuid(); var teacherId = Guid.NewGuid();
+        var studentId = Guid.NewGuid(); var subjectId = Guid.NewGuid(); var classId = Guid.NewGuid();
+        await SeedHierarchyAsync(database.ConnectionString, centerId, teacherId, [studentId], subjectId, classId);
+        var tenant = new TestTenantContext { CenterId = centerId, UserId = studentId, Role = nameof(UserRole.Student) };
+        await using var db = CreateContext(database.ConnectionString, tenant);
+        var center = await db.Centers.SingleAsync(c => c.CenterId == centerId);
+        center.Timezone = "Asia/Ho_Chi_Minh";
+        db.Questions.Add(new Question { QuestionId = 100, CenterId = centerId, SubjectId = subjectId,
+            PrimaryTopicNodeId = 1, CreatedByTeacherId = teacherId, QuestionType = QuestionType.ShortAnswer,
+            Difficulty = 1, QuestionText = "Synthetic question", CorrectAnswer = "1", Solution = "Synthetic solution",
+            MaxScore = 10, EstimatedTimeSeconds = 60, LanguageCode = "vi", Status = QuestionStatus.Active,
+            CreatedAt = UtcNow, UpdatedAt = UtcNow });
+        foreach (var (date, skipped) in new[]
+        {
+            (UtcNow.Date.AddDays(-1).AddHours(17), false), // today at local midnight
+            (UtcNow.Date.AddDays(-1).AddHours(16), false), // yesterday
+            (UtcNow.Date.AddDays(-2).AddHours(16), true)   // skipped does not extend streak
+        })
+            db.Attempts.Add(new Attempt { CenterId = centerId, StudentId = studentId, QuestionId = 100,
+                FinalAnswer = skipped ? "SKIPPED" : "1", ReasoningLanguage = "vi", Skipped = skipped,
+                Status = AttemptStatus.NeedsTeacherReview, ClientSubmissionId = Guid.NewGuid(), CreatedAt = date, UpdatedAt = date });
+        foreach (var status in new[] { AssignmentStatus.Draft, AssignmentStatus.Published, AssignmentStatus.Closed })
+        {
+            var assignment = new Assignment { AssignmentId = Guid.NewGuid(), CenterId = centerId, ClassId = classId,
+                CreatedByTeacherId = teacherId, Title = "Synthetic assignment", Status = status, CreatedAt = UtcNow, UpdatedAt = UtcNow };
+            db.Assignments.Add(assignment);
+            db.StudentAssignmentProgresses.Add(new StudentAssignmentProgress { ProgressId = (ulong)status + 1, CenterId = centerId, StudentId = studentId,
+                AssignmentId = assignment.AssignmentId, Status = ProgressStatus.Completed, TotalQuestionCount = 1,
+                CompletedQuestionCount = 1, CreatedAt = UtcNow, UpdatedAt = UtcNow });
+        }
+        await db.SaveChangesAsync();
+        var summary = await new GetStudentWorkspaceSummaryUseCase(db, tenant, new WorkspaceClock()).ExecuteAsync(subjectId);
+        Assert.NotNull(summary); Assert.Equal(2, summary.AssignmentCount); Assert.Equal(2, summary.DailyStreak); Assert.True(summary.StudiedToday);
+
+        var managerId = Guid.NewGuid();
+        db.Users.Add(new User { UserId = managerId, CenterId = centerId, Username = "manager", PasswordHash = "synthetic",
+            DisplayName = "Manager", RoleName = UserRole.CenterManager, Status = UserStatus.Active, AuthVersion = 1,
+            CreatedAt = UtcNow, UpdatedAt = UtcNow });
+        await db.SaveChangesAsync();
+        await new EduTwin.BLL.Seeding.AuthorizationBootstrapper(db, TimeProvider.System).EnsureCenterAsync(centerId);
+        tenant.UserId = managerId; tenant.Role = nameof(UserRole.CenterManager);
+        var createTeacher = new EduTwin.BLL.Organization.CreateTeacherUseCase(db, tenant, TimeProvider.System,
+            new Microsoft.AspNetCore.Identity.PasswordHasher<User>());
+        var request = new CreateTeacherRequest { Username = "new.teacher", DisplayName = "New Teacher", TemporaryPassword = "SyntheticPassword123!" };
+        var result = await createTeacher.ExecuteAsync(request);
+        Assert.True(result.IsSuccess);
+        var createdId = Guid.Parse(result.Data!.TeacherId);
+        var authorization = await new AuthorizationSnapshotReader(db).ReadForUserAsync(createdId);
+        Assert.Single(authorization.Roles);
+        Assert.Contains("dashboards.teacher.read_scoped", authorization.Permissions);
+        Assert.All(EduTwin.DAL.Seeding.AuthorizationPermissionCatalog.SensitiveSharedAcademicCodes,
+            code => Assert.Contains(code, authorization.Permissions));
+        Assert.DoesNotContain("organization.teachers.create", authorization.Permissions);
+        Assert.Single(await db.AuthorizationAuditLogs.Where(a => a.TargetUserId == createdId && a.ActionType == "UserSystemRoleAssigned").ToArrayAsync());
+        Assert.False((await createTeacher.ExecuteAsync(request)).IsSuccess);
+        Assert.Single(await db.UserRoleAssignments.Where(a => a.UserId == createdId).ToArrayAsync());
+
+        var createStudent = new EduTwin.BLL.Organization.CreateStudentUseCase(db, tenant,
+            new Microsoft.AspNetCore.Identity.PasswordHasher<User>(), TimeProvider.System,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<EduTwin.BLL.Organization.CreateStudentUseCase>.Instance);
+        var studentResult = await createStudent.ExecuteAsync(new CreateStudentRequest { Username = "new.student", FullName = "New Student",
+            TemporaryPassword = "SyntheticPassword123!", GradeLevel = 12, ClassIds = [] });
+        Assert.True(studentResult.IsSuccess);
+        Assert.Single((await new AuthorizationSnapshotReader(db).ReadForUserAsync(studentResult.Data!.StudentId)).Roles);
+
+        // Simulate the existing production system role from before this release.
+        // The additive startup path must work without calling the demo bootstrapper.
+        var teacherRole = await db.AuthorizationRoles.SingleAsync(r => r.AccountType == UserRole.Teacher && r.IsSystemRole);
+        var graphIds = EduTwin.DAL.Seeding.AuthorizationPermissionCatalog.SensitiveSharedAcademicCodes
+            .Select(EduTwin.DAL.Seeding.AuthorizationPermissionCatalog.CreateDeterministicId).ToArray();
+        var currentTeacherGrants = await db.RolePermissions.Where(p => p.RoleId == teacherRole.RoleId).ToArrayAsync();
+        db.RolePermissions.RemoveRange(currentTeacherGrants.Where(p => graphIds.Contains(p.PermissionId)));
+        await db.SaveChangesAsync();
+        var backfill = new EduTwin.BLL.Seeding.DefaultSystemRolePermissionBackfill(db, TimeProvider.System);
+        await backfill.EnsureAsync(); await backfill.EnsureAsync();
+        Assert.Equal(32, await db.RolePermissions.CountAsync(p => p.RoleId == teacherRole.RoleId));
+        Assert.Equal(2u, (await db.Users.SingleAsync(u => u.UserId == createdId)).AuthVersion);
+        Assert.Equal(1u, (await db.Users.SingleAsync(u => u.UserId == managerId)).AuthVersion);
+        Assert.Single(await db.AuthorizationAuditLogs.Where(a => a.ActionType == "SystemRoleDefaultPermissionsGranted").ToArrayAsync());
+    }
+
+    private sealed class WorkspaceClock : TimeProvider { public override DateTimeOffset GetUtcNow() => new(UtcNow); }
+
+    [MySqlIntegrationFact]
+    public async Task AcademicScopeAndApplicationHistory_RealSql_GuardsAndPreservesLedger_NoProviderCalls()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var center = Guid.NewGuid(); var teacher = Guid.NewGuid(); var otherTeacher = Guid.NewGuid();
+        var student = Guid.NewGuid(); var subject = Guid.NewGuid(); var classId = Guid.NewGuid();
+        await SeedHierarchyAsync(database.ConnectionString, center, teacher, [student], subject, classId, [otherTeacher]);
+        var tenant = new TestTenantContext { CenterId=center,UserId=teacher,Role="Teacher" };
+        await using var db = CreateContext(database.ConnectionString, tenant);
+        (await db.Classes.SingleAsync(c=>c.ClassId==classId)).GradeLevel=12;
+        var a=Guid.NewGuid(); var b=Guid.NewGuid(); var supplemental=Guid.NewGuid();
+        foreach(var (id,grade) in new[]{(a,(byte)12),(b,(byte)12),(supplemental,(byte)11)})
+            db.Curriculums.Add(new Curriculum {CenterId=center,CurriculumId=id,TeacherId=teacher,SubjectId=subject,GradeLevel=grade,
+                Title=$"Synthetic {id}",ReviewStatus=ReviewStatus.Published,Visibility=MaterialVisibility.Shared,CreatedAt=UtcNow,UpdatedAt=UtcNow});
+        db.CurriculumNodes.AddRange(new CurriculumNode {CenterId=center,CurriculumId=a,NodeId=1,OrderIndex=1,CreatedAt=UtcNow},
+            new CurriculumNode {CenterId=center,CurriculumId=b,NodeId=2,OrderIndex=1,CreatedAt=UtcNow},
+            new CurriculumNode {CenterId=center,CurriculumId=supplemental,NodeId=1,OrderIndex=1,CreatedAt=UtcNow});
+        await db.SaveChangesAsync();
+        var usecase = new EduTwin.BLL.CurriculumAndQuestions.CurriculumApplicationUseCase(db,tenant,TimeProvider.System);
+        var first=await usecase.ApplyAsync(a,new(){ClassIds=[classId],RowVersion="1"},default);
+        Assert.True(first.IsSuccess,first.Message);
+        var noop=await usecase.ApplyAsync(a,new(){ClassIds=[classId],RowVersion=first.RowVersion!},default);
+        Assert.True(noop.IsSuccess);Assert.Equal(first.RowVersion,noop.RowVersion);
+        tenant.UserId=otherTeacher;
+        var denied=await usecase.ApplyAsync(b,new(){ClassIds=[classId],RowVersion="1",ChangeReason="Not my class"},default);
+        Assert.False(denied.IsSuccess);
+        tenant.UserId=teacher;
+        Assert.False((await usecase.ApplyAsync(b,new(){ClassIds=[classId],RowVersion="1"},default)).IsSuccess);
+        var replacement=await usecase.ApplyAsync(b,new(){ClassIds=[classId],RowVersion="1",ChangeReason="Synthetic replacement"},default);
+        Assert.True(replacement.IsSuccess,replacement.Message);
+        var previous=await db.ClassCurriculumApplications.SingleAsync(x=>x.CurriculumId==a);
+        Assert.NotNull(previous.EndedAt);Assert.Equal("Synthetic replacement",previous.EndReason);
+        Assert.Null(previous.ChangeReason); // original application reason was not overwritten
+        Assert.False((await usecase.ApplyAsync(supplemental,new(){ClassIds=[classId],RowVersion="1",ApplicationRole="Supplemental"},default)).IsSuccess);
+        var extra=await usecase.ApplyAsync(supplemental,new(){ClassIds=[classId],RowVersion="1",ApplicationRole="Supplemental",GradeMismatchReason="Ôn kiến thức tiên quyết"},default);
+        Assert.True(extra.IsSuccess,extra.Message);
+        var exception=await db.ClassCurriculumApplications.SingleAsync(x=>x.CurriculumId==supplemental);
+        Assert.True(exception.IsGradeException);Assert.Equal(teacher,exception.ExceptionApprovedBy);Assert.NotNull(exception.ExceptionApprovedAt);
+        Assert.Equal(1,await db.ClassCurriculumApplications.CountAsync(x=>x.EndedAt==null&&x.ApplicationRole=="Primary"));
+        Assert.Equal(3,await db.ClassCurriculumApplications.CountAsync());
+
+        // Database uniqueness, independent of the usecase/UI.
+        var detailProjection = new EduTwin.BLL.CurriculumAndQuestions.GetCurriculumUseCase(db,tenant);
+        var listProjection = new EduTwin.BLL.CurriculumAndQuestions.ListCurriculumsUseCase(db,tenant);
+        Assert.Equal(new[]{classId.ToString()}, (await detailProjection.ExecuteAsync(new(){CurriculumId=b})).Data!.ClassIds);
+        Assert.Empty((await detailProjection.ExecuteAsync(new(){CurriculumId=a})).Data!.ClassIds);
+        var projected = await listProjection.ExecuteAsync(new());Assert.True(projected.IsSuccess,projected.ErrorCode);
+        Assert.Equal(new[]{classId.ToString()},projected.Data!.Single(c=>c.CurriculumId==b.ToString()).ClassIds);
+        Assert.Empty(projected.Data!.Single(c=>c.CurriculumId==a.ToString()).ClassIds);
+        db.ClassCurriculumApplications.Add(new ClassCurriculumApplication {ApplicationId=Guid.NewGuid(),CenterId=center,ClassId=classId,
+            CurriculumId=a,SubjectId=subject,ApplicationRole="Primary",AssignedBy=teacher,StartedAt=DateTime.UtcNow,
+            ClassGradeAtStart=12,CurriculumGradeAtStart=12});
+        await Assert.ThrowsAsync<DbUpdateException>(()=>db.SaveChangesAsync());db.ChangeTracker.Clear();
+        await Assert.ThrowsAsync<MySqlException>(()=>db.Database.ExecuteSqlInterpolatedAsync($"UPDATE class_curriculum_applications SET change_reason='tamper' WHERE application_id={previous.ApplicationId.ToString()}"));
+        await Assert.ThrowsAsync<MySqlException>(()=>db.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM class_curriculum_applications WHERE application_id={previous.ApplicationId.ToString()}"));
+        await Assert.ThrowsAsync<MySqlException>(()=>db.Database.ExecuteSqlInterpolatedAsync($"UPDATE class_students SET grade_mismatch_reason='incomplete' WHERE center_id={center.ToString()} AND class_id={classId.ToString()} AND student_id={student.ToString()}"));
+        Assert.Equal(3,await db.ClassCurriculumApplications.CountAsync());
+
+        var otherSubject=Guid.NewGuid();
+        db.Subjects.Add(new Subject {CenterId=center,SubjectId=otherSubject,SubjectCode="OTHER",SubjectName="Other subject",IsActive=true,CreatedAt=UtcNow,UpdatedAt=UtcNow});
+        db.KnowledgeNodes.Add(new KnowledgeNode {CenterId=center,SubjectId=otherSubject,NodeId=99,NodeCode="OTHER_TOPIC",NodeName="Other topic",NodeType=NodeType.Topic,
+            IsActive=true,EstimatedLearningMinutes=1,ExamImportance=1,OrderIndex=1,CreatedAt=UtcNow,UpdatedAt=UtcNow});await db.SaveChangesAsync();
+        db.CurriculumNodes.Add(new CurriculumNode {CenterId=center,CurriculumId=b,NodeId=99,OrderIndex=2,CreatedAt=UtcNow});
+        await Assert.ThrowsAsync<DbUpdateException>(()=>db.SaveChangesAsync());db.ChangeTracker.Clear();
+        tenant.UserId=student;tenant.Role="Student";
+        db.KnowledgeNodes.Add(new KnowledgeNode {CenterId=center,SubjectId=subject,NodeId=3,NodeCode="OUTSIDE_CURRICULUM",NodeName="Outside selected curriculum",NodeType=NodeType.Topic,
+            IsActive=true,EstimatedLearningMinutes=1,ExamImportance=1,OrderIndex=3,CreatedAt=UtcNow,UpdatedAt=UtcNow});
+        await db.SaveChangesAsync();
+        var questionnaireTopics=new EduTwin.BLL.Recommendations.UseCases.GetLearningPathTopicsUseCase(db,tenant);
+        Assert.Equal(new[]{"1","2"},(await questionnaireTopics.ExecuteScopedAsync(subject,classId,false,default)).Select(x=>x.TopicNodeId).Order());
+        Assert.Empty(await questionnaireTopics.ExecuteScopedAsync(subject,Guid.NewGuid(),false,default));
+        Assert.Empty(await questionnaireTopics.ExecuteScopedAsync(subject,classId,true,default));
+        var scope=await new StudentAcademicScopeReader(db).ReadAsync(center,student,subject,classId,false,default);
+        Assert.NotNull(scope);Assert.Equal(new ulong[]{1,2},scope.TopicIds.Order());
+        Assert.Equal(2,scope.Context.Curriculums.Count);
+        Assert.Null(await new StudentAcademicScopeReader(db).ReadAsync(center,student,subject,Guid.NewGuid(),false,default));
+        var dashboard=await new GetStudentDashboardUseCase(db,tenant,TimeProvider.System).ExecuteAsync(subject,classId,false,default);
+        Assert.True(dashboard.IsSuccess);Assert.Equal(2,dashboard.Data!.MasteryRadar.Count);
+        var liveLearning=await EduTwin.BLL.Organization.StudentLearningScope.ResolveAsync(db,center,student,subject,classId,false,default);
+        Assert.True(liveLearning.Allowed);Assert.Equal(new ulong[]{1,2},liveLearning.TopicIds!.Order());
+        db.Questions.Add(new Question{CenterId=center,QuestionId=101,SubjectId=subject,PrimaryTopicNodeId=2,CreatedByTeacherId=teacher,
+            QuestionType=QuestionType.ShortAnswer,QuestionText="Synthetic scope check",CorrectAnswer="x",Solution="Synthetic",LanguageCode="vi",Status=QuestionStatus.Active,
+            MaxScore=10,Difficulty=2,EstimatedTimeSeconds=60,CreatedAt=UtcNow,UpdatedAt=UtcNow});
+        db.StudentLearningPathPreferences.Add(new(){CenterId=center,StudentId=student,SubjectId=subject,WeakTopicNodeIds=JsonSerializer.SerializeToDocument(Array.Empty<ulong>()),
+            FocusTopicNodeIds=JsonSerializer.SerializeToDocument(Array.Empty<ulong>()),CreatedAt=UtcNow,UpdatedAt=UtcNow});
+        var savedPath=new EduTwin.DAL.Recommendations.LearningPath{CenterId=center,LearningPathId=Guid.NewGuid(),StudentId=student,SubjectId=subject,
+            Status=EduTwin.Contracts.Recommendations.LearningPathStatus.Active,Version=1,GeneratedAt=UtcNow,CreatedAt=UtcNow,UpdatedAt=UtcNow};
+        savedPath.Items.Add(new(){CenterId=center,TopicNodeId=2,RankOrder=1,Reason="Synthetic scope",CreatedAt=UtcNow,UpdatedAt=UtcNow});
+        db.LearningPaths.Add(savedPath);await db.SaveChangesAsync();
+        var strictEngine=new Moq.Mock<EduTwin.BLL.Recommendations.IRecommendationEngine>(Moq.MockBehavior.Strict);
+        var pathReader=new EduTwin.BLL.Recommendations.UseCases.GenerateLearningPathUseCase(db,tenant,strictEngine.Object);
+        Assert.NotNull(await pathReader.ExecuteAsync(subject,classId,default));Assert.Null(savedPath.PlanJson);
+        var validator=new EduTwin.BLL.AssessmentAndReasoning.AttemptSubmissionValidator(db,tenant,
+            new EduTwin.BLL.AssessmentAndReasoning.PreliminaryGrading.PreliminaryGraderFactory(new(),new(),new()));
+        SubmitAttemptRequest Adaptive(Guid? selected)=>new(){ClientSubmissionId=Guid.NewGuid(),QuestionId="101",FinalAnswer="x",ClassId=selected};
+        Assert.True((await validator.ValidateAsync(Adaptive(classId))).IsSuccess);
+        Assert.Empty(await db.Attempts.ToListAsync()); // no AI request or submission mutation
+        // Manager class lifecycle must not rewrite teacher-owned application history.
+        var manager=Guid.NewGuid();
+        db.Users.Add(new User {CenterId=center,UserId=manager,Username="synthetic.lifecycle.manager",DisplayName="Manager",PasswordHash="H",
+            RoleName=UserRole.CenterManager,Status=UserStatus.Active,CreatedAt=UtcNow,UpdatedAt=UtcNow});await db.SaveChangesAsync();
+        tenant.UserId=manager;tenant.Role="CenterManager";
+        var cls=await db.Classes.SingleAsync(c=>c.ClassId==classId);
+        var update=new EduTwin.BLL.Organization.UpdateClassUseCase(db,tenant,TimeProvider.System,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<EduTwin.BLL.Organization.UpdateClassUseCase>.Instance);
+        UpdateClassRequest Change(ClassStatus status,string version)=>new(){ClassName=cls.ClassName,TeacherId=teacher,Status=status,GradeLevel=cls.GradeLevel,RowVersion=version,LifecycleReason="Synthetic class lifecycle"};
+        var archived=await update.ExecuteAsync(classId,Change(ClassStatus.Archived,cls.RowVersion.ToString()));Assert.True(archived.IsSuccess,archived.ErrorCode);
+        Assert.False((await EduTwin.BLL.Organization.StudentLearningScope.ResolveAsync(db,center,student,subject,classId,false,default)).Allowed);
+        Assert.False((await EduTwin.BLL.Organization.StudentLearningScope.ResolveAsync(db,center,student,subject,null,false,default)).Allowed);
+        var archivedCandidates=await new EduTwin.BLL.Recommendations.OpportunityCandidateBuilder(db).BuildCandidatesAsync(center,student,subject,default);
+        Assert.Equal("NO_ACTIVE_CLASS",archivedCandidates.BlockedReason);
+        tenant.UserId=student;tenant.Role="Student";
+        Assert.Empty(await questionnaireTopics.ExecuteScopedAsync(subject,classId,false,default));
+        Assert.Empty(await questionnaireTopics.ExecuteScopedAsync(subject,classId,true,default));
+        Assert.Equal(EduTwin.Contracts.Common.ErrorCodes.AssignmentNotAvailable,(await validator.ValidateAsync(Adaptive(classId))).ErrorCode);
+        Assert.Equal(EduTwin.Contracts.Common.ErrorCodes.AssignmentNotAvailable,(await validator.ValidateAsync(Adaptive(null))).ErrorCode);
+        Assert.Null(await pathReader.ExecuteAsync(subject,classId,default));
+        await Assert.ThrowsAsync<EduTwin.BLL.Organization.LearningScopeDeniedException>(()=>pathReader.ExecuteAsync(new EduTwin.Contracts.Recommendations.GenerateLearningPathRequest{SubjectId=subject,ClassId=classId},default));
+        Assert.Null(savedPath.PlanJson);Assert.Empty(strictEngine.Invocations);Assert.Empty(await db.Attempts.ToListAsync());
+        tenant.UserId=teacher;tenant.Role="Teacher";
+        var paused=await usecase.ReadAsync(b,default);Assert.All(paused.Data!,row=>Assert.True(row.PausedByClass));
+        Assert.Empty((await detailProjection.ExecuteAsync(new(){CurriculumId=b})).Data!.ClassIds);
+        Assert.Equal(3,await db.ClassCurriculumApplications.CountAsync());
+        Assert.Equal(2,await db.ClassCurriculumApplications.CountAsync(x=>x.EndedAt==null));
+        tenant.UserId=manager;tenant.Role="CenterManager";
+        Assert.True((await update.ExecuteAsync(classId,Change(ClassStatus.Active,archived.Data!.RowVersion))).IsSuccess);
+        Assert.True((await EduTwin.BLL.Organization.StudentLearningScope.ResolveAsync(db,center,student,subject,classId,false,default)).Allowed);
+        tenant.UserId=teacher;tenant.Role="Teacher";
+        Assert.Equal(new[]{classId.ToString()}, (await detailProjection.ExecuteAsync(new(){CurriculumId=b})).Data!.ClassIds);
+        Assert.Equal(3,await db.ClassCurriculumApplications.CountAsync());
+        Assert.Equal(2,await db.ClassCurriculumApplications.CountAsync(x=>x.EndedAt==null));
+        Assert.NotNull((await db.ClassCurriculumApplications.SingleAsync(x=>x.CurriculumId==a)).EndedAt);
+    }
+
+    [MySqlIntegrationFact]
+    public async Task StudentGradeGuards_RealSql_PreserveEnrollmentSnapshot_NoProviderCalls()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var centerId = Guid.NewGuid(); var teacherId = Guid.NewGuid(); var managerId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid(); var classId = Guid.NewGuid();
+        await SeedHierarchyAsync(database.ConnectionString, centerId, teacherId, [], subjectId, classId);
+        var tenant = new TestTenantContext { CenterId = centerId, UserId = managerId, Role = nameof(UserRole.CenterManager) };
+        await using var db = CreateContext(database.ConnectionString, tenant);
+        var seededClass = await db.Classes.SingleAsync();
+        seededClass.GradeLevel = 10;
+        var secondClassId = Guid.NewGuid();
+        db.Classes.Add(new Class { CenterId = centerId, ClassId = secondClassId, TeacherId = teacherId,
+            SubjectId = subjectId, ClassName = "Second Grade 10 Class", AcademicYear = seededClass.AcademicYear,
+            GradeLevel = 10, Status = ClassStatus.Active, CreatedAt = UtcNow, UpdatedAt = UtcNow });
+        db.Users.Add(new User { UserId = managerId, CenterId = centerId, Username = "grade.manager", PasswordHash = "synthetic",
+            DisplayName = "Grade Manager", RoleName = UserRole.CenterManager, Status = UserStatus.Active,
+            AuthVersion = 1, CreatedAt = UtcNow, UpdatedAt = UtcNow });
+        await db.SaveChangesAsync();
+        await new EduTwin.BLL.Seeding.AuthorizationBootstrapper(db, TimeProvider.System).EnsureCenterAsync(centerId);
+        var create = new EduTwin.BLL.Organization.CreateStudentUseCase(db, tenant,
+            new Microsoft.AspNetCore.Identity.PasswordHasher<User>(), TimeProvider.System,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<EduTwin.BLL.Organization.CreateStudentUseCase>.Instance);
+        var request = new CreateStudentRequest { Username = "grade.student", FullName = "Grade Student",
+            TemporaryPassword = "SyntheticPassword123!", GradeLevel = 11, ClassIds = [classId, secondClassId] };
+        var rejected = await create.ExecuteAsync(request);
+        Assert.False(rejected.IsSuccess);
+        Assert.Equal(EduTwin.Contracts.Common.ErrorCodes.ValidationFailed, rejected.ErrorCode);
+        Assert.False(await db.Users.AnyAsync(u => u.Username == request.Username));
+        request.GradeLevel = 10;
+        var created = await create.ExecuteAsync(request);
+        Assert.True(created.IsSuccess, created.ErrorMessage);
+        var studentId = created.Data!.StudentId;
+        var memberships = await db.ClassStudents.Where(cs => cs.StudentId == studentId).ToListAsync();
+        Assert.Equal(2, memberships.Count);
+        Assert.All(memberships, membership => Assert.Equal((byte)10, membership.GradeLevelAtEnrollment));
+        var update = new EduTwin.BLL.Organization.UpdateStudentUseCase(db, tenant,
+            new OrganizationOwnershipGuard(db, tenant), TimeProvider.System,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<EduTwin.BLL.Organization.UpdateStudentUseCase>.Instance);
+        var updateRequest = new UpdateStudentRequest { FullName = "Grade Student", GradeLevel = 11,
+            Status = UserStatus.Active, RowVersion = created.Data.RowVersion };
+        var blocked = await update.ExecuteAsync(studentId, updateRequest);
+        Assert.False(blocked.IsSuccess);
+        Assert.Equal(EduTwin.Contracts.Common.ErrorCodes.ValidationFailed, blocked.ErrorCode);
+        Assert.Equal((byte)10, (await db.Students.SingleAsync(s => s.StudentId == studentId)).GradeLevel);
+        foreach (var membership in memberships) membership.Status = ClassStudentStatus.Removed;
+        await db.SaveChangesAsync();
+        var changed = await update.ExecuteAsync(studentId, updateRequest);
+        Assert.True(changed.IsSuccess, changed.ErrorMessage);
+        Assert.Equal(11, changed.Data!.GradeLevel);
+        Assert.All(memberships, membership => Assert.Equal((byte)10, membership.GradeLevelAtEnrollment)); // historical enrollment is never rewritten
+    }
+
+    [MySqlIntegrationFact]
+    public async Task QuestionImages_RealSql_CreateReadAndScope_NoProviderCalls()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var centerId = Guid.NewGuid(); var teacherId = Guid.NewGuid(); var studentId = Guid.NewGuid();
+        var otherStudentId = Guid.NewGuid(); var subjectId = Guid.NewGuid(); var classId = Guid.NewGuid();
+        await SeedHierarchyAsync(database.ConnectionString, centerId, teacherId, [studentId, otherStudentId], subjectId, classId);
+        var tenant = new TestTenantContext { CenterId = centerId, UserId = teacherId, Role = nameof(UserRole.Teacher) };
+        await using var db = CreateContext(database.ConnectionString, tenant);
+        var create = new EduTwin.BLL.CurriculumAndQuestions.CreateQuestionUseCase(db, tenant, new WorkspaceClock());
+        var result = await create.ExecuteAsync(new CreateQuestionRequest { SubjectId = subjectId, PrimaryTopicNodeId = "1",
+            QuestionType = "ShortAnswer", AnswerEvaluationMode = "TextExact", GradeLevel = 12, Difficulty = 2,
+            QuestionText = "", ImageDataUrl = CurriculumAndQuestions.QuestionImageFixture.DataUrl, CorrectAnswer = "5",
+            Solution = "Synthetic reference solution", MaxScore = 10, EstimatedTimeSeconds = 60, LanguageCode = "vi" });
+        Assert.True(result.IsSuccess); Assert.True(result.Data!.HasImage);
+        var qid = ulong.Parse(result.Data.QuestionId);
+        var reader = new EduTwin.BLL.CurriculumAndQuestions.GetQuestionImageUseCase(db, tenant);
+        Assert.Equal(CurriculumAndQuestions.QuestionImageFixture.Bytes, await reader.ExecuteAsync(qid, CancellationToken.None));
+        var assignment = new Assignment { AssignmentId = Guid.NewGuid(), CenterId = centerId, ClassId = classId,
+            CreatedByTeacherId = teacherId, Title = "Synthetic image scope test", Status = AssignmentStatus.Draft,
+            CreatedAt = UtcNow, UpdatedAt = UtcNow };
+        db.Assignments.Add(assignment);
+        db.AssignmentQuestions.Add(new AssignmentQuestion { CenterId = centerId, AssignmentId = assignment.AssignmentId,
+            QuestionId = qid, OrderIndex = 1, Points = 10, CreatedAt = UtcNow });
+        db.StudentAssignmentProgresses.Add(new StudentAssignmentProgress { CenterId = centerId, StudentId = studentId,
+            AssignmentId = assignment.AssignmentId, TotalQuestionCount = 1, CreatedAt = UtcNow, UpdatedAt = UtcNow });
+        await db.SaveChangesAsync();
+        tenant.UserId = studentId; tenant.Role = nameof(UserRole.Student);
+        Assert.Null(await reader.ExecuteAsync(qid, CancellationToken.None)); // draft is not an assignment yet
+        assignment.Status = AssignmentStatus.Published; await db.SaveChangesAsync();
+        Assert.Equal(CurriculumAndQuestions.QuestionImageFixture.Bytes, await reader.ExecuteAsync(qid, CancellationToken.None));
+        tenant.UserId = otherStudentId;
+        Assert.Null(await reader.ExecuteAsync(qid, CancellationToken.None)); // same center but not assigned
+        tenant.CenterId = Guid.NewGuid(); tenant.UserId = teacherId; tenant.Role = nameof(UserRole.Teacher);
+        Assert.Null(await reader.ExecuteAsync(qid, CancellationToken.None));
+    }
+
+    [MySqlIntegrationFact]
+    public async Task AssessedClassMastery_And_AssignmentCompletion_CalculatedCorrectly()
     {
         await using var database = await MySqlTestDatabase.CreateAsync();
         var centerId = Guid.NewGuid();
@@ -66,12 +561,14 @@ public sealed class DashboardMySqlIntegrationTests
         };
         await using var context = CreateContext(database.ConnectionString, tenant);
 
+        await ApplyPublishedCurriculumFixtureAsync(context, centerId, teacherId, subjectId, classId);
         // Topic 1: exam importance 60, Topic 2: exam importance 40
         // Student 1 has KnowledgeTwin on Topic 1 (mastery 80), missing KnowledgeTwin on Topic 2 (zero-fill => 0)
         // Student 1 weighted mastery = (80 * 60 + 0 * 40) / 100 = 48%
         // Student 2 has missing KnowledgeTwins on both topics (zero-fill => 0 on both)
         // Student 2 weighted mastery = 0%
-        // Class average mastery = (48 + 0) / 2 = 24.0%
+        // Class dashboard separates unknown evidence: only S1/topic1 is assessed, so its mean is 80%.
+        // The Center dashboard's legacy aggregate policy is a separate existing contract below.
         context.KnowledgeTwins.Add(new KnowledgeTwin
         {
             KnowledgeTwinId = 1UL,
@@ -160,17 +657,17 @@ public sealed class DashboardMySqlIntegrationTests
         Assert.True(classResult.IsSuccess);
         Assert.NotNull(classResult.Data);
         Assert.Equal(2, classResult.Data.Overview.StudentCount);
-        Assert.Equal(24.0m, classResult.Data.Overview.AverageMastery);
+        Assert.Equal(80.0m, classResult.Data.Overview.AverageMastery);
         Assert.Equal(50.0m, classResult.Data.Overview.AssignmentCompletionRate);
         Assert.Single(classResult.Data.HighRiskStudents);
         Assert.Equal(student2Id, classResult.Data.HighRiskStudents[0].StudentId);
         Assert.Equal(75.0m, classResult.Data.HighRiskStudents[0].RiskScore);
 
-        // Weak topics: Topic 1 average = (80 + 0) / 2 = 40.0% (< 60), Topic 2 average = (0 + 0) / 2 = 0% (< 60)
-        Assert.Equal(2, classResult.Data.WeakTopics.Count);
-
-        // Gap groups: weak topics group students below 60
-        Assert.True(classResult.Data.GapGroups.Count > 0);
+        Assert.Empty(classResult.Data.WeakTopics);
+        Assert.Empty(classResult.Data.GapGroups);
+        Assert.Equal(2, classResult.Data.AcademicCoverage.ApplicableTopicCount);
+        Assert.Equal(1, classResult.Data.AcademicCoverage.AssessedTopicCount);
+        Assert.Equal(3, classResult.Data.AcademicCoverage.UnassessedStudentTopicCount);
 
         // 2. Verify Center Dashboard Use Case
         var centerTenant = new TestTenantContext
@@ -310,6 +807,7 @@ public sealed class DashboardMySqlIntegrationTests
         await using var context = CreateContext(database.ConnectionString, tenant);
 
         // Persist governed Goal state (R06 single source of truth)
+        await ApplyPublishedCurriculumFixtureAsync(context, centerId, teacherId, subjectId, classId);
         context.StudentSubjectGoals.Add(new StudentSubjectGoal
         {
             GoalId = 1UL,
@@ -376,6 +874,7 @@ public sealed class DashboardMySqlIntegrationTests
                 SubjectId = subjectId,
                 TopicNodeId = 1UL,
                 MasteryPercentage = 50m,
+                EvidenceCount = 1,
                 CreatedAt = UtcNow,
                 UpdatedAt = UtcNow
             },
@@ -387,6 +886,7 @@ public sealed class DashboardMySqlIntegrationTests
                 SubjectId = subjectId,
                 TopicNodeId = 2UL,
                 MasteryPercentage = 40m,
+                EvidenceCount = 1,
                 CreatedAt = UtcNow,
                 UpdatedAt = UtcNow
             }
@@ -760,6 +1260,25 @@ public sealed class DashboardMySqlIntegrationTests
         }
     }
 
+    private static async Task ApplyPublishedCurriculumFixtureAsync(EduTwinDbContext db, Guid center, Guid teacher, Guid subject, Guid classId)
+    {
+        // The SQL trigger requires actual matching class/curriculum grades and snapshots.
+        // Seed only this isolated test class; do not relax production guards or use legacy links.
+        var cls = await db.Classes.SingleAsync(c => c.CenterId == center && c.ClassId == classId);
+        cls.GradeLevel = 12;
+        await db.SaveChangesAsync();
+        var curriculum = new Curriculum { CurriculumId=Guid.NewGuid(), CenterId=center, SubjectId=subject, TeacherId=teacher,
+            Title="Applied test curriculum", GradeLevel=12, ReviewStatus=ReviewStatus.Published, CreatedAt=UtcNow, UpdatedAt=UtcNow };
+        db.Curriculums.Add(curriculum);
+        var ids = await db.KnowledgeNodes.Where(n => n.CenterId == center && n.SubjectId == subject).OrderBy(n => n.NodeId).Select(n => n.NodeId).ToListAsync();
+        for(var i=0;i<ids.Count;i++) db.CurriculumNodes.Add(new() { CenterId=center, CurriculumId=curriculum.CurriculumId,
+            NodeId=ids[i], OrderIndex=(uint)i+1, CreatedAt=UtcNow });
+        db.ClassCurriculumApplications.Add(new() { ApplicationId=Guid.NewGuid(), CenterId=center, ClassId=classId,
+            CurriculumId=curriculum.CurriculumId, SubjectId=subject, AssignedBy=teacher, StartedAt=UtcNow,
+            ClassGradeAtStart=12, CurriculumGradeAtStart=12 });
+        await db.SaveChangesAsync();
+    }
+
     private static EduTwinDbContext CreateContext(string connectionString, ITenantIdAccessor tenant)
     {
         var options = new DbContextOptionsBuilder<EduTwinDbContext>()
@@ -792,7 +1311,7 @@ public sealed class DashboardMySqlIntegrationTests
 
         public string ConnectionString { get; }
 
-        public static async Task<MySqlTestDatabase> CreateAsync()
+        public static async Task<MySqlTestDatabase> CreateAsync(string? targetMigration = null)
         {
             var configuredConnection = Environment.GetEnvironmentVariable(AdminConnectionVariable)
                 ?? throw new InvalidOperationException($"{AdminConnectionVariable} is required.");
@@ -823,7 +1342,7 @@ public sealed class DashboardMySqlIntegrationTests
             {
                 var tenant = new TestTenantContext();
                 await using var context = CreateContext(database.ConnectionString, tenant);
-                await context.Database.MigrateAsync();
+                await context.GetService<IMigrator>().MigrateAsync(targetMigration);
                 return database;
             }
             catch

@@ -89,7 +89,7 @@ export const getAttemptFeedback = async (
 };
 
 export const getNextQuestion = async (
-  subjectId: string
+  subjectId: string, classId?: string, history = false
 ): Promise<NextQuestionDataDto> => {
   interface NextQuestionApiDto {
     strategy: string;
@@ -100,6 +100,7 @@ export const getNextQuestion = async (
       questionType: string;
       difficulty: number;
       questionText: string;
+      hasImage?: boolean;
       maxScore: number;
       estimatedTimeSeconds: number;
       reasoningRequired: boolean;
@@ -113,7 +114,7 @@ export const getNextQuestion = async (
   const response = await httpClient.get<ApiResponse<NextQuestionApiDto>>(
     "/learning/next-question",
     {
-      params: { subjectId },
+      params: { subjectId, classId: classId || undefined, history },
     }
   );
   const data = response.data.data;
@@ -132,6 +133,7 @@ export const getNextQuestion = async (
     questionType: data.question.questionType,
     difficulty: data.question.difficulty,
     questionText: data.question.questionText,
+    hasImage: data.question.hasImage,
     maxScore: data.question.maxScore,
     estimatedTimeSeconds: data.question.estimatedTimeSeconds,
     reasoningRequired: data.question.reasoningRequired,

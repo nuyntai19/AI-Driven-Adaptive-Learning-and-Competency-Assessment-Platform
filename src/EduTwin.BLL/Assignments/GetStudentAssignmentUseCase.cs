@@ -124,6 +124,7 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
                 QuestionType = aq.Question!.QuestionType.ToString(),
                 Difficulty = aq.Question.Difficulty,
                 QuestionText = aq.Question.QuestionText,
+                HasImage = aq.Question.HasImage,
                 EstimatedTimeSeconds = (int)aq.Question.EstimatedTimeSeconds,
                 ReasoningRequired = aq.Question.ReasoningRequired,
                 LanguageCode = aq.Question.LanguageCode,
@@ -243,6 +244,8 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
             DueAt = progress.Assignment.DueAt,
             SubjectId = assignmentClass?.SubjectId.ToString(),
             SubjectName = assignmentClass?.Subject?.SubjectName,
+            ClassId = progress.Assignment.ClassId.ToString(),
+            IsReadOnly = await StudentAssignmentScope.SuspendedAsync(_dbContext, centerId.Value, progress.Assignment.ClassId, cancellationToken),
             TimeLimitMinutes = progress.Assignment.TimeLimitMinutes,
             StartedAt = progress.StartedAt,
             IsSubmitted = isSubmitted,
@@ -268,6 +271,7 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
                 : null
         };
 
+        if (detailDto.IsReadOnly) detailDto.ReadOnlyReason = EduTwin.BLL.Organization.StudentLearningScope.ReadOnlyReason;
         var response = new StudentAssignmentDetailResponse
         {
             Data = detailDto

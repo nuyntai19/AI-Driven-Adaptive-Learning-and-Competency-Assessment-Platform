@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using EduTwin.BLL.CurriculumAndQuestions;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.Common;
 using EduTwin.Contracts.IdentityAndTenancy;
@@ -70,6 +71,13 @@ public class DeleteKnowledgeEdgeUseCase : IDeleteKnowledgeEdgeUseCase
         }
 
         var now = _timeProvider.GetUtcNow().UtcDateTime;
+        await using var transaction = await GraphMutationTransaction.BeginAsync(_dbContext, _tenantContext.CenterId.Value, edge.SubjectId, cancellationToken);
+        if (transaction is not null) await _dbContext.Entry(edge).ReloadAsync(cancellationToken);
+        if (edge.IsDeleted) return DeleteKnowledgeEdgeResult.Failure(ErrorCodes.ResourceNotFound);
+        var usages = await AcademicDependencyGuards.NodeUsageAsync(_dbContext, _tenantContext.CenterId.Value, edge.SourceNodeId, edge.TargetNodeId, cancellationToken);
+        if (usages.Count > 0)
+            return DeleteKnowledgeEdgeResult.Failure(ErrorCodes.InvalidStateTransition, AcademicDependencyGuards.ClassBlockMessage(usages));
+        var before = new { edge.SourceNodeId, edge.TargetNodeId, RelationType = edge.RelationType.ToString(), edge.Weight, edge.IsDeleted, edge.RowVersion };
         var originalRowVersion = edge.RowVersion;
 
         edge.IsDeleted = true;
@@ -80,16 +88,26 @@ public class DeleteKnowledgeEdgeUseCase : IDeleteKnowledgeEdgeUseCase
         edge.RowVersion = originalRowVersion + 1;
 
         _dbContext.Entry(edge).Property(x => x.RowVersion).OriginalValue = originalRowVersion;
+        AcademicDependencyGuards.Audit(_dbContext, _tenantContext.CenterId.Value, _tenantContext.UserId.Value,
+            "KnowledgeEdgeDeleted", "KnowledgeEdge", edgeId, before,
+            new { edge.SourceNodeId, edge.TargetNodeId, RelationType = edge.RelationType.ToString(), edge.Weight, edge.IsDeleted, edge.RowVersion },
+            now, "Xóa mềm liên kết tri thức.");
 
         try
         {
             await _dbContext.SaveChangesAsync(cancellationToken);
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
             return DeleteKnowledgeEdgeResult.Success();
         }
         catch (DbUpdateConcurrencyException)
         {
             _dbContext.ChangeTracker.Clear();
             return DeleteKnowledgeEdgeResult.Failure(ErrorCodes.ConcurrencyConflict);
+        }
+        catch (DbUpdateException ex) when (AcademicDependencyGuards.IsDatabaseGuard(ex))
+        {
+            _dbContext.ChangeTracker.Clear();
+            return DeleteKnowledgeEdgeResult.Failure(ErrorCodes.InvalidStateTransition, AcademicDependencyGuards.ConcurrentDependencyMessage);
         }
     }
 }

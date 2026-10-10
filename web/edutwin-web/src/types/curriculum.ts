@@ -48,6 +48,7 @@ export interface UpdateCurriculumNodesRequest {
 
 export interface ArchiveCurriculumRequest {
   rowVersion: string;
+  reason: string;
 }
 
 export interface CloneCurriculumRequest {

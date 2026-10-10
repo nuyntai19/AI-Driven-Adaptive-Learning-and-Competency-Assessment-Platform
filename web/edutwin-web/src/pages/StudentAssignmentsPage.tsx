@@ -7,6 +7,7 @@ import { organizationApi } from "../api/organizationApi";
 import { getSubjectTheme } from "../components/student/subjectTheme";
 import { StudentBadge } from "../components/student/StudentBadge";
 import type { ProgressStatus, StudentAssignmentListItemDto } from "../types/assignments";
+import { studentScopeUrl } from "../utils/studentAcademicNavigation";
 
 const getStudentListError = (error: unknown) => {
   if (isAxiosError(error)) return error.response?.data?.detail || error.message;
@@ -24,6 +25,7 @@ interface TimelineGroup {
 export const StudentAssignmentsPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const selectedSubjectId = searchParams.get("subjectId") || "";
+  const history = searchParams.get("history") === "true";
 
   const [statusFilter, setStatusFilter] = useState<ProgressStatus | "">("");
   const [searchTerm, setSearchTerm] = useState<string>("");
@@ -43,6 +45,8 @@ export const StudentAssignmentsPage: React.FC = () => {
   const { data: response, isLoading, isError, error, refetch } = useStudentAssignments({
     status: statusFilter || undefined,
     subjectId: (!ignoreSubjectFilter && selectedSubjectId) ? selectedSubjectId : undefined,
+    classId: !ignoreSubjectFilter ? searchParams.get("classId") || undefined : undefined,
+    history,
   });
 
   const rawAssignments = response?.data || [];
@@ -276,12 +280,13 @@ export const StudentAssignmentsPage: React.FC = () => {
             ✓
           </div>
           <h3 className="text-sm font-semibold text-stone-800 dark:text-stone-200">
-            {searchTerm ? "Không có kết quả phù hợp" : "Tất cả bài tập đã hoàn thành"}
+            {searchTerm ? "Không có kết quả phù hợp" : history ? "Chưa có bài tập trong lịch sử lớp học" : "Chưa có bài tập trong phạm vi đang xem"}
           </h3>
           <p className="mt-1 text-xs text-stone-500 dark:text-stone-400 max-w-sm mx-auto">
             {searchTerm
               ? "Thử tìm kiếm với từ khóa khác hoặc xóa bộ lọc."
-              : "Bạn đang theo sát lộ trình học tập. Hãy tiếp tục luyện tập tự do để nâng cao điểm số."}
+              : history ? "Chỉ bài tập thuộc lớp đã kết thúc hoặc lớp bạn đã rời khỏi xuất hiện ở đây. Bài làm cũ trong lớp đang học vẫn được xem tại mục Đang học."
+              : "Thử chọn lớp khác hoặc xem lại bộ lọc trạng thái bài tập."}
           </p>
           {searchTerm && (
             <button
@@ -365,7 +370,7 @@ export const StudentAssignmentsPage: React.FC = () => {
                           </div>
 
                           <Link
-                            to={`/hoc-tap/bai-tap/${item.assignmentId}${selectedSubjectId ? `?subjectId=${selectedSubjectId}` : ""}`}
+                            to={studentScopeUrl(`/hoc-tap/bai-tap/${item.assignmentId}`, searchParams)}
                             className="text-sm sm:text-base font-bold text-stone-900 dark:text-stone-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-1"
                           >
                             {item.title}
@@ -413,10 +418,10 @@ export const StudentAssignmentsPage: React.FC = () => {
 
                         {/* CTA Link */}
                         <Link
-                          to={`/hoc-tap/bai-tap/${item.assignmentId}${selectedSubjectId ? `?subjectId=${selectedSubjectId}` : ""}`}
+                          to={studentScopeUrl(`/hoc-tap/bai-tap/${item.assignmentId}`, searchParams)}
                           className="inline-flex items-center gap-1 text-xs sm:text-sm font-semibold text-stone-800 dark:text-stone-200 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
                         >
-                          <span>{isDone ? "Xem lại" : isStarted ? "Tiếp tục" : "Bắt đầu"}</span>
+                          <span>{history ? "Xem lại" : isDone ? "Xem lại" : isStarted ? "Tiếp tục" : "Bắt đầu"}</span>
                           <span className="text-[11px]">→</span>
                         </Link>
                       </div>

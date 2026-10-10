@@ -60,8 +60,8 @@ public class CreateKnowledgeEdgeUseCaseTests
     {
         context.Centers.Add(new Center { CenterCode = "C1", CenterName = "C1", Timezone = "UTC", CenterId = centerId, Status = CenterStatus.Active, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         context.Subjects.Add(new Subject { SubjectCode = "S1", SubjectName = "S1", CenterId = centerId, SubjectId = subjectId, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
-        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = centerId, SubjectId = subjectId, NodeId = sourceNodeId, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
-        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = centerId, SubjectId = subjectId, NodeId = targetNodeId, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = centerId, SubjectId = subjectId, NodeId = sourceNodeId, IsActive = true, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = centerId, SubjectId = subjectId, NodeId = targetNodeId, IsActive = true, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         await context.SaveChangesAsync();
     }
 
@@ -242,8 +242,8 @@ public class CreateKnowledgeEdgeUseCaseTests
         var subjectId = Guid.NewGuid();
         context.Centers.Add(new Center { CenterCode = "C1", CenterName = "C1", Timezone = "UTC", CenterId = _tenantContextMock.Object.CenterId!.Value, Status = CenterStatus.Suspended, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         context.Subjects.Add(new Subject { SubjectCode = "S1", SubjectName = "S1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
-        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 100, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
-        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 101, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 100, IsActive = true, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 101, IsActive = true, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         await context.SaveChangesAsync();
 
         var request = CreateValidRequest(subjectId, 100, 101);
@@ -263,8 +263,8 @@ public class CreateKnowledgeEdgeUseCaseTests
         var subjectId = Guid.NewGuid();
         context.Centers.Add(new Center { CenterCode = "C1", CenterName = "C1", Timezone = "UTC", CenterId = _tenantContextMock.Object.CenterId!.Value, Status = CenterStatus.Active, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         context.Subjects.Add(new Subject { SubjectCode = "S1", SubjectName = "S1", CenterId = Guid.NewGuid(), SubjectId = subjectId, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow }); // Cross tenant
-        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 100, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
-        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 101, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 100, IsActive = true, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 101, IsActive = true, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         await context.SaveChangesAsync();
 
         var request = CreateValidRequest(subjectId, 100, 101);
@@ -284,8 +284,8 @@ public class CreateKnowledgeEdgeUseCaseTests
         var subjectId = Guid.NewGuid();
         context.Centers.Add(new Center { CenterCode = "C1", CenterName = "C1", Timezone = "UTC", CenterId = _tenantContextMock.Object.CenterId!.Value, Status = CenterStatus.Active, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         context.Subjects.Add(new Subject { SubjectCode = "S1", SubjectName = "S1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
-        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 100, IsDeleted = true, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow }); // deleted
-        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 101, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 100, IsActive = true, IsDeleted = true, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow }); // deleted
+        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 101, IsActive = true, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         await context.SaveChangesAsync();
 
         var request = CreateValidRequest(subjectId, 100, 101);
@@ -305,8 +305,8 @@ public class CreateKnowledgeEdgeUseCaseTests
         var subjectId = Guid.NewGuid();
         context.Centers.Add(new Center { CenterCode = "C1", CenterName = "C1", Timezone = "UTC", CenterId = _tenantContextMock.Object.CenterId!.Value, Status = CenterStatus.Active, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         context.Subjects.Add(new Subject { SubjectCode = "S1", SubjectName = "S1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
-        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 100, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
-        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = Guid.NewGuid(), SubjectId = subjectId, NodeId = 101, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow }); // cross tenant
+        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 100, IsActive = true, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = Guid.NewGuid(), SubjectId = subjectId, NodeId = 101, IsActive = true, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow }); // cross tenant
         await context.SaveChangesAsync();
 
         var request = CreateValidRequest(subjectId, 100, 101);
@@ -327,8 +327,8 @@ public class CreateKnowledgeEdgeUseCaseTests
         var otherSubjectId = Guid.NewGuid();
         context.Centers.Add(new Center { CenterCode = "C1", CenterName = "C1", Timezone = "UTC", CenterId = _tenantContextMock.Object.CenterId!.Value, Status = CenterStatus.Active, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         context.Subjects.Add(new Subject { SubjectCode = "S1", SubjectName = "S1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
-        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 100, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
-        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = otherSubjectId, NodeId = 101, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow }); // other subject
+        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 100, IsActive = true, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = otherSubjectId, NodeId = 101, IsActive = true, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow }); // other subject
         await context.SaveChangesAsync();
 
         var request = CreateValidRequest(subjectId, 100, 101);
@@ -432,9 +432,9 @@ public class CreateKnowledgeEdgeUseCaseTests
         var subjectId = Guid.NewGuid();
         context.Centers.Add(new Center { CenterCode = "C1", CenterName = "C1", Timezone = "UTC", CenterId = _tenantContextMock.Object.CenterId!.Value, Status = CenterStatus.Active, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         context.Subjects.Add(new Subject { SubjectCode = "S1", SubjectName = "S1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
-        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 100, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
-        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 101, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
-        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 102, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 100, IsActive = true, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 101, IsActive = true, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 102, IsActive = true, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
 
         context.KnowledgeEdges.Add(new KnowledgeEdge { CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, SourceNodeId = 101, TargetNodeId = 102, RelationType = EduTwin.Contracts.KnowledgeGraph.RelationType.PrerequisiteOf, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         context.KnowledgeEdges.Add(new KnowledgeEdge { CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, SourceNodeId = 102, TargetNodeId = 100, RelationType = EduTwin.Contracts.KnowledgeGraph.RelationType.PrerequisiteOf, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
@@ -458,9 +458,9 @@ public class CreateKnowledgeEdgeUseCaseTests
         var subjectId = Guid.NewGuid();
         context.Centers.Add(new Center { CenterCode = "C1", CenterName = "C1", Timezone = "UTC", CenterId = _tenantContextMock.Object.CenterId!.Value, Status = CenterStatus.Active, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         context.Subjects.Add(new Subject { SubjectCode = "S1", SubjectName = "S1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
-        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "A", NodeName = "Node A", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 100, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
-        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "B", NodeName = "Node B", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 101, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
-        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "C", NodeName = "Node C", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 102, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "A", NodeName = "Node A", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 100, IsActive = true, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "B", NodeName = "Node B", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 101, IsActive = true, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "C", NodeName = "Node C", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 102, IsActive = true, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
 
         // Seed A -> B (100 -> 101) and B -> C (101 -> 102)
         context.KnowledgeEdges.Add(new KnowledgeEdge { CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, SourceNodeId = 100, TargetNodeId = 101, RelationType = EduTwin.Contracts.KnowledgeGraph.RelationType.PrerequisiteOf, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
@@ -496,9 +496,9 @@ public class CreateKnowledgeEdgeUseCaseTests
         var subjectId = Guid.NewGuid();
         context.Centers.Add(new Center { CenterCode = "C1", CenterName = "C1", Timezone = "UTC", CenterId = _tenantContextMock.Object.CenterId!.Value, Status = CenterStatus.Active, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         context.Subjects.Add(new Subject { SubjectCode = "S1", SubjectName = "S1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
-        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 100, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
-        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 101, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
-        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 102, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 100, IsActive = true, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 101, IsActive = true, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        context.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 102, IsActive = true, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
 
         context.KnowledgeEdges.Add(new KnowledgeEdge { CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, SourceNodeId = 101, TargetNodeId = 102, RelationType = EduTwin.Contracts.KnowledgeGraph.RelationType.PartOf, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         context.KnowledgeEdges.Add(new KnowledgeEdge { CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, SourceNodeId = 102, TargetNodeId = 100, RelationType = EduTwin.Contracts.KnowledgeGraph.RelationType.PartOf, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
@@ -613,7 +613,7 @@ public class CreateKnowledgeEdgeUseCaseTests
         using var context1 = CreateDbContext();
         var sut1 = new CreateKnowledgeEdgeUseCase(context1, _tenantContextMock.Object, _timeProviderMock.Object, _validator);
         await SeedValidDataAsync(context1, _tenantContextMock.Object.CenterId!.Value, subjectId, 100, 101);
-        context1.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 102, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        context1.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 102, IsActive = true, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         context1.KnowledgeEdges.Add(new KnowledgeEdge { CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, SourceNodeId = 101, TargetNodeId = 102, RelationType = EduTwin.Contracts.KnowledgeGraph.RelationType.PrerequisiteOf, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         context1.KnowledgeEdges.Add(new KnowledgeEdge { CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, SourceNodeId = 102, TargetNodeId = 100, RelationType = EduTwin.Contracts.KnowledgeGraph.RelationType.PrerequisiteOf, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         await context1.SaveChangesAsync();
@@ -625,7 +625,7 @@ public class CreateKnowledgeEdgeUseCaseTests
         using var context2 = CreateDbContext();
         var sut2 = new CreateKnowledgeEdgeUseCase(context2, _tenantContextMock.Object, _timeProviderMock.Object, _validator);
         await SeedValidDataAsync(context2, _tenantContextMock.Object.CenterId!.Value, subjectId, 100, 101);
-        context2.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 102, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        context2.KnowledgeNodes.Add(new KnowledgeNode { NodeCode = "N1", NodeName = "N1", CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, NodeId = 102, IsActive = true, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         context2.KnowledgeEdges.Add(new KnowledgeEdge { CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, SourceNodeId = 102, TargetNodeId = 100, RelationType = EduTwin.Contracts.KnowledgeGraph.RelationType.PrerequisiteOf, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         context2.KnowledgeEdges.Add(new KnowledgeEdge { CenterId = _tenantContextMock.Object.CenterId!.Value, SubjectId = subjectId, SourceNodeId = 101, TargetNodeId = 102, RelationType = EduTwin.Contracts.KnowledgeGraph.RelationType.PrerequisiteOf, IsDeleted = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         await context2.SaveChangesAsync();

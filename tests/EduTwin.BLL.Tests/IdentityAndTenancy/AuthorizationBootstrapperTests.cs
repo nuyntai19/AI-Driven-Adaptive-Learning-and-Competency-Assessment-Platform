@@ -78,7 +78,7 @@ public sealed class AuthorizationBootstrapperTests
         await sut.EnsureAsync();
 
         Assert.Equal(3, await context.AuthorizationRoles.IgnoreQueryFilters().CountAsync());
-        Assert.Equal(69, await context.RolePermissions.IgnoreQueryFilters().CountAsync());
+        Assert.Equal(75, await context.RolePermissions.IgnoreQueryFilters().CountAsync());
         Assert.Equal(3, await context.UserRoleAssignments.IgnoreQueryFilters().CountAsync());
         Assert.Single(await context.AuthorizationAuditLogs.IgnoreQueryFilters().ToListAsync());
         Assert.All(
@@ -94,6 +94,142 @@ public sealed class AuthorizationBootstrapperTests
         Assert.Equal(
             BootstrapUtcNow.UtcDateTime,
             (await context.AuthorizationAuditLogs.IgnoreQueryFilters().SingleAsync()).CreatedAt);
+    }
+
+    [Fact]
+    public void DefaultPermissions_CoverAllFourActors_WithoutCrossActorPrivileges()
+    {
+        var catalog = AuthorizationPermissionCatalog.CreatePermissions().ToDictionary(p => p.PermissionId);
+        var mappings = AuthorizationPermissionCatalog.CreateAccountTypeMappings();
+        foreach (var actor in Enum.GetValues<UserRole>())
+        {
+            var compatible = mappings.Where(m => m.AccountType == actor)
+                .Select(m => catalog[m.PermissionId].PermissionCode).Order().ToArray();
+            Assert.All(AuthorizationPermissionCatalog.GetDefaultSystemRoleCodes(actor), code => Assert.Contains(code, compatible));
+        }
+        Assert.Equal(5, AuthorizationPermissionCatalog.SystemPlatformAdminDefaultCodes.Count);
+        Assert.Equal(31, AuthorizationPermissionCatalog.SystemCenterManagerDefaultCodes.Count);
+        Assert.Equal(12, AuthorizationPermissionCatalog.SystemStudentDefaultCodes.Count);
+        Assert.Equal(32, AuthorizationPermissionCatalog.SystemTeacherDefaultCodes.Count);
+        Assert.All(AuthorizationPermissionCatalog.SensitiveSharedAcademicCodes,
+            code => Assert.Contains(code, AuthorizationPermissionCatalog.SystemTeacherDefaultCodes));
+        Assert.DoesNotContain(AuthorizationPermissionCatalog.SystemTeacherDefaultCodes, p => p.StartsWith("platform.") || p.StartsWith("authorization."));
+        Assert.DoesNotContain(AuthorizationPermissionCatalog.SystemCenterManagerDefaultCodes, p => AuthorizationPermissionCatalog.AcademicOperationalCodes.Contains(p));
+        Assert.DoesNotContain(AuthorizationPermissionCatalog.SystemStudentDefaultCodes, p => p.EndsWith("read_scoped") || p.EndsWith("override") || p.EndsWith("create") || p.EndsWith("delete"));
+        Assert.All(AuthorizationPermissionCatalog.SystemPlatformAdminDefaultCodes, p => Assert.StartsWith("platform.", p));
+    }
+
+    [Fact]
+    public async Task MissingTeacherGraphGrants_RefreshOnlyActiveRoleHolders_Idempotently()
+    {
+        await using var context = CreateContext();
+        var centerId = Guid.NewGuid(); var otherCenterId = Guid.NewGuid();
+        var teacher = CreateUser(centerId, Guid.NewGuid(), UserRole.Teacher);
+        var revokedTeacher = CreateUser(centerId, Guid.NewGuid(), UserRole.Teacher);
+        var otherTeacher = CreateUser(otherCenterId, Guid.NewGuid(), UserRole.Teacher);
+        var manager = CreateUser(centerId, Guid.NewGuid(), UserRole.CenterManager);
+        var student = CreateUser(centerId, Guid.NewGuid(), UserRole.Student);
+        context.Centers.AddRange(CreateCenter(centerId), CreateCenter(otherCenterId));
+        context.Users.AddRange(teacher, revokedTeacher, otherTeacher, manager, student,
+            CreateUser(otherCenterId, Guid.NewGuid(), UserRole.CenterManager));
+        var sut = new AuthorizationBootstrapper(context, new FixedTimeProvider(BootstrapUtcNow));
+        await context.SaveChangesAsync(); await sut.EnsureAsync();
+        var role = await context.AuthorizationRoles.IgnoreQueryFilters()
+            .SingleAsync(r => r.CenterId == centerId && r.AccountType == UserRole.Teacher);
+        context.RolePermissions.RemoveRange(await context.RolePermissions.IgnoreQueryFilters()
+            .Where(p => p.RoleId == role.RoleId &&
+                AuthorizationPermissionCatalog.SensitiveSharedAcademicCodes.Select(AuthorizationPermissionCatalog.CreateDeterministicId).Contains(p.PermissionId))
+            .ToArrayAsync());
+        var revoked = await context.UserRoleAssignments.IgnoreQueryFilters().SingleAsync(a => a.UserId == revokedTeacher.UserId);
+        revoked.Status = UserRoleAssignmentStatus.Revoked;
+        await context.SaveChangesAsync();
+        var previousRoleVersion = role.RowVersion;
+
+        await sut.EnsureCenterAsync(centerId);
+        Assert.Equal(32, await context.RolePermissions.IgnoreQueryFilters().CountAsync(p => p.RoleId == role.RoleId));
+        Assert.Equal(2u, teacher.AuthVersion);
+        Assert.Equal(1u, revokedTeacher.AuthVersion);
+        Assert.Equal(1u, otherTeacher.AuthVersion);
+        Assert.Equal(1u, manager.AuthVersion);
+        Assert.Equal(1u, student.AuthVersion);
+        Assert.Equal(UserRoleAssignmentStatus.Revoked, revoked.Status);
+        Assert.Equal(previousRoleVersion + 1, role.RowVersion);
+
+        await sut.EnsureCenterAsync(centerId);
+        Assert.Equal(2u, teacher.AuthVersion);
+        Assert.Equal(previousRoleVersion + 1, role.RowVersion);
+        Assert.Equal(32, await context.RolePermissions.IgnoreQueryFilters().CountAsync(p => p.RoleId == role.RoleId));
+    }
+
+    [Fact]
+    public async Task MissingPlatformGrant_RefreshesAdminSessionOnce_AndKeepsFivePlatformOnlyPermissions()
+    {
+        await using var context = CreateContext();
+        var centerId = AuthorizationBootstrapper.ReservedPlatformCenterId;
+        var admin = CreateUser(centerId, Guid.NewGuid(), UserRole.PlatformAdmin);
+        context.Centers.Add(CreateCenter(centerId)); context.Users.Add(admin);
+        context.Permissions.AddRange(AuthorizationPermissionCatalog.CreatePermissions());
+        context.PermissionAccountTypes.AddRange(AuthorizationPermissionCatalog.CreateAccountTypeMappings());
+        await context.SaveChangesAsync();
+        var sut = new AuthorizationBootstrapper(context, new FixedTimeProvider(BootstrapUtcNow));
+        await sut.BootstrapPlatformAsync(centerId, admin.UserId);
+        var role = await context.AuthorizationRoles.IgnoreQueryFilters().SingleAsync();
+        var grant = await context.RolePermissions.IgnoreQueryFilters()
+            .SingleAsync(p => p.PermissionId == AuthorizationPermissionCatalog.CreateDeterministicId("platform.audit.read"));
+        context.RolePermissions.Remove(grant); await context.SaveChangesAsync();
+        await sut.BootstrapPlatformAsync(centerId, admin.UserId);
+        await sut.BootstrapPlatformAsync(centerId, admin.UserId);
+        Assert.Equal(2u, admin.AuthVersion);
+        Assert.Equal(5, await context.RolePermissions.IgnoreQueryFilters().CountAsync(p => p.RoleId == role.RoleId));
+    }
+
+    [Fact]
+    public async Task StartupBackfill_WithoutDemoSeeder_IsAdditiveAudited_AndPreservesRevokedAndCustomRoles()
+    {
+        await using var context = CreateContext();
+        var centerId = Guid.NewGuid();
+        var teacher = CreateUser(centerId, Guid.NewGuid(), UserRole.Teacher);
+        var revokedTeacher = CreateUser(centerId, Guid.NewGuid(), UserRole.Teacher);
+        var student = CreateUser(centerId, Guid.NewGuid(), UserRole.Student);
+        var manager = CreateUser(centerId, Guid.NewGuid(), UserRole.CenterManager);
+        context.Centers.Add(CreateCenter(centerId)); context.Users.AddRange(teacher, revokedTeacher, student, manager);
+        await context.SaveChangesAsync();
+        await new AuthorizationBootstrapper(context, new FixedTimeProvider(BootstrapUtcNow)).EnsureAsync();
+        var teacherRole = await context.AuthorizationRoles.IgnoreQueryFilters().SingleAsync(r => r.AccountType == UserRole.Teacher);
+        var studentRole = await context.AuthorizationRoles.IgnoreQueryFilters().SingleAsync(r => r.AccountType == UserRole.Student);
+        var missingTeacherIds = AuthorizationPermissionCatalog.SensitiveSharedAcademicCodes
+            .Select(AuthorizationPermissionCatalog.CreateDeterministicId).ToArray();
+        context.RolePermissions.RemoveRange(await context.RolePermissions.IgnoreQueryFilters()
+            .Where(p => p.RoleId == teacherRole.RoleId && missingTeacherIds.Contains(p.PermissionId)).ToArrayAsync());
+        context.RolePermissions.Remove(await context.RolePermissions.IgnoreQueryFilters().SingleAsync(p =>
+            p.RoleId == studentRole.RoleId && p.PermissionId == AuthorizationPermissionCatalog.CreateDeterministicId("dashboards.student.read_own")));
+        var revokedAssignment = await context.UserRoleAssignments.IgnoreQueryFilters().SingleAsync(a => a.UserId == revokedTeacher.UserId);
+        revokedAssignment.Status = UserRoleAssignmentStatus.Revoked;
+        var customRole = new AuthorizationRole
+        {
+            RoleId = Guid.NewGuid(), CenterId = centerId, AccountType = UserRole.Teacher,
+            RoleCode = "CUSTOM_READER", RoleName = "Reader", IsSystemRole = false,
+            Status = AuthorizationRoleStatus.Active, CreatedAt = BootstrapUtcNow.UtcDateTime, UpdatedAt = BootstrapUtcNow.UtcDateTime
+        };
+        context.AuthorizationRoles.Add(customRole);
+        context.RolePermissions.Add(new RolePermission { CenterId = centerId, RoleId = customRole.RoleId,
+            AccountType = UserRole.Teacher, PermissionId = AuthorizationPermissionCatalog.CreateDeterministicId("knowledge.nodes.read"),
+            GrantedAt = BootstrapUtcNow.UtcDateTime });
+        await context.SaveChangesAsync();
+
+        var sut = new DefaultSystemRolePermissionBackfill(context, new FixedTimeProvider(BootstrapUtcNow));
+        await sut.EnsureAsync(); await sut.EnsureAsync();
+        Assert.Equal(32, await context.RolePermissions.IgnoreQueryFilters().CountAsync(p => p.RoleId == teacherRole.RoleId));
+        Assert.Equal(12, await context.RolePermissions.IgnoreQueryFilters().CountAsync(p => p.RoleId == studentRole.RoleId));
+        Assert.Equal(1, await context.RolePermissions.IgnoreQueryFilters().CountAsync(p => p.RoleId == customRole.RoleId));
+        Assert.Equal(2u, teacher.AuthVersion); Assert.Equal(2u, student.AuthVersion);
+        Assert.Equal(1u, manager.AuthVersion); Assert.Equal(1u, revokedTeacher.AuthVersion);
+        Assert.Equal(UserRoleAssignmentStatus.Revoked, revokedAssignment.Status);
+        var logs = await context.AuthorizationAuditLogs.IgnoreQueryFilters()
+            .Where(a => a.ActionType == "SystemRoleDefaultPermissionsGranted").ToArrayAsync();
+        Assert.Equal(2, logs.Length);
+        Assert.Contains(logs, a => a.TargetId == teacherRole.RoleId.ToString("D") && a.AfterData!.Contains("knowledge.edges.create"));
+        Assert.Equal(4, await context.UserRoleAssignments.IgnoreQueryFilters().CountAsync());
     }
 
     [Fact]

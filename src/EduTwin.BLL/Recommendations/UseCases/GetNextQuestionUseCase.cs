@@ -29,6 +29,8 @@ public sealed record GetNextQuestionResult
 public interface IGetNextQuestionUseCase
 {
     Task<GetNextQuestionResult> ExecuteAsync(Guid subjectId, CancellationToken cancellationToken);
+    Task<GetNextQuestionResult> ExecuteAsync(Guid subjectId, Guid? classId, bool history, CancellationToken ct)
+        => history || classId.HasValue ? Task.FromResult(GetNextQuestionResult.FailForbidden("Phạm vi học tập không được hỗ trợ.")) : ExecuteAsync(subjectId, ct);
 }
 
 public sealed class GetNextQuestionUseCase : IGetNextQuestionUseCase
@@ -51,6 +53,9 @@ public sealed class GetNextQuestionUseCase : IGetNextQuestionUseCase
     }
 
     public async Task<GetNextQuestionResult> ExecuteAsync(Guid subjectId, CancellationToken cancellationToken)
+        => await ExecuteAsync(subjectId, null, false, cancellationToken);
+
+    public async Task<GetNextQuestionResult> ExecuteAsync(Guid subjectId, Guid? classId, bool history, CancellationToken cancellationToken)
     {
         if (!_tenantContext.IsResolved || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
         {
@@ -75,6 +80,8 @@ public sealed class GetNextQuestionUseCase : IGetNextQuestionUseCase
         }
 
         var utcNow = _timeProvider.GetUtcNow().UtcDateTime;
+        var scope = await EduTwin.BLL.Organization.StudentLearningScope.ResolveAsync(_dbContext, centerId, studentId, subjectId, classId, history, cancellationToken);
+        if (!scope.Allowed) return GetNextQuestionResult.FailForbidden(scope.Reason!);
         var nextQuestion = await _recommendationEngine.GetNextQuestionAsync(
             centerId,
             studentId,
@@ -86,6 +93,9 @@ public sealed class GetNextQuestionUseCase : IGetNextQuestionUseCase
         {
             return GetNextQuestionResult.FailNotFound("No next question or recommendation available for this subject.");
         }
+
+        if (scope.TopicIds is not null && (nextQuestion.Topic is null || !scope.Includes(nextQuestion.Topic.NodeId)))
+            return GetNextQuestionResult.FailNotFound("Lộ trình hiện tại không khớp giáo trình của lớp đang xem. Hãy tạo/cập nhật lộ trình trong Đang học.");
 
         return GetNextQuestionResult.Success(nextQuestion);
     }

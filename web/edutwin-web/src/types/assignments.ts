@@ -119,6 +119,7 @@ export interface StudentQuestionAttemptDto {
 }
 
 export interface StudentAssignmentQuestionDto {
+  hasImage?: boolean;
   questionId: string;
   questionType: string;
   difficulty: number;
@@ -161,6 +162,9 @@ export interface SubmitAssignmentResponseDto {
 }
 
 export interface StudentAssignmentDetailDto {
+  classId?: string | null;
+  isReadOnly?: boolean;
+  readOnlyReason?: string | null;
   assignmentId: string;
   title: string;
   instructions: string | null;

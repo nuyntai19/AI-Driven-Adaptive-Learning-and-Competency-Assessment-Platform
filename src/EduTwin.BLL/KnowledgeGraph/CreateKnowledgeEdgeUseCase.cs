@@ -10,6 +10,7 @@ using EduTwin.DAL.Persistence;
 using EduTwin.DAL.KnowledgeGraph;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.IdentityAndTenancy;
+using EduTwin.BLL.CurriculumAndQuestions;
 
 namespace EduTwin.BLL.KnowledgeGraph;
 
@@ -90,6 +91,8 @@ public class CreateKnowledgeEdgeUseCase : ICreateKnowledgeEdgeUseCase
         if (subject == null)
             return CreateKnowledgeEdgeResult.Failure(ErrorCodes.ResourceNotFound);
 
+        await using var transaction = await GraphMutationTransaction.BeginAsync(_dbContext, _tenantContext.CenterId.Value, request.SubjectId, cancellationToken);
+
         var sourceNode = await _dbContext.KnowledgeNodes.AsNoTracking()
             .FirstOrDefaultAsync(n => n.CenterId == _tenantContext.CenterId!.Value && n.NodeId == sourceNodeId && n.SubjectId == request.SubjectId && !n.IsDeleted, cancellationToken);
         if (sourceNode == null)
@@ -99,6 +102,9 @@ public class CreateKnowledgeEdgeUseCase : ICreateKnowledgeEdgeUseCase
             .FirstOrDefaultAsync(n => n.CenterId == _tenantContext.CenterId!.Value && n.NodeId == targetNodeId && n.SubjectId == request.SubjectId && !n.IsDeleted, cancellationToken);
         if (targetNode == null)
             return CreateKnowledgeEdgeResult.Failure(ErrorCodes.ResourceNotFound);
+
+        if (!sourceNode.IsActive || !targetNode.IsActive)
+            return CreateKnowledgeEdgeResult.Failure(ErrorCodes.InvalidStateTransition, "Chỉ được nối các nút tri thức đang hoạt động.");
 
         var existingEdge = await _dbContext.KnowledgeEdges
             .IgnoreQueryFilters()
@@ -111,6 +117,10 @@ public class CreateKnowledgeEdgeUseCase : ICreateKnowledgeEdgeUseCase
         {
             return CreateKnowledgeEdgeResult.Failure(ErrorCodes.DuplicateResource);
         }
+
+        var usages = await AcademicDependencyGuards.NodeUsageAsync(_dbContext, _tenantContext.CenterId.Value, sourceNodeId, targetNodeId, cancellationToken);
+        if (usages.Count > 0)
+            return CreateKnowledgeEdgeResult.Failure(ErrorCodes.InvalidStateTransition, AcademicDependencyGuards.ClassBlockMessage(usages));
 
         var now = _timeProvider.GetUtcNow().UtcDateTime;
 
@@ -170,12 +180,23 @@ public class CreateKnowledgeEdgeUseCase : ICreateKnowledgeEdgeUseCase
             _dbContext.KnowledgeEdges.Add(edge);
         }
 
+        AcademicDependencyGuards.Audit(_dbContext, _tenantContext.CenterId.Value, _tenantContext.UserId.Value,
+            "KnowledgeEdgeCreated", "KnowledgeEdge", $"{sourceNodeId}:{targetNodeId}:{relationType}", null,
+            new { edge.SourceNodeId, edge.TargetNodeId, RelationType = edge.RelationType.ToString(), edge.Weight, edge.IsDeleted }, now,
+            existingEdge is null ? "Tạo liên kết tri thức." : "Khôi phục liên kết tri thức.");
+
         try
         {
             await _dbContext.SaveChangesAsync(cancellationToken);
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         }
         catch (DbUpdateException ex)
         {
+            if (AcademicDependencyGuards.IsDatabaseGuard(ex))
+            {
+                _dbContext.ChangeTracker.Clear();
+                return CreateKnowledgeEdgeResult.Failure(ErrorCodes.InvalidStateTransition, AcademicDependencyGuards.ConcurrentDependencyMessage);
+            }
             if (IsDuplicateConstraintViolation(ex))
             {
                 _dbContext.ChangeTracker.Clear();

@@ -15,9 +15,12 @@ import {
   TeacherStatusBadge,
   TeacherSafeErrorPanel,
 } from "../../components/teacher/TeacherPrimitives";
-import { TeacherModal, TeacherConfirmDialog } from "../../components/teacher/TeacherOverlays";
+import { TeacherModal } from "../../components/teacher/TeacherOverlays";
+import { CurriculumArchiveDialog } from "../../components/teacher/CurriculumArchiveDialog";
 import { formatCurriculumSaveError } from "../curriculumEditorHelpers";
 import { extractProblemDetails, mapSafeOperationalError } from "../../utils/problemDetails";
+import { academicLifecycleError } from "../../utils/academicLifecycleError";
+import { CurriculumApplicationPanel } from "../../components/teacher/CurriculumApplicationPanel";
 
 export const TeacherCurriculumEditorView: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -25,6 +28,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const actorId = useAuthStore(state => state.user?.userId);
+  const centerId = useAuthStore(state => state.user?.centerId);
   const [visibility, setVisibility] = useState<MaterialVisibility>("Private");
 
   const hasPermission = useAuthStore((state) => state.hasPermission);
@@ -57,8 +61,15 @@ export const TeacherCurriculumEditorView: React.FC = () => {
 
   // Fetch classes
   const { data: classesData } = useQuery({
-    queryKey: ["teacherClassesList"],
-    queryFn: () => organizationApi.listClasses({ page: 1, pageSize: 50 }),
+    queryKey: ["teacherClassesList", "curriculum-plan", centerId, actorId],
+    enabled: Boolean(actorId),
+    queryFn: async () => {
+      const params = {pageSize:100, teacherId:actorId, status:"Active" as const};
+      const first = await organizationApi.listClasses({...params,page:1});
+      const all = [...first.data];
+      for(let page=2;page<=first.meta.totalPages;page++) all.push(...(await organizationApi.listClasses({...params,page})).data);
+      return {...first,data:all};
+    },
   });
   const classes = classesData?.data ?? [];
 
@@ -69,7 +80,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
     isError: isCurriculumError,
     error: curriculumError,
   } = useQuery({
-    queryKey: ["teacherCurriculumDetail", id],
+    queryKey: ["teacherCurriculumDetail", id, centerId, actorId],
     queryFn: () => (id && !isCreateMode ? curriculumApi.getById(id) : null),
     enabled: !isCreateMode && Boolean(id),
   });
@@ -219,21 +230,21 @@ export const TeacherCurriculumEditorView: React.FC = () => {
 
   // Archive Mutation
   const archiveMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (reason: string) => {
       setFeedbackMsg(null);
       if (!id || isCreateMode) throw new Error("Cần lưu giáo trình trước khi lưu trữ.");
-      return await curriculumApi.archive(id, { rowVersion });
+      return await curriculumApi.archive(id, { rowVersion, reason });
     },
     onSuccess: (res) => {
       setIsArchiveDialogOpen(false);
       setRowVersion(res.data.rowVersion);
       setStatus("Archived");
-      setFeedbackMsg({ type: "success", text: "Giáo trình đã được chuyển sang trạng thái Lưu trữ (Archived) và đóng băng hoàn toàn." });
+      setFeedbackMsg({ type: "success", text: "Giáo trình đã được lưu trữ. Danh sách chủ đề và nội dung lịch sử được bảo toàn; thông số ưu tiên của đồ thị dùng chung vẫn có nhật ký riêng." });
       queryClient.invalidateQueries({ queryKey: ["teacherCurriculums"] });
       queryClient.invalidateQueries({ queryKey: ["teacherCurriculumDetail", id] });
     },
     onError: (err: any) => {
-      setFeedbackMsg({ type: "error", text: err.message || "Lỗi khi lưu trữ giáo trình" });
+      setFeedbackMsg({ type: "error", text: academicLifecycleError(err, "Lỗi khi lưu trữ giáo trình") });
     },
   });
 
@@ -258,6 +269,9 @@ export const TeacherCurriculumEditorView: React.FC = () => {
 
   const isOwned = isCreateMode || curriculumData?.data?.teacherId === actorId;
   const isDraft = isOwned && (isCreateMode || status === "Draft");
+  const plannedClasses = classes.filter(c => c.teacher.teacherId === actorId && c.subject.subjectId === subjectId &&
+    c.status === "Active" && c.learningScope !== "History" &&
+    (c.gradeLevel === gradeLevel || selectedClassIds.includes(c.classId)));
 
   // Filtered available nodes
   const filteredAvailableNodes = availableNodes.filter((n) =>
@@ -268,7 +282,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
   return (
     <div className="th-page-container">
       <TeacherPageHeader
-        title={isCreateMode ? "Soạn Giáo Trình Mới" : `Chỉnh Sửa Giáo Trình: ${title}`}
+        title={isCreateMode ? "Soạn Giáo Trình Mới" : `${isDraft ? "Chỉnh Sửa Giáo Trình" : "Nội Dung Giáo Trình"}: ${title}`}
         subtitle="Xây dựng cấu trúc cây bài học, tích hợp chủ đề tri thức và phân bổ cho các lớp học"
         actions={
           <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
@@ -360,7 +374,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
         >
           <div style={{ fontSize: "1.2rem", lineHeight: 1 }}>🔒</div>
           <div style={{ flex: 1, fontSize: "0.85rem", color: "var(--th-text-primary)" }}>
-            <strong>Giáo trình đang áp dụng chính thức (Published):</strong> Cấu trúc các chủ đề tri thức và phân bổ lớp học được khóa đóng băng nhằm bảo đảm tính toàn vẹn dữ liệu học tập và mô hình AI Digital Twin của học sinh. Nếu cần cải cách chương trình đào tạo cho năm học mới, vui lòng bấm <strong>Nhân Bản (Clone V2)</strong> ở trên để tạo một bản thảo mới.
+            <strong>Giáo trình đã xuất bản (Published):</strong> Cấu trúc chủ đề được khóa để bảo toàn dữ liệu học tập. Việc áp dụng cho lớp được quản lý riêng ở khung bên dưới, có lịch sử khi thay/ngừng áp dụng. Muốn đổi nội dung, dùng <strong>Nhân Bản (Clone V2)</strong> để tạo bản thảo mới.
           </div>
         </div>
       )}
@@ -380,12 +394,15 @@ export const TeacherCurriculumEditorView: React.FC = () => {
         >
           <div style={{ fontSize: "1.2rem", lineHeight: 1 }}>📦</div>
           <div style={{ flex: 1, fontSize: "0.85rem", color: "var(--th-text-primary)" }}>
-            <strong>Giáo trình đã được lưu trữ (Archived):</strong> Giáo trình này đã hoàn tất chu kỳ giảng dạy và đóng băng vĩnh viễn để bảo tồn lịch sử học tập. Bạn có thể bấm <strong>Nhân Bản (Clone V2)</strong> để tạo bản sao kế thừa cho các khóa học tiếp theo.
+            <strong>Giáo trình đã được lưu trữ (Archived):</strong> Danh sách chủ đề và nội dung lịch sử được bảo toàn. Thông số ưu tiên của đồ thị dùng chung vẫn có thể được cập nhật và ghi nhật ký. Bấm <strong>Nhân Bản (Clone V2)</strong> để tạo giáo trình nháp mới; bản sao vẫn tham chiếu các nút cũ, không cho phép ghi đè nội dung nút lịch sử.
           </div>
         </div>
       )}
 
       {isLoadingCurriculum && <TeacherSkeleton height={400} />}
+      {!isCreateMode && id && !isLoadingCurriculum && !isCurriculumError && (status === "Published" || status === "Archived") &&
+        <CurriculumApplicationPanel key={id} curriculumId={id} subjectId={subjectId}
+          gradeLevel={gradeLevel === "" ? null : Number(gradeLevel)} readOnly={status !== "Published"} />}
 
       {isCurriculumError && (
         <TeacherSafeErrorPanel error={curriculumError} title="Không thể tải thông tin giáo trình" />
@@ -497,17 +514,17 @@ export const TeacherCurriculumEditorView: React.FC = () => {
               </div>
             </div>
 
-            {/* Target Classes Assignment */}
-            <div className="th-surface" style={{ borderRadius: "12px", padding: "20px" }}>
+            {/* Draft planning is not an active curriculum application. */}
+            {isDraft && !isCreateMode && <div className="th-surface" style={{ borderRadius: "12px", padding: "20px" }}>
               <h3 style={{ fontSize: "1.05rem", fontWeight: 700, color: "var(--th-text-primary)", margin: "0 0 12px 0" }}>
-                Lớp Học Áp Dụng ({selectedClassIds.length})
+                Lớp dự kiến áp dụng ({selectedClassIds.length})
               </h3>
               <p style={{ fontSize: "0.8rem", color: "var(--th-text-secondary)", margin: "0 0 14px 0" }}>
-                Học sinh thuộc các lớp được chọn sẽ học và làm bài tập theo lộ trình của giáo trình này.
+                Đây là kế hoạch của bản nháp, chưa áp dụng cho học sinh. Sau xuất bản, dùng khung áp dụng giáo trình để gán/thay/ngừng lớp có lịch sử. Ngoại lệ khác khối được quản lý sau xuất bản.
               </p>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "220px", overflowY: "auto" }}>
-                {classes.map((cls) => {
+                {plannedClasses.map((cls) => {
                   const isChecked = selectedClassIds.includes(cls.classId);
                   return (
                     <label
@@ -546,7 +563,8 @@ export const TeacherCurriculumEditorView: React.FC = () => {
                   );
                 })}
               </div>
-            </div>
+            </div>}
+            {isCreateMode && <p className="text-sm">Lưu bản nháp trước để chọn lớp dự kiến, hoặc gán lớp sau khi xuất bản.</p>}
           </div>
 
           {/* Right Column: Knowledge Topics Tree & Organizer */}
@@ -717,15 +735,14 @@ export const TeacherCurriculumEditorView: React.FC = () => {
       )}
 
       {/* Archive Confirm Dialog */}
-      <TeacherConfirmDialog
+      <CurriculumArchiveDialog
         isOpen={isArchiveDialogOpen}
         onClose={() => setIsArchiveDialogOpen(false)}
-        onConfirm={() => archiveMutation.mutate()}
-        title="Lưu trữ giáo trình (Archive)"
-        description={`Bạn có chắc chắn muốn lưu trữ giáo trình "${title}"? Cấu trúc các điểm tri thức sẽ được đóng băng vĩnh viễn để bảo tồn lịch sử học tập. Bạn có thể sử dụng chức năng "Nhân bản (Clone V2)" để tạo phiên bản mới.`}
-        confirmLabel="Xác nhận lưu trữ"
-        tone="danger"
-        isConfirming={archiveMutation.isPending}
+        onConfirm={(reason) => archiveMutation.mutate(reason)}
+        curriculumId={id}
+        title={title}
+        isPending={archiveMutation.isPending}
+        error={feedbackMsg?.type === "error" ? feedbackMsg.text : null}
       />
 
       {/* Clone Curriculum Modal */}

@@ -117,6 +117,14 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
         }
 
         AssignmentQuestion? assignmentQuestion = null;
+        if (request.History) return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
+        if (!request.AssignmentId.HasValue)
+        {
+            var scope = await EduTwin.BLL.Organization.StudentLearningScope.ResolveAsync(_dbContext, centerId, studentId,
+                question.SubjectId, request.ClassId, false, cancellationToken);
+            if (!scope.Includes(question.PrimaryTopicNodeId))
+                return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
+        }
         if (request.AssignmentId.HasValue)
         {
             var assignment = await _dbContext.Assignments
@@ -137,6 +145,10 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
             {
                 return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
             }
+
+            if (await EduTwin.BLL.Assignments.StudentAssignmentScope.SuspendedAsync(_dbContext, centerId, assignment.ClassId, cancellationToken) ||
+                (request.ClassId.HasValue && request.ClassId != assignment.ClassId))
+                return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
 
             var isTarget = await _dbContext.AssignmentTargets
                 .AsNoTracking()

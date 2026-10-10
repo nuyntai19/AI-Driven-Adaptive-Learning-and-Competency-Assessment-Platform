@@ -260,12 +260,27 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                 centerId,
                 initialAttempt.AttemptId,
                 cancellationToken);
+            IReadOnlyList<AnalyzeReasoningImagePart> questionImageParts = [];
+            if (requestContext.Question.HasImage)
+            {
+                var image = await _dbContext.QuestionImages.AsNoTracking().SingleOrDefaultAsync(i =>
+                    i.CenterId == centerId && i.QuestionId == requestContext.Question.QuestionId, cancellationToken);
+                if (image is null || image.Data.Length is 0 or > CurriculumAndQuestions.QuestionImageContent.MaxBytes ||
+                    Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(image.Data)) != image.Sha256)
+                    throw new AttemptAttachmentStorageUnavailableException("Question image content is unavailable or corrupted.");
+                questionImageParts = [new AnalyzeReasoningImagePart(image.Data, "image/png")];
+            }
             var request = _requestFactory.Create(
                 initialAttempt,
                 requestContext.Question,
                 requestContext.AllowedNodes,
                 imageParts,
-                requestContext.Options);
+                requestContext.Options,
+                questionImageParts);
+            if (request.StudentSubmission.ImageParts.Count != imageParts.Count ||
+                request.StudentSubmission.ImageParts.Zip(imageParts).Any(pair => pair.First.MimeType != pair.Second.MimeType ||
+                    !pair.First.Data.AsSpan().SequenceEqual(pair.Second.Data)))
+                throw new AttemptAttachmentStorageUnavailableException("Student image evidence was lost or altered while preparing the AI request.");
             cancellationToken.ThrowIfCancellationRequested();
             fingerprint = AIAnalysisCheckpointStore.Fingerprint(request,
                 (_aiService as IAIAnalysisProfile)?.AnalysisProfileVersion ?? AIAnalysisContract.SchemaVersion, requestContext.Question.RowVersion);
@@ -317,6 +332,7 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                     requestContext.Question.MaxScore, response.SuggestedRubricScores, out var grade, out _) && grade is not null)
             {
                 analysis.SuggestedScore = grade.AwardedScore; // Total is computed by the server.
+                grade.VisualEvidence = response.VisualEvidence?.ToList() ?? [];
                 analysis.SuggestedRubricGradeJson = RubricGrade.Serialize(grade);
             }
             if (_aiService is IAIAnalysisProvenance provenance)

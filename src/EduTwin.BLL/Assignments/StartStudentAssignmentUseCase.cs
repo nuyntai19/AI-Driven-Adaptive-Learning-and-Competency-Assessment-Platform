@@ -107,6 +107,9 @@ public class StartStudentAssignmentUseCase : IStartStudentAssignmentUseCase
         }
 
         // 4. Idempotent timer start: never reset StartedAt if already started
+        if (await StudentAssignmentScope.SuspendedAsync(_dbContext, centerId!.Value, assignment.ClassId, cancellationToken))
+            return GetStudentAssignmentResult.Failure(ErrorCodes.AssignmentNotAvailable);
+
         if (progress.StartedAt == null)
         {
             progress.StartedAt = utcNow;

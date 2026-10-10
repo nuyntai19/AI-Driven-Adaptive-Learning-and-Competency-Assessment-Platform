@@ -41,6 +41,8 @@ services:
       - Gemini__BackupKeys=${Gemini__BackupKeys:-}
       - Gemini__BackupKeys_2=${Gemini__BackupKeys_2:-}
       - Gemini__Model=${Gemini__Model}
+      - Gemini__VisualEvidenceModel=${Gemini__VisualEvidenceModel:-}
+      - Gemini__VisualEvidenceProfileApproved=${Gemini__VisualEvidenceProfileApproved:-false}
       - AIAnalysisWorker__MaxConcurrentJobs=${AIAnalysisWorker__MaxConcurrentJobs:-6}
       - Gemini__MaxConcurrentRequests=${Gemini__MaxConcurrentRequests:-2}
       - GEMINI_QUOTA_POOLS=${GEMINI_QUOTA_POOLS:-}

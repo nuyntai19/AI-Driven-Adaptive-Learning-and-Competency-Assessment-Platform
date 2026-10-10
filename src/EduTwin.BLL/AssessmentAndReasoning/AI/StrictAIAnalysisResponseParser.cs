@@ -24,7 +24,7 @@ public sealed class StrictAIAnalysisResponseParser : IAIAnalysisResponseParser
 
     private static readonly HashSet<string> CanonicalProperties =
         new(CanonicalPropertyNames, StringComparer.Ordinal);
-    private static readonly HashSet<string> AdvisoryProperties = new(["answerAssessment", "reasoningVerdict", "suggestedScore", "usesAlternativeMethod", "suggestedRubricScores", "reasoningIssues"], StringComparer.Ordinal);
+    private static readonly HashSet<string> AdvisoryProperties = new(["answerAssessment", "reasoningVerdict", "suggestedScore", "usesAlternativeMethod", "suggestedRubricScores", "reasoningIssues", "visualEvidence", "criterionDeductions"], StringComparer.Ordinal);
 
     private static readonly HashSet<string> ErrorTypeNames =
         new(Enum.GetNames<ErrorType>(), StringComparer.Ordinal);
@@ -88,7 +88,9 @@ public sealed class StrictAIAnalysisResponseParser : IAIAnalysisResponseParser
                 UsesAlternativeMethod = root.TryGetProperty("usesAlternativeMethod", out var alternative)
                     ? alternative.ValueKind is JsonValueKind.True or JsonValueKind.False ? alternative.GetBoolean() : throw AIAnalysisValidationException.ShapeInvalid() : false,
                 SuggestedRubricScores = ReadRubricScores(root),
-                ReasoningIssues = ReadReasoningIssues(root)
+                ReasoningIssues = ReadReasoningIssues(root),
+                VisualEvidence = request.VerifiedVisualEvidence ?? ReadVisualEvidence(root),
+                CriterionDeductions = ReadCriterionDeductions(root)
             };
 
             // An English exercise can have an English model answer, not English feedback.
@@ -113,6 +115,11 @@ public sealed class StrictAIAnalysisResponseParser : IAIAnalysisResponseParser
                 throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.VietnameseExplanation);
 
             _validator.Validate(request, response);
+            if (request.VerifiedVisualEvidence is not null && response.CriterionDeductions is { Count: > 0 } deductions)
+                response = response with { SuggestedRubricScores = response.SuggestedRubricScores.Select(score => new RubricScoreInput {
+                    CriterionId = score.CriterionId, AwardedScore = score.AwardedScore,
+                    Comment = score.Comment + string.Concat(deductions.Where(d => d.CriterionId == score.CriterionId)
+                        .Select(d => $"\nPhần chưa đạt: {d.UnmetRequirement} Bằng chứng: {d.Evidence}")) }).ToArray() };
             // A tested knowledge topic is not an error cause. Drop only non-error metadata
             // after validating its shape/scope; retain every genuine defect or uncertainty.
             if (response.ErrorType == ErrorType.None && response.AnswerAssessment == "Correct" && response.ReasoningVerdict == "Valid")
@@ -176,6 +183,20 @@ public sealed class StrictAIAnalysisResponseParser : IAIAnalysisResponseParser
         return result;
     }
 
+    private static IReadOnlyList<AICriterionDeduction>? ReadCriterionDeductions(JsonElement root)
+    {
+        if (!root.TryGetProperty("criterionDeductions", out var deductions) || deductions.ValueKind == JsonValueKind.Null) return null;
+        if (deductions.ValueKind != JsonValueKind.Array || deductions.GetArrayLength() > 40)
+            throw AIAnalysisValidationException.ShapeInvalid();
+        return deductions.EnumerateArray().Select(d => {
+            if (d.ValueKind != JsonValueKind.Object || !d.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal)
+                .SequenceEqual(new[] { "criterionId", "evidence", "evidenceKind", "unmetRequirement" }))
+                throw AIAnalysisValidationException.ShapeInvalid();
+            return new AICriterionDeduction(ReadRequiredString(d, "criterionId"), ReadRequiredString(d, "evidenceKind"),
+                ReadRequiredString(d, "unmetRequirement"), ReadRequiredString(d, "evidence"));
+        }).ToArray();
+    }
+
     private static IReadOnlyList<AIReasoningIssue>? ReadReasoningIssues(JsonElement root)
     {
         if (!root.TryGetProperty("reasoningIssues", out var issues)) return null;
@@ -187,6 +208,25 @@ public sealed class StrictAIAnalysisResponseParser : IAIAnalysisResponseParser
                 .SequenceEqual(new[] { "explanation", "studentClaim", "verdict" }))
                 throw AIAnalysisValidationException.ShapeInvalid();
             result.Add(new(ReadRequiredString(issue, "verdict"), ReadRequiredString(issue, "studentClaim"), ReadRequiredString(issue, "explanation")));
+        }
+        return result;
+    }
+
+    private static IReadOnlyList<RubricVisualEvidence>? ReadVisualEvidence(JsonElement root)
+    {
+        if (!root.TryGetProperty("visualEvidence", out var evidence)) return null;
+        if (evidence.ValueKind != JsonValueKind.Array || evidence.GetArrayLength() > 240)
+            throw AIAnalysisValidationException.ShapeInvalid();
+        var result = new List<RubricVisualEvidence>();
+        foreach (var item in evidence.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object || !item.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal)
+                .SequenceEqual(new[] { "criterionId", "observation", "requirementIndex", "status", "studentImageIndex" }))
+                throw AIAnalysisValidationException.ShapeInvalid();
+            var image = item.GetProperty("studentImageIndex");
+            int? imageIndex = image.ValueKind == JsonValueKind.Null ? null : ReadLexicalInteger(item, "studentImageIndex");
+            result.Add(new(ReadRequiredString(item, "criterionId"), ReadLexicalInteger(item, "requirementIndex"),
+                ReadRequiredString(item, "status"), imageIndex, ReadRequiredString(item, "observation")));
         }
         return result;
     }

@@ -66,6 +66,10 @@ public sealed class GoogleGenAIGenerateContentClient : IGeminiGenerateContentCli
             if (image.Data.Length == 0 || image.MimeType != "image/png") throw GeminiAdapterException.RequestFailed();
             parts.Add(new Part { InlineData = new Blob { Data = image.Data, MimeType = image.MimeType } });
         }
+        _logger?.LogInformation("Gemini multimodal request prepared for {Model}: {ImageCount} images, {PartCount} parts.", model, images.Count, parts.Count);
+        for (var i = 0; i < images.Count; i++)
+            _logger?.LogInformation("Gemini outgoing image {ImageIndex}: {Bytes} bytes, sha256 {Sha256}.", i + 1,
+                images[i].Data.Length, Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(images[i].Data)));
 
         // Admission estimate, reconciled from provider usage; it is not an exact tokenizer.
         var estimatedTokens = Encoding.UTF8.GetByteCount(prompt) / 2L + 1 + images.Count * 8192L;

@@ -138,11 +138,7 @@ public class ListCurriculumsUseCase : IListCurriculumsUseCase
             // Load all classes and nodes for this center, then filter client-side.
             // This avoids MySQL EF provider type mapping issues with Contains(List<Guid>)
             // when columns are stored as varchar(36) via LowercaseGuidConverter.
-            var allClasses = await _dbContext.CurriculumClasses
-                .AsNoTracking()
-                .Where(cc => cc.CenterId == centerId)
-                .OrderBy(cc => cc.ClassId)
-                .ToListAsync(cancellationToken);
+            var allClasses = await CurriculumClassScopeQuery.ReadAsync(_dbContext, centerId, actorId, null, cancellationToken);
 
             foreach (var cc in allClasses.Where(cc => curriculumIdSet.Contains(cc.CurriculumId)))
             {
@@ -186,7 +182,7 @@ public class ListCurriculumsUseCase : IListCurriculumsUseCase
                 Description = c.Description,
                 SourceFile = c.SourceFile,
                 ReviewStatus = c.ReviewStatus.ToString(),
-                ClassIds = c.TeacherId == actorId && classesMap.TryGetValue(c.CurriculumId, out var classList) ? classList : new List<string>(),
+                ClassIds = classesMap.TryGetValue(c.CurriculumId, out var classList) ? classList : new List<string>(),
                 NodeIds = nodesMap.TryGetValue(c.CurriculumId, out var nodeList) ? nodeList : new List<string>(),
                 RowVersion = c.RowVersion.ToString(CultureInfo.InvariantCulture)
             });

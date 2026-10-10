@@ -113,6 +113,7 @@ public class ManifestEvaluator : IManifestEvaluator
         if (!await IsMatchEdgesAsync(expected, centerId)) return TenantSeedStatus.Conflict;
         if (!await IsMatchCurriculumsAsync(expected, centerId)) return TenantSeedStatus.Conflict;
         if (!await IsMatchCurriculumClassesAsync(expected, centerId)) return TenantSeedStatus.Conflict;
+        if (!await IsMatchCurriculumApplicationsAsync(expected, centerId)) return TenantSeedStatus.Conflict;
         if (!await IsMatchCurriculumNodesAsync(expected, centerId)) return TenantSeedStatus.Conflict;
         if (!await IsMatchQuestionsAsync(expected, centerId)) return TenantSeedStatus.Conflict;
         if (!await IsMatchQuestionNodesAsync(expected, centerId)) return TenantSeedStatus.Conflict;
@@ -169,6 +170,7 @@ public class ManifestEvaluator : IManifestEvaluator
             || await GetUnfiltered<KnowledgeEdge>().AnyAsync(e => e.CenterId == centerId)
             || await GetUnfiltered<Curriculum>().AnyAsync(c => c.CenterId == centerId)
             || await GetUnfiltered<CurriculumClass>().AnyAsync(cc => cc.CenterId == centerId)
+            || await GetUnfiltered<ClassCurriculumApplication>().AnyAsync(a => a.CenterId == centerId)
             || await GetUnfiltered<CurriculumNode>().AnyAsync(cn => cn.CenterId == centerId)
             || await GetUnfiltered<Question>().AnyAsync(q => q.CenterId == centerId)
             || await GetUnfiltered<QuestionOption>().AnyAsync(qo => qo.CenterId == centerId)
@@ -236,9 +238,9 @@ public class ManifestEvaluator : IManifestEvaluator
 
     private async Task<bool> IsMatchClassesAsync(SeedDataContainer expected, Guid centerId)
     {
-        var expectedSet = expected.Classes.Select(c => (c.ClassId, c.TeacherId, c.SubjectId, c.AcademicYear)).ToHashSet();
-        var actualList = await GetUnfiltered<Class>().Where(c => c.CenterId == centerId && !c.IsDeleted && c.Status == EduTwin.Contracts.Organization.ClassStatus.Active).Select(c => new { c.ClassId, c.TeacherId, c.SubjectId, c.AcademicYear }).ToListAsync();
-        var actualSet = actualList.Select(c => (c.ClassId, c.TeacherId, c.SubjectId, c.AcademicYear)).ToHashSet();
+        var expectedSet = expected.Classes.Select(c => (c.ClassId, c.TeacherId, c.SubjectId, c.AcademicYear, c.GradeLevel)).ToHashSet();
+        var actualList = await GetUnfiltered<Class>().Where(c => c.CenterId == centerId && !c.IsDeleted && c.Status == EduTwin.Contracts.Organization.ClassStatus.Active).Select(c => new { c.ClassId, c.TeacherId, c.SubjectId, c.AcademicYear, c.GradeLevel }).ToListAsync();
+        var actualSet = actualList.Select(c => (c.ClassId, c.TeacherId, c.SubjectId, c.AcademicYear, c.GradeLevel)).ToHashSet();
         return expectedSet.SetEquals(actualSet);
     }
 
@@ -291,6 +293,19 @@ public class ManifestEvaluator : IManifestEvaluator
         var actualList = await GetUnfiltered<CurriculumNode>().Where(cn => cn.CenterId == centerId).Select(cn => new { cn.CurriculumId, cn.NodeId, cn.OrderIndex }).ToListAsync();
         var actualSet = actualList.Select(cn => (cn.CurriculumId, cn.NodeId, cn.OrderIndex)).ToHashSet();
         return expectedSet.SetEquals(actualSet);
+    }
+
+    private async Task<bool> IsMatchCurriculumApplicationsAsync(SeedDataContainer expected, Guid centerId)
+    {
+        var expectedSet = expected.CurriculumApplications.Select(a =>
+            (a.ClassId, a.CurriculumId, a.SubjectId, a.ApplicationRole, a.AssignedBy,
+             a.ClassGradeAtStart, a.CurriculumGradeAtStart, a.IsGradeException)).ToHashSet();
+        var actual = await GetUnfiltered<ClassCurriculumApplication>().Where(a => a.CenterId == centerId)
+            .Select(a => new { a.ClassId, a.CurriculumId, a.SubjectId, a.ApplicationRole, a.AssignedBy,
+                a.ClassGradeAtStart, a.CurriculumGradeAtStart, a.IsGradeException, a.EndedAt }).ToListAsync();
+        return actual.All(a => a.EndedAt == null) && actual.Count == expectedSet.Count && expectedSet.SetEquals(actual.Select(a =>
+            (a.ClassId, a.CurriculumId, a.SubjectId, a.ApplicationRole, a.AssignedBy,
+             a.ClassGradeAtStart, a.CurriculumGradeAtStart, a.IsGradeException)));
     }
 
     private async Task<bool> IsMatchQuestionsAsync(SeedDataContainer expected, Guid centerId)

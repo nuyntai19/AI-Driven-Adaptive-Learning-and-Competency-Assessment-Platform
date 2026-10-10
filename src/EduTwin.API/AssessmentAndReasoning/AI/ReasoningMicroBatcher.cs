@@ -29,7 +29,7 @@ public sealed class ReasoningMicroBatcher(IReasoningBatchExecutor executor, IOpt
         var id = Guid.NewGuid().ToString("N");
         var item = new Pending(new(id, request), token);
         var characters = JsonSerializer.Serialize(request).Length;
-        var images = request.StudentSubmission.ImageParts.Count;
+        var images = request.Question.ImageParts.Count + request.StudentSubmission.ImageParts.Count;
         if (request.ResponseRepairRule.HasValue || !_options.MicroBatchEnabled || _options.BatchSize == 1 || partition is null
             || partition.CenterId == Guid.Empty || partition.StudentId == Guid.Empty || partition.AssignmentId == Guid.Empty
             || characters > _options.MaxInputCharacters || images > _options.MaxImages)

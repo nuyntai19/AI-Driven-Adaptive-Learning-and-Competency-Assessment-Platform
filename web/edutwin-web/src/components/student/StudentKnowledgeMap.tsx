@@ -1,10 +1,13 @@
 import React, { useState } from "react";
+import { ATLAS_PAGE_SIZE, wrapTopicLabel } from "../../utils/competencyGroups";
 
 export interface TopicMapNode {
   topicNodeId: string;
   topicName: string;
   masteryPercentage: number;
   evidenceCount?: number;
+  groupId?: string;
+  groupName?: string;
   lastReasoningQuality?: number | null;
 }
 
@@ -174,7 +177,7 @@ function getDeterministicLayout(total: number): {
  * 5. Independent text labels (outside node, zero edge intersection)
  * 6. Floating tooltip (non-intrusive, opposite placement)
  */
-export const StudentKnowledgeMap: React.FC<StudentKnowledgeMapProps> = ({
+const StudentKnowledgeMapCanvas: React.FC<StudentKnowledgeMapProps> = ({
   topics,
   subjectName = "Toán",
   onSelectTopic,
@@ -445,7 +448,7 @@ export const StudentKnowledgeMap: React.FC<StudentKnowledgeMapProps> = ({
                     fontFamily: '"Be Vietnam Pro", system-ui, sans-serif',
                   }}
                 >
-                  {node.topicName}
+                  {wrapTopicLabel(node.topicName).map((line, i) => <tspan key={i} x={node.cx} dy={i === 0 ? 0 : 14}>{line}</tspan>)}
                 </text>
               );
             })}
@@ -526,4 +529,40 @@ export const StudentKnowledgeMap: React.FC<StudentKnowledgeMapProps> = ({
       </div>
     </div>
   );
+};
+
+export const StudentKnowledgeMap: React.FC<StudentKnowledgeMapProps> = (props) => {
+  const [selectedGroup, setSelectedGroup] = useState("");
+  const [page, setPage] = useState(0);
+  const groups = new Map<string, { name: string; topics: TopicMapNode[] }>();
+  for (const topic of props.topics) {
+    const key = topic.groupId || "foundation";
+    const group = groups.get(key) || { name: topic.groupName || "Chuyên đề nền tảng", topics: [] };
+    if (!group.topics.some(t => t.topicNodeId === topic.topicNodeId)) group.topics.push(topic);
+    groups.set(key, group);
+  }
+  if (groups.size === 0) return <p className="py-8 text-center">Chưa có chủ đề trong giáo trình đang áp dụng.</p>;
+  const groupId = groups.has(selectedGroup) ? selectedGroup : groups.keys().next().value!;
+  const group = groups.get(groupId)!;
+  const pages = Math.ceil(group.topics.length / ATLAS_PAGE_SIZE);
+  const currentPage = Math.min(page, pages - 1);
+  const visible = group.topics.slice(currentPage * ATLAS_PAGE_SIZE, (currentPage + 1) * ATLAS_PAGE_SIZE);
+  return <div data-testid="student-grouped-atlas">
+    <div className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
+      <label className="min-w-0">Chương/nhóm:
+        <select aria-label="Chương trên bản đồ Atlas" value={groupId} onChange={e => { setSelectedGroup(e.target.value); setPage(0); }}
+          className="ml-2 max-w-full rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-slate-900 px-2 py-1">
+          {[...groups].map(([id, g]) => <option key={id} value={id}>{g.name} ({g.topics.length} chủ đề)</option>)}
+        </select>
+      </label>
+      <span>Tổng {props.topics.length} chủ đề · hiển thị {visible.length} chủ đề</span>
+    </div>
+    <StudentKnowledgeMapCanvas {...props} topics={visible} />
+    {pages > 1 && <nav aria-label="Trang chủ đề Atlas" className="flex items-center justify-center gap-4 text-sm py-2">
+      <button type="button" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)} className="rounded-lg border px-3 py-1 disabled:opacity-40">← Trước</button>
+      <span>{currentPage + 1} / {pages}</span>
+      <button type="button" disabled={currentPage + 1 >= pages} onClick={() => setPage(currentPage + 1)} className="rounded-lg border px-3 py-1 disabled:opacity-40">Sau →</button>
+    </nav>}
+    <p className="text-xs text-stone-500 dark:text-stone-400">Các đường nối là thứ tự trình bày trên Atlas, không phải quan hệ tiên quyết. Trỏ/chọn chủ đề để xem tên đầy đủ.</p>
+  </div>;
 };

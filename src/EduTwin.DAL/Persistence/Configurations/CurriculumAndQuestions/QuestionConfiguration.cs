@@ -68,6 +68,8 @@ public class QuestionConfiguration : IEntityTypeConfiguration<Question>
             .HasColumnType("longtext")
             .IsRequired();
 
+        builder.Property(q => q.HasImage).HasColumnName("has_image").HasDefaultValue(false);
+
         builder.Property(q => q.CorrectAnswer)
             .HasColumnName("correct_answer")
             .HasColumnType("text")

@@ -135,6 +135,7 @@ export const organizationApi = {
       status: request.status,
       gradeLevel: request.gradeLevel,
       rowVersion: request.rowVersion,
+      lifecycleReason: request.lifecycleReason?.trim() || undefined,
     };
     const response = await httpClient.patch<ClassResponse>(`/classes/${classId}`, payload);
     return response.data.data;

@@ -29,7 +29,8 @@ export interface TeacherReviewQuestionOptionDto {
 
 export interface RubricScoreInput { criterionId: string; awardedScore: number; comment?: string | null; }
 export interface RubricGrade { maxScore: number; awardedScore: number;
-  criteria: (RubricScoreInput & { title: string; description: string; maxScore: number })[]; }
+  criteria: (RubricScoreInput & { title: string; description: string; maxScore: number })[];
+  visualEvidence?: { criterionId: string; requirementIndex: number; status: 'Present' | 'Missing' | 'Unclear'; studentImageIndex: number | null; observation: string }[]; }
 
 export interface TeacherReviewQueueItemDto {
   gradingCriteria?: import("./questions").GradingCriteria | null;
@@ -44,6 +45,7 @@ export interface TeacherReviewQueueItemDto {
   assignmentQuestionCount?: number;
   subjectId: string;
   questionText: string;
+  hasQuestionImage?: boolean;
   questionType?: string;
   attemptStatus?: string;
   answerEvaluationMode?: string;

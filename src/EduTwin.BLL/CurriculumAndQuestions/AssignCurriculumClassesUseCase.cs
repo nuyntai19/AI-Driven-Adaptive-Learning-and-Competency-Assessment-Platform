@@ -85,6 +85,7 @@ public class AssignCurriculumClassesUseCase : IAssignCurriculumClassesUseCase
             var classIdSet = distinctClassIds.ToHashSet();
             var candidateClasses = await _dbContext.Classes
                 .Where(c => c.CenterId == centerId &&
+                            c.TeacherId == actorId && c.LearningScope == ClassLearningScope.Current &&
                             c.SubjectId == curriculum.SubjectId &&
                             c.Status == ClassStatus.Active &&
                             !c.IsDeleted)

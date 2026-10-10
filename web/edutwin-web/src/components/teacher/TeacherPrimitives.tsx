@@ -18,8 +18,8 @@ interface TeacherPageHeaderProps {
 export function TeacherPageHeader({ title, description, subtitle, eyebrow, breadcrumbs = [], actions }: TeacherPageHeaderProps) {
   const desc = subtitle ?? description;
   return (
-    <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between pb-2">
-      <div className="min-w-0">
+    <header className="flex flex-wrap items-end justify-between gap-4 pb-2" data-testid="teacher-page-header">
+      <div className="min-w-0 flex-[1_1_28rem]">
         {breadcrumbs.length > 0 && (
           <nav aria-label="Breadcrumb" className="mb-2">
             <ol className="flex flex-wrap items-center gap-1.5 text-xs text-[var(--th-text-muted)]">
@@ -48,7 +48,7 @@ export function TeacherPageHeader({ title, description, subtitle, eyebrow, bread
         <h1 className="text-2xl font-black tracking-tight text-[var(--th-text)] sm:text-3xl">{title}</h1>
         {desc && <p className="mt-1.5 max-w-3xl text-sm font-medium text-[var(--th-text-secondary)]">{desc}</p>}
       </div>
-      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2.5">{actions}</div>}
+      {actions && <div className="min-w-0 max-w-full flex flex-[0_1_auto] flex-wrap items-center gap-2.5">{actions}</div>}
     </header>
   );
 }

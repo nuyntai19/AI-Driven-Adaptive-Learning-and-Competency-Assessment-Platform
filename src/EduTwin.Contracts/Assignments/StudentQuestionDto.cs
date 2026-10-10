@@ -9,6 +9,7 @@ public class StudentQuestionDto
     public string QuestionType { get; set; } = string.Empty;
     public int Difficulty { get; set; }
     public string QuestionText { get; set; } = string.Empty;
+    public bool HasImage { get; set; }
     public int EstimatedTimeSeconds { get; set; }
     public bool ReasoningRequired { get; set; }
     public string LanguageCode { get; set; } = string.Empty;

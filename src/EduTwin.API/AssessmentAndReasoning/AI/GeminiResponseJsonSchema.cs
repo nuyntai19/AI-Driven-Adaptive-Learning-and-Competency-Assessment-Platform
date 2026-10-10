@@ -11,6 +11,7 @@ public sealed class GeminiResponseJsonSchema
     [
         "schemaVersion",
         "language",
+        "visualEvidence",
         "methodDetected",
         "reasoningQuality",
         "errorType",
@@ -29,10 +30,23 @@ public sealed class GeminiResponseJsonSchema
         "reasoningIssues"
     ];
 
-    public JsonObject CreateSchema()
+    public JsonObject CreateSchema(bool requireCriterionDeductions = false)
     {
         var properties = new JsonObject
         {
+            // Do not put the application's large safety cap in the provider schema:
+            // maxItems=240 expands Gemini's structured-output grammar and is rejected
+            // with HTTP 400. The strict parser and per-request validator enforce the
+            // cap and exact authored requirement count after generation instead.
+            ["visualEvidence"] = new JsonObject { ["type"] = "array",
+                ["items"] = new JsonObject { ["type"] = "object", ["additionalProperties"] = false,
+                    ["required"] = CreateStringArray(["criterionId", "requirementIndex", "status", "studentImageIndex", "observation"]),
+                    ["properties"] = new JsonObject {
+                        ["criterionId"] = new JsonObject { ["type"] = "string" },
+                        ["requirementIndex"] = new JsonObject { ["type"] = "integer", ["minimum"] = 1 },
+                        ["status"] = new JsonObject { ["type"] = "string", ["enum"] = CreateStringArray(["Present", "Missing", "Unclear"]) },
+                        ["studentImageIndex"] = new JsonObject { ["type"] = "integer", ["minimum"] = 1, ["nullable"] = true },
+                        ["observation"] = new JsonObject { ["type"] = "string" } } } },
             ["reasoningIssues"] = new JsonObject { ["type"] = "array", ["maxItems"] = 8,
                 ["items"] = new JsonObject { ["type"] = "object", ["additionalProperties"] = false,
                     ["required"] = CreateStringArray(["verdict", "studentClaim", "explanation"]),
@@ -90,26 +104,39 @@ public sealed class GeminiResponseJsonSchema
             }
         };
 
+        var names = PropertyNames.AsEnumerable();
+        if (requireCriterionDeductions)
+        {
+            properties["criterionDeductions"] = new JsonObject { ["type"] = "array", ["items"] = new JsonObject {
+                ["type"] = "object", ["additionalProperties"] = false,
+                ["required"] = CreateStringArray(["criterionId", "evidenceKind", "unmetRequirement", "evidence"]),
+                ["properties"] = new JsonObject {
+                    ["criterionId"] = new JsonObject { ["type"] = "string" },
+                    ["evidenceKind"] = new JsonObject { ["type"] = "string", ["enum"] = CreateStringArray(["Visual", "Nonvisual"]) },
+                    ["unmetRequirement"] = new JsonObject { ["type"] = "string" },
+                    ["evidence"] = new JsonObject { ["type"] = "string" } } } };
+            names = names.Append("criterionDeductions");
+        }
         return new JsonObject
         {
             ["type"] = "object",
             ["additionalProperties"] = false,
             ["properties"] = properties,
-            ["required"] = CreateStringArray(PropertyNames),
-            ["propertyOrdering"] = CreateStringArray(PropertyNames)
+            ["required"] = CreateStringArray(names),
+            ["propertyOrdering"] = CreateStringArray(names)
         };
     }
 
-    public GenerateContentConfig CreateGenerateContentConfig() =>
+    public GenerateContentConfig CreateGenerateContentConfig(bool requireCriterionDeductions = false) =>
         new()
         {
             ResponseMimeType = "application/json",
-            ResponseJsonSchema = CreateSchema(),
+            ResponseJsonSchema = CreateSchema(requireCriterionDeductions),
             CandidateCount = 1,
             Temperature = 0
         };
 
-    public GenerateContentConfig CreateBatchConfig(IEnumerable<string> ids) => new()
+    public GenerateContentConfig CreateBatchConfig(IEnumerable<string> ids, bool requireCriterionDeductions = false) => new()
     {
         ResponseMimeType = "application/json", CandidateCount = 1, Temperature = 0,
         ResponseJsonSchema = new JsonObject
@@ -127,7 +154,7 @@ public sealed class GeminiResponseJsonSchema
                         ["properties"] = new JsonObject
                         {
                             ["itemId"] = new JsonObject { ["type"] = "string", ["enum"] = CreateStringArray(ids) },
-                            ["analysis"] = CreateSchema()
+                            ["analysis"] = CreateSchema(requireCriterionDeductions)
                         }
                     }
                 }

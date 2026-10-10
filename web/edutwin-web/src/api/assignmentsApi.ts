@@ -132,6 +132,8 @@ export const getAssignmentClassStudents = async (
 export interface GetStudentAssignmentsParams {
   status?: ProgressStatus;
   subjectId?: string;
+  classId?: string;
+  history?: boolean;
   page?: number;
   pageSize?: number;
 }

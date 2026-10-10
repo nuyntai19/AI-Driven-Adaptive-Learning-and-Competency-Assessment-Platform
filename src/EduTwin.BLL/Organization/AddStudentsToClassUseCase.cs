@@ -112,6 +112,10 @@ public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
             return AddStudentsToClassResult.Failure(ErrorCodes.InvalidStateTransition);
         }
 
+        if (existingClass.LearningScope != ClassLearningScope.Current || !existingClass.GradeLevel.HasValue)
+            return AddStudentsToClassResult.Failure(ErrorCodes.InvalidStateTransition,
+                "Lớp chưa được phân khối chỉ được giữ để bảo toàn dữ liệu cũ, không nhận thêm học sinh. Vui lòng chọn lớp Khối 10, 11 hoặc 12.");
+
         var center = await _context.Centers
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.CenterId == centerId && !c.IsDeleted, cancellationToken);

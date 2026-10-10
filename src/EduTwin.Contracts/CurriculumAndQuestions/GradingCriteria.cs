@@ -18,4 +18,6 @@ public class RubricCriterion
     public string Description { get; set; } = string.Empty;
     // Stored in the question's native units; the review UI normalizes to /10.
     public decimal MaxScore { get; set; }
+    // Explicit objectives assessed from the student's attached image, never inferred from the reference.
+    public List<string> VisualRequirements { get; set; } = new();
 }
