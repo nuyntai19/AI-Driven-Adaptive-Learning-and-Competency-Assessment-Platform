@@ -10,7 +10,7 @@ public sealed class GeminiAIService : IAIService, IAIAnalysisProfile, IPartition
     public Task<AnalyzeReasoningResponse> AnalyzeReasoningAsync(AnalyzeReasoningRequest request,
         AIAnalysisBatchPartition partition, CancellationToken cancellationToken) =>
         _batcher is null ? AnalyzeReasoningAsync(request, cancellationToken) : _batcher.AnalyzeAsync(request, cancellationToken, partition);
-    public string AnalysisProfileVersion => _batcher?.ProfileVersion ?? $"Gemini:{_options.Model}:vietnamese-grade-proposal-v4:temperature-{(_options.Model?.StartsWith("gemini-3", StringComparison.Ordinal) == true ? 1 : 0)}:{AIAnalysisContract.SchemaVersion}";
+    public string AnalysisProfileVersion => _batcher?.ProfileVersion ?? $"Gemini:{_options.Model}:{GeminiVisualEvidenceInspector.ProfileVersion(_options)}:temperature-{(_options.Model?.StartsWith("gemini-3", StringComparison.Ordinal) == true ? 1 : 0)}:{AIAnalysisContract.SchemaVersion}";
     private readonly ReasoningMicroBatcher? _batcher;
     private readonly GeminiOptions _options;
     private readonly IGeminiGenerateContentClient _client;
@@ -63,16 +63,25 @@ public sealed class GeminiAIService : IAIService, IAIAnalysisProfile, IPartition
             _options.Validate();
             model = _options.Model!;
 
-            var prompt = _promptBuilder.Build(request);
-            var config = _responseJsonSchema.CreateGenerateContentConfig();
-            if (model.StartsWith("gemini-3", StringComparison.Ordinal)) config.Temperature = 1;
             using var linkedCancellation =
                 CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             linkedCancellation.CancelAfter(_options.Timeout);
+            if (_options.IndependentVisualEvidenceEnabled && GeminiVisualEvidenceInspector.RequiresInspection(request))
+            {
+                VisualInspectionResult inspection;
+                try { inspection = (await new GeminiVisualEvidenceInspector(_client, _options, _logger)
+                    .InspectAsync([new("single", request)], linkedCancellation.Token))["single"]; }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { throw GeminiAdapterException.Timeout(); }
+                if (inspection.Error is not null) throw inspection.Error;
+                request = request with { VerifiedVisualEvidence = inspection.Evidence };
+            }
+            var prompt = _promptBuilder.Build(request);
+            var config = _responseJsonSchema.CreateGenerateContentConfig(request.VerifiedVisualEvidence is not null);
+            if (model.StartsWith("gemini-3", StringComparison.Ordinal)) config.Temperature = 1;
 
             try
             {
-                providerResult = request.StudentSubmission.ImageParts.Count == 0
+                providerResult = !request.AllImages().Any()
                     ? await _client.GenerateContentAsync(
                         model,
                         prompt,
@@ -81,7 +90,7 @@ public sealed class GeminiAIService : IAIService, IAIAnalysisProfile, IPartition
                     : await _client.GenerateContentWithImagesAsync(
                         model,
                         prompt,
-                        request.StudentSubmission.ImageParts
+                        request.AllImages()
                             .Select(image => new GeminiInlineImagePart(image.Data, image.MimeType))
                             .ToArray(),
                         config,

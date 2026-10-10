@@ -21,6 +21,8 @@ public interface IGenerateLearningPathUseCase
 public interface IGetDetailedLearningPathUseCase
 {
     Task<DetailedLearningPathDto?> ExecuteAsync(Guid subjectId, CancellationToken cancellationToken);
+    Task<DetailedLearningPathDto?> ExecuteAsync(Guid subjectId, Guid? classId, CancellationToken ct)
+        => classId.HasValue ? Task.FromResult<DetailedLearningPathDto?>(null) : ExecuteAsync(subjectId, ct);
 }
 
 public sealed class GenerateLearningPathUseCase : IGenerateLearningPathUseCase, IGetDetailedLearningPathUseCase
@@ -64,12 +66,15 @@ public sealed class GenerateLearningPathUseCase : IGenerateLearningPathUseCase, 
         var subject = await _dbContext.Subjects.AsNoTracking()
             .SingleOrDefaultAsync(s => s.CenterId == centerId && s.SubjectId == request.SubjectId && !s.IsDeleted, cancellationToken)
             ?? throw new InvalidOperationException("Môn học không tồn tại.");
+        var scope = await EduTwin.BLL.Organization.StudentLearningScope.ResolveAsync(_dbContext, centerId, studentId,
+            request.SubjectId, request.ClassId, request.History, cancellationToken);
+        if (!scope.Allowed) throw new EduTwin.BLL.Organization.LearningScopeDeniedException(scope.Reason!);
 
         var requestedIds = request.WeakTopicNodeIds.Concat(request.FocusTopicNodeIds).Distinct().ToList();
         var validTopicIds = await _dbContext.KnowledgeNodes.AsNoTracking()
             .Where(n => n.CenterId == centerId && n.SubjectId == request.SubjectId && !n.IsDeleted && n.IsActive && requestedIds.Contains(n.NodeId))
             .Select(n => n.NodeId).ToListAsync(cancellationToken);
-        var validSet = validTopicIds.ToHashSet();
+        var validSet = validTopicIds.Where(scope.Includes).ToHashSet();
         var weakIds = request.WeakTopicNodeIds.Where(validSet.Contains).Distinct().ToList();
         var focusIds = request.FocusTopicNodeIds.Where(validSet.Contains).Distinct().ToList();
 
@@ -77,13 +82,20 @@ public sealed class GenerateLearningPathUseCase : IGenerateLearningPathUseCase, 
             .SingleOrDefaultAsync(p => p.CenterId == centerId && p.StudentId == studentId && p.SubjectId == request.SubjectId && !p.IsDeleted, cancellationToken);
         var unchanged = preference is not null && PreferenceMatches(preference, request, weakIds, focusIds);
         var existingPath = await _recommendationEngine.GetActiveLearningPathAsync(centerId, studentId, request.SubjectId, cancellationToken);
-        if (!request.ForceRegenerate && unchanged && existingPath?.PlanJson is not null)
-            return await BuildDetailedLearningPathAsync(centerId, studentId, subject, preference!, existingPath, cancellationToken);
+        if (!request.ForceRegenerate && unchanged && existingPath?.PlanJson is not null &&
+            (scope.TopicIds is null || await _dbContext.LearningPathItems.Where(i => i.LearningPathId == existingPath.LearningPathId && !i.IsDeleted)
+                .AllAsync(i => scope.TopicIds.Contains(i.TopicNodeId), cancellationToken)))
+        {
+            var cached = await BuildDetailedLearningPathAsync(centerId, studentId, subject, preference!, existingPath, cancellationToken);
+            if (PlanBelongsToScope(cached, scope)) return cached;
+        }
 
         preference = UpsertPreference(preference, centerId, studentId, request, weakIds, focusIds, now);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        var generation = await _recommendationEngine.GenerateAndPersistAsync(centerId, studentId, request.SubjectId, null, now, cancellationToken);
+        var generation = request.ClassId.HasValue
+            ? await _recommendationEngine.GenerateForClassAsync(centerId, studentId, request.SubjectId, request.ClassId.Value, now, cancellationToken)
+            : await _recommendationEngine.GenerateAndPersistAsync(centerId, studentId, request.SubjectId, null, now, cancellationToken);
         if (generation.Status is RecommendationGenerationStatus.Blocked or RecommendationGenerationStatus.NoCandidate)
             throw new InvalidOperationException(generation.DiagnosticReason ?? "Chưa có đủ dữ liệu Knowledge Graph để tạo lộ trình.");
 
@@ -103,8 +115,14 @@ public sealed class GenerateLearningPathUseCase : IGenerateLearningPathUseCase, 
     }
 
     public async Task<DetailedLearningPathDto?> ExecuteAsync(Guid subjectId, CancellationToken cancellationToken)
+        => await ExecuteAsync(subjectId, null, cancellationToken);
+
+    public async Task<DetailedLearningPathDto?> ExecuteAsync(Guid subjectId, Guid? classId, CancellationToken cancellationToken)
     {
         var (centerId, studentId) = ResolveStudent();
+        var scope = classId.HasValue ? await EduTwin.BLL.Organization.StudentLearningScope.ResolveAsync(_dbContext, centerId,
+            studentId, subjectId, classId, false, cancellationToken) : null;
+        if (scope is { Allowed: false }) return null;
         var subject = await _dbContext.Subjects.AsNoTracking()
             .SingleOrDefaultAsync(s => s.CenterId == centerId && s.SubjectId == subjectId && !s.IsDeleted, cancellationToken);
         if (subject is null) return null;
@@ -123,19 +141,15 @@ public sealed class GenerateLearningPathUseCase : IGenerateLearningPathUseCase, 
             .ThenByDescending(lp => lp.GeneratedAt)
             .FirstOrDefaultAsync(cancellationToken);
         if (path is null || preference is null) return null;
+        if (scope?.TopicIds is not null && path.Items.Any(i => !scope.Includes(i.TopicNodeId))) return null;
         var detailed = await BuildDetailedLearningPathAsync(centerId, studentId, subject, preference, path, cancellationToken);
-        if (path.PlanJson is null)
-        {
-            path.PlanJson = JsonSerializer.SerializeToDocument(detailed.Phases, PlanJsonOptions);
-            path.RecommendationRationale = detailed.RecommendationRationale;
-            path.PlanSchemaVersion = "2.0";
-            path.GenerationStatus = "Ready";
-            path.AdaptationMessage = detailed.AdaptationMessage;
-            path.UpdatedAt = DateTime.UtcNow;
-            await _dbContext.SaveChangesAsync(cancellationToken);
-        }
-        return detailed;
+        // GET remains read-only, including old paths without a stored PlanJson.
+        return scope is null || PlanBelongsToScope(detailed, scope) ? detailed : null;
     }
+
+    private static bool PlanBelongsToScope(DetailedLearningPathDto plan, EduTwin.BLL.Organization.StudentLearningScopeResult scope)
+        => scope.TopicIds is null || plan.Phases.SelectMany(p => p.Weeks).SelectMany(w => w.Sessions)
+            .All(s => ulong.TryParse(s.TopicNodeId, out var topicId) && scope.Includes(topicId));
 
     private async Task<DetailedLearningPathDto> BuildDetailedLearningPathAsync(Guid centerId, Guid studentId, DAL.Organization.Subject subject,
         StudentLearningPathPreference preference, LearningPath path, CancellationToken cancellationToken, bool forceRebuild = false)

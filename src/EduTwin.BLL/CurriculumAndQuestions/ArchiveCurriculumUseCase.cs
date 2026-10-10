@@ -71,10 +71,25 @@ public class ArchiveCurriculumUseCase : IArchiveCurriculumUseCase
             return ArchiveCurriculumResult.Failure(ErrorCodes.InvalidStateTransition);
         }
 
+        var usages = await AcademicDependencyGuards.CurriculumUsageAsync(_dbContext, centerId, curriculumId, cancellationToken);
+        if (usages.Count > 0)
+            return ArchiveCurriculumResult.Failure(ErrorCodes.InvalidStateTransition, AcademicDependencyGuards.ClassBlockMessage(usages));
+        if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length > 500)
+            return ArchiveCurriculumResult.Failure(ErrorCodes.ValidationFailed, "Nhập lý do lưu trữ giáo trình (tối đa 500 ký tự).");
+
+        var before = new { curriculum.Title, Status = curriculum.ReviewStatus.ToString(), curriculum.RowVersion };
         curriculum.ReviewStatus = ReviewStatus.Archived;
+        var applications = await _dbContext.ClassCurriculumApplications.Where(a => a.CenterId == centerId && a.CurriculumId == curriculumId && a.EndedAt == null).ToListAsync(cancellationToken);
+        foreach (var application in applications)
+        {
+            application.EndedAt = _timeProvider.GetUtcNow().UtcDateTime; application.EndedBy = actorId;
+            application.EndReason = request.Reason.Trim();
+        }
         curriculum.UpdatedAt = _timeProvider.GetUtcNow().UtcDateTime;
         curriculum.UpdatedBy = actorId;
         curriculum.RowVersion++;
+        AcademicDependencyGuards.Audit(_dbContext, centerId, actorId, "CurriculumArchived", "Curriculum", curriculumId.ToString("D"),
+            before, new { curriculum.Title, Status = curriculum.ReviewStatus.ToString(), curriculum.RowVersion }, curriculum.UpdatedAt, request.Reason.Trim());
 
         try
         {
@@ -82,7 +97,13 @@ public class ArchiveCurriculumUseCase : IArchiveCurriculumUseCase
         }
         catch (DbUpdateConcurrencyException)
         {
+            _dbContext.ChangeTracker.Clear();
             return ArchiveCurriculumResult.Failure(ErrorCodes.ConcurrencyConflict);
+        }
+        catch (DbUpdateException ex) when (AcademicDependencyGuards.IsDatabaseGuard(ex))
+        {
+            _dbContext.ChangeTracker.Clear();
+            return ArchiveCurriculumResult.Failure(ErrorCodes.InvalidStateTransition, AcademicDependencyGuards.ConcurrentDependencyMessage);
         }
 
         var nodes = await _dbContext.CurriculumNodes
@@ -92,11 +113,8 @@ public class ArchiveCurriculumUseCase : IArchiveCurriculumUseCase
             .Select(cn => cn.NodeId)
             .ToListAsync(cancellationToken);
 
-        var classes = await _dbContext.CurriculumClasses
-            .AsNoTracking()
-            .Where(cc => cc.CurriculumId == curriculumId && cc.CenterId == centerId)
-            .Select(cc => cc.ClassId)
-            .ToListAsync(cancellationToken);
+        var classes = (await CurriculumClassScopeQuery.ReadAsync(_dbContext, centerId, actorId, curriculumId, cancellationToken))
+            .Select(cc => cc.ClassId).ToList();
 
         var dto = new CurriculumDto
         {
@@ -104,6 +122,7 @@ public class ArchiveCurriculumUseCase : IArchiveCurriculumUseCase
             TeacherId = curriculum.TeacherId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             Visibility = curriculum.Visibility.ToString(),
             SubjectId = curriculum.SubjectId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
+            GradeLevel = curriculum.GradeLevel,
             Title = curriculum.Title,
             Description = curriculum.Description,
             SourceFile = curriculum.SourceFile,

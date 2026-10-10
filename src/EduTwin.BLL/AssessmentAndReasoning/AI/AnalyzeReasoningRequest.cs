@@ -1,4 +1,5 @@
 using EduTwin.Contracts.CurriculumAndQuestions;
+using EduTwin.Contracts.AssessmentAndReasoning;
 using System.Text.Json.Serialization;
 
 namespace EduTwin.BLL.AssessmentAndReasoning.AI;
@@ -8,6 +9,10 @@ public sealed record AnalyzeReasoningRequest
     // Server-owned repair hint, not student data and not part of checkpoint identity.
     [JsonIgnore]
     public AIResponseValidationRule? ResponseRepairRule { get; init; }
+    // Produced by the independent server-side inspection, not accepted from students.
+    // Images + the analysis profile remain the checkpoint identity.
+    [JsonIgnore]
+    public IReadOnlyList<RubricVisualEvidence>? VerifiedVisualEvidence { get; init; }
     public required string SchemaVersion { get; init; }
 
     public required string Language { get; init; }
@@ -39,6 +44,11 @@ public sealed record AnalyzeReasoningQuestion
     public string? ExpectedReasoning { get; init; }
 
     public required AnalyzeReasoningGradingCriteria GradingCriteria { get; init; }
+
+    [JsonIgnore]
+    public IReadOnlyList<AnalyzeReasoningImagePart> ImageParts { get; init; } = [];
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public int ImageCount => ImageParts.Count;
 }
 
 public sealed record AnalyzeReasoningGradingCriteria
@@ -60,6 +70,8 @@ public sealed record AnalyzeReasoningOption(string Label, string Text)
 public sealed record AnalyzeReasoningRubricCriterion(string CriterionId, string Title, string Description, decimal MaxScore)
 {
     public AnalyzeReasoningRubricCriterion() : this(string.Empty, string.Empty, string.Empty, 0m) { }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? VisualRequirements { get; init; }
 }
 
 public sealed record AnalyzeReasoningStudentSubmission
@@ -86,6 +98,13 @@ public sealed record AnalyzeReasoningStudentSubmission
 
     [JsonIgnore] // Images are sent as multimodal parts, never duplicated as base64 prompt text.
     public IReadOnlyList<AnalyzeReasoningImagePart> ImageParts { get; init; } = [];
+}
+
+public static class AnalyzeReasoningImages
+{
+    // This exact order is shared by single calls, batching, and prompt indexes.
+    public static IEnumerable<AnalyzeReasoningImagePart> AllImages(this AnalyzeReasoningRequest request) =>
+        request.Question.ImageParts.Concat(request.StudentSubmission.ImageParts);
 }
 
 public sealed record AnalyzeReasoningImagePart(byte[] Data, string MimeType)

@@ -114,6 +114,9 @@ public class SubmitStudentAssignmentUseCase : ISubmitStudentAssignmentUseCase
         }
 
         // Calculate authoritative expiration
+        if (await StudentAssignmentScope.SuspendedAsync(_dbContext, centerId, assignment.ClassId, cancellationToken))
+            return SubmitStudentAssignmentResult.Failure(ErrorCodes.AssignmentNotAvailable);
+
         DateTime? effectiveExpiresAt = null;
         if (assignment.DueAt.HasValue)
         {

@@ -23,6 +23,9 @@ coverage/
 !.env.example
 /storage/
 src/EduTwin.API/storage/
+# Local screenshots/release evidence may contain student names and grades.
+# Existing tracked public evidence is retained; new runtime captures stay local.
+/docs/verification/evidence/
 
 # === AI Agent workspaces ===
 .agents/

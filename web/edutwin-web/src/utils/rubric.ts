@@ -26,11 +26,15 @@ export function hydrateGradingCriteria(value?: GradingCriteria | string | null):
   if (typeof value === "string") return { schemaVersion: "1.0", requiredIdeas: [], commonErrors: [], scoringNotes: value, criteria: [] };
   return { schemaVersion: value?.schemaVersion || "1.0", requiredIdeas: [...(value?.requiredIdeas || [])],
     commonErrors: [...(value?.commonErrors || [])], scoringNotes: value?.scoringNotes || "",
-    criteria: (value?.criteria || []).map(c => ({ ...c })) };
+    criteria: (value?.criteria || []).map(c => ({ ...c, ...(c.visualRequirements ? { visualRequirements: [...c.visualRequirements] } : {}) })) };
 }
 
 export function rubricDefinitionError(criteria: RubricCriterion[], maxScore: number): string | null {
   if (!criteria.length) return null;
+  if (criteria.some(c => (c.visualRequirements || []).length > 12 ||
+      (c.visualRequirements || []).some(r => !r.trim() || r.length > 500) ||
+      new Set(c.visualRequirements || []).size !== (c.visualRequirements || []).length))
+    return "Yêu cầu ảnh nháp: tối đa 12 mục mỗi tiêu chí, không để dòng trống/trùng, mỗi mục tối đa 500 ký tự.";
   if (criteria.length > 20 || new Set(criteria.map(c => c.criterionId)).size !== criteria.length ||
       criteria.some(c => !c.criterionId.trim() || !c.title.trim() || c.title.length > 200 || !Number.isFinite(c.maxScore) ||
         c.maxScore <= 0 || Math.abs(c.maxScore * 100 - Math.round(c.maxScore * 100)) > 1e-7))

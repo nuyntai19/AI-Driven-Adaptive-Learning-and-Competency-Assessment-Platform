@@ -23,6 +23,7 @@ public class ClassDto
     public required ClassTeacherDto Teacher { get; set; }
     public int StudentCount { get; set; }
     public byte? GradeLevel { get; set; }
+    public string LearningScope { get; set; } = "Current";
     public required string Status { get; set; }
     public required string RowVersion { get; set; }
 }

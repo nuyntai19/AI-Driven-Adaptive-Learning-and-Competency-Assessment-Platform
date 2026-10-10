@@ -15,6 +15,7 @@ import type { ApiResponse, ApiCollectionResponse } from "../types/api";
 const BASE_URL = "/curriculums";
 
 export const curriculumApi = {
+  lifecycleUsage: async (id: string) => (await httpClient.get<{ data: { classId: string; className: string }[] }>(`${BASE_URL}/${id}/lifecycle-usage`)).data,
   create: async (data: CreateCurriculumRequest) => {
     const response = await httpClient.post<ApiResponse<Curriculum>>(BASE_URL, data);
     return response.data;

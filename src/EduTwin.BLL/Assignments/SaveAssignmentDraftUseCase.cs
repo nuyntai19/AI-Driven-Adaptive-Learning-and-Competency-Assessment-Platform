@@ -88,6 +88,9 @@ public class SaveAssignmentDraftUseCase : ISaveAssignmentDraftUseCase
         }
 
         // Saving draft requires the assignment to have been started via StartStudentAssignment
+        if (await StudentAssignmentScope.SuspendedAsync(_dbContext, centerId, assignment.ClassId, cancellationToken))
+            return SaveAssignmentDraftResult.Failure(ErrorCodes.AssignmentNotAvailable);
+
         if (progress.StartedAt == null)
         {
             return SaveAssignmentDraftResult.Failure(ErrorCodes.AssignmentNotAvailable);

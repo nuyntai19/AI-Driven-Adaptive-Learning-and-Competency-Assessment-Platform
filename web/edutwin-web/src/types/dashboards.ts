@@ -1,3 +1,12 @@
+export interface StudentWorkspaceSummaryDto {
+  assignmentCount: number;
+  dailyStreak: number;
+  studiedToday: boolean;
+  localDate: string;
+  timezone: string;
+  generatedAt: string;
+}
+
 export interface StudentBasicInfoDto {
   studentId: string;
   fullName: string;
@@ -20,6 +29,10 @@ export interface StudentMasteryRadarItemDto {
   topicNodeId: string;
   topicName: string;
   mastery: number;
+  evidenceCount?: number;
+  examImportance?: number;
+  groupNodeId?: string;
+  groupName?: string;
 }
 
 export interface StudentProgressLinePointDto {
@@ -45,6 +58,15 @@ export interface StudentDashboardDataDto {
   progressLine: StudentProgressLinePointDto[];
   action?: StudentRecommendedActionDto | null;
   generatedAt: string;
+  academicContext?: StudentAcademicContextDto;
+}
+
+export interface StudentAcademicContextDto {
+  isHistory: boolean;
+  selectedClassId: string | null;
+  classes: Array<{ classId: string; subjectId: string; className: string; gradeLevel: number | null; isHistorical: boolean }>;
+  curriculums: Array<{ curriculumId: string; classId: string; title: string; applicationRole: "Primary" | "Supplemental" }>;
+  message: string | null;
 }
 
 export interface ClassBasicInfoDto {
@@ -75,6 +97,8 @@ export interface ClassWeakTopicDto {
   topicName: string;
   averageMastery: number;
   affectedStudentCount: number;
+  assessedStudentCount: number;
+  unassessedStudentCount: number;
 }
 
 export interface ClassGapGroupDto {
@@ -93,6 +117,12 @@ export interface ClassDashboardDataDto {
   highRiskStudents: ClassHighRiskStudentDto[];
   weakTopics: ClassWeakTopicDto[];
   gapGroups: ClassGapGroupDto[];
+  academicCoverage: {
+    hasAppliedCurriculum: boolean;
+    applicableTopicCount: number;
+    assessedTopicCount: number;
+    unassessedStudentTopicCount: number;
+  };
   generatedAt: string;
 }
 

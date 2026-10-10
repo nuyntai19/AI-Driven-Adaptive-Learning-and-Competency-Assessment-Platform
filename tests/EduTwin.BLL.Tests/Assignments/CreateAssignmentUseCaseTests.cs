@@ -360,7 +360,8 @@ public class CreateAssignmentUseCaseTests
             CreatedAt = now,
             UpdatedAt = now
         };
-        var otherTopicId = (ulong)(now.Ticks % 30000 + 999);
+        // Wall-clock modulo IDs can collide with the already seeded topic.
+        var otherTopicId = ctx.KnowledgeNodes.Local.Max(n => n.NodeId) + 1;
         var otherNode = new EduTwin.DAL.KnowledgeGraph.KnowledgeNode
         {
             NodeId = otherTopicId,
@@ -376,7 +377,7 @@ public class CreateAssignmentUseCaseTests
             CreatedAt = now,
             UpdatedAt = now
         };
-        var wrongQId = (ulong)(now.Ticks % 20000 + 9999);
+        var wrongQId = ctx.Questions.Local.Max(q => q.QuestionId) + 1;
         var wrongQuestion = new Question
         {
             QuestionId = wrongQId,

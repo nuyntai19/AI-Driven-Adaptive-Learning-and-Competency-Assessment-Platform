@@ -18,6 +18,11 @@ public sealed class GeminiOptions
 
     public string? Model { get; set; }
 
+    // Opt-in independent ink inspection; never silently switch the grading model.
+    public string? VisualEvidenceModel { get; set; }
+    public bool VisualEvidenceProfileApproved { get; set; }
+    public bool IndependentVisualEvidenceEnabled => VisualEvidenceProfileApproved && !string.IsNullOrWhiteSpace(VisualEvidenceModel);
+
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(30);
     // Global across configured Gemini pools/models/callers; pool limits still apply.
     public int MaxConcurrentRequests { get; set; } = 2;
@@ -93,6 +98,8 @@ public sealed class GeminiOptions
         if (allKeys.Count == 0
             || MaxConcurrentRequests is < 1 or > 32
             || string.IsNullOrWhiteSpace(Model)
+            || (!string.IsNullOrWhiteSpace(VisualEvidenceModel) != VisualEvidenceProfileApproved)
+            || VisualEvidenceModel?.Length > 100
             || Timeout <= TimeSpan.Zero
             || Timeout > TimeSpan.FromSeconds(120)
             || pools.Any(p => string.IsNullOrWhiteSpace(p.ProjectId) || p.ProjectId.Length > 100 || p.MaxConcurrentRequests is < 1 or > 32 ||

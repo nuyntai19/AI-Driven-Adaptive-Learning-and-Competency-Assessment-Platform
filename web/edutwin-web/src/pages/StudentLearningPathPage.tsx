@@ -2,6 +2,9 @@ import React, { useState, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { organizationApi } from "../api/organizationApi";
+import { useStudentLearningAccess } from "../hooks/useStudentLearningAccess";
+import { StudentLearningReadOnlyNotice } from "../components/student/StudentLearningReadOnlyNotice";
+import { useAuthStore } from "../stores/authStore";
 import {
   getLearningPathTopics,
   getLearningPathPreferences,
@@ -32,6 +35,8 @@ export const StudentLearningPathPage: React.FC = () => {
   const subjects = subjectsData?.data || [];
   const currentSubject = subjects.find((s) => s.subjectId === activeSubjectId) || subjects[0];
   const effectiveSubjectId = currentSubject?.subjectId || "";
+  const access = useStudentLearningAccess(effectiveSubjectId);
+  const actor = useAuthStore(s => s.user);
 
   // Update URL if no subjectId in search params
   useEffect(() => {
@@ -44,9 +49,9 @@ export const StudentLearningPathPage: React.FC = () => {
 
   // 2. Fetch real topics from backend (Requirement 11: real topics from endpoint)
   const { data: topicsData, isLoading: isTopicsLoading } = useQuery({
-    queryKey: ["learning-path-topics", effectiveSubjectId],
-    queryFn: () => getLearningPathTopics(effectiveSubjectId),
-    enabled: !!effectiveSubjectId,
+    queryKey: ["learning-path-topics", actor?.centerId, actor?.userId, effectiveSubjectId, access.classId, access.history],
+    queryFn: () => getLearningPathTopics(effectiveSubjectId, access.classId, access.history),
+    enabled: !!effectiveSubjectId && access.writable,
     staleTime: 60 * 1000,
   });
 
@@ -56,7 +61,7 @@ export const StudentLearningPathPage: React.FC = () => {
   const { data: prefData } = useQuery({
     queryKey: ["learning-path-preferences", effectiveSubjectId],
     queryFn: () => getLearningPathPreferences(effectiveSubjectId),
-    enabled: !!effectiveSubjectId,
+    enabled: !!effectiveSubjectId && access.writable,
   });
 
   // 4. Fetch detailed learning path (with dynamic phases)
@@ -64,9 +69,9 @@ export const StudentLearningPathPage: React.FC = () => {
     data: detailedPathData,
     isLoading: isPathLoading,
   } = useQuery({
-    queryKey: ["learning-path", effectiveSubjectId],
-    queryFn: () => getDetailedLearningPath(effectiveSubjectId),
-    enabled: !!effectiveSubjectId,
+    queryKey: ["learning-path", effectiveSubjectId, access.classId],
+    queryFn: () => getDetailedLearningPath(effectiveSubjectId, access.classId),
+    enabled: !!effectiveSubjectId && access.writable,
     retry: false,
   });
 
@@ -102,15 +107,16 @@ export const StudentLearningPathPage: React.FC = () => {
     setNote("");
     setFormError(null);
     setIsQuestionnaireOpen(false);
-  }, [effectiveSubjectId]);
+  }, [effectiveSubjectId, access.classId]);
 
   // Sync state with saved preferences
   useEffect(() => {
     if (prefData?.data) {
       const p = prefData.data;
       setSelfAssessedLevel(p.selfAssessedLevel || "Medium");
-      setWeakTopicIds(p.weakTopicNodeIds || []);
-      setFocusTopicIds(p.focusTopicNodeIds || []);
+      const allowed = new Set((topicsData?.data || []).map(t => Number(t.topicNodeId)));
+      setWeakTopicIds((p.weakTopicNodeIds || []).filter(id => allowed.has(id)));
+      setFocusTopicIds((p.focusTopicNodeIds || []).filter(id => allowed.has(id)));
       setGoalType(p.goalType || "Foundation");
       setTargetMastery(p.targetMastery || 80);
       setTargetWeeks(p.targetWeeks || 4);
@@ -120,20 +126,23 @@ export const StudentLearningPathPage: React.FC = () => {
       setPreferredMode(p.preferredMode || "Balanced");
       setNote(p.note || "");
     }
-  }, [prefData]);
+  }, [prefData, topicsData, access.classId]);
 
   // If no path yet, open questionnaire by default
   useEffect(() => {
-    if (!isPathLoading && !detailedPath && effectiveSubjectId) {
+    if (access.writable && !isPathLoading && !detailedPath && effectiveSubjectId) {
       setIsQuestionnaireOpen(true);
     }
-  }, [isPathLoading, detailedPath, effectiveSubjectId]);
+  }, [isPathLoading, detailedPath, effectiveSubjectId, access.writable]);
 
   // Generate Learning Path Mutation
   const generateMutation = useMutation({
-    mutationFn: (req: GenerateLearningPathRequest) => generateLearningPath(req),
+    mutationFn: (req: GenerateLearningPathRequest) => {
+      if (!access.writable) throw new Error(access.reason);
+      return generateLearningPath(req);
+    },
     onSuccess: (response) => {
-      queryClient.setQueryData(["learning-path", effectiveSubjectId], response);
+      queryClient.setQueryData(["learning-path", effectiveSubjectId, access.classId], response);
       void queryClient.invalidateQueries({ queryKey: ["learning-path", effectiveSubjectId] });
       void queryClient.invalidateQueries({ queryKey: ["learning-path-preferences", effectiveSubjectId] });
       setIsQuestionnaireOpen(false);
@@ -157,10 +166,13 @@ export const StudentLearningPathPage: React.FC = () => {
 
   const handleSubmitQuestionnaire = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!access.writable) return;
     setFormError(null);
 
     const payload: GenerateLearningPathRequest = {
       subjectId: effectiveSubjectId,
+      classId: access.classId || undefined,
+      history: access.history,
       selfAssessedLevel,
       weakTopicNodeIds: weakTopicIds,
       focusTopicNodeIds: focusTopicIds,
@@ -179,14 +191,24 @@ export const StudentLearningPathPage: React.FC = () => {
   };
 
   const startSessionMutation = useMutation({
-    mutationFn: (sessionId: string) => updateLearningPathSession(effectiveSubjectId, sessionId, "InProgress"),
+    mutationFn: (sessionId: string) => {
+      if (!access.writable) throw new Error(access.reason);
+      return updateLearningPathSession(effectiveSubjectId, sessionId, "InProgress", access.classId, access.history);
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["learning-path", effectiveSubjectId] }),
   });
 
-  const startSession = (sessionId: string) => {
-    startSessionMutation.mutate(sessionId);
-    navigate(`/hoc-tap/luyen-tap?subjectId=${effectiveSubjectId}`);
+  const startSession = async (sessionId: string) => {
+    if (!access.writable) return;
+    try {
+      await startSessionMutation.mutateAsync(sessionId);
+      const p = new URLSearchParams(searchParams); p.set("subjectId", effectiveSubjectId);
+      navigate(`/hoc-tap/luyen-tap?${p}`);
+    } catch (error) { setFormError(error instanceof Error ? error.message : "Không thể bắt đầu buổi học."); }
   };
+
+  if (access.pending) return <p role="status" className="p-6">Đang kiểm tra lớp và giáo trình đang áp dụng…</p>;
+  if (access.readOnly) return <StudentLearningReadOnlyNotice reason={access.reason} />;
 
   return (
     <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8 min-w-0">

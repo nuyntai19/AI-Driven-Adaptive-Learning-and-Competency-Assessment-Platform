@@ -8,6 +8,8 @@ namespace EduTwin.Contracts.Recommendations;
 public sealed class GenerateLearningPathRequest
 {
     public Guid SubjectId { get; set; }
+    public Guid? ClassId { get; set; }
+    public bool History { get; set; }
     public string SelfAssessedLevel { get; set; } = "Medium"; // VeryWeak, Weak, Medium, Good, Excellent
     public List<ulong> WeakTopicNodeIds { get; set; } = new();
     public List<ulong> FocusTopicNodeIds { get; set; } = new();
@@ -145,4 +147,6 @@ public sealed class DetailedLearningPathResponse
 public sealed class UpdateLearningPathSessionRequest
 {
     public string Status { get; set; } = "InProgress";
+    public Guid? ClassId { get; set; }
+    public bool History { get; set; }
 }

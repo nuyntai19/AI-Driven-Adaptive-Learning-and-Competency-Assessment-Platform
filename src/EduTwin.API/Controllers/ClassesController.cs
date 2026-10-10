@@ -20,6 +20,26 @@ namespace EduTwin.API.Controllers;
 [ApiController]
 public class ClassesController : ControllerBase
 {
+    [HttpGet("{classId:guid}/history")]
+    [Authorize(Policy = "organization.classes.read")]
+    public async Task<IActionResult> History(Guid classId, [FromQuery] int page,
+        [FromServices] ClassReportsUseCase reports, CancellationToken ct)
+    {
+        if (page < 0) return BadRequest();
+        var result = await reports.HistoryAsync(classId, page == 0 ? 1 : page, ct);
+        return result == null ? NotFound() : Ok(result);
+    }
+
+    [HttpGet("{classId:guid}/academic-report")]
+    [Authorize(Policy = "organization.classes.read")]
+    [Authorize(Policy = "organization.students.read")]
+    public async Task<IActionResult> AcademicReport(Guid classId,
+        [FromServices] ClassReportsUseCase reports, CancellationToken ct)
+    {
+        var result = await reports.AcademicAsync(classId, ct);
+        return result == null ? NotFound() : Ok(new { Data = result });
+    }
+
     private readonly IListClassesUseCase _listClassesUseCase;
     private readonly IGetClassUseCase _getClassUseCase;
     private readonly ICreateClassUseCase _createClassUseCase;

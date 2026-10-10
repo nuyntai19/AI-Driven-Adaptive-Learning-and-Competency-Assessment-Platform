@@ -273,6 +273,7 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
                 AssignmentQuestionCount = questionCounts.GetValueOrDefault(evidence.Attempt.AssignmentId.Value),
                 SubjectId = evidence.Attempt.Question.SubjectId.ToString("D").ToLowerInvariant(),
                 QuestionText = evidence.Attempt.Question.QuestionText,
+                HasQuestionImage = evidence.Attempt.Question.HasImage,
                 QuestionType = qType.ToString(),
                 AttemptStatus = evidence.Attempt.Status.ToString(),
                 AnswerEvaluationMode = evidence.Attempt.Question.AnswerEvaluationMode.ToString(),

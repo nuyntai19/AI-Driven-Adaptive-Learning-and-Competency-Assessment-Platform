@@ -165,6 +165,7 @@ public class UpdateClassUseCaseTests
             ClassName = "  New Math 101  ",
             TeacherId = newTeacherId,
             Status = ClassStatus.Archived,
+            LifecycleReason = "Quản lý kết thúc lớp sau năm học.",
             RowVersion = "1"
         };
 
@@ -186,6 +187,10 @@ public class UpdateClassUseCaseTests
         Assert.Equal("New Math 101", updatedClass.ClassName);
         Assert.Equal(newTeacherId, updatedClass.TeacherId);
         Assert.Equal(ClassStatus.Archived, updatedClass.Status);
+        Assert.Equal(ClassLearningScope.History, updatedClass.LearningScope);
+        var audit = await context.AuthorizationAuditLogs.SingleAsync();
+        Assert.Equal(currentUserId, audit.ActorUserId);
+        Assert.Equal("ClassArchived", audit.ActionType);
         Assert.Equal(2ul, updatedClass.RowVersion);
 
         // Assert audit properties
@@ -270,7 +275,7 @@ public class UpdateClassUseCaseTests
         int baselineSaveChanges = saveChangesInterceptor.CallCount;
 
         var sut = new UpdateClassUseCase(context, _mockTenantContext.Object, _mockTimeProvider.Object, _mockLogger.Object);
-        var request = new UpdateClassRequest { ClassName = "New Name", TeacherId = newTeacherId, Status = ClassStatus.Archived, RowVersion = "1" };
+        var request = new UpdateClassRequest { ClassName = "New Name", TeacherId = newTeacherId, Status = ClassStatus.Archived, LifecycleReason = "Kết thúc lớp", RowVersion = "1" };
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => sut.ExecuteAsync(classId, request, CancellationToken.None));
 
@@ -289,6 +294,31 @@ public class UpdateClassUseCaseTests
         Assert.Equal(originalClass.SubjectId, classAfter.SubjectId);
         Assert.Equal(originalClass.AcademicYear, classAfter.AcademicYear);
         Assert.Equal(EntityState.Unchanged, context.Entry(classAfter).State);
+    }
+
+    [Fact]
+    public async Task Lifecycle_RequiresReason_ArchivesAndReopens_WithActorAndOptimisticVersion()
+    {
+        var center = _mockTenantContext.Object.CenterId!.Value;
+        await using var db = CreateContext(Guid.NewGuid().ToString(), center);
+        var cls = Guid.NewGuid(); var teacher = Guid.NewGuid();
+        await SeedDataAsync(db, center, cls, teacher, Guid.NewGuid(), Guid.NewGuid());
+        var useCase = new UpdateClassUseCase(db, _mockTenantContext.Object, _mockTimeProvider.Object, _mockLogger.Object);
+        UpdateClassRequest Request(ClassStatus status, string version, string? reason) => new() {
+            ClassName = "Old Class", TeacherId = teacher, Status = status, RowVersion = version, LifecycleReason = reason };
+        var missing = await useCase.ExecuteAsync(cls, Request(ClassStatus.Archived,"1",null));
+        Assert.Equal(ErrorCodes.ValidationFailed, missing.ErrorCode);
+        Assert.Empty(db.AuthorizationAuditLogs);
+        Assert.True((await useCase.ExecuteAsync(cls, Request(ClassStatus.Archived,"1","Kết thúc năm học"))).IsSuccess);
+        Assert.Equal(ClassLearningScope.History, (await db.Classes.SingleAsync()).LearningScope);
+        Assert.Equal(ErrorCodes.ConcurrencyConflict, (await useCase.ExecuteAsync(cls, Request(ClassStatus.Active,"1","Mở lại"))).ErrorCode);
+        Assert.True((await useCase.ExecuteAsync(cls, Request(ClassStatus.Active,"2","Bắt đầu học lại"))).IsSuccess);
+        Assert.Equal(ClassLearningScope.Current, (await db.Classes.SingleAsync()).LearningScope);
+        var audits = await db.AuthorizationAuditLogs.OrderBy(a=>a.AuthorizationAuditId).ToListAsync();
+        Assert.Equal(2, audits.Count);
+        Assert.Equal(new[]{"ClassArchived","ClassReopened"}, audits.Select(a=>a.ActionType));
+        Assert.All(audits,a=>Assert.Equal(_mockTenantContext.Object.UserId, a.ActorUserId));
+        Assert.All(audits,a=>Assert.NotNull(a.BeforeData));
     }
 
     [Fact]

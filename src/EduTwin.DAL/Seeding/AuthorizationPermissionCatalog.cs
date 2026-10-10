@@ -134,7 +134,9 @@ public static class AuthorizationPermissionCatalog
         new HashSet<string>(CenterManagerCodes, StringComparer.Ordinal);
 
     public static readonly IReadOnlySet<string> SystemTeacherDefaultCodes =
-        new HashSet<string>(TeacherStandardOperationalCodes, StringComparer.Ordinal);
+        // Academic authoring belongs to teachers, including the center-wide graph.
+        // API policies, tenant filters and lifecycle guards still apply to every mutation.
+        new HashSet<string>(TeacherStandardOperationalCodes.Concat(SensitiveSharedAcademicCodes), StringComparer.Ordinal);
 
     public static readonly IReadOnlySet<string> SystemStudentDefaultCodes =
         new HashSet<string>(StudentCodes, StringComparer.Ordinal);

@@ -18,7 +18,16 @@ public sealed class ClassDashboardDataDto
     public List<ClassHighRiskStudentDto> HighRiskStudents { get; set; } = new();
     public List<ClassWeakTopicDto> WeakTopics { get; set; } = new();
     public List<ClassGapGroupDto> GapGroups { get; set; } = new();
+    public ClassAcademicCoverageDto AcademicCoverage { get; set; } = new();
     public DateTime GeneratedAt { get; set; }
+}
+
+public sealed class ClassAcademicCoverageDto
+{
+    public bool HasAppliedCurriculum { get; set; }
+    public int ApplicableTopicCount { get; set; }
+    public int AssessedTopicCount { get; set; }
+    public long UnassessedStudentTopicCount { get; set; }
 }
 
 public sealed class ClassBasicInfoDto
@@ -53,6 +62,8 @@ public sealed class ClassWeakTopicDto
     public string TopicName { get; set; } = null!;
     public decimal AverageMastery { get; set; }
     public int AffectedStudentCount { get; set; }
+    public int AssessedStudentCount { get; set; }
+    public int UnassessedStudentCount { get; set; }
 }
 
 public sealed class ClassGapGroupDto

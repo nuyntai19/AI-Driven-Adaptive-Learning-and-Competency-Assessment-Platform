@@ -6,6 +6,7 @@ public class UpdateKnowledgeEdgeResult
 {
     public bool IsSuccess { get; private set; }
     public string? ErrorCode { get; private set; }
+    public string? Message { get; private set; }
     public KnowledgeEdgeDto? Data { get; private set; }
 
     public static UpdateKnowledgeEdgeResult Success(KnowledgeEdgeDto data)
@@ -17,12 +18,13 @@ public class UpdateKnowledgeEdgeResult
         };
     }
 
-    public static UpdateKnowledgeEdgeResult Failure(string errorCode)
+    public static UpdateKnowledgeEdgeResult Failure(string errorCode, string? message = null)
     {
         return new UpdateKnowledgeEdgeResult
         {
             IsSuccess = false,
-            ErrorCode = errorCode
+            ErrorCode = errorCode,
+            Message = message
         };
     }
 }

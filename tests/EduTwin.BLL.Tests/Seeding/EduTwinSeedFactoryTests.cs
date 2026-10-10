@@ -6,6 +6,33 @@ namespace EduTwin.BLL.Tests.Seeding;
 
 public class EduTwinSeedFactoryTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void GradeSpecificSeed_HasSixClassesAndNoMixedMembershipOrCurriculum(bool centerA)
+    {
+        var data = new EduTwinSeedFactory(centerA).CreateData();
+        Assert.Equal(6, data.Classes.Count);
+        Assert.Equal(6, data.Curriculums.Count);
+        foreach (var subject in data.Subjects)
+            Assert.Equal(new byte?[] { 10, 11, 12 }, data.Classes.Where(c => c.SubjectId == subject.SubjectId)
+                .OrderBy(c => c.GradeLevel).Select(c => c.GradeLevel));
+        foreach (var enrollment in data.ClassStudents)
+        {
+            var student = data.Students.Single(s => s.StudentId == enrollment.StudentId);
+            var cls = data.Classes.Single(c => c.ClassId == enrollment.ClassId);
+            Assert.Equal(student.GradeLevel, cls.GradeLevel);
+            Assert.Equal(student.GradeLevel, enrollment.GradeLevelAtEnrollment);
+        }
+        Assert.All(data.Students, student => Assert.Equal(2, data.ClassStudents.Count(e => e.StudentId == student.StudentId)));
+        foreach (var link in data.CurriculumClasses)
+            Assert.Equal(data.Curriculums.Single(c => c.CurriculumId == link.CurriculumId).GradeLevel,
+                data.Classes.Single(c => c.ClassId == link.ClassId).GradeLevel);
+        var legacy = new[] { DeterministicSeedIds.CenterAMathClassId, DeterministicSeedIds.CenterAEnglishClassId,
+            DeterministicSeedIds.CenterBMathClassId, DeterministicSeedIds.CenterBEnglishClassId };
+        Assert.DoesNotContain(data.Classes, c => legacy.Contains(c.ClassId));
+    }
+
     [Fact]
     public void CreateData_TwoCallsForSameCenter_ShouldBeDeterministicAndIdentical()
     {

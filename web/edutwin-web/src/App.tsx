@@ -14,6 +14,7 @@ import { cleanupExpiredScratchpadDrafts } from "./utils/scratchpadStorage";
 const AuthenticatedHomePage = lazy(() => import("./pages/AuthenticatedHomePage").then((module) => ({ default: module.AuthenticatedHomePage })));
 const TeacherListPage = lazy(() => import("./pages/TeacherListPage").then((module) => ({ default: module.TeacherListPage })));
 const ClassListPage = lazy(() => import("./pages/ClassListPage").then((module) => ({ default: module.ClassListPage })));
+const CenterClassReportPage = lazy(() => import("./pages/CenterClassReportPage").then((module) => ({ default: module.CenterClassReportPage })));
 const StudentListPage = lazy(() => import("./pages/StudentListPage").then((module) => ({ default: module.StudentListPage })));
 const SubjectListPage = lazy(() => import("./pages/SubjectListPage").then((module) => ({ default: module.SubjectListPage })));
 const StudentAssignmentsPage = lazy(() => import("./pages/StudentAssignmentsPage").then((module) => ({ default: module.StudentAssignmentsPage })));
@@ -118,6 +119,9 @@ function App() {
               <Route element={<PermissionRoute allOf={[permissions.classesRead]} />}>
                 <Route path="/quan-ly/lop-hoc" element={<ClassListPage />} />
               </Route>
+              <Route element={<PermissionRoute allOf={[permissions.classesRead, permissions.studentsRead]} accountTypes={["CenterManager"]} />}>
+                <Route path="/quan-ly/lop-hoc/:classId/tong-quan" element={<CenterClassReportPage />} />
+              </Route>
               <Route element={<PermissionRoute allOf={[permissions.studentsRead]} />}>
                 <Route path="/quan-ly/hoc-sinh" element={<StudentListPage />} />
               </Route>
@@ -129,10 +133,11 @@ function App() {
               <Route element={<PermissionRoute anyOf={authorizationUiPermissions} accountTypes={["CenterManager"]} />}>
                 <Route path="/quan-ly/phan-quyen" element={<AuthorizationManagementPage />} />
               </Route>
+            </Route>
 
+              {/* Legacy academic redirects deliberately sit outside the governance boundary. */}
               {/* Locked Academic Endpoints Redirect (Teacher -> /giao-vien/*, CM -> /khong-co-quyen) */}
               <Route path="/quan-ly/tong-quan-lop-hoc" element={<AcademicRedirectRoute teacherTarget="/giao-vien/lop-hoc" />} />
-              <Route path="/quan-ly/lop-hoc/:classId/tong-quan" element={<AcademicRedirectRoute teacherTarget="/giao-vien/lop-hoc" />} />
               <Route path="/quan-ly/duyet-bai" element={<AcademicRedirectRoute teacherTarget="/giao-vien/cham-bai" />} />
               <Route path="/quan-ly/hoc-sinh/:studentId/nang-luc" element={<AcademicRedirectRoute teacherTarget="/giao-vien/hoc-sinh" />} />
               <Route path="/kien-thuc/do-thi" element={<AcademicRedirectRoute teacherTarget="/giao-vien/do-thi-tri-thuc" />} />
@@ -147,7 +152,6 @@ function App() {
               <Route path="/quan-ly/bai-tap/tao-moi" element={<AcademicRedirectRoute teacherTarget="/giao-vien/bai-tap/tao-moi" />} />
               <Route path="/quan-ly/bai-tap/:id" element={<AcademicRedirectRoute teacherTarget="/giao-vien/bai-tap" />} />
               <Route path="/quan-ly/bai-tap/:id/tien-do" element={<AcademicRedirectRoute teacherTarget="/giao-vien/bai-tap" />} />
-            </Route>
 
             {/* ================================================================ */}
             {/* TEACHER WORKSPACE ROUTES (/giao-vien/*)                            */}

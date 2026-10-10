@@ -10,6 +10,8 @@ public class UpdateQuestionRequest
     public byte Difficulty { get; set; }
     public byte? GradeLevel { get; set; }
     public string QuestionText { get; set; } = null!;
+    public string? ImageDataUrl { get; set; }
+    public bool RemoveImage { get; set; }
     public string CorrectAnswer { get; set; } = null!;
     public string Solution { get; set; } = null!;
     public string? ExpectedReasoning { get; set; }

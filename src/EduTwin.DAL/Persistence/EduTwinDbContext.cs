@@ -54,8 +54,10 @@ public class EduTwinDbContext : DbContext
     // CurriculumAndQuestions
     public DbSet<Curriculum> Curriculums => Set<Curriculum>();
     public DbSet<CurriculumClass> CurriculumClasses => Set<CurriculumClass>();
+    public DbSet<ClassCurriculumApplication> ClassCurriculumApplications => Set<ClassCurriculumApplication>();
     public DbSet<CurriculumNode> CurriculumNodes => Set<CurriculumNode>();
     public DbSet<Question> Questions => Set<Question>();
+    public DbSet<QuestionImage> QuestionImages => Set<QuestionImage>();
     public DbSet<QuestionOption> QuestionOptions => Set<QuestionOption>();
     public DbSet<QuestionKnowledgeNode> QuestionKnowledgeNodes => Set<QuestionKnowledgeNode>();
 

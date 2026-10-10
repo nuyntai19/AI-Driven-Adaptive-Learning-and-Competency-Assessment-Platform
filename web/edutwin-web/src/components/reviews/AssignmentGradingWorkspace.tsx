@@ -22,6 +22,7 @@ import { useAuthStore } from "../../stores/authStore";
 import { permissions } from "../../auth/permissions";
 import { RichMathText } from "../math/RichMathText";
 import { ScratchpadAttachmentDrawer } from "../ScratchpadAttachmentDrawer";
+import { QuestionImage } from "../QuestionImage";
 import { extractProblemDetails } from "../../utils/problemDetails";
 import { resolveQuestionDefaultFormValues, questionGradingActions, questionAnswerVerdictBadge, gradingFormIsDirty, finalApprovalBlockReason } from "../../utils/gradingWorkspaceHelpers";
 import { hydrateRubricForm, buildRubricScores, type RubricForm } from "../../utils/rubric";
@@ -1190,6 +1191,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                       {/* Question Text */}
                       <div className="text-base text-slate-900 dark:text-slate-100 leading-relaxed font-medium">
                         <RichMathText text={currentQuestion.questionText} />
+                        <QuestionImage questionId={currentQuestion.questionId} hasImage={currentQuestion.hasQuestionImage} />
                       </div>
 
                       {/* Multiple choice options if applicable */}

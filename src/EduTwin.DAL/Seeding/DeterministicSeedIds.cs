@@ -38,6 +38,22 @@ public static class DeterministicSeedIds
     public static readonly Guid CenterBMathClassId = new("70000000-0000-0000-0000-000000000007");
     public static readonly Guid CenterBEnglishClassId = new("80000000-0000-0000-0000-000000000008");
 
+    // Grade-specific v2 IDs never reuse the legacy mixed-class IDs: existing
+    // assignment/test history must keep its original class references.
+    public static Guid GradeClassId(bool centerA, bool math, byte grade)
+    {
+        if (grade is < 10 or > 12) throw new ArgumentOutOfRangeException(nameof(grade));
+        var prefix = centerA ? (math ? "51000000" : "61000000") : (math ? "71000000" : "81000000");
+        return new Guid($"{prefix}-0000-0000-0000-{grade:000000000000}");
+    }
+
+    public static Guid GradeCurriculumId(bool centerA, bool math, byte grade)
+    {
+        if (grade is < 10 or > 12) throw new ArgumentOutOfRangeException(nameof(grade));
+        var prefix = centerA ? (math ? "91000000" : "a1000000") : (math ? "b1000000" : "c1000000");
+        return new Guid($"{prefix}-0000-0000-0000-{grade:000000000000}");
+    }
+
     // Curriculums
     public static readonly Guid CenterAMathCurriculumId = new("90000000-0000-0000-0000-000000000009");
     public static readonly Guid CenterAEnglishCurriculumId = new("a0000000-0000-0000-0000-00000000000a");

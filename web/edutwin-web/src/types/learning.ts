@@ -1,6 +1,8 @@
 export interface SubmitAttemptRequest {
   questionId: string | number;
   assignmentId?: string | null;
+  classId?: string | null;
+  history?: boolean;
   finalAnswer: string;
   reasoningText?: string | null;
   timeSpentSeconds: number;
@@ -172,6 +174,7 @@ export interface AttemptFeedbackDataDto {
 }
 
 export interface NextQuestionDataDto {
+  hasImage?: boolean;
   strategy: string;
   recommendationId?: string | null;
   questionId: string;

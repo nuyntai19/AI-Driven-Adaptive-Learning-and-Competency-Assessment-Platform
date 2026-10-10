@@ -23,8 +23,15 @@ public class RubricGrade
     public decimal MaxScore { get; set; }
     public decimal AwardedScore { get; set; }
     public List<RubricCriterionGrade> Criteria { get; set; } = new();
+    public List<RubricVisualEvidence> VisualEvidence { get; set; } = new();
 
     public static string Serialize(RubricGrade grade) => JsonSerializer.Serialize(grade, new JsonSerializerOptions(JsonSerializerDefaults.Web));
     public static RubricGrade? Deserialize(string? json) => string.IsNullOrWhiteSpace(json)
         ? null : JsonSerializer.Deserialize<RubricGrade>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+}
+
+public sealed record RubricVisualEvidence(string CriterionId, int RequirementIndex, string Status,
+    int? StudentImageIndex, string Observation)
+{
+    public RubricVisualEvidence() : this(string.Empty, 0, string.Empty, null, string.Empty) { }
 }

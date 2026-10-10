@@ -259,7 +259,7 @@ public class ArchiveCurriculumUseCaseTests
 
             var result = await sut.ExecuteAsync(curriculumId, new ArchiveCurriculumRequest
             {
-                RowVersion = "1"
+                RowVersion = "1", Reason = "Kết thúc giáo trình cũ."
             });
 
             Assert.True(result.IsSuccess, $"Failed with: {result.ErrorCode}");
@@ -269,7 +269,8 @@ public class ArchiveCurriculumUseCaseTests
             Assert.Equal(2, result.Data.NodeIds.Count);
             Assert.Equal("101", result.Data.NodeIds[0]);
             Assert.Equal("102", result.Data.NodeIds[1]);
-            Assert.Single(result.Data.ClassIds);
+            Assert.Empty(result.Data.ClassIds); // Archived curriculum has no live applications.
+            Assert.Single(await dbContext.CurriculumClasses.Where(c => c.CurriculumId == curriculumId).ToListAsync()); // Historical plan remains stored.
 
             var inDb = await dbContext.Curriculums.SingleAsync(c => c.CurriculumId == curriculumId);
             Assert.Equal(ReviewStatus.Archived, inDb.ReviewStatus);

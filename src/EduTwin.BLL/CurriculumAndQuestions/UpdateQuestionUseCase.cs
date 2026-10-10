@@ -90,8 +90,13 @@ public class UpdateQuestionUseCase : IUpdateQuestionUseCase
         if (request.GradeLevel.HasValue && (request.GradeLevel.Value < 10 || request.GradeLevel.Value > 12))
             return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
 
-        if (string.IsNullOrWhiteSpace(request.QuestionText))
-            return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+        byte[]? imageBytes = null;
+        if (request.ImageDataUrl is not null)
+        {
+            if (request.RemoveImage || !QuestionImageContent.TryDecode(request.ImageDataUrl, out var decoded))
+                return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+            imageBytes = decoded;
+        }
 
         if (string.IsNullOrWhiteSpace(request.CorrectAnswer))
             return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
@@ -124,6 +129,9 @@ public class UpdateQuestionUseCase : IUpdateQuestionUseCase
         if (question.CreatedByTeacherId != actorId)
             return UpdateQuestionResult.Failure(ErrorCodes.ForbiddenResource);
 
+        if ((string.IsNullOrWhiteSpace(request.QuestionText) || request.QuestionText.Trim() == QuestionImageContent.ImageOnlyText) && imageBytes is null && (!question.HasImage || request.RemoveImage))
+            return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+
         var visibility = question.Visibility;
         if (request.Visibility != null && (!Enum.TryParse(request.Visibility, out visibility) || !Enum.IsDefined(visibility) || visibility.ToString() != request.Visibility))
             return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
@@ -133,7 +141,7 @@ public class UpdateQuestionUseCase : IUpdateQuestionUseCase
 
         // Preserve criteria omitted by older clients. Never rewrite a grading basis
         // already used in a published assignment or submitted attempt: create a copy.
-        if (question.MaxScore != request.MaxScore || JsonSerializer.Serialize(question.GradingCriteria) != JsonSerializer.Serialize(criteria))
+        if (request.ImageDataUrl is not null || request.RemoveImage || question.MaxScore != request.MaxScore || JsonSerializer.Serialize(question.GradingCriteria) != JsonSerializer.Serialize(criteria))
         {
             var gradingBasisUsed = await _dbContext.Attempts.AnyAsync(a => a.CenterId == centerId && a.QuestionId == qId, cancellationToken) ||
                 await _dbContext.AssignmentQuestions.AnyAsync(aq => aq.CenterId == centerId && aq.QuestionId == qId &&
@@ -193,7 +201,28 @@ public class UpdateQuestionUseCase : IUpdateQuestionUseCase
         question.AnswerEvaluationMode = evalMode;
         question.Difficulty = request.Difficulty;
         question.GradeLevel = request.GradeLevel;
-        question.QuestionText = request.QuestionText;
+        question.QuestionText = string.IsNullOrWhiteSpace(request.QuestionText) ? QuestionImageContent.ImageOnlyText : request.QuestionText;
+        if (imageBytes is not null || request.RemoveImage)
+        {
+            var storedImage = await _dbContext.QuestionImages.SingleOrDefaultAsync(i => i.CenterId == centerId && i.QuestionId == qId, cancellationToken);
+            if (request.RemoveImage)
+            {
+                if (storedImage is not null) _dbContext.QuestionImages.Remove(storedImage);
+                question.HasImage = false;
+            }
+            else
+            {
+                if (storedImage is null)
+                {
+                    storedImage = new QuestionImage { CenterId = centerId, QuestionId = qId };
+                    _dbContext.QuestionImages.Add(storedImage);
+                }
+                storedImage.Data = imageBytes!;
+                storedImage.Sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(imageBytes!));
+                storedImage.CreatedAt = now; storedImage.CreatedBy = actorId;
+                question.HasImage = true;
+            }
+        }
         question.CorrectAnswer = request.CorrectAnswer;
         question.Solution = request.Solution;
         question.ExpectedReasoning = request.ExpectedReasoning;

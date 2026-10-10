@@ -23,6 +23,7 @@ public sealed class AIAnalysisContractTests
         AssertExactProperties(
             typeof(AnalyzeReasoningRequest),
             ("ResponseRepairRule", typeof(AIResponseValidationRule?), NullabilityState.Nullable, false),
+            ("VerifiedVisualEvidence", typeof(IReadOnlyList<RubricVisualEvidence>), NullabilityState.Nullable, false),
             ("SchemaVersion", typeof(string), NullabilityState.NotNull, true),
             ("Language", typeof(string), NullabilityState.NotNull, true),
             ("Question", typeof(AnalyzeReasoningQuestion), NullabilityState.NotNull, true),
@@ -40,7 +41,9 @@ public sealed class AIAnalysisContractTests
             ("CanonicalCorrectAnswer", typeof(string), NullabilityState.Nullable, false),
             ("Solution", typeof(string), NullabilityState.NotNull, true),
             ("ExpectedReasoning", typeof(string), NullabilityState.Nullable, false),
-            ("GradingCriteria", typeof(AnalyzeReasoningGradingCriteria), NullabilityState.NotNull, true));
+            ("GradingCriteria", typeof(AnalyzeReasoningGradingCriteria), NullabilityState.NotNull, true),
+            ("ImageParts", typeof(IReadOnlyList<AnalyzeReasoningImagePart>), NullabilityState.NotNull, false),
+            ("ImageCount", typeof(int), NullabilityState.NotNull, false));
         AssertExactProperties(
             typeof(AnalyzeReasoningGradingCriteria),
             ("Criteria", typeof(IReadOnlyList<AnalyzeReasoningRubricCriterion>), NullabilityState.NotNull, false),
@@ -87,7 +90,9 @@ public sealed class AIAnalysisContractTests
             ("SuggestedScore", typeof(decimal?), NullabilityState.Nullable, false),
             ("UsesAlternativeMethod", typeof(bool), NullabilityState.NotNull, false),
             ("SuggestedRubricScores", typeof(IReadOnlyList<RubricScoreInput>), NullabilityState.NotNull, false),
-            ("ReasoningIssues", typeof(IReadOnlyList<AIReasoningIssue>), NullabilityState.Nullable, false));
+            ("ReasoningIssues", typeof(IReadOnlyList<AIReasoningIssue>), NullabilityState.Nullable, false),
+            ("VisualEvidence", typeof(IReadOnlyList<RubricVisualEvidence>), NullabilityState.Nullable, false),
+            ("CriterionDeductions", typeof(IReadOnlyList<AICriterionDeduction>), NullabilityState.Nullable, false));
     }
 
     [Fact]
@@ -181,7 +186,8 @@ public sealed class AIAnalysisContractTests
             "suggestedScore",
             "usesAlternativeMethod",
             "suggestedRubricScores",
-            "reasoningIssues");
+            "reasoningIssues",
+            "visualEvidence");
         Assert.Equal("ai-analysis-v1", root.GetProperty("schemaVersion").GetString());
         Assert.Equal("vi", root.GetProperty("language").GetString());
         Assert.Equal("Đưa hai vế về cùng cơ số", root.GetProperty("methodDetected").GetString());

@@ -32,6 +32,8 @@ export interface StudentLearningPathPreferenceResponse {
 
 export interface GenerateLearningPathRequest {
   subjectId: string;
+  classId?: string;
+  history?: boolean;
   selfAssessedLevel: string;
   weakTopicNodeIds: number[];
   focusTopicNodeIds: number[];

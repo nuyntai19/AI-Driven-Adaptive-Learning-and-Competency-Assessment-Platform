@@ -69,7 +69,7 @@ public class AddStudentsToClassUseCaseTests
         var subjectId = Guid.NewGuid();
         context.Subjects.Add(new Subject { SubjectId = subjectId, CenterId = centerId, SubjectName = "Subject", SubjectCode = "S1", CreatedAt = SeedTimeUtc, UpdatedAt = SeedTimeUtc });
 
-        context.Classes.Add(new Class { ClassId = classId, CenterId = centerId, ClassName = "Class 1", AcademicYear = "2026", SubjectId = subjectId, TeacherId = teacherId, CreatedAt = SeedTimeUtc, CreatedBy = Guid.NewGuid(), UpdatedAt = SeedTimeUtc, UpdatedBy = Guid.NewGuid(), Status = ClassStatus.Active, RowVersion = 1 });
+        context.Classes.Add(new Class { ClassId = classId, CenterId = centerId, ClassName = "Class 1", GradeLevel = 10, AcademicYear = "2026", SubjectId = subjectId, TeacherId = teacherId, CreatedAt = SeedTimeUtc, CreatedBy = Guid.NewGuid(), UpdatedAt = SeedTimeUtc, UpdatedBy = Guid.NewGuid(), Status = ClassStatus.Active, RowVersion = 1 });
 
         foreach (var sId in studentIds)
         {
@@ -89,6 +89,23 @@ public class AddStudentsToClassUseCaseTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task UnclassifiedLegacyClass_RejectsNewEnrollment_EvenWithExceptionReason()
+    {
+        var centerId = _mockTenantContext.Object.CenterId!.Value;
+        var classId = Guid.NewGuid(); var studentId = Guid.NewGuid();
+        using var db = CreateContext(Guid.NewGuid().ToString(), centerId);
+        await SeedBaseDataAsync(db, centerId, classId, new List<Guid> { studentId });
+        (await db.Classes.SingleAsync()).GradeLevel = null;
+        await db.SaveChangesAsync();
+        var sut = new AddStudentsToClassUseCase(db, _mockTenantContext.Object, _mockTimeProvider.Object, _mockOwnershipGuard.Object, _mockLogger.Object);
+        var result = await sut.ExecuteAsync(classId, new AddStudentsToClassRequest { StudentIds = new[] { studentId },
+            AllowGradeMismatch = true, GradeMismatchReason = "Không dùng null làm lớp liên khối." });
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.InvalidStateTransition, result.ErrorCode);
+        Assert.Empty(await db.ClassStudents.ToListAsync());
     }
 
     [Theory]

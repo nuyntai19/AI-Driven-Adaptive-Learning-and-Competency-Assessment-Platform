@@ -12,6 +12,7 @@ public sealed class TeacherReviewQueueItemDto
     public int AssignmentQuestionCount { get; set; }
     public string SubjectId { get; set; } = string.Empty;
     public string QuestionText { get; set; } = string.Empty;
+    public bool HasQuestionImage { get; set; }
     public string QuestionType { get; set; } = string.Empty;
     public string AttemptStatus { get; set; } = string.Empty;
     public string AnswerEvaluationMode { get; set; } = string.Empty;

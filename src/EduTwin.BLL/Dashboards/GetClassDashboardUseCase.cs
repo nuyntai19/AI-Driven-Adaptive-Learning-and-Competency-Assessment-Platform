@@ -71,7 +71,7 @@ public sealed class GetClassDashboardUseCase : IGetClassDashboardUseCase
         }
 
         var classEntity = await _dbContext.Classes.AsNoTracking()
-            .Where(c => c.CenterId == centerId && c.ClassId == classId && c.Status == ClassStatus.Active && !c.IsDeleted)
+            .Where(c => c.CenterId == centerId && c.ClassId == classId && c.Status == ClassStatus.Active && c.LearningScope == ClassLearningScope.Current && !c.IsDeleted)
             .Select(c => new
             {
                 c.ClassId,
@@ -139,34 +139,22 @@ public sealed class GetClassDashboardUseCase : IGetClassDashboardUseCase
 
         highRiskStudents = highRiskStudents.OrderByDescending(s => s.RiskScore).ToList();
 
-        // 2. Applicable Topics (curriculum assigned to class or subject active topics)
-        var anyClassCurriculumQuery = _dbContext.CurriculumClasses.AsNoTracking()
-            .Where(cc => cc.CenterId == centerId && cc.ClassId == classEntity.ClassId);
-
-        var classCurriculumQuery = anyClassCurriculumQuery
-            .Where(cc => cc.Curriculum != null &&
-                         !cc.Curriculum.IsDeleted &&
-                         cc.Curriculum.ReviewStatus == ReviewStatus.Published);
-
-        var hasAnyCurriculumAssigned = await anyClassCurriculumQuery.AnyAsync(cancellationToken);
-        var hasCurriculumAssigned = await classCurriculumQuery.AnyAsync(cancellationToken);
+        // Published applicability is authoritative in the ledger, not draft plans.
+        // Do not resurrect ended applications or substitute the whole subject graph.
+        var appliedCurriculumIds = _dbContext.ClassCurriculumApplications.AsNoTracking()
+            .Where(a => a.CenterId == centerId && a.ClassId == classId && a.SubjectId == classEntity.SubjectId &&
+                a.EndedAt == null && !a.Curriculum.IsDeleted && a.Curriculum.SubjectId == classEntity.SubjectId &&
+                a.Curriculum.ReviewStatus == ReviewStatus.Published)
+            .Select(a => a.CurriculumId);
+        var hasAppliedCurriculum = await appliedCurriculumIds.AnyAsync(cancellationToken);
 
         var applicableTopicsQuery = _dbContext.KnowledgeNodes.AsNoTracking()
             .Where(n => n.CenterId == centerId &&
                         n.SubjectId == classEntity.SubjectId &&
                         n.NodeType == NodeType.Topic &&
                         n.IsActive &&
-                        !n.IsDeleted);
-
-        if (hasAnyCurriculumAssigned)
-        {
-            applicableTopicsQuery = applicableTopicsQuery.Where(n =>
-                hasCurriculumAssigned &&
-                _dbContext.CurriculumNodes.AsNoTracking().Any(cn =>
-                    cn.CenterId == centerId &&
-                    cn.NodeId == n.NodeId &&
-                    classCurriculumQuery.Any(cc => cc.CurriculumId == cn.CurriculumId)));
-        }
+                        !n.IsDeleted && _dbContext.CurriculumNodes.Any(cn => cn.CenterId == centerId &&
+                            cn.NodeId == n.NodeId && appliedCurriculumIds.Contains(cn.CurriculumId)));
 
         var applicableTopics = await applicableTopicsQuery
             .Select(n => new
@@ -174,13 +162,11 @@ public sealed class GetClassDashboardUseCase : IGetClassDashboardUseCase
                 n.NodeId,
                 n.NodeName,
                 n.ExamImportance,
-                SortOrder = hasCurriculumAssigned
-                    ? _dbContext.CurriculumNodes
+                SortOrder = _dbContext.CurriculumNodes
                         .Where(cn => cn.CenterId == centerId &&
                                      cn.NodeId == n.NodeId &&
-                                     classCurriculumQuery.Any(cc => cc.CurriculumId == cn.CurriculumId))
+                                     appliedCurriculumIds.Contains(cn.CurriculumId))
                         .Min(cn => (uint?)cn.OrderIndex) ?? n.OrderIndex
-                    : n.OrderIndex
             })
             .OrderBy(n => n.SortOrder)
             .ThenBy(n => n.NodeId)
@@ -189,30 +175,31 @@ public sealed class GetClassDashboardUseCase : IGetClassDashboardUseCase
         var weakTopics = new List<ClassWeakTopicDto>();
         var gapGroups = new List<ClassGapGroupDto>();
         decimal averageMastery = 0m;
+        var assessedTopicCount = 0;
+        long unassessedStudentTopicCount = (long)studentCount * applicableTopics.Count;
 
         if (studentCount > 0 && applicableTopics.Count > 0)
         {
-            var applicableTopicNodeIdSet = applicableTopics.Select(t => t.NodeId).ToHashSet();
+            var applicableTopicNodeIds = applicableTopics.Select(t => t.NodeId).ToArray();
 
             var allClassTwins = await _dbContext.KnowledgeTwins.AsNoTracking()
                 .Where(kt => kt.CenterId == centerId &&
                              kt.SubjectId == classEntity.SubjectId &&
-                             !kt.IsDeleted &&
+                             !kt.IsDeleted && kt.EvidenceCount > 0 && applicableTopicNodeIds.Contains(kt.TopicNodeId) &&
                              _dbContext.ClassStudents.Any(cs => cs.CenterId == centerId && cs.ClassId == classId && cs.StudentId == kt.StudentId && cs.Status == ClassStudentStatus.Active))
                 .Select(kt => new { kt.StudentId, kt.TopicNodeId, kt.MasteryPercentage })
                 .ToListAsync(cancellationToken);
 
-            var twins = allClassTwins.Where(kt => applicableTopicNodeIdSet.Contains(kt.TopicNodeId)).ToList();
+            var twins = allClassTwins;
+            var topicMeans = twins.GroupBy(t => t.TopicNodeId).ToDictionary(g => g.Key, g => g.Average(t => t.MasteryPercentage));
+            assessedTopicCount = topicMeans.Count;
+            unassessedStudentTopicCount -= twins.Count;
 
-            var totalWeight = applicableTopics.Sum(t => t.ExamImportance);
+            var totalWeight = applicableTopics.Where(t => topicMeans.ContainsKey(t.NodeId)).Sum(t => t.ExamImportance);
             if (totalWeight > 0m)
             {
-                var weightedSum = applicableTopics.Sum(t =>
-                {
-                    var sumTopic = twins.Where(kt => kt.TopicNodeId == t.NodeId).Sum(kt => kt.MasteryPercentage);
-                    var avgTopic = sumTopic / studentCount;
-                    return avgTopic * t.ExamImportance;
-                });
+                var weightedSum = applicableTopics.Where(t => topicMeans.ContainsKey(t.NodeId))
+                    .Sum(t => topicMeans[t.NodeId] * t.ExamImportance);
                 averageMastery = Math.Round(weightedSum / totalWeight, 2, MidpointRounding.AwayFromZero);
             }
 
@@ -220,12 +207,13 @@ public sealed class GetClassDashboardUseCase : IGetClassDashboardUseCase
             foreach (var topic in applicableTopics)
             {
                 var topicTwins = twins.Where(kt => kt.TopicNodeId == topic.NodeId).ToDictionary(kt => kt.StudentId, kt => kt.MasteryPercentage);
+                if (topicTwins.Count == 0) continue; // Unknown is not zero mastery or a detected weakness.
                 var topicSum = topicTwins.Values.Sum();
-                var topicAvg = Math.Round(topicSum / studentCount, 2, MidpointRounding.AwayFromZero);
+                var topicAvg = Math.Round(topicSum / topicTwins.Count, 2, MidpointRounding.AwayFromZero);
 
-                // Students with mastery < 60 on this topic (missing twin has mastery 0, so < 60)
+                // Only assessed students may enter an intervention group.
                 var affectedStudentIds = enrolledStudents
-                    .Where(s => !topicTwins.TryGetValue(s.StudentId, out var m) || m < 60m)
+                    .Where(s => topicTwins.TryGetValue(s.StudentId, out var m) && m < 60m)
                     .Select(s => s.StudentId)
                     .ToList();
 
@@ -236,22 +224,24 @@ public sealed class GetClassDashboardUseCase : IGetClassDashboardUseCase
                         TopicNodeId = topic.NodeId.ToString(CultureInfo.InvariantCulture),
                         TopicName = topic.NodeName,
                         AverageMastery = topicAvg,
-                        AffectedStudentCount = affectedStudentIds.Count
+                        AffectedStudentCount = affectedStudentIds.Count,
+                        AssessedStudentCount = topicTwins.Count,
+                        UnassessedStudentCount = studentCount - topicTwins.Count
                     });
-
-                    if (affectedStudentIds.Count > 0)
+                }
+                // A weak individual still needs support when the assessed class average is high.
+                if (affectedStudentIds.Count > 0)
+                {
+                    gapGroups.Add(new ClassGapGroupDto
                     {
-                        gapGroups.Add(new ClassGapGroupDto
-                        {
-                            GroupKey = $"topic-{topic.NodeId}-below-60",
-                            TopicNodeId = topic.NodeId.ToString(CultureInfo.InvariantCulture),
-                            TopicName = topic.NodeName,
-                            Threshold = 60m,
-                            StudentCount = affectedStudentIds.Count,
-                            StudentIds = affectedStudentIds,
-                            SuggestedAction = $"Giao bài luyện {topic.NodeName}."
-                        });
-                    }
+                        GroupKey = $"topic-{topic.NodeId}-below-60",
+                        TopicNodeId = topic.NodeId.ToString(CultureInfo.InvariantCulture),
+                        TopicName = topic.NodeName,
+                        Threshold = 60m,
+                        StudentCount = affectedStudentIds.Count,
+                        StudentIds = affectedStudentIds,
+                        SuggestedAction = $"Giao bài luyện {topic.NodeName}."
+                    });
                 }
             }
         }
@@ -300,6 +290,9 @@ public sealed class GetClassDashboardUseCase : IGetClassDashboardUseCase
             HighRiskStudents = highRiskStudents,
             WeakTopics = weakTopics,
             GapGroups = gapGroups,
+            AcademicCoverage = new ClassAcademicCoverageDto { HasAppliedCurriculum = hasAppliedCurriculum,
+                ApplicableTopicCount = applicableTopics.Count, AssessedTopicCount = assessedTopicCount,
+                UnassessedStudentTopicCount = unassessedStudentTopicCount },
             GeneratedAt = _timeProvider.GetUtcNow().UtcDateTime
         };
 

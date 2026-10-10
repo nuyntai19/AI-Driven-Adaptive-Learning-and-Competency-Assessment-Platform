@@ -8,7 +8,7 @@ export function GradingCriteriaEditor({ value, onChange, maxScore }: {
   const error = rubricDefinitionError(criteria, maxScore);
   return <section className="space-y-4 rounded-xl border border-[var(--th-border)] p-4">
     <h3 className="font-bold text-base">Tiêu chí chấm & Rubric</h3>
-    <p className="text-sm text-[var(--th-text-secondary)]">Chấp nhận cách giải khác hợp lệ. Không bắt buộc vẽ hình hay theo đúng thứ tự lời giải mẫu nếu phương pháp không cần.</p>
+    <p className="text-sm text-[var(--th-text-secondary)]">Chấp nhận cách giải khác hợp lệ. Hình minh họa có thể tùy chọn; nếu vẽ/ghi ký hiệu là mục tiêu cần chấm, cấu hình yêu cầu ảnh nháp riêng cho tiêu chí bên dưới.</p>
     {([['requiredIdeas', 'Ý chính / mục tiêu cần đạt'], ['commonErrors', 'Lỗi thực sự cần lưu ý']] as const).map(([key, label]) =>
       <label key={key} className="block text-sm font-semibold">{label} (mỗi dòng một mục)
         <textarea className="th-input w-full mt-1 text-sm" rows={2} value={value[key].join('\n')}
@@ -29,6 +29,12 @@ export function GradingCriteriaEditor({ value, onChange, maxScore }: {
       </div>
       <textarea aria-label={`Mô tả tiêu chí ${index + 1}`} rows={2} className="th-input w-full text-sm" value={c.description} placeholder="Điều kiện cho điểm; chấp nhận phương pháp tương đương"
         onChange={e => onChange({ ...value, criteria: criteria.map((item, i) => i === index ? { ...item, description: e.target.value } : item) })} />
+      <label className="block text-sm">Yêu cầu phải nhìn thấy trên ảnh nháp — tiêu chí {index + 1} (mỗi dòng một yêu cầu)
+        <textarea aria-label={`Yêu cầu ảnh nháp tiêu chí ${index + 1}`} rows={2} maxLength={6000} className="th-input w-full text-sm mt-1"
+          value={(c.visualRequirements || []).join('\n')} placeholder="Ví dụ: Có nhãn M tại trung điểm BC; có dấu góc vuông tại A"
+          onChange={e => onChange({ ...value, criteria: criteria.map((item, i) => i === index ? { ...item, visualRequirements: e.target.value ? e.target.value.split('\n').map(line => line.trim()) : [] } : item) })} />
+      </label>
+      <p className="text-xs text-[var(--th-text-secondary)]">Để trống nếu tiêu chí không yêu cầu ảnh học sinh. Khi có yêu cầu, AI phải chỉ ra từng bằng chứng; đáp số đúng không thay thế hình còn thiếu.</p>
     </div>)}
     <button type="button" disabled={criteria.length >= 20} className="th-secondary-button text-sm"
       onClick={() => onChange({ ...value, schemaVersion: '2.0', criteria: [...criteria, { criterionId: crypto.randomUUID(), title: '', description: '', maxScore: 0.5 }] })}>+ Thêm tiêu chí có điểm</button>

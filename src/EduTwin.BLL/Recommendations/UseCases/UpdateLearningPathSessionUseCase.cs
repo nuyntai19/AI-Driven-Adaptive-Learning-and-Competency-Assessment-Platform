@@ -34,6 +34,9 @@ public sealed class UpdateLearningPathSessionUseCase : IUpdateLearningPathSessio
         if (!_tenantContext.IsResolved || _tenantContext.CenterId is not { } centerId || _tenantContext.UserId is not { } studentId ||
             subjectId == Guid.Empty || string.IsNullOrWhiteSpace(sessionId) || !AllowedStatuses.Contains(request.Status, StringComparer.Ordinal))
             return false;
+        var scope = await EduTwin.BLL.Organization.StudentLearningScope.ResolveAsync(_dbContext, centerId, studentId,
+            subjectId, request.ClassId, request.History, cancellationToken);
+        if (!scope.Allowed) return false;
         var path = await _dbContext.LearningPaths
             .Where(p => p.CenterId == centerId && p.StudentId == studentId && p.SubjectId == subjectId && p.Status == LearningPathStatus.Active && !p.IsDeleted)
             .OrderByDescending(p => p.GeneratedAt).FirstOrDefaultAsync(cancellationToken);
@@ -41,6 +44,7 @@ public sealed class UpdateLearningPathSessionUseCase : IUpdateLearningPathSessio
         var phases = JsonSerializer.Deserialize<List<LearningPathPhaseDto>>(path.PlanJson.RootElement.GetRawText(), JsonOptions) ?? new();
         var session = phases.SelectMany(p => p.Weeks).SelectMany(w => w.Sessions).SingleOrDefault(s => s.SessionId == sessionId);
         if (session is null) return false;
+        if (scope.TopicIds is not null && (!ulong.TryParse(session.TopicNodeId, out var topicId) || !scope.Includes(topicId))) return false;
         session.Status = request.Status;
         foreach (var week in phases.SelectMany(p => p.Weeks))
             week.ProgressPercentage = week.Sessions.Count == 0 ? 0m : Math.Round((decimal)week.Sessions.Count(s => s.Status == "Completed") / week.Sessions.Count * 100m, 1);

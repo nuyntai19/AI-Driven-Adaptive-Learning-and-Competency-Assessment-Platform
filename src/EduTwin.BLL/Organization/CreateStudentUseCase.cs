@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Threading;
 using System.Threading.Tasks;
 using EduTwin.BLL.IdentityAndTenancy;
@@ -82,7 +83,8 @@ public class CreateStudentUseCase : ICreateStudentUseCase
         if (request.ClassIds.Any())
         {
             classes = await _dbContext.Classes
-                .Where(c => request.ClassIds.Contains(c.ClassId) && c.CenterId == centerId && !c.IsDeleted && c.Status == ClassStatus.Active)
+                .Where(BuildClassIdFilter(request.ClassIds))
+                .Where(c => c.CenterId == centerId && !c.IsDeleted && c.Status == ClassStatus.Active)
                 .ToListAsync(cancellationToken);
 
             if (classes.Count != request.ClassIds.Count)
@@ -90,6 +92,10 @@ public class CreateStudentUseCase : ICreateStudentUseCase
 
             if (isTeacher && classes.Any(c => c.TeacherId != actorId))
                 return CreateStudentResult.Failure(ErrorCodes.ResourceNotFound);
+
+            if (classes.Any(c => c.LearningScope != ClassLearningScope.Current || !c.GradeLevel.HasValue || c.GradeLevel.Value != request.GradeLevel))
+                return CreateStudentResult.Failure(ErrorCodes.ValidationFailed,
+                    "Chỉ được tạo học sinh kèm lớp đã phân khối và cùng khối học sinh. Với ngoại lệ học khác khối, hãy tạo học sinh chưa gán lớp rồi thêm vào lớp bằng luồng ngoại lệ có lý do.");
         }
 
         // 4. Pre-check duplicate username in Center
@@ -138,6 +144,7 @@ public class CreateStudentUseCase : ICreateStudentUseCase
             StudentId = studentId,
             CenterId = centerId,
             Status = ClassStudentStatus.Active,
+            GradeLevelAtEnrollment = (byte)request.GradeLevel,
             JoinedAt = now,
             CreatedBy = actorId
         }).ToList();
@@ -154,6 +161,9 @@ public class CreateStudentUseCase : ICreateStudentUseCase
             CreatedBy = actorId,
             UpdatedBy = actorId
         };
+
+        if (!await NewAccountRoleProvisioning.AddAsync(_dbContext, user, actorId, now, cancellationToken))
+            return CreateStudentResult.Failure(ErrorCodes.ValidationFailed);
 
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
         try
@@ -197,5 +207,17 @@ public class CreateStudentUseCase : ICreateStudentUseCase
         };
 
         return CreateStudentResult.Success(studentDto);
+    }
+
+    // The MySQL EF provider cannot map a parameterized Guid collection in IN.
+    // Explicit Guid equalities remain server-side and retain the tenant filter.
+    private static Expression<Func<Class, bool>> BuildClassIdFilter(IReadOnlyCollection<Guid> ids)
+    {
+        var parameter = Expression.Parameter(typeof(Class), "c");
+        var property = Expression.Property(parameter, nameof(Class.ClassId));
+        Expression body = Expression.Constant(false);
+        foreach (var id in ids)
+            body = Expression.OrElse(body, Expression.Equal(property, Expression.Constant(id)));
+        return Expression.Lambda<Func<Class, bool>>(body, parameter);
     }
 }

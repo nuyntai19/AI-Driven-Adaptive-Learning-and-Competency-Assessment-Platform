@@ -130,7 +130,7 @@ public class CreateAssignmentUseCase : ICreateAssignmentUseCase
             return CreateAssignmentResult.Failure(ErrorCodes.ForbiddenResource);
 
         // Class phải Active
-        if (classEntity.Status != ClassStatus.Active)
+        if (classEntity.Status != ClassStatus.Active || classEntity.LearningScope != ClassLearningScope.Current)
             return CreateAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
 
         var classSubjectId = classEntity.SubjectId;

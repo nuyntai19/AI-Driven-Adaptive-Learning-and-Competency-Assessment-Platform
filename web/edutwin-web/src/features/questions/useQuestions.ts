@@ -1,11 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { questionsApi } from "../../api/questionsApi";
 import type { CreateQuestionRequest, UpdateQuestionRequest, ActivateQuestionRequest, ArchiveQuestionRequest, QuestionFilter } from "../../types/questions";
+import { useAuthStore } from "../../stores/authStore";
 
-export function useQuestions(filter?: QuestionFilter) {
+export function useQuestions(filter?: QuestionFilter, options?: { enabled?: boolean }) {
+  const user = useAuthStore((state) => state.user);
   return useQuery({
-    queryKey: ["questions", filter],
+    queryKey: ["questions", user?.centerId, user?.userId, filter],
     queryFn: () => questionsApi.getAll(filter),
+    enabled: Boolean(user?.centerId && user?.userId) && (options?.enabled ?? true),
   });
 }
 

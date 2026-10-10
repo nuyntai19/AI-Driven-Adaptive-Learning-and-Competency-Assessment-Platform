@@ -8,10 +8,11 @@ import { useCreateAssignment } from "../../features/assignments/useCreateAssignm
 import { useUpdateAssignment } from "../../features/assignments/useUpdateAssignment";
 import { usePublishAssignment } from "../../features/assignments/usePublishAssignment";
 import {
-  useAssignableQuestions,
-  useAssignmentClasses,
-  useAssignmentClassStudents,
-} from "../../features/assignments/useAssignmentWizardOptions";
+  getAssignableQuestions,
+  getAssignmentClasses,
+  getAssignmentClassStudents,
+} from "../../api/assignmentsApi";
+import type { GetAssignableQuestionsParams } from "../../api/assignmentsApi";
 import type {
   CreateAssignmentRequest,
   TargetMode,
@@ -37,6 +38,8 @@ import { TeacherConfirmDialog } from "../../components/teacher/TeacherOverlays";
 import { TeacherAssignmentQuickViewModal } from "../../components/teacher/TeacherAssignmentQuickViewModal";
 import { questionsApi } from "../../api/questionsApi";
 import { RichMathText } from "../../components/math/RichMathText";
+import { questionTypeLabel } from "../../utils/academicDisplay";
+import { parseKnowledgeTopicContext, sameSubject, topicClassDisposition, validateKnowledgeTopicContext, withoutTopicContext } from "../../utils/knowledgeTopicContext";
 
 const toLocalDateTime = (value: string | null) => {
   if (!value) return "";
@@ -61,16 +64,20 @@ const WIZARD_STEPS = [
 export function TeacherAssignmentEditorView() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const isEditing = Boolean(id);
 
+  const user = useAuthStore((state) => state.user);
+  const hasScope = Boolean(user?.centerId && user?.userId);
   const hasPermission = useAuthStore((state) => state.hasPermission);
+  const canCreate = hasPermission(permissions.assignmentsCreate);
   const canUpdate = hasPermission(permissions.assignmentsUpdate);
   const canPublish = hasPermission(permissions.assignmentsPublish);
   const canReadClasses = hasPermission(permissions.classesRead);
   const canReadQuestions = hasPermission(permissions.questionsRead);
   const canReadNodes = hasPermission(permissions.nodesRead);
+  const canReadSubjects = hasPermission(permissions.subjectsRead);
 
   // Assignment query in edit mode
   const assignmentQuery = useAssignment(id);
@@ -86,7 +93,9 @@ export function TeacherAssignmentEditorView() {
 
   // Gap group URL params
   const paramClassId = searchParams.get("classId") || "";
-  const paramStudentIds = searchParams.get("studentIds")
+  const hasQuickActionContext = searchParams.has("topicNodeId") && searchParams.has("subjectId");
+  // Paired KG links carry a filter, never a recipient selection. Keep legacy gap-group links working.
+  const paramStudentIds = !isEditing && !hasQuickActionContext && searchParams.get("studentIds")
     ? searchParams.get("studentIds")!.split(",").map((s) => s.trim()).filter(Boolean)
     : [];
 
@@ -144,7 +153,8 @@ export function TeacherAssignmentEditorView() {
   // Question Selector filter & page
   const [questionPage, setQuestionPage] = useState(1);
   const [questionDifficulty, setQuestionDifficulty] = useState<number | "">("");
-  const [questionTopicId, setQuestionTopicId] = useState<string>("");
+  const [manualQuestionTopicId, setQuestionTopicId] = useState<string>("");
+  const [topicContextNotice, setTopicContextNotice] = useState("");
   const [questionGradeFilter, setQuestionGradeFilter] = useState<number | "">("");
   const [allowGradeMismatch, setAllowGradeMismatch] = useState(false);
   const [gradeMismatchReason, setGradeMismatchReason] = useState("");
@@ -154,21 +164,23 @@ export function TeacherAssignmentEditorView() {
   const [studentSearch, setStudentSearch] = useState("");
 
   // Classes query
-  const { data: classesData, isLoading: isLoadingClasses } = useAssignmentClasses(
-    { page: 1, pageSize: 50 },
-    { enabled: canReadClasses }
-  );
+  const { data: classesData, isLoading: isLoadingClasses } = useQuery({
+    queryKey: ["assignment-options", "classes", user?.centerId, user?.userId, { page: 1, pageSize: 50 }],
+    queryFn: () => getAssignmentClasses({ page: 1, pageSize: 50 }),
+    enabled: hasScope && canReadClasses,
+    staleTime: 30_000,
+  });
 
   // Specific class details query
   const classDetailQuery = useQuery({
-    queryKey: ["class-detail-for-teacher-assignment", classId],
+    queryKey: ["class-detail-for-teacher-assignment", user?.centerId, user?.userId, classId],
     queryFn: () => organizationApi.getClass(classId),
-    enabled: canReadClasses && Boolean(classId),
+    enabled: hasScope && canReadClasses && Boolean(classId),
     staleTime: 60_000,
   });
 
   const selectedClass = useMemo(() => {
-    if (classDetailQuery.data) return classDetailQuery.data;
+    if (classDetailQuery.data?.classId === classId) return classDetailQuery.data;
     return classesData?.data?.find((c) => c.classId === classId);
   }, [classId, classDetailQuery.data, classesData?.data]);
 
@@ -180,18 +192,73 @@ export function TeacherAssignmentEditorView() {
   }, [selectedClass?.gradeLevel]);
 
   const selectedSubjectId = selectedClass?.subject?.subjectId;
+  // Legacy class-dashboard links omit subjectId; infer it only from authorized class API data.
+  // Quick-action context never overwrites an existing assignment in edit mode.
+  const topicContext = isEditing ? { kind: "none" as const }
+    : parseKnowledgeTopicContext(searchParams, classId ? selectedSubjectId : undefined);
+  const legacySubjectPending = !isEditing && searchParams.has("topicNodeId") && !searchParams.has("subjectId")
+    && Boolean(classId) && !selectedSubjectId && !classDetailQuery.isError;
+  const contextKey = `${searchParams.toString()}|${isEditing}`;
+  const questionTopicId = topicContext.kind === "topic" ? topicContext.topicId : manualQuestionTopicId;
+  const contextSubjectId = topicContext.kind === "topic" ? topicContext.subjectId : undefined;
+  const nodeSubjectId = contextSubjectId ?? selectedSubjectId;
 
-  // Knowledge Nodes Query for the subject of the selected class
-  const knowledgeNodesQuery = useQuery({
-    queryKey: ["knowledge-nodes-for-teacher-assignment-editor", selectedSubjectId],
-    queryFn: () => knowledgeGraphApi.listNodes(selectedSubjectId!),
-    enabled: canReadNodes && Boolean(selectedSubjectId),
+  const contextSubjectQuery = useQuery({
+    queryKey: ["knowledge-topic-context-subject", user?.centerId, user?.userId, contextSubjectId],
+    queryFn: () => organizationApi.getSubject(contextSubjectId!),
+    enabled: hasScope && canReadSubjects && Boolean(contextSubjectId),
     staleTime: 60_000,
   });
 
+  // Knowledge Nodes Query for the subject of the selected class
+  const knowledgeNodesQuery = useQuery({
+    queryKey: ["knowledge-nodes-for-teacher-assignment-editor", user?.centerId, user?.userId, nodeSubjectId],
+    queryFn: () => knowledgeGraphApi.listNodes(nodeSubjectId!),
+    enabled: hasScope && canReadNodes && Boolean(nodeSubjectId)
+      && (!contextSubjectId || Boolean(contextSubjectQuery.data?.isActive && sameSubject(contextSubjectQuery.data.subjectId, contextSubjectId))),
+    staleTime: 60_000,
+  });
+
+  const topicValidation = validateKnowledgeTopicContext(topicContext, {
+    canRead: canReadQuestions && canReadNodes && canReadSubjects,
+    isError: contextSubjectQuery.isError || knowledgeNodesQuery.isError,
+    subjects: contextSubjectQuery.data ? [contextSubjectQuery.data] : undefined,
+    nodes: knowledgeNodesQuery.data,
+  });
+  const classDisposition = contextSubjectId ? topicClassDisposition(contextSubjectId, selectedSubjectId) : "waiting";
+  const subjectMismatch = classDisposition === "mismatch";
+  const questionsReady = hasScope && canReadQuestions && Boolean(selectedSubjectId)
+    && !classDetailQuery.isError && !subjectMismatch
+    && (topicValidation.status === "none" || topicValidation.status === "ready");
+
+  useEffect(() => {
+    setQuestionPage(1);
+    if (searchParams.has("topicNodeId")) setTopicContextNotice("");
+  }, [contextKey, searchParams, user?.centerId, user?.userId]);
+
+  useEffect(() => {
+    if (!contextSubjectId || searchParams.has("subjectId")) return;
+    const next = new URLSearchParams(searchParams);
+    next.set("subjectId", contextSubjectId);
+    setSearchParams(next, { replace: true });
+  }, [contextSubjectId, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (!subjectMismatch || classDetailQuery.isError) return;
+    setQuestionTopicId("");
+    setQuestionPage(1);
+    setTopicContextNotice("Đã bỏ bộ lọc chủ đề từ đồ thị vì lớp vừa chọn thuộc môn học khác. Vui lòng chọn chủ đề của môn học này.");
+    setSearchParams(withoutTopicContext(searchParams), { replace: true });
+  }, [subjectMismatch, classDetailQuery.isError, searchParams, setSearchParams]);
+
+  const clearTopicContext = () => {
+    setQuestionTopicId("");
+    setQuestionPage(1);
+    setSearchParams(withoutTopicContext(searchParams), { replace: true });
+  };
+
   // Questions query for the subject of the selected class
-  const questionsQuery = useAssignableQuestions(
-    selectedSubjectId
+  const questionParams: GetAssignableQuestionsParams | undefined = selectedSubjectId
       ? {
           subjectId: selectedSubjectId,
           gradeLevel: questionGradeFilter !== "" ? Number(questionGradeFilter) : undefined,
@@ -200,13 +267,16 @@ export function TeacherAssignmentEditorView() {
           pageSize: 10,
           difficulty: questionDifficulty !== "" ? Number(questionDifficulty) : undefined,
         }
-      : undefined,
-    { enabled: canReadQuestions && Boolean(selectedSubjectId) }
-  );
+      : undefined;
+  const questionsQuery = useQuery({
+    queryKey: ["assignment-options", "questions", user?.centerId, user?.userId, questionParams],
+    queryFn: () => getAssignableQuestions(questionParams!),
+    enabled: questionsReady,
+    staleTime: 30_000,
+  });
 
   // Students query for selected class
-  const studentsQuery = useAssignmentClassStudents(
-    classId
+  const studentParams = classId
       ? {
           classId,
           page: studentPage,
@@ -214,13 +284,17 @@ export function TeacherAssignmentEditorView() {
           search: studentSearch.trim() || undefined,
           status: "Active",
         }
-      : undefined,
-    { enabled: canReadClasses && Boolean(classId) }
-  );
+      : undefined;
+  const studentsQuery = useQuery({
+    queryKey: ["assignment-options", "students", user?.centerId, user?.userId, studentParams],
+    queryFn: () => getAssignmentClassStudents(studentParams!),
+    enabled: hasScope && canReadClasses && Boolean(classId),
+    staleTime: 30_000,
+  });
 
   // Accumulate questions into cache
   useEffect(() => {
-    if (questionsQuery.data?.data) {
+    if (questionsReady && questionsQuery.data?.data) {
       setCachedQuestions((prev) => {
         const next = new Map(prev);
         for (const q of questionsQuery.data.data) {
@@ -229,7 +303,7 @@ export function TeacherAssignmentEditorView() {
         return next;
       });
     }
-  }, [questionsQuery.data?.data]);
+  }, [questionsReady, questionsQuery.data?.data]);
 
   // Pre-fetch details for questions already belonging to this assignment
   const assignedQuestionIds = useMemo(() => {
@@ -237,7 +311,7 @@ export function TeacherAssignmentEditorView() {
   }, [assignment?.questions]);
 
   const existingQuestionsQuery = useQuery({
-    queryKey: ["editor-assigned-questions-details", assignedQuestionIds],
+    queryKey: ["editor-assigned-questions-details", user?.centerId, user?.userId, assignedQuestionIds],
     queryFn: async () => {
       if (assignedQuestionIds.length === 0) return [];
       const results = await Promise.allSettled(
@@ -251,7 +325,7 @@ export function TeacherAssignmentEditorView() {
       });
       return list;
     },
-    enabled: assignedQuestionIds.length > 0,
+    enabled: hasScope && canReadQuestions && assignedQuestionIds.length > 0,
     staleTime: 120_000,
   });
 
@@ -326,7 +400,7 @@ export function TeacherAssignmentEditorView() {
     return false;
   }, [selectedClass?.gradeLevel, questionIds, cachedQuestions]);
 
-  const isReadOnly = isEditing && (assignment?.status !== "Draft" || !canUpdate);
+  const isReadOnly = isEditing ? (assignment?.status !== "Draft" || !canUpdate) : !canCreate;
 
   const toggleQuestion = (q: Question) => {
     if (isReadOnly) return;
@@ -347,7 +421,8 @@ export function TeacherAssignmentEditorView() {
   const handleClassChange = (nextClassId: string) => {
     if (isReadOnly) return;
     setClassId(nextClassId);
-    setQuestionTopicId("");
+    const nextSubjectId = classesData?.data.find(c => c.classId === nextClassId)?.subject?.subjectId;
+    if (topicContext.kind === "none" && !sameSubject(selectedSubjectId, nextSubjectId)) setQuestionTopicId("");
     setQuestionIds([]);
     setStudentIds([]);
     setTargetMode("WholeClass");
@@ -435,6 +510,10 @@ export function TeacherAssignmentEditorView() {
 
   const validateStep1 = (): boolean => {
     if (!validateStep0()) return false;
+    if (topicValidation.status !== "none" && !questionsReady) {
+      setFormError({ message: "Vui lòng xác minh chủ đề từ đồ thị hoặc bỏ bộ lọc trước khi tiếp tục." });
+      return false;
+    }
     if (questionIds.length === 0) {
       setFormError({ message: "Vui lòng chọn ít nhất 1 câu hỏi cho bài tập." });
       return false;
@@ -651,6 +730,26 @@ export function TeacherAssignmentEditorView() {
           </div>
         }
       />
+
+      {!isEditing && !canCreate && <p role="status" className="text-xs">Bạn không có quyền tạo bài tập.</p>}
+      {topicValidation.status !== "none" && (
+        <div role="status" className="th-surface p-3 text-xs space-y-2">
+          <p>{subjectMismatch
+            ? "Lớp đã chọn thuộc môn học khác; đang bỏ bộ lọc chủ đề từ đồ thị…"
+            : legacySubjectPending ? "Đang xác minh môn học của lớp để áp dụng chủ đề…" : topicValidation.message}</p>
+          {topicValidation.status === "ready" && !classId && <p>Chọn lớp cùng môn để giữ bộ lọc. Bạn vẫn cần tự chọn câu hỏi và đối tượng giao bài.</p>}
+          <div className="flex gap-2">
+            {topicValidation.status === "error" && hasScope && canReadSubjects && canReadNodes && contextSubjectId && (
+              <button type="button" className="th-secondary-button" onClick={() => {
+                contextSubjectQuery.refetch();
+                if (contextSubjectQuery.data?.isActive) knowledgeNodesQuery.refetch();
+              }}>Thử lại</button>
+            )}
+            <button type="button" className="th-secondary-button" onClick={clearTopicContext}>Bỏ lọc từ đồ thị</button>
+          </div>
+        </div>
+      )}
+      {topicContextNotice && <p role="status" className="th-surface p-3 text-xs">{topicContextNotice}</p>}
 
       {concurrencyConflict && (
         <TeacherConcurrencyBanner
@@ -899,10 +998,11 @@ export function TeacherAssignmentEditorView() {
                     id="teacher-q-topic-filter"
                     value={questionTopicId}
                     onChange={(e) => {
+                      if (topicContext.kind !== "none") setSearchParams(withoutTopicContext(searchParams), { replace: true });
                       setQuestionTopicId(e.target.value);
                       setQuestionPage(1);
                     }}
-                    disabled={!selectedSubjectId || knowledgeNodesQuery.isLoading}
+                    disabled={!canReadNodes || !selectedSubjectId || knowledgeNodesQuery.isLoading || knowledgeNodesQuery.isError || topicValidation.status === "pending" || subjectMismatch}
                     className="th-select text-xs py-1 max-w-[220px]"
                   >
                     <option value="">
@@ -912,6 +1012,9 @@ export function TeacherAssignmentEditorView() {
                         ? "Đang tải nút..."
                         : "Tất cả nút tri thức"}
                     </option>
+                    {topicContext.kind === "topic" && !knowledgeNodesQuery.data?.some(node => node.nodeId === questionTopicId) && (
+                      <option value={questionTopicId}>Chủ đề #{questionTopicId} · Chưa xác minh</option>
+                    )}
                     {knowledgeNodesQuery.data?.map((node) => (
                       <option key={node.nodeId} value={node.nodeId}>
                         [{node.nodeType}] {node.nodeName} ({node.nodeCode})
@@ -1029,6 +1132,13 @@ export function TeacherAssignmentEditorView() {
               <div className="p-8 rounded-xl border border-[var(--th-border-subtle)] bg-[var(--th-surface-subtle)] text-center text-xs text-[var(--th-text-muted)]">
                 Vui lòng quay lại Bước 1 để chọn Lớp học trước khi chọn câu hỏi.
               </div>
+            ) : classDetailQuery.isError ? (
+              <TeacherSafeErrorPanel error={classDetailQuery.error} fallback="Không thể xác minh môn học của lớp." onRetry={() => classDetailQuery.refetch()} />
+            ) : !questionsReady ? (
+              <p role="status" className="p-4 text-xs">{!canReadQuestions
+                ? "Bạn không có quyền xem câu hỏi."
+                : legacySubjectPending ? "Đang xác minh môn học của lớp để áp dụng chủ đề…"
+                : topicValidation.message || (classDetailQuery.isSuccess ? "Lớp học chưa có môn học khả dụng để chọn câu hỏi." : "Đang xác minh môn học của lớp…")}</p>
             ) : questionsQuery.isLoading ? (
               <div className="space-y-3">
                 <TeacherSkeleton className="h-20 w-full rounded-xl" />
@@ -1043,7 +1153,7 @@ export function TeacherAssignmentEditorView() {
               />
             ) : (questionsQuery.data?.data?.length || 0) === 0 ? (
               <div className="p-10 rounded-xl border border-dashed border-[var(--th-border)] text-center text-xs text-[var(--th-text-muted)] space-y-2">
-                <p className="text-sm font-semibold text-[var(--th-text)]">Chưa có câu hỏi Active nào cho môn học này</p>
+                <p className="text-sm font-semibold text-[var(--th-text)]">Chưa có câu hỏi Active phù hợp với bộ lọc này</p>
                 <p>Hãy vào mục Ngân hàng câu hỏi để soạn hoặc kích hoạt câu hỏi mới.</p>
               </div>
             ) : (
@@ -1071,7 +1181,7 @@ export function TeacherAssignmentEditorView() {
                         <div className="flex items-center gap-2 text-xs">
                           <span className="font-mono font-bold text-[var(--th-teal)]">#{q.questionId}</span>
                           <span className="th-badge th-badge-info py-0 px-2 text-[10px]">
-                            {q.questionType === "MultipleChoice" ? "Trắc nghiệm" : "Tự luận"}
+                            {questionTypeLabel(q.questionType)}
                           </span>
                           <span className={`py-0 px-2 text-[10px] rounded border font-medium ${
                             q.gradeLevel
@@ -1081,7 +1191,7 @@ export function TeacherAssignmentEditorView() {
                             {q.gradeLevel ? `Khối ${q.gradeLevel}` : "Chưa phân loại"}
                           </span>
                           <span className="text-[var(--th-text-muted)]">Độ khó: {q.difficulty}/5</span>
-                          <span className="text-[var(--th-text-muted)]">Điểm: {q.maxScore}</span>
+                          <span className="text-[var(--th-text-muted)]" title={`Điểm tối đa gốc: ${q.maxScore}; giữ nguyên để tính trọng số bài tập.`}>Thang điểm hiển thị: 10 · Trọng số gốc: {q.maxScore}</span>
                         </div>
                         <div className="text-xs text-[var(--th-text)] leading-relaxed font-medium">
                           <RichMathText text={q.questionText} />
@@ -1094,7 +1204,7 @@ export function TeacherAssignmentEditorView() {
             )}
 
             {/* Pagination for questions */}
-            {questionsQuery.data?.meta?.totalPages && questionsQuery.data.meta.totalPages > 1 && (
+            {questionsReady && !questionsQuery.isError && questionsQuery.data?.meta?.totalPages && questionsQuery.data.meta.totalPages > 1 && (
               <div className="flex items-center justify-between text-xs text-[var(--th-text-secondary)] pt-2">
                 <span>
                   Trang {questionPage} / {questionsQuery.data.meta.totalPages} ({questionsQuery.data.meta.totalItems} câu hỏi)
@@ -1446,7 +1556,7 @@ export function TeacherAssignmentEditorView() {
                   </button>
                 )}
 
-                {canPublish && (
+                {canPublish && (isEditing || canCreate) && (
                   <button
                     type="button"
                     onClick={() => {

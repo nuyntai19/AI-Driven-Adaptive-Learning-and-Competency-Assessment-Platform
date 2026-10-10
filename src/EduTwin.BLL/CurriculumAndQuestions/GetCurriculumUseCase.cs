@@ -58,11 +58,8 @@ public class GetCurriculumUseCase : IGetCurriculumUseCase
             .Select(cn => cn.NodeId)
             .ToListAsync(cancellationToken);
 
-        var classes = await _dbContext.CurriculumClasses
-            .AsNoTracking()
-            .Where(cc => cc.CurriculumId == request.CurriculumId && cc.CenterId == centerId && curriculum.TeacherId == actorId)
-            .Select(cc => cc.ClassId)
-            .ToListAsync(cancellationToken);
+        var classes = (await CurriculumClassScopeQuery.ReadAsync(_dbContext, centerId, actorId, request.CurriculumId, cancellationToken))
+            .Select(cc => cc.ClassId).ToList();
 
         var dto = new CurriculumDto
         {

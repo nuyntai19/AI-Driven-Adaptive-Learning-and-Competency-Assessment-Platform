@@ -2,6 +2,7 @@ import type { StudentDto, StudentSubjectGoalDto, ClassDto } from "../../types/or
 import type { ProgressStatus } from "../../types/assignments";
 
 export interface StudentAssignmentRecord {
+  resultStatus?: "Final" | "Provisional" | "Processing";
   assignmentId: string;
   title: string;
   subjectId?: string | null;
@@ -17,6 +18,7 @@ export interface StudentAssignmentRecord {
 }
 
 export interface StudentAcademicSummary {
+  assessmentStatus?: "Unknown" | "PendingGrading" | "HighRisk" | "Good" | "Developing";
   totalAssigned: number;
   completedCount: number;
   inProgressCount: number;
@@ -28,6 +30,21 @@ export interface StudentAcademicSummary {
   maxScore: number | null;
   records: StudentAssignmentRecord[];
 }
+
+export const assessmentLabel = (summary?: StudentAcademicSummary | null): string => {
+  switch (summary?.assessmentStatus) {
+    case "HighRisk": return "Cần hỗ trợ / quá hạn";
+    case "Good": return "Kết quả tốt";
+    case "Developing": return "Đang phát triển";
+    case "PendingGrading": return "Đã nộp — chờ chốt điểm";
+    default: return "Chưa đủ dữ liệu đánh giá";
+  }
+};
+export const isAcademicHighRisk = (summary?: StudentAcademicSummary | null): boolean =>
+  summary?.assessmentStatus === "HighRisk" || (!summary?.assessmentStatus && !!summary &&
+    (summary.overdueCount > 0 || (summary.averageScore !== null && summary.averageScore < 5)));
+export const reportScoreText = (record: StudentAssignmentRecord): string =>
+  record.score == null ? "Chưa có điểm" : `${record.score.toFixed(1)} / 10${record.resultStatus === "Final" ? " (đã chốt)" : " (tạm thời)"}`;
 
 export interface ClassAcademicSummary {
   totalStudents: number;
@@ -243,14 +260,14 @@ export function buildStudentReportExcelHtml(
         <td class="value-cell text-center font-bold">${summary.completionRate.toFixed(1)}%</td>
         <td class="text-center">Phần trăm (%)</td>
         <td class="${summary.completionRate >= 80 ? "badge-success" : summary.completionRate >= 50 ? "badge-warning" : "badge-danger"}">
-          ${summary.completionRate >= 80 ? "Đạt chỉ tiêu xuất sắc" : summary.completionRate >= 50 ? "Mức độ trung bình" : "Cần đôn đốc nhắc nhở"}
+          ${assessmentLabel(summary)}
         </td>
       </tr>
       <tr class="zebra-even">
         <td class="label-cell">Điểm trung bình các bài tập</td>
         <td class="value-cell text-center font-bold">${avgScoreStr}</td>
         <td class="text-center">Thang điểm 10.0</td>
-        <td>${summary.averageScore !== null && summary.averageScore >= 8.0 ? "Học lực Giỏi" : summary.averageScore !== null && summary.averageScore >= 6.5 ? "Học lực Khá" : "Cần củng cố"}</td>
+        <td>${summary.averageScore === null ? assessmentLabel(summary) : summary.averageScore >= 8.0 ? "Học lực Giỏi" : summary.averageScore >= 6.5 ? "Học lực Khá" : "Cần củng cố"}</td>
       </tr>
       <tr>
         <td class="label-cell">Điểm cao nhất đạt được</td>
@@ -380,7 +397,7 @@ export function buildStudentReportExcelHtml(
 
       const scoreText =
         rec.score !== null && rec.score !== undefined
-          ? `${rec.score.toFixed(1)} / ${rec.maxScore || 10}`
+          ? reportScoreText(rec)
           : "-";
 
       const dueDateText = rec.dueAt ? new Date(rec.dueAt).toLocaleDateString("vi-VN") : "Không giới hạn";
@@ -452,7 +469,7 @@ export function buildClassReportExcelHtml(
         totalScoreSum += sum.averageScore;
         scoredStudentCount++;
       }
-      if (sum.completionRate < 50 || (sum.averageScore !== null && sum.averageScore < 5.0)) {
+      if (isAcademicHighRisk(sum)) {
         highRiskCount++;
       }
     }
@@ -564,8 +581,8 @@ export function buildClassReportExcelHtml(
                 : "Cần củng cố"
               : "Chưa có điểm";
 
-          const isHighRisk = comp < 50 || (avg !== null && avg !== undefined && avg < 5.0);
-          const riskLabel = isHighRisk ? "Nguy cơ cao" : comp >= 80 ? "Tiến độ tốt" : "Bình thường";
+          const isHighRisk = isAcademicHighRisk(summary);
+          const riskLabel = assessmentLabel(summary);
           const riskClass = isHighRisk ? "badge-danger" : comp >= 80 ? "badge-success" : "badge-info";
 
           return `
@@ -761,8 +778,7 @@ export function buildClassReportCsv(
 
     const targetText = mainGoal ? mainGoal.targetScore.toFixed(1) : "-";
     const predictedText = mainGoal ? mainGoal.currentPredictedScore.toFixed(1) : "-";
-    const isHighRisk = summary && (summary.completionRate < 50 || (summary.averageScore !== null && summary.averageScore < 5.0));
-    const riskLabel = isHighRisk ? "Nguy cơ cao" : summary && summary.completionRate >= 80 ? "Tiến độ tốt" : "Bình thường";
+    const riskLabel = assessmentLabel(summary);
 
     rows.push([
       idx + 1,

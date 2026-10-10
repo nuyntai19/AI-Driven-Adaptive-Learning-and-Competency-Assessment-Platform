@@ -12,6 +12,7 @@ public class Class : IMutableTenantAggregate
     public string AcademicYear { get; set; } = null!;
     public ClassStatus Status { get; set; }
     public byte? GradeLevel { get; set; }
+    public ClassLearningScope LearningScope { get; set; } = ClassLearningScope.Current;
 
     // IMutableTenantAggregate fields
     public Guid CenterId { get; set; }

@@ -97,6 +97,19 @@ public sealed class AuthorizationBootstrapper(
             .ToListAsync(cancellationToken);
 
         var usersToBumpAuthVersion = new HashSet<Guid>();
+        var assignments = await dbContext.UserRoleAssignments
+            .IgnoreQueryFilters()
+            .Where(item => item.CenterId == centerId)
+            .ToListAsync(cancellationToken);
+
+        void InvalidateRoleSessions(AuthorizationRole changedRole)
+        {
+            if (changedRole.Status != AuthorizationRoleStatus.Active || changedRole.IsDeleted)
+                return;
+            foreach (var assignment in assignments.Where(item =>
+                         item.RoleId == changedRole.RoleId && item.Status == UserRoleAssignmentStatus.Active))
+                usersToBumpAuthVersion.Add(assignment.UserId);
+        }
 
         // 3. Reconcile System Roles using explicit default permission sets
         foreach (var accountType in Enum.GetValues<UserRole>())
@@ -115,6 +128,9 @@ public sealed class AuthorizationBootstrapper(
                 changed = true;
             }
 
+            if (role.IsDeleted || role.Status != AuthorizationRoleStatus.Active)
+                continue; // An archived system role is a deliberate administrative decision.
+
             var defaultCodes = AuthorizationPermissionCatalog.GetDefaultSystemRoleCodes(accountType);
             var targetPermissionIds = defaultCodes
                 .Where(code => existingPermissions.ContainsKey(code))
@@ -122,6 +138,7 @@ public sealed class AuthorizationBootstrapper(
                 .ToHashSet();
 
             var currentRolePermissions = role.RolePermissions.ToList();
+            var roleChanged = false;
 
             // Revoke permissions no longer in the explicit default set for this system role
             foreach (var rp in currentRolePermissions)
@@ -130,10 +147,7 @@ public sealed class AuthorizationBootstrapper(
                 {
                     dbContext.RolePermissions.Remove(rp);
                     changed = true;
-                    foreach (var u in users.Where(u => u.RoleName == accountType))
-                    {
-                        usersToBumpAuthVersion.Add(u.UserId);
-                    }
+                    roleChanged = true;
                 }
             }
 
@@ -157,7 +171,16 @@ public sealed class AuthorizationBootstrapper(
                         GrantedByUserId = actor.UserId
                     });
                     changed = true;
+                    roleChanged = true;
                 }
+            }
+
+            if (roleChanged)
+            {
+                role.UpdatedAt = utcNow; // Also advances RowVersion for existing roles.
+                if (dbContext.Entry(role).State != EntityState.Added)
+                    dbContext.Entry(role).Property(item => item.UpdatedAt).IsModified = true;
+                InvalidateRoleSessions(role); // Grants and revocations both refresh the UI snapshot.
             }
         }
 
@@ -176,15 +199,8 @@ public sealed class AuthorizationBootstrapper(
                 {
                     dbContext.RolePermissions.Remove(rp);
                     changed = true;
-                    var assignedUserIds = await dbContext.UserRoleAssignments
-                        .IgnoreQueryFilters()
-                        .Where(a => a.RoleId == customRole.RoleId && a.CenterId == centerId)
-                        .Select(a => a.UserId)
-                        .ToListAsync(cancellationToken);
-                    foreach (var uid in assignedUserIds)
-                    {
-                        usersToBumpAuthVersion.Add(uid);
-                    }
+                    customRole.UpdatedAt = utcNow;
+                    InvalidateRoleSessions(customRole);
                 }
             }
         }
@@ -202,12 +218,7 @@ public sealed class AuthorizationBootstrapper(
         }
 
         // 6. Ensure default system role assignment for each user
-        var existingAssignments = await dbContext.UserRoleAssignments
-            .IgnoreQueryFilters()
-            .Where(item => item.CenterId == centerId)
-            .Select(item => new { item.UserId, item.RoleId })
-            .ToArrayAsync(cancellationToken);
-        var assignmentKeys = existingAssignments
+        var assignmentKeys = assignments
             .Select(item => (item.UserId, item.RoleId))
             .ToHashSet();
         foreach (var user in users)
@@ -218,6 +229,8 @@ public sealed class AuthorizationBootstrapper(
             }
 
             var role = roles.Single(item => item.IsSystemRole && item.AccountType == user.RoleName);
+            if (role.IsDeleted || role.Status != AuthorizationRoleStatus.Active)
+                continue;
             if (assignmentKeys.Add((user.UserId, role.RoleId)))
             {
                 dbContext.UserRoleAssignments.Add(new UserRoleAssignment
@@ -323,6 +336,7 @@ public sealed class AuthorizationBootstrapper(
             .Select(rp => rp.PermissionId)
             .ToHashSetAsync(cancellationToken);
 
+        var grantedCodes = new List<Guid>();
         foreach (var permId in platformPermissions)
         {
             if (existingRolePermissions.Add(permId))
@@ -336,7 +350,38 @@ public sealed class AuthorizationBootstrapper(
                     GrantedAt = utcNow,
                     GrantedByUserId = adminUserId
                 });
+                grantedCodes.Add(permId);
             }
+        }
+
+        if (grantedCodes.Count > 0)
+        {
+            role.UpdatedAt = utcNow;
+            if (dbContext.Entry(role).State != EntityState.Added)
+                dbContext.Entry(role).Property(item => item.UpdatedAt).IsModified = true;
+            if (role.Status == AuthorizationRoleStatus.Active && !role.IsDeleted)
+            {
+                var affectedUsers = await dbContext.Users.IgnoreQueryFilters()
+                    .Where(user => user.CenterId == platformCenterId && !user.IsDeleted &&
+                        dbContext.UserRoleAssignments.IgnoreQueryFilters().Any(assignment =>
+                            assignment.CenterId == platformCenterId && assignment.UserId == user.UserId &&
+                            assignment.RoleId == role.RoleId && assignment.Status == UserRoleAssignmentStatus.Active))
+                    .ToListAsync(cancellationToken);
+                foreach (var user in affectedUsers)
+                {
+                    user.AuthVersion = checked(user.AuthVersion + 1);
+                    user.UpdatedAt = utcNow;
+                }
+            }
+            dbContext.AuthorizationAuditLogs.Add(new AuthorizationAuditLog
+            {
+                CenterId = platformCenterId, ActorUserId = null,
+                ActionType = "PlatformDefaultPermissionsGranted", TargetType = "Role",
+                TargetId = role.RoleId.ToString("D"),
+                AfterData = System.Text.Json.JsonSerializer.Serialize(new { GrantedPermissionIds = grantedCodes }),
+                Reason = "Bổ sung quyền mặc định còn thiếu cho vai trò quản trị nền tảng.",
+                TraceId = "runtime-seed:platform-permissions", CreatedAt = utcNow
+            });
         }
 
         var assignmentExists = await dbContext.UserRoleAssignments

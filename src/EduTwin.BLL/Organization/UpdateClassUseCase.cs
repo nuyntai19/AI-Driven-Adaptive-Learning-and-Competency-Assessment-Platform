@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
@@ -118,6 +119,13 @@ public class UpdateClassUseCase : IUpdateClassUseCase
             return UpdateClassResult.Failure(ErrorCodes.ConcurrencyConflict);
         }
 
+        var desiredScope = request.Status == ClassStatus.Active ? ClassLearningScope.Current : ClassLearningScope.History;
+        var lifecycleChanged = existingClass.Status != request.Status || existingClass.LearningScope != desiredScope;
+        if ((lifecycleChanged && string.IsNullOrWhiteSpace(request.LifecycleReason)) || request.LifecycleReason?.Length > 500)
+            return UpdateClassResult.Failure(ErrorCodes.ValidationFailed);
+        var before = new { existingClass.ClassName, existingClass.TeacherId, existingClass.GradeLevel,
+            Status = existingClass.Status.ToString(), LearningScope = existingClass.LearningScope.ToString(), existingClass.RowVersion };
+
         var duplicate = await _context.Classes
             .AnyAsync(c => c.CenterId == centerId && c.ClassId != classId && c.ClassName == className && c.AcademicYear == existingClass.AcademicYear, cancellationToken);
 
@@ -132,6 +140,8 @@ public class UpdateClassUseCase : IUpdateClassUseCase
 
         if (existingClass.GradeLevel != request.GradeLevel)
         {
+            if (await _context.ClassCurriculumApplications.AnyAsync(a => a.CenterId == centerId && a.ClassId == classId && a.EndedAt == null, cancellationToken))
+                return UpdateClassResult.Failure(ErrorCodes.InvalidStateTransition);
             // 1. Check attached Curricula
             var attachedCurricula = await _context.CurriculumClasses
                 .Where(cc => cc.ClassId == classId && cc.CenterId == centerId)
@@ -225,10 +235,27 @@ public class UpdateClassUseCase : IUpdateClassUseCase
         existingClass.ClassName = className;
         existingClass.TeacherId = request.TeacherId;
         existingClass.Status = request.Status.Value;
+        existingClass.LearningScope = desiredScope;
         existingClass.GradeLevel = request.GradeLevel;
         existingClass.UpdatedAt = _timeProvider.GetUtcNow().UtcDateTime;
         existingClass.UpdatedBy = currentUserId;
 
+        var changed = lifecycleChanged || before.ClassName != className || before.TeacherId != request.TeacherId || before.GradeLevel != request.GradeLevel;
+        if (changed)
+            _context.AuthorizationAuditLogs.Add(new AuthorizationAuditLog
+            {
+                CenterId = centerId, ActorUserId = currentUserId, CreatedBy = currentUserId,
+                ActionType = lifecycleChanged ? request.Status == ClassStatus.Archived ? "ClassArchived" : "ClassReopened" : "ClassUpdated",
+                TargetType = "Class", TargetId = classId.ToString("D"),
+                BeforeData = JsonSerializer.Serialize(before),
+                AfterData = JsonSerializer.Serialize(new { existingClass.ClassName, existingClass.TeacherId, existingClass.GradeLevel,
+                    Status = existingClass.Status.ToString(), LearningScope = desiredScope.ToString(), RowVersion = expectedRowVersion + 1 }),
+                Reason = lifecycleChanged ? request.LifecycleReason!.Trim() : "Quản lý cập nhật thông tin lớp.",
+                TraceId = System.Diagnostics.Activity.Current?.Id ?? $"class-update:{Guid.NewGuid():N}",
+                CreatedAt = existingClass.UpdatedAt
+            });
+
+        // EF's single SaveChanges transaction commits the class and append-only audit together.
         try
         {
             await _context.SaveChangesAsync(cancellationToken);
@@ -254,6 +281,7 @@ public class UpdateClassUseCase : IUpdateClassUseCase
             ClassName = existingClass.ClassName,
             AcademicYear = existingClass.AcademicYear,
             GradeLevel = existingClass.GradeLevel,
+            LearningScope = existingClass.LearningScope.ToString(),
             Subject = new ClassSubjectDto
             {
                 SubjectId = existingClass.SubjectId.ToString().ToLowerInvariant(),

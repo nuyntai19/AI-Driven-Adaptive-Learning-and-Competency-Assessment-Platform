@@ -72,38 +72,37 @@ public class PublishCurriculumUseCase : IPublishCurriculumUseCase
             return PublishCurriculumResult.Failure(ErrorCodes.InvalidStateTransition);
         }
 
-        if (curriculum.GradeLevel.HasValue)
-        {
-            var assignedClassIds = await _dbContext.CurriculumClasses
-                .Where(cc => cc.CurriculumId == curriculumId && cc.CenterId == centerId)
-                .Select(cc => cc.ClassId)
-                .ToListAsync(cancellationToken);
-
-            if (assignedClassIds.Count > 0)
-            {
-                var assignedClasses = await _dbContext.Classes
-                    .Where(c => c.CenterId == centerId && assignedClassIds.Contains(c.ClassId))
-                    .Select(c => new { c.ClassId, c.GradeLevel, c.Status, c.IsDeleted })
-                    .ToListAsync(cancellationToken);
-
-                if (assignedClasses.Any(c => c.IsDeleted || c.Status != ClassStatus.Active || (c.GradeLevel.HasValue && c.GradeLevel.Value != curriculum.GradeLevel.Value)))
-                {
-                    return PublishCurriculumResult.Failure(ErrorCodes.InvalidStateTransition);
-                }
-            }
-        }
+        var assignedIds = await _dbContext.CurriculumClasses.Where(cc => cc.CenterId == centerId && cc.CurriculumId == curriculumId)
+            .Select(cc => cc.ClassId).ToListAsync(cancellationToken);
+        var publishCandidates = await _dbContext.Classes.Where(c => c.CenterId == centerId).ToListAsync(cancellationToken);
+        var targetClasses = publishCandidates.Where(c => assignedIds.Contains(c.ClassId)).ToList();
+        if (targetClasses.Count != assignedIds.Count || targetClasses.Any(c => c.TeacherId != actorId || c.LearningScope != ClassLearningScope.Current ||
+            c.IsDeleted || c.Status != ClassStatus.Active || !c.GradeLevel.HasValue || !curriculum.GradeLevel.HasValue || c.GradeLevel != curriculum.GradeLevel))
+            return PublishCurriculumResult.Failure(ErrorCodes.InvalidStateTransition);
+        foreach (var cls in targetClasses)
+            if (await _dbContext.ClassCurriculumApplications.AnyAsync(a => a.CenterId == centerId && a.ClassId == cls.ClassId && a.EndedAt == null && a.ApplicationRole == "Primary", cancellationToken))
+                return PublishCurriculumResult.Failure(ErrorCodes.InvalidStateTransition);
 
         curriculum.ReviewStatus = ReviewStatus.Published;
         curriculum.UpdatedAt = _timeProvider.GetUtcNow().UtcDateTime;
         curriculum.UpdatedBy = actorId;
         curriculum.RowVersion++;
 
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
         try
         {
             await _dbContext.SaveChangesAsync(cancellationToken);
+            foreach (var cls in targetClasses)
+            {
+                _dbContext.ClassCurriculumApplications.Add(CurriculumApplicationUseCase.NewApplication(curriculum, cls, actorId, _timeProvider.GetUtcNow().UtcDateTime));
+                cls.UpdatedAt = _timeProvider.GetUtcNow().UtcDateTime; cls.UpdatedBy = actorId;
+            }
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
         }
-        catch (DbUpdateConcurrencyException)
+        catch (DbUpdateException)
         {
+            await transaction.RollbackAsync(cancellationToken); _dbContext.ChangeTracker.Clear();
             return PublishCurriculumResult.Failure(ErrorCodes.ConcurrencyConflict);
         }
 

@@ -24,6 +24,7 @@ public class StudentQuestionDto
     public string QuestionType { get; set; } = null!;
     public byte Difficulty { get; set; }
     public string QuestionText { get; set; } = null!;
+    public bool HasImage { get; set; }
     public decimal MaxScore { get; set; }
     public uint EstimatedTimeSeconds { get; set; }
     public bool ReasoningRequired { get; set; }

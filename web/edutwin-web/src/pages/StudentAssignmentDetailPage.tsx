@@ -7,6 +7,7 @@ import { getSubjectTheme } from "../components/student/subjectTheme";
 import { StudentBadge } from "../components/student/StudentBadge";
 import { StudentSubjectPattern } from "../components/student/StudentSubjectPattern";
 import type { ProgressStatus, StudentAssignmentQuestionDto } from "../types/assignments";
+import { studentScopeUrl } from "../utils/studentAcademicNavigation";
 
 const getStudentDetailError = (error: unknown) => {
   if (isAxiosError(error)) return error.response?.data?.detail || error.message;
@@ -53,7 +54,6 @@ const formatTimeLimit = (minutes?: number | null) => {
 export const StudentAssignmentDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
-  const selectedSubjectId = searchParams.get("subjectId") || "";
 
   const { data: assignmentData, isLoading, isError, error } = useStudentAssignment(id);
   const assignment = assignmentData?.data;
@@ -80,7 +80,7 @@ export const StudentAssignmentDetailPage: React.FC = () => {
             Đã có lỗi xảy ra: {getStudentDetailError(error)}
           </p>
           <Link
-            to={`/hoc-tap/bai-tap${selectedSubjectId ? `?subjectId=${selectedSubjectId}` : ""}`}
+            to={studentScopeUrl("/hoc-tap/bai-tap", searchParams)}
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
           >
             <span>← Quay lại danh sách bài tập</span>
@@ -91,6 +91,7 @@ export const StudentAssignmentDetailPage: React.FC = () => {
   }
 
   const { progress, questions } = assignment;
+  const isReadOnly = assignment.isReadOnly === true || searchParams.get("history") === "true";
   const percent =
     progress.totalQuestionCount > 0
       ? Math.round((progress.completedQuestionCount / progress.totalQuestionCount) * 100)
@@ -181,12 +182,17 @@ export const StudentAssignmentDetailPage: React.FC = () => {
       {/* Navigation Breadcrumb */}
       <div>
         <Link
-          to={`/hoc-tap/bai-tap${selectedSubjectId ? `?subjectId=${selectedSubjectId}` : ""}`}
+          to={studentScopeUrl("/hoc-tap/bai-tap", searchParams)}
           className="inline-flex items-center gap-1.5 text-xs font-semibold text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
         >
           <span>← Quay lại danh sách bài tập</span>
         </Link>
       </div>
+
+      {isReadOnly && <div role="status" className="rounded-xl border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-950 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-100">
+        <p className="font-semibold">Bài tập trong phạm vi chỉ xem</p>
+        <p>{assignment.readOnlyReason || "Bạn đang xem lịch sử lớp học. Không thể bắt đầu hoặc nộp thêm câu mới; bài làm và kết quả đã lưu vẫn được giữ nguyên."}</p>
+      </div>}
 
       {/* Assignment Overview Workspace Card */}
       <div className="relative rounded-xl bg-white dark:bg-[#151d2f] border border-stone-200/90 dark:border-stone-800/90 p-5 sm:p-6 shadow-xs overflow-hidden">
@@ -216,9 +222,9 @@ export const StudentAssignmentDetailPage: React.FC = () => {
             </div>
 
             {/* Primary Action Button */}
-            {isAssignmentFinished ? (
+            {isAssignmentFinished || isReadOnly ? (
               <Link
-                to={`/hoc-tap/luyen-tap/${questions[0]?.questionId || ""}?assignmentId=${assignment.assignmentId}${selectedSubjectId ? `&subjectId=${selectedSubjectId}` : ""}`}
+                to={studentScopeUrl(`/hoc-tap/luyen-tap/${questions[0]?.questionId || ""}`, searchParams, { assignmentId:assignment.assignmentId })}
                 className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-stone-200 px-4 py-2 text-xs sm:text-sm font-semibold text-white dark:text-stone-900 transition-colors cursor-pointer self-start sm:self-auto"
               >
                 <span>Xem lại bài làm</span>
@@ -226,7 +232,7 @@ export const StudentAssignmentDetailPage: React.FC = () => {
               </Link>
             ) : firstUnfinishedQuestion ? (
               <Link
-                to={`/hoc-tap/luyen-tap/${firstUnfinishedQuestion.questionId}?assignmentId=${assignment.assignmentId}${selectedSubjectId ? `&subjectId=${selectedSubjectId}` : ""}`}
+                to={studentScopeUrl(`/hoc-tap/luyen-tap/${firstUnfinishedQuestion.questionId}`, searchParams, { assignmentId:assignment.assignmentId })}
                 className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-stone-200 px-5 py-2 text-xs sm:text-sm font-semibold text-white dark:text-stone-900 transition-colors cursor-pointer self-start sm:self-auto"
               >
                 <span>{progress.completedQuestionCount > 0 ? "Tiếp tục làm bài" : "Bắt đầu làm bài"}</span>
@@ -373,14 +379,14 @@ export const StudentAssignmentDetailPage: React.FC = () => {
                 </span>
 
                 <Link
-                  to={`/hoc-tap/luyen-tap/${question.questionId}?assignmentId=${assignment.assignmentId}${selectedSubjectId ? `&subjectId=${selectedSubjectId}` : ""}`}
+                  to={studentScopeUrl(`/hoc-tap/luyen-tap/${question.questionId}`, searchParams, { assignmentId:assignment.assignmentId })}
                   className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                    isDone
+                    isDone || isReadOnly
                       ? "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/80 hover:bg-emerald-100"
                       : "text-stone-100 bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-stone-200"
                   }`}
                 >
-                  <span>{isDone ? "Xem lại" : "Làm câu này"}</span>
+                  <span>{isDone || isReadOnly ? "Xem lại" : "Làm câu này"}</span>
                   <span className="text-[11px]">→</span>
                 </Link>
               </div>

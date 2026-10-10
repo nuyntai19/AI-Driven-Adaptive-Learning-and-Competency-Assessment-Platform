@@ -57,6 +57,14 @@ public sealed class RecommendationEngine : IRecommendationEngine
         ulong? sourceAttemptId,
         DateTime utcNow,
         CancellationToken cancellationToken)
+        => await GenerateCoreAsync(centerId, studentId, subjectId, sourceAttemptId, utcNow, null, cancellationToken);
+
+    public Task<RecommendationGenerationResult> GenerateForClassAsync(Guid centerId, Guid studentId, Guid subjectId,
+        Guid classId, DateTime utcNow, CancellationToken ct)
+        => GenerateCoreAsync(centerId, studentId, subjectId, null, utcNow, classId, ct);
+
+    private async Task<RecommendationGenerationResult> GenerateCoreAsync(Guid centerId, Guid studentId, Guid subjectId,
+        ulong? sourceAttemptId, DateTime utcNow, Guid? classId, CancellationToken cancellationToken)
     {
         // 0. Transaction B Isolation: Assert no uncommitted transaction and clear change tracker
         Debug.Assert(_dbContext.Database.CurrentTransaction is null, "Recommendation Transaction B requires a clean context without an active transaction.");
@@ -118,11 +126,9 @@ public sealed class RecommendationEngine : IRecommendationEngine
         }
 
         // 3. Build candidate inputs
-        var candidateResult = await _candidateBuilder.BuildCandidatesAsync(
-            centerId,
-            studentId,
-            subjectId,
-            cancellationToken);
+        var candidateResult = classId.HasValue
+            ? await _candidateBuilder.BuildForClassAsync(centerId, studentId, subjectId, classId.Value, cancellationToken)
+            : await _candidateBuilder.BuildCandidatesAsync(centerId, studentId, subjectId, cancellationToken);
 
         if (candidateResult.BlockedReason is not null)
         {
@@ -989,7 +995,8 @@ public sealed class RecommendationEngine : IRecommendationEngine
                     ReasoningRequired: currentItem.RecommendedQuestion.ReasoningRequired,
                     LanguageCode: currentItem.RecommendedQuestion.LanguageCode,
                     Options: questionOptions,
-                    AnswerEvaluationMode: currentItem.RecommendedQuestion.AnswerEvaluationMode)
+                    AnswerEvaluationMode: currentItem.RecommendedQuestion.AnswerEvaluationMode,
+                    HasImage: currentItem.RecommendedQuestion.HasImage)
                 : null,
             Explanation = currentItem.Reason
         };

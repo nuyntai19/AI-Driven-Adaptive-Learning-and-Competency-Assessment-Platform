@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { ClassHistoryPanel } from "../components/ClassHistoryPanel";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, Navigate } from "react-router-dom";
 import { organizationApi } from "../api/organizationApi";
@@ -92,6 +93,7 @@ const CenterManagerClassListView: React.FC = () => {
   const [editClassName, setEditClassName] = useState("");
   const [editTeacherId, setEditTeacherId] = useState("");
   const [editStatus, setEditStatus] = useState<ClassStatus>("Active");
+  const [lifecycleReason, setLifecycleReason] = useState("");
   const [editGradeLevel, setEditGradeLevel] = useState<number | "">("");
   const [editError, setEditError] = useState<string | null>(null);
 
@@ -221,6 +223,10 @@ const CenterManagerClassListView: React.FC = () => {
     onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ["classes"] });
       queryClient.invalidateQueries({ queryKey: ["classDetail", updated.classId] });
+      queryClient.invalidateQueries({ queryKey: ["class-history"] });
+      queryClient.invalidateQueries({ queryKey: ["class-academic-report"] });
+      queryClient.invalidateQueries({ queryKey: ["teacherClassesListForStudents"] });
+      queryClient.invalidateQueries({ queryKey: ["student-academic-context"] });
       showFeedback("success", `Đã cập nhật lớp "${updated.className}" thành công!`);
       setEditingClass(null);
     },
@@ -351,6 +357,7 @@ const CenterManagerClassListView: React.FC = () => {
     setEditClassName(cls.className);
     setEditTeacherId(cls.teacher.teacherId);
     setEditStatus(cls.status);
+    setLifecycleReason("");
     setEditGradeLevel(cls.gradeLevel ?? "");
     setEditError(null);
   };
@@ -412,6 +419,10 @@ const CenterManagerClassListView: React.FC = () => {
     e.preventDefault();
     if (!editingClass) return;
     setEditError(null);
+    if (editStatus !== editingClass.status && !lifecycleReason.trim()) {
+      setEditError("Lưu trữ hoặc mở lại lớp cần lý do để ghi nhật ký.");
+      return;
+    }
 
     const normClassName = editClassName.trim();
     const normTeacherId = editTeacherId.trim();
@@ -430,7 +441,8 @@ const CenterManagerClassListView: React.FC = () => {
       request: {
         className: normClassName,
         teacherId: normTeacherId,
-        status: editStatus,
+      status: editStatus,
+      lifecycleReason: lifecycleReason.trim() || undefined,
         gradeLevel: editGradeLevel !== "" ? Number(editGradeLevel) : null,
         rowVersion: editingClass.rowVersion,
       },
@@ -999,6 +1011,12 @@ const CenterManagerClassListView: React.FC = () => {
                 </div>
 
                 <div>
+                  {editingClass.status !== editStatus && <label className="block text-sm mb-4">
+                    Lý do {editStatus === "Archived" ? "lưu trữ" : "mở lại"} lớp (bắt buộc)
+                    <textarea className="cm-field block w-full mt-2" value={lifecycleReason} required maxLength={500}
+                      onChange={e => setLifecycleReason(e.target.value)} />
+                    <span className="text-xs">Lưu trữ ngừng học mới, không xóa bài làm/điểm. Mở lại không khôi phục giáo trình đã ngừng áp dụng.</span>
+                  </label>}
                   <label htmlFor="select-edit-grade-level" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
                     Khối lớp áp dụng
                   </label>
@@ -1160,6 +1178,8 @@ const CenterManagerClassListView: React.FC = () => {
                       <span className="font-mono text-xs text-[var(--cm-text-secondary)]">{classDetail.rowVersion}</span>
                     </div>
                   </div>
+
+                  <ClassHistoryPanel key={classDetail.classId} classId={classDetail.classId} />
 
                   {/* Enrolled students */}
                   <div>

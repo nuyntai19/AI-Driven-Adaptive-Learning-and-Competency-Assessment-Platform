@@ -106,6 +106,11 @@ public class KnowledgeNodesController : ControllerBase
     {
         var result = await _createKnowledgeNodeUseCase.ExecuteAsync(request, cancellationToken);
 
+        if (result.ErrorCode is ErrorCodes.InvalidStateTransition or ErrorCodes.DagCycleDetected)
+            return Conflict(new ProblemDetails { Status = 409, Title = "Không thể tạo/khôi phục điểm tri thức",
+                Detail = result.Message ?? "Khôi phục nút sẽ gây chu trình phụ thuộc.",
+                Extensions = { ["errorCode"] = result.ErrorCode, ["traceId"] = HttpContext.TraceIdentifier } });
+
         if (result.IsSuccess)
         {
             var response = new KnowledgeNodeResponse
@@ -186,6 +191,10 @@ public class KnowledgeNodesController : ControllerBase
         CancellationToken cancellationToken)
     {
         var result = await _updateKnowledgeNodeUseCase.ExecuteAsync(nodeId, request, cancellationToken);
+
+        if (result.ErrorCode == ErrorCodes.InvalidStateTransition)
+            return Conflict(new ProblemDetails { Status = 409, Title = "Thao tác bị chặn bởi dữ liệu đang sử dụng",
+                Detail = result.Message, Extensions = { ["errorCode"] = result.ErrorCode, ["traceId"] = HttpContext.TraceIdentifier } });
 
         if (result.IsSuccess)
         {
@@ -313,7 +322,7 @@ public class KnowledgeNodesController : ControllerBase
                 Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.8",
                 Title = "Xung đột dữ liệu",
                 Status = 409,
-                Detail = "Không thể xóa node tri thức vì đang có dữ liệu hoặc quan hệ liên kết.",
+                Detail = result.Message ?? "Không thể xóa node tri thức vì đang có dữ liệu hoặc quan hệ liên kết.",
                 Instance = HttpContext.Request.Path,
                 Extensions =
                 {

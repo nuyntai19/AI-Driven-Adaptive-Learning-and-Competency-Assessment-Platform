@@ -113,6 +113,18 @@ public class UpdateStudentUseCase : IUpdateStudentUseCase
             return UpdateStudentResult.Failure(ErrorCodes.ConcurrencyConflict);
         }
 
+        // Do not silently turn an existing grade-specific enrollment into a
+        // mismatch. Legacy unclassified classes remain untouched for history.
+        // Existing exceptions cannot authorize a different grade in perpetuity.
+        if (student.GradeLevel != request.GradeLevel && await _dbContext.ClassStudents
+            .Where(cs => cs.CenterId == _tenantContext.CenterId.Value && cs.StudentId == studentId &&
+                cs.Status == ClassStudentStatus.Active && !cs.Class.IsDeleted &&
+                cs.Class.Status == ClassStatus.Active && cs.Class.GradeLevel.HasValue &&
+                cs.Class.GradeLevel.Value != request.GradeLevel)
+            .AnyAsync(cancellationToken))
+            return UpdateStudentResult.Failure(ErrorCodes.ValidationFailed,
+                "Không thể đổi khối khi học sinh còn học trong lớp có khối khác. Hãy xử lý việc chuyển lớp hoặc ngoại lệ trước; bài làm và điểm lịch sử không bị thay đổi.");
+
         _dbContext.Entry(student).Property(s => s.RowVersion).OriginalValue = parsedRowVersion;
 
         var now = _timeProvider.GetUtcNow().UtcDateTime;

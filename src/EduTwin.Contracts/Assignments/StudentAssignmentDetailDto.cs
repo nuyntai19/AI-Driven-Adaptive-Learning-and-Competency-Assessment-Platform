@@ -10,6 +10,9 @@ public class StudentAssignmentDetailDto
     public string? Instructions { get; set; }
     public string? SubjectId { get; set; }
     public string? SubjectName { get; set; }
+    public string? ClassId { get; set; }
+    public bool IsReadOnly { get; set; }
+    public string? ReadOnlyReason { get; set; }
     public DateTime? DueAt { get; set; }
     public int? TimeLimitMinutes { get; set; }
     public DateTime? StartedAt { get; set; }

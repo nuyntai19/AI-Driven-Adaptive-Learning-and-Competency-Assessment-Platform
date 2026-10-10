@@ -47,6 +47,10 @@ public class GradingCriteriaValidator
                     item.Description == null || item.Description.Length > 2000 || item.MaxScore <= 0m ||
                     item.MaxScore != Math.Round(item.MaxScore, 2))
                     errors.Add("Invalid or duplicate rubric criterion.");
+                if (item != null && (item.VisualRequirements == null || item.VisualRequirements.Count > 12 ||
+                    item.VisualRequirements.Any(r => string.IsNullOrWhiteSpace(r) || r.Length > 500) ||
+                    item.VisualRequirements.Distinct(StringComparer.Ordinal).Count() != item.VisualRequirements.Count))
+                    errors.Add("Visual requirements must be unique, nonempty, and at most 12 items of 500 characters per criterion.");
             }
             if (criteria.Criteria.All(c => c != null) && maxScore.HasValue && criteria.Criteria.Sum(c => c.MaxScore) != maxScore.Value)
                 errors.Add("Rubric maximum scores must sum to the question maximum score.");

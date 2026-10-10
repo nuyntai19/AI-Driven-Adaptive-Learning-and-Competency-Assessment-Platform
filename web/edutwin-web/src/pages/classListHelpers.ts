@@ -28,8 +28,8 @@ export function evaluateClassCapabilities(
       hasPermission(user, permissions.studentsRead),
     canRemoveMembers: hasPermission(user, permissions.classesManageMembers),
     canViewDashboard:
-      hasPermission(user, permissions.dashboardsCenterRead) ||
-      hasPermission(user, permissions.dashboardsTeacherRead),
+      user?.accountType === "CenterManager" && hasPermission(user, permissions.classesRead) &&
+      hasPermission(user, permissions.studentsRead),
   };
 }
 

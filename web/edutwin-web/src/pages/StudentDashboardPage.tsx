@@ -7,26 +7,30 @@ import { getSubjectTheme } from "../components/student/subjectTheme";
 import { StudentProgressTrack } from "../components/student/StudentProgressTrack";
 import { StudentSubjectPattern } from "../components/student/StudentSubjectPattern";
 import { StudentKnowledgeMap, type TopicMapNode } from "../components/student/StudentKnowledgeMap";
+import { studentScopeUrl } from "../utils/studentAcademicNavigation";
+import { goalGapLabel } from "../utils/academicDisplay";
 
 const StudentRadarChart = React.lazy(() => import("../components/student/StudentRadarChart"));
 
 export const StudentDashboardPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const selectedSubjectId = searchParams.get("subjectId") || "";
+  const selectedClassId = searchParams.get("classId") || "";
+  const isHistory = searchParams.get("history") === "true";
   const isAllSubjects = !selectedSubjectId;
 
   // View mode for competency visualization: Atlas (default) or Radar
   const [competencyViewMode, setCompetencyViewMode] = useState<"atlas" | "radar">("atlas");
 
   const { data, isLoading, isError, error, refetch } = useQuery<StudentDashboardDataDto>({
-    queryKey: ["studentDashboard", selectedSubjectId || "all"],
-    queryFn: () => getStudentDashboard(selectedSubjectId || undefined),
+    queryKey: ["studentDashboard", selectedSubjectId || "all", selectedClassId, isHistory],
+    queryFn: () => getStudentDashboard(selectedSubjectId || undefined, selectedClassId || undefined, isHistory),
     staleTime: 60 * 1000,
   });
 
   if (isLoading) {
     return (
-      <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 min-w-0">
+      <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 min-w-0">
         <div className="h-44 animate-pulse rounded-2xl bg-white dark:bg-[#151d2f] border border-stone-200/70 dark:border-stone-800/70" />
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className="lg:col-span-8 h-80 animate-pulse rounded-2xl bg-white dark:bg-[#151d2f] border border-stone-200/70 dark:border-stone-800/70" />
@@ -38,7 +42,7 @@ export const StudentDashboardPage: React.FC = () => {
 
   if (isError || !data) {
     return (
-      <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-12 min-w-0">
+      <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-12 min-w-0">
         <div className="max-w-xl mx-auto rounded-2xl bg-white dark:bg-[#151d2f] border border-stone-200 dark:border-stone-800 p-8 text-center shadow-xs">
           <h2 className="text-base font-bold text-red-700 dark:text-red-400">
             Không thể tải dữ liệu học tập
@@ -59,6 +63,17 @@ export const StudentDashboardPage: React.FC = () => {
   }
 
   const { student, subject, goal, masteryRadar = [], progressLine = [], action } = data;
+  if (data.academicContext?.message && data.academicContext.curriculums.length === 0) return (
+    <div className="student-shell w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <h1 className="text-2xl font-bold">Hành trình học tập của {student.fullName}</h1>
+      <div className="mt-6 rounded-2xl border border-[var(--student-border)] bg-[var(--student-surface)] p-6">
+        <h2 className="text-lg font-semibold">{isHistory ? "Phạm vi lịch sử" : "Giáo trình đang học"}</h2>
+        <p className="mt-3">{data.academicContext.message}</p>
+        <p className="mt-2 text-sm">Bài làm, điểm và năng lực cũ vẫn được giữ nguyên. Không có biểu đồ toàn môn thay thế khi lớp chưa được gán giáo trình.</p>
+        <Link className="mt-4 inline-block text-[var(--student-brand)] font-semibold" to={studentScopeUrl("/hoc-tap/bai-tap", searchParams)}>Xem bài tập của tôi →</Link>
+      </div>
+    </div>
+  );
   const currentSubjectTheme = getSubjectTheme(subject.subjectName);
 
   // Radar chart data mapping
@@ -66,6 +81,10 @@ export const StudentDashboardPage: React.FC = () => {
     name: item.topicName,
     score: item.mastery,
     fullMark: 100,
+    groupId: item.groupNodeId || item.topicNodeId,
+    groupName: item.groupName || item.topicName,
+    weight: item.examImportance ?? 1,
+    evidenceCount: item.evidenceCount ?? 0,
   }));
 
   // Knowledge Map nodes mapping
@@ -73,10 +92,12 @@ export const StudentDashboardPage: React.FC = () => {
     topicNodeId: item.topicNodeId,
     topicName: item.topicName,
     masteryPercentage: item.mastery,
-    evidenceCount: 1,
+    evidenceCount: item.evidenceCount ?? 0,
+    groupId: item.groupNodeId,
+    groupName: item.groupName,
   }));
 
-  const goalDiff = goal.hasGoal ? (goal.targetScore - goal.currentPredictedScore).toFixed(1) : "—";
+  const goalDiff = goal.hasGoal ? goalGapLabel(goal.targetScore, goal.currentPredictedScore) : "—";
   const nextTargetTopic = action?.topicName || masteryRadar[0]?.topicName || "Hàm số & Khảo sát hàm";
   const missionExplanation =
     action?.explanation ||
@@ -89,16 +110,16 @@ export const StudentDashboardPage: React.FC = () => {
     : `/hoc-tap/luyen-tap`;
 
   return (
-    <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 min-w-0 student-shell">
+    <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 min-w-0 student-shell">
       {/* Scope Context & Student Greeting */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-stone-200/80 dark:border-stone-800/80">
-        <div>
-          <div className="flex items-center gap-2">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-stone-900 dark:text-stone-100">
               Hành trình học tập của {student.fullName}
             </h1>
             <span
-              className="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded"
+              className="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded whitespace-nowrap"
               style={{
                 backgroundColor: currentSubjectTheme.bg,
                 color: currentSubjectTheme.color,
@@ -113,7 +134,7 @@ export const StudentDashboardPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto text-xs">
+        {!isHistory && <div className="flex items-center gap-2 self-start sm:self-auto text-xs">
           <Link
             to={practiceLink}
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-stone-200 text-white dark:text-stone-900 font-semibold transition-colors"
@@ -121,13 +142,17 @@ export const StudentDashboardPage: React.FC = () => {
             <span>Luyện tập ngay</span>
             <span className="text-[11px]">→</span>
           </Link>
-        </div>
+        </div>}
       </div>
 
       {/* Above-the-fold Asymmetric Layout: Left 65% Today Mission, Right 35% Twin Snapshot */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
         {/* Left 65% (8 cols): TODAY MISSION */}
-        <div className="lg:col-span-7 xl:col-span-8 relative rounded-2xl border border-stone-200/90 dark:border-stone-800/90 p-6 sm:p-7 shadow-xs overflow-hidden flex flex-col justify-between bg-white dark:bg-[#151d2f]">
+        {isHistory ? <div className="lg:col-span-7 xl:col-span-8 rounded-2xl border border-stone-200/90 dark:border-stone-800/90 p-6 sm:p-7 bg-white dark:bg-[#151d2f]">
+          <h2 className="text-xl font-bold">Phạm vi học tập đã lưu</h2>
+          <p className="mt-3 text-sm text-stone-600 dark:text-stone-300">Bản đồ bên dưới chỉ gồm chủ đề của các giáo trình từng áp dụng trong lớp đã chọn. Điểm năng lực phản ánh bằng chứng tích lũy hiện có, không phải bản chụp điểm tại một thời điểm trong quá khứ.</p>
+          <Link to={studentScopeUrl("/hoc-tap/bai-tap", searchParams)} className="mt-4 inline-block font-semibold text-[var(--student-brand)]">Xem bài làm trong phạm vi này →</Link>
+        </div> : <div className="lg:col-span-7 xl:col-span-8 relative rounded-2xl border border-stone-200/90 dark:border-stone-800/90 p-6 sm:p-7 shadow-xs overflow-hidden flex flex-col justify-between bg-white dark:bg-[#151d2f]">
           {/* Subtle Subject Graphic Pattern */}
           <StudentSubjectPattern subjectName={subject.subjectName} opacity={0.06} />
 
@@ -175,7 +200,7 @@ export const StudentDashboardPage: React.FC = () => {
               <span>→</span>
             </Link>
           </div>
-        </div>
+        </div>}
 
         {/* Right 35% (4-5 cols): TWIN SNAPSHOT */}
         <div className="lg:col-span-5 xl:col-span-4 rounded-2xl border border-stone-200/90 dark:border-stone-800/90 p-6 sm:p-7 shadow-xs flex flex-col justify-between bg-white dark:bg-[#151d2f]">
@@ -204,7 +229,7 @@ export const StudentDashboardPage: React.FC = () => {
               <div className="p-3 rounded-xl bg-stone-50/70 dark:bg-stone-900/50 border border-stone-200/60 dark:border-stone-800/60 flex items-center justify-between text-xs">
                 <span className="text-stone-600 dark:text-stone-400">Khoảng cách tới mục tiêu</span>
                 <span className="font-mono font-bold text-stone-900 dark:text-stone-100">
-                  +{goalDiff} điểm
+                  {goalDiff}
                 </span>
               </div>
             </div> : (
@@ -219,7 +244,7 @@ export const StudentDashboardPage: React.FC = () => {
               {goal.hasGoal ? <>Mục tiêu: <strong className="text-stone-800 dark:text-stone-200">{goal.targetScore} điểm</strong></> : "Mục tiêu do học sinh tự đặt"}
             </span>
             <Link
-              to={selectedSubjectId ? `/hoc-tap/ho-so-nang-luc?subjectId=${selectedSubjectId}` : `/hoc-tap/ho-so-nang-luc`}
+              to={studentScopeUrl("/hoc-tap/ho-so-nang-luc", searchParams)}
               className="text-xs font-semibold text-stone-700 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white"
             >
               Xem hồ sơ chi tiết →
@@ -251,7 +276,7 @@ export const StudentDashboardPage: React.FC = () => {
             Khoảng cách cần vượt
           </span>
           <span className="text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400">
-            {goal.hasGoal ? `+${goalDiff}` : "—"}
+            {goalDiff}
           </span>
         </div>
         <div className="py-2.5 px-3 border-l-2 border-stone-300 dark:border-stone-700">
@@ -338,7 +363,7 @@ export const StudentDashboardPage: React.FC = () => {
               </p>
             </div>
             <Link
-              to={selectedSubjectId ? `/hoc-tap/bai-tap?subjectId=${selectedSubjectId}` : `/hoc-tap/bai-tap`}
+              to={studentScopeUrl("/hoc-tap/bai-tap", searchParams)}
               className="text-xs font-semibold text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"
             >
               Xem tất cả bài tập →

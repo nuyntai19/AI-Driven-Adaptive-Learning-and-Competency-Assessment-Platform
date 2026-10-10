@@ -311,10 +311,12 @@ public sealed class RecommendationsController : ControllerBase
     [ProducesResponseType(typeof(LearningPathTopicsResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetLearningPathTopics(
         [FromQuery] Guid subjectId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        [FromQuery] Guid? classId = null,
+        [FromQuery] bool history = false)
     {
         var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
-        var topics = await _getTopicsUseCase.ExecuteAsync(subjectId, cancellationToken);
+        var topics = await _getTopicsUseCase.ExecuteScopedAsync(subjectId, classId, history, cancellationToken);
         return Ok(new LearningPathTopicsResponse
         {
             Data = topics,
@@ -354,7 +356,13 @@ public sealed class RecommendationsController : ControllerBase
         CancellationToken cancellationToken)
     {
         var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
-        var path = await _generateLearningPathUseCase.ExecuteAsync(request, cancellationToken);
+        DetailedLearningPathDto path;
+        try { path = await _generateLearningPathUseCase.ExecuteAsync(request, cancellationToken); }
+        catch (EduTwin.BLL.Organization.LearningScopeDeniedException error)
+        {
+            return Conflict(CreateProblemDetails(409, "https://edutwin.local/problems/invalid-state", "Phạm vi học tập chỉ xem",
+                error.Message, traceId, ErrorCodes.InvalidStateTransition));
+        }
         return Ok(new DetailedLearningPathResponse
         {
             Data = path,
@@ -372,10 +380,11 @@ public sealed class RecommendationsController : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetDetailedLearningPath(
         [FromQuery] Guid subjectId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, [FromQuery] Guid? classId = null)
     {
         var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
-        var path = await _getDetailedLearningPathUseCase.ExecuteAsync(subjectId, cancellationToken);
+        var path = classId.HasValue ? await _getDetailedLearningPathUseCase.ExecuteAsync(subjectId, classId, cancellationToken)
+            : await _getDetailedLearningPathUseCase.ExecuteAsync(subjectId, cancellationToken);
         if (path is null)
         {
             return NotFound(CreateProblemDetails(
