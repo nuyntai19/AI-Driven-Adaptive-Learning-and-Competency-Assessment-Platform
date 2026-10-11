@@ -64,6 +64,12 @@ services:
       - PlatformBootstrap__AdminPassword=${PlatformBootstrap__AdminPassword}
       - AttachmentStorage__RootPath=/app/storage
       - AttachmentStorage__DataProtectionKeysPath=/app/data-protection-keys
+      - PlatformOperations__BackupManifestPath=/app/platform-ops/backup-status.json
+      - PLATFORM_AI_PRICES_JSON=${PLATFORM_AI_PRICES_JSON:-[]}
+      - PlatformOperations__PendingWarningCount=${PlatformOperations__PendingWarningCount:-100}
+      - PlatformOperations__FailedWarningCount=${PlatformOperations__FailedWarningCount:-5}
+      - PlatformOperations__WorkerStaleSeconds=${PlatformOperations__WorkerStaleSeconds:-300}
+      - PlatformOperations__BackupMaxAgeHours=${PlatformOperations__BackupMaxAgeHours:-48}
     ports:
       - "${API_PORT}:8080"
     depends_on:
@@ -72,6 +78,7 @@ services:
     volumes:
       - attachment_storage:/app/storage
       - data_protection_keys:/app/data-protection-keys
+      - ./storage/platform-ops:/app/platform-ops:ro
     restart: unless-stopped
 
   web:

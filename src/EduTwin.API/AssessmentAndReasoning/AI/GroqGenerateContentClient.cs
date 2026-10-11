@@ -6,12 +6,14 @@ using System.Text.Json;
 using EduTwin.BLL.AssessmentAndReasoning.AI;
 using EduTwin.BLL.AssessmentAndReasoning.Processing;
 using Microsoft.Extensions.Options;
+using EduTwin.BLL.Platform.Operations;
+using EduTwin.DAL.PlatformOperations;
 
 namespace EduTwin.API.AssessmentAndReasoning.AI;
 
 // Explicitly selected, approved profile only; no silent downgrade or image-dropping fallback.
 public sealed class GroqGenerateContentClient(IHttpClientFactory clients, IOptions<AIGradingOptions> options,
-    GeminiQuotaCoordinator quota)
+    GeminiQuotaCoordinator quota, IAiUsageRecorder? recorder = null, TimeProvider? clock = null)
 {
     public async Task<GeminiGenerateContentResult> GenerateAsync(string model, string prompt,
         IReadOnlyList<GeminiInlineImagePart> images, CancellationToken token)
@@ -34,6 +36,8 @@ public sealed class GroqGenerateContentClient(IHttpClientFactory clients, IOptio
         var rateLimited = false;
         TimeSpan? retryAfter = null;
         int? totalTokens = null;
+        PlatformAiCall? invocation = null;
+        long invocationStarted = 0;
         try
         {
             var content = new List<object> { new { type = "text", text = prompt } };
@@ -49,10 +53,14 @@ public sealed class GroqGenerateContentClient(IHttpClientFactory clients, IOptio
                 model, messages = new[] { new { role = "user", content } }, temperature = 0,
                 max_completion_tokens = outputBudget, response_format = new { type = "json_object" }
             });
+            invocation = new() { CallId = Guid.NewGuid(), StartedAt = (clock ?? TimeProvider.System).GetUtcNow().UtcDateTime,
+                Provider = "Groq", Model = model, PoolAlias = "pool-1", Stage = AiUsageStage.Current };
+            invocationStarted = System.Diagnostics.Stopwatch.GetTimestamp();
             using var response = await clients.CreateClient("GroqGrading").SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
             if (!response.IsSuccessStatusCode)
             {
                 rateLimited = response.StatusCode == HttpStatusCode.TooManyRequests;
+                if (rateLimited) invocation.Outcome = "rate_limited";
                 transient = rateLimited || (int)response.StatusCode >= 500 || response.StatusCode == HttpStatusCode.RequestTimeout;
                 if (!transient) throw GeminiAdapterException.RequestFailed();
                 retryAfter = response.Headers.RetryAfter?.Delta
@@ -63,6 +71,12 @@ public sealed class GroqGenerateContentClient(IHttpClientFactory clients, IOptio
             using var stream = await response.Content.ReadAsStreamAsync(token);
             using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: token);
             var root = doc.RootElement;
+            if (root.TryGetProperty("usage", out var callUsage))
+            {
+                if (callUsage.TryGetProperty("prompt_tokens", out var n)) invocation.InputTokens = n.GetInt64();
+                if (callUsage.TryGetProperty("completion_tokens", out n)) invocation.OutputTokens = n.GetInt64();
+                if (callUsage.TryGetProperty("total_tokens", out n)) invocation.TotalTokens = n.GetInt64();
+            }
             var choice = root.GetProperty("choices")[0];
             if (choice.GetProperty("finish_reason").GetString() != "stop") throw GeminiAdapterException.ResponseInvalid();
             var text = choice.GetProperty("message").GetProperty("content").GetString() ?? "";
@@ -70,14 +84,21 @@ public sealed class GroqGenerateContentClient(IHttpClientFactory clients, IOptio
             var input = usage.GetProperty("prompt_tokens").GetInt32();
             var output = usage.GetProperty("completion_tokens").GetInt32();
             totalTokens = usage.GetProperty("total_tokens").GetInt32();
+            invocation.Outcome = "success";
             AIProcessingMetrics.Tokens.Add(input, new KeyValuePair<string, object?>("provider", "Groq"), new KeyValuePair<string, object?>("kind", "input"));
             AIProcessingMetrics.Tokens.Add(output, new KeyValuePair<string, object?>("provider", "Groq"), new KeyValuePair<string, object?>("kind", "output"));
             return new(text, input, output, totalTokens);
         }
         catch (HttpRequestException) { transient = true; throw new AIAnalysisDeferredException(TimeSpan.FromSeconds(2)); }
         catch (JsonException) { throw GeminiAdapterException.ResponseInvalid(); }
+        catch (OperationCanceledException) { if (invocation is not null) invocation.Outcome = "cancelled"; throw; }
         finally
         {
+            if (invocation is not null)
+            {
+                invocation.DurationMs = (long)System.Diagnostics.Stopwatch.GetElapsedTime(invocationStarted).TotalMilliseconds;
+                try { recorder?.Record(invocation); } catch (Exception) { /* Usage collection cannot alter grading. */ }
+            }
             using var release = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             // Release failures recover via lease expiry; never discard a valid provider result.
             try { await quota.CompleteAsync(lease, totalTokens, transient, rateLimited, release.Token, retryAfter); }

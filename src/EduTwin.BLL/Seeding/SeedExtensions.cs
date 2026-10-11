@@ -1,11 +1,13 @@
 using System;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using EduTwin.DAL.Persistence;
 using EduTwin.DAL.IdentityAndTenancy;
+using EduTwin.BLL.Notifications;
 
 namespace EduTwin.BLL.Seeding;
 
@@ -19,8 +21,10 @@ public static class SeedExtensions
             throw new InvalidOperationException("Database connection string is missing or empty.");
         }
 
-        services.AddDbContext<EduTwinDbContext>(options =>
-            options.UseMySQL(connString));
+        services.TryAddSingleton<TimeProvider>(TimeProvider.System);
+        services.AddScoped<NotificationBusinessInterceptor>();
+        services.AddDbContext<EduTwinDbContext>((provider, options) =>
+            options.UseMySQL(connString).AddInterceptors(provider.GetRequiredService<NotificationBusinessInterceptor>()));
 
         // Register PasswordHasher for dependency injection (R08)
         services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();

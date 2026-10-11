@@ -33,8 +33,17 @@ public class EduTwinDbContext : DbContext
 
 
     public DbSet<Center> Centers => Set<Center>();
+    public DbSet<EduTwin.DAL.PlatformOperations.PlatformAiCall> PlatformAiCalls => Set<EduTwin.DAL.PlatformOperations.PlatformAiCall>();
+    public DbSet<EduTwin.DAL.PlatformOperations.PlatformOpsSnapshot> PlatformOpsSnapshots => Set<EduTwin.DAL.PlatformOperations.PlatformOpsSnapshot>();
+    public DbSet<EduTwin.DAL.PlatformOperations.PlatformOpsAlert> PlatformOpsAlerts => Set<EduTwin.DAL.PlatformOperations.PlatformOpsAlert>();
     public DbSet<User> Users => Set<User>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<EduTwin.DAL.Notifications.NotificationEvent> NotificationEvents => Set<EduTwin.DAL.Notifications.NotificationEvent>();
+    public DbSet<EduTwin.DAL.Notifications.NotificationMessage> NotificationMessages => Set<EduTwin.DAL.Notifications.NotificationMessage>();
+    public DbSet<EduTwin.DAL.Notifications.NotificationDispatch> NotificationDispatches => Set<EduTwin.DAL.Notifications.NotificationDispatch>();
+    public DbSet<EduTwin.DAL.Notifications.NotificationDelivery> NotificationDeliveries => Set<EduTwin.DAL.Notifications.NotificationDelivery>();
+    public DbSet<EduTwin.DAL.Notifications.NotificationMessageAction> NotificationMessageActions => Set<EduTwin.DAL.Notifications.NotificationMessageAction>();
+    public DbSet<EduTwin.DAL.Notifications.NotificationReply> NotificationReplies => Set<EduTwin.DAL.Notifications.NotificationReply>();
     public DbSet<Permission> Permissions => Set<Permission>();
     public DbSet<PermissionAccountType> PermissionAccountTypes => Set<PermissionAccountType>();
     public DbSet<AuthorizationRole> AuthorizationRoles => Set<AuthorizationRole>();

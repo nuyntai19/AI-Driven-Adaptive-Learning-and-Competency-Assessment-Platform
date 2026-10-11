@@ -12,6 +12,8 @@ import { useAuthStore } from "./stores/authStore";
 import { cleanupExpiredScratchpadDrafts } from "./utils/scratchpadStorage";
 
 const AuthenticatedHomePage = lazy(() => import("./pages/AuthenticatedHomePage").then((module) => ({ default: module.AuthenticatedHomePage })));
+const NotificationsPage = lazy(() => import("./pages/NotificationsPage").then((module) => ({ default: module.NotificationsPage })));
+const ActivityPage = lazy(() => import("./pages/ActivityPage").then((module) => ({ default: module.ActivityPage })));
 const TeacherListPage = lazy(() => import("./pages/TeacherListPage").then((module) => ({ default: module.TeacherListPage })));
 const ClassListPage = lazy(() => import("./pages/ClassListPage").then((module) => ({ default: module.ClassListPage })));
 const CenterClassReportPage = lazy(() => import("./pages/CenterClassReportPage").then((module) => ({ default: module.CenterClassReportPage })));
@@ -30,6 +32,10 @@ const CenterProfilePage = lazy(() => import("./pages/CenterProfilePage").then((m
 const AuthorizationManagementPage = lazy(() => import("./pages/AuthorizationManagementPage").then((module) => ({ default: module.AuthorizationManagementPage })));
 const PlatformCentersPage = lazy(() => import("./pages/PlatformCentersPage").then((module) => ({ default: module.PlatformCentersPage })));
 const PlatformAuditLogsPage = lazy(() => import("./pages/PlatformAuditLogsPage").then((module) => ({ default: module.PlatformAuditLogsPage })));
+const PlatformJournalPage = lazy(() => import("./pages/PlatformJournalPage").then((module) => ({ default: module.PlatformJournalPage })));
+const PlatformOperationsPage = lazy(() => import("./pages/PlatformOperationsPages").then(m => ({default: m.PlatformOperationsPage})));
+const PlatformAiUsagePage = lazy(() => import("./pages/PlatformOperationsPages").then(m => ({default: m.PlatformAiUsagePage})));
+const PlatformStoragePage = lazy(() => import("./pages/PlatformOperationsPages").then(m => ({default: m.PlatformStoragePage})));
 const CenterManagerLayoutBoundary = lazy(() => import("./layouts/CenterManagerLayout").then((module) => ({ default: module.CenterManagerLayoutBoundary })));
 
 // Teacher Workspace & Shared Academic Workspaces
@@ -82,6 +88,12 @@ function App() {
 
           {/* Student Portal Experiences */}
           <Route element={<StudentLayout />}>
+            <Route element={<PermissionRoute allOf={[permissions.activityReadOwn]} accountTypes={["Student"]} />}>
+              <Route path="/hoc-tap/nhat-ky-hoat-dong" element={<ActivityPage />} />
+            </Route>
+            <Route element={<PermissionRoute allOf={[permissions.notificationsReadOwn]} accountTypes={["Student"]} />}>
+              <Route path="/hoc-tap/thong-bao" element={<NotificationsPage />} />
+            </Route>
             <Route element={<PermissionRoute allOf={[permissions.dashboardsStudentRead]} />}>
               <Route path="/hoc-tap/tong-quan" element={<StudentDashboardPage />} />
             </Route>
@@ -104,6 +116,12 @@ function App() {
           </Route>
 
             <Route element={<CenterManagerLayoutBoundary />}>
+              <Route element={<PermissionRoute allOf={[permissions.activityReadAdministrative]} accountTypes={["CenterManager"]} />}>
+                <Route path="/quan-ly/nhat-ky-hoat-dong" element={<ActivityPage />} />
+              </Route>
+              <Route element={<PermissionRoute allOf={[permissions.notificationsReadOwn]} accountTypes={["CenterManager"]} />}>
+                <Route path="/quan-ly/thong-bao" element={<NotificationsPage />} />
+              </Route>
               {/* Center Manager Profile & Dashboards */}
               <Route element={<PermissionRoute anyOf={[permissions.centerRead, permissions.centerManage]} accountTypes={["CenterManager"]} />}>
                 <Route path="/quan-ly/trung-tam" element={<CenterProfilePage />} />
@@ -158,6 +176,12 @@ function App() {
             {/* Dedicated workspace isolated with permission-based routing        */}
             {/* ================================================================ */}
             <Route element={<TeacherLayoutBoundary />}>
+              <Route element={<PermissionRoute allOf={[permissions.activityReadScoped]} accountTypes={["Teacher"]} />}>
+                <Route path="/giao-vien/nhat-ky-hoat-dong" element={<ActivityPage />} />
+              </Route>
+              <Route element={<PermissionRoute allOf={[permissions.notificationsReadOwn]} accountTypes={["Teacher"]} />}>
+                <Route path="/giao-vien/thong-bao" element={<NotificationsPage />} />
+              </Route>
               {/* Dashboard & Class Monitoring */}
               <Route element={<PermissionRoute anyOf={[permissions.dashboardsTeacherRead, permissions.dashboardsCenterRead]} />}>
                 <Route path="/giao-vien/lop-hoc" element={<ClassProgressWorkspace actor="teacher" />} />
@@ -222,13 +246,36 @@ function App() {
 
           {/* Platform Administration */}
           <Route path="/quan-tri-nen-tang" element={<Navigate to="/quan-tri-nen-tang/trung-tam" replace />} />
-          <Route element={<PermissionRoute anyOf={[permissions.platformCentersRead, permissions.platformCentersManage, permissions.platformAuditRead]} accountTypes={["PlatformAdmin"]} />}>
+          <Route element={<PermissionRoute anyOf={[permissions.platformOperationsRead, permissions.platformAiUsageRead, permissions.platformStorageRead, permissions.platformCentersRead, permissions.platformCentersManage, permissions.platformAuditRead, permissions.platformNotificationsReadOwn, permissions.platformActivityRead]} accountTypes={["PlatformAdmin"]} />}>
             <Route element={<PlatformLayout />}>
+              <Route element={<PermissionRoute allOf={[permissions.platformOperationsRead]} accountTypes={["PlatformAdmin"]} />}>
+                <Route path="/quan-tri-nen-tang/van-hanh" element={<PlatformOperationsPage />} />
+              </Route>
+              <Route element={<PermissionRoute allOf={[permissions.platformAiUsageRead]} accountTypes={["PlatformAdmin"]} />}>
+                <Route path="/quan-tri-nen-tang/su-dung-ai" element={<PlatformAiUsagePage />} />
+              </Route>
+              <Route element={<PermissionRoute allOf={[permissions.platformStorageRead]} accountTypes={["PlatformAdmin"]} />}>
+                <Route path="/quan-tri-nen-tang/luu-tru" element={<PlatformStoragePage />} />
+              </Route>
+              <Route element={<PermissionRoute allOf={[permissions.platformActivityRead]} accountTypes={["PlatformAdmin"]} />}>
+                <Route path="/quan-tri-nen-tang/hoat-dong" element={<Navigate to="/quan-tri-nen-tang/nhat-ky/tong-quan" replace />} />
+              </Route>
+              <Route element={<PermissionRoute allOf={[permissions.platformNotificationsReadOwn]} accountTypes={["PlatformAdmin"]} />}>
+                <Route path="/quan-tri-nen-tang/thong-bao" element={<NotificationsPage />} />
+              </Route>
               <Route element={<PermissionRoute anyOf={[permissions.platformCentersRead, permissions.platformCentersManage]} accountTypes={["PlatformAdmin"]} />}>
                 <Route path="/quan-tri-nen-tang/trung-tam" element={<PlatformCentersPage />} />
               </Route>
               <Route element={<PermissionRoute allOf={[permissions.platformAuditRead]} accountTypes={["PlatformAdmin"]} />}>
-                <Route path="/quan-tri-nen-tang/nhat-ky" element={<PlatformAuditLogsPage />} />
+                <Route path="/quan-tri-nen-tang/nhat-ky" element={<Navigate to="/quan-tri-nen-tang/nhat-ky/kiem-toan" replace />} />
+              </Route>
+              <Route element={<PlatformJournalPage />}>
+                <Route element={<PermissionRoute allOf={[permissions.platformActivityRead]} accountTypes={["PlatformAdmin"]} />}>
+                  <Route path="/quan-tri-nen-tang/nhat-ky/tong-quan" element={<ActivityPage embedded />} />
+                </Route>
+                <Route element={<PermissionRoute allOf={[permissions.platformAuditRead]} accountTypes={["PlatformAdmin"]} />}>
+                  <Route path="/quan-tri-nen-tang/nhat-ky/kiem-toan" element={<PlatformAuditLogsPage />} />
+                </Route>
               </Route>
             </Route>
           </Route>

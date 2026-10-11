@@ -768,9 +768,9 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
       className={`rich-math-editor group flex flex-col rounded-xl border border-[var(--rme-border)] bg-[var(--rme-surface)] transition-all focus-within:border-[var(--rme-border-focus)] focus-within:ring-1 focus-within:ring-[var(--rme-border-focus)] ${className}`}
     >
       {/* Micro-toolbar */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--rme-border)] bg-[var(--rme-surface-toolbar)] text-xs select-none">
-        <div className="flex items-center gap-2">
-          {label && (
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-[var(--rme-border)] bg-[var(--rme-surface-toolbar)] text-xs select-none">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          {label && variant !== "student" && (
             <span className="font-semibold text-[var(--rme-text-muted)] tracking-wider uppercase text-[11px]">
               {label}
             </span>
@@ -783,7 +783,7 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
               color: "var(--rme-badge-text)",
             }}
           >
-            WYSIWYG
+            {variant === "student" ? "Văn bản & công thức" : "WYSIWYG"}
           </span>
           {hasIncompleteFormulas && (
             <span

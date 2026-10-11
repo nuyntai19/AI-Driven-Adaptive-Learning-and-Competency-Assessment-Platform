@@ -25,6 +25,7 @@ public sealed class GeminiLearningPathPlanEnricher : ILearningPathPlanEnricher
                      "Không tạo topic, question ID, mastery, prerequisite, session ID hay thời lượng mới. " +
                      "Giữ nguyên sessionId; viết tiếng Việt thân thiện, hoạt động online/offline cụ thể. Trả đúng JSON schema.\nINPUT:\n" +
                      JsonSerializer.Serialize(request, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        using var usageStage = EduTwin.BLL.Platform.Operations.AiUsageStage.Begin("learning_path");
         var result = await _client.GenerateContentAsync(_options.Model, prompt, CreateConfig(), cancellationToken);
         var parsed = JsonSerializer.Deserialize<ProviderResult>(result.ResponseText, new JsonSerializerOptions(JsonSerializerDefaults.Web));
         if (parsed is null || parsed.Sessions.Any(s => !allowedIds.Contains(s.SessionId))) return null;

@@ -17,15 +17,15 @@ public sealed class AuthorizationBootstrapperTests
         new(2026, 9, 9, 8, 30, 0, TimeSpan.Zero);
 
     [Fact]
-    public void Catalog_MatchesNormativeV1Shape()
+    public void Catalog_MatchesNormativeV1PlusNotificationSendShape()
     {
         var permissions = AuthorizationPermissionCatalog.CreatePermissions();
         var mappings = AuthorizationPermissionCatalog.CreateAccountTypeMappings();
 
-        Assert.Equal(71, permissions.Count);
-        Assert.Equal(71, permissions.Select(item => item.PermissionCode).Distinct().Count());
-        Assert.Equal(71, permissions.Select(item => item.PermissionId).Distinct().Count());
-        Assert.Equal(80, mappings.Count);
+        Assert.Equal(96, permissions.Count); // 93 prior + 3 root-only operational monitoring capabilities.
+        Assert.Equal(96, permissions.Select(item => item.PermissionCode).Distinct().Count());
+        Assert.Equal(96, permissions.Select(item => item.PermissionId).Distinct().Count());
+        Assert.Equal(116, mappings.Count); // 113 prior + 3 PlatformAdmin-only operational mappings.
         Assert.Contains(permissions, item => item.PermissionCode == "curriculum.questions.delete");
         Assert.Contains(permissions, item => item.PermissionCode == "twin.student.update_own");
         Assert.Contains(permissions, item => item.PermissionCode == "twin.student.update_scoped");
@@ -78,7 +78,7 @@ public sealed class AuthorizationBootstrapperTests
         await sut.EnsureAsync();
 
         Assert.Equal(3, await context.AuthorizationRoles.IgnoreQueryFilters().CountAsync());
-        Assert.Equal(75, await context.RolePermissions.IgnoreQueryFilters().CountAsync());
+        Assert.Equal(98, await context.RolePermissions.IgnoreQueryFilters().CountAsync());
         Assert.Equal(3, await context.UserRoleAssignments.IgnoreQueryFilters().CountAsync());
         Assert.Single(await context.AuthorizationAuditLogs.IgnoreQueryFilters().ToListAsync());
         Assert.All(
@@ -107,10 +107,10 @@ public sealed class AuthorizationBootstrapperTests
                 .Select(m => catalog[m.PermissionId].PermissionCode).Order().ToArray();
             Assert.All(AuthorizationPermissionCatalog.GetDefaultSystemRoleCodes(actor), code => Assert.Contains(code, compatible));
         }
-        Assert.Equal(5, AuthorizationPermissionCatalog.SystemPlatformAdminDefaultCodes.Count);
-        Assert.Equal(31, AuthorizationPermissionCatalog.SystemCenterManagerDefaultCodes.Count);
-        Assert.Equal(12, AuthorizationPermissionCatalog.SystemStudentDefaultCodes.Count);
-        Assert.Equal(32, AuthorizationPermissionCatalog.SystemTeacherDefaultCodes.Count);
+        Assert.Equal(18, AuthorizationPermissionCatalog.SystemPlatformAdminDefaultCodes.Count);
+        Assert.Equal(41, AuthorizationPermissionCatalog.SystemCenterManagerDefaultCodes.Count);
+        Assert.Equal(17, AuthorizationPermissionCatalog.SystemStudentDefaultCodes.Count);
+        Assert.Equal(40, AuthorizationPermissionCatalog.SystemTeacherDefaultCodes.Count);
         Assert.All(AuthorizationPermissionCatalog.SensitiveSharedAcademicCodes,
             code => Assert.Contains(code, AuthorizationPermissionCatalog.SystemTeacherDefaultCodes));
         Assert.DoesNotContain(AuthorizationPermissionCatalog.SystemTeacherDefaultCodes, p => p.StartsWith("platform.") || p.StartsWith("authorization."));
@@ -146,7 +146,7 @@ public sealed class AuthorizationBootstrapperTests
         var previousRoleVersion = role.RowVersion;
 
         await sut.EnsureCenterAsync(centerId);
-        Assert.Equal(32, await context.RolePermissions.IgnoreQueryFilters().CountAsync(p => p.RoleId == role.RoleId));
+        Assert.Equal(40, await context.RolePermissions.IgnoreQueryFilters().CountAsync(p => p.RoleId == role.RoleId));
         Assert.Equal(2u, teacher.AuthVersion);
         Assert.Equal(1u, revokedTeacher.AuthVersion);
         Assert.Equal(1u, otherTeacher.AuthVersion);
@@ -158,11 +158,11 @@ public sealed class AuthorizationBootstrapperTests
         await sut.EnsureCenterAsync(centerId);
         Assert.Equal(2u, teacher.AuthVersion);
         Assert.Equal(previousRoleVersion + 1, role.RowVersion);
-        Assert.Equal(32, await context.RolePermissions.IgnoreQueryFilters().CountAsync(p => p.RoleId == role.RoleId));
+        Assert.Equal(40, await context.RolePermissions.IgnoreQueryFilters().CountAsync(p => p.RoleId == role.RoleId));
     }
 
     [Fact]
-    public async Task MissingPlatformGrant_RefreshesAdminSessionOnce_AndKeepsFivePlatformOnlyPermissions()
+    public async Task MissingPlatformGrant_RefreshesAdminSessionOnce_AndKeepsSevenPlatformOnlyPermissions()
     {
         await using var context = CreateContext();
         var centerId = AuthorizationBootstrapper.ReservedPlatformCenterId;
@@ -180,7 +180,7 @@ public sealed class AuthorizationBootstrapperTests
         await sut.BootstrapPlatformAsync(centerId, admin.UserId);
         await sut.BootstrapPlatformAsync(centerId, admin.UserId);
         Assert.Equal(2u, admin.AuthVersion);
-        Assert.Equal(5, await context.RolePermissions.IgnoreQueryFilters().CountAsync(p => p.RoleId == role.RoleId));
+        Assert.Equal(18, await context.RolePermissions.IgnoreQueryFilters().CountAsync(p => p.RoleId == role.RoleId));
     }
 
     [Fact]
@@ -219,8 +219,8 @@ public sealed class AuthorizationBootstrapperTests
 
         var sut = new DefaultSystemRolePermissionBackfill(context, new FixedTimeProvider(BootstrapUtcNow));
         await sut.EnsureAsync(); await sut.EnsureAsync();
-        Assert.Equal(32, await context.RolePermissions.IgnoreQueryFilters().CountAsync(p => p.RoleId == teacherRole.RoleId));
-        Assert.Equal(12, await context.RolePermissions.IgnoreQueryFilters().CountAsync(p => p.RoleId == studentRole.RoleId));
+        Assert.Equal(40, await context.RolePermissions.IgnoreQueryFilters().CountAsync(p => p.RoleId == teacherRole.RoleId));
+        Assert.Equal(17, await context.RolePermissions.IgnoreQueryFilters().CountAsync(p => p.RoleId == studentRole.RoleId));
         Assert.Equal(1, await context.RolePermissions.IgnoreQueryFilters().CountAsync(p => p.RoleId == customRole.RoleId));
         Assert.Equal(2u, teacher.AuthVersion); Assert.Equal(2u, student.AuthVersion);
         Assert.Equal(1u, manager.AuthVersion); Assert.Equal(1u, revokedTeacher.AuthVersion);

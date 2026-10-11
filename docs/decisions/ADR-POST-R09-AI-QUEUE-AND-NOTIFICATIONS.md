@@ -7,6 +7,10 @@
 **Baseline Git Freeze SHA:** `4298e4f` (kế thừa `5b5682d`, `9ea4c22`, `3cda5ef`)<br />
 **Branch:** `student/answer`
 
+> **Ghi chú rà soát 2026-10-10 — baseline hiện hành `61ef80a`:** ADR này giữ nội dung khảo sát/đề xuất tại ngày 28/09, không phải ảnh chụp production ngày 10/10. Worker, checkpoint, quota, microbatch, retry và UI đã thay đổi sau đó; các dòng, công thức tải và benchmark mô phỏng dưới đây phải đối chiếu lại trước khi dùng. Không xem nhãn “Zero Risk” là bảo đảm an toàn đã kiểm chứng. N+1 discovery theo center vẫn còn trong source được rà soát, nhưng không suy ra vì vậy phải đổi hàng đợi trong feature thông báo.
+>
+> SignalR/SSE trong ADR là transport đẩy trạng thái AI, **không phải inbox thông báo hoặc nhật ký nghiệp vụ bền vững**. Kế hoạch đang chờ duyệt cho feature đó nằm ở [NOTIFICATIONS-AND-ACTIVITY-LOG-PLAN](../plans/NOTIFICATIONS-AND-ACTIVITY-LOG-PLAN.md): đề xuất API/polling thưa + outbox/worker riêng, không SignalR/broker ở giai đoạn đầu. Yêu cầu ngày 06/10 vẫn loại bỏ presence/online monitoring; push trạng thái nghiệp vụ cũng không được biến thành giám sát câu học sinh đang làm. Chưa triển khai các phase của ADR chỉ vì người dùng yêu cầu rà soát kế hoạch thông báo.
+
 ---
 
 ## 1. Bối cảnh và Đặt vấn đề (Context & Problem Statement)

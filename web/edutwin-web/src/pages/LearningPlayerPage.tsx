@@ -3017,7 +3017,7 @@ export const LearningPlayerPage = () => {
                           ? "Nhập kết luận hoặc đáp án; dùng Chèn công thức để thêm biểu thức toán..."
                           : question?.answerEvaluationMode === "Manual"
                           ? "Nhập câu trả lời ngắn; có thể kết hợp chữ và công thức toán..."
-                          : "Gõ công thức hoặc đáp số cuối cùng (hoặc dùng Casio để tự chèn)..."
+                          : "Nhập đáp số; dùng Chèn công thức để nhập phân số, căn hoặc tọa độ (có thể chèn từ Casio)..."
                       }
                       showPreview={false}
                       showSyntaxHint={false}

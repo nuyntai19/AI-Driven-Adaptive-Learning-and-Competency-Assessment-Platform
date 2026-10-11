@@ -1,5 +1,13 @@
 # EduTwin — API Contracts
 
+> Amendment PLATFORM-OPS-OBS-01 (11/10/2026), người dùng phê duyệt triển khai: [SPEC vận hành Admin](docs/plans/PLATFORM-OPERATIONS-IMPLEMENTATION-SPEC-2026-10-11.md). Cho phép ba API GET/root-only, ba quyền non-delegable, metadata ledger AI và snapshot/alert vận hành như SPEC. Stage I không còn deferred trong phạm vi này; Stage H vẫn deferred. Ledger là metadata vận hành, ngoại lệ được duyệt đối với cấm bảng log AI, không chứa nội dung học thuật. Không purge/AI retry/billing mutation và không commit/push. Trạng thái COMPLETED-v1 trong phạm vi SPEC; [báo cáo kiểm chứng](docs/verification/PLATFORM-OPERATIONS-REPORT-2026-10-11.md) ghi kết quả, rollout và các giới hạn chưa triển khai. Không coi roadmap observability rộng hơn hoặc tải 1.000 người đồng thời đã nghiệm thu.
+
+> UX amendment 2026-10-11: ActivityDto thêm `targetLabel: string | null` từ tên đối tượng đã được scope, chỉ phục vụ hiển thị; không thay `sourceId/targetId`, filter, quyền hoặc link guard. Manager/Platform không được enrich từ assignment/attempt hoặc title sự kiện học thuật. Dọn box chuông là watermark center/user cục bộ trình duyệt, không API delete/hide mới, không schema mới.
+
+> API notification lifecycle/ack/reply/filter amendment: [Completion SPEC](docs/plans/NOTIFICATIONS-COMPLETION-SPEC.md), 2026-10-10. Route cũ/ownership không đổi. Bổ sung được duyệt 2026-10-11: preview/send/reply/retract có thể trả 400 `NOTIFICATION_CONTENT_RESTRICTED` khi văn bản có dấu hiệu nhạy cảm; không trả văn bản khớp, không tự sửa nội dung. Bộ lọc heuristic và giới hạn theo kênh được khóa trong Completion SPEC.
+
+> Amendment 2026-10-10: [NF-01 API](docs/plans/NOTIFICATIONS-NF01-SPEC.md) khóa inbox/summary/read snapshot; [NF-03a API](docs/plans/NOTIFICATIONS-NF03-SEND-SPEC.md) bổ sung compose-options/preview/send/own-sent và relay explicit đúng ma trận tác nhân. Chưa có thu hồi/đính chính/ack/reply hoặc sự kiện tự động NF-02.
+
 > Phiên bản: 2.1-draft
 > Trạng thái: COURSE REBASELINE — API v1 hiện hữu + target contract RBAC/Evidence chưa cutover
 > Base URL: /api/v1

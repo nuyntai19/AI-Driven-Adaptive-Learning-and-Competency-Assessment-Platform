@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 namespace EduTwin.API.AssessmentAndReasoning.Background;
 
 public sealed class AIStudentPostProcessingBackgroundService(IServiceScopeFactory scopes, TimeProvider clock,
-    ILogger<AIStudentPostProcessingBackgroundService> logger) : BackgroundService
+    ILogger<AIStudentPostProcessingBackgroundService> logger, EduTwin.BLL.Platform.Operations.OperationalTelemetry? telemetry = null) : BackgroundService
 {
     private readonly string _owner = $"post-{Guid.NewGuid():N}";
 
@@ -14,7 +14,7 @@ public sealed class AIStudentPostProcessingBackgroundService(IServiceScopeFactor
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            try { await RunOnceAsync(stoppingToken); }
+            try { await RunOnceAsync(stoppingToken); telemetry?.Beat("post_processing"); }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
             catch (Exception ex) { logger.LogWarning("AI post-processing scan failed with {ExceptionType}.", ex.GetType().Name); }
             try { await Task.Delay(TimeSpan.FromSeconds(2), clock, stoppingToken); }

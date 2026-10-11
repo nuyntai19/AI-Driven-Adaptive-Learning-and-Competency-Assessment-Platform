@@ -1,0 +1,20 @@
+/* Unlayered and scoped: actor workspace defaults must not shrink these surfaces.
+   Student's larger existing text tokens are retained; other actors get 16/14px. */
+.notification-surface {
+  --notification-body: max(1rem, var(--text-base, 1rem));
+  --notification-meta: max(0.875rem, var(--text-sm, 0.875rem));
+  --th-font-ui: var(--notification-body);
+  --cm-font-ui: var(--notification-body);
+  font-size: var(--notification-body);
+  line-height: 1.65;
+}
+.notification-surface :is(button, input, select, textarea) {
+  font-size: var(--notification-body);
+}
+.notification-surface :is(.text-sm, p:not(.text-xs)) {
+  font-size: var(--notification-body);
+}
+.notification-surface .text-xs {
+  font-size: var(--notification-meta);
+  line-height: 1.6;
+}

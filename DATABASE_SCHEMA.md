@@ -1,5 +1,11 @@
 # EduTwin — Database Schema
 
+> Amendment PLATFORM-OPS-OBS-01 (11/10/2026), người dùng phê duyệt triển khai: [SPEC vận hành Admin](docs/plans/PLATFORM-OPERATIONS-IMPLEMENTATION-SPEC-2026-10-11.md). Cho phép ba API GET/root-only, ba quyền non-delegable, metadata ledger AI và snapshot/alert vận hành như SPEC. Stage I không còn deferred trong phạm vi này; Stage H vẫn deferred. Ledger là metadata vận hành, ngoại lệ được duyệt đối với cấm bảng log AI, không chứa nội dung học thuật. Không purge/AI retry/billing mutation và không commit/push. Trạng thái COMPLETED-v1 trong phạm vi SPEC; [báo cáo kiểm chứng](docs/verification/PLATFORM-OPERATIONS-REPORT-2026-10-11.md) ghi kết quả, rollout và các giới hạn chưa triển khai. Không coi roadmap observability rộng hơn hoặc tải 1.000 người đồng thời đã nghiệm thu.
+
+> Additive notification lifecycle/receipt schema và gate còn lại: [Completion SPEC](docs/plans/NOTIFICATIONS-COMPLETION-SPEC.md), được cho phép 2026-10-10; migration phải có kiểm chứng/backup trước rollout.
+
+> Amendment additive 2026-10-10: [NF-01 §Schema](docs/plans/NOTIFICATIONS-NF01-SPEC.md) thêm ba bảng notification; [NF-03a §Schema](docs/plans/NOTIFICATIONS-NF03-SEND-SPEC.md) thêm notification_messages append-only và hai cột nullable trên event. Notification in-app trong phạm vi mới; email/chat/push vẫn ngoài phạm vi. Số bảng trong header cũ là baseline lịch sử, không kiểm kê runtime hiện tại.
+
 > Phiên bản: 2.6 (Post-R09, Core Flow & Learning Path Workflow Amendments)
 > Trạng thái: ACTIVE — 43 bảng vật lý trong EF migration model hiện hành (Đã bao gồm bảng 41: student_review_requests, bảng 42: teacher_review_histories, bảng 43: student_learning_path_preferences)
 > Database: MySQL 8.x / InnoDB / utf8mb4

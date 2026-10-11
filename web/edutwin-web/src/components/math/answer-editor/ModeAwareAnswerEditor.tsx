@@ -15,6 +15,7 @@ import { NumericRationalMathInput } from "./NumericRationalMathInput";
 import { Coordinate2DInput } from "./Coordinate2DInput";
 import { PlainOrMultilineAnswerInput } from "./PlainOrMultilineAnswerInput";
 import { MultilineProseAnswerEditor } from "./MultilineProseAnswerEditor";
+import { InlineMathAnswerInput } from "./InlineMathAnswerInput";
 import { MathPreviewCore } from "../MathPreviewCore";
 import type { RichMathEditorProps } from "../RichMathEditor";
 
@@ -191,6 +192,8 @@ export const ModeAwareAnswerEditor = forwardRef<AnswerEditorRef, ModeAwareAnswer
     const handleChildChange = (nextVal: AnswerEditorValue) => {
       onChange?.(nextVal);
     };
+    const inlineStudentMath = profile === "answering" && proseVariant === "student" &&
+      ["numeric-rational", "math-equivalent", "coordinate-2d"].includes(resolution.type);
 
     return (
       <div className={`space-y-2 ${className}`}>
@@ -220,7 +223,9 @@ export const ModeAwareAnswerEditor = forwardRef<AnswerEditorRef, ModeAwareAnswer
           />
         )}
 
-        {(resolution.type === "numeric-rational" || resolution.type === "math-equivalent") && (
+        {inlineStudentMath && <InlineMathAnswerInput ref={childRef} value={value} onChange={handleChildChange}
+          disabled={disabled} readOnly={readOnly} autoFocus={autoFocus} placeholder={placeholder} onFocus={onFocus} ariaLabel={ariaLabel} />}
+        {!inlineStudentMath && (resolution.type === "numeric-rational" || resolution.type === "math-equivalent") && (
           <NumericRationalMathInput
             ref={childRef}
             evaluationMode={resolution.type === "math-equivalent" ? "MathEquivalent" : "NumericRational"}
@@ -237,7 +242,7 @@ export const ModeAwareAnswerEditor = forwardRef<AnswerEditorRef, ModeAwareAnswer
           />
         )}
 
-        {resolution.type === "coordinate-2d" && (
+        {!inlineStudentMath && resolution.type === "coordinate-2d" && (
           <Coordinate2DInput
             ref={childRef}
             value={value}

@@ -70,6 +70,19 @@ export function buildProseAnswer(text: string | null | undefined): AnswerEditorV
   };
 }
 
+/** A single inserted formula keeps the original math submission contract.
+ * Mixed prose is preserved verbatim, never guessed or silently stripped for grading. */
+export function buildInlineMathAnswer(text: string): AnswerEditorValue {
+  const formula = /^\$([^$]+)\$$/.exec(text.trim());
+  return formula ? { rawText: formula[1].trim(), displayLatex: formula[1].trim() }
+    : { rawText: text, displayLatex: "" };
+}
+export function inlineMathEditingText(value: AnswerEditorValue): string {
+  if (value.rawText.includes("$")) return value.rawText;
+  const formula = value.displayLatex || (/\\[a-zA-Z]+/.test(value.rawText) ? value.rawText : "");
+  return formula ? `$${formula}$` : value.rawText;
+}
+
 /**
  * Builds AnswerEditorValue for NumericRational questions.
  * Invariant: rawText holds the plain/fraction string, displayLatex holds LaTeX for visual display.

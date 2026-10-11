@@ -7,6 +7,7 @@ import { organizationApi } from "../api/organizationApi";
 import { getStudentWorkspaceSummary } from "../api/dashboardsApi";
 import { studentWorkspaceLabels } from "../utils/studentWorkspaceSummary";
 import { ThemeToggle } from "../components/ThemeToggle";
+import { NotificationBell } from "../components/notifications/NotificationBell";
 import { PlatformSecurityModal } from "../components/PlatformSecurityModal";
 import { useModalAccessibility } from "../utils/useModalAccessibility";
 import { StudentAcademicContext } from "../components/student/StudentAcademicContext";
@@ -34,6 +35,7 @@ export const StudentLayout: React.FC = () => {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const activeSubjectId = searchParams.get("subjectId") || "";
+  const isAccountPage = ["/hoc-tap/thong-bao", "/hoc-tap/nhat-ky-hoat-dong"].includes(location.pathname);
 
   const user = useAuthStore((state) => state.user);
   const workspaceQuery = useQuery({
@@ -213,17 +215,7 @@ export const StudentLayout: React.FC = () => {
               {/* Dark / Light Theme Toggle - Sleek Compact Icon Button */}
               <ThemeToggle />
 
-              {/* Notifications Bell */}
-              <button
-                type="button"
-                className="relative p-2 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-[var(--student-surface-subtle,#F4F3EE)] dark:hover:bg-[var(--student-surface-subtle,#1C2738)] transition-colors focus-visible:outline-indigo-600 cursor-pointer shrink-0 border border-[var(--student-border,#E8E6DF)]"
-                title="Thông báo học tập"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                </svg>
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#B42338]" />
-              </button>
+              <NotificationBell />
 
               {/* Student User Profile Dropdown */}
               <div className="relative shrink-0">
@@ -282,6 +274,10 @@ export const StudentLayout: React.FC = () => {
                     </Link>
 
                     <div className="border-t border-slate-100 dark:border-slate-800 mt-1 pt-1">
+                      {user?.permissions.includes("activity.history.read_own") && <Link to="/hoc-tap/nhat-ky-hoat-dong" onClick={() => setIsProfileDropdownOpen(false)} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800">
+                        <svg className="w-4 h-4 shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 2m6-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        <span>Nhật ký hoạt động</span>
+                      </Link>}
                       <button
                         type="button"
                         onClick={handleLogout}
@@ -314,7 +310,7 @@ export const StudentLayout: React.FC = () => {
         </div>
 
         {/* Row 2 Context Sub-bar keeps subject and streak readable without squeezing the navigation. */}
-        <div className="border-t border-slate-200/80 dark:border-slate-800/80 bg-slate-50/90 dark:bg-[#0b1329]/90 backdrop-blur-xs py-2">
+        {!isAccountPage && <div className="border-t border-slate-200/80 dark:border-slate-800/80 bg-slate-50/90 dark:bg-[#0b1329]/90 backdrop-blur-xs py-2">
           <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-3 min-w-0">
             {/* Left: Subject Selector with Icon and Label */}
             <div className="flex items-center gap-2 min-w-0">
@@ -355,8 +351,8 @@ export const StudentLayout: React.FC = () => {
               <span className="sm:hidden">{workspaceLabels.shortStreak}</span>
             </div>
           </div>
-        </div>
-        <StudentAcademicContext />
+        </div>}
+        {!isAccountPage && <StudentAcademicContext />}
       </header>
 
       {/* Mobile Drawer Navigation */}
@@ -390,7 +386,7 @@ export const StudentLayout: React.FC = () => {
               </div>
 
               {/* Subject selector in mobile drawer */}
-              {subjects.length > 0 && (
+              {!isAccountPage && subjects.length > 0 && (
                 <div className="mt-4">
                   <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 block">Môn học đang chọn:</label>
                   <select
@@ -413,6 +409,7 @@ export const StudentLayout: React.FC = () => {
 
               {/* Mobile Nav Links */}
               <nav className="mt-6 flex flex-col gap-1.5">
+                {user?.permissions.includes("activity.history.read_own") && <Link to="/hoc-tap/nhat-ky-hoat-dong" onClick={() => setIsMobileMenuOpen(false)} className="rounded-xl px-3 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300">◷ Nhật ký hoạt động</Link>}
                 <Link
                   to={getTabUrl("/hoc-tap/tong-quan")}
                   onClick={() => setIsMobileMenuOpen(false)}

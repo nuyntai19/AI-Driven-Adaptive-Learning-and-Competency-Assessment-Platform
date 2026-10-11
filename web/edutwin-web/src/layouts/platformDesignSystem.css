@@ -1,0 +1,31 @@
+/* Larger control-plane UI at browser zoom 100%; never changes another workspace. */
+.platform-typography {
+  --text-xs: 0.9375rem;
+  --text-sm: 1.09375rem;
+  --text-base: 1.25rem;
+  font-size: var(--text-base);
+  line-height: 1.6;
+}
+
+.platform-typography :where(.text-xs, [class~="text-[10px]"], [class~="text-[11px]"]) { font-size: 0.9375rem; }
+.platform-typography :where(.text-sm) { font-size: 1.09375rem; }
+.platform-typography :where(.text-base) { font-size: 1.25rem; }
+.platform-typography :where(.text-lg) { font-size: 1.40625rem; }
+.platform-typography :where(.text-xl) { font-size: 1.5625rem; }
+.platform-typography :where(.text-2xl) { font-size: 1.875rem; }
+.platform-typography :where(.text-3xl) { font-size: 2.34375rem; }
+.platform-typography :where(.text-4xl) { font-size: 2.8125rem; }
+
+.platform-typography :where(input, select, textarea, button) { font-size: 1.09375rem; }
+.platform-typography :where(input, select, textarea) { max-width: 100%; }
+.platform-typography :where(.platform-topbar button) { min-width: 3.125rem; min-height: 3.125rem; }
+.platform-typography :where(.platform-topbar button > svg) { width: 1.5625rem; height: 1.5625rem; }
+
+/* The bell is a portal, so it carries platform-typography itself. */
+.platform-typography.notification-surface :is(button, input, select, textarea),
+.platform-typography .notification-surface :is(button, input, select, textarea) { font-size: var(--text-base); }
+
+@media (min-width: 640px) {
+  .platform-typography :where([class~="sm:text-sm"]) { font-size: 1.09375rem; }
+  .platform-typography :where([class~="sm:text-3xl"]) { font-size: 2.34375rem; }
+}

@@ -192,7 +192,7 @@ function modeHarness(props: Record<string, unknown>) {
   const hooks = hookHarness();
   const types: Record<string, any> = {};
   const modules: Record<string, unknown> = { "./answerEditorHelpers": answerHelpers };
-  for (const name of ["PlainTextAnswerInput", "NumericRationalMathInput", "Coordinate2DInput", "PlainOrMultilineAnswerInput", "MultilineProseAnswerEditor"]) {
+  for (const name of ["PlainTextAnswerInput", "NumericRationalMathInput", "Coordinate2DInput", "PlainOrMultilineAnswerInput", "MultilineProseAnswerEditor", "InlineMathAnswerInput"]) {
     types[name] = () => null;
     modules["./" + name] = { [name]: types[name] };
   }
@@ -215,12 +215,54 @@ for (const [questionType, name] of [["Essay", "MultilineProseAnswerEditor"], ["S
   });
 }
 
-test("TextExact and numeric answers keep specialized inputs, not a prose formula editor", () => {
+test("authoring keeps TextExact and numeric specialized inputs", () => {
   for (const [mode, name] of [["TextExact", "PlainTextAnswerInput"], ["NumericRational", "NumericRationalMathInput"]]) {
-    const { nodes, types } = modeHarness({ questionType: "ShortAnswer", evaluationMode: mode });
+    const { nodes, types } = modeHarness({ questionType: "ShortAnswer", evaluationMode: mode, profile: "authoring" });
     assert.ok(nodes.some(node => node.type === types[name]));
     assert.ok(!nodes.some(node => node.type === types.MultilineProseAnswerEditor || node.type === types.PlainOrMultilineAnswerInput));
   }
+});
+
+for (const mode of ["NumericRational", "MathEquivalent", "Coordinate2D"]) {
+  test(`student ${mode} uses the formula-button answer editor without changing the grading mode`, () => {
+    const { nodes, types } = modeHarness({ questionType: "ShortAnswer", evaluationMode: mode, profile: "answering" });
+    assert.ok(nodes.some(node => node.type === types.InlineMathAnswerInput));
+    assert.ok(!nodes.some(node => node.type === types.NumericRationalMathInput || node.type === types.Coordinate2DInput));
+    assert.equal(answerHelpers.resolveAnswerInputType("ShortAnswer", mode).isValid, true);
+  });
+}
+test("math formula button preserves submission grammar and old math drafts", () => {
+  for (const formula of ["\\frac{3}{4}", "\\sqrt{52}", "\\left(2;\\frac{1}{2}\\right)"]) {
+    const next = answerHelpers.buildInlineMathAnswer(`$${formula}$`);
+    assert.deepEqual(next, { rawText: formula, displayLatex: formula });
+    assert.equal(answerHelpers.inlineMathEditingText(next), `$${formula}$`);
+  }
+  assert.deepEqual(answerHelpers.buildInlineMathAnswer("0.75"), { rawText: "0.75", displayLatex: "" });
+  assert.deepEqual(answerHelpers.buildInlineMathAnswer("Kết quả $x=3$"), { rawText: "Kết quả $x=3$", displayLatex: "" });
+  assert.equal(answerHelpers.inlineMathEditingText({rawText:"\\frac{3}{4}",displayLatex:""}), "$\\frac{3}{4}$");
+  assert.equal(answerHelpers.inlineMathEditingText({rawText:"$x=3$",displayLatex:"legacy"}), "$x=3$");
+});
+
+test("production inline math adapter keeps fresh Casio/formula, clear and external draft values", () => {
+  const hooks = hookHarness(); const RichMathEditor = () => null;
+  const { InlineMathAnswerInput } = loadComponent("answer-editor/InlineMathAnswerInput.tsx", hooks, {
+    "./answerEditorHelpers": answerHelpers, "../RichMathEditor": { RichMathEditor },
+  });
+  const ref = {current:null as any}; let tree: any; const changes: any[] = [];
+  let props: any = {value:{rawText:"3/4",displayLatex:"\\frac{3}{4}"},onChange:(value:any)=>changes.push(value)};
+  function render(next:any = {}) {
+    props = {...props,...next}; hooks.begin(); tree = InlineMathAnswerInput(props,ref);
+    tree.props.ref.current = { insertLatex:(latex:string)=>tree.props.onChange(`$${latex}$`), clear:()=>tree.props.onChange(""), focus:()=>{} };
+    hooks.flushEffects();
+  }
+  render(); assert.equal(tree.type,RichMathEditor); assert.equal(tree.props.value,"$\\frac{3}{4}$");
+  ref.current.insertAtCursor("\\sqrt{52}");
+  assert.deepEqual(ref.current.getValue(),{rawText:"\\sqrt{52}",displayLatex:"\\sqrt{52}"});
+  ref.current.clear(); assert.deepEqual(ref.current.getValue(),{rawText:"",displayLatex:""});
+  render({value:{rawText:"(2;3)",displayLatex:"\\left(2;3\\right)"}});
+  assert.equal(ref.current.getValue().rawText,"(2;3)");
+  render({disabled:true}); ref.current.insertLatex("10"); ref.current.clear(); tree.props.onChange("MUTATED");
+  assert.equal(changes.length,2); assert.equal(tree.props.disabled,true);
 });
 
 test("submitted essay answers render rich read-only content without an editable composer", () => {

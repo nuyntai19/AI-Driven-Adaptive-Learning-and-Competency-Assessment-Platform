@@ -1,5 +1,9 @@
 # EduTwin — Master Development Plan
 
+> Amendment PLATFORM-OPS-OBS-01 (11/10/2026), người dùng phê duyệt triển khai: [SPEC vận hành Admin](docs/plans/PLATFORM-OPERATIONS-IMPLEMENTATION-SPEC-2026-10-11.md). Cho phép ba API GET/root-only, ba quyền non-delegable, metadata ledger AI và snapshot/alert vận hành như SPEC. Stage I không còn deferred trong phạm vi này; Stage H vẫn deferred. Ledger là metadata vận hành, ngoại lệ được duyệt đối với cấm bảng log AI, không chứa nội dung học thuật. Không purge/AI retry/billing mutation và không commit/push. Trạng thái COMPLETED-v1 trong phạm vi SPEC; [báo cáo kiểm chứng](docs/verification/PLATFORM-OPERATIONS-REPORT-2026-10-11.md) ghi kết quả, rollout và các giới hạn chưa triển khai. Không coi roadmap observability rộng hơn hoặc tải 1.000 người đồng thời đã nghiệm thu.
+
+> Checkpoint 2026-10-10: người dùng đã cho phép hoàn thiện NF-02…05 theo [Completion SPEC](docs/plans/NOTIFICATIONS-COMPLETION-SPEC.md), sau NF-01/NF-03a. Codex thực hiện; reviewer con người chưa chỉ định. [Báo cáo kiểm chứng hiện tại](docs/verification/NOTIFICATIONS-COMPLETION-REPORT-2026-10-10.md) phân biệt source/runtime/gate chưa đạt. Không commit/push hoặc purge production.
+
 > Phiên bản: 2.1-draft
 > Trạng thái: COURSE REBASELINE — roadmap v2 đang chờ nhóm phê duyệt
 > Phương châm: Validated Requirements, Data Integrity, Incremental Delivery

@@ -6,6 +6,7 @@ import { logout } from "../auth/authApi";
 import { permissions } from "../auth/permissions";
 import { CenterManagerThemeScope } from "../components/centerManager";
 import { ThemeToggle } from "../components/ThemeToggle";
+import { NotificationBell } from "../components/notifications/NotificationBell";
 import { useAuthStore } from "../stores/authStore";
 import { useModalAccessibility } from "../utils/useModalAccessibility";
 import { resolveCenterManagerLayoutAccess } from "../routes/academicRoutingHelpers";
@@ -26,6 +27,10 @@ interface NavigationGroup {
 const startsWith = (prefix: string) => (pathname: string) => pathname.startsWith(prefix);
 
 const navigationGroups: NavigationGroup[] = [
+  { label: "Thông tin", items: [
+    { label: "Thông báo", to: "/quan-ly/thong-bao", permissions: [permissions.notificationsReadOwn], match: startsWith("/quan-ly/thong-bao") },
+    { label: "Nhật ký hoạt động", to: "/quan-ly/nhat-ky-hoat-dong", permissions: [permissions.activityReadAdministrative], match: startsWith("/quan-ly/nhat-ky-hoat-dong") },
+  ] },
   {
     label: "Tổng quan",
     items: [
@@ -252,6 +257,7 @@ export function CenterManagerLayout() {
 
             <div className="flex items-center gap-2 sm:gap-3">
               <ThemeToggle />
+              <NotificationBell />
               <div className="relative">
                 <button
                   ref={profileButtonRef}

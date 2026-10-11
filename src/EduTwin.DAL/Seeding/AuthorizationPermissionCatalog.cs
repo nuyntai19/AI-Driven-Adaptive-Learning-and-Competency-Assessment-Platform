@@ -26,6 +26,7 @@ public static class AuthorizationPermissionCatalog
 
     private static readonly HashSet<string> SensitiveCodes =
     [
+        "platform.operations.read", "platform.ai_usage.read", "platform.storage.read",
         "authorization.roles.create", "authorization.roles.update", "authorization.roles.archive",
         "authorization.roles.manage_permissions", "authorization.user_roles.assign", "authorization.audit.read",
         "organization.center.update", "organization.teachers.create", "organization.teachers.update",
@@ -37,23 +38,40 @@ public static class AuthorizationPermissionCatalog
         "curriculum.questions.delete", "twin.student.update_scoped",
         "assignments.assignments.publish", "assignments.assignments.close", "twin.reasoning.override",
         "platform.centers.read", "platform.centers.manage", "platform.managers.manage",
-        "platform.audit.read"
+        "platform.audit.read", "notifications.messages.send_scoped", "platform.notifications.send_scoped",
+        "notifications.messages.retract_own", "platform.notifications.retract_own",
+        "notifications.dispatches.redrive", "platform.notifications.redrive"
     ];
 
     private static readonly HashSet<string> NonDelegableCodes =
     [
+        "platform.operations.read", "platform.ai_usage.read", "platform.storage.read",
+        "platform.activity.read",
+        "platform.notifications.read_dispatches", "platform.notifications.redrive",
         "platform.centers.read", "platform.centers.manage", "platform.managers.manage",
-        "platform.audit.read", "platform.account.manage_own"
+        "platform.audit.read", "platform.account.manage_own",
+        "platform.notifications.read_own", "platform.notifications.update_own",
+        "platform.notifications.send_scoped", "platform.notifications.read_sent_own",
+        "platform.notifications.retract_own", "platform.notifications.acknowledge_own", "platform.notifications.reply_own"
     ];
 
     public static readonly string[] PlatformCodes =
     [
+        "platform.operations.read", "platform.ai_usage.read", "platform.storage.read",
+        "platform.notifications.read_dispatches", "platform.notifications.redrive",
+        "platform.activity.read",
         "platform.centers.read", "platform.centers.manage", "platform.managers.manage",
-        "platform.audit.read", "platform.account.manage_own"
+        "platform.audit.read", "platform.account.manage_own",
+        "platform.notifications.read_own", "platform.notifications.update_own",
+        "platform.notifications.send_scoped", "platform.notifications.read_sent_own",
+        "platform.notifications.retract_own", "platform.notifications.acknowledge_own", "platform.notifications.reply_own"
     ];
 
     public static readonly string[] StudentCodes =
     [
+        "activity.history.read_own",
+        "notifications.inbox.acknowledge_own", "notifications.inbox.reply_own",
+        "notifications.inbox.read_own", "notifications.inbox.update_own",
         "learning.attempts.submit", "learning.attempts.read_own", "twin.student.read_own",
         "twin.student.update_own",
         "recommendations.student.read_own", "recommendations.student.update_own", "dashboards.student.read_own",
@@ -63,6 +81,11 @@ public static class AuthorizationPermissionCatalog
 
     public static readonly string[] CenterManagerCodes =
     [
+        "activity.history.read_administrative",
+        "notifications.dispatches.read", "notifications.dispatches.redrive",
+        "notifications.messages.retract_own", "notifications.inbox.acknowledge_own", "notifications.inbox.reply_own",
+        "notifications.messages.send_scoped", "notifications.messages.read_sent_own",
+        "notifications.inbox.read_own", "notifications.inbox.update_own",
         "dashboards.center.read",
         "organization.center.read", "organization.center.update",
         "organization.teachers.read", "organization.teachers.create", "organization.teachers.update",
@@ -79,6 +102,10 @@ public static class AuthorizationPermissionCatalog
 
     public static readonly string[] TeacherStandardOperationalCodes =
     [
+        "activity.history.read_scoped",
+        "notifications.messages.retract_own", "notifications.inbox.acknowledge_own", "notifications.inbox.reply_own",
+        "notifications.messages.send_scoped", "notifications.messages.read_sent_own",
+        "notifications.inbox.read_own", "notifications.inbox.update_own",
         "dashboards.teacher.read_scoped",
         "organization.teachers.read",
         "organization.students.read",

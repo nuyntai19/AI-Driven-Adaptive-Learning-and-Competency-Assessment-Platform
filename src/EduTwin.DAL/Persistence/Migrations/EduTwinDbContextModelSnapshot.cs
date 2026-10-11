@@ -2802,6 +2802,48 @@ namespace EduTwin.DAL.Persistence.Migrations
                     b.HasData(
                         new
                         {
+                            PermissionId = "43abd60e-32fb-5377-95cd-4c989a84ce50",
+                            ActionName = "read_administrative",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Cho phép read_administrative history trong phạm vi được cấp.",
+                            IsDelegable = true,
+                            IsSensitive = false,
+                            ModuleName = "Activity",
+                            PermissionCode = "activity.history.read_administrative",
+                            ResourceName = "History",
+                            Status = "Active",
+                            UpdatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "1e9609fe-808d-590e-8590-b20fddea0b74",
+                            ActionName = "read_own",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Cho phép read_own history trong phạm vi được cấp.",
+                            IsDelegable = true,
+                            IsSensitive = false,
+                            ModuleName = "Activity",
+                            PermissionCode = "activity.history.read_own",
+                            ResourceName = "History",
+                            Status = "Active",
+                            UpdatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "c8fae52e-b814-5d49-9218-4e1ed1099454",
+                            ActionName = "read_scoped",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Cho phép read_scoped history trong phạm vi được cấp.",
+                            IsDelegable = true,
+                            IsSensitive = false,
+                            ModuleName = "Activity",
+                            PermissionCode = "activity.history.read_scoped",
+                            ResourceName = "History",
+                            Status = "Active",
+                            UpdatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
                             PermissionId = "5d0570f6-a3b5-5e08-b7df-4c83589479e7",
                             ActionName = "close",
                             CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
@@ -3376,6 +3418,132 @@ namespace EduTwin.DAL.Persistence.Migrations
                         },
                         new
                         {
+                            PermissionId = "5ce360b7-5e8d-5667-97b1-83ebfeeeafe1",
+                            ActionName = "read",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Cho phép read dispatches trong phạm vi được cấp.",
+                            IsDelegable = true,
+                            IsSensitive = false,
+                            ModuleName = "Notifications",
+                            PermissionCode = "notifications.dispatches.read",
+                            ResourceName = "Dispatches",
+                            Status = "Active",
+                            UpdatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "2f69bf58-c875-57fe-8109-0b4d4ae1400b",
+                            ActionName = "redrive",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Cho phép redrive dispatches trong phạm vi được cấp.",
+                            IsDelegable = true,
+                            IsSensitive = true,
+                            ModuleName = "Notifications",
+                            PermissionCode = "notifications.dispatches.redrive",
+                            ResourceName = "Dispatches",
+                            Status = "Active",
+                            UpdatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "fa4ad781-fe1d-54df-a313-dca5c236371a",
+                            ActionName = "acknowledge_own",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Cho phép acknowledge_own inbox trong phạm vi được cấp.",
+                            IsDelegable = true,
+                            IsSensitive = false,
+                            ModuleName = "Notifications",
+                            PermissionCode = "notifications.inbox.acknowledge_own",
+                            ResourceName = "Inbox",
+                            Status = "Active",
+                            UpdatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "454c6647-6007-52be-8ab4-76fb15d58a9a",
+                            ActionName = "read_own",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Cho phép read_own inbox trong phạm vi được cấp.",
+                            IsDelegable = true,
+                            IsSensitive = false,
+                            ModuleName = "Notifications",
+                            PermissionCode = "notifications.inbox.read_own",
+                            ResourceName = "Inbox",
+                            Status = "Active",
+                            UpdatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "8f895c9e-fbc1-5f80-90fe-fe2420dbcd59",
+                            ActionName = "reply_own",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Cho phép reply_own inbox trong phạm vi được cấp.",
+                            IsDelegable = true,
+                            IsSensitive = false,
+                            ModuleName = "Notifications",
+                            PermissionCode = "notifications.inbox.reply_own",
+                            ResourceName = "Inbox",
+                            Status = "Active",
+                            UpdatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "b6ebd012-bfe1-5e03-884c-43aafd32f1b8",
+                            ActionName = "update_own",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Cho phép update_own inbox trong phạm vi được cấp.",
+                            IsDelegable = true,
+                            IsSensitive = false,
+                            ModuleName = "Notifications",
+                            PermissionCode = "notifications.inbox.update_own",
+                            ResourceName = "Inbox",
+                            Status = "Active",
+                            UpdatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "b59b8d4c-4091-5754-bb01-0f9d1997a78e",
+                            ActionName = "read_sent_own",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Cho phép read_sent_own messages trong phạm vi được cấp.",
+                            IsDelegable = true,
+                            IsSensitive = false,
+                            ModuleName = "Notifications",
+                            PermissionCode = "notifications.messages.read_sent_own",
+                            ResourceName = "Messages",
+                            Status = "Active",
+                            UpdatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "1c4fe07a-5b6a-5eff-9e1a-36a904b8d266",
+                            ActionName = "retract_own",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Cho phép retract_own messages trong phạm vi được cấp.",
+                            IsDelegable = true,
+                            IsSensitive = true,
+                            ModuleName = "Notifications",
+                            PermissionCode = "notifications.messages.retract_own",
+                            ResourceName = "Messages",
+                            Status = "Active",
+                            UpdatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "d559ad30-e923-5bfd-a61c-cf9611ac1ace",
+                            ActionName = "send_scoped",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Cho phép send_scoped messages trong phạm vi được cấp.",
+                            IsDelegable = true,
+                            IsSensitive = true,
+                            ModuleName = "Notifications",
+                            PermissionCode = "notifications.messages.send_scoped",
+                            ResourceName = "Messages",
+                            Status = "Active",
+                            UpdatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
                             PermissionId = "418b6ea7-7dfd-5a9e-a8ad-7e95633e70b9",
                             ActionName = "read",
                             CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
@@ -3628,6 +3796,34 @@ namespace EduTwin.DAL.Persistence.Migrations
                         },
                         new
                         {
+                            PermissionId = "b296b3ad-cbf9-584f-bc2a-2cfeffc6e66b",
+                            ActionName = "read",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Cho phép read activity trong phạm vi được cấp.",
+                            IsDelegable = false,
+                            IsSensitive = false,
+                            ModuleName = "Platform",
+                            PermissionCode = "platform.activity.read",
+                            ResourceName = "Activity",
+                            Status = "Active",
+                            UpdatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "8a4fecaa-a573-51d0-9fa1-e79b55f67dc1",
+                            ActionName = "read",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Cho phép read ai_usage trong phạm vi được cấp.",
+                            IsDelegable = false,
+                            IsSensitive = true,
+                            ModuleName = "Platform",
+                            PermissionCode = "platform.ai_usage.read",
+                            ResourceName = "Ai_usage",
+                            Status = "Active",
+                            UpdatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
                             PermissionId = "4e09f21c-6af9-5e3c-96d6-61f99343de4a",
                             ActionName = "read",
                             CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
@@ -3679,6 +3875,160 @@ namespace EduTwin.DAL.Persistence.Migrations
                             ModuleName = "Platform",
                             PermissionCode = "platform.managers.manage",
                             ResourceName = "Managers",
+                            Status = "Active",
+                            UpdatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "bedc7d8e-13eb-5989-95ec-f89820aee944",
+                            ActionName = "acknowledge_own",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Cho phép acknowledge_own notifications trong phạm vi được cấp.",
+                            IsDelegable = false,
+                            IsSensitive = false,
+                            ModuleName = "Platform",
+                            PermissionCode = "platform.notifications.acknowledge_own",
+                            ResourceName = "Notifications",
+                            Status = "Active",
+                            UpdatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "a1d4984e-8a71-57e7-92c8-0934529bcc5e",
+                            ActionName = "read_dispatches",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Cho phép read_dispatches notifications trong phạm vi được cấp.",
+                            IsDelegable = false,
+                            IsSensitive = false,
+                            ModuleName = "Platform",
+                            PermissionCode = "platform.notifications.read_dispatches",
+                            ResourceName = "Notifications",
+                            Status = "Active",
+                            UpdatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "8d5472e5-47d3-5d9a-afca-e744135687e7",
+                            ActionName = "read_own",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Cho phép read_own notifications trong phạm vi được cấp.",
+                            IsDelegable = false,
+                            IsSensitive = false,
+                            ModuleName = "Platform",
+                            PermissionCode = "platform.notifications.read_own",
+                            ResourceName = "Notifications",
+                            Status = "Active",
+                            UpdatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "0212f221-7e16-5a6f-9328-22513eed6167",
+                            ActionName = "read_sent_own",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Cho phép read_sent_own notifications trong phạm vi được cấp.",
+                            IsDelegable = false,
+                            IsSensitive = false,
+                            ModuleName = "Platform",
+                            PermissionCode = "platform.notifications.read_sent_own",
+                            ResourceName = "Notifications",
+                            Status = "Active",
+                            UpdatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "8fd77445-dcb9-55bc-81a9-892074f4a6db",
+                            ActionName = "redrive",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Cho phép redrive notifications trong phạm vi được cấp.",
+                            IsDelegable = false,
+                            IsSensitive = true,
+                            ModuleName = "Platform",
+                            PermissionCode = "platform.notifications.redrive",
+                            ResourceName = "Notifications",
+                            Status = "Active",
+                            UpdatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "77513671-4037-5b5b-8c3a-0f5037ba96c3",
+                            ActionName = "reply_own",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Cho phép reply_own notifications trong phạm vi được cấp.",
+                            IsDelegable = false,
+                            IsSensitive = false,
+                            ModuleName = "Platform",
+                            PermissionCode = "platform.notifications.reply_own",
+                            ResourceName = "Notifications",
+                            Status = "Active",
+                            UpdatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "2104cc1b-b652-5b58-88c6-c5c6cf00f2a7",
+                            ActionName = "retract_own",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Cho phép retract_own notifications trong phạm vi được cấp.",
+                            IsDelegable = false,
+                            IsSensitive = true,
+                            ModuleName = "Platform",
+                            PermissionCode = "platform.notifications.retract_own",
+                            ResourceName = "Notifications",
+                            Status = "Active",
+                            UpdatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "528655c4-a256-5766-b9cb-8bc7d5f9d6fd",
+                            ActionName = "send_scoped",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Cho phép send_scoped notifications trong phạm vi được cấp.",
+                            IsDelegable = false,
+                            IsSensitive = true,
+                            ModuleName = "Platform",
+                            PermissionCode = "platform.notifications.send_scoped",
+                            ResourceName = "Notifications",
+                            Status = "Active",
+                            UpdatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "b0a8d388-56fe-5dbe-8f84-f6dedb768bfc",
+                            ActionName = "update_own",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Cho phép update_own notifications trong phạm vi được cấp.",
+                            IsDelegable = false,
+                            IsSensitive = false,
+                            ModuleName = "Platform",
+                            PermissionCode = "platform.notifications.update_own",
+                            ResourceName = "Notifications",
+                            Status = "Active",
+                            UpdatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "44f72e24-4cf4-588e-a2a2-c08a4167e752",
+                            ActionName = "read",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Cho phép read operations trong phạm vi được cấp.",
+                            IsDelegable = false,
+                            IsSensitive = true,
+                            ModuleName = "Platform",
+                            PermissionCode = "platform.operations.read",
+                            ResourceName = "Operations",
+                            Status = "Active",
+                            UpdatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "073c9a09-d4f2-50e8-99e7-2c070f82051b",
+                            ActionName = "read",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Cho phép read storage trong phạm vi được cấp.",
+                            IsDelegable = false,
+                            IsSensitive = true,
+                            ModuleName = "Platform",
+                            PermissionCode = "platform.storage.read",
+                            ResourceName = "Storage",
                             Status = "Active",
                             UpdatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
                         },
@@ -3822,6 +4172,24 @@ namespace EduTwin.DAL.Persistence.Migrations
                         });
 
                     b.HasData(
+                        new
+                        {
+                            PermissionId = "43abd60e-32fb-5377-95cd-4c989a84ce50",
+                            AccountType = "CenterManager",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "1e9609fe-808d-590e-8590-b20fddea0b74",
+                            AccountType = "Student",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "c8fae52e-b814-5d49-9218-4e1ed1099454",
+                            AccountType = "Teacher",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
                         new
                         {
                             PermissionId = "5d0570f6-a3b5-5e08-b7df-4c83589479e7",
@@ -4100,6 +4468,126 @@ namespace EduTwin.DAL.Persistence.Migrations
                         },
                         new
                         {
+                            PermissionId = "5ce360b7-5e8d-5667-97b1-83ebfeeeafe1",
+                            AccountType = "CenterManager",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "2f69bf58-c875-57fe-8109-0b4d4ae1400b",
+                            AccountType = "CenterManager",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "fa4ad781-fe1d-54df-a313-dca5c236371a",
+                            AccountType = "Student",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "fa4ad781-fe1d-54df-a313-dca5c236371a",
+                            AccountType = "Teacher",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "fa4ad781-fe1d-54df-a313-dca5c236371a",
+                            AccountType = "CenterManager",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "454c6647-6007-52be-8ab4-76fb15d58a9a",
+                            AccountType = "Student",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "454c6647-6007-52be-8ab4-76fb15d58a9a",
+                            AccountType = "Teacher",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "454c6647-6007-52be-8ab4-76fb15d58a9a",
+                            AccountType = "CenterManager",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "8f895c9e-fbc1-5f80-90fe-fe2420dbcd59",
+                            AccountType = "Student",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "8f895c9e-fbc1-5f80-90fe-fe2420dbcd59",
+                            AccountType = "Teacher",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "8f895c9e-fbc1-5f80-90fe-fe2420dbcd59",
+                            AccountType = "CenterManager",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "b6ebd012-bfe1-5e03-884c-43aafd32f1b8",
+                            AccountType = "Student",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "b6ebd012-bfe1-5e03-884c-43aafd32f1b8",
+                            AccountType = "Teacher",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "b6ebd012-bfe1-5e03-884c-43aafd32f1b8",
+                            AccountType = "CenterManager",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "b59b8d4c-4091-5754-bb01-0f9d1997a78e",
+                            AccountType = "Teacher",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "b59b8d4c-4091-5754-bb01-0f9d1997a78e",
+                            AccountType = "CenterManager",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "1c4fe07a-5b6a-5eff-9e1a-36a904b8d266",
+                            AccountType = "Teacher",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "1c4fe07a-5b6a-5eff-9e1a-36a904b8d266",
+                            AccountType = "CenterManager",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "d559ad30-e923-5bfd-a61c-cf9611ac1ace",
+                            AccountType = "Teacher",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "d559ad30-e923-5bfd-a61c-cf9611ac1ace",
+                            AccountType = "CenterManager",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
                             PermissionId = "418b6ea7-7dfd-5a9e-a8ad-7e95633e70b9",
                             AccountType = "CenterManager",
                             CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
@@ -4232,6 +4720,18 @@ namespace EduTwin.DAL.Persistence.Migrations
                         },
                         new
                         {
+                            PermissionId = "b296b3ad-cbf9-584f-bc2a-2cfeffc6e66b",
+                            AccountType = "PlatformAdmin",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "8a4fecaa-a573-51d0-9fa1-e79b55f67dc1",
+                            AccountType = "PlatformAdmin",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
                             PermissionId = "4e09f21c-6af9-5e3c-96d6-61f99343de4a",
                             AccountType = "PlatformAdmin",
                             CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
@@ -4251,6 +4751,72 @@ namespace EduTwin.DAL.Persistence.Migrations
                         new
                         {
                             PermissionId = "faa3342c-5473-521b-a321-eb3844f638fb",
+                            AccountType = "PlatformAdmin",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "bedc7d8e-13eb-5989-95ec-f89820aee944",
+                            AccountType = "PlatformAdmin",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "a1d4984e-8a71-57e7-92c8-0934529bcc5e",
+                            AccountType = "PlatformAdmin",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "8d5472e5-47d3-5d9a-afca-e744135687e7",
+                            AccountType = "PlatformAdmin",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "0212f221-7e16-5a6f-9328-22513eed6167",
+                            AccountType = "PlatformAdmin",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "8fd77445-dcb9-55bc-81a9-892074f4a6db",
+                            AccountType = "PlatformAdmin",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "77513671-4037-5b5b-8c3a-0f5037ba96c3",
+                            AccountType = "PlatformAdmin",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "2104cc1b-b652-5b58-88c6-c5c6cf00f2a7",
+                            AccountType = "PlatformAdmin",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "528655c4-a256-5766-b9cb-8bc7d5f9d6fd",
+                            AccountType = "PlatformAdmin",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "b0a8d388-56fe-5dbe-8f84-f6dedb768bfc",
+                            AccountType = "PlatformAdmin",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "44f72e24-4cf4-588e-a2a2-c08a4167e752",
+                            AccountType = "PlatformAdmin",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            PermissionId = "073c9a09-d4f2-50e8-99e7-2c070f82051b",
                             AccountType = "PlatformAdmin",
                             CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
                         },
@@ -4841,6 +5407,387 @@ namespace EduTwin.DAL.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("EduTwin.DAL.Notifications.NotificationDelivery", b =>
+                {
+                    b.Property<ulong>("DeliveryId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("delivery_id");
+
+                    b.Property<DateTime?>("AcknowledgedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("acknowledged_at");
+
+                    b.Property<string>("CenterId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("center_id");
+
+                    b.Property<DateTime>("DeliveredAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("delivered_at");
+
+                    b.Property<string>("EventId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("event_id");
+
+                    b.Property<DateTime?>("HiddenAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("hidden_at");
+
+                    b.Property<DateTime?>("ReadAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("read_at");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("DeliveryId");
+
+                    b.HasIndex("CenterId", "EventId", "UserId")
+                        .IsUnique();
+
+                    b.HasIndex("CenterId", "UserId", "ReadAt", "DeliveryId");
+
+                    b.ToTable("notification_deliveries", (string)null);
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.Notifications.NotificationDispatch", b =>
+                {
+                    b.Property<string>("CenterId")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("center_id");
+
+                    b.Property<string>("EventId")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("event_id");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("int")
+                        .HasColumnName("attempt_count");
+
+                    b.Property<DateTime>("AvailableAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("available_at");
+
+                    b.Property<int>("DeliveredCount")
+                        .HasColumnType("int")
+                        .HasColumnName("delivered_count");
+
+                    b.Property<string>("LastErrorCode")
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("last_error_code");
+
+                    b.Property<string>("LeaseToken")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("lease_token");
+
+                    b.Property<DateTime?>("LeaseUntil")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("lease_until");
+
+                    b.Property<ulong>("RowVersion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("row_version");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("state");
+
+                    b.Property<int>("SuppressedCount")
+                        .HasColumnType("int")
+                        .HasColumnName("suppressed_count");
+
+                    b.HasKey("CenterId", "EventId");
+
+                    b.HasIndex("State", "AvailableAt", "CenterId");
+
+                    b.ToTable("notification_dispatches", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_notification_dispatch_state", "`state` IN ('Pending','Processing','Completed','DeadLetter')");
+                        });
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.Notifications.NotificationEvent", b =>
+                {
+                    b.Property<string>("EventId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("event_id");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("varchar(2000)")
+                        .HasColumnName("body");
+
+                    b.Property<string>("CenterId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("center_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("DeduplicationKey")
+                        .IsRequired()
+                        .HasColumnType("varchar(160)")
+                        .HasColumnName("deduplication_key");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("event_type");
+
+                    b.Property<string>("MessageId")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("message_id");
+
+                    b.Property<string>("RecipientUserIds")
+                        .IsRequired()
+                        .HasColumnType("json")
+                        .HasColumnName("recipient_user_ids");
+
+                    b.Property<string>("ResourceContext")
+                        .HasColumnType("json")
+                        .HasColumnName("resource_context");
+
+                    b.Property<string>("SenderName")
+                        .HasColumnType("varchar(160)")
+                        .HasColumnName("sender_name");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("varchar(160)")
+                        .HasColumnName("title");
+
+                    b.HasKey("EventId");
+
+                    b.HasIndex("MessageId");
+
+                    b.HasIndex("CenterId", "CreatedBy");
+
+                    b.HasIndex("CenterId", "DeduplicationKey")
+                        .IsUnique();
+
+                    b.ToTable("notification_events", (string)null);
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.Notifications.NotificationMessage", b =>
+                {
+                    b.Property<string>("MessageId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("message_id");
+
+                    b.Property<bool>("AllowReply")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("allow_reply");
+
+                    b.Property<string>("Audience")
+                        .IsRequired()
+                        .HasColumnType("json")
+                        .HasColumnName("audience");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("varchar(2000)")
+                        .HasColumnName("body");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("category");
+
+                    b.Property<string>("CenterId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("center_id");
+
+                    b.Property<string>("ClientMessageId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("client_message_id");
+
+                    b.Property<string>("CorrectionOfMessageId")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("correction_of_message_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Fingerprint")
+                        .IsRequired()
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("fingerprint");
+
+                    b.Property<string>("Priority")
+                        .IsRequired()
+                        .HasColumnType("varchar(16)")
+                        .HasColumnName("priority");
+
+                    b.Property<int>("RecipientCount")
+                        .HasColumnType("int")
+                        .HasColumnName("recipient_count");
+
+                    b.Property<bool>("RequiresAcknowledgement")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("requires_acknowledgement");
+
+                    b.Property<uint>("SenderAuthVersion")
+                        .HasColumnType("int unsigned")
+                        .HasColumnName("sender_auth_version");
+
+                    b.Property<string>("SenderName")
+                        .IsRequired()
+                        .HasColumnType("varchar(160)")
+                        .HasColumnName("sender_name");
+
+                    b.Property<string>("SenderUserId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("sender_user_id");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("varchar(160)")
+                        .HasColumnName("title");
+
+                    b.HasKey("MessageId");
+
+                    b.HasIndex("CenterId", "CorrectionOfMessageId");
+
+                    b.HasIndex("CenterId", "SenderUserId", "ClientMessageId")
+                        .IsUnique();
+
+                    b.HasIndex("CenterId", "SenderUserId", "CreatedAt");
+
+                    b.ToTable("notification_messages", (string)null);
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.Notifications.NotificationMessageAction", b =>
+                {
+                    b.Property<string>("ActionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("action_id");
+
+                    b.Property<string>("CenterId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("center_id");
+
+                    b.Property<string>("ClientActionId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("client_action_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("varchar(16)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("MessageId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("message_id");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("varchar(500)")
+                        .HasColumnName("reason");
+
+                    b.Property<string>("ReplacementMessageId")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("replacement_message_id");
+
+                    b.HasKey("ActionId");
+
+                    b.HasIndex("CenterId", "MessageId")
+                        .IsUnique();
+
+                    b.HasIndex("CenterId", "ReplacementMessageId");
+
+                    b.HasIndex("CenterId", "CreatedBy", "ClientActionId")
+                        .IsUnique();
+
+                    b.ToTable("notification_message_actions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_notification_message_action_kind", "`kind` IN ('Retracted','Corrected') AND ((`kind` = 'Corrected' AND `replacement_message_id` IS NOT NULL) OR (`kind` = 'Retracted' AND `replacement_message_id` IS NULL))");
+                        });
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.Notifications.NotificationReply", b =>
+                {
+                    b.Property<string>("ReplyId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("reply_id");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("varchar(2000)")
+                        .HasColumnName("body");
+
+                    b.Property<string>("CenterId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("center_id");
+
+                    b.Property<string>("ClientReplyId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("client_reply_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("created_by");
+
+                    b.Property<ulong>("DeliveryId")
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("delivery_id");
+
+                    b.Property<string>("SenderName")
+                        .IsRequired()
+                        .HasColumnType("varchar(160)")
+                        .HasColumnName("sender_name");
+
+                    b.HasKey("ReplyId");
+
+                    b.HasIndex("CenterId", "CreatedBy");
+
+                    b.HasIndex("CenterId", "DeliveryId")
+                        .IsUnique();
+
+                    b.ToTable("notification_replies", (string)null);
+                });
+
             modelBuilder.Entity("EduTwin.DAL.Organization.Center", b =>
                 {
                     b.Property<string>("CenterId")
@@ -5318,6 +6265,150 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasName("ux_teachers_center_id_teacher_id");
 
                     b.ToTable("teachers", (string)null);
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.PlatformOperations.PlatformAiCall", b =>
+                {
+                    b.Property<string>("CallId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("call_id");
+
+                    b.Property<long?>("CachedTokens")
+                        .HasColumnType("bigint")
+                        .HasColumnName("cached_tokens");
+
+                    b.Property<long>("DurationMs")
+                        .HasColumnType("bigint")
+                        .HasColumnName("duration_ms");
+
+                    b.Property<decimal?>("EstimatedUsd")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("decimal(18,8)")
+                        .HasColumnName("estimated_usd");
+
+                    b.Property<long?>("InputTokens")
+                        .HasColumnType("bigint")
+                        .HasColumnName("input_tokens");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("varchar(120)")
+                        .HasColumnName("model");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("outcome");
+
+                    b.Property<long?>("OutputTokens")
+                        .HasColumnType("bigint")
+                        .HasColumnName("output_tokens");
+
+                    b.Property<string>("PoolAlias")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("pool_alias");
+
+                    b.Property<string>("PriceVersion")
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)")
+                        .HasColumnName("price_version");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)")
+                        .HasColumnName("provider");
+
+                    b.Property<string>("Stage")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("stage");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("started_at");
+
+                    b.Property<long?>("ThinkingTokens")
+                        .HasColumnType("bigint")
+                        .HasColumnName("thinking_tokens");
+
+                    b.Property<long?>("TotalTokens")
+                        .HasColumnType("bigint")
+                        .HasColumnName("total_tokens");
+
+                    b.HasKey("CallId");
+
+                    b.HasIndex("StartedAt", "Provider", "Model");
+
+                    b.ToTable("platform_ai_calls", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_platform_ai_call_duration", "duration_ms >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.PlatformOperations.PlatformOpsAlert", b =>
+                {
+                    b.Property<string>("AlertKey")
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)")
+                        .HasColumnName("alert_key");
+
+                    b.Property<string>("EpisodeId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("episode_id");
+
+                    b.Property<DateTime>("FirstSeenAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("first_seen_at");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("is_active");
+
+                    b.Property<DateTime>("LastSeenAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("last_seen_at");
+
+                    b.Property<DateTime?>("NotifiedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("notified_at");
+
+                    b.Property<ulong>("RowVersion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("row_version");
+
+                    b.HasKey("AlertKey");
+
+                    b.ToTable("platform_ops_alerts", (string)null);
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.PlatformOperations.PlatformOpsSnapshot", b =>
+                {
+                    b.Property<string>("SnapshotKey")
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)")
+                        .HasColumnName("snapshot_key");
+
+                    b.Property<DateTime>("CapturedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("captured_at");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("json")
+                        .HasColumnName("payload");
+
+                    b.HasKey("SnapshotKey");
+
+                    b.ToTable("platform_ops_snapshots", (string)null);
                 });
 
             modelBuilder.Entity("EduTwin.DAL.Recommendations.LearningPath", b =>
@@ -6741,6 +7832,116 @@ namespace EduTwin.DAL.Persistence.Migrations
                     b.Navigation("ParentNode");
 
                     b.Navigation("Subject");
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.Notifications.NotificationDelivery", b =>
+                {
+                    b.HasOne("EduTwin.DAL.Notifications.NotificationEvent", "Event")
+                        .WithMany()
+                        .HasForeignKey("CenterId", "EventId")
+                        .HasPrincipalKey("CenterId", "EventId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("EduTwin.DAL.IdentityAndTenancy.User", null)
+                        .WithMany()
+                        .HasForeignKey("CenterId", "UserId")
+                        .HasPrincipalKey("CenterId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Event");
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.Notifications.NotificationDispatch", b =>
+                {
+                    b.HasOne("EduTwin.DAL.Notifications.NotificationEvent", null)
+                        .WithOne()
+                        .HasForeignKey("EduTwin.DAL.Notifications.NotificationDispatch", "CenterId", "EventId")
+                        .HasPrincipalKey("EduTwin.DAL.Notifications.NotificationEvent", "CenterId", "EventId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.Notifications.NotificationEvent", b =>
+                {
+                    b.HasOne("EduTwin.DAL.Organization.Center", null)
+                        .WithMany()
+                        .HasForeignKey("CenterId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("EduTwin.DAL.Notifications.NotificationMessage", null)
+                        .WithMany()
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("EduTwin.DAL.IdentityAndTenancy.User", null)
+                        .WithMany()
+                        .HasForeignKey("CenterId", "CreatedBy")
+                        .HasPrincipalKey("CenterId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.Notifications.NotificationMessage", b =>
+                {
+                    b.HasOne("EduTwin.DAL.Organization.Center", null)
+                        .WithMany()
+                        .HasForeignKey("CenterId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("EduTwin.DAL.Notifications.NotificationMessage", null)
+                        .WithMany()
+                        .HasForeignKey("CenterId", "CorrectionOfMessageId")
+                        .HasPrincipalKey("CenterId", "MessageId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("EduTwin.DAL.IdentityAndTenancy.User", null)
+                        .WithMany()
+                        .HasForeignKey("CenterId", "SenderUserId")
+                        .HasPrincipalKey("CenterId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.Notifications.NotificationMessageAction", b =>
+                {
+                    b.HasOne("EduTwin.DAL.IdentityAndTenancy.User", null)
+                        .WithMany()
+                        .HasForeignKey("CenterId", "CreatedBy")
+                        .HasPrincipalKey("CenterId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("EduTwin.DAL.Notifications.NotificationMessage", null)
+                        .WithMany()
+                        .HasForeignKey("CenterId", "MessageId")
+                        .HasPrincipalKey("CenterId", "MessageId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("EduTwin.DAL.Notifications.NotificationMessage", null)
+                        .WithMany()
+                        .HasForeignKey("CenterId", "ReplacementMessageId")
+                        .HasPrincipalKey("CenterId", "MessageId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_notification_message_actions_notification_messages_center_i~1");
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.Notifications.NotificationReply", b =>
+                {
+                    b.HasOne("EduTwin.DAL.IdentityAndTenancy.User", null)
+                        .WithMany()
+                        .HasForeignKey("CenterId", "CreatedBy")
+                        .HasPrincipalKey("CenterId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("EduTwin.DAL.Notifications.NotificationDelivery", null)
+                        .WithMany()
+                        .HasForeignKey("CenterId", "DeliveryId")
+                        .HasPrincipalKey("CenterId", "DeliveryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("EduTwin.DAL.Organization.Center", b =>

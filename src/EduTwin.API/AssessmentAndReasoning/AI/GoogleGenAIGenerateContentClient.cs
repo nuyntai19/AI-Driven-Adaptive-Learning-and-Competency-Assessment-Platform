@@ -5,6 +5,8 @@ using EduTwin.BLL.AssessmentAndReasoning.Processing;
 using Google.GenAI;
 using Google.GenAI.Types;
 using Microsoft.Extensions.Options;
+using EduTwin.BLL.Platform.Operations;
+using EduTwin.DAL.PlatformOperations;
 
 namespace EduTwin.API.AssessmentAndReasoning.AI;
 
@@ -18,14 +20,18 @@ public sealed class GoogleGenAIGenerateContentClient : IGeminiGenerateContentCli
     private readonly SemaphoreSlim _localSlots;
     private int _requestCounter;
     private bool _disposed;
+    private readonly IAiUsageRecorder? _usage;
+    private readonly TimeProvider _clock;
 
     public GoogleGenAIGenerateContentClient(IOptions<GeminiOptions> options,
         ILogger<GoogleGenAIGenerateContentClient>? logger = null, GeminiQuotaCoordinator? quota = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null, IAiUsageRecorder? usage = null)
     {
         _options = options.Value;
         _logger = logger;
         _quota = quota;
+        _usage = usage;
+        _clock = timeProvider ?? TimeProvider.System;
         _availability = new(timeProvider ?? TimeProvider.System);
         // Production uses the shared SQL gate. Standalone clients still respect
         // the same limit locally instead of silently having no capacity guard.
@@ -90,6 +96,8 @@ public sealed class GoogleGenAIGenerateContentClient : IGeminiGenerateContentCli
             TimeSpan? providerRetryAfter = null;
             int? actualTokens = null;
             TimeSpan? failedPoolDelay = null;
+            PlatformAiCall? invocation = null;
+            long invocationStarted = 0;
             try
             {
                 if (_quota is not null)
@@ -105,11 +113,20 @@ public sealed class GoogleGenAIGenerateContentClient : IGeminiGenerateContentCli
                 }
                 var client = _clients.GetOrAdd(keys[index], key => new Client(apiKey: key,
                     httpOptions: new HttpOptions { RetryOptions = new HttpRetryOptions { Attempts = 1 } }));
+                invocation = new() { CallId = Guid.NewGuid(), StartedAt = _clock.GetUtcNow().UtcDateTime, Provider = "Gemini", Model = model,
+                    PoolAlias = "pool-" + (pools.ToList().IndexOf(pool) + 1), Stage = AiUsageStage.Current };
+                invocationStarted = System.Diagnostics.Stopwatch.GetTimestamp();
                 var response = images.Count == 0
                     ? await client.Models.GenerateContentAsync(model, prompt, config, token)
                     : await client.Models.GenerateContentAsync(model, new Content { Parts = parts }, config, token);
-                token.ThrowIfCancellationRequested();
                 actualTokens = response.UsageMetadata?.PromptTokenCount;
+                invocation.InputTokens = actualTokens;
+                invocation.OutputTokens = response.UsageMetadata?.CandidatesTokenCount;
+                invocation.ThinkingTokens = response.UsageMetadata?.ThoughtsTokenCount;
+                invocation.CachedTokens = response.UsageMetadata?.CachedContentTokenCount;
+                invocation.TotalTokens = response.UsageMetadata?.TotalTokenCount;
+                invocation.Outcome = "success";
+                token.ThrowIfCancellationRequested();
                 RecordTokens("input", actualTokens);
                 RecordTokens("output", response.UsageMetadata?.CandidatesTokenCount);
                 RecordTokens("thinking", response.UsageMetadata?.ThoughtsTokenCount);
@@ -123,7 +140,7 @@ public sealed class GoogleGenAIGenerateContentClient : IGeminiGenerateContentCli
                 unavailablePools.Add(pool.ProjectId);
                 waits.Add((deferred.RetryAfter, deferred.ErrorCode == "AI_PROVIDER_DAILY_QUOTA_WAIT"));
             }
-            catch (OperationCanceledException) { throw; }
+            catch (OperationCanceledException) { if (invocation is not null) invocation.Outcome = "cancelled"; throw; }
             catch (AIAnalysisInfrastructureException) { throw; }
             catch (GeminiAdapterException) { throw; }
             catch (Exception ex)
@@ -131,6 +148,7 @@ public sealed class GoogleGenAIGenerateContentClient : IGeminiGenerateContentCli
                 var status = StatusCode(ex);
                 transient = status is 408 or 429 or >= 500 || (ex is HttpRequestException && status == 0);
                 quotaFailure = status == 429;
+                if (invocation is not null && quotaFailure) invocation.Outcome = "rate_limited";
                 if (quotaFailure)
                 {
                     var failure = GeminiQuotaFailureClassifier.Classify(ex.Message);
@@ -154,6 +172,12 @@ public sealed class GoogleGenAIGenerateContentClient : IGeminiGenerateContentCli
             }
             finally
             {
+                if (invocation is not null)
+                {
+                    invocation.DurationMs = (long)System.Diagnostics.Stopwatch.GetElapsedTime(invocationStarted).TotalMilliseconds;
+                    try { _usage?.Record(invocation); }
+                    catch (Exception ex) { _logger?.LogWarning("Operational usage recorder failed: {ErrorType}", ex.GetType().Name); }
+                }
                 if (lease is not null && _quota is not null)
                 {
                     using var releaseTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));

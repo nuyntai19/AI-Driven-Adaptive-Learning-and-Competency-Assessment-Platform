@@ -21,8 +21,8 @@ public sealed class ListPermissionsUseCaseTests
         });
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(71, result.TotalItems);
-        Assert.Equal(71, result.Data.Count);
+        Assert.Equal(96, result.TotalItems); // Prior catalog + three root-only operational monitoring capabilities.
+        Assert.Equal(96, result.Data.Count);
         Assert.All(result.Data, permission =>
         {
             Assert.Equal(

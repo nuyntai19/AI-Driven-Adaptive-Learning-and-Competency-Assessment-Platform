@@ -81,6 +81,7 @@ public sealed class GeminiAIService : IAIService, IAIAnalysisProfile, IPartition
 
             try
             {
+                using var usageStage = EduTwin.BLL.Platform.Operations.AiUsageStage.Begin("grading");
                 providerResult = !request.AllImages().Any()
                     ? await _client.GenerateContentAsync(
                         model,

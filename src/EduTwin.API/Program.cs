@@ -25,6 +25,8 @@ using EduTwin.API.AssessmentAndReasoning.Attachments;
 using EduTwin.API.Security;
 using EduTwin.DAL.Seeding;
 using EduTwin.BLL.Platform;
+using EduTwin.BLL.Notifications;
+using EduTwin.API.Notifications;
 
 var repairMathGrading = args.Contains("--repair-math-grading", StringComparer.Ordinal);
 var builder = WebApplication.CreateBuilder(args.Where(arg => arg != "--repair-math-grading").ToArray());
@@ -162,6 +164,12 @@ builder.Services.AddAssessmentAndReasoning();
 builder.Services.AddRecommendations();
 builder.Services.AddDashboards();
 builder.Services.AddPlatform(builder.Configuration);
+builder.Services.AddSingleton<EduTwin.BLL.Platform.Operations.IOperationalHostProbe, EduTwin.API.PlatformOperations.OperationalHostProbe>();
+builder.Services.AddHostedService<EduTwin.API.PlatformOperations.OperationsBackgroundService>();
+builder.Services.AddNotifications();
+builder.Services.AddSingleton<INotificationPreviewProtector, NotificationPreviewProtector>();
+builder.Services.Configure<NotificationWorkerOptions>(builder.Configuration.GetSection("Notifications:Worker"));
+builder.Services.AddHostedService<NotificationBackgroundService>();
 builder.Services.AddGeminiAI(builder.Configuration);
 builder.Services.AddAttemptAttachmentStorage(builder.Configuration);
 

@@ -40,6 +40,7 @@ public sealed class GeminiVisualEvidenceInspector(IGeminiGenerateContentClient c
         var started = System.Diagnostics.Stopwatch.GetTimestamp();
         try
         {
+            using var usageStage = EduTwin.BLL.Platform.Operations.AiUsageStage.Begin("visual");
             var images = withImages.SelectMany(i => i.Request.StudentSubmission.ImageParts)
                 .Select(i => new GeminiInlineImagePart(i.Data, i.MimeType)).ToArray();
             var index = 0;

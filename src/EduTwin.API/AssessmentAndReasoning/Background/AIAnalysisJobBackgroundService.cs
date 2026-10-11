@@ -12,19 +12,21 @@ public sealed class AIAnalysisJobBackgroundService : BackgroundService
     private readonly AIAnalysisJobWorkerOptions _options;
     private readonly AIAnalysisJobWorkerIdentity _identity;
     private readonly ILogger<AIAnalysisJobBackgroundService> _logger;
+    private readonly EduTwin.BLL.Platform.Operations.OperationalTelemetry? _telemetry;
 
     public AIAnalysisJobBackgroundService(
         IServiceScopeFactory scopeFactory,
         TimeProvider timeProvider,
         AIAnalysisJobWorkerOptions options,
         AIAnalysisJobWorkerIdentity identity,
-        ILogger<AIAnalysisJobBackgroundService> logger)
+        ILogger<AIAnalysisJobBackgroundService> logger, EduTwin.BLL.Platform.Operations.OperationalTelemetry? telemetry = null)
     {
         _scopeFactory = scopeFactory;
         _timeProvider = timeProvider;
         _options = options;
         _identity = identity;
         _logger = logger;
+        _telemetry = telemetry;
         _options.Validate();
     }
 
@@ -35,6 +37,7 @@ public sealed class AIAnalysisJobBackgroundService : BackgroundService
             try
             {
                 var batch = await RunBatchOnceAsync(stoppingToken);
+                _telemetry?.Beat("analysis");
                 // Drain newly-unblocked checkpoints without paying a poll interval per question.
                 // No progress (quota wait/empty queue/failure) still backs off below.
                 if (batch.CompletedCount > 0 || batch.FallbackCompletedCount > 0 || batch.RecoveredCount > 0)

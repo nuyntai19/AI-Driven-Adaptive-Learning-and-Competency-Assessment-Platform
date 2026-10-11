@@ -6,6 +6,7 @@ import { logout } from "../auth/authApi";
 import { permissions } from "../auth/permissions";
 import { TeacherThemeScope } from "../components/teacher";
 import { ThemeToggle } from "../components/ThemeToggle";
+import { NotificationBell } from "../components/notifications/NotificationBell";
 import { useAuthStore } from "../stores/authStore";
 import { useModalAccessibility } from "../utils/useModalAccessibility";
 
@@ -26,6 +27,10 @@ interface TeacherNavigationGroup {
 const startsWith = (prefix: string) => (pathname: string) => pathname.startsWith(prefix);
 
 const teacherNavigationGroups: TeacherNavigationGroup[] = [
+  { label: "Thông tin", items: [
+    { label: "Thông báo", to: "/giao-vien/thong-bao", permissions: [permissions.notificationsReadOwn], match: startsWith("/giao-vien/thong-bao") },
+    { label: "Nhật ký hoạt động", to: "/giao-vien/nhat-ky-hoat-dong", permissions: [permissions.activityReadScoped], match: startsWith("/giao-vien/nhat-ky-hoat-dong") },
+  ] },
   {
     label: "Giảng dạy & Lớp học",
     items: [
@@ -357,6 +362,7 @@ export function TeacherLayout() {
 
             <div className="flex items-center gap-2 sm:gap-3">
               <ThemeToggle />
+              <NotificationBell />
               {/* Profile Dropdown */}
               <div className="relative">
                 <button

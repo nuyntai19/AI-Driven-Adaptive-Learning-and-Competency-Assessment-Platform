@@ -35,7 +35,7 @@ public class GlobalQueryFilterTests
         using var context = CreateContext();
         var entityTypes = context.Model.GetEntityTypes().Where(e => typeof(ITenantOwnedEntity).IsAssignableFrom(e.ClrType)).ToList();
 
-        Assert.Equal(44, entityTypes.Count); // prior 43 + class curriculum application ledger
+        Assert.Equal(50, entityTypes.Count); // prior 44 + notification event/dispatch/delivery/message
 
         foreach (var entityType in entityTypes)
         {
@@ -67,7 +67,7 @@ public class GlobalQueryFilterTests
         using var context = CreateContext();
         var entityTypes = context.Model.GetEntityTypes().Where(e => typeof(ITenantAppendOnlyEntity).IsAssignableFrom(e.ClrType)).ToList();
 
-        Assert.Equal(10, entityTypes.Count); // 5 legacy + authorization audit + evidence assessment + attempt attachment + student review request + teacher review history
+        Assert.Equal(14, entityTypes.Count); // prior 10 + immutable notification event/message
 
         foreach (var entityType in entityTypes)
         {
@@ -85,7 +85,7 @@ public class GlobalQueryFilterTests
         using var context = CreateContext();
         var entityTypes = context.Model.GetEntityTypes().Where(e => typeof(ITenantJoinEntity).IsAssignableFrom(e.ClrType)).ToList();
 
-        Assert.Equal(13, entityTypes.Count); // prior 12 + class curriculum application ledger
+        Assert.Equal(15, entityTypes.Count); // prior 13 + notification dispatch/delivery
 
         foreach (var entityType in entityTypes)
         {
@@ -249,9 +249,20 @@ public class GlobalQueryFilterTests
         var expectedWhitelist = new[]
         {
             "src/EduTwin.API/AssessmentAndReasoning/Attachments/AttachmentOrphanCleanupWorker.cs",
+            // Background-only queue discovery; each dispatch re-enters a fail-closed tenant scope.
+            "src/EduTwin.API/Notifications/NotificationBackgroundService.cs",
             "src/EduTwin.BLL/KnowledgeGraph/CreateKnowledgeEdgeUseCase.cs",
             "src/EduTwin.BLL/KnowledgeGraph/CreateKnowledgeNodeUseCase.cs",
+            // Explicit sender/recipient relay policy; own-message aggregate receipts only.
+            "src/EduTwin.BLL/Notifications/NotificationAudiencePolicy.cs",
+            "src/EduTwin.BLL/Notifications/NotificationManualService.cs",
+            // Scoped exclusively by owned delivery/message IDs for support relay projection.
+            "src/EduTwin.BLL/Notifications/NotificationProjection.cs",
+            "src/EduTwin.BLL/Notifications/NotificationInboxService.cs",
             "src/EduTwin.BLL/Platform/PlatformAuditService.cs",
+            // Approved root-only technical aggregates; explicit center sets and no academic entity materialization.
+            "src/EduTwin.BLL/Platform/Operations/OperationsMaintenance.cs",
+            "src/EduTwin.BLL/Platform/Operations/PlatformOperationsService.cs",
             "src/EduTwin.BLL/Platform/PlatformCenterService.cs",
             "src/EduTwin.BLL/Seeding/AuthorizationBootstrapper.cs",
             // Startup-only additive role repair, not callable as a business endpoint.

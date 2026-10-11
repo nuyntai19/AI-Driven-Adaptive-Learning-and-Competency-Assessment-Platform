@@ -102,6 +102,7 @@ public sealed class ReasoningBatchExecutor(
         GeminiGenerateContentResult raw;
         try
         {
+            using var usageStage = EduTwin.BLL.Platform.Operations.AiUsageStage.Begin("grading");
             raw = _options.Provider == "Groq"
                 ? await groq.GenerateAsync(model, prompt, images, timeout.Token)
                 : await gemini.GenerateContentWithImagesAsync(model, prompt, images, config, timeout.Token);

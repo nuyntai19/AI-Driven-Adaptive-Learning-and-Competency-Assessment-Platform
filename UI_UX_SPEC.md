@@ -1,5 +1,17 @@
 # EduTwin — UI/UX and Capability Specification
 
+> Amendment PLATFORM-OPS-OBS-01 (11/10/2026), người dùng phê duyệt triển khai: [SPEC vận hành Admin](docs/plans/PLATFORM-OPERATIONS-IMPLEMENTATION-SPEC-2026-10-11.md). Cho phép ba API GET/root-only, ba quyền non-delegable, metadata ledger AI và snapshot/alert vận hành như SPEC. Stage I không còn deferred trong phạm vi này; Stage H vẫn deferred. Ledger là metadata vận hành, ngoại lệ được duyệt đối với cấm bảng log AI, không chứa nội dung học thuật. Không purge/AI retry/billing mutation và không commit/push. Trạng thái COMPLETED-v1 trong phạm vi SPEC; [báo cáo kiểm chứng](docs/verification/PLATFORM-OPERATIONS-REPORT-2026-10-11.md) ghi kết quả, rollout và các giới hạn chưa triển khai. Không coi roadmap observability rộng hơn hoặc tải 1.000 người đồng thời đã nghiệm thu.
+
+> Admin journal/layout amendment 2026-10-11 (người dùng phê duyệt): sidebar chỉ có một mục Nhật ký; trang có Tổng quan và Kiểm toán chi tiết theo quyền riêng. URL cũ hoạt động/kiểm toán chuyển đến đúng tab, không gộp hoặc xóa dữ liệu/permission/API. Nội dung Admin dùng toàn chiều rộng còn lại, gutter 16px mobile/24px desktop, không max-width/padding lồng; mã hành động dài chỉ ở chi tiết kiểm toán. Không mở rộng observability trong lượt này.
+
+> Admin readability amendment 2026-10-11: ở browser zoom 100%, typography nền tảng tăng khoảng 25% (body 20px, nhãn menu 17.5px, metadata tối thiểu 15px); sidebar desktop 320px/header 80px, responsive không dùng CSS zoom/scale toàn trang. Sidebar/drawer/menu/khung tài khoản theo chế độ sáng và tối. Thông báo và Nhật ký hoạt động có icon, trạng thái chọn và aria-current, giữ capability guard. Chuông của cả bốn tác nhân luôn hiện Đã xem/Xóa tất cả, giải thích rõ trạng thái vô hiệu; dọn box không xóa inbox. Observability/token–cost/backlog/storage chỉ là đề xuất riêng, chưa mở rộng quyền hay triển khai trong bản sửa UI này.
+
+> UX amendment 2026-10-11 được người dùng yêu cầu: ẩn bộ chọn môn ở thông báo/nhật ký; box có Đã xem và Xóa tất cả chỉ cho xem nhanh trên trình duyệt, không xóa inbox; nhật ký tiếng Việt/tên đối tượng scoped/mã kỹ thuật thu gọn, font body ≥16px/meta ≥14px. Học sinh dùng Chèn công thức cho đáp án toán và lập luận, giữ mode chấm/API và authoring. Chi tiết khóa tại [Completion SPEC — bổ sung UX](docs/plans/NOTIFICATIONS-COMPLETION-SPEC.md).
+
+> UI lifecycle/receipt và gate còn lại theo [Completion SPEC](docs/plans/NOTIFICATIONS-COMPLETION-SPEC.md); không coi xác nhận nhận là đã xử lý nghiệp vụ.
+
+> Amendment 2026-10-10: [NF-01 UI](docs/plans/NOTIFICATIONS-NF01-SPEC.md) có chuông/inbox bốn layout; [NF-03a UI](docs/plans/NOTIFICATIONS-NF03-SEND-SPEC.md) bổ sung Soạn/Xem trước/Xác nhận/Đã gửi đúng quyền. Chuông là popover portal không tô tối trang; inbox trống không dựng hai ô rỗng. Sidebar Thông báo cho Teacher/Manager/Platform; Student qua chuông, chỉ nhận. Nhật ký mới để NF-04; thông báo không cấp quyền tài nguyên.
+
 > Phiên bản: 2.1-draft
 > Trạng thái: COURSE REBASELINE — cần Figma và stakeholder validation
 > Ngôn ngữ UI: Tiếng Việt
