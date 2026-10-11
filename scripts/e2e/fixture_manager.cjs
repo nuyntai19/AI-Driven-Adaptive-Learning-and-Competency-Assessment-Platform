@@ -5,16 +5,32 @@ const { mysql, sqlString } = require('../ops/mysql_admin.cjs');
 const { manifest, manifestPath } = require('./acceptance_stack.cjs');
 const CENTER_A_ID = '10000000-0000-0000-0000-000000000001';
 const CENTER_B_ID = '20000000-0000-0000-0000-000000000002';
-const CLASS_MATH_A_ID = '50000000-0000-0000-0000-000000000005';
 const TEACHER_MATH_A_ID = 'd0000000-0000-0000-0001-000000000002';
 const STUDENT01_A_ID = 'd0000000-0000-0000-0001-000000000004';
 const STUDENT02_A_ID = 'd0000000-0000-0000-0001-000000000005';
 const STUDENT01_B_ID = 'd0000000-0000-0000-0002-000000000004';
 function execSql(sql) { return mysql(sql, manifest().database); }
+function resolveActiveClassId(centerId, teacherId, studentId) {
+  const classId = execSql(`SELECT c.class_id
+    FROM classes c
+    INNER JOIN class_students cs
+      ON cs.center_id = c.center_id AND cs.class_id = c.class_id
+    WHERE c.center_id = ${sqlString(centerId)}
+      AND c.teacher_id = ${sqlString(teacherId)}
+      AND cs.student_id = ${sqlString(studentId)}
+      AND c.status = 'Active'
+      AND cs.status = 'Active'
+      AND c.is_deleted = 0
+    ORDER BY c.class_id
+    LIMIT 1;`).trim();
+  assert.ok(classId, `No active teacher class found for acceptance student ${studentId}.`);
+  return classId;
+}
 function createAssignmentFixture({ tag, title, timeLimitMinutes = 60, dueHoursFromNow = 48,
   questionConfigs = [{ questionId: 10000, points: 1 }, { questionId: 10001, points: 1 }],
-  centerId = CENTER_A_ID, classId = CLASS_MATH_A_ID, teacherId = TEACHER_MATH_A_ID, studentIds = [STUDENT01_A_ID] }) {
+  centerId = CENTER_A_ID, classId, teacherId = TEACHER_MATH_A_ID, studentIds = [STUDENT01_A_ID] }) {
   const state = manifest();
+  const resolvedClassId = classId ?? resolveActiveClassId(centerId, teacherId, studentIds[0]);
   const assignmentId = crypto.randomUUID();
   const fullTitle = 'E2E_ACC_' + tag + '_' + title;
   const dueAt = new Date(Date.now() + dueHoursFromNow * 3600 * 1000);
@@ -25,7 +41,7 @@ function createAssignmentFixture({ tag, title, timeLimitMinutes = 60, dueHoursFr
   fs.writeFileSync(manifestPath, JSON.stringify(state, null, 2));
   let sql = `START TRANSACTION; INSERT INTO assignments (assignment_id,center_id,class_id,created_by_teacher_id,title,instructions,
     due_at,time_limit_minutes,status,published_at,target_mode,allow_grade_mismatch,created_at,updated_at,is_deleted,row_version)
-    VALUES (${sqlString(assignmentId)},${sqlString(centerId)},${sqlString(classId)},${sqlString(teacherId)},${sqlString(fullTitle)},
+    VALUES (${sqlString(assignmentId)},${sqlString(centerId)},${sqlString(resolvedClassId)},${sqlString(teacherId)},${sqlString(fullTitle)},
     'Isolated acceptance fixture',${sqlString(dueIso)},${timeLimitMinutes ?? 'NULL'},'Published',UTC_TIMESTAMP(),'WholeClass',0,UTC_TIMESTAMP(),UTC_TIMESTAMP(),0,1);`;
   questionConfigs.forEach((q, index) => {
     sql += `INSERT INTO assignment_questions (center_id,assignment_id,question_id,order_index,points,created_at,is_voided,void_reason,voided_at,voided_by_user_id)
@@ -48,5 +64,5 @@ function cleanupFixtures() {
   manifest();
   return 0;
 }
-module.exports = { execSql, createAssignmentFixture, cleanupFixtures, CENTER_A_ID, CENTER_B_ID, CLASS_MATH_A_ID,
+module.exports = { execSql, createAssignmentFixture, cleanupFixtures, CENTER_A_ID, CENTER_B_ID,
   TEACHER_MATH_A_ID, STUDENT01_A_ID, STUDENT02_A_ID, STUDENT01_B_ID };

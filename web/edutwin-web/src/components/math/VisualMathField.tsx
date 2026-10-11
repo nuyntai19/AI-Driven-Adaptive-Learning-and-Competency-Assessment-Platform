@@ -87,6 +87,7 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
     const [loadError, setLoadError] = useState(false);
     const [retryCount, setRetryCount] = useState(0);
     const [inputMode, setInputMode] = useState<"math" | "text">("math");
+    const [isFieldEmpty, setIsFieldEmpty] = useState(value.trim().length === 0);
     const lastEmittedValueRef = useRef<string>(value);
 
     const onFocusRef = useRef(onFocus);
@@ -225,6 +226,7 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
             latestAutoFocus: latestAutoFocusRef.current,
           });
           lastEmittedValueRef.current = hydratedValue;
+          setIsFieldEmpty(hydratedValue.trim().length === 0);
 
           // Handle user typing / input
           const handleInput = () => {
@@ -234,6 +236,7 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
             const currentPlainText = normalizeMathLivePlainText(rawPlainText, currentLatex);
             lastEmittedValueRef.current = currentLatex;
             latestValueRef.current = currentLatex;
+            setIsFieldEmpty(currentLatex.trim().length === 0);
             onChangeRef.current(currentLatex, currentPlainText);
           };
 
@@ -325,6 +328,9 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
       if (shouldSyncExternalValue(value, currentVal, lastEmittedValueRef.current)) {
         mathfieldRef.current.setValue(value || "", { silenceNotifications: true });
         lastEmittedValueRef.current = value;
+        setIsFieldEmpty(value.trim().length === 0);
+      } else {
+        setIsFieldEmpty(currentVal.trim().length === 0);
       }
     }, [value, isReady]);
 
@@ -390,6 +396,8 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
         const rawPlainText = mf.getValue ? mf.getValue("plain-text") : newVal;
         const plainText = normalizeMathLivePlainText(rawPlainText, newVal);
         lastEmittedValueRef.current = newVal;
+        latestValueRef.current = newVal;
+        setIsFieldEmpty(newVal.trim().length === 0);
         setInputMode("math");
         onChangeRef.current(newVal, plainText);
       },
@@ -402,6 +410,8 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
         if (disabled || !mathfieldRef.current) return;
         mathfieldRef.current.setValue("", { silenceNotifications: true });
         lastEmittedValueRef.current = "";
+        latestValueRef.current = "";
+        setIsFieldEmpty(true);
         onChangeRef.current("", "");
       },
       getValue: () => {
@@ -414,6 +424,7 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
         if (latestDisabledRef.current || !mathfieldRef.current) return;
         mathfieldRef.current.setValue(latex, { silenceNotifications: true });
         lastEmittedValueRef.current = latex;
+        setIsFieldEmpty(latex.trim().length === 0);
         const rawPlainText = mathfieldRef.current.getValue
           ? mathfieldRef.current.getValue("plain-text")
           : latex;
@@ -530,6 +541,8 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
                     onClick={() => {
                       mathfieldRef.current?.setValue("");
                       lastEmittedValueRef.current = "";
+                      latestValueRef.current = "";
+                      setIsFieldEmpty(true);
                       onChangeRef.current("", "");
                       mathfieldRef.current?.focus();
                     }}
@@ -567,34 +580,38 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
             />
           </div>
         ) : (
-          <div
-            ref={containerRef}
-            className={`${
-              compact ? "p-1.5 min-h-[46px]" : "p-3.5 min-h-[56px] rounded-b-2xl"
-            } text-inherit overflow-x-auto min-w-0 ${
-              disabled ? "cursor-default select-text" : "cursor-text bg-transparent"
-            } ${inputMode === "text" ? "math-field-text-mode" : "math-field-math-mode"}`}
-            onPointerDown={() => {
-              if (!disabled) onFocusRef.current?.();
-            }}
-            onClick={() => {
-              if (!disabled) {
-                onFocusRef.current?.();
-                mathfieldRef.current?.focus();
-              }
-            }}
-          />
-        )}
+          <div className="relative">
+            <div
+              ref={containerRef}
+              className={`${
+                compact ? "p-1.5 min-h-[46px]" : "p-3.5 min-h-[56px] rounded-b-2xl"
+              } text-inherit overflow-x-auto min-w-0 ${
+                disabled ? "cursor-default select-text" : "cursor-text bg-transparent"
+              } ${inputMode === "text" ? "math-field-text-mode" : "math-field-math-mode"}`}
+              onPointerDown={() => {
+                if (!disabled) onFocusRef.current?.();
+              }}
+              onClick={() => {
+                if (!disabled) {
+                  onFocusRef.current?.();
+                  mathfieldRef.current?.focus();
+                }
+              }}
+            />
 
-        {/* Empty state hint */}
-        {!value && (
-          <div
-            className={`absolute text-slate-400 text-sm pointer-events-none select-none font-sans ${
-              compact ? "left-2.5 top-2" : "left-4 top-[46px]"
-            }`}
-            style={{ display: isReady ? "block" : "none" }}
-          >
-            {placeholder}
+            {/* Keep the hint relative to the input area. The toolbar can wrap to
+                multiple rows, so positioning it from the outer card caused the
+                hint to overlap the mode buttons on narrower viewports. */}
+            {isFieldEmpty && (
+              <div
+                className={`absolute text-slate-400 text-sm pointer-events-none select-none font-sans ${
+                  compact ? "left-3.5 top-3" : "left-6 top-5"
+                }`}
+                style={{ display: isReady ? "block" : "none" }}
+              >
+                {placeholder}
+              </div>
+            )}
           </div>
         )}
       </div>

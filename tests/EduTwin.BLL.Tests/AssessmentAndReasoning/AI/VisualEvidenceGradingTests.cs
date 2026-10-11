@@ -46,6 +46,82 @@ public sealed class VisualEvidenceGradingTests
         Assert.Throws<AIAnalysisValidationException>(() => Parse(request, Response()));
     }
 
+    [Fact]
+    public void AllMissingVisualEvidenceCanRetainPartialCreditForAMixedCriterion()
+    {
+        var original = Request();
+        var evidence = new RubricVisualEvidence[]
+        {
+            new("combined", 1, "Missing", 1, "Không thấy ký hiệu f(2)=4 trong ảnh."),
+            new("combined", 2, "Missing", 1, "Không thấy nhãn x=2 trong ảnh.")
+        };
+        var request = original with
+        {
+            VerifiedVisualEvidence = evidence,
+            Question = original.Question with
+            {
+                GradingCriteria = original.Question.GradingCriteria with
+                {
+                    Criteria =
+                    [
+                        new("combined", "Lập luận và hình minh họa", "Chấm lập luận đúng và các ký hiệu trong hình.", 10)
+                        {
+                            VisualRequirements = ["Có ký hiệu f(2)=4", "Có nhãn x=2"]
+                        }
+                    ]
+                }
+            }
+        };
+        var response = Response() with
+        {
+            SuggestedScore = 6,
+            SuggestedRubricScores = [Score("combined", 6)],
+            CriterionDeductions =
+            [
+                new("combined", "Visual", "Thiếu các ký hiệu bắt buộc trong hình minh họa.", "Ảnh không có ký hiệu f(2)=4 và nhãn x=2.")
+            ],
+            VisualEvidence = []
+        };
+
+        var parsed = Parse(request, response);
+
+        Assert.Equal(6m, parsed.SuggestedScore);
+        Assert.Equal(6m, Assert.Single(parsed.SuggestedRubricScores).AwardedScore);
+        Assert.Equal(evidence, parsed.VisualEvidence);
+    }
+
+    [Fact]
+    public void MissingVisualEvidenceStillCannotReceiveFullMixedCriterionCredit()
+    {
+        var original = Request();
+        var request = original with
+        {
+            Question = original.Question with
+            {
+                GradingCriteria = original.Question.GradingCriteria with
+                {
+                    Criteria =
+                    [
+                        new("combined", "Lập luận và hình minh họa", "Chấm lập luận đúng và ký hiệu trong hình.", 10)
+                        {
+                            VisualRequirements = ["Có ký hiệu f(2)=4"]
+                        }
+                    ]
+                }
+            }
+        };
+        var response = Response() with
+        {
+            SuggestedScore = 10,
+            SuggestedRubricScores = [Score("combined", 10)],
+            VisualEvidence = [new("combined", 1, "Missing", 1, "Không thấy ký hiệu f(2)=4 trong ảnh.")]
+        };
+
+        var error = Assert.Throws<AIAnalysisValidationException>(() => Parse(request, response));
+
+        Assert.Equal("IncompleteVisualEvidenceWithFullScore", error.DiagnosticDetail);
+    }
+
     [Theory]
     [InlineData("missing-entry")]
     [InlineData("duplicate")]

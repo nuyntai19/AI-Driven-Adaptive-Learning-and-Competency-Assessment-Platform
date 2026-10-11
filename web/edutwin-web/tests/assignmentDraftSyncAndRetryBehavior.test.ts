@@ -289,6 +289,14 @@ test("page adapter uses the shared production uploader, not an independent imple
   assert.ok(!body.includes("await prepareAttemptAttachmentUpload("));
 });
 
+test("draft save failure exposes manual retry and retries when the browser comes online", () => {
+  assert.match(pageSource, /window\.addEventListener\("online", retryFailedDraftSave\)/);
+  assert.match(pageSource, /window\.removeEventListener\("online", retryFailedDraftSave\)/);
+  assert.match(pageSource, />\s*Kết nối lại\s*<\/button>/);
+  assert.match(pageSource, /<span>Lỗi mạng<\/span>/);
+  assert.match(pageSource, /Math\.max\(saveVersionRef\.current, lastSavedVersionRef\.current \+ 1\)/);
+});
+
 test("actual sync callback preserves local draft and conflict on cached refetch error", async () => {
   const { c, writes } = pageHarness();
   c.refetchAssignment = async () => ({ isSuccess: false, isError: true, data: { data: { draftVersion: 1, draftAnswers: [] } } });

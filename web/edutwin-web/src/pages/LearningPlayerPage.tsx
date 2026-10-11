@@ -997,6 +997,26 @@ export const LearningPlayerPage = () => {
     };
   }, [assignmentId, assignmentAnswers, isAssignmentSubmitted, isLocallySubmitted, isAssignmentExpired, performSaveDraft]);
 
+  const retryFailedDraftSave = useCallback(() => {
+    if (!assignmentId || isAssignmentSubmitted || isLocallySubmitted || isAssignmentExpired || isDraftConflictRef.current) return;
+    const answersToRetry = assignmentAnswersRef.current;
+    if (Object.keys(answersToRetry).length === 0) return;
+
+    // Reuse the failed version when the request never reached the server. If
+    // the response alone was lost, the server treats the identical retry as
+    // idempotent. Never go backwards from the last acknowledged version.
+    const retryVersion = Math.max(saveVersionRef.current, lastSavedVersionRef.current + 1);
+    saveVersionRef.current = retryVersion;
+    latestQueuedVersionRef.current = Math.max(latestQueuedVersionRef.current, retryVersion);
+    void performSaveDraft(answersToRetry, retryVersion);
+  }, [assignmentId, isAssignmentSubmitted, isLocallySubmitted, isAssignmentExpired, performSaveDraft]);
+
+  useEffect(() => {
+    if (draftSaveStatus !== "error" || draftConflict) return;
+    window.addEventListener("online", retryFailedDraftSave);
+    return () => window.removeEventListener("online", retryFailedDraftSave);
+  }, [draftConflict, draftSaveStatus, retryFailedDraftSave]);
+
   // Mode 2: Adaptive Practice Mode Query
   const {
     data: adaptiveQuestion,
@@ -2367,7 +2387,7 @@ export const LearningPlayerPage = () => {
                     draftSaveStatus === "saving"
                       ? "Đang tự động lưu nháp..."
                       : draftSaveStatus === "error"
-                      ? "Chưa lưu được nháp, hệ thống sẽ tự thử lại."
+                      ? "Mất kết nối mạng. Bài làm vẫn được giữ trên thiết bị và chưa đồng bộ lên máy chủ."
                       : `Bản nháp đã lưu lúc ${lastDraftSavedTime ?? ""}`
                   }
                 >
@@ -2386,7 +2406,14 @@ export const LearningPlayerPage = () => {
                   {draftSaveStatus === "error" && (
                     <>
                       <span className="text-rose-500">⚠</span>
-                      <span>Lỗi lưu nháp</span>
+                      <span>Lỗi mạng</span>
+                      <button
+                        type="button"
+                        className="ml-1 font-bold underline underline-offset-2 hover:text-rose-900 dark:hover:text-rose-100"
+                        onClick={retryFailedDraftSave}
+                      >
+                        Kết nối lại
+                      </button>
                     </>
                   )}
                 </div>
