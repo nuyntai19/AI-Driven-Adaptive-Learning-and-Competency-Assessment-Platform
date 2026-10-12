@@ -964,7 +964,9 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
         {
             var tableRows = table.Elements(ns + "tr").ToList();
             if (tableRows.Count < 2) continue;
-            string CellText(XElement cell) => string.Join("\n", cell.Elements(ns + "p").Select(p => string.Concat(p.Descendants(ns + "t").Select(t => t.Value))));
+            string CellText(XElement cell) => string.Join("\n", cell.Elements(ns + "p").Select(p => string.Concat(
+                p.Descendants().Where(e => e.Name == ns + "t" || e.Name == ns + "br" || e.Name == ns + "cr" || e.Name == ns + "tab")
+                    .Select(e => e.Name == ns + "t" ? e.Value : e.Name == ns + "tab" ? "\t" : "\n"))));
             var headers = tableRows[0].Elements(ns + "tc").Select(c => NormalizeHeader(CellText(c))).ToList();
             if (!headers.Any(h => h is "questiontext" or "noidungcauhoi" or "cauhoi" or "noidung")) continue;
             foreach (var row in tableRows.Skip(1))

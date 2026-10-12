@@ -850,6 +850,22 @@ public sealed class QuestionImportUseCaseTests : IDisposable
         Assert.Empty(await _dbContext.Questions.ToListAsync());
     }
 
+    [Fact]
+    public async Task Audit_DocxTable_PreservesRunBreaksTabsAndParagraphs()
+    {
+        using var file = AuditZip(("word/document.xml", """
+            <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:tbl>
+            <w:tr><w:tc><w:p><w:r><w:t>QuestionText</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>QuestionType</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>CorrectAnswer</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Solution</w:t></w:r></w:p></w:tc></w:tr>
+            <w:tr><w:tc><w:p><w:r><w:t>Dòng 1</w:t><w:br/><w:t>Dòng 2</w:t><w:tab/><w:t>Cột</w:t><w:cr/><w:t>Dòng 3</w:t></w:r></w:p><w:p><w:r><w:t>Đoạn 2</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>ShortAnswer</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>2</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Có dấu "nháy"</w:t></w:r></w:p></w:tc></w:tr>
+            </w:tbl></w:body></w:document>
+            """));
+        var result = await new QuestionImportUseCase(_dbContext, _tenantContextMock.Object, _timeProviderMock.Object)
+            .PreviewAsync(file, "real-word-breaks.docx", default);
+        var question = Assert.Single(result.Data!.ValidQuestions);
+        Assert.Equal("Dòng 1\nDòng 2\tCột\nDòng 3\nĐoạn 2", question.QuestionText);
+        Assert.Equal("Có dấu \"nháy\"", question.Solution);
+    }
+
     public void Dispose()
     {
         _dbContext.Database.EnsureDeleted();

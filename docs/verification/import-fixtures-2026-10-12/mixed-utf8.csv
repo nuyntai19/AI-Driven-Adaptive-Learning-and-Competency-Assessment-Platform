@@ -1,0 +1,5 @@
+Nội dung câu hỏi,Loại câu hỏi,Đáp án đúng,Lời giải,MaxScore,ReasoningRequired
+"Dòng thứ nhất
+Dòng thứ hai",ShortAnswer,2,"Có dấu ""nháy""",10,true
+Câu sai điểm,ShortAnswer,2,Giải thích,1000,false
+Câu sai boolean,ShortAnswer,2,Giải thích,10,tru

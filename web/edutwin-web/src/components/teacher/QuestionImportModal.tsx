@@ -1,4 +1,4 @@
-import { useState, useRef, type ChangeEvent } from "react";
+import { useState, useRef, useCallback, useEffect, type ChangeEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { questionsApi } from "../../api/questionsApi";
 import { organizationApi } from "../../api/organizationApi";
@@ -121,7 +121,7 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
     }
   };
 
-  const handleReset = () => {
+  const handleReset = useCallback(() => {
     setSelectedFile(null);
     setPreviewData(null);
     setPreviewError(null);
@@ -130,7 +130,11 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) handleReset();
+  }, [isOpen, handleReset]);
 
   const downloadCsvTemplate = () => {
     const csvContent = QUESTION_IMPORT_CSV_TEMPLATE;
@@ -196,7 +200,7 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
                   ? "Đang tải danh sách chủ đề..."
                   : "-- Chọn chủ đề cây tri thức --"}
               </option>
-              {topicsData?.nodes?.map((node) => (
+              {topicsData?.nodes?.filter((node) => node.isActive).map((node) => (
                 <option key={node.nodeId} value={node.nodeId}>
                   {node.nodeName} ({node.nodeCode})
                 </option>
