@@ -5,6 +5,10 @@ import { organizationApi } from "../../api/organizationApi";
 import { getAssignments, getAssignmentProgress } from "../../api/assignmentsApi";
 import { getTeacherStudentTwin } from "../../api/digitalTwinApi";
 import { useAuthStore } from "../../stores/authStore";
+<<<<<<< Updated upstream
+=======
+import { teacherNotesApi } from "../../api/teacherNotesApi";
+>>>>>>> Stashed changes
 import { permissions } from "../../auth/permissions";
 import {
   TeacherPageHeader,
@@ -49,6 +53,7 @@ export function TeacherStudentManagementView() {
   const [isStudentPrintModalOpen, setIsStudentPrintModalOpen] = useState<boolean>(false);
   const [isClassPrintModalOpen, setIsClassPrintModalOpen] = useState<boolean>(false);
 
+<<<<<<< Updated upstream
   // Pedagogical notes state (stored by studentId in localStorage for teacher persistence)
   const [teacherNotes, setTeacherNotes] = useState<Record<string, string>>(() => {
     try {
@@ -66,6 +71,46 @@ export function TeacherStudentManagementView() {
       localStorage.setItem("teacher_pedagogical_notes", JSON.stringify(updated));
     } catch {
       // ignore
+=======
+  // Excel Export Async / Loading & Error State
+  const [isExportingExcel, setIsExportingExcel] = useState<boolean>(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  // Fetch Pedagogical Notes from Backend MySQL Database
+  const { data: serverNotesMap, refetch: refetchTeacherNotes } = useQuery({
+    queryKey: ["teacherPedagogicalNotes", actor?.centerId, actor?.userId],
+    queryFn: async () => {
+      const notes = await teacherNotesApi.getMyNotes();
+      const map: Record<string, string> = {};
+      notes.forEach((item) => {
+        map[item.studentId] = item.content;
+      });
+      return map;
+    },
+    enabled: Boolean(actor?.userId),
+  });
+
+  const [localNotes, setLocalNotes] = useState<Record<string, string>>({});
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+
+  const teacherNotes = useMemo(() => {
+    return {
+      ...(serverNotesMap || {}),
+      ...localNotes,
+    };
+  }, [serverNotesMap, localNotes]);
+
+  const handleSaveNote = async (studentId: string, note: string) => {
+    setLocalNotes((prev) => ({ ...prev, [studentId]: note }));
+    setSaveStatus("saving");
+    try {
+      await teacherNotesApi.upsertNoteForStudent(studentId, { content: note });
+      setSaveStatus("saved");
+      void refetchTeacherNotes();
+    } catch (err) {
+      console.error("Failed to save pedagogical note to database:", err);
+      setSaveStatus("error");
+>>>>>>> Stashed changes
     }
   };
 
@@ -1183,9 +1228,18 @@ export function TeacherStudentManagementView() {
                       Sổ Tay Nhận Xét & Kế Hoạch Bồi Dưỡng
                     </h4>
                     <p className="text-[11px] text-[var(--th-text-secondary)] mt-0.5">
-                      Ghi chú cá nhân của giáo viên nhằm theo dõi sự tiến bộ hoặc lưu ý phương pháp sư phạm cho học sinh này.
+                      Ghi chú cá nhân của giáo viên nhằm theo dõi sự tiến bộ hoặc lưu ý phương pháp sư phạm cho học sinh này (Lưu trữ vĩnh viễn trên cơ sở dữ liệu).
                     </p>
                   </div>
+                  {saveStatus === "saving" && (
+                    <span className="text-[11px] text-amber-600 animate-pulse font-medium">Đang lưu vào CSDL...</span>
+                  )}
+                  {saveStatus === "saved" && (
+                    <span className="text-[11px] text-emerald-600 font-medium">✓ Đã lưu vào CSDL</span>
+                  )}
+                  {saveStatus === "error" && (
+                    <span className="text-[11px] text-rose-600 font-medium">Lỗi khi lưu vào CSDL</span>
+                  )}
                 </div>
 
                 <textarea
@@ -1197,8 +1251,14 @@ export function TeacherStudentManagementView() {
                 />
 
                 <div className="flex justify-between items-center text-[11px] text-[var(--th-text-muted)]">
-                  <span>💾 Ghi chú được tự động lưu trên trình duyệt của bạn.</span>
-                  <span className="font-semibold text-emerald-600">Đã lưu tự động</span>
+                  <span>💾 Ghi chú được lưu trữ an toàn trên cơ sở dữ liệu hệ thống (MySQL).</span>
+                  <button
+                    type="button"
+                    onClick={() => handleSaveNote(selectedStudent.studentId, teacherNotes[selectedStudent.studentId] || "")}
+                    className="font-semibold text-primary-600 hover:text-primary-700 underline cursor-pointer"
+                  >
+                    Lưu ngay
+                  </button>
                 </div>
               </div>
             )}

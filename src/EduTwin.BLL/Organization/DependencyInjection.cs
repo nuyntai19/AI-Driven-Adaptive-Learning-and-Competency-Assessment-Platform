@@ -26,6 +26,16 @@ public static class DependencyInjection
         services.AddScoped<IAddStudentsToClassUseCase, AddStudentsToClassUseCase>();
         services.AddScoped<IRemoveStudentFromClassUseCase, RemoveStudentFromClassUseCase>();
         services.AddScoped<IListClassCandidateStudentsUseCase, ListClassCandidateStudentsUseCase>();
+<<<<<<< Updated upstream
+=======
+        services.AddScoped<IDeleteClassUseCase, DeleteClassUseCase>();
+        services.AddScoped<ICreateTeacherStudentNoteUseCase, CreateTeacherStudentNoteUseCase>();
+        services.AddScoped<IGetTeacherStudentNoteUseCase, GetTeacherStudentNoteUseCase>();
+        services.AddScoped<IListTeacherStudentNotesUseCase, ListTeacherStudentNotesUseCase>();
+        services.AddScoped<IUpdateTeacherStudentNoteUseCase, UpdateTeacherStudentNoteUseCase>();
+        services.AddScoped<IDeleteTeacherStudentNoteUseCase, DeleteTeacherStudentNoteUseCase>();
+        services.AddScoped<IUpsertTeacherStudentNoteUseCase, UpsertTeacherStudentNoteUseCase>();
+>>>>>>> Stashed changes
         return services;
     }
 }

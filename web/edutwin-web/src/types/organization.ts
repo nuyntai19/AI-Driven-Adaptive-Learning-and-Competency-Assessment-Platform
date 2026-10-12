@@ -286,3 +286,48 @@ export interface UpdateCenterProfileRequest {
   timezone: string;
   rowVersion: string;
 }
+
+export interface TeacherStudentNoteDto {
+  noteId: string;
+  teacherId: string;
+  teacherName?: string | null;
+  studentId: string;
+  studentName?: string | null;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+  rowVersion: string;
+}
+
+export interface CreateTeacherStudentNoteRequest {
+  studentId: string;
+  content: string;
+}
+
+export interface UpdateTeacherStudentNoteRequest {
+  content: string;
+  rowVersion?: string;
+}
+
+export interface UpsertTeacherStudentNoteRequest {
+  content: string;
+  rowVersion?: string;
+}
+
+export interface TeacherStudentNoteResponse {
+  data: TeacherStudentNoteDto;
+  meta: Meta;
+}
+
+export interface TeacherStudentNoteListResponse {
+  data: TeacherStudentNoteDto[];
+  meta: PagedMeta;
+}
+
+export interface TeacherStudentNoteListParams {
+  studentId?: string;
+  teacherId?: string;
+  page?: number;
+  pageSize?: number;
+}
+
