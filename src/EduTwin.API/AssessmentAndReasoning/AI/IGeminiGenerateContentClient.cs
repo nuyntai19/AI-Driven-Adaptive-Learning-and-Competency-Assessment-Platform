@@ -24,5 +24,6 @@ public interface IGeminiGenerateContentClient
         IReadOnlyList<GeminiInlineImagePart> images,
         GenerateContentConfig config,
         CancellationToken cancellationToken) =>
-        GenerateContentAsync(model, prompt, config, cancellationToken);
+        images.Count == 0 ? GenerateContentAsync(model, prompt, config, cancellationToken)
+            : throw new NotSupportedException("This AI adapter does not support image input; images must never be silently dropped.");
 }

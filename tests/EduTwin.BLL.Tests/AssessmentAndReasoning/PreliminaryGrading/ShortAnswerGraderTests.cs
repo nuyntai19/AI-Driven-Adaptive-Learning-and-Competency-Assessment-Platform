@@ -1,4 +1,5 @@
 using EduTwin.BLL.AssessmentAndReasoning.PreliminaryGrading;
+using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using FluentAssertions;
 using Xunit;
@@ -20,6 +21,7 @@ public class ShortAnswerGraderTests
         
         result.IsCorrect.Should().BeFalse();
         result.Score.Should().Be(0m);
+        result.ReasonCode.Should().Be(PreliminaryGradingReasonCodes.NoAnswer);
     }
 
     [Theory]
@@ -31,7 +33,8 @@ public class ShortAnswerGraderTests
         var result = _sut.Grade("Student Answer", correctAnswer, 1m, _criteria);
         
         result.IsCorrect.Should().BeNull();
-        result.Score.Should().Be(0m);
+        result.Score.Should().BeNull();
+        result.ReasonCode.Should().Be(PreliminaryGradingReasonCodes.InvalidReferenceAnswer);
     }
 
     [Theory]

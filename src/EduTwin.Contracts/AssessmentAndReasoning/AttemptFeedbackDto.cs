@@ -23,13 +23,24 @@ public sealed class AttemptFeedbackDataDto
     public AttemptFeedbackTeacherEvaluationDto? TeacherFinalEvaluation { get; set; }
     public StudentReviewRequestDto? ReviewRequest { get; set; }
     public RetryQuotaDto? RetryQuota { get; set; }
+    public AttemptFeedbackActionsDto Actions { get; set; } = new();
+    public AttemptAIProcessingDto? AIProcessing { get; set; }
     public AttemptFeedbackTwinChangeDto? TwinChange { get; set; }
     public AttemptFeedbackRecommendationDto? Recommendation { get; set; }
+}
+
+public sealed class AttemptAIProcessingDto
+{
+    public string Status { get; set; } = null!;
+    // Safe presentation category, never exception bodies, credentials, or project IDs.
+    public string? Reason { get; set; }
+    public DateTime? NextAttemptAt { get; set; }
 }
 
 public sealed class AttemptFeedbackStudentSubmissionDto
 {
     public string FinalAnswer { get; set; } = string.Empty;
+    public string? AnswerDisplayLatex { get; set; }
     public string? ReasoningText { get; set; }
     public decimal Confidence { get; set; }
     public uint TimeSpentSeconds { get; set; }
@@ -54,6 +65,7 @@ public sealed class AttemptFeedbackGradingCriteriaDto
 
 public sealed class AttemptFeedbackTeacherEvaluationDto
 {
+    public RubricGrade? RubricGrade { get; set; }
     public bool HasTeacherOverride { get; set; }
     public string? ReviewDecision { get; set; }
     public bool IsApprovedAsIs { get; set; }
@@ -61,6 +73,8 @@ public sealed class AttemptFeedbackTeacherEvaluationDto
     public decimal? TeacherScore { get; set; }
     public string? TeacherFeedback { get; set; }
     public string? TeacherReviewNote { get; set; }
+    public int? TeacherReasoningQuality { get; set; }
+    public string? TeacherErrorType { get; set; }
     public string? ReviewedByTeacherName { get; set; }
     public DateTime? ReviewedAt { get; set; }
     public AttemptFeedbackGradingDto? OriginalAIRawGrade { get; set; }
@@ -68,6 +82,7 @@ public sealed class AttemptFeedbackTeacherEvaluationDto
 
 public sealed class RetryQuotaDto
 {
+    public bool IsEligible { get; set; }
     public byte ManualRetriesUsed { get; set; }
     public byte ManualRetriesRemaining { get; set; }
     public int CooldownRemainingSeconds { get; set; }
@@ -75,11 +90,19 @@ public sealed class RetryQuotaDto
     public DateTime? NextRetryAllowedAt { get; set; }
 }
 
+public sealed class AttemptFeedbackActionsDto
+{
+    public bool CanRequestTeacherReview { get; set; }
+    public bool CanReportQuestion { get; set; }
+}
+
 public sealed class AttemptFeedbackGradingDto
 {
     public bool? IsCorrect { get; set; }
     public decimal? AwardedScore { get; set; }
     public decimal MaxScore { get; set; }
+    public string? ReasonCode { get; set; }
+    public string Source { get; set; } = "PendingTeacher";
 }
 
 public sealed class AttemptFeedbackAnalysisDto
@@ -102,6 +125,12 @@ public sealed class AttemptFeedbackAnalysisDto
     public string? Model { get; set; }
     public string? SolutionType { get; set; }
     public string? AiSolution { get; set; }
+    public string? AnswerAssessment { get; set; }
+    public string? ReasoningVerdict { get; set; }
+    public string? FeedbackOrigin { get; set; }
+    public decimal? SuggestedScore { get; set; }
+    public RubricGrade? SuggestedRubricGrade { get; set; }
+    public bool UsesAlternativeMethod { get; set; }
 }
 
 public sealed class AttemptFeedbackRootCauseNodeDto

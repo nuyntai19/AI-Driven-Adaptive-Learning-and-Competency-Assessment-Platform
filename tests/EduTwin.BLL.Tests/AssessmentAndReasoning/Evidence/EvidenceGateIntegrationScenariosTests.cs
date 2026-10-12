@@ -342,7 +342,7 @@ public sealed class EvidenceGateIntegrationScenariosTests : IDisposable
             analysis.OverrideVersion));
 
         Assert.Equal(expectedTrust, gateDecision.TrustLevel);
-        Assert.Equal(decimal.Parse(expectedWeight), gateDecision.ReasoningWeight);
+        Assert.Equal(decimal.Parse(expectedWeight, System.Globalization.CultureInfo.InvariantCulture), gateDecision.ReasoningWeight);
         Assert.Equal(expectedReview, gateDecision.RequiresTeacherReview);
     }
 

@@ -169,6 +169,21 @@ public sealed class EvidenceConsistencyCheckerTests
     }
 
     [Fact]
+    public void Evaluate_CorrectNumberWithFallacy_RequiresReviewWithoutChangingGrade()
+    {
+        var (attempt, question, analysis) = CreateValidContext(isCorrect: true, reasoningQuality: 20, errorType: ErrorType.Reasoning);
+        analysis.AnswerAssessment = "Correct";
+        analysis.ReasoningVerdict = "Invalid";
+        analysis.NeedsTeacherReview = true;
+        analysis.Feedback = "Cancelling digit 6 in 16/64 is not a valid algebraic operation.";
+        var result = _checker.Evaluate(attempt, question, analysis);
+        Assert.True(result.HasContradiction);
+        Assert.Contains("CORRECT_ANSWER_INVALID_REASONING", result.ReasonCodes);
+        Assert.Contains("AI_REQUESTED_TEACHER_REVIEW", result.ReasonCodes);
+        Assert.True(attempt.IsCorrect); // AI observations cannot change the deterministic grade.
+    }
+
+    [Fact]
     public void Evaluate_MetadataMismatch_DetectsContradiction()
     {
         var (attempt, question, analysis) = CreateValidContext();

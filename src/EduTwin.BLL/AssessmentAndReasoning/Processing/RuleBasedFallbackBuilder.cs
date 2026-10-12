@@ -41,6 +41,7 @@ public sealed class RuleBasedFallbackBuilder : IRuleBasedFallbackBuilder
             RootCauseNodeIds = JsonDocument.Parse("[]"),
             AnalysisConfidence = null,
             Feedback = feedback,
+            FeedbackOrigin = "RuleBased",
             IsFallback = true,
             NeedsTeacherReview = true,
             Provider = AnalysisProvider.RuleBased,

@@ -1,5 +1,9 @@
 # EduTwin — Project Requirements and SRS
 
+> Amendment PLATFORM-OPS-OBS-01 (11/10/2026), người dùng phê duyệt triển khai: [SPEC vận hành Admin](docs/plans/PLATFORM-OPERATIONS-IMPLEMENTATION-SPEC-2026-10-11.md). Cho phép ba API GET/root-only, ba quyền non-delegable, metadata ledger AI và snapshot/alert vận hành như SPEC. Stage I không còn deferred trong phạm vi này; Stage H vẫn deferred. Ledger là metadata vận hành, ngoại lệ được duyệt đối với cấm bảng log AI, không chứa nội dung học thuật. Không purge/AI retry/billing mutation và không commit/push. Trạng thái COMPLETED-v1 trong phạm vi SPEC; [báo cáo kiểm chứng](docs/verification/PLATFORM-OPERATIONS-REPORT-2026-10-11.md) ghi kết quả, rollout và các giới hạn chưa triển khai. Không coi roadmap observability rộng hơn hoặc tải 1.000 người đồng thời đã nghiệm thu.
+
+> Amendment 2026-10-10: NF-DATA-01/NF-SEC-01/NF-UI-01/NF-PERF-01 theo [đặc tả NF-01](docs/plans/NOTIFICATIONS-NF01-SPEC.md); người dùng đã cho phép hoàn thiện gửi/lifecycle/nghiệp vụ/nhật ký/vận hành tại [Completion SPEC](docs/plans/NOTIFICATIONS-COMPLETION-SPEC.md). Trạng thái IMPLEMENTING/VERIFYING, không coi toàn feature đã nghiệm thu. [Bằng chứng và gate còn mở](docs/verification/NOTIFICATIONS-COMPLETION-REPORT-2026-10-10.md).
+
 > Phiên bản: 2.1-draft
 > Trạng thái: COURSE REBASELINE — chờ nhóm và stakeholder xác nhận
 > Chủ sở hữu: Nhóm EduTwin
@@ -264,6 +268,8 @@ Thiếu một điều kiện phải fail closed.
 | FR-CONTENT-004 | Question hỗ trợ MultipleChoice, ShortAnswer và Essay | Must |
 | FR-CONTENT-005 | Question lưu grading criteria có schema/version rõ ràng | Must |
 | FR-CONTENT-006 | Draft/publish/archive tuân theo state machine và row version | Must |
+| FR-CONTENT-007 | Hỗ trợ nhập câu hỏi hàng loạt (Question Bulk Import) từ file định dạng `.docx`, `.xlsx`, `.csv`, `.txt` với luồng hai bước: phân tích cú pháp/xem trước lỗi (Preview) và xác nhận lưu vào ngân hàng câu hỏi (Confirm) | Must |
+| FR-CONTENT-008 | Hỗ trợ gán mô tả nhận thức sai lầm phổ biến (`misconception`) cho từng phương án sai của câu hỏi trắc nghiệm phục vụ phân tích lỗi suy luận của AI và Rule-based | Should |
 
 ### 7.5. Assignment và learning
 
@@ -276,6 +282,9 @@ Thiếu một điều kiện phải fail closed.
 | FR-LEARN-005 | Nộp bài (POST /learning/attempts) và upload ảnh nháp bắt buộc tài khoản Student (AccountType == Student) và có quyền learning.attempts.submit; gửi final answer, reasoning, confidence, time và hành vi cần thiết | Must |
 | FR-LEARN-006 | API nhận submission và trả trạng thái AI job bất đồng bộ | Must |
 | FR-LEARN-007 | Giao diện học sinh tích hợp không gian trợ lý cạnh bên (SideAssistantWorkspace: máy tính Casio fx-580VN X, bảng vẽ nháp vector có lưu trữ IndexedDB và xuất ảnh minh chứng, đồ thị hàm số 2D) và trình soạn thảo công thức Toán WYSIWYG MathLive (VisualMathField) | Must |
+| FR-LEARN-008 | Hỗ trợ thiết lập giới hạn thời gian làm bài (`TimeLimitMinutes`) cho bài tập; hiển thị đồng hồ đếm ngược thời gian thực trên giao diện học sinh và ghi nhận thời điểm bắt đầu làm bài qua `POST /students/me/assignments/{id}/start` | Must |
+| FR-LEARN-009 | Cung cấp cơ chế Chấm lại AI có kiểm soát (`AI Retry with Cooldown`): cho phép học sinh yêu cầu AI phân tích lại khi gặp lỗi với thời gian giãn cách 30 giây (`CooldownSeconds = 30s`), tối đa 3 lần bấm và tự động khóa tính năng nếu học sinh đã mở xem lời giải chi tiết | Must |
+| FR-LEARN-010 | Cung cấp cơ chế Học sinh Khiếu nại kết quả (`Student Review Request / Appeal`): cho phép học sinh gửi phản ánh kèm lý do khi không đồng tình với kết quả chấm của AI; yêu cầu được lưu trữ vào bảng `student_review_requests` và gắn huy hiệu ưu tiên trong hàng đợi xét duyệt của giáo viên | Must |
 
 ### 7.6. AI Reasoning và Evidence
 
@@ -293,6 +302,7 @@ Thiếu một điều kiện phải fail closed.
 | FR-AI-010 | Teacher xem queue, override analysis và kích hoạt replay | Must |
 | FR-AI-011 | AI chỉ phân tích reasoning và soạn phản hồi; chấm sơ bộ deterministic/teacher decision mới sở hữu điểm và kết quả cuối | Must |
 | FR-AI-012 | Khi preliminary `isCorrect = null` (điển hình Essay chưa chấm), Evidence phải ReviewOnly, reasoning weight bằng 0 và Knowledge Mastery không đổi cho tới Teacher HumanConfirmed + replay | Must |
+| FR-AI-015 | Chống thiên kiến rập khuôn trong chấm điểm AI (Anti-anchoring Bias Mitigation): Prompt Gemini phải tuân thủ 6 nguyên tắc sư phạm bắt buộc: công nhận các phương pháp giải thay thế hợp lệ, không trừ điểm các bước tính nhẩm trung gian đơn giản, đánh giá ưu tiên theo rubric, chỉ trừ điểm khi có lỗi logic thực sự và hiệu chỉnh độ tin cậy khi gặp cách giải mới lạ | Must |
 | FR-AI-013 | Phân biệt sự cố lưu trữ hạ tầng (AttachmentStorageUnavailable): AIAnalysisJobStateMachine hỗ trợ tối đa 3 persisted retries kèm exponential backoff; chỉ sự cố lưu trữ ảnh nháp đặc biệt này khi hết retry mới phân nhánh (bài có assignment chuyển Teacher Review Queue; bài free-practice chuyển sang FailedTerminal/AnalysisFailed và cho phép resubmit với ClientSubmissionId mới mà không vào review queue) | Must |
 | FR-AI-014 | Cơ chế Quản lý Cụm Khóa Đa Tầng Gemini (Multi-Key Pool & Round-Robin Failover): Hỗ trợ cấu hình song song 3 key (Gemini__ApiKey, Gemini__BackupKeys, Gemini__BackupKeys_2), phân bổ tải xoay vòng Round-Robin và tự động chuyển đổi khóa ngay lập tức (Automatic Failover) khi một khóa gặp lỗi Quota (HTTP 429), Timeout hoặc sự cố mạng | Must |
 
@@ -345,7 +355,7 @@ Thiếu một điều kiện phải fail closed.
 | ID | Requirement | Priority |
 |---|---|---|
 | FR-MTH-001 | Cung cấp Visual Math Input Toolbar với 5 tab ký tự toán học và xem trước công thức qua KaTeX client-side an toàn (trust: false) | Must |
-| FR-MTH-002 | Cung cấp QuestionAnswerEvaluationMode (TextExact, NumericRational, Manual) với ma trận ràng buộc QuestionType chặt chẽ | Must |
+| FR-MTH-002 | Cung cấp QuestionAnswerEvaluationMode (TextExact, NumericRational, Coordinate2D, Manual) với ma trận ràng buộc QuestionType chặt chẽ; Coordinate2D chuẩn hóa Unicode/LaTeX/dấu phân cách và so hai thành phần số hữu tỉ theo cấu trúc | Must |
 | FR-MTH-003 | Xây dựng MathAnswerNormalizer chuẩn hóa số thập phân, phân số, hỗn số về dạng phân số tối giản P/Q bằng BigInteger | Must |
 | FR-MTH-004 | Cung cấp ngăn kéo Máy tính Khoa học (Scientific Calculator Drawer) thuần tính toán, không chứa engine tự động giải toán | Must |
 | FR-MTH-005 | Cung cấp Bảng vẽ nháp vector (Vector Scratchpad Canvas) với đầy đủ công cụ vẽ, lưới ô ly, thước hình học, trục Oxy, lưu trữ draft scoped IndexedDB theo draft:{centerId}:{userId}:{clientSubmissionId} | Must |
@@ -603,3 +613,14 @@ Các mục này phải được cập nhật trước khi tài liệu chuyển t
 | CM-FR-05 | Xóa mềm Học sinh Bảo tồn Chứng cứ: Triển khai `DELETE /api/v1/students/{id}` với quyền `organization.students.delete`; soft-delete, gỡ class membership, bảo tồn 100% attempt/twin/assignment history. | FR | APPROVED | Cấm tuyệt đối hard-delete dữ liệu học thuật |
 | CM-SEC-01 | Ranh giới Phân quyền & Tenant: CenterManager bị cấm khỏi mọi endpoint PlatformAdmin (`403 Forbidden`); truy cập tài nguyên khác tenant trả `404 Not Found` fail-closed; không có quan hệ kế thừa role. | SEC | APPROVED | Tuân thủ ADR-POST-R09-CENTER-MANAGER-OPERATIONS |
 | CM-SEC-02 | Quản trị Phiên & Kiểm toán Khử khuẩn: Mọi thay đổi mật khẩu/trạng thái/vai trò đều tăng `auth_version`, thu hồi refresh token và ghi nhật ký kiểm toán đã khử khuẩn (`authorization_audit_logs`). | SEC | APPROVED | 0 password, 0 hash, 0 secret leakage |
+
+## 20. Role Boundary Security Enforcement, Shared Academic Workspaces & UI/UX Standardization (POST-R09-ROLE-BOUNDARY-UX)
+
+| ID | Yêu cầu | Loại | Trạng thái | Ghi chú |
+|---|---|---|---|---|
+| RB-SEC-01 | Ranh giới Vai trò Center Manager Fail-Closed: Khóa Center Manager vào phạm vi quản trị hành chính và tổng quan giám sát (`dashboards.center.read`, `organization.*`, `knowledge.subjects.*`, `authorization.*`). Tước bỏ 100% quyền học thuật thao tác trực tiếp (`knowledge.nodes.*`, `knowledge.edges.*`, `curriculum.*`, `questions.*`, `assignments.*`, `twin.reasoning.*`, `dashboards.teacher.read_scoped`). | SEC | APPROVED | Fail-closed với HTTP 403 / ForbiddenResource |
+| RB-SEC-02 | Chặn truy cập Học thuật Toàn diện: Mọi route, menu và API học thuật khi Center Manager cố gắng truy cập trực tiếp đều chuyển hướng sang `/khong-co-quyen` hoặc trả về mã lỗi 403. Không hiển thị bất kỳ mục menu học thuật nào trên thanh điều hướng trung tâm. | SEC | APPROVED | Đã kiểm thử qua Chrome CDP và tự động hóa |
+| RB-UI-01 | Đồng nhất Giao diện Giáo viên Dark Enterprise SaaS: Loại bỏ hoàn toàn các thành phần trang trí retro hoài cổ (hoa cúc daisy, border thô retro, hiệu ứng đổ bóng brutism). Áp dụng đồng nhất chuẩn Dark SaaS với badge vai trò màu cyan/emerald (`from-cyan-400 to-emerald-500`), sidebar quản trị, topbar ngữ cảnh trung tâm kèm ThemeToggle, user avatar menu và focus trap cho mobile drawer. | UX | APPROVED | Tuân thủ Center Manager Design Tokens |
+| RB-UI-02 | Không gian Làm việc Học thuật Dùng chung (Shared Academic Workspaces): Trích xuất các presentation workspace độc lập (`KnowledgeGraphWorkspace`, `CurriculumWorkspace`, `QuestionWorkspace`, `AssignmentWorkspace`, `ClassProgressWorkspace`, `ReviewQueueWorkspace`) đặt tại `src/components/academic/`, gắn vào các route `/giao-vien/*` với cấu hình `actor="teacher"`. Không trùng lặp mã nguồn giữa các vai trò. | UX | APPROVED | App.tsx tích hợp thống nhất qua dynamic import |
+| RB-UI-03 | Chuẩn hóa Thước đo Typography Doanh nghiệp: Quy chuẩn các token kích cỡ font trong hệ thống (`title: 30px`, `body: 16px`, `nav: 15px`, `ui: 14px`, `meta: 12px`). Toàn bộ input, button và table cell duy trì kích thước tối thiểu >= 14px để đảm bảo tính công thái học và khả năng tiếp cận WCAG 2.1 AA; thay thế triệt để các class `text-[10px]` thành `text-xs`. | UX | APPROVED | centerManagerDesignSystem.css & TeacherLayout |
+| RB-BR-01 | Mặc định Yêu cầu Trình bày Lời giải (reasoningRequired) là False: Thiết lập `reasoningRequired = false` mặc định khi tạo mới câu hỏi/bài tập (chế độ opt-in: "Yêu cầu học sinh trình bày lời giải"). Bài làm của học sinh không có phần giải trình vẫn được nộp và ghi nhận kết quả đánh giá năng lực hợp lệ mà không bị trừ điểm hay phạt lỗi. | BR | APPROVED | Question Workspace & Learning Player |

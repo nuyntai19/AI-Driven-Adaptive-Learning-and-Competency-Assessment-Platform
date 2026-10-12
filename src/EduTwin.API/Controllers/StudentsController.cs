@@ -257,7 +257,7 @@ public class StudentsController : ControllerBase
                 Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.1",
                 Status = StatusCodes.Status400BadRequest,
                 Title = "Dữ liệu đầu vào không hợp lệ.",
-                Detail = "Vui lòng kiểm tra lại thông tin cung cấp.",
+                Detail = result.ErrorMessage ?? "Vui lòng kiểm tra lại thông tin cung cấp.",
                 Instance = HttpContext.Request.Path,
                 Extensions = { ["traceId"] = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier, ["errorCode"] = result.ErrorCode }
             });
@@ -345,7 +345,7 @@ public class StudentsController : ControllerBase
                 Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.1",
                 Status = StatusCodes.Status400BadRequest,
                 Title = "Dữ liệu đầu vào không hợp lệ.",
-                Detail = "Vui lòng kiểm tra lại thông tin cung cấp.",
+                Detail = result.ErrorMessage ?? "Vui lòng kiểm tra lại thông tin cung cấp.",
                 Instance = HttpContext.Request.Path,
                 Extensions = { ["traceId"] = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier, ["errorCode"] = result.ErrorCode }
             });
@@ -645,15 +645,51 @@ public class StudentsController : ControllerBase
         throw new InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
     }
 
+    [HttpGet("me/workspace-summary")]
+    [Authorize(Policy = "assignments.assignments.read")]
+    public async Task<IActionResult> GetWorkspaceSummary([FromQuery] Guid? subjectId,
+        [FromServices] IGetStudentWorkspaceSummaryUseCase useCase, CancellationToken cancellationToken,
+        [FromQuery] Guid? classId = null, [FromQuery] bool? history = null)
+    {
+        var result = classId.HasValue || history.HasValue ? await useCase.ExecuteAsync(subjectId, classId, history, cancellationToken)
+            : await useCase.ExecuteAsync(subjectId, cancellationToken);
+        if (result is null) return NotFound(new ProblemDetails
+        {
+            Status = 404, Title = "Không tìm thấy dữ liệu học sinh.",
+            Extensions = { ["errorCode"] = ErrorCodes.ResourceNotFound }
+        });
+        return Ok(new { Data = result, Meta = new MetaDto
+        {
+            TraceId = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+            Timestamp = _timeProvider.GetUtcNow().UtcDateTime
+        } });
+    }
+
+    [HttpGet("me/academic-context")]
+    [Authorize(Policy = "dashboards.student.read_own")]
+    public async Task<IActionResult> GetAcademicContext([FromServices] ITenantContext tenant,
+        [FromServices] StudentAcademicScopeReader reader, [FromQuery] Guid? subjectId,
+        [FromQuery] Guid? classId, [FromQuery] bool history, CancellationToken ct)
+    {
+        if (!tenant.IsResolved || tenant.CenterId is null || tenant.UserId is null || tenant.Role != nameof(UserRole.Student)) return NotFound();
+        var scope = await reader.ReadAsync(tenant.CenterId.Value, tenant.UserId.Value, subjectId, classId, history, ct);
+        return scope is null ? NotFound(new ProblemDetails { Status = 404, Title = "Lớp không thuộc phạm vi học tập của bạn." }) :
+            Ok(new { Data = scope.Context, Meta = new MetaDto { TraceId = HttpContext.TraceIdentifier, Timestamp = _timeProvider.GetUtcNow().UtcDateTime } });
+    }
+
     [HttpGet("me/dashboard")]
+    // Academic context is read-only: students never select an unapplied curriculum.
     [Authorize(Policy = "dashboards.student.read_own")]
     public async Task<IActionResult> GetStudentDashboard(
         [FromQuery] Guid? subjectId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        [FromQuery] Guid? classId = null, [FromQuery] bool history = false)
     {
         var traceId = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier;
 
-        var result = await _getStudentDashboardUseCase.ExecuteAsync(subjectId, cancellationToken);
+        var result = classId.HasValue || history
+            ? await _getStudentDashboardUseCase.ExecuteAsync(subjectId, classId, history, cancellationToken)
+            : await _getStudentDashboardUseCase.ExecuteAsync(subjectId, cancellationToken);
         if (result.IsSuccess)
         {
             return Ok(new StudentDashboardResponse

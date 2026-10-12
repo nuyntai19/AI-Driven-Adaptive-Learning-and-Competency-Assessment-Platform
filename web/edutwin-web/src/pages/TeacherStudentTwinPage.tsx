@@ -217,7 +217,7 @@ const CenterManagerStudentTwinView: React.FC = () => {
                       {kt.lastReasoningQuality !== null && kt.lastReasoningQuality !== undefined && (
                         <>
                           <span>·</span>
-                          <span>Chất lượng suy luận gần nhất: {kt.lastReasoningQuality.toFixed(0)}%</span>
+                          <span>Chỉ số chất lượng lập luận gần nhất: {kt.lastReasoningQuality.toFixed(0)}/100 (không phải điểm bài)</span>
                         </>
                       )}
                       {kt.lastAttemptId && (
@@ -537,7 +537,7 @@ const TeacherStudentTwinLegacyView: React.FC = () => {
                     {kt.lastReasoningQuality !== null && kt.lastReasoningQuality !== undefined && (
                       <>
                         <span>·</span>
-                        <span>Chất lượng suy luận gần nhất: {kt.lastReasoningQuality.toFixed(0)}%</span>
+                        <span>Chỉ số chất lượng lập luận gần nhất: {kt.lastReasoningQuality.toFixed(0)}/100 (không phải điểm bài)</span>
                       </>
                     )}
                     {kt.lastAttemptId && (

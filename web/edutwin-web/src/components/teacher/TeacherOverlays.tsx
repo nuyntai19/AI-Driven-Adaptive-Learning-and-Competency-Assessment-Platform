@@ -2,6 +2,7 @@ import { createPortal } from "react-dom";
 import { useId, useRef, type ReactNode } from "react";
 import { useModalAccessibility } from "../../utils/useModalAccessibility";
 import { useThemeMode } from "../../utils/themeMode";
+import "./teacherDesignSystem.css";
 
 interface TeacherDrawerProps {
   isOpen: boolean;
@@ -32,17 +33,17 @@ export function TeacherDrawer({ isOpen, title, description, onClose, children, f
         aria-labelledby={titleId}
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
-        className="flex h-full w-full max-w-xl flex-col border-l-[1.5px] border-[var(--th-border)] bg-[var(--th-surface)] shadow-2xl"
+        className="flex h-full w-full max-w-xl flex-col border-l-[1.5px] border-slate-200 dark:border-slate-700/80 border-[var(--th-border)] bg-white dark:bg-[#111827] bg-[var(--th-surface)] text-slate-900 dark:text-slate-100 shadow-2xl"
       >
-        <header className="flex items-start justify-between gap-4 border-b-[1.5px] border-[var(--th-border)] bg-[var(--th-surface-muted)] p-4 sm:p-5">
+        <header className="flex items-start justify-between gap-4 border-b-[1.5px] border-slate-200 dark:border-slate-800 border-[var(--th-border)] bg-slate-50 dark:bg-[#0b0f19] bg-[var(--th-surface-muted)] p-4 sm:p-5">
           <div>
-            <h2 id={titleId} className="text-base sm:text-lg font-black text-[var(--th-text)]">{title}</h2>
-            {description && <p id={descriptionId} className="mt-1 text-xs font-medium text-[var(--th-text-secondary)]">{description}</p>}
+            <h2 id={titleId} className="text-base sm:text-lg font-black text-slate-900 dark:text-white text-[var(--th-text)]">{title}</h2>
+            {description && <p id={descriptionId} className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400 text-[var(--th-text-secondary)]">{description}</p>}
           </div>
-          <button ref={closeButtonRef} type="button" className="th-icon-button h-8 w-8 text-sm" aria-label="Đóng bảng điều khiển" onClick={onClose}>×</button>
+          <button ref={closeButtonRef} type="button" className="th-icon-button h-8 w-8 text-sm rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center justify-center font-bold" aria-label="Đóng bảng điều khiển" onClick={onClose}>×</button>
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
-        {footer && <footer className="border-t-[1.5px] border-[var(--th-border)] bg-[var(--th-surface-muted)] p-4">{footer}</footer>}
+        <div className="min-h-0 flex-1 overflow-y-auto p-5 bg-white dark:bg-[#111827] text-slate-900 dark:text-slate-100">{children}</div>
+        {footer && <footer className="border-t-[1.5px] border-slate-200 dark:border-slate-800 border-[var(--th-border)] bg-slate-50 dark:bg-[#0b0f19] bg-[var(--th-surface-muted)] p-4">{footer}</footer>}
       </aside>
     </div>,
     document.body,
@@ -105,25 +106,25 @@ export function TeacherModal({
         aria-labelledby={titleId}
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
-        className={`th-surface flex max-h-[88vh] ${responsiveWidthClass} flex-col overflow-hidden rounded-2xl border-[1.5px] border-[var(--th-border)] shadow-2xl`}
+        className={`th-surface bg-white dark:bg-[#111827] text-slate-900 dark:text-slate-100 flex max-h-[88vh] ${responsiveWidthClass} flex-col overflow-hidden rounded-2xl border-[1.5px] border-slate-200 dark:border-slate-700/80 border-[var(--th-border)] shadow-2xl`}
       >
-        <header className="flex items-start justify-between gap-4 border-b-[1.5px] border-[var(--th-border)] bg-[var(--th-surface-muted)] p-4 sm:p-5">
+        <header className="flex items-start justify-between gap-4 border-b-[1.5px] border-slate-200 dark:border-slate-800 border-[var(--th-border)] bg-slate-50 dark:bg-[#0b0f19] bg-[var(--th-surface-muted)] p-4 sm:p-5">
           <div className="min-w-0 flex-1">
-            <h2 id={titleId} className="text-base sm:text-lg font-black text-[var(--th-text)] truncate">{title}</h2>
-            {description && <p id={descriptionId} className="mt-1 text-xs font-medium text-[var(--th-text-secondary)]">{description}</p>}
+            <h2 id={titleId} className="text-base sm:text-lg font-black text-slate-900 dark:text-white text-[var(--th-text)] truncate">{title}</h2>
+            {description && <p id={descriptionId} className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400 text-[var(--th-text-secondary)]">{description}</p>}
           </div>
           <button
             ref={closeButtonRef}
             type="button"
-            className="th-icon-button h-8 w-8 text-base shrink-0"
+            className="th-icon-button h-8 w-8 text-base shrink-0 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center justify-center font-bold"
             aria-label="Đóng cửa sổ"
             onClick={onClose}
           >
             ×
           </button>
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">{children}</div>
-        {footer && <footer className="border-t-[1.5px] border-[var(--th-border)] bg-[var(--th-surface-muted)] p-3.5 sm:p-4">{footer}</footer>}
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 bg-white dark:bg-[#111827] text-slate-900 dark:text-slate-100">{children}</div>
+        {footer && <footer className="border-t-[1.5px] border-slate-200 dark:border-slate-800 border-[var(--th-border)] bg-slate-50 dark:bg-[#0b0f19] bg-[var(--th-surface-muted)] p-3.5 sm:p-4">{footer}</footer>}
       </div>
     </div>,
     document.body,

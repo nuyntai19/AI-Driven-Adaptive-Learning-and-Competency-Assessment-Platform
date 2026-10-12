@@ -227,34 +227,16 @@ public sealed class GetCenterDashboardUseCase : IGetCenterDashboardUseCase
             decimal classAverageMastery = 0m;
             if (enrolledCount > 0)
             {
-                // Find applicable topics from assigned curriculum or fallback to subject active topics
-                var anyClassCurriculumQuery = _dbContext.CurriculumClasses.AsNoTracking()
-                    .Where(cc => cc.CenterId == centerId && cc.ClassId == cls.ClassId);
-
-                var classCurriculumQuery = anyClassCurriculumQuery
-                    .Where(cc => cc.Curriculum != null &&
-                                 !cc.Curriculum.IsDeleted &&
-                                 cc.Curriculum.ReviewStatus == ReviewStatus.Published);
-
-                var hasAnyCurriculumAssigned = await anyClassCurriculumQuery.AnyAsync(cancellationToken);
-                var hasCurriculumAssigned = await classCurriculumQuery.AnyAsync(cancellationToken);
-
+                // The current application ledger is authoritative for learning scope.
+                // Planning links and ended applications must not inflate current rankings.
+                var applications = _dbContext.ClassCurriculumApplications.AsNoTracking()
+                    .Where(a => a.CenterId == centerId && a.ClassId == cls.ClassId && a.EndedAt == null &&
+                                !a.Curriculum.IsDeleted && a.Curriculum.ReviewStatus == ReviewStatus.Published);
                 var applicableTopicsQuery = _dbContext.KnowledgeNodes.AsNoTracking()
-                    .Where(n => n.CenterId == centerId &&
-                                n.SubjectId == cls.SubjectId &&
-                                n.NodeType == NodeType.Topic &&
-                                n.IsActive &&
-                                !n.IsDeleted);
-
-                if (hasAnyCurriculumAssigned)
-                {
-                    applicableTopicsQuery = applicableTopicsQuery.Where(n =>
-                        hasCurriculumAssigned &&
-                        _dbContext.CurriculumNodes.AsNoTracking().Any(cn =>
-                            cn.CenterId == centerId &&
-                            cn.NodeId == n.NodeId &&
-                            classCurriculumQuery.Any(cc => cc.CurriculumId == cn.CurriculumId)));
-                }
+                    .Where(n => n.CenterId == centerId && n.SubjectId == cls.SubjectId &&
+                                n.NodeType == NodeType.Topic && n.IsActive && !n.IsDeleted &&
+                                _dbContext.CurriculumNodes.Any(cn => cn.CenterId == centerId && cn.NodeId == n.NodeId &&
+                                    applications.Any(a => a.CurriculumId == cn.CurriculumId)));
 
                 var classTopics = await applicableTopicsQuery
                     .Select(n => new { n.NodeId, n.ExamImportance })

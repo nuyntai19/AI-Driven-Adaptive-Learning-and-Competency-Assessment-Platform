@@ -46,12 +46,31 @@ public class ClassStudentConfiguration : IEntityTypeConfiguration<Organization.C
             .HasColumnName("created_by")
             .HasColumnType("VARCHAR(36)");
 
+        builder.Property(cs => cs.GradeLevelAtEnrollment)
+            .HasColumnName("grade_level_at_enrollment")
+            .HasColumnType("TINYINT UNSIGNED");
+
+        builder.Property(cs => cs.GradeMismatchReason)
+            .HasColumnName("grade_mismatch_reason")
+            .HasMaxLength(500)
+            .HasColumnType("VARCHAR(500)");
+
+        builder.Property(cs => cs.ExceptionApprovedBy)
+            .HasColumnName("exception_approved_by")
+            .HasColumnType("VARCHAR(36)");
+
+        builder.Property(cs => cs.ExceptionApprovedAt)
+            .HasColumnName("exception_approved_at")
+            .HasColumnType("DATETIME(6)");
+
         // Indexes
         builder.HasIndex(cs => new { cs.CenterId, cs.StudentId, cs.Status })
             .HasDatabaseName("ix_class_students_center_id_student_id_status");
 
         // CHECK Constraint
         builder.ToTable(t => t.HasCheckConstraint("ck_class_students_status", "status IN ('Active', 'Removed')"));
+        builder.ToTable(t => t.HasCheckConstraint("ck_class_students_enrollment_grade", "grade_level_at_enrollment IS NULL OR grade_level_at_enrollment BETWEEN 10 AND 12"));
+        builder.ToTable(t => t.HasCheckConstraint("ck_class_students_exception_complete", "(grade_mismatch_reason IS NULL AND exception_approved_by IS NULL AND exception_approved_at IS NULL) OR (grade_mismatch_reason IS NOT NULL AND CHAR_LENGTH(TRIM(grade_mismatch_reason))>0 AND exception_approved_by IS NOT NULL AND exception_approved_at IS NOT NULL)"));
 
         // Relations
         // Tenant-safe FK to classes

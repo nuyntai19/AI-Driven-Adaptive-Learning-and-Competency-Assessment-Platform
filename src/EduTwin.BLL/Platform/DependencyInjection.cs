@@ -15,6 +15,22 @@ public static class DependencyInjection
         services.AddScoped<IPlatformCenterService, PlatformCenterService>();
         services.AddScoped<IPlatformAuditService, PlatformAuditService>();
         services.AddScoped<IPlatformMeService, PlatformMeService>();
+        services.AddScoped<Operations.IPlatformOperationsService, Operations.PlatformOperationsService>();
+        services.AddScoped<Operations.OperationsMaintenance>();
+        services.AddSingleton<Operations.OperationalTelemetry>();
+        services.AddSingleton<Operations.IAiUsageRecorder>(sp => sp.GetRequiredService<Operations.OperationalTelemetry>());
+        services.AddSingleton<Operations.OperationsQueryCache>();
+        services.AddOptions<Operations.PlatformOperationsOptions>().Bind(configuration.GetSection("PlatformOperations"))
+            .Configure(options =>
+            {
+                var prices = configuration["PLATFORM_AI_PRICES_JSON"];
+                if (!string.IsNullOrWhiteSpace(prices))
+                {
+                    try { options.Prices = System.Text.Json.JsonSerializer.Deserialize<List<Operations.AiPriceProfile>>(prices,
+                        new System.Text.Json.JsonSerializerOptions {PropertyNameCaseInsensitive = true}) ?? []; }
+                    catch (System.Text.Json.JsonException) { options.Prices = []; } // Unknown cost; never block learning on telemetry configuration.
+                }
+            });
 
         return services;
     }

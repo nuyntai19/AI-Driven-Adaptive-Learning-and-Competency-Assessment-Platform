@@ -50,7 +50,7 @@ public sealed class EvidenceAssessmentConfiguration : IEntityTypeConfiguration<E
         builder.ToTable(t =>
         {
             t.HasCheckConstraint("ck_evidence_assessments_reasoning_weight", "`reasoning_weight` BETWEEN 0 AND 1");
-            t.HasCheckConstraint("ck_evidence_assessments_source_type", "`source_type` IN ('AI', 'RuleFallback', 'TeacherOverride')");
+            t.HasCheckConstraint("ck_evidence_assessments_source_type", "`source_type` IN ('AI', 'RuleFallback', 'TeacherOverride', 'TeacherApproval')");
             t.HasCheckConstraint("ck_evidence_assessments_trust_level", "`trust_level` IN ('Trusted', 'Reduced', 'ReviewOnly')");
             t.HasCheckConstraint("ck_evidence_assessments_decision_mode", "`decision_mode` IN ('AIWeighted', 'DeterministicOnly', 'HumanConfirmed')");
         });

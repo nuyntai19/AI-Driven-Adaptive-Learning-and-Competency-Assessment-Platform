@@ -20,6 +20,7 @@ public sealed class StudentDashboardDataDto
     public List<SubjectProgressPointDto> ProgressLine { get; set; } = new();
     public StudentOpportunityActionDto? Action { get; set; }
     public DateTime GeneratedAt { get; set; }
+    public StudentAcademicContextDto AcademicContext { get; set; } = new();
 }
 
 public sealed class StudentBasicInfoDto
@@ -48,6 +49,10 @@ public sealed class TopicMasteryRadarDto
     public string TopicNodeId { get; set; } = null!;
     public string TopicName { get; set; } = null!;
     public decimal Mastery { get; set; }
+    public uint EvidenceCount { get; set; }
+    public decimal ExamImportance { get; set; }
+    public string GroupNodeId { get; set; } = "";
+    public string GroupName { get; set; } = "";
 }
 
 public sealed class SubjectProgressPointDto

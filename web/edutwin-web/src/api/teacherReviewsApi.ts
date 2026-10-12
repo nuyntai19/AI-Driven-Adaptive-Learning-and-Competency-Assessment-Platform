@@ -9,9 +9,24 @@ import type {
 export const listTeacherReviewQueue = async (
   query?: TeacherReviewQueueQuery
 ): Promise<TeacherReviewQueueResponse> => {
-  const params: Record<string, string | number> = {};
+  const params: Record<string, string | number | boolean> = {};
   if (query?.classId) {
     params.classId = query.classId;
+  }
+  if (query?.assignmentId) {
+    params.assignmentId = query.assignmentId;
+  }
+  if (query?.studentId) {
+    params.studentId = query.studentId;
+  }
+  if (query?.fromDate) {
+    params.fromDate = query.fromDate;
+  }
+  if (query?.toDate) {
+    params.toDate = query.toDate;
+  }
+  if (query?.includeAllQuestions !== undefined) {
+    params.includeAllQuestions = query.includeAllQuestions;
   }
   if (query?.page) {
     params.page = query.page;
@@ -76,7 +91,13 @@ export const approveAssignmentResult = async (assignmentId: string, request: App
   return response.data;
 };
 
+export const reopenAssignmentResult = async (assignmentId: string, request: { studentId: string; reason: string; finalReviewVersion: number }) => {
+  const response = await httpClient.post(`/teachers/me/assignments/${assignmentId}/reopen-result`, request);
+  return response.data;
+};
+
 export interface VoidAssignmentQuestionRequest {
+  reopenFinalizedResults?: boolean;
   voidReason?: string;
   archiveQuestionInBank?: boolean;
   reason?: string;
@@ -107,6 +128,7 @@ export const voidAssignmentQuestion = async (
     reason: text,
     archiveQuestionInBank: quarantine,
     quarantineInBank: quarantine,
+    reopenFinalizedResults: request.reopenFinalizedResults === true,
   };
   const response = await httpClient.post<VoidAssignmentQuestionResponse>(
     `/teachers/me/assignments/${assignmentId}/questions/${questionId}/void`,

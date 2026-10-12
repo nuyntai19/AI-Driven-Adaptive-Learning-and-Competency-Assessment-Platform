@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using EduTwin.BLL.AssessmentAndReasoning.Attachments;
 using EduTwin.BLL.AssessmentAndReasoning.Evidence;
 using EduTwin.BLL.AssessmentAndReasoning.Override;
+using EduTwin.BLL.AssessmentAndReasoning.Processing;
 using EduTwin.BLL.DigitalTwin;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.BLL.Recommendations;
@@ -41,6 +42,7 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
     private readonly IAttemptTeacherReviewScopeGuard _scopeGuard;
     private readonly ILogger<TeacherApproveUseCase> _logger;
     private readonly IOverallAssignmentCommentWorkflow? _overallCommentWorkflow;
+    private readonly IAIStudentPostProcessingQueue? _postProcessing;
 
     public TeacherApproveUseCase(
         EduTwinDbContext dbContext,
@@ -56,7 +58,8 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
         IRecommendationEngine? recommendationEngine = null,
         IAttemptTeacherReviewScopeGuard? scopeGuard = null,
         ILogger<TeacherApproveUseCase>? logger = null,
-        IOverallAssignmentCommentWorkflow? overallCommentWorkflow = null)
+        IOverallAssignmentCommentWorkflow? overallCommentWorkflow = null,
+        IAIStudentPostProcessingQueue? postProcessing = null)
     {
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         _tenantContext = tenantContext ?? throw new ArgumentNullException(nameof(tenantContext));
@@ -72,6 +75,7 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
         _scopeGuard = scopeGuard ?? new AttemptTeacherReviewScopeGuard(_dbContext);
         _logger = logger ?? NullLogger<TeacherApproveUseCase>.Instance;
         _overallCommentWorkflow = overallCommentWorkflow;
+        _postProcessing = postProcessing;
     }
 
     public async Task<TeacherApproveResult> ExecuteAsync(
@@ -91,8 +95,7 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
         var role = _tenantContext.Role ?? string.Empty;
 
         var isTeacher = string.Equals(role, nameof(UserRole.Teacher), StringComparison.OrdinalIgnoreCase);
-        var isCenterManager = string.Equals(role, nameof(UserRole.CenterManager), StringComparison.OrdinalIgnoreCase);
-        if (!isTeacher && !isCenterManager)
+        if (!isTeacher)
         {
             return TeacherApproveResult.Forbidden();
         }
@@ -135,6 +138,32 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
             return TeacherApproveResult.Conflict();
         }
 
+        var proposalCorrectness = !analysis.IsFallback && analysis.SuggestedScore.HasValue
+            ? analysis.AnswerAssessment == "Correct" ? (bool?)true : analysis.AnswerAssessment == "Incorrect" ? false : null : null;
+        var confirmedCorrectness = analysis.OverrideIsCorrect ?? attempt.IsCorrect ?? proposalCorrectness;
+        var confirmedScore = analysis.OverrideAwardedScore ?? attempt.AwardedScore ?? (!analysis.IsFallback ? analysis.SuggestedScore : null);
+        if (!confirmedCorrectness.HasValue || !confirmedScore.HasValue)
+        {
+            return TeacherApproveResult.ValidationFailed(
+                "MANUAL_GRADING_REQUIRED",
+                "Chưa có điểm đề xuất AI đáng tin cậy. Giáo viên cần điều chỉnh điểm hoặc yêu cầu phân tích lại trước khi duyệt.");
+        }
+
+        var previousRubric = await _dbContext.TeacherReviewHistories.AsNoTracking()
+            .Where(h => h.CenterId == centerId && h.AnalysisId == analysisId)
+            .OrderByDescending(h => h.OverrideVersion).ThenByDescending(h => h.HistoryId)
+            .Select(h => h.RubricResultJson).FirstOrDefaultAsync(cancellationToken);
+        if (question.GradingCriteria.Criteria.Count > 0 && previousRubric is null && !analysis.IsFallback)
+        {
+            var proposal = RubricGrade.Deserialize(analysis.SuggestedRubricGradeJson);
+            if (proposal is not null && RubricGrading.TryGrade(question.GradingCriteria, question.MaxScore,
+                proposal.Criteria.Cast<RubricScoreInput>().ToArray(), out var checkedGrade, out _) && checkedGrade is not null
+                && checkedGrade.AwardedScore == confirmedScore)
+                previousRubric = RubricGrade.Serialize(checkedGrade);
+        }
+        if (question.GradingCriteria.Criteria.Count > 0 && previousRubric == null)
+            return TeacherApproveResult.ValidationFailed("RUBRIC_GRADING_REQUIRED", "Câu hỏi có rubric. Hãy chấm đủ điểm từng tiêu chí trước khi xác nhận.");
+
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
         TeacherApproveDataDto? committedResponse = null;
         Guid recommendationStudentId = default;
@@ -144,11 +173,24 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
 
         try
         {
+            if (_postProcessing is not null)
+            {
+                await StudentLockHelper.AcquireStudentLockAsync(_dbContext, centerId, attempt.StudentId, cancellationToken);
+                if (!await _dbContext.ReasoningAnalyses.AsNoTracking().AnyAsync(a => a.CenterId == centerId &&
+                    a.AnalysisId == analysisId && a.RowVersion == analysis.RowVersion, cancellationToken) ||
+                    !await _dbContext.Attempts.AsNoTracking().AnyAsync(a => a.CenterId == centerId &&
+                    a.AttemptId == attempt.AttemptId && a.RowVersion == attempt.RowVersion, cancellationToken))
+                    return TeacherApproveResult.Conflict();
+            }
+            if (await AssignmentFinalReviewWorkflow.IsLockedAsync(_dbContext, centerId, attempt.AssignmentId, attempt.StudentId, cancellationToken))
+                return TeacherApproveResult.Conflict("ASSIGNMENT_RESULT_LOCKED", AssignmentFinalReviewWorkflow.LockedMessage);
             var now = _timeProvider.GetUtcNow().UtcDateTime;
             var newOverrideVersion = analysis.OverrideVersion + 1;
 
-            var effectiveCorrectness = analysis.OverrideIsCorrect ?? attempt.IsCorrect;
-            var effectiveScore = analysis.OverrideAwardedScore ?? attempt.AwardedScore ?? (effectiveCorrectness == true ? question.MaxScore : 0m);
+            var effectiveCorrectness = confirmedCorrectness.Value;
+            var effectiveScore = confirmedScore.Value;
+            if (effectiveScore < 0 || effectiveScore > question.MaxScore)
+                return TeacherApproveResult.ValidationFailed("INVALID_SCORE", "Điểm đề xuất vượt thang điểm câu hỏi.");
 
             // 1. Update ReasoningAnalysis review fields
             analysis.ReviewDecision = TeacherReviewDecision.Approved;
@@ -158,6 +200,10 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
             analysis.NeedsTeacherReview = false;
             analysis.OverrideVersion = newOverrideVersion;
             analysis.UpdatedAt = now;
+            // Only this explicit teacher action promotes a manual AI proposal to a grade.
+            // Deterministic grades are never overwritten by an AI proposal.
+            if (!attempt.IsCorrect.HasValue && !analysis.OverrideIsCorrect.HasValue) analysis.OverrideIsCorrect = effectiveCorrectness;
+            if (!attempt.AwardedScore.HasValue && !analysis.OverrideAwardedScore.HasValue) analysis.OverrideAwardedScore = effectiveScore;
 
             // 2. Set Attempt Status to Completed
             attempt.Status = AttemptStatus.Completed;
@@ -200,6 +246,7 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
                 NewIsCorrect = effectiveCorrectness,
                 Note = request.Note,
                 OverrideVersion = newOverrideVersion,
+                RubricResultJson = previousRubric,
                 CreatedAt = now,
                 CreatedBy = actorId
             };
@@ -310,13 +357,13 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
                     : latestEvidenceByAttempt.GetValueOrDefault(att.AttemptId);
 
                 decimal reasoningWeight = ev?.ReasoningWeight ?? 0m;
-                decimal? quality = a is not null
-                    ? (a.OverrideVersion > 0 ? a.OverrideReasoningQuality : a.ReasoningQuality)
-                    : null;
-
                 bool? correctness = att.AttemptId == attempt.AttemptId
                     ? effectiveCorrectness
                     : (a?.OverrideIsCorrect ?? att.IsCorrect);
+
+                decimal? quality = a is not null
+                    ? (a.OverrideReasoningQuality ?? a.ReasoningQuality ?? (correctness == true ? 70m : 30m))
+                    : null;
 
                 if (reasoningWeight > 0m)
                 {
@@ -470,6 +517,9 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
                 actorId,
                 cancellationToken);
 
+            if (_postProcessing is not null)
+                await _postProcessing.EnqueueAsync(centerId, attempt.StudentId, question.SubjectId,
+                    attempt.AssignmentId, attempt.AttemptId, now, cancellationToken);
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
 
@@ -483,7 +533,7 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
                 ReviewedAt = now,
                 TeacherNote = request.Note,
                 EffectiveAwardedScore = effectiveScore,
-                EffectiveIsCorrect = effectiveCorrectness == true,
+                EffectiveIsCorrect = effectiveCorrectness,
                 Replay = new TeacherOverrideReplayDto
                 {
                     StudentId = studentId.ToString("D"),
@@ -513,7 +563,7 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
             throw;
         }
 
-        if (_recommendationEngine is not null)
+        if (_postProcessing is null && _recommendationEngine is not null)
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             try
@@ -538,7 +588,7 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
             }
         }
 
-        if (_overallCommentWorkflow is not null && attempt.AssignmentId.HasValue)
+        if (_postProcessing is null && _overallCommentWorkflow is not null && attempt.AssignmentId.HasValue)
         {
             await _overallCommentWorkflow.GenerateAndCacheOverallCommentAsync(centerId, attempt.AssignmentId.Value, attempt.StudentId, cancellationToken);
         }

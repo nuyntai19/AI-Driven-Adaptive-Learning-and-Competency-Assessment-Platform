@@ -8,6 +8,19 @@ namespace EduTwin.BLL.Tests.CurriculumAndQuestions;
 
 public class GradingCriteriaValidatorTests
 {
+    [Theory]
+    [InlineData("empty")]
+    [InlineData("duplicate")]
+    [InlineData("too-long")]
+    [InlineData("too-many")]
+    public void Validate_InvalidVisualObjectives_ReturnsError(string kind)
+    {
+        var requirements = kind switch { "empty" => new List<string> { "" }, "duplicate" => new List<string> { "M", "M" },
+            "too-long" => new List<string> { new('x', 501) }, _ => Enumerable.Range(0, 13).Select(i => i.ToString()).ToList() };
+        var criteria = new GradingCriteria { Criteria = [new() { CriterionId = "v", Title = "Hình", Description = "Hình", MaxScore = 10, VisualRequirements = requirements }] };
+        GradingCriteriaValidator.Validate(criteria, 10).Should().NotBeEmpty();
+    }
+
     [Fact]
     public void Validate_NullCriteria_ReturnsError()
     {

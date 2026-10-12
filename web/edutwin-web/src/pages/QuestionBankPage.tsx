@@ -8,6 +8,7 @@ import {
   useDeleteQuestion,
 } from "../features/questions/useQuestions";
 import { organizationApi } from "../api/organizationApi";
+import { knowledgeGraphApi } from "../api/knowledgeGraphApi";
 import type {
   Question,
   QuestionFilter,
@@ -45,9 +46,12 @@ function CenterManagerQuestionBankView() {
   const canPublish = hasPermission(permissions.questionsPublish);
   const canDelete = hasPermission(permissions.questionsDelete);
   const canReadSubjects = hasPermission(permissions.subjectsRead);
+  const canReadNodes = hasPermission(permissions.nodesRead);
 
   // Filters state (strictly matching backend QuestionListQuery contract: no search param)
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>("");
+  const [selectedGradeLevel, setSelectedGradeLevel] = useState<number | "">("");
+  const [selectedTopicId, setSelectedTopicId] = useState<string>("");
   const [selectedType, setSelectedType] = useState<QuestionType | "">("");
   const [selectedDifficulty, setSelectedDifficulty] = useState<number | "">("");
   const [selectedStatus, setSelectedStatus] = useState<QuestionStatus | "">("");
@@ -76,17 +80,30 @@ function CenterManagerQuestionBankView() {
     enabled: canReadSubjects,
   });
 
+  // Canonical knowledge nodes query for selected subject
+  const {
+    data: knowledgeNodesData,
+    isLoading: isLoadingKnowledgeNodes,
+  } = useQuery({
+    queryKey: ["knowledge-nodes-for-filter", selectedSubjectId],
+    queryFn: () => knowledgeGraphApi.listNodes(selectedSubjectId),
+    enabled: canReadNodes && Boolean(selectedSubjectId),
+    staleTime: 60_000,
+  });
+
   // Canonical questions list query with server-side pagination & filters
   const questionFilter: QuestionFilter = useMemo(
     () => ({
       subjectId: selectedSubjectId || undefined,
+      gradeLevel: selectedGradeLevel !== "" ? Number(selectedGradeLevel) : undefined,
+      topicId: selectedTopicId || undefined,
       type: (selectedType as QuestionType) || undefined,
       difficulty: selectedDifficulty !== "" ? Number(selectedDifficulty) : undefined,
       status: (selectedStatus as QuestionStatus) || undefined,
       page,
       pageSize,
     }),
-    [selectedSubjectId, selectedType, selectedDifficulty, selectedStatus, page, pageSize]
+    [selectedSubjectId, selectedGradeLevel, selectedTopicId, selectedType, selectedDifficulty, selectedStatus, page, pageSize]
   );
 
   const {
@@ -273,16 +290,19 @@ function CenterManagerQuestionBankView() {
           aria-label="Bộ lọc ngân hàng câu hỏi"
           className="rounded-2xl border border-[var(--cm-border)] bg-[var(--cm-surface)] p-5 shadow-xl"
         >
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
             {/* Subject Selector */}
-            <div>
+            <div className="min-w-0">
               <label htmlFor="filter-subject" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mb-1">
                 Môn học
               </label>
               <select
                 id="filter-subject"
                 value={selectedSubjectId}
-                onChange={(e) => handleFilterChange(setSelectedSubjectId, e.target.value)}
+                onChange={(e) => {
+                  handleFilterChange(setSelectedSubjectId, e.target.value);
+                  setSelectedTopicId("");
+                }}
                 disabled={isLoadingSubjects}
                 className="cm-select w-full text-sm"
               >
@@ -295,8 +315,53 @@ function CenterManagerQuestionBankView() {
               </select>
             </div>
 
+            {/* Grade Level Selector */}
+            <div className="min-w-0">
+              <label htmlFor="filter-grade" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mb-1">
+                Khối học
+              </label>
+              <select
+                id="filter-grade"
+                value={selectedGradeLevel}
+                onChange={(e) => handleFilterChange(setSelectedGradeLevel, e.target.value)}
+                className="cm-select w-full text-sm"
+              >
+                <option value="">-- Tất cả khối --</option>
+                <option value="10">Khối 10</option>
+                <option value="11">Khối 11</option>
+                <option value="12">Khối 12</option>
+              </select>
+            </div>
+
+            {/* Knowledge Graph / Topic Selector */}
+            <div className="min-w-0">
+              <label htmlFor="filter-topic" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mb-1">
+                Đồ thị tri thức
+              </label>
+              <select
+                id="filter-topic"
+                value={selectedTopicId}
+                onChange={(e) => handleFilterChange(setSelectedTopicId, e.target.value)}
+                disabled={!selectedSubjectId || isLoadingKnowledgeNodes}
+                className="cm-select w-full text-sm"
+              >
+                <option value="">
+                  {!selectedSubjectId
+                    ? "-- Chọn môn học trước --"
+                    : isLoadingKnowledgeNodes
+                    ? "Đang tải nút..."
+                    : "-- Tất cả nút tri thức --"}
+                </option>
+                {knowledgeNodesData?.map((node) => (
+                  <option key={node.nodeId} value={node.nodeId}>
+                    [{node.nodeType}] {node.nodeName} ({node.nodeCode})
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Question Type */}
-            <div>
+            <div className="min-w-0">
               <label htmlFor="filter-type" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mb-1">
                 Loại câu hỏi
               </label>
@@ -314,7 +379,7 @@ function CenterManagerQuestionBankView() {
             </div>
 
             {/* Difficulty */}
-            <div>
+            <div className="min-w-0">
               <label htmlFor="filter-difficulty" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mb-1">
                 Độ khó (1-5)
               </label>
@@ -334,7 +399,7 @@ function CenterManagerQuestionBankView() {
             </div>
 
             {/* Status */}
-            <div>
+            <div className="min-w-0">
               <label htmlFor="filter-status" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mb-1">
                 Trạng thái
               </label>
@@ -352,7 +417,7 @@ function CenterManagerQuestionBankView() {
             </div>
 
             {/* Quick Local Search Filter */}
-            <div>
+            <div className="min-w-0">
               <label htmlFor="filter-local-search" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mb-1">
                 Lọc nội dung trang
               </label>
@@ -432,9 +497,14 @@ function CenterManagerQuestionBankView() {
                   <div className="space-y-3">
                     {/* Header badges */}
                     <div className="flex items-center justify-between gap-2">
-                      <span className={`px-2 py-0.5 text-[11px] font-semibold rounded-md border ${typeBadge}`}>
-                        {q.questionType}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className={`px-2 py-0.5 text-[11px] font-semibold rounded-md border ${typeBadge}`}>
+                          {q.questionType}
+                        </span>
+                        <span className="px-2 py-0.5 text-[11px] font-semibold rounded-md border border-cyan-500/30 bg-cyan-500/10 text-cyan-300">
+                          {q.gradeLevel ? `Khối ${q.gradeLevel}` : "Chưa phân loại"}
+                        </span>
+                      </div>
                       <StatusBadge status={q.status} />
                     </div>
 
@@ -719,6 +789,19 @@ function LegacyQuestionBankPage() {
           </select>
         </div>
         <div>
+          <label className="block text-sm font-medium text-slate-600 mb-1">Khối học</label>
+          <select
+            value={filter.gradeLevel ?? ""}
+            onChange={(e) => handleFilterChange("gradeLevel", e.target.value ? Number(e.target.value) : "")}
+            className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+          >
+            <option value="">Tất cả</option>
+            <option value="10">Khối 10</option>
+            <option value="11">Khối 11</option>
+            <option value="12">Khối 12</option>
+          </select>
+        </div>
+        <div>
           <label className="block text-sm font-medium text-slate-600 mb-1">Trạng thái</label>
           <select
             value={filter.status || ""}
@@ -760,17 +843,22 @@ function LegacyQuestionBankPage() {
             >
               <div className="p-5">
                 <div className="flex justify-between items-start mb-3">
-                  <span
-                    className={`px-2 py-1 text-xs font-semibold rounded-md ${
-                      question.questionType === "MultipleChoice"
-                        ? "bg-blue-50 text-blue-700"
-                        : question.questionType === "Essay"
-                        ? "bg-purple-50 text-purple-700"
-                        : "bg-indigo-50 text-indigo-700"
-                    }`}
-                  >
-                    {question.questionType}
-                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span
+                      className={`px-2 py-1 text-xs font-semibold rounded-md ${
+                        question.questionType === "MultipleChoice"
+                          ? "bg-blue-50 text-blue-700"
+                          : question.questionType === "Essay"
+                          ? "bg-purple-50 text-purple-700"
+                          : "bg-indigo-50 text-indigo-700"
+                      }`}
+                    >
+                      {question.questionType}
+                    </span>
+                    <span className="px-2 py-1 text-xs font-semibold rounded-md bg-cyan-50 text-cyan-700 border border-cyan-200">
+                      {question.gradeLevel ? `Khối ${question.gradeLevel}` : "Chưa phân loại"}
+                    </span>
+                  </div>
                   <span
                     className={`px-2 py-1 text-xs font-semibold rounded-full ${
                       question.status === "Active"

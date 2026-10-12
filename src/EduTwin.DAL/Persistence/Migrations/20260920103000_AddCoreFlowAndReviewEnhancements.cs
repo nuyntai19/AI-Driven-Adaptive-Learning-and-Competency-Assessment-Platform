@@ -1,7 +1,8 @@
 using System;
-using EduTwin.DAL.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using EduTwin.DAL.Persistence;
 
 #nullable disable
 

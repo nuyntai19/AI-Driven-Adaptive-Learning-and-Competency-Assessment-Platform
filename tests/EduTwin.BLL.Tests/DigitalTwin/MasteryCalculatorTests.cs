@@ -8,8 +8,8 @@ public class MasteryCalculatorTests
 {
     public static TheoryData<MasteryCalculationInput, decimal> NumericAcceptanceScenarios => new()
     {
-        { Input(currentMastery: 0m, reasoningQuality: 20m), 5.00m },
-        { Input(currentMastery: 50m, reasoningQuality: 80m), 57.50m },
+        { Input(currentMastery: 0m, reasoningQuality: 20m), 21.00m },
+        { Input(currentMastery: 50m, reasoningQuality: 80m), 62.00m },
         {
             Input(
                 currentMastery: 0m,
@@ -30,13 +30,13 @@ public class MasteryCalculatorTests
 
     public static TheoryData<decimal, decimal> ReasoningQualityBoundaries => new()
     {
-        { 0m, 0.00m },
-        { 39m, 9.75m },
-        { 40m, 10.00m },
-        { 59m, 14.75m },
-        { 60m, 15.00m },
-        { 79m, 19.75m },
-        { 80m, 20.00m },
+        { 0m, 20.00m },
+        { 39m, 21.95m },
+        { 40m, 22.00m },
+        { 59m, 22.95m },
+        { 60m, 23.00m },
+        { 79m, 23.95m },
+        { 80m, 24.00m },
         { 100m, 25.00m }
     };
 
@@ -51,8 +51,8 @@ public class MasteryCalculatorTests
 
     public static TheoryData<byte, decimal, decimal> MidpointRoundingCases => new()
     {
-        { 2, 4.625m, 4.63m },
-        { 4, 5.375m, 5.38m }
+        { 2, 19.425m, 19.43m },
+        { 4, 22.575m, 22.58m }
     };
 
     public static TheoryData<decimal> InvalidPercentages => new()
@@ -102,7 +102,7 @@ public class MasteryCalculatorTests
         Assert.False(zeroReasoning.Breakdown.IsFallback);
         Assert.Equal(0.25m, zeroReasoning.Breakdown.LearningRate);
         Assert.Equal(0.00m, fallback.NewMastery);
-        Assert.Equal(0.00m, zeroReasoning.NewMastery);
+        Assert.Equal(20.00m, zeroReasoning.NewMastery);
     }
 
     [Theory]
@@ -148,8 +148,8 @@ public class MasteryCalculatorTests
         var result = MasteryCalculator.Calculate(input);
 
         Assert.Equal(50m, result.PreviousMastery);
-        Assert.Equal(51.88m, result.NewMastery);
-        Assert.Equal(1.88m, result.Delta);
+        Assert.Equal(38.28m, result.NewMastery);
+        Assert.Equal(-11.72m, result.Delta);
         Assert.Equal(80m, result.EffectiveReasoningQuality);
         Assert.False(result.Breakdown.IsFallback);
         Assert.Equal(50m, result.Breakdown.PreviousMastery);
@@ -161,8 +161,8 @@ public class MasteryCalculatorTests
         Assert.Equal((byte)4, result.Breakdown.Difficulty);
         Assert.Equal(1.075m, result.Breakdown.DifficultyMultiplier);
         Assert.Equal(0.25m, result.Breakdown.LearningRate);
-        Assert.Equal(57m, result.Breakdown.EvidenceTarget);
-        Assert.Equal(51.88125m, result.Breakdown.UnclampedNewMastery);
+        Assert.Equal(0m, result.Breakdown.EvidenceTarget);
+        Assert.Equal(38.275781250m, result.Breakdown.UnclampedNewMastery);
         Assert.Equal(result.NewMastery, result.Breakdown.NewMastery);
         Assert.Equal(result.Delta, result.Breakdown.Delta);
     }
@@ -205,15 +205,15 @@ public class MasteryCalculatorTests
     {
         var allEvidence = MasteryCalculator.Calculate(Input(reasoningQuality: 100m));
         var lowerReasoning = MasteryCalculator.Calculate(Input(reasoningQuality: 80m));
-        var incorrect = MasteryCalculator.Calculate(Input(reasoningQuality: 100m, isCorrect: false));
+        var incorrect = MasteryCalculator.Calculate(Input(currentMastery: 50m, reasoningQuality: 100m, isCorrect: false));
         var poorTime = MasteryCalculator.Calculate(Input(reasoningQuality: 100m, timeQuality: 0m));
         var poorCalibration = MasteryCalculator.Calculate(Input(
             reasoningQuality: 100m,
             confidenceCalibration: 0m));
 
         Assert.Equal(25.00m, allEvidence.NewMastery);
-        Assert.Equal(20.00m, lowerReasoning.NewMastery);
-        Assert.Equal(20.00m, incorrect.NewMastery);
+        Assert.Equal(24.00m, lowerReasoning.NewMastery);
+        Assert.Equal(37.50m, incorrect.NewMastery);
         Assert.Equal(22.50m, poorTime.NewMastery);
         Assert.Equal(23.75m, poorCalibration.NewMastery);
     }
@@ -231,12 +231,27 @@ public class MasteryCalculatorTests
     }
 
     [Fact]
-    public void Calculate_IncorrectWithStrongReasoning_RecordsPartialMastery()
+    public void Calculate_IncorrectAnswer_NeverIncreasesMastery_EvenWithStrongReasoning()
     {
-        var result = MasteryCalculator.Calculate(Input(reasoningQuality: 80m, isCorrect: false));
+        var zeroMasteryResult = MasteryCalculator.Calculate(Input(currentMastery: 0m, reasoningQuality: 100m, isCorrect: false));
+        var midMasteryResult = MasteryCalculator.Calculate(Input(currentMastery: 50m, reasoningQuality: 100m, isCorrect: false));
 
-        Assert.Equal(16.00m, result.NewMastery);
-        Assert.True(result.NewMastery > 0m);
+        Assert.Equal(0.00m, zeroMasteryResult.NewMastery);
+        Assert.Equal(0.00m, zeroMasteryResult.Delta);
+        Assert.True(midMasteryResult.NewMastery < 50m);
+        Assert.True(midMasteryResult.Delta < 0m);
+    }
+
+    [Fact]
+    public void Calculate_CorrectAnswer_NeverDecreasesMastery_EvenWithZeroReasoning()
+    {
+        var zeroMasteryResult = MasteryCalculator.Calculate(Input(currentMastery: 0m, reasoningQuality: 0m, isCorrect: true));
+        var midMasteryResult = MasteryCalculator.Calculate(Input(currentMastery: 50m, reasoningQuality: 0m, isCorrect: true));
+        var highMasteryResult = MasteryCalculator.Calculate(Input(currentMastery: 100m, reasoningQuality: 0m, isCorrect: true));
+
+        Assert.True(zeroMasteryResult.Delta >= 0m);
+        Assert.True(midMasteryResult.Delta >= 0m);
+        Assert.Equal(0.00m, highMasteryResult.Delta);
     }
 
     [Fact]
@@ -245,7 +260,7 @@ public class MasteryCalculatorTests
         var reasoning = MasteryCalculator.Calculate(Input(reasoningQuality: 80m));
         var fallback = MasteryCalculator.Calculate(Input(reasoningQuality: null));
 
-        Assert.Equal(20.00m, reasoning.NewMastery);
+        Assert.Equal(24.00m, reasoning.NewMastery);
         Assert.Equal(0.00m, fallback.NewMastery);
         Assert.True(fallback.Delta < reasoning.Delta);
     }
@@ -260,12 +275,12 @@ public class MasteryCalculatorTests
     }
 
     [Fact]
-    public void Calculate_WeakEvidenceBelowCurrentMastery_DecreasesMastery()
+    public void Calculate_WeakEvidenceWithIncorrectAnswer_DecreasesMastery()
     {
-        var result = MasteryCalculator.Calculate(Input(currentMastery: 80m, reasoningQuality: 0m));
+        var result = MasteryCalculator.Calculate(Input(currentMastery: 80m, reasoningQuality: 0m, isCorrect: false));
 
-        Assert.Equal(60.00m, result.NewMastery);
-        Assert.Equal(-20.00m, result.Delta);
+        Assert.Equal(64.00m, result.NewMastery);
+        Assert.Equal(-16.00m, result.Delta);
     }
 
     [Fact]
@@ -466,7 +481,7 @@ public class MasteryCalculatorTests
     {
         var result = MasteryCalculator.Calculate(Input(reasoningQuality: 20m, difficulty: 2));
 
-        Assert.Equal("mastery-v1", MasteryCalculator.CalculationVersion);
+        Assert.Equal("mastery-v2", MasteryCalculator.CalculationVersion);
         Assert.Equal(MasteryCalculator.CalculationVersion, result.CalculationVersion);
         Assert.Equal(result.PreviousMastery, result.Breakdown.PreviousMastery);
         Assert.Equal(result.NewMastery, result.Breakdown.NewMastery);
@@ -485,8 +500,8 @@ public class MasteryCalculatorTests
         Assert.True(result.Explanation.Length <= 1000);
         Assert.Contains("Lập luận", result.Explanation, StringComparison.Ordinal);
         Assert.Contains("50.00", result.Explanation, StringComparison.Ordinal);
-        Assert.Contains("57.50", result.Explanation, StringComparison.Ordinal);
-        Assert.Contains("+7.50", result.Explanation, StringComparison.Ordinal);
+        Assert.Contains("62.00", result.Explanation, StringComparison.Ordinal);
+        Assert.Contains("+12.00", result.Explanation, StringComparison.Ordinal);
         Assert.Contains("độ khó 3", result.Explanation, StringComparison.Ordinal);
         Assert.Contains("80.00%", result.Explanation, StringComparison.Ordinal);
     }
@@ -525,8 +540,8 @@ public class MasteryCalculatorTests
                 Input(currentMastery: 50m, reasoningQuality: 80m)).Explanation;
 
             Assert.Equal(frenchCultureExplanation, vietnameseCultureExplanation);
-            Assert.Contains("57.50", vietnameseCultureExplanation, StringComparison.Ordinal);
-            Assert.DoesNotContain("57,50", vietnameseCultureExplanation, StringComparison.Ordinal);
+            Assert.Contains("62.00", vietnameseCultureExplanation, StringComparison.Ordinal);
+            Assert.DoesNotContain("62,00", vietnameseCultureExplanation, StringComparison.Ordinal);
         }
         finally
         {

@@ -3,6 +3,7 @@ import { useAuthStore } from "../stores/authStore";
 import type { LoginRequest, LoginResponse, CurrentUserResponse } from "../types/auth";
 import { clearUserScratchpadDrafts } from "../utils/scratchpadStorage";
 import { clearUserAttemptSessionIds } from "../utils/attemptSessionStorage";
+import { clearAllLegacyAssignmentDrafts } from "../utils/assignmentDraftStorage";
 
 export const login = async (request: LoginRequest): Promise<void> => {
   const response = await publicTransport.post<LoginResponse>("/auth/login", request);
@@ -34,6 +35,7 @@ export const logout = async (): Promise<void> => {
       }
       clearUserAttemptSessionIds(user.centerId, user.userId);
     }
+    clearAllLegacyAssignmentDrafts();
     useAuthStore.getState().clearSession();
   }
 };

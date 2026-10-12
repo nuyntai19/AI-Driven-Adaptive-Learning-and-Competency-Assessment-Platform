@@ -9,6 +9,7 @@ public class StudentQuestionDto
     public string QuestionType { get; set; } = string.Empty;
     public int Difficulty { get; set; }
     public string QuestionText { get; set; } = string.Empty;
+    public bool HasImage { get; set; }
     public int EstimatedTimeSeconds { get; set; }
     public bool ReasoningRequired { get; set; }
     public string LanguageCode { get; set; } = string.Empty;
@@ -17,8 +18,12 @@ public class StudentQuestionDto
     public string? AttemptStatus { get; set; }
     public StudentQuestionAttemptDto? LatestAttempt { get; set; }
     public string? SubmittedAnswer { get; set; }
+    public string? SubmittedAnswerDisplayLatex { get; set; }
     public string? SubmittedReasoning { get; set; }
     public ulong? SubmittedAttemptId { get; set; }
     public bool HasAttachment { get; set; }
     public bool? EffectiveIsCorrect { get; set; }
+    public bool IsVoided { get; set; }
+    public string? VoidReason { get; set; }
+    public decimal? VoidedScore { get; set; }
 }

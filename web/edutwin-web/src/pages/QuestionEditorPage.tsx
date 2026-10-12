@@ -19,8 +19,20 @@ import type {
   QuestionOption,
 } from "../types/questions";
 import type { TeacherDto } from "../types/organization";
-import { MathInputToolbar } from "../components/math/MathInputToolbar";
-import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
+import { RichMathEditor } from "../components/math/RichMathEditor";
+import { MathPreviewCore } from "../components/math/MathPreviewCore";
+import { ModeAwareAnswerEditor } from "../components/math/answer-editor/ModeAwareAnswerEditor";
+import {
+  getAnswerDraftKey,
+  syncMcqCorrectAnswer,
+  resetAndHydrateDraftStore,
+  buildAuthoritativeQuestionPayload,
+  hydrateAnswerEditorValue,
+  serializeAnswerEditorValue,
+  type DraftStore,
+} from "./centerManagerQuestionEditorHelpers";
+import type { AnswerEditorValue } from "../components/math/answer-editor/answerEditorHelpers";
+import { MATH_EQUIVALENT_HELP } from "../utils/questionEvaluationModes";
 import { useAuthStore } from "../stores/authStore";
 import { permissions } from "../auth/permissions";
 import {
@@ -61,13 +73,14 @@ function CenterManagerQuestionEditorView() {
   const [formData, setFormData] = useState<CreateQuestionRequest>({
     teacherId: null,
     subjectId: "",
+    gradeLevel: null,
     primaryTopicNodeId: "",
     questionType: "MultipleChoice",
     difficulty: 3,
     questionText: "",
     maxScore: 1,
     estimatedTimeSeconds: 60,
-    reasoningRequired: true,
+    reasoningRequired: false,
     languageCode: "vi",
     answerEvaluationMode: "TextExact",
     options: [
@@ -85,8 +98,9 @@ function CenterManagerQuestionEditorView() {
     },
   });
 
-  const [activeMathField, setActiveMathField] = useState<"questionText" | "correctAnswer" | "solution" | null>(null);
-  const [showMathToolbar, setShowMathToolbar] = useState<boolean>(false);
+  // Draft store and active draft for ModeAwareAnswerEditor
+  const [modeDrafts, setModeDrafts] = useState<DraftStore>({});
+  const [activeDraftValue, setActiveDraftValue] = useState<AnswerEditorValue | null>(null);
 
   // Operational feedback states
   const [formError, setFormError] = useState<{ message: string; traceId?: string | null } | null>(null);
@@ -112,13 +126,29 @@ function CenterManagerQuestionEditorView() {
   const archiveMutation = useArchiveQuestion();
   const deleteMutation = useDeleteQuestion();
 
-  // Populate data when in edit mode
+  // Populate data and draft store when question identity changes or entering create mode
   useEffect(() => {
     if (isEditMode && questionData?.data) {
       const q = questionData.data;
+      const initialMode =
+        q.answerEvaluationMode ||
+        (q.questionType === "MultipleChoice"
+          ? "TextExact"
+          : q.questionType === "Essay"
+          ? "Manual"
+          : "TextExact");
+
+      // Reset and hydrate draft store specifically for this question identity
+      const hydratedStore = resetAndHydrateDraftStore(q, true);
+      setModeDrafts(hydratedStore);
+
+      const activeKey = getAnswerDraftKey(q.questionType, initialMode);
+      setActiveDraftValue(activeKey ? hydratedStore[activeKey] || null : null);
+
       setFormData({
         teacherId: q.createdByTeacherId || null,
         subjectId: q.subjectId,
+        gradeLevel: q.gradeLevel ?? null,
         primaryTopicNodeId: q.primaryTopicNodeId || "",
         questionType: q.questionType,
         difficulty: q.difficulty,
@@ -127,20 +157,16 @@ function CenterManagerQuestionEditorView() {
         estimatedTimeSeconds: q.estimatedTimeSeconds,
         reasoningRequired: q.reasoningRequired || false,
         languageCode: q.languageCode || "vi",
-        answerEvaluationMode:
-          q.answerEvaluationMode ||
-          (q.questionType === "MultipleChoice"
-            ? "TextExact"
-            : q.questionType === "Essay"
-            ? "Manual"
-            : "TextExact"),
+        answerEvaluationMode: initialMode,
         options: (q.options || []).map((opt: any) => ({
           optionLabel: opt.optionLabel || opt.label || "A",
           optionText: opt.optionText || opt.text || "",
           isCorrect: !!opt.isCorrect,
           orderIndex: opt.orderIndex ?? 0,
         })),
-        correctAnswer: q.correctAnswer || "",
+        correctAnswer:
+          q.correctAnswer ||
+          (q.questionType === "MultipleChoice" ? syncMcqCorrectAnswer(q.options) : ""),
         solution: q.solution || "",
         expectedReasoning: q.expectedReasoning || "",
         gradingCriteria: q.gradingCriteria || {
@@ -150,8 +176,13 @@ function CenterManagerQuestionEditorView() {
           scoringNotes: "",
         },
       });
+    } else if (!isEditMode) {
+      // In create mode: reset draft store completely to avoid leaking any previous question drafts
+      const cleanStore = resetAndHydrateDraftStore(null, false);
+      setModeDrafts(cleanStore);
+      setActiveDraftValue(null);
     }
-  }, [isEditMode, questionData]);
+  }, [id, isEditMode, questionData]);
 
   // Subjects query
   const {
@@ -265,14 +296,77 @@ function CenterManagerQuestionEditorView() {
         newMode =
           formData.answerEvaluationMode === "TextExact" ||
           formData.answerEvaluationMode === "NumericRational" ||
+          formData.answerEvaluationMode === "Coordinate2D" ||
+          formData.answerEvaluationMode === "MathEquivalent" ||
           formData.answerEvaluationMode === "Manual"
             ? formData.answerEvaluationMode
             : "TextExact";
       }
+
+      // Preserve active draft into modeDrafts
+      const prevKey = getAnswerDraftKey(
+        formData.questionType,
+        formData.answerEvaluationMode || (formData.questionType === "Essay" ? "Manual" : "TextExact")
+      );
+      const updatedStore: DraftStore = { ...modeDrafts };
+      if (prevKey && activeDraftValue) {
+        updatedStore[prevKey] = activeDraftValue;
+      }
+
+      // Retrieve or initialize next draft
+      const nextKey = getAnswerDraftKey(qType, newMode);
+      const nextDraft = nextKey
+        ? updatedStore[nextKey] || hydrateAnswerEditorValue("", newMode)
+        : null;
+
+      setModeDrafts(updatedStore);
+      setActiveDraftValue(nextDraft);
+
+      // Synchronize correctAnswer
+      let updatedCorrectAnswer = "";
+      if (qType === "MultipleChoice") {
+        updatedCorrectAnswer = syncMcqCorrectAnswer(formData.options);
+      } else if (nextDraft) {
+        updatedCorrectAnswer = serializeAnswerEditorValue(nextDraft, newMode);
+      }
+
       setFormData((prev) => ({
         ...prev,
         questionType: qType,
         answerEvaluationMode: newMode,
+        correctAnswer: updatedCorrectAnswer,
+      }));
+      return;
+    }
+
+    if (field === "answerEvaluationMode") {
+      const newMode = value as QuestionAnswerEvaluationMode;
+
+      // Preserve active draft into modeDrafts
+      const prevKey = getAnswerDraftKey(
+        formData.questionType,
+        formData.answerEvaluationMode || "TextExact"
+      );
+      const updatedStore: DraftStore = { ...modeDrafts };
+      if (prevKey && activeDraftValue) {
+        updatedStore[prevKey] = activeDraftValue;
+      }
+
+      // Retrieve or initialize next draft
+      const nextKey = getAnswerDraftKey(formData.questionType, newMode);
+      const nextDraft = nextKey
+        ? updatedStore[nextKey] || hydrateAnswerEditorValue("", newMode)
+        : null;
+
+      setModeDrafts(updatedStore);
+      setActiveDraftValue(nextDraft);
+
+      const serialized = nextDraft ? serializeAnswerEditorValue(nextDraft, newMode) : "";
+
+      setFormData((prev) => ({
+        ...prev,
+        answerEvaluationMode: newMode,
+        correctAnswer: serialized,
       }));
       return;
     }
@@ -302,7 +396,12 @@ function CenterManagerQuestionEditorView() {
       });
     }
 
-    setFormData((prev) => ({ ...prev, options: newOptions }));
+    const syncedAnswer =
+      formData.questionType === "MultipleChoice"
+        ? syncMcqCorrectAnswer(newOptions)
+        : formData.correctAnswer;
+
+    setFormData((prev) => ({ ...prev, options: newOptions, correctAnswer: syncedAnswer }));
   };
 
   const addOption = () => {
@@ -318,7 +417,13 @@ function CenterManagerQuestionEditorView() {
       optionLabel: labels[currentLength] || String.fromCharCode(65 + currentLength),
       orderIndex: currentLength,
     });
-    setFormData((prev) => ({ ...prev, options: newOptions }));
+
+    const syncedAnswer =
+      formData.questionType === "MultipleChoice"
+        ? syncMcqCorrectAnswer(newOptions)
+        : formData.correctAnswer;
+
+    setFormData((prev) => ({ ...prev, options: newOptions, correctAnswer: syncedAnswer }));
   };
 
   const removeOption = (index: number) => {
@@ -333,7 +438,12 @@ function CenterManagerQuestionEditorView() {
       opt.orderIndex = i;
     });
 
-    setFormData((prev) => ({ ...prev, options: newOptions }));
+    const syncedAnswer =
+      formData.questionType === "MultipleChoice"
+        ? syncMcqCorrectAnswer(newOptions)
+        : formData.correctAnswer;
+
+    setFormData((prev) => ({ ...prev, options: newOptions, correctAnswer: syncedAnswer }));
   };
 
   // Grading criteria item helpers for Essay
@@ -391,14 +501,7 @@ function CenterManagerQuestionEditorView() {
     }));
   };
 
-  // Math symbol insert handler
-  const handleInsertMath = (latex: string) => {
-    if (!activeMathField || isReadOnly) return;
-    const currentVal = (formData[activeMathField] as string) || "";
-    handleInputChange(activeMathField, currentVal + " " + latex);
-  };
-
-  // Form submission: Create vs Update (Strict contract compliance: no teacherId / subjectId in Update)
+  // Form submission: Create vs Update using authoritative payload
   const handleSave = () => {
     if (isReadOnly) return;
     setFormError(null);
@@ -414,29 +517,45 @@ function CenterManagerQuestionEditorView() {
       return;
     }
 
+    // Single source of truth payload construction
+    const { payload: validatedPayload, error: payloadError } = buildAuthoritativeQuestionPayload({
+      formData,
+      activeDraftValue,
+      modeDrafts,
+    });
+
+    if (payloadError) {
+      setFormError({ message: payloadError });
+      return;
+    }
+
     if (!isEditMode) {
       // Create Mode validation
-      if (!formData.subjectId) {
+      if (!validatedPayload.subjectId) {
         setFormError({ message: "Vui lòng chọn môn học." });
         return;
       }
-      if (!formData.teacherId) {
+      if (!validatedPayload.teacherId) {
         setFormError({ message: "Vui lòng chỉ định giáo viên phụ trách câu hỏi." });
+        return;
+      }
+      if (!validatedPayload.gradeLevel || validatedPayload.gradeLevel < 10 || validatedPayload.gradeLevel > 12) {
+        setFormError({ message: "Vui lòng chọn khối lớp hợp lệ (Khối 10, 11 hoặc 12) cho câu hỏi mới." });
         return;
       }
 
       const createPayload: CreateQuestionRequest = {
-        ...formData,
+        ...validatedPayload,
         options:
-          formData.questionType === "MultipleChoice"
-            ? formData.options?.map((o) => ({
+          validatedPayload.questionType === "MultipleChoice"
+            ? validatedPayload.options?.map((o) => ({
                 optionLabel: o.optionLabel,
                 optionText: o.optionText,
                 isCorrect: o.isCorrect,
                 orderIndex: o.orderIndex,
               }))
             : undefined,
-        correctAnswer: formData.questionType === "Essay" ? undefined : formData.correctAnswer,
+        correctAnswer: validatedPayload.correctAnswer?.trim() || undefined,
       };
 
       createMutation.mutate(createPayload, {
@@ -462,22 +581,23 @@ function CenterManagerQuestionEditorView() {
       }
 
       const updatePayload: UpdateQuestionRequest = {
-        primaryTopicNodeId: formData.primaryTopicNodeId,
-        questionType: formData.questionType,
-        difficulty: formData.difficulty,
-        questionText: formData.questionText.trim(),
-        correctAnswer: formData.correctAnswer?.trim() || undefined,
-        solution: formData.solution?.trim() || undefined,
-        expectedReasoning: formData.expectedReasoning?.trim() || undefined,
-        gradingCriteria: formData.gradingCriteria,
-        maxScore: formData.maxScore,
-        estimatedTimeSeconds: formData.estimatedTimeSeconds,
-        reasoningRequired: formData.reasoningRequired,
-        languageCode: formData.languageCode,
-        answerEvaluationMode: formData.answerEvaluationMode,
+        primaryTopicNodeId: validatedPayload.primaryTopicNodeId,
+        gradeLevel: validatedPayload.gradeLevel !== undefined ? validatedPayload.gradeLevel : null,
+        questionType: validatedPayload.questionType,
+        difficulty: validatedPayload.difficulty,
+        questionText: validatedPayload.questionText.trim(),
+        correctAnswer: validatedPayload.correctAnswer?.trim() || undefined,
+        solution: validatedPayload.solution?.trim() || undefined,
+        expectedReasoning: validatedPayload.expectedReasoning?.trim() || undefined,
+        gradingCriteria: validatedPayload.gradingCriteria,
+        maxScore: validatedPayload.maxScore,
+        estimatedTimeSeconds: validatedPayload.estimatedTimeSeconds,
+        reasoningRequired: validatedPayload.reasoningRequired,
+        languageCode: validatedPayload.languageCode,
+        answerEvaluationMode: validatedPayload.answerEvaluationMode,
         options:
-          formData.questionType === "MultipleChoice"
-            ? formData.options?.map((o) => ({
+          validatedPayload.questionType === "MultipleChoice"
+            ? validatedPayload.options?.map((o) => ({
                 optionLabel: o.optionLabel,
                 optionText: o.optionText,
                 isCorrect: o.isCorrect,
@@ -917,8 +1037,8 @@ function CenterManagerQuestionEditorView() {
             </div>
           </div>
 
-          {/* Question Configuration Row: Type, Difficulty, MaxScore, EstimatedTime */}
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 border-b border-[var(--cm-border-subtle)] pb-6">
+          {/* Question Configuration Row: Type, Grade, Difficulty, MaxScore, EstimatedTime */}
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5 border-b border-[var(--cm-border-subtle)] pb-6">
             <div>
               <label htmlFor="question-type-select" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mb-1">
                 Loại câu hỏi <span className="text-rose-400">*</span>
@@ -933,6 +1053,24 @@ function CenterManagerQuestionEditorView() {
                 <option value="MultipleChoice">Trắc nghiệm (MultipleChoice)</option>
                 <option value="ShortAnswer">Điền khuyết (ShortAnswer)</option>
                 <option value="Essay">Tự luận (Essay)</option>
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="question-grade-select" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mb-1">
+                Khối học
+              </label>
+              <select
+                id="question-grade-select"
+                disabled={isReadOnly}
+                value={formData.gradeLevel ?? ""}
+                onChange={(e) => handleInputChange("gradeLevel", e.target.value ? Number(e.target.value) : null)}
+                className="cm-select w-full text-sm"
+              >
+                <option value="">{isEditMode ? "-- Chưa phân loại --" : "-- Chọn khối lớp (bắt buộc) --"}</option>
+                <option value="10">Khối 10</option>
+                <option value="11">Khối 11</option>
+                <option value="12">Khối 12</option>
               </select>
             </div>
 
@@ -990,49 +1128,29 @@ function CenterManagerQuestionEditorView() {
             </div>
           </div>
 
-          {/* Math Toolbar Toggle & Quick Helper */}
-          <div className="flex items-center justify-between bg-[var(--cm-surface-subtle)] p-3 rounded-xl border border-[var(--cm-border-subtle)]">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-secondary)]">
-                Bảng ký hiệu Toán học KaTeX:
-              </span>
-              <span className="text-xs text-[var(--cm-text-muted)]">
-                {activeMathField ? `Đang trỏ vào trường "${activeMathField}"` : "Nhấp vào ô văn bản để chèn ký hiệu"}
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowMathToolbar((prev) => !prev)}
-              className="text-xs font-semibold text-[var(--cm-cyan)] hover:underline"
-            >
-              {showMathToolbar ? "Ẩn bảng ký hiệu ▲" : "Hiện bảng ký hiệu ▼"}
-            </button>
-          </div>
-
-          {showMathToolbar && (
-            <div className="p-4 rounded-xl border border-[var(--cm-border-subtle)] bg-slate-950/40">
-              <MathInputToolbar onInsert={handleInsertMath} />
-            </div>
-          )}
-
-          {/* Question Text Area with Real-time KaTeX Preview */}
+          {/* Question Text Area with WYSIWYG RichMathEditor and KaTeX Preview */}
           <div className="space-y-2">
-            <label htmlFor="question-text-area" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)]">
-              Nội dung câu hỏi (hỗ trợ LaTeX / KaTeX) <span className="text-rose-400">*</span>
-            </label>
-            <textarea
+            <RichMathEditor
               id="question-text-area"
-              rows={4}
-              disabled={isReadOnly}
+              label="Nội dung câu hỏi (hỗ trợ văn bản tiếng Việt và công thức LaTeX trực quan)"
               value={formData.questionText}
-              onFocus={() => setActiveMathField("questionText")}
-              onChange={(e) => handleInputChange("questionText", e.target.value)}
-              placeholder="Nhập đề bài câu hỏi. Để chèn công thức toán, hãy nhập mã LaTeX như \frac{a}{b} hoặc \sqrt{x}..."
-              className="cm-input w-full text-sm font-sans"
+              disabled={isReadOnly}
+              onChange={(val) => handleInputChange("questionText", val)}
+              placeholder="Nhập nội dung câu hỏi... (Gõ $ hoặc Ctrl+M để chèn công thức toán)"
+              minHeight="120px"
             />
             {formData.questionText && (
               <div className="pt-1">
-                <MathFormulaPreview formula={formData.questionText} displayMode={false} label="Xem trước đề bài (KaTeX)" />
+                <MathPreviewCore
+                  content={formData.questionText}
+                  mode="rich"
+                  displayMode={false}
+                  headerSlot={
+                    <div className="text-[11px] font-semibold text-[var(--cm-text-muted)] uppercase tracking-wider mb-1">
+                      Xem trước đề bài (KaTeX)
+                    </div>
+                  }
+                />
               </div>
             )}
           </div>
@@ -1052,14 +1170,20 @@ function CenterManagerQuestionEditorView() {
               >
                 <option value="TextExact">TextExact - Khớp chuỗi chính xác</option>
                 <option value="NumericRational">NumericRational - Chuẩn hóa phân số & số thực</option>
+                <option value="Coordinate2D">Coordinate2D - Tọa độ 2D</option>
+                <option value="MathEquivalent">MathEquivalent - So khớp toán học giới hạn</option>
                 <option value="Manual">Manual - Chấm thủ công / AI Rubric</option>
               </select>
               <p className="mt-1.5 text-xs text-[var(--cm-text-muted)] leading-relaxed">
                 {formData.answerEvaluationMode === "NumericRational"
                   ? "Chấp nhận các biểu diễn tương đương toán học như 3/4 = 0.75 hoặc 6/8."
+                  : formData.answerEvaluationMode === "Coordinate2D"
+                  ? "Dành cho tọa độ 2D; chấp nhận (1,1), (1, 1), (1;1) và các thành phần số tương đương."
+                  : formData.answerEvaluationMode === "MathEquivalent"
+                  ? MATH_EQUIVALENT_HELP
                   : formData.answerEvaluationMode === "Manual"
                   ? "Dành cho câu hỏi tự luận cần đánh giá qua tiêu chí Rubric hoặc giáo viên duyệt."
-                  : "So khớp chính xác ký tự chữ hoa/thường theo chuẩn trắc nghiệm."}
+                  : "So khớp văn bản theo ký tự, không kiểm tra tương đương toán học. Với đáp án số hoặc tập hợp, hãy chọn chế độ toán phù hợp."}
               </p>
             </div>
 
@@ -1074,11 +1198,11 @@ function CenterManagerQuestionEditorView() {
                   className="h-4 w-4 rounded border-[var(--cm-border)] bg-[var(--cm-surface-subtle)] text-[var(--cm-cyan)] focus:ring-[var(--cm-cyan)]"
                 />
                 <span className="text-sm font-semibold text-[var(--cm-text)]">
-                  Bắt buộc học sinh trình bày các bước lập luận (Reasoning Required)
+                  Yêu cầu học sinh trình bày lời giải
                 </span>
               </label>
               <p className="mt-1.5 text-xs text-[var(--cm-text-muted)] pl-7">
-                Khi kích hoạt, hệ thống AI sẽ kiểm tra lập luận chi tiết của học sinh trước khi chốt năng lực kiến thức.
+                Khi bật, học sinh bắt buộc phải nhập các bước lập luận trước khi nộp bài. Mặc định tắt (chỉ nộp đáp án; nếu học sinh tự nguyện nhập lời giải thì AI vẫn phân tích và cập nhật Digital Twin).
               </p>
             </div>
           </div>
@@ -1120,16 +1244,33 @@ function CenterManagerQuestionEditorView() {
                     </label>
 
                     <div className="flex-1 space-y-1">
-                      <input
-                        type="text"
-                        disabled={isReadOnly}
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-medium text-[var(--cm-text-muted)]">
+                          Nội dung phương án {opt.optionLabel}
+                        </span>
+                      </div>
+                      <RichMathEditor
+                        id={`option-input-${idx}`}
                         value={opt.optionText}
-                        onChange={(e) => handleOptionChange(idx, "optionText", e.target.value)}
-                        placeholder={`Nội dung phương án ${opt.optionLabel}...`}
-                        className="cm-input w-full text-sm"
+                        disabled={isReadOnly}
+                        singleLine={true}
+                        minHeight="42px"
+                        onChange={(val) => handleOptionChange(idx, "optionText", val)}
+                        placeholder={`Nội dung phương án ${opt.optionLabel}... (Gõ $ hoặc Ctrl+M)`}
                       />
-                      {opt.optionText.includes("\\") && (
-                        <MathFormulaPreview formula={opt.optionText} displayMode={false} label={`Xem trước ${opt.optionLabel}`} />
+                      {(opt.optionText.includes("$") || opt.optionText.includes("\\")) && (
+                        <div className="pt-1">
+                          <MathPreviewCore
+                            content={opt.optionText}
+                            mode="rich"
+                            displayMode={false}
+                            headerSlot={
+                              <div className="text-[11px] font-semibold text-[var(--cm-text-muted)] uppercase tracking-wider mb-1">
+                                Xem trước {opt.optionLabel}
+                              </div>
+                            }
+                          />
+                        </div>
                       )}
                     </div>
 
@@ -1152,38 +1293,78 @@ function CenterManagerQuestionEditorView() {
           {/* Conditional Sub-form: ShortAnswer */}
           {formData.questionType === "ShortAnswer" && (
             <div className="border-t border-[var(--cm-border-subtle)] pt-6 space-y-4">
-              <h3 className="text-sm font-semibold uppercase tracking-wider text-[var(--cm-cyan)]">
-                Đáp án Chuẩn (Short Answer)
-              </h3>
-              <div>
-                <label htmlFor="question-correct-answer" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mb-1">
-                  Giá trị chuẩn <span className="text-rose-400">*</span>
-                </label>
-                <input
-                  id="question-correct-answer"
-                  type="text"
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-[var(--cm-cyan)]">
+                  Đáp án Chuẩn (Short Answer)
+                </h3>
+                <span className="text-xs text-[var(--cm-text-muted)]">
+                  Chế độ: <strong className="text-[var(--cm-text)]">{formData.answerEvaluationMode || "TextExact"}</strong>
+                </span>
+              </div>
+              <div className="rounded-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-subtle)] p-4">
+                <ModeAwareAnswerEditor
+                  profile="authoring"
+                  variant="center-manager"
+                  questionType="ShortAnswer"
+                  evaluationMode={formData.answerEvaluationMode || "TextExact"}
+                  value={
+                    activeDraftValue ??
+                    hydrateAnswerEditorValue(
+                      formData.correctAnswer,
+                      formData.answerEvaluationMode || "TextExact"
+                    )
+                  }
+                  onChange={(val) => {
+                    setActiveDraftValue(val);
+                    const evalMode = formData.answerEvaluationMode || "TextExact";
+                    const key = getAnswerDraftKey("ShortAnswer", evalMode);
+                    if (key) {
+                      setModeDrafts((prev) => ({ ...prev, [key]: val }));
+                    }
+                    const serialized = serializeAnswerEditorValue(val, evalMode);
+                    setFormData((prev) => ({ ...prev, correctAnswer: serialized }));
+                  }}
                   disabled={isReadOnly}
-                  value={formData.correctAnswer || ""}
-                  onFocus={() => setActiveMathField("correctAnswer")}
-                  onChange={(e) => handleInputChange("correctAnswer", e.target.value)}
-                  placeholder="Nhập giá trị đúng (VD: 3/4, 12.5, x^2 + 1...)"
-                  className="cm-input w-full text-sm font-mono"
                 />
-                {formData.correctAnswer && (
-                  <div className="pt-2">
-                    <MathFormulaPreview formula={formData.correctAnswer} displayMode={false} label="Xem trước đáp án chuẩn (KaTeX)" />
-                  </div>
-                )}
               </div>
             </div>
           )}
 
-          {/* Conditional Sub-form: Essay Rubric */}
+          {/* Conditional Sub-form: Essay Rubric & Sample Answer */}
           {formData.questionType === "Essay" && (
             <div className="border-t border-[var(--cm-border-subtle)] pt-6 space-y-5">
-              <h3 className="text-sm font-semibold uppercase tracking-wider text-[var(--cm-cyan)]">
-                Tiêu chí Đánh giá Tự luận (Grading Rubric)
-              </h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-[var(--cm-cyan)]">
+                  Đáp án Mẫu & Tiêu chí Đánh giá Tự luận <span className="text-rose-400">*</span>
+                </h3>
+                <span className="text-xs text-[var(--cm-text-muted)]">
+                  Chế độ: <strong className="text-[var(--cm-text)]">Manual (Tự luận)</strong>
+                </span>
+              </div>
+
+              {/* Authoritative correctAnswer editor for Essay (Required by QuestionActivationPolicy) */}
+              <div className="rounded-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-subtle)] p-4 space-y-2">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)]">
+                  Bài giải mẫu hoặc hướng dẫn chấm chuẩn <span className="text-rose-400">*</span>
+                </label>
+                <ModeAwareAnswerEditor
+                  profile="authoring"
+                  variant="center-manager"
+                  questionType="Essay"
+                  evaluationMode="Manual"
+                  value={
+                    activeDraftValue ??
+                    hydrateAnswerEditorValue(formData.correctAnswer, "Manual")
+                  }
+                  onChange={(val) => {
+                    setActiveDraftValue(val);
+                    setModeDrafts((prev) => ({ ...prev, "Essay:Manual": val }));
+                    const serialized = serializeAnswerEditorValue(val, "Manual");
+                    setFormData((prev) => ({ ...prev, correctAnswer: serialized }));
+                  }}
+                  disabled={isReadOnly}
+                />
+              </div>
 
               {/* Required Ideas */}
               <div className="space-y-2">
@@ -1275,24 +1456,29 @@ function CenterManagerQuestionEditorView() {
             </div>
           )}
 
-          {/* Solution & Explanation Area */}
+          {/* Solution & Explanation Area with WYSIWYG RichMathEditor and KaTeX Preview */}
           <div className="border-t border-[var(--cm-border-subtle)] pt-6 space-y-2">
-            <label htmlFor="question-solution-area" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)]">
-              Lời giải chi tiết / Hướng dẫn chấm
-            </label>
-            <textarea
+            <RichMathEditor
               id="question-solution-area"
-              rows={3}
-              disabled={isReadOnly}
+              label="Lời giải chi tiết / Hướng dẫn chấm"
               value={formData.solution || ""}
-              onFocus={() => setActiveMathField("solution")}
-              onChange={(e) => handleInputChange("solution", e.target.value)}
-              placeholder="Nhập lời giải chi tiết giải thích cho học sinh hoặc hướng dẫn cho giáo viên chấm..."
-              className="cm-input w-full text-sm font-sans"
+              disabled={isReadOnly}
+              onChange={(val) => handleInputChange("solution", val)}
+              placeholder="Nhập lời giải chi tiết giải thích cho học sinh hoặc hướng dẫn cho giáo viên chấm... (Gõ $ hoặc Ctrl+M)"
+              minHeight="96px"
             />
             {formData.solution && (
               <div className="pt-1">
-                <MathFormulaPreview formula={formData.solution} displayMode={false} label="Xem trước lời giải (KaTeX)" />
+                <MathPreviewCore
+                  content={formData.solution}
+                  mode="rich"
+                  displayMode={false}
+                  headerSlot={
+                    <div className="text-[11px] font-semibold text-[var(--cm-text-muted)] uppercase tracking-wider mb-1">
+                      Xem trước lời giải (KaTeX)
+                    </div>
+                  }
+                />
               </div>
             )}
           </div>
@@ -1348,7 +1534,7 @@ function LegacyQuestionEditorPage() {
     questionText: "",
     maxScore: 1,
     estimatedTimeSeconds: 60,
-    reasoningRequired: true,
+    reasoningRequired: false,
     languageCode: "vi",
     answerEvaluationMode: "TextExact",
     options: [

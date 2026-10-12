@@ -145,6 +145,9 @@ public sealed class CyclicPrerequisiteNonRollbackTests : IDisposable
             UpdatedAt = _utcNow
         });
 
+        _dbContext.QuestionOptions.Add(new QuestionOption { CenterId = _centerId, QuestionId = 501, OptionId = 5011,
+            OptionLabel = "A", OptionText = "A is correct", IsCorrect = true, OrderIndex = 1, CreatedAt = _utcNow, UpdatedAt = _utcNow });
+
         _dbContext.QuestionKnowledgeNodes.Add(new QuestionKnowledgeNode
         {
             CenterId = _centerId,
@@ -391,7 +394,8 @@ public sealed class CyclicPrerequisiteNonRollbackTests : IDisposable
             IsCorrect = true,
             ReasoningQuality = 85m,
             AwardedScore = 10m,
-            Reason = "Teacher marked correct upon review"
+            Reason = "Teacher marked correct upon review",
+            Feedback = "Giáo viên nhận xét bài làm tốt."
         };
 
         var result = await useCase.ExecuteAsync(initialAnalysis.AnalysisId, request, CancellationToken.None);

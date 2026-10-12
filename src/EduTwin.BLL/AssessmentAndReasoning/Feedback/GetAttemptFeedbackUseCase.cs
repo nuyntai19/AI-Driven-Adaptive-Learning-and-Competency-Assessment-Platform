@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
+using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.DAL.Persistence;
 
@@ -81,18 +82,6 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
             }
         }
 
-        // Record that student has viewed the solution/feedback if not already set
-        if (!attempt.SolutionExposedAt.HasValue)
-        {
-            var tracked = await _dbContext.Attempts
-                .FirstOrDefaultAsync(a => a.CenterId == centerId && a.AttemptId == attemptId, cancellationToken);
-            if (tracked != null && !tracked.SolutionExposedAt.HasValue)
-            {
-                tracked.SolutionExposedAt = DateTime.UtcNow;
-                await _dbContext.SaveChangesAsync(cancellationToken);
-            }
-        }
-
         // Load ReasoningAnalysis with teacher user info
         var analysis = await _dbContext.ReasoningAnalyses.AsNoTracking()
             .Include(ra => ra.OverriddenByUser)
@@ -105,6 +94,41 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
             .Where(r => r.CenterId == centerId && r.AttemptId == attemptId)
             .OrderByDescending(r => r.RequestId)
             .FirstOrDefaultAsync(cancellationToken);
+
+        var pendingRequest = await _dbContext.StudentReviewRequests.AsNoTracking()
+            .AnyAsync(r => r.CenterId == centerId && r.AttemptId == attemptId &&
+                r.Status == StudentReviewRequestStatus.Pending, cancellationToken);
+        var assignmentApproved = attempt.AssignmentId.HasValue &&
+            await _dbContext.StudentAssignmentProgresses.AsNoTracking().AnyAsync(p =>
+                p.CenterId == centerId && p.AssignmentId == attempt.AssignmentId &&
+                p.StudentId == attempt.StudentId && !p.IsDeleted &&
+                p.TeacherFinalReviewStatus == TeacherFinalReviewStatus.Approved, cancellationToken);
+        var voided = attempt.AssignmentId.HasValue &&
+            await _dbContext.AssignmentQuestions.AsNoTracking().AnyAsync(q =>
+                q.CenterId == centerId && q.AssignmentId == attempt.AssignmentId &&
+                q.QuestionId == attempt.QuestionId && q.IsVoided, cancellationToken);
+        var job = await _dbContext.AIAnalysisJobs.AsNoTracking()
+            .Where(j => j.CenterId == centerId && j.AttemptId == attemptId)
+            .OrderByDescending(j => j.AnalysisJobId).FirstOrDefaultAsync(cancellationToken);
+
+        // The UI polls this endpoint during analysis. Such reads must neither
+        // expose the solution nor mutate the attempt snapshot held by the worker.
+        // A teacher viewing a submission is not a student viewing the solution.
+        var isStudent = currentUserRole == nameof(UserRole.Student);
+        var canExposeSolution = attempt.Status is AttemptStatus.Completed
+                or AttemptStatus.NeedsTeacherReview or AttemptStatus.AnalysisFailed
+            && job?.Status is not (AIJobStatus.Pending or AIJobStatus.Processing);
+        if (isStudent && canExposeSolution && !attempt.SolutionExposedAt.HasValue)
+        {
+            var tracked = await _dbContext.Attempts
+                .FirstOrDefaultAsync(a => a.CenterId == centerId && a.AttemptId == attemptId, cancellationToken);
+            if (tracked != null && !tracked.SolutionExposedAt.HasValue
+                && tracked.Status is AttemptStatus.Completed or AttemptStatus.NeedsTeacherReview or AttemptStatus.AnalysisFailed)
+            {
+                tracked.SolutionExposedAt = DateTime.UtcNow;
+                await _dbContext.SaveChangesAsync(cancellationToken);
+            }
+        }
 
         // Load TwinChange from TwinUpdateHistory
         var twinHistory = await _dbContext.TwinUpdateHistories.AsNoTracking()
@@ -124,23 +148,67 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
         var effectiveCorrectness = analysis?.OverrideIsCorrect ?? attempt.IsCorrect;
         var effectiveScore = analysis?.OverrideAwardedScore ?? attempt.AwardedScore;
         var maxScore = attempt.Question?.MaxScore ?? 1.00m;
+        var hasTeacherGrade = analysis?.OverrideIsCorrect.HasValue == true
+            || analysis?.OverrideAwardedScore.HasValue == true;
+        var gradingSource = hasTeacherGrade
+            ? "Teacher"
+            : attempt.IsCorrect.HasValue || attempt.AwardedScore.HasValue
+                ? "Deterministic"
+                : "PendingTeacher";
+        var gradingReasonCode = hasTeacherGrade
+            ? PreliminaryGradingReasonCodes.TeacherOverride
+            : (analysis?.IsFallback == true && string.IsNullOrEmpty(attempt.PreliminaryGradingReasonCode))
+                ? PreliminaryGradingReasonCodes.AiProviderUnavailable
+                : attempt.PreliminaryGradingReasonCode;
+
+        var finalAnswerDisplay = attempt.FinalAnswer;
+        string? answerDisplayLatex = attempt.AnswerDisplayLatex;
+        if (attempt.Question?.QuestionType == EduTwin.Contracts.CurriculumAndQuestions.QuestionType.MultipleChoice)
+        {
+            var options = await _dbContext.QuestionOptions
+                .AsNoTracking()
+                .Where(o => o.CenterId == centerId && o.QuestionId == attempt.QuestionId && !o.IsDeleted)
+                .OrderBy(o => o.OrderIndex)
+                .ToListAsync(cancellationToken);
+
+            var raw = attempt.FinalAnswer?.Trim() ?? string.Empty;
+            var matched = options.FirstOrDefault(o =>
+                o.OptionId.ToString(CultureInfo.InvariantCulture) == raw ||
+                string.Equals(o.OptionLabel, raw, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(o.OptionText, raw, StringComparison.OrdinalIgnoreCase));
+
+            if (matched != null)
+            {
+                finalAnswerDisplay = !string.IsNullOrWhiteSpace(matched.OptionText)
+                    ? $"{matched.OptionLabel}. {matched.OptionText}"
+                    : matched.OptionLabel;
+            }
+            else if (!string.IsNullOrWhiteSpace(raw))
+            {
+                // Fail-closed for ANY unmatched MultipleChoice answer (numeric option ID, UUID, or obsolete string)
+                finalAnswerDisplay = "Phương án đã chọn";
+            }
+
+            answerDisplayLatex = null;
+        }
 
         // 1. Student Submission
         var studentSubmissionDto = new AttemptFeedbackStudentSubmissionDto
         {
-            FinalAnswer = attempt.FinalAnswer,
+            FinalAnswer = finalAnswerDisplay,
+            AnswerDisplayLatex = answerDisplayLatex,
             ReasoningText = attempt.ReasoningText,
             Confidence = attempt.Confidence,
             TimeSpentSeconds = attempt.TimeSpentSeconds,
             AnswerChanges = attempt.AnswerChanges,
             AttachmentUrl = attempt.Attachment != null
-                ? $"/api/v1/attachments/attempts/{attempt.AttemptId}"
+                ? $"/api/v1/learning/attempts/{attempt.AttemptId}/attachment"
                 : null
         };
 
         // 2. Teacher Solution & Reference
         AttemptFeedbackTeacherSolutionDto? teacherSolutionDto = null;
-        if (attempt.Question != null)
+        if (attempt.Question != null && (!isStudent || canExposeSolution))
         {
             AttemptFeedbackGradingCriteriaDto? criteriaDto = null;
             if (attempt.Question.GradingCriteria != null)
@@ -211,9 +279,8 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
                 }
             }
 
-            var effectiveQuality = analysis.OverrideReasoningQuality ?? analysis.ReasoningQuality;
-            int? reasoningQualityInt = effectiveQuality.HasValue
-                ? (int)Math.Round(effectiveQuality.Value, MidpointRounding.AwayFromZero)
+            int? aiReasoningQualityInt = analysis.ReasoningQuality.HasValue
+                ? (int)Math.Round(analysis.ReasoningQuality.Value, MidpointRounding.AwayFromZero)
                 : null;
 
             analysisDto = new AttemptFeedbackAnalysisDto
@@ -221,23 +288,31 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
                 AnalysisId = analysis.AnalysisId.ToString(CultureInfo.InvariantCulture),
                 SchemaVersion = analysis.SchemaVersion,
                 MethodDetected = analysis.MethodDetected,
-                ReasoningQuality = reasoningQualityInt,
-                QualityBand = GetQualityBand(effectiveQuality),
-                ErrorType = (analysis.OverrideErrorType ?? analysis.ErrorType).ToString(),
+                ReasoningQuality = aiReasoningQualityInt,
+                QualityBand = GetQualityBand(analysis.ReasoningQuality),
+                ErrorType = analysis.ErrorType.ToString(),
                 Misconception = analysis.Misconception,
                 MissingSteps = missingSteps,
                 RootCauseNodes = rootCauseNodes,
                 Confidence = analysis.AnalysisConfidence.HasValue
                     ? (int)Math.Round(analysis.AnalysisConfidence.Value, MidpointRounding.AwayFromZero)
                     : null,
-                Feedback = analysis.OverrideFeedback ?? analysis.Feedback,
+                // Legacy builder substituted canned correctness messages for AI
+                // feedback. Do not surface a stale wrong statement after a regrade.
+                Feedback = AnalysisFeedbackPresentation.Resolve(analysis.FeedbackOrigin, analysis.Feedback, effectiveCorrectness),
                 IsFallback = analysis.IsFallback,
                 NeedsTeacherReview = analysis.NeedsTeacherReview,
                 HasTeacherOverride = analysis.OverrideVersion > 0,
-                IsRawAI = true,
+                IsRawAI = analysis.FeedbackOrigin is "Gemini" or "Groq",
+                FeedbackOrigin = analysis.FeedbackOrigin,
+                AnswerAssessment = analysis.AnswerAssessment,
+                ReasoningVerdict = analysis.ReasoningVerdict,
                 Model = analysis.ModelName ?? "Gemini AI",
                 SolutionType = analysis.SolutionType,
-                AiSolution = analysis.AiSolution
+                AiSolution = analysis.AiSolution,
+                SuggestedScore = analysis.SuggestedScore,
+                SuggestedRubricGrade = RubricGrade.Deserialize(analysis.SuggestedRubricGradeJson),
+                UsesAlternativeMethod = analysis.UsesAlternativeMethod
             };
         }
 
@@ -248,9 +323,16 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
             var reviewer = analysis.ReviewedByUser ?? analysis.OverriddenByUser;
             var teacherName = reviewer?.DisplayName ?? reviewer?.Username ?? "Giáo viên";
             var isApprovedAsIs = string.Equals(analysis.ReviewDecision, "Approved", StringComparison.OrdinalIgnoreCase) && analysis.OverrideVersion == 0;
+            int? teacherReasoningQualityInt = analysis.OverrideReasoningQuality.HasValue
+                ? (int)Math.Round(analysis.OverrideReasoningQuality.Value, MidpointRounding.AwayFromZero)
+                : null;
 
             teacherEvaluationDto = new AttemptFeedbackTeacherEvaluationDto
             {
+                RubricGrade = RubricGrade.Deserialize(await _dbContext.TeacherReviewHistories.AsNoTracking()
+                    .Where(h => h.CenterId == centerId && h.AnalysisId == analysis.AnalysisId)
+                    .OrderByDescending(h => h.OverrideVersion).ThenByDescending(h => h.HistoryId)
+                    .Select(h => h.RubricResultJson).FirstOrDefaultAsync(cancellationToken)),
                 HasTeacherOverride = analysis.OverrideVersion > 0,
                 IsApprovedAsIs = isApprovedAsIs,
                 ReviewDecision = analysis.ReviewDecision,
@@ -258,13 +340,19 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
                 TeacherIsCorrect = analysis.OverrideIsCorrect ?? attempt.IsCorrect,
                 TeacherScore = analysis.OverrideAwardedScore ?? attempt.AwardedScore,
                 TeacherFeedback = analysis.OverrideFeedback ?? analysis.TeacherReviewNote,
+                TeacherReasoningQuality = teacherReasoningQualityInt,
+                TeacherErrorType = analysis.OverrideErrorType?.ToString(),
                 ReviewedByTeacherName = teacherName,
                 ReviewedAt = analysis.ReviewedAt ?? analysis.OverriddenAt,
                 OriginalAIRawGrade = new AttemptFeedbackGradingDto
                 {
                     IsCorrect = attempt.IsCorrect,
                     AwardedScore = attempt.AwardedScore,
-                    MaxScore = maxScore
+                    MaxScore = maxScore,
+                    ReasonCode = attempt.PreliminaryGradingReasonCode,
+                    Source = attempt.IsCorrect.HasValue || attempt.AwardedScore.HasValue
+                        ? "Deterministic"
+                        : "PendingTeacher"
                 }
             };
         }
@@ -306,9 +394,12 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
             }
         }
 
-        var canRetry = retriesRemaining > 0 && cooldownRemaining == 0;
+        var retryEligible = AttemptFeedbackActionPolicy.CanRetryAI(
+            attempt, job, analysis, assignmentApproved, pendingRequest, voided);
+        var canRetry = retryEligible && retriesRemaining > 0 && cooldownRemaining == 0;
         var retryQuotaDto = new RetryQuotaDto
         {
+            IsEligible = retryEligible,
             ManualRetriesUsed = retriesUsed,
             ManualRetriesRemaining = retriesRemaining,
             CooldownRemainingSeconds = cooldownRemaining,
@@ -354,7 +445,9 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
             {
                 IsCorrect = effectiveCorrectness,
                 AwardedScore = effectiveScore,
-                MaxScore = maxScore
+                MaxScore = maxScore,
+                ReasonCode = gradingReasonCode,
+                Source = gradingSource
             },
             StudentSubmission = studentSubmissionDto,
             TeacherSolution = teacherSolutionDto,
@@ -362,6 +455,18 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
             TeacherFinalEvaluation = teacherEvaluationDto,
             ReviewRequest = reviewRequestDto,
             RetryQuota = retryQuotaDto,
+            AIProcessing = job is null ? null : new AttemptAIProcessingDto
+            {
+                Status = job.Status.ToString(),
+                Reason = AIProcessingPresentation.Reason(job.LastErrorCode),
+                NextAttemptAt = job.Status == AIJobStatus.Pending ? job.AvailableAt : null
+            },
+            Actions = new AttemptFeedbackActionsDto
+            {
+                CanRequestTeacherReview = AttemptFeedbackActionPolicy.CanRequestReview(
+                    attempt, analysis, assignmentApproved, pendingRequest, voided),
+                CanReportQuestion = AttemptFeedbackActionPolicy.CanReportQuestion(attempt, pendingRequest, voided)
+            },
             TwinChange = twinChangeDto,
             Recommendation = recommendationDto
         };

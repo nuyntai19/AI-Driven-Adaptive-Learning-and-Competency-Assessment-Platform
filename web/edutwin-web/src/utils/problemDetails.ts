@@ -11,15 +11,30 @@ export interface FormattedError {
 }
 
 export function extractProblemDetails(error: unknown): FormattedError {
-  if (axios.isAxiosError(error) && error.response) {
-    const data = error.response.data as ProblemDetails | undefined;
-    const status = error.response.status;
-    const title = data?.title || null;
-    const detail = data?.detail || null;
-    const errorCode = data?.errorCode || null;
-    const traceId = data?.traceId || (error.response.headers["x-trace-id"] as string) || null;
+  const isAxios = axios.isAxiosError(error);
+  const anyError = error as any;
+  const response = isAxios ? error.response : anyError?.response;
 
-    let message = detail || title || error.message || "An unexpected error occurred.";
+  if (response) {
+    const data = response.data as ProblemDetails | undefined;
+    const status = typeof response.status === "number" ? response.status : (typeof anyError?.status === "number" ? anyError.status : null);
+    const title = typeof data === "object" ? data?.title || null : null;
+    const detail = typeof data === "object" ? data?.detail || null : (typeof data === "string" ? data : null);
+    const errorCode = typeof data === "object" ? data?.errorCode || null : null;
+    const traceId = (typeof data === "object" && data?.traceId) || (response.headers && (response.headers["x-trace-id"] || response.headers?.get?.("x-trace-id"))) || null;
+
+    let message = detail || title || (anyError?.message && !anyError.message.startsWith("Request failed with status code") ? anyError.message : null);
+    if (!message) {
+      if (status === 409) {
+        message = "Xung đột dữ liệu hoặc trạng thái không hợp lệ.";
+      } else if (status === 403) {
+        message = "Bạn không có quyền thực hiện thao tác này.";
+      } else if (status === 404) {
+        message = "Không tìm thấy dữ liệu yêu cầu.";
+      } else {
+        message = "Đã xảy ra lỗi khi xử lý yêu cầu.";
+      }
+    }
     if (traceId) {
       message = `${message} (Mã theo dõi: ${traceId})`;
     }
@@ -35,13 +50,43 @@ export function extractProblemDetails(error: unknown): FormattedError {
   }
 
   if (error instanceof Error) {
+    let status = typeof anyError?.status === "number" ? anyError.status : null;
+    if (status === null) {
+      const match = error.message.match(/status code (\d{3})/i);
+      if (match) {
+        status = Number(match[1]);
+      }
+    }
+    const detail = typeof anyError?.detail === "string" ? anyError.detail : null;
+    const title = typeof anyError?.title === "string" ? anyError.title : null;
+    const errorCode = typeof anyError?.errorCode === "string" ? anyError.errorCode : null;
+    let message = detail || title || error.message;
+    if (message.startsWith("Request failed with status code")) {
+      message = status === 409 ? "Xung đột dữ liệu hoặc trạng thái không hợp lệ." : "Đã xảy ra lỗi khi gửi yêu cầu.";
+    }
     return {
-      status: null,
-      title: null,
-      detail: null,
-      errorCode: null,
+      status,
+      title,
+      detail,
+      errorCode,
       traceId: null,
-      message: error.message,
+      message,
+    };
+  }
+
+  if (anyError && typeof anyError === "object") {
+    const status = typeof anyError.status === "number" ? anyError.status : null;
+    const detail = typeof anyError.detail === "string" ? anyError.detail : null;
+    const title = typeof anyError.title === "string" ? anyError.title : null;
+    const errorCode = typeof anyError.errorCode === "string" ? anyError.errorCode : null;
+    const message = detail || title || (typeof anyError.message === "string" ? anyError.message : "Unknown error occurred.");
+    return {
+      status,
+      title,
+      detail,
+      errorCode,
+      traceId: null,
+      message,
     };
   }
 
@@ -56,21 +101,13 @@ export function extractProblemDetails(error: unknown): FormattedError {
 }
 
 export function isOverrideConflict(error: unknown): boolean {
-  if (axios.isAxiosError(error) && error.response) {
-    const status = error.response.status;
-    const data = error.response.data as ProblemDetails | undefined;
-    return status === 409 || data?.errorCode === "OVERRIDE_CONFLICT";
-  }
-  return false;
+  const details = extractProblemDetails(error);
+  return details.status === 409 || details.errorCode === "OVERRIDE_CONFLICT";
 }
 
 export function isConcurrencyConflict(error: unknown): boolean {
-  if (axios.isAxiosError(error) && error.response) {
-    const status = error.response.status;
-    const data = error.response.data as ProblemDetails | undefined;
-    return status === 409 || data?.errorCode === "CONCURRENCY_CONFLICT" || data?.errorCode === "OVERRIDE_CONFLICT";
-  }
-  return false;
+  const details = extractProblemDetails(error);
+  return details.status === 409 || details.errorCode === "CONCURRENCY_CONFLICT" || details.errorCode === "OVERRIDE_CONFLICT";
 }
 
 export function isConcurrencyConflictError(error: any): boolean {

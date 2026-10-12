@@ -4,10 +4,13 @@ namespace EduTwin.Contracts.CurriculumAndQuestions;
 
 public class QuestionListQuery
 {
+    public string? Visibility { get; set; }
+    public bool OwnedOnly { get; set; }
     public Guid? SubjectId { get; set; }
     public string? TopicId { get; set; }
     public string? Type { get; set; }
     public byte? Difficulty { get; set; }
+    public byte? GradeLevel { get; set; }
     public string? Status { get; set; }
     public int Page { get; set; } = 1;
     public int PageSize { get; set; } = 20;

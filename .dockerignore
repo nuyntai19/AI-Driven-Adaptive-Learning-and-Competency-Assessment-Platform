@@ -9,3 +9,4 @@ TestResults
 coverage
 .env
 *.log
+storage/

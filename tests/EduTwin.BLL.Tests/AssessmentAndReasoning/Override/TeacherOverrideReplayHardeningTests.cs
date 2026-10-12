@@ -565,6 +565,7 @@ public sealed class TeacherOverrideReplayHardeningTests : IDisposable
             ErrorType = ErrorType.None,
             IsCorrect = true,
             Reason = "Fixed",
+            Feedback = "Teacher feedback note",
             OverrideVersion = 0
         };
 
@@ -678,6 +679,7 @@ public sealed class TeacherOverrideReplayHardeningTests : IDisposable
             ErrorType = ErrorType.None,
             IsCorrect = true,
             Reason = "Concurrent override",
+            Feedback = "Teacher feedback note",
             OverrideVersion = 0
         };
 

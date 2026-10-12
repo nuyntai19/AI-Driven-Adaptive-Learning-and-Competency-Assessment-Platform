@@ -1,5 +1,11 @@
 # EduTwin — Hiến pháp kỹ thuật
 
+> Amendment PLATFORM-OPS-OBS-01 (11/10/2026), người dùng phê duyệt triển khai: [SPEC vận hành Admin](docs/plans/PLATFORM-OPERATIONS-IMPLEMENTATION-SPEC-2026-10-11.md). Cho phép ba API GET/root-only, ba quyền non-delegable, metadata ledger AI và snapshot/alert vận hành như SPEC. Stage I không còn deferred trong phạm vi này; Stage H vẫn deferred. Ledger là metadata vận hành, ngoại lệ được duyệt đối với cấm bảng log AI, không chứa nội dung học thuật. Không purge/AI retry/billing mutation và không commit/push. Trạng thái COMPLETED-v1 trong phạm vi SPEC; [báo cáo kiểm chứng](docs/verification/PLATFORM-OPERATIONS-REPORT-2026-10-11.md) ghi kết quả, rollout và các giới hạn chưa triển khai. Không coi roadmap observability rộng hơn hoặc tải 1.000 người đồng thời đã nghiệm thu.
+
+> Amendment tiếp tục NF-02…05 được người dùng cho phép: [Completion SPEC](docs/plans/NOTIFICATIONS-COMPLETION-SPEC.md). Scope/tenant/history bất biến; không push hoặc mở chat/purge.
+
+> Amendment 2026-10-10: người dùng cho phép NF-00/NF-01 thông báo in-app theo [CP-NOTIFICATIONS](docs/plans/NOTIFICATIONS-NF01-SPEC.md) và ưu tiên [NF-03a soạn/gửi](docs/plans/NOTIFICATIONS-NF03-SEND-SPEC.md) trước NF-02; giữ monolith, không SignalR/broker/AI mới. Quy tắc tenant/ownership/transaction/history còn nguyên; relay chỉ server explicit theo ma trận đã khóa.
+
 > Phiên bản: 2.1-draft
 > Trạng thái: COURSE REBASELINE — source migration chưa hoàn tất
 > Baseline v1: 2026-07-15
@@ -123,7 +129,7 @@ Căn cứ phê duyệt của nhóm và hai bản ghi kiến trúc độc lập (
 
 2. **Bộ Công Cụ Toán Học & Minh Chứng Đa Phương Thức (Math Toolkit & Multimodal Evidence - Track 2):**
    - Cung cấp Visual Math Toolbar 5 tab ký tự toán học và xem trước KaTeX an toàn (`trust: false`), lưu vết `answer_display_latex` (`VARCHAR(2048) NULL`).
-   - Bổ sung chế độ chấm điểm `QuestionAnswerEvaluationMode` (`TextExact`, `NumericRational`, `Manual`) kèm bộ chuẩn hóa phân số tối giản `MathAnswerNormalizer` bằng `BigInteger`.
+   - Bổ sung chế độ chấm điểm `QuestionAnswerEvaluationMode` (`TextExact`, `NumericRational`, `Coordinate2D`, `Manual`) kèm bộ chuẩn hóa phân số tối giản `MathAnswerNormalizer` bằng `BigInteger`; dữ liệu toán có cấu trúc như tọa độ phải được so theo cấu trúc, không so chuỗi thô.
    - Cung cấp Scientific Calculator Drawer thuần tính toán, tuyệt đối không có tính năng tự động giải toán.
    - Bảng vẽ nháp vector (Vector Scratchpad Canvas) lưu trữ draft scoped IndexedDB theo `draft:${centerId}:${userId}:${clientSubmissionId}`.
    - Nộp bài (`POST /learning/attempts`) và upload minh chứng bắt buộc tài khoản loại `Student` và quyền `learning.attempts.submit`.

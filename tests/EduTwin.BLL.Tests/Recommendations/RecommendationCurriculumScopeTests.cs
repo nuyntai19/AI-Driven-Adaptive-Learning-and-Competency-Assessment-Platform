@@ -135,6 +135,45 @@ public sealed class RecommendationCurriculumScopeTests : IDisposable
         await _dbContext.SaveChangesAsync();
     }
 
+    [Fact]
+    public async Task ActivePrimaryAndSupplemental_UnionAndDeduplicateTopics_WithoutAmbiguousAssignment()
+    {
+        await SeedClassAndTopicsAsync();
+        var primary = await AddCurriculumAsync(ReviewStatus.Published, "Main");
+        var supplemental = await AddCurriculumAsync(ReviewStatus.Published, "Extra");
+        _dbContext.CurriculumNodes.AddRange(CurriculumNode(primary, 1, 1),
+            CurriculumNode(supplemental, 1, 1), CurriculumNode(supplemental, 2, 2));
+        _dbContext.ClassCurriculumApplications.AddRange(Application(primary, "Primary"), Application(supplemental, "Supplemental"));
+        await _dbContext.SaveChangesAsync();
+        var result = await new OpportunityCandidateBuilder(_dbContext).BuildCandidatesAsync(_centerId, _studentId, _subjectId, default);
+        Assert.Null(result.BlockedReason);
+        Assert.Equal(new ulong[] { 1, 2 }, result.AllActiveTopicNodes.Select(n => n.NodeId));
+    }
+
+    [Fact]
+    public async Task EndedApplication_DoesNotResurrectOldPlanningLinks_OrWholeSubjectFallback()
+    {
+        await SeedClassAndTopicsAsync();
+        var curriculum = await AddCurriculumAsync(ReviewStatus.Published, "Ended");
+        _dbContext.CurriculumNodes.Add(CurriculumNode(curriculum, 1, 1));
+        var application = Application(curriculum, "Primary");
+        application.EndedAt = _utcNow.AddDays(1);
+        application.EndedBy = _teacherId;
+        application.EndReason = "Thay giáo trình";
+        _dbContext.ClassCurriculumApplications.Add(application);
+        await _dbContext.SaveChangesAsync();
+        var result = await new OpportunityCandidateBuilder(_dbContext).BuildCandidatesAsync(_centerId, _studentId, _subjectId, default);
+        Assert.Equal("NO_APPLIED_CURRICULUM", result.BlockedReason);
+        Assert.Empty(result.AllActiveTopicNodes);
+    }
+
+    private ClassCurriculumApplication Application(Guid curriculumId, string role) => new()
+    {
+        ApplicationId = Guid.NewGuid(), CenterId = _centerId, ClassId = _classId,
+        CurriculumId = curriculumId, SubjectId = _subjectId, ApplicationRole = role,
+        AssignedBy = _teacherId, StartedAt = _utcNow
+    };
+
     private async Task<Guid> AddCurriculumAsync(ReviewStatus status, string title)
     {
         var curriculumId = Guid.NewGuid();

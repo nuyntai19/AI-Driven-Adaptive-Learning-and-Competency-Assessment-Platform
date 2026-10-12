@@ -12,6 +12,7 @@ public sealed class GeminiResponseJsonSchemaTests
     [
         "schemaVersion",
         "language",
+        "visualEvidence",
         "methodDetected",
         "reasoningQuality",
         "errorType",
@@ -21,7 +22,13 @@ public sealed class GeminiResponseJsonSchemaTests
         "confidence",
         "feedback",
         "solutionType",
-        "aiSolution"
+        "aiSolution",
+        "answerAssessment",
+        "reasoningVerdict",
+        "suggestedScore",
+        "usesAlternativeMethod",
+        "suggestedRubricScores",
+        "reasoningIssues"
     ];
 
     [Fact]
@@ -43,7 +50,7 @@ public sealed class GeminiResponseJsonSchemaTests
             .Select(property => property.Name)
             .ToArray();
 
-        Assert.Equal(CanonicalProperties, propertyNames);
+        Assert.Equal(CanonicalProperties.Order(), propertyNames.Order());
     }
 
     [Fact]
@@ -70,13 +77,13 @@ public sealed class GeminiResponseJsonSchemaTests
     }
 
     [Fact]
-    public void Language_EnumIsExactlyViAndEn()
+    public void Language_IsVietnameseRegardlessOfSubject()
     {
         using var document = CreateDocument();
         var schema = PropertySchema(document, "language");
 
         Assert.Equal("string", schema.GetProperty("type").GetString());
-        Assert.Equal(["vi", "en"], StringValues(schema.GetProperty("enum")));
+        Assert.Equal(["vi"], StringValues(schema.GetProperty("enum")));
     }
 
     [Fact]
@@ -155,6 +162,27 @@ public sealed class GeminiResponseJsonSchemaTests
 
         Assert.Equal(JsonValueKind.String, items.GetProperty("type").ValueKind);
         Assert.Equal("string", items.GetProperty("type").GetString());
+    }
+
+    [Fact]
+    public void VisualEvidence_DoesNotExpandLargeBoundedArrayGrammarInSingleOrBatchSchemas()
+    {
+        var schemas = new GeminiResponseJsonSchema();
+        using var single = JsonDocument.Parse(JsonSerializer.Serialize(schemas.CreateGenerateContentConfig().ResponseJsonSchema));
+        using var batch = JsonDocument.Parse(JsonSerializer.Serialize(schemas.CreateBatchConfig(["first", "second"]).ResponseJsonSchema));
+        var batchAnalysis = batch.RootElement.GetProperty("properties").GetProperty("results")
+            .GetProperty("items").GetProperty("properties").GetProperty("analysis");
+
+        foreach (var analysis in new[] { single.RootElement, batchAnalysis })
+        {
+            var evidence = analysis.GetProperty("properties").GetProperty("visualEvidence");
+            Assert.Equal("array", evidence.GetProperty("type").GetString());
+            Assert.False(evidence.TryGetProperty("maxItems", out _));
+            var item = evidence.GetProperty("items");
+            Assert.Equal(["criterionId", "requirementIndex", "status", "studentImageIndex", "observation"],
+                StringValues(item.GetProperty("required")));
+            Assert.False(item.GetProperty("additionalProperties").GetBoolean());
+        }
     }
 
     private static JsonDocument CreateDocument()

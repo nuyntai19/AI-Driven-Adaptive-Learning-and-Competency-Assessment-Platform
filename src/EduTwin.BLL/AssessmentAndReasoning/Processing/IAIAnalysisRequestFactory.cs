@@ -11,5 +11,7 @@ public interface IAIAnalysisRequestFactory
         Attempt attempt,
         Question question,
         IReadOnlyList<KnowledgeNode> allowedKnowledgeNodes,
-        IReadOnlyList<AnalyzeReasoningImagePart>? imageParts = null);
+        IReadOnlyList<AnalyzeReasoningImagePart>? imageParts = null,
+        IReadOnlyList<QuestionOption>? options = null,
+        IReadOnlyList<AnalyzeReasoningImagePart>? questionImageParts = null);
 }

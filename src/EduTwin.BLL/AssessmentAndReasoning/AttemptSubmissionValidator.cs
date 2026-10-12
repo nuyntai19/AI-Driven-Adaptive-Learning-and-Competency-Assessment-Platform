@@ -117,6 +117,14 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
         }
 
         AssignmentQuestion? assignmentQuestion = null;
+        if (request.History) return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
+        if (!request.AssignmentId.HasValue)
+        {
+            var scope = await EduTwin.BLL.Organization.StudentLearningScope.ResolveAsync(_dbContext, centerId, studentId,
+                question.SubjectId, request.ClassId, false, cancellationToken);
+            if (!scope.Includes(question.PrimaryTopicNodeId))
+                return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
+        }
         if (request.AssignmentId.HasValue)
         {
             var assignment = await _dbContext.Assignments
@@ -137,6 +145,10 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
             {
                 return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
             }
+
+            if (await EduTwin.BLL.Assignments.StudentAssignmentScope.SuspendedAsync(_dbContext, centerId, assignment.ClassId, cancellationToken) ||
+                (request.ClassId.HasValue && request.ClassId != assignment.ClassId))
+                return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
 
             var isTarget = await _dbContext.AssignmentTargets
                 .AsNoTracking()
@@ -161,6 +173,11 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
                 return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
             }
 
+            if (assignment.Status != AssignmentStatus.Published)
+            {
+                return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
+            }
+
             var progress = await _dbContext.StudentAssignmentProgresses
                 .AsNoTracking()
                 .SingleOrDefaultAsync(
@@ -170,29 +187,41 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
                         candidate.StudentId == studentId,
                     cancellationToken);
 
-            var now = _timeProvider.GetUtcNow().UtcDateTime;
-            DateTime? effectiveExpiresAt = null;
-            if (assignment.DueAt.HasValue && assignment.TimeLimitMinutes.HasValue && progress?.StartedAt.HasValue == true)
-            {
-                var timeLimitExpiresAt = progress.StartedAt.Value.AddMinutes(assignment.TimeLimitMinutes.Value);
-                effectiveExpiresAt = assignment.DueAt.Value < timeLimitExpiresAt ? assignment.DueAt.Value : timeLimitExpiresAt;
-            }
-            else if (assignment.TimeLimitMinutes.HasValue && progress?.StartedAt.HasValue == true)
-            {
-                effectiveExpiresAt = progress.StartedAt.Value.AddMinutes(assignment.TimeLimitMinutes.Value);
-            }
-            else if (assignment.DueAt.HasValue)
-            {
-                effectiveExpiresAt = assignment.DueAt.Value;
-            }
-
-            if (effectiveExpiresAt.HasValue && now > effectiveExpiresAt.Value)
+            if (progress != null && progress.Status == ProgressStatus.Completed)
             {
                 return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
             }
+
+            var now = _timeProvider.GetUtcNow().UtcDateTime;
+
+            // Enforce exact authoritative expiration without arbitrary grace period
+            if (assignment.TimeLimitMinutes.HasValue && assignment.TimeLimitMinutes.Value > 0)
+            {
+                if (progress == null || progress.StartedAt == null)
+                {
+                    return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
+                }
+
+                var timeLimitExpiresAt = progress.StartedAt.Value.AddMinutes(assignment.TimeLimitMinutes.Value);
+                var effectiveExpiresAt = assignment.DueAt.HasValue && assignment.DueAt.Value < timeLimitExpiresAt
+                    ? assignment.DueAt.Value
+                    : timeLimitExpiresAt;
+
+                if (now > effectiveExpiresAt)
+                {
+                    return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
+                }
+            }
+            else if (assignment.DueAt.HasValue)
+            {
+                if (now > assignment.DueAt.Value)
+                {
+                    return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
+                }
+            }
         }
 
-        var isVoidedQuestion = request.AssignmentId.HasValue && question.Status == QuestionStatus.Archived;
+        var isVoidedQuestion = assignmentQuestion?.IsVoided == true;
 
         if (!request.Skipped && !isVoidedQuestion && question.ReasoningRequired && string.IsNullOrWhiteSpace(request.ReasoningText))
         {
@@ -226,7 +255,8 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
             {
                 IsCorrect = true,
                 Score = assignmentQuestion?.Points > 0 ? assignmentQuestion.Points : question.MaxScore,
-                Feedback = "Câu hỏi đã được đánh dấu có sai sót đề và được tự động công nhận trọn điểm."
+                Feedback = "Câu hỏi đã được đánh dấu có sai sót đề và được tự động công nhận trọn điểm.",
+                ReasonCode = PreliminaryGradingReasonCodes.VoidedQuestion
             }
             : (!request.Skipped
                 ? _graderFactory
@@ -245,7 +275,8 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
                 {
                     IsCorrect = false,
                     Score = 0m,
-                    Feedback = "Skipped"
+                    Feedback = "Skipped",
+                    ReasonCode = PreliminaryGradingReasonCodes.NoAnswer
                 });
 
         var effectiveFinalAnswer = request.Skipped
@@ -269,7 +300,8 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
             Skipped = request.Skipped,
             ReasoningLanguage = "vi",
             IsCorrect = preliminaryGrade.IsCorrect,
-            AwardedScore = preliminaryGrade.Score
+            AwardedScore = preliminaryGrade.Score,
+            PreliminaryGradingReasonCode = preliminaryGrade.ReasonCode
         });
     }
 
@@ -359,6 +391,7 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
         ReasoningLanguage = attempt.ReasoningLanguage,
         IsCorrect = attempt.IsCorrect,
         AwardedScore = attempt.AwardedScore,
+        PreliminaryGradingReasonCode = attempt.PreliminaryGradingReasonCode,
         ExistingAttemptId = attempt.AttemptId
     };
 

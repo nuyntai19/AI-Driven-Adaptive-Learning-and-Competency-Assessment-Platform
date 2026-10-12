@@ -70,6 +70,7 @@ public static class QuestionSeedTemplates
         templates.Add(new QuestionTemplate
         {
             LogicalCode = "MATH-FUNC-04", TopicCode = "MATH-FUNCTIONS", Difficulty = 4, QuestionType = QuestionType.ShortAnswer, LanguageCode = "vi", MaxScore = 40, EstimatedTimeSeconds = 300,
+            AnswerEvaluationMode = QuestionAnswerEvaluationMode.Coordinate2D,
             QuestionText = "Tìm tọa độ đỉnh của parabol y = -2x^2 + 4x - 1.", CorrectAnswer = "(1, 1)",
             Solution = "Tọa độ đỉnh I(x, y). Hoành độ x = -b / (2a) = -4 / (2 * -2) = 1. Tung độ y = -2(1)^2 + 4(1) - 1 = -2 + 4 - 1 = 1.",
             ExpectedReasoning = "Áp dụng công thức hoành độ đỉnh -b/2a. Thay hoành độ vào hàm số để tìm tung độ.",

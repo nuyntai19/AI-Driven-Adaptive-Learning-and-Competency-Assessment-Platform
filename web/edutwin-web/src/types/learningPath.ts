@@ -32,6 +32,8 @@ export interface StudentLearningPathPreferenceResponse {
 
 export interface GenerateLearningPathRequest {
   subjectId: string;
+  classId?: string;
+  history?: boolean;
   selfAssessedLevel: string;
   weakTopicNodeIds: number[];
   focusTopicNodeIds: number[];
@@ -81,6 +83,9 @@ export interface LearningPathWeekDto {
 
 export interface LearningPathSessionDto {
   sessionId: string;
+  classId?: string | null;
+  startedAtUtc?: string | null;
+  rowVersion?: string | null;
   title: string;
   type: string;
   topicNodeId: string;

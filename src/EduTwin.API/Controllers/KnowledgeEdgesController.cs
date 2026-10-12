@@ -46,6 +46,10 @@ public class KnowledgeEdgesController : ControllerBase
     {
         var result = await _createKnowledgeEdgeUseCase.ExecuteAsync(request, cancellationToken);
 
+        if (result.ErrorCode == ErrorCodes.InvalidStateTransition)
+            return Conflict(new ProblemDetails { Status = 409, Title = "Thao tác bị chặn bởi dữ liệu đang sử dụng",
+                Detail = result.Message, Extensions = { ["errorCode"] = result.ErrorCode, ["traceId"] = HttpContext.TraceIdentifier } });
+
         if (result.IsSuccess)
         {
             var response = new KnowledgeEdgeResponse
@@ -144,6 +148,10 @@ public class KnowledgeEdgesController : ControllerBase
     {
         var result = await _updateKnowledgeEdgeUseCase.ExecuteAsync(edgeId, request, cancellationToken);
 
+        if (result.ErrorCode == ErrorCodes.InvalidStateTransition)
+            return Conflict(new ProblemDetails { Status = 409, Title = "Thao tác bị chặn bởi dữ liệu đang sử dụng",
+                Detail = result.Message, Extensions = { ["errorCode"] = result.ErrorCode, ["traceId"] = HttpContext.TraceIdentifier } });
+
         if (result.IsSuccess)
         {
             var response = new KnowledgeEdgeResponse
@@ -223,6 +231,10 @@ public class KnowledgeEdgesController : ControllerBase
         CancellationToken cancellationToken)
     {
         var result = await _deleteKnowledgeEdgeUseCase.ExecuteAsync(edgeId, cancellationToken);
+
+        if (result.ErrorCode == ErrorCodes.InvalidStateTransition)
+            return Conflict(new ProblemDetails { Status = 409, Title = "Thao tác bị chặn bởi dữ liệu đang sử dụng",
+                Detail = result.Message, Extensions = { ["errorCode"] = result.ErrorCode, ["traceId"] = HttpContext.TraceIdentifier } });
 
         if (result.IsSuccess)
         {

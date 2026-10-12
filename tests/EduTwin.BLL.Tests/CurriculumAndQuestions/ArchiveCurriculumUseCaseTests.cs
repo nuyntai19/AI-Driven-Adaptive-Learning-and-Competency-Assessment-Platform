@@ -29,7 +29,7 @@ public class ArchiveCurriculumUseCaseTests
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
         _tenantMock = new Mock<ITenantContext>();
-        _tenantMock.Setup(t => t.Role).Returns(nameof(UserRole.CenterManager));
+        _tenantMock.Setup(t => t.Role).Returns(nameof(UserRole.Teacher));
         _tenantAccessorMock = new Mock<ITenantIdAccessor>();
         _tenantAccessorMock.Setup(x => x.CenterId).Returns(() => _tenantMock.Object.CenterId);
         _timeProviderMock = new Mock<TimeProvider>();
@@ -259,7 +259,7 @@ public class ArchiveCurriculumUseCaseTests
 
             var result = await sut.ExecuteAsync(curriculumId, new ArchiveCurriculumRequest
             {
-                RowVersion = "1"
+                RowVersion = "1", Reason = "Kết thúc giáo trình cũ."
             });
 
             Assert.True(result.IsSuccess, $"Failed with: {result.ErrorCode}");
@@ -269,7 +269,8 @@ public class ArchiveCurriculumUseCaseTests
             Assert.Equal(2, result.Data.NodeIds.Count);
             Assert.Equal("101", result.Data.NodeIds[0]);
             Assert.Equal("102", result.Data.NodeIds[1]);
-            Assert.Single(result.Data.ClassIds);
+            Assert.Empty(result.Data.ClassIds); // Archived curriculum has no live applications.
+            Assert.Single(await dbContext.CurriculumClasses.Where(c => c.CurriculumId == curriculumId).ToListAsync()); // Historical plan remains stored.
 
             var inDb = await dbContext.Curriculums.SingleAsync(c => c.CurriculumId == curriculumId);
             Assert.Equal(ReviewStatus.Archived, inDb.ReviewStatus);

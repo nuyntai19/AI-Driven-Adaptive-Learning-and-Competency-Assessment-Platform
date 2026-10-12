@@ -17,8 +17,10 @@ import type {
 import type { ProblemDetails } from "../../types/auth";
 import { useAuthStore } from "../../stores/authStore";
 import { permissions } from "../../auth/permissions";
-import { isConcurrencyConflict, mapSafeOperationalError, extractProblemDetails } from "../../utils/problemDetails";
-import { computeDeterministicDagLayout, computeEdgePath } from "../../utils/knowledgeGraphLayout";
+import { mapSafeOperationalError, extractProblemDetails } from "../../utils/problemDetails";
+import { academicLifecycleError } from "../../utils/academicLifecycleError";
+import { KnowledgeGraphCanvas } from "../../components/teacher/KnowledgeGraphCanvas";
+import { sameSubject, topicQuickActionSearch } from "../../utils/knowledgeTopicContext";
 import {
   TeacherPageHeader,
   TeacherMetricCard,
@@ -114,12 +116,13 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
   const canCreateEdges = hasPermission(permissions.edgesCreate);
   const canUpdateEdges = hasPermission(permissions.edgesUpdate);
   const canDeleteEdges = hasPermission(permissions.edgesDelete);
+  const canReadQuestions = hasPermission(permissions.questionsRead);
+  const canCreateAssignments = hasPermission(permissions.assignmentsCreate);
 
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>(urlSubjectId);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"canvas" | "table">("canvas");
-  const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: "success" | "error"; text: string; traceId?: string | null } | null>(null);
   const [hideInactiveNodes, setHideInactiveNodes] = useState<boolean>(false);
 
@@ -162,7 +165,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
     isLoading: isLoadingSubjects,
     isError: isErrorSubjects,
   } = useQuery({
-    queryKey: ["teacherSubjectsList", user?.centerId],
+    queryKey: ["teacherSubjectsList", user?.centerId, user?.userId],
     queryFn: () => organizationApi.listSubjects(true),
     enabled: Boolean(user?.centerId && canReadSubjects),
   });
@@ -200,7 +203,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
     error: graphError,
     refetch: refetchGraph,
   } = useQuery({
-    queryKey: ["teacherKnowledgeGraph", user?.centerId, selectedSubjectId],
+    queryKey: ["teacherKnowledgeGraph", user?.centerId, user?.userId, selectedSubjectId],
     queryFn: () => (selectedSubjectId ? knowledgeGraphApi.getGraph(selectedSubjectId) : null),
     enabled: Boolean(user?.centerId && selectedSubjectId.trim() && canReadNodes && canReadEdges),
   });
@@ -239,6 +242,12 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
     [selectedEdgeId, edges]
   );
 
+  const quickActionSearch = selectedNode?.nodeType === "Topic" && selectedNode.isActive
+    && canReadNodes && canReadSubjects && !isErrorSubjects && !isErrorGraph && !isFetchingGraph && sameSubject(graphData?.subjectId, selectedSubjectId)
+    && subjects.some((subject) => subject.isActive && sameSubject(subject.subjectId, selectedSubjectId))
+    ? topicQuickActionSearch(selectedSubjectId, selectedNode.nodeId)
+    : null;
+
   // If selected node gets hidden by filter, deselect it
   useEffect(() => {
     if (hideInactiveNodes && selectedNode && !selectedNode.isActive) {
@@ -271,24 +280,10 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
     return checkDagCycles(visibleNodes, visibleEdges);
   }, [visibleNodes, visibleEdges]);
 
-  // Compute Deterministic DAG Topological Layout
-  const layout = useMemo(() => {
-    return computeDeterministicDagLayout(visibleNodes, visibleEdges, {
-      cardWidth: 190,
-      cardHeight: 75,
-      gapX: 80,
-      gapY: 40,
-      paddingX: 50,
-      paddingY: 50,
-      minWidth: 850,
-      minHeight: 520,
-    });
-  }, [visibleNodes, visibleEdges]);
-
   const invalidateGraph = async () => {
     if (user?.centerId && selectedSubjectId) {
       await queryClient.invalidateQueries({
-        queryKey: ["teacherKnowledgeGraph", user.centerId, selectedSubjectId],
+        queryKey: ["teacherKnowledgeGraph", user.centerId, user.userId, selectedSubjectId],
       });
     }
   };
@@ -306,7 +301,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
       const details = extractProblemDetails(err);
       setFeedbackMsg({
         type: "error",
-        text: mapSafeOperationalError(err, "Không thể tạo điểm tri thức. Vui lòng thử lại."),
+        text: academicLifecycleError(err, "Không thể tạo điểm tri thức. Vui lòng thử lại."),
         traceId: details.traceId,
       });
     },
@@ -321,7 +316,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
     },
     onError: async (err: any) => {
       const details = extractProblemDetails(err);
-      if (isAxiosError<ProblemDetails>(err) && isConcurrencyConflict(err)) {
+      if (isAxiosError<ProblemDetails>(err) && details.errorCode === "CONCURRENCY_CONFLICT") {
         await refetchGraph();
         setFeedbackMsg({
           type: "error",
@@ -332,7 +327,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
       }
       setFeedbackMsg({
         type: "error",
-        text: mapSafeOperationalError(err, "Không thể cập nhật điểm tri thức."),
+        text: academicLifecycleError(err, "Không thể cập nhật điểm tri thức."),
         traceId: details.traceId,
       });
     },
@@ -355,7 +350,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
       setFeedbackMsg({
         type: "error",
         text: isConflictOrLocked
-          ? "Điểm tri thức này đang được gắn vào Giáo trình, Ngân hàng câu hỏi hoặc Lịch sử năng lực học sinh (Digital Twin) nên bị CẤM XÓA CỨNG để bảo toàn dữ liệu học thuật. Thay vào đó, vui lòng chuyển trạng thái nút sang 'Vô hiệu hóa' (Tắt hoạt động)."
+          ? details.detail || "Chủ đề còn được tham chiếu bởi dữ liệu học thuật nên không thể xóa. Tắt hoạt động cũng phải kiểm tra ràng buộc; không dùng để vượt khóa."
           : mapSafeOperationalError(err, "Không thể xóa điểm tri thức vì đang có ràng buộc liên kết."),
         traceId: details.traceId,
       });
@@ -373,7 +368,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
       const details = extractProblemDetails(err);
       setFeedbackMsg({
         type: "error",
-        text: mapSafeOperationalError(err, "Không thể tạo liên kết vì sẽ gây chu trình lặp (DAG Cycle) hoặc liên kết trùng lặp."),
+        text: academicLifecycleError(err, "Không thể tạo liên kết vì sẽ gây chu trình lặp (DAG Cycle) hoặc liên kết trùng lặp."),
         traceId: details.traceId,
       });
     },
@@ -390,7 +385,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
       const details = extractProblemDetails(err);
       setFeedbackMsg({
         type: "error",
-        text: mapSafeOperationalError(err, "Không thể cập nhật liên kết."),
+        text: academicLifecycleError(err, "Không thể cập nhật liên kết."),
         traceId: details.traceId,
       });
     },
@@ -408,7 +403,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
       const details = extractProblemDetails(err);
       setFeedbackMsg({
         type: "error",
-        text: mapSafeOperationalError(err, "Không thể xóa liên kết."),
+        text: academicLifecycleError(err, "Không thể xóa liên kết."),
         traceId: details.traceId,
       });
     },
@@ -749,7 +744,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
         </div>
 
         {selectedSubjectId && (
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "10px", minWidth: 0 }}>
             {/* View Mode Toggle */}
             <div style={{ display: "flex", borderRadius: "8px", padding: "3px", backgroundColor: "var(--th-surface-raised)", border: "1px solid var(--th-border)" }}>
               <button
@@ -816,10 +811,10 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
           onRetry={() => refetchGraph()}
         />
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: "20px", alignItems: "start" }}>
+        <div className="grid grid-cols-1 min-w-0 gap-5 items-start 2xl:grid-cols-[minmax(0,1fr)_340px]">
           {/* Main Visualizer or Table Area */}
           <div
-            className="th-surface"
+            className="th-surface min-w-0"
             style={{
               overflow: "hidden",
               minHeight: "600px",
@@ -827,351 +822,16 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
               flexDirection: "column",
             }}
           >
-            {viewMode === "canvas" ? (
-              <div style={{ position: "relative", width: "100%", height: "100%" }}>
-                {/* Canvas Controls Header: Legend on Left, Zoom Controls on Right */}
-                <div
-                  style={{
-                    padding: "8px 16px",
-                    borderBottom: "1px solid var(--th-border-subtle)",
-                    backgroundColor: "var(--th-surface-raised)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "16px",
-                    fontSize: "0.75rem",
-                    color: "var(--th-text-secondary)",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
-                    <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                      <span style={{ width: "10px", height: "10px", borderRadius: "50%", backgroundColor: "#06b6d4" }} /> Tiên quyết (Prerequisite)
-                    </span>
-                    <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                      <span style={{ width: "10px", height: "10px", borderRadius: "50%", backgroundColor: "#8b5cf6" }} /> Thuộc về (PartOf)
-                    </span>
-                    <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                      <span style={{ width: "10px", height: "10px", borderRadius: "50%", backgroundColor: "#64748b" }} /> Liên quan (RelatedTo)
-                    </span>
-                    <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                      <span style={{ width: "10px", height: "10px", borderRadius: "50%", backgroundColor: "#f43f5e" }} /> Gây lỗi (CausesError)
-                    </span>
-                    <span style={{ display: "flex", alignItems: "center", gap: "6px", opacity: 0.85 }}>
-                      <span style={{ width: "12px", height: "8px", border: "1.5px dashed #94a3b8", borderRadius: "2px", backgroundColor: "rgba(100, 116, 139, 0.4)" }} /> Đã vô hiệu hóa
-                    </span>
-                  </div>
-
-                  {/* Right Controls: Hide Inactive Toggle + Zoom Controls */}
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                    <label
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        cursor: "pointer",
-                        backgroundColor: hideInactiveNodes ? "rgba(20, 184, 166, 0.15)" : "var(--th-surface)",
-                        border: `1px solid ${hideInactiveNodes ? "var(--th-teal)" : "var(--th-border)"}`,
-                        borderRadius: "6px",
-                        padding: "3px 10px",
-                        fontSize: "0.75rem",
-                        color: hideInactiveNodes ? "var(--th-teal)" : "var(--th-text-secondary)",
-                        userSelect: "none",
-                        transition: "all 0.15s ease",
-                        fontWeight: hideInactiveNodes ? 600 : 500,
-                      }}
-                      title="Ẩn các điểm tri thức đã vô hiệu hóa để sơ đồ cây tri thức gọn gàng, sạch đẹp"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={hideInactiveNodes}
-                        onChange={(e) => setHideInactiveNodes(e.target.checked)}
-                        style={{ accentColor: "var(--th-teal)", cursor: "pointer" }}
-                      />
-                      <span>Ẩn điểm tri thức đã tắt {inactiveNodesCount > 0 ? `(${inactiveNodesCount})` : ""}</span>
-                    </label>
-
-                    {/* Zoom Controls inside Canvas Header */}
-                  <div style={{ display: "flex", alignItems: "center", gap: "4px", backgroundColor: "var(--th-surface)", border: "1px solid var(--th-border)", borderRadius: "6px", padding: "2px 4px" }}>
-                    <button
-                      type="button"
-                      onClick={() => setZoomLevel((z) => Math.max(0.6, z - 0.1))}
-                      style={{ width: "24px", height: "24px", border: "none", background: "none", color: "var(--th-text)", cursor: "pointer", fontWeight: "bold", fontSize: "0.85rem" }}
-                      title="Thu nhỏ"
-                    >
-                      -
-                    </button>
-                    <span style={{ fontSize: "0.75rem", fontFamily: "monospace", minWidth: "38px", textAlign: "center", color: "var(--th-text-secondary)" }}>
-                      {Math.round(zoomLevel * 100)}%
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setZoomLevel((z) => Math.min(1.5, z + 0.1))}
-                      style={{ width: "24px", height: "24px", border: "none", background: "none", color: "var(--th-text)", cursor: "pointer", fontWeight: "bold", fontSize: "0.85rem" }}
-                      title="Phóng to"
-                    >
-                      +
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setZoomLevel(1)}
-                      style={{ padding: "0 6px", height: "24px", border: "none", background: "none", color: "var(--th-text-muted)", cursor: "pointer", fontSize: "0.7rem" }}
-                      title="Đặt lại 100%"
-                    >
-                      100%
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-                {/* SVG Canvas Area */}
-                <div
-                  style={{
-                    overflow: "auto",
-                    maxHeight: "720px",
-                    minHeight: "560px",
-                    padding: "24px",
-                    backgroundColor: "var(--th-bg)",
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "flex-start",
-                  }}
-                  onClick={() => {
-                    setSelectedNodeId(null);
-                    setSelectedEdgeId(null);
-                  }}
-                >
-                  {nodes.length === 0 ? (
-                    <div style={{ margin: "auto", textAlign: "center", padding: "48px" }}>
-                      <p style={{ color: "var(--th-text-muted)", fontSize: "0.9rem" }}>Môn học này chưa có điểm tri thức nào.</p>
-                      {canCreateNodes && (
-                        <button
-                          type="button"
-                          onClick={() => setIsAddNodeOpen(true)}
-                          className="th-primary-button"
-                          style={{ marginTop: "12px", fontSize: "0.8rem" }}
-                        >
-                          + Tạo Điểm Tri Thức Đầu Tiên
-                        </button>
-                      )}
-                    </div>
-                  ) : (
-                    <div
-                      style={{
-                        transform: `scale(${zoomLevel})`,
-                        transformOrigin: "top center",
-                        transition: "transform 0.15s ease-out",
-                      }}
-                    >
-                      <svg
-                        width={layout.width}
-                        height={layout.height}
-                        viewBox={`0 0 ${layout.width} ${layout.height}`}
-                        style={{ overflow: "visible", userSelect: "none" }}
-                      >
-                        <defs>
-                          {(["PrerequisiteOf", "PartOf", "RelatedTo", "CausesErrorIn"] as KnowledgeRelationType[]).map(
-                            (rel) => (
-                              <marker
-                                key={rel}
-                                id={`arrow-${rel}`}
-                                viewBox="0 0 10 10"
-                                refX="9"
-                                refY="5"
-                                markerWidth="6"
-                                markerHeight="6"
-                                orient="auto-start-reverse"
-                              >
-                                <path d="M 0 1 L 10 5 L 0 9 z" fill={relationTypeColors[rel]} />
-                              </marker>
-                            )
-                          )}
-                        </defs>
-
-                        {/* Render Edges */}
-                        {visibleEdges.map((edge) => {
-                          const sourcePos = layout.positions.get(edge.sourceNodeId);
-                          const targetPos = layout.positions.get(edge.targetNodeId);
-                          if (!sourcePos || !targetPos) return null;
-
-                          const isSourceInactive = !nodeMap.get(edge.sourceNodeId)?.isActive;
-                          const isTargetInactive = !nodeMap.get(edge.targetNodeId)?.isActive;
-                          const isInactiveEdge = isSourceInactive || isTargetInactive;
-
-                          const isSelected = selectedEdgeId === edge.edgeId;
-                          const strokeColor = isInactiveEdge
-                            ? "#64748b"
-                            : relationTypeColors[edge.relationType] || "#64748b";
-                          const { d: pathData, midX, midY } = computeEdgePath(sourcePos, targetPos, 190, 75);
-
-                          return (
-                            <g
-                              key={edge.edgeId}
-                              style={{ cursor: "pointer", opacity: isInactiveEdge ? 0.45 : 1 }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedEdgeId(edge.edgeId);
-                                setSelectedNodeId(null);
-                              }}
-                            >
-                              {/* Wide transparent path for easy clicking */}
-                              <path d={pathData} fill="none" stroke="transparent" strokeWidth={18} />
-
-                              {/* Visible curve path */}
-                              <path
-                                d={pathData}
-                                fill="none"
-                                stroke={strokeColor}
-                                strokeWidth={isSelected ? 3.5 : Math.max(1.8, (edge.weight ?? 1) * 2.5)}
-                                strokeDasharray={isInactiveEdge ? "4,4" : (edge.relationType === "RelatedTo" ? "5,5" : undefined)}
-                                markerEnd={`url(#arrow-${edge.relationType})`}
-                                style={{
-                                  filter: isSelected ? `drop-shadow(0 0 6px ${strokeColor})` : undefined,
-                                  opacity: selectedNodeId || (selectedEdgeId && !isSelected) ? 0.35 : 0.85,
-                                  transition: "all 0.15s ease",
-                                }}
-                              />
-
-                              {/* Edge Weight Pill Badge */}
-                              <rect
-                                x={midX - 18}
-                                y={midY - 9}
-                                width={36}
-                                height={18}
-                                rx={4}
-                                fill="var(--th-surface)"
-                                stroke={strokeColor}
-                                strokeWidth={isSelected ? 1.5 : 1}
-                              />
-                              <text
-                                x={midX}
-                                y={midY + 3.5}
-                                textAnchor="middle"
-                                fontSize={9}
-                                fontWeight="bold"
-                                fill={strokeColor}
-                              >
-                                {edge.weight}
-                              </text>
-                            </g>
-                          );
-                        })}
-
-                        {/* Render Nodes Cards */}
-                        {visibleNodes.map((node) => {
-                          const pos = layout.positions.get(node.nodeId);
-                          if (!pos) return null;
-
-                          const cardW = 190;
-                          const cardH = 75;
-                          const isSelected = selectedNodeId === node.nodeId;
-                          const isInactive = !node.isActive;
-
-                          return (
-                            <g
-                              key={node.nodeId}
-                              transform={`translate(${pos.x}, ${pos.y})`}
-                              style={{
-                                cursor: "pointer",
-                                opacity: isInactive ? (isSelected ? 0.9 : 0.55) : 1,
-                                transition: "all 0.2s ease",
-                              }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedNodeId(node.nodeId);
-                                setSelectedEdgeId(null);
-                              }}
-                            >
-                              {/* Card Background Box */}
-                              <rect
-                                width={cardW}
-                                height={cardH}
-                                rx={10}
-                                fill={isInactive ? "rgba(30, 41, 59, 0.75)" : "var(--th-surface)"}
-                                stroke={
-                                  isSelected
-                                    ? "var(--th-teal)"
-                                    : isInactive
-                                    ? "#64748b"
-                                    : "var(--th-border)"
-                                }
-                                strokeWidth={isSelected ? 2.5 : 1}
-                                strokeDasharray={isInactive ? "5 4" : undefined}
-                                style={{
-                                  filter: isSelected
-                                    ? "drop-shadow(0 0 10px rgba(20, 184, 166, 0.5))"
-                                    : isInactive
-                                    ? "none"
-                                    : "drop-shadow(0 4px 6px rgba(0, 0, 0, 0.25))",
-                                  transition: "all 0.15s ease",
-                                }}
-                              />
-
-                              {/* Top Accent Color Bar */}
-                              <rect
-                                width={cardW}
-                                height={4}
-                                rx={2}
-                                fill={isInactive ? "#64748b" : (nodeTypeColors[node.nodeType] || "#06b6d4")}
-                                opacity={isInactive ? 0.5 : 1}
-                              />
-
-                              {/* Node Code */}
-                              <text
-                                x={12}
-                                y={22}
-                                fontSize={10}
-                                fontWeight="bold"
-                                fill={isInactive ? "#94a3b8" : "var(--th-teal)"}
-                                fontFamily="monospace"
-                              >
-                                {node.nodeCode}
-                              </text>
-
-                              {/* Node Type Badge Text or Inactive Alert */}
-                              <text
-                                x={cardW - 12}
-                                y={22}
-                                textAnchor="end"
-                                fontSize={9}
-                                fill={isInactive ? "#f59e0b" : "var(--th-text-secondary)"}
-                                fontWeight={isInactive ? "700" : "600"}
-                              >
-                                {isInactive ? "🚫 ĐÃ TẮT" : (nodeTypeLabels[node.nodeType] ?? node.nodeType)}
-                              </text>
-
-                              {/* Node Name */}
-                              <text
-                                x={12}
-                                y={44}
-                                fontSize={12}
-                                fontWeight="700"
-                                fill={isInactive ? "var(--th-text-muted)" : "var(--th-text)"}
-                              >
-                                {node.nodeName.length > 18
-                                  ? `${node.nodeName.substring(0, 17)}...`
-                                  : node.nodeName}
-                              </text>
-
-                              {/* Footer Info: Order • Exam Weight • Learning Minutes */}
-                              <text
-                                x={12}
-                                y={62}
-                                fontSize={9}
-                                fill="var(--th-text-muted)"
-                              >
-                                {isInactive
-                                  ? "Vô hiệu hóa (không áp dụng)"
-                                  : `#${node.orderIndex} • Thi: ${node.examImportance}% • ${node.estimatedLearningMinutes}p`}
-                              </text>
-                            </g>
-                          );
-                        })}
-                      </svg>
-                    </div>
-                  )}
-                </div>
-              </div>
+{viewMode === "canvas" ? (
+              <KnowledgeGraphCanvas key={selectedSubjectId}
+                nodes={visibleNodes} edges={visibleEdges}
+                selectedNodeId={selectedNodeId} selectedEdgeId={selectedEdgeId}
+                onSelectNode={id => { setSelectedNodeId(id); setSelectedEdgeId(null); }}
+                onSelectEdge={id => { setSelectedEdgeId(id); setSelectedNodeId(null); }}
+                onClear={() => { setSelectedNodeId(null); setSelectedEdgeId(null); }}
+                hideInactive={hideInactiveNodes} inactiveCount={inactiveNodesCount} onHideInactive={setHideInactiveNodes}
+                nodeColors={nodeTypeColors} nodeLabels={nodeTypeLabels} edgeColors={relationTypeColors}
+              />
             ) : (
               /* Structured Table View */
               <div style={{ padding: "20px" }}>
@@ -1256,18 +916,19 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
 
           {/* Right Inspector Panel (340px) */}
           <div
-            className="th-surface"
+            className="th-surface min-w-0"
             style={{
               padding: "20px",
               position: "sticky",
-              top: "20px",
+              top: "88px",
+              overflowWrap: "anywhere",
             }}
           >
             {selectedNode ? (
               <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "1px solid var(--th-border-subtle)", paddingBottom: "12px" }}>
-                  <div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
                       <span className="th-badge th-badge-info">{nodeTypeLabels[selectedNode.nodeType] ?? selectedNode.nodeType}</span>
                       <span style={{ fontSize: "0.75rem", fontFamily: "monospace", color: "var(--th-teal)", fontWeight: 700 }}>{selectedNode.nodeCode}</span>
                     </div>
@@ -1289,22 +950,30 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                 )}
 
                 {/* Quick Pedagogy Action Buttons for Teachers */}
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                  <Link
-                    to={`/giao-vien/cau-hoi?topicNodeId=${selectedNode.nodeId}`}
-                    className="th-secondary-button"
-                    style={{ textDecoration: "none", textAlign: "center", fontSize: "0.8rem", minHeight: "32px", padding: "0 10px" }}
-                  >
-                    📝 Xem Câu Hỏi Thuộc Chủ Đề Này
-                  </Link>
-                  <Link
-                    to={`/giao-vien/bai-tap/tao-moi?topicNodeId=${selectedNode.nodeId}`}
-                    className="th-primary-button"
-                    style={{ textDecoration: "none", textAlign: "center", fontSize: "0.8rem", minHeight: "32px", padding: "0 10px" }}
-                  >
-                    🎯 Tạo Bài Tập Bù Đắp Lỗ Hổng
-                  </Link>
-                </div>
+                {quickActionSearch ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    {canReadQuestions && (
+                      <Link
+                        to={`/giao-vien/cau-hoi?${quickActionSearch}`}
+                        className="th-secondary-button"
+                        style={{ textDecoration: "none", textAlign: "center", fontSize: "0.8rem", minHeight: "32px", padding: "0 10px" }}
+                      >
+                        📝 Xem Câu Hỏi Thuộc Chủ Đề Này
+                      </Link>
+                    )}
+                    {canCreateAssignments && (
+                      <Link
+                        to={`/giao-vien/bai-tap/tao-moi?${quickActionSearch}`}
+                        className="th-primary-button"
+                        style={{ textDecoration: "none", textAlign: "center", fontSize: "0.8rem", minHeight: "32px", padding: "0 10px" }}
+                      >
+                        🎯 Tạo Bài Tập Bù Đắp Lỗ Hổng
+                      </Link>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-[var(--th-text-muted)]">Chọn một Chủ đề (Topic) đang hoạt động để xem câu hỏi hoặc tạo bài tập theo chủ đề.</p>
+                )}
 
                 {/* Connected Prerequisites */}
                 {edges.filter((e) => e.sourceNodeId === selectedNode.nodeId || e.targetNodeId === selectedNode.nodeId).length > 0 && (
@@ -1913,8 +1582,8 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
           }
         }}
         title="Xác nhận xóa điểm tri thức"
-        description={`Bạn có chắc chắn muốn xóa điểm tri thức "${deletingNode?.nodeName}" (${deletingNode?.nodeCode})? Lưu ý: Nếu điểm tri thức này đã được sử dụng trong bất kỳ Giáo trình, Bài tập, Câu hỏi hoặc Lịch sử năng lực học sinh (Digital Twin), hệ thống sẽ cấm xóa cứng để bảo vệ dữ liệu. Thay vào đó bạn có thể chọn Tắt hoạt động (Vô hiệu hóa).`}
-        confirmLabel="Xóa vĩnh viễn"
+        description={`Bạn có chắc chắn muốn xóa điểm tri thức "${deletingNode?.nodeName}" (${deletingNode?.nodeCode})? Đây là xóa mềm. Nếu nút còn liên kết hoặc được tham chiếu bởi giáo trình, câu hỏi, lộ trình, năng lực hay lịch sử học sinh, hệ thống sẽ chặn. Tắt hoạt động cũng có ràng buộc riêng, không phải cách vượt khóa.`}
+        confirmLabel="Xóa điểm tri thức"
         tone="danger"
         isConfirming={deleteNodeMutation.isPending}
       />

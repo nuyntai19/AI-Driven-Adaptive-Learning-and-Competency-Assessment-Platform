@@ -2,12 +2,12 @@ import React from "react";
 import { useParams, Link, useSearchParams } from "react-router-dom";
 import { isAxiosError } from "axios";
 import { useStudentAssignment } from "../features/assignments/useStudentAssignment";
-import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
 import { RichMathText } from "../components/math/RichMathText";
 import { getSubjectTheme } from "../components/student/subjectTheme";
 import { StudentBadge } from "../components/student/StudentBadge";
 import { StudentSubjectPattern } from "../components/student/StudentSubjectPattern";
 import type { ProgressStatus, StudentAssignmentQuestionDto } from "../types/assignments";
+import { studentScopeUrl } from "../utils/studentAcademicNavigation";
 
 const getStudentDetailError = (error: unknown) => {
   if (isAxiosError(error)) return error.response?.data?.detail || error.message;
@@ -26,6 +26,8 @@ const getQuestionTypeLabel = (qType?: string) => {
   switch (qType) {
     case "MultipleChoice":
       return "Trắc nghiệm";
+    case "ShortAnswer":
+      return "Trả lời ngắn";
     case "Numeric":
     case "NumericRational":
       return "Điền số";
@@ -36,10 +38,22 @@ const getQuestionTypeLabel = (qType?: string) => {
   }
 };
 
+const formatTimeLimit = (minutes?: number | null) => {
+  if (!minutes || minutes <= 0) return "Không giới hạn";
+  if (minutes % 60 === 0) {
+    return `${minutes / 60} giờ`;
+  }
+  if (minutes > 60) {
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return `${h} giờ ${m} phút`;
+  }
+  return `${minutes} phút`;
+};
+
 export const StudentAssignmentDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
-  const selectedSubjectId = searchParams.get("subjectId") || "";
 
   const { data: assignmentData, isLoading, isError, error } = useStudentAssignment(id);
   const assignment = assignmentData?.data;
@@ -66,7 +80,7 @@ export const StudentAssignmentDetailPage: React.FC = () => {
             Đã có lỗi xảy ra: {getStudentDetailError(error)}
           </p>
           <Link
-            to={`/hoc-tap/bai-tap${selectedSubjectId ? `?subjectId=${selectedSubjectId}` : ""}`}
+            to={studentScopeUrl("/hoc-tap/bai-tap", searchParams)}
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
           >
             <span>← Quay lại danh sách bài tập</span>
@@ -77,6 +91,7 @@ export const StudentAssignmentDetailPage: React.FC = () => {
   }
 
   const { progress, questions } = assignment;
+  const isReadOnly = assignment.isReadOnly === true || searchParams.get("history") === "true";
   const percent =
     progress.totalQuestionCount > 0
       ? Math.round((progress.completedQuestionCount / progress.totalQuestionCount) * 100)
@@ -112,6 +127,14 @@ export const StudentAssignmentDetailPage: React.FC = () => {
   };
 
   const renderAttemptStatusBadge = (question: StudentAssignmentQuestionDto) => {
+    if (question.isVoided) {
+      return (
+        <StudentBadge variant="warning" size="xs">
+          Miễn / Tính trọn điểm
+        </StudentBadge>
+      );
+    }
+
     const status = question.attemptStatus;
     const attempt = question.latestAttempt;
 
@@ -159,12 +182,17 @@ export const StudentAssignmentDetailPage: React.FC = () => {
       {/* Navigation Breadcrumb */}
       <div>
         <Link
-          to={`/hoc-tap/bai-tap${selectedSubjectId ? `?subjectId=${selectedSubjectId}` : ""}`}
+          to={studentScopeUrl("/hoc-tap/bai-tap", searchParams)}
           className="inline-flex items-center gap-1.5 text-xs font-semibold text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
         >
           <span>← Quay lại danh sách bài tập</span>
         </Link>
       </div>
+
+      {isReadOnly && <div role="status" className="rounded-xl border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-950 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-100">
+        <p className="font-semibold">Bài tập trong phạm vi chỉ xem</p>
+        <p>{assignment.readOnlyReason || "Bạn đang xem lịch sử lớp học. Không thể bắt đầu hoặc nộp thêm câu mới; bài làm và kết quả đã lưu vẫn được giữ nguyên."}</p>
+      </div>}
 
       {/* Assignment Overview Workspace Card */}
       <div className="relative rounded-xl bg-white dark:bg-[#151d2f] border border-stone-200/90 dark:border-stone-800/90 p-5 sm:p-6 shadow-xs overflow-hidden">
@@ -194,9 +222,9 @@ export const StudentAssignmentDetailPage: React.FC = () => {
             </div>
 
             {/* Primary Action Button */}
-            {isAssignmentFinished ? (
+            {isAssignmentFinished || isReadOnly ? (
               <Link
-                to={`/hoc-tap/luyen-tap/${questions[0]?.questionId || ""}?assignmentId=${assignment.assignmentId}${selectedSubjectId ? `&subjectId=${selectedSubjectId}` : ""}`}
+                to={studentScopeUrl(`/hoc-tap/luyen-tap/${questions[0]?.questionId || ""}`, searchParams, { assignmentId:assignment.assignmentId })}
                 className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-stone-200 px-4 py-2 text-xs sm:text-sm font-semibold text-white dark:text-stone-900 transition-colors cursor-pointer self-start sm:self-auto"
               >
                 <span>Xem lại bài làm</span>
@@ -204,7 +232,7 @@ export const StudentAssignmentDetailPage: React.FC = () => {
               </Link>
             ) : firstUnfinishedQuestion ? (
               <Link
-                to={`/hoc-tap/luyen-tap/${firstUnfinishedQuestion.questionId}?assignmentId=${assignment.assignmentId}${selectedSubjectId ? `&subjectId=${selectedSubjectId}` : ""}`}
+                to={studentScopeUrl(`/hoc-tap/luyen-tap/${firstUnfinishedQuestion.questionId}`, searchParams, { assignmentId:assignment.assignmentId })}
                 className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-stone-200 px-5 py-2 text-xs sm:text-sm font-semibold text-white dark:text-stone-900 transition-colors cursor-pointer self-start sm:self-auto"
               >
                 <span>{progress.completedQuestionCount > 0 ? "Tiếp tục làm bài" : "Bắt đầu làm bài"}</span>
@@ -225,22 +253,27 @@ export const StudentAssignmentDetailPage: React.FC = () => {
 
           {/* Progress & Due date */}
           <div className="pt-3 border-t border-stone-100 dark:border-stone-800/80 space-y-1.5">
-            <div className="flex items-center justify-between text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
               <span className="font-semibold text-stone-700 dark:text-stone-300">
                 Tiến độ: {progress.completedQuestionCount}/{progress.totalQuestionCount} câu hoàn thành ({percent}%)
               </span>
-              {assignment.dueAt && (
-                <span className="text-stone-500 dark:text-stone-400">
-                  Hạn nộp:{" "}
-                  {new Date(assignment.dueAt).toLocaleDateString("vi-VN", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    day: "2-digit",
-                    month: "2-digit",
-                    year: "numeric",
-                  })}
+              <div className="flex items-center gap-3 text-stone-500 dark:text-stone-400">
+                <span>
+                  Thời gian: {formatTimeLimit(assignment.timeLimitMinutes)}
                 </span>
-              )}
+                {assignment.dueAt && (
+                  <span>
+                    • Hạn nộp:{" "}
+                    {new Date(assignment.dueAt).toLocaleDateString("vi-VN", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      day: "2-digit",
+                      month: "2-digit",
+                      year: "numeric",
+                    })}
+                  </span>
+                )}
+              </div>
             </div>
             <div className="w-full bg-stone-100 dark:bg-stone-800 rounded-full h-1.5 overflow-hidden">
               <div
@@ -263,8 +296,8 @@ export const StudentAssignmentDetailPage: React.FC = () => {
         <h2 className="text-sm sm:text-base font-bold text-stone-900 dark:text-stone-100">
           Danh sách câu hỏi ({questions.length})
         </h2>
-        <span className="text-xs text-stone-500 dark:text-stone-400">
-          Dự kiến ~{Math.max(20, questions.length * 4)} phút
+        <span className="text-xs text-stone-500 dark:text-stone-400 font-medium">
+          Thời gian làm bài: {formatTimeLimit(assignment.timeLimitMinutes)}
         </span>
       </div>
 
@@ -273,7 +306,6 @@ export const StudentAssignmentDetailPage: React.FC = () => {
         {questions.map((question, index) => {
           const formattedId = `Q-${String(index + 1).padStart(2, "0")}`;
           const timeSec = question.estimatedTimeSeconds || 120;
-          const hasMath = /[\\[{^_\\]]/.test(question.questionText);
           const isDone =
             Boolean(question.latestAttempt) ||
             question.attemptStatus === "Completed" ||
@@ -311,13 +343,13 @@ export const StudentAssignmentDetailPage: React.FC = () => {
                 <RichMathText text={question.questionText} />
               </div>
 
-              {/* KaTeX preview if formula detected */}
-              {hasMath && (
-                <div className="pt-1">
-                  <MathFormulaPreview
-                    formula={question.questionText}
-                    label="Công thức toán"
-                  />
+              {question.isVoided && (
+                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-400 text-xs">
+                  <span className="font-bold">Được miễn / Tính trọn điểm:</span>
+                  <span>{question.voidReason || "Giáo viên đã hủy câu hỏi này do sự cố đề bài."}</span>
+                  {question.voidedScore != null && (
+                    <span className="ml-auto font-bold shrink-0">+{question.voidedScore} điểm</span>
+                  )}
                 </div>
               )}
 
@@ -332,7 +364,9 @@ export const StudentAssignmentDetailPage: React.FC = () => {
                       <span className="w-5 h-5 rounded-full bg-white dark:bg-stone-800 border border-stone-300 dark:border-stone-700 font-bold text-stone-700 dark:text-stone-300 flex items-center justify-center text-[10px] shrink-0">
                         {opt.label}
                       </span>
-                      <span className="text-stone-800 dark:text-stone-200 truncate">{opt.text}</span>
+                      <span className="text-stone-800 dark:text-stone-200 truncate">
+                        <RichMathText content={opt.text} />
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -345,14 +379,14 @@ export const StudentAssignmentDetailPage: React.FC = () => {
                 </span>
 
                 <Link
-                  to={`/hoc-tap/luyen-tap/${question.questionId}?assignmentId=${assignment.assignmentId}${selectedSubjectId ? `&subjectId=${selectedSubjectId}` : ""}`}
+                  to={studentScopeUrl(`/hoc-tap/luyen-tap/${question.questionId}`, searchParams, { assignmentId:assignment.assignmentId })}
                   className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                    isDone
+                    isDone || isReadOnly
                       ? "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/80 hover:bg-emerald-100"
                       : "text-stone-100 bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-stone-200"
                   }`}
                 >
-                  <span>{isDone ? "Xem lại" : "Làm câu này"}</span>
+                  <span>{isDone || isReadOnly ? "Xem lại" : "Làm câu này"}</span>
                   <span className="text-[11px]">→</span>
                 </Link>
               </div>

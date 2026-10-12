@@ -29,6 +29,8 @@ public sealed class AuthorizationBootstrapper(
         {
             await EnsureCenterAsync(centerId, permissions, cancellationToken);
         }
+
+        await ReconcileGlobalPermissionAccountTypesAsync(cancellationToken);
     }
 
     public async Task EnsureCenterAsync(
@@ -36,9 +38,45 @@ public sealed class AuthorizationBootstrapper(
         IReadOnlyCollection<PermissionAccountType>? permissionMappings = null,
         CancellationToken cancellationToken = default)
     {
-        permissionMappings ??= await dbContext.PermissionAccountTypes
-            .AsNoTracking()
-            .ToArrayAsync(cancellationToken);
+        var changed = false;
+        var utcNow = timeProvider.GetUtcNow().UtcDateTime;
+
+        // 1. Reconcile base permissions from catalog
+        var catalogPermissions = AuthorizationPermissionCatalog.CreatePermissions();
+        var existingPermissions = await dbContext.Permissions
+            .IgnoreQueryFilters()
+            .ToDictionaryAsync(p => p.PermissionCode, cancellationToken);
+
+        foreach (var perm in catalogPermissions)
+        {
+            if (!existingPermissions.TryGetValue(perm.PermissionCode, out var existing))
+            {
+                dbContext.Permissions.Add(perm);
+                existingPermissions.Add(perm.PermissionCode, perm);
+                changed = true;
+            }
+        }
+
+        // 2. Reconcile PermissionAccountTypes from catalog
+        var catalogMappings = AuthorizationPermissionCatalog.CreateAccountTypeMappings();
+        var existingMappings = await dbContext.PermissionAccountTypes
+            .IgnoreQueryFilters()
+            .ToListAsync(cancellationToken);
+        var existingMappingKeys = existingMappings
+            .Select(m => (m.PermissionId, m.AccountType))
+            .ToHashSet();
+
+        foreach (var mapping in catalogMappings)
+        {
+            if (existingMappingKeys.Add((mapping.PermissionId, mapping.AccountType)))
+            {
+                dbContext.PermissionAccountTypes.Add(mapping);
+                existingMappings.Add(mapping);
+                changed = true;
+            }
+        }
+
+
 
         var users = await dbContext.Users
             .IgnoreQueryFilters()
@@ -54,11 +92,26 @@ public sealed class AuthorizationBootstrapper(
 
         var roles = await dbContext.AuthorizationRoles
             .IgnoreQueryFilters()
-            .Where(role => role.CenterId == centerId && role.IsSystemRole)
+            .Where(role => role.CenterId == centerId)
+            .Include(r => r.RolePermissions)
             .ToListAsync(cancellationToken);
-        var changed = false;
-        var utcNow = timeProvider.GetUtcNow().UtcDateTime;
 
+        var usersToBumpAuthVersion = new HashSet<Guid>();
+        var assignments = await dbContext.UserRoleAssignments
+            .IgnoreQueryFilters()
+            .Where(item => item.CenterId == centerId)
+            .ToListAsync(cancellationToken);
+
+        void InvalidateRoleSessions(AuthorizationRole changedRole)
+        {
+            if (changedRole.Status != AuthorizationRoleStatus.Active || changedRole.IsDeleted)
+                return;
+            foreach (var assignment in assignments.Where(item =>
+                         item.RoleId == changedRole.RoleId && item.Status == UserRoleAssignmentStatus.Active))
+                usersToBumpAuthVersion.Add(assignment.UserId);
+        }
+
+        // 3. Reconcile System Roles using explicit default permission sets
         foreach (var accountType in Enum.GetValues<UserRole>())
         {
             if (accountType == UserRole.PlatformAdmin)
@@ -66,7 +119,7 @@ public sealed class AuthorizationBootstrapper(
                 continue;
             }
 
-            var role = roles.SingleOrDefault(item => item.AccountType == accountType);
+            var role = roles.SingleOrDefault(item => item.IsSystemRole && item.AccountType == accountType);
             if (role is null)
             {
                 role = CreateSystemRole(centerId, accountType, utcNow);
@@ -75,35 +128,97 @@ public sealed class AuthorizationBootstrapper(
                 changed = true;
             }
 
-            var existingPermissionIds = await dbContext.RolePermissions
-                .IgnoreQueryFilters()
-                .Where(item => item.CenterId == centerId && item.RoleId == role.RoleId)
-                .Select(item => item.PermissionId)
-                .ToHashSetAsync(cancellationToken);
-            foreach (var mapping in permissionMappings.Where(item => item.AccountType == accountType))
+            if (role.IsDeleted || role.Status != AuthorizationRoleStatus.Active)
+                continue; // An archived system role is a deliberate administrative decision.
+
+            var defaultCodes = AuthorizationPermissionCatalog.GetDefaultSystemRoleCodes(accountType);
+            var targetPermissionIds = defaultCodes
+                .Where(code => existingPermissions.ContainsKey(code))
+                .Select(code => existingPermissions[code].PermissionId)
+                .ToHashSet();
+
+            var currentRolePermissions = role.RolePermissions.ToList();
+            var roleChanged = false;
+
+            // Revoke permissions no longer in the explicit default set for this system role
+            foreach (var rp in currentRolePermissions)
             {
-                if (existingPermissionIds.Add(mapping.PermissionId))
+                if (!targetPermissionIds.Contains(rp.PermissionId))
+                {
+                    dbContext.RolePermissions.Remove(rp);
+                    changed = true;
+                    roleChanged = true;
+                }
+            }
+
+            var currentPermIds = currentRolePermissions
+                .Where(rp => targetPermissionIds.Contains(rp.PermissionId))
+                .Select(rp => rp.PermissionId)
+                .ToHashSet();
+
+            // Grant missing default permissions
+            foreach (var permId in targetPermissionIds)
+            {
+                if (!currentPermIds.Contains(permId))
                 {
                     dbContext.RolePermissions.Add(new RolePermission
                     {
                         CenterId = centerId,
                         RoleId = role.RoleId,
-                        PermissionId = mapping.PermissionId,
+                        PermissionId = permId,
                         AccountType = accountType,
                         GrantedAt = utcNow,
                         GrantedByUserId = actor.UserId
                     });
                     changed = true;
+                    roleChanged = true;
+                }
+            }
+
+            if (roleChanged)
+            {
+                role.UpdatedAt = utcNow; // Also advances RowVersion for existing roles.
+                if (dbContext.Entry(role).State != EntityState.Added)
+                    dbContext.Entry(role).Property(item => item.UpdatedAt).IsModified = true;
+                InvalidateRoleSessions(role); // Grants and revocations both refresh the UI snapshot.
+            }
+        }
+
+        // 4. Reconcile Custom Roles: purge permissions no longer compatible with account type
+        var customRoles = roles.Where(r => !r.IsSystemRole).ToList();
+        foreach (var customRole in customRoles)
+        {
+            var validCompatibleIds = catalogMappings
+                .Where(m => m.AccountType == customRole.AccountType)
+                .Select(m => m.PermissionId)
+                .ToHashSet();
+
+            foreach (var rp in customRole.RolePermissions.ToList())
+            {
+                if (!validCompatibleIds.Contains(rp.PermissionId))
+                {
+                    dbContext.RolePermissions.Remove(rp);
+                    changed = true;
+                    customRole.UpdatedAt = utcNow;
+                    InvalidateRoleSessions(customRole);
                 }
             }
         }
 
-        var existingAssignments = await dbContext.UserRoleAssignments
-            .IgnoreQueryFilters()
-            .Where(item => item.CenterId == centerId)
-            .Select(item => new { item.UserId, item.RoleId })
-            .ToArrayAsync(cancellationToken);
-        var assignmentKeys = existingAssignments
+        // 5. Invalidate existing sessions for affected users
+        if (usersToBumpAuthVersion.Count > 0)
+        {
+            var affectedUsers = users.Where(u => usersToBumpAuthVersion.Contains(u.UserId)).ToList();
+            foreach (var u in affectedUsers)
+            {
+                u.AuthVersion = checked(u.AuthVersion + 1);
+                u.UpdatedAt = utcNow;
+            }
+            changed = true;
+        }
+
+        // 6. Ensure default system role assignment for each user
+        var assignmentKeys = assignments
             .Select(item => (item.UserId, item.RoleId))
             .ToHashSet();
         foreach (var user in users)
@@ -113,7 +228,9 @@ public sealed class AuthorizationBootstrapper(
                 continue;
             }
 
-            var role = roles.Single(item => item.AccountType == user.RoleName);
+            var role = roles.Single(item => item.IsSystemRole && item.AccountType == user.RoleName);
+            if (role.IsDeleted || role.Status != AuthorizationRoleStatus.Active)
+                continue;
             if (assignmentKeys.Add((user.UserId, role.RoleId)))
             {
                 dbContext.UserRoleAssignments.Add(new UserRoleAssignment
@@ -142,13 +259,53 @@ public sealed class AuthorizationBootstrapper(
             ActionType = "AuthorizationBootstrap",
             TargetType = "Center",
             TargetId = centerId.ToString("D"),
-            AfterData = "{\"catalogVersion\":\"v1\",\"systemRoles\":3}",
-            Reason = "Khởi tạo phân quyền động cho dữ liệu seed hoặc Center mới.",
+            AfterData = "{\"catalogVersion\":\"v2\",\"reconciliation\":\"role-boundaries-separated\"}",
+            Reason = "Khởi tạo hoặc đối soát phân quyền động theo ranh giới vai trò chuẩn hóa.",
             TraceId = "runtime-seed:authorization-bootstrap",
             CreatedAt = utcNow
         });
 
         await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task ReconcileGlobalPermissionAccountTypesAsync(CancellationToken cancellationToken)
+    {
+        var catalogMappings = AuthorizationPermissionCatalog.CreateAccountTypeMappings();
+        var catalogMappingKeys = catalogMappings
+            .Select(m => (m.PermissionId, m.AccountType))
+            .ToHashSet();
+
+        var existingMappings = await dbContext.PermissionAccountTypes
+            .IgnoreQueryFilters()
+            .ToListAsync(cancellationToken);
+
+        var obsoleteMappings = existingMappings
+            .Where(m => !catalogMappingKeys.Contains((m.PermissionId, m.AccountType)))
+            .ToList();
+
+        if (obsoleteMappings.Count > 0)
+        {
+            var obsoleteKeys = obsoleteMappings
+                .Select(m => (m.PermissionId, m.AccountType))
+                .ToHashSet();
+
+            var allRolePermissions = await dbContext.RolePermissions
+                .IgnoreQueryFilters()
+                .ToListAsync(cancellationToken);
+
+            var orphanedRolePermissions = allRolePermissions
+                .Where(rp => obsoleteKeys.Contains((rp.PermissionId, rp.AccountType)))
+                .ToList();
+
+            if (orphanedRolePermissions.Count > 0)
+            {
+                dbContext.RolePermissions.RemoveRange(orphanedRolePermissions);
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+
+            dbContext.PermissionAccountTypes.RemoveRange(obsoleteMappings);
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
     }
 
     public async Task BootstrapPlatformAsync(
@@ -179,6 +336,7 @@ public sealed class AuthorizationBootstrapper(
             .Select(rp => rp.PermissionId)
             .ToHashSetAsync(cancellationToken);
 
+        var grantedCodes = new List<Guid>();
         foreach (var permId in platformPermissions)
         {
             if (existingRolePermissions.Add(permId))
@@ -192,7 +350,38 @@ public sealed class AuthorizationBootstrapper(
                     GrantedAt = utcNow,
                     GrantedByUserId = adminUserId
                 });
+                grantedCodes.Add(permId);
             }
+        }
+
+        if (grantedCodes.Count > 0)
+        {
+            role.UpdatedAt = utcNow;
+            if (dbContext.Entry(role).State != EntityState.Added)
+                dbContext.Entry(role).Property(item => item.UpdatedAt).IsModified = true;
+            if (role.Status == AuthorizationRoleStatus.Active && !role.IsDeleted)
+            {
+                var affectedUsers = await dbContext.Users.IgnoreQueryFilters()
+                    .Where(user => user.CenterId == platformCenterId && !user.IsDeleted &&
+                        dbContext.UserRoleAssignments.IgnoreQueryFilters().Any(assignment =>
+                            assignment.CenterId == platformCenterId && assignment.UserId == user.UserId &&
+                            assignment.RoleId == role.RoleId && assignment.Status == UserRoleAssignmentStatus.Active))
+                    .ToListAsync(cancellationToken);
+                foreach (var user in affectedUsers)
+                {
+                    user.AuthVersion = checked(user.AuthVersion + 1);
+                    user.UpdatedAt = utcNow;
+                }
+            }
+            dbContext.AuthorizationAuditLogs.Add(new AuthorizationAuditLog
+            {
+                CenterId = platformCenterId, ActorUserId = null,
+                ActionType = "PlatformDefaultPermissionsGranted", TargetType = "Role",
+                TargetId = role.RoleId.ToString("D"),
+                AfterData = System.Text.Json.JsonSerializer.Serialize(new { GrantedPermissionIds = grantedCodes }),
+                Reason = "Bổ sung quyền mặc định còn thiếu cho vai trò quản trị nền tảng.",
+                TraceId = "runtime-seed:platform-permissions", CreatedAt = utcNow
+            });
         }
 
         var assignmentExists = await dbContext.UserRoleAssignments

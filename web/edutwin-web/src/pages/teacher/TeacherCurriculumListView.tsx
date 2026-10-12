@@ -14,11 +14,16 @@ import {
   TeacherSafeErrorPanel,
 } from "../../components/teacher/TeacherPrimitives";
 import { TeacherFilterBar } from "../../components/teacher/TeacherFilterBar";
-import { TeacherModal, TeacherConfirmDialog } from "../../components/teacher/TeacherOverlays";
+import { TeacherModal } from "../../components/teacher/TeacherOverlays";
+import { CurriculumArchiveDialog } from "../../components/teacher/CurriculumArchiveDialog";
+import { academicLifecycleError } from "../../utils/academicLifecycleError";
 
 export const TeacherCurriculumListView: React.FC = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const actorId = useAuthStore(state => state.user?.userId);
+  const centerId = useAuthStore(state => state.user?.centerId);
+  const [libraryScope, setLibraryScope] = useState("all");
   const [searchParams, setSearchParams] = useSearchParams();
 
   const selectedSubjectId = searchParams.get("subjectId") || "";
@@ -49,7 +54,7 @@ export const TeacherCurriculumListView: React.FC = () => {
     error,
     refetch,
   } = useQuery({
-    queryKey: ["teacherCurriculums", selectedSubjectId, selectedStatus],
+    queryKey: ["teacherCurriculums", selectedSubjectId, selectedStatus, centerId, actorId],
     queryFn: () =>
       curriculumApi.getAll({
         subjectId: selectedSubjectId || undefined,
@@ -61,14 +66,15 @@ export const TeacherCurriculumListView: React.FC = () => {
 
   // Filter curriculums locally by search term
   const filteredCurriculums = useMemo(() => {
-    if (!searchTerm.trim()) return curriculums;
+    const scoped = curriculums.filter(c => libraryScope === "all" || (libraryScope === "owned" ? c.teacherId === actorId : c.visibility === "Shared"));
+    if (!searchTerm.trim()) return scoped;
     const q = searchTerm.toLowerCase();
-    return curriculums.filter(
+    return scoped.filter(
       (c) =>
         c.title.toLowerCase().includes(q) ||
         c.description?.toLowerCase().includes(q)
     );
-  }, [curriculums, searchTerm]);
+  }, [curriculums, searchTerm, libraryScope, actorId]);
 
   // Publish mutation
   const publishMutation = useMutation({
@@ -88,9 +94,10 @@ export const TeacherCurriculumListView: React.FC = () => {
 
   // Archive mutation
   const archiveMutation = useMutation({
-    mutationFn: async (curriculum: Curriculum) => {
+    mutationFn: async ({ curriculum, reason }: { curriculum: Curriculum; reason: string }) => {
       return await curriculumApi.archive(curriculum.curriculumId, {
         rowVersion: curriculum.rowVersion,
+        reason,
       });
     },
     onSuccess: () => {
@@ -99,7 +106,7 @@ export const TeacherCurriculumListView: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ["teacherCurriculums"] });
     },
     onError: (err: any) => {
-      setActionError(err.message || "Không thể lưu trữ giáo trình.");
+      setActionError(academicLifecycleError(err, "Không thể lưu trữ giáo trình."));
     },
   });
 
@@ -131,6 +138,11 @@ export const TeacherCurriculumListView: React.FC = () => {
 
   return (
     <div className="th-page-container">
+      <label className="block text-sm font-semibold mb-4">Thư viện giáo trình
+        <select className="th-select ml-3" value={libraryScope} onChange={e => setLibraryScope(e.target.value)}>
+          <option value="all">Của tôi & dùng chung</option><option value="owned">Của tôi</option><option value="Shared">Shared — trong trung tâm</option>
+        </select>
+      </label>
       <TeacherPageHeader
         title="Soạn Thảo Giáo Trình & Khung Đào Tạo"
         subtitle="Quản lý cấu trúc bài giảng, phân bổ cây chủ đề tri thức và xuất bản giáo trình cho các lớp học"
@@ -188,7 +200,7 @@ export const TeacherCurriculumListView: React.FC = () => {
           }
         />
         <TeacherMetricCard
-          label="Đang Áp Dụng (Published)"
+          label="Đã Xuất Bản (Published)"
           value={publishedCount}
           unit="giáo trình"
           color="cyan"
@@ -326,9 +338,14 @@ export const TeacherCurriculumListView: React.FC = () => {
               >
                 <div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "10px" }}>
-                    <span className="th-badge th-badge-neutral" style={{ fontSize: "0.75rem" }}>
-                      {subject?.subjectName || "Môn học"}
-                    </span>
+                    <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                      <span className="th-badge th-badge-neutral" style={{ fontSize: "0.75rem" }}>
+                        {subject?.subjectName || "Môn học"} · {curr.visibility || "Private"}
+                      </span>
+                      <span className="th-badge th-badge-info" style={{ fontSize: "0.75rem" }}>
+                        {curr.gradeLevel ? `Khối ${curr.gradeLevel}` : "Chưa phân loại"}
+                      </span>
+                    </div>
                     <TeacherStatusBadge
                       status={
                         curr.reviewStatus === "Published"
@@ -374,12 +391,12 @@ export const TeacherCurriculumListView: React.FC = () => {
                     </div>
                     <div>
                       <strong style={{ color: "var(--th-text-primary)", display: "block" }}>{curr.classIds?.length ?? 0}</strong>
-                      Lớp áp dụng
+                      {curr.reviewStatus === "Draft" ? "Lớp dự kiến" : "Lớp đang áp dụng"}
                     </div>
                   </div>
 
                   <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", flexWrap: "wrap" }}>
-                    {canPublish && curr.reviewStatus === "Draft" && (
+                    {canPublish && curr.teacherId === actorId && curr.reviewStatus === "Draft" && (
                       <button
                         className="th-button-secondary"
                         onClick={() => publishMutation.mutate(curr)}
@@ -390,7 +407,7 @@ export const TeacherCurriculumListView: React.FC = () => {
                       </button>
                     )}
 
-                    {canPublish && curr.reviewStatus === "Published" && (
+                    {canPublish && curr.teacherId === actorId && curr.reviewStatus === "Published" && (
                       <button
                         className="th-button-secondary"
                         onClick={() => setArchiveTarget(curr)}
@@ -433,19 +450,18 @@ export const TeacherCurriculumListView: React.FC = () => {
       )}
 
       {/* Archive Confirm Dialog */}
-      <TeacherConfirmDialog
+      <CurriculumArchiveDialog
         isOpen={Boolean(archiveTarget)}
         onClose={() => setArchiveTarget(null)}
-        onConfirm={() => {
+        onConfirm={(reason) => {
           if (archiveTarget) {
-            archiveMutation.mutate(archiveTarget);
+            archiveMutation.mutate({ curriculum: archiveTarget, reason });
           }
         }}
-        title="Lưu trữ giáo trình (Archive)"
-        description={`Bạn có chắc chắn muốn lưu trữ giáo trình "${archiveTarget?.title}"? Sau khi lưu trữ, cấu trúc các điểm tri thức sẽ được đóng băng để bảo toàn lịch sử học tập của các lớp học đã qua. Bạn có thể sử dụng chức năng "Nhân bản (Clone V2)" để tạo phiên bản mới cho năm học tiếp theo.`}
-        confirmLabel="Xác nhận lưu trữ"
-        tone="danger"
-        isConfirming={archiveMutation.isPending}
+        curriculumId={archiveTarget?.curriculumId}
+        title={archiveTarget?.title ?? ""}
+        isPending={archiveMutation.isPending}
+        error={actionError}
       />
 
       {/* Clone Curriculum Modal */}

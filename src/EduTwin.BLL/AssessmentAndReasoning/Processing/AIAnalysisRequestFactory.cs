@@ -1,5 +1,7 @@
 using System.Globalization;
 using EduTwin.BLL.AssessmentAndReasoning.AI;
+using EduTwin.BLL.AssessmentAndReasoning.PreliminaryGrading;
+using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.DAL.AssessmentAndReasoning;
 using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.KnowledgeGraph;
@@ -11,11 +13,24 @@ public sealed class AIAnalysisRequestFactory : IAIAnalysisRequestFactory
     private static readonly HashSet<string> SupportedLanguages =
         new(["vi", "en"], StringComparer.Ordinal);
 
+    private readonly IMathAnswerNormalizer _mathNormalizer;
+    private readonly ICoordinateAnswerNormalizer _coordinateNormalizer;
+
+    public AIAnalysisRequestFactory(
+        IMathAnswerNormalizer? mathNormalizer = null,
+        ICoordinateAnswerNormalizer? coordinateNormalizer = null)
+    {
+        _mathNormalizer = mathNormalizer ?? new MathAnswerNormalizer();
+        _coordinateNormalizer = coordinateNormalizer ?? new CoordinateAnswerNormalizer(_mathNormalizer);
+    }
+
     public AnalyzeReasoningRequest Create(
         Attempt attempt,
         Question question,
         IReadOnlyList<KnowledgeNode> allowedKnowledgeNodes,
-        IReadOnlyList<AnalyzeReasoningImagePart>? imageParts = null)
+        IReadOnlyList<AnalyzeReasoningImagePart>? imageParts = null,
+        IReadOnlyList<QuestionOption>? options = null,
+        IReadOnlyList<AnalyzeReasoningImagePart>? questionImageParts = null)
     {
         ArgumentNullException.ThrowIfNull(attempt);
         ArgumentNullException.ThrowIfNull(question);
@@ -23,15 +38,38 @@ public sealed class AIAnalysisRequestFactory : IAIAnalysisRequestFactory
 
         Validate(attempt, question, allowedKnowledgeNodes);
 
+        var safeOptions = (options ?? []).Where(o => o.CenterId == question.CenterId && o.QuestionId == question.QuestionId && !o.IsDeleted)
+            .OrderBy(o => o.OrderIndex).ThenBy(o => o.OptionId).ToArray();
+        var correctAnswer = question.CorrectAnswer;
+        var finalAnswer = attempt.FinalAnswer;
+        if (question.QuestionType == QuestionType.MultipleChoice)
+        {
+            var selected = safeOptions.FirstOrDefault(o => o.OptionId.ToString(CultureInfo.InvariantCulture) == finalAnswer.Trim()
+                || string.Equals(o.OptionLabel, finalAnswer.Trim(), StringComparison.OrdinalIgnoreCase));
+            var correct = safeOptions.SingleOrDefault(o => o.IsCorrect);
+            if (!attempt.Skipped && (selected is null || correct is null))
+                throw new ArgumentException("Multiple-choice answer context is invalid.");
+            if (selected is not null) finalAnswer = $"{selected.OptionLabel}. {selected.OptionText}";
+            if (correct is not null) correctAnswer = $"{correct.OptionLabel}. {correct.OptionText}";
+        }
+        var canonicalCorrect = ResolveCanonicalAnswer(question.AnswerEvaluationMode, correctAnswer);
+        var canonicalFinal = ResolveCanonicalAnswer(question.AnswerEvaluationMode, finalAnswer);
+
         return new AnalyzeReasoningRequest
         {
             SchemaVersion = AIAnalysisContract.SchemaVersion,
-            Language = attempt.ReasoningLanguage,
+            Language = "vi", // Feedback language is independent of the English question/answer language.
             Question = new AnalyzeReasoningQuestion
             {
                 QuestionType = question.QuestionType,
+                AnswerEvaluationMode = question.AnswerEvaluationMode,
                 QuestionText = question.QuestionText,
-                CorrectAnswer = question.CorrectAnswer,
+                ImageParts = questionImageParts ?? [],
+                MaxScore = question.MaxScore > 0 ? question.MaxScore : 10m,
+                ContentLanguage = question.LanguageCode,
+                Options = safeOptions.Select(o => new AnalyzeReasoningOption(o.OptionLabel, o.OptionText)).ToArray(),
+                CorrectAnswer = correctAnswer,
+                CanonicalCorrectAnswer = canonicalCorrect,
                 Solution = question.Solution,
                 ExpectedReasoning = question.ExpectedReasoning,
                 GradingCriteria = new AnalyzeReasoningGradingCriteria
@@ -39,12 +77,16 @@ public sealed class AIAnalysisRequestFactory : IAIAnalysisRequestFactory
                     SchemaVersion = question.GradingCriteria.SchemaVersion,
                     RequiredIdeas = question.GradingCriteria.RequiredIdeas.ToArray(),
                     CommonErrors = question.GradingCriteria.CommonErrors.ToArray(),
-                    ScoringNotes = question.GradingCriteria.ScoringNotes
+                    ScoringNotes = question.GradingCriteria.ScoringNotes,
+                    Criteria = question.GradingCriteria.Criteria.Select(c => new AnalyzeReasoningRubricCriterion(c.CriterionId, c.Title, c.Description, c.MaxScore)
+                    { VisualRequirements = c.VisualRequirements.Count > 0 ? c.VisualRequirements.ToArray() : null }).ToArray()
                 }
             },
             StudentSubmission = new AnalyzeReasoningStudentSubmission
             {
-                FinalAnswer = attempt.FinalAnswer,
+                FinalAnswer = finalAnswer,
+                AnswerDisplayLatex = attempt.AnswerDisplayLatex,
+                CanonicalFinalAnswer = canonicalFinal,
                 PreliminaryIsCorrect = attempt.IsCorrect,
                 ReasoningText = attempt.ReasoningText,
                 TimeSpentSeconds = attempt.TimeSpentSeconds,
@@ -59,6 +101,21 @@ public sealed class AIAnalysisRequestFactory : IAIAnalysisRequestFactory
                     NodeName = node.NodeName
                 })
                 .ToArray()
+        };
+    }
+
+    private string? ResolveCanonicalAnswer(QuestionAnswerEvaluationMode mode, string? rawAnswer)
+    {
+        if (string.IsNullOrWhiteSpace(rawAnswer)) return null;
+
+        return mode switch
+        {
+            QuestionAnswerEvaluationMode.MathEquivalent when new BoundedMathAnswerNormalizer().TryNormalize(rawAnswer, out var mathematical) => mathematical,
+            QuestionAnswerEvaluationMode.NumericRational when _mathNormalizer.TryNormalize(rawAnswer, out var rational) && rational.HasValue =>
+                rational.Value.ToString(),
+            QuestionAnswerEvaluationMode.Coordinate2D when _coordinateNormalizer.TryNormalize(rawAnswer, out var coordinate) && coordinate.HasValue =>
+                $"({coordinate.Value.X}; {coordinate.Value.Y})",
+            _ => rawAnswer.Trim()
         };
     }
 

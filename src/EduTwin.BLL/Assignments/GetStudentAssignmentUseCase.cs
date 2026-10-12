@@ -105,20 +105,26 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
                 .Where(a => a.CenterId == centerId && attemptIds.Contains(a.AttemptId))
                 .ToDictionaryAsync(a => a.AttemptId, cancellationToken);
 
+        var totalQuestionCount = assignmentQuestions.Count;
+        var scorePerQuestion = totalQuestionCount > 0 ? 10.0m / totalQuestionCount : 0m;
+
         var questionsDto = assignmentQuestions.Select(aq =>
         {
             var latestAttempt = latestAttemptsByQuestion.TryGetValue(aq.QuestionId, out var att) ? att : null;
             var analysis = latestAttempt != null && analysesByAttemptId.TryGetValue(latestAttempt.AttemptId, out var foundAnalysis)
                 ? foundAnalysis
                 : null;
-            var isVoided = aq.Question?.Status == QuestionStatus.Archived;
-            var fullScore = aq.Points > 0 ? aq.Points : (aq.Question?.MaxScore ?? 1.00m);
+            var isVoided = aq.IsVoided;
+            var voidReason = aq.IsVoided ? aq.VoidReason : null;
+            var voidedScore = aq.IsVoided ? scorePerQuestion : (decimal?)null;
+
             return new StudentQuestionDto
             {
                 QuestionId = aq.QuestionId.ToString(),
                 QuestionType = aq.Question!.QuestionType.ToString(),
                 Difficulty = aq.Question.Difficulty,
                 QuestionText = aq.Question.QuestionText,
+                HasImage = aq.Question.HasImage,
                 EstimatedTimeSeconds = (int)aq.Question.EstimatedTimeSeconds,
                 ReasoningRequired = aq.Question.ReasoningRequired,
                 LanguageCode = aq.Question.LanguageCode,
@@ -132,50 +138,93 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
                         Label = o.OptionLabel,
                         Text = o.OptionText
                     }).ToList(),
-                AttemptStatus = isVoided ? nameof(AttemptStatus.Completed) : latestAttempt?.Status.ToString(),
+                AttemptStatus = latestAttempt?.Status.ToString(),
                 LatestAttempt = latestAttempt != null ? new StudentQuestionAttemptDto
                 {
                     AttemptId = latestAttempt.AttemptId.ToString(),
                     Status = isVoided ? nameof(AttemptStatus.Completed) : latestAttempt.Status.ToString(),
                     FinalAnswer = latestAttempt.FinalAnswer,
+                    AnswerDisplayLatex = latestAttempt.AnswerDisplayLatex,
                     ReasoningText = latestAttempt.ReasoningText,
                     Confidence = latestAttempt.Confidence,
                     TimeSpentSeconds = latestAttempt.TimeSpentSeconds,
                     AnswerChanges = latestAttempt.AnswerChanges,
                     Skipped = latestAttempt.Skipped,
                     SubmittedAt = latestAttempt.CreatedAt,
-                    IsCorrect = isVoided ? true : latestAttempt.IsCorrect,
-                    AwardedScore = isVoided ? fullScore : latestAttempt.AwardedScore,
+                    IsCorrect = isVoided ? true : (analysis?.OverrideIsCorrect ?? latestAttempt.IsCorrect),
+                    AwardedScore = isVoided ? (aq.Question?.MaxScore ?? 10m) : (analysis?.OverrideAwardedScore ?? latestAttempt.AwardedScore),
                     MaxScore = aq.Question?.MaxScore
                 } : null,
                 SubmittedAnswer = latestAttempt?.FinalAnswer,
+                SubmittedAnswerDisplayLatex = latestAttempt?.AnswerDisplayLatex,
                 SubmittedReasoning = latestAttempt?.ReasoningText,
                 SubmittedAttemptId = latestAttempt?.AttemptId,
                 HasAttachment = latestAttempt != null && hasAttachmentSet.Contains(latestAttempt.AttemptId),
-                EffectiveIsCorrect = isVoided ? true : (analysis?.OverrideIsCorrect ?? latestAttempt?.IsCorrect)
+                EffectiveIsCorrect = isVoided ? true : (analysis?.OverrideIsCorrect ?? latestAttempt?.IsCorrect),
+                IsVoided = isVoided,
+                VoidReason = voidReason,
+                VoidedScore = voidedScore
             };
         }).ToList();
 
         DateTime? effectiveExpiresAt = null;
-        if (progress.Assignment.DueAt.HasValue && progress.Assignment.TimeLimitMinutes.HasValue && progress.StartedAt.HasValue)
-        {
-            var timeLimitExpiresAt = progress.StartedAt.Value.AddMinutes(progress.Assignment.TimeLimitMinutes.Value);
-            effectiveExpiresAt = progress.Assignment.DueAt.Value < timeLimitExpiresAt ? progress.Assignment.DueAt.Value : timeLimitExpiresAt;
-        }
-        else if (progress.Assignment.TimeLimitMinutes.HasValue && progress.StartedAt.HasValue)
-        {
-            effectiveExpiresAt = progress.StartedAt.Value.AddMinutes(progress.Assignment.TimeLimitMinutes.Value);
-        }
-        else if (progress.Assignment.DueAt.HasValue)
-        {
-            effectiveExpiresAt = progress.Assignment.DueAt.Value;
-        }
-
         int? remainingSeconds = null;
-        if (effectiveExpiresAt.HasValue)
+
+        var allQuestionsSubmitted = assignmentQuestions.Count > 0 && assignmentQuestions.All(q =>
+            q.IsVoided || latestAttemptsByQuestion.ContainsKey(q.QuestionId));
+        var isSubmitted = progress.Status == ProgressStatus.Completed || allQuestionsSubmitted;
+        DateTime? submittedAt = isSubmitted ? progress.CompletedAt : null;
+        if (isSubmitted && !submittedAt.HasValue)
         {
-            var diff = (long)(effectiveExpiresAt.Value - utcNow).TotalSeconds;
-            remainingSeconds = diff > 0 ? (int)Math.Min(diff, int.MaxValue) : 0;
+            // Legacy or still-processing submissions may not have CompletedAt.
+            // Use only persisted attempts belonging to this assignment's questions.
+            submittedAt = latestAttemptsByQuestion.Values.Where(a => questionIds.Contains(a.QuestionId))
+                .Select(a => (DateTime?)a.CreatedAt).Max();
+        }
+        int? elapsedSeconds = isSubmitted && submittedAt.HasValue && progress.StartedAt.HasValue
+            ? (int)Math.Clamp((submittedAt.Value - progress.StartedAt.Value).TotalSeconds, 0, int.MaxValue)
+            : null;
+        var clockAt = isSubmitted ? submittedAt : utcNow;
+
+        if (progress.Assignment.TimeLimitMinutes.HasValue && progress.Assignment.TimeLimitMinutes.Value > 0)
+        {
+            if (progress.StartedAt.HasValue)
+            {
+                var timeLimitExpiresAt = progress.StartedAt.Value.AddMinutes(progress.Assignment.TimeLimitMinutes.Value);
+                effectiveExpiresAt = progress.Assignment.DueAt.HasValue && progress.Assignment.DueAt.Value < timeLimitExpiresAt
+                    ? progress.Assignment.DueAt.Value
+                    : timeLimitExpiresAt;
+
+                if (clockAt.HasValue)
+                {
+                    var diff = (long)(effectiveExpiresAt.Value - clockAt.Value).TotalSeconds;
+                    remainingSeconds = diff > 0 ? (int)Math.Min(diff, int.MaxValue) : 0;
+                }
+            }
+            else
+            {
+                // Not started yet: full time limit, countdown begins only when started
+                effectiveExpiresAt = progress.Assignment.DueAt;
+                remainingSeconds = isSubmitted ? null : progress.Assignment.TimeLimitMinutes.Value * 60;
+            }
+        }
+        else
+        {
+            // For untimed assignments: if teacher set a DueAt, countdown to DueAt; otherwise no timer.
+            if (progress.Assignment.DueAt.HasValue)
+            {
+                effectiveExpiresAt = progress.Assignment.DueAt.Value;
+                if (clockAt.HasValue)
+                {
+                    var diff = (long)(progress.Assignment.DueAt.Value - clockAt.Value).TotalSeconds;
+                    remainingSeconds = diff > 0 ? (int)Math.Min(diff, int.MaxValue) : 0;
+                }
+            }
+            else
+            {
+                effectiveExpiresAt = null;
+                remainingSeconds = null;
+            }
         }
 
         EduTwin.DAL.Organization.Class? assignmentClass = null;
@@ -195,21 +244,34 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
             DueAt = progress.Assignment.DueAt,
             SubjectId = assignmentClass?.SubjectId.ToString(),
             SubjectName = assignmentClass?.Subject?.SubjectName,
+            ClassId = progress.Assignment.ClassId.ToString(),
+            IsReadOnly = await StudentAssignmentScope.SuspendedAsync(_dbContext, centerId.Value, progress.Assignment.ClassId, cancellationToken),
             TimeLimitMinutes = progress.Assignment.TimeLimitMinutes,
             StartedAt = progress.StartedAt,
+            IsSubmitted = isSubmitted,
+            SubmittedAt = submittedAt,
+            ElapsedSeconds = elapsedSeconds,
             EffectiveExpiresAt = effectiveExpiresAt,
             RemainingSeconds = remainingSeconds,
             Progress = new StudentAssignmentProgressDto
             {
-                Status = AssignmentStatusHelper.GetEffectiveProgressStatus(progress.Status, effectiveExpiresAt, utcNow).ToString(),
+                Status = isSubmitted ? nameof(ProgressStatus.Completed)
+                    : AssignmentStatusHelper.GetEffectiveProgressStatus(progress.Status, effectiveExpiresAt, utcNow).ToString(),
                 CompletedQuestionCount = (int)progress.CompletedQuestionCount,
                 TotalQuestionCount = (int)progress.TotalQuestionCount
             },
             Questions = questionsDto,
             CanRetake = false,
-            Summary = await _resultCalculator.CalculateForSingleAssignmentAsync(centerId.Value, currentUserId.Value, assignmentId, cancellationToken)
+            Summary = await _resultCalculator.CalculateForSingleAssignmentAsync(centerId.Value, currentUserId.Value, assignmentId, cancellationToken),
+            DraftAnswers = progress.Status != ProgressStatus.Completed && !string.IsNullOrWhiteSpace(progress.DraftAnswersJson)
+                ? DraftAnswersHelper.ParseDraft(progress.DraftAnswersJson).Answers
+                : null,
+            DraftVersion = progress.Status != ProgressStatus.Completed && !string.IsNullOrWhiteSpace(progress.DraftAnswersJson)
+                ? DraftAnswersHelper.ParseDraft(progress.DraftAnswersJson).Version
+                : null
         };
 
+        if (detailDto.IsReadOnly) detailDto.ReadOnlyReason = EduTwin.BLL.Organization.StudentLearningScope.ReadOnlyReason;
         var response = new StudentAssignmentDetailResponse
         {
             Data = detailDto

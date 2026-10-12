@@ -32,10 +32,9 @@ public class ListQuestionsUseCase : IListQuestionsUseCase
             !_tenantContext.CenterId.HasValue || _tenantContext.CenterId.Value == Guid.Empty ||
             !_tenantContext.UserId.HasValue || _tenantContext.UserId.Value == Guid.Empty ||
             string.IsNullOrWhiteSpace(_tenantContext.Role) ||
-            (!string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal) &&
-             !string.Equals(_tenantContext.Role, nameof(UserRole.CenterManager), StringComparison.Ordinal)))
+            !string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal))
         {
-            return ListQuestionsResult.Failure(ErrorCodes.ResourceNotFound);
+            return ListQuestionsResult.Failure(ErrorCodes.ForbiddenResource);
         }
 
         // 2. Pagination validation
@@ -72,6 +71,9 @@ public class ListQuestionsUseCase : IListQuestionsUseCase
         if (query.Difficulty.HasValue && (query.Difficulty.Value < 1 || query.Difficulty.Value > 5))
             return ListQuestionsResult.Failure(ErrorCodes.ValidationFailed);
 
+        if (query.GradeLevel.HasValue && (query.GradeLevel.Value < 10 || query.GradeLevel.Value > 12))
+            return ListQuestionsResult.Failure(ErrorCodes.ValidationFailed);
+
         var centerId = _tenantContext.CenterId.Value;
         var actorId = _tenantContext.UserId.Value;
         var isTeacher = string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal);
@@ -82,10 +84,22 @@ public class ListQuestionsUseCase : IListQuestionsUseCase
             .Where(q => q.CenterId == centerId);
 
         if (isTeacher)
-            baseQ = baseQ.Where(q => q.CreatedByTeacherId == actorId);
+            baseQ = baseQ.Where(q => q.CreatedByTeacherId == actorId ||
+                (q.Visibility == MaterialVisibility.Shared && q.Status == QuestionStatus.Active));
+
+        if (query.OwnedOnly) baseQ = baseQ.Where(q => q.CreatedByTeacherId == actorId);
+        if (query.Visibility != null)
+        {
+            if (!Enum.TryParse<MaterialVisibility>(query.Visibility, out var visibility) || !Enum.IsDefined(visibility) || visibility.ToString() != query.Visibility)
+                return ListQuestionsResult.Failure(ErrorCodes.ValidationFailed);
+            baseQ = baseQ.Where(q => q.Visibility == visibility);
+        }
 
         if (query.SubjectId.HasValue && query.SubjectId.Value != Guid.Empty)
             baseQ = baseQ.Where(q => q.SubjectId == query.SubjectId.Value);
+
+        if (query.GradeLevel.HasValue)
+            baseQ = baseQ.Where(q => q.GradeLevel == query.GradeLevel.Value);
 
         if (topicNodeId.HasValue)
             baseQ = baseQ.Where(q => q.PrimaryTopicNodeId == topicNodeId.Value);

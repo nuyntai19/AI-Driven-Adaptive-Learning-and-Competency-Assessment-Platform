@@ -15,10 +15,14 @@ public class AssignmentDto
     public string Title { get; set; } = string.Empty;
     public string? Instructions { get; set; }
     public DateTime? DueAt { get; set; }
+    public int? TimeLimitMinutes { get; set; }
     public string Status { get; set; } = string.Empty;
     public int QuestionCount { get; set; }
     public int TargetStudentCount { get; set; }
     public List<AssignmentQuestionDto> Questions { get; set; } = new();
     public List<AssignmentTargetDto> Targets { get; set; } = new();
+    public string TargetMode { get; set; } = string.Empty;
+    public bool AllowGradeMismatch { get; set; }
+    public string? GradeMismatchReason { get; set; }
     public string RowVersion { get; set; } = string.Empty;
 }

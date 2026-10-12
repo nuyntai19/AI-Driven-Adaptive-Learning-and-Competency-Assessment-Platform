@@ -128,6 +128,7 @@ public class EduTwinRuntimeSeeder
 
         _dbContext.Curriculums.AddRange(data.Curriculums);
         _dbContext.CurriculumClasses.AddRange(data.CurriculumClasses);
+        _dbContext.ClassCurriculumApplications.AddRange(data.CurriculumApplications);
         _dbContext.CurriculumNodes.AddRange(data.CurriculumNodes);
 
         _dbContext.Questions.AddRange(data.Questions);

@@ -8,9 +8,11 @@ using EduTwin.BLL.AssessmentAndReasoning.Evidence;
 using EduTwin.BLL.AssessmentAndReasoning.ReviewRequest;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
+using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.Common;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.DAL.AssessmentAndReasoning;
+using EduTwin.DAL.Assignments;
 using EduTwin.DAL.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
@@ -57,6 +59,7 @@ public sealed class CreateStudentReviewRequestUseCaseTests
             Feedback = "Needs check",
             NeedsTeacherReview = false,
             Provider = AnalysisProvider.Gemini,
+            ReviewDecision = TeacherReviewDecision.Approved,
             CreatedAt = UtcNow.AddHours(-1),
             UpdatedAt = UtcNow.AddHours(-1)
         };
@@ -160,6 +163,12 @@ public sealed class CreateStudentReviewRequestUseCaseTests
 
         context.Attempts.Add(attempt);
         context.EvidenceAssessments.Add(evidence);
+        context.ReasoningAnalyses.Add(new ReasoningAnalysis
+        {
+            CenterId = centerId, AttemptId = 101, SchemaVersion = "v1", Feedback = "Approved",
+            MissingSteps = JsonDocument.Parse("[]"), RootCauseNodeIds = JsonDocument.Parse("[]"),
+            ReviewDecision = TeacherReviewDecision.Approved, CreatedAt = UtcNow, UpdatedAt = UtcNow
+        });
         await context.SaveChangesAsync();
 
         var sut = new CreateStudentReviewRequestUseCase(context, tenant);
@@ -217,6 +226,70 @@ public sealed class CreateStudentReviewRequestUseCaseTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal("FORBIDDEN", result.ErrorCode);
+    }
+
+    [Theory]
+    [InlineData(AttemptStatus.Completed)]
+    [InlineData(AttemptStatus.NeedsTeacherReview)]
+    public async Task ExecuteAsync_BeforeTeacherEvaluation_RejectsAppealWithoutMutations(AttemptStatus status)
+    {
+        var center = Guid.NewGuid(); var student = Guid.NewGuid();
+        var (db, tenant) = CreateContext(center, student, nameof(UserRole.Student));
+        await using var context = db;
+        context.Attempts.Add(new Attempt { CenterId = center, AttemptId = 10, StudentId = student,
+            QuestionId = 5, Status = status, ReasoningLanguage = "vi", FinalAnswer = "2",
+            CreatedAt = UtcNow, UpdatedAt = UtcNow });
+        await context.SaveChangesAsync();
+        var result = await new CreateStudentReviewRequestUseCase(context, tenant).ExecuteAsync(10,
+            new CreateStudentReviewRequest { StudentComment = "Xin thầy cô xem xét lại." }, CancellationToken.None);
+        Assert.False(result.IsSuccess);
+        Assert.Equal("VALIDATION_FAILED", result.ErrorCode);
+        Assert.Empty(context.StudentReviewRequests);
+        Assert.Equal(status, (await context.Attempts.SingleAsync()).Status);
+    }
+
+    [Theory]
+    [InlineData("DEFECTIVE_QUESTION")]
+    [InlineData("DEFECTIVE_QUESTION_WRONG_CONTENT")]
+    [InlineData("DEFECTIVE_QUESTION_WRONG_OPTIONS")]
+    [InlineData("DEFECTIVE_QUESTION_TYPO_LATEX")]
+    [InlineData("DEFECTIVE_QUESTION_OTHER")]
+    public async Task ExecuteAsync_QuestionReportBeforeTeacherEvaluation_IsAllowed(string category)
+    {
+        var center = Guid.NewGuid(); var student = Guid.NewGuid();
+        var (db, tenant) = CreateContext(center, student, nameof(UserRole.Student));
+        await using var context = db;
+        context.Attempts.Add(new Attempt { CenterId = center, AttemptId = 10, StudentId = student,
+            QuestionId = 5, Status = AttemptStatus.NeedsTeacherReview, ReasoningLanguage = "vi",
+            FinalAnswer = "2", CreatedAt = UtcNow, UpdatedAt = UtcNow });
+        await context.SaveChangesAsync();
+        var result = await new CreateStudentReviewRequestUseCase(context, tenant).ExecuteAsync(10,
+            new CreateStudentReviewRequest { StudentComment = "Đề bài thiếu dữ kiện cần thiết.", DisputeCategory = category },
+            CancellationToken.None);
+        Assert.True(result.IsSuccess);
+        Assert.StartsWith($"[{category}]", result.Data!.StudentComment);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_AssignmentApproved_AllowsAppealAfterPreviousRequestResolved()
+    {
+        var center = Guid.NewGuid(); var student = Guid.NewGuid(); var assignment = Guid.NewGuid();
+        var (db, tenant) = CreateContext(center, student, nameof(UserRole.Student));
+        await using var context = db;
+        context.Attempts.Add(new Attempt { CenterId = center, AttemptId = 10, StudentId = student,
+            QuestionId = 5, AssignmentId = assignment, Status = AttemptStatus.Completed, ReasoningLanguage = "vi",
+            FinalAnswer = "2", CreatedAt = UtcNow, UpdatedAt = UtcNow });
+        context.StudentAssignmentProgresses.Add(new StudentAssignmentProgress { CenterId = center, StudentId = student,
+            AssignmentId = assignment, TeacherFinalReviewStatus = TeacherFinalReviewStatus.Approved,
+            CreatedAt = UtcNow, UpdatedAt = UtcNow });
+        context.StudentReviewRequests.Add(new StudentReviewRequest { CenterId = center, AttemptId = 10, StudentId = student,
+            QuestionId = 5, StudentComment = "Yêu cầu cũ.", Status = StudentReviewRequestStatus.Resolved,
+            CreatedAt = UtcNow, UpdatedAt = UtcNow });
+        await context.SaveChangesAsync();
+        var result = await new CreateStudentReviewRequestUseCase(context, tenant).ExecuteAsync(10,
+            new CreateStudentReviewRequest { StudentComment = "Xin xem lại điểm đã duyệt." }, CancellationToken.None);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, await context.StudentReviewRequests.CountAsync());
     }
 
     [Fact]

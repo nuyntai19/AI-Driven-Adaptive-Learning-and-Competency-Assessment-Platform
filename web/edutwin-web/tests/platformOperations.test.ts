@@ -1,0 +1,14 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {bytesLabel, usageSummary, workerStatus, usdLabel, utcDate} from '../src/utils/platformOperationsPresentation.ts';
+import type {AiUsageGroup} from '../src/types/platformOperations.ts';
+const group = (patch: Partial<AiUsageGroup> = {}): AiUsageGroup => ({day: '2026-10-11T00:00:00', provider: 'Gemini', model: 'test-model', stage: 'visual', calls: 1, failedCalls: 0, tokenReportedCalls: 0, inputTokens: null, outputTokens: null, thinkingTokens: null, cachedTokens: null, totalTokens: null, pricedCalls: 0, estimatedUsd: null, averageDurationMs: 1000, ...patch});
+test('unknown token/cost is never presented as zero', () => { assert.equal(usageSummary([group()]).totalTokens, null); assert.equal(usageSummary([group()]).estimatedUsd, null); assert.equal(usdLabel(null), 'Chưa xác minh giá'); });
+test('provider total is not added a second time to token components', () => { const result = usageSummary([group({inputTokens: 100, outputTokens: 20, thinkingTokens: 10, cachedTokens: 40, totalTokens: 130, tokenReportedCalls: 1})]); assert.equal(result.totalTokens, 130); });
+test('latency is weighted by calls, not by number of groups', () => { assert.equal(usageSummary([group({calls: 3, averageDurationMs: 1000}), group({averageDurationMs: 5000})]).averageMs, 2000); });
+test('partial priced coverage and genuine free estimate remain distinct', () => { const result = usageSummary([group({pricedCalls: 1, estimatedUsd: 0}), group()]); assert.equal(result.calls, 2); assert.equal(result.pricedCalls, 1); assert.equal(result.estimatedUsd, 0); });
+test('storage unknown, zero and binary units', () => { assert.equal(bytesLabel(null), 'Chưa đo được'); assert.equal(bytesLabel(0), '0 B'); assert.equal(bytesLabel(1024), '1 KiB'); });
+test('MySQL UTC timestamps without a suffix are read as UTC', () => { assert.equal(utcDate('2026-10-11T12:00:00').toISOString(), '2026-10-11T12:00:00.000Z'); });
+test('worker heartbeat unknown and stale are explicit', () => { const now = Date.parse('2026-10-11T12:00:00Z'); assert.equal(workerStatus(null, now), 'Chưa có tín hiệu'); assert.equal(workerStatus('2026-10-11T11:54:59', now), 'Tín hiệu đã cũ'); assert.equal(workerStatus('2026-10-11T11:59:00', now), 'Đang hoạt động'); });
+test('all operational routes have separate capability guards and no hidden-tab polling', () => { const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8'); for (const name of ['platformOperationsRead', 'platformAiUsageRead', 'platformStorageRead']) assert.ok(app.includes(`allOf={[permissions.${name}]}`)); const page = readFileSync(new URL('../src/pages/PlatformOperationsPages.tsx', import.meta.url), 'utf8'); assert.equal((page.match(/refetchIntervalInBackground: false/g) ?? []).length, 3); });

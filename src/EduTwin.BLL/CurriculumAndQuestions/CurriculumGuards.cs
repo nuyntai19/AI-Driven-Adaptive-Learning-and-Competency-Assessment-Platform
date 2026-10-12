@@ -20,12 +20,16 @@ internal static class CurriculumGuards
 
         return tenantContext.IsResolved &&
                centerId != Guid.Empty &&
-               actorId != Guid.Empty &&
-               (isTeacher || string.Equals(tenantContext.Role, nameof(UserRole.CenterManager), StringComparison.Ordinal));
+               actorId != Guid.Empty;
     }
 
     public static bool CanAccess(Curriculum curriculum, Guid actorId, bool isTeacher) =>
-        !isTeacher || curriculum.TeacherId == actorId;
+        isTeacher && curriculum.TeacherId == actorId;
+
+    public static bool CanRead(Curriculum curriculum, Guid actorId, bool isTeacher) =>
+        CanAccess(curriculum, actorId, isTeacher) || (isTeacher &&
+            curriculum.Visibility == Contracts.CurriculumAndQuestions.MaterialVisibility.Shared &&
+            curriculum.ReviewStatus == Contracts.CurriculumAndQuestions.ReviewStatus.Published);
 
     public static bool TryParseRowVersion(string? raw, out ulong rowVersion)
     {

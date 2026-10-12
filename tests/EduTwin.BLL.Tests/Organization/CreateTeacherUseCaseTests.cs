@@ -67,6 +67,7 @@ public class CreateTeacherUseCaseTests : IDisposable
 
     private void SeedCenter(bool isDeleted = false, CenterStatus status = CenterStatus.Active)
     {
+        AccountRoleTestSeed.Add(_dbContext, _centerId, UserRole.Teacher, _fixedTime.UtcDateTime);
         _dbContext.Centers.Add(new Center
         {
             CenterId = _centerId,
@@ -113,6 +114,13 @@ public class CreateTeacherUseCaseTests : IDisposable
         Assert.NotNull(teacherInDb);
         Assert.Equal(teacherId, userInDb.UserId);
         Assert.Equal(teacherId, teacherInDb.TeacherId);
+        var assignment = Assert.Single(await _dbContext.UserRoleAssignments.ToListAsync());
+        Assert.Equal(teacherId, assignment.UserId);
+        Assert.Equal(_centerId, assignment.CenterId);
+        Assert.Equal(UserRole.Teacher, assignment.AccountType);
+        Assert.Equal(UserRoleAssignmentStatus.Active, assignment.Status);
+        Assert.Equal(_managerId, assignment.AssignedByUserId);
+        Assert.Equal("UserSystemRoleAssigned", Assert.Single(await _dbContext.AuthorizationAuditLogs.ToListAsync()).ActionType);
         Assert.Equal(_centerId, userInDb.CenterId);
         Assert.Equal(_centerId, teacherInDb.CenterId);
 
@@ -357,6 +365,8 @@ public class CreateTeacherUseCaseTests : IDisposable
         });
         dbContext.SaveChanges();
 
+        AccountRoleTestSeed.Add(dbContext, _centerId, UserRole.Teacher, _fixedTime.UtcDateTime);
+        dbContext.SaveChanges();
         interceptor.OnSavingChangesAsyncAction = () => throw new DbUpdateException("Simulated failure");
 
         var sut = new CreateTeacherUseCase(dbContext, _mockTenantContext.Object, mockTime.Object, _mockHasher.Object);
@@ -385,6 +395,8 @@ public class CreateTeacherUseCaseTests : IDisposable
         });
         dbContext.SaveChanges();
 
+        AccountRoleTestSeed.Add(dbContext, _centerId, UserRole.Teacher, _fixedTime.UtcDateTime);
+        dbContext.SaveChanges();
         interceptor.OnSavingChangesAsyncAction = () =>
         {
             // Simulate another thread/request inserting the same username right before we save

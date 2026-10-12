@@ -113,6 +113,46 @@ public sealed class GeminiDependencyInjectionTests
     }
 
     [Fact]
+    public void AddGeminiAI_BindsRootJsonListAndUsesItInsteadOfLegacyKeys()
+    {
+        var services = new ServiceCollection();
+        AddRuntimeDependencies(services);
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["GEMINI_LIST_KEY"] = "[\"list-first\",\"list-second\"]",
+            ["Gemini:ApiKey"] = "legacy-key",
+            ["Gemini:BackupKeys"] = "legacy-backup",
+            ["Gemini:Model"] = "test-model"
+        }).Build();
+        services.AddGeminiAI(configuration);
+        using var provider = services.BuildServiceProvider(validateScopes: true);
+
+        var options = provider.GetRequiredService<IOptions<GeminiOptions>>().Value;
+        options.Validate();
+        Assert.Equal(new[] { "list-first", "list-second" }, options.GetAllApiKeys());
+    }
+
+    [Fact]
+    public void AddGeminiAI_JsonListOnly_IsValidWithoutAnyLegacyKey()
+    {
+        var services = new ServiceCollection();
+        AddRuntimeDependencies(services);
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["GEMINI_LIST_KEY"] = "[\"list-key\"]",
+            ["Gemini:Model"] = "test-model"
+        }).Build();
+        services.AddGeminiAI(configuration);
+        using var provider = services.BuildServiceProvider(validateScopes: true);
+
+        var options = provider.GetRequiredService<IOptions<GeminiOptions>>().Value;
+        options.Validate();
+        Assert.Null(options.ApiKey);
+        Assert.Equal(new[] { "list-key" }, options.GetAllApiKeys());
+        Assert.IsType<GeminiAIService>(provider.GetRequiredService<IAIService>());
+    }
+
+    [Fact]
     public void AddGeminiAI_MissingApiKey_DoesNotFailServiceCollectionBuildOrCreateReadinessDependency()
     {
         var services = new ServiceCollection();

@@ -4,6 +4,7 @@ public class DeleteKnowledgeEdgeResult
 {
     public bool IsSuccess { get; private set; }
     public string? ErrorCode { get; private set; }
+    public string? Message { get; private set; }
 
     private DeleteKnowledgeEdgeResult(bool isSuccess, string? errorCode)
     {
@@ -13,5 +14,5 @@ public class DeleteKnowledgeEdgeResult
 
     public static DeleteKnowledgeEdgeResult Success() => new(true, null);
 
-    public static DeleteKnowledgeEdgeResult Failure(string errorCode) => new(false, errorCode);
+    public static DeleteKnowledgeEdgeResult Failure(string errorCode, string? message = null) => new(false, errorCode) { Message = message };
 }

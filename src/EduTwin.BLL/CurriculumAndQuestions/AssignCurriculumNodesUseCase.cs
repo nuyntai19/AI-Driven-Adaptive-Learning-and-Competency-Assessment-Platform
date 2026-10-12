@@ -37,6 +37,11 @@ public class AssignCurriculumNodesUseCase : IAssignCurriculumNodesUseCase
             return AssignCurriculumNodesResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
+        if (!isTeacher)
+        {
+            return AssignCurriculumNodesResult.Failure(ErrorCodes.ForbiddenResource);
+        }
+
         if (request.NodeIds == null || !CurriculumGuards.TryParseRowVersion(request.RowVersion, out var rowVersion))
         {
             return AssignCurriculumNodesResult.Failure(ErrorCodes.ValidationFailed);
@@ -154,6 +159,7 @@ public class AssignCurriculumNodesUseCase : IAssignCurriculumNodesUseCase
         {
             CurriculumId = curriculum.CurriculumId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             TeacherId = curriculum.TeacherId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
+            Visibility = curriculum.Visibility.ToString(),
             SubjectId = curriculum.SubjectId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             Title = curriculum.Title,
             Description = curriculum.Description,

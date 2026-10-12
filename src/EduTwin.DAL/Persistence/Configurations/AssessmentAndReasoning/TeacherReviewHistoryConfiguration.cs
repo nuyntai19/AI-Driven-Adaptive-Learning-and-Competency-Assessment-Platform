@@ -35,6 +35,7 @@ public class TeacherReviewHistoryConfiguration : IEntityTypeConfiguration<Teache
         builder.Property(h => h.PreviousIsCorrect).HasColumnName("previous_is_correct").HasColumnType("tinyint(1)");
         builder.Property(h => h.NewIsCorrect).HasColumnName("new_is_correct").HasColumnType("tinyint(1)");
         builder.Property(h => h.Note).HasColumnName("note").HasColumnType("varchar(1000)");
+        builder.Property(h => h.RubricResultJson).HasColumnName("rubric_result").HasColumnType("json");
         builder.Property(h => h.OverrideVersion).HasColumnName("override_version").HasColumnType("int unsigned").HasDefaultValue(0u);
 
         builder.Property(h => h.CreatedAt).HasColumnName("created_at").HasColumnType("datetime(6)").IsRequired();

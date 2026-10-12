@@ -6,6 +6,7 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddCurriculumAndQuestions(this IServiceCollection services)
     {
+        services.AddScoped<CurriculumApplicationUseCase>();
         services.AddScoped<ICreateCurriculumUseCase, CreateCurriculumUseCase>();
         services.AddScoped<IListCurriculumsUseCase, ListCurriculumsUseCase>();
         services.AddScoped<IGetCurriculumUseCase, GetCurriculumUseCase>();
@@ -18,11 +19,13 @@ public static class DependencyInjection
         
         services.AddScoped<ICreateQuestionUseCase, CreateQuestionUseCase>();
         services.AddScoped<IGetQuestionUseCase, GetQuestionUseCase>();
+        services.AddScoped<GetQuestionImageUseCase>();
         services.AddScoped<IListQuestionsUseCase, ListQuestionsUseCase>();
         services.AddScoped<IUpdateQuestionUseCase, UpdateQuestionUseCase>();
         services.AddScoped<IActivateQuestionUseCase, ActivateQuestionUseCase>();
         services.AddScoped<IArchiveQuestionUseCase, ArchiveQuestionUseCase>();
         services.AddScoped<IDeleteQuestionUseCase, DeleteQuestionUseCase>();
+        services.AddScoped<IQuestionActivationPolicy, QuestionActivationPolicy>();
         services.AddScoped<Import.IQuestionImportUseCase, Import.QuestionImportUseCase>();
         
         return services;

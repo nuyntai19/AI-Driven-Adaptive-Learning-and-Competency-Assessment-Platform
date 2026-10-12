@@ -9,6 +9,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using EduTwin.BLL.AssessmentAndReasoning.Attachments;
 using EduTwin.BLL.AssessmentAndReasoning.Evidence;
+using EduTwin.BLL.AssessmentAndReasoning.ReviewQueue;
+using EduTwin.BLL.AssessmentAndReasoning.Processing;
 using EduTwin.BLL.DigitalTwin;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.BLL.Recommendations;
@@ -41,6 +43,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
     private readonly IAttemptTeacherReviewScopeGuard _scopeGuard;
     private readonly ILogger<TeacherOverrideUseCase> _logger;
     private readonly IOverallAssignmentCommentWorkflow? _overallCommentWorkflow;
+    private readonly IAIStudentPostProcessingQueue? _postProcessing;
 
     public TeacherOverrideUseCase(
         EduTwinDbContext dbContext,
@@ -56,7 +59,8 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
         IRecommendationEngine? recommendationEngine = null,
         IAttemptTeacherReviewScopeGuard? scopeGuard = null,
         ILogger<TeacherOverrideUseCase>? logger = null,
-        IOverallAssignmentCommentWorkflow? overallCommentWorkflow = null)
+        IOverallAssignmentCommentWorkflow? overallCommentWorkflow = null,
+        IAIStudentPostProcessingQueue? postProcessing = null)
     {
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         _tenantContext = tenantContext ?? throw new ArgumentNullException(nameof(tenantContext));
@@ -72,6 +76,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
         _scopeGuard = scopeGuard ?? new AttemptTeacherReviewScopeGuard(_dbContext);
         _logger = logger ?? NullLogger<TeacherOverrideUseCase>.Instance;
         _overallCommentWorkflow = overallCommentWorkflow;
+        _postProcessing = postProcessing;
     }
 
     public async Task<TeacherOverrideResult> ExecuteAsync(
@@ -91,8 +96,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
         var role = _tenantContext.Role ?? string.Empty;
 
         var isTeacher = string.Equals(role, nameof(UserRole.Teacher), StringComparison.OrdinalIgnoreCase);
-        var isCenterManager = string.Equals(role, nameof(UserRole.CenterManager), StringComparison.OrdinalIgnoreCase);
-        if (!isTeacher && !isCenterManager)
+        if (!isTeacher)
         {
             return TeacherOverrideResult.Forbidden();
         }
@@ -111,6 +115,16 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
         if (request.Reason.Length > 1000)
         {
             return TeacherOverrideResult.ValidationFailed("REASON_TOO_LONG", "Override reason must not exceed 1000 characters.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Feedback))
+        {
+            return TeacherOverrideResult.ValidationFailed("FEEDBACK_REQUIRED", "Teacher feedback is required.");
+        }
+
+        if (request.Feedback.Length > 4000)
+        {
+            return TeacherOverrideResult.ValidationFailed("FEEDBACK_TOO_LONG", "Teacher feedback must not exceed 4000 characters.");
         }
 
         if (!Enum.IsDefined(typeof(ErrorType), request.ErrorType))
@@ -134,15 +148,6 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
         var attempt = analysis.Attempt;
         var question = attempt.Question;
 
-        if (request.AwardedScore.HasValue)
-        {
-            var maxScore = question.MaxScore;
-            if (request.AwardedScore.Value < 0m || request.AwardedScore.Value > maxScore)
-            {
-                return TeacherOverrideResult.ValidationFailed("INVALID_AWARDED_SCORE", $"Awarded score must be between 0 and {maxScore}.");
-            }
-        }
-
         // 3. Validate Teacher / CenterManager Ownership via Fail-Closed Scope Guard
         var canAccess = await _scopeGuard.CanAccessAttemptAsync(
             centerId,
@@ -155,6 +160,17 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
         {
             return TeacherOverrideResult.Forbidden();
         }
+
+        if (!RubricGrading.TryGrade(question.GradingCriteria, question.MaxScore, request.RubricScores, out var rubricGrade, out var rubricError))
+            return TeacherOverrideResult.ValidationFailed("INVALID_RUBRIC_SCORES", rubricError!);
+        if (rubricGrade != null)
+        {
+            if (request.AwardedScore.HasValue && request.AwardedScore.Value != rubricGrade.AwardedScore)
+                return TeacherOverrideResult.ValidationFailed("RUBRIC_TOTAL_MISMATCH", "Tổng điểm phải bằng tổng các tiêu chí rubric.");
+            request.AwardedScore = rubricGrade.AwardedScore;
+        }
+        if (request.AwardedScore is < 0m || request.AwardedScore > question.MaxScore)
+            return TeacherOverrideResult.ValidationFailed("INVALID_AWARDED_SCORE", $"Awarded score must be between 0 and {question.MaxScore}.");
 
         // 4. Optimistic concurrency check on OverrideVersion
         if (analysis.OverrideVersion != request.OverrideVersion)
@@ -171,8 +187,28 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
         DateTime recommendationTriggerAt = default;
         try
         {
+            if (_postProcessing is not null)
+            {
+                await StudentLockHelper.AcquireStudentLockAsync(_dbContext, centerId, attempt.StudentId, cancellationToken);
+                if (!await _dbContext.ReasoningAnalyses.AsNoTracking().AnyAsync(a => a.CenterId == centerId &&
+                    a.AnalysisId == analysisId && a.RowVersion == analysis.RowVersion, cancellationToken) ||
+                    !await _dbContext.Attempts.AsNoTracking().AnyAsync(a => a.CenterId == centerId &&
+                    a.AttemptId == attempt.AttemptId && a.RowVersion == attempt.RowVersion, cancellationToken))
+                    return TeacherOverrideResult.Conflict();
+            }
+            if (await AssignmentFinalReviewWorkflow.IsLockedAsync(_dbContext, centerId, attempt.AssignmentId, attempt.StudentId, cancellationToken))
+                return TeacherOverrideResult.Conflict("ASSIGNMENT_RESULT_LOCKED", AssignmentFinalReviewWorkflow.LockedMessage);
             var now = _timeProvider.GetUtcNow().UtcDateTime;
             var newOverrideVersion = analysis.OverrideVersion + 1;
+
+            _dbContext.TeacherReviewHistories.Add(new TeacherReviewHistory
+            {
+                CenterId = centerId, AnalysisId = analysis.AnalysisId, AttemptId = attempt.AttemptId, TeacherId = actorId,
+                Decision = TeacherReviewDecision.Adjusted, PreviousScore = analysis.OverrideAwardedScore ?? attempt.AwardedScore,
+                NewScore = request.AwardedScore ?? attempt.AwardedScore, PreviousIsCorrect = analysis.OverrideIsCorrect ?? attempt.IsCorrect,
+                NewIsCorrect = request.IsCorrect, Note = request.Reason, OverrideVersion = newOverrideVersion,
+                RubricResultJson = rubricGrade == null ? null : RubricGrade.Serialize(rubricGrade), CreatedAt = now, CreatedBy = actorId
+            });
 
             // A. Update ReasoningAnalysis override fields (full-state semantics: null AwardedScore clears override)
             analysis.OverrideReasoningQuality = request.ReasoningQuality;
@@ -184,6 +220,10 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
             analysis.OverriddenByUserId = actorId;
             analysis.OverriddenAt = now;
             analysis.OverrideVersion = newOverrideVersion;
+            analysis.ReviewDecision = TeacherReviewDecision.Adjusted;
+            analysis.ReviewedByUserId = actorId;
+            analysis.ReviewedAt = now;
+            analysis.TeacherReviewNote = request.Reason;
             analysis.NeedsTeacherReview = false;
             analysis.UpdatedAt = now;
 
@@ -235,8 +275,20 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                         .Distinct()
                         .Count();
 
+                    var voidedQuestionIds = await _dbContext.AssignmentQuestions.AsNoTracking()
+                        .Where(aq => aq.CenterId == centerId && aq.AssignmentId == attempt.AssignmentId.Value && aq.IsVoided)
+                        .Select(aq => aq.QuestionId)
+                        .ToListAsync(cancellationToken);
+
+                    var resolvedQuestionCount = dbQuestionIds
+                        .Concat(localQuestionIds)
+                        .Append(attempt.QuestionId)
+                        .Concat(voidedQuestionIds)
+                        .Distinct()
+                        .Count();
+
                     progress.CompletedQuestionCount = (uint)answeredQuestionCount;
-                    if (progress.CompletedQuestionCount >= progress.TotalQuestionCount && progress.TotalQuestionCount > 0)
+                    if (resolvedQuestionCount >= progress.TotalQuestionCount && progress.TotalQuestionCount > 0)
                     {
                         progress.Status = ProgressStatus.Completed;
                         progress.CompletedAt ??= now;
@@ -356,11 +408,6 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                     ? newEvidence
                     : latestEvidenceByAttempt.GetValueOrDefault(att.AttemptId);
 
-                decimal reasoningWeight = ev?.ReasoningWeight ?? 0m;
-                decimal? effectiveQuality = a is not null
-                    ? (a.OverrideVersion > 0 ? a.OverrideReasoningQuality : a.ReasoningQuality)
-                    : null;
-
                 bool? effectiveCorrectness;
                 if (att.AttemptId == attempt.AttemptId)
                 {
@@ -370,6 +417,11 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                 {
                     effectiveCorrectness = a?.OverrideIsCorrect ?? att.IsCorrect;
                 }
+
+                decimal reasoningWeight = ev?.ReasoningWeight ?? 0m;
+                decimal? effectiveQuality = a is not null
+                    ? (a.OverrideReasoningQuality ?? a.ReasoningQuality ?? (effectiveCorrectness == true ? 70m : 30m))
+                    : null;
 
                 // Fail closed if positive weight evidence has unresolved correctness
                 if (reasoningWeight > 0m && !effectiveCorrectness.HasValue)
@@ -535,6 +587,9 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                 actorId,
                 cancellationToken);
 
+            if (_postProcessing is not null)
+                await _postProcessing.EnqueueAsync(centerId, attempt.StudentId, question.SubjectId,
+                    attempt.AssignmentId, attempt.AttemptId, now, cancellationToken);
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
 
@@ -576,7 +631,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
             throw;
         }
 
-        if (_recommendationEngine is not null)
+        if (_postProcessing is null && _recommendationEngine is not null)
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             try
@@ -603,7 +658,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
             }
         }
 
-        if (_overallCommentWorkflow is not null && attempt.AssignmentId.HasValue)
+        if (_postProcessing is null && _overallCommentWorkflow is not null && attempt.AssignmentId.HasValue)
         {
             await _overallCommentWorkflow.GenerateAndCacheOverallCommentAsync(centerId, attempt.AssignmentId.Value, attempt.StudentId, cancellationToken);
         }

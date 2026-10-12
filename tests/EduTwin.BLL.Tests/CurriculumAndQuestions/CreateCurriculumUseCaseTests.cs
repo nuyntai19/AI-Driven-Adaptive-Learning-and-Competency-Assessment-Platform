@@ -174,6 +174,7 @@ public class CreateCurriculumUseCaseTests
 
         var request = new CreateCurriculumRequest
         {
+            GradeLevel = 10,
             TeacherId = null,
             SubjectId = seed.Subject.SubjectId,
             Title = "Lộ trình Toán 12",
@@ -234,7 +235,7 @@ public class CreateCurriculumUseCaseTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_CenterManagerOwner_ValidTeacher_CreatesCurriculumSuccessfully()
+    public async Task ExecuteAsync_CenterManagerOwner_ValidTeacher_ReturnsForbiddenResource()
     {
         var centerId = Guid.NewGuid();
         var managerId = Guid.NewGuid();
@@ -247,6 +248,7 @@ public class CreateCurriculumUseCaseTests
 
         var request = new CreateCurriculumRequest
         {
+            GradeLevel = 10,
             TeacherId = teacherId.ToString("D"),
             SubjectId = seed.Subject.SubjectId,
             Title = "Lộ trình Toán 12 do Manager tạo",
@@ -256,16 +258,8 @@ public class CreateCurriculumUseCaseTests
 
         var result = await _sut.ExecuteAsync(request);
 
-        Assert.True(result.IsSuccess);
-        Assert.NotNull(result.Data);
-        Assert.Equal(teacherId.ToString("D").ToLowerInvariant(), result.Data.TeacherId);
-        Assert.Equal(new List<string> { n2Str, n1Str }, result.Data.NodeIds);
-
-        var nodesInDb = await _dbContext.CurriculumNodes.OrderBy(cn => cn.OrderIndex).ToListAsync();
-        Assert.Equal(seed.Node2.NodeId, nodesInDb[0].NodeId);
-        Assert.Equal(1u, nodesInDb[0].OrderIndex);
-        Assert.Equal(seed.Node1.NodeId, nodesInDb[1].NodeId);
-        Assert.Equal(2u, nodesInDb[1].OrderIndex);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     // --- Section B: Tenant & Center Tests ---
@@ -274,7 +268,7 @@ public class CreateCurriculumUseCaseTests
     public async Task ExecuteAsync_UnresolvedTenant_ReturnsResourceNotFound_NoPersistence()
     {
         _tenantMock.SetupGet(x => x.IsResolved).Returns(false);
-        var request = new CreateCurriculumRequest { SubjectId = Guid.NewGuid(), Title = "Title", NodeIds = new List<string>() };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, SubjectId = Guid.NewGuid(), Title = "Title", NodeIds = new List<string>() };
 
         var result = await _sut.ExecuteAsync(request);
 
@@ -288,7 +282,7 @@ public class CreateCurriculumUseCaseTests
     public async Task ExecuteAsync_EmptyCenterId_ReturnsResourceNotFound_NoPersistence()
     {
         SetupTenant(Guid.Empty, Guid.NewGuid(), nameof(UserRole.Teacher));
-        var request = new CreateCurriculumRequest { SubjectId = Guid.NewGuid(), Title = "Title", NodeIds = new List<string>() };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, SubjectId = Guid.NewGuid(), Title = "Title", NodeIds = new List<string>() };
 
         var result = await _sut.ExecuteAsync(request);
 
@@ -302,7 +296,7 @@ public class CreateCurriculumUseCaseTests
     public async Task ExecuteAsync_EmptyUserId_ReturnsResourceNotFound_NoPersistence()
     {
         SetupTenant(Guid.NewGuid(), Guid.Empty, nameof(UserRole.Teacher));
-        var request = new CreateCurriculumRequest { SubjectId = Guid.NewGuid(), Title = "Title", NodeIds = new List<string>() };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, SubjectId = Guid.NewGuid(), Title = "Title", NodeIds = new List<string>() };
 
         var result = await _sut.ExecuteAsync(request);
 
@@ -360,7 +354,7 @@ public class CreateCurriculumUseCaseTests
         _dbContext.Subjects.Add(subject);
         await _dbContext.SaveChangesAsync();
 
-        var request = new CreateCurriculumRequest { SubjectId = subjectId, Title = "Title", NodeIds = new List<string>() };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, SubjectId = subjectId, Title = "Title", NodeIds = new List<string>() };
 
         var result = await _sut.ExecuteAsync(request);
 
@@ -381,7 +375,7 @@ public class CreateCurriculumUseCaseTests
         seed.Center.Status = CenterStatus.Suspended;
         await _dbContext.SaveChangesAsync();
 
-        var request = new CreateCurriculumRequest { SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
 
         var result = await _sut.ExecuteAsync(request);
 
@@ -402,7 +396,7 @@ public class CreateCurriculumUseCaseTests
         seed.Center.IsDeleted = true;
         await _dbContext.SaveChangesAsync();
 
-        var request = new CreateCurriculumRequest { SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
 
         var result = await _sut.ExecuteAsync(request);
 
@@ -419,18 +413,18 @@ public class CreateCurriculumUseCaseTests
     [InlineData("Student")]
     [InlineData("teacher")]
     [InlineData("ADMIN")]
-    public async Task ExecuteAsync_InvalidOrWrongCasingRole_ReturnsResourceNotFound(string? role)
+    public async Task ExecuteAsync_InvalidOrWrongCasingRole_ReturnsForbiddenResource(string? role)
     {
         _tenantMock.SetupGet(x => x.IsResolved).Returns(true);
         _tenantMock.SetupGet(x => x.CenterId).Returns(Guid.NewGuid());
         _tenantMock.SetupGet(x => x.UserId).Returns(Guid.NewGuid());
         _tenantMock.SetupGet(x => x.Role).Returns(role);
 
-        var request = new CreateCurriculumRequest { SubjectId = Guid.NewGuid(), Title = "Title", NodeIds = new List<string>() };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, SubjectId = Guid.NewGuid(), Title = "Title", NodeIds = new List<string>() };
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
         Assert.Empty(await _dbContext.Curriculums.ToListAsync());
         Assert.Empty(await _dbContext.CurriculumNodes.ToListAsync());
     }
@@ -450,6 +444,7 @@ public class CreateCurriculumUseCaseTests
 
         var request = new CreateCurriculumRequest
         {
+            GradeLevel = 10,
             TeacherId = teacherId,
             SubjectId = seed.Subject.SubjectId,
             Title = "Title",
@@ -469,7 +464,7 @@ public class CreateCurriculumUseCaseTests
         var userId = Guid.NewGuid();
         SetupTenant(centerId, userId, nameof(UserRole.Teacher));
 
-        var request = new CreateCurriculumRequest { SubjectId = Guid.NewGuid(), Title = "Title", NodeIds = new List<string>() };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, SubjectId = Guid.NewGuid(), Title = "Title", NodeIds = new List<string>() };
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
@@ -487,7 +482,7 @@ public class CreateCurriculumUseCaseTests
         seed.Teacher.IsDeleted = true;
         await _dbContext.SaveChangesAsync();
 
-        var request = new CreateCurriculumRequest { SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
@@ -505,7 +500,7 @@ public class CreateCurriculumUseCaseTests
         seed.TeacherUser.IsDeleted = true;
         await _dbContext.SaveChangesAsync();
 
-        var request = new CreateCurriculumRequest { SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
@@ -523,7 +518,7 @@ public class CreateCurriculumUseCaseTests
         seed.TeacherUser.Status = UserStatus.Locked;
         await _dbContext.SaveChangesAsync();
 
-        var request = new CreateCurriculumRequest { SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
@@ -541,7 +536,7 @@ public class CreateCurriculumUseCaseTests
         seed.TeacherUser.Status = UserStatus.Disabled;
         await _dbContext.SaveChangesAsync();
 
-        var request = new CreateCurriculumRequest { SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
@@ -557,7 +552,7 @@ public class CreateCurriculumUseCaseTests
 
         var seed = await SeedBasicEntitiesAsync(centerId, teacherId, UserRole.Student);
 
-        var request = new CreateCurriculumRequest { SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
@@ -572,17 +567,17 @@ public class CreateCurriculumUseCaseTests
     [InlineData(" ")]
     [InlineData("not-a-guid")]
     [InlineData("00000000-0000-0000-0000-000000000000")]
-    public async Task ExecuteAsync_CenterManager_InvalidTeacherId_ReturnsValidationFailed(string? teacherId)
+    public async Task ExecuteAsync_CenterManager_InvalidTeacherId_ReturnsForbiddenResource(string? teacherId)
     {
         var centerId = Guid.NewGuid();
         var managerId = Guid.NewGuid();
         SetupTenant(centerId, managerId, nameof(UserRole.CenterManager));
 
-        var request = new CreateCurriculumRequest { TeacherId = teacherId, SubjectId = Guid.NewGuid(), Title = "Title", NodeIds = new List<string>() };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, TeacherId = teacherId, SubjectId = Guid.NewGuid(), Title = "Title", NodeIds = new List<string>() };
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -595,11 +590,11 @@ public class CreateCurriculumUseCaseTests
 
         var seed = await SeedBasicEntitiesAsync(centerId, managerId);
 
-        var request = new CreateCurriculumRequest { TeacherId = randomTeacherId.ToString("D"), SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, TeacherId = randomTeacherId.ToString("D"), SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -614,11 +609,11 @@ public class CreateCurriculumUseCaseTests
         seed.Teacher.IsDeleted = true;
         await _dbContext.SaveChangesAsync();
 
-        var request = new CreateCurriculumRequest { TeacherId = teacherId.ToString("D"), SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, TeacherId = teacherId.ToString("D"), SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -633,11 +628,11 @@ public class CreateCurriculumUseCaseTests
         seed.TeacherUser.IsDeleted = true;
         await _dbContext.SaveChangesAsync();
 
-        var request = new CreateCurriculumRequest { TeacherId = teacherId.ToString("D"), SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, TeacherId = teacherId.ToString("D"), SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -652,11 +647,11 @@ public class CreateCurriculumUseCaseTests
         seed.TeacherUser.Status = UserStatus.Locked;
         await _dbContext.SaveChangesAsync();
 
-        var request = new CreateCurriculumRequest { TeacherId = teacherId.ToString("D"), SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, TeacherId = teacherId.ToString("D"), SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -671,11 +666,11 @@ public class CreateCurriculumUseCaseTests
         seed.TeacherUser.Status = UserStatus.Disabled;
         await _dbContext.SaveChangesAsync();
 
-        var request = new CreateCurriculumRequest { TeacherId = teacherId.ToString("D"), SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, TeacherId = teacherId.ToString("D"), SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -688,11 +683,11 @@ public class CreateCurriculumUseCaseTests
 
         var seed = await SeedBasicEntitiesAsync(centerId, teacherId, UserRole.Student);
 
-        var request = new CreateCurriculumRequest { TeacherId = teacherId.ToString("D"), SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, TeacherId = teacherId.ToString("D"), SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -707,11 +702,11 @@ public class CreateCurriculumUseCaseTests
         await SeedBasicEntitiesAsync(centerId2, teacherId); // Teacher in center2
         var seed1 = await SeedBasicEntitiesAsync(centerId1, managerId); // Subject in center1
 
-        var request = new CreateCurriculumRequest { TeacherId = teacherId.ToString("D"), SubjectId = seed1.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, TeacherId = teacherId.ToString("D"), SubjectId = seed1.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     // --- Section E: Subject References Tests ---
@@ -724,7 +719,7 @@ public class CreateCurriculumUseCaseTests
         SetupTenant(centerId, teacherId, nameof(UserRole.Teacher));
         await SeedBasicEntitiesAsync(centerId, teacherId);
 
-        var request = new CreateCurriculumRequest { SubjectId = Guid.NewGuid(), Title = "Title", NodeIds = new List<string>() };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, SubjectId = Guid.NewGuid(), Title = "Title", NodeIds = new List<string>() };
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
@@ -744,7 +739,7 @@ public class CreateCurriculumUseCaseTests
         seed.Subject.IsActive = false;
         await _dbContext.SaveChangesAsync();
 
-        var request = new CreateCurriculumRequest { SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
@@ -764,7 +759,7 @@ public class CreateCurriculumUseCaseTests
         seed.Subject.IsDeleted = true;
         await _dbContext.SaveChangesAsync();
 
-        var request = new CreateCurriculumRequest { SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
@@ -784,7 +779,7 @@ public class CreateCurriculumUseCaseTests
         await SeedBasicEntitiesAsync(centerId1, teacherId);
         var seed2 = await SeedBasicEntitiesAsync(centerId2, Guid.NewGuid());
 
-        var request = new CreateCurriculumRequest { SubjectId = seed2.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, SubjectId = seed2.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
@@ -813,6 +808,7 @@ public class CreateCurriculumUseCaseTests
 
         var request = new CreateCurriculumRequest
         {
+            GradeLevel = 10,
             SubjectId = seed1.Subject.SubjectId,
             Title = "Title",
             NodeIds = new List<string> { seed2.Node1.NodeId.ToString(CultureInfo.InvariantCulture) }
@@ -872,6 +868,7 @@ public class CreateCurriculumUseCaseTests
 
         var request = new CreateCurriculumRequest
         {
+            GradeLevel = 10,
             SubjectId = seed1.Subject.SubjectId, // Calling for subject1
             Title = "Title",
             NodeIds = new List<string> { wrongSubjectNodeId.ToString(CultureInfo.InvariantCulture) }
@@ -904,6 +901,7 @@ public class CreateCurriculumUseCaseTests
 
         var request = new CreateCurriculumRequest
         {
+            GradeLevel = 10,
             SubjectId = seed.Subject.SubjectId,
             Title = "Title",
             NodeIds = new List<string> { seed.Node1.NodeId.ToString(CultureInfo.InvariantCulture) }
@@ -936,6 +934,7 @@ public class CreateCurriculumUseCaseTests
 
         var request = new CreateCurriculumRequest
         {
+            GradeLevel = 10,
             SubjectId = seed.Subject.SubjectId,
             Title = "Title",
             NodeIds = new List<string> { seed.Node1.NodeId.ToString(CultureInfo.InvariantCulture) }
@@ -961,7 +960,7 @@ public class CreateCurriculumUseCaseTests
         var teacherId = Guid.NewGuid();
         SetupTenant(centerId, teacherId, nameof(UserRole.Teacher));
 
-        var request = new CreateCurriculumRequest { SubjectId = Guid.NewGuid(), Title = title, NodeIds = new List<string>() };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, SubjectId = Guid.NewGuid(), Title = title, NodeIds = new List<string>() };
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
@@ -975,7 +974,7 @@ public class CreateCurriculumUseCaseTests
         var teacherId = Guid.NewGuid();
         SetupTenant(centerId, teacherId, nameof(UserRole.Teacher));
 
-        var request = new CreateCurriculumRequest { SubjectId = Guid.NewGuid(), Title = new string('A', 251), NodeIds = new List<string>() };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, SubjectId = Guid.NewGuid(), Title = new string('A', 251), NodeIds = new List<string>() };
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
@@ -989,7 +988,7 @@ public class CreateCurriculumUseCaseTests
         var teacherId = Guid.NewGuid();
         SetupTenant(centerId, teacherId, nameof(UserRole.Teacher));
 
-        var request = new CreateCurriculumRequest { SubjectId = Guid.NewGuid(), Title = "Title", NodeIds = null };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, SubjectId = Guid.NewGuid(), Title = "Title", NodeIds = null };
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
@@ -1011,7 +1010,7 @@ public class CreateCurriculumUseCaseTests
         var teacherId = Guid.NewGuid();
         SetupTenant(centerId, teacherId, nameof(UserRole.Teacher));
 
-        var request = new CreateCurriculumRequest { SubjectId = Guid.NewGuid(), Title = "Title", NodeIds = new List<string> { rawNodeId } };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, SubjectId = Guid.NewGuid(), Title = "Title", NodeIds = new List<string> { rawNodeId } };
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
@@ -1025,7 +1024,7 @@ public class CreateCurriculumUseCaseTests
         var teacherId = Guid.NewGuid();
         SetupTenant(centerId, teacherId, nameof(UserRole.Teacher));
 
-        var request = new CreateCurriculumRequest { SubjectId = Guid.NewGuid(), Title = "Title", NodeIds = new List<string> { "100", "100" } };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, SubjectId = Guid.NewGuid(), Title = "Title", NodeIds = new List<string> { "100", "100" } };
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
@@ -1039,7 +1038,7 @@ public class CreateCurriculumUseCaseTests
         var teacherId = Guid.NewGuid();
         SetupTenant(centerId, teacherId, nameof(UserRole.Teacher));
 
-        var request = new CreateCurriculumRequest { SubjectId = Guid.NewGuid(), Title = "Title", NodeIds = new List<string> { "1", "01" } };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, SubjectId = Guid.NewGuid(), Title = "Title", NodeIds = new List<string> { "1", "01" } };
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
@@ -1058,6 +1057,7 @@ public class CreateCurriculumUseCaseTests
 
         var request = new CreateCurriculumRequest
         {
+            GradeLevel = 10,
             SubjectId = seed.Subject.SubjectId,
             Title = "Title",
             NodeIds = new List<string> { n1Str, "99999999" }
@@ -1081,8 +1081,8 @@ public class CreateCurriculumUseCaseTests
         SetupTenant(centerId, teacherId, nameof(UserRole.Teacher));
         var seed = await SeedBasicEntitiesAsync(centerId, teacherId);
 
-        var request1 = new CreateCurriculumRequest { SubjectId = seed.Subject.SubjectId, Title = "Giáo trình Toán", NodeIds = new List<string>() };
-        var request2 = new CreateCurriculumRequest { SubjectId = seed.Subject.SubjectId, Title = "Giáo trình Toán", NodeIds = new List<string>() };
+        var request1 = new CreateCurriculumRequest { GradeLevel = 10, SubjectId = seed.Subject.SubjectId, Title = "Giáo trình Toán", NodeIds = new List<string>() };
+        var request2 = new CreateCurriculumRequest { GradeLevel = 10, SubjectId = seed.Subject.SubjectId, Title = "Giáo trình Toán", NodeIds = new List<string>() };
 
         var result1 = await _sut.ExecuteAsync(request1);
         var result2 = await _sut.ExecuteAsync(request2);
@@ -1105,7 +1105,7 @@ public class CreateCurriculumUseCaseTests
         var faultyContext = new FaultyDbContext(_options, _tenantAccessor, dbEx);
         var faultySut = new CreateCurriculumUseCase(faultyContext, _tenantMock.Object, _timeProviderMock.Object);
 
-        var request = new CreateCurriculumRequest { SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
 
         await Assert.ThrowsAsync<DbUpdateException>(() => faultySut.ExecuteAsync(request));
 
@@ -1124,7 +1124,7 @@ public class CreateCurriculumUseCaseTests
         using var cts = new CancellationTokenSource();
         cts.Cancel();
 
-        var request = new CreateCurriculumRequest { SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
+        var request = new CreateCurriculumRequest { GradeLevel = 10, SubjectId = seed.Subject.SubjectId, Title = "Title", NodeIds = new List<string>() };
         await Assert.ThrowsAsync<OperationCanceledException>(() => _sut.ExecuteAsync(request, cts.Token));
 
         Assert.Empty(await _dbContext.Curriculums.ToListAsync());
@@ -1153,6 +1153,7 @@ public class CreateCurriculumUseCaseTests
 
         var request = new CreateCurriculumRequest
         {
+            GradeLevel = 10,
             SubjectId = seed.Subject.SubjectId,
             Title = "Manager Curriculum",
             TeacherId = null,
@@ -1162,7 +1163,7 @@ public class CreateCurriculumUseCaseTests
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Theory]
@@ -1179,6 +1180,7 @@ public class CreateCurriculumUseCaseTests
 
         var request = new CreateCurriculumRequest
         {
+            GradeLevel = 10,
             SubjectId = seed.Subject.SubjectId,
             Title = "Manager Curriculum",
             TeacherId = invalidTeacherId,
@@ -1188,7 +1190,7 @@ public class CreateCurriculumUseCaseTests
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -1201,6 +1203,7 @@ public class CreateCurriculumUseCaseTests
 
         var request = new CreateCurriculumRequest
         {
+            GradeLevel = 10,
             SubjectId = seed.Subject.SubjectId,
             Title = "Manager Curriculum",
             TeacherId = Guid.NewGuid().ToString(),
@@ -1210,7 +1213,7 @@ public class CreateCurriculumUseCaseTests
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -1226,6 +1229,7 @@ public class CreateCurriculumUseCaseTests
 
         var request = new CreateCurriculumRequest
         {
+            GradeLevel = 10,
             SubjectId = seed.Subject.SubjectId,
             Title = "Manager Curriculum",
             TeacherId = seed.Teacher.TeacherId.ToString(),
@@ -1235,11 +1239,11 @@ public class CreateCurriculumUseCaseTests
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
-    public async Task ExecuteAsync_CenterManager_WithValidTeacher_Succeeds_AndSetsOwnerTeacherId()
+    public async Task ExecuteAsync_CenterManager_WithValidTeacher_ReturnsForbiddenResource()
     {
         var centerId = Guid.NewGuid();
         var managerId = Guid.NewGuid();
@@ -1248,6 +1252,7 @@ public class CreateCurriculumUseCaseTests
 
         var request = new CreateCurriculumRequest
         {
+            GradeLevel = 10,
             SubjectId = seed.Subject.SubjectId,
             Title = "Manager-Created Curriculum",
             Description = "Curriculum assigned to teacher",
@@ -1257,14 +1262,8 @@ public class CreateCurriculumUseCaseTests
 
         var result = await _sut.ExecuteAsync(request);
 
-        Assert.True(result.IsSuccess);
-        Assert.NotNull(result.Data);
-        Assert.Equal(seed.Teacher.TeacherId.ToString(), result.Data.TeacherId);
-        Assert.NotEqual(managerId.ToString(), result.Data.TeacherId);
-
-        var savedInDb = await _dbContext.Curriculums.SingleAsync(c => c.CurriculumId == Guid.Parse(result.Data.CurriculumId));
-        Assert.Equal(seed.Teacher.TeacherId, savedInDb.TeacherId);
-        Assert.Equal(managerId, savedInDb.CreatedBy);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -1277,6 +1276,7 @@ public class CreateCurriculumUseCaseTests
 
         var request = new CreateCurriculumRequest
         {
+            GradeLevel = 10,
             SubjectId = seed.Subject.SubjectId,
             Title = "Teacher Curriculum",
             TeacherId = Guid.NewGuid().ToString(),
@@ -1287,6 +1287,78 @@ public class CreateCurriculumUseCaseTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_GradeLevelNull_ReturnsValidationFailed()
+    {
+        var centerId = Guid.NewGuid();
+        var teacherId = Guid.NewGuid();
+        SetupTenant(centerId, teacherId, nameof(UserRole.Teacher));
+        var seed = await SeedBasicEntitiesAsync(centerId, teacherId);
+
+        var request = new CreateCurriculumRequest
+        {
+            SubjectId = seed.Subject.SubjectId,
+            Title = "Curriculum Without GradeLevel",
+            GradeLevel = null,
+            NodeIds = new List<string>()
+        };
+
+        var result = await _sut.ExecuteAsync(request);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
+
+    [Theory]
+    [InlineData((byte)9)]
+    [InlineData((byte)13)]
+    public async Task ExecuteAsync_GradeLevelOutOfRange_ReturnsValidationFailed(byte grade)
+    {
+        var centerId = Guid.NewGuid();
+        var teacherId = Guid.NewGuid();
+        SetupTenant(centerId, teacherId, nameof(UserRole.Teacher));
+        var seed = await SeedBasicEntitiesAsync(centerId, teacherId);
+
+        var request = new CreateCurriculumRequest
+        {
+            SubjectId = seed.Subject.SubjectId,
+            Title = "Curriculum Out of Range",
+            GradeLevel = grade,
+            NodeIds = new List<string>()
+        };
+
+        var result = await _sut.ExecuteAsync(request);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
+
+    [Theory]
+    [InlineData((byte)10)]
+    [InlineData((byte)11)]
+    [InlineData((byte)12)]
+    public async Task ExecuteAsync_GradeLevelValid_Succeeds(byte grade)
+    {
+        var centerId = Guid.NewGuid();
+        var teacherId = Guid.NewGuid();
+        SetupTenant(centerId, teacherId, nameof(UserRole.Teacher));
+        var seed = await SeedBasicEntitiesAsync(centerId, teacherId);
+
+        var request = new CreateCurriculumRequest
+        {
+            SubjectId = seed.Subject.SubjectId,
+            Title = $"Curriculum Grade {grade}",
+            GradeLevel = grade,
+            NodeIds = new List<string>()
+        };
+
+        var result = await _sut.ExecuteAsync(request);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Data);
+        Assert.Equal(grade, result.Data.GradeLevel);
     }
 
     private class FaultyDbContext : EduTwinDbContext

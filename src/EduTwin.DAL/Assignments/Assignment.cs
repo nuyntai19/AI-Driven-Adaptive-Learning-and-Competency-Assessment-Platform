@@ -18,6 +18,9 @@ public class Assignment : IMutableTenantAggregate
     public int? TimeLimitMinutes { get; set; }
     public AssignmentStatus Status { get; set; }
     public DateTime? PublishedAt { get; set; }
+    public TargetSource TargetMode { get; set; } = TargetSource.WholeClass;
+    public bool AllowGradeMismatch { get; set; } = false;
+    public string? GradeMismatchReason { get; set; }
 
     // Audit and MTA
     public DateTime CreatedAt { get; set; }

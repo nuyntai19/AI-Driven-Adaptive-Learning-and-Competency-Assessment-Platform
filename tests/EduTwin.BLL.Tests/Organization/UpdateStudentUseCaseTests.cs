@@ -179,6 +179,29 @@ public class UpdateStudentUseCaseTests
         RowVersion = rowVersion
     };
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task GradeChange_ChecksActiveEnrollmentAndPreservesHistoricalEnrollment(bool removed, bool archived)
+    {
+        using var db = CreateContext(Guid.NewGuid().ToString());
+        await SeedCenterAsync(db, _centerId);
+        var student = await SeedStudentAsync(db, _centerId);
+        var cls = await SeedClassAsync(db, _centerId, status: archived ? ClassStatus.Archived : ClassStatus.Active);
+        cls.GradeLevel = 10;
+        db.ClassStudents.Add(new ClassStudent { CenterId = _centerId, ClassId = cls.ClassId,
+            StudentId = student.StudentId, GradeLevelAtEnrollment = 10, JoinedAt = _fixedTime,
+            Status = removed ? ClassStudentStatus.Removed : ClassStudentStatus.Active });
+        await db.SaveChangesAsync();
+        var sut = new UpdateStudentUseCase(db, _mockTenantContext.Object, _mockOwnershipGuard.Object, _mockTimeProvider.Object, _mockLogger.Object);
+        var result = await sut.ExecuteAsync(student.StudentId, CreateValidRequest(student.RowVersion.ToString(CultureInfo.InvariantCulture)));
+        Assert.Equal(removed || archived, result.IsSuccess);
+        Assert.Equal(removed || archived ? (byte)11 : (byte)10, student.GradeLevel);
+        Assert.Equal((byte)10, (await db.ClassStudents.SingleAsync()).GradeLevelAtEnrollment);
+        if (!removed && !archived) Assert.Contains("chuyển lớp", result.ErrorMessage);
+    }
+
     [Fact]
     public async Task T01_CenterManager_SameTenantUpdate_Success()
     {

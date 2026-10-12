@@ -62,6 +62,11 @@ public class CreateClassUseCase : ICreateClassUseCase
             return CreateClassResult.Failure(ErrorCodes.ValidationFailed);
         }
 
+        if (!request.GradeLevel.HasValue || request.GradeLevel.Value < 10 || request.GradeLevel.Value > 12)
+        {
+            return CreateClassResult.Failure(ErrorCodes.ValidationFailed);
+        }
+
         var className = request.ClassName.Trim();
         var academicYear = request.AcademicYear.Trim();
 
@@ -106,6 +111,7 @@ public class CreateClassUseCase : ICreateClassUseCase
             CenterId = centerId,
             ClassName = className,
             AcademicYear = academicYear,
+            GradeLevel = request.GradeLevel,
             Status = ClassStatus.Active,
             SubjectId = request.SubjectId,
             TeacherId = request.TeacherId,
@@ -138,6 +144,7 @@ public class CreateClassUseCase : ICreateClassUseCase
             ClassId = newClass.ClassId.ToString("D").ToLowerInvariant(),
             ClassName = newClass.ClassName,
             AcademicYear = newClass.AcademicYear,
+            GradeLevel = newClass.GradeLevel,
             Subject = new ClassSubjectDto
             {
                 SubjectId = subjectAndTeacher.Subject.SubjectId.ToString("D").ToLowerInvariant(),

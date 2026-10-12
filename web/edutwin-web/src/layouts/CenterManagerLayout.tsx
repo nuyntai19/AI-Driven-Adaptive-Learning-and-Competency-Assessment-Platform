@@ -1,13 +1,15 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { organizationApi } from "../api/organizationApi";
 import { logout } from "../auth/authApi";
 import { permissions } from "../auth/permissions";
 import { CenterManagerThemeScope } from "../components/centerManager";
 import { ThemeToggle } from "../components/ThemeToggle";
+import { NotificationBell } from "../components/notifications/NotificationBell";
 import { useAuthStore } from "../stores/authStore";
 import { useModalAccessibility } from "../utils/useModalAccessibility";
+import { resolveCenterManagerLayoutAccess } from "../routes/academicRoutingHelpers";
 
 interface NavigationItem {
   label: string;
@@ -25,6 +27,10 @@ interface NavigationGroup {
 const startsWith = (prefix: string) => (pathname: string) => pathname.startsWith(prefix);
 
 const navigationGroups: NavigationGroup[] = [
+  { label: "Thông tin", items: [
+    { label: "Thông báo", to: "/quan-ly/thong-bao", permissions: [permissions.notificationsReadOwn], match: startsWith("/quan-ly/thong-bao") },
+    { label: "Nhật ký hoạt động", to: "/quan-ly/nhat-ky-hoat-dong", permissions: [permissions.activityReadAdministrative], match: startsWith("/quan-ly/nhat-ky-hoat-dong") },
+  ] },
   {
     label: "Tổng quan",
     items: [
@@ -37,24 +43,8 @@ const navigationGroups: NavigationGroup[] = [
     items: [
       { label: "Giáo viên", to: "/quan-ly/giao-vien", permissions: [permissions.teachersRead], match: startsWith("/quan-ly/giao-vien") },
       { label: "Học sinh", to: "/quan-ly/hoc-sinh", permissions: [permissions.studentsRead], match: startsWith("/quan-ly/hoc-sinh") },
-      { label: "Lớp học", to: "/quan-ly/lop-hoc", permissions: [permissions.classesRead], match: (pathname) => pathname === "/quan-ly/lop-hoc" },
+      { label: "Lớp học", to: "/quan-ly/lop-hoc", permissions: [permissions.classesRead], match: startsWith("/quan-ly/lop-hoc") },
       { label: "Môn học", to: "/quan-ly/mon-hoc", permissions: [permissions.subjectsRead], match: startsWith("/quan-ly/mon-hoc") },
-    ],
-  },
-  {
-    label: "Nội dung học thuật",
-    items: [
-      { label: "Đồ thị tri thức", to: "/kien-thuc/do-thi", permissions: [permissions.subjectsRead, permissions.nodesRead, permissions.edgesRead], match: startsWith("/kien-thuc/do-thi") },
-      { label: "Giáo trình", to: "/quan-ly/giao-trinh", permissions: [permissions.curriculumsRead], match: startsWith("/quan-ly/giao-trinh") },
-      { label: "Ngân hàng câu hỏi", to: "/quan-ly/cau-hoi", permissions: [permissions.questionsRead], match: startsWith("/quan-ly/cau-hoi") },
-      { label: "Bài tập", to: "/quan-ly/bai-tap", permissions: [permissions.assignmentsRead], match: startsWith("/quan-ly/bai-tap") },
-    ],
-  },
-  {
-    label: "Giám sát học tập",
-    items: [
-      { label: "Tiến độ và báo cáo", to: "/quan-ly/tong-quan-lop-hoc", permissions: [permissions.dashboardsTeacherRead, permissions.dashboardsCenterRead], permissionMode: "any", match: (pathname) => pathname === "/quan-ly/tong-quan-lop-hoc" || /^\/quan-ly\/lop-hoc\/[^/]+\/tong-quan$/.test(pathname) },
-      { label: "Hàng đợi duyệt bài", to: "/quan-ly/duyet-bai", permissions: [permissions.teacherReviewsRead], match: startsWith("/quan-ly/duyet-bai") },
     ],
   },
   {
@@ -76,7 +66,7 @@ function Navigation({ groups, pathname, onNavigate }: { groups: NavigationGroup[
     <nav aria-label="Điều hướng quản lý trung tâm" className="space-y-6 px-3 py-5">
       {groups.map((group) => (
         <section key={group.label} aria-labelledby={`cm-nav-${group.label.replace(/\s+/g, "-").toLowerCase()}`}>
-          <h2 id={`cm-nav-${group.label.replace(/\s+/g, "-").toLowerCase()}`} className="px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--cm-text-muted)]">
+          <h2 id={`cm-nav-${group.label.replace(/\s+/g, "-").toLowerCase()}`} className="px-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--cm-text-muted)]">
             {group.label}
           </h2>
           <ul className="mt-2 space-y-1">
@@ -122,7 +112,7 @@ function ShellSidebar({
         <span aria-hidden="true" className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-cyan-400 to-indigo-500 text-lg font-black text-white">E</span>
         <div>
           <p className="font-semibold text-[var(--cm-text)]">EduTwin</p>
-          <p className="text-[10px] uppercase tracking-[0.15em] text-cyan-700 dark:text-cyan-300 font-semibold">Center workspace</p>
+          <p className="text-xs uppercase tracking-[0.15em] text-cyan-700 dark:text-cyan-300 font-semibold">Center workspace</p>
         </div>
       </div>
       {centerContext}
@@ -267,6 +257,7 @@ export function CenterManagerLayout() {
 
             <div className="flex items-center gap-2 sm:gap-3">
               <ThemeToggle />
+              <NotificationBell />
               <div className="relative">
                 <button
                   ref={profileButtonRef}
@@ -309,5 +300,10 @@ export function CenterManagerLayout() {
 
 export function CenterManagerLayoutBoundary() {
   const user = useAuthStore((state) => state.user);
-  return user?.accountType === "CenterManager" ? <CenterManagerLayout /> : <Outlet />;
+  const location = useLocation();
+  const access = resolveCenterManagerLayoutAccess(user);
+  if (!access.allowed) {
+    return <Navigate to={access.redirect || "/khong-co-quyen"} replace state={{ attemptedPath: location.pathname }} />;
+  }
+  return <CenterManagerLayout />;
 }

@@ -1,5 +1,17 @@
 # EduTwin — UI/UX and Capability Specification
 
+> Amendment PLATFORM-OPS-OBS-01 (11/10/2026), người dùng phê duyệt triển khai: [SPEC vận hành Admin](docs/plans/PLATFORM-OPERATIONS-IMPLEMENTATION-SPEC-2026-10-11.md). Cho phép ba API GET/root-only, ba quyền non-delegable, metadata ledger AI và snapshot/alert vận hành như SPEC. Stage I không còn deferred trong phạm vi này; Stage H vẫn deferred. Ledger là metadata vận hành, ngoại lệ được duyệt đối với cấm bảng log AI, không chứa nội dung học thuật. Không purge/AI retry/billing mutation và không commit/push. Trạng thái COMPLETED-v1 trong phạm vi SPEC; [báo cáo kiểm chứng](docs/verification/PLATFORM-OPERATIONS-REPORT-2026-10-11.md) ghi kết quả, rollout và các giới hạn chưa triển khai. Không coi roadmap observability rộng hơn hoặc tải 1.000 người đồng thời đã nghiệm thu.
+
+> Admin journal/layout amendment 2026-10-11 (người dùng phê duyệt): sidebar chỉ có một mục Nhật ký; trang có Tổng quan và Kiểm toán chi tiết theo quyền riêng. URL cũ hoạt động/kiểm toán chuyển đến đúng tab, không gộp hoặc xóa dữ liệu/permission/API. Nội dung Admin dùng toàn chiều rộng còn lại, gutter 16px mobile/24px desktop, không max-width/padding lồng; mã hành động dài chỉ ở chi tiết kiểm toán. Không mở rộng observability trong lượt này.
+
+> Admin readability amendment 2026-10-11: ở browser zoom 100%, typography nền tảng tăng khoảng 25% (body 20px, nhãn menu 17.5px, metadata tối thiểu 15px); sidebar desktop 320px/header 80px, responsive không dùng CSS zoom/scale toàn trang. Sidebar/drawer/menu/khung tài khoản theo chế độ sáng và tối. Thông báo và Nhật ký hoạt động có icon, trạng thái chọn và aria-current, giữ capability guard. Chuông của cả bốn tác nhân luôn hiện Đã xem/Xóa tất cả, giải thích rõ trạng thái vô hiệu; dọn box không xóa inbox. Observability/token–cost/backlog/storage chỉ là đề xuất riêng, chưa mở rộng quyền hay triển khai trong bản sửa UI này.
+
+> UX amendment 2026-10-11 được người dùng yêu cầu: ẩn bộ chọn môn ở thông báo/nhật ký; box có Đã xem và Xóa tất cả chỉ cho xem nhanh trên trình duyệt, không xóa inbox; nhật ký tiếng Việt/tên đối tượng scoped/mã kỹ thuật thu gọn, font body ≥16px/meta ≥14px. Học sinh dùng Chèn công thức cho đáp án toán và lập luận, giữ mode chấm/API và authoring. Chi tiết khóa tại [Completion SPEC — bổ sung UX](docs/plans/NOTIFICATIONS-COMPLETION-SPEC.md).
+
+> UI lifecycle/receipt và gate còn lại theo [Completion SPEC](docs/plans/NOTIFICATIONS-COMPLETION-SPEC.md); không coi xác nhận nhận là đã xử lý nghiệp vụ.
+
+> Amendment 2026-10-10: [NF-01 UI](docs/plans/NOTIFICATIONS-NF01-SPEC.md) có chuông/inbox bốn layout; [NF-03a UI](docs/plans/NOTIFICATIONS-NF03-SEND-SPEC.md) bổ sung Soạn/Xem trước/Xác nhận/Đã gửi đúng quyền. Chuông là popover portal không tô tối trang; inbox trống không dựng hai ô rỗng. Sidebar Thông báo cho Teacher/Manager/Platform; Student qua chuông, chỉ nhận. Nhật ký mới để NF-04; thông báo không cấp quyền tài nguyên.
+
 > Phiên bản: 2.1-draft
 > Trạng thái: COURSE REBASELINE — cần Figma và stakeholder validation
 > Ngôn ngữ UI: Tiếng Việt
@@ -356,21 +368,49 @@ Course MVP không có màn hình tạo/xóa Center hoặc chuyển sang Center k
 - Publish là atomic action có confirmation.
 - Student assignment page không hiển thị management actions.
 
+### 9.1. Question Bulk Import Modal (QuestionImportModal)
+
+Modal nhập câu hỏi hàng loạt cho giáo viên và quản lý trung tâm:
+- **Tải lên tệp**: Hỗ trợ kéo thả (drag & drop) hoặc chọn file từ máy tính với các định dạng `.docx`, `.xlsx`, `.csv`, `.txt`.
+- **Xem trước bảng dữ liệu (Preview)**:
+  - Hiển thị thống kê tổng quan: Tổng số câu, số câu hợp lệ (Valid), số câu bị lỗi cấu trúc (Invalid).
+  - Bảng danh sách câu hỏi: Cho phép xem trước nội dung, công thức KaTeX, đáp án đúng, lời giải, độ khó, và danh sách các phương án.
+  - Chỉnh sửa tại chỗ (In-place edit): Giáo viên có thể sửa trực tiếp nội dung hoặc đáp án của từng câu trên bảng trước khi lưu.
+  - Bảng cảnh báo lỗi: Chỉ rõ số dòng, trường thông tin bị lỗi và nguyên nhân cụ thể.
+- **Xác nhận nhập kho (Confirm)**: Chọn môn học và chủ đề chính (`primaryTopicNodeId`), hệ thống lưu trữ hàng loạt vào ngân hàng câu hỏi.
+
+### 9.2. Teacher Workspace & 10 Chuyên trang
+
+Không gian làm việc chuyên biệt của Giáo viên sử dụng `TeacherLayout` cùng hệ thống Design System chuẩn (`teacherDesignSystem.css`, `TeacherPrimitives`, `TeacherDataTable`, `TeacherFilterBar`, `TeacherOverlays`):
+1. **TeacherAssignmentListView**: Quản lý danh sách bài tập, bộ lọc trạng thái (Draft, Published, Closed), lớp học và ngày hết hạn.
+2. **TeacherAssignmentEditorView**: Soạn thảo bài tập, cấu hình thời gian làm bài (`TimeLimitMinutes`), ma trận câu hỏi và danh sách học sinh được giao.
+3. **TeacherAssignmentProgressView**: Theo dõi tiến độ làm bài thời gian thực của học sinh theo từng bài tập (tỷ lệ hoàn thành, thời gian nộp).
+4. **TeacherClassDashboardView**: Bảng điều khiển lớp học, thống kê độ làm chủ (Mastery) trung bình, tỷ lệ rủi ro và các chủ đề yếu của học sinh.
+5. **TeacherCurriculumListView**: Quản lý danh sách khung chương trình đào tạo của giáo viên.
+6. **TeacherCurriculumEditorView**: Thiết lập cấu trúc chương trình, sắp xếp thứ tự nốt bài học và gán lớp học phụ trách.
+7. **TeacherKnowledgeGraphView**: Trực quan hóa tương tác đồ thị tri thức 2D/3D (Node/Edge), phát hiện chu trình (cycle detection), tra cứu quan hệ tiên quyết.
+8. **TeacherQuestionBankView**: Ngân hàng câu hỏi của giáo viên, tìm kiếm toàn văn, lọc theo môn/chủ đề/độ khó và tích hợp nút Import hàng loạt.
+9. **TeacherQuestionEditorView**: Soạn thảo câu hỏi chi tiết, hỗ trợ soạn công thức toán học LaTeX kèm thanh công cụ Math Toolbar, rubric tiêu chí chấm và nhận thức sai lầm (`misconception`).
+10. **TeacherStudentTwinView**: Xem chi tiết hồ sơ năng lực Digital Twin của từng học sinh (Knowledge Mastery, Behavior telemetry, lịch sử cập nhật Twin).
+
 ## 10. Student Learning Player
 
-Màn hình cần:
+Màn hình làm bài của học sinh (`LearningPlayerPage`):
 
-- question content;
-- final answer;
-- reasoning text khi bắt buộc;
-- confidence input 0–100;
-- timer/time spent;
-- submit state chống double submit;
-- job-processing state sau HTTP 202;
-- fallback/review state không làm mất bài;
-- feedback chỉ hiển thị khi terminal.
-
-Không hiển thị prompt nội bộ, model raw response hoặc correct answer trước submit.
+- **Nội dung câu hỏi**: Hiển thị câu hỏi và các phương án kết hợp văn bản và công thức toán học sắc nét qua component `RichMathText`.
+- **Đồng hồ đếm ngược (Countdown Timer)**: Khi bài tập có giới hạn thời gian (`TimeLimitMinutes`), đồng hồ đếm ngược hiển thị nổi bật ở góc trên, tự động cảnh báo khi sắp hết giờ.
+- **Khối phân cấp kết quả (`AttemptFeedbackHierarchy`)**:
+  - Cấp 1 - Điểm số & Độ chính xác: Hiển thị điểm đạt được, tỷ lệ điểm và thời gian làm bài.
+  - Cấp 2 - Phân tích logic của AI: Hiển thị phương pháp suy luận phát hiện được, điểm chất lượng tư duy (Reasoning Quality), nhận xét sư phạm chi tiết và các bước còn thiếu.
+  - Cấp 3 - Đối chiếu lời giải mẫu: So sánh câu trả lời của học sinh với lời giải chuẩn của giáo viên và các quan niệm sai lầm thường gặp.
+  - Cấp 4 - Định hướng cải thiện: Gợi ý các chủ đề kiến thức cần củng cố và bước học tiếp theo.
+- **Nút yêu cầu AI chấm lại (AI Retry)**:
+  - Hiển thị khi AI gặp sự cố hoặc phân tích thất bại; có bộ đếm ngược thời gian chờ 30 giây (`CooldownSeconds = 30s`) và giới hạn tối đa 3 lần bấm.
+  - Bị vô hiệu hóa nếu học sinh đã mở xem lời giải chi tiết (`solution_exposed_at != null`).
+- **Modal Khiếu nại kết quả (`ReviewRequestModal`)**:
+  - Cho phép học sinh gửi phản ánh (tối đa 1000 ký tự) khi cho rằng bài làm của mình đúng hoặc có cách giải khác hợp lệ mà AI chưa nhận diện được.
+  - Yêu cầu khiếu nại được gửi trực tiếp vào hàng đợi xét duyệt của giáo viên.
+- **Trạng thái nộp bài & An toàn**: Chống double-submit, hỗ trợ ảnh nháp đính kèm (`AttemptAttachment`), không hiển thị prompt nội bộ hoặc đáp án đúng trước khi nộp.
 
 ## 11. AI Review and Evidence
 
@@ -387,6 +427,7 @@ Hiển thị:
 - Reason codes.
 - Fallback flag.
 - Waiting time.
+- **Huy hiệu Khiếu nại (Student Appeal Badge)**: Hiển thị cờ `HasStudentReviewRequest` nổi bật kèm nội dung phản ánh `StudentReviewReason` của học sinh để giáo viên ưu tiên thẩm định.
 
 ### 11.2. Review detail
 
@@ -844,3 +885,48 @@ Nhằm mang lại trải nghiệm học tập trực quan, thẩm mỹ và đạ
 #### 20.8.6. Củng cố Kiến trúc React Hooks (Rules of Hooks Hardening)
 - Khắc phục triệt để lỗi crash giao diện `Minified React error #310` bằng việc đảm bảo toàn bộ React hooks (`useMemo`, `useState`, `useEffect`) luôn được khai báo ở đầu component trước bất kỳ câu lệnh `if (...) return` nào.
 - Đảm bảo tính nhất quán tuyệt đối về số lượng và thứ tự hook qua mọi trạng thái render (loading skeleton, polling job, fallback screen, active player).
+
+### 20.9. Chuẩn hóa Giao diện Giáo viên Dark Enterprise SaaS và Không gian Làm việc Học thuật Dùng chung (Teacher Dark SaaS & Shared Academic Workspaces)
+
+Nhằm mang lại trải nghiệm chuyên nghiệp, đồng bộ và đạt chuẩn ứng dụng SaaS doanh nghiệp cao cấp (Enterprise SaaS), phân hệ Giáo viên (`/giao-vien/*`) được tái cấu trúc triệt để, xóa bỏ hoàn toàn phong cách hoài cổ retro và áp dụng hệ thống thiết kế Dark SaaS thống nhất:
+
+#### 20.9.1. Khung Điều hướng và Shell Giáo viên Dark Enterprise SaaS (`TeacherLayout.tsx`)
+- **Loại bỏ phong cách Retro:** Xóa bỏ hoàn toàn hoa cúc daisy, đường viền thô retro, hiệu ứng đổ bóng neo-brutalist; thay thế bằng dải màu Cyan/Emerald (`from-cyan-400 to-emerald-500`) trên nền tối sang trọng.
+- **Thanh điều hướng Sidebar Doanh nghiệp:**
+  - Header: Logo EduTwin kèm badge vai trò gradient Cyan/Emerald nổi bật: "TEACHER WORKSPACE".
+  - Ngữ cảnh đào tạo: Khối hiển thị trung tâm trực thuộc "TRUNG TÂM ĐÀO TẠO / EduTwin Center A - Không gian Sư phạm".
+  - Ba nhóm điều hướng nghiệp vụ chuyên sâu:
+    1. *GIẢNG DẠY & LỚP HỌC:* Lớp học phụ trách (`/giao-vien/lop-hoc`), Quản lý học sinh (`/giao-vien/hoc-sinh`).
+    2. *HỌC THUẬT & ĐỀ THI:* Ngân hàng câu hỏi (`/giao-vien/cau-hoi`), Giáo trình môn học (`/giao-vien/giao-trinh`), Đồ thị tri thức (`/giao-vien/do-thi-tri-thuc`).
+    3. *ĐÁNH GIÁ & CHẤM BÀI:* Danh sách bài tập (`/giao-vien/bai-tap`), Hàng đợi chấm bài (`/giao-vien/cham-bai`).
+  - Chân sidebar: Nút Đăng xuất an toàn có cảnh báo và xác nhận.
+- **Topbar & Menu Người Dùng Đồng Bộ:**
+  - Nút hamburger đóng/mở sidebar trên thiết bị di động.
+  - Breadcrumb phân cấp động phản ánh vị trí làm việc thời gian thực.
+  - Nút chuyển đổi chế độ Sáng/Tối (`ThemeToggle`) đồng bộ toàn cục.
+  - Avatar người dùng dạng tròn với chữ cái viết tắt (ví dụ: `TM` cho Teacher Math), menu dropdown hồ sơ kèm phím tắt `Escape` và tự động khôi phục focus.
+- **Khả năng Tiếp cận Trên Di động (Mobile Accessibility):** Ngăn kéo trượt (Mobile Drawer) tích hợp đầy đủ focus trap, aria-modal="true" và đóng mở mượt mà.
+
+#### 20.9.2. Không gian Làm việc Học thuật Dùng chung (Shared Academic Workspaces)
+Trích xuất toàn bộ giao diện quản trị học thuật thành các presentation workspace độc lập trong thư mục `src/components/academic/`:
+- `KnowledgeGraphWorkspace.tsx`: Trực quan hóa và tương tác đồ thị DAG tri thức, tìm kiếm node, xem chi tiết thuộc tính và tiền đề.
+- `CurriculumWorkspace.tsx`: Cây phân cấp môn học, chương mục, bài học và gắn kết mục tiêu năng lực.
+- `QuestionWorkspace.tsx`: Ngân hàng câu hỏi, bộ lọc độ khó, chủ đề, định dạng, cùng trình soạn thảo công thức KaTeX/MathLive chuyên sâu.
+- `AssignmentWorkspace.tsx`: Danh sách bài tập, trình tạo bài tập thích ứng và bảng giám sát tiến độ hoàn thành.
+- `ClassProgressWorkspace.tsx`: Bảng điều khiển tiến độ lớp học, điểm trung bình dự báo, nhóm học sinh cần can thiệp bổ trợ (Gap Groups).
+- `ReviewQueueWorkspace.tsx`: Hàng đợi chấm bài tập tự luận và can thiệp ghi đè đánh giá suy luận AI (Teacher Override).
+Toàn bộ các workspace hỗ trợ cấu hình theo thuộc tính `actor` (`"teacher" | "centerManager" | "platformAdmin"`), loại bỏ 100% mã nguồn trùng lặp giữa các phân hệ.
+
+#### 20.9.3. Tiêu chuẩn Thước đo Typography Doanh nghiệp & WCAG 2.1 AA
+- Quy chuẩn hệ thống biến CSS token typography trong `centerManagerDesignSystem.css` và `teacherDesignSystem.css`:
+  - `title`: 30px (1.875rem), font-weight: 700 / 800, tracking: -0.025em.
+  - `body`: 16px (1rem), line-height: 1.5.
+  - `nav`: 15px (0.9375rem), font-weight: 500 / 600.
+  - `ui`: 14px (0.875rem), line-height: 1.25.
+  - `meta`: 12px (0.75rem), line-height: 1.2.
+- Quy tắc công thái học: Toàn bộ ô nhập liệu (`input`, `select`, `textarea`), nút hành động (`button`) và nội dung bảng dữ liệu (`table cell`) duy trì kích thước chữ tối thiểu >= 14px. Thay thế toàn bộ các class `text-[10px]` thành `text-xs` nhằm bảo đảm độ sắc nét và tiêu chuẩn tương phản WCAG 2.1 AA.
+
+#### 20.9.4. Mặc định Không Bắt buộc Lời giải (`reasoningRequired: false`)
+- Trong trình tạo/chỉnh sửa câu hỏi (`QuestionEditorPage.tsx`), tùy chọn "Yêu cầu học sinh trình bày lời giải" được đặt giá trị mặc định là `false` (chế độ opt-in).
+- Bổ sung huy hiệu phân loại trực quan: `TÙY CHỌN LỜI GIẢI` (khi tắt) và `BẮT BUỘC LỜI GIẢI` (khi bật).
+- Học sinh khi làm bài không bị ép buộc phải nhập lời giải ở các câu hỏi thông thường; hệ thống vẫn chấm điểm và cập nhật năng lực bình thường. Nếu học sinh tự nguyện nhập lời giải, AI vẫn phân tích và cập nhật Digital Twin đầy đủ.

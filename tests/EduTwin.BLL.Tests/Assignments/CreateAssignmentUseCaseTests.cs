@@ -304,7 +304,7 @@ public class CreateAssignmentUseCaseTests
         });
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -360,7 +360,8 @@ public class CreateAssignmentUseCaseTests
             CreatedAt = now,
             UpdatedAt = now
         };
-        var otherTopicId = (ulong)(now.Ticks % 30000 + 999);
+        // Wall-clock modulo IDs can collide with the already seeded topic.
+        var otherTopicId = ctx.KnowledgeNodes.Local.Max(n => n.NodeId) + 1;
         var otherNode = new EduTwin.DAL.KnowledgeGraph.KnowledgeNode
         {
             NodeId = otherTopicId,
@@ -376,7 +377,7 @@ public class CreateAssignmentUseCaseTests
             CreatedAt = now,
             UpdatedAt = now
         };
-        var wrongQId = (ulong)(now.Ticks % 20000 + 9999);
+        var wrongQId = ctx.Questions.Local.Max(q => q.QuestionId) + 1;
         var wrongQuestion = new Question
         {
             QuestionId = wrongQId,
@@ -547,7 +548,7 @@ public class CreateAssignmentUseCaseTests
         });
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -575,7 +576,7 @@ public class CreateAssignmentUseCaseTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_CenterManager_CanCreateForAnyClassInCenter()
+    public async Task ExecuteAsync_CenterManager_ReturnsForbiddenResource()
     {
         var centerId = Guid.NewGuid();
         var managerId = Guid.NewGuid();
@@ -595,9 +596,8 @@ public class CreateAssignmentUseCaseTests
             QuestionIds = new List<string> { question.QuestionId.ToString(CultureInfo.InvariantCulture) }
         });
 
-        Assert.True(result.IsSuccess, $"Expected success but got: {result.ErrorCode}");
-        Assert.NotNull(result.Data);
-        Assert.Equal("Draft", result.Data!.Status);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Theory]

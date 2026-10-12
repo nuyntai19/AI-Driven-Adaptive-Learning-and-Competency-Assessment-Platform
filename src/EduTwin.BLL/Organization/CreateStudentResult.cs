@@ -8,6 +8,7 @@ public class CreateStudentResult
     public bool IsSuccess { get; private set; }
     public StudentDto? Data { get; private set; }
     public string? ErrorCode { get; private set; }
+    public string? ErrorMessage { get; private set; }
 
     private CreateStudentResult(bool isSuccess, StudentDto? data, string? errorCode)
     {
@@ -17,5 +18,6 @@ public class CreateStudentResult
     }
 
     public static CreateStudentResult Success(StudentDto data) => new(true, data, null);
-    public static CreateStudentResult Failure(string errorCode) => new(false, null, errorCode);
+    public static CreateStudentResult Failure(string errorCode, string? message = null)
+        => new(false, null, errorCode) { ErrorMessage = message };
 }

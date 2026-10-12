@@ -77,6 +77,20 @@ public sealed class EvidenceConsistencyChecker : IEvidenceConsistencyChecker
         // 4. Contradiction checks
         var hasContradiction = false;
 
+        if ((attempt.IsCorrect == true && analysis.AnswerAssessment == "Incorrect") ||
+            (attempt.IsCorrect == false && analysis.AnswerAssessment == "Correct"))
+        {
+            hasContradiction = true;
+            reasons.Add("AI_GRADING_DISAGREEMENT");
+        }
+        if (attempt.IsCorrect == true && analysis.ReasoningVerdict == "Invalid")
+        {
+            hasContradiction = true;
+            reasons.Add("CORRECT_ANSWER_INVALID_REASONING");
+        }
+        if (analysis.UsesAlternativeMethod) reasons.Add("ALTERNATIVE_METHOD_REVIEW");
+        if (analysis.NeedsTeacherReview) reasons.Add("AI_REQUESTED_TEACHER_REVIEW");
+
         // Contradiction 1: Student is incorrect, but AI says ErrorType.None
         if (attempt.IsCorrect == false && analysis.ErrorType == ErrorType.None)
         {

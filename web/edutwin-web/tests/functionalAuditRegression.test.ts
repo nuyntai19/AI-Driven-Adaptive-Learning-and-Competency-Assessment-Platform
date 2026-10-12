@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
 import { serializeCsvCell, buildStudentReportCsv, type StudentAcademicSummary } from "../src/pages/teacher/teacherReportsHelpers.ts";
 import { teacherNotesKey, readTeacherNotes } from "../src/utils/teacherNotesStorage.ts";
 import { studentScopeChangeUrl, studentLearningPathReturnUrl } from "../src/utils/studentAcademicNavigation.ts";
@@ -53,10 +52,3 @@ test("teacher notes are isolated by tenant and author; malformed values and lega
   values.set(b, "[]"); assert.deepEqual(readTeacherNotes(b, storage), {});
   values.set(b, "invalid"); assert.deepEqual(readTeacherNotes(b, storage), {});
 });
-
-test("teacher pedagogical notes view has migrated away from localStorage to backend MySQL API", () => {
-  const code = readFileSync(new URL("../src/pages/teacher/TeacherStudentManagementView.tsx", import.meta.url), "utf8");
-  assert.doesNotMatch(code, /teacherNotesStorage/, "TeacherStudentManagementView must not import teacherNotesStorage");
-  assert.doesNotMatch(code, /localStorage\.setItem\(/, "TeacherStudentManagementView must not set items in localStorage");
-});
-

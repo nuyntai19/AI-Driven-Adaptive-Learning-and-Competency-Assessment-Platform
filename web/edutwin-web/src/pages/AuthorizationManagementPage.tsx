@@ -1710,6 +1710,8 @@ const actionTypeLabels: Record<string, { label: string; color: string }> = {
   RoleUpdated: { label: "Sửa vai trò", color: "bg-blue-100 text-blue-800" },
   RolePermissionsReplaced: { label: "Thay thế ma trận quyền", color: "bg-indigo-100 text-indigo-800" },
   UserRolesReplaced: { label: "Gán vai trò người dùng", color: "bg-purple-100 text-purple-800" },
+  UserSystemRoleAssigned: { label: "Gán vai trò mặc định khi tạo tài khoản", color: "bg-purple-100 text-purple-800" },
+  UserSystemRoleRecovered: { label: "Khôi phục vai trò mặc định bị thiếu", color: "bg-purple-100 text-purple-800" },
   TEACHER_PASSWORD_RESET: { label: "Đặt lại mật khẩu giáo viên", color: "bg-amber-100 text-amber-800" },
   STUDENT_PASSWORD_RESET: { label: "Đặt lại mật khẩu học sinh", color: "bg-amber-100 text-amber-800" },
   STUDENT_SOFT_DELETED: { label: "Xóa mềm học sinh", color: "bg-red-100 text-red-800" },

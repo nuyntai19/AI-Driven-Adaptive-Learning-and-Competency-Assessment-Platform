@@ -4,6 +4,8 @@ import * as XLSX from "xlsx";
 import {
   buildClassReportWorkbook,
   buildStudentReportWorkbook,
+} from "../src/pages/teacher/teacherExcelReports.ts";
+import {
   buildClassReportCsv,
   type StudentAcademicSummary,
 } from "../src/pages/teacher/teacherReportsHelpers.ts";

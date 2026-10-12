@@ -17,4 +17,10 @@ public class UpdateClassRequest
 
     [Required]
     public string RowVersion { get; init; } = null!;
+
+    [Range(10, 12)]
+    public byte? GradeLevel { get; init; }
+
+    [MaxLength(500)]
+    public string? LifecycleReason { get; init; }
 }

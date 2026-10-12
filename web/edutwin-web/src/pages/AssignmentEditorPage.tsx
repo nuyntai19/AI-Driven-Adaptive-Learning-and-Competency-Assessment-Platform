@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, Navigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { organizationApi } from "../api/organizationApi";
+import { knowledgeGraphApi } from "../api/knowledgeGraphApi";
 import { useAssignment } from "../features/assignments/useAssignment";
 import { useCreateAssignment } from "../features/assignments/useCreateAssignment";
 import { useUpdateAssignment } from "../features/assignments/useUpdateAssignment";
@@ -44,6 +45,12 @@ const toLocalDateTime = (value: string | null) => {
   return new Date(date.getTime() - timezoneOffset).toISOString().slice(0, 16);
 };
 
+export const getMinLocalDateTime = () => {
+  const d = new Date(Date.now() + 60_000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
 // =============================================================================
 // 1. CENTER MANAGER DARK SAAS WIZARD VIEW (GATE 6B)
 // =============================================================================
@@ -69,6 +76,7 @@ function CenterManagerAssignmentEditorView() {
   const canPublish = hasPermission(permissions.assignmentsPublish);
   const canReadClasses = hasPermission(permissions.classesRead);
   const canReadQuestions = hasPermission(permissions.questionsRead);
+  const canReadNodes = hasPermission(permissions.nodesRead);
 
   // Assignment data query
   const assignmentQuery = useAssignment(id);
@@ -87,6 +95,38 @@ function CenterManagerAssignmentEditorView() {
   const [title, setTitle] = useState("");
   const [instructions, setInstructions] = useState("");
   const [dueAt, setDueAt] = useState("");
+  const [dueDateError, setDueDateError] = useState<string | null>(null);
+  const [timeLimitValue, setTimeLimitValue] = useState("");
+  const [timeLimitUnit, setTimeLimitUnit] = useState<"minutes" | "hours">("minutes");
+  const [timeLimitError, setTimeLimitError] = useState<string | null>(null);
+  const [minDateTime, setMinDateTime] = useState(getMinLocalDateTime);
+
+  const effectiveTimeLimitMinutes = useMemo(() => {
+    const trimmed = timeLimitValue.trim();
+    if (!trimmed) return null;
+    const num = Number(trimmed);
+    if (isNaN(num) || num <= 0) return null;
+    return timeLimitUnit === "hours" ? Math.round(num * 60) : Math.round(num);
+  }, [timeLimitValue, timeLimitUnit]);
+
+  const handleTimeLimitChange = (val: string, unit: "minutes" | "hours" = timeLimitUnit) => {
+    setTimeLimitValue(val);
+    setTimeLimitUnit(unit);
+    if (!val.trim()) {
+      setTimeLimitError(null);
+      return;
+    }
+    const num = Number(val.trim());
+    if (isNaN(num) || num <= 0) {
+      setTimeLimitError("Thời gian làm bài phải là số dương lớn hơn 0.");
+    } else {
+      setTimeLimitError(null);
+    }
+  };
+
+  const refreshMinDateTime = () => {
+    setMinDateTime(getMinLocalDateTime());
+  };
   const [targetMode, setTargetMode] = useState<TargetMode>("WholeClass");
   const [questionIds, setQuestionIds] = useState<string[]>([]);
   const [studentIds, setStudentIds] = useState<string[]>([]);
@@ -103,6 +143,10 @@ function CenterManagerAssignmentEditorView() {
   // Filter & Pagination for Question Selector (matching backend QuestionListQuery: no search param)
   const [questionPage, setQuestionPage] = useState(1);
   const [questionDifficulty, setQuestionDifficulty] = useState<number | "">("");
+  const [questionTopicId, setQuestionTopicId] = useState<string>("");
+  const [questionGradeFilter, setQuestionGradeFilter] = useState<number | "">("");
+  const [allowGradeMismatch, setAllowGradeMismatch] = useState(false);
+  const [gradeMismatchReason, setGradeMismatchReason] = useState("");
 
   // Filter & Pagination for Class Selector
   const [classPage, setClassPage] = useState(1);
@@ -122,7 +166,7 @@ function CenterManagerAssignmentEditorView() {
 
   // Classes Query - guarded with canReadClasses
   const classesQuery = useAssignmentClasses(
-    { status: "Active", page: classPage, pageSize: 20 },
+    { page: classPage, pageSize: 20 },
     { enabled: canReadClasses }
   );
 
@@ -158,17 +202,36 @@ function CenterManagerAssignmentEditorView() {
     return classesQuery.data?.data.find((c) => c.classId === classId);
   }, [classId, classDetailQuery.data, cachedClasses, classesQuery.data?.data]);
 
+  // Sync default question grade filter to class grade level if available
+  useEffect(() => {
+    if (selectedClass?.gradeLevel && questionGradeFilter === "") {
+      setQuestionGradeFilter(selectedClass.gradeLevel);
+    }
+  }, [selectedClass?.gradeLevel]);
+
+  const selectedSubjectId = selectedClass?.subject?.subjectId;
+
+  // Knowledge Nodes Query for the subject of the selected class
+  const knowledgeNodesQuery = useQuery({
+    queryKey: ["knowledge-nodes-for-assignment-editor", selectedSubjectId],
+    queryFn: () => knowledgeGraphApi.listNodes(selectedSubjectId!),
+    enabled: canReadNodes && Boolean(selectedSubjectId),
+    staleTime: 60_000,
+  });
+
   // Questions Query for the subject of the selected class - guarded with canReadQuestions
   const questionsQuery = useAssignableQuestions(
-    selectedClass?.subject?.subjectId
+    selectedSubjectId
       ? {
-          subjectId: selectedClass.subject.subjectId,
+          subjectId: selectedSubjectId,
+          gradeLevel: questionGradeFilter !== "" ? Number(questionGradeFilter) : undefined,
+          topicId: questionTopicId || undefined,
           page: questionPage,
           pageSize: 10,
           difficulty: questionDifficulty !== "" ? Number(questionDifficulty) : undefined,
         }
       : undefined,
-    { enabled: canReadQuestions && Boolean(selectedClass?.subject?.subjectId) }
+    { enabled: canReadQuestions && Boolean(selectedSubjectId) }
   );
 
   // Students Query for the selected class - guarded with canReadClasses
@@ -218,13 +281,44 @@ function CenterManagerAssignmentEditorView() {
     setClassId(assignment.classId);
     setTitle(assignment.title);
     setInstructions(assignment.instructions || "");
-    setDueAt(toLocalDateTime(assignment.dueAt));
+    const localDueAt = toLocalDateTime(assignment.dueAt);
+    setDueAt(localDueAt);
+    if (localDueAt && new Date(localDueAt).getTime() <= Date.now()) {
+      setDueDateError("Hạn chót nộp bài của bản nháp này đã qua thời điểm hiện tại. Vui lòng chọn thời gian mới trong tương lai hoặc xóa hạn chót.");
+    } else {
+      setDueDateError(null);
+    }
+    if (assignment.timeLimitMinutes) {
+      if (assignment.timeLimitMinutes % 60 === 0 && assignment.timeLimitMinutes >= 60) {
+        setTimeLimitValue(String(assignment.timeLimitMinutes / 60));
+        setTimeLimitUnit("hours");
+      } else {
+        setTimeLimitValue(String(assignment.timeLimitMinutes));
+        setTimeLimitUnit("minutes");
+      }
+    } else {
+      setTimeLimitValue("");
+      setTimeLimitUnit("minutes");
+    }
     setQuestionIds(assignment.questions.map((q) => q.questionId));
 
-    const source = assignment.targets[0]?.targetSource;
-    setTargetMode(source === "WholeClass" || !source ? "WholeClass" : "SelectedStudents");
-    setStudentIds(source && source !== "WholeClass" ? assignment.targets.map((t) => t.studentId) : []);
+    const effTargetMode = (assignment.targetMode ?? (assignment.targets[0]?.targetSource === "WholeClass" || !assignment.targets.length ? "WholeClass" : "SelectedStudents")) as TargetMode;
+    setTargetMode(effTargetMode);
+    setStudentIds(effTargetMode === "SelectedStudents" ? assignment.targets.map((t) => t.studentId) : []);
+    setAllowGradeMismatch(assignment.allowGradeMismatch ?? false);
+    setGradeMismatchReason(assignment.gradeMismatchReason ?? "");
   }, [assignment]);
+
+  const hasGradeMismatch = useMemo(() => {
+    if (!selectedClass?.gradeLevel) return false;
+    for (const qId of questionIds) {
+      const q = cachedQuestions.get(qId);
+      if (q && q.gradeLevel !== undefined && q.gradeLevel !== null && q.gradeLevel !== selectedClass.gradeLevel) {
+        return true;
+      }
+    }
+    return false;
+  }, [selectedClass?.gradeLevel, questionIds, cachedQuestions]);
 
   // Strict Read-Only Rule covering all non-Draft states: Published, Closed, Archived
   const isReadOnly = isEditing && (assignment?.status !== "Draft" || !canUpdate);
@@ -270,11 +364,145 @@ function CenterManagerAssignmentEditorView() {
   const handleClassChange = (nextClassId: string) => {
     if (isReadOnly) return;
     setClassId(nextClassId);
+    setQuestionTopicId("");
     setQuestionIds([]);
     setStudentIds([]);
     setTargetMode("WholeClass");
+    setQuestionGradeFilter("");
+    setAllowGradeMismatch(false);
+    setGradeMismatchReason("");
     setQuestionPage(1);
     setStudentPage(1);
+  };
+
+  const handleDueAtChange = (val: string) => {
+    setDueAt(val);
+    if (!val) {
+      setDueDateError(null);
+      if (formError?.message.includes("Hạn chót nộp bài")) {
+        setFormError(null);
+      }
+      return;
+    }
+    const dueTime = new Date(val).getTime();
+    if (isNaN(dueTime)) {
+      setDueDateError("Thời gian hạn chót nộp bài không hợp lệ.");
+    } else if (dueTime <= Date.now()) {
+      setDueDateError("Hạn chót nộp bài phải ở thời điểm tương lai (sau thời điểm hiện tại).");
+    } else {
+      setDueDateError(null);
+      if (formError?.message.includes("Hạn chót nộp bài")) {
+        setFormError(null);
+      }
+    }
+  };
+
+  const validateStep0 = (): boolean => {
+    if (!title.trim()) {
+      setFormError({ message: "Vui lòng nhập tiêu đề bài tập." });
+      setStep(0);
+      return false;
+    }
+    if (title.trim().length > 250) {
+      setFormError({ message: "Tiêu đề bài tập không được vượt quá 250 ký tự." });
+      setStep(0);
+      return false;
+    }
+    if (!classId) {
+      setFormError({ message: "Vui lòng chọn lớp học tiếp nhận bài tập." });
+      setStep(0);
+      return false;
+    }
+    if (selectedClass && selectedClass.status && selectedClass.status !== "Active") {
+      setFormError({
+        message: `Lớp học "${selectedClass.className}" đang ở trạng thái ${(selectedClass.status as string) === "Inactive" ? "Ngừng hoạt động" : "Đã lưu trữ / Ngừng hoạt động"} (không hoạt động). Hệ thống từ chối giao bài tập cho lớp này.`,
+      });
+      setStep(0);
+      return false;
+    }
+    if (dueAt) {
+      const dueTime = new Date(dueAt).getTime();
+      if (isNaN(dueTime)) {
+        setFormError({ message: "Thời gian hạn chót nộp bài không hợp lệ." });
+        setDueDateError("Thời gian hạn chót nộp bài không hợp lệ.");
+        setStep(0);
+        return false;
+      }
+      if (dueTime <= Date.now()) {
+        setFormError({ message: "Hạn chót nộp bài phải ở thời điểm tương lai (sau thời điểm hiện tại)." });
+        setDueDateError("Hạn chót nộp bài phải ở thời điểm tương lai (sau thời điểm hiện tại).");
+        setStep(0);
+        return false;
+      }
+    }
+    if (timeLimitValue.trim()) {
+      const num = Number(timeLimitValue.trim());
+      if (isNaN(num) || num <= 0) {
+        setFormError({ message: "Thời gian làm bài phải là số dương lớn hơn 0." });
+        setTimeLimitError("Thời gian làm bài phải là số dương lớn hơn 0.");
+        setStep(0);
+        return false;
+      }
+    }
+    setTimeLimitError(null);
+    setDueDateError(null);
+    setFormError(null);
+    return true;
+  };
+
+  const validateStep1 = (): boolean => {
+    if (!validateStep0()) return false;
+    if (questionIds.length === 0) {
+      setFormError({ message: "Vui lòng chọn ít nhất 1 câu hỏi cho bài tập." });
+      setStep(1);
+      return false;
+    }
+    if (hasGradeMismatch) {
+      if (!allowGradeMismatch) {
+        setFormError({
+          message:
+            "Bài tập chứa câu hỏi khác khối so với lớp học. Vui lòng bật 'Cho phép nội dung khác khối' và nêu rõ lý do ngoại lệ.",
+        });
+        setStep(1);
+        return false;
+      }
+      if (!gradeMismatchReason.trim() || gradeMismatchReason.trim().length > 500) {
+        setFormError({
+          message:
+            "Lý do giao lệch khối là bắt buộc và tối đa 500 ký tự khi có câu hỏi khác khối lớp.",
+        });
+        setStep(1);
+        return false;
+      }
+    }
+    setFormError(null);
+    return true;
+  };
+
+  const validateStep2 = (): boolean => {
+    if (!validateStep1()) return false;
+    if (targetMode === "SelectedStudents" && studentIds.length === 0) {
+      setFormError({ message: "Vui lòng chọn ít nhất 1 học sinh nhận bài tập ở chế độ Chọn học sinh." });
+      setStep(2);
+      return false;
+    }
+    setFormError(null);
+    return true;
+  };
+
+  const handleStepChange = (targetStep: number) => {
+    if (targetStep <= step) {
+      setStep(targetStep);
+      setFormError(null);
+      return;
+    }
+    if (targetStep === 1) {
+      if (validateStep0()) setStep(1);
+    } else if (targetStep === 2) {
+      if (validateStep1()) setStep(2);
+    } else if (targetStep === 3) {
+      if (validateStep2()) setStep(3);
+    }
   };
 
   // Save / Update Draft Handler
@@ -283,24 +511,7 @@ function CenterManagerAssignmentEditorView() {
     setFormError(null);
     setConcurrencyConflict(false);
 
-    if (!title.trim()) {
-      setFormError({ message: "Vui lòng nhập tiêu đề bài tập." });
-      setStep(0);
-      return;
-    }
-    if (!classId) {
-      setFormError({ message: "Vui lòng chọn lớp học tiếp nhận bài tập." });
-      setStep(0);
-      return;
-    }
-    if (questionIds.length === 0) {
-      setFormError({ message: "Vui lòng chọn ít nhất 1 câu hỏi cho bài tập." });
-      setStep(1);
-      return;
-    }
-    if (targetMode === "SelectedStudents" && studentIds.length === 0) {
-      setFormError({ message: "Vui lòng chọn ít nhất 1 học sinh nhận bài tập ở chế độ Chọn học sinh." });
-      setStep(2);
+    if (!validateStep2()) {
       return;
     }
 
@@ -312,9 +523,12 @@ function CenterManagerAssignmentEditorView() {
         title: title.trim(),
         instructions: instructions.trim() || null,
         dueAt: payloadDueAt,
+        timeLimitMinutes: effectiveTimeLimitMinutes,
         questionIds,
         targetMode,
         studentIds: targetMode === "SelectedStudents" ? studentIds : undefined,
+        allowGradeMismatch: hasGradeMismatch ? allowGradeMismatch : false,
+        gradeMismatchReason: hasGradeMismatch && allowGradeMismatch ? gradeMismatchReason.trim() : null,
       };
 
       createMutation.mutate(createPayload, {
@@ -342,9 +556,12 @@ function CenterManagerAssignmentEditorView() {
         title: title.trim(),
         instructions: instructions.trim() || null,
         dueAt: payloadDueAt,
+        timeLimitMinutes: effectiveTimeLimitMinutes,
         questionIds,
         targetMode,
         studentIds: targetMode === "SelectedStudents" ? studentIds : undefined,
+        allowGradeMismatch: hasGradeMismatch ? allowGradeMismatch : false,
+        gradeMismatchReason: hasGradeMismatch && allowGradeMismatch ? gradeMismatchReason.trim() : null,
         rowVersion: assignment.rowVersion,
       };
 
@@ -378,6 +595,14 @@ function CenterManagerAssignmentEditorView() {
   // Publish Confirm Handler
   const handleConfirmPublish = () => {
     if (!id || !assignment || !canPublish) return;
+    if (targetMode === "SelectedStudents" && studentIds.length === 0) {
+      setFormError({
+        message:
+          "Không thể xuất bản: Chế độ chỉ định học sinh yêu cầu chọn ít nhất 1 học sinh nhận bài.",
+      });
+      setPublishDialogOpen(false);
+      return;
+    }
     setFormError(null);
 
     publishMutation.mutate(
@@ -588,7 +813,7 @@ function CenterManagerAssignmentEditorView() {
                 <li key={s.id} className="flex-1 min-w-[140px]">
                   <button
                     type="button"
-                    onClick={() => setStep(s.id)}
+                    onClick={() => handleStepChange(s.id)}
                     className={`w-full py-2.5 px-3 rounded-xl text-left text-xs font-medium transition border ${
                       isActive
                         ? "border-[var(--cm-cyan)] bg-cyan-500/15 text-cyan-700 dark:bg-cyan-950/40 dark:text-[var(--cm-cyan)] font-semibold shadow-sm"
@@ -648,7 +873,7 @@ function CenterManagerAssignmentEditorView() {
                       <option value="">-- Chọn lớp học --</option>
                       {classList.map((c) => (
                         <option key={c.classId} value={c.classId}>
-                          {c.className} ({c.academicYear}) - Môn: {c.subject?.subjectName}
+                          {c.className} ({c.academicYear}) - Môn: {c.subject?.subjectName}{c.status !== "Active" ? ` [${(c.status as string) === "Inactive" ? "Ngừng hoạt động" : "Ngừng hoạt động / Đã lưu trữ"}]` : ""}
                         </option>
                       ))}
                     </select>
@@ -660,26 +885,28 @@ function CenterManagerAssignmentEditorView() {
                             type="button"
                             disabled={classPage <= 1 || classesQuery.isLoading}
                             onClick={() => setClassPage((p) => Math.max(1, p - 1))}
-                            className="cm-secondary-button text-xs py-0.5 px-2"
+                            className="cm-secondary-button text-[10px] px-2 py-0.5"
                           >
-                            ← Trước
+                            ←
                           </button>
                           <button
                             type="button"
-                            disabled={classPage >= (classesQuery.data.meta.totalPages || 1) || classesQuery.isLoading}
-                            onClick={() => setClassPage((p) => Math.min(classesQuery.data!.meta!.totalPages || 1, p + 1))}
-                            className="cm-secondary-button text-xs py-0.5 px-2"
+                            disabled={classPage >= classesQuery.data.meta.totalPages || classesQuery.isLoading}
+                            onClick={() => setClassPage((p) => p + 1)}
+                            className="cm-secondary-button text-[10px] px-2 py-0.5"
                           >
-                            Sau →
+                            →
                           </button>
                         </div>
                       </div>
                     )}
                   </div>
                 )}
-                {selectedClass?.subject && (
+
+                {selectedClass && (
                   <p className="mt-1 text-xs text-[var(--cm-cyan)]">
-                    Môn học liên kết: <strong>{selectedClass.subject.subjectName}</strong>
+                    {selectedClass.subject && <>Môn học liên kết: <strong>{selectedClass.subject.subjectName}</strong> · </>}
+                    Khối lớp: <strong>{selectedClass.gradeLevel ? `Khối ${selectedClass.gradeLevel}` : "Chưa phân loại"}</strong>
                   </p>
                 )}
               </div>
@@ -691,11 +918,77 @@ function CenterManagerAssignmentEditorView() {
                 <input
                   id="assignment-dueat-input"
                   type="datetime-local"
+                  min={minDateTime}
+                  onFocus={refreshMinDateTime}
+                  onPointerDown={refreshMinDateTime}
                   disabled={isReadOnly}
                   value={dueAt}
-                  onChange={(e) => setDueAt(e.target.value)}
-                  className="cm-input w-full text-sm"
+                  onChange={(e) => handleDueAtChange(e.target.value)}
+                  className={`cm-input w-full text-sm ${dueDateError ? "!border-rose-500 focus:!border-rose-500" : ""}`}
                 />
+                {dueDateError ? (
+                  <p className="mt-1 text-[11px] text-rose-500 font-medium">
+                    ⚠ {dueDateError}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-[11px] text-[var(--cm-text-muted)]">
+                    Nếu đặt hạn nộp, thời gian phải sau thời điểm hiện tại.
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label htmlFor="assignment-timelimit-input" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)]">
+                    Thời gian làm bài (tùy chọn)
+                  </label>
+                  <span className="text-[11px] text-[var(--cm-cyan)] font-medium">
+                    {effectiveTimeLimitMinutes ? `⏱ ${effectiveTimeLimitMinutes} phút làm bài` : "Không giới hạn thời gian"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="assignment-timelimit-input"
+                    type="number"
+                    min="1"
+                    step="1"
+                    disabled={isReadOnly}
+                    value={timeLimitValue}
+                    onChange={(e) => handleTimeLimitChange(e.target.value, timeLimitUnit)}
+                    placeholder="Nhập số phút hoặc giờ làm bài (VD: 45, 90, 2)..."
+                    className={`cm-input flex-1 text-sm ${timeLimitError ? "!border-rose-500 focus:!border-rose-500" : ""}`}
+                  />
+                  <select
+                    disabled={isReadOnly}
+                    value={timeLimitUnit}
+                    onChange={(e) => handleTimeLimitChange(timeLimitValue, e.target.value as "minutes" | "hours")}
+                    className="cm-select w-28 text-sm"
+                  >
+                    <option value="minutes">Phút</option>
+                    <option value="hours">Giờ</option>
+                  </select>
+                  {timeLimitValue && !isReadOnly && (
+                    <button
+                      type="button"
+                      onClick={() => handleTimeLimitChange("", timeLimitUnit)}
+                      className="cm-secondary-button text-xs py-2 px-3 text-[var(--cm-text-muted)] hover:text-rose-400"
+                      title="Xóa thời gian làm bài"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+                {timeLimitError ? (
+                  <p className="mt-1 text-xs text-rose-500 font-medium">
+                    ⚠ {timeLimitError}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-[11px] text-[var(--cm-text-muted)]">
+                    {effectiveTimeLimitMinutes
+                      ? `Học sinh sẽ có đúng ${effectiveTimeLimitMinutes} phút làm bài tính từ lúc nhấn Bắt đầu. Khi hết giờ, bài làm sẽ tự động nộp.`
+                      : "Để trống nếu không giới hạn thời gian làm bài (học sinh có thể làm bất kỳ lúc nào trước hạn chót)."}
+                  </p>
+                )}
               </div>
 
               <div>
@@ -716,7 +1009,9 @@ function CenterManagerAssignmentEditorView() {
               <div className="pt-4 flex justify-end">
                 <button
                   type="button"
-                  onClick={() => setStep(1)}
+                  onClick={() => {
+                    if (validateStep0()) setStep(1);
+                  }}
                   className="cm-primary-button text-xs"
                 >
                   Tiếp tục: Chọn câu hỏi →
@@ -738,29 +1033,142 @@ function CenterManagerAssignmentEditorView() {
                   </p>
                 </div>
 
-                {/* Difficulty Filter (pure canonical filter: no search param) */}
-                <div className="flex items-center gap-3">
-                  <label htmlFor="q-diff-filter" className="text-xs text-[var(--cm-text-secondary)] whitespace-nowrap">
-                    Lọc độ khó:
-                  </label>
-                  <select
-                    id="q-diff-filter"
-                    value={questionDifficulty}
-                    onChange={(e) => {
-                      setQuestionDifficulty(e.target.value ? Number(e.target.value) : "");
-                      setQuestionPage(1);
-                    }}
-                    className="cm-select text-xs py-1.5"
-                  >
-                    <option value="">Tất cả độ khó</option>
-                    <option value="1">1 - Rất dễ</option>
-                    <option value="2">2 - Dễ</option>
-                    <option value="3">3 - Trung bình</option>
-                    <option value="4">4 - Khó</option>
-                    <option value="5">5 - Rất khó</option>
-                  </select>
+                {/* Topic, Grade & Difficulty Filters */}
+                <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+                  {/* Knowledge Graph / Topic Filter */}
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="q-topic-filter" className="text-xs text-[var(--cm-text-secondary)] whitespace-nowrap">
+                      Đồ thị tri thức:
+                    </label>
+                    <select
+                      id="q-topic-filter"
+                      value={questionTopicId}
+                      onChange={(e) => {
+                        setQuestionTopicId(e.target.value);
+                        setQuestionPage(1);
+                      }}
+                      disabled={!selectedSubjectId || knowledgeNodesQuery.isLoading}
+                      className="cm-select text-xs py-1.5 max-w-[220px]"
+                    >
+                      <option value="">
+                        {!selectedSubjectId
+                          ? "-- Chọn lớp trước --"
+                          : knowledgeNodesQuery.isLoading
+                          ? "Đang tải nút..."
+                          : "Tất cả nút tri thức"}
+                      </option>
+                      {knowledgeNodesQuery.data?.map((node) => (
+                        <option key={node.nodeId} value={node.nodeId}>
+                          [{node.nodeType}] {node.nodeName} ({node.nodeCode})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Grade Level Filter */}
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="q-grade-filter" className="text-xs text-[var(--cm-text-secondary)] whitespace-nowrap">
+                      Khối:
+                    </label>
+                    <select
+                      id="q-grade-filter"
+                      value={questionGradeFilter}
+                      onChange={(e) => {
+                        setQuestionGradeFilter(e.target.value ? Number(e.target.value) : "");
+                        setQuestionPage(1);
+                      }}
+                      className="cm-select text-xs py-1.5"
+                    >
+                      <option value="">Tất cả khối</option>
+                      <option value="10">Khối 10</option>
+                      <option value="11">Khối 11</option>
+                      <option value="12">Khối 12</option>
+                    </select>
+                  </div>
+
+                  {/* Difficulty Filter */}
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="q-diff-filter" className="text-xs text-[var(--cm-text-secondary)] whitespace-nowrap">
+                      Lọc độ khó:
+                    </label>
+                    <select
+                      id="q-diff-filter"
+                      value={questionDifficulty}
+                      onChange={(e) => {
+                        setQuestionDifficulty(e.target.value ? Number(e.target.value) : "");
+                        setQuestionPage(1);
+                      }}
+                      className="cm-select text-xs py-1.5"
+                    >
+                      <option value="">Tất cả độ khó</option>
+                      <option value="1">1 - Rất dễ</option>
+                      <option value="2">2 - Dễ</option>
+                      <option value="3">3 - Trung bình</option>
+                      <option value="4">4 - Khó</option>
+                      <option value="5">5 - Rất khó</option>
+                    </select>
+                  </div>
                 </div>
               </div>
+
+              {/* Grade Mismatch Exception Banner */}
+              {hasGradeMismatch && (
+                <div className="p-4 rounded-xl border border-amber-500/50 bg-amber-500/10 text-xs space-y-3">
+                  <div className="flex items-start gap-2.5">
+                    <span className="text-base text-amber-400 leading-none mt-0.5">⚠️</span>
+                    <div>
+                      <h4 className="font-semibold text-amber-200">
+                        Phát hiện câu hỏi khác khối so với lớp học ({selectedClass?.gradeLevel ? `Khối ${selectedClass.gradeLevel}` : "Chưa phân loại"})
+                      </h4>
+                      <p className="text-amber-300/90 mt-0.5">
+                        Bạn đang chọn câu hỏi thuộc khối khác với khối của lớp học. Nếu bạn chủ đích muốn học sinh ôn tập kiến thức nền hoặc học nâng cao, hãy bật ngoại lệ và nhập lý do học thuật.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1 border-t border-amber-500/20">
+                    <input
+                      type="checkbox"
+                      id="cm-chk-allow-grade-mismatch"
+                      checked={allowGradeMismatch}
+                      onChange={(e) => setAllowGradeMismatch(e.target.checked)}
+                      disabled={isReadOnly}
+                      className="h-4 w-4 rounded accent-amber-500"
+                    />
+                    <label htmlFor="cm-chk-allow-grade-mismatch" className="font-medium text-amber-100 cursor-pointer">
+                      Cho phép giao nội dung khác khối (Chế độ ngoại lệ học thuật)
+                    </label>
+                  </div>
+
+                  {allowGradeMismatch && (
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label htmlFor="cm-txt-grade-mismatch-reason" className="block font-medium text-amber-200">
+                          Lý do ngoại lệ học thuật <span className="text-rose-400">*</span>:
+                        </label>
+                        <span className={`text-[11px] font-mono ${gradeMismatchReason.length > 500 ? "text-rose-400 font-bold" : "text-amber-200/80"}`}>
+                          {gradeMismatchReason.length}/500 ký tự
+                        </span>
+                      </div>
+                      <textarea
+                        id="cm-txt-grade-mismatch-reason"
+                        name="gradeMismatchReason"
+                        value={gradeMismatchReason}
+                        onChange={(e) => setGradeMismatchReason(e.target.value)}
+                        disabled={isReadOnly}
+                        rows={2}
+                        placeholder="VD: Ôn tập bổ trợ kiến thức phương trình lượng giác lớp 11 cho học sinh lớp 12..."
+                        className={`cm-input w-full text-xs ${gradeMismatchReason.length > 500 ? "!border-rose-500 focus:!border-rose-500" : ""}`}
+                      />
+                      {gradeMismatchReason.length > 500 && (
+                        <p className="mt-1 text-[11px] text-rose-400 font-medium">
+                          ⚠ Lý do ngoại lệ đã vượt quá 500 ký tự ({gradeMismatchReason.length}/500). Vui lòng rút ngắn nội dung.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {!classId ? (
                 <div className="p-6 rounded-xl border border-[var(--cm-border-subtle)] bg-[var(--cm-surface-subtle)] text-center text-xs text-[var(--cm-text-muted)]">
@@ -807,6 +1215,13 @@ function CenterManagerAssignmentEditorView() {
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-semibold px-2 py-0.5 rounded bg-[var(--cm-surface)] border border-[var(--cm-border-subtle)] text-[var(--cm-text-secondary)]">
                               {q.questionType}
+                            </span>
+                            <span className={`py-0.5 px-2 text-[10px] rounded border font-medium ${
+                              q.gradeLevel
+                                ? "bg-indigo-950/60 text-indigo-300 border-indigo-700/50"
+                                : "bg-gray-800 text-gray-400 border-gray-700"
+                            }`}>
+                              {q.gradeLevel ? `Khối ${q.gradeLevel}` : "Chưa phân loại"}
                             </span>
                             <span className="text-xs text-[var(--cm-text-muted)]">Độ khó: {q.difficulty}/5</span>
                             <span className="text-xs text-[var(--cm-text-muted)]">Điểm: {q.maxScore}</span>
@@ -1101,11 +1516,32 @@ function CenterManagerAssignmentEditorView() {
                       <p className="text-sm font-semibold text-[var(--cm-text)] mt-0.5">
                         {selectedClass ? `${selectedClass.className} (${selectedClass.academicYear})` : classId || "(Chưa chọn)"}
                       </p>
+                      <p className="text-[11px] text-[var(--cm-text-muted)] mt-0.5">
+                        Khối lớp: {selectedClass?.gradeLevel ? `Khối ${selectedClass.gradeLevel}` : "Chưa phân loại"}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-[var(--cm-text-muted)]">Tương thích khối:</span>
+                      {hasGradeMismatch ? (
+                        <p className="text-sm font-semibold text-amber-400 mt-0.5">
+                          ⚠️ Ngoại lệ: {gradeMismatchReason || "Đã xác nhận ngoại lệ"}
+                        </p>
+                      ) : (
+                        <p className="text-sm font-semibold text-emerald-400 mt-0.5">
+                          ✓ Chuẩn khối lớp ({selectedClass?.gradeLevel ? `Khối ${selectedClass.gradeLevel}` : "Chưa phân loại"})
+                        </p>
+                      )}
                     </div>
                     <div>
                       <span className="text-[var(--cm-text-muted)]">Hạn nộp:</span>
                       <p className="text-sm font-semibold text-[var(--cm-text)] mt-0.5">
                         {dueAt ? new Date(dueAt).toLocaleString("vi-VN") : "Không giới hạn"}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-[var(--cm-text-muted)]">Thời gian làm bài:</span>
+                      <p className="text-sm font-semibold text-[var(--cm-cyan)] mt-0.5">
+                        {effectiveTimeLimitMinutes ? `⏱ ${effectiveTimeLimitMinutes} phút` : "Không giới hạn"}
                       </p>
                     </div>
                     <div>
@@ -1244,6 +1680,13 @@ function LegacyAssignmentEditorPage() {
   }, [assignment]);
 
   const handleSave = () => {
+    if (dueAt) {
+      const dueTime = new Date(dueAt).getTime();
+      if (isNaN(dueTime) || dueTime <= Date.now()) {
+        alert("Hạn chót nộp bài phải ở thời điểm tương lai (sau thời điểm hiện tại).");
+        return;
+      }
+    }
     const payloadDueAt = dueAt ? new Date(dueAt).toISOString() : null;
 
     if (!isEditing) {

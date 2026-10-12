@@ -1,7 +1,13 @@
 # EduTwin — Database Schema
 
-> Phiên bản: 2.4 (Post-R08 Scope Amendments)
-> Trạng thái: ACTIVE — 40 bảng vật lý trong EF migration model hiện hành (Đã bao gồm bảng thứ 40: attempt_attachments sau Gate 5 freeze)
+> Amendment PLATFORM-OPS-OBS-01 (11/10/2026), người dùng phê duyệt triển khai: [SPEC vận hành Admin](docs/plans/PLATFORM-OPERATIONS-IMPLEMENTATION-SPEC-2026-10-11.md). Cho phép ba API GET/root-only, ba quyền non-delegable, metadata ledger AI và snapshot/alert vận hành như SPEC. Stage I không còn deferred trong phạm vi này; Stage H vẫn deferred. Ledger là metadata vận hành, ngoại lệ được duyệt đối với cấm bảng log AI, không chứa nội dung học thuật. Không purge/AI retry/billing mutation và không commit/push. Trạng thái COMPLETED-v1 trong phạm vi SPEC; [báo cáo kiểm chứng](docs/verification/PLATFORM-OPERATIONS-REPORT-2026-10-11.md) ghi kết quả, rollout và các giới hạn chưa triển khai. Không coi roadmap observability rộng hơn hoặc tải 1.000 người đồng thời đã nghiệm thu.
+
+> Additive notification lifecycle/receipt schema và gate còn lại: [Completion SPEC](docs/plans/NOTIFICATIONS-COMPLETION-SPEC.md), được cho phép 2026-10-10; migration phải có kiểm chứng/backup trước rollout.
+
+> Amendment additive 2026-10-10: [NF-01 §Schema](docs/plans/NOTIFICATIONS-NF01-SPEC.md) thêm ba bảng notification; [NF-03a §Schema](docs/plans/NOTIFICATIONS-NF03-SEND-SPEC.md) thêm notification_messages append-only và hai cột nullable trên event. Notification in-app trong phạm vi mới; email/chat/push vẫn ngoài phạm vi. Số bảng trong header cũ là baseline lịch sử, không kiểm kê runtime hiện tại.
+
+> Phiên bản: 2.6 (Post-R09, Core Flow & Learning Path Workflow Amendments)
+> Trạng thái: ACTIVE — 43 bảng vật lý trong EF migration model hiện hành (Đã bao gồm bảng 41: student_review_requests, bảng 42: teacher_review_histories, bảng 43: student_learning_path_preferences)
 > Database: MySQL 8.x / InnoDB / utf8mb4
 > ORM: Entity Framework Core 10
 > Chủ sở hữu: Data/Architecture owners; thay đổi cần nhóm phê duyệt
@@ -27,7 +33,7 @@ Schema gồm sáu module logic:
 5. Assessment & AI Reasoning.
 6. Dynamic Authorization & Evidence Governance.
 
-Hệ thống có 40 bảng vật lý trong EF migration model hiện hành, bao gồm 7 bảng ở Module 6, bảng watermark recommendation generation (bảng thứ 39: recommendation_generation_states) và bảng lưu trữ minh chứng đính kèm bài làm (bảng thứ 40: attempt_attachments). Toàn bộ mô hình tuân thủ kiểm tra live-MySQL và Global Query Filter nghiêm ngặt.
+Hệ thống có 43 bảng vật lý trong EF migration model hiện hành, bao gồm 7 bảng ở Module 6, bảng watermark recommendation generation (bảng thứ 39: recommendation_generation_states), bảng lưu trữ minh chứng đính kèm bài làm (bảng thứ 40: attempt_attachments), bảng quản lý yêu cầu khiếu nại bài làm của học sinh (bảng thứ 41: student_review_requests), bảng lịch sử xét duyệt bài của giáo viên (bảng thứ 42: teacher_review_histories) và bảng sở thích lộ trình học tập của học sinh (bảng thứ 43: student_learning_path_preferences). Toàn bộ mô hình tuân thủ kiểm tra live-MySQL và Global Query Filter nghiêm ngặt.
 
 ## 2. Quy ước vật lý
 
@@ -177,9 +183,9 @@ erDiagram
     CENTERS ||--o{ AUTHORIZATION_AUDIT_LOGS : audits
 ~~~
 
-## 3.1. Danh mục 40 bảng hiện hành, mục đích và quan hệ chính
+## 3.1. Danh mục 41 bảng hiện hành, mục đích và quan hệ chính
 
-Đây là data dictionary cấp bảng. Các mục 4–43 bên dưới là data dictionary cấp cột của 40 bảng hiện hành; không tạo thêm file schema song song.
+Đây là data dictionary cấp bảng. Các mục 4–44 bên dưới là data dictionary cấp cột của 41 bảng hiện hành; không tạo thêm file schema song song.
 
 | # | Table | Trạng thái | Chức năng | Quan hệ chính |
 |---:|---|---|---|---|
@@ -223,6 +229,7 @@ erDiagram
 | 38 | authorization_audit_logs | Current | Audit append-only của thay đổi quyền | FK actor/target users khi có |
 | 39 | evidence_assessments | Current | Quyết định policy append-only, không nhân bản analysis/mastery | FK attempts/analyses/self-supersession |
 | 40 | attempt_attachments | Current | Minh chứng ảnh nháp đính kèm Attempt | FK attempts; quan hệ 1:1, unique nonce giải quyết race condition |
+| 41 | student_review_requests | Current | Quản lý yêu cầu khiếu nại / xem xét lại bài làm của học sinh | FK attempts (CASCADE), questions, students, teachers |
 
 # Module 1 — System Users & Organization
 
@@ -380,6 +387,7 @@ Subject là tenant-owned để Teacher của Center này không làm thay đổi
 | subject_id | VARCHAR(36) | No | Tenant-safe FK subjects |
 | class_name | VARCHAR(150) | No | Tên lớp hiển thị trong Center |
 | academic_year | VARCHAR(20) | No | Ví dụ 2026-2027 |
+| grade_level | TINYINT UNSIGNED | Yes | 10, 11 hoặc 12; null là Chưa phân loại |
 | status | VARCHAR(32) | No | Active, Archived |
 | ...MTA | | | Kế thừa audit, soft-delete, tenant và row_version tại mục 2.3 |
 
@@ -390,11 +398,13 @@ Indexes:
 - UX(center_id, class_name, academic_year).
 - IX(center_id, teacher_id, status).
 - IX(center_id, subject_id, status).
+- IX(center_id, grade_level).
 
 Invariant:
 
 - Teacher và Subject phải cùng Center.
 - Class trong MVP gắn với đúng một Subject.
+- Soft-delete lớp tạo nhầm (chưa từng có thành viên, bài tập, giáo trình): cập nhật class_name thành `{base}#del#{class_id:N}` để giải phóng UX(center_id, class_name, academic_year).
 
 ## 11. class_students [Tenant join]
 
@@ -404,6 +414,10 @@ Invariant:
 | class_id | VARCHAR(36) | No | Tenant-safe FK classes |
 | student_id | VARCHAR(36) | No | Tenant-safe FK students |
 | joined_at | DATETIME(6) | No | Thời điểm UTC học sinh gia nhập lớp |
+| grade_level_at_enrollment | TINYINT UNSIGNED | Yes | Snapshot khối của học sinh tại thời điểm ghi danh (10, 11, 12) |
+| grade_mismatch_reason | VARCHAR(500) | Yes | Lý do ngoại lệ sư phạm khi ghi danh học sinh khác khối lớp |
+| exception_approved_by | VARCHAR(36) | Yes | User ID của người phê duyệt ngoại lệ ghi danh |
+| exception_approved_at | DATETIME(6) | Yes | Thời điểm UTC phê duyệt ngoại lệ ghi danh |
 | status | VARCHAR(32) | No | Active, Removed |
 | removed_at | DATETIME(6) | Yes | Thời điểm UTC rời/bị loại khỏi lớp |
 | created_by | VARCHAR(36) | Yes | User cùng Center tạo membership |
@@ -488,6 +502,7 @@ Invariant:
 | subject_id | VARCHAR(36) | No | Tenant-safe FK subjects |
 | title | VARCHAR(250) | No | Tiêu đề curriculum hiển thị |
 | description | TEXT | Yes | Mô tả mục tiêu/phạm vi curriculum |
+| grade_level | TINYINT UNSIGNED | Yes | 10, 11 hoặc 12; null là Chưa phân loại |
 | source_file | VARCHAR(500) | Yes | Reserved; MVP không upload |
 | review_status | VARCHAR(32) | No | Draft, Published, Archived |
 | ...MTA | | | Kế thừa audit, soft-delete, tenant và row_version tại mục 2.3 |
@@ -497,6 +512,7 @@ Indexes:
 - UX(center_id, curriculum_id).
 - IX(center_id, teacher_id, review_status).
 - IX(center_id, subject_id, review_status).
+- IX(center_id, grade_level).
 
 ## 15. curriculum_classes [Tenant join]
 
@@ -534,8 +550,9 @@ Indexes:
 | primary_topic_node_id | BIGINT UNSIGNED | No | Phải là Topic |
 | created_by_teacher_id | VARCHAR(36) | No | Tenant-safe FK |
 | question_type | VARCHAR(32) | No | MultipleChoice, ShortAnswer, Essay |
-| answer_evaluation_mode | VARCHAR(32) | No | TextExact, NumericRational, Manual (Default TextExact) |
+| answer_evaluation_mode | VARCHAR(32) | No | TextExact, NumericRational, Coordinate2D, Manual (Default TextExact) |
 | difficulty | TINYINT UNSIGNED | No | 1–5 |
+| grade_level | TINYINT UNSIGNED | Yes | 10, 11 hoặc 12; null là Chưa phân loại |
 | question_text | LONGTEXT | No | Việt hoặc Anh |
 | correct_answer | TEXT | No | Canonical final answer/model answer |
 | solution | LONGTEXT | No | Teacher-authored explanation |
@@ -543,7 +560,7 @@ Indexes:
 | grading_criteria | JSON | No | Versioned criteria object |
 | max_score | DECIMAL(5,2) | No | Default 1.00 |
 | estimated_time_seconds | INT UNSIGNED | No | > 0 |
-| reasoning_required | TINYINT(1) | No | Default 1 |
+| reasoning_required | TINYINT(1) | No | Default 0 (Opt-in từ POST-R09-ROLE-BOUNDARY-UX) |
 | language_code | VARCHAR(8) | No | vi hoặc en |
 | status | VARCHAR(32) | No | Draft, Active, Archived |
 | ...MTA | | | Kế thừa audit, soft-delete, tenant và row_version tại mục 2.3 |
@@ -554,7 +571,7 @@ Indexes/constraints:
 - IX(center_id, subject_id, primary_topic_node_id, status, difficulty).
 - IX(center_id, created_by_teacher_id, status).
 - CHECK question_type IN (MultipleChoice, ShortAnswer, Essay).
-- CHECK answer_evaluation_mode IN (TextExact, NumericRational, Manual).
+- CHECK answer_evaluation_mode IN (TextExact, NumericRational, Coordinate2D, Manual).
 - CHECK difficulty BETWEEN 1 AND 5.
 - CHECK max_score > 0.
 - CHECK estimated_time_seconds > 0.
@@ -582,6 +599,7 @@ grading_criteria JSON tối thiểu:
 | option_text | TEXT | No | Nội dung lựa chọn |
 | is_correct | TINYINT(1) | No | Đánh dấu đáp án đúng; Student projection không được lộ trước submit |
 | order_index | INT UNSIGNED | No | Thứ tự hiển thị ổn định |
+| misconception | VARCHAR(500) | Yes | Nhận thức sai lầm phổ biến tương ứng với đáp án; phục vụ phân tích AI/Rule-based |
 | ...MTA | | | Kế thừa audit, soft-delete, tenant và row_version tại mục 2.3 |
 
 Indexes:
@@ -618,8 +636,12 @@ BLL invariant:
 | title | VARCHAR(250) | No | Tiêu đề bài tập |
 | instructions | TEXT | Yes | Hướng dẫn do giáo viên soạn |
 | due_at | DATETIME(6) | Yes | UTC |
+| time_limit_minutes | INT | Yes | Giới hạn thời gian làm bài tính bằng phút; null nếu không giới hạn |
 | status | VARCHAR(32) | No | Draft, Published, Closed, Archived |
 | published_at | DATETIME(6) | Yes | Thời điểm UTC publish; null khi chưa publish |
+| target_mode | VARCHAR(32) | No | WholeClass, SelectedStudents, GapGroup; lưu trữ tường minh chế độ giao bài, không suy đoán từ danh sách rỗng |
+| allow_grade_mismatch | TINYINT(1) | No | Default 0; cờ cho phép giáo viên giao câu hỏi khác khối có chủ đích |
+| grade_mismatch_reason | VARCHAR(500) | Yes | Lý do ngoại lệ sư phạm khi allow_grade_mismatch = 1 (ví dụ ôn kiến thức nền, học trước nâng cao) |
 | ...MTA | | | Kế thừa audit, soft-delete, tenant và row_version tại mục 2.3 |
 
 Indexes:
@@ -671,11 +693,22 @@ Indexes:
 | total_question_count | INT UNSIGNED | No | Snapshot |
 | started_at | DATETIME(6) | Yes | Thời điểm UTC bắt đầu |
 | completed_at | DATETIME(6) | Yes | Thời điểm UTC hoàn tất |
+| overall_ai_comment | LONGTEXT | Yes | Nhận xét tổng quan của AI cho toàn bộ bài tập |
+| overall_ai_comment_generated_at | DATETIME(6) | Yes | Thời điểm UTC sinh nhận xét tổng quan |
+| overall_ai_comment_version | INT UNSIGNED | No | Default 0; tăng khi sinh lại nhận xét |
+| is_overall_ai_comment_stale | TINYINT(1) | No | Default 0; đánh dấu nhận xét cần làm mới |
+| teacher_final_review_status | VARCHAR(32) | No | Default 'Pending'; Pending, Approved |
+| final_reviewed_by_user_id | VARCHAR(36) | Yes | Tenant-safe FK users; giáo viên chốt điểm/nhận xét cuối |
+| final_reviewed_at | DATETIME(6) | Yes | Thời điểm UTC giáo viên duyệt bài cuối cùng |
+| final_teacher_note | VARCHAR(1000) | Yes | Lời dặn / nhận xét chung của giáo viên |
+| final_review_version | INT UNSIGNED | No | Default 0 |
 | ...MTA | | | Kế thừa audit, soft-delete, tenant và row_version tại mục 2.3 |
 
 - UX(center_id, assignment_id, student_id).
 - IX(center_id, student_id, status).
+- IX(center_id, final_reviewed_by_user_id).
 - CHECK completed_question_count <= total_question_count.
+- CHECK teacher_final_review_status IN ('Pending', 'Approved').
 
 # Module 4 — Digital Twin & Personalization
 
@@ -791,6 +824,11 @@ Table append-only; replay tạo event mới, không sửa event cũ.
 | status | VARCHAR(32) | No | Active, Superseded, Completed |
 | generated_from_attempt_id | BIGINT UNSIGNED | Yes | Attempt làm thay đổi input; null cho bootstrap/manual regenerate |
 | generated_at | DATETIME(6) | No | Thời điểm UTC sinh version |
+| plan_json | JSON | Yes | Cấu trúc lộ trình học tập chi tiết (giai đoạn, chủ đề, bài tập) |
+| recommendation_rationale | LONGTEXT | Yes | Giải thích sư phạm chi tiết cơ sở đề xuất lộ trình |
+| plan_schema_version | VARCHAR(16) | No | Default '2.0'; phiên bản cấu trúc plan |
+| generation_status | VARCHAR(32) | No | Default 'Ready'; trạng thái sinh lộ trình |
+| adaptation_message | LONGTEXT | Yes | Thông điệp thích ứng khi lộ trình được điều chỉnh |
 | ...MTA | | | Kế thừa audit, soft-delete, tenant và row_version tại mục 2.3 |
 
 - Chỉ một Active path cho Student + Subject; bảo đảm bằng transaction/service và filtered strategy phù hợp MySQL.
@@ -872,6 +910,7 @@ Table append-only; replay tạo event mới, không sửa event cũ.
 | answer_display_latex | VARCHAR(2048) | Yes | Công thức LaTeX hiển thị của câu trả lời |
 | is_correct | TINYINT(1) | Yes | Preliminary deterministic grade |
 | awarded_score | DECIMAL(5,2) | Yes | Điểm sơ bộ theo grader/criteria; teacher có thể review theo use case |
+| preliminary_grading_reason_code | VARCHAR(64) | Yes | Mã lý do deterministic/manual; null với dữ liệu cũ. Essay chưa chấm dùng `MANUAL_MODE` cùng `is_correct = NULL`, `awarded_score = NULL` |
 | time_spent_seconds | INT UNSIGNED | No | Telemetry thời gian quan sát được |
 | confidence | DECIMAL(5,2) | No | 0–100 |
 | answer_changes | INT UNSIGNED | No | Default 0 |
@@ -879,6 +918,10 @@ Table append-only; replay tạo event mới, không sửa event cũ.
 | reasoning_language | VARCHAR(8) | No | vi hoặc en |
 | status | VARCHAR(32) | No | PendingAnalysis, Processing, Completed, NeedsTeacherReview, AnalysisFailed |
 | client_submission_id | VARCHAR(36) | No | Idempotency key từ client |
+| manual_retry_count | TINYINT UNSIGNED | No | Default 0; số lần học sinh yêu cầu chấm lại thủ công (tối đa 3 lần) |
+| last_manual_retry_at | DATETIME(6) | Yes | Thời điểm học sinh yêu cầu chấm lại gần nhất theo UTC; cooldown 30s |
+| solution_exposed_at | DATETIME(6) | Yes | Thời điểm học sinh mở xem lời giải chi tiết theo UTC; chặn sửa/retry khi đã xem lời giải |
+| is_post_feedback | TINYINT(1) | No | Default 0; đánh dấu bài làm đã qua bước nhận phản hồi |
 | updated_at | DATETIME(6) | No | Thời điểm trạng thái thay đổi gần nhất |
 | row_version | BIGINT UNSIGNED | No | Concurrency token |
 | ...TA | | | Kế thừa center_id, created_at và created_by tại mục 2.3 |
@@ -915,6 +958,12 @@ Attempts không soft delete; nếu cần loại khỏi replay phải có use cas
 | needs_teacher_review | TINYINT(1) | No | Cờ vận hành đưa analysis vào review queue |
 | provider | VARCHAR(32) | No | Gemini hoặc RuleBased |
 | model_name | VARCHAR(100) | Yes | Model provider trả về; null cho fallback |
+| solution_type | VARCHAR(32) | Yes | REFINED, CORRECTED, GENERATED, MODEL_ANSWER |
+| ai_solution | LONGTEXT | Yes | Lời giải chi tiết mẫu hoặc đã chuẩn hóa do AI tạo ra |
+| review_decision | VARCHAR(32) | Yes | Approved, Adjusted |
+| reviewed_by_user_id | VARCHAR(36) | Yes | Tenant-safe FK users; giáo viên thẩm định |
+| reviewed_at | DATETIME(6) | Yes | Thời điểm UTC giáo viên duyệt bài |
+| teacher_review_note | VARCHAR(1000) | Yes | Ghi chú sư phạm khi giáo viên duyệt/điều chỉnh |
 | override_reasoning_quality | DECIMAL(5,2) | Yes | Quality giáo viên xác nhận/sửa |
 | override_error_type | VARCHAR(32) | Yes | Error type giáo viên xác nhận/sửa |
 | override_feedback | LONGTEXT | Yes | Feedback hiệu lực do giáo viên sửa |
@@ -1184,7 +1233,7 @@ Invariant:
 | attempt_id | BIGINT UNSIGNED | No | Tenant-safe FK attempts |
 | analysis_id | BIGINT UNSIGNED | Yes | Tenant-safe FK reasoning_analyses; null khi chưa có AI output |
 | supersedes_assessment_id | BIGINT UNSIGNED | Yes | Bản đánh giá trước bị thay thế khi replay |
-| source_type | VARCHAR(32) | No | AI, RuleFallback, TeacherOverride |
+| source_type | VARCHAR(32) | No | AI, RuleFallback, TeacherOverride, TeacherApproval |
 | trust_level | VARCHAR(32) | No | Trusted, Reduced, ReviewOnly |
 | decision_mode | VARCHAR(32) | No | AIWeighted, DeterministicOnly, HumanConfirmed |
 | reasoning_weight | DECIMAL(4,3) | No | 0.000–1.000 |
@@ -1207,7 +1256,7 @@ Indexes/constraints:
 - FK(center_id, supersedes_assessment_id, attempt_id) → evidence_assessments(center_id, evidence_assessment_id, attempt_id) khi supersedes_assessment_id khác null.
 - CHECK reasoning_weight BETWEEN 0 AND 1.
 - CHECK trust_level IN (Trusted, Reduced, ReviewOnly).
-- CHECK source_type IN (AI, RuleFallback, TeacherOverride).
+- CHECK source_type IN (AI, RuleFallback, TeacherOverride, TeacherApproval).
 - CHECK decision_mode IN (AIWeighted, DeterministicOnly, HumanConfirmed).
 - Trigger `tr_evidence_no_self_supersede` từ chối insert tự supersede. MySQL không cho CHECK tham chiếu cột AUTO_INCREMENT, nên invariant này dùng trigger thay vì CHECK.
 - Trigger `tr_evidence_append_only_update` và `tr_evidence_append_only_delete` chặn UPDATE/DELETE để database tự bảo vệ lịch sử append-only.
@@ -1257,7 +1306,105 @@ Invariant:
 - storage_key có cấu trúc xác định: `tenants/{centerId}/attempt-attachments/{uploadNonce}.png`.
 - Tải ảnh minh chứng qua API yêu cầu quyền sở hữu của học sinh hoặc giáo viên phụ trách bài tập (xác thực qua `IAttemptTeacherReviewScopeGuard`); bài tự do fail closed trả về HTTP 404.
 
-## 44. Structured AI output contract lưu vào reasoning_analyses
+## 44. student_review_requests [MTA - Bảng vật lý thứ 41]
+
+| Column | Type | Null | Constraint/Ý nghĩa |
+|---|---|---:|---|
+| request_id | BIGINT UNSIGNED | No | PK, auto increment |
+| center_id | VARCHAR(36) | No | Tenant discriminator |
+| attempt_id | BIGINT UNSIGNED | No | Tenant-safe FK attempts; quan hệ 1:N |
+| student_id | VARCHAR(36) | No | Tenant-safe FK students; học sinh gửi khiếu nại |
+| question_id | BIGINT UNSIGNED | No | Tenant-safe FK questions; câu hỏi liên quan |
+| student_comment | VARCHAR(1000) | No | Nội dung phản ánh / khiếu nại của học sinh |
+| status | VARCHAR(32) | No | Trạng thái xử lý: Pending, InReview, Resolved, Dismissed |
+| teacher_note | VARCHAR(1000) | Yes | Phản hồi / ghi chú giải quyết của giáo viên |
+| resolved_by_teacher_id | VARCHAR(36) | Yes | Tenant-safe FK teachers; giáo viên xử lý |
+| resolved_at | DATETIME(6) | Yes | Thời điểm giải quyết khiếu nại theo UTC |
+| ...MTA | | | Kế thừa created_at, created_by, updated_at và row_version tại mục 2.3 |
+
+Indexes/constraints:
+
+- PK(request_id).
+- UX(center_id, request_id).
+- IX(center_id, attempt_id).
+- IX(center_id, student_id, status).
+- FK(center_id, attempt_id) → attempts(center_id, attempt_id) ON DELETE CASCADE.
+- FK(center_id, question_id) → questions(center_id, question_id) ON DELETE RESTRICT.
+- FK(center_id, student_id) → students(center_id, student_id) ON DELETE RESTRICT.
+- FK(center_id, resolved_by_teacher_id) → teachers(center_id, teacher_id) ON DELETE RESTRICT.
+- CHECK status IN ('Pending', 'InReview', 'Resolved', 'Dismissed').
+
+Invariant:
+
+- Học sinh chỉ có thể gửi khiếu nại cho bài làm (Attempt) thuộc quyền sở hữu của mình.
+- Khi giáo viên giải quyết khiếu nại (`Resolved` hoặc `Dismissed`), bắt buộc cập nhật `resolved_by_teacher_id`, `resolved_at` và `teacher_note`.
+- Xóa vật lý Attempt (trong môi trường kiểm thử) sẽ CASCADE xóa các yêu cầu khiếu nại liên quan.
+
+## 45. teacher_review_histories [TA - Bảng vật lý thứ 42]
+
+| Column | Type | Null | Constraint/Ý nghĩa |
+|---|---|---:|---|
+| history_id | BIGINT UNSIGNED | No | PK, auto increment |
+| center_id | VARCHAR(36) | No | Tenant discriminator |
+| analysis_id | BIGINT UNSIGNED | No | Tenant-safe FK reasoning_analyses |
+| attempt_id | BIGINT UNSIGNED | No | Tenant-safe FK attempts |
+| teacher_id | VARCHAR(36) | No | Tenant-safe FK users; giáo viên thực hiện chấm duyệt |
+| decision | VARCHAR(32) | No | Approved, Adjusted |
+| previous_score | DECIMAL(5,2) | Yes | Điểm trước khi giáo viên can thiệp |
+| new_score | DECIMAL(5,2) | Yes | Điểm hiệu lực do giáo viên quyết định |
+| previous_is_correct | TINYINT(1) | Yes | Đánh giá đúng/sai trước can thiệp |
+| new_is_correct | TINYINT(1) | Yes | Đánh giá đúng/sai sau can thiệp |
+| note | VARCHAR(1000) | Yes | Ghi chú sư phạm của giáo viên |
+| override_version | INT UNSIGNED | No | Default 0; phiên bản override tương ứng |
+| ...TA | | | Kế thừa created_at, created_by và row_version tại mục 2.3 |
+
+Indexes/constraints:
+
+- PK(history_id).
+- UX(center_id, history_id).
+- IX(center_id, analysis_id).
+- IX(center_id, attempt_id).
+- IX(center_id, teacher_id).
+- FK(center_id, analysis_id) → reasoning_analyses(center_id, analysis_id) ON DELETE RESTRICT.
+- FK(center_id, attempt_id) → attempts(center_id, attempt_id) ON DELETE RESTRICT.
+- FK(center_id, teacher_id) → users(center_id, user_id) ON DELETE RESTRICT.
+- CHECK decision IN ('Approved', 'Adjusted').
+
+Invariant:
+
+- Ghi lại toàn bộ lịch sử các lần giáo viên phê duyệt hoặc điều chỉnh điểm số/kết quả bài làm.
+- Dữ liệu có tính lịch sử (audit trail) phục vụ minh bạch và đối chiếu khi học sinh khiếu nại.
+
+## 46. student_learning_path_preferences [MTA - Bảng vật lý thứ 43]
+
+| Column | Type | Null | Constraint/Ý nghĩa |
+|---|---|---:|---|
+| preference_id | BIGINT UNSIGNED | No | PK, auto increment |
+| center_id | VARCHAR(36) | No | Tenant discriminator |
+| student_id | VARCHAR(36) | No | Tenant-safe FK students; học sinh sở hữu cấu hình |
+| subject_id | VARCHAR(36) | No | Tenant-safe FK subjects; môn học áp dụng |
+| self_assessed_level | VARCHAR(32) | No | Mức độ tự đánh giá năng lực ban đầu |
+| weak_topic_node_ids | JSON | No | Mảng JSON chứa ID các nút kiến thức học sinh cảm thấy yếu |
+| focus_topic_node_ids | JSON | No | Mảng JSON chứa ID các nút kiến thức học sinh muốn tập trung |
+| goal_type | VARCHAR(32) | No | Loại mục tiêu (ôn thi, bổ trợ, nâng cao) |
+| target_mastery | DECIMAL(5,2) | No | Mức độ thông thạo mục tiêu (0–100%) |
+| target_weeks | INT | No | Số tuần dự kiến hoàn thành |
+| minutes_per_day | INT | No | Thời gian dành cho việc học mỗi ngày (phút) |
+| days_per_week | INT | No | Số ngày học trong tuần |
+| pace | VARCHAR(32) | No | Tốc độ học (chậm chắc, tiêu chuẩn, tăng tốc) |
+| preferred_mode | VARCHAR(32) | No | Phương thức học ưu tiên |
+| note | VARCHAR(1000) | Yes | Ghi chú cá nhân của học sinh |
+| ...MTA | | | Kế thừa audit, soft-delete, tenant và row_version tại mục 2.3 |
+
+Indexes/constraints:
+
+- PK(preference_id).
+- UX(center_id, preference_id).
+- UX(center_id, student_id, subject_id) — mỗi học sinh có tối đa 1 cấu hình sở thích trên mỗi môn học.
+- FK(center_id, student_id) → students(center_id, student_id) ON DELETE RESTRICT.
+- FK(center_id, subject_id) → subjects(center_id, subject_id) ON DELETE RESTRICT.
+
+## 47. Structured AI output contract lưu vào reasoning_analyses
 
 Payload hợp lệ trước khi persistence:
 
@@ -1407,6 +1554,8 @@ Không seed Attempt/Twin ở baseline chính nếu demo cần thể hiện thay 
 - Migration 006: Seed reference/demo data nếu tách khỏi runtime seeder.
 - Migration 007: Dynamic Authorization (permissions, permission_account_types, roles, role_permissions, user_roles, authorization_audit_logs) và backfill role từ role_name.
 - Migration 008: Evidence Governance (evidence_assessments) và backfill policy theo dữ liệu lịch sử đã được duyệt.
+- Migration 009: Assignment Time Limit (20260919132448_AddAssignmentTimeLimit) bổ sung time_limit_minutes vào assignments.
+- Migration 010: Core Flow & Review Enhancements (20260920103000_AddCoreFlowAndReviewEnhancements) bổ sung retry telemetry, solution exposure timestamp, option misconception và bảng student_review_requests.
 
 Tên migration thực tế phải diễn đạt nội dung, không dùng tên ngẫu nhiên.
 
@@ -1484,3 +1633,38 @@ Nếu AI Developer cho rằng cần table mới, phải tạo Change Proposal; k
 - [ ] 30 logical questions bao phủ hai Subject và ba loại câu hỏi.
 - [ ] Migration chạy được từ database trống.
 - [ ] Migration v2 và query/index trọng yếu được kiểm tra trên MySQL thật, không chỉ EF InMemory/SQLite.
+
+## 52. Danh mục Phân quyền & Ma trận Account Types (POST-R09-ROLE-BOUNDARY-UX)
+
+### 52.1. Phân định Ranh giới Quyền hạn Fail-Closed
+
+Nhằm tuân thủ nguyên tắc đặc quyền tối thiểu (Least Privilege) và phân tách ranh giới trách nhiệm, `permission_account_types` và `role_permissions` được cấu hình nghiêm ngặt:
+
+1. **CenterManager:**
+   - Được phép gán các quyền: `dashboards.center.read`, `organization.*` (`teachers.*`, `students.*`, `classes.*`), `knowledge.subjects.*`, `authorization.*` (`roles.*`, `users.roles.*`, `audit_logs.read`).
+   - Tước bỏ toàn bộ mã quyền học thuật trực tiếp khỏi danh mục `permission_account_types` của `CenterManager`: `knowledge.nodes.*`, `knowledge.edges.*`, `curriculum.*`, `questions.*`, `assignments.*`, `twin.reasoning.*`, `dashboards.teacher.read_scoped`.
+   - Mọi nỗ lực truy cập hoặc gán quyền học thuật cho CenterManager bị chặn fail-closed ngay tại tầng dữ liệu (`AuthorizationBootstrapper`), nghiệp vụ và giao diện.
+
+2. **Teacher:**
+   - Sở hữu đầy đủ các quyền học thuật phục vụ giảng dạy, khảo thí và sư phạm: `knowledge.nodes.*`, `knowledge.edges.*`, `curriculum.*`, `questions.*`, `assignments.*`, `twin.reasoning.*`, `dashboards.teacher.read_scoped`.
+   - Bị cấm khỏi các quyền quản trị cơ cấu trung tâm diện rộng và phân quyền nền tảng.
+
+3. **Thứ tự Ràng buộc Khóa ngoại (FK Cascading Constraint Ordering):**
+   - Bảng `role_permissions` có ràng buộc khóa ngoại `fk_role_permissions_permission_account_types` trỏ tới `permission_account_types(permission_id, account_type)`.
+   - Trong quá trình khởi tạo hoặc đối soát hệ thống (`AuthorizationBootstrapper`), việc dọn dẹp các quyền không còn áp dụng cho một `account_type` bắt buộc phải xóa các bản ghi tương ứng trong `role_permissions` trên toàn bộ các trung tâm trước khi thực hiện xóa trên bảng danh mục `permission_account_types`, ngăn chặn triệt để lỗi vi phạm khóa ngoại MySQL.
+
+## 53. Điều phối xử lý AI và tổng hợp lộ trình (2026-10-07)
+
+Migration `20261006173556_AddAIProcessingCoordination` bổ sung:
+
+| Bảng | Khóa/phạm vi | Mục đích |
+|---|---|---|
+| `ai_analysis_checkpoints` | `(center_id, attempt_id)`; FK tenant-composite tới attempts | Lưu kết quả AI hợp lệ và fingerprint trước commit. Worker phải giữ đúng version/lease để ghi. Xóa sau commit chính thức cùng transaction. |
+| `ai_student_post_processing_jobs` | `(center_id, student_id, subject_id, assignment_scope_id)`; FK tenant-composite tới students | Hàng đợi bền vững, gom các lần cần cập nhật gợi ý và nhận xét. `Guid.Empty` biểu thị luyện tập không thuộc bài tập. Revision/processed revision, lease, thời điểm chạy và lỗi giúp phục hồi sau restart. |
+| `ai_provider_quota_states` | `pool_id`, băm project + model; dùng chung giữa tenant | Bộ đếm/cuộc gọi/lease/cooldown cho quota provider. Không lưu API key hoặc dữ liệu học sinh. |
+
+Hai bảng chứa dữ liệu nghiệp vụ có query filter theo trung tâm; bảng quota chứa metadata năng lực provider nên không có filter tenant. Cả ba có row version. Chỉ khóa SQL trong bước điều phối/ghi dữ liệu; không giữ transaction qua cuộc gọi Gemini. Phân tích từng câu và evidence/history vẫn lưu ở các bảng chính thức hiện có.
+
+## 54. AI analysis profile provenance — 2026-10-07
+
+Migration `20261007054616_AddAIAnalysisProfileProvenance` thêm `reasoning_analyses.analysis_profile_version` (`varchar(200) NULL`). Các dòng cũ giữ NULL; phân tích mới lưu provider/model/policy/schema và chiến lược microbatch. `model_name` sẵn có được điền từ adapter server. Metadata không được nhận từ JSON của AI hoặc request học sinh. Provider enum bổ sung `Groq` nhưng vẫn lưu dạng chuỗi trong cột `provider` hiện có, không đổi kiểu/cắt dữ liệu. Evidence liên kết analysis như trước; không thêm điểm AI hoặc thay thuật toán Mastery.

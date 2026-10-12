@@ -70,8 +70,10 @@ public sealed class TeacherOverrideUseCaseTests : IDisposable
         });
     }
 
-    [Fact]
-    public async Task ExecuteAsync_ValidOverride_ReplaysAttemptsChronologicallyAndReturnsReplaySummary()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExecuteAsync_ValidOverride_ReplaysAttemptsChronologicallyAndReturnsReplaySummary(bool useRubric)
     {
         // 1. Seed Teacher, Class, Student, ClassStudent, Assignment, AssignmentTarget
         var classId = Guid.NewGuid();
@@ -101,6 +103,11 @@ public sealed class TeacherOverrideUseCaseTests : IDisposable
 
         // 2. Seed Question with Topic 101
         SeedQuestion();
+        if (useRubric) _dbContext.Questions.Local.Single().GradingCriteria = new()
+        {
+            Criteria = [new() { CriterionId = "method", Title = "Phương pháp", Description = "Mọi phương pháp hợp lệ", MaxScore = 4 },
+                new() { CriterionId = "result", Title = "Kết quả", Description = "Kết quả đúng", MaxScore = 6 }]
+        };
 
         // 3. Seed Attempt with Analysis needing review
         var attempt = new Attempt
@@ -183,6 +190,17 @@ public sealed class TeacherOverrideUseCaseTests : IDisposable
 
         var result = await useCase.ExecuteAsync(2001, request, CancellationToken.None);
 
+        if (useRubric)
+        {
+            Assert.Equal(TeacherOverrideStatus.ValidationFailed, result.Status);
+            request.RubricScores = [new() { CriterionId = "method", AwardedScore = 4, Comment = "Cách giải khác hợp lệ" },
+                new() { CriterionId = "result", AwardedScore = 6 }];
+            request.AwardedScore = 9;
+            Assert.Equal("RUBRIC_TOTAL_MISMATCH", (await useCase.ExecuteAsync(2001, request, CancellationToken.None)).ErrorCode);
+            request.AwardedScore = null; // Server, not the client, calculates the total.
+            result = await useCase.ExecuteAsync(2001, request, CancellationToken.None);
+        }
+
         Assert.Equal(TeacherOverrideStatus.Success, result.Status);
         Assert.NotNull(result.Data);
         Assert.Equal("2001", result.Data.AnalysisId);
@@ -197,6 +215,19 @@ public sealed class TeacherOverrideUseCaseTests : IDisposable
         Assert.Equal(1u, analysis.OverrideVersion);
         Assert.False(analysis.NeedsTeacherReview);
         Assert.Equal(_teacherId, analysis.OverriddenByUserId);
+        Assert.Equal(TeacherReviewDecision.Adjusted, analysis.ReviewDecision);
+        var history = await _dbContext.TeacherReviewHistories.SingleAsync();
+        Assert.Equal(1u, history.OverrideVersion);
+        Assert.Equal(_teacherId, history.TeacherId);
+        if (useRubric)
+        {
+            Assert.Equal(10m, analysis.OverrideAwardedScore);
+            var rubric = RubricGrade.Deserialize(history.RubricResultJson)!;
+            Assert.Equal(10m, rubric.AwardedScore);
+            Assert.Equal("Phương pháp", rubric.Criteria[0].Title);
+            Assert.Equal("Cách giải khác hợp lệ", rubric.Criteria[0].Comment);
+        }
+        else Assert.Null(history.RubricResultJson);
 
         // Verify preliminary correctness provenance is preserved, and override is recorded in analysis
         Assert.False(attempt.IsCorrect);
@@ -291,6 +322,7 @@ public sealed class TeacherOverrideUseCaseTests : IDisposable
             ReasoningQuality = 90m,
             IsCorrect = true,
             Reason = "Override",
+            Feedback = "Teacher feedback note",
             OverrideVersion = 1 // Stale! Current is 2
         };
 
@@ -356,6 +388,7 @@ public sealed class TeacherOverrideUseCaseTests : IDisposable
             ReasoningQuality = 90m,
             IsCorrect = true,
             Reason = "Override",
+            Feedback = "Teacher feedback note",
             OverrideVersion = 0
         };
 
@@ -462,6 +495,65 @@ public sealed class TeacherOverrideUseCaseTests : IDisposable
 
         var result = await useCase.ExecuteAsync(2099, request, CancellationToken.None);
         Assert.Equal(TeacherOverrideStatus.Forbidden, result.Status);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task ExecuteAsync_WhenFeedbackIsNullOrEmptyOrWhitespace_ReturnsValidationFailed_FeedbackRequired(string? feedback)
+    {
+        var useCase = new TeacherOverrideUseCase(
+            _dbContext,
+            _tenantContext,
+            new EvidenceGate(),
+            new EvidenceAssessmentFactory(),
+            new StudentGoalRiskUpdater(_dbContext),
+            new StudentTwinUpdater(_dbContext),
+            new TwinUpdateHistoryWriter(_dbContext),
+            TimeProvider.System);
+
+        var request = new TeacherOverrideRequest
+        {
+            ReasoningQuality = 90m,
+            ErrorType = ErrorType.None,
+            Feedback = feedback!,
+            IsCorrect = true,
+            Reason = "Valid reason",
+            OverrideVersion = 0
+        };
+
+        var result = await useCase.ExecuteAsync(1, request, CancellationToken.None);
+        Assert.Equal(TeacherOverrideStatus.ValidationFailed, result.Status);
+        Assert.Equal("FEEDBACK_REQUIRED", result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenFeedbackExceeds4000Chars_ReturnsValidationFailed_FeedbackTooLong()
+    {
+        var useCase = new TeacherOverrideUseCase(
+            _dbContext,
+            _tenantContext,
+            new EvidenceGate(),
+            new EvidenceAssessmentFactory(),
+            new StudentGoalRiskUpdater(_dbContext),
+            new StudentTwinUpdater(_dbContext),
+            new TwinUpdateHistoryWriter(_dbContext),
+            TimeProvider.System);
+
+        var request = new TeacherOverrideRequest
+        {
+            ReasoningQuality = 90m,
+            ErrorType = ErrorType.None,
+            Feedback = new string('A', 4001),
+            IsCorrect = true,
+            Reason = "Valid reason",
+            OverrideVersion = 0
+        };
+
+        var result = await useCase.ExecuteAsync(1, request, CancellationToken.None);
+        Assert.Equal(TeacherOverrideStatus.ValidationFailed, result.Status);
+        Assert.Equal("FEEDBACK_TOO_LONG", result.ErrorCode);
     }
 
     private sealed class FixedTimeProvider : TimeProvider

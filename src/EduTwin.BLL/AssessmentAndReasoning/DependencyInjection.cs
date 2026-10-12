@@ -17,6 +17,7 @@ public static class DependencyInjection
     public static IServiceCollection AddAssessmentAndReasoning(this IServiceCollection services)
     {
         services.TryAddSingleton<IMathAnswerNormalizer, MathAnswerNormalizer>();
+        services.TryAddSingleton<ICoordinateAnswerNormalizer, CoordinateAnswerNormalizer>();
         services.TryAddSingleton<MultipleChoiceGrader>();
         services.TryAddSingleton<ShortAnswerGrader>();
         services.TryAddSingleton<EssayGrader>();
@@ -31,6 +32,9 @@ public static class DependencyInjection
         services.TryAddScoped<IAIAnalysisJobCandidateDiscovery, AIAnalysisJobCandidateDiscovery>();
         services.TryAddScoped<IAIAnalysisJobLeaseOperation, AIAnalysisJobLeaseOperation>();
         services.TryAddScoped<IAIAnalysisJobProcessor, AIAnalysisJobProcessor>();
+        services.TryAddScoped<IAIAnalysisCheckpointStore, AIAnalysisCheckpointStore>();
+        services.TryAddScoped<IAIStudentPostProcessingQueue, AIStudentPostProcessingQueue>();
+        services.TryAddScoped<AIStudentPostProcessor>();
         services.TryAddScoped<IListAttemptsUseCase, ListAttemptsUseCase>();
         services.TryAddScoped<IListTeacherReviewQueueUseCase, ListTeacherReviewQueueUseCase>();
         services.TryAddScoped<ITeacherOverrideUseCase, TeacherOverrideUseCase>();
@@ -45,6 +49,7 @@ public static class DependencyInjection
         services.TryAddScoped<ReviewRequest.ICreateStudentReviewRequestUseCase, ReviewRequest.CreateStudentReviewRequestUseCase>();
         services.TryAddScoped<ITeacherApproveUseCase, TeacherApproveUseCase>();
         services.TryAddScoped<IApproveAssignmentResultUseCase, ApproveAssignmentResultUseCase>();
+        services.TryAddScoped<IReopenAssignmentResultUseCase, ReopenAssignmentResultUseCase>();
         services.TryAddScoped<IVoidAssignmentQuestionUseCase, VoidAssignmentQuestionUseCase>();
 
         return services;

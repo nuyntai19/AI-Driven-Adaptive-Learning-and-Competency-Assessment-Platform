@@ -1,5 +1,5 @@
 import React from "react";
-import { RichMathText } from "../math/RichMathText";
+import { MathPreviewCore } from "../math/MathPreviewCore";
 
 export interface TeacherMathFormulaPreviewProps {
   formula?: string;
@@ -12,7 +12,7 @@ export interface TeacherMathFormulaPreviewProps {
 /**
  * MathFormulaPreview (Teacher)
  * Independent Math/KaTeX formula preview component specifically designed and isolated for the Teacher workspace.
- * Renders LaTeX formulas seamlessly with the Teacher Theme styling.
+ * Wraps MathPreviewCore with the Teacher Theme styling (th-*).
  */
 export const MathFormulaPreview: React.FC<TeacherMathFormulaPreviewProps> = ({
   formula,
@@ -28,20 +28,20 @@ export const MathFormulaPreview: React.FC<TeacherMathFormulaPreviewProps> = ({
   }
 
   return (
-    <div
-      className={`rounded-xl border border-[var(--th-border)] bg-[var(--th-surface)] p-3 text-xs shadow-sm transition-colors ${className}`}
-      aria-label="Mathematical formula preview"
-    >
-      <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-[var(--th-border-subtle)] text-[11px] font-bold text-[var(--th-text-secondary)]">
-        <span>{label}</span>
-        <span className="text-[10px] px-2 py-0.5 rounded border border-[var(--th-border)] bg-[var(--at-accent-wash)] text-[var(--at-accent-text)] font-mono font-bold uppercase tracking-wider">
-          KaTeX
-        </span>
-      </div>
-      <div className="overflow-x-auto text-[var(--th-text)] py-1 text-sm font-medium leading-relaxed">
-        <RichMathText text={targetContent} displayMode={displayMode} />
-      </div>
-    </div>
+    <MathPreviewCore
+      content={targetContent}
+      displayMode={displayMode}
+      mode="rich"
+      className={`rounded-xl border border-[var(--th-border)] bg-[var(--th-surface)] p-3 text-xs shadow-sm transition-colors text-[var(--th-text)] ${className}`}
+      headerSlot={
+        <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-[var(--th-border-subtle)] text-[11px] font-bold text-[var(--th-text-secondary)]">
+          <span>{label}</span>
+          <span className="text-[10px] px-2 py-0.5 rounded border border-[var(--th-border)] bg-[var(--at-accent-wash)] text-[var(--at-accent-text)] font-mono font-bold uppercase tracking-wider">
+            KaTeX
+          </span>
+        </div>
+      }
+    />
   );
 };
 

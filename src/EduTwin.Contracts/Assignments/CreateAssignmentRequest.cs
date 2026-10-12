@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 
 namespace EduTwin.Contracts.Assignments;
 
@@ -17,6 +18,7 @@ public class CreateAssignmentRequest
     public string Title { get; set; } = string.Empty;
     public string? Instructions { get; set; }
     public DateTime? DueAt { get; set; }
+    public int? TimeLimitMinutes { get; set; }
 
     /// <summary>
     /// Danh sách questionId (string của BIGINT UNSIGNED) theo thứ tự.
@@ -35,4 +37,8 @@ public class CreateAssignmentRequest
     /// Null hoặc rỗng hợp lệ khi TargetMode == WholeClass (server ignore).
     /// </summary>
     public List<string>? StudentIds { get; set; }
+    public bool AllowGradeMismatch { get; set; }
+
+    [MaxLength(500)]
+    public string? GradeMismatchReason { get; set; }
 }

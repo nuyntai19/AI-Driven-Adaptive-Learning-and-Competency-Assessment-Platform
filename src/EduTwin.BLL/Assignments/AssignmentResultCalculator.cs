@@ -11,11 +11,14 @@ using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.DAL.AssessmentAndReasoning;
 using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.Persistence;
+using EduTwin.DAL.Assignments;
 
 namespace EduTwin.BLL.Assignments;
 
 public interface IAssignmentResultCalculator
 {
+    Task<Dictionary<(Guid StudentId, Guid AssignmentId), AssignmentResultSummaryDto>> CalculateForRosterAsync(
+        Guid centerId, IReadOnlyCollection<Guid> studentIds, IReadOnlyCollection<Guid> assignmentIds, CancellationToken cancellationToken);
     Task<AssignmentResultSummaryDto> CalculateForSingleAssignmentAsync(
         Guid centerId,
         Guid studentId,
@@ -54,9 +57,16 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
         IReadOnlyCollection<Guid> assignmentIds,
         CancellationToken cancellationToken)
     {
-        if (assignmentIds.Count == 0)
+        var roster = await CalculateForRosterAsync(centerId, new[] { studentId }, assignmentIds, cancellationToken);
+        return roster.ToDictionary(p => p.Key.AssignmentId, p => p.Value);
+    }
+
+    public async Task<Dictionary<(Guid StudentId, Guid AssignmentId), AssignmentResultSummaryDto>> CalculateForRosterAsync(
+        Guid centerId, IReadOnlyCollection<Guid> studentIds, IReadOnlyCollection<Guid> assignmentIds, CancellationToken cancellationToken)
+    {
+        if (assignmentIds.Count == 0 || studentIds.Count == 0)
         {
-            return new Dictionary<Guid, AssignmentResultSummaryDto>();
+            return new();
         }
 
         // 1. Batch load assignment questions with question max scores
@@ -69,6 +79,8 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
             {
                 aq.AssignmentId,
                 aq.QuestionId,
+                aq.IsVoided,
+                aq.VoidReason,
                 Status = aq.Question != null ? aq.Question.Status : QuestionStatus.Active,
                 MaxScore = aq.Question != null && aq.Question.MaxScore > 0
                     ? aq.Question.MaxScore
@@ -84,17 +96,20 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
         var attemptsQuery = _dbContext.Attempts
             .AsNoTracking()
             .Where(a => a.CenterId == centerId &&
-                        a.StudentId == studentId &&
                         a.AssignmentId.HasValue);
+        attemptsQuery = WhereIn(attemptsQuery, a => a.StudentId, studentIds);
 
         var nullableAssignmentIds = assignmentIds.Select(id => (Guid?)id).ToList();
         var allAttempts = await WhereIn(attemptsQuery, a => a.AssignmentId, nullableAssignmentIds)
             .OrderByDescending(a => a.CreatedAt)
+            .ThenByDescending(a => a.AttemptId)
+            .Select(a => new Attempt { AttemptId = a.AttemptId, AssignmentId = a.AssignmentId,
+                StudentId = a.StudentId, QuestionId = a.QuestionId, AwardedScore = a.AwardedScore, IsCorrect = a.IsCorrect })
             .ToListAsync(cancellationToken);
 
         // Group to get latest attempt per question per assignment
         var latestAttemptsByQuestion = allAttempts
-            .GroupBy(a => new { a.AssignmentId!.Value, a.QuestionId })
+            .GroupBy(a => (a.StudentId, AssignmentId: a.AssignmentId!.Value, a.QuestionId))
             .ToDictionary(g => g.Key, g => g.First());
 
         var latestAttemptIds = latestAttemptsByQuestion.Values.Select(a => a.AttemptId).Distinct().ToList();
@@ -108,6 +123,9 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
                 .Where(ra => ra.CenterId == centerId);
 
             analyses = await WhereIn(analysesQuery, ra => ra.AttemptId, latestAttemptIds)
+                .Select(ra => new ReasoningAnalysis { AttemptId = ra.AttemptId, IsFallback = ra.IsFallback,
+                    OverrideAwardedScore = ra.OverrideAwardedScore, OverrideIsCorrect = ra.OverrideIsCorrect,
+                    NeedsTeacherReview = ra.NeedsTeacherReview, OverrideVersion = ra.OverrideVersion })
                 .ToListAsync(cancellationToken);
         }
         else
@@ -123,13 +141,18 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
         var progressesQuery = _dbContext.StudentAssignmentProgresses
             .AsNoTracking()
             .Where(p => p.CenterId == centerId &&
-                        p.StudentId == studentId &&
                         !p.IsDeleted);
+        progressesQuery = WhereIn(progressesQuery, p => p.StudentId, studentIds);
 
         var progresses = await WhereIn(progressesQuery, p => p.AssignmentId, assignmentIds)
+            .Select(p => new StudentAssignmentProgress { StudentId = p.StudentId, AssignmentId = p.AssignmentId,
+                TeacherFinalReviewStatus = p.TeacherFinalReviewStatus, FinalTeacherNote = p.FinalTeacherNote,
+                FinalReviewedByUserId = p.FinalReviewedByUserId, FinalReviewedAt = p.FinalReviewedAt,
+                OverallAiComment = p.OverallAiComment, OverallAiCommentGeneratedAt = p.OverallAiCommentGeneratedAt,
+                IsOverallAiCommentStale = p.IsOverallAiCommentStale })
             .ToListAsync(cancellationToken);
 
-        var progressesByAssignment = progresses.ToDictionary(p => p.AssignmentId);
+        var progressesByAssignment = progresses.ToDictionary(p => (p.StudentId, p.AssignmentId));
 
         var reviewerIds = progresses
             .Where(p => p.FinalReviewedByUserId.HasValue)
@@ -138,14 +161,13 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
             .ToList();
         var reviewerNames = reviewerIds.Count == 0
             ? new Dictionary<Guid, string>()
-            : await _dbContext.Users
-                .AsNoTracking()
-                .Where(u => u.CenterId == centerId && reviewerIds.Contains(u.UserId))
+            : await WhereIn(_dbContext.Users.AsNoTracking().Where(u => u.CenterId == centerId), u => u.UserId, reviewerIds)
                 .ToDictionaryAsync(u => u.UserId, u => u.DisplayName, cancellationToken);
 
         // 5. Compute summary deterministically for each assignment
-        var resultMap = new Dictionary<Guid, AssignmentResultSummaryDto>(assignmentIds.Count);
+        var resultMap = new Dictionary<(Guid StudentId, Guid AssignmentId), AssignmentResultSummaryDto>();
 
+        foreach (var studentId in studentIds)
         foreach (var assignmentId in assignmentIds)
         {
             var questions = questionsByAssignment.GetValueOrDefault(assignmentId) ?? new();
@@ -157,10 +179,30 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
             int answeredQuestionCount = 0;
             int evaluatedQuestionCount = 0;
             int correctQuestionCount = 0;
+            int voidedQuestionCount = 0;
+            int gradedAwaitingReviewCount = 0;
+            int aiAnalyzedQuestionCount = 0;
 
             foreach (var q in questions)
             {
-                var hasAttempt = latestAttemptsByQuestion.TryGetValue(new { Value = assignmentId, q.QuestionId }, out var attempt);
+                var hasAttempt = latestAttemptsByQuestion.TryGetValue((studentId, assignmentId, q.QuestionId), out var attempt);
+
+                if (q.IsVoided)
+                {
+                    // Question was voided specifically for this assignment:
+                    // All targeted students get full score (scorePerQuestion on 10-point scale).
+                    // Distinctly tracked as voided, NOT counted as "answered correctly" (unless actually answered).
+                    voidedQuestionCount++;
+                    evaluatedQuestionCount++;
+                    totalAwardedScore += scorePerQuestion;
+
+                    if (hasAttempt && attempt != null)
+                    {
+                        answeredQuestionCount++;
+                    }
+                    continue;
+                }
+
                 if (!hasAttempt || attempt == null)
                 {
                     continue;
@@ -169,18 +211,18 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
                 answeredQuestionCount++;
 
                 var analysis = analysesByAttemptId.GetValueOrDefault(attempt.AttemptId);
-
-                var isVoided = q.Status == QuestionStatus.Archived;
+                if (analysis is not null && !analysis.IsFallback) aiAnalyzedQuestionCount++;
 
                 // Effective grade calculation
-                decimal? effectiveScore = isVoided ? q.MaxScore : (analysis?.OverrideAwardedScore ?? attempt.AwardedScore);
-                bool? effectiveIsCorrect = isVoided ? true : (analysis?.OverrideIsCorrect ?? attempt.IsCorrect);
+                decimal? effectiveScore = analysis?.OverrideAwardedScore ?? attempt.AwardedScore;
+                bool? effectiveIsCorrect = analysis?.OverrideIsCorrect ?? attempt.IsCorrect;
 
-                if (isVoided || effectiveScore.HasValue || effectiveIsCorrect.HasValue)
+                if (effectiveScore.HasValue || effectiveIsCorrect.HasValue)
                 {
-                    var earnedRatio = isVoided ? 1m : (effectiveScore.HasValue && q.MaxScore > 0
+                    if (analysis?.NeedsTeacherReview == true && analysis.OverrideVersion == 0) gradedAwaitingReviewCount++;
+                    var earnedRatio = effectiveScore.HasValue && q.MaxScore > 0
                         ? Math.Clamp(effectiveScore.Value / q.MaxScore, 0m, 1m)
-                        : effectiveIsCorrect == true ? 1m : 0m);
+                        : effectiveIsCorrect == true ? 1m : 0m;
                     totalAwardedScore += scorePerQuestion * earnedRatio;
                     evaluatedQuestionCount++;
 
@@ -192,12 +234,12 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
             }
 
             // Read cached overall AI comment (never calls LLM here)
-            var progress = progressesByAssignment.GetValueOrDefault(assignmentId);
+            var progress = progressesByAssignment.GetValueOrDefault((studentId, assignmentId));
             var finalReviewStatus = progress?.TeacherFinalReviewStatus ?? TeacherFinalReviewStatus.Pending;
-            var pendingQuestionCount = Math.Max(0, totalQuestionCount - evaluatedQuestionCount);
+            var pendingQuestionCount = Math.Max(0, totalQuestionCount - evaluatedQuestionCount) + gradedAwaitingReviewCount;
             var resultStatus = finalReviewStatus == TeacherFinalReviewStatus.Approved
                 ? "Final"
-                : evaluatedQuestionCount > 0 && pendingQuestionCount == 0
+                : evaluatedQuestionCount > 0 && evaluatedQuestionCount == totalQuestionCount
                     ? "Provisional"
                     : "Processing";
             string? cachedComment = null;
@@ -209,13 +251,15 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
                 commentGeneratedAt = progress.OverallAiCommentGeneratedAt;
             }
 
-            resultMap[assignmentId] = new AssignmentResultSummaryDto
+            resultMap[(studentId, assignmentId)] = new AssignmentResultSummaryDto
             {
                 TotalQuestionCount = totalQuestionCount,
                 AnsweredQuestionCount = answeredQuestionCount,
                 EvaluatedQuestionCount = evaluatedQuestionCount,
+                AiAnalyzedQuestionCount = aiAnalyzedQuestionCount,
                 CorrectQuestionCount = correctQuestionCount,
-                IncorrectQuestionCount = Math.Max(0, evaluatedQuestionCount - correctQuestionCount),
+                IncorrectQuestionCount = Math.Max(0, evaluatedQuestionCount - correctQuestionCount - voidedQuestionCount),
+                VoidedQuestionCount = voidedQuestionCount,
                 PendingQuestionCount = pendingQuestionCount,
                 ResultStatus = resultStatus,
                 TeacherFinalReviewStatus = finalReviewStatus.ToString(),

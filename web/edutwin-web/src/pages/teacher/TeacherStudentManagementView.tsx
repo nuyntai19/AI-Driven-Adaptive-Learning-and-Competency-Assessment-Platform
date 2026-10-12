@@ -2,13 +2,10 @@ import { useState, useMemo, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { organizationApi } from "../../api/organizationApi";
-import { getAssignments, getAssignmentProgress } from "../../api/assignmentsApi";
+import { httpClient } from "../../api/httpClient";
 import { getTeacherStudentTwin } from "../../api/digitalTwinApi";
 import { useAuthStore } from "../../stores/authStore";
-<<<<<<< Updated upstream
-=======
-import { teacherNotesApi } from "../../api/teacherNotesApi";
->>>>>>> Stashed changes
+import { teacherNotesKey, readTeacherNotes } from "../../utils/teacherNotesStorage";
 import { permissions } from "../../auth/permissions";
 import {
   TeacherPageHeader,
@@ -18,8 +15,8 @@ import {
   TeacherSafeErrorPanel,
 } from "../../components/teacher/TeacherPrimitives";
 import { TeacherModal } from "../../components/teacher/TeacherOverlays";
+import { ClassHistoryPanel } from "../../components/ClassHistoryPanel";
 import type { StudentDto, StudentSubjectGoalDto } from "../../types/organization";
-import type { AssignmentDto, AssignmentProgressItemDto, ProgressStatus } from "../../types/assignments";
 import type { StudentTwinDataDto } from "../../types/digitalTwin";
 
 import {
@@ -28,14 +25,23 @@ import {
   exportClassReportXlsx,
   buildStudentReportCsv,
   buildClassReportCsv,
+  assessmentLabel,
+  isAcademicHighRisk,
+  reportScoreText,
   type StudentAcademicSummary,
-  type StudentAssignmentRecord,
 } from "./teacherReportsHelpers";
+
+interface ClassAcademicReport {
+  totalAssignments: number;
+  generatedAt: string;
+  students: { student: StudentDto; summary: StudentAcademicSummary }[];
+}
 
 export function TeacherStudentManagementView() {
   const { studentId: routeStudentId } = useParams<{ studentId?: string }>();
   const navigate = useNavigate();
   const hasPermission = useAuthStore((state) => state.hasPermission);
+  const actor = useAuthStore((state) => state.user);
   const canCreateAssignment = hasPermission(permissions.assignmentsCreate);
 
   // Filter States
@@ -53,71 +59,36 @@ export function TeacherStudentManagementView() {
   const [isStudentPrintModalOpen, setIsStudentPrintModalOpen] = useState<boolean>(false);
   const [isClassPrintModalOpen, setIsClassPrintModalOpen] = useState<boolean>(false);
 
-<<<<<<< Updated upstream
-  // Pedagogical notes state (stored by studentId in localStorage for teacher persistence)
-  const [teacherNotes, setTeacherNotes] = useState<Record<string, string>>(() => {
-    try {
-      const saved = localStorage.getItem("teacher_pedagogical_notes");
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
-
-  const handleSaveNote = (studentId: string, note: string) => {
-    const updated = { ...teacherNotes, [studentId]: note };
-    setTeacherNotes(updated);
-    try {
-      localStorage.setItem("teacher_pedagogical_notes", JSON.stringify(updated));
-    } catch {
-      // ignore
-=======
   // Excel Export Async / Loading & Error State
   const [isExportingExcel, setIsExportingExcel] = useState<boolean>(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
-  // Fetch Pedagogical Notes from Backend MySQL Database
-  const { data: serverNotesMap, refetch: refetchTeacherNotes } = useQuery({
-    queryKey: ["teacherPedagogicalNotes", actor?.centerId, actor?.userId],
-    queryFn: async () => {
-      const notes = await teacherNotesApi.getMyNotes();
-      const map: Record<string, string> = {};
-      notes.forEach((item) => {
-        map[item.studentId] = item.content;
-      });
-      return map;
-    },
-    enabled: Boolean(actor?.userId),
-  });
+  // Never assign legacy shared notes to an unknown author.
+  const notesKey = teacherNotesKey(actor?.centerId, actor?.userId);
+  const [notesState, setNotesState] = useState(() => ({ key: notesKey, notes: readTeacherNotes(notesKey) }));
+  const teacherNotes = notesState.key === notesKey ? notesState.notes : readTeacherNotes(notesKey);
 
-  const [localNotes, setLocalNotes] = useState<Record<string, string>>({});
-  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
-
-  const teacherNotes = useMemo(() => {
-    return {
-      ...(serverNotesMap || {}),
-      ...localNotes,
-    };
-  }, [serverNotesMap, localNotes]);
-
-  const handleSaveNote = async (studentId: string, note: string) => {
-    setLocalNotes((prev) => ({ ...prev, [studentId]: note }));
-    setSaveStatus("saving");
+  const handleSaveNote = (studentId: string, note: string) => {
+    const updated = { ...teacherNotes, [studentId]: note };
+    if (!notesKey) return;
+    setNotesState({ key: notesKey, notes: updated });
     try {
-      await teacherNotesApi.upsertNoteForStudent(studentId, { content: note });
-      setSaveStatus("saved");
-      void refetchTeacherNotes();
-    } catch (err) {
-      console.error("Failed to save pedagogical note to database:", err);
-      setSaveStatus("error");
->>>>>>> Stashed changes
+      localStorage.setItem(notesKey, JSON.stringify(updated));
+    } catch {
+      // ignore
     }
   };
 
   // 1. Fetch Teacher Assigned Classes
   const { data: classesData, isLoading: isClassesLoading } = useQuery({
-    queryKey: ["teacherClassesListForStudents"],
-    queryFn: () => organizationApi.listClasses({ page: 1, pageSize: 50, status: "Active" }),
+    queryKey: ["teacherClassesListForStudents", actor?.centerId, actor?.userId],
+    queryFn: async () => {
+      const first = await organizationApi.listClasses({ page: 1, pageSize: 100 });
+      const all = [...first.data];
+      for (let page=2; page<=first.meta.totalPages; page++)
+        all.push(...(await organizationApi.listClasses({ page, pageSize:100 })).data);
+      return { ...first, data:all };
+    },
   });
 
   const classes = classesData?.data || [];
@@ -147,139 +118,21 @@ export function TeacherStudentManagementView() {
     return map;
   }, [subjects]);
 
-  // 3. Fetch Students in the selected class (or all students if class selected)
-  const {
-    data: studentsData,
-    isLoading: isStudentsLoading,
-    isError: isStudentsError,
-    error: studentsError,
-    refetch: refetchStudents,
-  } = useQuery({
-    queryKey: ["classStudentsForTeacher", selectedClassId],
-    queryFn: () =>
-      selectedClassId
-        ? organizationApi.getClassStudents(selectedClassId, { page: 1, pageSize: 100 })
-        : organizationApi.listStudents({ page: 1, pageSize: 100 }),
-    enabled: Boolean(selectedClassId) || classes.length === 0,
+  // One complete authorized snapshot: server grades, targets and roster from the same read.
+  // Pagination below is only for rendering; exports use all rows, never the first page.
+  const { data: reportData, isLoading: isStudentsLoading, isError: isStudentsError,
+    error: studentsError, refetch: refetchStudents } = useQuery({
+    queryKey: ["class-academic-report", actor?.centerId, actor?.userId, selectedClassId],
+    queryFn: async () => (await httpClient.get<{ data: ClassAcademicReport }>(
+      `/classes/${selectedClassId}/academic-report`)).data.data,
+    enabled: Boolean(selectedClassId), refetchOnWindowFocus: true,
   });
-
-  const studentsList: StudentDto[] = studentsData?.data || [];
-
-  // 4. Fetch Assignments for the selected class to calculate student completion & scores
-  const { data: assignmentsData } = useQuery({
-    queryKey: ["classAssignmentsForTeacher", selectedClassId],
-    queryFn: () => getAssignments({ classId: selectedClassId, pageSize: 50 }),
-    enabled: Boolean(selectedClassId),
-  });
-
-  const classAssignments: AssignmentDto[] = assignmentsData?.data || [];
-
-  // 5. Query progress of all assignments in this class
-  // To keep UI fast and responsive, we can query progress for the assignments
-  const assignmentIds = useMemo(() => classAssignments.map((a) => a.assignmentId), [classAssignments]);
-
-  const { data: assignmentsProgressMap } = useQuery({
-    queryKey: ["classAssignmentsProgressBatch", selectedClassId, assignmentIds],
-    queryFn: async () => {
-      const map = new Map<string, AssignmentProgressItemDto[]>();
-      await Promise.all(
-        classAssignments.map(async (assignment) => {
-          try {
-            const res = await getAssignmentProgress(assignment.assignmentId);
-            map.set(assignment.assignmentId, res.data || []);
-          } catch {
-            map.set(assignment.assignmentId, []);
-          }
-        })
-      );
-      return map;
-    },
-    enabled: classAssignments.length > 0,
-  });
-
-  // 6. Calculate Academic Summary for Each Student
-  const studentSummaries = useMemo(() => {
-    const summaries = new Map<string, StudentAcademicSummary>();
-
-    studentsList.forEach((student) => {
-      const records: StudentAssignmentRecord[] = [];
-      let completedCount = 0;
-      let inProgressCount = 0;
-      let notStartedCount = 0;
-      let overdueCount = 0;
-      let scoreSum = 0;
-      let scoredAssignmentsCount = 0;
-      let minScore: number | null = null;
-      let maxScore: number | null = null;
-
-      classAssignments.forEach((assignment) => {
-        const progressList = assignmentsProgressMap?.get(assignment.assignmentId) || [];
-        const studentProgress = progressList.find((p) => p.studentId === student.studentId);
-
-        let status: ProgressStatus = studentProgress?.status || "NotStarted";
-        const completedQuestions = studentProgress?.completedQuestionCount || 0;
-        const totalQuestions = studentProgress?.totalQuestionCount || assignment.questionCount || 10;
-
-        // Check if overdue
-        if (status !== "Completed" && assignment.dueAt && new Date(assignment.dueAt) < new Date()) {
-          status = "Overdue";
-        }
-
-        if (status === "Completed") completedCount++;
-        else if (status === "InProgress") inProgressCount++;
-        else if (status === "Overdue") overdueCount++;
-        else notStartedCount++;
-
-        // Calculate score (approximate from question points or evaluation)
-        let calculatedScore: number | null = null;
-        if (status === "Completed") {
-          // Normalized 10 scale score based on completed questions ratio or actual score
-          const ratio = totalQuestions > 0 ? completedQuestions / totalQuestions : 1;
-          calculatedScore = Math.round(ratio * 10 * 10) / 10;
-          scoreSum += calculatedScore;
-          scoredAssignmentsCount++;
-
-          if (minScore === null || calculatedScore < minScore) minScore = calculatedScore;
-          if (maxScore === null || calculatedScore > maxScore) maxScore = calculatedScore;
-        }
-
-        const subjName = selectedClass?.subject?.subjectName || (selectedClass?.subject?.subjectId ? subjectsMap.get(selectedClass.subject.subjectId) : undefined);
-
-        records.push({
-          assignmentId: assignment.assignmentId,
-          title: assignment.title,
-          subjectId: selectedClass?.subject?.subjectId,
-          subjectName: subjName,
-          dueAt: assignment.dueAt,
-          status,
-          completedQuestionCount: completedQuestions,
-          totalQuestionCount: totalQuestions,
-          score: calculatedScore,
-          maxScore: 10,
-          feedbackNote: status === "Completed" ? "Đã nộp bài đầy đủ" : status === "Overdue" ? "Chưa hoàn thành đúng hạn" : undefined,
-        });
-      });
-
-      const totalAssigned = classAssignments.length;
-      const completionRate = totalAssigned > 0 ? (completedCount / totalAssigned) * 100 : 0;
-      const averageScore = scoredAssignmentsCount > 0 ? scoreSum / scoredAssignmentsCount : null;
-
-      summaries.set(student.studentId, {
-        totalAssigned,
-        completedCount,
-        inProgressCount,
-        notStartedCount,
-        overdueCount,
-        completionRate,
-        averageScore,
-        minScore,
-        maxScore,
-        records,
-      });
-    });
-
-    return summaries;
-  }, [studentsList, classAssignments, assignmentsProgressMap, selectedClass, subjectsMap]);
+  const studentsList = useMemo(() => reportData?.students.map(r => r.student) ?? [], [reportData]);
+  const studentSummaries = useMemo(() => new Map(reportData?.students.map(r =>
+    [r.student.studentId, r.summary] as const) ?? []), [reportData]);
+  const reportReady = !!reportData && !isStudentsError && !isStudentsLoading;
+  const [studentPage, setStudentPage] = useState(1);
+  useEffect(() => setStudentPage(1), [selectedClassId, searchQuery, selectedGrade, statusTab]);
 
   // 7. Student Detail Query (When drawer is opened)
   const { data: studentDetailData, isLoading: isDetailLoading } = useQuery({
@@ -331,15 +184,11 @@ export function TeacherStudentManagementView() {
       // Status tab
       const summary = studentSummaries.get(student.studentId);
       if (statusTab === "high_risk") {
-        const isLowCompletion = summary && summary.completionRate < 50;
-        const isLowScore = summary && summary.averageScore !== null && summary.averageScore < 5.0;
-        return isLowCompletion || isLowScore;
+        return isAcademicHighRisk(summary);
       }
 
       if (statusTab === "good") {
-        const isGoodCompletion = summary && summary.completionRate >= 80;
-        const isGoodScore = summary && summary.averageScore !== null && summary.averageScore >= 8.0;
-        return isGoodCompletion || isGoodScore;
+        return summary?.assessmentStatus === "Good";
       }
 
       if (statusTab === "needs_attention") {
@@ -369,7 +218,7 @@ export function TeacherStudentManagementView() {
           totalScore += sum.averageScore;
           scoredCount++;
         }
-        if (sum.completionRate < 50 || (sum.averageScore !== null && sum.averageScore < 5.0)) {
+        if (isAcademicHighRisk(sum)) {
           highRiskCount++;
         }
       }
@@ -389,30 +238,41 @@ export function TeacherStudentManagementView() {
     : null;
 
   // CSV & Excel Export Handlers
-  const handleExportIndividualExcel = (student: StudentDto) => {
-    const summary = studentSummaries.get(student.studentId) || {
-      totalAssigned: 0,
-      completedCount: 0,
-      inProgressCount: 0,
-      notStartedCount: 0,
-      overdueCount: 0,
-      completionRate: 0,
-      averageScore: null,
-      minScore: null,
-      maxScore: null,
-      records: [],
-    };
-    exportStudentReportXlsx(
-      student,
-      selectedClass,
-      studentSubjectGoals,
-      subjectsMap,
-      summary,
-      teacherNotes[student.studentId]
-    );
+  const handleExportIndividualExcel = async (student: StudentDto) => {
+    if (isExportingExcel || !reportReady) return;
+    setIsExportingExcel(true);
+    setExportError(null);
+    try {
+      const summary = studentSummaries.get(student.studentId) || {
+        totalAssigned: 0,
+        completedCount: 0,
+        inProgressCount: 0,
+        notStartedCount: 0,
+        overdueCount: 0,
+        completionRate: 0,
+        averageScore: null,
+        minScore: null,
+        maxScore: null,
+        records: [],
+      };
+      await exportStudentReportXlsx(
+        student,
+        selectedClass,
+        studentSubjectGoals,
+        subjectsMap,
+        summary,
+        teacherNotes[student.studentId]
+      );
+    } catch (err) {
+      console.error("Failed to export student excel report:", err);
+      setExportError("Không thể xuất file Excel học viên. Vui lòng kiểm tra mạng và thử lại.");
+    } finally {
+      setIsExportingExcel(false);
+    }
   };
 
   const handleExportIndividualCsv = (student: StudentDto) => {
+    if (!reportReady) return;
     const summary = studentSummaries.get(student.studentId) || {
       totalAssigned: 0,
       completedCount: 0,
@@ -430,14 +290,23 @@ export function TeacherStudentManagementView() {
     downloadCsv(filename, rows);
   };
 
-  const handleExportClassExcel = () => {
-    if (!selectedClass) return;
-    const goalsMap = new Map<string, StudentSubjectGoalDto[]>();
-    exportClassReportXlsx(selectedClass, studentsList, studentSummaries, goalsMap);
+  const handleExportClassExcel = async () => {
+    if (!selectedClass || isExportingExcel || !reportReady) return;
+    setIsExportingExcel(true);
+    setExportError(null);
+    try {
+      const goalsMap = new Map<string, StudentSubjectGoalDto[]>();
+      await exportClassReportXlsx(selectedClass, studentsList, studentSummaries, goalsMap);
+    } catch (err) {
+      console.error("Failed to export class excel report:", err);
+      setExportError("Không thể xuất file Excel bảng điểm cả lớp. Vui lòng thử lại.");
+    } finally {
+      setIsExportingExcel(false);
+    }
   };
 
   const handleExportClassCsv = () => {
-    if (!selectedClass) return;
+    if (!selectedClass || !reportReady) return;
     const goalsMap = new Map<string, StudentSubjectGoalDto[]>();
     const rows = buildClassReportCsv(selectedClass, studentsList, studentSummaries, goalsMap);
     const filename = `Bang_diem_lop_${selectedClass.className}_${new Date().toISOString().slice(0, 10)}.csv`;
@@ -445,7 +314,7 @@ export function TeacherStudentManagementView() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="th-page-container">
       {/* 1. Header with Class Switcher & Report Actions */}
       <TeacherPageHeader
         eyebrow="GIẢNG DẠY & ĐÁNH GIÁ NĂNG LỰC"
@@ -466,7 +335,7 @@ export function TeacherStudentManagementView() {
                   setSelectedClassId(e.target.value);
                   setSelectedStudent(null);
                 }}
-                className="th-select text-xs min-w-[190px]"
+                className="th-select text-xs w-full min-w-0 max-w-full sm:w-auto sm:min-w-[190px]"
                 aria-label="Chọn lớp học phụ trách"
               >
                 {classes.map((c) => (
@@ -480,8 +349,10 @@ export function TeacherStudentManagementView() {
             <button
               type="button"
               onClick={handleExportClassExcel}
-              disabled={studentsList.length === 0}
-              className="th-primary-button text-xs py-2 px-3 flex items-center gap-1.5"
+              disabled={!reportReady || studentsList.length === 0 || isExportingExcel}
+              className={`th-primary-button text-xs py-2 px-3 flex items-center gap-1.5 ${
+                isExportingExcel ? "opacity-60 cursor-wait" : ""
+              }`}
               title="Xuất bảng điểm và tiến độ toàn bộ học sinh trong lớp ra file Microsoft Excel (.xlsx) với các cột riêng biệt"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -489,13 +360,13 @@ export function TeacherStudentManagementView() {
                 <polyline points="7 10 12 15 17 10" />
                 <line x1="12" y1="15" x2="12" y2="3" />
               </svg>
-              <span>Xuất Excel Cả Lớp (.xlsx)</span>
+              <span>{isExportingExcel ? "Đang xuất Excel..." : "Xuất Excel Cả Lớp (.xlsx)"}</span>
             </button>
 
             <button
               type="button"
               onClick={handleExportClassCsv}
-              disabled={studentsList.length === 0}
+              disabled={!reportReady || studentsList.length === 0}
               className="th-secondary-button text-xs py-2 px-2.5 flex items-center gap-1"
               title="Xuất bảng điểm lớp định dạng CSV (.csv)"
             >
@@ -506,7 +377,7 @@ export function TeacherStudentManagementView() {
             <button
               type="button"
               onClick={() => setIsClassPrintModalOpen(true)}
-              disabled={studentsList.length === 0}
+              disabled={!reportReady || studentsList.length === 0}
               className="th-secondary-button text-xs py-2 px-3 flex items-center gap-1.5"
               title="Xem và in báo cáo tổng kết lớp học dạng phiếu chuẩn A4"
             >
@@ -521,8 +392,24 @@ export function TeacherStudentManagementView() {
         }
       />
 
+      {exportError && (
+        <div className="rounded-xl border border-rose-300 bg-rose-50 p-3.5 text-xs text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span>⚠</span>
+            <span>{exportError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setExportError(null)}
+            className="font-bold underline text-rose-900 dark:text-rose-100 hover:text-rose-700 ml-4 cursor-pointer"
+          >
+            Đóng
+          </button>
+        </div>
+      )}
+
       {/* 2. Overview Metric Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {reportReady && <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <TeacherMetricCard
           label="Sĩ số lớp"
           value={classMetrics.total}
@@ -533,21 +420,21 @@ export function TeacherStudentManagementView() {
         <TeacherMetricCard
           label="Tỷ lệ nộp bài tập"
           value={`${classMetrics.avgComp}%`}
-          supportingText={`Tổng ${classAssignments.length} bài tập đã giao`}
+          supportingText={`Tổng ${reportData?.totalAssignments ?? 0} bài tập đã giao`}
           icon="📑"
           trend={{
-            label: classMetrics.avgComp >= 80 ? "Đạt chỉ tiêu" : "Cần đôn đốc",
-            tone: classMetrics.avgComp >= 80 ? "positive" : "negative",
+            label: !reportData?.totalAssignments ? "Chưa giao bài" : "Tiến độ nộp, không phải điểm",
+            tone: "neutral",
           }}
         />
         <TeacherMetricCard
           label="Điểm trung bình lớp"
           value={classMetrics.avgScore}
           unit="/ 10.0"
-          supportingText="Tính trên bài tập đã nộp"
+          supportingText="Chỉ tính điểm bài đã được giáo viên chốt"
           icon="🎯"
           trend={{
-            label: Number(classMetrics.avgScore) >= 7.0 ? "Khá giỏi" : "Cần củng cố",
+            label: classMetrics.avgScore === "-" || classMetrics.avgScore == null ? "Chưa có điểm đã chốt" : "Chỉ tính bài đã chốt",
             tone: Number(classMetrics.avgScore) >= 7.0 ? "positive" : "neutral",
           }}
         />
@@ -555,28 +442,32 @@ export function TeacherStudentManagementView() {
           label="Học sinh nguy cơ cao"
           value={classMetrics.highRisk}
           unit="học sinh"
-          supportingText="Điểm < 5.0 hoặc nộp < 50%"
+          supportingText="Điểm đã chốt < 5.0 hoặc có bài quá hạn"
           icon="⚠️"
           trend={{
-            label: classMetrics.highRisk === 0 ? "Lớp an toàn" : "Cần hỗ trợ sớm",
-            tone: classMetrics.highRisk === 0 ? "positive" : "negative",
+            label: classMetrics.highRisk === 0 ? "Chưa phát hiện từ dữ liệu đã đánh giá" : "Cần hỗ trợ sớm",
+            tone: classMetrics.highRisk === 0 ? "neutral" : "negative",
           }}
         />
-      </div>
+      </div>}
 
       {/* 3. Filter Bar & Quick Status Tabs */}
       <div className="th-surface p-4 space-y-3">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           {/* Search box */}
           <div className="flex-1 max-w-md relative">
+            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Tìm kiếm học sinh theo họ tên, tên đăng nhập..."
-              className="th-input w-full text-xs py-2 pl-8"
+              className="th-input w-full text-sm py-2 !pl-10 pr-4 placeholder:text-slate-400"
             />
-            <span className="absolute left-2.5 top-2.5 text-stone-400 text-xs">🔍</span>
           </div>
 
           {/* Grade filter */}
@@ -585,7 +476,7 @@ export function TeacherStudentManagementView() {
             <select
               value={selectedGrade}
               onChange={(e) => setSelectedGrade(e.target.value)}
-              className="th-select text-xs py-1.5"
+              className="th-select text-sm py-1.5 px-3"
             >
               <option value="">Tất cả khối</option>
               <option value="10">Khối 10</option>
@@ -682,11 +573,11 @@ export function TeacherStudentManagementView() {
                   </td>
                 </tr>
               ) : (
-                filteredStudents.map((student) => {
+                filteredStudents.slice((studentPage-1)*25, studentPage*25).map((student) => {
                   const summary = studentSummaries.get(student.studentId);
                   const completion = summary ? summary.completionRate : 0;
                   const avgScore = summary?.averageScore;
-                  const isHighRisk = completion < 50 || (avgScore !== null && avgScore !== undefined && avgScore < 5.0);
+                  const isHighRisk = isAcademicHighRisk(summary);
 
                   return (
                     <tr
@@ -697,7 +588,7 @@ export function TeacherStudentManagementView() {
                       {/* Name & Username (Read-Only) */}
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="h-8 w-8 rounded-full bg-[var(--th-surface-muted)] border border-[var(--th-border)] flex items-center justify-center font-bold text-xs text-[var(--th-text)] shrink-0">
+                          <div className="h-8 w-8 rounded-full bg-teal-500/10 dark:bg-teal-500/20 border border-teal-500/25 flex items-center justify-center font-bold text-xs text-teal-700 dark:text-teal-300 shrink-0">
                             {student.fullName.slice(0, 2).toUpperCase()}
                           </div>
                           <div>
@@ -772,9 +663,9 @@ export function TeacherStudentManagementView() {
                         {isHighRisk ? (
                           <TeacherStatusBadge status="failed" label="Nguy cơ cao" tone="danger" />
                         ) : completion >= 80 ? (
-                          <TeacherStatusBadge status="completed" label="Tiến độ tốt" tone="success" />
+                          <TeacherStatusBadge status="completed" label={assessmentLabel(summary)} tone="success" />
                         ) : (
-                          <TeacherStatusBadge status="pending" label="Bình thường" tone="info" />
+                          <TeacherStatusBadge status="pending" label={assessmentLabel(summary)} tone="info" />
                         )}
                       </td>
 
@@ -787,14 +678,14 @@ export function TeacherStudentManagementView() {
                           <button
                             type="button"
                             onClick={() => setSelectedStudent(student)}
-                            className="th-secondary-button text-xs py-1 px-2.5"
+                            className="th-secondary-button text-xs py-1 px-2.5 rounded-lg"
                             title="Xem chi tiết hồ sơ học tập và bảng điểm"
                           >
                             Hồ sơ →
                           </button>
                           <Link
                             to={`/giao-vien/hoc-sinh/${student.studentId}/twin?subjectId=${selectedClass?.subject?.subjectId || ""}`}
-                            className="th-secondary-button text-xs py-1 px-2 text-stone-600 hover:text-[var(--th-teal)]"
+                            className="th-secondary-button text-xs py-1 px-2.5 rounded-lg text-slate-700 dark:text-slate-200 hover:text-teal-600"
                             title="Xem bản sao số năng lực (Digital Twin)"
                           >
                             Twin
@@ -802,18 +693,31 @@ export function TeacherStudentManagementView() {
                           <button
                             type="button"
                             onClick={() => handleExportIndividualExcel(student)}
-                            className="th-icon-button h-7 w-7 text-xs text-teal-700 dark:text-teal-400 hover:bg-teal-500/10"
+                            disabled={isExportingExcel}
+                            className={`th-icon-button h-7 w-7 text-xs rounded-lg text-teal-600 dark:text-teal-400 hover:bg-teal-500/10 ${
+                              isExportingExcel ? "opacity-40 cursor-wait" : ""
+                            }`}
                             title="Tải bảng điểm cá nhân định dạng Microsoft Excel (.xlsx)"
                           >
-                            📊
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                              <polyline points="14 2 14 8 20 8" />
+                              <line x1="16" y1="13" x2="8" y2="13" />
+                              <line x1="16" y1="17" x2="8" y2="17" />
+                              <polyline points="10 9 9 9 8 9" />
+                            </svg>
                           </button>
                           <button
                             type="button"
                             onClick={() => handleExportIndividualCsv(student)}
-                            className="th-icon-button h-7 w-7 text-xs text-stone-600 hover:bg-stone-500/10"
+                            className="th-icon-button h-7 w-7 text-xs rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-500/10"
                             title="Tải bảng điểm cá nhân định dạng CSV (.csv)"
                           >
-                            📥
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                              <polyline points="7 10 12 15 17 10" />
+                              <line x1="12" y1="15" x2="12" y2="3" />
+                            </svg>
                           </button>
                         </div>
                       </td>
@@ -825,6 +729,13 @@ export function TeacherStudentManagementView() {
           </table>
         </div>
       )}
+
+      {filteredStudents.length > 25 && <nav className="flex gap-4 justify-end mt-3" aria-label="Phân trang học sinh">
+        <button className="th-secondary-button" disabled={studentPage <= 1} onClick={() => setStudentPage(studentPage-1)}>Trước</button>
+        <span>Trang {studentPage}/{Math.ceil(filteredStudents.length/25)} · {filteredStudents.length} học sinh</span>
+        <button className="th-secondary-button" disabled={studentPage*25 >= filteredStudents.length} onClick={() => setStudentPage(studentPage+1)}>Sau</button>
+      </nav>}
+      {selectedClassId && <div className="mt-4"><ClassHistoryPanel key={selectedClassId} classId={selectedClassId} /></div>}
 
       {/* 5. Comprehensive Individual Student Modal (Centered & Responsive) */}
       <TeacherModal
@@ -840,15 +751,19 @@ export function TeacherStudentManagementView() {
                 <button
                   type="button"
                   onClick={() => selectedStudent && handleExportIndividualExcel(selectedStudent)}
-                  className="th-primary-button text-xs py-1.5 px-3 flex items-center gap-1.5"
+                  disabled={!reportReady || isExportingExcel}
+                  className={`th-primary-button text-xs py-1.5 px-3 flex items-center gap-1.5 ${
+                    isExportingExcel ? "opacity-60 cursor-wait" : ""
+                  }`}
                   title="Tải bảng điểm và mục tiêu học sinh định dạng Microsoft Excel (.xlsx) với các cột và hàng riêng biệt"
                 >
                   <span>📊</span>
-                  <span>Xuất Excel (.xlsx)</span>
+                  <span>{isExportingExcel ? "Đang tải Excel..." : "Xuất Excel (.xlsx)"}</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => selectedStudent && handleExportIndividualCsv(selectedStudent)}
+                  disabled={!reportReady}
                   className="th-secondary-button text-xs py-1.5 px-2.5 flex items-center gap-1.5"
                   title="Tải bảng điểm học sinh định dạng CSV (.csv)"
                 >
@@ -858,6 +773,7 @@ export function TeacherStudentManagementView() {
                 <button
                   type="button"
                   onClick={() => setIsStudentPrintModalOpen(true)}
+                  disabled={!reportReady}
                   className="th-secondary-button text-xs py-1.5 px-3 flex items-center gap-1.5"
                   title="Mở giao diện in phiếu đánh giá chuẩn A4"
                 >
@@ -1031,9 +947,8 @@ export function TeacherStudentManagementView() {
                             {rec.score !== null && rec.score !== undefined ? (
                               <div className="text-right">
                                 <span className="font-mono font-black text-sm text-[var(--th-teal)]">
-                                  {rec.score.toFixed(1)}
+                                  {reportScoreText(rec)}
                                 </span>
-                                <span className="text-[10px] text-stone-400"> / 10.0</span>
                               </div>
                             ) : (
                               <span className="text-xs text-[var(--th-text-muted)] italic">Chưa có điểm</span>
@@ -1228,18 +1143,9 @@ export function TeacherStudentManagementView() {
                       Sổ Tay Nhận Xét & Kế Hoạch Bồi Dưỡng
                     </h4>
                     <p className="text-[11px] text-[var(--th-text-secondary)] mt-0.5">
-                      Ghi chú cá nhân của giáo viên nhằm theo dõi sự tiến bộ hoặc lưu ý phương pháp sư phạm cho học sinh này (Lưu trữ vĩnh viễn trên cơ sở dữ liệu).
+                      Ghi chú cá nhân của giáo viên nhằm theo dõi sự tiến bộ hoặc lưu ý phương pháp sư phạm cho học sinh này.
                     </p>
                   </div>
-                  {saveStatus === "saving" && (
-                    <span className="text-[11px] text-amber-600 animate-pulse font-medium">Đang lưu vào CSDL...</span>
-                  )}
-                  {saveStatus === "saved" && (
-                    <span className="text-[11px] text-emerald-600 font-medium">✓ Đã lưu vào CSDL</span>
-                  )}
-                  {saveStatus === "error" && (
-                    <span className="text-[11px] text-rose-600 font-medium">Lỗi khi lưu vào CSDL</span>
-                  )}
                 </div>
 
                 <textarea
@@ -1251,14 +1157,8 @@ export function TeacherStudentManagementView() {
                 />
 
                 <div className="flex justify-between items-center text-[11px] text-[var(--th-text-muted)]">
-                  <span>💾 Ghi chú được lưu trữ an toàn trên cơ sở dữ liệu hệ thống (MySQL).</span>
-                  <button
-                    type="button"
-                    onClick={() => handleSaveNote(selectedStudent.studentId, teacherNotes[selectedStudent.studentId] || "")}
-                    className="font-semibold text-primary-600 hover:text-primary-700 underline cursor-pointer"
-                  >
-                    Lưu ngay
-                  </button>
+                  <span>💾 Ghi chú được tự động lưu trên trình duyệt của bạn.</span>
+                  <span className="font-semibold text-emerald-600">Đã lưu tự động</span>
                 </div>
               </div>
             )}
@@ -1411,7 +1311,7 @@ export function TeacherStudentManagementView() {
                           {rec.completedQuestionCount}/{rec.totalQuestionCount} câu
                         </td>
                         <td className="p-2 font-mono font-bold">
-                          {rec.score !== null && rec.score !== undefined ? `${rec.score.toFixed(1)} / 10` : "-"}
+                          {reportScoreText(rec)}
                         </td>
                       </tr>
                     ))

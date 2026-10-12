@@ -9,4 +9,5 @@ public sealed class TeacherOverrideRequest
     public decimal? AwardedScore { get; set; }
     public string Reason { get; set; } = string.Empty;
     public uint OverrideVersion { get; set; }
+    public System.Collections.Generic.List<RubricScoreInput>? RubricScores { get; set; }
 }
