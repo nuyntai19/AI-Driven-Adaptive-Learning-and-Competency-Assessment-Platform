@@ -19,6 +19,22 @@ namespace EduTwin.BLL.Tests.Dashboards;
 public sealed class ClassDashboardAcademicCoverageTests
 {
     [Theory]
+    [InlineData(false, false, ReviewStatus.Published, 0)]
+    [InlineData(true, true, ReviewStatus.Published, 0)]
+    [InlineData(true, false, ReviewStatus.Archived, 0)]
+    [InlineData(true, false, ReviewStatus.Published, 40)]
+    public async Task CenterRankingUsesCurrentApplication_NotStalePlanningLinks(bool apply, bool ended, ReviewStatus state, int expected)
+    {
+        var (db, tenant, _, _) = await Setup([40m], apply, ended, state);
+        await using (db)
+        {
+            var result = await new GetCenterDashboardUseCase(db, tenant, TimeProvider.System).ExecuteAsync(null, 70, default);
+            Assert.True(result.IsSuccess);
+            Assert.Equal(expected, Assert.Single(result.Data!.ClassRanking).AverageMastery);
+        }
+    }
+
+    [Theory]
     [InlineData(false, false, ReviewStatus.Published)]
     [InlineData(true, true, ReviewStatus.Published)]
     [InlineData(true, false, ReviewStatus.Archived)]

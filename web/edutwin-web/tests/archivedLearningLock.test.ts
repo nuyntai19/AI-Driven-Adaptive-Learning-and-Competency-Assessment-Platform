@@ -14,7 +14,7 @@ test("an unfinished archived assignment never starts its timer",()=>{
 test("adaptive practice does not fetch or submit while the selected learning scope is read-only",()=>{
   const page=read("pages/LearningPlayerPage.tsx");
   assert.match(page,/enabled: learningAccess.writable && !assignmentId/);
-  assert.match(page,/getNextQuestion\(subjectId, learningAccess.classId, isHistory\)/);
+  assert.match(page,/getNextQuestion\(subjectId, learningAccess.classId, isHistory, pathSessionId \|\| undefined\)/);
   assert.match(page,/classReadOnly \|\| \(!assignmentId && !learningAccess.writable\)/);
   assert.match(page,/classReadOnlyRef.current \|\| !assignmentId/);
   assert.match(page,/history: isHistory/);assert.match(page,/disabled=\{!learningAccess.writable\}/);

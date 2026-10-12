@@ -308,7 +308,11 @@ public sealed class DashboardMySqlIntegrationTests
         await db.SaveChangesAsync();
         var backfill = new EduTwin.BLL.Seeding.DefaultSystemRolePermissionBackfill(db, TimeProvider.System);
         await backfill.EnsureAsync(); await backfill.EnsureAsync();
-        Assert.Equal(32, await db.RolePermissions.CountAsync(p => p.RoleId == teacherRole.RoleId));
+        // Validate the exact authoritative default set, not a stale magic count.
+        // This also catches accidental extra grants while preserving idempotency.
+        var actualDefaults = await db.RolePermissions.Where(p => p.RoleId == teacherRole.RoleId)
+            .Join(db.Permissions, p => p.PermissionId, p => p.PermissionId, (grant, permission) => permission.PermissionCode).ToListAsync();
+        Assert.Equal(EduTwin.DAL.Seeding.AuthorizationPermissionCatalog.SystemTeacherDefaultCodes.OrderBy(c => c),actualDefaults.OrderBy(c => c));
         Assert.Equal(2u, (await db.Users.SingleAsync(u => u.UserId == createdId)).AuthVersion);
         Assert.Equal(1u, (await db.Users.SingleAsync(u => u.UserId == managerId)).AuthVersion);
         Assert.Single(await db.AuthorizationAuditLogs.Where(a => a.ActionType == "SystemRoleDefaultPermissionsGranted").ToArrayAsync());

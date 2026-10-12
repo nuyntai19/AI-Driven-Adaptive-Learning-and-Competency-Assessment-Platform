@@ -23,6 +23,8 @@ public interface IGetDetailedLearningPathUseCase
     Task<DetailedLearningPathDto?> ExecuteAsync(Guid subjectId, CancellationToken cancellationToken);
     Task<DetailedLearningPathDto?> ExecuteAsync(Guid subjectId, Guid? classId, CancellationToken ct)
         => classId.HasValue ? Task.FromResult<DetailedLearningPathDto?>(null) : ExecuteAsync(subjectId, ct);
+    Task<DetailedLearningPathDto?> ExecuteAsync(Guid subjectId, Guid? classId, Guid? pathId, CancellationToken ct)
+        => pathId.HasValue ? Task.FromResult<DetailedLearningPathDto?>(null) : ExecuteAsync(subjectId, classId, ct);
 }
 
 public sealed class GenerateLearningPathUseCase : IGenerateLearningPathUseCase, IGetDetailedLearningPathUseCase
@@ -45,6 +47,7 @@ public sealed class GenerateLearningPathUseCase : IGenerateLearningPathUseCase, 
 
     public async Task<DetailedLearningPathDto> ExecuteAsync(GenerateLearningPathRequest request, CancellationToken cancellationToken)
     {
+        ValidateRequest(request);
         var (centerId, studentId) = ResolveStudent();
         var lockKey = $"{centerId:D}:{studentId:D}:{request.SubjectId:D}";
         var gate = GenerationLocks.GetOrAdd(lockKey, _ => new SemaphoreSlim(1, 1));
@@ -65,7 +68,7 @@ public sealed class GenerateLearningPathUseCase : IGenerateLearningPathUseCase, 
         var now = DateTime.UtcNow;
         var subject = await _dbContext.Subjects.AsNoTracking()
             .SingleOrDefaultAsync(s => s.CenterId == centerId && s.SubjectId == request.SubjectId && !s.IsDeleted, cancellationToken)
-            ?? throw new InvalidOperationException("Môn học không tồn tại.");
+            ?? throw new KeyNotFoundException("Môn học không tồn tại.");
         var scope = await EduTwin.BLL.Organization.StudentLearningScope.ResolveAsync(_dbContext, centerId, studentId,
             request.SubjectId, request.ClassId, request.History, cancellationToken);
         if (!scope.Allowed) throw new EduTwin.BLL.Organization.LearningScopeDeniedException(scope.Reason!);
@@ -90,18 +93,21 @@ public sealed class GenerateLearningPathUseCase : IGenerateLearningPathUseCase, 
             if (PlanBelongsToScope(cached, scope)) return cached;
         }
 
-        preference = UpsertPreference(preference, centerId, studentId, request, weakIds, focusIds, now);
-        await _dbContext.SaveChangesAsync(cancellationToken);
-
         var generation = request.ClassId.HasValue
             ? await _recommendationEngine.GenerateForClassAsync(centerId, studentId, request.SubjectId, request.ClassId.Value, now, cancellationToken)
             : await _recommendationEngine.GenerateAndPersistAsync(centerId, studentId, request.SubjectId, null, now, cancellationToken);
         if (generation.Status is RecommendationGenerationStatus.Blocked or RecommendationGenerationStatus.NoCandidate)
-            throw new InvalidOperationException(generation.DiagnosticReason ?? "Chưa có đủ dữ liệu Knowledge Graph để tạo lộ trình.");
+            throw new LearningPathUnavailableException(generation.DiagnosticReason ?? "Chưa có đủ dữ liệu Knowledge Graph để tạo lộ trình.");
 
         var activePath = await _recommendationEngine.GetActiveLearningPathAsync(centerId, studentId, request.SubjectId, cancellationToken)
             ?? throw new InvalidOperationException("Không thể tạo lộ trình học tập.");
+        // The engine clears tracking and commits its own transaction. Reload before
+        // saving preferences; failed generation must not change the questionnaire.
+        preference = await _dbContext.StudentLearningPathPreferences.SingleOrDefaultAsync(
+            p => p.CenterId == centerId && p.StudentId == studentId && p.SubjectId == request.SubjectId && !p.IsDeleted, cancellationToken);
+        preference = UpsertPreference(preference, centerId, studentId, request, weakIds, focusIds, now);
         var detailed = await BuildDetailedLearningPathAsync(centerId, studentId, subject, preference, activePath, cancellationToken, true);
+        foreach (var session in detailed.Phases.SelectMany(p => p.Weeks).SelectMany(w => w.Sessions)) session.ClassId = request.ClassId;
         await EnrichPlanAsync(detailed, cancellationToken);
         activePath.PlanJson = JsonSerializer.SerializeToDocument(detailed.Phases, PlanJsonOptions);
         activePath.RecommendationRationale = detailed.RecommendationRationale;
@@ -118,6 +124,9 @@ public sealed class GenerateLearningPathUseCase : IGenerateLearningPathUseCase, 
         => await ExecuteAsync(subjectId, null, cancellationToken);
 
     public async Task<DetailedLearningPathDto?> ExecuteAsync(Guid subjectId, Guid? classId, CancellationToken cancellationToken)
+        => await ExecuteAsync(subjectId, classId, null, cancellationToken);
+
+    public async Task<DetailedLearningPathDto?> ExecuteAsync(Guid subjectId, Guid? classId, Guid? pathId, CancellationToken cancellationToken)
     {
         var (centerId, studentId) = ResolveStudent();
         var scope = classId.HasValue ? await EduTwin.BLL.Organization.StudentLearningScope.ResolveAsync(_dbContext, centerId,
@@ -135,6 +144,7 @@ public sealed class GenerateLearningPathUseCase : IGenerateLearningPathUseCase, 
             .Where(lp => lp.CenterId == centerId
                 && lp.StudentId == studentId
                 && lp.SubjectId == subjectId
+                && (!pathId.HasValue || lp.LearningPathId == pathId.Value)
                 && !lp.IsDeleted)
             .OrderBy(lp => lp.Status == LearningPathStatus.Active ? 0 : lp.Status == LearningPathStatus.Completed ? 1 : 2)
             .ThenByDescending(lp => lp.Version)
@@ -143,6 +153,8 @@ public sealed class GenerateLearningPathUseCase : IGenerateLearningPathUseCase, 
         if (path is null || preference is null) return null;
         if (scope?.TopicIds is not null && path.Items.Any(i => !scope.Includes(i.TopicNodeId))) return null;
         var detailed = await BuildDetailedLearningPathAsync(centerId, studentId, subject, preference, path, cancellationToken);
+        if (pathId.HasValue && detailed.Phases.SelectMany(p => p.Weeks).SelectMany(w => w.Sessions)
+            .Any(s => s.ClassId.HasValue && s.ClassId != classId)) return null;
         // GET remains read-only, including old paths without a stored PlanJson.
         return scope is null || PlanBelongsToScope(detailed, scope) ? detailed : null;
     }
@@ -186,6 +198,15 @@ public sealed class GenerateLearningPathUseCase : IGenerateLearningPathUseCase, 
         else
             phases = await BuildScheduleAsync(centerId, subject.SubjectId, path.LearningPathId, itemDetails, preference, cancellationToken);
 
+        var scheduledSessions = phases.SelectMany(p => p.Weeks).SelectMany(w => w.Sessions).ToList();
+        var available = await _dbContext.Questions.AsNoTracking().Where(q => q.CenterId == centerId && q.SubjectId == subject.SubjectId &&
+            q.Status == EduTwin.Contracts.CurriculumAndQuestions.QuestionStatus.Active && !q.IsDeleted &&
+            q.QuestionType != EduTwin.Contracts.CurriculumAndQuestions.QuestionType.Essay &&
+            q.AnswerEvaluationMode != EduTwin.Contracts.CurriculumAndQuestions.QuestionAnswerEvaluationMode.Manual)
+            .Select(q => new { q.QuestionId, q.PrimaryTopicNodeId }).ToListAsync(cancellationToken);
+        var availableTopics = available.ToDictionary(q => q.QuestionId.ToString(), q => q.PrimaryTopicNodeId.ToString());
+        foreach (var session in scheduledSessions)
+            session.RecommendedQuestionIds = session.RecommendedQuestionIds.Where(id => availableTopics.GetValueOrDefault(id) == session.TopicNodeId).Distinct().ToList();
         var allSessions = phases.SelectMany(p => p.Weeks).SelectMany(w => w.Sessions).ToList();
         var progress = allSessions.Count == 0 ? 0m : Math.Round((decimal)allSessions.Count(s => s.Status == "Completed") / allSessions.Count * 100m, 1);
         var rationale = path.RecommendationRationale ?? BuildRationale(subject.SubjectName, preference, itemDetails);
@@ -211,11 +232,17 @@ public sealed class GenerateLearningPathUseCase : IGenerateLearningPathUseCase, 
         if (items.Count == 0) return new();
         var topicIds = items.Select(i => ulong.Parse(i.TopicNodeId)).ToList();
         var questions = await _dbContext.Questions.AsNoTracking()
-            .Where(q => q.CenterId == centerId && q.SubjectId == subjectId && topicIds.Contains(q.PrimaryTopicNodeId) && !q.IsDeleted)
+            .Where(q => q.CenterId == centerId && q.SubjectId == subjectId && topicIds.Contains(q.PrimaryTopicNodeId) && q.Status == EduTwin.Contracts.CurriculumAndQuestions.QuestionStatus.Active && !q.IsDeleted &&
+                q.QuestionType != EduTwin.Contracts.CurriculumAndQuestions.QuestionType.Essay &&
+                q.AnswerEvaluationMode != EduTwin.Contracts.CurriculumAndQuestions.QuestionAnswerEvaluationMode.Manual)
             .OrderBy(q => q.Difficulty).ThenBy(q => q.QuestionId)
             .Select(q => new { q.QuestionId, q.PrimaryTopicNodeId }).ToListAsync(cancellationToken);
         var questionsByTopic = questions.GroupBy(q => q.PrimaryTopicNodeId).ToDictionary(g => g.Key, g => g.Select(q => q.QuestionId.ToString()).ToList());
 
+        // Keep prerequisite/rank order; allocate more weeks to requested weak/focus
+        // topics instead of moving them in front of their prerequisites.
+        var priorities = ReadIds(preference.WeakTopicNodeIds).Concat(ReadIds(preference.FocusTopicNodeIds)).ToHashSet();
+        var allocatedItems = items.SelectMany(i => Enumerable.Repeat(i, priorities.Contains(ulong.Parse(i.TopicNodeId)) ? 2 : 1)).ToList();
         var weeks = Math.Clamp(preference.TargetWeeks, 1, 52);
         var days = Math.Clamp(preference.DaysPerWeek, 1, 7);
         var phaseCount = Math.Clamp((int)Math.Ceiling(weeks / 4m), 1, 6);
@@ -229,14 +256,18 @@ public sealed class GenerateLearningPathUseCase : IGenerateLearningPathUseCase, 
             var phaseWeeks = new List<LearningPathWeekDto>();
             for (var week = startWeek; week <= endWeek; week++)
             {
-                var topic = items[Math.Min(items.Count - 1, (week - 1) * items.Count / weeks)];
+                var topic = allocatedItems[Math.Min(allocatedItems.Count - 1, (week - 1) * allocatedItems.Count / weeks)];
                 var questionIds = questionsByTopic.GetValueOrDefault(ulong.Parse(topic.TopicNodeId)) ?? new();
                 var weekTarget = Math.Round(topic.CurrentMastery + (topic.TargetMastery - topic.CurrentMastery) * week / weeks, 1);
                 var sessions = new List<LearningPathSessionDto>();
                 for (var day = 1; day <= days; day++)
                 {
-                    var type = GetSessionType(day, days, topic.CurrentMastery);
-                    var selectedQuestions = questionIds.Count == 0 ? new List<string>() : questionIds.Skip(((week - 1) * days + day - 1) * 8 % questionIds.Count).Take(8).ToList();
+                    var type = GetSessionType(day, days, topic.CurrentMastery, preference);
+                    var capacity = Math.Clamp(preference.MinutesPerDay / 4, 1, 12);
+                    var requestedCount = preference.Pace switch { "Gentle" => Math.Min(4, capacity), "Accelerated" => capacity, _ => Math.Min(8, capacity) };
+                    var count = Math.Min(requestedCount, questionIds.Count);
+                    var offset = questionIds.Count == 0 ? 0 : ((week - 1) * days + day - 1) * requestedCount % questionIds.Count;
+                    var selectedQuestions = Enumerable.Range(0, count).Select(i => questionIds[(offset + i) % questionIds.Count]).ToList();
                     var online = BuildOnlineActivities(type, topic.TopicName, selectedQuestions.Count);
                     if (selectedQuestions.Count == 0 && type is "GuidedPractice" or "AdaptivePractice" or "Quiz" or "MockTest")
                         online.Add("Chưa có bộ bài phù hợp; học lý thuyết và tự kiểm tra bằng ví dụ trong bài học.");
@@ -245,8 +276,8 @@ public sealed class GenerateLearningPathUseCase : IGenerateLearningPathUseCase, 
                         SessionId = $"{pathId:D}-w{week:D2}-s{day:D2}", Title = BuildSessionTitle(type, topic.TopicName), Type = type,
                         TopicNodeId = topic.TopicNodeId, TopicName = topic.TopicName, Objective = BuildObjective(type, topic.TopicName),
                         EstimatedMinutes = preference.MinutesPerDay, OnlineActivities = online, OfflineActivities = BuildOfflineActivities(type, topic.TopicName),
-                        RecommendedQuestionIds = selectedQuestions, RequiredCorrectRate = type is "Quiz" or "MockTest" ? 0.75m : 0.70m,
-                        TargetMastery = weekTarget, CompletionCriteria = BuildCompletionCriteria(type, selectedQuestions.Count, weekTarget), Status = topic.Status
+                        RecommendedQuestionIds = selectedQuestions, RequiredCorrectRate = type is "Quiz" or "MockTest" or "AdaptivePractice" ? 0.75m : 0.70m,
+                        TargetMastery = weekTarget, CompletionCriteria = BuildCompletionCriteria(type, selectedQuestions.Count, weekTarget), Status = "NotStarted"
                     });
                 }
                 phaseWeeks.Add(new LearningPathWeekDto
@@ -320,7 +351,7 @@ public sealed class GenerateLearningPathUseCase : IGenerateLearningPathUseCase, 
         p.SelfAssessedLevel == r.SelfAssessedLevel && p.GoalType == r.GoalType && p.TargetMastery == r.TargetMastery &&
         p.TargetWeeks == r.TargetWeeks && p.MinutesPerDay == r.MinutesPerDay && p.DaysPerWeek == r.DaysPerWeek && p.Pace == r.Pace &&
         p.PreferredMode == r.PreferredMode && p.Note == r.Note && ReadIds(p.WeakTopicNodeIds).SequenceEqual(weak) && ReadIds(p.FocusTopicNodeIds).SequenceEqual(focus);
-    private static List<ulong> ReadIds(JsonDocument doc) => JsonSerializer.Deserialize<List<ulong>>(doc.RootElement.GetRawText()) ?? new();
+    private static List<ulong> ReadIds(JsonDocument? doc) => doc is null ? new() : JsonSerializer.Deserialize<List<ulong>>(doc.RootElement.GetRawText()) ?? new();
     private (Guid, Guid) ResolveStudent()
     {
         if (!_tenantContext.IsResolved || _tenantContext.CenterId is not { } centerId || _tenantContext.UserId is not { } studentId)
@@ -331,11 +362,25 @@ public sealed class GenerateLearningPathUseCase : IGenerateLearningPathUseCase, 
     {
         if (r.SubjectId == Guid.Empty || r.TargetWeeks is < 1 or > 52 || r.MinutesPerDay is < 10 or > 180 || r.DaysPerWeek is < 1 or > 7 || r.TargetMastery is < 40 or > 100)
             throw new ArgumentException("Thông tin mục tiêu hoặc thời gian học không hợp lệ.");
+        if (!new[] { "VeryWeak", "Weak", "Medium", "Good", "Excellent" }.Contains(r.SelfAssessedLevel) ||
+            !new[] { "Foundation", "KeepUp", "ImproveGrade", "ExamPrep", "Advanced" }.Contains(r.GoalType) ||
+            !new[] { "Gentle", "Moderate", "Accelerated" }.Contains(r.Pace) ||
+            !new[] { "TheoryHeavy", "PracticeHeavy", "Balanced" }.Contains(r.PreferredMode) ||
+            r.WeakTopicNodeIds is null || r.FocusTopicNodeIds is null ||
+            r.WeakTopicNodeIds.Count > 200 || r.FocusTopicNodeIds.Count > 200 || (r.Note?.Length ?? 0) > 1000)
+            throw new ArgumentException("Lựa chọn học tập không hợp lệ hoặc ghi chú vượt quá 1000 ký tự.");
     }
     private static decimal CalculateRealisticTarget(decimal current, decimal requested) => Math.Round(Math.Min(requested, current < 30m ? 60m : Math.Min(90m, current + 25m)), 1);
     private static string MapItemStatus(string status) => status switch { "Current" => "InProgress", "Completed" => "Completed", "Skipped" => "Skipped", _ => "NotStarted" };
-    private static string GetSessionType(int day, int days, decimal mastery) => day == days ? "Quiz" : day switch { 1 => mastery < 40 ? "LearnTheory" : "Review", 2 => "GuidedPractice", 3 => "AdaptivePractice", 4 => "Review", _ => "Reflection" };
-    private static string BuildSessionTitle(string type, string topic) => type switch { "LearnTheory" => $"Nắm nền tảng {topic}", "GuidedPractice" => $"Luyện có hướng dẫn: {topic}", "AdaptivePractice" => $"Luyện thích ứng: {topic}", "Quiz" => $"Mini quiz: {topic}", "Review" => $"Ôn và sửa lỗi: {topic}", _ => $"Tự phản tư: {topic}" };
+    private static string GetSessionType(int day, int days, decimal mastery, StudentLearningPathPreference preference)
+    {
+        if (day == days) return preference.GoalType == "ExamPrep" ? "MockTest" : "Quiz";
+        if (preference.PreferredMode == "TheoryHeavy" && day <= 2) return "LearnTheory";
+        if (preference.PreferredMode == "PracticeHeavy") return day == 1 ? "GuidedPractice" : "AdaptivePractice";
+        var needsFoundation = mastery < 40 || preference.SelfAssessedLevel is "VeryWeak" or "Weak";
+        return day switch { 1 => needsFoundation ? "LearnTheory" : "Review", 2 => "GuidedPractice", 3 => "AdaptivePractice", 4 => "Review", _ => "Reflection" };
+    }
+    private static string BuildSessionTitle(string type, string topic) => type switch { "LearnTheory" => $"Nắm nền tảng {topic}", "GuidedPractice" => $"Luyện có hướng dẫn: {topic}", "AdaptivePractice" => $"Luyện thích ứng: {topic}", "Quiz" => $"Mini quiz: {topic}", "MockTest" => $"Luyện đề: {topic}", "Review" => $"Ôn và sửa lỗi: {topic}", _ => $"Tự phản tư: {topic}" };
     private static string BuildObjective(string type, string topic) => type switch { "LearnTheory" => $"Hiểu khái niệm và quy tắc cốt lõi của {topic}.", "Quiz" => $"Kiểm tra khả năng vận dụng {topic} độc lập.", _ => $"Củng cố kỹ năng và nhận diện lỗi thường gặp trong {topic}." };
     private static List<string> BuildOnlineActivities(string type, string topic, int count)
     {

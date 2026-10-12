@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -363,6 +364,22 @@ public sealed class RecommendationsController : ControllerBase
             return Conflict(CreateProblemDetails(409, "https://edutwin.local/problems/invalid-state", "Phạm vi học tập chỉ xem",
                 error.Message, traceId, ErrorCodes.InvalidStateTransition));
         }
+        catch (ArgumentException error)
+        {
+            return BadRequest(CreateProblemDetails(400, "https://edutwin.local/problems/validation", "Mục tiêu học tập không hợp lệ", error.Message, traceId, ErrorCodes.ValidationFailed));
+        }
+        catch (KeyNotFoundException error)
+        {
+            return NotFound(CreateProblemDetails(404, "https://edutwin.local/problems/not-found", "Không tìm thấy môn học", error.Message, traceId, ErrorCodes.ResourceNotFound));
+        }
+        catch (LearningPathUnavailableException error)
+        {
+            return Conflict(CreateProblemDetails(409, "https://edutwin.local/problems/invalid-state", "Chưa thể tạo lộ trình", error.Message, traceId, ErrorCodes.InvalidStateTransition));
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+        {
+            return Conflict(CreateProblemDetails(409, "https://edutwin.local/problems/concurrency", "Lộ trình đã thay đổi", "Vui lòng tải lại lộ trình rồi thử lại.", traceId, ErrorCodes.ConcurrencyConflict));
+        }
         return Ok(new DetailedLearningPathResponse
         {
             Data = path,
@@ -380,10 +397,11 @@ public sealed class RecommendationsController : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetDetailedLearningPath(
         [FromQuery] Guid subjectId,
-        CancellationToken cancellationToken, [FromQuery] Guid? classId = null)
+        CancellationToken cancellationToken, [FromQuery] Guid? classId = null, [FromQuery] Guid? pathId = null)
     {
         var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
-        var path = classId.HasValue ? await _getDetailedLearningPathUseCase.ExecuteAsync(subjectId, classId, cancellationToken)
+        var path = pathId.HasValue ? await _getDetailedLearningPathUseCase.ExecuteAsync(subjectId, classId, pathId, cancellationToken)
+            : classId.HasValue ? await _getDetailedLearningPathUseCase.ExecuteAsync(subjectId, classId, cancellationToken)
             : await _getDetailedLearningPathUseCase.ExecuteAsync(subjectId, cancellationToken);
         if (path is null)
         {
@@ -407,6 +425,18 @@ public sealed class RecommendationsController : ControllerBase
         });
     }
 
+    [HttpGet("learning-path/sessions/{sessionId}")]
+    [Authorize(Policy = "recommendations.student.read_own")]
+    public async Task<IActionResult> GetLearningPathSession(string sessionId, [FromQuery] Guid subjectId,
+        CancellationToken cancellationToken, [FromQuery] Guid? classId = null, [FromQuery] bool history = false)
+    {
+        var session = _updateLearningPathSessionUseCase is null ? null :
+            await _updateLearningPathSessionUseCase.GetAsync(subjectId, sessionId, classId, history, cancellationToken);
+        return session is null ? NotFound(CreateProblemDetails(404, "https://edutwin.local/problems/not-found", "Không tìm thấy buổi học",
+            "Buổi học không tồn tại trong phạm vi đang học.", Activity.Current?.Id ?? HttpContext.TraceIdentifier, ErrorCodes.ResourceNotFound)) :
+            Ok(new { data = session });
+    }
+
     [HttpPatch("learning-path/sessions/{sessionId}")]
     [Authorize(Policy = "recommendations.student.update_own")]
     public async Task<IActionResult> UpdateLearningPathSession(
@@ -417,7 +447,13 @@ public sealed class RecommendationsController : ControllerBase
     {
         if (_updateLearningPathSessionUseCase is null)
             throw new InvalidOperationException("UpdateLearningPathSessionUseCase is not configured.");
-        var updated = await _updateLearningPathSessionUseCase.ExecuteAsync(subjectId, sessionId, request, cancellationToken);
+        bool updated;
+        try { updated = await _updateLearningPathSessionUseCase.ExecuteAsync(subjectId, sessionId, request, cancellationToken); }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+        {
+            return Conflict(CreateProblemDetails(409, "https://edutwin.local/problems/concurrency", "Buổi học đã thay đổi",
+                "Vui lòng tải lại buổi học rồi thử lại.", Activity.Current?.Id ?? HttpContext.TraceIdentifier, ErrorCodes.ConcurrencyConflict));
+        }
         return updated ? NoContent() : BadRequest(CreateProblemDetails(400, "https://edutwin.local/problems/validation", "Không thể cập nhật buổi học", "Buổi học hoặc trạng thái không hợp lệ.", Activity.Current?.Id ?? HttpContext.TraceIdentifier, ErrorCodes.ValidationFailed));
     }
 

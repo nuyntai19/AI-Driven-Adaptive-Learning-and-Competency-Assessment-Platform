@@ -42,3 +42,7 @@ folder ko dc push/
 
 # === Acceptance Test Manifest ===
 .fixture_manifest.json
+
+# Generated local experiments and test fixtures; reusable harnesses live in scripts/e2e.
+# Files already tracked in scratch remain tracked.
+/scratch/

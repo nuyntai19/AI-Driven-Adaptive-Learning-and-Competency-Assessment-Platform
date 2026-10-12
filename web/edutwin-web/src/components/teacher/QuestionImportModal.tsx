@@ -61,7 +61,7 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
 
   const handleUploadAndPreview = async () => {
     if (!selectedFile) {
-      setPreviewError("Vui lòng chọn một file Excel (.xlsx) hoặc CSV (.csv).");
+      setPreviewError("Vui lòng chọn .xlsx, .csv, .txt hoặc .docx dạng bảng.");
       return;
     }
 
@@ -149,7 +149,7 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
   return (
     <TeacherModal
       isOpen={isOpen}
-      title="Nhập Câu Hỏi Từ File (Excel / CSV)"
+      title="Nhập Câu Hỏi Từ File"
       description="Tải lên danh sách câu hỏi hàng loạt, kiểm tra tính hợp lệ trước khi đưa vào ngân hàng câu hỏi."
       onClose={onClose}
       maxWidth="max-w-4xl"
@@ -215,7 +215,7 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".xlsx,.csv,.tsv"
+                accept=".xlsx,.csv,.txt,.docx"
                 onChange={handleFileChange}
                 className="hidden"
               />
@@ -226,7 +226,7 @@ export function QuestionImportModal({ isOpen, onClose, onSuccess }: QuestionImpo
                 {selectedFile ? selectedFile.name : "Nhấn để chọn file hoặc kéo thả file vào đây"}
               </p>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                Hỗ trợ định dạng Microsoft Excel (.xlsx) và file CSV (.csv) mã hóa UTF-8
+                Hỗ trợ .xlsx, CSV/TXT mã hóa UTF-8 và DOCX dạng bảng có hàng tiêu đề giống file mẫu. Tối đa 5.000 câu mỗi file.
               </p>
               {selectedFile && (
                 <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-500/15 text-teal-700 dark:text-teal-300 text-xs font-semibold border border-teal-500/30">

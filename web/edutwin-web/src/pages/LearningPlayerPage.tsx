@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Link, useSearchParams, useParams } from "react-router-dom";
+import { getLearningPathSession, updateLearningPathSession } from "../api/learningPathApi";
 import { useStudentLearningAccess } from "../hooks/useStudentLearningAccess";
 import { StudentLearningReadOnlyNotice } from "../components/student/StudentLearningReadOnlyNotice";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -17,7 +18,7 @@ import {
   submitStudentAssignment,
 } from "../api/assignmentsApi";
 import { useStudentAssignment } from "../features/assignments/useStudentAssignment";
-import { studentScopeUrl } from "../utils/studentAcademicNavigation";
+import { studentScopeUrl, studentLearningPathReturnUrl } from "../utils/studentAcademicNavigation";
 import type {
   NextQuestionDataDto,
   AttemptFeedbackDataDto,
@@ -48,7 +49,6 @@ import {
   clearAttemptSessionId,
   createClientSubmissionId,
   getOrCreateAttemptSessionId,
-  setAttemptSessionId,
 } from "../utils/attemptSessionStorage";
 import { useAuthStore } from "../stores/authStore";
 import {
@@ -127,6 +127,7 @@ export const LearningPlayerPage = () => {
   const { questionId: routeQuestionId } = useParams<{ questionId?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const assignmentId = searchParams.get("assignmentId");
+  const pathSessionId = assignmentId ? null : searchParams.get("sessionId");
   const subjectId = searchParams.get("subjectId") || "";
   const isHistory = searchParams.get("history") === "true";
   const learningAccess = useStudentLearningAccess(subjectId);
@@ -182,6 +183,9 @@ export const LearningPlayerPage = () => {
   const assignmentAnswersRef = useRef(assignmentAnswers);
   assignmentAnswersRef.current = assignmentAnswers;
   const [assignmentDraftLoadVersion, setAssignmentDraftLoadVersion] = useState(0);
+  const [hydratedDraftScope, setHydratedDraftScope] = useState<string | null>(null);
+  const draftHydrated = !assignmentId || (assignmentDraftKey !== null && hydratedDraftScope === assignmentDraftKey);
+  const hydratedInputRef = useRef<string | null>(null);
   const setAssignmentAnswers = useCallback((
     update:
       | Record<string, StoredAnswer>
@@ -227,6 +231,7 @@ export const LearningPlayerPage = () => {
 
   // Client submission token (unique per attempt session)
   const clientSubmissionIdRef = useRef<string>(createClientSubmissionId());
+  const practiceSubmissionRef = useRef<Parameters<typeof submitAttempt>[0] | null>(null);
 
   // Local submission state flag to immediately transition to submitted/result mode once save completes
   const [isLocallySubmitted, setIsLocallySubmitted] = useState<boolean>(false);
@@ -432,6 +437,8 @@ export const LearningPlayerPage = () => {
 
     if (previousAssignmentDraftKeyRef.current === assignmentDraftKey) return;
     previousAssignmentDraftKeyRef.current = assignmentDraftKey;
+    hydratedInputRef.current = null;
+    setHydratedDraftScope(null);
 
     setAssignmentAnswers(loadStoredAssignmentAnswers(assignmentDraftScope));
     setAssignmentDraftLoadVersion((version) => version + 1);
@@ -466,6 +473,7 @@ export const LearningPlayerPage = () => {
     consecutiveNetworkErrorsRef.current = 0;
     setNetworkErrorPaused(false);
     frozenPayloadRef.current = null;
+    practiceSubmissionRef.current = null;
     setAssignmentRemainingSeconds(null);
     setDueRemainingSeconds(null);
     targetEndTimestampRef.current = null;
@@ -680,33 +688,32 @@ export const LearningPlayerPage = () => {
   const isAssignmentExpired = !classReadOnly && isActiveAssignmentExpired(isAssignmentSubmitted,
     hasTimeLimit ? targetEndTimestampRef.current : assignment?.dueAt ? Date.parse(assignment.dueAt) : null);
 
-  // Hydrate draft answers from server if local draft is empty
+  // Hydrate once per authenticated assignment scope. Missing server answers must
+  // be merged before the active editor is initialized or any autosave can run.
   useEffect(() => {
-    if (!assignment?.draftAnswers || assignment.draftAnswers.length === 0) return;
-    if (isAssignmentSubmitted || isLocallySubmitted) return;
-
-    if (assignment.draftVersion) {
-      saveVersionRef.current = Math.max(saveVersionRef.current, assignment.draftVersion);
-      lastSavedVersionRef.current = Math.max(lastSavedVersionRef.current, assignment.draftVersion);
+    if (!assignmentDraftKey || assignmentLoading || assignment?.assignmentId !== assignmentId ||
+        hydratedDraftScope === assignmentDraftKey || isAssignmentSubmitted || isLocallySubmitted) return;
+    const serverAnswers: Record<string, StoredAnswer> = {};
+    for (const da of assignment.draftAnswers ?? []) {
+      serverAnswers[String(da.questionId)] = {
+        finalAnswer: da.finalAnswer ?? "",
+        answerDisplayLatex: da.answerDisplayLatex ?? da.finalAnswer ?? "",
+        reasoningText: da.reasoningText ?? "",
+        confidence: da.confidence ?? 80,
+        timeSpentSeconds: da.timeSpentSeconds ?? 0,
+        answerChanges: da.answerChanges ?? 0,
+        drawingUploadToken: da.drawingUploadToken ?? null,
+      };
     }
-
-    setAssignmentAnswers((prev) => {
-      if (Object.keys(prev).length > 0) return prev;
-      const serverAnswers: Record<string, StoredAnswer> = {};
-      for (const da of assignment.draftAnswers!) {
-        serverAnswers[String(da.questionId)] = {
-          finalAnswer: da.finalAnswer || "",
-          answerDisplayLatex: da.answerDisplayLatex || "",
-          reasoningText: da.reasoningText || "",
-          confidence: da.confidence ?? 80,
-          timeSpentSeconds: da.timeSpentSeconds ?? 0,
-          answerChanges: da.answerChanges ?? 0,
-          drawingUploadToken: da.drawingUploadToken || null,
-        };
-      }
-      return serverAnswers;
-    });
-  }, [assignment?.draftAnswers, assignment?.draftVersion, isAssignmentSubmitted, isLocallySubmitted, setAssignmentAnswers]);
+    const answers = { ...serverAnswers, ...assignmentAnswersRef.current };
+    assignmentAnswersRef.current = answers;
+    setAssignmentAnswers(answers);
+    saveVersionRef.current = Math.max(saveVersionRef.current, assignment.draftVersion ?? 0);
+    lastSavedVersionRef.current = Math.max(lastSavedVersionRef.current, assignment.draftVersion ?? 0);
+    setAssignmentDraftLoadVersion(v => v + 1);
+    setHydratedDraftScope(assignmentDraftKey);
+  }, [assignmentDraftKey, assignmentLoading, assignment, assignmentId, hydratedDraftScope,
+      isAssignmentSubmitted, isLocallySubmitted, setAssignmentAnswers]);
 
   const uploadQuestionSnapshot = useCallback(
     async (
@@ -956,7 +963,7 @@ export const LearningPlayerPage = () => {
   // Periodic auto-save draft to server before deadline with max wait limit and version tracking
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
-    if (!assignmentId || isAssignmentSubmitted || isLocallySubmitted || isAssignmentExpired || isDraftConflictRef.current) return;
+    if (!assignmentId || !draftHydrated || isAssignmentSubmitted || isLocallySubmitted || isAssignmentExpired || isDraftConflictRef.current) return;
     if (Object.keys(assignmentAnswers).length === 0) return;
 
     saveVersionRef.current += 1;
@@ -995,7 +1002,29 @@ export const LearningPlayerPage = () => {
         clearTimeout(autoSaveTimeoutRef.current);
       }
     };
-  }, [assignmentId, assignmentAnswers, isAssignmentSubmitted, isLocallySubmitted, isAssignmentExpired, performSaveDraft]);
+  }, [assignmentId, assignmentAnswers, draftHydrated, isAssignmentSubmitted, isLocallySubmitted, isAssignmentExpired, performSaveDraft]);
+
+  const sessionQuery = useQuery({
+    queryKey: ["learning-path-session", currentUser?.centerId, currentUser?.userId, subjectId, learningAccess.classId, pathSessionId],
+    queryFn: () => getLearningPathSession(subjectId, pathSessionId!, learningAccess.classId, isHistory),
+    enabled: !!pathSessionId && learningAccess.writable,
+    retry: false,
+  });
+  const pathSession = sessionQuery.data;
+  const [sessionUpdateError, setSessionUpdateError] = useState<string | null>(null);
+  const evaluatePathSession = useCallback(async (acknowledgedActivities = false) => {
+    if (!pathSessionId) return;
+    try {
+      await updateLearningPathSession(subjectId, pathSessionId, acknowledgedActivities ? "Completed" : "Evaluate",
+        learningAccess.classId, isHistory, undefined, acknowledgedActivities);
+      setSessionUpdateError(null);
+      await queryClient.invalidateQueries({ queryKey: ["learning-path-session"] });
+      await queryClient.invalidateQueries({ queryKey: ["learning-path", subjectId] });
+    } catch {
+      setSessionUpdateError("Bài làm đã được lưu nhưng tiến độ buổi chưa cập nhật. Vui lòng thử cập nhật lại.");
+    }
+  }, [pathSessionId, subjectId, learningAccess.classId, isHistory, queryClient]);
+  useEffect(() => { if (pathSessionId && feedbackData) void evaluatePathSession(); }, [pathSessionId, feedbackData, evaluatePathSession]);
 
   // Mode 2: Adaptive Practice Mode Query
   const {
@@ -1004,9 +1033,9 @@ export const LearningPlayerPage = () => {
     isError: adaptiveError,
     refetch: refetchAdaptiveQuestion,
   } = useQuery<NextQuestionDataDto>({
-    queryKey: ["nextQuestion", currentUser?.centerId, currentUser?.userId, subjectId, learningAccess.classId],
-    queryFn: () => getNextQuestion(subjectId, learningAccess.classId, isHistory),
-    enabled: learningAccess.writable && !assignmentId && !!subjectId && !feedbackData && !pollingJobId && !persistedJobId,
+    queryKey: ["nextQuestion", currentUser?.centerId, currentUser?.userId, subjectId, learningAccess.classId, pathSessionId],
+    queryFn: () => getNextQuestion(subjectId, learningAccess.classId, isHistory, pathSessionId || undefined),
+    enabled: learningAccess.writable && !assignmentId && !!subjectId && (!pathSessionId || pathSession?.status === "InProgress") && !feedbackData && !pollingJobId && !persistedJobId,
   });
 
   // Effective unified question object
@@ -1042,11 +1071,16 @@ export const LearningPlayerPage = () => {
   effectiveQuestionIdRef.current = question ? String(question.questionId) : null;
 
   const questionLoading = assignmentId ? assignmentLoading : adaptiveLoading;
+  useEffect(() => {
+    practiceSubmissionRef.current = null;
+  }, [currentUser?.centerId, currentUser?.userId, subjectId, learningAccess.classId,
+      pathSessionId, assignmentId, question?.questionId, isHistory]);
   const questionError = assignmentId ? assignmentError : adaptiveError;
 
   // Sync form inputs when switching active question in assignment mode
   useEffect(() => {
-    if (!question?.questionId || !assignmentId) return;
+    if (!question?.questionId || !assignmentId || (!draftHydrated && !isAssignmentSubmitted)) return;
+    hydratedInputRef.current = `${assignmentDraftKey}:${question.questionId}`;
     const qId = question.questionId;
     const saved = assignmentAnswersRef.current[qId];
 
@@ -1138,6 +1172,7 @@ export const LearningPlayerPage = () => {
     isAssignmentSubmitted,
     assignmentDraftKey,
     assignmentDraftLoadVersion,
+    draftHydrated,
   ]);
 
   // Persist current question answer into assignmentAnswers & localStorage
@@ -1149,7 +1184,8 @@ export const LearningPlayerPage = () => {
       newAnswerDisplayLatex?: string,
       newAnswerChanges?: number
     ) => {
-      if (!assignmentDraftScope || !question?.questionId) return;
+      if (!assignmentDraftScope || !question?.questionId || !draftHydrated ||
+          hydratedInputRef.current !== `${assignmentDraftKey}:${question.questionId}`) return;
       if (isQuestionSubmissionLocked(assignmentQuestion)) return;
       const qId = question.questionId;
       const updatedEntry: StoredAnswer = {
@@ -1173,6 +1209,8 @@ export const LearningPlayerPage = () => {
     },
     [
       assignmentDraftScope,
+      assignmentDraftKey,
+      draftHydrated,
       question?.questionId,
       assignmentQuestion,
       finalAnswer,
@@ -1190,6 +1228,7 @@ export const LearningPlayerPage = () => {
 
   // Switch to another question in the Palette
   const handleSwitchQuestion = (targetQId: string) => {
+    if (!draftHydrated && !isAssignmentSubmitted) return;
     if (targetQId === activeQuestionId) return;
     persistCurrentAnswer();
     setActiveQuestionId(targetQId);
@@ -1223,6 +1262,27 @@ export const LearningPlayerPage = () => {
     clientSubmissionIdRef.current = id;
     return id;
   }, [attemptSessionScope]);
+
+  const handleNextPracticeQuestion = () => {
+    if (!learningAccess.writable) return;
+    practiceSubmissionRef.current = null;
+    if (pathSessionId) void sessionQuery.refetch();
+    setFeedbackData(null);
+    setFinalAnswer("");
+    setAnswerDisplayLatex("");
+    setReasoningText("");
+    setConfidence(80);
+    setTimeSpentSeconds(0);
+    answerChangesRef.current = 0;
+    setAnswerChanges(0);
+    setAttachedSnapshotDataUrl(null);
+    setAttachedSnapshotBlob(null);
+    setAttachedSnapshotTime(null);
+    setShowFullSnapshotModal(false);
+    setDrawingUploadToken(null);
+    snapshotUploadsRef.current = {};
+    if (refetchAdaptiveQuestion) void refetchAdaptiveQuestion();
+  };
 
 
   // Do not keep a submitted assignment behind a full-screen spinner indefinitely.
@@ -1522,7 +1582,7 @@ export const LearningPlayerPage = () => {
   const handleFinalSubmit = async (autoSubmitArg?: boolean | React.MouseEvent) => {
     if (classReadOnly || (!assignmentId && !learningAccess.writable)) return;
     const isAutoSubmit = typeof autoSubmitArg === "boolean" ? autoSubmitArg : false;
-    if (!question || submissionInFlightRef.current || !canSubmitLearningWork({
+    if (!draftHydrated || !question || submissionInFlightRef.current || !canSubmitLearningWork({
       submitted: isAssignmentSubmitted || Boolean(feedbackData),
       submitting: isSubmitting,
       pendingAnalysis: Boolean(pollingJobId),
@@ -1710,13 +1770,19 @@ export const LearningPlayerPage = () => {
 
       // ── SINGLE ADAPTIVE QUESTION SUBMISSION ──────────────────────────────────
       let tokenToUse: string | null = drawingUploadToken;
-      if (attachedSnapshotDataUrl && !tokenToUse) {
+      if (attachedSnapshotDataUrl && !tokenToUse && !practiceSubmissionRef.current) {
         setPollingStatus("Đang tải lên bản vẽ nháp đính kèm...");
         tokenToUse = await uploadScratchpadAttachmentIfAny();
+        if (!tokenToUse) {
+          setIsSubmitting(false);
+          setSubmissionSaveError("Không thể tải lên ảnh vẽ nháp đính kèm. Vui lòng kiểm tra kết nối mạng và thử lại.");
+          setCanRetrySubmission(true);
+          return;
+        }
       }
 
       const reasoningToSubmit = reasoningText.trim() || undefined;
-      if (question.reasoningRequired && finalAnswer.trim() && !reasoningToSubmit) {
+      if (!practiceSubmissionRef.current && question.reasoningRequired && finalAnswer.trim() && !reasoningToSubmit) {
         if (!isAutoSubmit) {
           setIsSubmitting(false);
           setSubmissionSaveError("Câu hỏi này yêu cầu phải có phần lập luận / giải trình trước khi nộp bài.");
@@ -1725,7 +1791,7 @@ export const LearningPlayerPage = () => {
       }
 
       setPollingStatus("Đang gửi bài làm lên hệ thống AI...");
-      const submitted = await submitAttempt({
+      const payload = practiceSubmissionRef.current ?? {
         questionId: question.questionId,
         assignmentId: undefined,
         classId: learningAccess.classId || undefined,
@@ -1739,9 +1805,12 @@ export const LearningPlayerPage = () => {
         clientSubmissionId: getClientSubmissionId(),
         answerDisplayLatex: answerDisplayLatex.trim() || undefined,
         drawingUploadToken: tokenToUse || undefined,
-      });
+      };
+      practiceSubmissionRef.current = payload;
+      const submitted = await submitAttempt(payload);
 
       const resData = submitted.data;
+      if (pathSessionId) await evaluatePathSession();
       void queryClient.invalidateQueries({ queryKey: ["student-workspace-summary"] });
       const targetJobId = resData.analysisJobId || resData.jobId;
 
@@ -1766,6 +1835,12 @@ export const LearningPlayerPage = () => {
       }
     } catch (err: unknown) {
       setIsSubmitting(false);
+      const responseStatus = (err as { response?: { status?: number } })?.response?.status;
+      if (!assignmentId && responseStatus != null && [400, 403, 404, 422].includes(responseStatus)) {
+        // Explicit pre-save rejection permits corrections. Unknown/ambiguous
+        // transport failure must replay the original body and idempotency key.
+        practiceSubmissionRef.current = null;
+      }
       const errObj = err as { response?: { data?: { detail?: string } }; message?: string };
       setSubmissionSaveError(
         errObj?.response?.data?.detail || errObj?.message || "Nộp bài thất bại. Vui lòng kiểm tra kết nối mạng và thử nộp lại."
@@ -1777,14 +1852,9 @@ export const LearningPlayerPage = () => {
   };
 
   const handleRetrySubmission = async () => {
-    if (attemptSessionScope) {
-      const freshSubId = createClientSubmissionId();
-      setAttemptSessionId(attemptSessionScope, freshSubId);
-      clientSubmissionIdRef.current = freshSubId;
-    }
     setSubmissionSaveError(null);
     setCanRetrySubmission(false);
-    handleFinalSubmit(isAssignmentExpired);
+    return handleFinalSubmit(isAssignmentExpired);
   };
 
   // Auto-submit when test time limit or due deadline expires
@@ -2026,7 +2096,19 @@ export const LearningPlayerPage = () => {
   }
 
   // Loading skeleton
-  if (questionLoading) {
+  if (pathSessionId && !feedbackData && (sessionQuery.isLoading || !pathSession)) {
+    return <div className="p-6"><p role={sessionQuery.isError ? "alert" : "status"}>{sessionQuery.isError ? "Không thể tải buổi học trong phạm vi này." : "Đang tải buổi học…"}</p>
+      <Link to={studentLearningPathReturnUrl(searchParams, pathSessionId)}>Quay lại lộ trình</Link></div>;
+  }
+  if (pathSessionId && pathSession && !feedbackData && (pathSession.status !== "InProgress" || pathSession.recommendedQuestionIds.length === 0)) {
+    return <div className="p-6 space-y-4"><h1>{pathSession.title}</h1><p>{pathSession.objective}</p>
+      <p role="status">{pathSession.status === "Completed" ? "Buổi học đã hoàn thành." : pathSession.status === "NeedsReview" ? "Cần ôn lại hoặc chờ chốt kết quả trước khi hoàn thành buổi." : "Hoàn thành các hoạt động của buổi học trước khi xác nhận."}</p>
+      <ul>{[...pathSession.onlineActivities, ...pathSession.offlineActivities].map((activity, i) => <li key={i}>{activity}</li>)}</ul>
+      {pathSession.status === "InProgress" && pathSession.recommendedQuestionIds.length === 0 && <button type="button" onClick={() => void evaluatePathSession(true)}>Tôi đã hoàn thành các hoạt động</button>}
+      {sessionUpdateError && <p role="alert">{sessionUpdateError}</p>}
+      <Link to={studentLearningPathReturnUrl(searchParams, pathSessionId)}>Quay lại lộ trình</Link></div>;
+  }
+  if (questionLoading || (assignmentId && assignment?.assignmentId === assignmentId && !assignmentError && !isAssignmentSubmitted && !isLocallySubmitted && !draftHydrated)) {
     return (
       <div className="min-h-screen bg-[#f8fafc] dark:bg-[#090d16] p-6 text-slate-800 dark:text-slate-100 flex items-center justify-center">
         <div className="mx-auto max-w-3xl w-full rounded-3xl bg-white dark:bg-[#0f172a] p-8 shadow-xs border border-slate-200/80 dark:border-slate-800 space-y-6">
@@ -2142,7 +2224,7 @@ export const LearningPlayerPage = () => {
               </div>
               <div className="text-right">
                 <span className="text-xs text-white/80">Lượt làm bài: #{feedbackData.attemptId.slice(0, 8)}</span>
-                <p className="text-xs text-white/80 font-semibold mt-0.5">Trạng thái: {feedbackData.status}</p>
+                <p className="text-xs text-white/80 font-semibold mt-0.5">Trạng thái: {!assignmentId && feedbackData.status === "NeedsTeacherReview" ? "Phân tích cần kiểm tra" : feedbackData.status}</p>
               </div>
             </div>
           </div>
@@ -2150,6 +2232,7 @@ export const LearningPlayerPage = () => {
           {/* 4-Tier Hierarchy: Student Work -> AI Reasoning -> Teacher Solution -> Teacher Evaluation */}
           <AttemptFeedbackHierarchy
             feedbackData={feedbackData}
+            practiceMode={!assignmentId}
             assignmentQuestionCount={assignmentId ? assignmentQuestions.length : undefined}
             questionType={
               assignmentQuestions.find((item) => item.questionId === feedbackData.questionId)?.questionType ??
@@ -2234,17 +2317,7 @@ export const LearningPlayerPage = () => {
               <button
                 type="button"
                 disabled={!learningAccess.writable}
-                onClick={() => {
-                  if (!learningAccess.writable) return;
-                  setFeedbackData(null);
-                  setFinalAnswer("");
-                  setReasoningText("");
-                  setConfidence(80);
-                  setTimeSpentSeconds(0);
-                  if (refetchAdaptiveQuestion) {
-                    refetchAdaptiveQuestion();
-                  }
-                }}
+                onClick={handleNextPracticeQuestion}
                 className="w-full sm:w-auto rounded-xl bg-indigo-600 px-6 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-500 text-center cursor-pointer"
               >
                 Luyện câu tiếp theo →
@@ -2275,6 +2348,9 @@ export const LearningPlayerPage = () => {
 
   return (
     <div className="min-h-screen bg-stone-50/50 dark:bg-[#101623] text-stone-800 dark:text-stone-100 flex flex-col antialiased student-shell">
+      {pathSession && <div className="p-3" role="status">{pathSession.title} · {pathSession.recommendedQuestionIds.length} câu trong buổi
+        {sessionUpdateError && <div role="alert">{sessionUpdateError}<button type="button" onClick={() => void evaluatePathSession()}>Cập nhật lại tiến độ</button></div>}
+      </div>}
       {/* Top Header Bar */}
       <header className="sticky top-0 z-30 bg-white/95 dark:bg-[#151d2f]/95 backdrop-blur-md border-b border-stone-200/80 dark:border-stone-800/80 shadow-xs">
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 flex items-center justify-between h-14 sm:h-16">

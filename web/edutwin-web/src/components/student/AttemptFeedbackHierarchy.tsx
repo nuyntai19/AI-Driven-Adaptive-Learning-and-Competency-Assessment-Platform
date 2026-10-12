@@ -5,7 +5,7 @@ import { retryAttemptAIAnalysis, createStudentReviewRequest } from "../../api/le
 import { getAIProcessingNotice } from "../../utils/aiProcessingNotice";
 import { extractProblemDetails } from "../../utils/problemDetails";
 import { formatAwardedScore, formatPreliminaryResult } from "../../utils/gradingDisplay";
-import { getAttemptFeedbackPresentation, normalizeQuestionScore, questionAssignmentContribution } from "../../utils/attemptFeedbackPresentation";
+import { getAttemptFeedbackPresentation, getAttemptReviewNotice, normalizeQuestionScore, questionAssignmentContribution } from "../../utils/attemptFeedbackPresentation";
 import { normalizeAITextLineBreaks } from "../../utils/aiTextFormatting";
 import { AttemptScratchpadAttachment } from "./AttemptScratchpadAttachment";
 import { getAttemptFeedbackActions } from "../../utils/attemptFeedbackActions";
@@ -33,6 +33,7 @@ interface AttemptFeedbackHierarchyProps {
   answerOptions?: Array<{ optionId: string; label: string; text: string }>;
   questionType?: string;
   assignmentQuestionCount?: number;
+  practiceMode?: boolean;
 }
 
 export function AttemptFeedbackHierarchy({
@@ -44,6 +45,7 @@ export function AttemptFeedbackHierarchy({
   answerOptions = [],
   questionType,
   assignmentQuestionCount,
+  practiceMode = false,
 }: AttemptFeedbackHierarchyProps) {
   const {
     attemptId,
@@ -188,6 +190,7 @@ export function AttemptFeedbackHierarchy({
 
   const processingNotice = getAIProcessingNotice(feedbackData, scoreAndFeedbackOnly);
   const presentation = getAttemptFeedbackPresentation(grading, analysis, feedbackData.status);
+  const reviewNotice = getAttemptReviewNotice(presentation, analysis, practiceMode);
   const displayedMaxScore = normalizeQuestionScore(null, grading.maxScore, assignmentQuestionCount).maxScore;
   const toDisplayedScore = (score?: number | null) =>
     normalizeQuestionScore(score, grading.maxScore, assignmentQuestionCount).awardedScore;
@@ -325,11 +328,10 @@ export function AttemptFeedbackHierarchy({
         </div>
         <p className="text-xs text-slate-500 dark:text-slate-400">Điểm câu hỏi: thang 10. Chỉ số chất lượng lập luận: thang 100, không cộng vào điểm bài tập.</p>
         {assignmentContribution && <p className="text-xs text-slate-500 dark:text-slate-400">Đóng góp vào tổng bài (thang 10): {assignmentContribution.awardedScore ?? "Chưa chấm"} / {assignmentContribution.maxScore} điểm. Mỗi câu có trọng số bằng nhau.</p>}
-        {presentation.needsReview && (
+        {reviewNotice && (
           <div role="status" className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 p-3 text-sm text-amber-900 dark:text-amber-200">
-            <p className="font-bold">{presentation.pendingTeacher && !analysis?.isFallback && analysis?.suggestedScore != null ? "AI đã chấm · Chờ giáo viên duyệt điểm" : presentation.pendingTeacher ? "Đang chờ giáo viên xem xét" : "Cần giáo viên xem xét"}</p>
-            <p>{presentation.pendingTeacher && !analysis?.isFallback && analysis?.suggestedScore != null
-              ? "AI đã đưa ra điểm và nhận xét đề xuất bên dưới. Giáo viên kiểm tra, duyệt hoặc điều chỉnh trước khi chốt điểm chính thức." : presentation.reviewExplanation}</p>
+            <p className="font-bold">{reviewNotice.title}</p>
+            <p>{reviewNotice.explanation}</p>
           </div>
         )}
       </section>
@@ -405,7 +407,9 @@ export function AttemptFeedbackHierarchy({
                 {presentation.feedbackLabel}
               </p>
               <div className="mt-1 text-sm text-indigo-950 dark:text-indigo-200 leading-relaxed font-medium">
-                <RichMathText content={normalizeAITextLineBreaks(analysis.feedback)} />
+                <RichMathText content={normalizeAITextLineBreaks(practiceMode && analysis.isFallback
+                  ? "Bài luyện đã được lưu. Phân tích AI chưa hoàn tất; hãy đối chiếu lời giải hoặc thử chấm lại khi được phép."
+                  : analysis.feedback)} />
               </div>
             </div>
 

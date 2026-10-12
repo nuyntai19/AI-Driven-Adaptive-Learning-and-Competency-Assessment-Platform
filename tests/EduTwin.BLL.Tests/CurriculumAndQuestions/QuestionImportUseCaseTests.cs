@@ -750,6 +750,106 @@ public sealed class QuestionImportUseCaseTests : IDisposable
         Assert.Equal(QuestionStatus.Active, savedQuestion.Status);
     }
 
+    private async Task<QuestionImportPreviewResult> PreviewAuditCsv(string content)
+    {
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
+        return await new QuestionImportUseCase(_dbContext, _tenantContextMock.Object, _timeProviderMock.Object).PreviewAsync(stream, "audit.csv", default);
+    }
+
+    [Fact]
+    public async Task Audit_MultilineCsvAndEscapedQuote_PreserveOneLogicalRow()
+    {
+        var result = await PreviewAuditCsv("QuestionText,QuestionType,CorrectAnswer,Solution\r\n\"First line\nSecond \"\"quoted\"\" line\",ShortAnswer,2,Explanation");
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+        Assert.Equal(1, result.Data!.TotalRows);
+        Assert.Equal(0, result.Data.InvalidCount);
+        Assert.Equal("First line\nSecond \"quoted\" line", Assert.Single(result.Data.ValidQuestions).QuestionText);
+    }
+
+    [Fact]
+    public async Task Audit_VietnameseHeaders_AreNormalizedWithoutLosingLetters()
+    {
+        var result = await PreviewAuditCsv("Nội dung câu hỏi,Loại câu hỏi,Đáp án đúng,Lời giải\nQuestion,ShortAnswer,2,Explanation");
+        Assert.Equal(1, result.Data!.ValidCount);
+    }
+
+    [Theory]
+    [InlineData("1000", 0)]
+    [InlineData("999.99", 1)]
+    [InlineData("1.001", 0)]
+    [InlineData("0", 0)]
+    public async Task Audit_ScoreMustFitDecimal5_2_AtPreview(string score, int valid)
+    {
+        var result = await PreviewAuditCsv($"QuestionText,QuestionType,CorrectAnswer,Solution,MaxScore\nQuestion,ShortAnswer,2,Explanation,{score}");
+        Assert.Equal(valid, result.Data!.ValidCount);
+        if (valid == 0) Assert.Contains(result.Data.Errors, e => e.Field == "MaxScore");
+    }
+
+    [Fact]
+    public async Task Audit_UnknownBoolean_IsAnError_NotFalse()
+    {
+        var result = await PreviewAuditCsv("QuestionText,QuestionType,CorrectAnswer,Solution,ReasoningRequired\nQuestion,ShortAnswer,2,Explanation,tru");
+        Assert.Equal(0, result.Data!.ValidCount);
+        Assert.Contains(result.Data.Errors, e => e.Field == "ReasoningRequired");
+    }
+
+    [Fact]
+    public async Task Audit_InvalidCount_CountsRows_NotFieldErrors()
+    {
+        var result = await PreviewAuditCsv("QuestionText,QuestionType,CorrectAnswer,Solution,MaxScore\nQuestion,Unknown,,,1000");
+        Assert.Equal(1, result.Data!.InvalidCount);
+        Assert.True(result.Data.Errors.Count > 1);
+        Assert.Equal(result.Data.TotalRows, result.Data.ValidCount + result.Data.InvalidCount);
+    }
+
+    private static MemoryStream AuditZip(params (string Path, string Xml)[] entries)
+    {
+        var stream = new MemoryStream();
+        using (var archive = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Create, true))
+            foreach (var entry in entries)
+            {
+                using var writer = new StreamWriter(archive.CreateEntry(entry.Path).Open(), Encoding.UTF8);
+                writer.Write(entry.Xml);
+            }
+        stream.Position = 0;
+        return stream;
+    }
+
+    [Fact]
+    public async Task Audit_XlsxInlineStrings_UsesWorkbookRelationship()
+    {
+        var ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+        string Row(int index, params string[] values) => $"<row r='{index}'>" + string.Concat(values.Select((v,i) => $"<c r='{(char)('A'+i)}{index}' t='inlineStr'><is><t>{v}</t></is></c>")) + "</row>";
+        using var file = AuditZip(("xl/workbook.xml", $"<workbook xmlns='{ns}' xmlns:r='http://schemas.openxmlformats.org/officeDocument/2006/relationships'><sheets><sheet name='Questions' sheetId='9' r:id='rId9'/></sheets></workbook>"),
+            ("xl/_rels/workbook.xml.rels", "<Relationships><Relationship Id='rId9' Target='worksheets/questions9.xml'/></Relationships>"),
+            ("xl/worksheets/questions9.xml", $"<worksheet xmlns='{ns}'><sheetData>{Row(1,"QuestionText","QuestionType","CorrectAnswer","Solution")}{Row(2,"Question","ShortAnswer","2","Explanation")}</sheetData></worksheet>"));
+        var result = await new QuestionImportUseCase(_dbContext, _tenantContextMock.Object, _timeProviderMock.Object).PreviewAsync(file, "audit.xlsx", default);
+        Assert.Equal(1, result.Data!.ValidCount);
+        Assert.Equal("Question", Assert.Single(result.Data.ValidQuestions).QuestionText);
+    }
+
+    [Fact]
+    public async Task Audit_DocxTable_UsesSamePreviewValidation()
+    {
+        string Row(params string[] values) => "<w:tr>" + string.Concat(values.Select(v => $"<w:tc><w:p><w:r><w:t>{v}</w:t></w:r></w:p></w:tc>")) + "</w:tr>";
+        using var file = AuditZip(("word/document.xml", "<w:document xmlns:w='http://schemas.openxmlformats.org/wordprocessingml/2006/main'><w:body><w:tbl>" +
+            Row("Nội dung câu hỏi","Loại câu hỏi","Đáp án đúng","Lời giải") + Row("Question","ShortAnswer","2","Explanation") + "</w:tbl></w:body></w:document>"));
+        var result = await new QuestionImportUseCase(_dbContext, _tenantContextMock.Object, _timeProviderMock.Object).PreviewAsync(file, "audit.docx", default);
+        Assert.Equal(1, result.Data!.ValidCount);
+    }
+
+    [Fact]
+    public async Task Audit_ConfirmRevalidatesInactiveTopic()
+    {
+        var preview = await PreviewAuditCsv("QuestionText,QuestionType,CorrectAnswer,Solution\nQuestion,ShortAnswer,2,Explanation");
+        (await _dbContext.KnowledgeNodes.SingleAsync(n => n.NodeId == _nodeId)).IsActive = false;
+        await _dbContext.SaveChangesAsync();
+        var result = await new QuestionImportUseCase(_dbContext, _tenantContextMock.Object, _timeProviderMock.Object).ConfirmAsync(
+            new() { PreviewToken = preview.Data!.PreviewToken, SubjectId = _subjectId, PrimaryTopicNodeId = _nodeId }, default);
+        Assert.False(result.IsSuccess);
+        Assert.Empty(await _dbContext.Questions.ToListAsync());
+    }
+
     public void Dispose()
     {
         _dbContext.Database.EnsureDeleted();

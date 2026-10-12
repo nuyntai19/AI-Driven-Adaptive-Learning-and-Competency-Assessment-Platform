@@ -104,7 +104,7 @@ public class UpdateQuestionUseCase : IUpdateQuestionUseCase
         if (string.IsNullOrWhiteSpace(request.Solution))
             return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
 
-        if (request.MaxScore <= 0)
+        if (!QuestionScoreLimits.IsValid(request.MaxScore))
             return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
 
         if (request.EstimatedTimeSeconds == 0)

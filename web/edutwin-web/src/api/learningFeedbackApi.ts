@@ -89,7 +89,7 @@ export const getAttemptFeedback = async (
 };
 
 export const getNextQuestion = async (
-  subjectId: string, classId?: string, history = false
+  subjectId: string, classId?: string, history = false, sessionId?: string
 ): Promise<NextQuestionDataDto> => {
   interface NextQuestionApiDto {
     strategy: string;
@@ -114,7 +114,7 @@ export const getNextQuestion = async (
   const response = await httpClient.get<ApiResponse<NextQuestionApiDto>>(
     "/learning/next-question",
     {
-      params: { subjectId, classId: classId || undefined, history },
+      params: { subjectId, classId: classId || undefined, history, sessionId },
     }
   );
   const data = response.data.data;

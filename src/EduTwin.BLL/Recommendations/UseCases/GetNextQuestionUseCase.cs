@@ -1,9 +1,12 @@
 using System;
+using System.Linq;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.Recommendations;
+using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.DAL.Persistence;
 
 namespace EduTwin.BLL.Recommendations.UseCases;
@@ -28,6 +31,8 @@ public sealed record GetNextQuestionResult
 
 public interface IGetNextQuestionUseCase
 {
+    Task<GetNextQuestionResult> ExecuteSessionAsync(Guid subjectId, string sessionId, Guid? classId, bool history, CancellationToken ct)
+        => Task.FromResult(GetNextQuestionResult.FailNotFound("Buổi học không tồn tại."));
     Task<GetNextQuestionResult> ExecuteAsync(Guid subjectId, CancellationToken cancellationToken);
     Task<GetNextQuestionResult> ExecuteAsync(Guid subjectId, Guid? classId, bool history, CancellationToken ct)
         => history || classId.HasValue ? Task.FromResult(GetNextQuestionResult.FailForbidden("Phạm vi học tập không được hỗ trợ.")) : ExecuteAsync(subjectId, ct);
@@ -54,6 +59,33 @@ public sealed class GetNextQuestionUseCase : IGetNextQuestionUseCase
 
     public async Task<GetNextQuestionResult> ExecuteAsync(Guid subjectId, CancellationToken cancellationToken)
         => await ExecuteAsync(subjectId, null, false, cancellationToken);
+
+    public async Task<GetNextQuestionResult> ExecuteSessionAsync(Guid subjectId, string sessionId, Guid? classId, bool history, CancellationToken ct)
+    {
+        var accessible = await LearningPathSessionAccess.LoadAsync(_dbContext, _tenantContext, subjectId, sessionId, classId, history, ct);
+        if (accessible is null || accessible.Session.Status != "InProgress" || accessible.Session.StartedAtUtc is null)
+            return GetNextQuestionResult.FailNotFound("Buổi học chưa bắt đầu, đã hoàn thành hoặc không thuộc phạm vi đang học.");
+        var (path, _, session) = accessible;
+        var ids = session.RecommendedQuestionIds.Select(ulong.Parse).Distinct().ToList();
+        var attempts = await _dbContext.Attempts.AsNoTracking().Where(a => a.CenterId == path.CenterId && a.StudentId == path.StudentId &&
+            a.AssignmentId == null && ids.Contains(a.QuestionId) && a.CreatedAt >= session.StartedAtUtc && !a.Skipped)
+            .Select(a => a.QuestionId).ToListAsync(ct);
+        var remaining = ids.Where(id => !attempts.Contains(id)).ToList();
+        var topicId = ulong.Parse(session.TopicNodeId);
+        var questions = await _dbContext.Questions.AsNoTracking().Where(q => q.CenterId == path.CenterId && q.SubjectId == subjectId &&
+            q.PrimaryTopicNodeId == topicId && remaining.Contains(q.QuestionId) && q.Status == QuestionStatus.Active && !q.IsDeleted).ToListAsync(ct);
+        var question = remaining.Select(id => questions.FirstOrDefault(q => q.QuestionId == id)).FirstOrDefault(q => q is not null);
+        if (question is null) return GetNextQuestionResult.FailNotFound("Buổi học đã làm hết câu hoặc câu hỏi không còn khả dụng. Vui lòng quay lại lộ trình.");
+        var topic = await _dbContext.KnowledgeNodes.AsNoTracking().SingleOrDefaultAsync(n => n.CenterId == path.CenterId && n.NodeId == topicId && n.IsActive && !n.IsDeleted, ct);
+        if (topic is null) return GetNextQuestionResult.FailNotFound("Chủ đề không còn khả dụng.");
+        var options = await _dbContext.QuestionOptions.AsNoTracking().Where(o => o.CenterId == path.CenterId && o.QuestionId == question.QuestionId && !o.IsDeleted)
+            .OrderBy(o => o.OrderIndex).Select(o => new StudentQuestionOptionDto { OptionId = o.OptionId.ToString(), Label = o.OptionLabel, Text = o.OptionText, OrderIndex = o.OrderIndex }).ToListAsync(ct);
+        return GetNextQuestionResult.Success(new NextQuestionDto {
+            Strategy = path.Strategy, Topic = new(topicId, topic.NodeName, 0), Explanation = session.Objective,
+            Question = new(question.QuestionId, question.QuestionType, question.Difficulty, question.QuestionText, question.MaxScore,
+                question.EstimatedTimeSeconds, question.ReasoningRequired, question.LanguageCode, options, question.AnswerEvaluationMode, question.HasImage)
+        });
+    }
 
     public async Task<GetNextQuestionResult> ExecuteAsync(Guid subjectId, Guid? classId, bool history, CancellationToken cancellationToken)
     {

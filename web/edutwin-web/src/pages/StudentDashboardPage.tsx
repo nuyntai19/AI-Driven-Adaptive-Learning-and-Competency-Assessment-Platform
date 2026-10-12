@@ -175,11 +175,11 @@ export const StudentDashboardPage: React.FC = () => {
             <div className="flex flex-wrap items-center gap-4 text-xs text-stone-500 dark:text-stone-400 pt-1">
               <span className="inline-flex items-center gap-1.5">
                 <span className="text-stone-400">⏱</span>
-                <span>Dự kiến 25 phút</span>
+                <span>Thời lượng theo câu hỏi</span>
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <span className="text-stone-400">●</span>
-                <span>3 câu hỏi bài tập rèn luyện</span>
+                <span>Luyện theo đề xuất hiện tại</span>
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <span className="text-stone-400">⚡</span>

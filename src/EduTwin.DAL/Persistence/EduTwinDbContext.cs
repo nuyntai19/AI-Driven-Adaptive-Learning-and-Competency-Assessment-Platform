@@ -31,6 +31,13 @@ public class EduTwinDbContext : DbContext
     // Fail-closed tenant property: If unresolved, use Guid.Empty so queries return 0 rows.
     public Guid CurrentTenantId => _tenantIdAccessor?.CenterId ?? Guid.Empty;
 
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        base.OnConfiguring(optionsBuilder);
+        if (optionsBuilder.Options.Extensions.Any(e => e.GetType().FullName == "MySql.EntityFrameworkCore.Infrastructure.Internal.MySQLOptionsExtension"))
+            optionsBuilder.ReplaceService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsSqlGenerator, AuthorizationMigrationsSqlGenerator>();
+    }
+
 
     public DbSet<Center> Centers => Set<Center>();
     public DbSet<EduTwin.DAL.PlatformOperations.PlatformAiCall> PlatformAiCalls => Set<EduTwin.DAL.PlatformOperations.PlatformAiCall>();

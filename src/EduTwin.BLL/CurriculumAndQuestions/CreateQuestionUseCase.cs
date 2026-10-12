@@ -104,7 +104,7 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
         if (string.IsNullOrWhiteSpace(request.Solution))
             return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
 
-        if (request.MaxScore <= 0)
+        if (!QuestionScoreLimits.IsValid(request.MaxScore))
             return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
 
         if (request.EstimatedTimeSeconds == 0)

@@ -280,6 +280,9 @@ public sealed class RecommendationMySqlConcurrencyTests
         var tenant = new TenantContext();
         using var scope = tenant.BeginScope(centerId);
         await using var context = CreateContext(database.ConnectionString, tenant);
+        // The lifecycle guard correctly prevents deactivating a topic still used
+        // by an Active question. Prepare a valid no-candidate fixture first.
+        await context.Database.ExecuteSqlRawAsync("UPDATE questions SET status='Archived' WHERE question_id=101");
         var node = await context.KnowledgeNodes.SingleAsync(n => n.NodeId == 1);
         node.IsActive = false;
         await context.SaveChangesAsync();
@@ -297,6 +300,7 @@ public sealed class RecommendationMySqlConcurrencyTests
         node = await context.KnowledgeNodes.SingleAsync(n => n.NodeId == 1);
         node.IsActive = true;
         await context.SaveChangesAsync();
+        await context.Database.ExecuteSqlRawAsync("UPDATE questions SET status='Active' WHERE question_id=101");
 
         var stale = await engine.GenerateAndPersistAsync(
             centerId,
@@ -566,6 +570,7 @@ public sealed class RecommendationMySqlConcurrencyTests
         var tenant = new TenantContext();
         using var tenantScope = tenant.BeginScope(centerId);
         await using var context = CreateContext(connectionString, tenant);
+        var fixtureTeacherId = Guid.NewGuid();
         await context.Database.OpenConnectionAsync();
         try
         {
@@ -605,6 +610,11 @@ public sealed class RecommendationMySqlConcurrencyTests
                 CreatedAt = UtcNow,
                 UpdatedAt = UtcNow
             });
+
+            context.Users.Add(new User { UserId=fixtureTeacherId,CenterId=centerId,Username=$"teacher-{fixtureTeacherId:N}",
+                DisplayName="MySQL Rec Teacher",PasswordHash="synthetic",RoleName=UserRole.Teacher,Status=UserStatus.Active,
+                AuthVersion=1,CreatedAt=UtcNow,UpdatedAt=UtcNow });
+            context.Teachers.Add(new Teacher { TeacherId=fixtureTeacherId,CenterId=centerId,CreatedAt=UtcNow,UpdatedAt=UtcNow });
 
             context.Subjects.Add(new Subject
             {
@@ -650,6 +660,7 @@ public sealed class RecommendationMySqlConcurrencyTests
                 SubjectId = subjectId,
                 PrimaryTopicNodeId = 1,
                 QuestionId = 101,
+                CreatedByTeacherId = fixtureTeacherId,
                 QuestionText = "Sample Question",
                 QuestionType = QuestionType.MultipleChoice,
                 CorrectAnswer = "A",

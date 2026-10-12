@@ -43,11 +43,12 @@ async function start() {
       { env: { ...process.env, ...apiEnv } });
     docker(['run', '-d', '--name', state.web, '--network', 'edutwin_default', '--label', `edutwin.e2e.owner=${runId}`,
       '-p', '127.0.0.1:3002:80', '-v', `${path.join(root, 'scripts/e2e/acceptance.nginx.conf')}:/etc/nginx/conf.d/default.conf:ro`, 'edutwin-web:latest']);
-    for (let n = 0; n < 90; n++) {
+    // A fresh MySQL schema runs all migrations before seeding. Allow cold startup.
+    for (let n = 0; n < 600; n++) {
       try {
-        const response = await fetch('http://localhost:3002/api/v1/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' },
+        const response = await fetch('http://127.0.0.1:3002/api/v1/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ centerCode: 'EDUTWIN_A', username: 'student01', password: testPassword }), signal: AbortSignal.timeout(3000) });
-        if (response.status === 200) { console.log(JSON.stringify({ isolatedStackReady: true, database: state.database, url: 'http://localhost:3002', manifestPath })); return state; }
+        if (response.status === 200) { console.log(JSON.stringify({ isolatedStackReady: true, database: state.database, url: 'http://127.0.0.1:3002', manifestPath })); return state; }
       } catch {}
       await new Promise(resolve => setTimeout(resolve, 1000));
     }

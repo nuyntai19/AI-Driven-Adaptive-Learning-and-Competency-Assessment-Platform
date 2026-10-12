@@ -957,13 +957,21 @@ public sealed class RecommendationEngine : IRecommendationEngine
             .OrderByDescending(r => r.GeneratedAt)
             .FirstOrDefaultAsync(cancellationToken);
 
-        var questionOptions = currentItem.RecommendedQuestion is null
+        var selectedQuestion = currentItem.RecommendedQuestion;
+        if (selectedQuestion is null || selectedQuestion.IsDeleted || selectedQuestion.Status != QuestionStatus.Active ||
+            selectedQuestion.CenterId != centerId || selectedQuestion.SubjectId != subjectId || selectedQuestion.PrimaryTopicNodeId != currentItem.TopicNodeId)
+            selectedQuestion = await _questionSelector.SelectQuestionAsync(centerId, studentId, currentItem.TopicNodeId, topicMastery, cancellationToken);
+        if (selectedQuestion is not null && (selectedQuestion.IsDeleted || selectedQuestion.Status != QuestionStatus.Active ||
+            selectedQuestion.CenterId != centerId || selectedQuestion.SubjectId != subjectId || selectedQuestion.PrimaryTopicNodeId != currentItem.TopicNodeId))
+            selectedQuestion = null;
+
+        var questionOptions = selectedQuestion is null
             ? []
             : await _dbContext.QuestionOptions
                 .AsNoTracking()
                 .Where(option =>
                     option.CenterId == centerId &&
-                    option.QuestionId == currentItem.RecommendedQuestion.QuestionId &&
+                    option.QuestionId == selectedQuestion.QuestionId &&
                     !option.IsDeleted)
                 .OrderBy(option => option.OrderIndex)
                 .ThenBy(option => option.OptionId)
@@ -984,19 +992,19 @@ public sealed class RecommendationEngine : IRecommendationEngine
                 NodeId: currentItem.TopicNodeId,
                 NodeName: currentItem.TopicNode?.NodeName ?? "",
                 Mastery: topicMastery),
-            Question = currentItem.RecommendedQuestion is not null
+            Question = selectedQuestion is not null
                 ? new NextQuestionQuestionDto(
-                    QuestionId: currentItem.RecommendedQuestion.QuestionId,
-                    QuestionType: currentItem.RecommendedQuestion.QuestionType,
-                    Difficulty: currentItem.RecommendedQuestion.Difficulty,
-                    QuestionText: currentItem.RecommendedQuestion.QuestionText,
-                    MaxScore: currentItem.RecommendedQuestion.MaxScore,
-                    EstimatedTimeSeconds: currentItem.RecommendedQuestion.EstimatedTimeSeconds,
-                    ReasoningRequired: currentItem.RecommendedQuestion.ReasoningRequired,
-                    LanguageCode: currentItem.RecommendedQuestion.LanguageCode,
+                    QuestionId: selectedQuestion.QuestionId,
+                    QuestionType: selectedQuestion.QuestionType,
+                    Difficulty: selectedQuestion.Difficulty,
+                    QuestionText: selectedQuestion.QuestionText,
+                    MaxScore: selectedQuestion.MaxScore,
+                    EstimatedTimeSeconds: selectedQuestion.EstimatedTimeSeconds,
+                    ReasoningRequired: selectedQuestion.ReasoningRequired,
+                    LanguageCode: selectedQuestion.LanguageCode,
                     Options: questionOptions,
-                    AnswerEvaluationMode: currentItem.RecommendedQuestion.AnswerEvaluationMode,
-                    HasImage: currentItem.RecommendedQuestion.HasImage)
+                    AnswerEvaluationMode: selectedQuestion.AnswerEvaluationMode,
+                    HasImage: selectedQuestion.HasImage)
                 : null,
             Explanation = currentItem.Reason
         };

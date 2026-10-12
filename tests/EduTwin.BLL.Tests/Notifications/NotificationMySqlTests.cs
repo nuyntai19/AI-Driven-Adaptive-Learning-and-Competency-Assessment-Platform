@@ -339,10 +339,18 @@ public sealed partial class NotificationMySqlTests(Xunit.Abstractions.ITestOutpu
             }
             catch { await fixture.DisposeAsync(); throw; }
         }
-        public async ValueTask DisposeAsync()
+        public ValueTask DisposeAsync()
         {
-            await using var db = new MySqlConnection(admin); await db.OpenAsync();
-            await using var command = db.CreateCommand(); command.CommandText = $"DROP DATABASE IF EXISTS `{database}`"; await command.ExecuteNonQueryAsync();
+            // Large fixture DDL can exceed the driver's default 30-second timeout.
+            // The async timeout/drain path can wait forever after the schema has
+            // already disappeared. Use a bounded synchronous admin operation;
+            // errors still fail the test instead of hiding failed cleanup.
+            using var db = new MySqlConnection(admin); db.Open();
+            using var command = db.CreateCommand();
+            command.CommandTimeout = 120;
+            command.CommandText = $"DROP DATABASE IF EXISTS `{database}`";
+            command.ExecuteNonQuery();
+            return ValueTask.CompletedTask;
         }
     }
 }

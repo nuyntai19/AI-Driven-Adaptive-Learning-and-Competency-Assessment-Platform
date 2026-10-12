@@ -118,15 +118,19 @@ ${htmlContent}
 /**
  * Downloads a CSV string as a file in browser with UTF-8 BOM for proper Vietnamese character display in Excel.
  */
+export function serializeCsvCell(cell: string | number | boolean | null | undefined): string {
+  if (cell === null || cell === undefined) return '""';
+  const raw = String(cell);
+  const first = [...raw].find(char => char.charCodeAt(0) > 31 && !/\s/.test(char));
+  const safe = typeof cell === "string" && first !== undefined && "=+@-".includes(first) ? `'${raw}` : raw;
+  return `"${safe.replace(/"/g, '""')}"`;
+}
+
 export function downloadCsv(filename: string, rows: (string | number | boolean | null | undefined)[][]) {
   const csvContent = rows
     .map((row) =>
       row
-        .map((cell) => {
-          if (cell === null || cell === undefined) return '""';
-          const stringValue = String(cell).replace(/"/g, '""');
-          return `"${stringValue}"`;
-        })
+        .map(serializeCsvCell)
         .join(",")
     )
     .join("\r\n");
@@ -676,10 +680,7 @@ export function buildStudentReportCsv(
           ? "Quá hạn"
           : "Chưa làm";
 
-      const scoreText =
-        rec.score !== null && rec.score !== undefined
-          ? `${rec.score.toFixed(1)} / ${rec.maxScore || 10}`
-          : "-";
+      const scoreText = reportScoreText(rec);
 
       const dueDateText = rec.dueAt ? new Date(rec.dueAt).toLocaleDateString("vi-VN") : "Không giới hạn";
 

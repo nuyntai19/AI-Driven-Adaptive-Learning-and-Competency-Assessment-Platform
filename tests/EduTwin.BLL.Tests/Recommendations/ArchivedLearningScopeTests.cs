@@ -186,4 +186,104 @@ public sealed class ArchivedLearningScopeTests : IDisposable
         Assert.NotNull(await reader.ExecuteAsync(subject,default)); // personal history remains readable without claiming a class snapshot
         Assert.Equal(saved,path.PlanJson.RootElement.GetRawText());Assert.Equal(now,path.UpdatedAt);
     }
+    [Theory]
+    [InlineData("GoalType")]
+    [InlineData("Pace")]
+    [InlineData("PreferredMode")]
+    [InlineData("SelfAssessedLevel")]
+    [InlineData("Note")]
+    public async Task Audit_InvalidPreferences_FailBeforeEngineOrMutation(string field)
+    {
+        await Seed();
+        var request = new GenerateLearningPathRequest { SubjectId = subject, ClassId = currentClass };
+        if (field == "Note") request.Note = new string('a', 1001);
+        else typeof(GenerateLearningPathRequest).GetProperty(field)!.SetValue(request, "INVALID");
+        var generator = new GenerateLearningPathUseCase(db, tenant, new Mock<IRecommendationEngine>(MockBehavior.Strict).Object);
+        await Assert.ThrowsAsync<ArgumentException>(() => generator.ExecuteAsync(request, default));
+        Assert.Empty(await db.StudentLearningPathPreferences.ToListAsync());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Audit_CompletionNeedsCurrentPracticeEvidence_AndUpdatesCheckpoint(bool teacherConfirmed)
+    {
+        await Seed();
+        var pathId = Guid.NewGuid(); var sid = $"{pathId:D}-w01-s01";
+        db.Questions.Add(new Question { CenterId=center, QuestionId=900, SubjectId=subject, PrimaryTopicNodeId=2, CreatedByTeacherId=teacher,
+            QuestionText="Synthetic", CorrectAnswer="2", Solution="Explanation", LanguageCode="vi", Status=QuestionStatus.Active,
+            QuestionType=QuestionType.ShortAnswer, MaxScore=10, Difficulty=1, EstimatedTimeSeconds=30, CreatedAt=now, UpdatedAt=now });
+        var path = new LearningPath { CenterId=center, LearningPathId=pathId, StudentId=student, SubjectId=subject, Status=LearningPathStatus.Active,
+            CreatedAt=now, UpdatedAt=now, GeneratedAt=now, RowVersion=1,
+            PlanJson=JsonSerializer.SerializeToDocument(new[]{new LearningPathPhaseDto{Weeks=[new(){Sessions=[new(){SessionId=sid,TopicNodeId="2",ClassId=currentClass,
+                RecommendedQuestionIds=["900"],RequiredCorrectRate=0.75m}]}]}},new JsonSerializerOptions(JsonSerializerDefaults.Web)) };
+        db.LearningPaths.Add(path); await db.SaveChangesAsync();
+        var updater = new UpdateLearningPathSessionUseCase(db, tenant);
+        Assert.False(await updater.ExecuteAsync(subject,sid,new(){ClassId=currentClass,Status="Completed"},default));
+        Assert.True(await updater.ExecuteAsync(subject,sid,new(){ClassId=currentClass,Status="InProgress",ExpectedRowVersion="1"},default));
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => updater.ExecuteAsync(subject,sid,new(){ClassId=currentClass,Status="Skipped",ExpectedRowVersion="1"},default));
+        Assert.False(await updater.ExecuteAsync(subject,sid,new(){ClassId=currentClass,Status="Completed"},default));
+        var engine = new Mock<IRecommendationEngine>(MockBehavior.Strict);
+        var reader = new GetNextQuestionUseCase(db,tenant,engine.Object,TimeProvider.System);
+        var next = await reader.ExecuteSessionAsync(subject,sid,currentClass,false,default);
+        Assert.Equal(900ul,next.Data!.Question!.QuestionId);
+        Assert.True((await reader.ExecuteSessionAsync(subject,sid,oldClass,false,default)).NotFound);
+        db.Attempts.Add(new EduTwin.DAL.AssessmentAndReasoning.Attempt { CenterId=center, AttemptId=909, StudentId=student, QuestionId=900,
+            FinalAnswer="2", IsCorrect=teacherConfirmed ? null : true, Confidence=80, ReasoningLanguage="vi", CreatedAt=DateTime.UtcNow.AddSeconds(1), UpdatedAt=now });
+        if (teacherConfirmed) db.ReasoningAnalyses.Add(new EduTwin.DAL.AssessmentAndReasoning.ReasoningAnalysis {
+            CenterId=center, AnalysisId=910, AttemptId=909, SchemaVersion="1", Feedback="Teacher confirmed",
+            MissingSteps=JsonDocument.Parse("[]"), RootCauseNodeIds=JsonDocument.Parse("[]"),
+            OverrideIsCorrect=true, CreatedAt=now, UpdatedAt=now });
+        await db.SaveChangesAsync();
+        Assert.True(await updater.ExecuteAsync(subject,sid,new(){ClassId=currentClass,Status="Evaluate"},default));
+        var phases = JsonSerializer.Deserialize<List<LearningPathPhaseDto>>(path.PlanJson!.RootElement.GetRawText(),new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        Assert.Equal("Completed",phases[0].Weeks[0].Sessions[0].Status);
+        Assert.Equal(1,phases[0].Weeks[0].Checkpoint.CompletedTasks);
+        Assert.Equal(100,phases[0].Weeks[0].ProgressPercentage);
+        Assert.Equal(LearningPathStatus.Completed,path.Status);
+        Assert.True((await reader.ExecuteSessionAsync(subject,sid,currentClass,false,default)).NotFound);
+        // Automatic recommendation replacement must not hide the durable plan
+        // when the student returns from its completed session.
+        path.Status = LearningPathStatus.Superseded;
+        var replacementId = Guid.NewGuid();
+        db.LearningPaths.Add(new LearningPath { CenterId=center,LearningPathId=replacementId,StudentId=student,SubjectId=subject,
+            Status=LearningPathStatus.Active,Version=path.Version+1,CreatedAt=now,UpdatedAt=now,GeneratedAt=now,
+            PlanJson=JsonSerializer.SerializeToDocument(new[]{new LearningPathPhaseDto{Weeks=[new(){Sessions=[new(){SessionId=$"{replacementId:D}-w01-s01",TopicNodeId="2",ClassId=currentClass}]}]}},new JsonSerializerOptions(JsonSerializerDefaults.Web)) });
+        db.StudentLearningPathPreferences.Add(new(){CenterId=center,StudentId=student,SubjectId=subject,TargetWeeks=1,DaysPerWeek=3,MinutesPerDay=20,TargetMastery=80,
+            WeakTopicNodeIds=JsonDocument.Parse("[]"),FocusTopicNodeIds=JsonDocument.Parse("[]"),CreatedAt=now,UpdatedAt=now});
+        await db.SaveChangesAsync();
+        var details = new GenerateLearningPathUseCase(db,tenant,engine.Object);
+        var original = await details.ExecuteAsync(subject,currentClass,pathId,default);
+        Assert.Equal(pathId.ToString(),original!.LearningPathId);
+        Assert.Equal(100,original.ProgressPercentage);
+        Assert.Equal(1,original.Phases[0].Weeks[0].Checkpoint.CompletedTasks);
+        Assert.Equal(replacementId.ToString(),(await details.ExecuteAsync(subject,currentClass,default))!.LearningPathId);
+        Assert.Null(await details.ExecuteAsync(subject,currentClass,Guid.NewGuid(),default));
+        Assert.Null(await details.ExecuteAsync(subject,null,pathId,default));
+    }
+
+    [Fact]
+    public async Task Audit_ScheduleFiltersDraft_AndPreferencesChangeActivitiesAndCapacity()
+    {
+        await Seed();
+        foreach(var (id,status) in new[]{(901ul,QuestionStatus.Draft),(902ul,QuestionStatus.Active),(903ul,QuestionStatus.Archived),(904ul,QuestionStatus.Active)})
+            db.Questions.Add(new Question{CenterId=center,QuestionId=id,SubjectId=subject,PrimaryTopicNodeId=2,CreatedByTeacherId=teacher,QuestionText="Synthetic",CorrectAnswer="2",
+                Solution="Explanation",LanguageCode="vi",Status=status,QuestionType=id==904 ? QuestionType.Essay : QuestionType.ShortAnswer,
+                AnswerEvaluationMode=id==904 ? QuestionAnswerEvaluationMode.Manual : QuestionAnswerEvaluationMode.TextExact,
+                MaxScore=10,Difficulty=1,EstimatedTimeSeconds=30,CreatedAt=now,UpdatedAt=now});
+        await db.SaveChangesAsync();
+        var generator=new GenerateLearningPathUseCase(db,tenant,new Mock<IRecommendationEngine>().Object);
+        var method=typeof(GenerateLearningPathUseCase).GetMethod("BuildScheduleAsync",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance)!;
+        var items=new List<LearningPathItemDetailDto>{new(){TopicNodeId="2",TopicName="Topic",CurrentMastery=60,TargetMastery=80}};
+        var pref=new StudentLearningPathPreference{TargetWeeks=1,DaysPerWeek=3,MinutesPerDay=30,PreferredMode="TheoryHeavy"};
+        async Task<List<LearningPathPhaseDto>> Build() => await (Task<List<LearningPathPhaseDto>>)method.Invoke(generator,[center,subject,Guid.NewGuid(),items,pref,CancellationToken.None])!;
+        var theory=await Build();
+        Assert.Equal("LearnTheory",theory[0].Weeks[0].Sessions[0].Type);
+        Assert.All(theory.SelectMany(p=>p.Weeks).SelectMany(w=>w.Sessions),s=>Assert.Equal(new[]{"902"},s.RecommendedQuestionIds));
+        pref.PreferredMode="PracticeHeavy";pref.GoalType="ExamPrep";
+        var practice=await Build();
+        Assert.Equal("GuidedPractice",practice[0].Weeks[0].Sessions[0].Type);
+        Assert.Equal("MockTest",practice[0].Weeks[0].Sessions[2].Type);
+    }
+
 }

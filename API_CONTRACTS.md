@@ -1287,10 +1287,12 @@ Activate request:
 
 ### 48.1. POST /questions/import/preview
 
-Quyền: Teacher, CenterManager (Policy: `curriculum.questions.create`).
+Quyền: Teacher có capability `curriculum.questions.create`. CenterManager không tự kế thừa quyền tạo nội dung học thuật của Teacher.
 Content-Type: `multipart/form-data`
 
 Request: File upload (`.csv`, `.txt`, `.xlsx`, `.docx`) qua trường `file`.
+
+DOCX phải chứa bảng với hàng tiêu đề theo file mẫu CSV; không suy đoán cấu trúc từ văn bản tự do. Giới hạn 10 MiB nén, 50 MiB giải nén, 5.000 hàng. `invalidCount` đếm hàng có lỗi, không đếm số thông báo. Điểm tối đa trong `(0, 999.99]`, tối đa hai chữ số thập phân; boolean không nhận diện bị báo lỗi thay vì mặc định false.
 
 Response 200:
 
@@ -1339,7 +1341,7 @@ Response 200:
 
 ### 48.2. POST /questions/import/confirm
 
-Quyền: Teacher, CenterManager (Policy: `curriculum.questions.create`).
+Quyền: Teacher có capability `curriculum.questions.create`; actor và tenant phải trùng preview.
 
 Request:
 
@@ -1929,6 +1931,16 @@ Response 200:
 | POST | /students/me/recommendation/{id}/accept | — | 200 updated status |
 | POST | /students/me/recommendation/{id}/dismiss | reason optional, tối đa 1000 ký tự | 200 updated status; reason được lưu vào audit state của recommendation |
 | GET | /students/me/learning-path | subjectId required | Active Learning Path |
+
+Các endpoint lộ trình chi tiết (Student, capability đọc/cập nhật own):
+
+- `GET /students/me/learning-path/detailed?subjectId&classId`: schedule đã lưu, revalidate trạng thái câu hỏi hiện tại.
+- Có thể thêm `pathId` (GUID) để đọc đúng phiên bản kế hoạch của buổi đã học khi recommendation đã thay bản mới. Luôn kiểm tra tenant + student + subject; session có classId phải khớp classId hiện tại và topic scope. Không tìm thấy/ngoài scope trả 404. Không có pathId vẫn đọc phiên bản hiện tại như trước.
+- `POST /students/me/learning-path/generate`: whitelist self level/goal/pace/mode; note tối đa 1000 ký tự; invalid input 400, môn không tồn tại 404, prerequisite chưa đáp ứng 409.
+- `GET /students/me/learning-path/sessions/{sessionId}?subjectId&classId`: buổi thuộc học sinh và scope hiện tại, kèm `rowVersion`, `startedAtUtc`.
+- `PATCH /students/me/learning-path/sessions/{sessionId}?subjectId`: `{status,classId,history,expectedRowVersion?,acknowledgedActivities?}`. Client gửi version đã đọc; version cũ hoặc race DB trả 409. Start ghi thời gian server. Completed cần đủ attempt không skipped của học sinh cho câu trong buổi, sau lúc bắt đầu, đạt `requiredCorrectRate`. Evaluate tự kiểm tra và giữ InProgress/chuyển Completed/NeedsReview. Buổi không có câu cần xác nhận hoạt động tường minh. Tiến độ/checkpoint được cập nhật cùng schedule.
+- `GET /learning/next-question?subjectId&classId&sessionId`: với sessionId chỉ chọn câu Active còn lại trong buổi đã bắt đầu; không lấy đề xuất chung thay thế. Buổi đã bắt đầu vẫn gắn path gốc khi recommendation được thay phiên bản.
+- Schedule luyện tự do không giao Essay/Manual vì free-practice không có quyền teacher review; session cũ cũng loại các câu này. Nếu không còn câu tự chấm, buổi dùng hoạt động thay thế và acknowledgement tường minh, không coi correctness null là đúng.
 
 Twin history item:
 

@@ -11,6 +11,7 @@ import {
   generateLearningPath,
   getDetailedLearningPath,
   updateLearningPathSession,
+  getLearningPathSession,
 } from "../api/learningPathApi";
 import type {
   GenerateLearningPathRequest,
@@ -24,6 +25,7 @@ export const StudentLearningPathPage: React.FC = () => {
   const queryClient = useQueryClient();
 
   const activeSubjectId = searchParams.get("subjectId") || "";
+  const savedPathId = searchParams.get("pathId") || undefined;
 
   // 1. Fetch available subjects
   const { data: subjectsData } = useQuery({
@@ -68,9 +70,12 @@ export const StudentLearningPathPage: React.FC = () => {
   const {
     data: detailedPathData,
     isLoading: isPathLoading,
+    isError: isPathError,
+    error: pathError,
+    refetch: refetchPath,
   } = useQuery({
-    queryKey: ["learning-path", effectiveSubjectId, access.classId],
-    queryFn: () => getDetailedLearningPath(effectiveSubjectId, access.classId),
+    queryKey: ["learning-path", effectiveSubjectId, access.classId, savedPathId],
+    queryFn: () => getDetailedLearningPath(effectiveSubjectId, access.classId, savedPathId),
     enabled: !!effectiveSubjectId && access.writable,
     retry: false,
   });
@@ -130,10 +135,10 @@ export const StudentLearningPathPage: React.FC = () => {
 
   // If no path yet, open questionnaire by default
   useEffect(() => {
-    if (access.writable && !isPathLoading && !detailedPath && effectiveSubjectId) {
+    if (access.writable && !isPathLoading && !detailedPath && effectiveSubjectId && (!isPathError || (pathError as { response?: { status?: number } })?.response?.status === 404)) {
       setIsQuestionnaireOpen(true);
     }
-  }, [isPathLoading, detailedPath, effectiveSubjectId, access.writable]);
+  }, [isPathLoading, detailedPath, effectiveSubjectId, access.writable, isPathError, pathError]);
 
   // Generate Learning Path Mutation
   const generateMutation = useMutation({
@@ -141,11 +146,14 @@ export const StudentLearningPathPage: React.FC = () => {
       if (!access.writable) throw new Error(access.reason);
       return generateLearningPath(req);
     },
-    onSuccess: (response) => {
-      queryClient.setQueryData(["learning-path", effectiveSubjectId, access.classId], response);
-      void queryClient.invalidateQueries({ queryKey: ["learning-path", effectiveSubjectId] });
-      void queryClient.invalidateQueries({ queryKey: ["learning-path-preferences", effectiveSubjectId] });
-      setIsQuestionnaireOpen(false);
+    onSuccess: (response, request) => {
+      queryClient.setQueryData(["learning-path", request.subjectId, request.classId || "", undefined], response);
+      void queryClient.invalidateQueries({ queryKey: ["learning-path", request.subjectId] });
+      void queryClient.invalidateQueries({ queryKey: ["learning-path-preferences", request.subjectId] });
+      if (request.subjectId === effectiveSubjectId && (request.classId || "") === access.classId) {
+        setIsQuestionnaireOpen(false);
+        if (savedPathId) { const params = new URLSearchParams(searchParams); params.delete("pathId"); setSearchParams(params, { replace: true }); }
+      }
     },
     onError: (err: unknown) => {
       setFormError(err instanceof Error ? err.message : "Không thể tạo lộ trình học tập.");
@@ -191,9 +199,11 @@ export const StudentLearningPathPage: React.FC = () => {
   };
 
   const startSessionMutation = useMutation({
-    mutationFn: (sessionId: string) => {
+    mutationFn: async (sessionId: string) => {
       if (!access.writable) throw new Error(access.reason);
-      return updateLearningPathSession(effectiveSubjectId, sessionId, "InProgress", access.classId, access.history);
+      const session = await getLearningPathSession(effectiveSubjectId, sessionId, access.classId, access.history);
+      if (session.status === "Completed") return;
+      return updateLearningPathSession(effectiveSubjectId, sessionId, "InProgress", access.classId, access.history, session.rowVersion || undefined);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["learning-path", effectiveSubjectId] }),
   });
@@ -202,7 +212,7 @@ export const StudentLearningPathPage: React.FC = () => {
     if (!access.writable) return;
     try {
       await startSessionMutation.mutateAsync(sessionId);
-      const p = new URLSearchParams(searchParams); p.set("subjectId", effectiveSubjectId);
+      const p = new URLSearchParams(searchParams); p.set("subjectId", effectiveSubjectId); p.set("sessionId", sessionId); p.delete("assignmentId"); p.delete("analysisJobId");
       navigate(`/hoc-tap/luyen-tap?${p}`);
     } catch (error) { setFormError(error instanceof Error ? error.message : "Không thể bắt đầu buổi học."); }
   };
@@ -212,6 +222,10 @@ export const StudentLearningPathPage: React.FC = () => {
 
   return (
     <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8 min-w-0">
+      {formError && !isQuestionnaireOpen && <p role="alert" className="text-red-700 dark:text-red-400">{formError}</p>}
+      {isPathError && (pathError as { response?: { status?: number } })?.response?.status !== 404 && (
+        <div role="alert"><p>Không thể tải lộ trình. Vui lòng thử lại.</p><button type="button" onClick={() => void refetchPath()}>Tải lại</button></div>
+      )}
       {/* Header & Subject Selector */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-stone-200/80 dark:border-stone-800">
         <div>
@@ -236,6 +250,7 @@ export const StudentLearningPathPage: React.FC = () => {
               onChange={(e) => {
                 const p = new URLSearchParams(searchParams);
                 p.set("subjectId", e.target.value);
+                p.delete("pathId");
                 setSearchParams(p);
               }}
               className="rounded-xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 shadow-2xs focus:border-indigo-500 focus:outline-none"
@@ -257,6 +272,11 @@ export const StudentLearningPathPage: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {savedPathId && detailedPath && <div role="status" className="rounded-xl bg-indigo-50 p-4 text-sm dark:bg-indigo-950">
+        Bạn đang xem kế hoạch đã lưu v{detailedPath.version}, gồm tiến độ các buổi thuộc kế hoạch này.
+        <button type="button" className="ml-3 underline" onClick={() => { const params = new URLSearchParams(searchParams); params.delete("pathId"); setSearchParams(params); }}>Xem lộ trình hiện tại</button>
+      </div>}
 
       {/* QUESTIONNAIRE CARD (Survey form) */}
       {isQuestionnaireOpen && (
@@ -538,7 +558,7 @@ export const StudentLearningPathPage: React.FC = () => {
               <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 Ghi chú riêng của bạn (tùy chọn):
               </label>
-              <textarea
+              <textarea maxLength={1000}
                 rows={2}
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
@@ -682,7 +702,7 @@ export const StudentLearningPathPage: React.FC = () => {
                               <div className="text-xs text-slate-600 dark:text-slate-300"><strong>Trên EduTwin:</strong><ul className="mt-1 list-disc pl-4 space-y-1">{session.onlineActivities.map((a) => <li key={a}>{a}</li>)}</ul></div>
                               <div className="text-xs text-slate-600 dark:text-slate-300"><strong>Ngoài EduTwin:</strong><ul className="mt-1 list-disc pl-4 space-y-1">{session.offlineActivities.map((a) => <li key={a}>{a}</li>)}</ul></div>
                               <div className="text-xs text-slate-500">Điều kiện: {session.completionCriteria.join(" · ")}</div>
-                              <button type="button" onClick={() => startSession(session.sessionId)} className="text-xs font-bold text-indigo-600 hover:underline">Bắt đầu học →</button>
+                              <button type="button" onClick={() => startSession(session.sessionId)} className="text-xs font-bold text-indigo-600 hover:underline">{session.status === "Completed" ? "Xem buổi đã hoàn thành →" : "Bắt đầu học →"}</button>
                             </article>
                           ))}
                         </div>

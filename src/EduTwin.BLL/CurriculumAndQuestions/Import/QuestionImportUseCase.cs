@@ -98,9 +98,9 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
         string fileName,
         CancellationToken cancellationToken)
     {
-        if (fileStream == null || fileStream.Length == 0)
+        if (fileStream == null || fileStream.Length == 0 || fileStream.Length > 10 * 1024 * 1024)
         {
-            return QuestionImportPreviewResult.ValidationFailed("Tệp tải lên không được rỗng.");
+            return QuestionImportPreviewResult.ValidationFailed("Tệp tải lên không được rỗng hoặc vượt quá 10 MiB.");
         }
 
         var ext = Path.GetExtension(fileName).ToLowerInvariant();
@@ -116,11 +116,16 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
             {
                 rawRows = await ParseXlsxAsync(fileStream, cancellationToken);
             }
+            else if (ext == ".docx")
+            {
+                rawRows = await ParseDocxAsync(fileStream, cancellationToken);
+            }
             else
             {
-                return QuestionImportPreviewResult.ValidationFailed("Định dạng tệp không được hỗ trợ. Vui lòng tải lên tệp .csv hoặc .xlsx.");
+                return QuestionImportPreviewResult.ValidationFailed("Định dạng tệp không được hỗ trợ. Vui lòng tải lên .csv, .txt, .xlsx hoặc .docx dạng bảng.");
             }
         }
+        catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Lỗi khi đọc tệp dữ liệu nhập câu hỏi: {FileName}", fileName);
@@ -241,7 +246,7 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
             decimal maxScore = 10m;
             if (!string.IsNullOrWhiteSpace(maxScoreStr))
             {
-                if (decimal.TryParse(maxScoreStr.Replace(',', '.'), NumberStyles.Any, CultureInfo.InvariantCulture, out var parsedScore) && parsedScore > 0)
+                if (decimal.TryParse(maxScoreStr.Replace(',', '.'), NumberStyles.Any, CultureInfo.InvariantCulture, out var parsedScore) && QuestionScoreLimits.IsValid(parsedScore))
                 {
                     maxScore = parsedScore;
                 }
@@ -251,7 +256,7 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
                     {
                         RowIndex = rowIndex,
                         Field = "MaxScore",
-                        ErrorMessage = "Điểm tối đa phải là số lớn hơn 0.",
+                        ErrorMessage = "Điểm tối đa phải lớn hơn 0, không vượt quá 999.99 và có tối đa 2 chữ số thập phân.",
                         RawValue = maxScoreStr
                     });
                 }
@@ -291,6 +296,11 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
                 else if (lower is "0" or "false" or "khong" or "không" or "no")
                 {
                     reasoningRequired = false;
+                }
+                else
+                {
+                    rowErrors.Add(new QuestionImportRowErrorDto { RowIndex = rowIndex, Field = "ReasoningRequired",
+                        ErrorMessage = "Giá trị yêu cầu lập luận phải là true/false, 1/0 hoặc có/không.", RawValue = reasoningReqStr });
                 }
             }
 
@@ -473,7 +483,7 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
             PreviewToken = previewToken,
             TotalRows = rawRows.Count,
             ValidCount = validQuestions.Count,
-            InvalidCount = errors.Count,
+            InvalidCount = errors.Select(e => e.RowIndex).Distinct().Count(),
             ValidQuestions = validQuestions,
             Errors = errors
         };
@@ -550,14 +560,14 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
 
             // Verify subject and topic node exist
             var subjectExists = await _dbContext.Subjects.AsNoTracking()
-                .AnyAsync(s => s.CenterId == centerId && s.SubjectId == request.SubjectId && !s.IsDeleted, cancellationToken);
+                .AnyAsync(s => s.CenterId == centerId && s.SubjectId == request.SubjectId && s.IsActive && !s.IsDeleted, cancellationToken);
             if (!subjectExists)
             {
                 return QuestionImportConfirmResult.NotFound("Môn học không tồn tại trong trung tâm.");
             }
 
             var nodeExists = await _dbContext.KnowledgeNodes.AsNoTracking()
-                .AnyAsync(n => n.CenterId == centerId && n.SubjectId == request.SubjectId && n.NodeId == request.PrimaryTopicNodeId && !n.IsDeleted, cancellationToken);
+                .AnyAsync(n => n.CenterId == centerId && n.SubjectId == request.SubjectId && n.NodeId == request.PrimaryTopicNodeId && n.IsActive && !n.IsDeleted, cancellationToken);
             if (!nodeExists)
             {
                 return QuestionImportConfirmResult.NotFound("Chủ đề kiến thức không tồn tại trong môn học.");
@@ -759,14 +769,14 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
     {
         using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
         var rows = new List<Dictionary<string, string>>();
-        string? headerLine = await reader.ReadLineAsync(cancellationToken);
+        string? headerLine = await ReadCsvRecordAsync(reader, cancellationToken);
         if (string.IsNullOrWhiteSpace(headerLine)) return rows;
 
         var delimiter = DetectDelimiter(headerLine);
         var headers = SplitCsvLine(headerLine, delimiter).Select(NormalizeHeader).ToList();
 
         string? line;
-        while ((line = await reader.ReadLineAsync(cancellationToken)) != null)
+        while ((line = await ReadCsvRecordAsync(reader, cancellationToken)) != null)
         {
             if (string.IsNullOrWhiteSpace(line)) continue;
 
@@ -784,6 +794,7 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
             if (rowDict.Values.Any(v => !string.IsNullOrWhiteSpace(v)))
             {
                 rows.Add(rowDict);
+                if (rows.Count > 5000) throw new InvalidDataException("Chỉ hỗ trợ tối đa 5000 câu mỗi tệp.");
             }
         }
 
@@ -798,6 +809,7 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
         memory.Position = 0;
 
         using var archive = new ZipArchive(memory, ZipArchiveMode.Read, leaveOpen: false);
+        ValidateArchive(archive);
 
         // 1. Read shared strings
         var sharedStrings = new List<string>();
@@ -815,7 +827,7 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
         }
 
         // 2. Read sheet1.xml
-        var sheetEntry = archive.GetEntry("xl/worksheets/sheet1.xml");
+        var sheetEntry = await GetFirstWorksheetAsync(archive, cancellationToken);
         if (sheetEntry == null) return rows;
 
         await using var sheetStream = sheetEntry.Open();
@@ -860,12 +872,14 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
             }
         }
 
+        if (rows.Count > 5000) throw new InvalidDataException("Chỉ hỗ trợ tối đa 5000 câu mỗi tệp.");
         return rows;
     }
 
     private static string GetCellValue(XElement cell, List<string> sharedStrings, XNamespace ns)
     {
         var type = (string?)cell.Attribute("t");
+        if (type == "inlineStr") return string.Concat(cell.Descendants(ns + "t").Select(t => t.Value));
         var valElem = cell.Element(ns + "v");
         if (valElem == null) return string.Empty;
 
@@ -880,8 +894,90 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
 
     private static string NormalizeHeader(string header)
     {
-        var cleaned = Regex.Replace(header.Trim().ToLowerInvariant(), @"[^a-z0-9]", "");
+        var normalized = header.Trim().ToLowerInvariant().Replace('đ', 'd').Normalize(NormalizationForm.FormD);
+        var withoutMarks = string.Concat(normalized.Where(c => CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark));
+        var cleaned = Regex.Replace(withoutMarks, @"[^a-z0-9]", "");
         return cleaned;
+    }
+
+    private static async Task<string?> ReadCsvRecordAsync(StreamReader reader, CancellationToken ct)
+    {
+        var record = new StringBuilder();
+        var quoted = false;
+        while (true)
+        {
+            var line = await reader.ReadLineAsync(ct);
+            if (line is null)
+            {
+                if (quoted) throw new InvalidDataException("CSV có ô chưa đóng dấu nháy.");
+                return record.Length == 0 ? null : record.ToString();
+            }
+            if (record.Length > 0) record.Append('\n');
+            record.Append(line);
+            if (record.Length > 1024 * 1024) throw new InvalidDataException("Một dòng CSV quá dài.");
+            for (var i = 0; i < line.Length; i++)
+            {
+                if (line[i] != '"') continue;
+                if (quoted && i + 1 < line.Length && line[i + 1] == '"') { i++; continue; }
+                quoted = !quoted;
+            }
+            if (!quoted) return record.ToString();
+        }
+    }
+
+    private static void ValidateArchive(ZipArchive archive)
+    {
+        if (archive.Entries.Count > 2000 || archive.Entries.Sum(e => e.Length) > 50 * 1024 * 1024)
+            throw new InvalidDataException("Tệp giải nén vượt giới hạn cho phép.");
+    }
+
+    private static async Task<ZipArchiveEntry?> GetFirstWorksheetAsync(ZipArchive archive, CancellationToken ct)
+    {
+        var workbook = archive.GetEntry("xl/workbook.xml");
+        var relationships = archive.GetEntry("xl/_rels/workbook.xml.rels");
+        if (workbook is null || relationships is null) return archive.GetEntry("xl/worksheets/sheet1.xml");
+        await using var bookStream = workbook.Open();
+        await using var relStream = relationships.Open();
+        var book = await XDocument.LoadAsync(bookStream, LoadOptions.None, ct);
+        var rels = await XDocument.LoadAsync(relStream, LoadOptions.None, ct);
+        XNamespace ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+        XNamespace r = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+        var id = (string?)book.Descendants(ns + "sheet").FirstOrDefault()?.Attribute(r + "id");
+        var rel = rels.Root?.Elements().FirstOrDefault(e => (string?)e.Attribute("Id") == id);
+        if ((string?)rel?.Attribute("TargetMode") == "External") throw new InvalidDataException("Không hỗ trợ worksheet ngoài tệp.");
+        var target = (string?)rel?.Attribute("Target");
+        if (string.IsNullOrWhiteSpace(target)) return null;
+        var path = new Uri(new Uri("https://xlsx.local/xl/workbook.xml"), target).AbsolutePath.TrimStart('/');
+        return archive.GetEntry(path);
+    }
+
+    private static async Task<List<Dictionary<string, string>>> ParseDocxAsync(Stream stream, CancellationToken ct)
+    {
+        using var archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true);
+        ValidateArchive(archive);
+        var entry = archive.GetEntry("word/document.xml") ?? throw new InvalidDataException("DOCX không có nội dung.");
+        await using var xml = entry.Open();
+        var document = await XDocument.LoadAsync(xml, LoadOptions.None, ct);
+        XNamespace ns = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+        var result = new List<Dictionary<string, string>>();
+        foreach (var table in document.Descendants(ns + "tbl"))
+        {
+            var tableRows = table.Elements(ns + "tr").ToList();
+            if (tableRows.Count < 2) continue;
+            string CellText(XElement cell) => string.Join("\n", cell.Elements(ns + "p").Select(p => string.Concat(p.Descendants(ns + "t").Select(t => t.Value))));
+            var headers = tableRows[0].Elements(ns + "tc").Select(c => NormalizeHeader(CellText(c))).ToList();
+            if (!headers.Any(h => h is "questiontext" or "noidungcauhoi" or "cauhoi" or "noidung")) continue;
+            foreach (var row in tableRows.Skip(1))
+            {
+                ct.ThrowIfCancellationRequested();
+                var values = row.Elements(ns + "tc").Select(CellText).ToList();
+                var record = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                for (var i = 0; i < Math.Min(headers.Count, values.Count); i++) if (headers[i].Length > 0) record[headers[i]] = values[i];
+                if (record.Values.Any(v => !string.IsNullOrWhiteSpace(v))) result.Add(record);
+                if (result.Count > 5000) throw new InvalidDataException("Chỉ hỗ trợ tối đa 5000 câu mỗi tệp.");
+            }
+        }
+        return result;
     }
 
     private static char DetectDelimiter(string headerLine)

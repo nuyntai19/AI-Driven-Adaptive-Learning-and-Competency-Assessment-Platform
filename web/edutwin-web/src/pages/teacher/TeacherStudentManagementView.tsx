@@ -5,6 +5,7 @@ import { organizationApi } from "../../api/organizationApi";
 import { httpClient } from "../../api/httpClient";
 import { getTeacherStudentTwin } from "../../api/digitalTwinApi";
 import { useAuthStore } from "../../stores/authStore";
+import { teacherNotesKey, readTeacherNotes } from "../../utils/teacherNotesStorage";
 import { permissions } from "../../auth/permissions";
 import {
   TeacherPageHeader,
@@ -62,21 +63,17 @@ export function TeacherStudentManagementView() {
   const [isExportingExcel, setIsExportingExcel] = useState<boolean>(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
-  // Pedagogical notes state (stored by studentId in localStorage for teacher persistence)
-  const [teacherNotes, setTeacherNotes] = useState<Record<string, string>>(() => {
-    try {
-      const saved = localStorage.getItem("teacher_pedagogical_notes");
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
+  // Never assign legacy shared notes to an unknown author.
+  const notesKey = teacherNotesKey(actor?.centerId, actor?.userId);
+  const [notesState, setNotesState] = useState(() => ({ key: notesKey, notes: readTeacherNotes(notesKey) }));
+  const teacherNotes = notesState.key === notesKey ? notesState.notes : readTeacherNotes(notesKey);
 
   const handleSaveNote = (studentId: string, note: string) => {
     const updated = { ...teacherNotes, [studentId]: note };
-    setTeacherNotes(updated);
+    if (!notesKey) return;
+    setNotesState({ key: notesKey, notes: updated });
     try {
-      localStorage.setItem("teacher_pedagogical_notes", JSON.stringify(updated));
+      localStorage.setItem(notesKey, JSON.stringify(updated));
     } catch {
       // ignore
     }

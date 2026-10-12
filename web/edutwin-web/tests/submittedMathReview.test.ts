@@ -121,10 +121,11 @@ test("actual page submit handler exits before any draft persistence/upload when 
     { assignmentQuestions: [{ submittedAttemptId: "7", hasAttachment: true }] },
     { classReadOnly: true },
     { assignmentId: null, learningAccess: { writable: false } },
+    { draftHydrated: false },
   ]) {
     const effects: string[] = [];
     const context = vm.createContext({
-      question: { questionId: "10014" }, submissionInFlightRef: { current: false },
+      question: { questionId: "10014" }, draftHydrated: true, submissionInFlightRef: { current: false },
       canSubmitLearningWork, isQuestionSubmissionLocked,
       isAssignmentSubmitted: false, feedbackData: null, isSubmitting: false,
       pollingJobId: null, isAssignmentExpired: false,

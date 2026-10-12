@@ -54,6 +54,27 @@ export function getAttemptFeedbackPresentation(
     needsReview, pendingTeacher, manualReview, reviewExplanation };
 }
 
+/** Review copy follows the actual flow; free practice has no teacher grading queue. */
+export function getAttemptReviewNotice(
+  presentation: ReturnType<typeof getAttemptFeedbackPresentation>,
+  analysis: AttemptFeedbackAnalysisDto | null | undefined,
+  practiceMode = false,
+) {
+  if (!presentation.needsReview) return null;
+  if (practiceMode) return {
+    title: analysis?.isFallback ? "Phân tích AI chưa hoàn tất" : "Phân tích cần kiểm tra",
+    explanation: "Bài luyện đã được lưu. Bạn có thể đối chiếu lời giải và thử chấm lại AI khi được phép. Phân tích không tự thay đổi điểm theo quy tắc.",
+  };
+  const proposed = presentation.pendingTeacher && !analysis?.isFallback && analysis?.suggestedScore != null;
+  return {
+    title: proposed ? "AI đã chấm · Chờ giáo viên duyệt điểm"
+      : presentation.pendingTeacher ? "Đang chờ giáo viên xem xét" : "Cần giáo viên xem xét",
+    explanation: proposed
+      ? "AI đã đưa ra điểm và nhận xét đề xuất bên dưới. Giáo viên kiểm tra, duyệt hoặc điều chỉnh trước khi chốt điểm chính thức."
+      : presentation.reviewExplanation,
+  };
+}
+
 /** Question grade is always out of ten; it is NOT its contribution to the assignment. */
 export function normalizeQuestionScore(score: number | null | undefined, maxScore: number, questionCount?: number) {
   void questionCount; // Kept for compatibility with existing call sites.

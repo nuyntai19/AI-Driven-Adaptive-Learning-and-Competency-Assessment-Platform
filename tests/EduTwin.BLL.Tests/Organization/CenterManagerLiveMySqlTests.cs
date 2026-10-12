@@ -101,14 +101,29 @@ public sealed class CenterManagerLiveMySqlTests
             await SeedCenterWithManagerAsync(seedContext, centerId, managerId);
         }
 
-        // Bootstrap on pre-upgrade schema
+        // The current bootstrapper knows the new permissions even on an old
+        // schema. Remove these grants to model the historical pre-upgrade role
+        // explicitly; otherwise the test never reaches the upgrade scenario.
         await using (var preUpgradeContext = CreateContext(database.ConnectionString, tenant))
         {
+            var historicalPermissionIds = await preUpgradeContext.Permissions.IgnoreQueryFilters().Select(p => p.PermissionId).ToArrayAsync();
             var bootstrapper = new AuthorizationBootstrapper(preUpgradeContext, _mockTimeProvider.Object);
             await bootstrapper.EnsureAsync();
+            var currentIds = await preUpgradeContext.Permissions.IgnoreQueryFilters().Select(p => p.PermissionId).ToArrayAsync();
+            var resetIds = currentIds.Except(historicalPermissionIds).ToHashSet();
+            var newGrants = await preUpgradeContext.RolePermissions.IgnoreQueryFilters()
+                .ToArrayAsync();
+            preUpgradeContext.RolePermissions.RemoveRange(newGrants.Where(p => resetIds.Contains(p.PermissionId)));
+            await preUpgradeContext.SaveChangesAsync();
+            var applicability = await preUpgradeContext.PermissionAccountTypes.IgnoreQueryFilters().ToArrayAsync();
+            preUpgradeContext.PermissionAccountTypes.RemoveRange(applicability.Where(p => resetIds.Contains(p.PermissionId)));
+            await preUpgradeContext.SaveChangesAsync();
+            var definitions = await preUpgradeContext.Permissions.IgnoreQueryFilters().ToArrayAsync();
+            preUpgradeContext.Permissions.RemoveRange(definitions.Where(p => resetIds.Contains(p.PermissionId)));
+            await preUpgradeContext.SaveChangesAsync();
         }
 
-        // Verify pre-upgrade: reset-password permissions do not exist yet
+        // Verify pre-upgrade: reset-password permissions are not granted yet.
         await using (var verifyPreContext = CreateContext(database.ConnectionString, tenant))
         {
             var preGranted = await (

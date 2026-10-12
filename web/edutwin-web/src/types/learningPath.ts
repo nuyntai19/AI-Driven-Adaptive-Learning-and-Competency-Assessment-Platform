@@ -83,6 +83,9 @@ export interface LearningPathWeekDto {
 
 export interface LearningPathSessionDto {
   sessionId: string;
+  classId?: string | null;
+  startedAtUtc?: string | null;
+  rowVersion?: string | null;
   title: string;
   type: string;
   topicNodeId: string;
