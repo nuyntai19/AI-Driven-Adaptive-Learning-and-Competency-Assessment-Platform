@@ -550,7 +550,7 @@ Indexes:
 | primary_topic_node_id | BIGINT UNSIGNED | No | Phải là Topic |
 | created_by_teacher_id | VARCHAR(36) | No | Tenant-safe FK |
 | question_type | VARCHAR(32) | No | MultipleChoice, ShortAnswer, Essay |
-| answer_evaluation_mode | VARCHAR(32) | No | TextExact, NumericRational, Coordinate2D, Manual (Default TextExact) |
+| answer_evaluation_mode | VARCHAR(32) | No | TextExact, NumericRational, Coordinate2D, MathEquivalent, Manual (Default TextExact) |
 | difficulty | TINYINT UNSIGNED | No | 1–5 |
 | grade_level | TINYINT UNSIGNED | Yes | 10, 11 hoặc 12; null là Chưa phân loại |
 | question_text | LONGTEXT | No | Việt hoặc Anh |
@@ -571,7 +571,7 @@ Indexes/constraints:
 - IX(center_id, subject_id, primary_topic_node_id, status, difficulty).
 - IX(center_id, created_by_teacher_id, status).
 - CHECK question_type IN (MultipleChoice, ShortAnswer, Essay).
-- CHECK answer_evaluation_mode IN (TextExact, NumericRational, Coordinate2D, Manual).
+- CHECK answer_evaluation_mode IN (TextExact, NumericRational, Coordinate2D, MathEquivalent, Manual).
 - CHECK difficulty BETWEEN 1 AND 5.
 - CHECK max_score > 0.
 - CHECK estimated_time_seconds > 0.
@@ -585,9 +585,13 @@ grading_criteria JSON tối thiểu:
   "schemaVersion": "1.0",
   "requiredIdeas": ["string"],
   "commonErrors": ["string"],
-  "scoringNotes": "string"
+  "scoringNotes": "string",
+  "criteria": [],
+  "optionMisconceptions": { "B": "Nhận thức sai tương ứng phương án B" }
 }
 ~~~
+
+`optionMisconceptions` là map tùy chọn (mặc định rỗng) được lưu trong JSON hiện có từ QUESTION-IMPORT-V1; không thêm cột/bảng hoặc migration. Teacher-facing options DTO trả lại misconception theo label từ map này. Manual create/update và import cùng dựng map từ options; student projection không trả đáp án hoặc map chấm. `MathEquivalent` sử dụng phạm vi grammar hữu hạn hiện hành, không phải CAS tổng quát.
 
 ## 18. question_options [MTA]
 
@@ -599,7 +603,6 @@ grading_criteria JSON tối thiểu:
 | option_text | TEXT | No | Nội dung lựa chọn |
 | is_correct | TINYINT(1) | No | Đánh dấu đáp án đúng; Student projection không được lộ trước submit |
 | order_index | INT UNSIGNED | No | Thứ tự hiển thị ổn định |
-| misconception | VARCHAR(500) | Yes | Nhận thức sai lầm phổ biến tương ứng với đáp án; phục vụ phân tích AI/Rule-based |
 | ...MTA | | | Kế thừa audit, soft-delete, tenant và row_version tại mục 2.3 |
 
 Indexes:

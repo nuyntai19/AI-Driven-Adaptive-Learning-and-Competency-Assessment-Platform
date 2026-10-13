@@ -141,7 +141,7 @@ export function validateAndCleanFormula(latex: string | null | undefined): Formu
 
   // Real KaTeX syntax validation with throwOnError: true
   try {
-    katex.renderToString(cleanLatex, { throwOnError: true });
+    katex.renderToString(cleanLatex, { throwOnError: true, trust: false, maxExpand: 100, maxSize: 10 });
   } catch (err: unknown) {
     const rawMsg = err instanceof Error ? err.message : String(err);
     const cleanMsg = rawMsg.replace(/^KaTeX parse error:\s*/i, "").trim();
@@ -288,7 +288,7 @@ export function validateTextMathFormulas(text: string | null | undefined): MathF
           }
 
           try {
-            katex.renderToString(candidate.raw, { throwOnError: true });
+            katex.renderToString(candidate.raw, { throwOnError: true, trust: false, maxExpand: 100, maxSize: 10 });
             diagnostics.push({
               type: "unwrapped-latex",
               raw: candidate.raw,
@@ -389,7 +389,7 @@ export function validateTextMathFormulas(text: string | null | undefined): MathF
 
       // Check KaTeX syntax
       try {
-        katex.renderToString(trimmedMath, { throwOnError: true });
+        katex.renderToString(trimmedMath, { throwOnError: true, trust: false, maxExpand: 100, maxSize: 10 });
       } catch (err: unknown) {
         const rawMsg = err instanceof Error ? err.message : String(err);
         const cleanMsg = rawMsg.replace(/^KaTeX parse error:\s*/i, "").trim();

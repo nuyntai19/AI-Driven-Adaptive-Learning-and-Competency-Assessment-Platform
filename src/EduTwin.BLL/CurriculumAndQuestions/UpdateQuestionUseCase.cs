@@ -135,7 +135,7 @@ public class UpdateQuestionUseCase : IUpdateQuestionUseCase
         var visibility = question.Visibility;
         if (request.Visibility != null && (!Enum.TryParse(request.Visibility, out visibility) || !Enum.IsDefined(visibility) || visibility.ToString() != request.Visibility))
             return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
-        var criteria = request.GradingCriteria ?? question.GradingCriteria;
+        var criteria = QuestionOptionMisconceptionStore.Apply(request.GradingCriteria ?? question.GradingCriteria, request.Options);
         if (GradingCriteriaValidator.Validate(criteria, request.MaxScore).Count > 0)
             return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
 

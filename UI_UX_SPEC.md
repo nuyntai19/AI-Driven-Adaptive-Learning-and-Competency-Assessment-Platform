@@ -370,14 +370,16 @@ Course MVP không có màn hình tạo/xóa Center hoặc chuyển sang Center k
 
 ### 9.1. Question Bulk Import Modal (QuestionImportModal)
 
-Modal nhập câu hỏi hàng loạt cho giáo viên và quản lý trung tâm:
-- **Tải lên tệp**: Hỗ trợ kéo thả (drag & drop) hoặc chọn file từ máy tính với các định dạng `.docx`, `.xlsx`, `.csv`, `.txt`.
+V1 theo [kế hoạch import](docs/plan/QUESTION-BANK-IMPORT-PLAN-2026-10-12.md): modal nhập hàng loạt dành cho Teacher có quyền tạo nội dung; CenterManager không được kế thừa authoring.
+- **Môn và mặc định của lô**: chọn môn trước preview; khối, độ khó, điểm, thời gian, visibility, reasoning, ngôn ngữ và mode ShortAnswer có defaults rõ. Mỗi câu dùng TopicCode riêng; chỉ chế độ file cũ mới cho topic chung.
+- **Tải mẫu/tệp**: XLSX theo môn với Questions/Topics/Guide, cột Text, dropdown; CSV vẫn có. Kéo thả/chọn `.xlsx`/`.csv`; giới hạn 10 MiB/500 câu. DOCX/TXT/TSV và ảnh nhúng chưa hỗ trợ V1.
 - **Xem trước bảng dữ liệu (Preview)**:
   - Hiển thị thống kê tổng quan: Tổng số câu, số câu hợp lệ (Valid), số câu bị lỗi cấu trúc (Invalid).
   - Bảng danh sách câu hỏi: Cho phép xem trước nội dung, công thức KaTeX, đáp án đúng, lời giải, độ khó, và danh sách các phương án.
-  - Chỉnh sửa tại chỗ (In-place edit): Giáo viên có thể sửa trực tiếp nội dung hoặc đáp án của từng câu trên bảng trước khi lưu.
+  - Mở chi tiết câu xem đầy đủ phương án, lời giải, misconception, ý chấm, ghi chú, topic/khối/defaults thực sẽ lưu. Công thức LaTeX inline được kiểm tra syntax trước confirm.
+  - V1 sửa file và tải lại, chưa có chỉnh sửa tại chỗ. Đổi môn/file/defaults hủy preview và không cho kết quả upload cũ đè phiên mới.
   - Bảng cảnh báo lỗi: Chỉ rõ số dòng, trường thông tin bị lỗi và nguyên nhân cụ thể.
-- **Xác nhận nhập kho (Confirm)**: Chọn môn học và chủ đề chính (`primaryTopicNodeId`), hệ thống lưu trữ hàng loạt vào ngân hàng câu hỏi.
+- **Xác nhận nhập kho (Confirm)**: mặc định yêu cầu toàn file hợp lệ; tùy chọn rõ nhập các câu hợp lệ được chọn và hiển thị số bỏ qua. Lưu Draft theo token/revision; giáo viên rà soát và kích hoạt riêng bằng quyền publish. Không gán topic chung cho template mới, không tự kích hoạt khi chỉ có quyền create.
 
 ### 9.2. Teacher Workspace & 10 Chuyên trang
 

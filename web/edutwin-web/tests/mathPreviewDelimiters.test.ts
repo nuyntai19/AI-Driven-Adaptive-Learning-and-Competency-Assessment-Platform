@@ -8,6 +8,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import * as previewUtils from "../src/components/math/mathPreviewUtils.ts";
 import * as mathExpression from "../src/utils/mathExpression.ts";
+import * as mathDelimiters from "../src/utils/mathDelimiters.ts";
 
 const require = createRequire(import.meta.url);
 function component(relative: string, dependencies: Record<string, unknown> = {}) {
@@ -17,7 +18,7 @@ function component(relative: string, dependencies: Record<string, unknown> = {})
   vm.runInNewContext(code, { exports, require: (name: string) => dependencies[name] ?? require(name) });
   return exports;
 }
-const rich = component("math/RichMathText", { "../../utils/mathExpression": mathExpression });
+const rich = component("math/RichMathText", { "../../utils/mathExpression": mathExpression, "../../utils/mathDelimiters.ts": mathDelimiters });
 const preview = component("math/MathPreviewCore", { "./mathPreviewUtils": previewUtils, "./RichMathText": rich });
 const rubric = component("reviews/RubricGradeView", { "../math/RichMathText": rich });
 
@@ -51,4 +52,28 @@ test("the shared rubric renders inline math in titles and AI comments without ch
 test("math remains untrusted: HTML commands do not create executable markup", () => {
   const html = previewUtils.renderSafeKatex("$\\href{javascript:alert(1)}{x}$")!;
   assert.doesNotMatch(html, /href="javascript:/);
+});
+
+test("actual rich renderer keeps escaped dollars inside formulas and literal dollars in prose", () => {
+  const html = renderToStaticMarkup(React.createElement(rich.RichMathText, {
+    text: String.raw`Chi phí \$5; tính $\text{Giá \$5}+x$ và $y+1$.`,
+  }));
+  assert.equal((html.match(/class="katex"/g) ?? []).length, 2);
+  assert.match(html, /Chi phí \$5; tính /);
+  assert.doesNotMatch(html, /katex-error|\\\$5; tính/);
+  const literal = renderToStaticMarkup(React.createElement(rich.RichMathText, { text: String.raw`\$5` }));
+  assert.match(literal, />\$5</);
+  assert.doesNotMatch(literal, /katex|\\\$/);
+});
+
+test("all renderer delimiters remain supported with escaped dollars and multiple display blocks", () => {
+  const html = renderToStaticMarkup(React.createElement(rich.RichMathText, {
+    text: String.raw`$\text{\$5}$; $$\text{\$5}$$; \(\text{\$5}\); \[\text{\$5}\]`,
+  }));
+  assert.equal((html.match(/class="katex"/g) ?? []).length, 4);
+  assert.equal((html.match(/class="katex-display"/g) ?? []).length, 2);
+  assert.doesNotMatch(html, /katex-error/);
+  const blocks = renderToStaticMarkup(React.createElement(rich.RichMathText, { text: "$$x$$ và $$y$$" }));
+  assert.equal((blocks.match(/class="katex"/g) ?? []).length, 2);
+  assert.doesNotMatch(blocks, /katex-error/);
 });

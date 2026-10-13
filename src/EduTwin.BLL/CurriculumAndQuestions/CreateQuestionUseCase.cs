@@ -262,7 +262,7 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
             CorrectAnswer = request.CorrectAnswer,
             Solution = request.Solution,
             ExpectedReasoning = request.ExpectedReasoning,
-            GradingCriteria = request.GradingCriteria ?? new Contracts.CurriculumAndQuestions.GradingCriteria(),
+            GradingCriteria = QuestionOptionMisconceptionStore.Apply(request.GradingCriteria, request.Options),
             MaxScore = request.MaxScore,
             EstimatedTimeSeconds = request.EstimatedTimeSeconds,
             ReasoningRequired = request.ReasoningRequired,

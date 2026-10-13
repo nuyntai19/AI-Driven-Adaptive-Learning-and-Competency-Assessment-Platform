@@ -551,13 +551,14 @@ test("Gate 2A.2 - Student Answering UX, Backward-Compatible Casio Ref, and Revie
   );
   assert.match(gradingWorkspaceSrc, /if\s*\(raw\)\s*\{\s*return "Phương án đã chọn";\s*\}/);
 
-  // 6. QuestionImportModal preview table renders mixed content with RichMathText
+  // 6. Validated import detail fields share one RichMathText rendering helper.
   const importModalSrc = fs.readFileSync(
     path.resolve(__dirname, "../src/components/teacher/QuestionImportModal.tsx"),
     "utf-8"
   );
-  assert.match(importModalSrc, /<RichMathText text=\{q\.questionText\} \/>/);
-  assert.match(importModalSrc, /<RichMathText text=\{q\.correctAnswer\} \/>/);
+  assert.match(importModalSrc, /<RichMathText text=\{text \|\| "—"\} \/>/);
+  assert.match(importModalSrc, /content\("Đề bài", q\.questionText\)/);
+  assert.match(importModalSrc, /content\("Đáp án chuẩn \/ đáp án mẫu", q\.correctAnswer\)/);
 });
 
 test("AttemptFeedbackHierarchy formatAnswer and MCQ fail-closed logic never reveals UUIDs", () => {

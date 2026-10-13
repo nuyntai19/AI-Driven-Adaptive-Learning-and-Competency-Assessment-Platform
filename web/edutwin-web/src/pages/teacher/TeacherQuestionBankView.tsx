@@ -782,9 +782,10 @@ export function TeacherQuestionBankView() {
         isOpen={isImportOpen}
         onClose={() => setIsImportOpen(false)}
         onSuccess={() => {
-          setIsImportOpen(false);
+          setSelectedStatus("Draft");
+          setPage(1);
           refetch();
-          setActionSuccess("Nhập câu hỏi thành công!");
+          setActionSuccess("Đã nhập câu hỏi ở trạng thái Draft. Rà soát trước khi kích hoạt.");
         }}
       />
     </div>

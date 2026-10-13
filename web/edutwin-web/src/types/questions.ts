@@ -21,6 +21,7 @@ export interface KnowledgeMapping {
 }
 
 export interface GradingCriteria {
+  optionMisconceptions?: Record<string, string>;
   schemaVersion: string;
   requiredIdeas: string[];
   commonErrors: string[];
@@ -131,7 +132,17 @@ export interface QuestionImportOptionInput {
 }
 
 export interface QuestionImportItemDto {
+  questionKey: string;
+  sheetName: string;
   rowIndex: number;
+  topicCode: string;
+  topicName: string;
+  primaryTopicNodeId: string;
+  gradeLevel: number;
+  visibility: MaterialVisibility;
+  languageCode: string;
+  scoringNotes: string;
+  defaultedFields: string[];
   questionType: QuestionType;
   difficulty: number;
   questionText: string;
@@ -148,6 +159,10 @@ export interface QuestionImportItemDto {
 }
 
 export interface QuestionImportRowErrorDto {
+  code: string;
+  sheetName: string;
+  columnName?: string | null;
+  questionKey?: string | null;
   rowIndex: number;
   field: string;
   errorMessage: string;
@@ -156,6 +171,13 @@ export interface QuestionImportRowErrorDto {
 
 export interface QuestionImportPreviewDataDto {
   previewToken: string;
+  revision: number;
+  subjectId: string;
+  expiresAt: string;
+  templateVersion: string;
+  errorCount: number;
+  warningCount: number;
+  warnings: QuestionImportRowErrorDto[];
   totalRows: number;
   validCount: number;
   invalidCount: number;
@@ -170,12 +192,32 @@ export interface QuestionImportPreviewResponse {
 
 export interface QuestionImportConfirmRequest {
   previewToken: string;
+  revision: number;
+  selectedQuestionKeys: string[];
+  importMode: "AllValid" | "SelectedValid";
+  targetStatus: "Draft";
+}
+
+export interface QuestionImportPreviewRequest {
   subjectId: string;
-  primaryTopicNodeId: number | string;
+  teacherId?: string;
+  templateVersion: "1.0";
+  legacyMode: boolean;
+  defaultTopicNodeId?: string;
+  gradeLevel?: number;
+  difficulty: number;
+  maxScore: number;
+  estimatedTimeSeconds: number;
+  reasoningRequired: boolean;
+  visibility: MaterialVisibility;
+  languageCode: string;
+  shortAnswerEvaluationMode: QuestionAnswerEvaluationMode;
 }
 
 export interface QuestionImportConfirmDataDto {
   importedCount: number;
+  skippedCount: number;
+  questionIds: string[];
   message: string;
 }
 

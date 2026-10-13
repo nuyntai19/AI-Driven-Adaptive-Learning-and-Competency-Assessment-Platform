@@ -9,6 +9,9 @@ public class GradingCriteria
     public List<string> CommonErrors { get; set; } = new();
     public string ScoringNotes { get; set; } = string.Empty;
     public List<RubricCriterion> Criteria { get; set; } = new();
+    // Per-option feedback is stored in the existing grading_criteria JSON;
+    // QuestionOption.Misconception is not a mapped database column.
+    public Dictionary<string, string> OptionMisconceptions { get; set; } = new();
 }
 
 public class RubricCriterion

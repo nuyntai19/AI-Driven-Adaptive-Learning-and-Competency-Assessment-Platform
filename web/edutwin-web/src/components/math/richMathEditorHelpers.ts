@@ -1,5 +1,6 @@
 import katex from "katex";
 import { cleanFormulaForInsertion } from "../../pages/centerManagerQuestionEditorHelpers.ts";
+import { tokenizeDelimitedMath } from "../../utils/mathDelimiters.ts";
 
 /**
  * Serializes the contenteditable DOM tree into a canonical string with $...$ formulas.
@@ -102,22 +103,13 @@ export function hydrateEditorDom(
     return;
   }
 
-  const regex = /(\$\$[\s\S]*?\$\$|\$[^$\n]+?\$)/g;
-  const parts = raw.split(regex);
-
-  for (const part of parts) {
-    if (!part) continue;
-    if (
-      (part.startsWith("$$") && part.endsWith("$$") && part.length >= 4) ||
-      (part.startsWith("$") && part.endsWith("$") && part.length >= 2)
-    ) {
-      const formula = part.startsWith("$$")
-        ? part.slice(2, -2).trim()
-        : part.slice(1, -1).trim();
-      const mathSpan = createMathSpan(formula, onEdit);
+  // Keep the existing editor's dollar profile; display math remains a V2 concern.
+  for (const token of tokenizeDelimitedMath(raw, ["$", "$$"])) {
+    if (token.type === "math") {
+      const mathSpan = createMathSpan(token.latex.trim(), onEdit);
       container.appendChild(mathSpan);
     } else {
-      const lines = part.split("\n");
+      const lines = token.raw.split("\n");
       for (let i = 0; i < lines.length; i++) {
         if (lines[i]) {
           container.appendChild(document.createTextNode(lines[i]));

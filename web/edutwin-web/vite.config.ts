@@ -19,23 +19,30 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (id.includes("node_modules")) {
-            if (id.includes("react-dom") || id.includes("/react/") || id.includes("react-router")) {
+          // pnpm paths contain peer names (e.g. recharts@..._react-dom@...):
+          // match the actual package after the final node_modules segment.
+          const path = id.replace(/\\/g, "/");
+          if (path.includes("commonjsHelpers.js")) return "vendor-runtime";
+          const marker = "/node_modules/";
+          const packageIndex = path.lastIndexOf(marker);
+          if (packageIndex >= 0) {
+            const packagePath = path.slice(packageIndex + marker.length);
+            if (/^(?:react|react-dom|react-router|react-router-dom|scheduler)\//.test(packagePath)) {
               return "vendor-react";
             }
-            if (id.includes("@tanstack") || id.includes("axios") || id.includes("zustand")) {
+            if (/^(?:@tanstack\/|axios\/|zustand\/)/.test(packagePath)) {
               return "vendor-query";
             }
-            if (id.includes("katex")) {
+            if (packagePath.startsWith("katex/")) {
               return "vendor-katex";
             }
-            if (id.includes("mathlive")) {
+            if (packagePath.startsWith("mathlive/")) {
               return "vendor-mathlive";
             }
-            if (id.includes("xlsx")) {
+            if (packagePath.startsWith("xlsx/")) {
               return "vendor-xlsx";
             }
-            if (id.includes("recharts") || id.includes("d3-") || id.includes("victory-vendor")) {
+            if (/^(?:recharts\/|d3-[^/]+\/|victory-vendor\/)/.test(packagePath)) {
               return "vendor-recharts";
             }
           }

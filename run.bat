@@ -107,29 +107,29 @@ echo                         PRE-SEEDED ACCOUNTS FOR LOGIN
 echo ================================================================================
 echo   [1] PLATFORM ROOT TENANT (Center Code: PLATFORM)
 echo       - Role: Platform Admin
-echo         Username: platform.admin      Password: PlatformAdmin123!
+echo         Username: platform.admin      Password: PlatformAdmin@2026
 echo.
 echo   [2] CENTER A (Center Code: EDUTWIN_A - Trung tam EduTwin A)
 echo       - Role: Center Manager
-echo         Username: manager             Password: SeedPassword123!
+echo         Username: manager             Password: EduTwin@12345678
 echo       - Role: Math Teacher
-echo         Username: teacher.math        Password: SeedPassword123!
+echo         Username: teacher.math        Password: EduTwin@12345678
 echo       - Role: English Teacher
-echo         Username: teacher.english     Password: SeedPassword123!
+echo         Username: teacher.english     Password: EduTwin@12345678
 echo       - Role: Students (5 students)
 echo         Usernames: student01, student02, student03, student04, student05
-echo         Password:  SeedPassword123!
+echo         Password:  EduTwin@12345678
 echo.
 echo   [3] CENTER B (Center Code: EDUTWIN_B - Trung tam EduTwin B)
 echo       - Role: Center Manager
-echo         Username: manager             Password: SeedPassword123!
+echo         Username: manager             Password: EduTwin@12345678
 echo       - Role: Math Teacher
-echo         Username: teacher.math        Password: SeedPassword123!
+echo         Username: teacher.math        Password: EduTwin@12345678
 echo       - Role: English Teacher
-echo         Username: teacher.english     Password: SeedPassword123!
+echo         Username: teacher.english     Password: EduTwin@12345678
 echo       - Role: Students (5 students)
 echo         Usernames: student01, student02, student03, student04, student05
-echo         Password:  SeedPassword123!
+echo         Password:  EduTwin@12345678
 echo ================================================================================
 echo.
 exit /b 0

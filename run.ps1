@@ -90,13 +90,13 @@ function Show-DemoAccounts {
     Write-Host '--------------------------------------------------------------------------------' -ForegroundColor DarkGray
     Write-Host '  Role            Center Code   Username          Default Password' -ForegroundColor White
     Write-Host '  -------------   -----------   ---------------   ----------------' -ForegroundColor DarkGray
-    Write-Host '  Platform Admin  PLATFORM      platform.admin    PlatformAdmin123!' -ForegroundColor Cyan
-    Write-Host '  Center Manager  EDUTWIN_A     manager           SeedPassword123!' -ForegroundColor Green
-    Write-Host '  Math Teacher    EDUTWIN_A     teacher.math      SeedPassword123!' -ForegroundColor Green
-    Write-Host '  English Teacher EDUTWIN_A     teacher.english   SeedPassword123!' -ForegroundColor Green
-    Write-Host '  Student 01      EDUTWIN_A     student01         SeedPassword123!' -ForegroundColor Green
-    Write-Host '  Student 02..05  EDUTWIN_A     student02..05     SeedPassword123!' -ForegroundColor Green
-    Write-Host '  Center B Users  EDUTWIN_B     manager, teacher* SeedPassword123!' -ForegroundColor DarkCyan
+    Write-Host '  Platform Admin  PLATFORM      platform.admin    PlatformAdmin@2026' -ForegroundColor Cyan
+    Write-Host '  Center Manager  EDUTWIN_A     manager           EduTwin@12345678' -ForegroundColor Green
+    Write-Host '  Math Teacher    EDUTWIN_A     teacher.math      EduTwin@12345678' -ForegroundColor Green
+    Write-Host '  English Teacher EDUTWIN_A     teacher.english   EduTwin@12345678' -ForegroundColor Green
+    Write-Host '  Student 01      EDUTWIN_A     student01         EduTwin@12345678' -ForegroundColor Green
+    Write-Host '  Student 02..05  EDUTWIN_A     student02..05     EduTwin@12345678' -ForegroundColor Green
+    Write-Host '  Center B Users  EDUTWIN_B     manager, teacher* EduTwin@12345678' -ForegroundColor DarkCyan
     Write-Host '--------------------------------------------------------------------------------' -ForegroundColor DarkGray
 }
 

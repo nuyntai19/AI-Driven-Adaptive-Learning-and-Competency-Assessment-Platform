@@ -1,5 +1,6 @@
 import React, { useMemo } from "react";
 import katex from "katex";
+import { displayMathText, tokenizeDelimitedMath } from "../../utils/mathDelimiters.ts";
 
 export interface RichMathTextProps {
   text?: string | null;
@@ -43,21 +44,23 @@ export const RichMathText: React.FC<RichMathTextProps> = ({
 
   const renderedNodes = useMemo(() => {
     if (!rawContent) return null;
+    const parts = tokenizeDelimitedMath(rawContent);
+    const hasDelimitedMath = parts.some((part) => part.type === "math");
 
     // 1. Check if the entire string is a pure LaTeX formula (e.g. starts with backslash commands)
-    const isPureLatex =
-      /^\\(frac|sqrt|int|sum|prod|lim|vec|alpha|beta|gamma|theta|Delta|begin|left|mathbf|text|displaystyle)\b/.test(rawContent) ||
-      /^\\\[[\s\S]*\\\]$/.test(rawContent) ||
-      /^\$\$[\s\S]*\$\$$/.test(rawContent);
+    const isPureLatex = !hasDelimitedMath &&
+      /^\\(frac|sqrt|int|sum|prod|lim|vec|alpha|beta|gamma|theta|Delta|begin|left|mathbf|text|displaystyle)\b/.test(rawContent);
 
     if (isPureLatex) {
-      const formulaOnly = rawContent.replace(/^(\$\$|\\\[)|(\$\$|\\\])$/g, "");
-      const blockFormula = displayMode || rawContent.startsWith("$$") || rawContent.startsWith("\\[");
+      const formulaOnly = rawContent;
+      const blockFormula = displayMode;
       try {
         const html = katex.renderToString(formulaOnly, {
           throwOnError: false,
           displayMode: blockFormula,
           trust: false,
+          maxExpand: 100,
+          maxSize: 10,
           output: "htmlAndMathml",
         });
         return (
@@ -71,11 +74,7 @@ export const RichMathText: React.FC<RichMathTextProps> = ({
       }
     }
 
-    // 2. Tokenize text with explicit LaTeX delimiters: $$...$$, $...$, \[...\], \(...\)
-    const delimiterRegex = /(\$\$[\s\S]*?\$\$|\$[^$\n]+?\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\))/g;
-    const parts = rawContent.split(delimiterRegex);
-
-    if (parts.length === 1 && !delimiterRegex.test(rawContent)) {
+    if (!hasDelimitedMath) {
       // 3. No explicit delimiters: run intelligent natural text math tokenizer
       const tokens = tokenizePlainText(rawContent);
       if (tokens.some((t) => t.type === "math")) {
@@ -88,6 +87,8 @@ export const RichMathText: React.FC<RichMathTextProps> = ({
                     throwOnError: false,
                     displayMode: false,
                     trust: false,
+                    maxExpand: 100,
+                    maxSize: 10,
                     output: "htmlAndMathml",
                   });
                   return (
@@ -101,7 +102,7 @@ export const RichMathText: React.FC<RichMathTextProps> = ({
                   return <span key={idx}>{token.raw ?? token.latex}</span>;
                 }
               }
-              return <React.Fragment key={idx}>{token.value}</React.Fragment>;
+              return <React.Fragment key={idx}>{displayMathText(token.value ?? "")}</React.Fragment>;
             })}
           </>
         );
@@ -120,6 +121,8 @@ export const RichMathText: React.FC<RichMathTextProps> = ({
                     throwOnError: false,
                     displayMode: false,
                     trust: false,
+                    maxExpand: 100,
+                    maxSize: 10,
                     output: "htmlAndMathml",
                   });
                   return (
@@ -133,33 +136,31 @@ export const RichMathText: React.FC<RichMathTextProps> = ({
                   return <span key={idx}>{sub}</span>;
                 }
               }
-              return <React.Fragment key={idx}>{sub}</React.Fragment>;
+              return <React.Fragment key={idx}>{displayMathText(sub)}</React.Fragment>;
             })}
           </>
         );
       }
 
       // Plain natural language text: preserve spacing & typography completely
-      return <span>{rawContent}</span>;
+      return <span>{displayMathText(rawContent)}</span>;
     }
 
     // 4. Render delimited LaTeX tokens alongside plaintext tokens
     return (
       <>
         {parts.map((part, index) => {
-          if (!part) return null;
 
           // Block Math: $$...$$ or \[...\]
-          if (
-            (part.startsWith("$$") && part.endsWith("$$")) ||
-            (part.startsWith("\\[") && part.endsWith("\\]"))
-          ) {
-            const math = part.slice(2, -2).trim();
+          if (part.type === "math" && part.displayMode) {
+            const math = part.latex.trim();
             try {
               const html = katex.renderToString(math, {
                 throwOnError: false,
                 displayMode: true,
                 trust: false,
+                maxExpand: 100,
+                maxSize: 10,
                 output: "htmlAndMathml",
               });
               return (
@@ -170,20 +171,17 @@ export const RichMathText: React.FC<RichMathTextProps> = ({
                 />
               );
             } catch {
-              return <span key={index}>{part}</span>;
+              return <span key={index}>{part.raw}</span>;
             }
           }
 
           // Inline Math: $...$ or \(...\)
-          if (
-            (part.startsWith("$") && part.endsWith("$")) ||
-            (part.startsWith("\\(") && part.endsWith("\\)"))
-          ) {
-            const math = part.startsWith("$") ? part.slice(1, -1).trim() : part.slice(2, -2).trim();
+          if (part.type === "math") {
+            const math = part.latex.trim();
 
             // Check prose heuristic: if it's natural language wrapped in dollars, do NOT KaTeX it!
             if (isLikelyProse(math)) {
-              return <React.Fragment key={index}>{math}</React.Fragment>;
+              return <React.Fragment key={index}>{displayMathText(math)}</React.Fragment>;
             }
 
             const { latex } = normalizeMathExpression(math);
@@ -192,6 +190,8 @@ export const RichMathText: React.FC<RichMathTextProps> = ({
                 throwOnError: false,
                 displayMode: false,
                 trust: false,
+                maxExpand: 100,
+                maxSize: 10,
                 output: "htmlAndMathml",
               });
               return (
@@ -202,12 +202,12 @@ export const RichMathText: React.FC<RichMathTextProps> = ({
                 />
               );
             } catch {
-              return <span key={index}>{part}</span>;
+              return <span key={index}>{part.raw}</span>;
             }
           }
 
           // Plain text token with natural spaces
-          return <React.Fragment key={index}>{part}</React.Fragment>;
+          return <React.Fragment key={index}>{displayMathText(part.raw)}</React.Fragment>;
         })}
       </>
     );

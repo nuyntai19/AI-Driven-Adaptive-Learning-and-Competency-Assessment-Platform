@@ -1290,9 +1290,13 @@ Activate request:
 Quyền: Teacher có capability `curriculum.questions.create`. CenterManager không tự kế thừa quyền tạo nội dung học thuật của Teacher.
 Content-Type: `multipart/form-data`
 
-Request: File upload (`.csv`, `.txt`, `.xlsx`, `.docx`) qua trường `file`.
+V1 (12/10/2026): file `.csv` hoặc `.xlsx` qua trường `file`; các trường multipart context: `subjectId` bắt buộc, `templateVersion=1.0`, `legacyMode=false`, `gradeLevel` tùy chọn (10–12), `difficulty=3`, `maxScore=10`, `estimatedTimeSeconds=120`, `reasoningRequired=false`, `visibility=Private`, `languageCode=vi`, `shortAnswerEvaluationMode=Manual`. Giá trị hợp lệ theo câu ưu tiên hơn defaults. Giá trị sai không bị thay bằng default. `teacherId` không được cung cấp: giáo viên import cho mình.
 
-DOCX phải chứa bảng với hàng tiêu đề theo file mẫu CSV; không suy đoán cấu trúc từ văn bản tự do. Giới hạn 10 MiB nén, 50 MiB giải nén, 5.000 hàng. `invalidCount` đếm hàng có lỗi, không đếm số thông báo. Điểm tối đa trong `(0, 999.99]`, tối đa hai chữ số thập phân; boolean không nhận diện bị báo lỗi thay vì mặc định false.
+Mỗi câu trong template V1 có `TopicCode` và `QuestionType`; topic active cùng môn/tenant được resolve ngay tại preview. Legacy CSV chỉ được dùng khi bật `legacyMode=true`; `defaultTopicNodeId` là fallback chủ đề chung có kiểm tra, khối vẫn phải có từ file/defaults. Default ShortAnswer legacy là TextExact; V1 mới là Manual. Các cột scalar theo template; RequiredIdeas/CommonErrors nếu dùng là JSON arrays, không tách theo semicolon/pipe. ScoringNotes độc lập với Solution; quan niệm sai theo phương án được lưu trong grading criteria JSON và trả lại qua options DTO.
+
+Giới hạn 10 MiB upload, 50 MiB giải nén thực tế, 200 ZIP entries, 500 câu, 128 cột có dữ liệu/hàng, 200.000 XML nodes/part, XML depth 64, 20.000 ký tự/field và 2.000 ký tự/formula. Tổng giá trị trường đầu vào tối đa 10 MiB UTF-8, tính cả mỗi lần tham chiếu shared string và các dòng lỗi trước chuẩn hóa. Snapshot JSON giới hạn 30 MiB cả chiều dài và buffer capacity; vượt ngưỡng trả `NORMALIZED_DATA_LIMIT`. XLSX dùng sheet `Questions` theo workbook relationships; nhận shared/inline strings và từ chối ô formula/date/error sai profile, drawing/media/advanced sheets chưa hỗ trợ. CSV hỗ trợ quoted multiline và UTF-8 BOM. DOCX/TXT/TSV, media và rubric nhiều sheet chưa thuộc V1. `invalidCount` đếm câu lỗi; `errorCount` đếm thông báo. Điểm tối đa trong `(0, 999.99]`, tối đa hai chữ số thập phân; boolean không nhận diện bị báo lỗi.
+
+Server kiểm tra cấu trúc/math safety và nghiệp vụ; browser kiểm tra syntax bằng KaTeX cùng renderer. V1 chỉ nhập Draft, không coi cờ kiểm tra math từ client là quyền xuất bản. Phiên 30 phút, ràng buộc actor/tenant/môn/owner/defaults/file hash và revision; process-local với cleanup, tối đa 8 phiên/actor, 256 phiên/process và tổng snapshot 30 MiB. Tối đa 2 preview đang xử lý; đầy slot trả `IMPORT_BUSY` ngay. Quota được kiểm tra trước clone snapshot. Chưa có receipt bền vững qua restart.
 
 Response 200:
 
@@ -1300,12 +1304,28 @@ Response 200:
 {
   "data": {
     "previewToken": "prev_7f8c9b1a-...",
-    "totalRows": 10,
-    "validCount": 9,
+    "revision": 1,
+    "subjectId": "2ed34b81-0b0d-457c-888d-6a78f50a33d2",
+    "expiresAt": "2026-10-12T10:30:00Z",
+    "templateVersion": "1.0",
+    "totalRows": 2,
+    "validCount": 1,
     "invalidCount": 1,
+    "errorCount": 1,
+    "warningCount": 0,
     "validQuestions": [
       {
-        "rowIndex": 1,
+        "rowIndex": 2,
+        "sheetName": "Questions",
+        "questionKey": "Q001",
+        "topicCode": "MATH-TOPIC-01",
+        "topicName": "Chủ đề đã resolve",
+        "primaryTopicNodeId": "101",
+        "gradeLevel": 12,
+        "visibility": "Private",
+        "languageCode": "vi",
+        "scoringNotes": "",
+        "defaultedFields": ["Difficulty", "MaxScore"],
         "questionType": "MultipleChoice",
         "difficulty": 3,
         "questionText": "Nghiệm của phương trình...",
@@ -1316,8 +1336,10 @@ Response 200:
         "estimatedTimeSeconds": 120,
         "reasoningRequired": true,
         "options": [
-          { "label": "A", "text": "x = 1", "isCorrect": true, "orderIndex": 1, "misconception": null },
-          { "label": "B", "text": "x = 2", "isCorrect": false, "orderIndex": 2, "misconception": "Sai dấu" }
+          { "optionLabel": "A", "optionText": "x = 1", "isCorrect": true, "orderIndex": 1, "misconception": null },
+          { "optionLabel": "B", "optionText": "x = 2", "isCorrect": false, "orderIndex": 2, "misconception": "Sai dấu" },
+          { "optionLabel": "C", "optionText": "x = 3", "isCorrect": false, "orderIndex": 3, "misconception": null },
+          { "optionLabel": "D", "optionText": "x = 4", "isCorrect": false, "orderIndex": 4, "misconception": null }
         ],
         "requiredIdeas": ["Đặt điều kiện"],
         "commonErrors": ["Quên nghiệm"]
@@ -1325,12 +1347,17 @@ Response 200:
     ],
     "errors": [
       {
-        "rowIndex": 10,
+        "rowIndex": 3,
+        "sheetName": "Questions",
+        "questionKey": "Q002",
+        "columnName": "CorrectAnswer",
+        "code": "INVALID_ANSWER",
         "field": "CorrectAnswer",
         "errorMessage": "Đáp án đúng không khớp với nhãn lựa chọn nào.",
         "rawValue": "E"
       }
-    ]
+    ],
+    "warnings": []
   },
   "meta": {
     "traceId": "00-abcd-1234-01",
@@ -1348,9 +1375,10 @@ Request:
 ~~~json
 {
   "previewToken": "prev_7f8c9b1a-...",
-  "subjectId": "2ed34b81-0b0d-457c-888d-6a78f50a33d2",
-  "primaryTopicNodeId": "101",
-  "questions": []
+  "revision": 1,
+  "importMode": "SelectedValid",
+  "targetStatus": "Draft",
+  "selectedQuestionKeys": ["Q001"]
 }
 ~~~
 
@@ -1359,8 +1387,10 @@ Response 200:
 ~~~json
 {
   "data": {
-    "importedCount": 9,
-    "message": "Đã nhập thành công 9 câu hỏi vào ngân hàng câu hỏi."
+    "importedCount": 1,
+    "skippedCount": 1,
+    "questionIds": ["201"],
+    "message": "Đã nhập 1 câu hỏi ở trạng thái Bản nháp."
   },
   "meta": {
     "traceId": "00-abcd-1234-01",
@@ -1368,6 +1398,8 @@ Response 200:
   }
 }
 ~~~
+
+`AllValid` yêu cầu toàn file không có câu lỗi và danh sách chọn rỗng. `SelectedValid` yêu cầu danh sách key không rỗng/không trùng, tất cả thuộc tập hợp lệ của phiên; số bỏ qua được trả rõ. Confirm không nhận subject/topic hoặc nội dung câu thay thế; tất cả lấy từ snapshot server. Kiểm tra lại owner/môn/topic và dữ liệu trước khi ghi; lưu atomically, fail/cancel rollback cả tập được chọn. Token chỉ dùng một lần, không cho xác nhận đồng thời. Khi kết quả commit không xác định, server tiêu thụ token và trả `IMPORT_COMMIT_UNCERTAIN`; giáo viên kiểm tra kho câu trước khi nhập lại. V1 không nhận targetStatus Active; kích hoạt qua API publish hiện có với quyền phù hợp.
 
 # Assignments
 
