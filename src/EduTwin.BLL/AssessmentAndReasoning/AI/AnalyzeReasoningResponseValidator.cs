@@ -112,11 +112,16 @@ public sealed class AnalyzeReasoningResponseValidator : IAnalyzeReasoningRespons
         {
             var evidence = observations.Where(e => e.CriterionId == criterion.CriterionId).ToArray();
             var scores = response.SuggestedRubricScores.Where(s => s.CriterionId == criterion.CriterionId).ToArray();
-            if (scores.Length != 1) throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.Rubric);
+            if (scores.Length != 1)
+                throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.Rubric, "MissingVisualCriterionScore");
             var score = scores[0];
-            if ((evidence.Any(e => e.Status != "Present") && score.AwardedScore == criterion.MaxScore) ||
-                (evidence.All(e => e.Status != "Present") && score.AwardedScore != 0))
-                throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.Rubric);
+            // A criterion may intentionally combine visual work with calculation or
+            // reasoning. Missing every visual requirement still forbids full credit,
+            // but it cannot prove that the nonvisual part deserves zero. The locked
+            // deduction audit records the visual loss while the teacher retains final
+            // approval of the proposed partial score.
+            if (evidence.Any(e => e.Status != "Present") && score.AwardedScore == criterion.MaxScore)
+                throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.Rubric, "IncompleteVisualEvidenceWithFullScore");
         }
     }
 

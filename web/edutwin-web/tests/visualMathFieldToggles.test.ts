@@ -79,6 +79,35 @@ test("VisualMathField sets data-input-mode and configures shadow DOM toggle supp
   );
 });
 
+test("VisualMathField anchors its empty hint to the input area when the toolbar wraps", () => {
+  const componentPath = path.resolve(
+    __dirname,
+    "../src/components/math/VisualMathField.tsx"
+  );
+  const componentContent = fs.readFileSync(componentPath, "utf-8");
+
+  assert.match(
+    componentContent,
+    /<div className="relative">\s*<div\s*ref=\{containerRef\}/,
+    "The MathLive container and empty hint must share an input-relative wrapper"
+  );
+  assert.doesNotMatch(
+    componentContent,
+    /top-\[46px\]/,
+    "The empty hint must not assume a fixed toolbar height"
+  );
+  assert.match(
+    componentContent,
+    /setIsFieldEmpty\(currentLatex\.trim\(\)\.length === 0\)/,
+    "Typing in MathLive must update the empty state immediately"
+  );
+  assert.match(
+    componentContent,
+    /\{isFieldEmpty && \(/,
+    "The empty hint must follow the MathLive field state instead of a potentially stale parent value"
+  );
+});
+
 test("normalizeMathExpression renders exponential fractions without duplicate left/right tags (Question #20009)", () => {
   const { latex: qLatex } = normalizeMathExpression("(1/2)^(x^2 - x) >= 1/4");
   assert.equal(qLatex.includes("\\left\\left"), false);

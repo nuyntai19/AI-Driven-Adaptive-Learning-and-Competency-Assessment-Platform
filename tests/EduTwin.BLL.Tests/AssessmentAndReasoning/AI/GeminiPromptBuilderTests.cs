@@ -157,6 +157,18 @@ public sealed class GeminiPromptBuilderTests
     }
 
     [Fact]
+    public void Build_RubricRepairExplainsMixedVisualCriteria()
+    {
+        var request = CreateRequest() with { ResponseRepairRule = AIResponseValidationRule.Rubric };
+
+        var prompt = new GeminiPromptBuilder().Build(request);
+
+        Assert.Contains("RUBRIC REPAIR", prompt, StringComparison.Ordinal);
+        Assert.Contains("combines visual requirements with calculation or reasoning", prompt, StringComparison.Ordinal);
+        Assert.Contains("do not force the entire mixed criterion to zero", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Build_ScratchpadBytes_AreNotDuplicatedInTextPrompt()
     {
         var original = CreateRequest();
