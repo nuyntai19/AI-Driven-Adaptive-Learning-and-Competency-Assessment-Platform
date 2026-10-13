@@ -167,7 +167,7 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
     const updatePosition = () => {
       const rect = activeMathNode.element.getBoundingClientRect();
       const popoverWidth = 390;
-      const popoverHeight = 260;
+      const popoverHeight = Math.min(480, window.innerHeight - 32);
 
       let left = rect.left;
       if (left + popoverWidth > window.innerWidth - 16) {
@@ -179,6 +179,7 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
       if (top + popoverHeight > window.innerHeight - 16 && rect.top > popoverHeight + 16) {
         top = rect.top - popoverHeight - 6;
       }
+      top = Math.max(16, Math.min(top, window.innerHeight - popoverHeight - 16));
 
       setPopoverPos({ top, left });
     };
@@ -930,6 +931,8 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
                 style={{
                   top: `${popoverPos.top}px`,
                   left: `${popoverPos.left}px`,
+                  maxHeight: "calc(100vh - 32px)",
+                  overflowY: "auto",
                 }}
                 className={`fixed z-50 w-[390px] max-w-[92vw] rounded-2xl border p-4 space-y-3 backdrop-blur-md transition-all animate-scale-in shadow-2xl rich-math-popover ${
                   popoverTheme.isDark

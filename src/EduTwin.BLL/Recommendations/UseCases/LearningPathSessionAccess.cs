@@ -37,14 +37,24 @@ internal static class LearningPathSessionAccess
         var session = phases.SelectMany(p => p.Weeks).SelectMany(w => w.Sessions).SingleOrDefault(s => s.SessionId == sessionId);
         if (session is null || (session.ClassId.HasValue && session.ClassId != classId) ||
             !ulong.TryParse(session.TopicNodeId, out var topic) || !scope.Includes(topic)) return null;
-        // Free practice has no teacher review boundary. Legacy schedules may
-        // contain manual questions; remove those instead of widening permissions.
-        var manualIds = await db.Questions.AsNoTracking().Where(q => q.CenterId == center && q.SubjectId == subjectId &&
-            (q.QuestionType == EduTwin.Contracts.CurriculumAndQuestions.QuestionType.Essay ||
-             q.AnswerEvaluationMode == EduTwin.Contracts.CurriculumAndQuestions.QuestionAnswerEvaluationMode.Manual))
+        // Reading, serving the next question and evaluating completion must use
+        // the same currently eligible set. Retired questions must not block a
+        // started session forever or remain in its correctness denominator.
+        // Free practice still excludes manual questions; no teacher permission
+        // or historical attempt is changed. This detached JSON is saved only
+        // by an explicit session update, never by a GET.
+        var scheduledIds = session.RecommendedQuestionIds
+            .Where(id => ulong.TryParse(id, out var parsed) && parsed > 0)
+            .Select(ulong.Parse).Distinct().ToList();
+        var eligibleIds = await db.Questions.AsNoTracking().Where(q => q.CenterId == center && q.SubjectId == subjectId &&
+            q.PrimaryTopicNodeId == topic && scheduledIds.Contains(q.QuestionId) &&
+            q.Status == EduTwin.Contracts.CurriculumAndQuestions.QuestionStatus.Active && !q.IsDeleted &&
+            q.QuestionType != EduTwin.Contracts.CurriculumAndQuestions.QuestionType.Essay &&
+            q.AnswerEvaluationMode != EduTwin.Contracts.CurriculumAndQuestions.QuestionAnswerEvaluationMode.Manual)
             .Select(q => q.QuestionId).ToListAsync(ct);
-        var manualKeys = manualIds.Select(id => id.ToString()).ToHashSet();
-        session.RecommendedQuestionIds = session.RecommendedQuestionIds.Where(id => !manualKeys.Contains(id)).ToList();
+        var eligible = eligibleIds.ToHashSet();
+        session.RecommendedQuestionIds = scheduledIds.Where(eligible.Contains)
+            .Select(id => id.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToList();
         session.RowVersion = path.RowVersion.ToString(System.Globalization.CultureInfo.InvariantCulture);
         return new(path, phases, session);
     }

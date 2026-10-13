@@ -1,6 +1,7 @@
 import { useEffect, useRef, useImperativeHandle, forwardRef, useState } from "react";
 import { normalizeMathLivePlainText } from "../../utils/mathAnswerValue";
 import { loadMathLive, resetMathLiveLoader } from "../../utils/mathLiveLoader";
+import { installSetKeyboardLayout } from "../../utils/mathVirtualKeyboard";
 import {
   hydrateMathFieldInstance,
   shouldSyncExternalValue,
@@ -149,6 +150,7 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
           mathfieldRef.current = mf;
 
           // 2. Configure MathLive settings
+          installSetKeyboardLayout(window.mathVirtualKeyboard);
           mf.mathVirtualKeyboardPolicy = "manual"; // Prevent unwanted mobile popups on desktop
           mf.defaultMode = "math";
           mf.smartFence = false;
@@ -238,6 +240,7 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
           };
 
           const handleFocus = () => {
+            installSetKeyboardLayout(window.mathVirtualKeyboard);
             onFocusRef.current?.();
           };
 

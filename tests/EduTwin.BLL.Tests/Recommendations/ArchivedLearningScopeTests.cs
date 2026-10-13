@@ -262,6 +262,66 @@ public sealed class ArchivedLearningScopeTests : IDisposable
         Assert.Null(await details.ExecuteAsync(subject,null,pathId,default));
     }
 
+    [Theory]
+    [InlineData(QuestionStatus.Archived, false)]
+    [InlineData(QuestionStatus.Draft, false)]
+    [InlineData(QuestionStatus.Active, true)]
+    public async Task SessionQuestionEligibility_ExcludesRetiredQuestionsFromReadingAndCompletion(QuestionStatus retiredStatus, bool deleted)
+    {
+        await Seed();
+        var pathId = Guid.NewGuid(); var sid = $"{pathId:D}-w01-s01";
+        foreach (var id in new[] { 900ul, 901ul })
+            db.Questions.Add(new Question { CenterId=center,QuestionId=id,SubjectId=subject,PrimaryTopicNodeId=2,CreatedByTeacherId=teacher,
+                QuestionText="Synthetic",CorrectAnswer="2",Solution="Explanation",LanguageCode="vi",Status=QuestionStatus.Active,
+                QuestionType=QuestionType.ShortAnswer,AnswerEvaluationMode=QuestionAnswerEvaluationMode.NumericRational,MaxScore=10,Difficulty=1,
+                EstimatedTimeSeconds=30,CreatedAt=now,UpdatedAt=now });
+        var path = new LearningPath { CenterId=center,LearningPathId=pathId,StudentId=student,SubjectId=subject,Status=LearningPathStatus.Active,
+            CreatedAt=now,UpdatedAt=now,GeneratedAt=now,RowVersion=1,
+            PlanJson=JsonSerializer.SerializeToDocument(new[]{new LearningPathPhaseDto{Weeks=[new(){Sessions=[new(){SessionId=sid,TopicNodeId="2",ClassId=currentClass,
+                Status="InProgress",StartedAtUtc=now.AddMinutes(-1),RecommendedQuestionIds=["900","901"],RequiredCorrectRate=0.75m}]}]}},new JsonSerializerOptions(JsonSerializerDefaults.Web)) };
+        db.LearningPaths.Add(path); await db.SaveChangesAsync();
+        var retired = await db.Questions.SingleAsync(q => q.QuestionId==901);
+        retired.Status=retiredStatus; retired.IsDeleted=deleted; retired.UpdatedAt=DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        var updater = new UpdateLearningPathSessionUseCase(db,tenant);
+        var version = path.RowVersion; var originalJson = path.PlanJson.RootElement.GetRawText();
+        Assert.Equal(new[]{"900"},(await updater.GetAsync(subject,sid,currentClass,false,default))!.RecommendedQuestionIds);
+        Assert.Equal(version,path.RowVersion); Assert.Equal(originalJson,path.PlanJson.RootElement.GetRawText());
+        var reader = new GetNextQuestionUseCase(db,tenant,new Mock<IRecommendationEngine>(MockBehavior.Strict).Object,TimeProvider.System);
+        Assert.Equal(900ul,(await reader.ExecuteSessionAsync(subject,sid,currentClass,false,default)).Data!.Question!.QuestionId);
+        db.Attempts.Add(new EduTwin.DAL.AssessmentAndReasoning.Attempt { CenterId=center,AttemptId=909,StudentId=student,QuestionId=900,
+            FinalAnswer="2",IsCorrect=true,Confidence=80,ReasoningLanguage="vi",CreatedAt=DateTime.UtcNow,UpdatedAt=now });
+        await db.SaveChangesAsync();
+        Assert.True(await updater.ExecuteAsync(subject,sid,new(){ClassId=currentClass,Status="Evaluate",ExpectedRowVersion=version.ToString()},default));
+        var phases=JsonSerializer.Deserialize<List<LearningPathPhaseDto>>(path.PlanJson.RootElement.GetRawText(),new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        Assert.Equal("Completed",phases[0].Weeks[0].Sessions[0].Status);
+        Assert.Equal(new[]{"900"},phases[0].Weeks[0].Sessions[0].RecommendedQuestionIds);
+        Assert.Equal(1,phases[0].Weeks[0].Checkpoint.CompletedTasks);
+        Assert.Equal(100m,phases[0].Weeks[0].ProgressPercentage);
+        Assert.Equal(1,await db.Attempts.CountAsync());
+    }
+
+    [Fact]
+    public async Task SessionWithNoEligibleQuestions_RequiresExplicitActivityAcknowledgement()
+    {
+        await Seed(); var pathId=Guid.NewGuid(); var sid=$"{pathId:D}-w01-s01";
+        db.Questions.Add(new Question{CenterId=center,QuestionId=901,SubjectId=subject,PrimaryTopicNodeId=2,CreatedByTeacherId=teacher,
+            QuestionText="Synthetic",CorrectAnswer="2",Solution="Explanation",LanguageCode="vi",Status=QuestionStatus.Archived,
+            QuestionType=QuestionType.ShortAnswer,MaxScore=10,CreatedAt=now,UpdatedAt=now});
+        var path=new LearningPath{CenterId=center,LearningPathId=pathId,StudentId=student,SubjectId=subject,Status=LearningPathStatus.Active,
+            CreatedAt=now,UpdatedAt=now,GeneratedAt=now,RowVersion=1,
+            PlanJson=JsonSerializer.SerializeToDocument(new[]{new LearningPathPhaseDto{Weeks=[new(){Sessions=[new(){SessionId=sid,TopicNodeId="2",ClassId=currentClass,
+                Status="InProgress",StartedAtUtc=now.AddMinutes(-1),RecommendedQuestionIds=["901"]}]}]}},new JsonSerializerOptions(JsonSerializerDefaults.Web))};
+        db.LearningPaths.Add(path);await db.SaveChangesAsync();
+        var updater=new UpdateLearningPathSessionUseCase(db,tenant);
+        Assert.True(await updater.ExecuteAsync(subject,sid,new(){ClassId=currentClass,Status="Evaluate"},default));
+        Assert.Equal("InProgress",(await updater.GetAsync(subject,sid,currentClass,false,default))!.Status);
+        Assert.False(await updater.ExecuteAsync(subject,sid,new(){ClassId=currentClass,Status="Completed"},default));
+        Assert.True(await updater.ExecuteAsync(subject,sid,new(){ClassId=currentClass,Status="Completed",AcknowledgedActivities=true},default));
+        Assert.Equal("Completed",(await updater.GetAsync(subject,sid,currentClass,false,default))!.Status);
+        Assert.Empty(await db.Attempts.ToListAsync());
+    }
+
     [Fact]
     public async Task Audit_ScheduleFiltersDraft_AndPreferencesChangeActivitiesAndCapacity()
     {

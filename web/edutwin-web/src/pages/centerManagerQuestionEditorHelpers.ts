@@ -445,10 +445,13 @@ export function findIncompleteFormulasInText(text: string | null | undefined): s
   return validateTextMathFormulas(text).map((d) => d.raw);
 }
 
-/** MathEquivalent answers are a single formula, not prose requiring dollar delimiters. */
+/** Mathematical answer modes persist a single formula without prose dollar delimiters.
+ * Validate that whole formula; never parse its LaTeX commands as prose fragments.
+ * This is syntax validation only, not a client-side answer equivalence grader. */
 export function validateAnswerMathFormulas(answer: string, evaluationMode: string): MathFormulaDiagnostic[] {
+  const singleFormula = ["NumericRational", "Coordinate2D", "MathEquivalent"].includes(evaluationMode);
   return validateTextMathFormulas(
-    evaluationMode === "MathEquivalent" && !answer.includes("$") ? `$${answer}$` : answer,
+    singleFormula && answer.trim() && !answer.includes("$") ? `$${answer}$` : answer,
   );
 }
 

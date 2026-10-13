@@ -50,6 +50,7 @@ public static class QuestionSeedTemplates
         templates.Add(new QuestionTemplate
         {
             LogicalCode = "MATH-FUNC-02", TopicCode = "MATH-FUNCTIONS", Difficulty = 2, QuestionType = QuestionType.ShortAnswer, LanguageCode = "vi", MaxScore = 20, EstimatedTimeSeconds = 120,
+            AnswerEvaluationMode = QuestionAnswerEvaluationMode.MathEquivalent,
             QuestionText = "Tìm tập xác định của hàm số y = 1 / (x - 2).", CorrectAnswer = "R \\ {2}",
             Solution = "Hàm số xác định khi mẫu số khác 0, tức là x - 2 khác 0, suy ra x khác 2. Vậy tập xác định là D = R \\ {2}.",
             ExpectedReasoning = "Nhận biết điều kiện để phân thức xác định là mẫu số phải khác 0, từ đó giải phương trình x - 2 = 0.",

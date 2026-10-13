@@ -179,6 +179,25 @@ public class EduTwinSeedFactoryTests
         });
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void CreateData_DomainSample_UsesBoundedMathEvaluationInBothCenters(bool centerA)
+    {
+        var data = new EduTwinSeedFactory(centerA).CreateData();
+        var mathSubject = data.Subjects.Single(s => s.SubjectCode == "MATH");
+        var question = data.Questions.Single(q => q.SubjectId == mathSubject.SubjectId &&
+            q.QuestionText == "Tìm tập xác định của hàm số y = 1 / (x - 2).");
+        Assert.Equal(EduTwin.Contracts.CurriculumAndQuestions.QuestionAnswerEvaluationMode.MathEquivalent, question.AnswerEvaluationMode);
+        var result = new EduTwin.BLL.AssessmentAndReasoning.PreliminaryGrading.ShortAnswerGrader().Grade(
+            "D=R\\{2}", question.CorrectAnswer,
+            new EduTwin.BLL.AssessmentAndReasoning.PreliminaryGrading.QuestionGradingContext { EvaluationMode=question.AnswerEvaluationMode,MaxScore=question.MaxScore });
+        Assert.True(result.IsCorrect);
+        Assert.Equal(question.MaxScore,result.Score);
+        Assert.Contains(data.Questions, q => q.QuestionType == EduTwin.Contracts.CurriculumAndQuestions.QuestionType.ShortAnswer &&
+            q.AnswerEvaluationMode == EduTwin.Contracts.CurriculumAndQuestions.QuestionAnswerEvaluationMode.TextExact);
+    }
+
     [Fact]
     public void CreateData_MathFunc04_UsesCoordinate2DEvaluation()
     {

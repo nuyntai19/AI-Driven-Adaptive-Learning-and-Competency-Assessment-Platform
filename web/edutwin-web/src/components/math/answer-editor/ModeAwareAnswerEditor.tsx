@@ -9,10 +9,8 @@ import type {
 import {
   resolveAnswerInputType,
   resolveReadonlyDisplay,
+  getAnswerSyntaxHint,
 } from "./answerEditorHelpers";
-import { PlainTextAnswerInput } from "./PlainTextAnswerInput";
-import { NumericRationalMathInput } from "./NumericRationalMathInput";
-import { Coordinate2DInput } from "./Coordinate2DInput";
 import { PlainOrMultilineAnswerInput } from "./PlainOrMultilineAnswerInput";
 import { MultilineProseAnswerEditor } from "./MultilineProseAnswerEditor";
 import { InlineMathAnswerInput } from "./InlineMathAnswerInput";
@@ -69,7 +67,7 @@ export const SafeErrorState: React.FC<{
 /**
  * ModeAwareAnswerEditor
  * Central orchestrator for all math & text answer editing across Student, Teacher, and CenterManager.
- * Enforces strict fail-closed compatibility matrix, delegates to specialized sub-inputs,
+ * Enforces the strict compatibility matrix while sharing the formula-button composer,
  * and maintains complete ref capability for Casio/SideAssistant tools.
  */
 export const ModeAwareAnswerEditor = forwardRef<AnswerEditorRef, ModeAwareAnswerEditorProps>(
@@ -192,8 +190,13 @@ export const ModeAwareAnswerEditor = forwardRef<AnswerEditorRef, ModeAwareAnswer
     const handleChildChange = (nextVal: AnswerEditorValue) => {
       onChange?.(nextVal);
     };
-    const inlineStudentMath = profile === "answering" && proseVariant === "student" &&
+    const inlineMath =
       ["numeric-rational", "math-equivalent", "coordinate-2d"].includes(resolution.type);
+    // Formula entry is a presentation capability, not a reason to change the
+    // persisted evaluation mode or give TextExact mathematical equivalence.
+    const syntaxHint = (showSyntaxHint ?? profile === "authoring")
+      ? getAnswerSyntaxHint(evaluationMode, value) : null;
+    const answerLabel = ariaLabel ?? (profile === "authoring" ? "Đáp án chuẩn" : "Đáp án của bạn");
 
     return (
       <div className={`space-y-2 ${className}`}>
@@ -208,53 +211,44 @@ export const ModeAwareAnswerEditor = forwardRef<AnswerEditorRef, ModeAwareAnswer
           </div>
         )}
 
-        {/* Specialized Active Sub-Input */}
+        {/* The input UI is shared; the persisted grading mode remains authoritative. */}
         {resolution.type === "plain-text" && (
-          <PlainTextAnswerInput
-            ref={childRef}
-            value={value}
-            onChange={handleChildChange}
-            disabled={disabled}
-            readOnly={readOnly}
-            placeholder={placeholder}
-            autoFocus={autoFocus}
-            onFocus={onFocus}
-            ariaLabel={ariaLabel}
-          />
+          <div className="space-y-2">
+            <PlainOrMultilineAnswerInput
+              ref={childRef}
+              variant={proseVariant}
+              value={value}
+              onChange={handleChildChange}
+              disabled={disabled}
+              readOnly={readOnly}
+              placeholder={placeholder}
+              autoFocus={autoFocus}
+              showPreview={showPreview}
+              onFocus={onFocus}
+              ariaLabel={answerLabel}
+            />
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              Câu này chấm khớp văn bản, không xét tương đương toán học. Nội dung và ký hiệu được giữ nguyên; Chèn công thức không thay đổi quy tắc so khớp.
+            </p>
+          </div>
         )}
 
-        {inlineStudentMath && <InlineMathAnswerInput ref={childRef} value={value} onChange={handleChildChange}
-          disabled={disabled} readOnly={readOnly} autoFocus={autoFocus} placeholder={placeholder} onFocus={onFocus} ariaLabel={ariaLabel} />}
-        {!inlineStudentMath && (resolution.type === "numeric-rational" || resolution.type === "math-equivalent") && (
-          <NumericRationalMathInput
-            ref={childRef}
-            evaluationMode={resolution.type === "math-equivalent" ? "MathEquivalent" : "NumericRational"}
-            value={value}
-            onChange={handleChildChange}
-            disabled={disabled}
-            readOnly={readOnly}
-            placeholder={placeholder ?? (resolution.type === "math-equivalent" ? "Nhập số, tọa độ hoặc tập hợp bằng bàn phím toán trực quan..." : undefined)}
-            autoFocus={autoFocus}
-            showPreview={showPreview}
-            showSyntaxHint={showSyntaxHint ?? profile === "authoring"}
-            onFocus={onFocus}
-            ariaLabel={ariaLabel ?? (resolution.type === "math-equivalent" ? "Ô nhập đáp án toán học" : undefined)}
-          />
-        )}
-
-        {!inlineStudentMath && resolution.type === "coordinate-2d" && (
-          <Coordinate2DInput
-            ref={childRef}
-            value={value}
-            onChange={handleChildChange}
-            disabled={disabled}
-            readOnly={readOnly}
-            autoFocus={autoFocus}
-            showPreview={showPreview}
-            showSyntaxHint={showSyntaxHint ?? profile === "authoring"}
-            onFocus={onFocus}
-            ariaLabel={ariaLabel}
-          />
+        {inlineMath && (
+          <div className="space-y-2">
+            <InlineMathAnswerInput
+              ref={childRef}
+              variant={proseVariant}
+              value={value}
+              onChange={handleChildChange}
+              disabled={disabled}
+              readOnly={readOnly}
+              autoFocus={autoFocus}
+              placeholder={placeholder}
+              onFocus={onFocus}
+              ariaLabel={answerLabel}
+            />
+            {syntaxHint && <p className="text-sm text-slate-600 dark:text-slate-300">{syntaxHint}</p>}
+          </div>
         )}
 
         {resolution.type === "manual-short-answer" && (
@@ -269,7 +263,7 @@ export const ModeAwareAnswerEditor = forwardRef<AnswerEditorRef, ModeAwareAnswer
             autoFocus={autoFocus}
             showPreview={showPreview}
             onFocus={onFocus}
-            ariaLabel={ariaLabel}
+            ariaLabel={answerLabel}
           />
         )}
 
@@ -285,7 +279,7 @@ export const ModeAwareAnswerEditor = forwardRef<AnswerEditorRef, ModeAwareAnswer
             autoFocus={autoFocus}
             showPreview={showPreview}
             onFocus={onFocus}
-            ariaLabel={ariaLabel}
+            ariaLabel={answerLabel}
           />
         )}
       </div>

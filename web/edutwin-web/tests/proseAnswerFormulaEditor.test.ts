@@ -7,6 +7,7 @@ import katex from "katex";
 import * as answerHelpers from "../src/components/math/answer-editor/answerEditorHelpers.ts";
 import * as richHelpers from "../src/components/math/richMathEditorHelpers.ts";
 import * as formulaValidation from "../src/pages/centerManagerQuestionEditorHelpers.ts";
+import { SET_FORMULA_KEYS, SET_KEYBOARD_LAYOUT, installSetKeyboardLayout } from "../src/utils/mathVirtualKeyboard.ts";
 
 // Execute production TSX with hook/ref adapters. These are component contract tests,
 // not browser E2E; the prose editor's change/clear/value logic is not copied here.
@@ -215,12 +216,95 @@ for (const [questionType, name] of [["Essay", "MultilineProseAnswerEditor"], ["S
   });
 }
 
-test("authoring keeps TextExact and numeric specialized inputs", () => {
-  for (const [mode, name] of [["TextExact", "PlainTextAnswerInput"], ["NumericRational", "NumericRationalMathInput"]]) {
-    const { nodes, types } = modeHarness({ questionType: "ShortAnswer", evaluationMode: mode, profile: "authoring" });
-    assert.ok(nodes.some(node => node.type === types[name]));
-    assert.ok(!nodes.some(node => node.type === types.MultilineProseAnswerEditor || node.type === types.PlainOrMultilineAnswerInput));
+test("student TextExact exposes the shared formula composer while retaining exact-text grading", () => {
+  const { nodes, types } = modeHarness({ questionType: "ShortAnswer", evaluationMode: "TextExact", profile: "answering", showPreview: false });
+  const editor = nodes.find(node => node.type === types.PlainOrMultilineAnswerInput);
+  assert.ok(editor);
+  assert.equal(editor.props.variant, "student");
+  assert.equal(editor.props.showPreview, false);
+  assert.ok(!nodes.some(node => node.type === types.PlainTextAnswerInput || node.type === types.InlineMathAnswerInput));
+  assert.ok(nodes.some(node => visibleText(node).includes("không xét tương đương toán học")));
+  assert.equal(answerHelpers.resolveAnswerInputType("ShortAnswer", "TextExact").type, "plain-text");
+});
+
+test("TextExact formula content retains raw source and an empty displayLatex submission", () => {
+  const h = proseHarness({ rows: 2, ariaLabel: "Đáp án trả lời ngắn" });
+  h.tree.props.onChange("Kết quả $\\frac{1}{2}$");
+  const value = h.ref.current.getValue();
+  assert.deepEqual(value, {rawText:"Kết quả $\\frac{1}{2}$",displayLatex:""});
+  assert.deepEqual(answerHelpers.buildSubmissionAnswerFields("ShortAnswer","TextExact",value),
+    {finalAnswer:"Kết quả $\\frac{1}{2}$",answerDisplayLatex:""});
+});
+
+test("submitted TextExact answers remain read-only with no editable formula composer", () => {
+  const { nodes, types } = modeHarness({ questionType: "ShortAnswer", evaluationMode: "TextExact", profile: "answering", readOnly: true });
+  assert.ok(!nodes.some(node => node.type === types.PlainOrMultilineAnswerInput || node.type === types.PlainTextAnswerInput));
+  assert.equal(nodes.find(node => node.type === types.MathPreviewCore)?.props.mode, "rich");
+});
+
+for (const variant of ["teacher", "center-manager", "neutral"]) {
+  for (const mode of ["TextExact", "NumericRational", "MathEquivalent", "Coordinate2D", "Manual"]) {
+    test(`authoring ${variant} ${mode} uses the shared formula-button editor without a legacy input`, () => {
+      const { nodes, types } = modeHarness({ questionType: "ShortAnswer", evaluationMode: mode, profile: "authoring", variant });
+      const name = ["TextExact", "Manual"].includes(mode) ? "PlainOrMultilineAnswerInput" : "InlineMathAnswerInput";
+      assert.equal(nodes.find(node => node.type === types[name])?.props.variant, variant);
+      assert.ok(!nodes.some(node => [types.PlainTextAnswerInput, types.NumericRationalMathInput, types.Coordinate2DInput].includes(node.type)));
+      assert.equal(answerHelpers.resolveAnswerInputType("ShortAnswer", mode).isValid, true);
+    });
   }
+}
+
+test("authoring syntax hints remain advisory and can be hidden without switching the editor", () => {
+  const props = { questionType: "ShortAnswer", evaluationMode: "Coordinate2D", profile: "authoring", value: { rawText: "(1;)", displayLatex: "" } };
+  const hint = modeHarness(props);
+  assert.ok(hint.nodes.some(node => visibleText(node).includes("Tọa độ 2D yêu cầu đủ 2 thành phần")));
+  assert.ok(hint.nodes.some(node => node.type === hint.types.InlineMathAnswerInput));
+  const hidden = modeHarness({ ...props, showSyntaxHint: false });
+  assert.ok(!hidden.nodes.some(node => visibleText(node).includes("Tọa độ 2D yêu cầu đủ 2 thành phần")));
+  assert.ok(hidden.nodes.some(node => node.type === hidden.types.InlineMathAnswerInput));
+});
+
+test("authoring preserves immutable and invalid mode boundaries, including MCQ delegation", () => {
+  for (const mode of ["TextExact", "NumericRational", "MathEquivalent", "Coordinate2D", "Manual"]) {
+    const { nodes, types } = modeHarness({ questionType: "ShortAnswer", evaluationMode: mode, profile: "authoring", readOnly: true });
+    assert.ok(nodes.some(node => node.type === types.MathPreviewCore));
+    assert.ok(!nodes.some(node => [types.PlainOrMultilineAnswerInput, types.InlineMathAnswerInput].includes(node.type)));
+  }
+  const mcq = modeHarness({ questionType: "MultipleChoice", evaluationMode: "TextExact", profile: "authoring" });
+  assert.ok(mcq.nodes.some(node => visibleText(node).includes("OptionSelector")));
+  assert.ok(!mcq.nodes.some(node => node.type === mcq.types.PlainOrMultilineAnswerInput));
+  const invalid = modeHarness({ questionType: "Essay", evaluationMode: "NumericRational", profile: "authoring" });
+  assert.ok(!invalid.nodes.some(node => [invalid.types.MultilineProseAnswerEditor, invalid.types.InlineMathAnswerInput].includes(node.type)));
+});
+
+for (const [mode, content, expected] of [
+  ["TextExact", "Kết quả $x=3$", "Kết quả $x=3$"],
+  ["NumericRational", "$\\frac{3}{4}$", "\\frac{3}{4}"],
+  ["Coordinate2D", "$\\left(2;\\frac{1}{2}\\right)$", "\\left(2;\\frac{1}{2}\\right)"],
+  ["MathEquivalent", "$\\mathbb{R}\\setminus\\{2\\}$", "\\mathbb{R}\\setminus\\{2\\}"],
+  ["Manual", "Vậy $x=3$, theo lập luận ở trên.", "Vậy $x=3$, theo lập luận ở trên."],
+]) {
+  test(`authoring ${mode} serializes inserted formulas without silently changing the reference or mode`, () => {
+    const next = ["TextExact", "Manual"].includes(mode)
+      ? answerHelpers.buildProseAnswer(content) : answerHelpers.buildInlineMathAnswer(content);
+    assert.equal(formulaValidation.serializeAnswerEditorValue(next, mode), expected);
+    assert.deepEqual(formulaValidation.validateAnswerMathFormulas(expected, mode), []);
+    const restored = formulaValidation.hydrateAnswerEditorValue(expected, mode);
+    assert.equal(formulaValidation.serializeAnswerEditorValue(restored, mode),
+      mode === "Coordinate2D" ? "(2; \\frac{1}{2})" : expected);
+    if (["TextExact", "Manual"].includes(mode)) assert.equal(next.displayLatex, "");
+  });
+}
+
+test("whole-answer syntax validation still rejects malformed formulas and unfilled placeholders", () => {
+  for (const mode of ["NumericRational", "Coordinate2D", "MathEquivalent"]) {
+    assert.equal(formulaValidation.validateAnswerMathFormulas("\\frac{1}{\\placeholder{}}", mode)[0]?.type, "placeholder");
+    assert.equal(formulaValidation.validateAnswerMathFormulas("\\left(2;3", mode)[0]?.type, "invalid-syntax");
+    assert.equal(formulaValidation.validateAnswerMathFormulas("$\\frac{1}{2}", mode)[0]?.type, "unclosed-delimiter");
+    assert.deepEqual(formulaValidation.validateAnswerMathFormulas("", mode), []);
+  }
+  assert.equal(formulaValidation.validateAnswerMathFormulas("\\frac{1}{2}", "TextExact")[0]?.type, "unwrapped-latex");
+  assert.equal(formulaValidation.validateAnswerMathFormulas("\\frac{1}{2}", "Manual")[0]?.type, "unwrapped-latex");
 });
 
 for (const mode of ["NumericRational", "MathEquivalent", "Coordinate2D"]) {
@@ -243,6 +327,47 @@ test("math formula button preserves submission grammar and old math drafts", () 
   assert.equal(answerHelpers.inlineMathEditingText({rawText:"$x=3$",displayLatex:"legacy"}), "$x=3$");
 });
 
+test("plain set drafts retain visible backslash and braces, including legacy display fallback", () => {
+  for (const rawText of ["R \\ {2}", "D=R\\{2}", "ℝ ∖ {2}", "{1; 2}"]) {
+    for (const displayLatex of ["", rawText]) {
+      assert.equal(answerHelpers.inlineMathEditingText({rawText,displayLatex}),rawText);
+    }
+  }
+  const latex = "\\mathbb{R}\\setminus\\{2\\}";
+  assert.equal(answerHelpers.inlineMathEditingText({rawText:"R \\ {2}",displayLatex:latex}),`$${latex}$`);
+});
+
+test("set virtual keyboard provides valid literal-brace LaTeX without an external toolbar", () => {
+  assert.deepEqual(SET_FORMULA_KEYS.map(key=>key.label),["ℝ","{…}","∖","∈","∉","∪","∩","∅"]);
+  for (const key of SET_FORMULA_KEYS) {
+    const latex = key.latex.replace("#?","2");
+    assert.doesNotThrow(()=>katex.renderToString(latex,{throwOnError:true,trust:false}));
+  }
+  const source = fs.readFileSync(new URL('../src/components/math/RichMathEditor.tsx',import.meta.url),'utf8');
+  assert.doesNotMatch(source,/SET_FORMULA_SHORTCUTS|aria-label="Ký hiệu tập hợp"|dialogMathRef/);
+  const visual = fs.readFileSync(new URL('../src/components/math/VisualMathField.tsx',import.meta.url),'utf8');
+  assert.match(visual,/installSetKeyboardLayout\(window\.mathVirtualKeyboard\)/);
+  const player = fs.readFileSync(new URL('../src/pages/LearningPlayerPage.tsx',import.meta.url),'utf8');
+  assert.doesNotMatch(player,/answerDisplayLatex: da\.answerDisplayLatex \?\? da\.finalAnswer/);
+  assert.doesNotMatch(player,/setAnswerDisplayLatex\([^\n]*(?:activeAnswer|saved)\.finalAnswer/);
+});
+
+test("shared set keyboard preserves other layouts and never appends duplicates", () => {
+  const other={id:'another-layout',label:'Other',rows:[['x']]};
+  const keyboard:any={layouts:['numeric','symbols',other]};
+  installSetKeyboardLayout(keyboard);
+  assert.deepEqual(keyboard.layouts,['numeric','symbols',other,SET_KEYBOARD_LAYOUT]);
+  const installed=keyboard.layouts;
+  installSetKeyboardLayout(keyboard);
+  assert.equal(keyboard.layouts,installed);
+  installSetKeyboardLayout(undefined);
+  const empty:any={layouts:[]};installSetKeyboardLayout(empty);
+  assert.deepEqual(empty.layouts,['default',SET_KEYBOARD_LAYOUT]);
+  assert.equal(SET_KEYBOARD_LAYOUT.label,'Tập hợp');
+  assert.ok('rows' in SET_KEYBOARD_LAYOUT);
+  for(const row of SET_KEYBOARD_LAYOUT.rows) assert.ok(row.length<=10);
+});
+
 test("production inline math adapter keeps fresh Casio/formula, clear and external draft values", () => {
   const hooks = hookHarness(); const RichMathEditor = () => null;
   const { InlineMathAnswerInput } = loadComponent("answer-editor/InlineMathAnswerInput.tsx", hooks, {
@@ -256,6 +381,10 @@ test("production inline math adapter keeps fresh Casio/formula, clear and extern
     hooks.flushEffects();
   }
   render(); assert.equal(tree.type,RichMathEditor); assert.equal(tree.props.value,"$\\frac{3}{4}$");
+  assert.equal(tree.props.variant, "student");
+  render({ variant: "teacher", ariaLabel: "Đáp án chuẩn" });
+  assert.equal(tree.props.variant, "teacher");
+  assert.equal(tree.props.label, "Đáp án chuẩn");
   ref.current.insertAtCursor("\\sqrt{52}");
   assert.deepEqual(ref.current.getValue(),{rawText:"\\sqrt{52}",displayLatex:"\\sqrt{52}"});
   ref.current.clear(); assert.deepEqual(ref.current.getValue(),{rawText:"",displayLatex:""});
@@ -264,6 +393,13 @@ test("production inline math adapter keeps fresh Casio/formula, clear and extern
   render({disabled:true}); ref.current.insertLatex("10"); ref.current.clear(); tree.props.onChange("MUTATED");
   assert.equal(changes.length,2); assert.equal(tree.props.disabled,true);
 });
+
+for (const variant of ["teacher", "center-manager", "neutral"]) {
+  test(`production ${variant} toolbar exposes Chèn công thức for authoring`, () => {
+    const h = richHarness({ variant });
+    assert.ok(h.render().some(node => node.type === "button" && visibleText(node).includes("Chèn công thức")));
+  });
+}
 
 test("submitted essay answers render rich read-only content without an editable composer", () => {
   const { nodes, types } = modeHarness({ questionType: "Essay", evaluationMode: "Manual", readOnly: true });

@@ -697,7 +697,7 @@ export const LearningPlayerPage = () => {
     for (const da of assignment.draftAnswers ?? []) {
       serverAnswers[String(da.questionId)] = {
         finalAnswer: da.finalAnswer ?? "",
-        answerDisplayLatex: da.answerDisplayLatex ?? da.finalAnswer ?? "",
+        answerDisplayLatex: da.answerDisplayLatex ?? "",
         reasoningText: da.reasoningText ?? "",
         confidence: da.confidence ?? 80,
         timeSpentSeconds: da.timeSpentSeconds ?? 0,
@@ -900,7 +900,7 @@ export const LearningPlayerPage = () => {
       const activeAnswer = serverAnswers[activeQId];
       if (activeAnswer) {
         setFinalAnswer(activeAnswer.finalAnswer || "");
-        setAnswerDisplayLatex(assignmentQuestion?.questionType === "MultipleChoice" ? "" : (activeAnswer.answerDisplayLatex || activeAnswer.finalAnswer || ""));
+        setAnswerDisplayLatex(assignmentQuestion?.questionType === "MultipleChoice" ? "" : (activeAnswer.answerDisplayLatex || ""));
         setReasoningText(activeAnswer.reasoningText || "");
         setConfidence(activeAnswer.confidence ?? 80);
         setTimeSpentSeconds(activeAnswer.timeSpentSeconds ?? 0);
@@ -1125,7 +1125,7 @@ export const LearningPlayerPage = () => {
       setDrawingUploadToken(null);
     } else if (saved) {
       setFinalAnswer(saved.finalAnswer || "");
-      setAnswerDisplayLatex(question?.questionType === "MultipleChoice" ? "" : (saved.answerDisplayLatex || saved.finalAnswer || ""));
+      setAnswerDisplayLatex(question?.questionType === "MultipleChoice" ? "" : (saved.answerDisplayLatex || ""));
       setReasoningText(saved.reasoningText || "");
       setConfidence(saved.confidence ?? 80);
       setTimeSpentSeconds(saved.timeSpentSeconds ?? 0);
@@ -2104,6 +2104,7 @@ export const LearningPlayerPage = () => {
     return <div className="p-6 space-y-4"><h1>{pathSession.title}</h1><p>{pathSession.objective}</p>
       <p role="status">{pathSession.status === "Completed" ? "Buổi học đã hoàn thành." : pathSession.status === "NeedsReview" ? "Cần ôn lại hoặc chờ chốt kết quả trước khi hoàn thành buổi." : "Hoàn thành các hoạt động của buổi học trước khi xác nhận."}</p>
       <ul>{[...pathSession.onlineActivities, ...pathSession.offlineActivities].map((activity, i) => <li key={i}>{activity}</li>)}</ul>
+      {pathSession.status === "InProgress" && pathSession.recommendedQuestionIds.length === 0 && <p>Buổi này hiện không có câu hỏi đủ điều kiện để làm. Hãy hoàn thành các hoạt động bên trên rồi xác nhận; xác nhận này không tạo điểm hay tăng năng lực.</p>}
       {pathSession.status === "InProgress" && pathSession.recommendedQuestionIds.length === 0 && <button type="button" onClick={() => void evaluatePathSession(true)}>Tôi đã hoàn thành các hoạt động</button>}
       {sessionUpdateError && <p role="alert">{sessionUpdateError}</p>}
       <Link to={studentLearningPathReturnUrl(searchParams, pathSessionId)}>Quay lại lộ trình</Link></div>;
@@ -3093,6 +3094,8 @@ export const LearningPlayerPage = () => {
                           ? "Nhập kết luận hoặc đáp án; dùng Chèn công thức để thêm biểu thức toán..."
                           : question?.answerEvaluationMode === "Manual"
                           ? "Nhập câu trả lời ngắn; có thể kết hợp chữ và công thức toán..."
+                          : question?.answerEvaluationMode === "TextExact"
+                          ? "Nhập câu trả lời; dùng Chèn công thức nếu cần ký hiệu toán..."
                           : "Nhập đáp số; dùng Chèn công thức để nhập phân số, căn hoặc tọa độ (có thể chèn từ Casio)..."
                       }
                       showPreview={false}
