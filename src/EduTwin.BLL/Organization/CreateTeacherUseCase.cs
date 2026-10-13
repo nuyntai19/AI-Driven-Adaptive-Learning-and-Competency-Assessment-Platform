@@ -119,6 +119,9 @@ public class CreateTeacherUseCase : ICreateTeacherUseCase
             User = user
         };
 
+        if (!await NewAccountRoleProvisioning.AddAsync(_dbContext, user, managerId, now, cancellationToken))
+            return CreateTeacherResult.Failure(ErrorCodes.ValidationFailed);
+
         _dbContext.Users.Add(user);
         _dbContext.Teachers.Add(teacher);
 

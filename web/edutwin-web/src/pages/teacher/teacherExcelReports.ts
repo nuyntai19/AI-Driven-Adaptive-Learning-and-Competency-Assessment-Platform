@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
 import type { ClassDto, StudentDto, StudentSubjectGoalDto } from "../../types/organization";
+import { assessmentLabel, isAcademicHighRisk } from "./teacherReportsHelpers.ts";
 import type { StudentAcademicSummary, StudentAssignmentRecord } from "./teacherReportsHelpers";
 
 export function downloadXlsx(wb: XLSX.WorkBook, filename: string) {
@@ -39,7 +40,7 @@ export function buildClassReportWorkbook(
         totalScoreSum += sum.averageScore;
         scoredStudentCount++;
       }
-      if (sum.completionRate < 50 || (sum.averageScore !== null && sum.averageScore < 5.0)) {
+      if (isAcademicHighRisk(sum)) {
         highRiskCount++;
       }
     }
@@ -101,8 +102,8 @@ export function buildClassReportWorkbook(
 
     const targetVal = mainGoal ? mainGoal.targetScore : "";
     const predVal = mainGoal ? mainGoal.currentPredictedScore : "";
-    const isHighRisk = summary && (summary.completionRate < 50 || (summary.averageScore !== null && summary.averageScore < 5.0));
-    const riskLabel = isHighRisk ? "Nguy cơ cao" : summary && summary.completionRate >= 80 ? "Tiến độ tốt" : "Bình thường";
+    const isHighRisk = isAcademicHighRisk(summary);
+    const riskLabel = assessmentLabel(summary);
     const pedagogicalAssessment = isHighRisk
       ? "Cần kèm cặp bổ trợ kiến thức hổng"
       : compRate >= 80
@@ -250,18 +251,18 @@ export function buildStudentReportWorkbook(
       const dueDateText = rec.dueAt ? new Date(rec.dueAt).toLocaleDateString("vi-VN") : "Không giới hạn";
       const submittedDateText = rec.submittedAt ? new Date(rec.submittedAt).toLocaleDateString("vi-VN") : "-";
       const completionPct = rec.totalQuestionCount > 0 ? Math.round((rec.completedQuestionCount / rec.totalQuestionCount) * 100) : 0;
-      const scoreVal = rec.score !== null && rec.score !== undefined ? Number(rec.score.toFixed(1)) : "";
+      const scoreVal = rec.score == null ? "" : Number(rec.score.toFixed(1));
 
       const gradeRank =
-        scoreVal !== ""
-          ? Number(scoreVal) >= 8.0
+        rec.resultStatus === "Final" && rec.score != null
+          ? rec.score >= 8.0
             ? "Giỏi"
-            : Number(scoreVal) >= 6.5
+            : rec.score >= 6.5
             ? "Khá"
-            : Number(scoreVal) >= 5.0
+            : rec.score >= 5.0
             ? "Đạt"
             : "Chưa đạt"
-          : "-";
+          : "Chưa chốt điểm";
 
       assignmentRows.push([
         idx + 1,
@@ -318,8 +319,8 @@ export function buildStudentReportWorkbook(
     ["Số bài đã hoàn thành", summary.completedCount, "Bài tập", "Đã nộp bài đầy đủ"],
     ["Số bài đang làm dở dang", summary.inProgressCount, "Bài tập", "Đang trong quá trình làm"],
     ["Số bài chưa làm / quá hạn", summary.notStartedCount + summary.overdueCount, "Bài tập", summary.overdueCount > 0 ? `Có ${summary.overdueCount} bài quá hạn` : "Chưa làm"],
-    ["Tỷ lệ hoàn thành bài tập", `${summary.completionRate.toFixed(1)}%`, "%", summary.completionRate >= 80 ? "Đạt xuất sắc" : summary.completionRate >= 50 ? "Mức độ trung bình" : "Cần đôn đốc"],
-    ["Điểm trung bình các bài", summary.averageScore !== null ? Number(summary.averageScore.toFixed(1)) : "Chưa có", "Thang 10", summary.averageScore !== null && summary.averageScore >= 8.0 ? "Học lực Giỏi" : summary.averageScore !== null && summary.averageScore >= 6.5 ? "Học lực Khá" : "Cần bồi dưỡng"],
+    ["Tỷ lệ hoàn thành bài tập", `${summary.completionRate.toFixed(1)}%`, "%", assessmentLabel(summary)],
+    ["Điểm trung bình các bài", summary.averageScore !== null ? Number(summary.averageScore.toFixed(1)) : "Chưa có", "Thang 10", summary.averageScore === null ? assessmentLabel(summary) : summary.averageScore >= 8.0 ? "Học lực Giỏi" : summary.averageScore >= 6.5 ? "Học lực Khá" : "Cần bồi dưỡng"],
     ["Điểm cao nhất", summary.maxScore !== null ? Number(summary.maxScore.toFixed(1)) : "-", "Thang 10", ""],
     ["Điểm thấp nhất", summary.minScore !== null ? Number(summary.minScore.toFixed(1)) : "-", "Thang 10", ""],
     [],

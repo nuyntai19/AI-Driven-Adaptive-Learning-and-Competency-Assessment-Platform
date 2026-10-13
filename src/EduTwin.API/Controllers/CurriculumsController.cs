@@ -247,7 +247,7 @@ public class CurriculumsController : ControllerBase
             };
             return Ok(response);
         }
-        return MapError(result.ErrorCode!);
+        return MapError(result.ErrorCode!, result.Message);
     }
 
     [HttpPost("{id:guid}/clone")]
@@ -273,7 +273,34 @@ public class CurriculumsController : ControllerBase
         return MapError(result.ErrorCode!);
     }
 
-    private IActionResult MapError(string errorCode)
+    [HttpGet("{id:guid}/applications")]
+    [Authorize(Policy = "curriculum.curriculums.read")]
+    public async Task<IActionResult> ReadApplications(Guid id, [FromServices] CurriculumApplicationUseCase useCase, CancellationToken ct)
+        => ApplicationResponse(await useCase.ReadAsync(id, ct));
+
+    [HttpGet("{id:guid}/lifecycle-usage")]
+    [Authorize(Policy = "curriculum.curriculums.read")]
+    public async Task<IActionResult> LifecycleUsage(Guid id, [FromServices] CurriculumApplicationUseCase useCase, CancellationToken ct)
+    {
+        var usages = await useCase.UsageAsync(id, ct);
+        return usages is null ? NotFound() : Ok(new { Data = usages });
+    }
+
+    [HttpPut("{id:guid}/applications")]
+    [Authorize(Policy = "curriculum.curriculums.update")]
+    public async Task<IActionResult> ApplyCurriculum(Guid id, ApplyCurriculumRequest request,
+        [FromServices] CurriculumApplicationUseCase useCase, CancellationToken ct)
+        => ApplicationResponse(await useCase.ApplyAsync(id, request, ct));
+
+    private IActionResult ApplicationResponse(CurriculumApplicationResult result)
+    {
+        if (result.IsSuccess) return Ok(new { result.Data, result.RowVersion });
+        var status = result.ErrorCode == ErrorCodes.ResourceNotFound ? 404 : result.ErrorCode == ErrorCodes.ValidationFailed ? 400 : 409;
+        return StatusCode(status, new ProblemDetails { Status = status, Title = "Không thể áp dụng giáo trình",
+            Detail = result.Message ?? "Dữ liệu không tồn tại hoặc bạn không có quyền.", Extensions = { ["errorCode"] = result.ErrorCode } });
+    }
+
+    private IActionResult MapError(string errorCode, string? message = null)
     {
         var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
         var path = HttpContext.Request.Path;
@@ -294,7 +321,7 @@ public class CurriculumsController : ControllerBase
                 Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.1",
                 Title = "Dữ liệu không hợp lệ",
                 Status = StatusCodes.Status400BadRequest,
-                Detail = "Dữ liệu gửi lên không đúng định dạng hoặc thiếu thông tin.",
+                Detail = message ?? "Dữ liệu gửi lên không đúng định dạng hoặc thiếu thông tin.",
                 Instance = path,
                 Extensions = { ["traceId"] = traceId, ["errorCode"] = errorCode }
             }),
@@ -312,7 +339,7 @@ public class CurriculumsController : ControllerBase
                 Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.8",
                 Title = "Trạng thái không hợp lệ",
                 Status = StatusCodes.Status409Conflict,
-                Detail = "Không thể thực hiện hành động do sai trạng thái.",
+                Detail = message ?? "Không thể thực hiện hành động do sai trạng thái.",
                 Instance = path,
                 Extensions = { ["traceId"] = traceId, ["errorCode"] = errorCode }
             }),

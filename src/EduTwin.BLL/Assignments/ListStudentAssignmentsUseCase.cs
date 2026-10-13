@@ -45,6 +45,9 @@ public class ListStudentAssignmentsUseCase : IListStudentAssignmentsUseCase
         var currentUserId = _tenantContext.UserId;
         var centerId = _tenantContext.CenterId;
         var utcNow = _timeProvider.GetUtcNow().UtcDateTime;
+        if (query.History.HasValue && query.ClassId is { } selectedClass &&
+            !await StudentAssignmentScope.ValidClassAsync(_dbContext, centerId!.Value, currentUserId!.Value, selectedClass, query.SubjectId, query.History.Value, cancellationToken))
+            return ListStudentAssignmentsResult.Failure(ErrorCodes.ResourceNotFound);
 
         var baseQuery = _dbContext.StudentAssignmentProgresses
             .AsNoTracking()
@@ -63,6 +66,12 @@ public class ListStudentAssignmentsUseCase : IListStudentAssignmentsUseCase
                 c.SubjectId == subjectId &&
                 c.ClassId == p.Assignment!.ClassId));
         }
+
+        if (query.ClassId.HasValue)
+            baseQuery = baseQuery.Where(p => p.Assignment!.ClassId == query.ClassId.Value);
+        if (query.History.HasValue)
+            baseQuery = StudentAssignmentScope.InView(baseQuery, _dbContext, centerId.Value, currentUserId.Value, query.History.Value);
+        // Explicit history is former classes only; omitted mode retains the legacy all-targets API behavior.
 
         if (!string.IsNullOrEmpty(query.Status))
         {

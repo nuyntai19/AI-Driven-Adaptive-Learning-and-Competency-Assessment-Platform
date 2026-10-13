@@ -422,11 +422,11 @@ export const CenterDashboardPage = () => {
 
               <section className="cm-surface p-5 sm:p-6" aria-labelledby="risk-heading">
                 <div className="border-b border-[var(--cm-border-subtle)] pb-4">
-                  <h2 id="risk-heading" className="text-base font-semibold text-[var(--cm-text)]">Lớp cần chú ý</h2>
-                  <p className="mt-1 text-xs text-[var(--cm-text-secondary)]">Số học sinh nguy cơ cao theo dữ liệu tổng hợp.</p>
+                  <h2 id="risk-heading" className="text-base font-semibold text-[var(--cm-text)]">Rủi ro năng lực theo lớp</h2>
+                  <p className="mt-1 text-xs text-[var(--cm-text-secondary)]">Dựa trên dự đoán năng lực Digital Twin theo môn; không phải số học sinh quá hạn bài tập hoặc điểm đã chốt trong báo cáo lớp.</p>
                 </div>
                 {dashboard.highRiskByClass.length === 0 ? (
-                  <p className="py-12 text-center text-sm text-[var(--cm-text-muted)]">Chưa ghi nhận lớp có dữ liệu nguy cơ.</p>
+                  <p className="py-12 text-center text-sm text-[var(--cm-text-muted)]">Chưa ghi nhận lớp có dữ liệu rủi ro năng lực.</p>
                 ) : (
                   <ul className="mt-3 divide-y divide-[var(--cm-border-subtle)]">
                     {[...dashboard.highRiskByClass].sort((a, b) => b.highRiskStudentCount - a.highRiskStudentCount).map((item) => (
@@ -435,7 +435,7 @@ export const CenterDashboardPage = () => {
                           <p className="truncate text-sm font-semibold text-[var(--cm-text)]">{item.className}</p>
                           <p className="text-xs text-[var(--cm-text-muted)]">Tổng số {item.totalStudentCount} học sinh</p>
                         </div>
-                        <StatusBadge status={item.highRiskStudentCount > 0 ? "warning" : "active"} label={`${item.highRiskStudentCount} nguy cơ`} tone={item.highRiskStudentCount > 0 ? "warning" : "success"} />
+                        <StatusBadge status={item.highRiskStudentCount > 0 ? "warning" : "active"} label={`${item.highRiskStudentCount} rủi ro năng lực`} tone={item.highRiskStudentCount > 0 ? "warning" : "success"} />
                       </li>
                     ))}
                   </ul>

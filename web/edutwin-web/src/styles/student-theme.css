@@ -5,12 +5,12 @@
 
 .student-shell {
   /* Canvas & Base Ink */
-  --student-canvas: #FBF8F1;
+  --student-canvas: #F6F8FC;
   --student-surface: #FFFFFF;
-  --student-surface-subtle: #F5F1E8;
+  --student-surface-subtle: #EDF2F7;
   --student-surface-elevated: #FFFFFF;
-  --student-border: #E8E2D5;
-  --student-border-subtle: #F0EBE0;
+  --student-border: #DCE3ED;
+  --student-border-subtle: #E8EDF4;
   --student-ink: #172033;
   --student-ink-secondary: #475467;
   --student-muted: #667085;
@@ -50,13 +50,45 @@
   --atlas-node-target: #3558F4;
   --atlas-route-mastered: #36C5A0;
   --atlas-route-recommended: #6746E8;
-  --atlas-route-dim: #E2DBD0;
+  --atlas-route-dim: #D9E1EC;
+
+  /* Larger type is scoped to student surfaces; browser zoom and other roles
+     are unchanged. Mobile keeps compact spacing and a readable type floor. */
+  --text-xs: 0.8125rem;
+  --text-sm: 0.9375rem;
+  --text-base: 1.0625rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2.125rem;
+  --text-4xl: 2.5rem;
 
   /* Typography: Be Vietnam Pro with full Vietnamese diacritics support */
   font-family: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   background-color: var(--student-canvas);
   color: var(--student-ink);
   letter-spacing: -0.01em;
+  font-size: var(--text-base);
+}
+
+@media (min-width: 768px) {
+  .student-shell {
+    --spacing: 0.3rem;
+    --text-xs: 0.9375rem;
+    --text-sm: 1.09375rem;
+    --text-base: 1.25rem;
+    --text-lg: 1.40625rem;
+    --text-xl: 1.5625rem;
+    --text-2xl: 1.875rem;
+    --text-3xl: 2.34375rem;
+    --text-4xl: 2.8125rem;
+  }
+}
+
+/* Previously fixed 10/11px captions must also remain readable. */
+.student-shell :is(.text-\[10px\], .text-\[11px\]) {
+  font-size: 0.8125rem;
+  line-height: 1.45;
 }
 
 /* Dark Mode Tokens */

@@ -1373,6 +1373,9 @@ public sealed class PlatformMySqlIntegrationTests
         Assert.True(await context.UserRoleAssignments.IgnoreQueryFilters().AnyAsync(ur => ur.AccountType == UserRole.PlatformAdmin));
         Assert.True(await context.PermissionAccountTypes.IgnoreQueryFilters().AnyAsync(pat => pat.AccountType == UserRole.PlatformAdmin));
 
+        var permissionsBeforeRollback = await context.Permissions.IgnoreQueryFilters()
+            .Select(p => p.PermissionCode).OrderBy(p => p).ToArrayAsync();
+
         // Execute Down() migration to previous Gate 1 freeze migration: 20260911092808_HardenRecommendationGenerationState
         var migrator = context.Database.GetService<IMigrator>();
         await migrator.MigrateAsync("20260911092808_HardenRecommendationGenerationState");
@@ -1382,10 +1385,10 @@ public sealed class PlatformMySqlIntegrationTests
         await migrator.MigrateAsync();
 
         // Verify database is back at latest schema and ready
-        var count = await context.Permissions.IgnoreQueryFilters().CountAsync();
-        // The forward CenterManager lifecycle migration adds the two canonical
-        // teacher/student reset-password permissions after the Platform baseline.
-        Assert.Equal(70, count);
+        var permissionsAfterForward = await context.Permissions.IgnoreQueryFilters()
+            .Select(p => p.PermissionCode).OrderBy(p => p).ToArrayAsync();
+        Assert.Equal(permissionsBeforeRollback, permissionsAfterForward);
+        Assert.False(context.Database.HasPendingModelChanges());
     }
 
     [MySqlIntegrationFact]

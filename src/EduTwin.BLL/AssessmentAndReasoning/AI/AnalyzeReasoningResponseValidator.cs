@@ -1,4 +1,7 @@
 using System.Globalization;
+using EduTwin.BLL.AssessmentAndReasoning.Override;
+using EduTwin.Contracts.CurriculumAndQuestions;
+using EduTwin.Contracts.AssessmentAndReasoning;
 
 namespace EduTwin.BLL.AssessmentAndReasoning.AI;
 
@@ -16,26 +19,26 @@ public sealed class AnalyzeReasoningResponseValidator : IAnalyzeReasoningRespons
             || !SupportedLanguages.Contains(request.Language)
             || request.AllowedKnowledgeNodes is null)
         {
-            throw AIAnalysisValidationException.SemanticInvalid();
+            throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.RequestContext);
         }
 
         var allowedNodeIds = CreateAllowedNodeIdSet(request.AllowedKnowledgeNodes);
 
         if (!string.Equals(response.SchemaVersion, AIAnalysisContract.SchemaVersion, StringComparison.Ordinal))
         {
-            throw AIAnalysisValidationException.SemanticInvalid();
+            throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.SchemaVersion);
         }
 
         if (!SupportedLanguages.Contains(response.Language)
             || !string.Equals(response.Language, request.Language, StringComparison.Ordinal))
         {
-            throw AIAnalysisValidationException.SemanticInvalid();
+            throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.Language);
         }
 
         if (response.ReasoningQuality is < 0 or > 100
             || response.Confidence is < 0 or > 100)
         {
-            throw AIAnalysisValidationException.SemanticInvalid();
+            throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.PercentageRange);
         }
 
         if (!Enum.IsDefined(response.ErrorType))
@@ -44,7 +47,125 @@ public sealed class AnalyzeReasoningResponseValidator : IAnalyzeReasoningRespons
         }
 
         ValidateText(response);
+        ValidateVisualEvidence(request, response);
+        ValidateCriterionDeductions(request, response);
+        if (response.AnswerAssessment is not null && response.AnswerAssessment is not ("Correct" or "Incorrect" or "Uncertain"))
+            throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.Verdict);
+        if (response.ReasoningVerdict is not null && response.ReasoningVerdict is not ("Valid" or "Invalid" or "Uncertain"))
+            throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.Verdict);
+        ValidateReasoningConsistency(response);
         ValidateRootCauseNodeIds(response.RootCauseNodeIds, allowedNodeIds);
+        if (response.SuggestedScore.HasValue)
+        {
+            if (response.SuggestedScore < 0 || response.SuggestedScore > request.Question.MaxScore
+                || response.SuggestedScore != Math.Round(response.SuggestedScore.Value, 2))
+                throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.ProposalRange);
+            var definition = new GradingCriteria { SchemaVersion = request.Question.GradingCriteria.SchemaVersion,
+                RequiredIdeas = request.Question.GradingCriteria.RequiredIdeas.ToList(), CommonErrors = request.Question.GradingCriteria.CommonErrors.ToList(),
+                ScoringNotes = request.Question.GradingCriteria.ScoringNotes,
+                Criteria = request.Question.GradingCriteria.Criteria.Select(c => new RubricCriterion { CriterionId = c.CriterionId, Title = c.Title, Description = c.Description, MaxScore = c.MaxScore }).ToList() };
+            if (!RubricGrading.TryGrade(definition, request.Question.MaxScore, response.SuggestedRubricScores, out _, out _))
+                throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.Rubric);
+            // New grading proposals are Vietnamese, allowing quoted English exercises.
+            if (response.Language != "vi" || !VietnameseFeedbackPolicy.HasVietnameseExplanation(response.Feedback)
+                || (!string.IsNullOrWhiteSpace(response.AiSolution) && !VietnameseFeedbackPolicy.HasVietnameseExplanation(response.AiSolution))
+                || response.SuggestedRubricScores.Any(c => !string.IsNullOrWhiteSpace(c.Comment) && !VietnameseFeedbackPolicy.HasVietnameseExplanation(c.Comment)))
+                throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.VietnameseExplanation);
+        }
+        else if (response.SuggestedRubricScores.Count > 0) throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.Rubric);
+    }
+
+    private static void ValidateCriterionDeductions(AnalyzeReasoningRequest request, AnalyzeReasoningResponse response)
+    {
+        // Do not impose a new provider contract on ordinary batches or old checkpoints.
+        if (request.VerifiedVisualEvidence is null || !response.SuggestedScore.HasValue) return;
+        if (response.CriterionDeductions is not { } deductions || deductions.Count > 40)
+            throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.Rubric, "MissingCriterionDeductionAudit");
+        foreach (var deduction in deductions)
+        {
+            var criterion = request.Question.GradingCriteria.Criteria.SingleOrDefault(c => c.CriterionId == deduction?.CriterionId);
+            var score = response.SuggestedRubricScores.FirstOrDefault(s => s.CriterionId == deduction?.CriterionId);
+            if (deduction is null || criterion is null || score is null || score.AwardedScore >= criterion.MaxScore
+                || deduction.EvidenceKind != (criterion.VisualRequirements is { Count: > 0 } ? "Visual" : "Nonvisual")
+                || string.IsNullOrWhiteSpace(deduction.UnmetRequirement) || deduction.UnmetRequirement.Length > 1000
+                || string.IsNullOrWhiteSpace(deduction.Evidence) || deduction.Evidence.Length > 1000
+                || !VietnameseFeedbackPolicy.HasVietnameseExplanation(deduction.UnmetRequirement)
+                || !VietnameseFeedbackPolicy.HasVietnameseExplanation(deduction.Evidence))
+                throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.Rubric, "InvalidCriterionDeductionAudit");
+        }
+        foreach (var criterion in request.Question.GradingCriteria.Criteria)
+        {
+            var scores = response.SuggestedRubricScores.Where(s => s.CriterionId == criterion.CriterionId).ToArray();
+            if (scores.Length != 1 || scores[0].AwardedScore < criterion.MaxScore && !deductions.Any(d => d.CriterionId == criterion.CriterionId))
+                throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.Rubric, "UnexplainedCriterionDeduction");
+        }
+    }
+
+    private static void ValidateVisualEvidence(AnalyzeReasoningRequest request, AnalyzeReasoningResponse response)
+    {
+        var visualCriteria = request.Question.GradingCriteria.Criteria.Where(c => c.VisualRequirements is { Count: > 0 }).ToArray();
+        var observations = response.VisualEvidence ?? [];
+        ValidateVisualObservations(request, observations);
+        // An explicitly unscorable proposal may retain observations without fabricating a numeric grade.
+        if (!response.SuggestedScore.HasValue) return;
+        foreach (var criterion in visualCriteria)
+        {
+            var evidence = observations.Where(e => e.CriterionId == criterion.CriterionId).ToArray();
+            var scores = response.SuggestedRubricScores.Where(s => s.CriterionId == criterion.CriterionId).ToArray();
+            if (scores.Length != 1) throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.Rubric);
+            var score = scores[0];
+            if ((evidence.Any(e => e.Status != "Present") && score.AwardedScore == criterion.MaxScore) ||
+                (evidence.All(e => e.Status != "Present") && score.AwardedScore != 0))
+                throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.Rubric);
+        }
+    }
+
+    public static void ValidateVisualObservations(AnalyzeReasoningRequest request, IReadOnlyList<RubricVisualEvidence> observations)
+    {
+        var visualCriteria = request.Question.GradingCriteria.Criteria.Where(c => c.VisualRequirements is { Count: > 0 }).ToArray();
+        if (observations.Count > 240)
+            throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.Rubric);
+        if (observations.Count != visualCriteria.Sum(c => c.VisualRequirements!.Count))
+            throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.Rubric);
+        var seen = new HashSet<(string, int)>();
+        foreach (var evidence in observations)
+        {
+            var criterion = visualCriteria.SingleOrDefault(c => c.CriterionId == evidence?.CriterionId);
+            if (evidence is null || criterion is null || !seen.Add((evidence.CriterionId, evidence.RequirementIndex)) ||
+                evidence.RequirementIndex < 1 || evidence.RequirementIndex > criterion.VisualRequirements!.Count ||
+                evidence.Status is not ("Present" or "Missing" or "Unclear") ||
+                string.IsNullOrWhiteSpace(evidence.Observation) || evidence.Observation.Length > 1000 ||
+                !VietnameseFeedbackPolicy.HasVietnameseExplanation(evidence.Observation) ||
+                (evidence.StudentImageIndex.HasValue && (evidence.StudentImageIndex < 1 || evidence.StudentImageIndex > request.StudentSubmission.ImageParts.Count)) ||
+                (evidence.Status == "Present" && !evidence.StudentImageIndex.HasValue) ||
+                (request.StudentSubmission.ImageParts.Count == 0 && evidence.Status != "Missing"))
+                throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.Rubric);
+        }
+    }
+
+    private static void ValidateReasoningConsistency(AnalyzeReasoningResponse response)
+    {
+        // Legacy checkpoints remain readable. New schemas require evidence for defects,
+        // and cannot simultaneously declare the reasoning valid and identify an invalid claim.
+        if (response.ReasoningIssues is not { } issues) return;
+        if (issues.Count > 8 || issues.Any(i => i is null || i.Verdict is not ("Invalid" or "Uncertain")
+            || string.IsNullOrWhiteSpace(i.StudentClaim) || i.StudentClaim.Length > 1000
+            || string.IsNullOrWhiteSpace(i.Explanation) || i.Explanation.Length > 2000))
+            throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.ReasoningConsistency);
+        if (issues.Any(i => !VietnameseFeedbackPolicy.HasVietnameseExplanation(i.Explanation)))
+            throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.VietnameseExplanation);
+        var invalid = issues.Any(i => i.Verdict == "Invalid");
+        var uncertain = issues.Any(i => i.Verdict == "Uncertain");
+        var detail = invalid && response.ReasoningVerdict != "Invalid" ? "InvalidIssueVerdictMismatch"
+            : !invalid && uncertain && response.ReasoningVerdict != "Uncertain" ? "UncertainIssueVerdictMismatch"
+            : !invalid && !uncertain && response.ReasoningVerdict != "Valid" ? "VerdictWithoutIssueEvidence"
+            : invalid && response.ErrorType == EduTwin.Contracts.AssessmentAndReasoning.ErrorType.None ? "InvalidIssueWithoutErrorType"
+            : invalid && response.ReasoningQuality == 100 ? "InvalidIssueWithFullReasoningQuality"
+            : response.ReasoningVerdict == "Valid" && response.AnswerAssessment == "Correct"
+                && (!string.IsNullOrWhiteSpace(response.Misconception) || response.MissingSteps.Count > 0)
+                    ? "CorrectValidReasoningWithConceptOrStepGap" : null;
+        if (detail is not null)
+            throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.ReasoningConsistency, detail);
     }
 
     private static HashSet<string> CreateAllowedNodeIdSet(
@@ -79,7 +200,7 @@ public sealed class AnalyzeReasoningResponseValidator : IAnalyzeReasoningRespons
             || response.MissingSteps.Any(string.IsNullOrWhiteSpace)
             || (response.SolutionType is not null && !AllowedSolutionTypes.Contains(response.SolutionType)))
         {
-            throw AIAnalysisValidationException.SemanticInvalid();
+            throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.Text);
         }
     }
 
@@ -89,7 +210,7 @@ public sealed class AnalyzeReasoningResponseValidator : IAnalyzeReasoningRespons
     {
         if (rootCauseNodeIds is null)
         {
-            throw AIAnalysisValidationException.SemanticInvalid();
+            throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.KnowledgeNodeScope);
         }
 
         var uniqueRootNodeIds = new HashSet<string>(StringComparer.Ordinal);
@@ -100,7 +221,7 @@ public sealed class AnalyzeReasoningResponseValidator : IAnalyzeReasoningRespons
                 || !uniqueRootNodeIds.Add(nodeId)
                 || !allowedNodeIds.Contains(nodeId))
             {
-                throw AIAnalysisValidationException.SemanticInvalid();
+                throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.KnowledgeNodeScope);
             }
         }
     }

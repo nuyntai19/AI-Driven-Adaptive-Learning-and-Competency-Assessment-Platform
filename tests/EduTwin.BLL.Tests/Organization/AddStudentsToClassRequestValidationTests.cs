@@ -81,4 +81,51 @@ public class AddStudentsToClassRequestValidationTests
         var results = ValidateModel(request);
         Assert.Empty(results);
     }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Request_AllowGradeMismatchTrue_WithoutReason_FailsValidation(string? reason)
+    {
+        var request = new AddStudentsToClassRequest
+        {
+            StudentIds = new[] { Guid.NewGuid() },
+            AllowGradeMismatch = true,
+            GradeMismatchReason = reason
+        };
+
+        var results = ValidateModel(request);
+        Assert.NotEmpty(results);
+        Assert.Contains(results, r => r.MemberNames.Contains(nameof(AddStudentsToClassRequest.GradeMismatchReason)));
+    }
+
+    [Fact]
+    public void Request_AllowGradeMismatchTrue_WithValidReason_PassesValidation()
+    {
+        var request = new AddStudentsToClassRequest
+        {
+            StudentIds = new[] { Guid.NewGuid() },
+            AllowGradeMismatch = true,
+            GradeMismatchReason = "Học sinh thi vượt cấp đạt chuẩn bồi dưỡng chuyên Toán."
+        };
+
+        var results = ValidateModel(request);
+        Assert.Empty(results);
+    }
+
+    [Fact]
+    public void Request_GradeMismatchReasonTooLong_FailsValidation()
+    {
+        var request = new AddStudentsToClassRequest
+        {
+            StudentIds = new[] { Guid.NewGuid() },
+            AllowGradeMismatch = true,
+            GradeMismatchReason = new string('R', 501)
+        };
+
+        var results = ValidateModel(request);
+        Assert.NotEmpty(results);
+        Assert.Contains(results, r => r.MemberNames.Contains(nameof(AddStudentsToClassRequest.GradeMismatchReason)));
+    }
 }

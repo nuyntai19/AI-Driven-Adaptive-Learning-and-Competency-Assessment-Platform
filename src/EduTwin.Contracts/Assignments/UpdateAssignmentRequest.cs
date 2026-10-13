@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 
 namespace EduTwin.Contracts.Assignments;
 
@@ -21,6 +22,11 @@ public class UpdateAssignmentRequest
 
     public string? TargetMode { get; set; }
     public List<string>? StudentIds { get; set; }
+    public bool? AllowGradeMismatch { get; set; }
+
+    [MaxLength(500)]
+    public string? GradeMismatchReason { get; set; }
+
 
     /// <summary>
     /// Bắt buộc; phải khớp RowVersion hiện tại trong DB.

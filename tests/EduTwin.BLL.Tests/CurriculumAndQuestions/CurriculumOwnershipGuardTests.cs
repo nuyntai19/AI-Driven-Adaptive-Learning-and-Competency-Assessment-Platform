@@ -75,7 +75,7 @@ public sealed class CurriculumOwnershipGuardTests
             .Options;
         var accessor = new Mock<ITenantIdAccessor>();
         accessor.SetupGet(x => x.CenterId).Returns(centerId);
-        var tenant = CreateTenant(centerId, actorId, UserRole.CenterManager);
+        var tenant = CreateTenant(centerId, actorId, UserRole.Teacher);
         var time = new Mock<TimeProvider>();
         await using var db = new EduTwinDbContext(options, accessor.Object);
 

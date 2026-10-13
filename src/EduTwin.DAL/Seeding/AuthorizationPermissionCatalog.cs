@@ -26,76 +26,159 @@ public static class AuthorizationPermissionCatalog
 
     private static readonly HashSet<string> SensitiveCodes =
     [
+        "platform.operations.read", "platform.ai_usage.read", "platform.storage.read",
         "authorization.roles.create", "authorization.roles.update", "authorization.roles.archive",
         "authorization.roles.manage_permissions", "authorization.user_roles.assign", "authorization.audit.read",
         "organization.center.update", "organization.teachers.create", "organization.teachers.update",
         "organization.teachers.delete", "organization.students.create", "organization.students.update",
         "organization.students.delete", "organization.teachers.reset_password", "organization.students.reset_password",
-        "organization.classes.create", "organization.classes.update",
+        "organization.classes.create", "organization.classes.update", "organization.classes.delete",
         "organization.classes.manage_members", "knowledge.subjects.delete", "knowledge.nodes.delete",
         "knowledge.edges.delete", "curriculum.curriculums.publish", "curriculum.questions.publish",
         "curriculum.questions.delete", "twin.student.update_scoped",
         "assignments.assignments.publish", "assignments.assignments.close", "twin.reasoning.override",
         "platform.centers.read", "platform.centers.manage", "platform.managers.manage",
-        "platform.audit.read"
+        "platform.audit.read", "notifications.messages.send_scoped", "platform.notifications.send_scoped",
+        "notifications.messages.retract_own", "platform.notifications.retract_own",
+        "notifications.dispatches.redrive", "platform.notifications.redrive"
     ];
 
     private static readonly HashSet<string> NonDelegableCodes =
     [
+        "platform.operations.read", "platform.ai_usage.read", "platform.storage.read",
+        "platform.activity.read",
+        "platform.notifications.read_dispatches", "platform.notifications.redrive",
         "platform.centers.read", "platform.centers.manage", "platform.managers.manage",
-        "platform.audit.read", "platform.account.manage_own"
+        "platform.audit.read", "platform.account.manage_own",
+        "platform.notifications.read_own", "platform.notifications.update_own",
+        "platform.notifications.send_scoped", "platform.notifications.read_sent_own",
+        "platform.notifications.retract_own", "platform.notifications.acknowledge_own", "platform.notifications.reply_own"
     ];
 
-    private static readonly string[] PlatformCodes =
+    public static readonly string[] PlatformCodes =
     [
+        "platform.operations.read", "platform.ai_usage.read", "platform.storage.read",
+        "platform.notifications.read_dispatches", "platform.notifications.redrive",
+        "platform.activity.read",
         "platform.centers.read", "platform.centers.manage", "platform.managers.manage",
-        "platform.audit.read", "platform.account.manage_own"
+        "platform.audit.read", "platform.account.manage_own",
+        "platform.notifications.read_own", "platform.notifications.update_own",
+        "platform.notifications.send_scoped", "platform.notifications.read_sent_own",
+        "platform.notifications.retract_own", "platform.notifications.acknowledge_own", "platform.notifications.reply_own"
     ];
 
-    private static readonly string[] StudentCodes =
+    public static readonly string[] StudentCodes =
     [
+        "activity.history.read_own",
+        "notifications.inbox.acknowledge_own", "notifications.inbox.reply_own",
+        "notifications.inbox.read_own", "notifications.inbox.update_own",
         "learning.attempts.submit", "learning.attempts.read_own", "twin.student.read_own",
         "twin.student.update_own",
-        "recommendations.student.read_own", "recommendations.student.update_own", "dashboards.student.read_own"
-    ];
-
-    private static readonly string[] TeacherCodes =
-    [
-        "dashboards.teacher.read_scoped",
-        "twin.reasoning.override"
-    ];
-
-    private static readonly string[] CenterManagerCodes =
-    [
-        "authorization.permissions.read", "authorization.roles.read", "authorization.roles.create",
-        "authorization.roles.update", "authorization.roles.archive", "authorization.roles.manage_permissions",
-        "authorization.user_roles.read", "authorization.user_roles.assign", "authorization.audit.read",
-        "organization.center.read", "organization.center.update", "organization.teachers.create",
-        "organization.teachers.update", "organization.teachers.delete", "organization.students.delete",
-        "organization.teachers.reset_password", "organization.students.reset_password",
-        "organization.classes.create", "organization.classes.update", "knowledge.subjects.delete",
-        "knowledge.nodes.delete", "curriculum.questions.delete", "dashboards.center.read"
-    ];
-
-    private static readonly string[] TeacherOrManagerCodes =
-    [
-        "organization.teachers.read", "organization.students.create", "organization.students.update",
-        "organization.classes.read", "organization.classes.manage_members", "knowledge.subjects.create",
-        "knowledge.subjects.update", "knowledge.nodes.create", "knowledge.nodes.update",
-        "knowledge.edges.create", "knowledge.edges.update", "knowledge.edges.delete",
-        "curriculum.curriculums.read", "curriculum.curriculums.create", "curriculum.curriculums.update",
-        "curriculum.curriculums.publish", "curriculum.questions.read", "curriculum.questions.create",
-        "curriculum.questions.update", "curriculum.questions.publish", "assignments.assignments.create",
-        "assignments.assignments.update", "assignments.assignments.publish", "assignments.assignments.close",
-        "learning.attempts.read_scoped", "twin.student.read_scoped", "twin.student.update_scoped",
-        "twin.reasoning.review"
-    ];
-
-    private static readonly string[] AllAccountTypeCodes =
-    [
+        "recommendations.student.read_own", "recommendations.student.update_own", "dashboards.student.read_own",
         "organization.students.read", "knowledge.subjects.read", "knowledge.nodes.read",
         "knowledge.edges.read", "assignments.assignments.read"
     ];
+
+    public static readonly string[] CenterManagerCodes =
+    [
+        "activity.history.read_administrative",
+        "notifications.dispatches.read", "notifications.dispatches.redrive",
+        "notifications.messages.retract_own", "notifications.inbox.acknowledge_own", "notifications.inbox.reply_own",
+        "notifications.messages.send_scoped", "notifications.messages.read_sent_own",
+        "notifications.inbox.read_own", "notifications.inbox.update_own",
+        "dashboards.center.read",
+        "organization.center.read", "organization.center.update",
+        "organization.teachers.read", "organization.teachers.create", "organization.teachers.update",
+        "organization.teachers.delete", "organization.teachers.reset_password",
+        "organization.students.read", "organization.students.create", "organization.students.update",
+        "organization.students.delete", "organization.students.reset_password",
+        "organization.classes.read", "organization.classes.create", "organization.classes.update", "organization.classes.delete",
+        "organization.classes.manage_members",
+        "knowledge.subjects.read", "knowledge.subjects.create", "knowledge.subjects.update", "knowledge.subjects.delete",
+        "authorization.permissions.read", "authorization.roles.read", "authorization.roles.create",
+        "authorization.roles.update", "authorization.roles.archive", "authorization.roles.manage_permissions",
+        "authorization.user_roles.read", "authorization.user_roles.assign", "authorization.audit.read"
+    ];
+
+    public static readonly string[] TeacherStandardOperationalCodes =
+    [
+        "activity.history.read_scoped",
+        "notifications.messages.retract_own", "notifications.inbox.acknowledge_own", "notifications.inbox.reply_own",
+        "notifications.messages.send_scoped", "notifications.messages.read_sent_own",
+        "notifications.inbox.read_own", "notifications.inbox.update_own",
+        "dashboards.teacher.read_scoped",
+        "organization.teachers.read",
+        "organization.students.read",
+        "organization.classes.read",
+        "knowledge.subjects.read",
+        "knowledge.nodes.read",
+        "knowledge.edges.read",
+        "curriculum.curriculums.read",
+        "curriculum.curriculums.create",
+        "curriculum.curriculums.update",
+        "curriculum.curriculums.publish",
+        "curriculum.questions.read",
+        "curriculum.questions.create",
+        "curriculum.questions.update",
+        "curriculum.questions.publish",
+        "curriculum.questions.delete",
+        "assignments.assignments.read",
+        "assignments.assignments.create",
+        "assignments.assignments.update",
+        "assignments.assignments.publish",
+        "assignments.assignments.close",
+        "learning.attempts.read_scoped",
+        "twin.student.read_scoped",
+        "twin.student.update_scoped",
+        "twin.reasoning.review",
+        "twin.reasoning.override"
+    ];
+
+    public static readonly string[] SensitiveSharedAcademicCodes =
+    [
+        "knowledge.nodes.create",
+        "knowledge.nodes.update",
+        "knowledge.nodes.delete",
+        "knowledge.edges.create",
+        "knowledge.edges.update",
+        "knowledge.edges.delete"
+    ];
+
+    public static readonly IReadOnlySet<string> AcademicOperationalCodes =
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            "knowledge.nodes.create", "knowledge.nodes.update", "knowledge.nodes.delete",
+            "knowledge.edges.create", "knowledge.edges.update", "knowledge.edges.delete",
+            "curriculum.curriculums.read", "curriculum.curriculums.create", "curriculum.curriculums.update",
+            "curriculum.curriculums.publish", "curriculum.questions.read", "curriculum.questions.create",
+            "curriculum.questions.update", "curriculum.questions.publish", "curriculum.questions.delete",
+            "assignments.assignments.create", "assignments.assignments.update", "assignments.assignments.publish",
+            "assignments.assignments.close", "dashboards.teacher.read_scoped",
+            "twin.reasoning.review", "twin.reasoning.override"
+        };
+
+    public static readonly IReadOnlySet<string> SystemCenterManagerDefaultCodes =
+        new HashSet<string>(CenterManagerCodes, StringComparer.Ordinal);
+
+    public static readonly IReadOnlySet<string> SystemTeacherDefaultCodes =
+        // Academic authoring belongs to teachers, including the center-wide graph.
+        // API policies, tenant filters and lifecycle guards still apply to every mutation.
+        new HashSet<string>(TeacherStandardOperationalCodes.Concat(SensitiveSharedAcademicCodes), StringComparer.Ordinal);
+
+    public static readonly IReadOnlySet<string> SystemStudentDefaultCodes =
+        new HashSet<string>(StudentCodes, StringComparer.Ordinal);
+
+    public static readonly IReadOnlySet<string> SystemPlatformAdminDefaultCodes =
+        new HashSet<string>(PlatformCodes, StringComparer.Ordinal);
+
+    public static IReadOnlySet<string> GetDefaultSystemRoleCodes(UserRole accountType) => accountType switch
+    {
+        UserRole.CenterManager => SystemCenterManagerDefaultCodes,
+        UserRole.Teacher => SystemTeacherDefaultCodes,
+        UserRole.Student => SystemStudentDefaultCodes,
+        UserRole.PlatformAdmin => SystemPlatformAdminDefaultCodes,
+        _ => throw new ArgumentOutOfRangeException(nameof(accountType))
+    };
 
     public static IReadOnlyList<Permission> CreatePermissions()
     {
@@ -158,12 +241,11 @@ public static class AuthorizationPermissionCatalog
     private static Dictionary<string, HashSet<UserRole>> BuildAccountTypeMap()
     {
         var result = new Dictionary<string, HashSet<UserRole>>(StringComparer.Ordinal);
-        Add(result, StudentCodes, UserRole.Student);
-        Add(result, TeacherCodes, UserRole.Teacher);
-        Add(result, CenterManagerCodes, UserRole.CenterManager);
-        Add(result, TeacherOrManagerCodes, UserRole.Teacher, UserRole.CenterManager);
-        Add(result, AllAccountTypeCodes, UserRole.Student, UserRole.Teacher, UserRole.CenterManager);
         Add(result, PlatformCodes, UserRole.PlatformAdmin);
+        Add(result, StudentCodes, UserRole.Student);
+        Add(result, CenterManagerCodes, UserRole.CenterManager);
+        Add(result, TeacherStandardOperationalCodes, UserRole.Teacher);
+        Add(result, SensitiveSharedAcademicCodes, UserRole.Teacher);
         return result;
     }
 

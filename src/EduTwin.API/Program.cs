@@ -25,8 +25,11 @@ using EduTwin.API.AssessmentAndReasoning.Attachments;
 using EduTwin.API.Security;
 using EduTwin.DAL.Seeding;
 using EduTwin.BLL.Platform;
+using EduTwin.BLL.Notifications;
+using EduTwin.API.Notifications;
 
-var builder = WebApplication.CreateBuilder(args);
+var repairMathGrading = args.Contains("--repair-math-grading", StringComparer.Ordinal);
+var builder = WebApplication.CreateBuilder(args.Where(arg => arg != "--repair-math-grading").ToArray());
 
 // --- Service Registration ---
 builder.Services.AddControllers()
@@ -161,12 +164,26 @@ builder.Services.AddAssessmentAndReasoning();
 builder.Services.AddRecommendations();
 builder.Services.AddDashboards();
 builder.Services.AddPlatform(builder.Configuration);
+builder.Services.AddSingleton<EduTwin.BLL.Platform.Operations.IOperationalHostProbe, EduTwin.API.PlatformOperations.OperationalHostProbe>();
+builder.Services.AddHostedService<EduTwin.API.PlatformOperations.OperationsBackgroundService>();
+builder.Services.AddNotifications();
+builder.Services.AddSingleton<INotificationPreviewProtector, NotificationPreviewProtector>();
+builder.Services.Configure<NotificationWorkerOptions>(builder.Configuration.GetSection("Notifications:Worker"));
+builder.Services.AddHostedService<NotificationBackgroundService>();
 builder.Services.AddGeminiAI(builder.Configuration);
 builder.Services.AddAttemptAttachmentStorage(builder.Configuration);
 
 // We also need TimeProvider
 builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddAIAnalysisJobBackgroundWorker();
+builder.Services.AddAIAnalysisJobBackgroundWorker(options =>
+{
+    var grading = builder.Configuration.GetSection("AIGrading").Get<AIGradingOptions>() ?? new();
+    // Feed two full microbatches rather than a 3+1 wave. This is job preparation
+    // concurrency, not provider concurrency (quota admission remains authoritative).
+    options.MaxConcurrentJobs = grading.RecommendedJobConcurrency;
+    options.PerCenterBatchSize = grading.RecommendedPerCenterJobs;
+    builder.Configuration.GetSection("AIAnalysisWorker").Bind(options);
+});
 
 // --- Rate Limiting (Single-Instance Ingress Defense) ---
 builder.Services.AddRateLimiter(options =>
@@ -210,6 +227,21 @@ if (seedEnabled && !isDev)
 }
 
 await app.Services.ApplyMigrationsAndSeedAsync(app.Configuration, isDev);
+
+// Explicit local maintenance command, never an HTTP endpoint or background job.
+// Run only after a database backup; evidence/history are appended, never deleted.
+if (repairMathGrading)
+{
+    var center = app.Configuration.GetValue<Guid>("RepairMathGrading:CenterId");
+    var question = app.Configuration.GetValue<ulong>("RepairMathGrading:QuestionId");
+    if (center == Guid.Empty || question == 0) throw new InvalidOperationException("An explicit center and question are required for math regrading.");
+    using var scope = app.Services.CreateScope();
+    using var tenant = scope.ServiceProvider.GetRequiredService<IBackgroundTenantScopeFactory>().BeginScope(center);
+    var database = scope.ServiceProvider.GetRequiredService<EduTwin.DAL.Persistence.EduTwinDbContext>();
+    var changed = await new EduTwin.BLL.AssessmentAndReasoning.PreliminaryGrading.MathGradingRepair(database).RepairAsync(center, question, CancellationToken.None);
+    Console.WriteLine($"Math grading repair completed: {changed} attempts corrected; original evidence retained.");
+    return;
+}
 
 // --- Middleware Pipeline ---
 app.UseAuthentication();

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using EduTwin.BLL.CurriculumAndQuestions;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.Common;
 using EduTwin.Contracts.KnowledgeGraph;
@@ -94,6 +95,10 @@ public class UpdateKnowledgeNodeUseCase : IUpdateKnowledgeNodeUseCase
         if (targetNode == null)
             return UpdateKnowledgeNodeResult.Failure(ErrorCodes.ResourceNotFound);
 
+        await using var transaction = await GraphMutationTransaction.BeginAsync(_dbContext, _tenantContext.CenterId.Value, targetNode.SubjectId, cancellationToken);
+        if (transaction is not null) await _dbContext.Entry(targetNode).ReloadAsync(cancellationToken);
+        if (targetNode.IsDeleted) return UpdateKnowledgeNodeResult.Failure(ErrorCodes.ResourceNotFound);
+
         if (targetNode.RowVersion != parsedRowVersion)
             return UpdateKnowledgeNodeResult.Failure(ErrorCodes.ConcurrencyConflict);
 
@@ -118,6 +123,18 @@ public class UpdateKnowledgeNodeUseCase : IUpdateKnowledgeNodeUseCase
         if (_cycleDetector.HasCycle(parsedNodeId, parsedParentNodeId, parentMap))
             return UpdateKnowledgeNodeResult.Failure(ErrorCodes.DagCycleDetected);
 
+        if (targetNode.ParentNodeId != parsedParentNodeId || targetNode.NodeName != trimmedName || targetNode.Description != trimmedDesc)
+        {
+            var blocked = await AcademicDependencyGuards.FrozenNodeMessageAsync(_dbContext, _tenantContext.CenterId.Value, parsedNodeId, cancellationToken);
+            if (blocked is not null) return UpdateKnowledgeNodeResult.Failure(ErrorCodes.InvalidStateTransition, blocked);
+        }
+        if (targetNode.IsActive && !request.IsActive.Value)
+        {
+            var blocked = await AcademicDependencyGuards.DeactivationMessageAsync(_dbContext, _tenantContext.CenterId.Value, parsedNodeId, cancellationToken);
+            if (blocked is not null) return UpdateKnowledgeNodeResult.Failure(ErrorCodes.InvalidStateTransition, blocked);
+        }
+        var before = new { targetNode.ParentNodeId, targetNode.NodeName, targetNode.Description, targetNode.OrderIndex,
+            targetNode.ExamImportance, targetNode.EstimatedLearningMinutes, targetNode.IsActive, targetNode.RowVersion };
         targetNode.ParentNodeId = parsedParentNodeId;
         targetNode.NodeName = trimmedName;
         targetNode.Description = trimmedDesc;
@@ -130,15 +147,26 @@ public class UpdateKnowledgeNodeUseCase : IUpdateKnowledgeNodeUseCase
 
         targetNode.RowVersion = parsedRowVersion + 1;
         _dbContext.Entry(targetNode).Property(x => x.RowVersion).OriginalValue = parsedRowVersion;
+        AcademicDependencyGuards.Audit(_dbContext, _tenantContext.CenterId.Value, _tenantContext.UserId.Value,
+            "KnowledgeNodeUpdated", "KnowledgeNode", nodeId, before,
+            new { targetNode.ParentNodeId, targetNode.NodeName, targetNode.Description, targetNode.OrderIndex,
+                targetNode.ExamImportance, targetNode.EstimatedLearningMinutes, targetNode.IsActive, targetNode.RowVersion },
+            targetNode.UpdatedAt, "Cập nhật điểm tri thức.");
 
         try
         {
             await _dbContext.SaveChangesAsync(cancellationToken);
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         }
         catch (DbUpdateConcurrencyException)
         {
             _dbContext.ChangeTracker.Clear();
             return UpdateKnowledgeNodeResult.Failure(ErrorCodes.ConcurrencyConflict);
+        }
+        catch (DbUpdateException ex) when (AcademicDependencyGuards.IsDatabaseGuard(ex))
+        {
+            _dbContext.ChangeTracker.Clear();
+            return UpdateKnowledgeNodeResult.Failure(ErrorCodes.InvalidStateTransition, AcademicDependencyGuards.ConcurrentDependencyMessage);
         }
 
         var dto = new KnowledgeNodeDto

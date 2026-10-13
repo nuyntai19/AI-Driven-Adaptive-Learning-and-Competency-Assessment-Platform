@@ -6,18 +6,22 @@ namespace EduTwin.Contracts.CurriculumAndQuestions;
 public class CreateQuestionRequest
 {
     public string? TeacherId { get; set; }
+    public string Visibility { get; set; } = "Private";
     public Guid SubjectId { get; set; }
     public string PrimaryTopicNodeId { get; set; } = null!;
     public string QuestionType { get; set; } = null!;
     public byte Difficulty { get; set; }
+    public byte? GradeLevel { get; set; }
     public string QuestionText { get; set; } = null!;
+    public string? ImageDataUrl { get; set; }
+    public string? CopyImageFromQuestionId { get; set; }
     public string CorrectAnswer { get; set; } = null!;
     public string Solution { get; set; } = null!;
     public string? ExpectedReasoning { get; set; }
     public GradingCriteria? GradingCriteria { get; set; }
     public decimal MaxScore { get; set; } = 1m;
     public uint EstimatedTimeSeconds { get; set; }
-    public bool ReasoningRequired { get; set; } = true;
+    public bool ReasoningRequired { get; set; } = false;
     public string LanguageCode { get; set; } = "vi";
     public string? AnswerEvaluationMode { get; set; }
     public List<QuestionOptionInput> Options { get; set; } = new();

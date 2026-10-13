@@ -138,7 +138,8 @@ public class CreateClassUseCaseTests
                 ClassName = " Math 101 ",
                 AcademicYear = " 2026-2027 ",
                 SubjectId = subjectId,
-                TeacherId = teacherId
+                TeacherId = teacherId,
+                GradeLevel = 10
             };
             var result = await sut.ExecuteAsync(request);
 
@@ -186,7 +187,8 @@ public class CreateClassUseCaseTests
             ClassName = "Math 101",
             AcademicYear = "2026-2027",
             SubjectId = subjectId,
-            TeacherId = teacherId
+            TeacherId = teacherId,
+            GradeLevel = 10
         };
 
         await Assert.ThrowsAsync<OperationCanceledException>(() => sut.ExecuteAsync(request, cts.Token));
@@ -213,7 +215,7 @@ public class CreateClassUseCaseTests
         _mockTenantContext.Setup(t => t.Role).Returns(role);
 
         var sut = new CreateClassUseCase(null!, _mockTenantContext.Object, _mockTimeProvider.Object, _mockLogger.Object);
-        var request = new CreateClassRequest { ClassName = "a", AcademicYear = "b", SubjectId = Guid.NewGuid(), TeacherId = Guid.NewGuid() };
+        var request = new CreateClassRequest { ClassName = "a", AcademicYear = "b", SubjectId = Guid.NewGuid(), TeacherId = Guid.NewGuid(), GradeLevel = 10 };
         var result = await sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
@@ -236,7 +238,7 @@ public class CreateClassUseCaseTests
         _mockTenantContext.Setup(t => t.Role).Returns(role);
 
         var sut = new CreateClassUseCase(null!, _mockTenantContext.Object, _mockTimeProvider.Object, _mockLogger.Object);
-        var request = new CreateClassRequest { ClassName = "a", AcademicYear = "b", SubjectId = Guid.NewGuid(), TeacherId = Guid.NewGuid() };
+        var request = new CreateClassRequest { ClassName = "a", AcademicYear = "b", SubjectId = Guid.NewGuid(), TeacherId = Guid.NewGuid(), GradeLevel = 10 };
         var result = await sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
@@ -247,7 +249,7 @@ public class CreateClassUseCaseTests
     public async Task GuidEmpty_ValidationFailed()
     {
         var sut = new CreateClassUseCase(null!, _mockTenantContext.Object, _mockTimeProvider.Object, _mockLogger.Object);
-        var request = new CreateClassRequest { ClassName = "a", AcademicYear = "b", SubjectId = Guid.Empty, TeacherId = Guid.Empty };
+        var request = new CreateClassRequest { ClassName = "a", AcademicYear = "b", SubjectId = Guid.Empty, TeacherId = Guid.Empty, GradeLevel = 10 };
         var result = await sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
@@ -263,12 +265,12 @@ public class CreateClassUseCaseTests
         var sut = new CreateClassUseCase(context, _mockTenantContext.Object, _mockTimeProvider.Object, _mockLogger.Object);
 
         // ClassName: 150 chars + " " -> 151 chars
-        var request1 = new CreateClassRequest { ClassName = new string('a', 150) + " ", AcademicYear = "2026", SubjectId = Guid.NewGuid(), TeacherId = Guid.NewGuid() };
+        var request1 = new CreateClassRequest { ClassName = new string('a', 150) + " ", AcademicYear = "2026", SubjectId = Guid.NewGuid(), TeacherId = Guid.NewGuid(), GradeLevel = 10 };
         var result1 = await sut.ExecuteAsync(request1);
         Assert.Equal(ErrorCodes.ValidationFailed, result1.ErrorCode);
 
         // AcademicYear: 20 chars + " " -> 21 chars
-        var request2 = new CreateClassRequest { ClassName = "abc", AcademicYear = new string('a', 20) + " ", SubjectId = Guid.NewGuid(), TeacherId = Guid.NewGuid() };
+        var request2 = new CreateClassRequest { ClassName = "abc", AcademicYear = new string('a', 20) + " ", SubjectId = Guid.NewGuid(), TeacherId = Guid.NewGuid(), GradeLevel = 10 };
         var result2 = await sut.ExecuteAsync(request2);
         Assert.Equal(ErrorCodes.ValidationFailed, result2.ErrorCode);
 
@@ -295,7 +297,8 @@ public class CreateClassUseCaseTests
             ClassName = className!,
             AcademicYear = academicYear!,
             SubjectId = Guid.NewGuid(),
-            TeacherId = Guid.NewGuid()
+            TeacherId = Guid.NewGuid(),
+            GradeLevel = 10
         };
 
         var result = await sut.ExecuteAsync(request);
@@ -323,7 +326,7 @@ public class CreateClassUseCaseTests
         await contextSuspended.SaveChangesAsync();
 
         var sutSuspended = new CreateClassUseCase(contextSuspended, _mockTenantContext.Object, _mockTimeProvider.Object, _mockLogger.Object);
-        var request = new CreateClassRequest { ClassName = "Math", AcademicYear = "2026", SubjectId = subjectId, TeacherId = teacherId };
+        var request = new CreateClassRequest { ClassName = "Math", AcademicYear = "2026", SubjectId = subjectId, TeacherId = teacherId, GradeLevel = 10 };
         var resultSuspended = await sutSuspended.ExecuteAsync(request);
 
         Assert.False(resultSuspended.IsSuccess);
@@ -370,7 +373,7 @@ public class CreateClassUseCaseTests
             userCenterId: userCrossTenant ? Guid.NewGuid() : centerId);
 
         var sut = new CreateClassUseCase(context, _mockTenantContext.Object, _mockTimeProvider.Object, _mockLogger.Object);
-        var request = new CreateClassRequest { ClassName = "Math 101", AcademicYear = "2026-2027", SubjectId = subjectId, TeacherId = teacherId };
+        var request = new CreateClassRequest { ClassName = "Math 101", AcademicYear = "2026-2027", SubjectId = subjectId, TeacherId = teacherId, GradeLevel = 10 };
         var result = await sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
@@ -405,7 +408,7 @@ public class CreateClassUseCaseTests
         await context.SaveChangesAsync();
 
         var sut = new CreateClassUseCase(context, _mockTenantContext.Object, _mockTimeProvider.Object, _mockLogger.Object);
-        var request = new CreateClassRequest { ClassName = " Math 101 ", AcademicYear = " 2026-2027 ", SubjectId = subjectId, TeacherId = teacherId };
+        var request = new CreateClassRequest { ClassName = " Math 101 ", AcademicYear = " 2026-2027 ", SubjectId = subjectId, TeacherId = teacherId, GradeLevel = 10 };
         var result = await sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
@@ -440,7 +443,7 @@ public class CreateClassUseCaseTests
         await context.SaveChangesAsync();
 
         var sut = new CreateClassUseCase(context, _mockTenantContext.Object, _mockTimeProvider.Object, _mockLogger.Object);
-        var request = new CreateClassRequest { ClassName = "Math 101", AcademicYear = "2026-2027", SubjectId = subjectId, TeacherId = teacherId };
+        var request = new CreateClassRequest { ClassName = "Math 101", AcademicYear = "2026-2027", SubjectId = subjectId, TeacherId = teacherId, GradeLevel = 10 };
         var result = await sut.ExecuteAsync(request);
 
         Assert.True(result.IsSuccess);
@@ -463,7 +466,7 @@ public class CreateClassUseCaseTests
 
         var context = new TestRaceConditionDbContext(options, mockAccessor.Object, true, "duplicate key value violates unique constraint \"ux_classes_center_id_class_name_academic_year\"");
         var sut = new CreateClassUseCase(context, _mockTenantContext.Object, _mockTimeProvider.Object, _mockLogger.Object);
-        var request = new CreateClassRequest { ClassName = "Math 101", AcademicYear = "2026-2027", SubjectId = subjectId, TeacherId = teacherId };
+        var request = new CreateClassRequest { ClassName = "Math 101", AcademicYear = "2026-2027", SubjectId = subjectId, TeacherId = teacherId, GradeLevel = 10 };
 
         var result = await sut.ExecuteAsync(request);
 
@@ -489,7 +492,7 @@ public class CreateClassUseCaseTests
 
         var context = new TestRaceConditionDbContext(options, mockAccessor.Object, true, "some_other_fk_constraint");
         var sut = new CreateClassUseCase(context, _mockTenantContext.Object, _mockTimeProvider.Object, _mockLogger.Object);
-        var request = new CreateClassRequest { ClassName = "Math 101", AcademicYear = "2026-2027", SubjectId = subjectId, TeacherId = teacherId };
+        var request = new CreateClassRequest { ClassName = "Math 101", AcademicYear = "2026-2027", SubjectId = subjectId, TeacherId = teacherId, GradeLevel = 10 };
 
         await Assert.ThrowsAsync<DbUpdateException>(() => sut.ExecuteAsync(request));
         Assert.Equal(1, context.SaveChangesCallCount);
@@ -515,7 +518,7 @@ public class CreateClassUseCaseTests
 
         var context = new TestRaceConditionDbContext(options, mockAccessor.Object, true, "ux_classes_center_id_class_name_academic_year");
         var sut = new CreateClassUseCase(context, _mockTenantContext.Object, _mockTimeProvider.Object, _mockLogger.Object);
-        var request = new CreateClassRequest { ClassName = "Math 101", AcademicYear = "2026-2027", SubjectId = subjectId, TeacherId = teacherId };
+        var request = new CreateClassRequest { ClassName = "Math 101", AcademicYear = "2026-2027", SubjectId = subjectId, TeacherId = teacherId, GradeLevel = 10 };
 
         var result = await sut.ExecuteAsync(request);
 
@@ -548,7 +551,7 @@ public class CreateClassUseCaseTests
 
         var context = new TestRaceConditionDbContext(options, mockAccessor.Object);
         var sut = new CreateClassUseCase(context, _mockTenantContext.Object, _mockTimeProvider.Object, _mockLogger.Object);
-        var request = new CreateClassRequest { ClassName = "Math 101", AcademicYear = "2026-2027", SubjectId = subjectId, TeacherId = teacherId };
+        var request = new CreateClassRequest { ClassName = "Math 101", AcademicYear = "2026-2027", SubjectId = subjectId, TeacherId = teacherId, GradeLevel = 10 };
 
         var result = await sut.ExecuteAsync(request);
 
@@ -581,7 +584,7 @@ public class CreateClassUseCaseTests
 
         var context = new TestRaceConditionDbContext(options, mockAccessor.Object);
         var sut = new CreateClassUseCase(context, _mockTenantContext.Object, _mockTimeProvider.Object, _mockLogger.Object);
-        var request = new CreateClassRequest { ClassName = "Math 101", AcademicYear = "2026-2027", SubjectId = subjectId, TeacherId = teacherId };
+        var request = new CreateClassRequest { ClassName = "Math 101", AcademicYear = "2026-2027", SubjectId = subjectId, TeacherId = teacherId, GradeLevel = 10 };
 
         var result = await sut.ExecuteAsync(request);
 
@@ -612,7 +615,7 @@ public class CreateClassUseCaseTests
         var context = new TestRaceConditionDbContext(options, mockAccessor.Object);
         var sut = new CreateClassUseCase(context, _mockTenantContext.Object, _mockTimeProvider.Object, _mockLogger.Object);
         // Invalid SubjectId
-        var request = new CreateClassRequest { ClassName = "Math 101", AcademicYear = "2026-2027", SubjectId = Guid.NewGuid(), TeacherId = teacherId };
+        var request = new CreateClassRequest { ClassName = "Math 101", AcademicYear = "2026-2027", SubjectId = Guid.NewGuid(), TeacherId = teacherId, GradeLevel = 10 };
 
         var result = await sut.ExecuteAsync(request);
 
@@ -643,13 +646,69 @@ public class CreateClassUseCaseTests
         var context = new TestRaceConditionDbContext(options, mockAccessor.Object);
         var sut = new CreateClassUseCase(context, _mockTenantContext.Object, _mockTimeProvider.Object, _mockLogger.Object);
         // Invalid TeacherId
-        var request = new CreateClassRequest { ClassName = "Math 101", AcademicYear = "2026-2027", SubjectId = subjectId, TeacherId = Guid.NewGuid() };
+        var request = new CreateClassRequest { ClassName = "Math 101", AcademicYear = "2026-2027", SubjectId = subjectId, TeacherId = Guid.NewGuid(), GradeLevel = 10 };
 
         var result = await sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
         Assert.Equal(0, context.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task CreateClass_WithoutGradeLevel_ReturnsValidationFailed()
+    {
+        var centerId = _mockTenantContext.Object.CenterId!.Value;
+        var dbName = Guid.NewGuid().ToString();
+        var context = CreateContext(dbName, centerId);
+        var teacherId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+
+        await SeedDataAsync(context, centerId, teacherId, subjectId);
+
+        var sut = new CreateClassUseCase(context, _mockTenantContext.Object, _mockTimeProvider.Object, _mockLogger.Object);
+        var request = new CreateClassRequest
+        {
+            ClassName = "Math 101",
+            AcademicYear = "2026-2027",
+            SubjectId = subjectId,
+            TeacherId = teacherId,
+            GradeLevel = null
+        };
+
+        var result = await sut.ExecuteAsync(request);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
+
+    [Theory]
+    [InlineData(9)]
+    [InlineData(13)]
+    public async Task CreateClass_WithInvalidGradeLevel_ReturnsValidationFailed(byte grade)
+    {
+        var centerId = _mockTenantContext.Object.CenterId!.Value;
+        var dbName = Guid.NewGuid().ToString();
+        var context = CreateContext(dbName, centerId);
+        var teacherId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+
+        await SeedDataAsync(context, centerId, teacherId, subjectId);
+
+        var sut = new CreateClassUseCase(context, _mockTenantContext.Object, _mockTimeProvider.Object, _mockLogger.Object);
+        var request = new CreateClassRequest
+        {
+            ClassName = "Math 101",
+            AcademicYear = "2026-2027",
+            SubjectId = subjectId,
+            TeacherId = teacherId,
+            GradeLevel = grade
+        };
+
+        var result = await sut.ExecuteAsync(request);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
     }
 }
 

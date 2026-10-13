@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { canAccess } from "../src/auth/capabilities.ts";
 import { permissions } from "../src/auth/permissions.ts";
+import {
+  resolveAcademicRedirect,
+  resolveTeacherLayoutAccess,
+  resolveCenterManagerLayoutAccess,
+} from "../src/routes/academicRoutingHelpers.ts";
 import type {
   KnowledgeGraphNodeDto,
   KnowledgeGraphEdgeDto,
@@ -40,27 +45,68 @@ const studentUser = (grants: string[] = []) => ({
 // ============================================================================
 // 1. ACTOR ISOLATION
 // ============================================================================
-test("1. Actor isolation: CenterManager receives modern view while Teacher and others keep legacy", () => {
-  const isCenterManager = (user: { accountType: string } | null | undefined): boolean => {
-    return user?.accountType === "CenterManager";
-  };
-
+test("1. Actor isolation: Real route & layout boundary access separation between Teacher Workspace and CenterManager Governance", () => {
   const cm = centerManagerUser([permissions.nodesRead, permissions.curriculumsRead]);
   const teacher = teacherUser([permissions.nodesRead, permissions.curriculumsRead]);
   const student = studentUser([]);
 
-  assert.equal(isCenterManager(cm), true, "CenterManager accountType triggers modern Dark Enterprise view");
-  assert.equal(isCenterManager(teacher), false, "Teacher accountType keeps legacy view");
-  assert.equal(isCenterManager(student), false, "Student accountType keeps legacy view");
-  assert.equal(isCenterManager(null), false, "Unauthenticated / null user does not trigger modern view");
+  // A. Teacher Layout Boundary (/giao-vien/*)
+  assert.deepEqual(
+    resolveTeacherLayoutAccess(teacher),
+    { allowed: true },
+    "Teacher is granted access to Teacher Layout Boundary (/giao-vien/*)"
+  );
+  assert.deepEqual(
+    resolveTeacherLayoutAccess(cm),
+    { allowed: false, redirect: "/khong-co-quyen" },
+    "CenterManager is strictly blocked from Teacher Layout Boundary (/giao-vien/*) with fail-closed redirect"
+  );
+  assert.deepEqual(
+    resolveTeacherLayoutAccess(student),
+    { allowed: false, redirect: "/khong-co-quyen" },
+    "Student is strictly blocked from Teacher Layout Boundary"
+  );
+  assert.deepEqual(
+    resolveTeacherLayoutAccess(null),
+    { allowed: false, redirect: "/dang-nhap" },
+    "Unauthenticated user is redirected to login"
+  );
 
-  // Verify that fake role labels (e.g. role: 'Quản lý' with accountType: 'Teacher') do NOT bypass actor isolation
+  // B. CenterManager Layout Boundary (/quan-ly/*)
+  assert.deepEqual(
+    resolveCenterManagerLayoutAccess(cm),
+    { allowed: true },
+    "CenterManager is granted access to CenterManager Governance Boundary (/quan-ly/*)"
+  );
+  assert.deepEqual(
+    resolveCenterManagerLayoutAccess(teacher),
+    { allowed: false, redirect: "/khong-co-quyen" },
+    "Teacher cannot access CenterManager Administrative Boundary (/quan-ly/*)"
+  );
+
+  // C. Academic Redirect Routes (e.g. /quan-ly/giao-trinh -> /giao-vien/giao-trinh)
+  assert.equal(
+    resolveAcademicRedirect(teacher, "/giao-vien/giao-trinh"),
+    "/giao-vien/giao-trinh",
+    "Teacher is redirected to modern Teacher Workspace"
+  );
+  assert.equal(
+    resolveAcademicRedirect(cm, "/giao-vien/giao-trinh"),
+    "/khong-co-quyen",
+    "CenterManager cannot access Teacher authoring routes via academic redirects"
+  );
+
+  // D. Spoofed roles cannot bypass canonical accountType
   const fakeManagerTeacher = {
     accountType: "Teacher" as const,
     role: "CenterManager", // display label or spoofed role
     permissions: [permissions.nodesRead],
   };
-  assert.equal(isCenterManager(fakeManagerTeacher), false, "Actor isolation strictly relies on canonical accountType");
+  assert.deepEqual(
+    resolveCenterManagerLayoutAccess(fakeManagerTeacher),
+    { allowed: false, redirect: "/khong-co-quyen" },
+    "Actor isolation strictly relies on canonical accountType, preventing spoofed role escalation"
+  );
 });
 
 // ============================================================================
@@ -395,21 +441,15 @@ test("6. DTO contracts integrity: Zero fake fields or invented stats across acad
 // 7. TEACHER VIEW AND BEHAVIOR PRESERVATION
 // ============================================================================
 test("7. Teacher view preservation: Teacher maintains implicit teacher binding during creation", () => {
-  // Teacher does NOT see teacher selector (implicit binding in backend)
+  // In Teacher Workspace, authoring binds implicitly to logged-in teacher: selector is hidden
   const showTeacherSelectorForTeacher = shouldDisplayTeacherSelector({
     isEditMode: false,
     isCenterManager: false,
   });
-  assert.equal(showTeacherSelectorForTeacher, false, "Teacher does not see teacher selector");
+  assert.equal(showTeacherSelectorForTeacher, false, "Teacher workspace uses implicit teacher binding (no selector)");
 
-  // CenterManager DOES see teacher selector in create mode
-  const showTeacherSelectorForManager = shouldDisplayTeacherSelector({
-    isEditMode: false,
-    isCenterManager: true,
-  });
-  assert.equal(showTeacherSelectorForManager, true, "CenterManager must select a teacher");
-
-  // In edit mode, neither sees teacher selector (immutable teacher binding)
+  // CenterManager is strictly governance/view-only and has no authoring creation route
+  // In edit mode (viewing curriculum details), selector is hidden for all actors
   assert.equal(
     shouldDisplayTeacherSelector({ isEditMode: true, isCenterManager: true }),
     false,
@@ -425,14 +465,14 @@ test("7. Teacher view preservation: Teacher maintains implicit teacher binding d
 // ============================================================================
 // 8. SUBJECT QUERY CAPABILITY GATING & FAIL-CLOSED CREATE MODE
 // ============================================================================
-test("8. Subject query capability gating & fail-closed create mode in Curriculum Editor", () => {
-  // Scenario A: Actor has curriculum.curriculums.create BUT lacks knowledge.subjects.read
-  const createOnlyUser = centerManagerUser([permissions.curriculumsCreate]);
-  const hasSubjectsRead = canAccess(createOnlyUser, { allOf: [permissions.subjectsRead] });
-  const hasCurriculumsCreate = canAccess(createOnlyUser, { allOf: [permissions.curriculumsCreate] });
+test("8. Subject query capability gating & fail-closed create mode in Teacher Workspace", () => {
+  // Scenario A: Teacher has curriculum.curriculums.create BUT lacks knowledge.subjects.read
+  const teacherCreateOnly = teacherUser([permissions.curriculumsCreate]);
+  const hasSubjectsRead = canAccess(teacherCreateOnly, { allOf: [permissions.subjectsRead] });
+  const hasCurriculumsCreate = canAccess(teacherCreateOnly, { allOf: [permissions.curriculumsCreate] });
 
   assert.equal(hasCurriculumsCreate, true);
-  assert.equal(hasSubjectsRead, false, "Actor lacks knowledge.subjects.read");
+  assert.equal(hasSubjectsRead, false, "Teacher lacks knowledge.subjects.read");
 
   // Query must be disabled when !canReadSubjects, avoiding 403 API call
   const isSubjectsQueryEnabled = hasSubjectsRead;
@@ -446,13 +486,13 @@ test("8. Subject query capability gating & fail-closed create mode in Curriculum
     "Creation cannot proceed without subject read capability (fail-closed state)"
   );
 
-  // Scenario B: Actor has both permissions
-  const fullManager = centerManagerUser([permissions.curriculumsCreate, permissions.subjectsRead]);
-  const fullCanReadSubjects = canAccess(fullManager, { allOf: [permissions.subjectsRead] });
-  const fullCanCreate = canAccess(fullManager, { allOf: [permissions.curriculumsCreate] });
+  // Scenario B: Teacher has both permissions
+  const fullTeacher = teacherUser([permissions.curriculumsCreate, permissions.subjectsRead]);
+  const fullCanReadSubjects = canAccess(fullTeacher, { allOf: [permissions.subjectsRead] });
+  const fullCanCreate = canAccess(fullTeacher, { allOf: [permissions.curriculumsCreate] });
 
   assert.equal(fullCanReadSubjects, true);
-  assert.equal(fullCanCreate && fullCanReadSubjects, true, "Full manager can initiate create");
+  assert.equal(fullCanCreate && fullCanReadSubjects, true, "Teacher with both capabilities can initiate create");
 });
 
 // ============================================================================
@@ -720,60 +760,56 @@ test("13. Knowledge node selector uses listNodes endpoint matching knowledge.nod
 });
 
 // ============================================================================
-// 14. CENTERMANAGER CREATE MODE REQUIRES COMPOSITE CAPABILITY (WITH teachers.read)
+// 14. CENTERMANAGER IS DENIED ACADEMIC AUTHORING AND REVIEW QUEUE ACCESS
 // ============================================================================
-test("14. CenterManager create mode requires composite capability including teachers.read", () => {
-  // CenterManager user lacking teachers.read
-  const managerWithoutTeachers = centerManagerUser([
-    permissions.curriculumsCreate,
-    permissions.subjectsRead,
-  ]);
-
-  const canCreateCurriculums = canAccess(managerWithoutTeachers, {
-    allOf: [permissions.curriculumsCreate],
-  });
-  const canReadSubjects = canAccess(managerWithoutTeachers, {
-    allOf: [permissions.subjectsRead],
-  });
-  const canReadTeachers = canAccess(managerWithoutTeachers, {
-    allOf: [permissions.teachersRead],
-  });
-
-  const isEditMode = false;
-  const isCenterManager = true;
-
-  // CenterManager must assign an owning teacher, so canInitiateCreate must check canReadTeachers
-  const canInitiateCreate =
-    !isEditMode &&
-    canCreateCurriculums &&
-    canReadSubjects &&
-    (!isCenterManager || canReadTeachers);
-
-  assert.equal(canCreateCurriculums, true);
-  assert.equal(canReadSubjects, true);
-  assert.equal(canReadTeachers, false);
-  assert.equal(
-    canInitiateCreate,
-    false,
-    "CenterManager lacking teachers.read cannot initiate create (fail-closed)"
-  );
-
-  // When manager has teachers.read, create can proceed
-  const fullManager = centerManagerUser([
-    permissions.curriculumsCreate,
+test("14. CenterManager is strictly denied academic content creation and Review Queue access", () => {
+  const cm = centerManagerUser([
+    permissions.curriculumsRead,
     permissions.subjectsRead,
     permissions.teachersRead,
   ]);
-  const fullCanReadTeachers = canAccess(fullManager, {
-    allOf: [permissions.teachersRead],
-  });
-  const fullCanInitiate =
-    !isEditMode &&
-    canCreateCurriculums &&
-    canReadSubjects &&
-    (!isCenterManager || fullCanReadTeachers);
+  const teacher = teacherUser([
+    permissions.curriculumsCreate,
+    permissions.subjectsRead,
+  ]);
 
-  assert.equal(fullCanInitiate, true, "CenterManager with all 3 capabilities can initiate create");
+  // A. CenterManager accessing Review Queue route (/quan-ly/duyet-bai) redirects to /khong-co-quyen
+  assert.equal(
+    resolveAcademicRedirect(cm, "/giao-vien/cham-bai"),
+    "/khong-co-quyen",
+    "CenterManager is denied Review Queue access"
+  );
+
+  // B. Teacher with authoring capabilities routes to dedicated review workspace
+  assert.equal(
+    resolveAcademicRedirect(teacher, "/giao-vien/cham-bai"),
+    "/giao-vien/cham-bai",
+    "Teacher is routed to dedicated grading & review workspace"
+  );
+
+  // C. CenterManager accessing creation routes redirects to /khong-co-quyen
+  assert.equal(
+    resolveAcademicRedirect(cm, "/giao-vien/giao-trinh/tao-moi"),
+    "/khong-co-quyen",
+    "CenterManager cannot access curriculum creation route"
+  );
+  assert.equal(
+    resolveAcademicRedirect(cm, "/giao-vien/cau-hoi/tao-moi"),
+    "/khong-co-quyen",
+    "CenterManager cannot access question creation route"
+  );
+  assert.equal(
+    resolveAcademicRedirect(cm, "/giao-vien/bai-tap/tao-moi"),
+    "/khong-co-quyen",
+    "CenterManager cannot access assignment creation route"
+  );
+
+  // D. CenterManager layout access is strictly administrative, blocking Teacher Workspace
+  assert.deepEqual(
+    resolveTeacherLayoutAccess(cm),
+    { allowed: false, redirect: "/khong-co-quyen" },
+    "CenterManager cannot access TeacherLayoutBoundary"
+  );
 });
 
 // ============================================================================

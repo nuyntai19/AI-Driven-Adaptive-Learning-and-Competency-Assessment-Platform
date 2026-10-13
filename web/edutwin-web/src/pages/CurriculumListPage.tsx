@@ -33,6 +33,7 @@ const CenterManagerCurriculumListView: React.FC = () => {
   const canReadSubjects = hasPermission(permissions.subjectsRead);
 
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>("");
+  const [selectedGradeLevel, setSelectedGradeLevel] = useState<number | "">("");
   const [selectedStatus, setSelectedStatus] = useState<ReviewStatus | "">("");
 
   // Query active subjects to resolve subjectId -> subjectName and populate filter dropdown
@@ -60,7 +61,8 @@ const CenterManagerCurriculumListView: React.FC = () => {
     refetch,
   } = useCurriculums(
     selectedSubjectId || undefined,
-    (selectedStatus as ReviewStatus) || undefined
+    (selectedStatus as ReviewStatus) || undefined,
+    selectedGradeLevel !== "" ? Number(selectedGradeLevel) : undefined
   );
 
   const curriculums = useMemo(() => response?.data ?? [], [response?.data]);
@@ -119,6 +121,26 @@ const CenterManagerCurriculumListView: React.FC = () => {
 
             <div className="w-full sm:max-w-xs">
               <label
+                htmlFor="filter-curriculum-grade"
+                className="mb-1 block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)]"
+              >
+                Khối học
+              </label>
+              <select
+                id="filter-curriculum-grade"
+                value={selectedGradeLevel}
+                onChange={(e) => setSelectedGradeLevel(e.target.value ? Number(e.target.value) : "")}
+                className="cm-field w-full px-3 py-2 text-sm"
+              >
+                <option value="">-- Tất cả khối --</option>
+                <option value="10">Khối 10</option>
+                <option value="11">Khối 11</option>
+                <option value="12">Khối 12</option>
+              </select>
+            </div>
+
+            <div className="w-full sm:max-w-xs">
+              <label
                 htmlFor="filter-curriculum-status"
                 className="mb-1 block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)]"
               >
@@ -138,11 +160,12 @@ const CenterManagerCurriculumListView: React.FC = () => {
             </div>
           </div>
 
-          {(selectedSubjectId || selectedStatus) && (
+          {(selectedSubjectId || selectedGradeLevel !== "" || selectedStatus) && (
             <button
               type="button"
               onClick={() => {
                 setSelectedSubjectId("");
+                setSelectedGradeLevel("");
                 setSelectedStatus("");
               }}
               className="cm-secondary-button text-xs py-1.5 px-3 self-end sm:self-auto"
@@ -240,6 +263,9 @@ const CenterManagerCurriculumListView: React.FC = () => {
                     <div className="flex items-center gap-2">
                       <span className="inline-flex items-center rounded-full bg-cyan-500/10 px-2.5 py-0.5 text-xs font-medium text-[var(--cm-cyan)]">
                         {subjectName}
+                      </span>
+                      <span className="inline-flex items-center rounded-full bg-indigo-500/10 px-2.5 py-0.5 text-xs font-medium text-indigo-300">
+                        {curriculum.gradeLevel ? `Khối ${curriculum.gradeLevel}` : "Chưa phân loại"}
                       </span>
                     </div>
 

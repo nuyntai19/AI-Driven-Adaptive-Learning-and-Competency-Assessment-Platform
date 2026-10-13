@@ -87,8 +87,8 @@ test("4. LearningPlayerPage has auto-submit on test time expiration and auto-ski
   assert.ok(content.includes('finalAnswer: isSkipped ? "SKIPPED" : qFinalAnswer'), "Must set finalAnswer to SKIPPED if skipped");
   assert.ok(content.includes("skipped: isSkipped"), "Must mark skipped boolean true");
 
-  // Auto-fill reasoning fallback if student answered but ran out of time before writing reasoning
-  assert.ok(content.includes("[Hết giờ làm bài - Tự động nộp]"), "Must auto-fill reasoning note so validator accepts");
+  // No synthetic reasoning fallback: student answers must not be injected with fake reasoning
+  assert.ok(!content.includes("[Hết giờ làm bài - Tự động nộp]"), "Must NOT inject synthetic reasoning note");
 
   // Timer label & auto-submit notification
   assert.ok(content.includes("Thời gian làm bài còn lại"), "Must label timer as test remaining time");
@@ -117,5 +117,41 @@ test("6. LearningPlayerPage supports pause & resume on exit/close and only shows
   // Due countdown is strictly conditional on !hasTimeLimit
   assert.ok(content.includes("hasTimeLimit || !assignment?.dueAt"), "Must only countdown to due date when untimed");
   assert.ok(content.includes("hasTimeLimit"), "Must distinguish timed assignments from untimed assignments");
+});
+
+test("7. LearningPlayerPage snapshot upload tracking: identifies uploads, clears stale tokens on replace or removal, and isolates questions", () => {
+  const content = fs.readFileSync(path.join(pagesDir, "LearningPlayerPage.tsx"), "utf-8");
+  const uploader = fs.readFileSync(path.join(__dirname, "../src/utils/assignmentSnapshotUploader.ts"), "utf-8");
+
+  // Snapshot upload tracking refs
+  assert.ok(content.includes("snapshotUploadSeqRef"), "Must have snapshotUploadSeqRef");
+  assert.ok(content.includes("snapshotUploadsRef"), "Must have snapshotUploadsRef");
+  assert.ok(content.includes("activeQuestionIdRef"), "Must track activeQuestionIdRef");
+
+  // Immediately clearing prior token on replacement and in flight
+  assert.ok(content.includes("drawingUploadToken: null"), "Must reset drawingUploadToken while upload is in flight");
+
+  // Verifying upload matches active snapshot and question
+  assert.ok(content.includes("return executeSnapshotUpload({"), "The page must use the tested production uploader");
+  assert.ok(uploader.includes("current.uploadId !== uploadId"), "Must discard callback if uploadId changed");
+  assert.ok(uploader.includes("current.dataUrl !== dataUrl"), "Must discard callback if dataUrl changed");
+  assert.ok(uploader.includes("getActiveQuestionId() === qId"), "Must only set component token if viewing same question");
+
+  // Invalidation on removal
+  assert.ok(content.includes("delete snapshotUploadsRef.current[qId]"), "Must delete in-flight upload on snapshot removal");
+});
+
+test("8. Separation of authoritative expiration timestamp vs display ceil-rounding prevents premature auto-submit", () => {
+  const content = fs.readFileSync(path.join(pagesDir, "LearningPlayerPage.tsx"), "utf-8");
+
+  // Expiration is checked against actual absolute timestamp, not truncated integer
+  assert.match(content, /isActiveAssignmentExpired\(isAssignmentSubmitted,\s*hasTimeLimit \? targetEndTimestampRef.current/,
+    "Must check authoritative deadline through the submitted-aware expiration policy");
+  const timing = fs.readFileSync(path.join(__dirname, "../src/utils/assignmentReviewTiming.ts"), "utf-8");
+  assert.ok(timing.includes("now >= expiresAt"), "Must compare exact timestamp, not rounded display seconds");
+  assert.ok(timing.includes("!submitted"), "Submitted work must not expire during review");
+
+  // Display uses ceil so fractional seconds do not display 0
+  assert.ok(content.includes("Math.ceil(msLeft / 1000)"), "Must use Math.ceil for display countdown");
 });
 

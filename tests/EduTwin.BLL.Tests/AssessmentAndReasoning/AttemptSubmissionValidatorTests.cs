@@ -278,10 +278,10 @@ public sealed class AttemptSubmissionValidatorTests : IDisposable
     {
         await SeedActiveStudentAsync();
         await SeedQuestionAsync(
-            status: QuestionStatus.Archived,
+            status: QuestionStatus.Active,
             reasoningRequired: true,
             correctAnswer: "CORRECT_KEY");
-        var assignmentId = await SeedAssignmentAsync(AssignmentStatus.Published);
+        var assignmentId = await SeedAssignmentAsync(AssignmentStatus.Published, isVoided: true);
 
         var result = await CreateSut().ValidateAsync(
             CreateRequest(
@@ -666,7 +666,8 @@ public sealed class AttemptSubmissionValidatorTests : IDisposable
     private async Task<Guid> SeedAssignmentAsync(
         AssignmentStatus status,
         bool includeTarget = true,
-        bool includeQuestion = true)
+        bool includeQuestion = true,
+        bool isVoided = false)
     {
         var assignmentId = Guid.Parse("66666666-6666-6666-6666-666666666666");
         _dbContext.Assignments.Add(new Assignment
@@ -703,6 +704,8 @@ public sealed class AttemptSubmissionValidatorTests : IDisposable
                 QuestionId = 100,
                 OrderIndex = 1,
                 Points = 2m,
+                IsVoided = isVoided,
+                VoidReason = isVoided ? "Đề bài sai" : null,
                 CreatedAt = FixedUtcNow
             });
         }

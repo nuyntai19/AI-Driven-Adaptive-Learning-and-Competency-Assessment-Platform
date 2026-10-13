@@ -41,17 +41,15 @@ public class UpdateAssignmentUseCase : IUpdateAssignmentUseCase
             !_tenantContext.CenterId.HasValue || _tenantContext.CenterId.Value == Guid.Empty ||
             !_tenantContext.UserId.HasValue || _tenantContext.UserId.Value == Guid.Empty ||
             string.IsNullOrWhiteSpace(_tenantContext.Role) ||
-            (!string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal) &&
-             !string.Equals(_tenantContext.Role, nameof(UserRole.CenterManager), StringComparison.Ordinal)))
+            !string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal))
         {
-            return UpdateAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
+            return UpdateAssignmentResult.Failure(ErrorCodes.ForbiddenResource);
         }
 
         if (assignmentId == Guid.Empty)
             return UpdateAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
 
         var actorId = _tenantContext.UserId.Value;
-        var isTeacher = string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal);
 
         // 2. Validate rowVersion format (strict: ASCII digits, > 0)
         if (string.IsNullOrWhiteSpace(request.RowVersion))
@@ -74,16 +72,13 @@ public class UpdateAssignmentUseCase : IUpdateAssignmentUseCase
             return UpdateAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
 
         // 4. Ownership guard
-        if (isTeacher)
-        {
-            var classEntity = await _dbContext.Classes
-                .AsNoTracking()
-                .Select(c => new { c.ClassId, c.TeacherId })
-                .FirstOrDefaultAsync(c => c.ClassId == assignment.ClassId, cancellationToken);
+        var classEntity = await _dbContext.Classes
+            .AsNoTracking()
+            .Select(c => new { c.ClassId, c.TeacherId, c.SubjectId, c.GradeLevel, c.Status })
+            .FirstOrDefaultAsync(c => c.ClassId == assignment.ClassId, cancellationToken);
 
-            if (classEntity == null || classEntity.TeacherId != actorId)
-                return UpdateAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
-        }
+        if (classEntity == null || classEntity.TeacherId != actorId)
+            return UpdateAssignmentResult.Failure(ErrorCodes.ForbiddenResource);
 
         // 5. State machine: only Draft allowed
         if (assignment.Status != AssignmentStatus.Draft)
@@ -109,6 +104,7 @@ public class UpdateAssignmentUseCase : IUpdateAssignmentUseCase
 
         // 8. Validate and parse new questionIds if provided
         List<ulong>? newParsedQuestionIds = null;
+        bool? questionsHaveGradeMismatch = null;
         if (request.QuestionIds != null)
         {
             newParsedQuestionIds = new List<ulong>();
@@ -134,26 +130,20 @@ public class UpdateAssignmentUseCase : IUpdateAssignmentUseCase
                 newParsedQuestionIds.Add(parsedQId);
             }
 
-            // Validate each question: Active + same Subject as Class
+            // Validate each question: Active + same Subject as Class + GradeLevel check
             if (newParsedQuestionIds.Count > 0)
             {
-                var classEntity = await _dbContext.Classes
-                    .AsNoTracking()
-                    .Select(c => new { c.ClassId, c.SubjectId })
-                    .FirstOrDefaultAsync(c => c.ClassId == assignment.ClassId, cancellationToken);
-
-                if (classEntity == null)
-                    return UpdateAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
-
                 var dbQuestions = await _dbContext.Questions
                     .AsNoTracking()
                     .Where(q => newParsedQuestionIds.Contains(q.QuestionId))
-                    .Select(q => new { q.QuestionId, q.SubjectId, q.Status })
+                    .Where(q => q.CenterId == assignment.CenterId && (q.CreatedByTeacherId == actorId || q.Visibility == EduTwin.Contracts.CurriculumAndQuestions.MaterialVisibility.Shared))
+                    .Select(q => new { q.QuestionId, q.SubjectId, q.GradeLevel, q.Status })
                     .ToListAsync(cancellationToken);
 
                 if (dbQuestions.Count != newParsedQuestionIds.Count)
                     return UpdateAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
 
+                bool mismatch = false;
                 foreach (var q in dbQuestions)
                 {
                     if (q.Status != EduTwin.Contracts.CurriculumAndQuestions.QuestionStatus.Active)
@@ -161,11 +151,69 @@ public class UpdateAssignmentUseCase : IUpdateAssignmentUseCase
 
                     if (q.SubjectId != classEntity.SubjectId)
                         return UpdateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
+
+                    if (classEntity.GradeLevel.HasValue && q.GradeLevel.HasValue && q.GradeLevel.Value != classEntity.GradeLevel.Value)
+                    {
+                        mismatch = true;
+                    }
                 }
+                questionsHaveGradeMismatch = mismatch;
+            }
+            else
+            {
+                questionsHaveGradeMismatch = false;
+            }
+        }
+        else
+        {
+            if (classEntity.GradeLevel.HasValue)
+            {
+                var existingAQs = await _dbContext.AssignmentQuestions
+                    .Where(aq => aq.AssignmentId == assignmentId)
+                    .Select(aq => aq.QuestionId)
+                    .ToListAsync(cancellationToken);
+
+                if (existingAQs.Count > 0)
+                {
+                    var existingQuestions = await _dbContext.Questions
+                        .AsNoTracking()
+                        .Where(q => existingAQs.Contains(q.QuestionId))
+                        .Select(q => new { q.QuestionId, q.GradeLevel })
+                        .ToListAsync(cancellationToken);
+
+                    questionsHaveGradeMismatch = existingQuestions.Any(q => q.GradeLevel.HasValue && q.GradeLevel.Value != classEntity.GradeLevel.Value);
+                }
+                else
+                {
+                    questionsHaveGradeMismatch = false;
+                }
+            }
+            else
+            {
+                questionsHaveGradeMismatch = false;
             }
         }
 
-        // 9. Validate TargetMode and studentIds if provided
+        var effectiveAllowMismatch = request.AllowGradeMismatch ?? assignment.AllowGradeMismatch;
+        var effectiveMismatchReason = request.GradeMismatchReason != null
+            ? request.GradeMismatchReason.Trim()
+            : assignment.GradeMismatchReason;
+
+        if (questionsHaveGradeMismatch == true)
+        {
+            if (!effectiveAllowMismatch || string.IsNullOrWhiteSpace(effectiveMismatchReason))
+            {
+                return UpdateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(effectiveMismatchReason) && effectiveMismatchReason.Length > 500)
+        {
+            return UpdateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
+        }
+
+
+        // 9. Validate TargetMode and studentIds if provided (Bug 1 fix)
         List<Guid>? newParsedStudentIds = null;
         string? newTargetMode = null;
         if (request.TargetMode != null)
@@ -179,8 +227,11 @@ public class UpdateAssignmentUseCase : IUpdateAssignmentUseCase
 
             newTargetMode = targetMode;
 
-            if (isSelectedStudents && request.StudentIds != null)
+            if (isSelectedStudents)
             {
+                if (request.StudentIds == null || request.StudentIds.Count == 0)
+                    return UpdateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
+
                 newParsedStudentIds = new List<Guid>();
                 var seenStudents = new HashSet<Guid>();
 
@@ -194,7 +245,53 @@ public class UpdateAssignmentUseCase : IUpdateAssignmentUseCase
 
                     newParsedStudentIds.Add(parsedSId);
                 }
+
+                // Verify active membership of each student at update time
+                var activeMemberIds = await _dbContext.ClassStudents
+                    .AsNoTracking()
+                    .Where(cs => cs.ClassId == classEntity.ClassId &&
+                                 cs.Status == ClassStudentStatus.Active)
+                    .Select(cs => cs.StudentId)
+                    .ToListAsync(cancellationToken);
+
+                var activeMemberIdSet = activeMemberIds.ToHashSet();
+                if (newParsedStudentIds.Any(studentId => !activeMemberIdSet.Contains(studentId)))
+                    return UpdateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
             }
+        }
+        else if (request.StudentIds != null)
+        {
+            if (assignment.TargetMode != TargetSource.SelectedStudents)
+                return UpdateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
+
+            if (request.StudentIds.Count == 0)
+                return UpdateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
+
+            newTargetMode = "SelectedStudents";
+            newParsedStudentIds = new List<Guid>();
+            var seenStudents = new HashSet<Guid>();
+
+            foreach (var sIdStr in request.StudentIds)
+            {
+                if (!Guid.TryParse(sIdStr, out var parsedSId) || parsedSId == Guid.Empty)
+                    return UpdateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
+
+                if (!seenStudents.Add(parsedSId))
+                    return UpdateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
+
+                newParsedStudentIds.Add(parsedSId);
+            }
+
+            var activeMemberIds = await _dbContext.ClassStudents
+                .AsNoTracking()
+                .Where(cs => cs.ClassId == classEntity.ClassId &&
+                             cs.Status == ClassStudentStatus.Active)
+                .Select(cs => cs.StudentId)
+                .ToListAsync(cancellationToken);
+
+            var activeMemberIdSet = activeMemberIds.ToHashSet();
+            if (newParsedStudentIds.Any(studentId => !activeMemberIdSet.Contains(studentId)))
+                return UpdateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
         }
 
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
@@ -243,6 +340,26 @@ public class UpdateAssignmentUseCase : IUpdateAssignmentUseCase
             // If the caller wants to clear DueAt, they'd send null; we accept it.
             assignment.DueAt = request.DueAt;
             assignment.TimeLimitMinutes = request.TimeLimitMinutes;
+
+            if (newTargetMode != null)
+            {
+                assignment.TargetMode = string.Equals(newTargetMode, "SelectedStudents", StringComparison.Ordinal)
+                    ? TargetSource.SelectedStudents
+                    : TargetSource.WholeClass;
+            }
+
+            if (request.AllowGradeMismatch.HasValue)
+            {
+                assignment.AllowGradeMismatch = request.AllowGradeMismatch.Value;
+            }
+
+            if (request.GradeMismatchReason != null)
+            {
+                assignment.GradeMismatchReason = string.IsNullOrWhiteSpace(request.GradeMismatchReason)
+                    ? null
+                    : request.GradeMismatchReason.Trim();
+            }
+
             assignment.UpdatedAt = now;
             assignment.UpdatedBy = actorId;
             // RowVersion incremented by DbContext.UpdateRowVersions()
@@ -330,6 +447,9 @@ public class UpdateAssignmentUseCase : IUpdateAssignmentUseCase
                 Instructions = assignment.Instructions,
                 DueAt = assignment.DueAt,
                 TimeLimitMinutes = assignment.TimeLimitMinutes,
+                TargetMode = assignment.TargetMode.ToString(),
+                AllowGradeMismatch = assignment.AllowGradeMismatch,
+                GradeMismatchReason = assignment.GradeMismatchReason,
                 Status = assignment.Status.ToString(),
                 QuestionCount = questionDtos.Count,
                 TargetStudentCount = targetDtos.Count,

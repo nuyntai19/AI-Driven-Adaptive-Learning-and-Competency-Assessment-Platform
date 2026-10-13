@@ -80,7 +80,8 @@ public sealed class LearningController : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetNextQuestion(
         [FromQuery] Guid subjectId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        [FromQuery] Guid? classId = null, [FromQuery] bool history = false, [FromQuery] string? sessionId = null)
     {
         var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
         if (subjectId == Guid.Empty)
@@ -94,7 +95,11 @@ public sealed class LearningController : ControllerBase
                 "INVALID_SUBJECT_ID"));
         }
 
-        var result = await _getNextQuestionUseCase.ExecuteAsync(subjectId, cancellationToken);
+        var result = !string.IsNullOrWhiteSpace(sessionId)
+            ? await _getNextQuestionUseCase.ExecuteSessionAsync(subjectId, sessionId, classId, history, cancellationToken)
+            : classId.HasValue || history
+            ? await _getNextQuestionUseCase.ExecuteAsync(subjectId, classId, history, cancellationToken)
+            : await _getNextQuestionUseCase.ExecuteAsync(subjectId, cancellationToken);
 
         if (result.Forbidden)
         {

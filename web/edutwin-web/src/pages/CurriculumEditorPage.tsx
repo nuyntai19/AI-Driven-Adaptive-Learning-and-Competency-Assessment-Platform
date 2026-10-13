@@ -68,6 +68,7 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
     description: string;
     subjectId: string;
     teacherId: string;
+    gradeLevel: number | null;
     nodeIds: string[];
     classIds: string[];
     rowVersion: string;
@@ -77,6 +78,7 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
     description: "",
     subjectId: "",
     teacherId: "",
+    gradeLevel: null,
     nodeIds: [],
     classIds: [],
     rowVersion: "0",
@@ -239,6 +241,7 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
         description: c.description || "",
         subjectId: c.subjectId,
         teacherId: c.teacherId || "",
+        gradeLevel: c.gradeLevel ?? null,
         nodeIds: c.nodeIds || [],
         classIds: c.classIds || [],
         rowVersion: c.rowVersion,
@@ -265,6 +268,7 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
         description: c.description || "",
         subjectId: c.subjectId,
         teacherId: c.teacherId || "",
+        gradeLevel: c.gradeLevel ?? null,
         nodeIds: c.nodeIds || [],
         classIds: c.classIds || [],
         rowVersion: c.rowVersion,
@@ -299,6 +303,7 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
             title: formData.title,
             description: formData.description,
             subjectId: formData.subjectId,
+            gradeLevel: formData.gradeLevel,
             teacherId: formData.teacherId,
             nodeIds: formData.nodeIds,
           },
@@ -324,6 +329,7 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
           data: buildUpdateCurriculumPayload({
             title: formData.title,
             description: formData.description,
+            gradeLevel: formData.gradeLevel,
             rowVersion: formData.rowVersion,
           }),
         },
@@ -889,6 +895,31 @@ const CenterManagerCurriculumEditorView: React.FC = () => {
                     />
                   </div>
                 )}
+
+                <div>
+                  <label htmlFor="curriculum-grade-select" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mb-1">
+                    Khối học áp dụng
+                  </label>
+                  <select
+                    id="curriculum-grade-select"
+                    disabled={isReadOnly}
+                    value={formData.gradeLevel ?? ""}
+                    onChange={(e) => handleInputChange("gradeLevel", e.target.value ? Number(e.target.value) : null)}
+                    className="cm-select w-full text-sm"
+                  >
+                    {isEditMode ? (
+                      <option value="">-- Chưa phân loại --</option>
+                    ) : (
+                      <option value="">-- Chọn khối lớp (bắt buộc) --</option>
+                    )}
+                    <option value="10">Khối 10</option>
+                    <option value="11">Khối 11</option>
+                    <option value="12">Khối 12</option>
+                  </select>
+                  <p className="mt-1 text-xs text-[var(--cm-text-muted)]">
+                    Giáo trình có khối học sẽ áp dụng cho các lớp cùng khối học (hoặc lớp chưa phân loại khối).
+                  </p>
+                </div>
 
                 <div>
                   <label htmlFor="curriculum-desc-input" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mb-1">

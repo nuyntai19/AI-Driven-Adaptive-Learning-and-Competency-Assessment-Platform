@@ -9,6 +9,7 @@ import { getSubjectTheme } from "../components/student/subjectTheme";
 import { StudentSubjectPattern } from "../components/student/StudentSubjectPattern";
 import { organizationApi } from "../api/organizationApi";
 import { mapSafeOperationalError } from "../utils/problemDetails";
+import { studentScopeUrl } from "../utils/studentAcademicNavigation";
 
 export const StudentTwinPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -33,8 +34,8 @@ export const StudentTwinPage: React.FC = () => {
   });
 
   const dashboardQuery = useQuery({
-    queryKey: ["studentDashboard", selectedSubjectId],
-    queryFn: () => getStudentDashboard(selectedSubjectId),
+    queryKey: ["studentDashboard", selectedSubjectId, searchParams.get("classId") || "", searchParams.get("history") === "true"],
+    queryFn: () => getStudentDashboard(selectedSubjectId, searchParams.get("classId") || undefined, searchParams.get("history") === "true"),
     enabled: !!selectedSubjectId,
   });
 
@@ -149,7 +150,7 @@ export const StudentTwinPage: React.FC = () => {
               Thử lại
             </button>
             <Link
-              to={`/hoc-tap/tong-quan?subjectId=${selectedSubjectId}`}
+              to={studentScopeUrl("/hoc-tap/tong-quan", searchParams)}
               className="rounded-lg bg-stone-100 dark:bg-stone-800 px-4 py-2 text-xs font-medium text-stone-700 dark:text-stone-300 hover:bg-stone-200"
             >
               Về Tổng quan
@@ -202,11 +203,12 @@ export const StudentTwinPage: React.FC = () => {
           <p className="text-xs sm:text-sm text-stone-500 dark:text-stone-400">
             Học sinh: <strong className="text-stone-800 dark:text-stone-200">{student.fullName}</strong> · Cập nhật gần nhất theo dữ liệu luyện tập thực tế
           </p>
+          <p className="text-xs text-stone-500 dark:text-stone-400">Hồ sơ Twin tích lũy năng lực theo môn học qua các lớp; đổi phạm vi xem không tạo lại hay xóa năng lực cũ.</p>
         </div>
 
         <div className="flex items-center gap-2.5 self-start md:self-auto text-xs">
           <Link
-            to={`/hoc-tap/tong-quan?subjectId=${subject.subjectId}`}
+            to={studentScopeUrl("/hoc-tap/tong-quan", searchParams)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 hover:bg-stone-200 transition-colors"
           >
             <span>← Tổng quan</span>

@@ -214,7 +214,29 @@ npm run build
 
 ## 9. Chạy bằng Docker Compose
 
-Sau khi cấu hình .env (bao gồm `Gemini__ApiKey`, `Gemini__BackupKeys`, `Gemini__BackupKeys_2` để kích hoạt cụm 3 khóa xoay tua tự động):
+Sau khi cấu hình .env, dùng một danh sách JSON cho các khóa Gemini:
+
+```dotenv
+GEMINI_LIST_KEY=["YOUR_GEMINI_API_KEY_1","YOUR_GEMINI_API_KEY_2"]
+Gemini__Model=gemini-3.5-flash-lite
+```
+
+Giữ dấu ngoặc kép quanh từng khóa. Danh sách này được ưu tiên thay cho các biến
+`Gemini__ApiKey`, `Gemini__BackupKeys`, `Gemini__BackupKeys_2` cũ; định dạng cũ vẫn
+được hỗ trợ nếu không cấu hình danh sách. Không ghi khóa thật vào README hay Git.
+Sau khi đổi khóa trong `.env`, tạo lại riêng API để nạp cấu hình (restart đơn thuần
+không cập nhật biến môi trường của container):
+
+```bash
+docker compose up -d --no-deps api
+```
+
+Chấm nhiều câu dùng worker có giới hạn chạy song song, quota theo project và
+checkpoint phục hồi kết quả. Xem [cấu hình và kiểm chứng tối ưu AI](docs/plans/AI-GRADING-THROUGHPUT.md).
+Flash-Lite đang được nghiệm thu thử ở local; giới hạn quota phải cấu hình theo
+project thực tế, không suy ra từ số key hoặc gói Gemini của tài khoản.
+
+Khởi chạy hệ thống:
 
 ~~~powershell
 docker compose up -d --build

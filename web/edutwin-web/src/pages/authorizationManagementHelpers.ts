@@ -303,6 +303,7 @@ export const PERMISSION_DESCRIPTIONS_VI: Record<string, string> = {
   "organization.classes.read": "Cho phép xem danh sách và thông tin lớp học.",
   "organization.classes.create": "Cho phép tạo lớp học mới.",
   "organization.classes.update": "Cho phép chỉnh sửa thông tin lớp học.",
+  "organization.classes.delete": "Cho phép xóa lớp học tạo nhầm chưa có lịch sử hoạt động.",
   "organization.classes.manage_members": "Cho phép quản lý phân công giáo viên và học sinh vào lớp học.",
   "organization.students.read": "Cho phép xem danh sách và hồ sơ học sinh.",
   "organization.students.create": "Cho phép tạo tài khoản và hồ sơ học sinh mới.",

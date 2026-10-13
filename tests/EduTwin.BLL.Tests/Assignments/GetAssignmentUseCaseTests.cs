@@ -132,11 +132,11 @@ public class GetAssignmentUseCaseTests
         var result = await sut.ExecuteAsync(assignmentId);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
-    public async Task ExecuteAsync_CenterManager_CanGetAnyAssignmentInCenter()
+    public async Task ExecuteAsync_CenterManager_ReturnsForbiddenResource()
     {
         var centerId = Guid.NewGuid();
         var teacherId = Guid.NewGuid();
@@ -150,8 +150,8 @@ public class GetAssignmentUseCaseTests
         var sut = CreateSut(ctx);
         var result = await sut.ExecuteAsync(assignmentId);
 
-        Assert.True(result.IsSuccess, $"Expected success but got: {result.ErrorCode}");
-        Assert.NotNull(result.Data);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -181,6 +181,6 @@ public class GetAssignmentUseCaseTests
         var result = await sut.ExecuteAsync(Guid.NewGuid());
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 }

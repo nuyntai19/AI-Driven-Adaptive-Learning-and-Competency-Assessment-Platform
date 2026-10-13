@@ -15,22 +15,21 @@ test("Phase 11: No overflow-x: hidden hack on body or html", () => {
 test("Phase 11: StudentLayout header and main container responsive constraints", () => {
   // Main must have min-w-0 to prevent flex blowout
   assert.match(layoutSource, /<main className="flex-1 w-full min-w-0 pb-12">/);
-  // Header container must be responsive max-w-[1600px]
-  assert.match(layoutSource, /max-w-\[1600px\] mx-auto px-4 sm:px-6 lg:px-8/);
+  // Larger student workspace still has a bounded responsive container.
+  assert.match(layoutSource, /max-w-\[1800px\] mx-auto px-4 sm:px-6 lg:px-8/);
   // Header row must have min-w-0 and responsive height
   assert.match(layoutSource, /flex items-center justify-between h-16 sm:h-18 lg:h-20 gap-3 sm:gap-4 min-w-0/);
   // Left side must have min-w-0 and not rigid shrink-0
   assert.match(layoutSource, /<div className="flex items-center gap-3 xl:gap-6 min-w-0">/);
-  // Nav must be visible on desktop lg (1024px+)
-  assert.match(layoutSource, /<nav className="hidden lg:flex items-center gap-1 xl:gap-2 min-w-0">/);
+  // Browser QA found 1280px too narrow for the larger type and utility controls.
+  assert.match(layoutSource, /<nav className="hidden min-\[1440px\]:flex items-center gap-1 xl:gap-2 min-w-0">/);
 });
 
 const radarChartSource = readFileSync(new URL("../src/components/student/StudentRadarChart.tsx", import.meta.url), "utf8");
 const dashboardAndRadarSource = dashboardSource + "\n" + radarChartSource;
 
 test("Phase 11: StudentDashboardPage layout, stat cards, radar and progress responsiveness", () => {
-  // Page container must have min-w-0 and max-w-[1600px]
-  assert.match(dashboardSource, /w-full max-w-\[1600px\] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 min-w-0/);
+  assert.match(dashboardSource, /w-full max-w-\[1800px\] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 min-w-0/);
   // Bento KPI cards must use responsive grid with min-w-0
   assert.match(dashboardSource, /grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5/);
   // Radar + Progress section must stack properly on tablet/mobile and 2 cols on xl
@@ -40,7 +39,8 @@ test("Phase 11: StudentDashboardPage layout, stat cards, radar and progress resp
   // ResponsiveContainer must specify minWidth={0}
   assert.match(dashboardAndRadarSource, /<ResponsiveContainer width="100%" height="100%" minWidth=\{0\}>/);
   // RadarChart must have appropriate outerRadius so labels do not overflow
-  assert.match(dashboardAndRadarSource, /outerRadius="68%"/);
+  assert.match(dashboardAndRadarSource, /outerRadius="60%"/);
+  assert.match(radarChartSource, /groups.length >= 3 && groups.length <= 8/);
 });
 
 test("Phase 12: Subject filter defaults to 'Toàn bộ' and does not auto-select first subject", () => {
@@ -56,8 +56,8 @@ test("Phase 12: StudentDashboardPage supports 'Toàn bộ' and Option A subject-
   // Does not block page with SubjectRequiredState
   assert.doesNotMatch(dashboardSource, /SubjectRequiredState/);
   // Query executes with selectedSubjectId || undefined
-  assert.match(dashboardSource, /queryKey:\s*\["studentDashboard",\s*selectedSubjectId\s*\|\|\s*"all"\]/);
-  assert.match(dashboardSource, /getStudentDashboard\(selectedSubjectId\s*\|\|\s*undefined\)/);
+  assert.match(dashboardSource, /queryKey:\s*\["studentDashboard",\s*selectedSubjectId\s*\|\|\s*"all", selectedClassId, isHistory\]/);
+  assert.match(dashboardSource, /getStudentDashboard\(selectedSubjectId\s*\|\|\s*undefined, selectedClassId \|\| undefined, isHistory\)/);
   // Radar title switches dynamically
   assert.match(dashboardSource, /isAllSubjects \? "Radar Năng Lực Theo Môn Học" : "Radar Năng Lực Theo Chuyên Đề"/);
   // Hero scope pill switches dynamically
@@ -69,7 +69,8 @@ test("Phase 12: dashboardsApi passes subjectId only when present", () => {
 });
 
 test("Phase 13: StudentLayout tab navigation preserves subjectId when set and clean when Toàn bộ", () => {
-  assert.match(layoutSource, /const getTabUrl = \(path: string\) => \{\s*return activeSubjectId \? `\$\{path\}\?subjectId=\$\{activeSubjectId\}` : path;\s*\};/);
+  assert.match(layoutSource, /for \(const key of \["subjectId", "classId", "history"\]\)/);
+  assert.match(layoutSource, /return p.size \? `\$\{path\}\?\$\{p\}` : path/);
 });
 
 test("Phase 14: Responsive 2-tier header architecture prevents item overlap", () => {
@@ -85,16 +86,13 @@ test("Phase 14: Responsive 2-tier header architecture prevents item overlap", ()
   assert.match(layoutSource, /<span className="hidden xl:inline">Bài tập của tôi<\/span>/);
   assert.match(layoutSource, /<span className="inline xl:hidden">Bài tập<\/span>/);
 
-  // Row 1 Subject Selector is only on ultra-wide (>= 1760px)
-  assert.match(layoutSource, /<div className="relative hidden min-\[1760px\]:block shrink-0">/);
-  assert.match(layoutSource, /data-testid="student-subject-selector-desktop"/);
-
-  // Row 2 Context Sub-bar is active for viewports < 1760px (min-[1760px]:hidden)
-  assert.match(layoutSource, /<div className="min-\[1760px\]:hidden border-t border-slate-200\/80 dark:border-slate-800\/80 bg-slate-50\/90 dark:bg-\[#0b1329\]\/90 backdrop-blur-xs py-2">/);
+  // The separate context row is visible even on wide displays; no duplicate selectors.
+  assert.doesNotMatch(layoutSource, /data-testid="student-subject-selector-desktop"/);
+  assert.match(layoutSource, /<div className="border-t border-slate-200\/80 dark:border-slate-800\/80 bg-slate-50\/90 dark:bg-\[#0b1329\]\/90 backdrop-blur-xs py-2">/);
   assert.match(layoutSource, /data-testid="student-subject-selector-sub"/);
 
-  // Zero breakpoint gap: nav visible at lg:flex, hamburger hidden at lg:hidden
-  assert.match(layoutSource, /className="hidden lg:flex items-center/);
-  assert.match(layoutSource, /className="lg:hidden p-2 rounded-xl/);
+  // No breakpoint gap: desktop nav and hamburger switch at the same width.
+  assert.match(layoutSource, /className="hidden min-\[1440px\]:flex items-center/);
+  assert.match(layoutSource, /className="min-\[1440px\]:hidden p-2 rounded-xl/);
 });
 

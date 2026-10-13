@@ -31,10 +31,26 @@ public class EduTwinDbContext : DbContext
     // Fail-closed tenant property: If unresolved, use Guid.Empty so queries return 0 rows.
     public Guid CurrentTenantId => _tenantIdAccessor?.CenterId ?? Guid.Empty;
 
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        base.OnConfiguring(optionsBuilder);
+        if (optionsBuilder.Options.Extensions.Any(e => e.GetType().FullName == "MySql.EntityFrameworkCore.Infrastructure.Internal.MySQLOptionsExtension"))
+            optionsBuilder.ReplaceService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsSqlGenerator, AuthorizationMigrationsSqlGenerator>();
+    }
+
 
     public DbSet<Center> Centers => Set<Center>();
+    public DbSet<EduTwin.DAL.PlatformOperations.PlatformAiCall> PlatformAiCalls => Set<EduTwin.DAL.PlatformOperations.PlatformAiCall>();
+    public DbSet<EduTwin.DAL.PlatformOperations.PlatformOpsSnapshot> PlatformOpsSnapshots => Set<EduTwin.DAL.PlatformOperations.PlatformOpsSnapshot>();
+    public DbSet<EduTwin.DAL.PlatformOperations.PlatformOpsAlert> PlatformOpsAlerts => Set<EduTwin.DAL.PlatformOperations.PlatformOpsAlert>();
     public DbSet<User> Users => Set<User>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<EduTwin.DAL.Notifications.NotificationEvent> NotificationEvents => Set<EduTwin.DAL.Notifications.NotificationEvent>();
+    public DbSet<EduTwin.DAL.Notifications.NotificationMessage> NotificationMessages => Set<EduTwin.DAL.Notifications.NotificationMessage>();
+    public DbSet<EduTwin.DAL.Notifications.NotificationDispatch> NotificationDispatches => Set<EduTwin.DAL.Notifications.NotificationDispatch>();
+    public DbSet<EduTwin.DAL.Notifications.NotificationDelivery> NotificationDeliveries => Set<EduTwin.DAL.Notifications.NotificationDelivery>();
+    public DbSet<EduTwin.DAL.Notifications.NotificationMessageAction> NotificationMessageActions => Set<EduTwin.DAL.Notifications.NotificationMessageAction>();
+    public DbSet<EduTwin.DAL.Notifications.NotificationReply> NotificationReplies => Set<EduTwin.DAL.Notifications.NotificationReply>();
     public DbSet<Permission> Permissions => Set<Permission>();
     public DbSet<PermissionAccountType> PermissionAccountTypes => Set<PermissionAccountType>();
     public DbSet<AuthorizationRole> AuthorizationRoles => Set<AuthorizationRole>();
@@ -43,6 +59,7 @@ public class EduTwinDbContext : DbContext
     public DbSet<AuthorizationAuditLog> AuthorizationAuditLogs => Set<AuthorizationAuditLog>();
     public DbSet<Teacher> Teachers => Set<Teacher>();
     public DbSet<Student> Students => Set<Student>();
+    public DbSet<TeacherStudentNote> TeacherStudentNotes => Set<TeacherStudentNote>();
     public DbSet<Subject> Subjects => Set<Subject>();
     public DbSet<Class> Classes => Set<Class>();
     public DbSet<ClassStudent> ClassStudents => Set<ClassStudent>();
@@ -54,8 +71,10 @@ public class EduTwinDbContext : DbContext
     // CurriculumAndQuestions
     public DbSet<Curriculum> Curriculums => Set<Curriculum>();
     public DbSet<CurriculumClass> CurriculumClasses => Set<CurriculumClass>();
+    public DbSet<ClassCurriculumApplication> ClassCurriculumApplications => Set<ClassCurriculumApplication>();
     public DbSet<CurriculumNode> CurriculumNodes => Set<CurriculumNode>();
     public DbSet<Question> Questions => Set<Question>();
+    public DbSet<QuestionImage> QuestionImages => Set<QuestionImage>();
     public DbSet<QuestionOption> QuestionOptions => Set<QuestionOption>();
     public DbSet<QuestionKnowledgeNode> QuestionKnowledgeNodes => Set<QuestionKnowledgeNode>();
 
@@ -85,6 +104,9 @@ public class EduTwinDbContext : DbContext
     public DbSet<ReasoningAnalysis> ReasoningAnalyses => Set<ReasoningAnalysis>();
     public DbSet<EvidenceAssessment> EvidenceAssessments => Set<EvidenceAssessment>();
     public DbSet<AIAnalysisJob> AIAnalysisJobs => Set<AIAnalysisJob>();
+    public DbSet<AIAnalysisCheckpoint> AIAnalysisCheckpoints => Set<AIAnalysisCheckpoint>();
+    public DbSet<AIStudentPostProcessingJob> AIStudentPostProcessingJobs => Set<AIStudentPostProcessingJob>();
+    public DbSet<AIProviderQuotaState> AIProviderQuotaStates => Set<AIProviderQuotaState>();
     public DbSet<StudentReviewRequest> StudentReviewRequests => Set<StudentReviewRequest>();
     public DbSet<TeacherReviewHistory> TeacherReviewHistories => Set<TeacherReviewHistory>();
 

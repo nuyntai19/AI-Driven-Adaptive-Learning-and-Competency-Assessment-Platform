@@ -10,4 +10,5 @@ public class AssignmentProgressItemDto
     public string TeacherFinalReviewStatus { get; set; } = "Pending";
     public uint FinalReviewVersion { get; set; }
     public DateTime? CompletedAt { get; set; }
+    public AssignmentFinalReviewEligibilityDto FinalReviewEligibility { get; set; } = new();
 }

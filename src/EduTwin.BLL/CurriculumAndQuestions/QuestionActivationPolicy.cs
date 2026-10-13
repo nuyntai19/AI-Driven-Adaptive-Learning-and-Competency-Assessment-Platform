@@ -85,6 +85,14 @@ public sealed class QuestionActivationPolicy : IQuestionActivationPolicy
 
             switch (evaluationMode)
             {
+                case QuestionAnswerEvaluationMode.MathEquivalent:
+                    if (!new BoundedMathAnswerNormalizer().TryNormalize(correctAnswer, out _))
+                    {
+                        validationError = "MathEquivalent hỗ trợ số hữu tỉ, tọa độ 2D, tập hữu hạn và R trừ tập hữu hạn. Dạng khác hãy chọn giáo viên chấm (Manual).";
+                        return false;
+                    }
+                    return true;
+
                 case QuestionAnswerEvaluationMode.NumericRational:
                     if (!_mathNormalizer.TryNormalize(correctAnswer, out _))
                     {

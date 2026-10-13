@@ -63,6 +63,14 @@ public class StudentAssignmentProgressConfiguration : IEntityTypeConfiguration<S
             .HasColumnName("completed_at")
             .HasColumnType("datetime(6)");
 
+        builder.Property(p => p.DraftAnswersJson)
+            .HasColumnName("draft_answers_json")
+            .HasColumnType("longtext");
+
+        builder.Property(p => p.DraftSavedAt)
+            .HasColumnName("draft_saved_at")
+            .HasColumnType("datetime(6)");
+
         builder.Property(p => p.TeacherFinalReviewStatus)
             .HasColumnName("teacher_final_review_status")
             .HasColumnType("varchar(32)")

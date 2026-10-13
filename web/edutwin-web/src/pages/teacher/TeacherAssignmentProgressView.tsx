@@ -107,7 +107,7 @@ export function TeacherAssignmentProgressView() {
   const isLoading = assignmentQuery.isLoading || progressQuery.isLoading;
 
   return (
-    <div className="space-y-6">
+    <div className="th-page-container">
       <TeacherPageHeader
         eyebrow="TIẾN ĐỘ BÀI TẬP"
         title={assignment ? `Tiến Độ: ${assignment.title}` : "Tiến Độ Làm Bài Của Lớp"}

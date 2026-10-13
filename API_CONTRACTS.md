@@ -1,5 +1,13 @@
 # EduTwin — API Contracts
 
+> Amendment PLATFORM-OPS-OBS-01 (11/10/2026), người dùng phê duyệt triển khai: [SPEC vận hành Admin](docs/plans/PLATFORM-OPERATIONS-IMPLEMENTATION-SPEC-2026-10-11.md). Cho phép ba API GET/root-only, ba quyền non-delegable, metadata ledger AI và snapshot/alert vận hành như SPEC. Stage I không còn deferred trong phạm vi này; Stage H vẫn deferred. Ledger là metadata vận hành, ngoại lệ được duyệt đối với cấm bảng log AI, không chứa nội dung học thuật. Không purge/AI retry/billing mutation và không commit/push. Trạng thái COMPLETED-v1 trong phạm vi SPEC; [báo cáo kiểm chứng](docs/verification/PLATFORM-OPERATIONS-REPORT-2026-10-11.md) ghi kết quả, rollout và các giới hạn chưa triển khai. Không coi roadmap observability rộng hơn hoặc tải 1.000 người đồng thời đã nghiệm thu.
+
+> UX amendment 2026-10-11: ActivityDto thêm `targetLabel: string | null` từ tên đối tượng đã được scope, chỉ phục vụ hiển thị; không thay `sourceId/targetId`, filter, quyền hoặc link guard. Manager/Platform không được enrich từ assignment/attempt hoặc title sự kiện học thuật. Dọn box chuông là watermark center/user cục bộ trình duyệt, không API delete/hide mới, không schema mới.
+
+> API notification lifecycle/ack/reply/filter amendment: [Completion SPEC](docs/plans/NOTIFICATIONS-COMPLETION-SPEC.md), 2026-10-10. Route cũ/ownership không đổi. Bổ sung được duyệt 2026-10-11: preview/send/reply/retract có thể trả 400 `NOTIFICATION_CONTENT_RESTRICTED` khi văn bản có dấu hiệu nhạy cảm; không trả văn bản khớp, không tự sửa nội dung. Bộ lọc heuristic và giới hạn theo kênh được khóa trong Completion SPEC.
+
+> Amendment 2026-10-10: [NF-01 API](docs/plans/NOTIFICATIONS-NF01-SPEC.md) khóa inbox/summary/read snapshot; [NF-03a API](docs/plans/NOTIFICATIONS-NF03-SEND-SPEC.md) bổ sung compose-options/preview/send/own-sent và relay explicit đúng ma trận tác nhân. Chưa có thu hồi/đính chính/ack/reply hoặc sự kiện tự động NF-02.
+
 > Phiên bản: 2.1-draft
 > Trạng thái: COURSE REBASELINE — API v1 hiện hữu + target contract RBAC/Evidence chưa cutover
 > Base URL: /api/v1
@@ -646,6 +654,7 @@ Response 200: collection Goal DTO.
   "classId": "de17cff8-a6ce-4e42-9781-a1dc07e2e625",
   "className": "Toán 12A",
   "academicYear": "2026-2027",
+  "gradeLevel": 12,
   "subject": {
     "subjectId": "2ed34b81-0b0d-457c-888d-6a78f50a33d2",
     "subjectName": "Toán"
@@ -662,7 +671,7 @@ Response 200: collection Goal DTO.
 
 ## 29. POST /classes
 
-Quyền: CenterManager.
+Quyền: CenterManager (`organization.classes.manage`).
 
 Request:
 
@@ -670,6 +679,7 @@ Request:
 {
   "className": "Toán 12A",
   "academicYear": "2026-2027",
+  "gradeLevel": 12,
   "subjectId": "2ed34b81-0b0d-457c-888d-6a78f50a33d2",
   "teacherId": "2a584ad0-6ea5-4ff7-a3a9-9baf8cbc2036"
 }
@@ -681,7 +691,7 @@ Response 201: Class DTO.
 
 Quyền: Teacher hoặc CenterManager.
 
-Query: teacherId optional cho CenterManager, subjectId, status, page, pageSize.
+Query: teacherId optional cho CenterManager, subjectId, gradeLevel, status, page, pageSize.
 Teacher chỉ nhận Class của mình.
 
 ## 31. GET /classes/{classId}
@@ -691,7 +701,7 @@ Response 200: Class DTO.
 
 ## 32. PATCH /classes/{classId}
 
-Quyền: CenterManager.
+Quyền: CenterManager (`organization.classes.manage`).
 
 Request:
 
@@ -699,6 +709,7 @@ Request:
 {
   "className": "Toán 12A nâng cao",
   "teacherId": "2a584ad0-6ea5-4ff7-a3a9-9baf8cbc2036",
+  "gradeLevel": 12,
   "status": "Active",
   "rowVersion": "1"
 }
@@ -775,6 +786,34 @@ Responses:
 - `400 Bad Request`: Khi `page < 1`, `pageSize < 1`, `pageSize > 100`, hoặc `search > 200 ký tự`. ErrorCode: `VALIDATION_FAILED`.
 - `403 Forbidden`: Khi actor thiếu quyền `organization.classes.manage_members` hoặc `organization.students.read`, hoặc Teacher không phải chủ nhiệm lớp. ErrorCode: `AUTH_PERMISSION_REQUIRED` hoặc `FORBIDDEN_RESOURCE`.
 - `404 Not Found`: Khi `classId` rỗng (`Guid.Empty`), không tồn tại hoặc thuộc trung tâm khác (cross-tenant fail-closed). ErrorCode: `RESOURCE_NOT_FOUND`.
+
+## 35.2. DELETE /classes/{classId}
+
+Quyền: CenterManager (Bắt buộc permission `organization.classes.delete`). Kiểm tra fail-closed tại backend.
+
+Mục đích: Xóa lớp học tạo nhầm khi chưa có bất kỳ lịch sử học tập hay liên kết dữ liệu nào.
+
+Quy tắc nghiệp vụ và ràng buộc:
+1. **Điều kiện xóa sạch**: Chỉ cho phép xóa khi lớp:
+   - Chưa từng có thành viên (không có bản ghi `class_students` nào, kể cả trạng thái `Removed`).
+   - Chưa từng có bài tập nào (`assignments` count == 0).
+   - Chưa từng được gán giáo trình nào (`curriculum_classes` count == 0).
+2. **Hướng dẫn Lưu trữ khi có lịch sử**: Nếu lớp đã có thành viên (Active hoặc Removed), bài tập hoặc giáo trình, API từ chối với HTTP 409 `INVALID_STATE_TRANSITION`, kèm thông báo hướng dẫn người dùng chuyển lớp sang trạng thái Lưu trữ (Archived) thay vì xóa.
+3. **Soft-delete & Khắc phục Unique Index Conflict**:
+   - Lớp được đánh dấu xóa mềm: `is_deleted = 1`, `deleted_at = UtcNow`, `deleted_by = actorUserId`.
+   - Để tránh xung đột với unique index `(center_id, class_name, academic_year)` khi tạo lại lớp cùng tên trong cùng năm học, `class_name` được đổi tên hậu tố `#del#{class_id:N}` trước khi lưu.
+4. **Audit Log**: Thao tác xóa ghi nhận vào `authorization_audit_logs` với `ActionType = "ClassDeleted"`, snapshot dữ liệu trước và sau xóa.
+5. **Chống Race Condition Concurrency**: Khi thêm học sinh vào lớp (`POST /classes/{classId}/students`), hệ thống chạm vào `existingClass.UpdatedAt` và `UpdatedBy` để kích hoạt OCC RowVersion, bảo đảm không xảy ra tranh chấp thêm học sinh đồng thời với thao tác xóa lớp.
+
+Query parameters (tùy chọn):
+- `expectedRowVersion`: bigint unsigned (kiểm tra OCC nếu client cung cấp).
+
+Responses:
+- `204 No Content`: Xóa mềm lớp thành công.
+- `401 Unauthorized`: Chưa xác thực.
+- `403 Forbidden`: Thiếu quyền `organization.classes.delete` hoặc không phải CenterManager (`AUTH_PERMISSION_REQUIRED` hoặc `FORBIDDEN_RESOURCE`).
+- `404 Not Found`: Lớp không tồn tại, đã bị xóa hoặc thuộc center khác (`RESOURCE_NOT_FOUND`).
+- `409 Conflict`: Lớp đã có dữ liệu lịch sử (`INVALID_STATE_TRANSITION`) hoặc xung đột phiên bản OCC (`CONCURRENCY_CONFLICT`).
 
 # Subjects và Knowledge Graph
 
@@ -1248,10 +1287,12 @@ Activate request:
 
 ### 48.1. POST /questions/import/preview
 
-Quyền: Teacher, CenterManager (Policy: `curriculum.questions.create`).
+Quyền: Teacher có capability `curriculum.questions.create`. CenterManager không tự kế thừa quyền tạo nội dung học thuật của Teacher.
 Content-Type: `multipart/form-data`
 
 Request: File upload (`.csv`, `.txt`, `.xlsx`, `.docx`) qua trường `file`.
+
+DOCX phải chứa bảng với hàng tiêu đề theo file mẫu CSV; không suy đoán cấu trúc từ văn bản tự do. Giới hạn 10 MiB nén, 50 MiB giải nén, 5.000 hàng. `invalidCount` đếm hàng có lỗi, không đếm số thông báo. Điểm tối đa trong `(0, 999.99]`, tối đa hai chữ số thập phân; boolean không nhận diện bị báo lỗi thay vì mặc định false.
 
 Response 200:
 
@@ -1300,7 +1341,7 @@ Response 200:
 
 ### 48.2. POST /questions/import/confirm
 
-Quyền: Teacher, CenterManager (Policy: `curriculum.questions.create`).
+Quyền: Teacher có capability `curriculum.questions.create`; actor và tenant phải trùng preview.
 
 Request:
 
@@ -1372,15 +1413,22 @@ Request:
   "title": "Bài luyện Mũ và Logarit",
   "instructions": "Trình bày rõ cách làm.",
   "dueAt": "2026-07-20T16:59:59Z",
+  "timeLimitMinutes": 45,
   "questionIds": ["9001", "9002", "9003"],
   "targetMode": "SelectedStudents",
   "studentIds": [
     "baf68743-a272-4983-a9e2-41663734a7c2"
-  ]
+  ],
+  "allowGradeMismatch": false,
+  "gradeMismatchReason": null
 }
 ~~~
 
-targetMode: WholeClass hoặc SelectedStudents. GapGroup UI gửi SelectedStudents và server ghi targetSource GapGroup khi source được chỉ định.
+Quy tắc nghiệp vụ:
+- **targetMode**: Lưu trữ tường minh (`WholeClass` hoặc `SelectedStudents`). Tuyệt đối không suy đoán `WholeClass` khi danh sách target rỗng.
+- **Ràng buộc SelectedStudents (Fail-Closed)**: Khi `targetMode == "SelectedStudents"`, danh sách `studentIds` bắt buộc không được rỗng và toàn bộ học sinh phải là thành viên hoạt động (`Active`) của chính lớp đó tại thời điểm tạo/cập nhật.
+- **Ràng buộc học thuật theo khối**: Mặc định mọi câu hỏi phải cùng môn và cùng khối (`GradeLevel`) với lớp (hoặc câu hỏi chưa phân loại). Nếu giáo viên chủ đích giao câu hỏi khác khối (ví dụ lớp 12 làm bài lớp 11 để bù lỗ hổng), bắt buộc phải gửi `allowGradeMismatch: true` kèm lý do sư phạm `gradeMismatchReason` (không được để trống). Vi phạm sẽ bị từ chối với 400 `VALIDATION_FAILED`.
+- **Ràng buộc Publish từ Draft**: `POST /assignments/{id}/publish` bắt buộc kiểm tra lớp còn `Active` (từ chối 409 `INVALID_STATE_TRANSITION` nếu lớp đã bị Archived) và tái xác thực toàn bộ học sinh trong `SelectedStudents` vẫn đang là thành viên hoạt động của lớp.
 
 Response 201: Assignment DTO Draft.
 
@@ -1391,7 +1439,7 @@ Response 201: Assignment DTO Draft.
 | GET | /assignments | Teacher, CenterManager | Filter classId/status/due range |
 | GET | /assignments/{id} | Teacher owner, CenterManager | Full DTO |
 | PATCH | /assignments/{id} | Teacher owner, CenterManager | Chỉ Draft; payload như create + rowVersion |
-| POST | /assignments/{id}/publish | Teacher owner, CenterManager | Materialize targets/progress |
+| POST | /assignments/{id}/publish | Teacher owner, CenterManager | Materialize targets/progress (kiểm tra lớp Active) |
 | POST | /assignments/{id}/close | Teacher owner, CenterManager | Close |
 | GET | /assignments/{id}/progress | Teacher owner, CenterManager | Student progress collection |
 | GET | /students/me/assignments | Student | Filter status |
@@ -1883,6 +1931,16 @@ Response 200:
 | POST | /students/me/recommendation/{id}/accept | — | 200 updated status |
 | POST | /students/me/recommendation/{id}/dismiss | reason optional, tối đa 1000 ký tự | 200 updated status; reason được lưu vào audit state của recommendation |
 | GET | /students/me/learning-path | subjectId required | Active Learning Path |
+
+Các endpoint lộ trình chi tiết (Student, capability đọc/cập nhật own):
+
+- `GET /students/me/learning-path/detailed?subjectId&classId`: schedule đã lưu, revalidate trạng thái câu hỏi hiện tại.
+- Có thể thêm `pathId` (GUID) để đọc đúng phiên bản kế hoạch của buổi đã học khi recommendation đã thay bản mới. Luôn kiểm tra tenant + student + subject; session có classId phải khớp classId hiện tại và topic scope. Không tìm thấy/ngoài scope trả 404. Không có pathId vẫn đọc phiên bản hiện tại như trước.
+- `POST /students/me/learning-path/generate`: whitelist self level/goal/pace/mode; note tối đa 1000 ký tự; invalid input 400, môn không tồn tại 404, prerequisite chưa đáp ứng 409.
+- `GET /students/me/learning-path/sessions/{sessionId}?subjectId&classId`: buổi thuộc học sinh và scope hiện tại, kèm `rowVersion`, `startedAtUtc`.
+- `PATCH /students/me/learning-path/sessions/{sessionId}?subjectId`: `{status,classId,history,expectedRowVersion?,acknowledgedActivities?}`. Client gửi version đã đọc; version cũ hoặc race DB trả 409. Start ghi thời gian server. Completed cần đủ attempt không skipped của học sinh cho câu trong buổi, sau lúc bắt đầu, đạt `requiredCorrectRate`. Evaluate tự kiểm tra và giữ InProgress/chuyển Completed/NeedsReview. Buổi không có câu cần xác nhận hoạt động tường minh. Tiến độ/checkpoint được cập nhật cùng schedule.
+- `GET /learning/next-question?subjectId&classId&sessionId`: với sessionId chỉ chọn câu Active còn lại trong buổi đã bắt đầu; không lấy đề xuất chung thay thế. Buổi đã bắt đầu vẫn gắn path gốc khi recommendation được thay phiên bản.
+- Schedule luyện tự do không giao Essay/Manual vì free-practice không có quyền teacher review; session cũ cũng loại các câu này. Nếu không còn câu tự chấm, buổi dùng hoạt động thay thế và acknowledgement tường minh, không coi correctness null là đúng.
 
 Twin history item:
 
@@ -3056,3 +3114,27 @@ Thêm optional field có thể là non-breaking nhưng vẫn phải cập nhật
 - [ ] Thao tác thay đổi Center/Manager bắt buộc lý do `reason` hợp lệ và audit log redacted.
 - [ ] Evidence Gate fields là server-owned, có policyVersion/reasonCodes và fallback không đổi Knowledge Mastery.
 - [ ] API target v2 chỉ được đánh dấu IMPLEMENTED sau khi schema migration, backend và frontend tương ứng hoàn tất.
+
+# 91. Role Boundary Security Enforcement & Question Reasoning Specification (POST-R09-ROLE-BOUNDARY-UX)
+
+## 91.1. Center Manager Fail-Closed Boundary & Permission Matrix
+
+Hệ thống thiết lập ranh giới bảo mật nghiêm ngặt giữa Quản lý Trung tâm (Center Manager) và Giáo viên (Teacher):
+
+| Nhóm Tài Nguyên | Endpoint / Quyền | Center Manager | Teacher | Quy tắc Xử lý |
+|---|---|:---:|:---:|---|
+| **Hành chính & Tổ chức** | `dashboards.center.read`, `organization.*`, `knowledge.subjects.*`, `authorization.*` | **Cho phép (200)** | Bị từ chối (403) | CM quản trị danh mục và tổng quan vận hành |
+| **Đồ thị tri thức (DAG)** | `knowledge.nodes.*`, `knowledge.edges.*` | **CẤM (403)** | **Cho phép (200)** | Fail-closed: CM gọi use case trả về `ForbiddenResource` |
+| **Giáo trình môn học** | `curriculum.*` | **CẤM (403)** | **Cho phép (200)** | CM không can thiệp cây bài học và chương mục |
+| **Ngân hàng câu hỏi** | `questions.*` | **CẤM (403)** | **Cho phép (200)** | Chỉ giáo viên chuyên môn được tạo và duyệt đề |
+| **Bài tập & Tiến độ** | `assignments.*` | **CẤM (403)** | **Cho phép (200)** | Giáo viên sở hữu lớp giao bài và theo dõi tiến độ |
+| **Chấm bài & Can thiệp AI** | `twin.reasoning.*`, `teacher.reviews.*` | **CẤM (403)** | **Cho phép (200)** | Review Queue và Teacher Override thuộc sư phạm |
+| **Dashboard Sư phạm** | `dashboards.teacher.read_scoped` | **CẤM (403)** | **Cho phép (200)** | Tránh rò rỉ dữ liệu lớp phụ trách của giáo viên khác |
+
+## 91.2. Đặc tả Thuộc tính reasoningRequired và Hành vi Nộp bài
+
+- **Mặc định Opt-in:** Trong payload tạo/sửa câu hỏi (`POST /api/v1/questions`, `PUT /api/v1/questions/{id}`), thuộc tính `reasoningRequired` có kiểu `boolean` và mặc định là `false` nếu client không gửi.
+- **Hành vi nộp bài của học sinh (`POST /api/v1/learning-attempts`):**
+  - Khi `reasoningRequired == false`: Học sinh chỉ cần chọn/nhập đáp án chính xác. Nếu bỏ trống trường `reasoningText` và không đính kèm ảnh nháp, bài làm vẫn được chấm điểm hợp lệ và cập nhật độ thành thạo tri thức (Mastery) mà không bị phạt hay từ chối.
+  - Khi `reasoningRequired == true`: Học sinh bắt buộc phải có nội dung giải trình hoặc ảnh nháp để nộp bài.
+  - *Tự nguyện giải trình:* Nếu câu hỏi có `reasoningRequired == false` nhưng học sinh chủ động nhập lời giải hoặc đính kèm nháp, hệ thống AI vẫn kích hoạt phân tích đa phương thức để ghi nhận các điểm nhận thức sâu sắc vào Digital Twin.

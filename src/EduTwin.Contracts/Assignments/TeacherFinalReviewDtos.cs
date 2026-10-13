@@ -11,6 +11,13 @@ public sealed class ApproveAssignmentResultRequest
     public uint FinalReviewVersion { get; set; }
 }
 
+public sealed class ReopenAssignmentResultRequest
+{
+    public Guid StudentId { get; set; }
+    public string Reason { get; set; } = string.Empty;
+    public uint FinalReviewVersion { get; set; }
+}
+
 public sealed class AssignmentFinalReviewDto
 {
     public string AssignmentId { get; set; } = string.Empty;

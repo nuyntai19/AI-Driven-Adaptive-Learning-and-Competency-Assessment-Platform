@@ -36,15 +36,14 @@ public class GetAssignmentProgressUseCase : IGetAssignmentProgressUseCase
             !_tenantContext.CenterId.HasValue || _tenantContext.CenterId.Value == Guid.Empty ||
             !_tenantContext.UserId.HasValue || _tenantContext.UserId.Value == Guid.Empty ||
             string.IsNullOrWhiteSpace(_tenantContext.Role) ||
-            (!string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal) &&
-             !string.Equals(_tenantContext.Role, nameof(UserRole.CenterManager), StringComparison.Ordinal)) ||
+            !string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal) ||
             assignmentId == Guid.Empty)
         {
-            return GetAssignmentProgressResult.Failure(ErrorCodes.ResourceNotFound);
+            return GetAssignmentProgressResult.Failure(ErrorCodes.ForbiddenResource);
         }
 
         var actorId = _tenantContext.UserId.Value;
-        var isTeacher = string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal);
+        var centerId = _tenantContext.CenterId.Value;
 
         var assignment = await _dbContext.Assignments
             .AsNoTracking()
@@ -55,17 +54,14 @@ public class GetAssignmentProgressUseCase : IGetAssignmentProgressUseCase
         if (assignment == null)
             return GetAssignmentProgressResult.Failure(ErrorCodes.ResourceNotFound);
 
-        if (isTeacher)
-        {
-            var ownsClass = await _dbContext.Classes
-                .AsNoTracking()
-                .AnyAsync(
-                    item => item.ClassId == assignment.ClassId && item.TeacherId == actorId,
-                    cancellationToken);
+        var ownsClass = await _dbContext.Classes
+            .AsNoTracking()
+            .AnyAsync(
+                item => item.ClassId == assignment.ClassId && item.TeacherId == actorId,
+                cancellationToken);
 
-            if (!ownsClass)
-                return GetAssignmentProgressResult.Failure(ErrorCodes.ResourceNotFound);
-        }
+        if (!ownsClass)
+            return GetAssignmentProgressResult.Failure(ErrorCodes.ForbiddenResource);
 
         var progressRows = await _dbContext.StudentAssignmentProgresses
             .AsNoTracking()
@@ -86,6 +82,15 @@ public class GetAssignmentProgressUseCase : IGetAssignmentProgressUseCase
             .ToListAsync(cancellationToken);
 
         var utcNow = _timeProvider.GetUtcNow().UtcDateTime;
+        var questions = await _dbContext.AssignmentQuestions.AsNoTracking()
+            .Where(q => q.CenterId == centerId && q.AssignmentId == assignmentId).ToListAsync(cancellationToken);
+        // Load the owned assignment once. Avoid parameterized Guid-list Contains,
+        // which the MySQL EF provider cannot reliably map. Only progress rows are projected below.
+        var attempts = await _dbContext.Attempts.AsNoTracking()
+            .Where(a => a.CenterId == centerId && a.AssignmentId == assignmentId)
+            .ToListAsync(cancellationToken);
+        var attemptsByStudent = attempts.ToLookup(a => a.StudentId);
+        var rubric = await AssignmentRubricReviewState.LoadAsync(_dbContext, centerId, assignmentId, null, cancellationToken);
         var data = progressRows
             .Select(item => new AssignmentProgressItemDto
             {
@@ -98,7 +103,8 @@ public class GetAssignmentProgressUseCase : IGetAssignmentProgressUseCase
                 TotalQuestionCount = checked((int)item.TotalQuestionCount),
                 TeacherFinalReviewStatus = item.TeacherFinalReviewStatus.ToString(),
                 FinalReviewVersion = item.FinalReviewVersion,
-                CompletedAt = item.CompletedAt
+                CompletedAt = item.CompletedAt,
+                FinalReviewEligibility = AssignmentFinalReviewPolicy.Evaluate(questions, attemptsByStudent[item.StudentId], rubric.QuestionIds, rubric.GradedAttemptIds)
             })
             .ToList();
 

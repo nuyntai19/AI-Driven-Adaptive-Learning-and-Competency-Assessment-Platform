@@ -2,10 +2,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { curriculumApi } from "../../api/curriculumApi";
 import type { CreateCurriculumRequest, UpdateCurriculumRequest, PublishCurriculumRequest, UpdateCurriculumClassesRequest, UpdateCurriculumNodesRequest, ReviewStatus } from "../../types/curriculum";
 
-export function useCurriculums(subjectId?: string, status?: ReviewStatus) {
+export function useCurriculums(subjectId?: string, status?: ReviewStatus, gradeLevel?: number) {
   return useQuery({
-    queryKey: ["curriculums", subjectId, status],
-    queryFn: () => curriculumApi.getAll({ subjectId, status }),
+    queryKey: ["curriculums", subjectId, status, gradeLevel],
+    queryFn: () => curriculumApi.getAll({ subjectId, status, gradeLevel }),
   });
 }
 

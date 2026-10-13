@@ -7,6 +7,7 @@ public class CreateKnowledgeEdgeResult
     public bool IsSuccess { get; }
     public string? ErrorCode { get; }
     public KnowledgeEdgeDto? Data { get; }
+    public string? Message { get; private set; }
 
     private CreateKnowledgeEdgeResult(bool isSuccess, string? errorCode, KnowledgeEdgeDto? data)
     {
@@ -16,5 +17,5 @@ public class CreateKnowledgeEdgeResult
     }
 
     public static CreateKnowledgeEdgeResult Success(KnowledgeEdgeDto data) => new(true, null, data);
-    public static CreateKnowledgeEdgeResult Failure(string errorCode) => new(false, errorCode, null);
+    public static CreateKnowledgeEdgeResult Failure(string errorCode, string? message = null) => new(false, errorCode, null) { Message = message };
 }

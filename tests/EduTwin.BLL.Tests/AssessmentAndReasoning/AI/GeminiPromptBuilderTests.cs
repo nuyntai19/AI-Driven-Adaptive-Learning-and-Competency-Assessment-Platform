@@ -31,6 +31,9 @@ public sealed class GeminiPromptBuilderTests
         var question = root.GetProperty("question");
         AssertObjectProperties(
             question,
+            "maxScore",
+            "contentLanguage",
+            "options",
             "questionType",
             "answerEvaluationMode",
             "questionText",
@@ -42,6 +45,7 @@ public sealed class GeminiPromptBuilderTests
         Assert.Equal("MultipleChoice", question.GetProperty("questionType").GetString());
         AssertObjectProperties(
             question.GetProperty("gradingCriteria"),
+            "criteria",
             "schemaVersion",
             "requiredIdeas",
             "commonErrors",
@@ -55,8 +59,7 @@ public sealed class GeminiPromptBuilderTests
             "reasoningText",
             "timeSpentSeconds",
             "confidence",
-            "answerChanges",
-            "imageParts");
+            "answerChanges");
         AssertObjectProperties(root.GetProperty("allowedKnowledgeNodes")[0], "nodeId", "nodeName");
     }
 
@@ -66,20 +69,21 @@ public sealed class GeminiPromptBuilderTests
         var prompt = new GeminiPromptBuilder().Build(CreateRequest(language: "vi"));
         using var document = ExtractInputJson(prompt);
 
-        Assert.Contains("vi means Vietnamese", prompt, StringComparison.Ordinal);
-        Assert.Contains("Use input.language for every free-text response field", prompt, StringComparison.Ordinal);
+        Assert.Contains("Always return language 'vi'", prompt, StringComparison.Ordinal);
+        Assert.Contains("natural Vietnamese", prompt, StringComparison.Ordinal);
         Assert.Equal("vi", document.RootElement.GetProperty("language").GetString());
     }
 
     [Fact]
-    public void Build_EnglishRequest_InstructsEnglishFreeText()
+    public void Build_EnglishContent_InstructsVietnameseFeedbackWithoutTranslatingAnswers()
     {
         var prompt = new GeminiPromptBuilder().Build(CreateRequest(language: "en"));
         using var document = ExtractInputJson(prompt);
 
-        Assert.Contains("en means English", prompt, StringComparison.Ordinal);
-        Assert.Contains("Use input.language for every free-text response field", prompt, StringComparison.Ordinal);
-        Assert.Equal("en", document.RootElement.GetProperty("language").GetString());
+        Assert.Contains("Always return language 'vi'", prompt, StringComparison.Ordinal);
+        Assert.Contains("Keep necessary English answers", prompt, StringComparison.Ordinal);
+        Assert.Contains("Manual means the teacher approves your proposal", prompt, StringComparison.Ordinal);
+        Assert.Equal("en", document.RootElement.GetProperty("question").GetProperty("contentLanguage").GetString());
     }
 
     [Fact]
@@ -119,8 +123,6 @@ public sealed class GeminiPromptBuilderTests
     {
         var prompt = new GeminiPromptBuilder().Build(CreateRequest());
 
-        Assert.DoesNotContain("methodDetected", prompt, StringComparison.Ordinal);
-        Assert.DoesNotContain("reasoningQuality", prompt, StringComparison.Ordinal);
         Assert.DoesNotContain("additionalProperties", prompt, StringComparison.Ordinal);
         Assert.DoesNotContain("minimum", prompt, StringComparison.Ordinal);
         Assert.DoesNotContain("maximum", prompt, StringComparison.Ordinal);
@@ -143,12 +145,52 @@ public sealed class GeminiPromptBuilderTests
     }
 
     [Fact]
-    public void Build_PreliminaryGrade_InstructsAiNotToRegradeOrContradictIt()
+    public void Build_PreliminaryGrade_AllowsAdvisoryDisagreementButNeverFinalGrading()
     {
         var prompt = new GeminiPromptBuilder().Build(CreateRequest());
 
         Assert.Contains("preliminaryIsCorrect", prompt, StringComparison.Ordinal);
-        Assert.Contains("Do NOT re-grade or contradict it", prompt, StringComparison.Ordinal);
+        Assert.Contains("never assign a final score", prompt, StringComparison.Ordinal);
+        Assert.Contains("request teacher review", prompt, StringComparison.Ordinal);
+        Assert.Contains("16/64", prompt, StringComparison.Ordinal);
+        Assert.Contains("Method-Agnostic", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Build_ScratchpadBytes_AreNotDuplicatedInTextPrompt()
+    {
+        var original = CreateRequest();
+        var image = new byte[50000];
+        var request = original with { StudentSubmission = original.StudentSubmission with { ImageParts = [new(image, "image/png")] } };
+        var prompt = new GeminiPromptBuilder().Build(request);
+        Assert.False(ExtractInputJson(prompt).RootElement.GetProperty("studentSubmission").TryGetProperty("imageParts", out _));
+        Assert.DoesNotContain(Convert.ToBase64String(image), prompt, StringComparison.Ordinal);
+        Assert.True(prompt.Length < 18000);
+    }
+
+    [Fact]
+    public void ProblemImage_IsSeparateFromScratchpadAndNotBase64PromptText()
+    {
+        var original = CreateRequest();
+        var questionImage = new AnalyzeReasoningImagePart(new byte[50000], "image/png");
+        var scratchpad = new AnalyzeReasoningImagePart([1, 2], "image/png");
+        var request = original with { Question = original.Question with { ImageParts = [questionImage] },
+            StudentSubmission = original.StudentSubmission with { ImageParts = [scratchpad] } };
+        var prompt = new GeminiPromptBuilder().Build(request);
+        using var json = ExtractInputJson(prompt);
+        Assert.Equal(1, json.RootElement.GetProperty("question").GetProperty("imageCount").GetInt32());
+        Assert.False(json.RootElement.GetProperty("question").TryGetProperty("imageParts", out _));
+        Assert.DoesNotContain(Convert.ToBase64String(questionImage.Data), prompt);
+        Assert.Contains("visual scale alone is NOT evidence", prompt);
+        Assert.Equal(new[] { questionImage, scratchpad }, request.AllImages());
+        var batch = new GeminiPromptBuilder().BuildBatch([new("first", request), new("second", request)]);
+        var start = batch.IndexOf("BATCH_INPUT_JSON_BEGIN\n", StringComparison.Ordinal) + "BATCH_INPUT_JSON_BEGIN\n".Length;
+        using var batchJson = JsonDocument.Parse(batch[start..batch.LastIndexOf("\nBATCH_INPUT_JSON_END", StringComparison.Ordinal)]);
+        var first = batchJson.RootElement[0]; var second = batchJson.RootElement[1];
+        Assert.Equal(1, first.GetProperty("questionImageIndexes")[0].GetInt32());
+        Assert.Equal(2, first.GetProperty("studentImageIndexes")[0].GetInt32());
+        Assert.Equal(3, second.GetProperty("questionImageIndexes")[0].GetInt32());
+        Assert.Equal(4, second.GetProperty("studentImageIndexes")[0].GetInt32());
     }
 
     private static AnalyzeReasoningRequest CreateRequest(
@@ -157,10 +199,11 @@ public sealed class GeminiPromptBuilderTests
         new()
         {
             SchemaVersion = AIAnalysisContract.SchemaVersion,
-            Language = language,
+            Language = "vi",
             Question = new AnalyzeReasoningQuestion
             {
                 QuestionType = QuestionType.MultipleChoice,
+                ContentLanguage = language,
                 QuestionText = "Giải phương trình ...",
                 CorrectAnswer = "B",
                 Solution = "Lời giải chuẩn",

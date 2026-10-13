@@ -6,4 +6,5 @@ public class CurriculumListQuery
 {
     public Guid? SubjectId { get; set; }
     public string? Status { get; set; }
+    public byte? GradeLevel { get; set; }
 }

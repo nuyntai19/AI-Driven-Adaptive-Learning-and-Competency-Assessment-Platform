@@ -38,17 +38,15 @@ public class CloseAssignmentUseCase : ICloseAssignmentUseCase
             !_tenantContext.CenterId.HasValue || _tenantContext.CenterId.Value == Guid.Empty ||
             !_tenantContext.UserId.HasValue || _tenantContext.UserId.Value == Guid.Empty ||
             string.IsNullOrWhiteSpace(_tenantContext.Role) ||
-            (!string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal) &&
-             !string.Equals(_tenantContext.Role, nameof(UserRole.CenterManager), StringComparison.Ordinal)))
+            !string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal))
         {
-            return CloseAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
+            return CloseAssignmentResult.Failure(ErrorCodes.ForbiddenResource);
         }
 
         if (assignmentId == Guid.Empty)
             return CloseAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
 
         var actorId = _tenantContext.UserId.Value;
-        var isTeacher = string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal);
 
         // ── 2. Validate rowVersion format: ASCII digits only, > 0 ──────────────
         if (string.IsNullOrEmpty(request.RowVersion))
@@ -71,16 +69,13 @@ public class CloseAssignmentUseCase : ICloseAssignmentUseCase
             return CloseAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
 
         // ── 4. Ownership guard ──────────────────────────────────────────────────
-        if (isTeacher)
-        {
-            var classOwner = await _dbContext.Classes
-                .AsNoTracking()
-                .Select(c => new { c.ClassId, c.TeacherId })
-                .FirstOrDefaultAsync(c => c.ClassId == assignment.ClassId, cancellationToken);
+        var classOwner = await _dbContext.Classes
+            .AsNoTracking()
+            .Select(c => new { c.ClassId, c.TeacherId })
+            .FirstOrDefaultAsync(c => c.ClassId == assignment.ClassId, cancellationToken);
 
-            if (classOwner == null || classOwner.TeacherId != actorId)
-                return CloseAssignmentResult.Failure(ErrorCodes.ResourceNotFound);
-        }
+        if (classOwner == null || classOwner.TeacherId != actorId)
+            return CloseAssignmentResult.Failure(ErrorCodes.ForbiddenResource);
 
         // ── 5. State checking ───────────────────────────────────────────────────
         if (assignment.Status != AssignmentStatus.Published)

@@ -50,10 +50,12 @@ public sealed class AIAnalysisJobBackgroundServiceTests
             entry => entry.Template.Contains("processing outcome", StringComparison.Ordinal));
         Assert.Equal(processingOutcome, processingLog.State["Outcome"]);
         Assert.Equal(
-            processingOutcome is AIAnalysisJobProcessingOutcome.RetryScheduled
-                or AIAnalysisJobProcessingOutcome.FallbackCompleted
-                    ? "AI_ANALYSIS_ATTEMPT_FAILED"
-                    : null,
+            processingOutcome switch
+            {
+                AIAnalysisJobProcessingOutcome.RetryScheduled => "AI_PROCESSING_DEFERRED",
+                AIAnalysisJobProcessingOutcome.FallbackCompleted => "AI_ANALYSIS_ATTEMPT_FAILED",
+                _ => null
+            },
             processingLog.State["ErrorCode"]);
         AssertStructuredIdentity(processingLog, scenario.WorkItems[0]);
     }

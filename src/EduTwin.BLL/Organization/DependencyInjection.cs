@@ -21,11 +21,13 @@ public static class DependencyInjection
         services.AddScoped<IResetAccountPasswordUseCase, ResetAccountPasswordUseCase>();
         services.AddScoped<IListClassesUseCase, ListClassesUseCase>();
         services.AddScoped<IGetClassUseCase, GetClassUseCase>();
+        services.AddScoped<ClassReportsUseCase>();
         services.AddScoped<ICreateClassUseCase, CreateClassUseCase>();
         services.AddScoped<IUpdateClassUseCase, UpdateClassUseCase>();
         services.AddScoped<IAddStudentsToClassUseCase, AddStudentsToClassUseCase>();
         services.AddScoped<IRemoveStudentFromClassUseCase, RemoveStudentFromClassUseCase>();
         services.AddScoped<IListClassCandidateStudentsUseCase, ListClassCandidateStudentsUseCase>();
+        services.AddScoped<IDeleteClassUseCase, DeleteClassUseCase>();
         return services;
     }
 }

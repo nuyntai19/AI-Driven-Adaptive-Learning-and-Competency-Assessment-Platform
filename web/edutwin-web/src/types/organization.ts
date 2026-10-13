@@ -160,8 +160,10 @@ export interface ClassTeacherDto {
 
 export interface ClassDto {
   classId: string;
+  learningScope?: "Current" | "History";
   className: string;
   academicYear: string;
+  gradeLevel?: number | null;
   subject: ClassSubjectDto;
   teacher: ClassTeacherDto;
   studentCount: number;
@@ -179,6 +181,7 @@ export interface ClassListParams {
   pageSize: number;
   teacherId?: string;
   subjectId?: string;
+  gradeLevel?: number;
   status?: ClassStatus;
   search?: string;
 }
@@ -188,17 +191,22 @@ export interface CreateClassRequest {
   academicYear: string;
   subjectId: string;
   teacherId: string;
+  gradeLevel?: number | null;
 }
 
 export interface UpdateClassRequest {
   className: string;
   teacherId: string;
   status: ClassStatus;
+  gradeLevel?: number | null;
   rowVersion: string;
+  lifecycleReason?: string;
 }
 
 export interface AddStudentsToClassRequest {
   studentIds: string[];
+  allowGradeMismatch?: boolean;
+  gradeMismatchReason?: string;
 }
 
 export interface AddStudentsToClassData {
@@ -223,6 +231,7 @@ export interface CandidateStudentListParams {
   page?: number;
   pageSize?: number;
   search?: string;
+  includeOtherGrades?: boolean;
 }
 
 export interface ClassResponse {
@@ -286,3 +295,48 @@ export interface UpdateCenterProfileRequest {
   timezone: string;
   rowVersion: string;
 }
+
+export interface TeacherStudentNoteDto {
+  noteId: string;
+  teacherId: string;
+  teacherName?: string | null;
+  studentId: string;
+  studentName?: string | null;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+  rowVersion: string;
+}
+
+export interface CreateTeacherStudentNoteRequest {
+  studentId: string;
+  content: string;
+}
+
+export interface UpdateTeacherStudentNoteRequest {
+  content: string;
+  rowVersion?: string;
+}
+
+export interface UpsertTeacherStudentNoteRequest {
+  content: string;
+  rowVersion?: string;
+}
+
+export interface TeacherStudentNoteResponse {
+  data: TeacherStudentNoteDto;
+  meta: Meta;
+}
+
+export interface TeacherStudentNoteListResponse {
+  data: TeacherStudentNoteDto[];
+  meta: PagedMeta;
+}
+
+export interface TeacherStudentNoteListParams {
+  studentId?: string;
+  teacherId?: string;
+  page?: number;
+  pageSize?: number;
+}
+

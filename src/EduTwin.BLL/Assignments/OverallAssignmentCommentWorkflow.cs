@@ -133,6 +133,7 @@ public sealed class OverallAssignmentCommentWorkflow : IOverallAssignmentComment
         var totalQuestions = assignmentQuestions.Count;
         int correctCount = 0;
         int partialOrIncorrectCount = 0;
+        int awaitingTeacherCount = 0;
         var errorTypes = new List<string>();
         var misconceptions = new List<string>();
 
@@ -147,10 +148,11 @@ public sealed class OverallAssignmentCommentWorkflow : IOverallAssignmentComment
                 {
                     correctCount++;
                 }
-                else
+                else if (isCorrect == false)
                 {
                     partialOrIncorrectCount++;
                 }
+                else awaitingTeacherCount++;
 
                 if (analysis != null)
                 {
@@ -169,7 +171,7 @@ public sealed class OverallAssignmentCommentWorkflow : IOverallAssignmentComment
         }
 
         var now = _timeProvider.GetUtcNow().UtcDateTime;
-        var comment = BuildSynthesis(totalQuestions, correctCount, partialOrIncorrectCount, errorTypes, misconceptions);
+        var comment = BuildSynthesis(totalQuestions, correctCount, partialOrIncorrectCount, errorTypes, misconceptions, awaitingTeacherCount);
 
         progress.OverallAiComment = comment;
         progress.OverallAiCommentGeneratedAt = now;
@@ -186,7 +188,8 @@ public sealed class OverallAssignmentCommentWorkflow : IOverallAssignmentComment
         int correctCount,
         int partialOrIncorrectCount,
         List<string> errorTypes,
-        List<string> misconceptions)
+        List<string> misconceptions,
+        int awaitingTeacherCount)
     {
         var parts = new List<string>();
 
@@ -199,6 +202,8 @@ public sealed class OverallAssignmentCommentWorkflow : IOverallAssignmentComment
         else
         {
             parts.Add($"Bạn đã hoàn thành {correctCount}/{totalQuestions} câu hỏi chính xác.");
+            if (awaitingTeacherCount > 0)
+                parts.Add($"{awaitingTeacherCount} câu đang chờ giáo viên duyệt điểm; các câu này chưa được kết luận là sai.");
 
             if (correctCount > 0)
             {

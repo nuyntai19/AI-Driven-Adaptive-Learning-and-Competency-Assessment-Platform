@@ -18,6 +18,7 @@ public class TeacherReviewHistory : ITenantAppendOnlyEntity, IHasRowVersion
     public bool? NewIsCorrect { get; set; }
     public string? Note { get; set; }
     public uint OverrideVersion { get; set; }
+    public string? RubricResultJson { get; set; }
 
     public DateTime CreatedAt { get; set; }
     public Guid? CreatedBy { get; set; }

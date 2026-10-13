@@ -22,6 +22,8 @@ public sealed class AIAnalysisContractTests
     {
         AssertExactProperties(
             typeof(AnalyzeReasoningRequest),
+            ("ResponseRepairRule", typeof(AIResponseValidationRule?), NullabilityState.Nullable, false),
+            ("VerifiedVisualEvidence", typeof(IReadOnlyList<RubricVisualEvidence>), NullabilityState.Nullable, false),
             ("SchemaVersion", typeof(string), NullabilityState.NotNull, true),
             ("Language", typeof(string), NullabilityState.NotNull, true),
             ("Question", typeof(AnalyzeReasoningQuestion), NullabilityState.NotNull, true),
@@ -29,6 +31,9 @@ public sealed class AIAnalysisContractTests
             ("AllowedKnowledgeNodes", typeof(IReadOnlyList<AnalyzeReasoningAllowedKnowledgeNode>), NullabilityState.NotNull, true));
         AssertExactProperties(
             typeof(AnalyzeReasoningQuestion),
+            ("MaxScore", typeof(decimal), NullabilityState.NotNull, false),
+            ("ContentLanguage", typeof(string), NullabilityState.NotNull, false),
+            ("Options", typeof(IReadOnlyList<AnalyzeReasoningOption>), NullabilityState.NotNull, false),
             ("QuestionType", typeof(QuestionType), NullabilityState.NotNull, false),
             ("AnswerEvaluationMode", typeof(QuestionAnswerEvaluationMode), NullabilityState.NotNull, false),
             ("QuestionText", typeof(string), NullabilityState.NotNull, true),
@@ -36,9 +41,12 @@ public sealed class AIAnalysisContractTests
             ("CanonicalCorrectAnswer", typeof(string), NullabilityState.Nullable, false),
             ("Solution", typeof(string), NullabilityState.NotNull, true),
             ("ExpectedReasoning", typeof(string), NullabilityState.Nullable, false),
-            ("GradingCriteria", typeof(AnalyzeReasoningGradingCriteria), NullabilityState.NotNull, true));
+            ("GradingCriteria", typeof(AnalyzeReasoningGradingCriteria), NullabilityState.NotNull, true),
+            ("ImageParts", typeof(IReadOnlyList<AnalyzeReasoningImagePart>), NullabilityState.NotNull, false),
+            ("ImageCount", typeof(int), NullabilityState.NotNull, false));
         AssertExactProperties(
             typeof(AnalyzeReasoningGradingCriteria),
+            ("Criteria", typeof(IReadOnlyList<AnalyzeReasoningRubricCriterion>), NullabilityState.NotNull, false),
             ("SchemaVersion", typeof(string), NullabilityState.NotNull, true),
             ("RequiredIdeas", typeof(IReadOnlyList<string>), NullabilityState.NotNull, true),
             ("CommonErrors", typeof(IReadOnlyList<string>), NullabilityState.NotNull, true),
@@ -76,7 +84,15 @@ public sealed class AIAnalysisContractTests
             ("Confidence", typeof(int), NullabilityState.NotNull, false),
             ("Feedback", typeof(string), NullabilityState.NotNull, true),
             ("SolutionType", typeof(string), NullabilityState.Nullable, false),
-            ("AiSolution", typeof(string), NullabilityState.Nullable, false));
+            ("AiSolution", typeof(string), NullabilityState.Nullable, false),
+            ("AnswerAssessment", typeof(string), NullabilityState.Nullable, false),
+            ("ReasoningVerdict", typeof(string), NullabilityState.Nullable, false),
+            ("SuggestedScore", typeof(decimal?), NullabilityState.Nullable, false),
+            ("UsesAlternativeMethod", typeof(bool), NullabilityState.NotNull, false),
+            ("SuggestedRubricScores", typeof(IReadOnlyList<RubricScoreInput>), NullabilityState.NotNull, false),
+            ("ReasoningIssues", typeof(IReadOnlyList<AIReasoningIssue>), NullabilityState.Nullable, false),
+            ("VisualEvidence", typeof(IReadOnlyList<RubricVisualEvidence>), NullabilityState.Nullable, false),
+            ("CriterionDeductions", typeof(IReadOnlyList<AICriterionDeduction>), NullabilityState.Nullable, false));
     }
 
     [Fact]
@@ -92,6 +108,9 @@ public sealed class AIAnalysisContractTests
         var question = root.GetProperty("question");
         AssertObjectProperties(
             question,
+            "maxScore",
+            "contentLanguage",
+            "options",
             "questionType",
             "answerEvaluationMode",
             "questionText",
@@ -109,7 +128,7 @@ public sealed class AIAnalysisContractTests
         Assert.Equal("Các ý mong đợi", question.GetProperty("expectedReasoning").GetString());
 
         var gradingCriteria = question.GetProperty("gradingCriteria");
-        AssertObjectProperties(gradingCriteria, "schemaVersion", "requiredIdeas", "commonErrors", "scoringNotes");
+        AssertObjectProperties(gradingCriteria, "criteria", "schemaVersion", "requiredIdeas", "commonErrors", "scoringNotes");
         Assert.Equal("1.0", gradingCriteria.GetProperty("schemaVersion").GetString());
         Assert.Equal("Xác định điều kiện", gradingCriteria.GetProperty("requiredIdeas")[0].GetString());
         Assert.Equal("Quên điều kiện", gradingCriteria.GetProperty("commonErrors")[0].GetString());
@@ -125,8 +144,8 @@ public sealed class AIAnalysisContractTests
             "reasoningText",
             "timeSpentSeconds",
             "confidence",
-            "answerChanges",
-            "imageParts");
+            "answerChanges");
+        Assert.False(submission.TryGetProperty("imageParts", out _)); // Images are sent as multimodal parts, never duplicated in JSON.
         Assert.Equal("B", submission.GetProperty("finalAnswer").GetString());
         Assert.Null(submission.GetProperty("answerDisplayLatex").GetString());
         Assert.Null(submission.GetProperty("canonicalFinalAnswer").GetString());
@@ -161,7 +180,14 @@ public sealed class AIAnalysisContractTests
             "confidence",
             "feedback",
             "solutionType",
-            "aiSolution");
+            "aiSolution",
+            "answerAssessment",
+            "reasoningVerdict",
+            "suggestedScore",
+            "usesAlternativeMethod",
+            "suggestedRubricScores",
+            "reasoningIssues",
+            "visualEvidence");
         Assert.Equal("ai-analysis-v1", root.GetProperty("schemaVersion").GetString());
         Assert.Equal("vi", root.GetProperty("language").GetString());
         Assert.Equal("Đưa hai vế về cùng cơ số", root.GetProperty("methodDetected").GetString());

@@ -5,7 +5,7 @@ import { isAxiosError } from "axios";
 import { platformApi } from "../api/platformApi";
 import type { PlatformAuditItem, PlatformAuditQuery } from "../types/platform";
 import { useModalAccessibility } from "../utils/useModalAccessibility";
-import { AUDIT_ACTION_MAP } from "../utils/platformPresentation";
+import { auditActionLabel, auditTargetLabel } from "../utils/platformPresentation";
 
 export const PlatformAuditLogsPage: React.FC = () => {
   const [page, setPage] = useState<number>(1);
@@ -128,14 +128,14 @@ export const PlatformAuditLogsPage: React.FC = () => {
   const kpiLabel = isFiltered ? "Kết quả theo bộ lọc" : "Tổng số bản ghi kiểm toán";
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
+    <div className="w-full min-w-0 space-y-6">
       {/* Page Header */}
       <div>
-        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-          Nhật Ký Kiểm Toán Nền Tảng (Audit Logs)
-        </h1>
+        <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">
+          Kiểm toán chi tiết
+        </h2>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Truy vết toàn bộ hoạt động quản trị cross-tenant, được bảo mật và khử khuẩn dữ liệu nhạy cảm.
+          Truy vết thay đổi quản trị nền tảng và thông tin trung tâm trong phạm vi được phép; dữ liệu nhạy cảm được ẩn.
         </p>
       </div>
 
@@ -183,7 +183,7 @@ export const PlatformAuditLogsPage: React.FC = () => {
       )}
 
       {/* Quick Stat Pill */}
-      <div className="flex items-center justify-between p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
+      <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
         <div className="flex items-center gap-3">
           <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             {kpiLabel}:
@@ -204,7 +204,7 @@ export const PlatformAuditLogsPage: React.FC = () => {
 
       {/* Filter Bar */}
       <form onSubmit={handleSearchSubmit} className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-xs border border-slate-200 dark:border-slate-800 space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5 gap-3">
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
               Loại hành động
@@ -215,15 +215,16 @@ export const PlatformAuditLogsPage: React.FC = () => {
               className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">-- Tất cả hành động --</option>
-              <option value="CenterCreated">Khởi tạo trung tâm (CenterCreated)</option>
-              <option value="CenterStatusUpdated">Đổi trạng thái trung tâm (CenterStatusUpdated)</option>
-              <option value="CenterMetadataUpdated">Sửa thông tin trung tâm (CenterMetadataUpdated)</option>
-              <option value="CenterManagerCreated">Thêm quản lý mới (CenterManagerCreated)</option>
-              <option value="CenterManagerStatusUpdated">Đổi trạng thái quản lý (CenterManagerStatusUpdated)</option>
-              <option value="CenterPrimaryManagerChanged">Chuyển quản lý chính (CenterPrimaryManagerChanged)</option>
-              <option value="CenterManagerPasswordReset">Đặt lại mật khẩu quản lý (CenterManagerPasswordReset)</option>
-              <option value="PlatformAdminPasswordChanged">Admin đổi mật khẩu (PlatformAdminPasswordChanged)</option>
-              <option value="PlatformAdminSessionsRevoked">Admin thu hồi phiên (PlatformAdminSessionsRevoked)</option>
+              <option value="CenterCreated">Khởi tạo trung tâm</option>
+              <option value="CenterStatusUpdated">Đổi trạng thái trung tâm</option>
+              <option value="CenterMetadataUpdated">Sửa thông tin trung tâm</option>
+              <option value="CenterManagerCreated">Thêm quản lý mới</option>
+              <option value="CenterManagerStatusUpdated">Đổi trạng thái quản lý</option>
+              <option value="CenterPrimaryManagerChanged">Chuyển quản lý chính</option>
+              <option value="CenterManagerPasswordReset">Đặt lại mật khẩu quản lý</option>
+              <option value="PlatformAdminPasswordChanged">Admin đổi mật khẩu</option>
+              <option value="PlatformAdminSessionsRevoked">Admin thu hồi phiên</option>
+              <option value="PlatformDefaultPermissionsGranted">Bổ sung quyền mặc định nền tảng</option>
             </select>
           </div>
 
@@ -240,6 +241,7 @@ export const PlatformAuditLogsPage: React.FC = () => {
               <option value="Center">Trung tâm (Center)</option>
               <option value="User">Người dùng / Quản lý (User)</option>
               <option value="Session">Phiên đăng nhập (Session)</option>
+              <option value="Role">Vai trò</option>
             </select>
           </div>
 
@@ -327,8 +329,9 @@ export const PlatformAuditLogsPage: React.FC = () => {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+          <div className="overflow-x-auto" role="region" aria-label="Bảng kiểm toán; cuộn ngang để xem các cột trên màn hình nhỏ" tabIndex={0}>
+            <table className="w-full min-w-[1100px] table-fixed text-left border-collapse">
+              <colgroup><col style={{ width: "15%" }} /><col style={{ width: "20%" }} /><col style={{ width: "15%" }} /><col style={{ width: "16%" }} /><col style={{ width: "24%" }} /><col style={{ width: "10%" }} /></colgroup>
               <thead>
                 <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-800/50 text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                   <th className="py-3.5 px-6">ID & Thời Gian</th>
@@ -342,7 +345,7 @@ export const PlatformAuditLogsPage: React.FC = () => {
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-sm">
                 {items.map((audit) => (
                   <tr key={audit.auditId} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
-                    <td className="py-3.5 px-6 whitespace-nowrap">
+                    <td className="py-3.5 px-6">
                       <div className="font-mono text-xs font-semibold text-slate-900 dark:text-white">
                         #{audit.auditId}
                       </div>
@@ -351,17 +354,14 @@ export const PlatformAuditLogsPage: React.FC = () => {
                       </div>
                     </td>
                     <td className="py-3.5 px-6">
-                      <div className="flex flex-col gap-1 min-w-[190px]">
-                        <span className="font-semibold text-xs text-slate-900 dark:text-slate-100">
-                          {AUDIT_ACTION_MAP[audit.actionType] || audit.actionType}
-                        </span>
-                        <span className={`inline-flex items-center w-fit px-2 py-0.5 rounded-full text-[10px] font-mono border ${getActionBadgeColor(audit.actionType)}`}>
-                          {audit.actionType}
+                      <div className="min-w-0">
+                        <span className={`inline-flex break-words rounded-xl border px-2.5 py-1.5 text-xs font-semibold ${getActionBadgeColor(audit.actionType)}`}>
+                          {auditActionLabel(audit.actionType)}
                         </span>
                       </div>
                     </td>
                     <td className="py-3.5 px-6">
-                      <div className="font-medium text-slate-900 dark:text-white">
+                      <div className="break-words font-medium text-slate-900 dark:text-white">
                         {audit.actorUsername ? `@${audit.actorUsername}` : "Hệ thống"}
                       </div>
                       <div className="text-[11px] font-mono text-slate-400 truncate max-w-[140px]" title={audit.actorUserId || ""}>
@@ -370,7 +370,7 @@ export const PlatformAuditLogsPage: React.FC = () => {
                     </td>
                     <td className="py-3.5 px-6">
                       <div className="font-medium text-slate-900 dark:text-white">
-                        {audit.targetType}
+                        {auditTargetLabel(audit.targetType)}
                       </div>
                       <div className="text-[11px] text-slate-400">
                         {audit.targetCenterCode ? (
@@ -459,13 +459,14 @@ export const PlatformAuditLogsPage: React.FC = () => {
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden">
             {/* Modal Header */}
             <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-              <div className="flex items-center gap-3">
+              <div className="min-w-0 flex-1 space-y-2">
                 <span className={`px-2.5 py-1 rounded-full border text-xs font-bold ${getActionBadgeColor(selectedAudit.actionType)}`}>
-                  {AUDIT_ACTION_MAP[selectedAudit.actionType] || selectedAudit.actionType} ({selectedAudit.actionType})
+                  {auditActionLabel(selectedAudit.actionType)}
                 </span>
                 <h3 id="audit-detail-modal-title" className="text-base font-bold text-slate-900 dark:text-white">
                   Chi Tiết Bản Ghi Kiểm Toán #{selectedAudit.auditId}
                 </h3>
+                <p className="break-all font-mono text-xs text-slate-500">{selectedAudit.actionType}</p>
               </div>
               <button
                 type="button"
@@ -487,13 +488,13 @@ export const PlatformAuditLogsPage: React.FC = () => {
                 </div>
                 <div>
                   <span className="text-slate-500 dark:text-slate-400 block">Người thực hiện:</span>
-                  <span className="font-semibold text-slate-900 dark:text-white">
+                  <span className="break-words font-semibold text-slate-900 dark:text-white">
                     {selectedAudit.actorUsername || selectedAudit.actorUserId || "Hệ thống"}
                   </span>
                 </div>
                 <div>
                   <span className="text-slate-500 dark:text-slate-400 block">Trung tâm bị tác động:</span>
-                  <span className="font-semibold text-slate-900 dark:text-white">
+                  <span className="break-all font-semibold text-slate-900 dark:text-white">
                     {selectedAudit.targetCenterName
                       ? `${selectedAudit.targetCenterName} [${selectedAudit.targetCenterCode || "-"}] (${selectedAudit.targetCenterId})`
                       : selectedAudit.targetCenterCode
@@ -503,7 +504,7 @@ export const PlatformAuditLogsPage: React.FC = () => {
                 </div>
                 <div>
                   <span className="text-slate-500 dark:text-slate-400 block">Tài nguyên tác động:</span>
-                  <span className="font-semibold text-slate-900 dark:text-white">
+                  <span className="break-all font-semibold text-slate-900 dark:text-white">
                     {selectedAudit.targetType} ({selectedAudit.targetId})
                   </span>
                 </div>
@@ -511,10 +512,10 @@ export const PlatformAuditLogsPage: React.FC = () => {
                   <span className="text-slate-500 dark:text-slate-400 block">Lý do hành động:</span>
                   <p className="font-medium text-slate-900 dark:text-white mt-0.5">{selectedAudit.reason}</p>
                 </div>
-                <div className="sm:col-span-2 flex items-center justify-between">
-                  <div>
+                <div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
                     <span className="text-slate-500 dark:text-slate-400 block">Trace ID:</span>
-                    <span className="font-mono text-slate-700 dark:text-slate-300">{selectedAudit.traceId}</span>
+                    <span className="break-all font-mono text-slate-700 dark:text-slate-300">{selectedAudit.traceId}</span>
                   </div>
                   <button
                     type="button"

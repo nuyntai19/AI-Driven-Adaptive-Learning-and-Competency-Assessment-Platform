@@ -7,12 +7,15 @@ using Microsoft.EntityFrameworkCore;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.Recommendations;
 using EduTwin.DAL.Persistence;
+using EduTwin.BLL.Organization;
+using EduTwin.Contracts.KnowledgeGraph;
 
 namespace EduTwin.BLL.Recommendations.UseCases;
 
 public interface IGetLearningPathTopicsUseCase
 {
     Task<List<LearningPathTopicNodeDto>> ExecuteAsync(Guid subjectId, CancellationToken cancellationToken);
+    Task<List<LearningPathTopicNodeDto>> ExecuteScopedAsync(Guid subjectId, Guid? classId, bool history, CancellationToken cancellationToken);
 }
 
 public sealed class GetLearningPathTopicsUseCase : IGetLearningPathTopicsUseCase
@@ -26,7 +29,10 @@ public sealed class GetLearningPathTopicsUseCase : IGetLearningPathTopicsUseCase
         _tenantContext = tenantContext ?? throw new ArgumentNullException(nameof(tenantContext));
     }
 
-    public async Task<List<LearningPathTopicNodeDto>> ExecuteAsync(Guid subjectId, CancellationToken cancellationToken)
+    public Task<List<LearningPathTopicNodeDto>> ExecuteAsync(Guid subjectId, CancellationToken cancellationToken)
+        => ExecuteScopedAsync(subjectId, null, false, cancellationToken);
+
+    public async Task<List<LearningPathTopicNodeDto>> ExecuteScopedAsync(Guid subjectId, Guid? classId, bool history, CancellationToken cancellationToken)
     {
         if (!_tenantContext.IsResolved || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
         {
@@ -36,9 +42,15 @@ public sealed class GetLearningPathTopicsUseCase : IGetLearningPathTopicsUseCase
         var centerId = _tenantContext.CenterId.Value;
         var studentId = _tenantContext.UserId.Value;
 
-        var knowledgeNodes = await _dbContext.KnowledgeNodes
+        var scope = await StudentLearningScope.ResolveAsync(_dbContext, centerId, studentId, subjectId, classId, history, cancellationToken);
+        if (!scope.Allowed) return [];
+        var allowedIds = scope.TopicIds?.ToList();
+
+        var nodeQuery = _dbContext.KnowledgeNodes
             .AsNoTracking()
-            .Where(k => k.CenterId == centerId && k.SubjectId == subjectId && !k.IsDeleted)
+            .Where(k => k.CenterId == centerId && k.SubjectId == subjectId && !k.IsDeleted && k.IsActive && k.NodeType == NodeType.Topic);
+        if (allowedIds is not null) nodeQuery = nodeQuery.Where(k => allowedIds.Contains(k.NodeId));
+        var knowledgeNodes = await nodeQuery
             .OrderBy(k => k.OrderIndex)
             .ThenBy(k => k.NodeName)
             .ToListAsync(cancellationToken);

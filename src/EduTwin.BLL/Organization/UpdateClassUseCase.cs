@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
@@ -68,6 +69,11 @@ public class UpdateClassUseCase : IUpdateClassUseCase
             return UpdateClassResult.Failure(ErrorCodes.ValidationFailed);
         }
 
+        if (request.GradeLevel.HasValue && (request.GradeLevel.Value < 10 || request.GradeLevel.Value > 12))
+        {
+            return UpdateClassResult.Failure(ErrorCodes.ValidationFailed);
+        }
+
         if (string.IsNullOrWhiteSpace(request.RowVersion) ||
             !ulong.TryParse(request.RowVersion, NumberStyles.None, CultureInfo.InvariantCulture, out var expectedRowVersion) ||
             expectedRowVersion == 0)
@@ -113,6 +119,13 @@ public class UpdateClassUseCase : IUpdateClassUseCase
             return UpdateClassResult.Failure(ErrorCodes.ConcurrencyConflict);
         }
 
+        var desiredScope = request.Status == ClassStatus.Active ? ClassLearningScope.Current : ClassLearningScope.History;
+        var lifecycleChanged = existingClass.Status != request.Status || existingClass.LearningScope != desiredScope;
+        if ((lifecycleChanged && string.IsNullOrWhiteSpace(request.LifecycleReason)) || request.LifecycleReason?.Length > 500)
+            return UpdateClassResult.Failure(ErrorCodes.ValidationFailed);
+        var before = new { existingClass.ClassName, existingClass.TeacherId, existingClass.GradeLevel,
+            Status = existingClass.Status.ToString(), LearningScope = existingClass.LearningScope.ToString(), existingClass.RowVersion };
+
         var duplicate = await _context.Classes
             .AnyAsync(c => c.CenterId == centerId && c.ClassId != classId && c.ClassName == className && c.AcademicYear == existingClass.AcademicYear, cancellationToken);
 
@@ -125,14 +138,124 @@ public class UpdateClassUseCase : IUpdateClassUseCase
             .Where(cs => cs.CenterId == centerId && cs.ClassId == classId && cs.Status == ClassStudentStatus.Active)
             .CountAsync(cancellationToken);
 
+        if (existingClass.GradeLevel != request.GradeLevel)
+        {
+            if (await _context.ClassCurriculumApplications.AnyAsync(a => a.CenterId == centerId && a.ClassId == classId && a.EndedAt == null, cancellationToken))
+                return UpdateClassResult.Failure(ErrorCodes.InvalidStateTransition);
+            // 1. Check attached Curricula
+            var attachedCurricula = await _context.CurriculumClasses
+                .Where(cc => cc.ClassId == classId && cc.CenterId == centerId)
+                .Join(_context.Curriculums.Where(c => !c.IsDeleted),
+                    cc => cc.CurriculumId,
+                    c => c.CurriculumId,
+                    (cc, c) => new { c.CurriculumId, c.GradeLevel })
+                .ToListAsync(cancellationToken);
+
+            if (attachedCurricula.Count > 0)
+            {
+                if (!request.GradeLevel.HasValue)
+                {
+                    if (attachedCurricula.Any(c => c.GradeLevel.HasValue))
+                    {
+                        return UpdateClassResult.Failure(ErrorCodes.InvalidStateTransition);
+                    }
+                }
+                else
+                {
+                    if (attachedCurricula.Any(c => c.GradeLevel.HasValue && c.GradeLevel.Value != request.GradeLevel.Value))
+                    {
+                        return UpdateClassResult.Failure(ErrorCodes.InvalidStateTransition);
+                    }
+                }
+            }
+
+            // 2. Check attached Assignments
+            var assignmentsWithGradeCheck = await _context.Assignments
+                .Where(a => a.ClassId == classId && a.CenterId == centerId && !a.IsDeleted && !a.AllowGradeMismatch)
+                .Select(a => new
+                {
+                    a.AssignmentId,
+                    QuestionGrades = _context.AssignmentQuestions
+                        .Where(aq => aq.AssignmentId == a.AssignmentId)
+                        .Join(_context.Questions, aq => aq.QuestionId, q => q.QuestionId, (aq, q) => q.GradeLevel)
+                        .Where(g => g.HasValue)
+                        .Select(g => g!.Value)
+                        .ToList()
+                })
+                .ToListAsync(cancellationToken);
+
+            foreach (var a in assignmentsWithGradeCheck)
+            {
+                if (!request.GradeLevel.HasValue)
+                {
+                    if (a.QuestionGrades.Count > 0)
+                    {
+                        return UpdateClassResult.Failure(ErrorCodes.InvalidStateTransition);
+                    }
+                }
+                else
+                {
+                    if (a.QuestionGrades.Any(g => g != request.GradeLevel.Value))
+                    {
+                        return UpdateClassResult.Failure(ErrorCodes.InvalidStateTransition);
+                    }
+                }
+            }
+
+            // 3. Check active enrolled students in the class
+            if (request.GradeLevel.HasValue)
+            {
+                var hasStudentGradeMismatch = await _context.ClassStudents
+                    .Where(cs => cs.ClassId == classId && cs.CenterId == centerId && cs.Status == ClassStudentStatus.Active)
+                    .Join(_context.Students.Where(s => !s.IsDeleted),
+                        cs => cs.StudentId,
+                        s => s.StudentId,
+                        (cs, s) => s.GradeLevel)
+                    .AnyAsync(g => g != request.GradeLevel.Value, cancellationToken);
+
+                if (hasStudentGradeMismatch)
+                {
+                    return UpdateClassResult.Failure(ErrorCodes.InvalidStateTransition);
+                }
+            }
+            else
+            {
+                var hasActiveStudents = await _context.ClassStudents
+                    .AnyAsync(cs => cs.ClassId == classId && cs.CenterId == centerId && cs.Status == ClassStudentStatus.Active, cancellationToken);
+
+                if (hasActiveStudents)
+                {
+                    return UpdateClassResult.Failure(ErrorCodes.InvalidStateTransition);
+                }
+            }
+        }
+
         _context.Entry(existingClass).Property(c => c.RowVersion).OriginalValue = expectedRowVersion;
 
         existingClass.ClassName = className;
         existingClass.TeacherId = request.TeacherId;
         existingClass.Status = request.Status.Value;
+        existingClass.LearningScope = desiredScope;
+        existingClass.GradeLevel = request.GradeLevel;
         existingClass.UpdatedAt = _timeProvider.GetUtcNow().UtcDateTime;
         existingClass.UpdatedBy = currentUserId;
 
+        var changed = lifecycleChanged || before.ClassName != className || before.TeacherId != request.TeacherId || before.GradeLevel != request.GradeLevel;
+        if (changed)
+            _context.AuthorizationAuditLogs.Add(new AuthorizationAuditLog
+            {
+                CenterId = centerId, ActorUserId = currentUserId, CreatedBy = currentUserId,
+                ActionType = lifecycleChanged ? request.Status == ClassStatus.Archived ? "ClassArchived" : "ClassReopened" : "ClassUpdated",
+                TargetType = "Class", TargetId = classId.ToString("D"),
+                BeforeData = JsonSerializer.Serialize(before),
+                AfterData = JsonSerializer.Serialize(new { existingClass.ClassName, existingClass.TeacherId, existingClass.GradeLevel,
+                    Status = existingClass.Status.ToString(), LearningScope = desiredScope.ToString(), RowVersion = expectedRowVersion + 1 }),
+                Reason = lifecycleChanged ? request.LifecycleReason!.Trim() : "Quản lý cập nhật thông tin lớp.",
+                TraceId = System.Diagnostics.Activity.Current?.Id ?? $"class-update:{Guid.NewGuid():N}",
+                CreatedAt = existingClass.UpdatedAt
+            });
+
+        // EF's single SaveChanges transaction commits the class and append-only audit together.
         try
         {
             await _context.SaveChangesAsync(cancellationToken);
@@ -157,6 +280,8 @@ public class UpdateClassUseCase : IUpdateClassUseCase
             ClassId = existingClass.ClassId.ToString().ToLowerInvariant(),
             ClassName = existingClass.ClassName,
             AcademicYear = existingClass.AcademicYear,
+            GradeLevel = existingClass.GradeLevel,
+            LearningScope = existingClass.LearningScope.ToString(),
             Subject = new ClassSubjectDto
             {
                 SubjectId = existingClass.SubjectId.ToString().ToLowerInvariant(),

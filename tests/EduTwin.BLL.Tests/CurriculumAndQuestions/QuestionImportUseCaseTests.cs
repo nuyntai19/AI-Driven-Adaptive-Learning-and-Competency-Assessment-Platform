@@ -577,7 +577,7 @@ public sealed class QuestionImportUseCaseTests : IDisposable
         Assert.True(previewResult.IsSuccess);
         Assert.NotNull(previewResult.Data);
         Assert.Empty(previewResult.Data.Errors);
-        Assert.Equal(4, previewResult.Data.ValidQuestions.Count);
+        Assert.Equal(5, previewResult.Data.ValidQuestions.Count);
 
         var confirmRequest = new QuestionImportConfirmRequest
         {
@@ -588,14 +588,14 @@ public sealed class QuestionImportUseCaseTests : IDisposable
 
         var confirmResult = await sut.ConfirmAsync(confirmRequest, CancellationToken.None);
         Assert.True(confirmResult.IsSuccess);
-        Assert.Equal(4, confirmResult.Data?.ImportedCount);
+        Assert.Equal(5, confirmResult.Data?.ImportedCount);
 
         var savedQuestions = await _dbContext.Questions
             .Where(q => q.CenterId == _centerId && q.SubjectId == _subjectId)
             .OrderBy(q => q.QuestionId)
             .ToListAsync();
 
-        Assert.Equal(4, savedQuestions.Count);
+        Assert.Equal(5, savedQuestions.Count);
 
         // 1. MultipleChoice
         var qMc = savedQuestions[0];
@@ -626,6 +626,8 @@ public sealed class QuestionImportUseCaseTests : IDisposable
         Assert.Equal(QuestionType.Essay, qEssay.QuestionType);
         Assert.Equal(QuestionAnswerEvaluationMode.Manual, qEssay.AnswerEvaluationMode);
         Assert.Equal(QuestionStatus.Active, qEssay.Status);
+        Assert.Equal(QuestionAnswerEvaluationMode.MathEquivalent, savedQuestions[4].AnswerEvaluationMode);
+        Assert.Equal(QuestionStatus.Active, savedQuestions[4].Status);
     }
 
     [Fact]
@@ -638,15 +640,230 @@ public sealed class QuestionImportUseCaseTests : IDisposable
         }
         Assert.True(File.Exists(fixturePath), $"Fixture file not found: {fixturePath}");
 
-        var solutionRoot = Directory.GetParent(AppContext.BaseDirectory)!.Parent!.Parent!.Parent!.Parent!.FullName;
-        var frontendPublicPath = Path.Combine(solutionRoot, "web", "edutwin-web", "public", "EduTwin_Question_Import_Template.csv");
-
-        if (File.Exists(frontendPublicPath))
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null && !File.Exists(Path.Combine(dir.FullName, "EduTwin.sln")))
         {
-            var fixtureContent = (await File.ReadAllTextAsync(fixturePath, Encoding.UTF8)).Replace("\r\n", "\n").Trim();
-            var frontendContent = (await File.ReadAllTextAsync(frontendPublicPath, Encoding.UTF8)).Replace("\r\n", "\n").Trim();
-            Assert.Equal(fixtureContent, frontendContent);
+            dir = dir.Parent;
         }
+        Assert.NotNull(dir);
+        var frontendPublicPath = Path.Combine(dir.FullName, "web", "edutwin-web", "public", "EduTwin_Question_Import_Template.csv");
+        Assert.True(File.Exists(frontendPublicPath), $"Frontend public CSV template file not found at: {frontendPublicPath}");
+
+        var fixtureContent = (await File.ReadAllTextAsync(fixturePath, Encoding.UTF8)).Replace("\r\n", "\n").Trim();
+        var frontendContent = (await File.ReadAllTextAsync(frontendPublicPath, Encoding.UTF8)).Replace("\r\n", "\n").Trim();
+        Assert.Equal(fixtureContent, frontendContent);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_CancellationAfterTokenAcquired_AllowsRetry()
+    {
+        var sut = new QuestionImportUseCase(
+            _dbContext,
+            _tenantContextMock.Object,
+            _timeProviderMock.Object,
+            _mathNormalizer,
+            _coordinateNormalizer);
+
+        var csvContent = new StringBuilder()
+            .AppendLine("QuestionText,QuestionType,AnswerEvaluationMode,CorrectAnswer,Solution,Difficulty")
+            .AppendLine("Test question,ShortAnswer,TextExact,10,Solution,3")
+            .ToString();
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(csvContent));
+        var previewResult = await sut.PreviewAsync(stream, "test.csv", CancellationToken.None);
+        Assert.True(previewResult.IsSuccess);
+        var previewToken = previewResult.Data!.PreviewToken;
+
+        var confirmRequest = new QuestionImportConfirmRequest
+        {
+            PreviewToken = previewToken,
+            SubjectId = _subjectId,
+            PrimaryTopicNodeId = _nodeId
+        };
+
+        // 1. Simulate cancellation during confirm request after token has been acquired
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+        {
+            await sut.ConfirmAsync(confirmRequest, cts.Token);
+        });
+
+        // 2. Retry with the same preview token and active cancellation token
+        var retryResult = await sut.ConfirmAsync(confirmRequest, CancellationToken.None);
+
+        Assert.True(retryResult.IsSuccess, retryResult.ErrorMessage);
+        Assert.Equal(1, retryResult.Data!.ImportedCount);
+
+        var savedQuestions = await _dbContext.Questions.Where(q => q.CenterId == _centerId).ToListAsync();
+        Assert.Single(savedQuestions);
+        Assert.Equal("Test question", savedQuestions[0].QuestionText);
+        Assert.Equal(QuestionStatus.Active, savedQuestions[0].Status);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_ValidationFailureAfterTokenAcquired_ResetsTokenAndAllowsRetry()
+    {
+        var sut = new QuestionImportUseCase(
+            _dbContext,
+            _tenantContextMock.Object,
+            _timeProviderMock.Object,
+            _mathNormalizer,
+            _coordinateNormalizer);
+
+        var csvContent = new StringBuilder()
+            .AppendLine("QuestionText,QuestionType,AnswerEvaluationMode,CorrectAnswer,Solution,Difficulty")
+            .AppendLine("Test question 2,ShortAnswer,TextExact,20,Solution 2,2")
+            .ToString();
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(csvContent));
+        var previewResult = await sut.PreviewAsync(stream, "test2.csv", CancellationToken.None);
+        Assert.True(previewResult.IsSuccess);
+        var previewToken = previewResult.Data!.PreviewToken;
+
+        var initialRequest = new QuestionImportConfirmRequest
+        {
+            PreviewToken = previewToken,
+            SubjectId = Guid.NewGuid(), // Non-existent subject to trigger validation failure
+            PrimaryTopicNodeId = _nodeId
+        };
+
+        // 1. Initial attempt fails validation after token is acquired
+        var initialResult = await sut.ConfirmAsync(initialRequest, CancellationToken.None);
+        Assert.False(initialResult.IsSuccess);
+
+        // 2. Retry with valid subject using same preview token must not be blocked as "in-processing"
+        var retryRequest = new QuestionImportConfirmRequest
+        {
+            PreviewToken = previewToken,
+            SubjectId = _subjectId,
+            PrimaryTopicNodeId = _nodeId
+        };
+        var retryResult = await sut.ConfirmAsync(retryRequest, CancellationToken.None);
+
+        Assert.True(retryResult.IsSuccess, retryResult.ErrorMessage);
+        Assert.Equal(1, retryResult.Data!.ImportedCount);
+
+        var savedQuestion = await _dbContext.Questions.FirstOrDefaultAsync(q => q.CenterId == _centerId && q.QuestionText == "Test question 2");
+        Assert.NotNull(savedQuestion);
+        Assert.Equal(QuestionStatus.Active, savedQuestion.Status);
+    }
+
+    private async Task<QuestionImportPreviewResult> PreviewAuditCsv(string content)
+    {
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
+        return await new QuestionImportUseCase(_dbContext, _tenantContextMock.Object, _timeProviderMock.Object).PreviewAsync(stream, "audit.csv", default);
+    }
+
+    [Fact]
+    public async Task Audit_MultilineCsvAndEscapedQuote_PreserveOneLogicalRow()
+    {
+        var result = await PreviewAuditCsv("QuestionText,QuestionType,CorrectAnswer,Solution\r\n\"First line\nSecond \"\"quoted\"\" line\",ShortAnswer,2,Explanation");
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+        Assert.Equal(1, result.Data!.TotalRows);
+        Assert.Equal(0, result.Data.InvalidCount);
+        Assert.Equal("First line\nSecond \"quoted\" line", Assert.Single(result.Data.ValidQuestions).QuestionText);
+    }
+
+    [Fact]
+    public async Task Audit_VietnameseHeaders_AreNormalizedWithoutLosingLetters()
+    {
+        var result = await PreviewAuditCsv("Nội dung câu hỏi,Loại câu hỏi,Đáp án đúng,Lời giải\nQuestion,ShortAnswer,2,Explanation");
+        Assert.Equal(1, result.Data!.ValidCount);
+    }
+
+    [Theory]
+    [InlineData("1000", 0)]
+    [InlineData("999.99", 1)]
+    [InlineData("1.001", 0)]
+    [InlineData("0", 0)]
+    public async Task Audit_ScoreMustFitDecimal5_2_AtPreview(string score, int valid)
+    {
+        var result = await PreviewAuditCsv($"QuestionText,QuestionType,CorrectAnswer,Solution,MaxScore\nQuestion,ShortAnswer,2,Explanation,{score}");
+        Assert.Equal(valid, result.Data!.ValidCount);
+        if (valid == 0) Assert.Contains(result.Data.Errors, e => e.Field == "MaxScore");
+    }
+
+    [Fact]
+    public async Task Audit_UnknownBoolean_IsAnError_NotFalse()
+    {
+        var result = await PreviewAuditCsv("QuestionText,QuestionType,CorrectAnswer,Solution,ReasoningRequired\nQuestion,ShortAnswer,2,Explanation,tru");
+        Assert.Equal(0, result.Data!.ValidCount);
+        Assert.Contains(result.Data.Errors, e => e.Field == "ReasoningRequired");
+    }
+
+    [Fact]
+    public async Task Audit_InvalidCount_CountsRows_NotFieldErrors()
+    {
+        var result = await PreviewAuditCsv("QuestionText,QuestionType,CorrectAnswer,Solution,MaxScore\nQuestion,Unknown,,,1000");
+        Assert.Equal(1, result.Data!.InvalidCount);
+        Assert.True(result.Data.Errors.Count > 1);
+        Assert.Equal(result.Data.TotalRows, result.Data.ValidCount + result.Data.InvalidCount);
+    }
+
+    private static MemoryStream AuditZip(params (string Path, string Xml)[] entries)
+    {
+        var stream = new MemoryStream();
+        using (var archive = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Create, true))
+            foreach (var entry in entries)
+            {
+                using var writer = new StreamWriter(archive.CreateEntry(entry.Path).Open(), Encoding.UTF8);
+                writer.Write(entry.Xml);
+            }
+        stream.Position = 0;
+        return stream;
+    }
+
+    [Fact]
+    public async Task Audit_XlsxInlineStrings_UsesWorkbookRelationship()
+    {
+        var ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+        string Row(int index, params string[] values) => $"<row r='{index}'>" + string.Concat(values.Select((v,i) => $"<c r='{(char)('A'+i)}{index}' t='inlineStr'><is><t>{v}</t></is></c>")) + "</row>";
+        using var file = AuditZip(("xl/workbook.xml", $"<workbook xmlns='{ns}' xmlns:r='http://schemas.openxmlformats.org/officeDocument/2006/relationships'><sheets><sheet name='Questions' sheetId='9' r:id='rId9'/></sheets></workbook>"),
+            ("xl/_rels/workbook.xml.rels", "<Relationships><Relationship Id='rId9' Target='worksheets/questions9.xml'/></Relationships>"),
+            ("xl/worksheets/questions9.xml", $"<worksheet xmlns='{ns}'><sheetData>{Row(1,"QuestionText","QuestionType","CorrectAnswer","Solution")}{Row(2,"Question","ShortAnswer","2","Explanation")}</sheetData></worksheet>"));
+        var result = await new QuestionImportUseCase(_dbContext, _tenantContextMock.Object, _timeProviderMock.Object).PreviewAsync(file, "audit.xlsx", default);
+        Assert.Equal(1, result.Data!.ValidCount);
+        Assert.Equal("Question", Assert.Single(result.Data.ValidQuestions).QuestionText);
+    }
+
+    [Fact]
+    public async Task Audit_DocxTable_UsesSamePreviewValidation()
+    {
+        string Row(params string[] values) => "<w:tr>" + string.Concat(values.Select(v => $"<w:tc><w:p><w:r><w:t>{v}</w:t></w:r></w:p></w:tc>")) + "</w:tr>";
+        using var file = AuditZip(("word/document.xml", "<w:document xmlns:w='http://schemas.openxmlformats.org/wordprocessingml/2006/main'><w:body><w:tbl>" +
+            Row("Nội dung câu hỏi","Loại câu hỏi","Đáp án đúng","Lời giải") + Row("Question","ShortAnswer","2","Explanation") + "</w:tbl></w:body></w:document>"));
+        var result = await new QuestionImportUseCase(_dbContext, _tenantContextMock.Object, _timeProviderMock.Object).PreviewAsync(file, "audit.docx", default);
+        Assert.Equal(1, result.Data!.ValidCount);
+    }
+
+    [Fact]
+    public async Task Audit_ConfirmRevalidatesInactiveTopic()
+    {
+        var preview = await PreviewAuditCsv("QuestionText,QuestionType,CorrectAnswer,Solution\nQuestion,ShortAnswer,2,Explanation");
+        (await _dbContext.KnowledgeNodes.SingleAsync(n => n.NodeId == _nodeId)).IsActive = false;
+        await _dbContext.SaveChangesAsync();
+        var result = await new QuestionImportUseCase(_dbContext, _tenantContextMock.Object, _timeProviderMock.Object).ConfirmAsync(
+            new() { PreviewToken = preview.Data!.PreviewToken, SubjectId = _subjectId, PrimaryTopicNodeId = _nodeId }, default);
+        Assert.False(result.IsSuccess);
+        Assert.Empty(await _dbContext.Questions.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Audit_DocxTable_PreservesRunBreaksTabsAndParagraphs()
+    {
+        using var file = AuditZip(("word/document.xml", """
+            <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:tbl>
+            <w:tr><w:tc><w:p><w:r><w:t>QuestionText</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>QuestionType</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>CorrectAnswer</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Solution</w:t></w:r></w:p></w:tc></w:tr>
+            <w:tr><w:tc><w:p><w:r><w:t>Dòng 1</w:t><w:br/><w:t>Dòng 2</w:t><w:tab/><w:t>Cột</w:t><w:cr/><w:t>Dòng 3</w:t></w:r></w:p><w:p><w:r><w:t>Đoạn 2</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>ShortAnswer</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>2</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Có dấu "nháy"</w:t></w:r></w:p></w:tc></w:tr>
+            </w:tbl></w:body></w:document>
+            """));
+        var result = await new QuestionImportUseCase(_dbContext, _tenantContextMock.Object, _timeProviderMock.Object)
+            .PreviewAsync(file, "real-word-breaks.docx", default);
+        var question = Assert.Single(result.Data!.ValidQuestions);
+        Assert.Equal("Dòng 1\nDòng 2\tCột\nDòng 3\nĐoạn 2", question.QuestionText);
+        Assert.Equal("Có dấu \"nháy\"", question.Solution);
     }
 
     public void Dispose()

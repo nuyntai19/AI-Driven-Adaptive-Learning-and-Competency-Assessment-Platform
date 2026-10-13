@@ -9,6 +9,8 @@ public static class DependencyInjection
     {
         services.TryAddScoped<IGetCenterDashboardUseCase, GetCenterDashboardUseCase>();
         services.TryAddScoped<IGetStudentDashboardUseCase, GetStudentDashboardUseCase>();
+        services.TryAddScoped<StudentAcademicScopeReader>();
+        services.TryAddScoped<IGetStudentWorkspaceSummaryUseCase, GetStudentWorkspaceSummaryUseCase>();
         services.TryAddScoped<IGetClassDashboardUseCase, GetClassDashboardUseCase>();
         return services;
     }

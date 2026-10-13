@@ -88,11 +88,13 @@ public class GetClassUseCase : IGetClassUseCase
                 c.ClassId,
                 c.ClassName,
                 c.AcademicYear,
+                c.GradeLevel,
                 c.Status,
                 RowVersion = c.RowVersion,
                 Subject = new { c.Subject.SubjectId, c.Subject.SubjectName },
                 Teacher = new { c.Teacher.TeacherId, User = new { c.Teacher.User.DisplayName } },
                 StudentCount = _context.ClassStudents.Count(cs => cs.ClassId == c.ClassId && cs.CenterId == centerId && cs.Status == ClassStudentStatus.Active)
+                , c.LearningScope
             })
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -106,6 +108,8 @@ public class GetClassUseCase : IGetClassUseCase
             ClassId = classDto.ClassId.ToString("D").ToLowerInvariant(),
             ClassName = classDto.ClassName,
             AcademicYear = classDto.AcademicYear,
+            GradeLevel = classDto.GradeLevel,
+            LearningScope = classDto.LearningScope.ToString(),
             Subject = new ClassSubjectDto
             {
                 SubjectId = classDto.Subject.SubjectId.ToString("D").ToLowerInvariant(),

@@ -10,6 +10,7 @@ using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.DAL.Persistence;
 using EduTwin.DAL.KnowledgeGraph;
 using EduTwin.DAL.Organization;
+using EduTwin.BLL.CurriculumAndQuestions;
 
 namespace EduTwin.BLL.KnowledgeGraph;
 
@@ -104,6 +105,7 @@ public class CreateKnowledgeNodeUseCase : ICreateKnowledgeNodeUseCase
         if (subject == null)
             return CreateKnowledgeNodeResult.Failure(ErrorCodes.ResourceNotFound);
 
+        await using var transaction = await GraphMutationTransaction.BeginAsync(_dbContext, _tenantContext.CenterId.Value, request.SubjectId, cancellationToken);
         if (parsedParentNodeId.HasValue)
         {
             var parent = await _dbContext.KnowledgeNodes
@@ -123,7 +125,22 @@ public class CreateKnowledgeNodeUseCase : ICreateKnowledgeNodeUseCase
             return CreateKnowledgeNodeResult.Failure(ErrorCodes.DuplicateResource);
         }
 
+        if (existingNode is not null)
+        {
+            var parents = await _dbContext.KnowledgeNodes.AsNoTracking()
+                .Where(n => n.CenterId == _tenantContext.CenterId && n.SubjectId == request.SubjectId && !n.IsDeleted)
+                .ToDictionaryAsync(n => n.NodeId, n => n.ParentNodeId, cancellationToken);
+            if (new KnowledgeNodeHierarchyCycleDetector().HasCycle(existingNode.NodeId, parsedParentNodeId, parents))
+                return CreateKnowledgeNodeResult.Failure(ErrorCodes.DagCycleDetected);
+            if (existingNode.NodeName != trimmedName || existingNode.Description != trimmedDesc || existingNode.ParentNodeId != parsedParentNodeId || existingNode.NodeType != parsedType)
+            {
+                var blocked = await AcademicDependencyGuards.FrozenNodeMessageAsync(_dbContext, _tenantContext.CenterId.Value, existingNode.NodeId, cancellationToken);
+                if (blocked is not null) return CreateKnowledgeNodeResult.Failure(ErrorCodes.InvalidStateTransition, blocked);
+            }
+        }
+
         var now = _timeProvider.GetUtcNow().UtcDateTime;
+        var before = existingNode is null ? null : new { existingNode.NodeId, existingNode.NodeName, existingNode.Description, existingNode.ParentNodeId, existingNode.IsDeleted, existingNode.RowVersion };
 
         KnowledgeNode node;
         if (existingNode != null && existingNode.IsDeleted)
@@ -169,13 +186,22 @@ public class CreateKnowledgeNodeUseCase : ICreateKnowledgeNodeUseCase
             _dbContext.KnowledgeNodes.Add(node);
         }
 
+        AcademicDependencyGuards.Audit(_dbContext, _tenantContext.CenterId.Value, _tenantContext.UserId.Value,
+            existingNode is null ? "KnowledgeNodeCreated" : "KnowledgeNodeRestored", "KnowledgeNode",
+            existingNode is null ? $"{request.SubjectId:D}:{trimmedCode}" : existingNode.NodeId.ToString(CultureInfo.InvariantCulture), before,
+            new { node.NodeCode, node.NodeName, node.Description, node.ParentNodeId, node.IsActive }, now,
+            existingNode is null ? "Tạo điểm tri thức." : "Khôi phục điểm tri thức đã xóa mềm.");
+
         try
         {
             await _dbContext.SaveChangesAsync(cancellationToken);
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         }
         catch (DbUpdateException ex)
         {
             _dbContext.ChangeTracker.Clear();
+            if (AcademicDependencyGuards.IsDatabaseGuard(ex))
+                return CreateKnowledgeNodeResult.Failure(ErrorCodes.InvalidStateTransition, AcademicDependencyGuards.ConcurrentDependencyMessage);
             var isDuplicateRaceCondition = false;
             var currentException = (Exception)ex;
             while (currentException != null)

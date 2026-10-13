@@ -44,10 +44,9 @@ public class ActivateQuestionUseCase : IActivateQuestionUseCase
             !_tenantContext.CenterId.HasValue || _tenantContext.CenterId.Value == Guid.Empty ||
             !_tenantContext.UserId.HasValue || _tenantContext.UserId.Value == Guid.Empty ||
             string.IsNullOrWhiteSpace(_tenantContext.Role) ||
-            (!string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal) &&
-             !string.Equals(_tenantContext.Role, nameof(UserRole.CenterManager), StringComparison.Ordinal)))
+            !string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal))
         {
-            return ActivateQuestionResult.Failure(ErrorCodes.ResourceNotFound);
+            return ActivateQuestionResult.Failure(ErrorCodes.ForbiddenResource);
         }
 
         // 2. Parse question ID
@@ -67,7 +66,6 @@ public class ActivateQuestionUseCase : IActivateQuestionUseCase
 
         var centerId = _tenantContext.CenterId.Value;
         var actorId = _tenantContext.UserId.Value;
-        var isTeacher = string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal);
 
         // 4. Load question
         var question = await _dbContext.Questions
@@ -77,8 +75,8 @@ public class ActivateQuestionUseCase : IActivateQuestionUseCase
             return ActivateQuestionResult.Failure(ErrorCodes.ResourceNotFound);
 
         // 5. Ownership
-        if (isTeacher && question.CreatedByTeacherId != actorId)
-            return ActivateQuestionResult.Failure(ErrorCodes.ResourceNotFound);
+        if (question.CreatedByTeacherId != actorId)
+            return ActivateQuestionResult.Failure(ErrorCodes.ForbiddenResource);
 
         // 6. State check — Draft or Archived can be activated
         if (question.Status != QuestionStatus.Draft && question.Status != QuestionStatus.Archived)

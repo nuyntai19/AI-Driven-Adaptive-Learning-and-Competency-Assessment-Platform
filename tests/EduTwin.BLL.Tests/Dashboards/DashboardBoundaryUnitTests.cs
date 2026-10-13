@@ -66,6 +66,24 @@ public sealed class DashboardBoundaryUnitTests
         return (dbContext, tenantContext);
     }
 
+    private static async Task ApplyTestCurriculumAsync(EduTwinDbContext db, Guid centerId, Guid studentId, params Guid[] subjects)
+    {
+        foreach (var subjectId in subjects)
+        {
+            var teacherId = Guid.NewGuid(); var classId = Guid.NewGuid(); var curriculumId = Guid.NewGuid();
+            db.Classes.Add(new Class { CenterId=centerId, ClassId=classId, TeacherId=teacherId, SubjectId=subjectId,
+                ClassName="Current test class",AcademicYear="2026-2027",GradeLevel=10,Status=ClassStatus.Active,CreatedAt=UtcNow,UpdatedAt=UtcNow });
+            db.ClassStudents.Add(new ClassStudent {CenterId=centerId,ClassId=classId,StudentId=studentId,Status=ClassStudentStatus.Active,JoinedAt=UtcNow.AddDays(-1)});
+            db.Curriculums.Add(new Curriculum {CenterId=centerId,CurriculumId=curriculumId,TeacherId=teacherId,SubjectId=subjectId,
+                Title="Applied test curriculum",GradeLevel=10,ReviewStatus=ReviewStatus.Published,CreatedAt=UtcNow,UpdatedAt=UtcNow});
+            db.ClassCurriculumApplications.Add(new() {ApplicationId=Guid.NewGuid(),CenterId=centerId,ClassId=classId,CurriculumId=curriculumId,
+                SubjectId=subjectId,AssignedBy=teacherId,StartedAt=UtcNow,ClassGradeAtStart=10,CurriculumGradeAtStart=10});
+            var nodes=await db.KnowledgeNodes.Where(n=>n.CenterId==centerId&&n.SubjectId==subjectId).OrderBy(n=>n.NodeId).ToListAsync();
+            for(var i=0;i<nodes.Count;i++)db.CurriculumNodes.Add(new CurriculumNode {CenterId=centerId,CurriculumId=curriculumId,NodeId=nodes[i].NodeId,OrderIndex=(uint)i+1,CreatedAt=UtcNow});
+        }
+        await db.SaveChangesAsync();
+    }
+
     [Fact]
     public async Task StudentDashboard_EmptyState_NoGoal_NoRecommendation_HandledSafely()
     {
@@ -125,7 +143,9 @@ public sealed class DashboardBoundaryUnitTests
             new KnowledgeNode { NodeId = 3, CenterId = centerId, SubjectId = subjectId, NodeCode = "S", NodeName = "Skill", NodeType = NodeType.Skill, OrderIndex = 3, ExamImportance = 1, EstimatedLearningMinutes = 1, IsActive = true, CreatedAt = UtcNow, UpdatedAt = UtcNow });
         await dbContext.SaveChangesAsync();
 
+        await ApplyTestCurriculumAsync(dbContext, centerId, studentId, subjectId);
         var result = await new GetStudentDashboardUseCase(dbContext, tenantContext, TimeProvider.System)
+            // Only applied curriculum topics belong on a student dashboard.
             .ExecuteAsync(subjectId, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
@@ -202,6 +222,7 @@ public sealed class DashboardBoundaryUnitTests
 
         dbContext.TwinUpdateHistories.AddRange(history1, history2);
         await dbContext.SaveChangesAsync();
+        await ApplyTestCurriculumAsync(dbContext, centerId, studentId, subjectId);
 
         var useCase = new GetStudentDashboardUseCase(dbContext, tenantContext, TimeProvider.System);
         var result = await useCase.ExecuteAsync(subjectId, CancellationToken.None);
@@ -308,6 +329,7 @@ public sealed class DashboardBoundaryUnitTests
         dbContext.KnowledgeNodes.AddRange(mathTopic, engTopic);
         dbContext.KnowledgeTwins.AddRange(mathTwin, engTwin);
         await dbContext.SaveChangesAsync();
+        await ApplyTestCurriculumAsync(dbContext, centerId, studentId, mathSubjectId, engSubjectId);
 
         var useCase = new GetStudentDashboardUseCase(dbContext, tenantContext, TimeProvider.System);
         var result = await useCase.ExecuteAsync(null, CancellationToken.None);
@@ -531,6 +553,9 @@ public sealed class DashboardBoundaryUnitTests
             UpdatedAt = UtcNow
         };
         dbContext.KnowledgeTwins.Add(kt);
+        if (curriculumStatus == ReviewStatus.Published)
+            dbContext.ClassCurriculumApplications.Add(new() { ApplicationId=Guid.NewGuid(), CenterId=centerId,
+                ClassId=classId, CurriculumId=curriculumId, SubjectId=subjectId, AssignedBy=teacherId, StartedAt=UtcNow });
         await dbContext.SaveChangesAsync();
 
         var guard = new OrganizationOwnershipGuard(dbContext, tenantContext);
@@ -552,7 +577,7 @@ public sealed class DashboardBoundaryUnitTests
     }
 
     [Fact]
-    public async Task ClassDashboard_ZeroFillMastery_MissingKnowledgeTwinsCountAsZeroInClassAverage()
+    public async Task ClassDashboard_MissingKnowledgeTwinsAreUnassessedNotZeroMastery()
     {
         var dbName = $"ClassDashboard_ZeroFill_{Guid.NewGuid():N}";
         var (dbContext, tenantContext) = CreateDbContext(dbName);
@@ -605,6 +630,8 @@ public sealed class DashboardBoundaryUnitTests
             new ClassStudent { ClassId = classId, StudentId = s2Id, CenterId = centerId, Status = ClassStudentStatus.Active, JoinedAt = UtcNow }
         );
 
+        dbContext.ClassCurriculumApplications.Add(new() { ApplicationId=Guid.NewGuid(), CenterId=centerId,
+            ClassId=classId, CurriculumId=curriculumId, SubjectId=subjectId, AssignedBy=teacherId, StartedAt=UtcNow });
         // Only S1 has knowledge twin
         dbContext.KnowledgeTwins.Add(new KnowledgeTwin
         {
@@ -627,8 +654,10 @@ public sealed class DashboardBoundaryUnitTests
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Data);
 
-        // Class average mastery must include both S1 (80%) and S2 (0% zero-filled). (80 + 0) / 2 = 40.0%
-        Assert.Equal(40.0m, result.Data.Overview.AverageMastery);
+        Assert.Equal(80.0m, result.Data.Overview.AverageMastery);
+        Assert.Equal(1, result.Data.AcademicCoverage.UnassessedStudentTopicCount);
+        Assert.Empty(result.Data.GapGroups);
+        Assert.Empty(result.Data.WeakTopics);
     }
 
     [Fact]

@@ -64,6 +64,24 @@ public class AssignmentConfiguration : IEntityTypeConfiguration<Assignment>
             .HasColumnName("published_at")
             .HasColumnType("datetime(6)");
 
+        builder.Property(a => a.TargetMode)
+            .HasColumnName("target_mode")
+            .HasColumnType("varchar(32)")
+            .HasConversion<string>()
+            .HasDefaultValue(EduTwin.Contracts.Assignments.TargetSource.WholeClass)
+            .IsRequired();
+
+        builder.Property(a => a.AllowGradeMismatch)
+            .HasColumnName("allow_grade_mismatch")
+            .HasColumnType("tinyint(1)")
+            .HasDefaultValue(false)
+            .IsRequired();
+
+        builder.Property(a => a.GradeMismatchReason)
+            .HasColumnName("grade_mismatch_reason")
+            .HasMaxLength(500)
+            .HasColumnType("varchar(500)");
+
         // MTA Properties
         builder.Property(a => a.CreatedAt).HasColumnName("created_at").HasColumnType("datetime(6)").IsRequired();
         builder.Property(a => a.CreatedBy).HasColumnName("created_by").HasColumnType("varchar(36)");
@@ -86,6 +104,7 @@ public class AssignmentConfiguration : IEntityTypeConfiguration<Assignment>
         builder.ToTable(t =>
         {
             t.HasCheckConstraint("ck_assignments_status", "status IN ('Draft', 'Published', 'Closed', 'Archived')");
+            t.HasCheckConstraint("ck_assignments_target_mode", "target_mode IN ('WholeClass', 'SelectedStudents', 'GapGroup')");
         });
 
         // Relations

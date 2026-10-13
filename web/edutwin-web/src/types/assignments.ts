@@ -11,9 +11,11 @@ export interface AssignmentResultSummaryDto {
   totalQuestionCount: number;
   answeredQuestionCount: number;
   evaluatedQuestionCount: number;
+  aiAnalyzedQuestionCount?: number;
   correctQuestionCount: number;
   incorrectQuestionCount: number;
   pendingQuestionCount: number;
+  voidedQuestionCount?: number;
   resultStatus: AssignmentResultStatus;
   teacherFinalReviewStatus: TeacherFinalReviewStatus;
   internalAwardedScore?: number | null;
@@ -44,6 +46,9 @@ export interface AssignmentDto {
   dueAt: string | null;
   timeLimitMinutes?: number | null;
   status: AssignmentStatus;
+  targetMode?: TargetMode;
+  allowGradeMismatch?: boolean;
+  gradeMismatchReason?: string | null;
   questionCount: number;
   targetStudentCount: number;
   questions: AssignmentQuestionDto[];
@@ -60,6 +65,8 @@ export interface CreateAssignmentRequest {
   questionIds: string[];
   targetMode: TargetMode;
   studentIds?: string[];
+  allowGradeMismatch?: boolean;
+  gradeMismatchReason?: string | null;
 }
 
 export interface UpdateAssignmentRequest {
@@ -70,6 +77,8 @@ export interface UpdateAssignmentRequest {
   questionIds: string[];
   targetMode: TargetMode;
   studentIds?: string[];
+  allowGradeMismatch?: boolean;
+  gradeMismatchReason?: string | null;
   rowVersion: string;
 }
 
@@ -110,6 +119,7 @@ export interface StudentQuestionAttemptDto {
 }
 
 export interface StudentAssignmentQuestionDto {
+  hasImage?: boolean;
   questionId: string;
   questionType: string;
   difficulty: number;
@@ -127,9 +137,34 @@ export interface StudentAssignmentQuestionDto {
   submittedAttemptId?: string | number | null;
   hasAttachment?: boolean;
   effectiveIsCorrect?: boolean | null;
+  isVoided?: boolean;
+  voidReason?: string | null;
+  voidedScore?: number | null;
+}
+
+export interface AssignmentDraftAnswerItemDto {
+  questionId: number;
+  finalAnswer?: string;
+  answerDisplayLatex?: string;
+  reasoningText?: string;
+  timeSpentSeconds?: number;
+  confidence?: number;
+  answerChanges?: number;
+  drawingUploadToken?: string;
+}
+
+export interface SubmitAssignmentResponseDto {
+  assignmentId: string;
+  submittedAttemptsCount: number;
+  lastAnalysisJobId?: string | null;
+  isCompleted: boolean;
+  message: string;
 }
 
 export interface StudentAssignmentDetailDto {
+  classId?: string | null;
+  isReadOnly?: boolean;
+  readOnlyReason?: string | null;
   assignmentId: string;
   title: string;
   instructions: string | null;
@@ -138,12 +173,22 @@ export interface StudentAssignmentDetailDto {
   subjectName?: string | null;
   timeLimitMinutes?: number | null;
   startedAt?: string | null;
+  isSubmitted?: boolean;
+  submittedAt?: string | null;
+  elapsedSeconds?: number | null;
   effectiveExpiresAt?: string | null;
   remainingSeconds?: number | null;
   canRetake?: boolean;
   progress: StudentProgressDto;
   questions: StudentAssignmentQuestionDto[];
   summary?: AssignmentResultSummaryDto | null;
+  draftAnswers?: AssignmentDraftAnswerItemDto[] | null;
+  draftVersion?: number | null;
+}
+
+export interface SaveAssignmentDraftRequest {
+  answers: AssignmentDraftAnswerItemDto[];
+  draftVersion?: number;
 }
 
 export interface StudentAssignmentListItemDto {
@@ -166,4 +211,12 @@ export interface AssignmentProgressItemDto {
   teacherFinalReviewStatus?: "Pending" | "Approved";
   finalReviewVersion?: number;
   completedAt?: string | null;
+  finalReviewEligibility?: {
+    canApprove: boolean;
+    missingQuestionCount: number;
+    pendingReviewQuestionCount: number;
+    processingQuestionCount: number;
+    failedQuestionCount: number;
+    blockReason?: string | null;
+  };
 }

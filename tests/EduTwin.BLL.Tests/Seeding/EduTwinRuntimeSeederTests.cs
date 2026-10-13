@@ -106,6 +106,7 @@ public class EduTwinRuntimeSeederTests
         var edges = new List<KnowledgeEdge>();
         var curriculums = new List<Curriculum>();
         var curriculumClasses = new List<CurriculumClass>();
+        var curriculumApplications = new List<ClassCurriculumApplication>();
         var curriculumNodes = new List<CurriculumNode>();
         var questions = new List<Question>();
         var qOptions = new List<QuestionOption>();
@@ -125,6 +126,7 @@ public class EduTwinRuntimeSeederTests
             edges.AddRange(dataA.Edges);
             curriculums.AddRange(dataA.Curriculums);
             curriculumClasses.AddRange(dataA.CurriculumClasses);
+            curriculumApplications.AddRange(dataA.CurriculumApplications);
             curriculumNodes.AddRange(dataA.CurriculumNodes);
             questions.AddRange(dataA.Questions);
             qOptions.AddRange(dataA.QuestionOptions);
@@ -145,6 +147,7 @@ public class EduTwinRuntimeSeederTests
             edges.AddRange(dataB.Edges);
             curriculums.AddRange(dataB.Curriculums);
             curriculumClasses.AddRange(dataB.CurriculumClasses);
+            curriculumApplications.AddRange(dataB.CurriculumApplications);
             curriculumNodes.AddRange(dataB.CurriculumNodes);
             questions.AddRange(dataB.Questions);
             qOptions.AddRange(dataB.QuestionOptions);
@@ -170,6 +173,7 @@ public class EduTwinRuntimeSeederTests
         mockContext.Setup(c => c.Set<KnowledgeEdge>()).Returns(MockDbSet(edges).Object);
         mockContext.Setup(c => c.Set<Curriculum>()).Returns(MockDbSet(curriculums).Object);
         mockContext.Setup(c => c.Set<CurriculumClass>()).Returns(MockDbSet(curriculumClasses).Object);
+        mockContext.Setup(c => c.Set<ClassCurriculumApplication>()).Returns(MockDbSet(curriculumApplications).Object);
         mockContext.Setup(c => c.Set<CurriculumNode>()).Returns(MockDbSet(curriculumNodes).Object);
         mockContext.Setup(c => c.Set<Question>()).Returns(MockDbSet(questions).Object);
         mockContext.Setup(c => c.Set<QuestionOption>()).Returns(MockDbSet(qOptions).Object);
@@ -196,6 +200,15 @@ public class EduTwinRuntimeSeederTests
         var evaluator = new ManifestEvaluator(db);
         var status = await evaluator.EvaluateTenantAsync(true);
         Assert.Equal(TenantSeedStatus.Complete, status);
+    }
+
+    [Fact]
+    public async Task Manifest_MissingAppliedCurriculumLedger_ShouldReturnConflictWithoutReseeding()
+    {
+        var data = new EduTwinSeedFactory(true).CreateData();
+        data.CurriculumApplications.RemoveAt(0);
+        var evaluator = new ManifestEvaluator(CreateMockContext(dataA: data));
+        Assert.Equal(TenantSeedStatus.Conflict, await evaluator.EvaluateTenantAsync(true));
     }
 
     [Fact]

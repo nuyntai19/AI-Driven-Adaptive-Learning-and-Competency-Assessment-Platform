@@ -94,8 +94,10 @@ public sealed class ApproveAssignmentResultUseCaseTests : IDisposable
         Assert.Equal("FORBIDDEN", result.ErrorCode);
     }
 
-    [Fact]
-    public async Task ExecuteAsync_WhenValidRequest_ApprovesAssignment_UpdatesFinalReviewAndReturnsSuccess()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExecuteAsync_WhenValidRequest_ApprovesAssignment_UpdatesFinalReviewAndReturnsSuccess(bool useRubric)
     {
         // Arrange
         var assignmentId = Guid.NewGuid();
@@ -172,6 +174,11 @@ public sealed class ApproveAssignmentResultUseCaseTests : IDisposable
             UpdatedAt = DateTime.UtcNow
         };
         _dbContext.Attempts.Add(attempt);
+        if (useRubric) _dbContext.Questions.Add(new()
+        {
+            CenterId = _centerId, QuestionId = questionId, MaxScore = 10, QuestionText = "Question", CorrectAnswer = "42", Solution = "Reference", LanguageCode = "vi", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+            GradingCriteria = new() { Criteria = [new() { CriterionId = "result", Title = "Kết quả", Description = "Kết quả đúng", MaxScore = 10 }] }
+        });
         await _dbContext.SaveChangesAsync();
 
         var sut = new ApproveAssignmentResultUseCase(_dbContext, _tenantContext, TimeProvider.System);
@@ -184,6 +191,23 @@ public sealed class ApproveAssignmentResultUseCaseTests : IDisposable
         };
 
         // Act
+        if (useRubric)
+        {
+            Assert.Equal("ASSIGNMENT_HAS_PENDING_REVIEWS", (await sut.ExecuteAsync(assignmentId, request, CancellationToken.None)).ErrorCode);
+            var analysis = new EduTwin.DAL.AssessmentAndReasoning.ReasoningAnalysis
+            {
+                CenterId = _centerId, AnalysisId = 8802, AttemptId = attempt.AttemptId, SchemaVersion = "1.0", Feedback = "Teacher grade",
+                MissingSteps = System.Text.Json.JsonDocument.Parse("[]"), RootCauseNodeIds = System.Text.Json.JsonDocument.Parse("[]"), OverrideVersion = 1, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+            };
+            _dbContext.ReasoningAnalyses.Add(analysis);
+            _dbContext.TeacherReviewHistories.Add(new()
+            {
+                CenterId = _centerId, AnalysisId = analysis.AnalysisId, AttemptId = attempt.AttemptId, TeacherId = _teacherId,
+                Decision = TeacherReviewDecision.Adjusted, OverrideVersion = 1, CreatedAt = DateTime.UtcNow, RubricResultJson = RubricGrade.Serialize(new()
+                { MaxScore = 10, AwardedScore = 10, Criteria = [new() { CriterionId = "result", Title = "Kết quả", MaxScore = 10, AwardedScore = 10 }] })
+            });
+            await _dbContext.SaveChangesAsync();
+        }
         var result = await sut.ExecuteAsync(assignmentId, request, CancellationToken.None);
 
         // Assert

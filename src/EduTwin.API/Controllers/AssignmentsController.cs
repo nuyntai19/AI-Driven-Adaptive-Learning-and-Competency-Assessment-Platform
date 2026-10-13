@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using EduTwin.BLL.Assignments;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.Assignments;
@@ -28,8 +29,11 @@ public class AssignmentsController : ControllerBase
     private readonly IListStudentAssignmentsUseCase _listStudentAssignmentsUseCase;
     private readonly IGetStudentAssignmentUseCase _getStudentAssignmentUseCase;
     private readonly IStartStudentAssignmentUseCase _startStudentAssignmentUseCase;
+    private readonly ISaveAssignmentDraftUseCase _saveAssignmentDraftUseCase;
+    private readonly ISubmitStudentAssignmentUseCase _submitStudentAssignmentUseCase;
     private readonly TimeProvider _timeProvider;
 
+    [ActivatorUtilitiesConstructor]
     public AssignmentsController(
         ICreateAssignmentUseCase createAssignmentUseCase,
         IGetAssignmentUseCase getAssignmentUseCase,
@@ -41,6 +45,8 @@ public class AssignmentsController : ControllerBase
         IListStudentAssignmentsUseCase listStudentAssignmentsUseCase,
         IGetStudentAssignmentUseCase getStudentAssignmentUseCase,
         IStartStudentAssignmentUseCase? startStudentAssignmentUseCase = null,
+        ISaveAssignmentDraftUseCase? saveAssignmentDraftUseCase = null,
+        ISubmitStudentAssignmentUseCase? submitStudentAssignmentUseCase = null,
         TimeProvider? timeProvider = null)
     {
         _createAssignmentUseCase = createAssignmentUseCase;
@@ -53,7 +59,38 @@ public class AssignmentsController : ControllerBase
         _listStudentAssignmentsUseCase = listStudentAssignmentsUseCase;
         _getStudentAssignmentUseCase = getStudentAssignmentUseCase;
         _startStudentAssignmentUseCase = startStudentAssignmentUseCase!;
+        _saveAssignmentDraftUseCase = saveAssignmentDraftUseCase!;
+        _submitStudentAssignmentUseCase = submitStudentAssignmentUseCase!;
         _timeProvider = timeProvider ?? TimeProvider.System;
+    }
+
+    public AssignmentsController(
+        ICreateAssignmentUseCase createAssignmentUseCase,
+        IGetAssignmentUseCase getAssignmentUseCase,
+        IListAssignmentsUseCase listAssignmentsUseCase,
+        IUpdateAssignmentUseCase updateAssignmentUseCase,
+        IPublishAssignmentUseCase publishAssignmentUseCase,
+        ICloseAssignmentUseCase closeAssignmentUseCase,
+        IGetAssignmentProgressUseCase getAssignmentProgressUseCase,
+        IListStudentAssignmentsUseCase listStudentAssignmentsUseCase,
+        IGetStudentAssignmentUseCase getStudentAssignmentUseCase,
+        IStartStudentAssignmentUseCase? startStudentAssignmentUseCase,
+        TimeProvider? timeProvider)
+        : this(
+            createAssignmentUseCase,
+            getAssignmentUseCase,
+            listAssignmentsUseCase,
+            updateAssignmentUseCase,
+            publishAssignmentUseCase,
+            closeAssignmentUseCase,
+            getAssignmentProgressUseCase,
+            listStudentAssignmentsUseCase,
+            getStudentAssignmentUseCase,
+            startStudentAssignmentUseCase,
+            null,
+            null,
+            timeProvider)
+    {
     }
 
     /// <summary>
@@ -367,6 +404,73 @@ public class AssignmentsController : ControllerBase
         return MapErrorToResponse(result.ErrorCode);
     }
 
+    /// <summary>
+    /// PUT /api/v1/students/me/assignments/{id}/draft — Lưu bản nháp câu trả lời trước hạn.
+    /// </summary>
+    [HttpPut("/api/v1/students/me/assignments/{id}/draft")]
+    [Authorize(Policy = "assignments.assignments.read")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> SaveAssignmentDraft(
+        Guid id,
+        [FromBody] SaveAssignmentDraftRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _saveAssignmentDraftUseCase.ExecuteAsync(id, request, cancellationToken);
+        if (result.IsSuccess)
+        {
+            return Ok(new
+            {
+                success = true,
+                draftVersion = result.DraftVersion,
+                timestamp = _timeProvider.GetUtcNow().UtcDateTime
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ConcurrencyConflict)
+        {
+            var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+            return Conflict(new ProblemDetails
+            {
+                Type = "https://edutwin.local/problems/concurrency",
+                Title = "Xung đột phiên bản bản nháp",
+                Status = StatusCodes.Status409Conflict,
+                Detail = "Phiên bản bản nháp không khớp với phiên bản mới nhất trên máy chủ.",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = traceId,
+                    ["errorCode"] = ErrorCodes.ConcurrencyConflict,
+                    ["draftVersion"] = result.DraftVersion
+                }
+            });
+        }
+
+        return MapErrorToResponse(result.ErrorCode);
+    }
+
+    /// <summary>
+    /// POST /api/v1/students/me/assignments/{id}/submit — Nộp bài tập toàn bài với thời điểm tiếp nhận thống nhất.
+    /// </summary>
+    [HttpPost("/api/v1/students/me/assignments/{id}/submit")]
+    [Authorize(Policy = "learning.attempts.submit")]
+    [ProducesResponseType(typeof(SubmitAssignmentResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> SubmitStudentAssignment(
+        Guid id,
+        [FromBody] SubmitAssignmentRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _submitStudentAssignmentUseCase.ExecuteAsync(id, request, cancellationToken);
+        if (result.IsSuccess)
+        {
+            return Ok(result.Data);
+        }
+        return MapErrorToResponse(result.ErrorCode);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private IActionResult MapErrorToResponse(string? errorCode)
@@ -393,6 +497,36 @@ public class AssignmentsController : ControllerBase
                 Detail = "Một hoặc nhiều trường không hợp lệ.",
                 Instance = HttpContext.Request.Path,
                 Extensions = { ["traceId"] = traceId, ["errorCode"] = ErrorCodes.ValidationFailed }
+            }),
+
+            ErrorCodes.AssignmentNotAvailable => Conflict(new ProblemDetails
+            {
+                Type = "https://edutwin.local/problems/assignment-not-available",
+                Title = "Bài tập không còn khả dụng",
+                Status = StatusCodes.Status409Conflict,
+                Detail = "Bài tập chưa bắt đầu, đã hết hạn hoặc đã hoàn thành. Vui lòng tải lại trạng thái mới nhất.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = traceId, ["errorCode"] = ErrorCodes.AssignmentNotAvailable }
+            }),
+
+            ErrorCodes.QuestionReasoningRequired => UnprocessableEntity(new ProblemDetails
+            {
+                Type = "https://edutwin.local/problems/reasoning-required",
+                Title = "Thiếu phần giải thích",
+                Status = StatusCodes.Status422UnprocessableEntity,
+                Detail = "Câu hỏi này yêu cầu học sinh nhập phần giải thích trước khi gửi.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = traceId, ["errorCode"] = ErrorCodes.QuestionReasoningRequired }
+            }),
+
+            ErrorCodes.UploadTokenAlreadyUsed => Conflict(new ProblemDetails
+            {
+                Type = "https://edutwin.local/problems/upload-token-already-used",
+                Title = "Mã tải lên đã được sử dụng",
+                Status = StatusCodes.Status409Conflict,
+                Detail = "Mã tải lên đính kèm đã được sử dụng cho một bài nộp khác.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = traceId, ["errorCode"] = ErrorCodes.UploadTokenAlreadyUsed }
             }),
 
             ErrorCodes.InvalidStateTransition => Conflict(new ProblemDetails

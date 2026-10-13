@@ -81,7 +81,8 @@ public class UpdateClassUseCaseTests
         bool centerDeleted = false,
         string academicYear = "2026",
         string className = "Old Class",
-        ulong rowVersion = 1)
+        ulong rowVersion = 1,
+        byte? gradeLevel = null)
     {
         classCenterId ??= centerId;
         newTeacherCenterId ??= centerId;
@@ -99,7 +100,7 @@ public class UpdateClassUseCaseTests
         context.Teachers.Add(new Teacher { TeacherId = originalTeacherId, CenterId = centerId, User = originalUser, CreatedAt = SeedTimeUtc, UpdatedAt = SeedTimeUtc, IsDeleted = originalTeacherDeleted });
         context.Teachers.Add(new Teacher { TeacherId = newTeacherId, CenterId = newTeacherCenterId.Value, User = newUser, CreatedAt = SeedTimeUtc, UpdatedAt = SeedTimeUtc, IsDeleted = newTeacherDeleted });
 
-        var originalClass = new Class { ClassId = classId, CenterId = classCenterId.Value, ClassName = className, AcademicYear = academicYear, SubjectId = subjectId, TeacherId = originalTeacherId, CreatedAt = SeedTimeUtc, CreatedBy = Guid.NewGuid(), UpdatedAt = SeedTimeUtc, UpdatedBy = Guid.NewGuid(), Status = ClassStatus.Active, RowVersion = rowVersion, IsDeleted = classDeleted };
+        var originalClass = new Class { ClassId = classId, CenterId = classCenterId.Value, ClassName = className, AcademicYear = academicYear, SubjectId = subjectId, TeacherId = originalTeacherId, CreatedAt = SeedTimeUtc, CreatedBy = Guid.NewGuid(), UpdatedAt = SeedTimeUtc, UpdatedBy = Guid.NewGuid(), Status = ClassStatus.Active, RowVersion = rowVersion, IsDeleted = classDeleted, GradeLevel = gradeLevel };
         context.Classes.Add(originalClass);
 
         await context.SaveChangesAsync();
@@ -164,6 +165,7 @@ public class UpdateClassUseCaseTests
             ClassName = "  New Math 101  ",
             TeacherId = newTeacherId,
             Status = ClassStatus.Archived,
+            LifecycleReason = "Quản lý kết thúc lớp sau năm học.",
             RowVersion = "1"
         };
 
@@ -185,6 +187,10 @@ public class UpdateClassUseCaseTests
         Assert.Equal("New Math 101", updatedClass.ClassName);
         Assert.Equal(newTeacherId, updatedClass.TeacherId);
         Assert.Equal(ClassStatus.Archived, updatedClass.Status);
+        Assert.Equal(ClassLearningScope.History, updatedClass.LearningScope);
+        var audit = await context.AuthorizationAuditLogs.SingleAsync();
+        Assert.Equal(currentUserId, audit.ActorUserId);
+        Assert.Equal("ClassArchived", audit.ActionType);
         Assert.Equal(2ul, updatedClass.RowVersion);
 
         // Assert audit properties
@@ -269,7 +275,7 @@ public class UpdateClassUseCaseTests
         int baselineSaveChanges = saveChangesInterceptor.CallCount;
 
         var sut = new UpdateClassUseCase(context, _mockTenantContext.Object, _mockTimeProvider.Object, _mockLogger.Object);
-        var request = new UpdateClassRequest { ClassName = "New Name", TeacherId = newTeacherId, Status = ClassStatus.Archived, RowVersion = "1" };
+        var request = new UpdateClassRequest { ClassName = "New Name", TeacherId = newTeacherId, Status = ClassStatus.Archived, LifecycleReason = "Kết thúc lớp", RowVersion = "1" };
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => sut.ExecuteAsync(classId, request, CancellationToken.None));
 
@@ -288,6 +294,31 @@ public class UpdateClassUseCaseTests
         Assert.Equal(originalClass.SubjectId, classAfter.SubjectId);
         Assert.Equal(originalClass.AcademicYear, classAfter.AcademicYear);
         Assert.Equal(EntityState.Unchanged, context.Entry(classAfter).State);
+    }
+
+    [Fact]
+    public async Task Lifecycle_RequiresReason_ArchivesAndReopens_WithActorAndOptimisticVersion()
+    {
+        var center = _mockTenantContext.Object.CenterId!.Value;
+        await using var db = CreateContext(Guid.NewGuid().ToString(), center);
+        var cls = Guid.NewGuid(); var teacher = Guid.NewGuid();
+        await SeedDataAsync(db, center, cls, teacher, Guid.NewGuid(), Guid.NewGuid());
+        var useCase = new UpdateClassUseCase(db, _mockTenantContext.Object, _mockTimeProvider.Object, _mockLogger.Object);
+        UpdateClassRequest Request(ClassStatus status, string version, string? reason) => new() {
+            ClassName = "Old Class", TeacherId = teacher, Status = status, RowVersion = version, LifecycleReason = reason };
+        var missing = await useCase.ExecuteAsync(cls, Request(ClassStatus.Archived,"1",null));
+        Assert.Equal(ErrorCodes.ValidationFailed, missing.ErrorCode);
+        Assert.Empty(db.AuthorizationAuditLogs);
+        Assert.True((await useCase.ExecuteAsync(cls, Request(ClassStatus.Archived,"1","Kết thúc năm học"))).IsSuccess);
+        Assert.Equal(ClassLearningScope.History, (await db.Classes.SingleAsync()).LearningScope);
+        Assert.Equal(ErrorCodes.ConcurrencyConflict, (await useCase.ExecuteAsync(cls, Request(ClassStatus.Active,"1","Mở lại"))).ErrorCode);
+        Assert.True((await useCase.ExecuteAsync(cls, Request(ClassStatus.Active,"2","Bắt đầu học lại"))).IsSuccess);
+        Assert.Equal(ClassLearningScope.Current, (await db.Classes.SingleAsync()).LearningScope);
+        var audits = await db.AuthorizationAuditLogs.OrderBy(a=>a.AuthorizationAuditId).ToListAsync();
+        Assert.Equal(2, audits.Count);
+        Assert.Equal(new[]{"ClassArchived","ClassReopened"}, audits.Select(a=>a.ActionType));
+        Assert.All(audits,a=>Assert.Equal(_mockTenantContext.Object.UserId, a.ActorUserId));
+        Assert.All(audits,a=>Assert.NotNull(a.BeforeData));
     }
 
     [Fact]
@@ -752,6 +783,120 @@ public class UpdateClassUseCaseTests
         var request = new UpdateClassRequest { ClassName = "A", TeacherId = Guid.NewGuid(), Status = ClassStatus.Active, RowVersion = "1" };
 
         await Assert.ThrowsAsync<OperationCanceledException>(() => sut.ExecuteAsync(Guid.NewGuid(), request, cts.Token));
+    }
+
+    [Fact]
+    public async Task UpdateClass_ChangingGradeLevel_WithEnrolledStudentsOfDifferentGrade_ReturnsInvalidStateTransition()
+    {
+        var centerId = _mockTenantContext.Object.CenterId!.Value;
+        var dbName = Guid.NewGuid().ToString();
+        var context = CreateContext(dbName, centerId);
+
+        var classId = Guid.NewGuid();
+        var originalTeacherId = Guid.NewGuid();
+        var newTeacherId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+
+        await SeedDataAsync(context, centerId, classId, originalTeacherId, newTeacherId, subjectId, rowVersion: 1, gradeLevel: 10);
+
+        var studentId = Guid.NewGuid();
+        context.Users.Add(new User { UserId = studentId, CenterId = centerId, DisplayName = "S1", RoleName = UserRole.Student, Username = "S1", PasswordHash = "H", CreatedAt = SeedTimeUtc, UpdatedAt = SeedTimeUtc });
+        context.Students.Add(new Student { StudentId = studentId, CenterId = centerId, FullName = "S1", GradeLevel = 10, CreatedAt = SeedTimeUtc, UpdatedAt = SeedTimeUtc });
+        context.ClassStudents.Add(new ClassStudent { CenterId = centerId, ClassId = classId, StudentId = studentId, JoinedAt = SeedTimeUtc, Status = ClassStudentStatus.Active });
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        var sut = new UpdateClassUseCase(context, _mockTenantContext.Object, _mockTimeProvider.Object, _mockLogger.Object);
+        var request = new UpdateClassRequest
+        {
+            ClassName = "Updated Class Name",
+            TeacherId = newTeacherId,
+            Status = ClassStatus.Active,
+            GradeLevel = 11, // Attempting to change to Grade 11 while student is Grade 10
+            RowVersion = "1"
+        };
+
+        var result = await sut.ExecuteAsync(classId, request);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.InvalidStateTransition, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task UpdateClass_ClearingGradeLevel_WithActiveEnrolledStudents_ReturnsInvalidStateTransition()
+    {
+        var centerId = _mockTenantContext.Object.CenterId!.Value;
+        var dbName = Guid.NewGuid().ToString();
+        var context = CreateContext(dbName, centerId);
+
+        var classId = Guid.NewGuid();
+        var originalTeacherId = Guid.NewGuid();
+        var newTeacherId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+
+        await SeedDataAsync(context, centerId, classId, originalTeacherId, newTeacherId, subjectId, rowVersion: 1, gradeLevel: 10);
+
+        var studentId = Guid.NewGuid();
+        context.Users.Add(new User { UserId = studentId, CenterId = centerId, DisplayName = "S1", RoleName = UserRole.Student, Username = "S1", PasswordHash = "H", CreatedAt = SeedTimeUtc, UpdatedAt = SeedTimeUtc });
+        context.Students.Add(new Student { StudentId = studentId, CenterId = centerId, FullName = "S1", GradeLevel = 10, CreatedAt = SeedTimeUtc, UpdatedAt = SeedTimeUtc });
+        context.ClassStudents.Add(new ClassStudent { CenterId = centerId, ClassId = classId, StudentId = studentId, JoinedAt = SeedTimeUtc, Status = ClassStudentStatus.Active });
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        var sut = new UpdateClassUseCase(context, _mockTenantContext.Object, _mockTimeProvider.Object, _mockLogger.Object);
+        var request = new UpdateClassRequest
+        {
+            ClassName = "Updated Class Name",
+            TeacherId = newTeacherId,
+            Status = ClassStatus.Active,
+            GradeLevel = null, // Attempting to clear GradeLevel while active student is enrolled
+            RowVersion = "1"
+        };
+
+        var result = await sut.ExecuteAsync(classId, request);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.InvalidStateTransition, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task UpdateClass_ChangingGradeLevel_WithNoActiveStudents_Succeeds()
+    {
+        var centerId = _mockTenantContext.Object.CenterId!.Value;
+        var dbName = Guid.NewGuid().ToString();
+        var context = CreateContext(dbName, centerId);
+
+        var classId = Guid.NewGuid();
+        var originalTeacherId = Guid.NewGuid();
+        var newTeacherId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+
+        await SeedDataAsync(context, centerId, classId, originalTeacherId, newTeacherId, subjectId, rowVersion: 1, gradeLevel: 10);
+
+        // Add a removed student (not active)
+        var studentId = Guid.NewGuid();
+        context.Users.Add(new User { UserId = studentId, CenterId = centerId, DisplayName = "S1", RoleName = UserRole.Student, Username = "S1", PasswordHash = "H", CreatedAt = SeedTimeUtc, UpdatedAt = SeedTimeUtc });
+        context.Students.Add(new Student { StudentId = studentId, CenterId = centerId, FullName = "S1", GradeLevel = 10, CreatedAt = SeedTimeUtc, UpdatedAt = SeedTimeUtc });
+        context.ClassStudents.Add(new ClassStudent { CenterId = centerId, ClassId = classId, StudentId = studentId, JoinedAt = SeedTimeUtc, RemovedAt = SeedTimeUtc.AddDays(1), Status = ClassStudentStatus.Removed });
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        var sut = new UpdateClassUseCase(context, _mockTenantContext.Object, _mockTimeProvider.Object, _mockLogger.Object);
+        var request = new UpdateClassRequest
+        {
+            ClassName = "Updated Class Name",
+            TeacherId = newTeacherId,
+            Status = ClassStatus.Active,
+            GradeLevel = 11,
+            RowVersion = "1"
+        };
+
+        var result = await sut.ExecuteAsync(classId, request);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal((byte?)11, result.Data!.GradeLevel);
+        var updatedClass = await context.Classes.FirstAsync(c => c.ClassId == classId);
+        Assert.Equal((byte?)11, updatedClass.GradeLevel);
     }
 }
 

@@ -52,14 +52,14 @@ public class DeleteQuestionUseCaseTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_ActorNotCenterManager_ReturnsNotFound()
+    public async Task ExecuteAsync_ActorCenterManager_ReturnsForbiddenResource()
     {
         var centerId = Guid.NewGuid();
-        var teacherId = Guid.NewGuid();
+        var managerId = Guid.NewGuid();
         _tenantMock.Setup(t => t.IsResolved).Returns(true);
         _tenantMock.Setup(t => t.CenterId).Returns(centerId);
-        _tenantMock.Setup(t => t.UserId).Returns(teacherId);
-        _tenantMock.Setup(t => t.Role).Returns(nameof(UserRole.Teacher)); // Teacher is not allowed to delete question
+        _tenantMock.Setup(t => t.UserId).Returns(managerId);
+        _tenantMock.Setup(t => t.Role).Returns(nameof(UserRole.CenterManager)); // CM forbidden
 
         using var dbContext = new EduTwinDbContext(_dbOptions, _tenantAccessorMock.Object);
         var sut = new DeleteQuestionUseCase(dbContext, _tenantMock.Object, _timeProviderMock.Object);
@@ -67,7 +67,7 @@ public class DeleteQuestionUseCaseTests
         var result = await sut.ExecuteAsync("100");
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Theory]
@@ -79,11 +79,11 @@ public class DeleteQuestionUseCaseTests
     public async Task ExecuteAsync_InvalidQuestionIdFormat_ReturnsValidationFailed(string? questionId)
     {
         var centerId = Guid.NewGuid();
-        var managerId = Guid.NewGuid();
+        var teacherId = Guid.NewGuid();
         _tenantMock.Setup(t => t.IsResolved).Returns(true);
         _tenantMock.Setup(t => t.CenterId).Returns(centerId);
-        _tenantMock.Setup(t => t.UserId).Returns(managerId);
-        _tenantMock.Setup(t => t.Role).Returns(nameof(UserRole.CenterManager));
+        _tenantMock.Setup(t => t.UserId).Returns(teacherId);
+        _tenantMock.Setup(t => t.Role).Returns(nameof(UserRole.Teacher));
 
         using var dbContext = new EduTwinDbContext(_dbOptions, _tenantAccessorMock.Object);
         var sut = new DeleteQuestionUseCase(dbContext, _tenantMock.Object, _timeProviderMock.Object);
@@ -98,11 +98,11 @@ public class DeleteQuestionUseCaseTests
     public async Task ExecuteAsync_QuestionNotFound_ReturnsResourceNotFound()
     {
         var centerId = Guid.NewGuid();
-        var managerId = Guid.NewGuid();
+        var teacherId = Guid.NewGuid();
         _tenantMock.Setup(t => t.IsResolved).Returns(true);
         _tenantMock.Setup(t => t.CenterId).Returns(centerId);
-        _tenantMock.Setup(t => t.UserId).Returns(managerId);
-        _tenantMock.Setup(t => t.Role).Returns(nameof(UserRole.CenterManager));
+        _tenantMock.Setup(t => t.UserId).Returns(teacherId);
+        _tenantMock.Setup(t => t.Role).Returns(nameof(UserRole.Teacher));
 
         using var dbContext = new EduTwinDbContext(_dbOptions, _tenantAccessorMock.Object);
         var sut = new DeleteQuestionUseCase(dbContext, _tenantMock.Object, _timeProviderMock.Object);
@@ -117,11 +117,11 @@ public class DeleteQuestionUseCaseTests
     public async Task ExecuteAsync_QuestionNotDraft_ReturnsInvalidStateTransition()
     {
         var centerId = Guid.NewGuid();
-        var managerId = Guid.NewGuid();
+        var teacherId = Guid.NewGuid();
         _tenantMock.Setup(t => t.IsResolved).Returns(true);
         _tenantMock.Setup(t => t.CenterId).Returns(centerId);
-        _tenantMock.Setup(t => t.UserId).Returns(managerId);
-        _tenantMock.Setup(t => t.Role).Returns(nameof(UserRole.CenterManager));
+        _tenantMock.Setup(t => t.UserId).Returns(teacherId);
+        _tenantMock.Setup(t => t.Role).Returns(nameof(UserRole.Teacher));
 
         const ulong qId = 200;
         using (var dbContext = new EduTwinDbContext(_dbOptions, _tenantAccessorMock.Object))
@@ -132,7 +132,7 @@ public class DeleteQuestionUseCaseTests
                 CenterId = centerId,
                 SubjectId = Guid.NewGuid(),
                 PrimaryTopicNodeId = 1,
-                CreatedByTeacherId = managerId,
+                CreatedByTeacherId = teacherId,
                 QuestionText = "Active Question",
                 CorrectAnswer = "A",
                 Solution = "Solution",
@@ -141,7 +141,7 @@ public class DeleteQuestionUseCaseTests
                 Status = QuestionStatus.Active, // Not Draft
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
-                CreatedBy = managerId
+                CreatedBy = teacherId
             });
             await dbContext.SaveChangesAsync();
         }
@@ -161,11 +161,11 @@ public class DeleteQuestionUseCaseTests
     public async Task ExecuteAsync_QuestionHasAttempts_ReturnsInvalidStateTransition()
     {
         var centerId = Guid.NewGuid();
-        var managerId = Guid.NewGuid();
+        var teacherId = Guid.NewGuid();
         _tenantMock.Setup(t => t.IsResolved).Returns(true);
         _tenantMock.Setup(t => t.CenterId).Returns(centerId);
-        _tenantMock.Setup(t => t.UserId).Returns(managerId);
-        _tenantMock.Setup(t => t.Role).Returns(nameof(UserRole.CenterManager));
+        _tenantMock.Setup(t => t.UserId).Returns(teacherId);
+        _tenantMock.Setup(t => t.Role).Returns(nameof(UserRole.Teacher));
 
         const ulong qId = 201;
         using (var dbContext = new EduTwinDbContext(_dbOptions, _tenantAccessorMock.Object))
@@ -176,7 +176,7 @@ public class DeleteQuestionUseCaseTests
                 CenterId = centerId,
                 SubjectId = Guid.NewGuid(),
                 PrimaryTopicNodeId = 1,
-                CreatedByTeacherId = managerId,
+                CreatedByTeacherId = teacherId,
                 QuestionText = "Draft with attempts",
                 CorrectAnswer = "A",
                 Solution = "Solution",
@@ -185,7 +185,7 @@ public class DeleteQuestionUseCaseTests
                 Status = QuestionStatus.Draft,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
-                CreatedBy = managerId
+                CreatedBy = teacherId
             });
             dbContext.Attempts.Add(new Attempt
             {
@@ -217,11 +217,11 @@ public class DeleteQuestionUseCaseTests
     public async Task ExecuteAsync_QuestionHasAssignments_ReturnsInvalidStateTransition()
     {
         var centerId = Guid.NewGuid();
-        var managerId = Guid.NewGuid();
+        var teacherId = Guid.NewGuid();
         _tenantMock.Setup(t => t.IsResolved).Returns(true);
         _tenantMock.Setup(t => t.CenterId).Returns(centerId);
-        _tenantMock.Setup(t => t.UserId).Returns(managerId);
-        _tenantMock.Setup(t => t.Role).Returns(nameof(UserRole.CenterManager));
+        _tenantMock.Setup(t => t.UserId).Returns(teacherId);
+        _tenantMock.Setup(t => t.Role).Returns(nameof(UserRole.Teacher));
 
         const ulong qId = 202;
         using (var dbContext = new EduTwinDbContext(_dbOptions, _tenantAccessorMock.Object))
@@ -232,7 +232,7 @@ public class DeleteQuestionUseCaseTests
                 CenterId = centerId,
                 SubjectId = Guid.NewGuid(),
                 PrimaryTopicNodeId = 1,
-                CreatedByTeacherId = managerId,
+                CreatedByTeacherId = teacherId,
                 QuestionText = "Draft in assignment",
                 CorrectAnswer = "A",
                 Solution = "Solution",
@@ -241,7 +241,7 @@ public class DeleteQuestionUseCaseTests
                 Status = QuestionStatus.Draft,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
-                CreatedBy = managerId
+                CreatedBy = teacherId
             });
             dbContext.AssignmentQuestions.Add(new AssignmentQuestion
             {
@@ -270,11 +270,11 @@ public class DeleteQuestionUseCaseTests
     public async Task ExecuteAsync_ValidDraftWithoutDependencies_SoftDeletesQuestionAndOptions()
     {
         var centerId = Guid.NewGuid();
-        var managerId = Guid.NewGuid();
+        var teacherId = Guid.NewGuid();
         _tenantMock.Setup(t => t.IsResolved).Returns(true);
         _tenantMock.Setup(t => t.CenterId).Returns(centerId);
-        _tenantMock.Setup(t => t.UserId).Returns(managerId);
-        _tenantMock.Setup(t => t.Role).Returns(nameof(UserRole.CenterManager));
+        _tenantMock.Setup(t => t.UserId).Returns(teacherId);
+        _tenantMock.Setup(t => t.Role).Returns(nameof(UserRole.Teacher));
 
         const ulong qId = 203;
         const ulong optId = 901;
@@ -287,7 +287,7 @@ public class DeleteQuestionUseCaseTests
                 CenterId = centerId,
                 SubjectId = Guid.NewGuid(),
                 PrimaryTopicNodeId = 1,
-                CreatedByTeacherId = managerId,
+                CreatedByTeacherId = teacherId,
                 QuestionText = "Valid draft question",
                 CorrectAnswer = "A",
                 Solution = "Solution",
@@ -296,7 +296,7 @@ public class DeleteQuestionUseCaseTests
                 Status = QuestionStatus.Draft,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
-                CreatedBy = managerId,
+                CreatedBy = teacherId,
                 IsDeleted = false
             });
             dbContext.QuestionOptions.Add(new QuestionOption
@@ -325,12 +325,58 @@ public class DeleteQuestionUseCaseTests
             var qInDb = await dbContext.Questions.IgnoreQueryFilters().SingleAsync(q => q.QuestionId == qId);
             Assert.True(qInDb.IsDeleted);
             Assert.NotNull(qInDb.DeletedAt);
-            Assert.Equal(managerId, qInDb.DeletedBy);
+            Assert.Equal(teacherId, qInDb.DeletedBy);
 
             var optInDb = await dbContext.QuestionOptions.IgnoreQueryFilters().SingleAsync(o => o.OptionId == optId);
             Assert.True(optInDb.IsDeleted);
             Assert.NotNull(optInDb.DeletedAt);
-            Assert.Equal(managerId, optInDb.DeletedBy);
+            Assert.Equal(teacherId, optInDb.DeletedBy);
+        }
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_QuestionCreatedByOtherTeacher_ReturnsForbiddenResource()
+    {
+        var centerId = Guid.NewGuid();
+        var teacherAId = Guid.NewGuid();
+        var teacherBId = Guid.NewGuid();
+        _tenantMock.Setup(t => t.IsResolved).Returns(true);
+        _tenantMock.Setup(t => t.CenterId).Returns(centerId);
+        _tenantMock.Setup(t => t.UserId).Returns(teacherAId);
+        _tenantMock.Setup(t => t.Role).Returns(nameof(UserRole.Teacher));
+
+        const ulong qId = 204;
+        using (var dbContext = new EduTwinDbContext(_dbOptions, _tenantAccessorMock.Object))
+        {
+            dbContext.Questions.Add(new Question
+            {
+                QuestionId = qId,
+                CenterId = centerId,
+                SubjectId = Guid.NewGuid(),
+                PrimaryTopicNodeId = 1,
+                CreatedByTeacherId = teacherBId,
+                QuestionText = "Teacher B question",
+                CorrectAnswer = "A",
+                Solution = "Solution",
+                LanguageCode = "vi",
+                QuestionType = QuestionType.MultipleChoice,
+                Status = QuestionStatus.Draft,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+                CreatedBy = teacherBId,
+                IsDeleted = false
+            });
+            await dbContext.SaveChangesAsync();
+        }
+
+        using (var dbContext = new EduTwinDbContext(_dbOptions, _tenantAccessorMock.Object))
+        {
+            var sut = new DeleteQuestionUseCase(dbContext, _tenantMock.Object, _timeProviderMock.Object);
+
+            var result = await sut.ExecuteAsync(qId.ToString());
+
+            Assert.False(result.IsSuccess);
+            Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
         }
     }
 }

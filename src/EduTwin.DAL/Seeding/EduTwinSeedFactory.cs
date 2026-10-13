@@ -95,18 +95,30 @@ public class EduTwinSeedFactory
         container.Subjects.Add(new Subject { CenterId = _centerId, SubjectId = mathSubId, SubjectCode = "MATH", SubjectName = "Toán", IsActive = true, CreatedAt = DeterministicSeedIds.AuditTimeUtc, UpdatedAt = DeterministicSeedIds.AuditTimeUtc });
         container.Subjects.Add(new Subject { CenterId = _centerId, SubjectId = engSubId, SubjectCode = "ENGLISH", SubjectName = "Tiếng Anh", IsActive = true, CreatedAt = DeterministicSeedIds.AuditTimeUtc, UpdatedAt = DeterministicSeedIds.AuditTimeUtc });
 
-        // 4. Classes
-        var mathClassId = _isCenterA ? DeterministicSeedIds.CenterAMathClassId : DeterministicSeedIds.CenterBMathClassId;
-        var engClassId = _isCenterA ? DeterministicSeedIds.CenterAEnglishClassId : DeterministicSeedIds.CenterBEnglishClassId;
-        container.Classes.Add(new Class { CenterId = _centerId, ClassId = mathClassId, TeacherId = teacherMathId, SubjectId = mathSubId, ClassName = "Lớp Toán", AcademicYear = "2026-2027", Status = EduTwin.Contracts.Organization.ClassStatus.Active, CreatedAt = DeterministicSeedIds.AuditTimeUtc, UpdatedAt = DeterministicSeedIds.AuditTimeUtc });
-        container.Classes.Add(new Class { CenterId = _centerId, ClassId = engClassId, TeacherId = teacherEnglishId, SubjectId = engSubId, ClassName = "Lớp Tiếng Anh", AcademicYear = "2026-2027", Status = EduTwin.Contracts.Organization.ClassStatus.Active, CreatedAt = DeterministicSeedIds.AuditTimeUtc, UpdatedAt = DeterministicSeedIds.AuditTimeUtc });
+        // 4. Six grade-specific classes. Preserve legacy IDs above for existing
+        // databases; fresh seed data never creates an unclassified mixed class.
+        foreach (byte grade in new byte[] { 10, 11, 12 })
+        foreach (var math in new[] { true, false })
+            container.Classes.Add(new Class
+            {
+                CenterId = _centerId, ClassId = DeterministicSeedIds.GradeClassId(_isCenterA, math, grade),
+                TeacherId = math ? teacherMathId : teacherEnglishId, SubjectId = math ? mathSubId : engSubId,
+                ClassName = $"Lớp {(math ? "Toán" : "Tiếng Anh")} {grade}", GradeLevel = grade,
+                AcademicYear = "2026-2027", Status = EduTwin.Contracts.Organization.ClassStatus.Active,
+                CreatedAt = DeterministicSeedIds.AuditTimeUtc, UpdatedAt = DeterministicSeedIds.AuditTimeUtc,
+                RowVersion = DeterministicSeedIds.InitialRowVersion
+            });
 
         // 5. Class Students
-        foreach (var sId in studentIds)
-        {
-            container.ClassStudents.Add(new ClassStudent { CenterId = _centerId, ClassId = mathClassId, StudentId = sId, Status = EduTwin.Contracts.Organization.ClassStudentStatus.Active, JoinedAt = DeterministicSeedIds.AuditTimeUtc });
-            container.ClassStudents.Add(new ClassStudent { CenterId = _centerId, ClassId = engClassId, StudentId = sId, Status = EduTwin.Contracts.Organization.ClassStudentStatus.Active, JoinedAt = DeterministicSeedIds.AuditTimeUtc });
-        }
+        foreach (var student in container.Students)
+        foreach (var math in new[] { true, false })
+            container.ClassStudents.Add(new ClassStudent
+            {
+                CenterId = _centerId, ClassId = DeterministicSeedIds.GradeClassId(_isCenterA, math, student.GradeLevel),
+                StudentId = student.StudentId, GradeLevelAtEnrollment = student.GradeLevel,
+                Status = EduTwin.Contracts.Organization.ClassStudentStatus.Active,
+                JoinedAt = DeterministicSeedIds.AuditTimeUtc
+            });
 
         // 6. Topics and Edges
         var mathTopics = new[]
@@ -130,17 +142,40 @@ public class EduTwinSeedFactory
         container.Edges.Add(CreateEdge(engSubId, engTopics[1].NodeId, engTopics[2].NodeId));
 
         // 7. Curriculums
-        var mathCurriculumId = _isCenterA ? DeterministicSeedIds.CenterAMathCurriculumId : DeterministicSeedIds.CenterBMathCurriculumId;
-        var engCurriculumId = _isCenterA ? DeterministicSeedIds.CenterAEnglishCurriculumId : DeterministicSeedIds.CenterBEnglishCurriculumId;
-
-        container.Curriculums.Add(new Curriculum { CenterId = _centerId, CurriculumId = mathCurriculumId, SubjectId = mathSubId, TeacherId = teacherMathId, Title = "Giáo trình Toán", ReviewStatus = EduTwin.Contracts.CurriculumAndQuestions.ReviewStatus.Published, SourceFile = null, CreatedAt = DeterministicSeedIds.AuditTimeUtc, UpdatedAt = DeterministicSeedIds.AuditTimeUtc });
-        container.Curriculums.Add(new Curriculum { CenterId = _centerId, CurriculumId = engCurriculumId, SubjectId = engSubId, TeacherId = teacherEnglishId, Title = "Giáo trình Tiếng Anh", ReviewStatus = EduTwin.Contracts.CurriculumAndQuestions.ReviewStatus.Published, SourceFile = null, CreatedAt = DeterministicSeedIds.AuditTimeUtc, UpdatedAt = DeterministicSeedIds.AuditTimeUtc });
-
-        container.CurriculumClasses.Add(new CurriculumClass { CenterId = _centerId, CurriculumId = mathCurriculumId, ClassId = mathClassId, AssignedBy = teacherMathId, AssignedAt = DeterministicSeedIds.AuditTimeUtc });
-        container.CurriculumClasses.Add(new CurriculumClass { CenterId = _centerId, CurriculumId = engCurriculumId, ClassId = engClassId, AssignedBy = teacherEnglishId, AssignedAt = DeterministicSeedIds.AuditTimeUtc });
-
-        for (int i = 0; i < mathTopics.Length; i++) container.CurriculumNodes.Add(new CurriculumNode { CenterId = _centerId, CurriculumId = mathCurriculumId, NodeId = mathTopics[i].NodeId, OrderIndex = (uint)(i + 1), CreatedAt = DeterministicSeedIds.AuditTimeUtc });
-        for (int i = 0; i < engTopics.Length; i++) container.CurriculumNodes.Add(new CurriculumNode { CenterId = _centerId, CurriculumId = engCurriculumId, NodeId = engTopics[i].NodeId, OrderIndex = (uint)(i + 1), CreatedAt = DeterministicSeedIds.AuditTimeUtc });
+        foreach (byte grade in new byte[] { 10, 11, 12 })
+        foreach (var math in new[] { true, false })
+        {
+            var curriculumId = DeterministicSeedIds.GradeCurriculumId(_isCenterA, math, grade);
+            var teacherId = math ? teacherMathId : teacherEnglishId;
+            container.Curriculums.Add(new Curriculum
+            {
+                CenterId = _centerId, CurriculumId = curriculumId, SubjectId = math ? mathSubId : engSubId,
+                TeacherId = teacherId, Title = $"Khung mẫu {(math ? "Toán" : "Tiếng Anh")} {grade}", GradeLevel = grade,
+                Description = "Dữ liệu minh họa một số chủ đề; chưa phải giáo trình đầy đủ cho cả năm học.",
+                ReviewStatus = EduTwin.Contracts.CurriculumAndQuestions.ReviewStatus.Published, SourceFile = null,
+                CreatedAt = DeterministicSeedIds.AuditTimeUtc, UpdatedAt = DeterministicSeedIds.AuditTimeUtc
+            });
+            container.CurriculumClasses.Add(new CurriculumClass
+            {
+                CenterId = _centerId, CurriculumId = curriculumId,
+                ClassId = DeterministicSeedIds.GradeClassId(_isCenterA, math, grade),
+                AssignedBy = teacherId, AssignedAt = DeterministicSeedIds.AuditTimeUtc
+            });
+            container.CurriculumApplications.Add(new ClassCurriculumApplication
+            {
+                ApplicationId = DeterministicSeedIds.GradeClassId(_isCenterA, math, grade), CenterId = _centerId,
+                ClassId = DeterministicSeedIds.GradeClassId(_isCenterA, math, grade), CurriculumId = curriculumId,
+                SubjectId = math ? mathSubId : engSubId, ApplicationRole = "Primary", AssignedBy = teacherId,
+                StartedAt = DeterministicSeedIds.AuditTimeUtc, ClassGradeAtStart = grade, CurriculumGradeAtStart = grade
+            });
+            var topics = math ? new[] { mathTopics[grade - 10] } : engTopics;
+            for (int i = 0; i < topics.Length; i++)
+                container.CurriculumNodes.Add(new CurriculumNode
+                {
+                    CenterId = _centerId, CurriculumId = curriculumId, NodeId = topics[i].NodeId,
+                    OrderIndex = (uint)(i + 1), CreatedAt = DeterministicSeedIds.AuditTimeUtc
+                });
+        }
 
         // 8. Questions
         GenerateQuestionsFromTemplates(container, QuestionSeedTemplates.GetTemplates(), teacherMathId, teacherEnglishId);

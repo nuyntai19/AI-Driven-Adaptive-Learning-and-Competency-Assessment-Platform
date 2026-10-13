@@ -18,6 +18,8 @@ public static class DependencyInjection
             identity ?? new AIAnalysisJobWorkerIdentity($"worker-{Guid.NewGuid():N}"));
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<IHostedService, AIAnalysisJobBackgroundService>());
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IHostedService, AIStudentPostProcessingBackgroundService>());
 
         return services;
     }

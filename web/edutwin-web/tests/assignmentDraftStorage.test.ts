@@ -116,3 +116,66 @@ test("timer remaining seconds is scoped and persisted properly", async () => {
   assert.equal(readAssignmentRemainingSeconds(scope, storage), null);
 });
 
+test("answerChanges persists incrementally on answer edits and single Casio insertion without 1-step lag", () => {
+  const storage = new MemoryLocalStorage();
+  const scope = {
+    centerId: "center-1",
+    userId: "student-a",
+    assignmentId: "assignment-42",
+  };
+
+  let answerChanges = 0;
+  const assignmentAnswers: Record<string, Record<string, unknown>> = {};
+
+  const persistCurrentAnswer = (
+    qId: string,
+    newFinalAnswer?: string,
+    newReasoning?: string,
+    newConf?: number,
+    newAnswerDisplayLatex?: string,
+    newAnswerChanges?: number
+  ) => {
+    const currentEntry = assignmentAnswers[qId] || {};
+    const updatedEntry = {
+      ...currentEntry,
+      finalAnswer: newFinalAnswer !== undefined ? newFinalAnswer : (currentEntry.finalAnswer || ""),
+      answerDisplayLatex: newAnswerDisplayLatex !== undefined ? newAnswerDisplayLatex : (currentEntry.answerDisplayLatex || ""),
+      reasoningText: newReasoning !== undefined ? newReasoning : (currentEntry.reasoningText || ""),
+      confidence: newConf !== undefined ? newConf : (currentEntry.confidence ?? 80),
+      timeSpentSeconds: currentEntry.timeSpentSeconds || 0,
+      answerChanges: newAnswerChanges !== undefined ? newAnswerChanges : answerChanges,
+    };
+    assignmentAnswers[qId] = updatedEntry;
+    writeAssignmentDraft(scope, JSON.stringify(assignmentAnswers), storage);
+  };
+
+  const handleAnswerChange = (qId: string, plainText: string, latex: string) => {
+    const nextChanges = answerChanges + 1;
+    answerChanges = nextChanges;
+    persistCurrentAnswer(qId, plainText, undefined, undefined, latex, nextChanges);
+  };
+
+  // 1. Initial typing by student (e.g. typing "x")
+  handleAnswerChange("q1", "x", "x");
+  assert.equal(answerChanges, 1);
+  let savedDraft = JSON.parse(readAssignmentDraft(scope, storage)!);
+  assert.equal(savedDraft.q1.answerChanges, 1, "Storage draft must have answerChanges=1 immediately without lag");
+
+  // 2. Further student typing (e.g. typing "x + 2")
+  handleAnswerChange("q1", "x + 2", "x + 2");
+  assert.equal(answerChanges, 2);
+  savedDraft = JSON.parse(readAssignmentDraft(scope, storage)!);
+  assert.equal(savedDraft.q1.answerChanges, 2);
+
+  // 3. 1-Click insertion from Casio calculator (insertAtCursor triggers child onChange which calls handleAnswerChange)
+  handleAnswerChange("q1", "x + 2\\sqrt{3}", "x + 2\\sqrt{3}");
+  assert.equal(answerChanges, 3, "Casio insertion must increment answerChanges exactly once");
+  savedDraft = JSON.parse(readAssignmentDraft(scope, storage)!);
+  assert.equal(savedDraft.q1.answerChanges, 3);
+
+  // 4. Reload draft upon page reload / F5
+  const reloadedDraft = JSON.parse(readAssignmentDraft(scope, storage)!);
+  const reloadedAnswerChanges = reloadedDraft.q1.answerChanges ?? 0;
+  assert.equal(reloadedAnswerChanges, 3, "Reloaded draft preserves answerChanges precisely");
+});
+

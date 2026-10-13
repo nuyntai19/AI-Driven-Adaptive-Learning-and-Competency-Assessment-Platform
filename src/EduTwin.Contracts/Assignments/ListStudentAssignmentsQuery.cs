@@ -9,4 +9,6 @@ public class ListStudentAssignmentsQuery
     public int PageSize { get; set; } = 20;
     public string? Status { get; set; }
     public Guid? SubjectId { get; set; }
+    public Guid? ClassId { get; set; }
+    public bool? History { get; set; }
 }

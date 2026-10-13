@@ -30,6 +30,11 @@ public class GetCurriculumUseCase : IGetCurriculumUseCase
             return GetCurriculumResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
+        if (!isTeacher)
+        {
+            return GetCurriculumResult.Failure(ErrorCodes.ForbiddenResource);
+        }
+
         var curriculum = await _dbContext.Curriculums
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.CurriculumId == request.CurriculumId && 
@@ -41,7 +46,7 @@ public class GetCurriculumUseCase : IGetCurriculumUseCase
             return GetCurriculumResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
-        if (!CurriculumGuards.CanAccess(curriculum, actorId, isTeacher))
+        if (!CurriculumGuards.CanRead(curriculum, actorId, isTeacher))
         {
             return GetCurriculumResult.Failure(ErrorCodes.ResourceNotFound);
         }
@@ -53,17 +58,16 @@ public class GetCurriculumUseCase : IGetCurriculumUseCase
             .Select(cn => cn.NodeId)
             .ToListAsync(cancellationToken);
 
-        var classes = await _dbContext.CurriculumClasses
-            .AsNoTracking()
-            .Where(cc => cc.CurriculumId == request.CurriculumId && cc.CenterId == centerId)
-            .Select(cc => cc.ClassId)
-            .ToListAsync(cancellationToken);
+        var classes = (await CurriculumClassScopeQuery.ReadAsync(_dbContext, centerId, actorId, request.CurriculumId, cancellationToken))
+            .Select(cc => cc.ClassId).ToList();
 
         var dto = new CurriculumDto
         {
             CurriculumId = curriculum.CurriculumId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             TeacherId = curriculum.TeacherId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
+            Visibility = curriculum.Visibility.ToString(),
             SubjectId = curriculum.SubjectId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
+            GradeLevel = curriculum.GradeLevel,
             Title = curriculum.Title,
             Description = curriculum.Description,
             SourceFile = curriculum.SourceFile,

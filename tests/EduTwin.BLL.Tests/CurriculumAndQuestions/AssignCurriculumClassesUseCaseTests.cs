@@ -33,9 +33,7 @@ public class AssignCurriculumClassesUseCaseTests
             .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
             .Options;
         _tenantMock = new Mock<ITenantContext>();
-        _tenantMock.Setup(t => t.Role).Returns(nameof(UserRole.CenterManager));
-        _tenantMock.Setup(t => t.Role).Returns(nameof(UserRole.CenterManager));
-        _tenantMock.Setup(t => t.Role).Returns(nameof(UserRole.CenterManager));
+        _tenantMock.Setup(t => t.Role).Returns(nameof(UserRole.Teacher));
         _tenantAccessorMock = new Mock<ITenantIdAccessor>();
         _tenantAccessorMock.Setup(x => x.CenterId).Returns(() => _tenantMock.Object.CenterId);
         _timeProviderMock = new Mock<TimeProvider>();
@@ -160,6 +158,7 @@ public class AssignCurriculumClassesUseCaseTests
                 CurriculumId = curriculumId,
                 CenterId = centerId,
                 TeacherId = userId,
+                GradeLevel = 10,
                 SubjectId = subjectId,
                 Title = "Draft Curriculum",
                 ReviewStatus = ReviewStatus.Draft,
@@ -173,6 +172,8 @@ public class AssignCurriculumClassesUseCaseTests
                 CenterId = centerId,
                 SubjectId = subjectId,
                 ClassName = "Math 10A",
+                TeacherId = userId,
+                GradeLevel = 10,
                 AcademicYear = "2026-2027",
                 Status = ClassStatus.Active,
                 IsDeleted = false,

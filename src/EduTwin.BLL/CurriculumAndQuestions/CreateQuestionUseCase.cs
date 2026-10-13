@@ -45,10 +45,9 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
             !_tenantContext.CenterId.HasValue || _tenantContext.CenterId.Value == Guid.Empty ||
             !_tenantContext.UserId.HasValue || _tenantContext.UserId.Value == Guid.Empty ||
             string.IsNullOrWhiteSpace(_tenantContext.Role) ||
-            (!string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal) &&
-             !string.Equals(_tenantContext.Role, nameof(UserRole.CenterManager), StringComparison.Ordinal)))
+            !string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal))
         {
-            return CreateQuestionResult.Failure(ErrorCodes.ResourceNotFound);
+            return CreateQuestionResult.Failure(ErrorCodes.ForbiddenResource);
         }
 
         var centerId = _tenantContext.CenterId.Value;
@@ -76,7 +75,27 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
         if (request.Difficulty < 1 || request.Difficulty > 5)
             return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
 
-        if (string.IsNullOrWhiteSpace(request.QuestionText))
+        if (!request.GradeLevel.HasValue || request.GradeLevel.Value < 10 || request.GradeLevel.Value > 12)
+            return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+
+        byte[]? imageBytes = null;
+        if (request.ImageDataUrl is not null)
+        {
+            if (request.CopyImageFromQuestionId is not null || !QuestionImageContent.TryDecode(request.ImageDataUrl, out var decoded))
+                return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+            imageBytes = decoded;
+        }
+        if (request.CopyImageFromQuestionId is not null)
+        {
+            if (!ulong.TryParse(request.CopyImageFromQuestionId, NumberStyles.None, CultureInfo.InvariantCulture, out var sourceId) || sourceId == 0)
+                return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+            var source = await _dbContext.Questions.AsNoTracking().SingleOrDefaultAsync(q => q.CenterId == centerId && q.QuestionId == sourceId &&
+                (q.CreatedByTeacherId == actorId || (q.Visibility == MaterialVisibility.Shared && q.Status == QuestionStatus.Active)), cancellationToken);
+            if (source is null || !source.HasImage) return CreateQuestionResult.Failure(ErrorCodes.ResourceNotFound);
+            imageBytes = await _dbContext.QuestionImages.AsNoTracking().Where(i => i.CenterId == centerId && i.QuestionId == sourceId).Select(i => i.Data).SingleOrDefaultAsync(cancellationToken);
+            if (imageBytes is null) return CreateQuestionResult.Failure(ErrorCodes.ResourceNotFound);
+        }
+        if ((string.IsNullOrWhiteSpace(request.QuestionText) || request.QuestionText.Trim() == QuestionImageContent.ImageOnlyText) && imageBytes is null)
             return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
 
         if (string.IsNullOrWhiteSpace(request.CorrectAnswer))
@@ -85,7 +104,7 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
         if (string.IsNullOrWhiteSpace(request.Solution))
             return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
 
-        if (request.MaxScore <= 0)
+        if (!QuestionScoreLimits.IsValid(request.MaxScore))
             return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
 
         if (request.EstimatedTimeSeconds == 0)
@@ -140,6 +159,11 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
                     return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
             }
         }
+
+        if (!Enum.TryParse<MaterialVisibility>(request.Visibility, out var visibility) || !Enum.IsDefined(visibility) || visibility.ToString() != request.Visibility)
+            return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+        if (request.GradingCriteria != null && GradingCriteriaValidator.Validate(request.GradingCriteria, request.MaxScore).Count > 0)
+            return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
 
         // 3. Actor validation
         Guid effectiveTeacherId = actorId;
@@ -229,9 +253,12 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
             SubjectId = request.SubjectId,
             PrimaryTopicNodeId = topicNodeId,
             CreatedByTeacherId = effectiveTeacherId,
+            Visibility = visibility,
             QuestionType = questionType,
             Difficulty = request.Difficulty,
-            QuestionText = request.QuestionText,
+            GradeLevel = request.GradeLevel,
+            QuestionText = string.IsNullOrWhiteSpace(request.QuestionText) ? QuestionImageContent.ImageOnlyText : request.QuestionText,
+            HasImage = imageBytes is not null,
             CorrectAnswer = request.CorrectAnswer,
             Solution = request.Solution,
             ExpectedReasoning = request.ExpectedReasoning,
@@ -256,6 +283,14 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
         {
             _dbContext.Questions.Add(question);
             await _dbContext.SaveChangesAsync(cancellationToken);
+
+            if (imageBytes is not null)
+                _dbContext.QuestionImages.Add(new QuestionImage
+                {
+                    CenterId = centerId, QuestionId = question.QuestionId, Data = imageBytes,
+                    Sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(imageBytes)),
+                    CreatedAt = now, CreatedBy = actorId
+                });
 
             if (request.Options != null)
             {

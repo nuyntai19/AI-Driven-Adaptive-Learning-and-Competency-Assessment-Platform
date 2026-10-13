@@ -78,6 +78,11 @@ public sealed class IAIServiceContractTests
             {
                 Assert.NotNull(property.GetMethod);
                 Assert.True(property.GetMethod!.IsPublic);
+                if (type == typeof(AnalyzeReasoningQuestion) && property.Name == nameof(AnalyzeReasoningQuestion.ImageCount))
+                {
+                    Assert.Null(property.SetMethod); // derived count is more restrictive than init-only
+                    continue;
+                }
                 Assert.NotNull(property.SetMethod);
                 Assert.True(property.SetMethod!.IsPublic);
                 Assert.Contains(

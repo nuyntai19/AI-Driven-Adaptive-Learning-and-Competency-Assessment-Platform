@@ -91,7 +91,13 @@ export const approveAssignmentResult = async (assignmentId: string, request: App
   return response.data;
 };
 
+export const reopenAssignmentResult = async (assignmentId: string, request: { studentId: string; reason: string; finalReviewVersion: number }) => {
+  const response = await httpClient.post(`/teachers/me/assignments/${assignmentId}/reopen-result`, request);
+  return response.data;
+};
+
 export interface VoidAssignmentQuestionRequest {
+  reopenFinalizedResults?: boolean;
   voidReason?: string;
   archiveQuestionInBank?: boolean;
   reason?: string;
@@ -122,6 +128,7 @@ export const voidAssignmentQuestion = async (
     reason: text,
     archiveQuestionInBank: quarantine,
     quarantineInBank: quarantine,
+    reopenFinalizedResults: request.reopenFinalizedResults === true,
   };
   const response = await httpClient.post<VoidAssignmentQuestionResponse>(
     `/teachers/me/assignments/${assignmentId}/questions/${questionId}/void`,

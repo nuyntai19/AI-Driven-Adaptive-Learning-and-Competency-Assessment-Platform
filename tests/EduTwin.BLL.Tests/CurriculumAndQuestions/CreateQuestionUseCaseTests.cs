@@ -117,7 +117,8 @@ public class CreateQuestionUseCaseTests : IDisposable
             Solution = "Sol",
             MaxScore = 1,
             EstimatedTimeSeconds = 60,
-            LanguageCode = "vi"
+            LanguageCode = "vi",
+            GradeLevel = 10
         };
 
         var result = await _sut.ExecuteAsync(request);
@@ -146,6 +147,7 @@ public class CreateQuestionUseCaseTests : IDisposable
             MaxScore = 1,
             EstimatedTimeSeconds = 60,
             LanguageCode = "vi",
+            GradeLevel = 10,
             Options = new List<QuestionOptionInput>() // Empty options
         };
 
@@ -172,6 +174,7 @@ public class CreateQuestionUseCaseTests : IDisposable
             MaxScore = 1,
             EstimatedTimeSeconds = 60,
             LanguageCode = "vi",
+            GradeLevel = 10,
             Options = new List<QuestionOptionInput>
             {
                 new QuestionOptionInput { OptionLabel = "A", OptionText = "Opt A", IsCorrect = true, OrderIndex = 1 },
@@ -217,7 +220,8 @@ public class CreateQuestionUseCaseTests : IDisposable
             Solution = "Sol",
             MaxScore = 1,
             EstimatedTimeSeconds = 60,
-            LanguageCode = "vi"
+            LanguageCode = "vi",
+            GradeLevel = 10
         };
 
         var result = await _sut.ExecuteAsync(request);
@@ -242,7 +246,8 @@ public class CreateQuestionUseCaseTests : IDisposable
             Solution = "Sol",
             MaxScore = 1,
             EstimatedTimeSeconds = 60,
-            LanguageCode = "vi"
+            LanguageCode = "vi",
+            GradeLevel = 10
         };
 
         var result = await _sut.ExecuteAsync(request);
@@ -313,6 +318,7 @@ public class CreateQuestionUseCaseTests : IDisposable
             MaxScore = 1,
             EstimatedTimeSeconds = 60,
             LanguageCode = "vi",
+            GradeLevel = 10,
             GradingCriteria = criteria
         };
 
@@ -327,7 +333,7 @@ public class CreateQuestionUseCaseTests : IDisposable
     }
 
     [Fact]
-    public async Task Create_CenterManagerWithoutTeacherId_ReturnsValidationFailed()
+    public async Task Create_CenterManager_ReturnsForbiddenResource()
     {
         await SeedDataAsync();
         _tenantContextMock.Setup(t => t.UserId).Returns(Guid.NewGuid());
@@ -336,23 +342,7 @@ public class CreateQuestionUseCaseTests : IDisposable
         var result = await _sut.ExecuteAsync(ValidShortAnswerRequest());
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
-    }
-
-    [Fact]
-    public async Task Create_CenterManagerWithActiveTeacher_PersistsSelectedOwner()
-    {
-        await SeedDataAsync();
-        _tenantContextMock.Setup(t => t.UserId).Returns(Guid.NewGuid());
-        _tenantContextMock.Setup(t => t.Role).Returns(nameof(UserRole.CenterManager));
-        var request = ValidShortAnswerRequest();
-        request.TeacherId = _teacherId.ToString();
-
-        var result = await _sut.ExecuteAsync(request);
-
-        Assert.True(result.IsSuccess);
-        Assert.Equal(_teacherId.ToString("D"), result.Data!.CreatedByTeacherId);
-        Assert.Equal(_teacherId, (await _dbContext.Questions.SingleAsync()).CreatedByTeacherId);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     [Fact]
@@ -379,8 +369,115 @@ public class CreateQuestionUseCaseTests : IDisposable
         Solution = "Sol",
         MaxScore = 1,
         EstimatedTimeSeconds = 60,
-        LanguageCode = "vi"
+        LanguageCode = "vi",
+            GradeLevel = 10
     };
+
+    [Fact]
+    public async Task Create_ImageOnly_SavesPrivateImageAndSafePlaceholder()
+    {
+        await SeedDataAsync();
+        var request = ValidShortAnswerRequest(); request.QuestionText = ""; request.ImageDataUrl = QuestionImageFixture.DataUrl;
+        var result = await _sut.ExecuteAsync(request);
+        Assert.True(result.IsSuccess); Assert.True(result.Data!.HasImage);
+        Assert.Equal(QuestionImageContent.ImageOnlyText, result.Data.QuestionText);
+        var image = await _dbContext.QuestionImages.SingleAsync();
+        Assert.Equal(_centerId, image.CenterId); Assert.Equal(_teacherId, image.CreatedBy);
+        Assert.Equal(QuestionImageFixture.Bytes, image.Data);
+        Assert.Equal(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(image.Data)), image.Sha256);
+        Assert.DoesNotContain("DataUrl", System.Text.Json.JsonSerializer.Serialize(result.Data));
+    }
+
+    [Fact]
+    public async Task Create_BadImage_DoesNotPersistQuestion()
+    {
+        await SeedDataAsync();
+        var request = ValidShortAnswerRequest(); request.ImageDataUrl = "data:image/svg+xml;base64,PHN2Zy8+";
+        Assert.False((await _sut.ExecuteAsync(request)).IsSuccess);
+        Assert.Empty(await _dbContext.Questions.ToArrayAsync()); Assert.Empty(await _dbContext.QuestionImages.ToArrayAsync());
+    }
+
+    [Fact]
+    public async Task Create_CopyOwnImage_DoesNotLoseImage()
+    {
+        await SeedDataAsync();
+        var source = ValidShortAnswerRequest(); source.ImageDataUrl = QuestionImageFixture.DataUrl;
+        var created = await _sut.ExecuteAsync(source); Assert.True(created.IsSuccess);
+        var copy = ValidShortAnswerRequest(); copy.QuestionText = ""; copy.CopyImageFromQuestionId = created.Data!.QuestionId;
+        var result = await _sut.ExecuteAsync(copy);
+        Assert.True(result.IsSuccess); Assert.True(result.Data!.HasImage);
+        Assert.Equal(2, await _dbContext.QuestionImages.CountAsync());
+        var question = await _dbContext.Questions.SingleAsync(q => q.QuestionId == ulong.Parse(created.Data.QuestionId));
+        question.CreatedByTeacherId = Guid.NewGuid(); await _dbContext.SaveChangesAsync();
+        Assert.False((await _sut.ExecuteAsync(copy)).IsSuccess); // another teacher's private image is not copyable
+        Assert.Equal(2, await _dbContext.QuestionImages.CountAsync());
+    }
+
+    [Fact]
+    public async Task Update_RemoveImage_RequiresRealText_AndCannotChangeUsedImage()
+    {
+        await SeedDataAsync();
+        var create = ValidShortAnswerRequest(); create.QuestionText = ""; create.ImageDataUrl = QuestionImageFixture.DataUrl;
+        var result = await _sut.ExecuteAsync(create); Assert.True(result.IsSuccess);
+        var q = await _dbContext.Questions.SingleAsync();
+        var update = new UpdateQuestionRequest { PrimaryTopicNodeId = "1", QuestionType = "ShortAnswer", Difficulty = 3,
+            GradeLevel = 10, QuestionText = QuestionImageContent.ImageOnlyText, CorrectAnswer = "Ans", Solution = "Sol",
+            MaxScore = 1, EstimatedTimeSeconds = 60, LanguageCode = "vi", RowVersion = q.RowVersion.ToString(), RemoveImage = true };
+        var sut = new UpdateQuestionUseCase(_dbContext, _tenantContextMock.Object, _timeProviderMock.Object);
+        Assert.False((await sut.ExecuteAsync(q.QuestionId.ToString(), update)).IsSuccess);
+        Assert.Single(await _dbContext.QuestionImages.ToArrayAsync());
+        update.QuestionText = "Real typed question";
+        _dbContext.Attempts.Add(new EduTwin.DAL.AssessmentAndReasoning.Attempt { CenterId = _centerId, StudentId = Guid.NewGuid(),
+            QuestionId = q.QuestionId, FinalAnswer = "Ans", ReasoningLanguage = "vi", ClientSubmissionId = Guid.NewGuid(),
+            CreatedAt = _fixedTime.UtcDateTime, UpdatedAt = _fixedTime.UtcDateTime });
+        await _dbContext.SaveChangesAsync();
+        var blocked = await sut.ExecuteAsync(q.QuestionId.ToString(), update);
+        Assert.False(blocked.IsSuccess); Assert.Equal(ErrorCodes.InvalidStateTransition, blocked.ErrorCode);
+        Assert.Single(await _dbContext.QuestionImages.ToArrayAsync());
+    }
+
+    [Fact]
+    public async Task ImageRead_IsPrivateAndCenterBound()
+    {
+        await SeedDataAsync();
+        var request = ValidShortAnswerRequest(); request.ImageDataUrl = QuestionImageFixture.DataUrl;
+        Assert.True((await _sut.ExecuteAsync(request)).IsSuccess);
+        var q = await _dbContext.Questions.SingleAsync();
+        var sut = new GetQuestionImageUseCase(_dbContext, _tenantContextMock.Object);
+        Assert.Equal(QuestionImageFixture.Bytes, await sut.ExecuteAsync(q.QuestionId, CancellationToken.None));
+        _tenantContextMock.Setup(t => t.UserId).Returns(Guid.NewGuid());
+        Assert.Null(await sut.ExecuteAsync(q.QuestionId, CancellationToken.None));
+        _tenantContextMock.Setup(t => t.Role).Returns(nameof(UserRole.Student));
+        Assert.Null(await sut.ExecuteAsync(q.QuestionId, CancellationToken.None));
+        _tenantContextMock.Setup(t => t.UserId).Returns(_teacherId);
+        _tenantContextMock.Setup(t => t.Role).Returns(nameof(UserRole.Teacher));
+        _tenantContextMock.Setup(t => t.CenterId).Returns(Guid.NewGuid());
+        Assert.Null(await sut.ExecuteAsync(q.QuestionId, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task CreateQuestion_WithoutGradeLevel_ReturnsValidationFailed()
+    {
+        await SeedDataAsync();
+        var request = ValidShortAnswerRequest();
+        request.GradeLevel = null;
+        var result = await _sut.ExecuteAsync(request);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
+
+    [Theory]
+    [InlineData(9)]
+    [InlineData(13)]
+    public async Task CreateQuestion_WithInvalidGradeLevel_ReturnsValidationFailed(byte grade)
+    {
+        await SeedDataAsync();
+        var request = ValidShortAnswerRequest();
+        request.GradeLevel = grade;
+        var result = await _sut.ExecuteAsync(request);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
 
     public void Dispose()
     {

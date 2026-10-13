@@ -48,6 +48,12 @@ export function normalizeMathExpression(raw: string): { latex: string; trailingP
     }
   }
 
+  // MathLive/AI already serialize canonical LaTeX. Shorthand rewrites must not
+  // match inside commands (e.g. rewriting \\ln(x) produces \\\\ln: a line break).
+  if (/\\[a-zA-Z]+\b/.test(s)) {
+    return { latex: s, trailingPunct };
+  }
+
   // Handle common set notations: R \ {2} -> \mathbb{R} \setminus \{2\}
   s = s.replace(/\bR\s*\\\s*\{([^}]+)\}/g, (_, inner) => `\\mathbb{R} \\setminus \\{${inner.trim()}\\}`);
   s = s.replace(/\bD\s*=\s*R\s*\\\s*\{([^}]+)\}/g, (_, inner) => `D = \\mathbb{R} \\setminus \\{${inner.trim()}\\}`);

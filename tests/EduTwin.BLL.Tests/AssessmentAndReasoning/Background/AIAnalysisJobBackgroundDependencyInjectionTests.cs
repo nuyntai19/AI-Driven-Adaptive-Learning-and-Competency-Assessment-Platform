@@ -45,8 +45,10 @@ public sealed class AIAnalysisJobBackgroundDependencyInjectionTests
             .ToArray();
         Assert.Single(hostedDescriptors);
         using var provider = services.BuildServiceProvider(validateScopes: true);
-        Assert.IsType<AIAnalysisJobBackgroundService>(
-            Assert.Single(provider.GetServices<IHostedService>()));
+        var workers = provider.GetServices<IHostedService>().ToArray();
+        Assert.Single(workers.OfType<AIAnalysisJobBackgroundService>());
+        Assert.Single(workers.OfType<AIStudentPostProcessingBackgroundService>());
+        Assert.Equal(2, workers.Length);
     }
 
     [Theory]

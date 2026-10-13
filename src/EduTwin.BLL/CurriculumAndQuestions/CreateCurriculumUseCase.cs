@@ -37,12 +37,15 @@ public class CreateCurriculumUseCase : ICreateCurriculumUseCase
         // 1. Fail-closed tenant and role gate
         if (!_tenantContext.IsResolved ||
             !_tenantContext.CenterId.HasValue || _tenantContext.CenterId.Value == Guid.Empty ||
-            !_tenantContext.UserId.HasValue || _tenantContext.UserId.Value == Guid.Empty ||
-            string.IsNullOrWhiteSpace(_tenantContext.Role) ||
-            (!string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal) &&
-             !string.Equals(_tenantContext.Role, nameof(UserRole.CenterManager), StringComparison.Ordinal)))
+            !_tenantContext.UserId.HasValue || _tenantContext.UserId.Value == Guid.Empty)
         {
             return CreateCurriculumResult.Failure(ErrorCodes.ResourceNotFound);
+        }
+
+        if (string.IsNullOrWhiteSpace(_tenantContext.Role) ||
+            !string.Equals(_tenantContext.Role, nameof(UserRole.Teacher), StringComparison.Ordinal))
+        {
+            return CreateCurriculumResult.Failure(ErrorCodes.ForbiddenResource);
         }
 
         // 2. Request Validation
@@ -53,6 +56,9 @@ public class CreateCurriculumUseCase : ICreateCurriculumUseCase
             return CreateCurriculumResult.Failure(ErrorCodes.ValidationFailed);
 
         if (request.Title.Length > 250)
+            return CreateCurriculumResult.Failure(ErrorCodes.ValidationFailed);
+
+        if (!request.GradeLevel.HasValue || request.GradeLevel.Value < 10 || request.GradeLevel.Value > 12)
             return CreateCurriculumResult.Failure(ErrorCodes.ValidationFailed);
 
         if (request.NodeIds == null)
@@ -136,6 +142,9 @@ public class CreateCurriculumUseCase : ICreateCurriculumUseCase
             ownerTeacherId = targetTeacherId;
         }
 
+        if (!Enum.TryParse<MaterialVisibility>(request.Visibility, out var visibility) || !Enum.IsDefined(visibility) || visibility.ToString() != request.Visibility)
+            return CreateCurriculumResult.Failure(ErrorCodes.ValidationFailed);
+
         // 4. Reference Validation
         var center = await _dbContext.Centers
             .AsNoTracking()
@@ -176,7 +185,9 @@ public class CreateCurriculumUseCase : ICreateCurriculumUseCase
             CurriculumId = curriculumId,
             CenterId = centerId,
             TeacherId = ownerTeacherId,
+            Visibility = visibility,
             SubjectId = request.SubjectId,
+            GradeLevel = request.GradeLevel,
             Title = request.Title,
             Description = request.Description,
             SourceFile = null,
@@ -224,7 +235,9 @@ public class CreateCurriculumUseCase : ICreateCurriculumUseCase
         {
             CurriculumId = curriculum.CurriculumId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             TeacherId = curriculum.TeacherId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
+            Visibility = curriculum.Visibility.ToString(),
             SubjectId = curriculum.SubjectId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
+            GradeLevel = curriculum.GradeLevel,
             Title = curriculum.Title,
             Description = curriculum.Description,
             SourceFile = null,

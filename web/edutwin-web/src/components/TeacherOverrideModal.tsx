@@ -238,7 +238,7 @@ export const TeacherOverrideModal = ({
             <div>
               <span className="text-xs font-bold text-slate-500">AI đánh giá ban đầu:</span>
               <p className="text-slate-700">
-                Chất lượng: {review.reasoningQuality ?? "N/A"}% · Tin cậy:{" "}
+                Chỉ số chất lượng lập luận: {review.reasoningQuality ?? "N/A"}/100 · Tin cậy:{" "}
                 {review.analysisConfidence !== null && review.analysisConfidence !== undefined
                   ? `${review.analysisConfidence.toFixed(0)}%`
                   : "Không có"}

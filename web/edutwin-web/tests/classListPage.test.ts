@@ -9,6 +9,9 @@ import {
   mergePageSelection,
   unmergePageSelection,
   getCandidateListState,
+  updateCandidateGradeCache,
+  hasGradeMismatch,
+  type CandidateGradeCache,
 } from "../src/pages/classListHelpers.ts";
 import type {
   ClassDto,
@@ -428,4 +431,130 @@ test("getCandidateListState prioritizes error state over empty and loading state
     getCandidateListState({ isError: false, isLoading: false, isFetching: false, candidateCount: 15 }),
     "ready"
   );
+});
+
+test("updateCandidateGradeCache caches student grades across page turns without losing prior pages", () => {
+  let cache: CandidateGradeCache = {};
+
+  // Page 1 candidates
+  const page1Candidates = [
+    { studentId: "s-grade-11", gradeLevel: 11 },
+    { studentId: "s-grade-12-a", gradeLevel: 12 },
+  ];
+  cache = updateCandidateGradeCache(cache, page1Candidates);
+
+  assert.equal(cache["s-grade-11"], 11);
+  assert.equal(cache["s-grade-12-a"], 12);
+
+  // Page 2 candidates
+  const page2Candidates = [
+    { studentId: "s-grade-12-b", gradeLevel: 12 },
+    { studentId: "s-grade-10", gradeLevel: 10 },
+  ];
+  cache = updateCandidateGradeCache(cache, page2Candidates);
+
+  // Page 1 grades remain fully intact
+  assert.equal(cache["s-grade-11"], 11);
+  assert.equal(cache["s-grade-12-a"], 12);
+  // Page 2 grades added
+  assert.equal(cache["s-grade-12-b"], 12);
+  assert.equal(cache["s-grade-10"], 10);
+});
+
+test("hasGradeMismatch correctly detects mismatch from grade cache even when student is no longer on current page", () => {
+  const classGradeLevel = 12;
+
+  // Cache contains student s-out-of-grade from page 1 (Grade 11) and s-matching from page 1 (Grade 12)
+  const gradeCache: CandidateGradeCache = {
+    "s-out-of-grade": 11,
+    "s-matching": 12,
+  };
+
+  // Currently on Page 2: currentCandidates does NOT include s-out-of-grade
+  const page2Candidates = [
+    { studentId: "s-page2-1", gradeLevel: 12 },
+    { studentId: "s-page2-2", gradeLevel: 12 },
+  ];
+
+  // Selecting only matching students -> false
+  assert.equal(
+    hasGradeMismatch(["s-matching", "s-page2-1"], gradeCache, classGradeLevel, page2Candidates),
+    false
+  );
+
+  // Selecting out-of-grade student from page 1 while viewing page 2 -> true!
+  assert.equal(
+    hasGradeMismatch(["s-out-of-grade", "s-page2-1"], gradeCache, classGradeLevel, page2Candidates),
+    true
+  );
+
+  // Unselecting out-of-grade student -> false
+  assert.equal(
+    hasGradeMismatch(["s-page2-1"], gradeCache, classGradeLevel, page2Candidates),
+    false
+  );
+
+  // If class has no grade level -> false
+  assert.equal(
+    hasGradeMismatch(["s-out-of-grade"], gradeCache, undefined, page2Candidates),
+    false
+  );
+});
+
+test("[P1 Regression] Selecting out-of-grade student on page 1, navigating to page 2 retains mismatch and requires exception reason", () => {
+  const targetClassGrade = 12;
+
+  // Step 1: User views Page 1
+  let cache: CandidateGradeCache = {};
+  const page1Candidates = [
+    { studentId: "student-grade-11", gradeLevel: 11, fullName: "Em Khối 11" },
+    { studentId: "student-grade-12", gradeLevel: 12, fullName: "Em Khối 12" },
+  ];
+  cache = updateCandidateGradeCache(cache, page1Candidates);
+
+
+  // User selects the out-of-grade student
+  const selectedStudentIds = toggleStudentSelection([], "student-grade-11");
+  assert.deepEqual(selectedStudentIds, ["student-grade-11"]);
+
+  // Mismatch detected on page 1
+  let isMismatch = hasGradeMismatch(selectedStudentIds, cache, targetClassGrade, page1Candidates);
+  assert.equal(isMismatch, true, "Must detect mismatch on page 1");
+
+  // Step 2: User navigates to Page 2 (different candidates, all matching grade 12)
+  const page2Candidates = [
+    { studentId: "student-page2-1", gradeLevel: 12, fullName: "Bạn A Khối 12" },
+    { studentId: "student-page2-2", gradeLevel: 12, fullName: "Bạn B Khối 12" },
+  ];
+  cache = updateCandidateGradeCache(cache, page2Candidates);
+
+  // Crucial test: Mismatch MUST STILL BE TRUE even though page2Candidates has no grade 11 students!
+  isMismatch = hasGradeMismatch(selectedStudentIds, cache, targetClassGrade, page2Candidates);
+  assert.equal(
+    isMismatch,
+    true,
+    "Cross-page mismatch MUST be preserved on page 2 so warning prompt remains and reason is required"
+  );
+
+  // Step 3: Simulate submit without reason -> should block
+  let allowGradeMismatch = false;
+  let gradeMismatchReason = "";
+  const canSubmitWithoutReason = !isMismatch || (allowGradeMismatch && gradeMismatchReason.trim().length > 0);
+  assert.equal(canSubmitWithoutReason, false, "Must block submission without reason");
+
+  // Step 4: User fills exception reason and confirms
+  allowGradeMismatch = true;
+  gradeMismatchReason = "Học sinh có học lực xuất sắc, xin học vượt cấp theo nguyện vọng phụ huynh.";
+  const canSubmitWithReason = !isMismatch || (allowGradeMismatch && gradeMismatchReason.trim().length > 0);
+  assert.equal(canSubmitWithReason, true, "Allows submission with explicit override reason");
+
+  // Request body includes allowGradeMismatch and reason, preventing backend 409
+  const payload: AddStudentsToClassRequest = {
+    studentIds: selectedStudentIds,
+    allowGradeMismatch: isMismatch ? allowGradeMismatch : undefined,
+    gradeMismatchReason: isMismatch && allowGradeMismatch ? gradeMismatchReason.trim() : undefined,
+  };
+
+  assert.equal(payload.allowGradeMismatch, true);
+  assert.equal(payload.gradeMismatchReason, "Học sinh có học lực xuất sắc, xin học vượt cấp theo nguyện vọng phụ huynh.");
 });
