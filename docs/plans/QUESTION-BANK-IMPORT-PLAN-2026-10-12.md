@@ -47,6 +47,13 @@ Không cam kết mọi công thức do người dùng nhập sẽ luôn đúng. 
 
 Các phần “hiện trạng” dưới đây là audit baseline khi lập kế hoạch, không mô tả hành vi của bản V1 mới. Bằng chứng, giới hạn mức đảm bảo và phạm vi rollout nằm trong [báo cáo kiểm chứng](../verification/QUESTION-IMPORT-V1-REPORT-2026-10-13.md).
 
+### 1.3. Bổ sung theo yêu cầu ngày 15/10/2026
+
+- Nút “Bảng cú pháp LaTeX” mở/thu gọn ngay trong modal, giữ nguyên file/defaults/preview; 12 ví dụ có source sao chép và xem trước KaTeX.
+- Mẫu XLSX/CSV tải mới dùng 26 tiêu đề cột tiếng Việt; trang Topics và nội dung Guide cũng có nhãn/hướng dẫn tiếng Việt. Guide chứa bảng giải thích từng cột và cùng corpus LaTeX để dùng offline.
+- Canonical keys, mã lựa chọn, tên trang Questions/Topics/Guide và version 1.0 giữ nguyên; parser nhận cả header tiếng Anh cũ lẫn tiếng Việt. Metadata Guide dùng alias Việt/Anh nhưng vẫn kiểm tra trùng, version và môn nguồn.
+- Kết quả và ảnh QA bổ sung tại [báo cáo Việt hóa import](../verification/QUESTION-IMPORT-LOCALIZATION-REPORT-2026-10-15.md).
+
 ## 2. Hiện trạng đã kiểm tra trong repository
 
 ### 2.1. Những phần có thể tái sử dụng

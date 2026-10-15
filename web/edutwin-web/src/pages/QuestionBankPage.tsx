@@ -233,7 +233,7 @@ function CenterManagerQuestionBankView() {
                   className="cm-secondary-button flex items-center gap-2"
                 >
                   <span>📥</span>
-                  <span>Nhập từ Excel / CSV</span>
+                  <span>Nhập từ file</span>
                 </button>}
                 <button
                   type="button"
