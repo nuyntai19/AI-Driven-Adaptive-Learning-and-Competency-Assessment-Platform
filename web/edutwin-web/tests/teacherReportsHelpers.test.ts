@@ -147,6 +147,33 @@ test("buildClassReportWorkbook creates structured Excel workbook with dedicated 
   assert.equal(student1Row[11], 80);
   assert.equal(student1Row[12], 8.5);
   assert.equal(student1Row[15], "Giỏi");
+
+  // Verify visual enhancements: autofilter and freeze panes on Bang_Diem_Lop
+  assert.ok(ws["!autofilter"], "Bang_Diem_Lop should have autofilter configured");
+  assert.equal(ws["!autofilter"].ref, "A1:U3");
+  assert.ok(ws["!views"], "Bang_Diem_Lop should have freeze panes configured");
+  assert.equal(ws["!views"]![0].state, "frozen");
+
+  // Verify Sheet 2: Tong_Quan_Lop (Executive Dashboard)
+  assert.ok(wb.SheetNames.includes("Tong_Quan_Lop"), "Workbook should contain Tong_Quan_Lop dashboard sheet");
+  const wsSummary = wb.Sheets["Tong_Quan_Lop"];
+  assert.ok(wsSummary["!cols"], "Tong_Quan_Lop should have formatted column widths");
+  assert.ok(wsSummary["!merges"], "Tong_Quan_Lop should have header cell merges");
+  const summaryData = XLSX.utils.sheet_to_json<string[]>(wsSummary, { header: 1 });
+  assert.ok(summaryData.some((row) => row.includes("BÁO CÁO TỔNG QUAN TIẾN ĐỘ & PHÂN TÍCH HỌC LỰC LỚP HỌC - EDUTWIN PLATFORM")));
+  assert.ok(summaryData.some((row) => row.includes("1. CHỈ SỐ HỌC VỤ & TIẾN ĐỘ CỐT LÕI (KEY METRICS DASHBOARD)")));
+  assert.ok(summaryData.some((row) => row.includes("2. PHÂN BỐ XẾP LOẠI HỌC LỰC TOÀN LỚP (GRADE DISTRIBUTION)")));
+  assert.ok(summaryData.some((row) => row.includes("3. TOP HỌC SINH XUẤT SẮC DẪN ĐẦU LỚP (TOP PERFORMERS)")));
+
+  // Verify Sheet 3: Hoc_Sinh_Can_Bo_Tro (Intervention / Tutoring Sheet)
+  assert.ok(wb.SheetNames.includes("Hoc_Sinh_Can_Bo_Tro"), "Workbook should contain Hoc_Sinh_Can_Bo_Tro tutoring sheet");
+  const wsSupport = wb.Sheets["Hoc_Sinh_Can_Bo_Tro"];
+  assert.ok(wsSupport["!cols"], "Hoc_Sinh_Can_Bo_Tro should have formatted column widths");
+  assert.ok(wsSupport["!autofilter"], "Hoc_Sinh_Can_Bo_Tro should have autofilter configured");
+  assert.ok(wsSupport["!views"], "Hoc_Sinh_Can_Bo_Tro should have freeze panes configured");
+  const supportData = XLSX.utils.sheet_to_json<string[]>(wsSupport, { header: 1 });
+  // hs-02 has averageScore 4.5 (< 5.0) and completion rate 40% (< 60%), so she must be in the tutoring list
+  assert.ok(supportData.some((row) => row.includes("hs-02") && row.includes("Lê Thị Thảo")));
 });
 
 test("buildStudentReportWorkbook creates multi-sheet Excel workbook with clean columns", () => {
