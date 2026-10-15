@@ -125,6 +125,38 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
             if (!scope.Includes(question.PrimaryTopicNodeId))
                 return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
         }
+
+        if (request.SessionRunId.HasValue)
+        {
+            var sessionRun = await _dbContext.LearningPathSessionRuns
+                .AsNoTracking()
+                .SingleOrDefaultAsync(
+                    r => r.CenterId == centerId &&
+                         r.SessionRunId == request.SessionRunId.Value &&
+                         r.StudentId == studentId,
+                    cancellationToken);
+
+            if (sessionRun is null)
+            {
+                return AttemptSubmissionValidationResult.Failure(ErrorCodes.ResourceNotFound);
+            }
+
+            if (sessionRun.Status != Contracts.Recommendations.SessionRunStatus.InProgress)
+            {
+                return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
+            }
+
+            var assignedQuestions = Recommendations.Services.LearningSessionExecutionService.ParseQuestionIds(sessionRun.QuestionsAssigned);
+            if (sessionRun.CheckpointQuestionId.HasValue && !assignedQuestions.Contains(sessionRun.CheckpointQuestionId.Value))
+            {
+                assignedQuestions.Add(sessionRun.CheckpointQuestionId.Value);
+            }
+
+            if (!assignedQuestions.Contains(questionId))
+            {
+                return AttemptSubmissionValidationResult.Failure(ErrorCodes.ForbiddenResource);
+            }
+        }
         if (request.AssignmentId.HasValue)
         {
             var assignment = await _dbContext.Assignments
@@ -290,6 +322,7 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
             ClientSubmissionId = request.ClientSubmissionId,
             QuestionId = questionId,
             AssignmentId = request.AssignmentId,
+            SessionRunId = request.SessionRunId,
             FinalAnswer = effectiveFinalAnswer,
             ReasoningText = request.Skipped ? (request.ReasoningText ?? null) : request.ReasoningText,
             AnswerDisplayLatex = request.AnswerDisplayLatex,
@@ -363,6 +396,7 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
         ulong questionId) =>
         existingAttempt.QuestionId == questionId &&
         existingAttempt.AssignmentId == request.AssignmentId &&
+        existingAttempt.SessionRunId == request.SessionRunId &&
         string.Equals(existingAttempt.FinalAnswer, request.FinalAnswer, StringComparison.Ordinal) &&
         string.Equals(existingAttempt.ReasoningText, request.ReasoningText, StringComparison.Ordinal) &&
         string.Equals(existingAttempt.AnswerDisplayLatex, request.AnswerDisplayLatex, StringComparison.Ordinal) &&
@@ -380,6 +414,7 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
         ClientSubmissionId = attempt.ClientSubmissionId,
         QuestionId = attempt.QuestionId,
         AssignmentId = attempt.AssignmentId,
+        SessionRunId = attempt.SessionRunId,
         FinalAnswer = attempt.FinalAnswer,
         ReasoningText = attempt.ReasoningText,
         AnswerDisplayLatex = attempt.AnswerDisplayLatex,

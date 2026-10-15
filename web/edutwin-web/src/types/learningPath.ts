@@ -139,3 +139,99 @@ export interface DetailedLearningPathDto {
 export interface DetailedLearningPathResponse {
   data: DetailedLearningPathDto | null;
 }
+
+export interface StartSessionRequest {
+  subjectId: string;
+  classId?: string;
+}
+
+export interface StartSessionDto {
+  sessionRunId: number;
+  sessionId: string;
+  runNumber: number;
+  status: string;
+  evaluationStatus: string;
+  currentQuestionId: string | null;
+  checkpointQuestionId: string | null;
+  isResumed: boolean;
+  currentQuestion?: any | null;
+}
+
+export interface StartSessionResponse {
+  data: StartSessionDto;
+  meta: {
+    timestamp: string;
+    traceId?: string;
+  };
+}
+
+export interface ResumeSessionDto {
+  sessionRunId: number | null;
+  sessionId: string;
+  legacySessionId: string | null;
+  sessionTitle: string;
+  sessionStatus: string;
+  runNumber: number;
+  runStatus: string;
+  evaluationStatus: string;
+  outcome: 'Passed' | 'NotPassed' | 'Grading' | 'NeedsReview' | 'InsufficientEvidence' | 'InsufficientQuestionPool' | string | null;
+  startedAt: string;
+  lastActivityAt: string;
+  completedAt: string | null;
+  totalQuestions: number;
+  questionsAttempted: number;
+  questionsCorrect: number;
+  scoreRate: number;
+  currentQuestionId: string | null;
+  currentQuestion?: any | null;
+  attemptedQuestionIds: string[];
+  isCompleted: boolean;
+  isGrading: boolean;
+  canStart: boolean;
+}
+
+export interface ResumeSessionResponse {
+  data: ResumeSessionDto;
+  meta: {
+    timestamp: string;
+    traceId?: string;
+  };
+}
+
+export interface EvaluateSessionRequest {
+  subjectId?: string;
+  classId?: string;
+  sessionRunId?: number;
+}
+
+export interface EvaluateSessionDto {
+  sessionRunId: number;
+  sessionId: string;
+  legacySessionId: string | null;
+  sessionTitle: string;
+  sessionStatus: string;
+  runNumber: number;
+  runStatus: string;
+  evaluationStatus: string;
+  outcome: 'Passed' | 'NotPassed' | 'Grading' | 'NeedsReview' | 'InsufficientEvidence' | 'InsufficientQuestionPool' | string | null;
+  totalQuestions: number;
+  questionsAttempted: number;
+  checkpointsAttempted: number;
+  checkpointsCorrect: number;
+  checkpointScoreRate: number;
+  overallScoreRate: number;
+  requiresTeacherReview: boolean;
+  hasPendingAIGrading: boolean;
+  evaluationDetail: string | null;
+  evaluatedAt: string | null;
+  isCompleted: boolean;
+  passed: boolean;
+}
+
+export interface EvaluateSessionResponse {
+  data: EvaluateSessionDto;
+  meta: {
+    timestamp: string;
+    traceId?: string;
+  };
+}

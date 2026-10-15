@@ -9,6 +9,7 @@ public class SubmitAttemptRequest
     public Guid ClientSubmissionId { get; set; }
     public string QuestionId { get; set; } = string.Empty;
     public Guid? AssignmentId { get; set; }
+    public ulong? SessionRunId { get; set; }
     public Guid? ClassId { get; set; }
     public bool History { get; set; }
     public string FinalAnswer { get; set; } = string.Empty;

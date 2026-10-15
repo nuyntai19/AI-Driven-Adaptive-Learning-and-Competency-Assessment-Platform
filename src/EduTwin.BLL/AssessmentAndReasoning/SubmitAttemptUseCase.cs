@@ -147,26 +147,72 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
 
             if (progress?.Status == ProgressStatus.NotStarted)
             {
-                progress.Status = ProgressStatus.InProgress;
-                progress.StartedAt ??= now;
-                progress.UpdatedAt = now;
-                progress.UpdatedBy = submission.StudentId;
-            }
+                if (sessionRun is not null)
+                {
+                    sessionRun.LastActivityAt = now;
+                    sessionRun.QuestionsAttempted++;
+                    if (attempt.IsCorrect == true)
+                    {
+                        sessionRun.QuestionsCorrect++;
+                    }
+                    if (sessionRun.TotalQuestions > 0)
+                    {
+                        sessionRun.ScoreRate = Math.Round((decimal)sessionRun.QuestionsCorrect / sessionRun.TotalQuestions, 4);
+                    }
 
-            if (progress is not null)
-            {
-                progress.TeacherFinalReviewStatus = TeacherFinalReviewStatus.Pending;
-                progress.FinalReviewedByUserId = null;
-                progress.FinalReviewedAt = null;
-                progress.FinalTeacherNote = null;
-                progress.FinalReviewVersion++;
-                progress.IsOverallAiCommentStale = true;
-                progress.UpdatedAt = now;
-                progress.UpdatedBy = submission.StudentId;
-            }
+                    var assignedIds = Recommendations.Services.LearningSessionExecutionService.ParseQuestionIds(sessionRun.QuestionsAssigned);
+                    if (sessionRun.CheckpointQuestionId.HasValue && !assignedIds.Contains(sessionRun.CheckpointQuestionId.Value))
+                    {
+                        assignedIds.Add(sessionRun.CheckpointQuestionId.Value);
+                    }
 
-            _dbContext.Attempts.Add(attempt);
-            _dbContext.AIAnalysisJobs.Add(job);
+                    var existingAttemptedIds = await _dbContext.Attempts
+                        .Where(a => a.CenterId == submission.CenterId && a.SessionRunId == sessionRun.SessionRunId)
+                        .Select(a => a.QuestionId)
+                        .ToListAsync(cancellationToken);
+
+                    existingAttemptedIds.Add(submission.QuestionId);
+
+                    var nextQuestionId = assignedIds.FirstOrDefault(id => !existingAttemptedIds.Contains(id));
+                    if (nextQuestionId > 0)
+                    {
+                        sessionRun.CurrentQuestionId = nextQuestionId;
+                    }
+                    else
+                    {
+                        sessionRun.CurrentQuestionId = null;
+                        var requiredCorrectRate = sessionRun.Session?.RequiredCorrectRate ?? 0.70m;
+                        var passed = sessionRun.TotalQuestions > 0 &&
+                                     ((decimal)sessionRun.QuestionsCorrect / sessionRun.TotalQuestions) >= requiredCorrectRate;
+
+                        if (!attempt.IsCorrect.HasValue)
+                        {
+                            sessionRun.Status = Contracts.Recommendations.SessionRunStatus.Grading;
+                            sessionRun.EvaluationStatus = Contracts.Recommendations.SessionRunEvaluationStatus.Queued;
+                        }
+                        else
+                        {
+                            sessionRun.Status = Contracts.Recommendations.SessionRunStatus.Completed;
+                            sessionRun.EvaluationStatus = Contracts.Recommendations.SessionRunEvaluationStatus.Completed;
+                            sessionRun.Outcome = passed
+                                ? Contracts.Recommendations.SessionRunOutcome.Passed
+                                : Contracts.Recommendations.SessionRunOutcome.NotPassed;
+                            sessionRun.CompletedAt = now;
+
+                            if (sessionRun.Session is not null)
+                            {
+                                sessionRun.Session.Status = passed
+                                    ? Contracts.Recommendations.LearningPathSessionStatus.Completed
+                                    : Contracts.Recommendations.LearningPathSessionStatus.NeedsReview;
+                                sessionRun.Session.UpdatedAt = now;
+                                sessionRun.Session.RowVersion++;
+                            }
+                        }
+                    }
+                    sessionRun.UpdatedAt = now;
+                    sessionRun.RowVersion++;
+                }
+            }
 
             await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -302,6 +348,7 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
             StudentId = submission.StudentId,
             QuestionId = submission.QuestionId,
             AssignmentId = submission.AssignmentId,
+            SessionRunId = submission.SessionRunId,
             FinalAnswer = submission.FinalAnswer,
             ReasoningText = submission.ReasoningText,
             AnswerDisplayLatex = submission.AnswerDisplayLatex,
@@ -365,6 +412,7 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
         ValidatedAttemptSubmission submission) =>
         attempt.QuestionId == submission.QuestionId &&
         attempt.AssignmentId == submission.AssignmentId &&
+        attempt.SessionRunId == submission.SessionRunId &&
         string.Equals(attempt.FinalAnswer, submission.FinalAnswer, StringComparison.Ordinal) &&
         string.Equals(attempt.ReasoningText, submission.ReasoningText, StringComparison.Ordinal) &&
         string.Equals(attempt.AnswerDisplayLatex, submission.AnswerDisplayLatex, StringComparison.Ordinal) &&

@@ -10,14 +10,15 @@ import {
   getLearningPathPreferences,
   generateLearningPath,
   getDetailedLearningPath,
-  updateLearningPathSession,
-  getLearningPathSession,
+  startLearningSession,
 } from "../api/learningPathApi";
 import type {
   GenerateLearningPathRequest,
   LearningPathTopicNodeDto,
   DetailedLearningPathDto,
+  LearningPathSessionDto,
 } from "../types/learningPath";
+import { SessionPreparationModal } from "../components/student/SessionPreparationModal";
 
 export const StudentLearningPathPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -198,23 +199,87 @@ export const StudentLearningPathPage: React.FC = () => {
     generateMutation.mutate(payload);
   };
 
+  const [prepSession, setPrepSession] = useState<LearningPathSessionDto | null>(null);
+  const [isStartingSession, setIsStartingSession] = useState(false);
+  const [prepError, setPrepError] = useState<string | null>(null);
+
   const startSessionMutation = useMutation({
     mutationFn: async (sessionId: string) => {
       if (!access.writable) throw new Error(access.reason);
-      const session = await getLearningPathSession(effectiveSubjectId, sessionId, access.classId, access.history);
-      if (session.status === "Completed") return;
-      return updateLearningPathSession(effectiveSubjectId, sessionId, "InProgress", access.classId, access.history, session.rowVersion || undefined);
+      return startLearningSession(sessionId, effectiveSubjectId, access.classId);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["learning-path", effectiveSubjectId] }),
   });
 
-  const startSession = async (sessionId: string) => {
+  const handleStartSession = async (sessionId: string) => {
     if (!access.writable) return;
+    setIsStartingSession(true);
+    setPrepError(null);
     try {
-      await startSessionMutation.mutateAsync(sessionId);
-      const p = new URLSearchParams(searchParams); p.set("subjectId", effectiveSubjectId); p.set("sessionId", sessionId); p.delete("assignmentId"); p.delete("analysisJobId");
+      const startResult = await startSessionMutation.mutateAsync(sessionId);
+      void queryClient.invalidateQueries({ queryKey: ["learning-path", effectiveSubjectId] });
+      setPrepSession(null);
+      const p = new URLSearchParams(searchParams);
+      p.set("subjectId", effectiveSubjectId);
+      p.set("sessionId", sessionId);
+      if (startResult.sessionRunId) {
+        p.set("sessionRunId", String(startResult.sessionRunId));
+      }
+      p.delete("assignmentId");
+      p.delete("analysisJobId");
       navigate(`/hoc-tap/luyen-tap?${p}`);
-    } catch (error) { setFormError(error instanceof Error ? error.message : "Không thể bắt đầu buổi học."); }
+    } catch (error) {
+      setPrepError(error instanceof Error ? error.message : "Không thể khởi tạo phiên học.");
+    } finally {
+      setIsStartingSession(false);
+    }
+  };
+
+  const handleResumeSession = (sessionId: string) => {
+    const p = new URLSearchParams(searchParams);
+    p.set("subjectId", effectiveSubjectId);
+    p.set("sessionId", sessionId);
+    p.delete("assignmentId");
+    p.delete("analysisJobId");
+    navigate(`/hoc-tap/luyen-tap?${p}`);
+  };
+
+  const renderSessionStatusBadge = (status: string) => {
+    switch (status) {
+      case "Completed":
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            Đã hoàn thành
+          </span>
+        );
+      case "InProgress":
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800 animate-pulse">
+            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+            Đang học
+          </span>
+        );
+      case "NeedsReview":
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+            Chờ giáo viên duyệt
+          </span>
+        );
+      case "Grading":
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300 border border-sky-300 dark:border-sky-800">
+            <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
+            Đang chấm bài
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+            Chưa học
+          </span>
+        );
+    }
   };
 
   if (access.pending) return <p role="status" className="p-6">Đang kiểm tra lớp và giáo trình đang áp dụng…</p>;
@@ -638,24 +703,65 @@ export const StudentLearningPathPage: React.FC = () => {
           </div>
 
           {detailedPath.nextSession && (
-            <div className="rounded-3xl bg-indigo-600 text-white p-6 shadow-sm space-y-3">
-              <div className="text-xs font-bold uppercase tracking-wider text-indigo-100">Tiếp theo bạn nên làm gì?</div>
-              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-black">Hôm nay · {detailedPath.nextSession.estimatedMinutes} phút · {detailedPath.nextSession.title}</h2>
-                  <p className="mt-1 text-sm text-indigo-100">{detailedPath.nextSession.objective}</p>
-                  <ol className="mt-3 list-decimal list-inside text-sm space-y-1">
-                    {detailedPath.nextSession.onlineActivities.slice(0, 3).map((activity) => <li key={activity}>{activity}</li>)}
-                  </ol>
+            <div className="rounded-3xl bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-700 text-white p-6 sm:p-7 shadow-lg shadow-indigo-500/10 space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-200 flex items-center gap-1.5">
+                  <span>⚡</span> Phiên học trọng tâm tiếp theo
+                </span>
+                <span className="px-3 py-1 rounded-full text-xs font-bold bg-white/20 backdrop-blur-xs">
+                  ⏱ {detailedPath.nextSession.estimatedMinutes} phút
+                </span>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-5">
+                <div className="space-y-2 max-w-2xl">
+                  <h2 className="text-xl sm:text-2xl font-black text-white">
+                    {detailedPath.nextSession.title}
+                  </h2>
+                  <p className="text-xs sm:text-sm text-indigo-100 leading-relaxed font-medium">
+                    {detailedPath.nextSession.objective}
+                  </p>
+                  <div className="pt-1 flex flex-wrap items-center gap-3 text-xs text-indigo-100">
+                    <span className="inline-flex items-center gap-1">
+                      <span>🎯</span> Mục tiêu: {detailedPath.nextSession.targetMastery}% mastery
+                    </span>
+                    <span>•</span>
+                    <span className="inline-flex items-center gap-1">
+                      <span>🏁</span> Checkpoint đạt: ≥ {Math.round((detailedPath.nextSession.requiredCorrectRate || 0.8) * 100)}%
+                    </span>
+                  </div>
                 </div>
-                <button type="button" onClick={() => startSession(detailedPath.nextSession!.sessionId)} className="rounded-xl bg-white px-5 py-2.5 text-sm font-bold text-indigo-700">Bắt đầu học</button>
+
+                <div className="shrink-0">
+                  {detailedPath.nextSession.status === "InProgress" ? (
+                    <button
+                      type="button"
+                      onClick={() => handleResumeSession(detailedPath.nextSession!.sessionId)}
+                      className="px-6 py-3 rounded-xl bg-white hover:bg-slate-50 text-indigo-900 text-xs sm:text-sm font-black shadow-md transition-all cursor-pointer flex items-center gap-2"
+                    >
+                      <span>⚡</span>
+                      <span>Tiếp tục phiên đang làm →</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setPrepSession(detailedPath.nextSession!)}
+                      className="px-6 py-3 rounded-xl bg-white hover:bg-slate-50 text-indigo-900 text-xs sm:text-sm font-black shadow-md transition-all cursor-pointer flex items-center gap-2"
+                    >
+                      <span>🚀</span>
+                      <span>Chuẩn bị & Bắt đầu học</span>
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           )}
 
           {detailedPath.adaptationMessage && (
-            <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
-              <strong>Lộ trình đã được điều chỉnh.</strong> {detailedPath.adaptationMessage}
+            <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-xs sm:text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200 flex items-start gap-3">
+              <span className="text-lg">📢</span>
+              <div>
+                <strong>Lộ trình đã được tối ưu thích ứng:</strong> {detailedPath.adaptationMessage}
+              </div>
             </div>
           )}
 
@@ -663,7 +769,7 @@ export const StudentLearningPathPage: React.FC = () => {
             <div className="rounded-3xl bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-transparent p-6 border border-indigo-200/80 dark:border-indigo-900/60 space-y-2">
               <div className="flex items-center gap-2">
                 <span className="text-base">💡</span>
-                <h3 className="text-sm font-bold uppercase tracking-wider text-indigo-950 dark:text-indigo-300">
+                <h3 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-indigo-950 dark:text-indigo-300">
                   Vì sao EduTwin đề xuất lộ trình này?
                 </h3>
               </div>
@@ -687,26 +793,105 @@ export const StudentLearningPathPage: React.FC = () => {
               {detailedPath.phases.map((phase) => (
                 <details key={phase.phaseNumber} open={phase.phaseNumber === 1} className="group rounded-3xl bg-white dark:bg-[#0f172a] p-5 sm:p-6 border border-slate-200/80 dark:border-slate-800">
                   <summary className="cursor-pointer list-none flex items-center justify-between gap-4">
-                    <div><h3 className="font-extrabold text-slate-900 dark:text-white">{phase.phaseName}</h3><p className="text-xs text-slate-500 mt-1">{phase.timeframe} · {phase.description}</p></div>
+                    <div>
+                      <h3 className="font-extrabold text-slate-900 dark:text-white">{phase.phaseName}</h3>
+                      <p className="text-xs text-slate-500 mt-1">{phase.timeframe} · {phase.description}</p>
+                    </div>
                     <span className="text-xs font-bold text-indigo-600">{phase.progressPercentage}%</span>
                   </summary>
                   <div className="mt-5 space-y-4">
                     {phase.weeks.map((week) => (
                       <details key={week.weekNumber} open={week.weekNumber === 1} className="rounded-2xl border border-slate-200 dark:border-slate-700 p-4">
-                        <summary className="cursor-pointer list-none flex justify-between gap-3"><div><h4 className="text-sm font-bold text-slate-900 dark:text-white">{week.title}</h4><p className="text-xs text-slate-500 mt-1">{week.objective}</p></div><span className="text-xs text-slate-500">{week.sessions.length} buổi</span></summary>
-                        <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        <summary className="cursor-pointer list-none flex justify-between gap-3">
+                          <div>
+                            <h4 className="text-sm font-bold text-slate-900 dark:text-white">{week.title}</h4>
+                            <p className="text-xs text-slate-500 mt-1">{week.objective}</p>
+                          </div>
+                          <span className="text-xs text-slate-500">{week.sessions.length} buổi</span>
+                        </summary>
+                        <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
                           {week.sessions.map((session, sessionIndex) => (
-                            <article key={session.sessionId} className="rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 p-4 space-y-3">
-                              <div className="flex justify-between gap-2"><div><span className="text-[10px] uppercase font-bold text-indigo-600">Buổi {sessionIndex + 1} · {session.estimatedMinutes} phút</span><h5 className="text-sm font-bold text-slate-900 dark:text-white">{session.title}</h5></div><span className="text-[10px] font-bold text-slate-500">{session.status === "Completed" ? "Đã xong" : session.status === "NeedsReview" ? "Cần ôn" : "Chưa học"}</span></div>
-                              <p className="text-xs text-slate-600 dark:text-slate-300"><strong>Mục tiêu:</strong> {session.objective}</p>
-                              <div className="text-xs text-slate-600 dark:text-slate-300"><strong>Trên EduTwin:</strong><ul className="mt-1 list-disc pl-4 space-y-1">{session.onlineActivities.map((a) => <li key={a}>{a}</li>)}</ul></div>
-                              <div className="text-xs text-slate-600 dark:text-slate-300"><strong>Ngoài EduTwin:</strong><ul className="mt-1 list-disc pl-4 space-y-1">{session.offlineActivities.map((a) => <li key={a}>{a}</li>)}</ul></div>
-                              <div className="text-xs text-slate-500">Điều kiện: {session.completionCriteria.join(" · ")}</div>
-                              <button type="button" onClick={() => startSession(session.sessionId)} className="text-xs font-bold text-indigo-600 hover:underline">{session.status === "Completed" ? "Xem buổi đã hoàn thành →" : "Bắt đầu học →"}</button>
+                            <article key={session.sessionId} className="rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/90 dark:border-slate-700/80 p-5 space-y-4 flex flex-col justify-between">
+                              <div className="space-y-3">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div>
+                                    <span className="text-[10px] uppercase font-bold text-indigo-600 dark:text-indigo-400 block mb-0.5">
+                                      Buổi {sessionIndex + 1} · {session.estimatedMinutes} phút
+                                    </span>
+                                    <h5 className="text-sm font-bold text-slate-900 dark:text-white">
+                                      {session.title}
+                                    </h5>
+                                  </div>
+                                  <div className="shrink-0">
+                                    {renderSessionStatusBadge(session.status)}
+                                  </div>
+                                </div>
+
+                                <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
+                                  <strong>Mục tiêu:</strong> {session.objective}
+                                </p>
+
+                                <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-400 bg-white/60 dark:bg-slate-900/40 p-3 rounded-xl border border-slate-200/60 dark:border-slate-800">
+                                  <div><strong>Chuyên đề:</strong> {session.topicName}</div>
+                                  <div><strong>Hoạt động:</strong> {session.onlineActivities.join(" • ") || "Luyện tập thích ứng"}</div>
+                                  <div className="text-[11px] text-amber-700 dark:text-amber-400">
+                                    <strong>Đánh giá:</strong> Checkpoint độc lập (≥ {Math.round((session.requiredCorrectRate || 0.8) * 100)}% đúng, không gợi ý)
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between">
+                                <span className="text-[11px] text-slate-400">
+                                  Mục tiêu: {session.targetMastery}% mastery
+                                </span>
+
+                                {session.status === "InProgress" ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleResumeSession(session.sessionId)}
+                                    className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+                                  >
+                                    <span>Tiếp tục học</span>
+                                    <span>→</span>
+                                  </button>
+                                ) : session.status === "Completed" ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setPrepSession(session)}
+                                    className="px-3 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+                                  >
+                                    <span>Luyện tập lại</span>
+                                    <span>↺</span>
+                                  </button>
+                                ) : session.status === "NeedsReview" ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleResumeSession(session.sessionId)}
+                                    className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+                                  >
+                                    <span>Chờ duyệt</span>
+                                    <span>⏳</span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => setPrepSession(session)}
+                                    className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+                                  >
+                                    <span>Chuẩn bị & Bắt đầu</span>
+                                    <span>→</span>
+                                  </button>
+                                )}
+                              </div>
                             </article>
                           ))}
                         </div>
-                        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200"><strong>{week.checkpoint.type === "Monthly" ? "Checkpoint tháng" : "Checkpoint tuần"}:</strong> mục tiêu {week.checkpoint.targetMastery}% mastery, ≥ {Math.round(week.checkpoint.requiredCorrectRate * 100)}% đúng. {week.checkpoint.recommendation}</div>
+                        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/70 p-3.5 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200 flex items-start gap-2">
+                          <span className="text-base">🏁</span>
+                          <div>
+                            <strong>{week.checkpoint.type === "Monthly" ? "Checkpoint tháng" : "Checkpoint tuần"}:</strong> mục tiêu {week.checkpoint.targetMastery}% mastery, yêu cầu ≥ {Math.round(week.checkpoint.requiredCorrectRate * 100)}% đúng. {week.checkpoint.recommendation}
+                          </div>
+                        </div>
                       </details>
                     ))}
                   </div>
@@ -727,12 +912,26 @@ export const StudentLearningPathPage: React.FC = () => {
           <button
             type="button"
             onClick={() => setIsQuestionnaireOpen(true)}
-            className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-colors"
+            className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
           >
             Bắt đầu khảo sát mục tiêu
           </button>
         </div>
       )}
+
+      {/* Preparation Modal */}
+      <SessionPreparationModal
+        isOpen={Boolean(prepSession)}
+        onClose={() => {
+          setPrepSession(null);
+          setPrepError(null);
+        }}
+        session={prepSession}
+        subjectName={currentSubject?.subjectName || "Môn học"}
+        onStart={handleStartSession}
+        isStarting={isStartingSession}
+        error={prepError}
+      />
     </div>
   );
 };

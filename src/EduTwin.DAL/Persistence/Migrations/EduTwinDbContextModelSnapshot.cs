@@ -346,6 +346,10 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasDefaultValue(1ul)
                         .HasColumnName("row_version");
 
+                    b.Property<ulong?>("SessionRunId")
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("session_run_id");
+
                     b.Property<bool>("Skipped")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("tinyint(1)")
@@ -382,6 +386,9 @@ namespace EduTwin.DAL.Persistence.Migrations
 
                     b.HasIndex("CenterId", "QuestionId")
                         .HasDatabaseName("ix_attempts_center_id_question_id");
+
+                    b.HasIndex("CenterId", "SessionRunId")
+                        .HasDatabaseName("ix_attempts_center_id_session_run_id");
 
                     b.HasIndex("CenterId", "AssignmentId", "StudentId")
                         .HasDatabaseName("ix_attempts_center_id_assignment_id_student_id");
@@ -6649,6 +6656,340 @@ namespace EduTwin.DAL.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("EduTwin.DAL.Recommendations.LearningPathSession", b =>
+                {
+                    b.Property<string>("SessionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("session_id");
+
+                    b.Property<string>("CenterId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("center_id");
+
+                    b.Property<string>("CheckpointQuestionIds")
+                        .HasColumnType("json")
+                        .HasColumnName("checkpoint_question_ids");
+
+                    b.Property<string>("ClassId")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("class_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("created_by");
+
+                    b.Property<ulong?>("CurrentRunId")
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("current_run_id");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("deleted_by");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_deleted");
+
+                    b.Property<string>("LearningPathId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("learning_path_id");
+
+                    b.Property<string>("LegacySessionId")
+                        .HasColumnType("varchar(128)")
+                        .HasColumnName("legacy_session_id");
+
+                    b.Property<uint>("MinimumQuestions")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int unsigned")
+                        .HasDefaultValue(1u)
+                        .HasColumnName("minimum_questions");
+
+                    b.Property<string>("Objective")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("objective");
+
+                    b.Property<uint>("PhaseNumber")
+                        .HasColumnType("int unsigned")
+                        .HasColumnName("phase_number");
+
+                    b.Property<string>("PolicyVersion")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("varchar(32)")
+                        .HasDefaultValue("session-policy-v1")
+                        .HasColumnName("policy_version");
+
+                    b.Property<string>("PracticeQuestionIds")
+                        .HasColumnType("json")
+                        .HasColumnName("practice_question_ids");
+
+                    b.Property<string>("Rationale")
+                        .HasColumnType("longtext")
+                        .HasColumnName("rationale");
+
+                    b.Property<decimal>("RequiredCorrectRate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("decimal(5,2)")
+                        .HasDefaultValue(0.70m)
+                        .HasColumnName("required_correct_rate");
+
+                    b.Property<ulong>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint unsigned")
+                        .HasDefaultValue(1ul)
+                        .HasColumnName("row_version");
+
+                    b.Property<uint>("SessionOrder")
+                        .HasColumnType("int unsigned")
+                        .HasColumnName("session_order");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("varchar(255)")
+                        .HasColumnName("title");
+
+                    b.Property<ulong>("TopicNodeId")
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("topic_node_id");
+
+                    b.Property<uint>("TotalRuns")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int unsigned")
+                        .HasDefaultValue(0u)
+                        .HasColumnName("total_runs");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("WeekNumber")
+                        .HasColumnType("int unsigned")
+                        .HasColumnName("week_number");
+
+                    b.HasKey("SessionId")
+                        .HasName("pk_learning_path_sessions");
+
+                    b.HasAlternateKey("CenterId", "SessionId")
+                        .HasName("ux_learning_path_sessions_center_id_session_id");
+
+                    b.HasIndex("CenterId", "ClassId");
+
+                    b.HasIndex("CenterId", "LegacySessionId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_learning_path_sessions_center_id_legacy_session_id");
+
+                    b.HasIndex("CenterId", "TopicNodeId")
+                        .HasDatabaseName("ix_learning_path_sessions_center_id_topic_node_id");
+
+                    b.HasIndex("CenterId", "LearningPathId", "SessionOrder")
+                        .HasDatabaseName("ix_lp_sessions_center_path_session_order");
+
+                    b.ToTable("learning_path_sessions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_learning_path_sessions_required_correct_rate", "`required_correct_rate` BETWEEN 0 AND 1");
+
+                            t.HasCheckConstraint("ck_learning_path_sessions_status", "`status` IN ('NotStarted', 'InProgress', 'Completed', 'NeedsReview', 'Skipped')");
+                        });
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.Recommendations.LearningPathSessionRun", b =>
+                {
+                    b.Property<ulong>("SessionRunId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("session_run_id");
+
+                    b.Property<sbyte?>("ActiveKey")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("tinyint")
+                        .HasColumnName("active_key")
+                        .HasComputedColumnSql("CASE WHEN `status` IN ('InProgress', 'Grading') THEN 1 ELSE NULL END", true);
+
+                    b.Property<string>("CenterId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("center_id");
+
+                    b.Property<ulong?>("CheckpointQuestionId")
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("checkpoint_question_id");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("completed_at");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("created_by");
+
+                    b.Property<ulong?>("CurrentQuestionId")
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("current_question_id");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("deleted_by");
+
+                    b.Property<decimal?>("EndingMastery")
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("ending_mastery");
+
+                    b.Property<string>("EvaluationStatus")
+                        .IsRequired()
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("evaluation_status");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_deleted");
+
+                    b.Property<DateTime>("LastActivityAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("last_activity_at");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("outcome");
+
+                    b.Property<string>("PolicySnapshot")
+                        .HasColumnType("json")
+                        .HasColumnName("policy_snapshot");
+
+                    b.Property<string>("QuestionsAssigned")
+                        .HasColumnType("json")
+                        .HasColumnName("questions_assigned");
+
+                    b.Property<uint>("QuestionsAttempted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int unsigned")
+                        .HasDefaultValue(0u)
+                        .HasColumnName("questions_attempted");
+
+                    b.Property<uint>("QuestionsCorrect")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int unsigned")
+                        .HasDefaultValue(0u)
+                        .HasColumnName("questions_correct");
+
+                    b.Property<ulong>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint unsigned")
+                        .HasDefaultValue(1ul)
+                        .HasColumnName("row_version");
+
+                    b.Property<uint>("RunNumber")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int unsigned")
+                        .HasDefaultValue(1u)
+                        .HasColumnName("run_number");
+
+                    b.Property<decimal?>("ScoreRate")
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("score_rate");
+
+                    b.Property<string>("SessionId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("session_id");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("started_at");
+
+                    b.Property<decimal?>("StartingMastery")
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("starting_mastery");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("StudentId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("student_id");
+
+                    b.Property<uint>("TotalQuestions")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int unsigned")
+                        .HasDefaultValue(0u)
+                        .HasColumnName("total_questions");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("SessionRunId")
+                        .HasName("pk_learning_path_session_runs");
+
+                    b.HasAlternateKey("CenterId", "SessionRunId")
+                        .HasName("ux_learning_path_session_runs_center_id_session_run_id");
+
+                    b.HasIndex("CenterId", "CheckpointQuestionId");
+
+                    b.HasIndex("CenterId", "CurrentQuestionId");
+
+                    b.HasIndex("CenterId", "SessionId", "RunNumber")
+                        .HasDatabaseName("ix_session_runs_center_session_run_number");
+
+                    b.HasIndex("CenterId", "StudentId", "Status")
+                        .HasDatabaseName("ix_session_runs_center_student_status");
+
+                    b.HasIndex("CenterId", "StudentId", "SessionId", "ActiveKey")
+                        .IsUnique()
+                        .HasDatabaseName("ux_session_runs_center_student_session_active_key");
+
+                    b.ToTable("learning_path_session_runs", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_learning_path_session_runs_evaluation_status", "`evaluation_status` IN ('NotStarted', 'Queued', 'Processing', 'AwaitingTeacher', 'Completed', 'Failed')");
+
+                            t.HasCheckConstraint("ck_learning_path_session_runs_outcome", "`outcome` IN ('None', 'Passed', 'NotPassed', 'InsufficientEvidence')");
+
+                            t.HasCheckConstraint("ck_learning_path_session_runs_status", "`status` IN ('InProgress', 'Grading', 'NeedsReview', 'Completed', 'Abandoned')");
+                        });
+                });
+
             modelBuilder.Entity("EduTwin.DAL.Recommendations.Recommendation", b =>
                 {
                     b.Property<ulong>("RecommendationId")
@@ -7018,6 +7359,13 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_attempts_questions_question");
 
+                    b.HasOne("EduTwin.DAL.Recommendations.LearningPathSessionRun", "SessionRun")
+                        .WithMany("Attempts")
+                        .HasForeignKey("CenterId", "SessionRunId")
+                        .HasPrincipalKey("CenterId", "SessionRunId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_attempts_session_runs_session_run");
+
                     b.HasOne("EduTwin.DAL.Organization.Student", "Student")
                         .WithMany()
                         .HasForeignKey("CenterId", "StudentId")
@@ -7029,6 +7377,8 @@ namespace EduTwin.DAL.Persistence.Migrations
                     b.Navigation("Assignment");
 
                     b.Navigation("Question");
+
+                    b.Navigation("SessionRun");
 
                     b.Navigation("Student");
                 });
@@ -8104,6 +8454,79 @@ namespace EduTwin.DAL.Persistence.Migrations
                     b.Navigation("TopicNode");
                 });
 
+            modelBuilder.Entity("EduTwin.DAL.Recommendations.LearningPathSession", b =>
+                {
+                    b.HasOne("EduTwin.DAL.Organization.Class", "Class")
+                        .WithMany()
+                        .HasForeignKey("CenterId", "ClassId")
+                        .HasPrincipalKey("CenterId", "ClassId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_learning_path_sessions_classes_class");
+
+                    b.HasOne("EduTwin.DAL.Recommendations.LearningPath", "LearningPath")
+                        .WithMany("Sessions")
+                        .HasForeignKey("CenterId", "LearningPathId")
+                        .HasPrincipalKey("CenterId", "LearningPathId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_learning_path_sessions_learning_paths_learning_path");
+
+                    b.HasOne("EduTwin.DAL.KnowledgeGraph.KnowledgeNode", "TopicNode")
+                        .WithMany()
+                        .HasForeignKey("CenterId", "TopicNodeId")
+                        .HasPrincipalKey("CenterId", "NodeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_learning_path_sessions_knowledge_nodes_topic_node");
+
+                    b.Navigation("Class");
+
+                    b.Navigation("LearningPath");
+
+                    b.Navigation("TopicNode");
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.Recommendations.LearningPathSessionRun", b =>
+                {
+                    b.HasOne("EduTwin.DAL.CurriculumAndQuestions.Question", "CheckpointQuestion")
+                        .WithMany()
+                        .HasForeignKey("CenterId", "CheckpointQuestionId")
+                        .HasPrincipalKey("CenterId", "QuestionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_learning_path_session_runs_questions_checkpoint_question");
+
+                    b.HasOne("EduTwin.DAL.CurriculumAndQuestions.Question", "CurrentQuestion")
+                        .WithMany()
+                        .HasForeignKey("CenterId", "CurrentQuestionId")
+                        .HasPrincipalKey("CenterId", "QuestionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_learning_path_session_runs_questions_current_question");
+
+                    b.HasOne("EduTwin.DAL.Recommendations.LearningPathSession", "Session")
+                        .WithMany("Runs")
+                        .HasForeignKey("CenterId", "SessionId")
+                        .HasPrincipalKey("CenterId", "SessionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_learning_path_session_runs_sessions_session");
+
+                    b.HasOne("EduTwin.DAL.Organization.Student", "Student")
+                        .WithMany()
+                        .HasForeignKey("CenterId", "StudentId")
+                        .HasPrincipalKey("CenterId", "StudentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_learning_path_session_runs_students_student");
+
+                    b.Navigation("CheckpointQuestion");
+
+                    b.Navigation("CurrentQuestion");
+
+                    b.Navigation("Session");
+
+                    b.Navigation("Student");
+                });
+
             modelBuilder.Entity("EduTwin.DAL.Recommendations.Recommendation", b =>
                 {
                     b.HasOne("EduTwin.DAL.CurriculumAndQuestions.Question", "Question")
@@ -8233,6 +8656,18 @@ namespace EduTwin.DAL.Persistence.Migrations
             modelBuilder.Entity("EduTwin.DAL.Recommendations.LearningPath", b =>
                 {
                     b.Navigation("Items");
+
+                    b.Navigation("Sessions");
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.Recommendations.LearningPathSession", b =>
+                {
+                    b.Navigation("Runs");
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.Recommendations.LearningPathSessionRun", b =>
+                {
+                    b.Navigation("Attempts");
                 });
 #pragma warning restore 612, 618
         }

@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using EduTwin.BLL.IdentityAndTenancy;
+using EduTwin.BLL.Recommendations.Services;
 using EduTwin.Contracts.Recommendations;
 using EduTwin.DAL.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -24,11 +25,16 @@ public sealed class UpdateLearningPathSessionUseCase : IUpdateLearningPathSessio
     private static readonly string[] AllowedStatuses = ["InProgress", "Completed", "NeedsReview", "Skipped", "Evaluate"];
     private readonly EduTwinDbContext _dbContext;
     private readonly ITenantContext _tenantContext;
+    private readonly ILearningSessionExecutionService? _sessionExecutionService;
 
-    public UpdateLearningPathSessionUseCase(EduTwinDbContext dbContext, ITenantContext tenantContext)
+    public UpdateLearningPathSessionUseCase(
+        EduTwinDbContext dbContext,
+        ITenantContext tenantContext,
+        ILearningSessionExecutionService? sessionExecutionService = null)
     {
         _dbContext = dbContext;
         _tenantContext = tenantContext;
+        _sessionExecutionService = sessionExecutionService;
     }
 
     public async Task<LearningPathSessionDto?> GetAsync(Guid subjectId, string sessionId, Guid? classId, bool history, CancellationToken ct)
@@ -105,6 +111,16 @@ public sealed class UpdateLearningPathSessionUseCase : IUpdateLearningPathSessio
         path.UpdatedAt = DateTime.UtcNow;
         path.UpdatedBy = path.StudentId;
         path.RowVersion++;
+
+        var relSession = await _dbContext.LearningPathSessions
+            .FirstOrDefaultAsync(s => s.CenterId == path.CenterId && s.LegacySessionId == sessionId, cancellationToken);
+        if (relSession is not null && Enum.TryParse<LearningPathSessionStatus>(session.Status, out var parsedRelStatus))
+        {
+            relSession.Status = parsedRelStatus;
+            relSession.UpdatedAt = DateTime.UtcNow;
+            relSession.RowVersion++;
+        }
+
         await _dbContext.SaveChangesAsync(cancellationToken);
         return true;
     }

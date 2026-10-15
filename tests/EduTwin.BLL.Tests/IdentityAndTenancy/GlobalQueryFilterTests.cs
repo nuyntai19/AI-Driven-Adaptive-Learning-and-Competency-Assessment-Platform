@@ -35,7 +35,7 @@ public class GlobalQueryFilterTests
         using var context = CreateContext();
         var entityTypes = context.Model.GetEntityTypes().Where(e => typeof(ITenantOwnedEntity).IsAssignableFrom(e.ClrType)).ToList();
 
-        Assert.Equal(50, entityTypes.Count); // prior 44 + notification event/dispatch/delivery/message
+        Assert.Equal(52, entityTypes.Count); // prior 50 + learning path session and run
 
         foreach (var entityType in entityTypes)
         {
@@ -49,7 +49,7 @@ public class GlobalQueryFilterTests
         using var context = CreateContext();
         var entityTypes = context.Model.GetEntityTypes().Where(e => typeof(IMutableTenantAggregate).IsAssignableFrom(e.ClrType)).ToList();
 
-        Assert.Equal(21, entityTypes.Count); // 19 legacy + authorization role + learning path preference
+        Assert.Equal(23, entityTypes.Count); // prior 21 + learning path session and run
 
         foreach (var entityType in entityTypes)
         {

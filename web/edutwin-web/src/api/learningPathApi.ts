@@ -5,6 +5,13 @@ import type {
   GenerateLearningPathRequest,
   DetailedLearningPathResponse,
   LearningPathSessionDto,
+  StartSessionDto,
+  StartSessionResponse,
+  ResumeSessionDto,
+  ResumeSessionResponse,
+  EvaluateSessionRequest,
+  EvaluateSessionDto,
+  EvaluateSessionResponse,
 } from "../types/learningPath";
 
 export const getLearningPathTopics = async (
@@ -56,3 +63,38 @@ export async function getLearningPathSession(subjectId: string, sessionId: strin
     { params: { subjectId, classId: classId || undefined, history } });
   return response.data.data;
 }
+
+export const startLearningSession = async (
+  sessionId: string,
+  subjectId: string,
+  classId?: string
+): Promise<StartSessionDto> => {
+  const response = await httpClient.post<StartSessionResponse>(
+    `/students/me/learning-path/sessions/${encodeURIComponent(sessionId)}/start`,
+    { subjectId, classId: classId || undefined }
+  );
+  return response.data.data;
+};
+
+export const resumeLearningSession = async (
+  sessionId: string,
+  subjectId: string,
+  classId?: string
+): Promise<ResumeSessionDto> => {
+  const response = await httpClient.get<ResumeSessionResponse>(
+    `/students/me/learning-path/sessions/${encodeURIComponent(sessionId)}/resume`,
+    { params: { subjectId, classId: classId || undefined } }
+  );
+  return response.data.data;
+};
+
+export const evaluateLearningSession = async (
+  sessionId: string,
+  request: EvaluateSessionRequest
+): Promise<EvaluateSessionDto> => {
+  const response = await httpClient.post<EvaluateSessionResponse>(
+    `/students/me/learning-path/sessions/${encodeURIComponent(sessionId)}/evaluate`,
+    request
+  );
+  return response.data.data;
+};

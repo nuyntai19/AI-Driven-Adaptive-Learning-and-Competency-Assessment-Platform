@@ -11,6 +11,7 @@ public sealed class ValidatedAttemptSubmission
     public Guid ClientSubmissionId { get; init; }
     public ulong QuestionId { get; init; }
     public Guid? AssignmentId { get; init; }
+    public ulong? SessionRunId { get; init; }
     public string FinalAnswer { get; init; } = string.Empty;
     public string? ReasoningText { get; init; }
     public uint TimeSpentSeconds { get; init; }

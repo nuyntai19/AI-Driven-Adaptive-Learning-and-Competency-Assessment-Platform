@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using EduTwin.BLL.Recommendations.UseCases;
+using EduTwin.BLL.Recommendations.Services;
 using EduTwin.Contracts.Recommendations;
 
 namespace EduTwin.API.Controllers;
@@ -30,6 +31,8 @@ public sealed class LearningController : ControllerBase
     private readonly IGetAttemptFeedbackUseCase _getAttemptFeedbackUseCase;
     private readonly IRetryAttemptAIAnalysisUseCase? _retryAttemptAIAnalysisUseCase;
     private readonly ICreateStudentReviewRequestUseCase? _createStudentReviewRequestUseCase;
+    private readonly ILearningSessionExecutionService? _sessionExecutionService;
+    private readonly ITenantContext? _tenantContext;
     private readonly TimeProvider _timeProvider;
 
     public LearningController(
@@ -60,7 +63,9 @@ public sealed class LearningController : ControllerBase
         IGetAttemptFeedbackUseCase getAttemptFeedbackUseCase,
         TimeProvider timeProvider,
         IRetryAttemptAIAnalysisUseCase? retryAttemptAIAnalysisUseCase = null,
-        ICreateStudentReviewRequestUseCase? createStudentReviewRequestUseCase = null)
+        ICreateStudentReviewRequestUseCase? createStudentReviewRequestUseCase = null,
+        ILearningSessionExecutionService? sessionExecutionService = null,
+        ITenantContext? tenantContext = null)
     {
         _submitAttemptUseCase = submitAttemptUseCase;
         _listAttemptsUseCase = listAttemptsUseCase;
@@ -69,6 +74,8 @@ public sealed class LearningController : ControllerBase
         _getAttemptFeedbackUseCase = getAttemptFeedbackUseCase;
         _retryAttemptAIAnalysisUseCase = retryAttemptAIAnalysisUseCase;
         _createStudentReviewRequestUseCase = createStudentReviewRequestUseCase;
+        _sessionExecutionService = sessionExecutionService;
+        _tenantContext = tenantContext;
         _timeProvider = timeProvider;
     }
 
@@ -597,6 +604,307 @@ public sealed class LearningController : ControllerBase
 
             _ => throw new InvalidOperationException($"Unexpected error code: {errorCode}")
         };
+
+    [HttpPost("sessions/{sessionId}/start")]
+    [Authorize(Policy = "recommendations.student.read_own")]
+    [ProducesResponseType(typeof(StartSessionResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> StartSession(
+        [FromRoute] string sessionId,
+        [FromBody] StartSessionRequest? body,
+        [FromQuery] Guid? subjectId,
+        [FromQuery] Guid? classId,
+        [FromQuery] bool history = false,
+        CancellationToken cancellationToken = default)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        if (_sessionExecutionService is null || _tenantContext is null)
+        {
+            throw new InvalidOperationException("Session execution service is not configured.");
+        }
+
+        if (!_tenantContext.IsResolved || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, CreateProblemDetails(
+                StatusCodes.Status403Forbidden, "https://edutwin.local/problems/forbidden",
+                "Không có quyền truy cập", "Tenant context is not resolved.", traceId, ErrorCodes.ForbiddenResource));
+        }
+
+        var effectiveSubjectId = body?.SubjectId != null && body.SubjectId != Guid.Empty
+            ? body.SubjectId
+            : (subjectId ?? Guid.Empty);
+
+        if (effectiveSubjectId == Guid.Empty)
+        {
+            return BadRequest(CreateProblemDetails(
+                StatusCodes.Status400BadRequest, "https://edutwin.local/problems/bad-request",
+                "Dữ liệu không hợp lệ", "Mã môn học (subjectId) không hợp lệ.", traceId, "INVALID_SUBJECT_ID"));
+        }
+
+        var centerId = _tenantContext.CenterId.Value;
+        var studentId = _tenantContext.UserId.Value;
+        var effectiveClassId = body?.ClassId ?? classId;
+
+        try
+        {
+            var result = await _sessionExecutionService.StartOrResumeSessionAsync(
+                centerId, studentId, effectiveSubjectId, sessionId, effectiveClassId, cancellationToken);
+
+            NextQuestionDto? questionDto = null;
+            if (result.CurrentQuestionId.HasValue)
+            {
+                bool isCheckpoint = result.CheckpointQuestionId.HasValue && result.CurrentQuestionId.Value == result.CheckpointQuestionId.Value;
+                questionDto = await _sessionExecutionService.GetQuestionDtoAsync(
+                    centerId, result.SessionId, result.CurrentQuestionId.Value, isCheckpoint, cancellationToken);
+                if (questionDto is not null)
+                {
+                    questionDto.SessionRunId = result.SessionRunId;
+                    questionDto.SessionId = result.SessionId;
+                    questionDto.QuestionIndex = 1;
+                }
+            }
+
+            return Ok(new StartSessionResponse
+            {
+                Data = new StartSessionDto
+                {
+                    SessionRunId = result.SessionRunId,
+                    SessionId = result.SessionId,
+                    RunNumber = result.RunNumber,
+                    Status = result.Status,
+                    EvaluationStatus = result.EvaluationStatus,
+                    CurrentQuestionId = result.CurrentQuestionId,
+                    CheckpointQuestionId = result.CheckpointQuestionId,
+                    IsResumed = result.IsResumed,
+                    CurrentQuestion = questionDto
+                },
+                Meta = new MetaDto
+                {
+                    Timestamp = _timeProvider.GetUtcNow().UtcDateTime,
+                    TraceId = traceId
+                }
+            });
+        }
+        catch (QuestionPoolDepletedException ex)
+        {
+            return StatusCode(StatusCodes.Status409Conflict, CreateProblemDetails(
+                StatusCodes.Status409Conflict, "https://edutwin.local/problems/conflict",
+                "Ngân hàng câu hỏi không đủ", ex.Message, traceId, "QUESTION_POOL_DEPLETED"));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(CreateProblemDetails(
+                StatusCodes.Status404NotFound, "https://edutwin.local/problems/not-found",
+                "Không tìm thấy buổi học", ex.Message, traceId, ErrorCodes.ResourceNotFound));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateProblemDetails(
+                StatusCodes.Status400BadRequest, "https://edutwin.local/problems/validation",
+                "Không thể bắt đầu buổi học", ex.Message, traceId, ErrorCodes.ValidationFailed));
+        }
+    }
+
+    [HttpGet("sessions/{sessionId}/resume")]
+    [Authorize(Policy = "recommendations.student.read_own")]
+    [ProducesResponseType(typeof(ResumeSessionResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ResumeSession(
+        [FromRoute] string sessionId,
+        [FromQuery] Guid subjectId,
+        [FromQuery] Guid? classId,
+        CancellationToken cancellationToken = default)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        if (_sessionExecutionService is null || _tenantContext is null)
+        {
+            throw new InvalidOperationException("Session execution service is not configured.");
+        }
+
+        if (!_tenantContext.IsResolved || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, CreateProblemDetails(
+                StatusCodes.Status403Forbidden, "https://edutwin.local/problems/forbidden",
+                "Không có quyền truy cập", "Tenant context is not resolved.", traceId, ErrorCodes.ForbiddenResource));
+        }
+
+        if (subjectId == Guid.Empty)
+        {
+            return BadRequest(CreateProblemDetails(
+                StatusCodes.Status400BadRequest, "https://edutwin.local/problems/bad-request",
+                "Dữ liệu không hợp lệ", "Mã môn học (subjectId) không hợp lệ.", traceId, "INVALID_SUBJECT_ID"));
+        }
+
+        var centerId = _tenantContext.CenterId.Value;
+        var studentId = _tenantContext.UserId.Value;
+
+        try
+        {
+            var resumeResult = await _sessionExecutionService.ResumeSessionAsync(
+                centerId, studentId, subjectId, sessionId, classId, cancellationToken);
+
+            NextQuestionDto? questionDto = null;
+            if (resumeResult.CurrentQuestionId.HasValue)
+            {
+                questionDto = await _sessionExecutionService.GetQuestionDtoAsync(
+                    centerId, resumeResult.SessionId, resumeResult.CurrentQuestionId.Value, false, cancellationToken);
+                if (questionDto is not null && resumeResult.SessionRunId.HasValue)
+                {
+                    questionDto.SessionRunId = resumeResult.SessionRunId.Value;
+                    questionDto.SessionId = resumeResult.SessionId;
+                    questionDto.TotalQuestions = resumeResult.TotalQuestions;
+                    questionDto.QuestionIndex = resumeResult.QuestionsAttempted + 1;
+                }
+            }
+
+            return Ok(new ResumeSessionResponse
+            {
+                Data = new ResumeSessionDto
+                {
+                    SessionRunId = resumeResult.SessionRunId,
+                    SessionId = resumeResult.SessionId,
+                    LegacySessionId = resumeResult.LegacySessionId,
+                    SessionTitle = resumeResult.SessionTitle,
+                    SessionStatus = resumeResult.SessionStatus,
+                    RunNumber = resumeResult.RunNumber,
+                    RunStatus = resumeResult.RunStatus,
+                    EvaluationStatus = resumeResult.EvaluationStatus,
+                    Outcome = resumeResult.Outcome,
+                    StartedAt = resumeResult.StartedAt,
+                    LastActivityAt = resumeResult.LastActivityAt,
+                    CompletedAt = resumeResult.CompletedAt,
+                    TotalQuestions = resumeResult.TotalQuestions,
+                    QuestionsAttempted = resumeResult.QuestionsAttempted,
+                    QuestionsCorrect = resumeResult.QuestionsCorrect,
+                    ScoreRate = resumeResult.ScoreRate,
+                    CurrentQuestionId = resumeResult.CurrentQuestionId,
+                    CurrentQuestion = questionDto,
+                    AttemptedQuestionIds = resumeResult.AttemptedQuestionIds,
+                    IsCompleted = resumeResult.IsCompleted,
+                    IsGrading = resumeResult.IsGrading,
+                    CanStart = resumeResult.CanStart
+                },
+                Meta = new MetaDto
+                {
+                    Timestamp = _timeProvider.GetUtcNow().UtcDateTime,
+                    TraceId = traceId
+                }
+            });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(CreateProblemDetails(
+                StatusCodes.Status404NotFound, "https://edutwin.local/problems/not-found",
+                "Không tìm thấy buổi học", ex.Message, traceId, ErrorCodes.ResourceNotFound));
+        }
+    }
+
+    [HttpPost("sessions/{sessionId}/evaluate")]
+    [Authorize(Policy = "recommendations.student.read_own")]
+    [ProducesResponseType(typeof(EvaluateSessionResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> EvaluateSession(
+        [FromRoute] string sessionId,
+        [FromBody] EvaluateSessionRequest? body,
+        [FromQuery] Guid? subjectId,
+        [FromQuery] Guid? classId,
+        [FromQuery] ulong? sessionRunId,
+        CancellationToken cancellationToken = default)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        if (_sessionExecutionService is null || _tenantContext is null)
+        {
+            throw new InvalidOperationException("Session execution service is not configured.");
+        }
+
+        if (!_tenantContext.IsResolved || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, CreateProblemDetails(
+                StatusCodes.Status403Forbidden, "https://edutwin.local/problems/forbidden",
+                "Không có quyền truy cập", "Tenant context is not resolved.", traceId, ErrorCodes.ForbiddenResource));
+        }
+
+        var effectiveSubjectId = body?.SubjectId != null && body.SubjectId != Guid.Empty
+            ? body.SubjectId.Value
+            : (subjectId ?? Guid.Empty);
+
+        if (effectiveSubjectId == Guid.Empty)
+        {
+            return BadRequest(CreateProblemDetails(
+                StatusCodes.Status400BadRequest, "https://edutwin.local/problems/bad-request",
+                "Dữ liệu không hợp lệ", "Mã môn học (subjectId) không hợp lệ.", traceId, "INVALID_SUBJECT_ID"));
+        }
+
+        var centerId = _tenantContext.CenterId.Value;
+        var studentId = _tenantContext.UserId.Value;
+        var effectiveClassId = body?.ClassId ?? classId;
+        var effectiveRunId = body?.SessionRunId ?? sessionRunId;
+
+        try
+        {
+            var result = await _sessionExecutionService.EvaluateSessionAsync(
+                centerId, studentId, effectiveSubjectId, sessionId, effectiveClassId, effectiveRunId, cancellationToken);
+
+            return Ok(new EvaluateSessionResponse
+            {
+                Data = new EvaluateSessionDto
+                {
+                    SessionRunId = result.SessionRunId,
+                    SessionId = result.SessionId,
+                    LegacySessionId = result.LegacySessionId,
+                    SessionTitle = result.SessionTitle,
+                    SessionStatus = result.SessionStatus,
+                    RunNumber = result.RunNumber,
+                    RunStatus = result.RunStatus,
+                    EvaluationStatus = result.EvaluationStatus,
+                    Outcome = result.Outcome,
+                    TotalQuestions = result.TotalQuestions,
+                    QuestionsAttempted = result.QuestionsAttempted,
+                    CheckpointsAttempted = result.CheckpointsAttempted,
+                    CheckpointsCorrect = result.CheckpointsCorrect,
+                    CheckpointScoreRate = result.CheckpointScoreRate,
+                    OverallScoreRate = result.OverallScoreRate,
+                    RequiresTeacherReview = result.RequiresTeacherReview,
+                    HasPendingAIGrading = result.HasPendingAIGrading,
+                    EvaluationDetail = result.EvaluationDetail,
+                    EvaluatedAt = result.EvaluatedAt,
+                    IsCompleted = result.IsCompleted,
+                    Passed = result.Outcome == SessionRunOutcome.Passed
+                },
+                Meta = new MetaDto
+                {
+                    Timestamp = _timeProvider.GetUtcNow().UtcDateTime,
+                    TraceId = traceId
+                }
+            });
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+        {
+            return Conflict(CreateProblemDetails(
+                StatusCodes.Status409Conflict, "https://edutwin.local/problems/concurrency",
+                "Xung đột phiên bản", "Phiên học đã được cập nhật bởi một yêu cầu khác. Vui lòng thử lại.", traceId, ErrorCodes.ConcurrencyConflict));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(CreateProblemDetails(
+                StatusCodes.Status404NotFound, "https://edutwin.local/problems/not-found",
+                "Không tìm thấy buổi học", ex.Message, traceId, ErrorCodes.ResourceNotFound));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateProblemDetails(
+                StatusCodes.Status400BadRequest, "https://edutwin.local/problems/validation",
+                "Không thể đánh giá buổi học", ex.Message, traceId, ErrorCodes.ValidationFailed));
+        }
+    }
 
     private ProblemDetails CreateProblemDetails(
         int status,
