@@ -1,9 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { missionAction, ongoingMissionFromError } from "../src/utils/learningMission.ts";
+import { missionAction, ongoingMissionFromError, pathChangeBlockersFromError } from "../src/utils/learningMission.ts";
 import type { AgendaItemDto } from "../src/types/learningPath.ts";
 
 const mission = { missionId: "selected", status: "NotStarted", canStart: true } as AgendaItemDto;
+test("path replacement conflict preserves named pending states and rejects malformed payloads", () => {
+  const blockers = ["InProgress", "Grading", "NeedsReview"].map((status, i) => ({ missionId: `mission-${i}`, runId: i + 1, title: `Buổi ${i}`, status, canResume: true }));
+  const error = { isAxiosError: true, response: { status: 409, data: { errorCode: "LEARNING_PATH_CHANGE_BLOCKED", blockingMissions: [...blockers, { missionId: "bad", runId: -1 }] } } };
+  assert.deepEqual(pathChangeBlockersFromError(error), blockers);
+  assert.deepEqual(pathChangeBlockersFromError(new Error("network")), []);
+  error.response.status = 403;
+  assert.deepEqual(pathChangeBlockersFromError(error), []);
+});
 test("one action opens completed work for review and resumes unfinished work", () => {
   assert.deepEqual(missionAction({ ...mission, status: "Completed", latestRunId: 8 }), { label: "Xem lại", reviewOnly: true });
   assert.deepEqual(missionAction({ ...mission, activeRunId: 8, latestRunId: 8 }), { label: "Tiếp tục", reviewOnly: false });

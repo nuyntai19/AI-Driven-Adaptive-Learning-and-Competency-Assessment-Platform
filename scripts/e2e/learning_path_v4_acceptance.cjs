@@ -98,6 +98,23 @@ async function main() {
     const resumed = await ok(student, `/students/me/missions/${conflict.data.ongoingMission.missionId}/start`, 'POST');
     assert.equal(resumed.sessionRunId, studyRun.sessionRunId);
   });
+  await check('Accepting a different route explains blockers and preserves the active route', async () => {
+    const goal = await ok(student, '/students/me/learning-goals', 'POST', { subjectId: subject, classId, title: 'Blocked replacement fixture',
+      goalType: 'Foundation', targetSkillIds: map.skills.map(s => s.skillId), availableMinutesPerDay: 15, availableDaysPerWeek: 5 });
+    const next = await ok(student, '/students/me/path-proposals', 'POST', { goalId: goal.goalId, subjectId: subject, classId });
+    const before = execSql('SELECT COUNT(*) FROM learning_paths;').trim();
+    const conflict = await request(student, `/students/me/path-proposals/${next.proposalId}/accept`, 'POST');
+    assert.equal(conflict.status, 409); assert.equal(conflict.data.errorCode, 'LEARNING_PATH_CHANGE_BLOCKED');
+    const blockers = conflict.data.blockingMissions;
+    assert.equal(blockers.length, 1); assert.equal(blockers[0].missionId, studyRun.sessionId);
+    assert.equal(blockers[0].title, studyRun.title); assert.equal(blockers[0].status, 'InProgress'); assert.equal(blockers[0].canResume, true);
+    assert.equal(execSql('SELECT COUNT(*) FROM learning_paths;').trim(), before);
+    assert.equal((await ok(student, `/students/me/learning-agenda?${scope}`)).learningPathId, accepted.learningPathId);
+    for (const token of [other, anotherCenter]) {
+      const denied = await request(token, `/students/me/path-proposals/${next.proposalId}/accept`, 'POST');
+      assert.ok([403, 404].includes(denied.status)); assert.equal(denied.data.blockingMissions, undefined);
+    }
+  });
   await check('Other students and tenants cannot start/read this mission', async () => {
     for (const token of [other, anotherCenter]) {
       assert.ok([403, 404].includes((await request(token, `/students/me/missions/${studyRun.sessionId}/start`, 'POST')).status));

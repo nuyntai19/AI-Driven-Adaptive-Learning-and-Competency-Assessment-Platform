@@ -6,6 +6,50 @@ namespace EduTwin.BLL.Tests.Recommendations;
 
 public sealed class LearningPathV4PlannerTests
 {
+    [Theory]
+    [InlineData(SessionRunStatus.InProgress)]
+    [InlineData(SessionRunStatus.Grading)]
+    [InlineData(SessionRunStatus.NeedsReview)]
+    public async Task Accept_BlockedByOpenWork_ReturnsNamedStatus_WithoutChangingRouteOrDraft(SessionRunStatus status)
+    {
+        using var f = new LearningPathV4Fixture();
+        var mission = await f.Activate("Study", "101");
+        var run = await f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(mission.MissionId));
+        await f.Execution.SaveDraftAsync(f.Center, f.Student, run.Activities[0].ActivityRunId,
+            new SaveActivityDraftRequest { ExpectedRevision = 1, DraftPayload = "keep this draft" });
+        var stored = await f.Db.LearningPathSessionRuns.SingleAsync(); stored.Status = status;
+        await f.Db.SaveChangesAsync();
+        var oldGoal = (await f.Planner.GetActiveGoalAsync(f.Center, f.Student, f.English))!.GoalId;
+        var proposal = await f.Proposal("102");
+        var beforeDecisions = await f.Db.PathDecisions.CountAsync();
+        var error = await Assert.ThrowsAsync<EduTwin.BLL.Recommendations.Services.LearningPathChangeBlockedException>(() =>
+            f.Planner.AcceptPathProposalAsync(f.Center, f.Student, proposal.ProposalId));
+        var blocked = Assert.Single(error.Missions);
+        Assert.Equal(run.SessionId, blocked.MissionId); Assert.Equal(run.SessionRunId, blocked.RunId);
+        Assert.Equal(run.Title, blocked.Title); Assert.Equal(status.ToString(), blocked.Status); Assert.True(blocked.CanResume);
+        Assert.Equal(oldGoal, (await f.Planner.GetActiveGoalAsync(f.Center, f.Student, f.English))!.GoalId);
+        Assert.Equal(beforeDecisions, await f.Db.PathDecisions.CountAsync());
+        Assert.Equal("Pending", (await f.Db.PathProposals.SingleAsync(p => p.ProposalId == proposal.ProposalId)).Status);
+        Assert.Equal("keep this draft", (await f.Execution.GetActivityRunAsync(f.Center, f.Student, run.Activities[0].ActivityRunId)).DraftPayload);
+    }
+
+    [Fact]
+    public async Task Accept_AfterFinishingOpenStudy_ReallyChangesActiveRoute()
+    {
+        using var f = new LearningPathV4Fixture();
+        var mission = await f.Activate("Study", "101");
+        var run = await f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(mission.MissionId));
+        var proposal = await f.Proposal("102");
+        await f.Execution.SubmitActivityAsync(f.Center, f.Student, run.Activities[0].ActivityRunId,
+            new SubmitActivityRequest { ClientSubmissionId = Guid.NewGuid(), FinalAnswer = "Em đã hiểu nội dung." });
+        await f.Evaluator.EvaluateMissionRunAsync(f.Center, f.Student, run.SessionRunId);
+        var accepted = await f.Planner.AcceptPathProposalAsync(f.Center, f.Student, proposal.ProposalId);
+        Assert.Equal(proposal.GoalId, (await f.Planner.GetActiveGoalAsync(f.Center, f.Student, f.English))!.GoalId);
+        var agenda = await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English);
+        Assert.Equal(accepted.LearningPathId, agenda.LearningPathId);
+        Assert.Contains(agenda.Missions, m => m.SkillId == "102");
+        Assert.Equal("Completed", (await f.Execution.GetMissionRunAsync(f.Center, f.Student, run.SessionId, run.SessionRunId)).Status);
+    }
     [Fact]
     public async Task AcceptedMigration_ClosesOnlyUnfinishedLegacyExecution_WithoutDeletingSubmissions()
     {

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using EduTwin.BLL.Recommendations.Services;
 using EduTwin.Contracts.Recommendations;
 using EduTwin.DAL.Persistence;
 using EduTwin.DAL.Recommendations;
@@ -195,8 +196,11 @@ public sealed class LearningPathV4Planner(EduTwinDbContext db, TimeProvider cloc
         await LearningPathV4Data.NodesAsync(db, centerId, studentId, proposal.SubjectId, proposal.Goal.ClassId, cancellationToken);
         var openRuns = await db.LearningPathSessionRuns.Include(r => r.Session).Where(r => r.CenterId == centerId && r.StudentId == studentId &&
             r.Session.LearningPath.SubjectId == proposal.SubjectId && r.Status != SessionRunStatus.Completed && r.Status != SessionRunStatus.Abandoned).ToListAsync(cancellationToken);
-        if (openRuns.Any(r => r.Session.PolicyVersion == LearningPathV4Data.Policy || r.Status != SessionRunStatus.InProgress))
-            throw new InvalidOperationException("Hãy hoàn tất nhiệm vụ đang làm hoặc chờ đánh giá trước khi thay tuyến. Tiến độ hiện tại được giữ nguyên.");
+        var blockers = openRuns.Where(r => r.Session.PolicyVersion == LearningPathV4Data.Policy || r.Status != SessionRunStatus.InProgress)
+            .OrderByDescending(r => r.LastActivityAt).Select(r => new BlockingLearningMission(
+                r.SessionId, r.SessionRunId, r.Session.Title, r.Status.ToString(), r.Session.PolicyVersion == LearningPathV4Data.Policy)).ToList();
+        if (blockers.Count > 0)
+            throw new LearningPathChangeBlockedException(blockers);
         // Accepting the preview explicitly migrates unfinished legacy study. Keep every submission;
         // close the old execution as abandoned, never as passed, so it cannot block the new mission player.
         foreach (var legacyRun in openRuns)

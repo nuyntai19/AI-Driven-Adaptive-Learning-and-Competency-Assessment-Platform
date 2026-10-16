@@ -1,5 +1,7 @@
 # EDUTWIN — ĐẶC TẢ LỘ TRÌNH HỌC TẬP CÁ NHÂN V4.0
 
+> **Bản cập nhật:** Xem [báo cáo và đặc tả V05](EDUTWIN-PERSONALIZED-LEARNING-PATH-V5.0.md) để đọc hành vi đã điều chỉnh và kết quả triển khai. Giữ V04 làm mốc thiết kế và bộ tiêu chí gốc.
+
 > **Ngày:** 16/10/2026
 >
 > **Tên định hướng:** Bản đồ năng lực cá nhân và nhiệm vụ học tập có mục đích

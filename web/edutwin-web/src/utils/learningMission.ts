@@ -1,6 +1,17 @@
 import { isAxiosError } from "axios";
 import type { AgendaItemDto } from "../types/learningPath";
 
+export interface BlockingLearningMission { missionId: string; runId: number; title: string; status: string; canResume: boolean }
+
+export function pathChangeBlockersFromError(error: unknown): BlockingLearningMission[] {
+  if (!isAxiosError(error) || error.response?.status !== 409 || error.response.data?.errorCode !== "LEARNING_PATH_CHANGE_BLOCKED") return [];
+  const missions: unknown = error.response.data.blockingMissions;
+  if (!Array.isArray(missions)) return [];
+  return missions.filter((m): m is BlockingLearningMission => !!m && typeof m.missionId === "string" && !!m.missionId &&
+    Number.isSafeInteger(m.runId) && m.runId > 0 && typeof m.title === "string" && typeof m.canResume === "boolean" &&
+    ["InProgress", "Grading", "NeedsReview"].includes(m.status));
+}
+
 export function ongoingMissionFromError(error: unknown, selected: AgendaItemDto): AgendaItemDto | null {
   if (!isAxiosError(error) || error.response?.status !== 409) return null;
   const problem = error.response.data;

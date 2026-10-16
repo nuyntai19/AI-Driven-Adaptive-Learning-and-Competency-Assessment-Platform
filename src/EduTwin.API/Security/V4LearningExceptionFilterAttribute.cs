@@ -28,6 +28,11 @@ public sealed class V4LearningExceptionFilterAttribute : ExceptionFilterAttribut
             problem.Extensions["errorCode"] = "LEARNING_MISSION_IN_PROGRESS";
             problem.Extensions["ongoingMission"] = new { missionId = ongoing.MissionId, runId = ongoing.RunId, title = ongoing.MissionTitle };
         }
+        if (context.Exception is LearningPathChangeBlockedException blocked)
+        {
+            problem.Extensions["errorCode"] = "LEARNING_PATH_CHANGE_BLOCKED";
+            problem.Extensions["blockingMissions"] = blocked.Missions;
+        }
         context.Result = new ObjectResult(problem) { StatusCode = status };
         context.ExceptionHandled = true;
     }

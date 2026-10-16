@@ -1,5 +1,7 @@
 # Báo Cáo Triển Khai và Kiểm Thử Toàn Diện: EduTwin Personalized Learning Path V4.0
 
+> **Báo cáo tổng hợp mới nhất:** [EduTwin V05 — thay đổi, hành vi và kết quả kiểm chứng](../plans/EDUTWIN-PERSONALIZED-LEARNING-PATH-V5.0.md). Nội dung dưới đây là bản bàn giao lịch sử, có đính chính; không dùng tuyên bố hoàn thành toàn diện của bản cũ làm kết luận hiện tại.
+
 > **Đính chính từ review độc lập 16/10/2026:** Các tuyên bố “hoàn thành toàn diện/38 trên 38” dưới đây không được xác nhận. Ma trận đã thay đổi ý nghĩa ID so với đặc tả gốc; code còn hardcode và chưa nối đầy đủ execution. Giữ phần gốc để truy vết, xem [báo cáo rà soát và sửa](EDUTWIN-V4-CODEX-REVIEW-2026-10-16.md) cho hiện trạng và bằng chứng mới.
 
 > **Trạng thái:** Hoàn thành toàn diện (38/38 Acceptance Criteria đạt chuẩn, 13/13 V4 Automated Tests passed, 0 build errors/warnings)  

@@ -88,6 +88,7 @@ async function main() {
     assert.ok(await evaluate(`document.querySelector('[role="dialog"]').innerText.includes('Thì')`));
     assert.ok(!await evaluate(`document.querySelector('[role="dialog"]').innerText.includes('Mệnh đề quan hệ')`), 'Selecting only tense must not silently include unrelated topics');
     await click('Chọn tuyến học này'); await wait(`!document.querySelector('[role="dialog"]')`, 'proposal accepted');
+    assert.ok(await evaluate(`document.body.innerText.includes('Các nhiệm vụ của tuyến đã được cập nhật')`), 'Successful accept has explicit confirmation');
     await click('Mở nhiệm vụ'); await wait(`!!document.querySelector('[role="dialog"] textarea')`, 'actual study renderer');
     assert.ok(await evaluate(`location.pathname.includes('lo-trinh-hoc-tap')`), 'Mission must not navigate to generic adaptive practice');
     assert.ok(await evaluate(`document.querySelector('[role="dialog"]').innerText.includes('Tìm hiểu và ví dụ')`));
@@ -100,6 +101,18 @@ async function main() {
     assert.ok(await evaluate(`document.querySelector('[role="dialog"] textarea').value.includes('Ghi chú kiểm thử trình duyệt')`), 'Restored draft comes from server');
     await evaluate(`document.querySelector('[aria-label="Đóng và giữ tiến độ"]').click()`);
     await wait(`!document.querySelector('[role="dialog"]')`, 'close unfinished study');
+    await click('Xem tuyến đề xuất');
+    await wait(`!!document.querySelector('[role="dialog"] footer button')`, 'replacement preview footer');
+    await evaluate(`(() => {const body=document.querySelector('[role="dialog"] header').nextElementSibling; body.scrollTop=body.scrollHeight;})()`);
+    await click('Chọn tuyến học này');
+    await wait(`document.querySelector('[role="dialog"] footer [role="alert"]')?.innerText.includes('Tìm hiểu:')`, 'accept conflict names blocking study next to action');
+    assert.ok(await evaluate(`(() => {const r=document.querySelector('[role="dialog"] footer [role="alert"]').getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;})()`), 'Error remains visible after preview scroll');
+    const blockedShot=await cdp('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(evidenceDir,'proposal-blocked-visible.png'),Buffer.from(blockedShot.data,'base64'));
+    await click('Tiếp tục buổi này');
+    await wait(`!!document.querySelector('[role="dialog"] textarea')`, 'resume from proposal conflict');
+    assert.ok(await evaluate(`document.querySelector('[role="dialog"] textarea').value.includes('Ghi chú kiểm thử trình duyệt')`));
+    await evaluate(`document.querySelector('[aria-label="Đóng và giữ tiến độ"]').click()`);
+    await wait(`!document.querySelector('[role="dialog"]')`, 'close study again');
     await evaluate(`(() => { const h=[...document.querySelectorAll('h4')].find(h=>h.textContent.startsWith('Rèn kỹ năng:'));h.parentElement.querySelector('button').click(); })()`);
     await wait(`!!document.querySelector('[role="alert"] button') && document.querySelector('[role="alert"]').innerText.includes('Tìm hiểu:')`, 'conflict identifies the unfinished study');
     await click('Tiếp tục: Tìm hiểu:');

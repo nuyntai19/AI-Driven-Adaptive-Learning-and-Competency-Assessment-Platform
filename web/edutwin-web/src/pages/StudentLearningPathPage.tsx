@@ -28,6 +28,7 @@ export function StudentLearningPathPage() {
   const [showGoal, setShowGoal] = useState(false);
   const [recommended, setRecommended] = useState(false);
   const [mission, setMission] = useState<AgendaItemDto | null>(null);
+  const [acceptedNotice, setAcceptedNotice] = useState("");
   const map = useQuery({ queryKey: ["learning-paths", "capability-map", actor?.centerId, actor?.userId, subjectId, access.classId],
     queryFn: () => getCapabilityMap(subjectId, access.classId), enabled: !!subjectId && access.writable });
   const agenda = useQuery({ queryKey: ["learning-agenda", actor?.centerId, actor?.userId, subjectId, access.classId, minutes],
@@ -39,6 +40,7 @@ export function StudentLearningPathPage() {
   if (access.pending || subjects.isPending) return <p role="status" className="p-6">Đang kiểm tra môn học và giáo trình…</p>;
   if (access.readOnly) return <StudentLearningReadOnlyNotice reason={access.reason} />;
   return <div className="mx-auto max-w-6xl space-y-7 px-4 py-7 text-slate-900 dark:text-slate-100">
+    {acceptedNotice && <div role="status" className="flex items-start justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900"><p>{acceptedNotice}</p><button aria-label="Đóng thông báo đã chọn tuyến" onClick={() => setAcceptedNotice("")}>×</button></div>}
     <header className="flex flex-wrap items-start justify-between gap-4">
       <div><p className="text-sm text-indigo-600 dark:text-indigo-300">Mục tiêu của bạn · Tiến bộ từ bằng chứng thật</p>
         <h1 className="mt-1 text-3xl font-bold">Lộ trình học tập cá nhân</h1>
@@ -120,7 +122,13 @@ export function StudentLearningPathPage() {
       automatic={recommended} insights={agenda.data?.insights}
       suggestedSkillIds={recommended ? agenda.data?.insights?.suggestedSkillIds : []} recommendationSummary={recommended ? agenda.data?.insights?.summary : undefined}
       subjectId={subjectId} classId={access.classId} skills={map.data?.skills ?? []} subjectName={subject?.subjectName ?? ""}
-      onAccepted={() => { void agenda.refetch(); void map.refetch(); }} />}
+      onOpenBlockingMission={blocked => {
+        setShowGoal(false);
+        const existing = agenda.data?.missions.find(m => m.missionId === blocked.missionId);
+        setMission({ ...(existing ?? { objective: "", purpose: "", skillId: "", skillName: "Buổi cần xử lý", estimatedDurationMinutes: 0, activityTypes: [], recommendationReason: "", questionCount: 0, canStart: false }),
+          missionId: blocked.missionId, title: blocked.title, activeRunId: blocked.runId, latestRunId: blocked.runId, status: "InProgress", reviewOnly: false });
+      }}
+      onAccepted={res => { setAcceptedNotice(`${res.message} Các nhiệm vụ của tuyến đã được cập nhật.`); void agenda.refetch(); void map.refetch(); }} />}
     {mission && <MissionPlayerModal key={mission.missionId} isOpen mission={mission} subjectId={subjectId}
       onResumeMission={setMission}
       onClose={() => { setMission(null); void agenda.refetch(); void map.refetch(); }} />}
