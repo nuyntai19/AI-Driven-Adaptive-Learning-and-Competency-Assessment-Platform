@@ -25,8 +25,11 @@ public static class LearningPathFollowUp
         if (outcome == "NeedsSupport")
         {
             var future = milestone.Missions.Where(m => m.Purpose == "Review" && m.AvailableFrom > now).Select(m => Guid.Parse(m.MissionId)).ToList();
-            foreach (var session in await db.LearningPathSessions.Where(s => s.CenterId == run.CenterId && future.Contains(s.SessionId) && s.Status == LearningPathSessionStatus.NotStarted).ToListAsync(ct))
-            { session.Status = LearningPathSessionStatus.Skipped; session.UpdatedAt = now; session.RowVersion++; }
+            if (future.Count > 0)
+            {
+                foreach (var session in await db.LearningPathSessions.Where(s => s.CenterId == run.CenterId && future.Contains(s.SessionId) && s.Status == LearningPathSessionStatus.NotStarted).ToListAsync(ct))
+                { session.Status = LearningPathSessionStatus.Skipped; session.UpdatedAt = now; session.RowVersion++; }
+            }
         }
         var count = await db.Questions.CountAsync(q => q.CenterId == run.CenterId && q.SubjectId == path.SubjectId &&
             q.PrimaryTopicNodeId == run.Session.TopicNodeId && q.Status == Contracts.CurriculumAndQuestions.QuestionStatus.Active &&

@@ -10,7 +10,7 @@ import { ongoingMissionFromError } from "../../utils/learningMission";
 
 const outcomeNames: Record<string, string> = { Passed: "Đạt yêu cầu kiểm tra độc lập", NotPassed: "Cần củng cố thêm", NeedsSupport: "Cần củng cố thêm",
   ActivityOnlyCompleted: "Đã hoàn thành hoạt động học", InsufficientEvidence: "Chưa đủ bằng chứng",
-  PendingGrading: "Đang chờ chấm bài", PendingTeacherReview: "Chờ giáo viên xác nhận" };
+  PendingGrading: "Đang chờ chấm bài" };
 const activityNames: Record<string, string> = { Study: "Tìm hiểu và ví dụ", WorkedExample: "Ví dụ từng bước", FindError: "Tìm và sửa lỗi",
   Explore: "Khám phá", Practice: "Luyện có hướng dẫn", IndependentCheck: "Tự kiểm tra", Explain: "Giải thích", CompleteSolution: "Hoàn thiện lời giải" };
 const done = (a: ActivityRunDto) => a.status === "Submitted" || a.status === "Completed";
@@ -26,7 +26,7 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
   const current = reviewing ? undefined : run.data?.activities.find(a => !done(a));
   const evaluation = useQuery({ queryKey: ["mission-evaluation", actor?.centerId, actor?.userId, run.data?.sessionRunId],
     queryFn: () => evaluateMissionRunV4(run.data!.sessionRunId), enabled: !reviewing && !!run.data && !current && !feedbackActivity && run.data.activities.length > 0 && run.data.activities.every(done),
-    retry: false, refetchInterval: query => ["PendingGrading", "PendingTeacherReview"].includes(query.state.data?.outcome ?? "") ? 4000 : false });
+    retry: false, refetchInterval: query => query.state.data?.outcome === "PendingGrading" ? 4000 : false });
   const close = () => { void cache.invalidateQueries({ queryKey: ["learning-agenda"] }); void cache.invalidateQueries({ queryKey: ["learning-paths"] }); onClose(); };
   if (!isOpen || !mission) return null;
   const ongoing = ongoingMissionFromError(run.error, mission);
@@ -58,7 +58,7 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
         }} />}
         {reviewing && run.data && !feedbackActivity && <div className="rounded-xl bg-indigo-50 p-4 text-indigo-950"><h3 className="font-semibold">{outcomeNames[run.data.outcome] ?? "Bài làm đã lưu"}</h3><p className="mt-2 text-sm">Chọn số câu hoặc mở phần bên dưới để xem lại câu trả lời và lời giải đã lưu.</p></div>}
         {!reviewing && evaluation.isFetching && !evaluation.data && run.data && !current && !feedbackActivity && <p role="status">Đang tổng kết buổi học…</p>}
-        {!reviewing && evaluation.error && <div role="alert" className="rounded-xl bg-rose-50 p-4 text-rose-800">Chưa lấy được kết quả. Bài đã nộp vẫn được giữ. {evaluation.error.message}
+        {!reviewing && evaluation.error && <div role="alert" className="rounded-xl bg-rose-50 p-4 text-rose-800">Chưa lấy được kết quả. Bài đã nộp vẫn được giữ. {extractProblemDetails(evaluation.error).message}
           <button className="ml-2 underline" onClick={() => void evaluation.refetch()}>Đánh giá lại</button></div>}
         {!reviewing && evaluation.data && !feedbackActivity && <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-5 text-indigo-950"><h3 className="text-xl font-semibold">{outcomeNames[evaluation.data.outcome] ?? evaluation.data.outcome}</h3>
           {evaluation.data.decisionReasons.map((r, i) => <p className="mt-3 text-sm leading-relaxed" key={i}>{r}</p>)}

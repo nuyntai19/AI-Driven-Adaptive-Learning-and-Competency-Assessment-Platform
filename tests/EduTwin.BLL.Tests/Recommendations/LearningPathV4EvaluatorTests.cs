@@ -20,7 +20,7 @@ public sealed class LearningPathV4EvaluatorTests
     [InlineData(5, false, "Passed")]
     [InlineData(4, false, "Passed")]
     [InlineData(1, false, "NeedsSupport")]
-    [InlineData(5, true, "PendingTeacherReview")]
+    [InlineData(5, true, "Passed")]
     public async Task RealSubmissions_AreEvaluatedAgainstEvidenceGate_NotActivityScores(int correct, bool needsReview, string outcome)
     {
         using var f = new LearningPathV4Fixture(); var mission = await f.Activate("IndependentCheck", "103");

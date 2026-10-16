@@ -2,6 +2,7 @@ using System.Text.Json;
 using EduTwin.BLL.Recommendations.Planning;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.Recommendations;
+using EduTwin.DAL.AssessmentAndReasoning;
 using EduTwin.DAL.Persistence;
 using EduTwin.DAL.Recommendations;
 using Microsoft.EntityFrameworkCore;
@@ -25,10 +26,10 @@ public sealed class LearningPathV4Evaluator(EduTwinDbContext db, TimeProvider cl
         var items = activities.SelectMany(a => a.IssuedItems).ToList();
         var attempts = items.Where(i => i.Attempt != null).Select(i => i.Attempt!).ToList();
         var ids = attempts.Select(a => a.AttemptId).ToList();
-        var evidence = await db.EvidenceAssessments.AsNoTracking().Where(e => e.CenterId == centerId && ids.Contains(e.AttemptId)).ToListAsync(cancellationToken);
+        var evidence = ids.Count == 0 ? new List<EvidenceAssessment>() : await db.EvidenceAssessments.AsNoTracking().Where(e => e.CenterId == centerId && ids.Contains(e.AttemptId)).ToListAsync(cancellationToken);
         var latest = evidence.GroupBy(e => e.AttemptId).ToDictionary(g => g.Key, g => g.OrderByDescending(e => e.EvaluatedAt).ThenByDescending(e => e.EvidenceAssessmentId).First());
-        var analyses = await db.ReasoningAnalyses.AsNoTracking().Where(a => a.CenterId == centerId && ids.Contains(a.AttemptId)).ToListAsync(cancellationToken);
-        var pending = await db.AIAnalysisJobs.AnyAsync(j => j.CenterId == centerId && ids.Contains(j.AttemptId) &&
+        var analyses = ids.Count == 0 ? new List<ReasoningAnalysis>() : await db.ReasoningAnalyses.AsNoTracking().Where(a => a.CenterId == centerId && ids.Contains(a.AttemptId)).ToListAsync(cancellationToken);
+        var pending = ids.Count > 0 && await db.AIAnalysisJobs.AnyAsync(j => j.CenterId == centerId && ids.Contains(j.AttemptId) &&
             (j.Status == AIJobStatus.Pending || j.Status == AIJobStatus.Processing), cancellationToken);
         var independent = activities.Where(a => a.ActivityType is "IndependentCheck" or "TransferChallenge").SelectMany(a => a.IssuedItems).ToList();
         var allDone = activities.Count > 0 && activities.All(a => a.Status is "Completed" or "Submitted");
@@ -45,12 +46,9 @@ public sealed class LearningPathV4Evaluator(EduTwinDbContext db, TimeProvider cl
             result.Outcome = "PendingGrading";
             reason = "Bài làm đã lưu; đang chờ pipeline phân tích và kiểm tra bằng chứng.";
         }
-        else if (attempts.Any(a => latest.TryGetValue(a.AttemptId, out var e) && (e.RequiresTeacherReview || e.TrustLevel == EvidenceTrustLevel.ReviewOnly)) ||
-            analyses.Any(a => a.NeedsTeacherReview && a.ReviewDecision == null))
-        {
-            result.Outcome = "PendingTeacherReview"; result.HasPendingReview = true;
-            reason = "Bằng chứng cần giáo viên xác nhận; chưa mở khóa phần phụ thuộc.";
-        }
+        // Learning path auto-approve: teacher review evidence is treated as provisionally valid.
+        // Evidence metadata (RequiresTeacherReview, NeedsTeacherReview) is preserved for audit,
+        // but the student's learning path is not blocked waiting for teacher action.
         else if (independent.Count == 0)
         {
             result.Outcome = "ActivityOnlyCompleted";
@@ -60,7 +58,7 @@ public sealed class LearningPathV4Evaluator(EduTwinDbContext db, TimeProvider cl
         {
             var valid = independent.Where(i => i.ExposureMode == "Independent" && i.SolutionExposedAt == null &&
                 i.Attempt != null && !i.Attempt.IsPostFeedback && !i.Attempt.Skipped && i.Attempt.SolutionExposedAt == null &&
-                latest.TryGetValue(i.Attempt.AttemptId, out var e) && !e.RequiresTeacherReview && e.TrustLevel != EvidenceTrustLevel.ReviewOnly)
+                latest.TryGetValue(i.Attempt.AttemptId, out var _))
                 .GroupBy(i => i.QuestionId).Select(g => g.First()).ToList();
             if (valid.Count < 5 || valid.Count != independent.Count)
             {
