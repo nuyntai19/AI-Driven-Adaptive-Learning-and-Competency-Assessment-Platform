@@ -47,7 +47,10 @@ internal static class QuestionProjection
                     Label = o.OptionLabel,
                     Text = o.OptionText,
                     IsCorrect = o.IsCorrect,
-                    OrderIndex = o.OrderIndex
+                    OrderIndex = o.OrderIndex,
+                    Misconception = q.GradingCriteria.OptionMisconceptions is not null &&
+                        q.GradingCriteria.OptionMisconceptions.TryGetValue(o.OptionLabel, out var feedback)
+                            ? feedback : o.Misconception
                 })
                 .ToList(),
             KnowledgeMappings = mappings

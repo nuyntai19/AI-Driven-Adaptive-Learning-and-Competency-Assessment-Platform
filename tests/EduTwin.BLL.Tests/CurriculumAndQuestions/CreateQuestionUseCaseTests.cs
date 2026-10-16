@@ -479,6 +479,53 @@ public class CreateQuestionUseCaseTests : IDisposable
         Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
     }
 
+    [Fact]
+    public async Task OptionMisconception_SurvivesReloadAndUpdate_InExistingCriteriaJson()
+    {
+        await SeedDataAsync();
+        var request = ValidShortAnswerRequest();
+        request.QuestionType = "MultipleChoice";
+        request.CorrectAnswer = "A";
+        request.Options = new List<QuestionOptionInput>
+        {
+            new() { OptionLabel = "A", OptionText = "1", IsCorrect = true, OrderIndex = 1 },
+            new() { OptionLabel = "B", OptionText = "2", OrderIndex = 2, Misconception = "Nhầm $x^2$ với $2x$." }
+        };
+        request.GradingCriteria = new GradingCriteria { ScoringNotes = "Ghi chú độc lập." };
+        var created = await _sut.ExecuteAsync(request);
+        Assert.True(created.IsSuccess);
+        var id = created.Data!.QuestionId;
+        _dbContext.ChangeTracker.Clear();
+        var reader = new GetQuestionUseCase(_dbContext, _tenantContextMock.Object);
+        var loaded = await reader.ExecuteAsync(id);
+        Assert.True(loaded.IsSuccess);
+        Assert.Equal(request.Options[1].Misconception, loaded.Data!.Options[1].Misconception);
+        Assert.Equal("Ghi chú độc lập.", loaded.Data.GradingCriteria!.ScoringNotes);
+        var update = new UpdateQuestionRequest
+        {
+            PrimaryTopicNodeId = request.PrimaryTopicNodeId, QuestionType = request.QuestionType,
+            Difficulty = request.Difficulty, GradeLevel = request.GradeLevel, QuestionText = request.QuestionText,
+            CorrectAnswer = request.CorrectAnswer, Solution = request.Solution, MaxScore = request.MaxScore,
+            EstimatedTimeSeconds = request.EstimatedTimeSeconds, LanguageCode = request.LanguageCode,
+            RowVersion = loaded.Data.RowVersion, GradingCriteria = loaded.Data.GradingCriteria,
+            Options = new List<QuestionOptionInput>
+            {
+                new() { OptionLabel = "A", OptionText = "1", IsCorrect = true, OrderIndex = 1 },
+                new() { OptionLabel = "B", OptionText = "2", OrderIndex = 2, Misconception = "Nhầm phép tính mới." }
+            }
+        };
+        var updater = new UpdateQuestionUseCase(_dbContext, _tenantContextMock.Object, _timeProviderMock.Object);
+        Assert.True((await updater.ExecuteAsync(id, update)).IsSuccess);
+        _dbContext.ChangeTracker.Clear();
+        var reread = await reader.ExecuteAsync(id);
+        Assert.Equal("Nhầm phép tính mới.", reread.Data!.Options[1].Misconception);
+        Assert.Equal("Ghi chú độc lập.", reread.Data.GradingCriteria!.ScoringNotes);
+        // The JSON converter is also the production persistence representation.
+        var json = System.Text.Json.JsonSerializer.Serialize(reread.Data.GradingCriteria);
+        var roundTrip = System.Text.Json.JsonSerializer.Deserialize<GradingCriteria>(json)!;
+        Assert.Equal("Nhầm phép tính mới.", roundTrip.OptionMisconceptions["B"]);
+    }
+
     public void Dispose()
     {
         _dbContext.Dispose();

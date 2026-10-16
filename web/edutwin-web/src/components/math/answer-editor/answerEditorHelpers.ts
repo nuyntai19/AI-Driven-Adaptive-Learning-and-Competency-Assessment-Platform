@@ -79,6 +79,11 @@ export function buildInlineMathAnswer(text: string): AnswerEditorValue {
 }
 export function inlineMathEditingText(value: AnswerEditorValue): string {
   if (value.rawText.includes("$")) return value.rawText;
+  // Legacy drafts sometimes copied plain source into displayLatex. Braces and
+  // a literal set-difference backslash are NOT LaTeX grouping/spacing commands.
+  const plain = value.rawText.trim();
+  const plainSet = /^(?:D\s*=\s*)?(?:(?:R|ℝ)\s*(?:\\|∖)\s*)?\{[^{}]*\}$/.test(plain);
+  if (plainSet && (!value.displayLatex || value.displayLatex.trim() === plain)) return value.rawText;
   const formula = value.displayLatex || (/\\[a-zA-Z]+/.test(value.rawText) ? value.rawText : "");
   return formula ? `$${formula}$` : value.rawText;
 }

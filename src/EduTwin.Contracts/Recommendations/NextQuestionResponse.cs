@@ -37,6 +37,14 @@ public sealed class NextQuestionDto
     public NextQuestionTopicDto Topic { get; set; } = null!;
     public NextQuestionQuestionDto? Question { get; set; }
     public string Explanation { get; set; } = null!;
+
+    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.WriteAsString)]
+    public ulong? SessionRunId { get; set; }
+
+    public Guid? SessionId { get; set; }
+    public string? ActivityType { get; set; }
+    public uint? QuestionIndex { get; set; }
+    public uint? TotalQuestions { get; set; }
 }
 
 public sealed class NextQuestionResponse

@@ -21,6 +21,8 @@ const compiled = ts.transpileModule(rendererSource, {
 }).outputText.replace(/from\s+["']([^"']+)["']/g, (_match, specifier: string) => {
   const target = specifier === "../../utils/mathExpression"
     ? new URL("../src/utils/mathExpression.ts", import.meta.url).href
+    : specifier === "../../utils/mathDelimiters.ts"
+    ? new URL("../src/utils/mathDelimiters.ts", import.meta.url).href
     : import.meta.resolve(specifier);
   return `from ${JSON.stringify(target)}`;
 });

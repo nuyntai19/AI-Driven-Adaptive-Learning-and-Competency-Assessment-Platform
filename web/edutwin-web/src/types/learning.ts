@@ -1,6 +1,7 @@
 export interface SubmitAttemptRequest {
   questionId: string | number;
   assignmentId?: string | null;
+  sessionRunId?: number | null;
   classId?: string | null;
   history?: boolean;
   finalAnswer: string;
@@ -196,6 +197,13 @@ export interface NextQuestionDataDto {
   }>;
   explanation: string;
   answerEvaluationMode: string;
+  isCheckpoint?: boolean;
+  checkpointQuestionId?: string | null;
+  sessionRunId?: number | null;
+  sessionId?: string | null;
+  activityType?: string | null;
+  questionIndex?: number;
+  totalQuestions?: number;
 }
 
 export interface RetryAIAnalysisResponse {

@@ -550,7 +550,7 @@ Indexes:
 | primary_topic_node_id | BIGINT UNSIGNED | No | Phải là Topic |
 | created_by_teacher_id | VARCHAR(36) | No | Tenant-safe FK |
 | question_type | VARCHAR(32) | No | MultipleChoice, ShortAnswer, Essay |
-| answer_evaluation_mode | VARCHAR(32) | No | TextExact, NumericRational, Coordinate2D, Manual (Default TextExact) |
+| answer_evaluation_mode | VARCHAR(32) | No | TextExact, NumericRational, Coordinate2D, MathEquivalent, Manual (Default TextExact) |
 | difficulty | TINYINT UNSIGNED | No | 1–5 |
 | grade_level | TINYINT UNSIGNED | Yes | 10, 11 hoặc 12; null là Chưa phân loại |
 | question_text | LONGTEXT | No | Việt hoặc Anh |
@@ -571,7 +571,7 @@ Indexes/constraints:
 - IX(center_id, subject_id, primary_topic_node_id, status, difficulty).
 - IX(center_id, created_by_teacher_id, status).
 - CHECK question_type IN (MultipleChoice, ShortAnswer, Essay).
-- CHECK answer_evaluation_mode IN (TextExact, NumericRational, Coordinate2D, Manual).
+- CHECK answer_evaluation_mode IN (TextExact, NumericRational, Coordinate2D, MathEquivalent, Manual).
 - CHECK difficulty BETWEEN 1 AND 5.
 - CHECK max_score > 0.
 - CHECK estimated_time_seconds > 0.
@@ -585,9 +585,13 @@ grading_criteria JSON tối thiểu:
   "schemaVersion": "1.0",
   "requiredIdeas": ["string"],
   "commonErrors": ["string"],
-  "scoringNotes": "string"
+  "scoringNotes": "string",
+  "criteria": [],
+  "optionMisconceptions": { "B": "Nhận thức sai tương ứng phương án B" }
 }
 ~~~
+
+`optionMisconceptions` là map tùy chọn (mặc định rỗng) được lưu trong JSON hiện có từ QUESTION-IMPORT-V1; không thêm cột/bảng hoặc migration. Teacher-facing options DTO trả lại misconception theo label từ map này. Manual create/update và import cùng dựng map từ options; student projection không trả đáp án hoặc map chấm. `MathEquivalent` sử dụng phạm vi grammar hữu hạn hiện hành, không phải CAS tổng quát.
 
 ## 18. question_options [MTA]
 
@@ -599,7 +603,6 @@ grading_criteria JSON tối thiểu:
 | option_text | TEXT | No | Nội dung lựa chọn |
 | is_correct | TINYINT(1) | No | Đánh dấu đáp án đúng; Student projection không được lộ trước submit |
 | order_index | INT UNSIGNED | No | Thứ tự hiển thị ổn định |
-| misconception | VARCHAR(500) | Yes | Nhận thức sai lầm phổ biến tương ứng với đáp án; phục vụ phân tích AI/Rule-based |
 | ...MTA | | | Kế thừa audit, soft-delete, tenant và row_version tại mục 2.3 |
 
 Indexes:
@@ -1668,3 +1671,13 @@ Hai bảng chứa dữ liệu nghiệp vụ có query filter theo trung tâm; b�
 ## 54. AI analysis profile provenance — 2026-10-07
 
 Migration `20261007054616_AddAIAnalysisProfileProvenance` thêm `reasoning_analyses.analysis_profile_version` (`varchar(200) NULL`). Các dòng cũ giữ NULL; phân tích mới lưu provider/model/policy/schema và chiến lược microbatch. `model_name` sẵn có được điền từ adapter server. Metadata không được nhận từ JSON của AI hoặc request học sinh. Provider enum bổ sung `Groq` nhưng vẫn lưu dạng chuỗi trong cột `provider` hiện có, không đổi kiểu/cắt dữ liệu. Evidence liên kết analysis như trước; không thêm điểm AI hoặc thay thuật toán Mastery.
+
+## 55. Learning Path V4 — 2026-10-16
+
+Migration `20261015180050_AddLearningPathV4Entities` adds six tables: `learning_goals`, `path_proposals`, `path_decisions`, `learning_content_versions`, `activity_runs`, `issued_items`. Existing Attempts, evidence, Twin and history rows are retained. These tables carry tenant scope and row versions; mutable execution uses student row locks plus draft revision checks.
+
+Accepted V4 paths use `PlanSchemaVersion = 4.0`. PlanJson stores the accepted proposal snapshot; relational Sessions/Runs/ActivityRuns/IssuedItems own execution. Issued question-to-Attempt linking occurs in the canonical submission transaction. Study activities have no synthetic Attempt. PathDecision records acceptance/evaluation reasons with policy `v4-evidence-1`, without writing invented mastery or directly changing append-only Attempt grades.
+
+Content is selected only when Published and matched to a real subject/node. The application content entity defaults to Draft; the inherited migration's SQL status default remains Published, so imports must explicitly set editorial status. No reviewed content library is seeded by the corrective rollout. Shortages are reported instead of duplicating question exposure as independent evidence.
+
+Connected learning update (same day) adds no tables/migration. Recent-work insights are projections of existing Attempts, Questions and reviewed analyses. Practice feedback is reconstructed for the owner from the canonical Attempt and authored Question after submission. Under evaluator transaction/student lock, follow-up sessions are appended to the active path, the PlanJson projection gains their question count/availability date, and PathDecision stores the reason plus real evidence references. Scheduled recall and repair never overwrite submissions or write synthetic Twin scores.

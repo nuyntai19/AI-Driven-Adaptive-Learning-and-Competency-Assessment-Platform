@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using EduTwin.BLL.Recommendations.Services;
 using EduTwin.BLL.Recommendations.UseCases;
 
 namespace EduTwin.BLL.Recommendations;
@@ -11,6 +12,11 @@ public static class DependencyInjection
         services.AddSingleton<ILinearFallbackSelector, LinearFallbackSelector>();
         services.AddScoped<IAdaptiveQuestionSelector, AdaptiveQuestionSelector>();
         services.AddScoped<IRecommendationEngine, RecommendationEngine>();
+
+        services.AddScoped<ILearningSessionExecutionService, LearningSessionExecutionService>();
+        services.AddScoped<Planning.ILearningPathV4Planner, Planning.LearningPathV4Planner>();
+        services.AddScoped<ILearningPathV4Evaluator, LearningPathV4Evaluator>();
+        services.AddScoped<ILearningActivityExecutionService, LearningActivityExecutionService>();
 
         services.AddScoped<IGetNextQuestionUseCase, GetNextQuestionUseCase>();
         services.AddScoped<IGetActiveRecommendationUseCase, GetActiveRecommendationUseCase>();

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using EduTwin.BLL.AssessmentAndReasoning;
 using EduTwin.BLL.AssessmentAndReasoning.PreliminaryGrading;
 using EduTwin.BLL.IdentityAndTenancy;
@@ -6,6 +7,7 @@ using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.Common;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.IdentityAndTenancy;
+using EduTwin.Contracts.Recommendations;
 using EduTwin.DAL.AssessmentAndReasoning;
 using EduTwin.DAL.Assignments;
 using EduTwin.DAL.CurriculumAndQuestions;
@@ -13,6 +15,7 @@ using EduTwin.DAL.IdentityAndTenancy;
 using EduTwin.DAL.Organization;
 using EduTwin.DAL.Persistence;
 using EduTwin.DAL.Persistence.Tenancy;
+using EduTwin.DAL.Recommendations;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using Xunit;
@@ -541,6 +544,110 @@ public sealed class AttemptSubmissionValidatorTests : IDisposable
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             CreateSut().ValidateAsync(CreateRequest(), cancellation.Token));
+    }
+
+    [Fact]
+    public async Task AC15_ValidateAsync_SessionRunBelongingToDifferentStudent_ReturnsResourceNotFound()
+    {
+        await SeedActiveStudentAsync();
+        await SeedQuestionAsync();
+        var otherStudentId = Guid.NewGuid();
+
+        var run = new LearningPathSessionRun
+        {
+            SessionRunId = 88881ul,
+            CenterId = _centerId,
+            SessionId = Guid.NewGuid(),
+            StudentId = otherStudentId,
+            RunNumber = 1,
+            Status = SessionRunStatus.InProgress,
+            QuestionsAssigned = JsonDocument.Parse("[100]"),
+            PolicySnapshot = JsonDocument.Parse("{}"),
+            StartedAt = FixedUtcNow,
+            LastActivityAt = FixedUtcNow,
+            CreatedAt = FixedUtcNow,
+            UpdatedAt = FixedUtcNow
+        };
+        _dbContext.LearningPathSessionRuns.Add(run);
+        await _dbContext.SaveChangesAsync();
+        _dbContext.ChangeTracker.Clear();
+
+        var request = CreateRequest();
+        request.SessionRunId = run.SessionRunId;
+
+        var result = await CreateSut().ValidateAsync(request);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task AC15_ValidateAsync_SessionRunBelongingToDifferentCenter_ReturnsResourceNotFound()
+    {
+        await SeedActiveStudentAsync();
+        await SeedQuestionAsync();
+        var otherCenterId = Guid.NewGuid();
+
+        var run = new LearningPathSessionRun
+        {
+            SessionRunId = 88882ul,
+            CenterId = otherCenterId,
+            SessionId = Guid.NewGuid(),
+            StudentId = _studentId,
+            RunNumber = 1,
+            Status = SessionRunStatus.InProgress,
+            QuestionsAssigned = JsonDocument.Parse("[100]"),
+            PolicySnapshot = JsonDocument.Parse("{}"),
+            StartedAt = FixedUtcNow,
+            LastActivityAt = FixedUtcNow,
+            CreatedAt = FixedUtcNow,
+            UpdatedAt = FixedUtcNow
+        };
+        _dbContext.LearningPathSessionRuns.Add(run);
+        await _dbContext.SaveChangesAsync();
+        _dbContext.ChangeTracker.Clear();
+
+        var request = CreateRequest();
+        request.SessionRunId = run.SessionRunId;
+
+        var result = await CreateSut().ValidateAsync(request);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task AC15_ValidateAsync_QuestionNotAssignedToSessionRun_ReturnsForbiddenResource()
+    {
+        await SeedActiveStudentAsync();
+        await SeedQuestionAsync();
+
+        var run = new LearningPathSessionRun
+        {
+            SessionRunId = 88883ul,
+            CenterId = _centerId,
+            SessionId = Guid.NewGuid(),
+            StudentId = _studentId,
+            RunNumber = 1,
+            Status = SessionRunStatus.InProgress,
+            QuestionsAssigned = JsonDocument.Parse("[201, 202]"),
+            PolicySnapshot = JsonDocument.Parse("{}"),
+            StartedAt = FixedUtcNow,
+            LastActivityAt = FixedUtcNow,
+            CreatedAt = FixedUtcNow,
+            UpdatedAt = FixedUtcNow
+        };
+        _dbContext.LearningPathSessionRuns.Add(run);
+        await _dbContext.SaveChangesAsync();
+        _dbContext.ChangeTracker.Clear();
+
+        var request = CreateRequest();
+        request.SessionRunId = run.SessionRunId;
+
+        var result = await CreateSut().ValidateAsync(request);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ForbiddenResource, result.ErrorCode);
     }
 
     public void Dispose()

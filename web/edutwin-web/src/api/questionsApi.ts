@@ -7,6 +7,7 @@ import type {
   ArchiveQuestionRequest,
   QuestionFilter,
   QuestionImportPreviewResponse,
+  QuestionImportPreviewRequest,
   QuestionImportConfirmRequest,
   QuestionImportConfirmResponse,
 } from "../types/questions";
@@ -50,9 +51,12 @@ export const questionsApi = {
     return response.data;
   },
 
-  previewImport: async (file: File) => {
+  previewImport: async (file: File, settings: QuestionImportPreviewRequest) => {
     const formData = new FormData();
     formData.append("file", file);
+    for (const [key, value] of Object.entries(settings)) {
+      if (value !== undefined && value !== null) formData.append(key, String(value));
+    }
     const response = await httpClient.post<QuestionImportPreviewResponse>(`${BASE_URL}/import/preview`, formData, {
       headers: { "Content-Type": "multipart/form-data" },
     });

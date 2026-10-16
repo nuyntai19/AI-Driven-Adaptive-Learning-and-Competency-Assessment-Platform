@@ -94,9 +94,17 @@ public class EduTwinDbContext : DbContext
     // Recommendations
     public DbSet<LearningPath> LearningPaths => Set<LearningPath>();
     public DbSet<LearningPathItem> LearningPathItems => Set<LearningPathItem>();
+    public DbSet<LearningPathSession> LearningPathSessions => Set<LearningPathSession>();
+    public DbSet<LearningPathSessionRun> LearningPathSessionRuns => Set<LearningPathSessionRun>();
     public DbSet<Recommendation> Recommendations => Set<Recommendation>();
     public DbSet<RecommendationGenerationState> RecommendationGenerationStates => Set<RecommendationGenerationState>();
     public DbSet<StudentLearningPathPreference> StudentLearningPathPreferences => Set<StudentLearningPathPreference>();
+    public DbSet<LearningGoal> LearningGoals => Set<LearningGoal>();
+    public DbSet<LearningContentVersion> LearningContentVersions => Set<LearningContentVersion>();
+    public DbSet<PathProposal> PathProposals => Set<PathProposal>();
+    public DbSet<ActivityRun> ActivityRuns => Set<ActivityRun>();
+    public DbSet<IssuedItem> IssuedItems => Set<IssuedItem>();
+    public DbSet<PathDecision> PathDecisions => Set<PathDecision>();
 
     // Assessment and Reasoning
     public DbSet<Attempt> Attempts => Set<Attempt>();

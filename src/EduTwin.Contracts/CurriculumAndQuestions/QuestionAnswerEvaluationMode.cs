@@ -5,7 +5,7 @@ namespace EduTwin.Contracts.CurriculumAndQuestions;
 /// Enforced by strict matrix with QuestionType:
 /// - MultipleChoice: Strictly TextExact
 /// - Essay: Strictly Manual
-/// - ShortAnswer: TextExact, NumericRational, Coordinate2D, or Manual
+/// - ShortAnswer: TextExact, NumericRational, Coordinate2D, bounded MathEquivalent, or Manual
 /// </summary>
 public enum QuestionAnswerEvaluationMode
 {

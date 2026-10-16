@@ -25,6 +25,9 @@ public class AttemptConfiguration : IEntityTypeConfiguration<Attempt>
         builder.HasIndex(a => new { a.CenterId, a.AssignmentId, a.StudentId })
             .HasDatabaseName("ix_attempts_center_id_assignment_id_student_id");
 
+        builder.HasIndex(a => new { a.CenterId, a.SessionRunId })
+            .HasDatabaseName("ix_attempts_center_id_session_run_id");
+
         builder.HasIndex(a => new { a.CenterId, a.Status, a.CreatedAt })
             .HasDatabaseName("ix_attempts_center_id_status_created_at");
 
@@ -36,6 +39,7 @@ public class AttemptConfiguration : IEntityTypeConfiguration<Attempt>
         builder.Property(a => a.StudentId).HasColumnName("student_id").HasColumnType("varchar(36)").IsRequired();
         builder.Property(a => a.QuestionId).HasColumnName("question_id").HasColumnType("bigint unsigned");
         builder.Property(a => a.AssignmentId).HasColumnName("assignment_id").HasColumnType("varchar(36)");
+        builder.Property(a => a.SessionRunId).HasColumnName("session_run_id").HasColumnType("bigint unsigned").IsRequired(false);
         builder.Property(a => a.FinalAnswer).HasColumnName("final_answer").HasColumnType("longtext").IsRequired();
         builder.Property(a => a.ReasoningText).HasColumnName("reasoning_text").HasColumnType("longtext");
         builder.Property(a => a.IsCorrect).HasColumnName("is_correct").HasColumnType("tinyint(1)");
@@ -96,5 +100,12 @@ public class AttemptConfiguration : IEntityTypeConfiguration<Attempt>
             .HasPrincipalKey(assign => new { assign.CenterId, assign.AssignmentId })
             .OnDelete(DeleteBehavior.Restrict)
             .HasConstraintName("fk_attempts_assignments_assignment");
+
+        builder.HasOne(a => a.SessionRun)
+            .WithMany(r => r.Attempts)
+            .HasForeignKey(a => new { a.CenterId, a.SessionRunId })
+            .HasPrincipalKey(r => new { r.CenterId, r.SessionRunId })
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_attempts_session_runs_session_run");
     }
 }

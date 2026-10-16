@@ -18,7 +18,10 @@ export function useStudentLearningAccess(subjectId: string) {
   // Wait for the header to replace a rejected bookmark before enabling writes.
   const selectionChanging = !!classId && !!query.data && query.data.selectedClassId !== classId;
   const pending = !history && !!subjectId && (query.isPending || selectionChanging);
-  return { history, classId, pending, readOnly, writable: !pending && !readOnly && !!subjectId,
+  // A subject-only URL still has a server-selected current class. Use it for writes
+  // instead of passing an empty string into nullable Guid request fields.
+  const effectiveClassId = classId || query.data?.selectedClassId || "";
+  return { history, classId: effectiveClassId, pending, readOnly, writable: !pending && !readOnly && !!subjectId,
     reason: history ? "Bạn đang xem lịch sử lớp học. Không thể tạo lộ trình, bắt đầu buổi học hoặc nộp bài mới trong phạm vi này."
       : query.isError ? "Chưa xác minh được lớp đang học. Không gửi bài mới khi phạm vi lớp chưa hợp lệ."
       : query.data?.message || "Lớp đã lưu trữ hoặc bạn đã rời lớp. Chỉ được xem lại dữ liệu cũ." };

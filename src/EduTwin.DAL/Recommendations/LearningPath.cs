@@ -37,5 +37,6 @@ public class LearningPath : IMutableTenantAggregate
     public Student Student { get; set; } = null!;
     public Subject Subject { get; set; } = null!;
     public ICollection<LearningPathItem> Items { get; set; } = new List<LearningPathItem>();
+    public ICollection<LearningPathSession> Sessions { get; set; } = new List<LearningPathSession>();
     public Attempt? GeneratedFromAttempt { get; set; }
 }

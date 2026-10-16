@@ -6,6 +6,7 @@ using EduTwin.BLL.AssessmentAndReasoning.Attachments;
 using EduTwin.DAL.AssessmentAndReasoning;
 using EduTwin.DAL.Assignments;
 using EduTwin.DAL.Persistence;
+using EduTwin.DAL.Recommendations;
 using Microsoft.EntityFrameworkCore;
 
 namespace EduTwin.BLL.AssessmentAndReasoning;
@@ -83,6 +84,8 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
 
         try
         {
+            if (submission.SessionRunId.HasValue)
+                await Recommendations.StudentLockHelper.AcquireStudentLockAsync(_dbContext, submission.CenterId, submission.StudentId, cancellationToken);
             var boundaryAttempt = await _dbContext.Attempts
                 .AsNoTracking()
                 .SingleOrDefaultAsync(
@@ -127,6 +130,19 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
                 }
             }
 
+            LearningPathSessionRun? sessionRun = null;
+            if (submission.SessionRunId.HasValue)
+            {
+                sessionRun = await _dbContext.LearningPathSessionRuns
+                    .Include(r => r.Session)
+                    .SingleOrDefaultAsync(
+                        candidate =>
+                            candidate.CenterId == submission.CenterId &&
+                            candidate.StudentId == submission.StudentId &&
+                            candidate.SessionRunId == submission.SessionRunId.Value,
+                        cancellationToken);
+            }
+
             var isPostFeedback = await _dbContext.Attempts
                 .AsNoTracking()
                 .AnyAsync(
@@ -139,6 +155,21 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
 
             var now = _timeProvider.GetUtcNow().UtcDateTime;
             var attempt = CreateAttempt(submission, now, isPostFeedback);
+            if (sessionRun?.Session.PolicyVersion == Recommendations.Planning.LearningPathV4Data.Policy)
+            {
+                var item = await _dbContext.IssuedItems.Include(i => i.ActivityRun)
+                    .SingleOrDefaultAsync(i => i.CenterId == submission.CenterId && i.ActivityRun.SessionRunId == sessionRun.SessionRunId &&
+                        i.QuestionId == submission.QuestionId, cancellationToken);
+                if (item == null || item.AttemptId.HasValue || sessionRun.CurrentQuestionId != submission.QuestionId ||
+                    sessionRun.Status != Contracts.Recommendations.SessionRunStatus.InProgress)
+                    return SubmitAttemptResult.Failure(ErrorCodes.AssignmentNotAvailable);
+                item.Attempt = attempt;
+                item.UpdatedAt = now; item.RowVersion++;
+                item.ActivityRun.Status = "Submitted";
+                item.ActivityRun.CompletedAt = now; item.ActivityRun.UpdatedAt = now; item.ActivityRun.RowVersion++;
+                // Guided practice must not appear as independent evidence to the normal Twin pipeline.
+                attempt.IsPostFeedback = item.ExposureMode != "Independent" || isPostFeedback;
+            }
             var job = CreateAnalysisJob(
                 submission,
                 attempt,
@@ -163,6 +194,50 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
                 progress.IsOverallAiCommentStale = true;
                 progress.UpdatedAt = now;
                 progress.UpdatedBy = submission.StudentId;
+            }
+
+            if (sessionRun is not null)
+            {
+                sessionRun.LastActivityAt = now;
+                sessionRun.QuestionsAttempted++;
+                if (attempt.IsCorrect == true)
+                {
+                    sessionRun.QuestionsCorrect++;
+                }
+                if (sessionRun.TotalQuestions > 0)
+                {
+                    sessionRun.ScoreRate = Math.Round((decimal)sessionRun.QuestionsCorrect / sessionRun.TotalQuestions, 4);
+                }
+
+                var assignedIds = Recommendations.Services.LearningSessionExecutionService.ParseQuestionIds(sessionRun.QuestionsAssigned);
+                if (sessionRun.CheckpointQuestionId.HasValue && !assignedIds.Contains(sessionRun.CheckpointQuestionId.Value))
+                {
+                    assignedIds.Add(sessionRun.CheckpointQuestionId.Value);
+                }
+
+                var existingAttemptedIds = await _dbContext.Attempts
+                    .Where(a => a.CenterId == submission.CenterId && a.SessionRunId == sessionRun.SessionRunId)
+                    .Select(a => a.QuestionId)
+                    .ToListAsync(cancellationToken);
+
+                existingAttemptedIds.Add(submission.QuestionId);
+
+                var nextQuestionId = assignedIds.FirstOrDefault(id => !existingAttemptedIds.Contains(id));
+                if (nextQuestionId > 0)
+                {
+                    sessionRun.CurrentQuestionId = nextQuestionId;
+                }
+                else
+                {
+                    sessionRun.CurrentQuestionId = null;
+                    if (!attempt.IsCorrect.HasValue && sessionRun.Session.PolicyVersion != Recommendations.Planning.LearningPathV4Data.Policy)
+                    {
+                        sessionRun.Status = Contracts.Recommendations.SessionRunStatus.Grading;
+                        sessionRun.EvaluationStatus = Contracts.Recommendations.SessionRunEvaluationStatus.Queued;
+                    }
+                }
+                sessionRun.UpdatedAt = now;
+                sessionRun.RowVersion++;
             }
 
             _dbContext.Attempts.Add(attempt);
@@ -302,6 +377,7 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
             StudentId = submission.StudentId,
             QuestionId = submission.QuestionId,
             AssignmentId = submission.AssignmentId,
+            SessionRunId = submission.SessionRunId,
             FinalAnswer = submission.FinalAnswer,
             ReasoningText = submission.ReasoningText,
             AnswerDisplayLatex = submission.AnswerDisplayLatex,
@@ -365,6 +441,7 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
         ValidatedAttemptSubmission submission) =>
         attempt.QuestionId == submission.QuestionId &&
         attempt.AssignmentId == submission.AssignmentId &&
+        attempt.SessionRunId == submission.SessionRunId &&
         string.Equals(attempt.FinalAnswer, submission.FinalAnswer, StringComparison.Ordinal) &&
         string.Equals(attempt.ReasoningText, submission.ReasoningText, StringComparison.Ordinal) &&
         string.Equals(attempt.AnswerDisplayLatex, submission.AnswerDisplayLatex, StringComparison.Ordinal) &&

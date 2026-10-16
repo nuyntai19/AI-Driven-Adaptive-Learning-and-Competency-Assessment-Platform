@@ -14,6 +14,7 @@ using EduTwin.BLL.AssessmentAndReasoning.Processing;
 using EduTwin.BLL.DigitalTwin;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.BLL.Recommendations;
+using EduTwin.BLL.Recommendations.Services;
 using EduTwin.BLL.Assignments;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.Assignments;
@@ -44,6 +45,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
     private readonly ILogger<TeacherOverrideUseCase> _logger;
     private readonly IOverallAssignmentCommentWorkflow? _overallCommentWorkflow;
     private readonly IAIStudentPostProcessingQueue? _postProcessing;
+    private readonly ILearningSessionExecutionService? _sessionExecutionService;
 
     public TeacherOverrideUseCase(
         EduTwinDbContext dbContext,
@@ -60,7 +62,8 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
         IAttemptTeacherReviewScopeGuard? scopeGuard = null,
         ILogger<TeacherOverrideUseCase>? logger = null,
         IOverallAssignmentCommentWorkflow? overallCommentWorkflow = null,
-        IAIStudentPostProcessingQueue? postProcessing = null)
+        IAIStudentPostProcessingQueue? postProcessing = null,
+        ILearningSessionExecutionService? sessionExecutionService = null)
     {
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         _tenantContext = tenantContext ?? throw new ArgumentNullException(nameof(tenantContext));
@@ -77,6 +80,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
         _logger = logger ?? NullLogger<TeacherOverrideUseCase>.Instance;
         _overallCommentWorkflow = overallCommentWorkflow;
         _postProcessing = postProcessing;
+        _sessionExecutionService = sessionExecutionService;
     }
 
     public async Task<TeacherOverrideResult> ExecuteAsync(
@@ -661,6 +665,22 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
         if (_postProcessing is null && _overallCommentWorkflow is not null && attempt.AssignmentId.HasValue)
         {
             await _overallCommentWorkflow.GenerateAndCacheOverallCommentAsync(centerId, attempt.AssignmentId.Value, attempt.StudentId, cancellationToken);
+        }
+
+        if (attempt.SessionRunId.HasValue && _sessionExecutionService is not null)
+        {
+            try
+            {
+                await _sessionExecutionService.EvaluateSessionRunAsync(centerId, attempt.SessionRunId.Value, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Session run {SessionRunId} re-evaluation failed after teacher override for attempt {AttemptId}.",
+                    attempt.SessionRunId.Value,
+                    attempt.AttemptId);
+            }
         }
 
         return TeacherOverrideResult.Success(committedResponse!);

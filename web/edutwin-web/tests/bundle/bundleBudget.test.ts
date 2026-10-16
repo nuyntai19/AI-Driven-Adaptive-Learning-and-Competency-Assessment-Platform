@@ -51,6 +51,30 @@ function getAssetFiles(): { name: string; sizeKb: number }[] {
     });
 }
 
+test("Production static chunk imports have no cycles or vendor dependency on the app entry", () => {
+  const files = getAssetFiles().map((asset) => asset.name);
+  const imports = new Map(files.map((name) => {
+    const source = readFileSync(join(distAssetsDir, name), "utf8");
+    const dependencies = Array.from(source.matchAll(/\bimport\s*(?:[^;"']*?\bfrom\s*)?["']\.\/([^"']+\.js)["']/g), (match) => match[1]);
+    return [name, dependencies];
+  }));
+  const entry = getEntryAssetName(readFileSync(indexHtmlPath, "utf8"));
+  const complete = new Set<string>();
+  const visiting: string[] = [];
+  function visit(name: string) {
+    assert.ok(!visiting.includes(name), `Static chunk cycle: ${[...visiting, name].join(" -> ")}`);
+    if (complete.has(name)) return;
+    visiting.push(name);
+    for (const dependency of imports.get(name) ?? []) {
+      if (name.startsWith("vendor-")) assert.notEqual(dependency, entry, `Vendor chunk ${name} must not import the application entry`);
+      assert.ok(imports.has(dependency), `Missing imported chunk ${dependency}`);
+      visit(dependency);
+    }
+    visiting.pop(); complete.add(name);
+  }
+  files.forEach(visit);
+});
+
 test("Bundle Budget Regression: Verifies initial preload budget, deferred code-split routes, and on-demand vendor chunks", () => {
   const assets = getAssetFiles();
   assert.ok(assets.length > 0, "dist/assets must contain generated JavaScript chunks");

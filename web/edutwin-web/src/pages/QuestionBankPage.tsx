@@ -42,6 +42,7 @@ function CenterManagerQuestionBankView() {
   const hasPermission = useAuthStore((state) => state.hasPermission);
 
   const canCreate = hasPermission(permissions.questionsCreate);
+  const canImport = useAuthStore((state) => state.user?.accountType === "Teacher") && canCreate;
   const canUpdate = hasPermission(permissions.questionsUpdate);
   const canPublish = hasPermission(permissions.questionsPublish);
   const canDelete = hasPermission(permissions.questionsDelete);
@@ -225,7 +226,7 @@ function CenterManagerQuestionBankView() {
           actions={
             canCreate ? (
               <div className="flex items-center gap-2">
-                <button
+                {canImport && <button
                   type="button"
                   id="btn-import-questions"
                   onClick={() => setIsImportModalOpen(true)}
@@ -233,7 +234,7 @@ function CenterManagerQuestionBankView() {
                 >
                   <span>📥</span>
                   <span>Nhập từ Excel / CSV</span>
-                </button>
+                </button>}
                 <button
                   type="button"
                   id="btn-create-question"

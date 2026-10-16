@@ -8,6 +8,7 @@ using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.Recommendations;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.DAL.Persistence;
+using EduTwin.DAL.Recommendations;
 
 namespace EduTwin.BLL.Recommendations.UseCases;
 
@@ -62,6 +63,89 @@ public sealed class GetNextQuestionUseCase : IGetNextQuestionUseCase
 
     public async Task<GetNextQuestionResult> ExecuteSessionAsync(Guid subjectId, string sessionId, Guid? classId, bool history, CancellationToken ct)
     {
+        if (!_tenantContext.IsResolved || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
+        {
+            return GetNextQuestionResult.FailForbidden("Tenant context is not resolved.");
+        }
+
+        var center = _tenantContext.CenterId.Value;
+        var student = _tenantContext.UserId.Value;
+
+        // 1. Check if modern LearningPathSession and active SessionRun exist
+        LearningPathSession? dbSession = null;
+        if (Guid.TryParse(sessionId, out var sessionGuid))
+        {
+            dbSession = await _dbContext.LearningPathSessions
+                .FirstOrDefaultAsync(s => s.CenterId == center && s.SessionId == sessionGuid, ct);
+        }
+        dbSession ??= await _dbContext.LearningPathSessions
+            .FirstOrDefaultAsync(s => s.CenterId == center && s.LegacySessionId == sessionId, ct);
+
+        if (dbSession is not null)
+        {
+            if (dbSession.PolicyVersion == Planning.LearningPathV4Data.Policy)
+                return GetNextQuestionResult.FailNotFound("Nhiệm vụ này mở trong không gian lộ trình, không phải luyện tập tự do.");
+            var activeRun = await _dbContext.LearningPathSessionRuns
+                .FirstOrDefaultAsync(r => r.CenterId == center && r.StudentId == student &&
+                                         r.SessionId == dbSession.SessionId &&
+                                         r.Status == SessionRunStatus.InProgress, ct);
+
+            if (activeRun is not null)
+            {
+                if (!activeRun.CurrentQuestionId.HasValue)
+                {
+                    return GetNextQuestionResult.FailNotFound("Buổi học đã nộp hết các câu hỏi được giao.");
+                }
+
+                var qid = activeRun.CurrentQuestionId.Value;
+                bool isCheckpoint = activeRun.CheckpointQuestionId.HasValue && activeRun.CheckpointQuestionId.Value == qid;
+
+                var question = await _dbContext.Questions.AsNoTracking().FirstOrDefaultAsync(q =>
+                    q.CenterId == center && q.SubjectId == subjectId && q.QuestionId == qid &&
+                    q.Status == QuestionStatus.Active && !q.IsDeleted &&
+                    q.QuestionType != QuestionType.Essay &&
+                    q.AnswerEvaluationMode != QuestionAnswerEvaluationMode.Manual, ct);
+
+                if (question is null)
+                {
+                    return GetNextQuestionResult.FailNotFound("Câu hỏi hiện tại không còn khả dụng hoặc đã bị lưu trữ.");
+                }
+
+                var topic = await _dbContext.KnowledgeNodes.AsNoTracking().SingleOrDefaultAsync(n =>
+                    n.CenterId == center && n.NodeId == question.PrimaryTopicNodeId && n.IsActive && !n.IsDeleted, ct);
+
+                var options = await _dbContext.QuestionOptions.AsNoTracking()
+                    .Where(o => o.CenterId == center && o.QuestionId == question.QuestionId && !o.IsDeleted)
+                    .OrderBy(o => o.OrderIndex)
+                    .Select(o => new StudentQuestionOptionDto
+                    {
+                        OptionId = o.OptionId.ToString(),
+                        Label = o.OptionLabel,
+                        Text = o.OptionText,
+                        OrderIndex = o.OrderIndex
+                    }).ToListAsync(ct);
+
+                // Security rule: Checkpoint must NEVER expose hint or explanation before submission
+                var explanation = isCheckpoint ? string.Empty : (dbSession.Objective ?? string.Empty);
+                var activityType = isCheckpoint ? "Checkpoint" : "Practice";
+
+                return GetNextQuestionResult.Success(new NextQuestionDto
+                {
+                    Strategy = LearningPathStrategy.OpportunityGap,
+                    Topic = new(question.PrimaryTopicNodeId, topic?.NodeName ?? "Topic", 0),
+                    Explanation = explanation,
+                    ActivityType = activityType,
+                    SessionRunId = activeRun.SessionRunId,
+                    SessionId = dbSession.SessionId,
+                    TotalQuestions = activeRun.TotalQuestions,
+                    QuestionIndex = activeRun.QuestionsAttempted + 1,
+                    Question = new(question.QuestionId, question.QuestionType, question.Difficulty, question.QuestionText, question.MaxScore,
+                        question.EstimatedTimeSeconds, question.ReasoningRequired, question.LanguageCode, options, question.AnswerEvaluationMode, question.HasImage)
+                });
+            }
+        }
+
+        // 2. Fallback to legacy LearningPathSessionAccess if session is not yet run-based
         var accessible = await LearningPathSessionAccess.LoadAsync(_dbContext, _tenantContext, subjectId, sessionId, classId, history, ct);
         if (accessible is null || accessible.Session.Status != "InProgress" || accessible.Session.StartedAtUtc is null)
             return GetNextQuestionResult.FailNotFound("Buổi học chưa bắt đầu, đã hoàn thành hoặc không thuộc phạm vi đang học.");
@@ -74,16 +158,16 @@ public sealed class GetNextQuestionUseCase : IGetNextQuestionUseCase
         var topicId = ulong.Parse(session.TopicNodeId);
         var questions = await _dbContext.Questions.AsNoTracking().Where(q => q.CenterId == path.CenterId && q.SubjectId == subjectId &&
             q.PrimaryTopicNodeId == topicId && remaining.Contains(q.QuestionId) && q.Status == QuestionStatus.Active && !q.IsDeleted).ToListAsync(ct);
-        var question = remaining.Select(id => questions.FirstOrDefault(q => q.QuestionId == id)).FirstOrDefault(q => q is not null);
-        if (question is null) return GetNextQuestionResult.FailNotFound("Buổi học đã làm hết câu hoặc câu hỏi không còn khả dụng. Vui lòng quay lại lộ trình.");
-        var topic = await _dbContext.KnowledgeNodes.AsNoTracking().SingleOrDefaultAsync(n => n.CenterId == path.CenterId && n.NodeId == topicId && n.IsActive && !n.IsDeleted, ct);
-        if (topic is null) return GetNextQuestionResult.FailNotFound("Chủ đề không còn khả dụng.");
-        var options = await _dbContext.QuestionOptions.AsNoTracking().Where(o => o.CenterId == path.CenterId && o.QuestionId == question.QuestionId && !o.IsDeleted)
+        var selectedQuestion = remaining.Select(id => questions.FirstOrDefault(q => q.QuestionId == id)).FirstOrDefault(q => q is not null);
+        if (selectedQuestion is null) return GetNextQuestionResult.FailNotFound("Buổi học đã làm hết câu hoặc câu hỏi không còn khả dụng. Vui lòng quay lại lộ trình.");
+        var legacyTopic = await _dbContext.KnowledgeNodes.AsNoTracking().SingleOrDefaultAsync(n => n.CenterId == path.CenterId && n.NodeId == topicId && n.IsActive && !n.IsDeleted, ct);
+        if (legacyTopic is null) return GetNextQuestionResult.FailNotFound("Chủ đề không còn khả dụng.");
+        var legacyOptions = await _dbContext.QuestionOptions.AsNoTracking().Where(o => o.CenterId == path.CenterId && o.QuestionId == selectedQuestion.QuestionId && !o.IsDeleted)
             .OrderBy(o => o.OrderIndex).Select(o => new StudentQuestionOptionDto { OptionId = o.OptionId.ToString(), Label = o.OptionLabel, Text = o.OptionText, OrderIndex = o.OrderIndex }).ToListAsync(ct);
         return GetNextQuestionResult.Success(new NextQuestionDto {
-            Strategy = path.Strategy, Topic = new(topicId, topic.NodeName, 0), Explanation = session.Objective,
-            Question = new(question.QuestionId, question.QuestionType, question.Difficulty, question.QuestionText, question.MaxScore,
-                question.EstimatedTimeSeconds, question.ReasoningRequired, question.LanguageCode, options, question.AnswerEvaluationMode, question.HasImage)
+            Strategy = path.Strategy, Topic = new(topicId, legacyTopic.NodeName, 0), Explanation = session.Objective,
+            Question = new(selectedQuestion.QuestionId, selectedQuestion.QuestionType, selectedQuestion.Difficulty, selectedQuestion.QuestionText, selectedQuestion.MaxScore,
+                selectedQuestion.EstimatedTimeSeconds, selectedQuestion.ReasoningRequired, selectedQuestion.LanguageCode, legacyOptions, selectedQuestion.AnswerEvaluationMode, selectedQuestion.HasImage)
         });
     }
 

@@ -1,13 +1,16 @@
+using System.Text.Json;
 using EduTwin.BLL.AssessmentAndReasoning;
 using EduTwin.BLL.AssessmentAndReasoning.Attachments;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.Common;
+using EduTwin.Contracts.Recommendations;
 using EduTwin.DAL.AssessmentAndReasoning;
 using EduTwin.DAL.Assignments;
 using EduTwin.DAL.Persistence;
 using EduTwin.DAL.Persistence.Tenancy;
+using EduTwin.DAL.Recommendations;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
@@ -300,6 +303,111 @@ public sealed class SubmitAttemptUseCaseTests
         Assert.Equal(ErrorCodes.DuplicateSubmission, result.ErrorCode);
         Assert.Single(await context.Attempts.ToListAsync());
         Assert.Single(await context.AIAnalysisJobs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task AC16_ExecuteAsync_DuplicateSubmissionWithSessionRun_ReturnsIdempotentReplayWithoutIncrementingQuestionsAttempted()
+    {
+        await using var context = CreateContext(_centerId);
+
+        var session = new LearningPathSession
+        {
+            SessionId = Guid.NewGuid(),
+            CenterId = _centerId,
+            LearningPathId = Guid.NewGuid(),
+            LegacySessionId = "w01-s01",
+            TopicNodeId = 1,
+            PhaseNumber = 1,
+            WeekNumber = 1,
+            SessionOrder = 1,
+            Title = "Session",
+            Objective = "Objective",
+            Status = LearningPathSessionStatus.InProgress,
+            PracticeQuestionIds = JsonDocument.Parse("[9001, 9002]"),
+            CheckpointQuestionIds = JsonDocument.Parse("[]"),
+            MinimumQuestions = 2,
+            RequiredCorrectRate = 0.70m,
+            PolicyVersion = "session-policy-v1",
+            CreatedAt = FixedNow.UtcDateTime,
+            UpdatedAt = FixedNow.UtcDateTime,
+            RowVersion = 1ul
+        };
+        context.LearningPathSessions.Add(session);
+
+        var run = new LearningPathSessionRun
+        {
+            SessionRunId = 77701ul,
+            CenterId = _centerId,
+            SessionId = session.SessionId,
+            StudentId = _studentId,
+            RunNumber = 1,
+            Status = SessionRunStatus.InProgress,
+            CurrentQuestionId = 9001ul,
+            QuestionsAssigned = JsonDocument.Parse("[9001, 9002]"),
+            TotalQuestions = 2,
+            QuestionsAttempted = 0,
+            QuestionsCorrect = 0,
+            PolicySnapshot = JsonDocument.Parse("{}"),
+            StartedAt = FixedNow.UtcDateTime,
+            LastActivityAt = FixedNow.UtcDateTime,
+            CreatedAt = FixedNow.UtcDateTime,
+            UpdatedAt = FixedNow.UtcDateTime
+        };
+        context.LearningPathSessionRuns.Add(run);
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        var submission = new ValidatedAttemptSubmission
+        {
+            CenterId = _centerId,
+            StudentId = _studentId,
+            ClientSubmissionId = Guid.NewGuid(),
+            SessionRunId = run.SessionRunId,
+            QuestionId = 9001ul,
+            FinalAnswer = "B",
+            ReasoningText = "Lập luận kiểm tra",
+            TimeSpentSeconds = 165,
+            Confidence = 80,
+            AnswerChanges = 1,
+            Skipped = false,
+            ReasoningLanguage = "vi",
+            IsCorrect = true,
+            AwardedScore = 2m
+        };
+
+        var request = CreateRequest(submission);
+        request.SessionRunId = run.SessionRunId;
+
+        // 1st submission: setup validation success
+        SetupValidation(request, submission);
+
+        var sut = CreateSut(context);
+        var firstResult = await sut.ExecuteAsync(request, "trace-first");
+
+        Assert.True(firstResult.IsSuccess);
+        Assert.NotNull(firstResult.Data);
+
+        var persistedRunAfterFirst = await context.LearningPathSessionRuns.AsNoTracking().SingleAsync(r => r.SessionRunId == run.SessionRunId);
+        Assert.Equal(1u, persistedRunAfterFirst.QuestionsAttempted);
+        Assert.Equal(1u, persistedRunAfterFirst.QuestionsCorrect);
+        Assert.Equal(9002ul, persistedRunAfterFirst.CurrentQuestionId);
+        Assert.Single(await context.Attempts.ToListAsync());
+
+        // 2nd submission: same ClientSubmissionId (replay)
+        var replaySubmission = CloneAsReplay(submission, ulong.Parse(firstResult.Data.AttemptId));
+        SetupValidation(request, replaySubmission);
+
+        var secondResult = await sut.ExecuteAsync(request, "trace-second");
+
+        // Assert: Idempotent success with same attempt ID, and QuestionsAttempted NOT incremented!
+        Assert.True(secondResult.IsSuccess);
+        Assert.Equal(firstResult.Data.AttemptId, secondResult.Data!.AttemptId);
+
+        var persistedRunAfterSecond = await context.LearningPathSessionRuns.AsNoTracking().SingleAsync(r => r.SessionRunId == run.SessionRunId);
+        Assert.Equal(1u, persistedRunAfterSecond.QuestionsAttempted);
+        Assert.Equal(1u, persistedRunAfterSecond.QuestionsCorrect);
+        Assert.Equal(9002ul, persistedRunAfterSecond.CurrentQuestionId);
+        Assert.Single(await context.Attempts.ToListAsync());
     }
 
     [Fact]
@@ -678,6 +786,7 @@ public sealed class SubmitAttemptUseCaseTests
             ClientSubmissionId = submission.ClientSubmissionId,
             QuestionId = submission.QuestionId,
             AssignmentId = submission.AssignmentId,
+            SessionRunId = submission.SessionRunId,
             FinalAnswer = submission.FinalAnswer,
             ReasoningText = submission.ReasoningText,
             TimeSpentSeconds = submission.TimeSpentSeconds,

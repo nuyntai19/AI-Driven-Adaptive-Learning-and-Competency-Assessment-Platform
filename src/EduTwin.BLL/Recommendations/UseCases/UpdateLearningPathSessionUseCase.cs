@@ -5,8 +5,10 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using EduTwin.BLL.IdentityAndTenancy;
+using EduTwin.BLL.Recommendations.Services;
 using EduTwin.Contracts.Recommendations;
 using EduTwin.DAL.Persistence;
+using EduTwin.DAL.Recommendations;
 using Microsoft.EntityFrameworkCore;
 
 namespace EduTwin.BLL.Recommendations.UseCases;
@@ -24,15 +26,44 @@ public sealed class UpdateLearningPathSessionUseCase : IUpdateLearningPathSessio
     private static readonly string[] AllowedStatuses = ["InProgress", "Completed", "NeedsReview", "Skipped", "Evaluate"];
     private readonly EduTwinDbContext _dbContext;
     private readonly ITenantContext _tenantContext;
+    private readonly ILearningSessionExecutionService? _sessionExecutionService;
 
-    public UpdateLearningPathSessionUseCase(EduTwinDbContext dbContext, ITenantContext tenantContext)
+    public UpdateLearningPathSessionUseCase(
+        EduTwinDbContext dbContext,
+        ITenantContext tenantContext,
+        ILearningSessionExecutionService? sessionExecutionService = null)
     {
         _dbContext = dbContext;
         _tenantContext = tenantContext;
+        _sessionExecutionService = sessionExecutionService;
     }
 
     public async Task<LearningPathSessionDto?> GetAsync(Guid subjectId, string sessionId, Guid? classId, bool history, CancellationToken ct)
-        => (await LearningPathSessionAccess.LoadAsync(_dbContext, _tenantContext, subjectId, sessionId, classId, history, ct))?.Session;
+    {
+        var accessible = await LearningPathSessionAccess.LoadAsync(_dbContext, _tenantContext, subjectId, sessionId, classId, history, ct);
+        if (accessible is null) return null;
+        var session = accessible.Session;
+
+        if (_tenantContext.CenterId.HasValue)
+        {
+            var centerId = _tenantContext.CenterId.Value;
+            LearningPathSession? dbSession = null;
+            if (Guid.TryParse(sessionId, out var sessionGuid))
+            {
+                dbSession = await _dbContext.LearningPathSessions.AsNoTracking()
+                    .FirstOrDefaultAsync(s => s.CenterId == centerId && s.SessionId == sessionGuid, ct);
+            }
+            dbSession ??= await _dbContext.LearningPathSessions.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.CenterId == centerId && s.LegacySessionId == sessionId, ct);
+
+            if (dbSession is not null)
+            {
+                session.Status = dbSession.Status.ToString();
+            }
+        }
+
+        return session;
+    }
 
     public async Task<bool> ExecuteAsync(Guid subjectId, string sessionId, UpdateLearningPathSessionRequest request, CancellationToken cancellationToken)
     {
@@ -105,6 +136,16 @@ public sealed class UpdateLearningPathSessionUseCase : IUpdateLearningPathSessio
         path.UpdatedAt = DateTime.UtcNow;
         path.UpdatedBy = path.StudentId;
         path.RowVersion++;
+
+        var relSession = await _dbContext.LearningPathSessions
+            .FirstOrDefaultAsync(s => s.CenterId == path.CenterId && s.LegacySessionId == sessionId, cancellationToken);
+        if (relSession is not null && Enum.TryParse<LearningPathSessionStatus>(session.Status, out var parsedRelStatus))
+        {
+            relSession.Status = parsedRelStatus;
+            relSession.UpdatedAt = DateTime.UtcNow;
+            relSession.RowVersion++;
+        }
+
         await _dbContext.SaveChangesAsync(cancellationToken);
         return true;
     }

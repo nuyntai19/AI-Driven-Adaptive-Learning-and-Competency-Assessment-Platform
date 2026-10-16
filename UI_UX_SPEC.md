@@ -7,6 +7,9 @@
 > Admin readability amendment 2026-10-11: ở browser zoom 100%, typography nền tảng tăng khoảng 25% (body 20px, nhãn menu 17.5px, metadata tối thiểu 15px); sidebar desktop 320px/header 80px, responsive không dùng CSS zoom/scale toàn trang. Sidebar/drawer/menu/khung tài khoản theo chế độ sáng và tối. Thông báo và Nhật ký hoạt động có icon, trạng thái chọn và aria-current, giữ capability guard. Chuông của cả bốn tác nhân luôn hiện Đã xem/Xóa tất cả, giải thích rõ trạng thái vô hiệu; dọn box không xóa inbox. Observability/token–cost/backlog/storage chỉ là đề xuất riêng, chưa mở rộng quyền hay triển khai trong bản sửa UI này.
 
 > UX amendment 2026-10-11 được người dùng yêu cầu: ẩn bộ chọn môn ở thông báo/nhật ký; box có Đã xem và Xóa tất cả chỉ cho xem nhanh trên trình duyệt, không xóa inbox; nhật ký tiếng Việt/tên đối tượng scoped/mã kỹ thuật thu gọn, font body ≥16px/meta ≥14px. Học sinh dùng Chèn công thức cho đáp án toán và lập luận, giữ mode chấm/API và authoring. Chi tiết khóa tại [Completion SPEC — bổ sung UX](docs/plans/NOTIFICATIONS-COMPLETION-SPEC.md).
+> UX clarification 2026-10-13 theo yêu cầu người dùng: mọi câu ShortAnswer đang làm của học sinh có công cụ Chèn công thức, kể cả TextExact; khả năng nhập không quyết định chế độ chấm. TextExact giữ raw source, displayLatex rỗng và có chú thích không xét tương đương toán học; không tự đổi mode câu có sẵn. MCQ vẫn chọn phương án, bài đã nộp vẫn chỉ đọc, authoring giữ input theo mode. Buổi luyện dùng một tập câu hiện còn Active/đúng phạm vi cho đọc, lấy câu và tính hoàn thành; khi không còn câu, chỉ xác nhận hoạt động tường minh, không tạo điểm/mastery. Bằng chứng và giới hạn tại [báo cáo follow-up](docs/verification/SHIN-CHECK-CODE-FOLLOWUP-2026-10-13.md).
+> Authoring amendment 2026-10-13, yêu cầu bổ sung của người dùng: thay phần “authoring giữ input theo mode” ở clarification trước bằng composer chữ/công thức có nút Chèn công thức dùng chung cho tạo/sửa câu hỏi của Teacher/CenterManager, đủ 5 mode ShortAnswer và Essay/Manual. Giữ theme, ref, nháp riêng theo mode, readonly và compatibility matrix; không thay parser/chế độ chấm hoặc câu/điểm cũ. NumericRational, Coordinate2D, MathEquivalent kiểm tra cú pháp trên toàn công thức đã serialize không có `$`; TextExact/Manual giữ source chữ/công thức. MCQ vẫn chọn phương án đúng, nội dung từng phương án có composer. Đây không phải mở rộng phạm vi tương đương toán học hoặc đổi AI; chi tiết và kiểm chứng ở mục bổ sung trong báo cáo follow-up.
+> Set-notation amendment 2026-10-13: khôi phục nháp không dùng raw answer làm LaTeX hiển thị; tập hợp dạng chữ `R \ {2}` giữ nguyên ký hiệu, kể cả legacy display bằng raw. Theo yêu cầu chỉnh lại vị trí, nhóm Tập hợp (ℝ, {…}, ∖, ∈, ∉, ∪, ∩, ∅) nằm trong bàn phím ảo MathLive, không phải thanh nút ngoài popup. Ngoặc có ô điền; giữ các nhóm bàn phím sẵn có và không nhân đôi nhóm Tập hợp khi mở lại. Không đổi parser/chế độ chấm hoặc dữ liệu bài đã nộp. Kiểm chứng UI và persistence tại [báo cáo import/nháp — mục bổ sung](docs/verification/IMPORT-DRAFT-BROWSER-RETEST-2026-10-13.md).
 
 > UI lifecycle/receipt và gate còn lại theo [Completion SPEC](docs/plans/NOTIFICATIONS-COMPLETION-SPEC.md); không coi xác nhận nhận là đã xử lý nghiệp vụ.
 
@@ -370,14 +373,16 @@ Course MVP không có màn hình tạo/xóa Center hoặc chuyển sang Center k
 
 ### 9.1. Question Bulk Import Modal (QuestionImportModal)
 
-Modal nhập câu hỏi hàng loạt cho giáo viên và quản lý trung tâm:
-- **Tải lên tệp**: Hỗ trợ kéo thả (drag & drop) hoặc chọn file từ máy tính với các định dạng `.docx`, `.xlsx`, `.csv`, `.txt`.
+V1 theo [kế hoạch import](docs/plan/QUESTION-BANK-IMPORT-PLAN-2026-10-12.md): modal nhập hàng loạt dành cho Teacher có quyền tạo nội dung; CenterManager không được kế thừa authoring.
+- **Môn và mặc định của lô**: chọn môn trước preview; khối, độ khó, điểm, thời gian, visibility, reasoning, ngôn ngữ và mode ShortAnswer có defaults rõ. Mỗi câu dùng TopicCode riêng; chỉ chế độ file cũ mới cho topic chung.
+- **Tải mẫu/tệp**: XLSX theo môn với Questions/Topics/Guide, cột Text, dropdown; CSV vẫn có. Kéo thả/chọn `.xlsx`/`.csv`; giới hạn 10 MiB/500 câu. DOCX/TXT/TSV và ảnh nhúng chưa hỗ trợ V1.
 - **Xem trước bảng dữ liệu (Preview)**:
   - Hiển thị thống kê tổng quan: Tổng số câu, số câu hợp lệ (Valid), số câu bị lỗi cấu trúc (Invalid).
   - Bảng danh sách câu hỏi: Cho phép xem trước nội dung, công thức KaTeX, đáp án đúng, lời giải, độ khó, và danh sách các phương án.
-  - Chỉnh sửa tại chỗ (In-place edit): Giáo viên có thể sửa trực tiếp nội dung hoặc đáp án của từng câu trên bảng trước khi lưu.
+  - Mở chi tiết câu xem đầy đủ phương án, lời giải, misconception, ý chấm, ghi chú, topic/khối/defaults thực sẽ lưu. Công thức LaTeX inline được kiểm tra syntax trước confirm.
+  - V1 sửa file và tải lại, chưa có chỉnh sửa tại chỗ. Đổi môn/file/defaults hủy preview và không cho kết quả upload cũ đè phiên mới.
   - Bảng cảnh báo lỗi: Chỉ rõ số dòng, trường thông tin bị lỗi và nguyên nhân cụ thể.
-- **Xác nhận nhập kho (Confirm)**: Chọn môn học và chủ đề chính (`primaryTopicNodeId`), hệ thống lưu trữ hàng loạt vào ngân hàng câu hỏi.
+- **Xác nhận nhập kho (Confirm)**: mặc định yêu cầu toàn file hợp lệ; tùy chọn rõ nhập các câu hợp lệ được chọn và hiển thị số bỏ qua. Lưu Draft theo token/revision; giáo viên rà soát và kích hoạt riêng bằng quyền publish. Không gán topic chung cho template mới, không tự kích hoạt khi chỉ có quyền create.
 
 ### 9.2. Teacher Workspace & 10 Chuyên trang
 

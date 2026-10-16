@@ -4,6 +4,7 @@ using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.DAL.Organization;
 using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.Assignments;
+using EduTwin.DAL.Recommendations;
 
 namespace EduTwin.DAL.AssessmentAndReasoning;
 
@@ -14,6 +15,7 @@ public class Attempt : ITenantAppendOnlyEntity, IHasRowVersion
     public Guid StudentId { get; set; }
     public ulong QuestionId { get; set; }
     public Guid? AssignmentId { get; set; }
+    public ulong? SessionRunId { get; set; }
     public string FinalAnswer { get; set; } = null!;
     public string? ReasoningText { get; set; }
     public bool? IsCorrect { get; set; }
@@ -41,5 +43,6 @@ public class Attempt : ITenantAppendOnlyEntity, IHasRowVersion
     public Student Student { get; set; } = null!;
     public Question Question { get; set; } = null!;
     public Assignment? Assignment { get; set; }
+    public LearningPathSessionRun? SessionRun { get; set; }
     public AttemptAttachment? Attachment { get; set; }
 }

@@ -203,21 +203,23 @@ public class QuestionsController : ControllerBase
 
     [HttpPost("import/preview")]
     [Authorize(Policy = "curriculum.questions.create")]
+    [RequestSizeLimit(11 * 1024 * 1024)]
     [ProducesResponseType(typeof(QuestionImportPreviewResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> PreviewImport(
-        IFormFile file,
+        [FromForm] IFormFile file,
+        [FromForm] QuestionImportPreviewRequest request,
         CancellationToken cancellationToken)
     {
         var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
-        if (file == null || file.Length == 0)
+        if (file == null || file.Length == 0 || file.Length > 10 * 1024 * 1024)
         {
             return BadRequest(new ProblemDetails
             {
                 Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.1",
                 Title = "Dữ liệu không hợp lệ",
                 Status = StatusCodes.Status400BadRequest,
-                Detail = "Tệp tải lên không được rỗng.",
+                Detail = "Tệp tải lên không được rỗng hoặc vượt quá 10 MiB.",
                 Instance = HttpContext.Request.Path,
                 Extensions = { ["traceId"] = traceId, ["errorCode"] = ErrorCodes.ValidationFailed }
             });
@@ -229,9 +231,11 @@ public class QuestionsController : ControllerBase
         }
 
         await using var stream = file.OpenReadStream();
-        var result = await _questionImportUseCase.PreviewAsync(stream, file.FileName, cancellationToken);
+        var result = await _questionImportUseCase.PreviewAsync(stream, file.FileName, request, cancellationToken);
         if (!result.IsSuccess)
         {
+            if (result.ErrorCode == ErrorCodes.ForbiddenResource) return MapError(result.ErrorCode);
+            if (result.ErrorCode == "NOT_FOUND") return MapError(ErrorCodes.ResourceNotFound);
             return BadRequest(new ProblemDetails
             {
                 Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.1",
@@ -272,6 +276,7 @@ public class QuestionsController : ControllerBase
         var result = await _questionImportUseCase.ConfirmAsync(request, cancellationToken);
         if (!result.IsSuccess)
         {
+            if (result.ErrorCode == ErrorCodes.ForbiddenResource) return MapError(result.ErrorCode);
             if (result.ErrorCode == "NOT_FOUND")
             {
                 return NotFound(new ProblemDetails

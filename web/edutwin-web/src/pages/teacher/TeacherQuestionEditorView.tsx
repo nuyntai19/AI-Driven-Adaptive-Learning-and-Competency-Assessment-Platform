@@ -85,7 +85,7 @@ export function TeacherQuestionEditorView() {
   const [maxScore, setMaxScore] = useState<number>(10);
   const [estimatedTimeSeconds, setEstimatedTimeSeconds] = useState<number>(120);
   const [reasoningRequired, setReasoningRequired] = useState<boolean>(false);
-  const [languageCode] = useState("vi");
+  const [languageCode, setLanguageCode] = useState("vi");
   const [answerEvaluationMode, setAnswerEvaluationMode] = useState<QuestionAnswerEvaluationMode>("TextExact");
   const [options, setOptions] = useState<QuestionEditorOption[]>([
     { label: "A", text: "", isCorrect: true, orderIndex: 0, misconception: "" },
@@ -135,6 +135,7 @@ export function TeacherQuestionEditorView() {
       setMaxScore(q.maxScore || 10);
       setEstimatedTimeSeconds(q.estimatedTimeSeconds || 120);
       setReasoningRequired(Boolean(q.reasoningRequired));
+      setLanguageCode(q.languageCode || "vi");
       setAnswerEvaluationMode(
         q.answerEvaluationMode ||
           (q.questionType === "MultipleChoice" ? "TextExact" : q.questionType === "Essay" ? "Manual" : "TextExact")

@@ -10,6 +10,7 @@ public interface IQuestionImportUseCase
     Task<QuestionImportPreviewResult> PreviewAsync(
         Stream fileStream,
         string fileName,
+        QuestionImportPreviewRequest request,
         CancellationToken cancellationToken);
 
     Task<QuestionImportConfirmResult> ConfirmAsync(

@@ -1,6 +1,12 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { Link, useSearchParams, useParams } from "react-router-dom";
-import { getLearningPathSession, updateLearningPathSession } from "../api/learningPathApi";
+import { Link, Navigate, useSearchParams, useParams, useNavigate } from "react-router-dom";
+import {
+  getLearningPathSession,
+  updateLearningPathSession,
+  resumeLearningSession,
+  evaluateLearningSession,
+  startLearningSession,
+} from "../api/learningPathApi";
 import { useStudentLearningAccess } from "../hooks/useStudentLearningAccess";
 import { StudentLearningReadOnlyNotice } from "../components/student/StudentLearningReadOnlyNotice";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -23,6 +29,8 @@ import type {
   NextQuestionDataDto,
   AttemptFeedbackDataDto,
 } from "../types/learning";
+import type { EvaluateSessionDto, ResumeSessionDto } from "../types/learningPath";
+import { SessionEvaluationOutcomeModal } from "../components/student/SessionEvaluationOutcomeModal";
 import {
   isSuccessfulTerminalStatus,
   isTerminalStatus,
@@ -124,14 +132,29 @@ function loadStoredAssignmentAnswers(scope: AssignmentDraftScope | null): Record
 }
 
 export const LearningPlayerPage = () => {
+  const [params] = useSearchParams();
+  if (params.get("sessionId") && !params.get("assignmentId")) {
+    const next = new URLSearchParams(params);
+    next.delete("sessionRunId"); next.delete("sessionId");
+    return <Navigate replace to={`/hoc-tap/lo-trinh-hoc-tap?${next}`} />;
+  }
+  return <PracticePlayerPage />;
+};
+
+const PracticePlayerPage = () => {
+  const navigate = useNavigate();
   const { questionId: routeQuestionId } = useParams<{ questionId?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const assignmentId = searchParams.get("assignmentId");
   const pathSessionId = assignmentId ? null : searchParams.get("sessionId");
+  const urlSessionRunId = searchParams.get("sessionRunId") ? Number(searchParams.get("sessionRunId")) : null;
   const subjectId = searchParams.get("subjectId") || "";
   const isHistory = searchParams.get("history") === "true";
   const learningAccess = useStudentLearningAccess(subjectId);
   const persistedJobId = searchParams.get("analysisJobId");
+
+  const [sessionOutcomeData, setSessionOutcomeData] = useState<EvaluateSessionDto | null>(null);
+  const [isEvaluationPolling, setIsEvaluationPolling] = useState(false);
 
   const currentUser = useAuthStore((state) => state.user);
   const queryClient = useQueryClient();
@@ -697,7 +720,7 @@ export const LearningPlayerPage = () => {
     for (const da of assignment.draftAnswers ?? []) {
       serverAnswers[String(da.questionId)] = {
         finalAnswer: da.finalAnswer ?? "",
-        answerDisplayLatex: da.answerDisplayLatex ?? da.finalAnswer ?? "",
+        answerDisplayLatex: da.answerDisplayLatex ?? "",
         reasoningText: da.reasoningText ?? "",
         confidence: da.confidence ?? 80,
         timeSpentSeconds: da.timeSpentSeconds ?? 0,
@@ -900,7 +923,7 @@ export const LearningPlayerPage = () => {
       const activeAnswer = serverAnswers[activeQId];
       if (activeAnswer) {
         setFinalAnswer(activeAnswer.finalAnswer || "");
-        setAnswerDisplayLatex(assignmentQuestion?.questionType === "MultipleChoice" ? "" : (activeAnswer.answerDisplayLatex || activeAnswer.finalAnswer || ""));
+        setAnswerDisplayLatex(assignmentQuestion?.questionType === "MultipleChoice" ? "" : (activeAnswer.answerDisplayLatex || ""));
         setReasoningText(activeAnswer.reasoningText || "");
         setConfidence(activeAnswer.confidence ?? 80);
         setTimeSpentSeconds(activeAnswer.timeSpentSeconds ?? 0);
@@ -1011,6 +1034,78 @@ export const LearningPlayerPage = () => {
     retry: false,
   });
   const pathSession = sessionQuery.data;
+
+  const sessionResumeQuery = useQuery<ResumeSessionDto>({
+    queryKey: ["learning-path-session-resume", currentUser?.centerId, currentUser?.userId, subjectId, learningAccess.classId, pathSessionId],
+    queryFn: () => resumeLearningSession(pathSessionId!, subjectId, learningAccess.classId || undefined),
+    enabled: !!pathSessionId && learningAccess.writable && !assignmentId,
+    retry: false,
+  });
+  const resumeData = sessionResumeQuery.data;
+
+  const activeSessionRunId = useMemo<number | null>(() => {
+    if (resumeData?.sessionRunId) return resumeData.sessionRunId;
+    if (urlSessionRunId) return urlSessionRunId;
+    return null;
+  }, [resumeData?.sessionRunId, urlSessionRunId]);
+
+  const triggerSessionEvaluation = useCallback(async (runId?: number | null) => {
+    if (!pathSessionId) return;
+    const effectiveRun = runId ?? activeSessionRunId;
+    try {
+      const evalResult = await evaluateLearningSession(pathSessionId, {
+        subjectId,
+        classId: learningAccess.classId || undefined,
+        sessionRunId: effectiveRun ?? undefined,
+      });
+      setSessionOutcomeData(evalResult);
+      void queryClient.invalidateQueries({ queryKey: ["learning-path", subjectId] });
+      void queryClient.invalidateQueries({ queryKey: ["learning-path-session-resume"] });
+      return evalResult;
+    } catch (err) {
+      console.error("Session evaluation failed:", err);
+    }
+  }, [pathSessionId, activeSessionRunId, subjectId, learningAccess.classId, queryClient]);
+
+  // If session resume shows completed or grading, fetch evaluation outcome
+  useEffect(() => {
+    if (!pathSessionId || !resumeData) return;
+    if (resumeData.isCompleted || resumeData.isGrading || resumeData.outcome === "Passed" || resumeData.outcome === "NeedsReview" || resumeData.outcome === "NotPassed") {
+      void triggerSessionEvaluation(resumeData.sessionRunId);
+    }
+  }, [pathSessionId, resumeData, triggerSessionEvaluation]);
+
+  // Auto-polling when session outcome is in Grading state
+  useEffect(() => {
+    if (!sessionOutcomeData || !pathSessionId) return;
+    const shouldPoll = sessionOutcomeData.outcome === "Grading" || sessionOutcomeData.hasPendingAIGrading;
+    if (!shouldPoll) {
+      setIsEvaluationPolling(false);
+      return;
+    }
+
+    setIsEvaluationPolling(true);
+    const interval = setInterval(async () => {
+      try {
+        const refreshed = await evaluateLearningSession(pathSessionId, {
+          subjectId,
+          classId: learningAccess.classId || undefined,
+          sessionRunId: sessionOutcomeData.sessionRunId,
+        });
+        setSessionOutcomeData(refreshed);
+        if (!refreshed.hasPendingAIGrading && refreshed.outcome !== "Grading") {
+          setIsEvaluationPolling(false);
+          clearInterval(interval);
+          void queryClient.invalidateQueries({ queryKey: ["learning-path", subjectId] });
+        }
+      } catch {
+        // Continue polling until resolved
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [sessionOutcomeData, pathSessionId, subjectId, learningAccess.classId, queryClient]);
+
   const [sessionUpdateError, setSessionUpdateError] = useState<string | null>(null);
   const evaluatePathSession = useCallback(async (acknowledgedActivities = false) => {
     if (!pathSessionId) return;
@@ -1027,6 +1122,22 @@ export const LearningPlayerPage = () => {
   useEffect(() => { if (pathSessionId && feedbackData) void evaluatePathSession(); }, [pathSessionId, feedbackData, evaluatePathSession]);
 
   // Mode 2: Adaptive Practice Mode Query
+  const isSessionRunFinished =
+    pathSession?.status === "Completed" ||
+    pathSession?.status === "NeedsReview" ||
+    resumeData?.isCompleted ||
+    resumeData?.runStatus === "Completed" ||
+    resumeData?.outcome === "Passed" ||
+    resumeData?.outcome === "NotPassed" ||
+    resumeData?.outcome === "NeedsReview";
+
+  const isSessionRunActive =
+    !isSessionRunFinished &&
+    (pathSession?.status === "InProgress" ||
+      resumeData?.runStatus === "InProgress" ||
+      resumeData?.sessionStatus === "InProgress" ||
+      Boolean(activeSessionRunId));
+
   const {
     data: adaptiveQuestion,
     isLoading: adaptiveLoading,
@@ -1035,7 +1146,7 @@ export const LearningPlayerPage = () => {
   } = useQuery<NextQuestionDataDto>({
     queryKey: ["nextQuestion", currentUser?.centerId, currentUser?.userId, subjectId, learningAccess.classId, pathSessionId],
     queryFn: () => getNextQuestion(subjectId, learningAccess.classId, isHistory, pathSessionId || undefined),
-    enabled: learningAccess.writable && !assignmentId && !!subjectId && (!pathSessionId || pathSession?.status === "InProgress") && !feedbackData && !pollingJobId && !persistedJobId,
+    enabled: learningAccess.writable && !assignmentId && !!subjectId && (!pathSessionId || isSessionRunActive) && !feedbackData && !pollingJobId && !persistedJobId,
   });
 
   // Effective unified question object
@@ -1066,8 +1177,17 @@ export const LearningPlayerPage = () => {
         answerEvaluationMode: assignmentQuestion.answerEvaluationMode || "TextExact",
       };
     }
-    return adaptiveQuestion || null;
-  }, [assignment, assignmentQuestion, adaptiveQuestion]);
+    return adaptiveQuestion || (resumeData?.currentQuestion as NextQuestionDataDto | null) || null;
+  }, [assignment, assignmentQuestion, adaptiveQuestion, resumeData?.currentQuestion]);
+
+  const isCheckpointQuestion = Boolean(
+    !assignmentId && pathSessionId && (
+      question?.isCheckpoint ||
+      question?.activityType === "Checkpoint" ||
+      (resumeData?.currentQuestionId && (resumeData as any)?.checkpointQuestionId && resumeData.currentQuestionId === (resumeData as any).checkpointQuestionId) ||
+      (adaptiveQuestion?.isCheckpoint)
+    )
+  );
   effectiveQuestionIdRef.current = question ? String(question.questionId) : null;
 
   const questionLoading = assignmentId ? assignmentLoading : adaptiveLoading;
@@ -1125,7 +1245,7 @@ export const LearningPlayerPage = () => {
       setDrawingUploadToken(null);
     } else if (saved) {
       setFinalAnswer(saved.finalAnswer || "");
-      setAnswerDisplayLatex(question?.questionType === "MultipleChoice" ? "" : (saved.answerDisplayLatex || saved.finalAnswer || ""));
+      setAnswerDisplayLatex(question?.questionType === "MultipleChoice" ? "" : (saved.answerDisplayLatex || ""));
       setReasoningText(saved.reasoningText || "");
       setConfidence(saved.confidence ?? 80);
       setTimeSpentSeconds(saved.timeSpentSeconds ?? 0);
@@ -1265,8 +1385,19 @@ export const LearningPlayerPage = () => {
 
   const handleNextPracticeQuestion = () => {
     if (!learningAccess.writable) return;
+    if (pathSessionId && typeof isCheckpointQuestion !== "undefined" && isCheckpointQuestion) {
+      if (typeof triggerSessionEvaluation === "function") {
+        void triggerSessionEvaluation(typeof activeSessionRunId !== "undefined" ? activeSessionRunId : undefined);
+      }
+      return;
+    }
     practiceSubmissionRef.current = null;
-    if (pathSessionId) void sessionQuery.refetch();
+    if (pathSessionId) {
+      void sessionQuery.refetch();
+      if (typeof sessionResumeQuery !== "undefined" && sessionResumeQuery?.refetch) {
+        void sessionResumeQuery.refetch();
+      }
+    }
     setFeedbackData(null);
     setFinalAnswer("");
     setAnswerDisplayLatex("");
@@ -1282,6 +1413,53 @@ export const LearningPlayerPage = () => {
     setDrawingUploadToken(null);
     snapshotUploadsRef.current = {};
     if (refetchAdaptiveQuestion) void refetchAdaptiveQuestion();
+  };
+
+  const [isStartingSession, setIsStartingSession] = useState(false);
+  const handleStartSession = async () => {
+    if (!pathSessionId) return;
+    try {
+      setIsStartingSession(true);
+      setSessionUpdateError(null);
+      const startResult = await startLearningSession(pathSessionId, subjectId, learningAccess.classId || undefined);
+      setSessionOutcomeData(null);
+      setFeedbackData(null);
+      const p = new URLSearchParams(searchParams);
+      if (startResult.sessionRunId) {
+        p.set("sessionRunId", String(startResult.sessionRunId));
+      }
+      setSearchParams(p, { replace: true });
+      await Promise.all([
+        sessionQuery.refetch(),
+        sessionResumeQuery.refetch(),
+        queryClient.invalidateQueries({ queryKey: ["learning-path", subjectId] }),
+        queryClient.invalidateQueries({ queryKey: ["nextQuestion"] }),
+      ]);
+      if (refetchAdaptiveQuestion) void refetchAdaptiveQuestion();
+    } catch (err) {
+      console.error("Start session failed:", err);
+      setSessionUpdateError("Không thể bắt đầu phiên học. Vui lòng thử lại.");
+    } finally {
+      setIsStartingSession(false);
+    }
+  };
+
+  const handleRetrySessionRun = async () => {
+    if (!pathSessionId) return;
+    try {
+      const startResult = await startLearningSession(pathSessionId, subjectId, learningAccess.classId || undefined);
+      setSessionOutcomeData(null);
+      setFeedbackData(null);
+      handleNextPracticeQuestion();
+      const p = new URLSearchParams(searchParams);
+      if (startResult.sessionRunId) {
+        p.set("sessionRunId", String(startResult.sessionRunId));
+      }
+      setSearchParams(p, { replace: true });
+      void sessionResumeQuery.refetch();
+    } catch (err) {
+      console.error("Retry session failed:", err);
+    }
   };
 
 
@@ -1335,6 +1513,9 @@ export const LearningPlayerPage = () => {
               }
               if (attemptSessionScope) {
                 clearAttemptSessionId(attemptSessionScope);
+              }
+              if (pathSessionId && isCheckpointQuestion) {
+                void triggerSessionEvaluation(activeSessionRunId);
               }
             }
           } catch {
@@ -1791,9 +1972,11 @@ export const LearningPlayerPage = () => {
       }
 
       setPollingStatus("Đang gửi bài làm lên hệ thống AI...");
+      const resolvedSessionRunId = typeof activeSessionRunId !== "undefined" ? activeSessionRunId : undefined;
       const payload = practiceSubmissionRef.current ?? {
         questionId: question.questionId,
         assignmentId: undefined,
+        sessionRunId: resolvedSessionRunId ?? undefined,
         classId: learningAccess.classId || undefined,
         history: isHistory,
         finalAnswer: finalAnswer.trim() || "SKIPPED",
@@ -1810,7 +1993,14 @@ export const LearningPlayerPage = () => {
       const submitted = await submitAttempt(payload);
 
       const resData = submitted.data;
-      if (pathSessionId) await evaluatePathSession();
+      if (pathSessionId) {
+        await evaluatePathSession();
+        if (typeof isCheckpointQuestion !== "undefined" && isCheckpointQuestion) {
+          if (typeof triggerSessionEvaluation === "function") {
+            void triggerSessionEvaluation(resolvedSessionRunId);
+          }
+        }
+      }
       void queryClient.invalidateQueries({ queryKey: ["student-workspace-summary"] });
       const targetJobId = resData.analysisJobId || resData.jobId;
 
@@ -1828,6 +2018,11 @@ export const LearningPlayerPage = () => {
         const fbRes = await getAttemptFeedback(resData.attemptId);
         storeAttemptFeedback(fbRes);
         setIsSubmitting(false);
+        if (pathSessionId && typeof isCheckpointQuestion !== "undefined" && isCheckpointQuestion) {
+          if (typeof triggerSessionEvaluation === "function") {
+            void triggerSessionEvaluation(resolvedSessionRunId);
+          }
+        }
       } else {
         setIsSubmitting(false);
         setSubmissionSaveError("Phản hồi bất thường từ máy chủ. Vui lòng thử nộp lại.");
@@ -2100,13 +2295,95 @@ export const LearningPlayerPage = () => {
     return <div className="p-6"><p role={sessionQuery.isError ? "alert" : "status"}>{sessionQuery.isError ? "Không thể tải buổi học trong phạm vi này." : "Đang tải buổi học…"}</p>
       <Link to={studentLearningPathReturnUrl(searchParams, pathSessionId)}>Quay lại lộ trình</Link></div>;
   }
-  if (pathSessionId && pathSession && !feedbackData && (pathSession.status !== "InProgress" || pathSession.recommendedQuestionIds.length === 0)) {
-    return <div className="p-6 space-y-4"><h1>{pathSession.title}</h1><p>{pathSession.objective}</p>
-      <p role="status">{pathSession.status === "Completed" ? "Buổi học đã hoàn thành." : pathSession.status === "NeedsReview" ? "Cần ôn lại hoặc chờ chốt kết quả trước khi hoàn thành buổi." : "Hoàn thành các hoạt động của buổi học trước khi xác nhận."}</p>
-      <ul>{[...pathSession.onlineActivities, ...pathSession.offlineActivities].map((activity, i) => <li key={i}>{activity}</li>)}</ul>
-      {pathSession.status === "InProgress" && pathSession.recommendedQuestionIds.length === 0 && <button type="button" onClick={() => void evaluatePathSession(true)}>Tôi đã hoàn thành các hoạt động</button>}
-      {sessionUpdateError && <p role="alert">{sessionUpdateError}</p>}
-      <Link to={studentLearningPathReturnUrl(searchParams, pathSessionId)}>Quay lại lộ trình</Link></div>;
+  if (pathSessionId && pathSession && !feedbackData && (!isSessionRunActive || pathSession.recommendedQuestionIds.length === 0)) {
+    return (
+      <div className="min-h-screen bg-[#f8fafc] dark:bg-[#090d16] p-6 flex items-center justify-center text-slate-800 dark:text-slate-100">
+        <div className="mx-auto max-w-xl rounded-3xl bg-white dark:bg-[#0f172a] p-8 sm:p-10 text-center shadow-xs border border-slate-200/80 dark:border-slate-800 space-y-5">
+          <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto text-2xl font-bold">
+            {pathSession.status === "Completed" ? "🎉" : pathSession.status === "NeedsReview" ? "⏳" : "🎯"}
+          </div>
+          <div>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+              Buổi học: {pathSession.title}
+            </span>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white mt-1">
+              {pathSession.status === "Completed"
+                ? "Buổi học đã hoàn thành"
+                : pathSession.status === "NeedsReview"
+                ? "Đang chờ giáo viên xác nhận kết quả"
+                : "Hoạt động buổi học"}
+            </h2>
+            <p className="mt-2 text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+              {pathSession.objective}
+            </p>
+          </div>
+
+          {pathSession.recommendedQuestionIds.length === 0 && (
+            <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 text-xs text-amber-900 dark:text-amber-200 text-left space-y-1">
+              <div className="font-bold flex items-center gap-1.5">
+                <span>ℹ️</span> Chưa đủ câu hỏi phân loại (Insufficient Question Pool)
+              </div>
+              <p>
+                Ngân hàng câu hỏi hiện tại chưa có câu hỏi đủ điều kiện cho buổi này. Bạn có thể tự ôn tập theo danh sách hoạt động dưới đây mà không bị tính là chưa đạt.
+              </p>
+            </div>
+          )}
+
+          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60 text-xs text-slate-600 dark:text-slate-400 text-left space-y-2">
+            <span className="font-bold text-slate-800 dark:text-slate-200 block">Danh mục hoạt động:</span>
+            <ul className="list-disc pl-4 space-y-1">
+              {[...pathSession.onlineActivities, ...pathSession.offlineActivities].map((activity, i) => (
+                <li key={i}>{activity}</li>
+              ))}
+            </ul>
+          </div>
+
+          {sessionUpdateError && (
+            <p role="alert" className="text-xs text-rose-600 dark:text-rose-400">
+              {sessionUpdateError}
+            </p>
+          )}
+
+          <div className="pt-2 flex flex-wrap justify-center gap-3">
+            {!isSessionRunActive && pathSession.status !== "Completed" && pathSession.status !== "NeedsReview" && pathSession.recommendedQuestionIds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => void handleStartSession()}
+                disabled={isStartingSession}
+                className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs shadow-xs transition-colors cursor-pointer flex items-center gap-2"
+              >
+                {isStartingSession ? "Đang bắt đầu..." : "🚀 Bắt đầu học ngay"}
+              </button>
+            )}
+            {(pathSession.status === "Completed" || pathSession.status === "NeedsReview" || resumeData?.isCompleted) && (
+              <button
+                type="button"
+                onClick={() => void triggerSessionEvaluation(resumeData?.sessionRunId)}
+                className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition-colors cursor-pointer"
+              >
+                📊 Xem báo cáo đánh giá phiên
+              </button>
+            )}
+            <Link
+              to={studentLearningPathReturnUrl(searchParams, pathSessionId)}
+              className="px-5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition-colors cursor-pointer"
+            >
+              Quay lại lộ trình
+            </Link>
+          </div>
+        </div>
+
+        <SessionEvaluationOutcomeModal
+          isOpen={Boolean(sessionOutcomeData)}
+          outcomeData={sessionOutcomeData}
+          subjectId={subjectId}
+          isPolling={isEvaluationPolling}
+          onRetrySession={handleRetrySessionRun}
+          onNextSession={() => navigate(studentLearningPathReturnUrl(searchParams, pathSessionId))}
+          onClose={() => navigate(studentLearningPathReturnUrl(searchParams, pathSessionId))}
+        />
+      </div>
+    );
   }
   if (questionLoading || (assignmentId && assignment?.assignmentId === assignmentId && !assignmentError && !isAssignmentSubmitted && !isLocallySubmitted && !draftHydrated)) {
     return (
@@ -2320,7 +2597,9 @@ export const LearningPlayerPage = () => {
                 onClick={handleNextPracticeQuestion}
                 className="w-full sm:w-auto rounded-xl bg-indigo-600 px-6 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-500 text-center cursor-pointer"
               >
-                Luyện câu tiếp theo →
+                {pathSessionId && isCheckpointQuestion
+                  ? "Hoàn tất buổi học & Xem đánh giá →"
+                  : "Luyện câu tiếp theo →"}
               </button>
             ) : (
               <div className="flex w-full sm:w-auto flex-col sm:flex-row gap-3">
@@ -2341,6 +2620,16 @@ export const LearningPlayerPage = () => {
               </div>
             )}
           </div>
+
+          <SessionEvaluationOutcomeModal
+            isOpen={Boolean(sessionOutcomeData)}
+            outcomeData={sessionOutcomeData}
+            subjectId={subjectId}
+            isPolling={isEvaluationPolling}
+            onRetrySession={handleRetrySessionRun}
+            onNextSession={() => navigate(studentLearningPathReturnUrl(searchParams, pathSessionId))}
+            onClose={() => navigate(studentLearningPathReturnUrl(searchParams, pathSessionId))}
+          />
         </div>
       </div>
     );
@@ -2929,6 +3218,26 @@ export const LearningPlayerPage = () => {
                 </div>
               ) : null}
 
+              {/* Checkpoint Mode Notice */}
+              {isCheckpointQuestion && (
+                <div className="rounded-2xl border border-amber-300 dark:border-amber-800 bg-amber-50/90 dark:bg-amber-950/40 p-4 text-xs sm:text-sm text-amber-950 dark:text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                  <div className="flex items-start gap-2.5 font-bold">
+                    <span className="text-xl">🏁</span>
+                    <div>
+                      <div className="uppercase tracking-wider text-[11px] text-amber-700 dark:text-amber-400 font-black">
+                        CÂU HỎI CHECKPOINT ĐỘC LẬP
+                      </div>
+                      <div className="text-xs text-amber-900 dark:text-amber-200 font-medium">
+                        Câu hỏi kiểm chứng năng lực cuối phiên. Yêu cầu làm độc lập — không có gợi ý hoặc giải pháp AI.
+                      </div>
+                    </div>
+                  </div>
+                  <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-amber-200/80 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 whitespace-nowrap self-start sm:self-auto">
+                    Tiêu chí đạt ≥ 80%
+                  </span>
+                </div>
+              )}
+
               {/* Question Text Statement */}
               <div>
                 <div className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-relaxed whitespace-pre-wrap">
@@ -3093,6 +3402,8 @@ export const LearningPlayerPage = () => {
                           ? "Nhập kết luận hoặc đáp án; dùng Chèn công thức để thêm biểu thức toán..."
                           : question?.answerEvaluationMode === "Manual"
                           ? "Nhập câu trả lời ngắn; có thể kết hợp chữ và công thức toán..."
+                          : question?.answerEvaluationMode === "TextExact"
+                          ? "Nhập câu trả lời; dùng Chèn công thức nếu cần ký hiệu toán..."
                           : "Nhập đáp số; dùng Chèn công thức để nhập phân số, căn hoặc tọa độ (có thể chèn từ Casio)..."
                       }
                       showPreview={false}
@@ -3436,6 +3747,16 @@ export const LearningPlayerPage = () => {
           </div>
         </div>
       )}
+      {/* Evaluation Outcome Modal */}
+      <SessionEvaluationOutcomeModal
+        isOpen={Boolean(sessionOutcomeData)}
+        outcomeData={sessionOutcomeData}
+        subjectId={subjectId}
+        isPolling={isEvaluationPolling}
+        onRetrySession={handleRetrySessionRun}
+        onNextSession={() => navigate(studentLearningPathReturnUrl(searchParams, pathSessionId))}
+        onClose={() => navigate(studentLearningPathReturnUrl(searchParams, pathSessionId))}
+      />
     </div>
   );
 };

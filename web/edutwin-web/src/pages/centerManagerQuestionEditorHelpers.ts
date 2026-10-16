@@ -141,7 +141,7 @@ export function validateAndCleanFormula(latex: string | null | undefined): Formu
 
   // Real KaTeX syntax validation with throwOnError: true
   try {
-    katex.renderToString(cleanLatex, { throwOnError: true });
+    katex.renderToString(cleanLatex, { throwOnError: true, trust: false, maxExpand: 100, maxSize: 10 });
   } catch (err: unknown) {
     const rawMsg = err instanceof Error ? err.message : String(err);
     const cleanMsg = rawMsg.replace(/^KaTeX parse error:\s*/i, "").trim();
@@ -288,7 +288,7 @@ export function validateTextMathFormulas(text: string | null | undefined): MathF
           }
 
           try {
-            katex.renderToString(candidate.raw, { throwOnError: true });
+            katex.renderToString(candidate.raw, { throwOnError: true, trust: false, maxExpand: 100, maxSize: 10 });
             diagnostics.push({
               type: "unwrapped-latex",
               raw: candidate.raw,
@@ -389,7 +389,7 @@ export function validateTextMathFormulas(text: string | null | undefined): MathF
 
       // Check KaTeX syntax
       try {
-        katex.renderToString(trimmedMath, { throwOnError: true });
+        katex.renderToString(trimmedMath, { throwOnError: true, trust: false, maxExpand: 100, maxSize: 10 });
       } catch (err: unknown) {
         const rawMsg = err instanceof Error ? err.message : String(err);
         const cleanMsg = rawMsg.replace(/^KaTeX parse error:\s*/i, "").trim();
@@ -445,10 +445,13 @@ export function findIncompleteFormulasInText(text: string | null | undefined): s
   return validateTextMathFormulas(text).map((d) => d.raw);
 }
 
-/** MathEquivalent answers are a single formula, not prose requiring dollar delimiters. */
+/** Mathematical answer modes persist a single formula without prose dollar delimiters.
+ * Validate that whole formula; never parse its LaTeX commands as prose fragments.
+ * This is syntax validation only, not a client-side answer equivalence grader. */
 export function validateAnswerMathFormulas(answer: string, evaluationMode: string): MathFormulaDiagnostic[] {
+  const singleFormula = ["NumericRational", "Coordinate2D", "MathEquivalent"].includes(evaluationMode);
   return validateTextMathFormulas(
-    evaluationMode === "MathEquivalent" && !answer.includes("$") ? `$${answer}$` : answer,
+    singleFormula && answer.trim() && !answer.includes("$") ? `$${answer}$` : answer,
   );
 }
 

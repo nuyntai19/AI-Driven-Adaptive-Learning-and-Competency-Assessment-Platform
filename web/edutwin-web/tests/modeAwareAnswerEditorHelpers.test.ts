@@ -451,9 +451,8 @@ test("Gate 2A.1 - Source Wiring Verification: Production components strictly adh
     path.resolve(__dirname, "../src/components/math/answer-editor/ModeAwareAnswerEditor.tsx"),
     "utf-8"
   );
-  assert.match(orchestratorSrc, /<PlainTextAnswerInput[\s\S]*onFocus=\{onFocus\}/);
-  assert.match(orchestratorSrc, /<NumericRationalMathInput[\s\S]*onFocus=\{onFocus\}/);
-  assert.match(orchestratorSrc, /<Coordinate2DInput[\s\S]*onFocus=\{onFocus\}/);
+  assert.match(orchestratorSrc, /<InlineMathAnswerInput[\s\S]*onFocus=\{onFocus\}/);
+  assert.doesNotMatch(orchestratorSrc, /<(PlainTextAnswerInput|NumericRationalMathInput|Coordinate2DInput)\b/);
   assert.match(orchestratorSrc, /<PlainOrMultilineAnswerInput[\s\S]*onFocus=\{onFocus\}/);
   assert.match(orchestratorSrc, /<MultilineProseAnswerEditor[\s\S]*onFocus=\{onFocus\}/);
   assert.match(orchestratorSrc, /resolveReadonlyDisplay\(evaluationMode, value, questionType\)/, "ModeAwareAnswerEditor must pass questionType to resolveReadonlyDisplay");
@@ -496,7 +495,8 @@ test("Gate 2A.2 - Student Answering UX, Backward-Compatible Casio Ref, and Revie
   );
   assert.match(orchestratorSrc, /insertAtCursor: \(latex: string\) =>/);
   assert.match(orchestratorSrc, /showSyntaxHint\?: boolean;/);
-  assert.match(orchestratorSrc, /showSyntaxHint=\{showSyntaxHint \?\? profile === "authoring"\}/);
+  assert.match(orchestratorSrc, /showSyntaxHint \?\? profile === "authoring"/);
+  assert.match(orchestratorSrc, /getAnswerSyntaxHint\(evaluationMode, value\)/);
 
   const numericInputSrc = fs.readFileSync(
     path.resolve(__dirname, "../src/components/math/answer-editor/NumericRationalMathInput.tsx"),
@@ -551,13 +551,14 @@ test("Gate 2A.2 - Student Answering UX, Backward-Compatible Casio Ref, and Revie
   );
   assert.match(gradingWorkspaceSrc, /if\s*\(raw\)\s*\{\s*return "Phương án đã chọn";\s*\}/);
 
-  // 6. QuestionImportModal preview table renders mixed content with RichMathText
+  // 6. Validated import detail fields share one RichMathText rendering helper.
   const importModalSrc = fs.readFileSync(
     path.resolve(__dirname, "../src/components/teacher/QuestionImportModal.tsx"),
     "utf-8"
   );
-  assert.match(importModalSrc, /<RichMathText text=\{q\.questionText\} \/>/);
-  assert.match(importModalSrc, /<RichMathText text=\{q\.correctAnswer\} \/>/);
+  assert.match(importModalSrc, /<RichMathText text=\{text \|\| "—"\} \/>/);
+  assert.match(importModalSrc, /content\("Đề bài", q\.questionText\)/);
+  assert.match(importModalSrc, /content\("Đáp án chuẩn \/ đáp án mẫu", q\.correctAnswer\)/);
 });
 
 test("AttemptFeedbackHierarchy formatAnswer and MCQ fail-closed logic never reveals UUIDs", () => {

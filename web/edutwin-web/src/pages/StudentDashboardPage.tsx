@@ -1,7 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getStudentDashboard } from "../api/dashboardsApi";
+import { getStudentAssignments } from "../api/assignmentsApi";
+import { getDetailedLearningPath } from "../api/learningPathApi";
 import type { StudentDashboardDataDto } from "../types/dashboards";
 import { getSubjectTheme } from "../components/student/subjectTheme";
 import { StudentProgressTrack } from "../components/student/StudentProgressTrack";
@@ -27,6 +29,70 @@ export const StudentDashboardPage: React.FC = () => {
     queryFn: () => getStudentDashboard(selectedSubjectId || undefined, selectedClassId || undefined, isHistory),
     staleTime: 60 * 1000,
   });
+
+  const { data: assignmentsData } = useQuery({
+    queryKey: ["studentAssignmentsToday", selectedSubjectId, selectedClassId, isHistory],
+    queryFn: () => getStudentAssignments({
+      subjectId: selectedSubjectId || undefined,
+      classId: selectedClassId || undefined,
+      history: isHistory,
+      pageSize: 10,
+    }),
+    staleTime: 60 * 1000,
+  });
+
+  const { data: detailedPathData } = useQuery({
+    queryKey: ["studentLearningPathToday", selectedSubjectId, selectedClassId],
+    queryFn: () => getDetailedLearningPath(selectedSubjectId, selectedClassId || undefined),
+    enabled: !!selectedSubjectId,
+    staleTime: 60 * 1000,
+  });
+
+  const urgentAssignment = useMemo(() => {
+    const list = assignmentsData?.data || [];
+    const active = list.filter((a) => a.progress?.status !== "Completed");
+    active.sort((a, b) => {
+      if (!a.dueAt) return 1;
+      if (!b.dueAt) return -1;
+      return new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime();
+    });
+    return active[0] || null;
+  }, [assignmentsData?.data]);
+
+  const detailedPath = detailedPathData?.data;
+
+  const activeSession = useMemo(() => {
+    if (!detailedPath) return null;
+    for (const phase of detailedPath.phases) {
+      for (const week of phase.weeks) {
+        for (const session of week.sessions) {
+          if (session.status === "InProgress" || session.status === "NeedsReview" || session.status === "Grading") {
+            return session;
+          }
+        }
+      }
+    }
+    return null;
+  }, [detailedPath]);
+
+  const nextEligibleSession = useMemo(() => {
+    if (activeSession) return null;
+    if (detailedPath?.nextSession && detailedPath.nextSession.status !== "Completed") {
+      return detailedPath.nextSession;
+    }
+    if (detailedPath) {
+      for (const phase of detailedPath.phases) {
+        for (const week of phase.weeks) {
+          for (const session of week.sessions) {
+            if (session.status === "NotStarted") {
+              return session;
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }, [detailedPath, activeSession]);
 
   if (isLoading) {
     return (
@@ -109,6 +175,8 @@ export const StudentDashboardPage: React.FC = () => {
     ? `/hoc-tap/luyen-tap?subjectId=${selectedSubjectId}`
     : `/hoc-tap/luyen-tap`;
 
+
+
   return (
     <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 min-w-0 student-shell">
       {/* Scope Context & Student Greeting */}
@@ -147,7 +215,7 @@ export const StudentDashboardPage: React.FC = () => {
 
       {/* Above-the-fold Asymmetric Layout: Left 65% Today Mission, Right 35% Twin Snapshot */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
-        {/* Left 65% (8 cols): TODAY MISSION */}
+        {/* Left 65% (8 cols): PRIORITIZED TODAY PLAN */}
         {isHistory ? <div className="lg:col-span-7 xl:col-span-8 rounded-2xl border border-stone-200/90 dark:border-stone-800/90 p-6 sm:p-7 bg-white dark:bg-[#151d2f]">
           <h2 className="text-xl font-bold">Phạm vi học tập đã lưu</h2>
           <p className="mt-3 text-sm text-stone-600 dark:text-stone-300">Bản đồ bên dưới chỉ gồm chủ đề của các giáo trình từng áp dụng trong lớp đã chọn. Điểm năng lực phản ánh bằng chứng tích lũy hiện có, không phải bản chụp điểm tại một thời điểm trong quá khứ.</p>
@@ -156,49 +224,133 @@ export const StudentDashboardPage: React.FC = () => {
           {/* Subtle Subject Graphic Pattern */}
           <StudentSubjectPattern subjectName={subject.subjectName} opacity={0.06} />
 
-          <div className="relative z-10 space-y-3">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-xs font-mono font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
-                Nhiệm vụ trọng tâm hôm nay
+          <div className="relative z-10 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-xs font-mono font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
+                  Kế hoạch hôm nay · Phân tầng ưu tiên
+                </span>
+              </div>
+              <span className="text-xs font-semibold text-stone-500 dark:text-stone-400">
+                Môn: {subject.subjectName}
               </span>
             </div>
 
-            <h2 className="text-xl sm:text-2xl font-bold text-stone-900 dark:text-stone-100 leading-snug">
-              {nextTargetTopic}
-            </h2>
+            {/* 4-Tier Prioritized Task Stack */}
+            <div className="space-y-3">
+              {/* Tier 1: Bài giáo viên bắt buộc, sắp hết hạn */}
+              {urgentAssignment && (
+                <div className="p-4 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-rose-600 text-white">
+                        1. Bài tập bắt buộc từ giáo viên
+                      </span>
+                      {urgentAssignment.dueAt && (
+                        <span className="text-[11px] font-bold text-rose-700 dark:text-rose-400">
+                          ⏱ Hạn nộp: {new Date(urgentAssignment.dueAt).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      )}
+                    </div>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                      {urgentAssignment.title}
+                    </h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Tiến độ bài làm: {urgentAssignment.progress?.completedQuestionCount || 0} / {urgentAssignment.progress?.totalQuestionCount || 0} câu
+                    </p>
+                  </div>
+                  <Link
+                    to={studentScopeUrl(`/hoc-tap/bai-tap/${urgentAssignment.assignmentId}`, searchParams)}
+                    className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-xs transition-colors text-center whitespace-nowrap self-start sm:self-auto cursor-pointer"
+                  >
+                    Làm bài tập ngay →
+                  </Link>
+                </div>
+              )}
 
-            <p className="text-xs sm:text-sm text-stone-600 dark:text-stone-400 max-w-xl leading-relaxed">
-              {missionExplanation}
-            </p>
+              {/* Tier 2: Phiên AI đang thực hiện */}
+              {activeSession && (
+                <div className="p-4 rounded-xl border border-purple-200 dark:border-purple-900/60 bg-purple-50/70 dark:bg-purple-950/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-purple-600 text-white animate-pulse">
+                        2. Phiên AI đang thực hiện
+                      </span>
+                      <span className="text-[11px] font-bold text-purple-700 dark:text-purple-300">
+                        ⏱ {activeSession.estimatedMinutes} phút
+                      </span>
+                    </div>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                      {activeSession.title}
+                    </h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {activeSession.objective}
+                    </p>
+                  </div>
+                  <Link
+                    to={studentScopeUrl(`/hoc-tap/lo-trinh-hoc-tap?subjectId=${selectedSubjectId}`, searchParams)}
+                    className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-xs transition-colors text-center whitespace-nowrap self-start sm:self-auto cursor-pointer"
+                  >
+                    Tiếp tục học ngay →
+                  </Link>
+                </div>
+              )}
 
-            <div className="flex flex-wrap items-center gap-4 text-xs text-stone-500 dark:text-stone-400 pt-1">
-              <span className="inline-flex items-center gap-1.5">
-                <span className="text-stone-400">⏱</span>
-                <span>Thời lượng theo câu hỏi</span>
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="text-stone-400">●</span>
-                <span>Luyện theo đề xuất hiện tại</span>
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="text-stone-400">⚡</span>
-                <span>Phân tích tư duy thích ứng</span>
-              </span>
+              {/* Tier 3: Phiên AI tiếp theo được phép học */}
+              {nextEligibleSession && (
+                <div className="p-4 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/70 dark:bg-indigo-950/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-indigo-600 text-white">
+                        3. Phiên AI tiếp theo
+                      </span>
+                      <span className="text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
+                        Mục tiêu: {nextEligibleSession.targetMastery}% mastery
+                      </span>
+                    </div>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                      {nextEligibleSession.title}
+                    </h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {nextEligibleSession.objective}
+                    </p>
+                  </div>
+                  <Link
+                    to={selectedSubjectId ? `/hoc-tap/lo-trinh-hoc-tap?subjectId=${selectedSubjectId}` : `/hoc-tap/lo-trinh-hoc-tap`}
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition-colors text-center whitespace-nowrap self-start sm:self-auto cursor-pointer"
+                  >
+                    Bắt đầu phiên →
+                  </Link>
+                </div>
+              )}
+
+              {/* Tier 4: Hoạt động tùy chọn / Luyện tập tự do */}
+              <div className="p-4 rounded-xl border border-stone-200 dark:border-stone-800 bg-stone-50/60 dark:bg-stone-900/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+                <div className="space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-stone-600 text-white">
+                      4. Hoạt động tùy chọn
+                    </span>
+                    <span className="text-[11px] text-stone-500">
+                      Luyện tập tự do theo năng lực
+                    </span>
+                  </div>
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                    {nextTargetTopic}
+                  </h4>
+                  <p className="text-xs text-stone-500 dark:text-stone-400">
+                    {missionExplanation}
+                  </p>
+                </div>
+                <Link
+                  to={practiceLink}
+                  className="px-4 py-2 rounded-xl bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-stone-200 text-white dark:text-stone-900 font-bold text-xs shadow-xs transition-colors text-center whitespace-nowrap self-start sm:self-auto cursor-pointer"
+                >
+                  Luyện tự do →
+                </Link>
+              </div>
             </div>
-          </div>
-
-          <div className="relative z-10 pt-5 mt-4 border-t border-stone-100 dark:border-stone-800/80 flex items-center justify-between">
-            <span className="text-xs font-medium text-stone-500 dark:text-stone-400 hidden sm:inline">
-              Môn: {subject.subjectName}
-            </span>
-            <Link
-              to={practiceLink}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-stone-200 text-white dark:text-stone-900 text-xs sm:text-sm font-bold shadow-xs transition-all cursor-pointer"
-            >
-              <span>Bắt đầu học ngay</span>
-              <span>→</span>
-            </Link>
           </div>
         </div>}
 
