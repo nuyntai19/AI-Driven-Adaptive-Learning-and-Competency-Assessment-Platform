@@ -26,7 +26,7 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
   const current = reviewing ? undefined : run.data?.activities.find(a => !done(a));
   const evaluation = useQuery({ queryKey: ["mission-evaluation", actor?.centerId, actor?.userId, run.data?.sessionRunId],
     queryFn: () => evaluateMissionRunV4(run.data!.sessionRunId), enabled: !reviewing && !!run.data && !current && !feedbackActivity && run.data.activities.length > 0 && run.data.activities.every(done),
-    retry: false, refetchInterval: query => query.state.data?.outcome === "PendingGrading" ? 4000 : false });
+    retry: false, refetchInterval: query => query.state.data?.outcome === "PendingGrading" ? 3000 : false, refetchIntervalInBackground: true });
   const close = () => { void cache.invalidateQueries({ queryKey: ["learning-agenda"] }); void cache.invalidateQueries({ queryKey: ["learning-paths"] }); onClose(); };
   if (!isOpen || !mission) return null;
   const ongoing = ongoingMissionFromError(run.error, mission);
@@ -60,10 +60,37 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
         {!reviewing && evaluation.isFetching && !evaluation.data && run.data && !current && !feedbackActivity && <p role="status">Đang tổng kết buổi học…</p>}
         {!reviewing && evaluation.error && <div role="alert" className="rounded-xl bg-rose-50 p-4 text-rose-800">Chưa lấy được kết quả. Bài đã nộp vẫn được giữ. {extractProblemDetails(evaluation.error).message}
           <button className="ml-2 underline" onClick={() => void evaluation.refetch()}>Đánh giá lại</button></div>}
-        {!reviewing && evaluation.data && !feedbackActivity && <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-5 text-indigo-950"><h3 className="text-xl font-semibold">{outcomeNames[evaluation.data.outcome] ?? evaluation.data.outcome}</h3>
-          {evaluation.data.decisionReasons.map((r, i) => <p className="mt-3 text-sm leading-relaxed" key={i}>{r}</p>)}
-          <p className="mt-4 text-sm">Quay lại tuyến học để xem bước tiếp theo và lịch ôn. Hoàn thành phần luyện chưa thay thế kết quả tự kiểm tra.</p>
-          <button className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-white" onClick={close}>Về tuyến học</button></div>}
+        {!reviewing && evaluation.data && !feedbackActivity && (
+          evaluation.data.outcome === "PendingGrading" ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-amber-950">
+              <div className="flex items-center gap-3">
+                <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-amber-600 border-t-transparent" />
+                <h3 className="text-lg font-semibold">Đang chấm điểm và phân tích lập luận bằng AI…</h3>
+              </div>
+              <p className="mt-2 text-sm leading-relaxed text-amber-900">
+                Bài làm của bạn đã được ghi nhận an toàn. AI đang phân tích từng bước lập luận (thường mất 5-15 giây). Trang sẽ tự động hiển thị kết quả ngay khi chấm xong.
+              </p>
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <button
+                  className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
+                  onClick={() => void evaluation.refetch()}
+                >
+                  Kiểm tra kết quả ngay
+                </button>
+                <button className="rounded-lg border border-amber-300 px-4 py-2 text-sm text-amber-900 hover:bg-amber-100" onClick={close}>
+                  Về tuyến học
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-5 text-indigo-950">
+              <h3 className="text-xl font-semibold">{outcomeNames[evaluation.data.outcome] ?? evaluation.data.outcome}</h3>
+              {evaluation.data.decisionReasons.map((r, i) => <p className="mt-3 text-sm leading-relaxed" key={i}>{r}</p>)}
+              <p className="mt-4 text-sm">Quay lại tuyến học để xem bước tiếp theo và lịch ôn. Hoàn thành phần luyện chưa thay thế kết quả tự kiểm tra.</p>
+              <button className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-white" onClick={close}>Về tuyến học</button>
+            </div>
+          )
+        )}
         {!current && run.data?.activities.filter(a => a.content && done(a)).map(a => {
           const p = (a.content?.payload ?? {}) as Record<string, unknown>;
           return <details key={a.activityRunId} className="rounded-xl border border-slate-200 p-4"><summary className="cursor-pointer font-semibold">Xem lại: {a.content?.title}</summary>
