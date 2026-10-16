@@ -83,6 +83,8 @@ public sealed class GetNextQuestionUseCase : IGetNextQuestionUseCase
 
         if (dbSession is not null)
         {
+            if (dbSession.PolicyVersion == Planning.LearningPathV4Data.Policy)
+                return GetNextQuestionResult.FailNotFound("Nhiệm vụ này mở trong không gian lộ trình, không phải luyện tập tự do.");
             var activeRun = await _dbContext.LearningPathSessionRuns
                 .FirstOrDefaultAsync(r => r.CenterId == center && r.StudentId == student &&
                                          r.SessionId == dbSession.SessionId &&

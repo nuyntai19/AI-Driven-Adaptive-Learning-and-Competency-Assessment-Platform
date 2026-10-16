@@ -3170,3 +3170,23 @@ Hệ thống thiết lập ranh giới bảo mật nghiêm ngặt giữa Quản 
   - Khi `reasoningRequired == false`: Học sinh chỉ cần chọn/nhập đáp án chính xác. Nếu bỏ trống trường `reasoningText` và không đính kèm ảnh nháp, bài làm vẫn được chấm điểm hợp lệ và cập nhật độ thành thạo tri thức (Mastery) mà không bị phạt hay từ chối.
   - Khi `reasoningRequired == true`: Học sinh bắt buộc phải có nội dung giải trình hoặc ảnh nháp để nộp bài.
   - *Tự nguyện giải trình:* Nếu câu hỏi có `reasoningRequired == false` nhưng học sinh chủ động nhập lời giải hoặc đính kèm nháp, hệ thống AI vẫn kích hoạt phân tích đa phương thức để ghi nhận các điểm nhận thức sâu sắc vào Digital Twin.
+
+## 92. Learning Path V4 — corrective contract, 2026-10-16
+
+All routes below use `/api/v1/students/me`, resolved tenant, the authenticated student's profile and current subject/class curriculum. Cross-owner resources return 404; invalid scope returns 403; invalid input 422; conflicting state or revision 409. Access requires `recommendations.student.read_own`; execution mutations additionally require `learning.attempts.submit`.
+
+| Route | Behavior |
+|---|---|
+| `POST /learning-goals` | Creates a draft goal using real selected node IDs; does not replace the active route. |
+| `POST /path-proposals` | Returns real scoped milestones, activity types, duration estimates and availability reasons. |
+| `POST /path-proposals/{id}/accept` | Atomic, idempotent acceptance under a student lock. Open V4 runs/pending reviews block replacement. Legacy InProgress runs are abandoned with audit reason and preserved submissions, as disclosed in preview. |
+| `GET /learning-paths/capability-map?subjectId=&classId=` | Real node/evidence states; Unknown is distinct from zero mastery. |
+| `GET /learning-agenda?subjectId=&classId=&availableMinutes=15` | Accepted route, missions, ongoing runs and feasible next options; no write/backfill. |
+| `POST /missions/{id}/start` | Idempotently persists/resumes a real session run, activities and issued items. Returns `MissionRunDto`. |
+| `GET /activity-runs/{id}` | Own activity and draft; question activities omit answers/rubric. |
+| `PUT /activity-runs/{id}/draft` | `expectedRevision` including zero is checked; conflict cannot overwrite another draft. |
+| `POST /activity-runs/{id}/assistance` | Server blocks IndependentCheck/TransferChallenge assistance; guided help comes from actual content. |
+| `POST /activity-runs/{id}/submissions` | Question submissions require `clientSubmissionId` and issued `questionId`, use canonical grading/evidence pipeline. Same-payload retries reuse the Attempt; changed-payload retries conflict. Study completion creates no synthetic Attempt. |
+| `POST /mission-runs/{id}/evaluate-v4` | Outcomes: ActivityOnlyCompleted, InsufficientEvidence, PendingGrading, PendingTeacherReview, Passed, NeedsSupport. Passed requires at least five distinct valid independent questions and 80% correct, with no pending review. |
+
+Legacy generic adaptive start/next-question cannot execute a V4 mission. Lesson completion does not certify skill mastery; teacher review uses canonical evidence processing before reevaluation. This contract does not assert completion of all 38 original V4 acceptance criteria.

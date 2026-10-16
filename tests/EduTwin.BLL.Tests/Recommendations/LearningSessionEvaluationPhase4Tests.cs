@@ -134,6 +134,13 @@ public sealed class LearningSessionEvaluationPhase4Tests : IDisposable
             RowVersion = 1ul
         };
 
+        // A session must belong to a real student-owned path, as it does under relational foreign keys.
+        _dbContext.LearningPaths.Add(new LearningPath
+        {
+            LearningPathId = session.LearningPathId, CenterId = _centerId, StudentId = _studentId, SubjectId = _subjectId,
+            Status = LearningPathStatus.Active, GeneratedAt = _now, CreatedAt = _now, UpdatedAt = _now, RowVersion = 1
+        });
+
         await _dbContext.LearningPathSessions.AddAsync(session);
         await _dbContext.SaveChangesAsync();
         return session;

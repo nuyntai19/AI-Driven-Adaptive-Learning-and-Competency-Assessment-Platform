@@ -35,7 +35,7 @@ public class GlobalQueryFilterTests
         using var context = CreateContext();
         var entityTypes = context.Model.GetEntityTypes().Where(e => typeof(ITenantOwnedEntity).IsAssignableFrom(e.ClrType)).ToList();
 
-        Assert.Equal(52, entityTypes.Count); // prior 50 + learning path session and run
+        Assert.Equal(58, entityTypes.Count); // prior 52 + 6 learning path v4 entities
 
         foreach (var entityType in entityTypes)
         {
@@ -49,7 +49,7 @@ public class GlobalQueryFilterTests
         using var context = CreateContext();
         var entityTypes = context.Model.GetEntityTypes().Where(e => typeof(IMutableTenantAggregate).IsAssignableFrom(e.ClrType)).ToList();
 
-        Assert.Equal(23, entityTypes.Count); // prior 21 + learning path session and run
+        Assert.Equal(29, entityTypes.Count); // prior 23 + 6 learning path v4 entities
 
         foreach (var entityType in entityTypes)
         {

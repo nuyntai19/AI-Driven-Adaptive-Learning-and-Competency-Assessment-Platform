@@ -31,6 +31,9 @@ public sealed class RecommendationsController : ControllerBase
     private readonly IGetDetailedLearningPathUseCase _getDetailedLearningPathUseCase;
     private readonly IUpdateLearningPathSessionUseCase? _updateLearningPathSessionUseCase;
     private readonly ILearningSessionExecutionService? _sessionExecutionService;
+    private readonly EduTwin.BLL.Recommendations.Planning.ILearningPathV4Planner? _v4Planner;
+    private readonly ILearningPathV4Evaluator? _v4Evaluator;
+    private readonly ILearningActivityExecutionService? _activityExecutionService;
     private readonly ITenantContext? _tenantContext;
     private readonly TimeProvider _timeProvider;
 
@@ -47,6 +50,9 @@ public sealed class RecommendationsController : ControllerBase
         IGetDetailedLearningPathUseCase? getDetailedLearningPathUseCase = null,
         IUpdateLearningPathSessionUseCase? updateLearningPathSessionUseCase = null,
         ILearningSessionExecutionService? sessionExecutionService = null,
+        EduTwin.BLL.Recommendations.Planning.ILearningPathV4Planner? v4Planner = null,
+        ILearningPathV4Evaluator? v4Evaluator = null,
+        ILearningActivityExecutionService? activityExecutionService = null,
         ITenantContext? tenantContext = null)
     {
         _getActiveRecommendationUseCase = getActiveRecommendationUseCase;
@@ -60,6 +66,9 @@ public sealed class RecommendationsController : ControllerBase
         _getDetailedLearningPathUseCase = getDetailedLearningPathUseCase!;
         _updateLearningPathSessionUseCase = updateLearningPathSessionUseCase;
         _sessionExecutionService = sessionExecutionService;
+        _v4Planner = v4Planner;
+        _v4Evaluator = v4Evaluator;
+        _activityExecutionService = activityExecutionService;
         _tenantContext = tenantContext;
     }
 
@@ -763,6 +772,197 @@ public sealed class RecommendationsController : ControllerBase
                 StatusCodes.Status400BadRequest, "https://edutwin.local/problems/validation",
                 "Không thể đánh giá buổi học", ex.Message, traceId, ErrorCodes.ValidationFailed));
         }
+    }
+
+    [HttpPost("learning-goals")]
+    [Authorize(Policy = "recommendations.student.read_own")]
+    [V4LearningExceptionFilter]
+    [ProducesResponseType(typeof(LearningGoalDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> CreateOrUpdateLearningGoal([FromBody] CreateLearningGoalRequest request, CancellationToken cancellationToken)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        if (_v4Planner is null || _tenantContext is null || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, CreateProblemDetails(StatusCodes.Status403Forbidden, "https://edutwin.local/problems/forbidden", "Không có quyền", "Tenant not resolved", traceId, ErrorCodes.ForbiddenResource));
+        }
+
+        var result = await _v4Planner.CreateOrUpdateGoalAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, request, cancellationToken);
+        return Ok(result);
+    }
+
+    [HttpGet("learning-goals")]
+    [Authorize(Policy = "recommendations.student.read_own")]
+    [V4LearningExceptionFilter]
+    [ProducesResponseType(typeof(LearningGoalDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetActiveLearningGoal([FromQuery] Guid subjectId, CancellationToken cancellationToken)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        if (_v4Planner is null || _tenantContext is null || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, CreateProblemDetails(StatusCodes.Status403Forbidden, "https://edutwin.local/problems/forbidden", "Không có quyền", "Tenant not resolved", traceId, ErrorCodes.ForbiddenResource));
+        }
+
+        var result = await _v4Planner.GetActiveGoalAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, subjectId, cancellationToken);
+        return Ok(result);
+    }
+
+    [HttpPost("path-proposals")]
+    [Authorize(Policy = "recommendations.student.read_own")]
+    [V4LearningExceptionFilter]
+    [ProducesResponseType(typeof(PathProposalDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GeneratePathProposal([FromBody] GeneratePathProposalRequest request, CancellationToken cancellationToken)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        if (_v4Planner is null || _tenantContext is null || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, CreateProblemDetails(StatusCodes.Status403Forbidden, "https://edutwin.local/problems/forbidden", "Không có quyền", "Tenant not resolved", traceId, ErrorCodes.ForbiddenResource));
+        }
+
+        var result = await _v4Planner.GeneratePathProposalAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, request, cancellationToken);
+        return Ok(result);
+    }
+
+    [HttpPost("path-proposals/{proposalId:guid}/accept")]
+    [Authorize(Policy = "recommendations.student.read_own")]
+    [V4LearningExceptionFilter]
+    [ProducesResponseType(typeof(AcceptPathProposalResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> AcceptPathProposal([FromRoute] Guid proposalId, CancellationToken cancellationToken)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        if (_v4Planner is null || _tenantContext is null || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, CreateProblemDetails(StatusCodes.Status403Forbidden, "https://edutwin.local/problems/forbidden", "Không có quyền", "Tenant not resolved", traceId, ErrorCodes.ForbiddenResource));
+        }
+
+        var result = await _v4Planner.AcceptPathProposalAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, proposalId, cancellationToken);
+        return Ok(result);
+    }
+
+    [HttpGet("learning-paths/capability-map")]
+    [Authorize(Policy = "recommendations.student.read_own")]
+    [V4LearningExceptionFilter]
+    [ProducesResponseType(typeof(CapabilityMapDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetCapabilityMap([FromQuery] Guid subjectId, [FromQuery] Guid? classId, CancellationToken cancellationToken)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        if (_v4Planner is null || _tenantContext is null || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, CreateProblemDetails(StatusCodes.Status403Forbidden, "https://edutwin.local/problems/forbidden", "Không có quyền", "Tenant not resolved", traceId, ErrorCodes.ForbiddenResource));
+        }
+
+        var result = await _v4Planner.GetCapabilityMapAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, subjectId, classId, cancellationToken);
+        return Ok(result);
+    }
+
+    [HttpGet("learning-agenda")]
+    [Authorize(Policy = "recommendations.student.read_own")]
+    [V4LearningExceptionFilter]
+    [ProducesResponseType(typeof(LearningAgendaDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetLearningAgenda([FromQuery] Guid subjectId, [FromQuery] uint availableMinutes = 15, CancellationToken cancellationToken = default, [FromQuery] Guid? classId = null)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        if (_v4Planner is null || _tenantContext is null || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, CreateProblemDetails(StatusCodes.Status403Forbidden, "https://edutwin.local/problems/forbidden", "Không có quyền", "Tenant not resolved", traceId, ErrorCodes.ForbiddenResource));
+        }
+
+        var result = await _v4Planner.GetLearningAgendaAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, subjectId, availableMinutes, cancellationToken, classId);
+        return Ok(result);
+    }
+
+    [HttpPost("missions/{missionId:guid}/start")]
+    [Authorize(Policy = "recommendations.student.read_own")]
+    [V4LearningExceptionFilter]
+    [Authorize(Policy = "learning.attempts.submit")]
+    public async Task<IActionResult> StartMission([FromRoute] Guid missionId, CancellationToken cancellationToken)
+    {
+        if (_activityExecutionService == null || _tenantContext?.IsResolved != true || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
+            return Forbid();
+        return Ok(await _activityExecutionService.StartMissionAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, missionId, cancellationToken));
+    }
+
+    [HttpGet("activity-runs/{activityRunId:long}")]
+    [Authorize(Policy = "recommendations.student.read_own")]
+    [V4LearningExceptionFilter]
+    [ProducesResponseType(typeof(ActivityRunDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetActivityRun([FromRoute] ulong activityRunId, CancellationToken cancellationToken)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        if (_activityExecutionService is null || _tenantContext is null || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, CreateProblemDetails(StatusCodes.Status403Forbidden, "https://edutwin.local/problems/forbidden", "Không có quyền", "Tenant not resolved", traceId, ErrorCodes.ForbiddenResource));
+        }
+
+        var result = await _activityExecutionService.GetActivityRunAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, activityRunId, cancellationToken);
+        return Ok(result);
+    }
+
+    [HttpPut("activity-runs/{activityRunId:long}/draft")]
+    [Authorize(Policy = "recommendations.student.read_own")]
+    [V4LearningExceptionFilter]
+    [ProducesResponseType(typeof(SaveActivityDraftResponse), StatusCodes.Status200OK)]
+    [Authorize(Policy = "learning.attempts.submit")]
+    public async Task<IActionResult> SaveActivityDraft([FromRoute] ulong activityRunId, [FromBody] SaveActivityDraftRequest request, CancellationToken cancellationToken)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        if (_activityExecutionService is null || _tenantContext is null || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, CreateProblemDetails(StatusCodes.Status403Forbidden, "https://edutwin.local/problems/forbidden", "Không có quyền", "Tenant not resolved", traceId, ErrorCodes.ForbiddenResource));
+        }
+
+        var result = await _activityExecutionService.SaveDraftAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, activityRunId, request, cancellationToken);
+        return Ok(result);
+    }
+
+    [HttpPost("activity-runs/{activityRunId:long}/assistance")]
+    [Authorize(Policy = "recommendations.student.read_own")]
+    [V4LearningExceptionFilter]
+    [ProducesResponseType(typeof(AssistanceResponseDto), StatusCodes.Status200OK)]
+    [Authorize(Policy = "learning.attempts.submit")]
+    public async Task<IActionResult> RequestActivityAssistance([FromRoute] ulong activityRunId, [FromBody] RequestAssistanceRequest request, CancellationToken cancellationToken)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        if (_activityExecutionService is null || _tenantContext is null || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, CreateProblemDetails(StatusCodes.Status403Forbidden, "https://edutwin.local/problems/forbidden", "Không có quyền", "Tenant not resolved", traceId, ErrorCodes.ForbiddenResource));
+        }
+
+        var result = await _activityExecutionService.RequestAssistanceAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, activityRunId, request, cancellationToken);
+        return Ok(result);
+    }
+
+    [HttpPost("activity-runs/{activityRunId:long}/submissions")]
+    [Authorize(Policy = "recommendations.student.read_own")]
+    [V4LearningExceptionFilter]
+    [ProducesResponseType(typeof(ActivitySubmissionResponseDto), StatusCodes.Status200OK)]
+    [Authorize(Policy = "learning.attempts.submit")]
+    public async Task<IActionResult> SubmitActivity([FromRoute] ulong activityRunId, [FromBody] SubmitActivityRequest request, CancellationToken cancellationToken)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        if (_activityExecutionService is null || _tenantContext is null || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, CreateProblemDetails(StatusCodes.Status403Forbidden, "https://edutwin.local/problems/forbidden", "Không có quyền", "Tenant not resolved", traceId, ErrorCodes.ForbiddenResource));
+        }
+
+        var result = await _activityExecutionService.SubmitActivityAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, activityRunId, request, cancellationToken);
+        return Ok(result);
+    }
+
+    [HttpPost("mission-runs/{sessionRunId:long}/evaluate-v4")]
+    [Authorize(Policy = "recommendations.student.read_own")]
+    [V4LearningExceptionFilter]
+    [ProducesResponseType(typeof(V4SessionEvaluationResultDto), StatusCodes.Status200OK)]
+    [Authorize(Policy = "learning.attempts.submit")]
+    public async Task<IActionResult> EvaluateMissionRunV4([FromRoute] ulong sessionRunId, CancellationToken cancellationToken)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        if (_v4Evaluator is null || _tenantContext is null || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, CreateProblemDetails(StatusCodes.Status403Forbidden, "https://edutwin.local/problems/forbidden", "Không có quyền", "Tenant not resolved", traceId, ErrorCodes.ForbiddenResource));
+        }
+
+        var result = await _v4Evaluator.EvaluateMissionRunAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, sessionRunId, cancellationToken);
+        return Ok(result);
     }
 
     private ProblemDetails CreateProblemDetails(

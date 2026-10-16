@@ -380,6 +380,18 @@ public sealed class LearningSessionExecutionServiceTests : IDisposable
             RowVersion = 1ul
         };
 
+        _dbContext.LearningPaths.Add(new LearningPath
+        {
+            LearningPathId = session.LearningPathId, CenterId = _centerId, StudentId = _studentId, SubjectId = _subjectId,
+            Status = LearningPathStatus.Active, GeneratedAt = _now, CreatedAt = _now, UpdatedAt = _now, RowVersion = 1
+        });
+        if (!_dbContext.LearningPaths.Local.Any(p => p.LearningPathId == session.LearningPathId) &&
+            !await _dbContext.LearningPaths.AnyAsync(p => p.LearningPathId == session.LearningPathId))
+            _dbContext.LearningPaths.Add(new LearningPath
+            {
+                LearningPathId = session.LearningPathId, CenterId = _centerId, StudentId = _studentId, SubjectId = _subjectId,
+                Status = LearningPathStatus.Active, GeneratedAt = _now, CreatedAt = _now, UpdatedAt = _now, RowVersion = 1
+            });
         await _dbContext.LearningPathSessions.AddAsync(session);
         await _dbContext.SaveChangesAsync();
         return session;
@@ -502,6 +514,13 @@ public sealed class LearningSessionExecutionServiceTests : IDisposable
             UpdatedAt = _now,
             RowVersion = 1ul
         };
+        if (!_dbContext.LearningPaths.Local.Any(p => p.LearningPathId == session.LearningPathId) &&
+            !await _dbContext.LearningPaths.AnyAsync(p => p.LearningPathId == session.LearningPathId))
+            _dbContext.LearningPaths.Add(new LearningPath
+            {
+                LearningPathId = session.LearningPathId, CenterId = _centerId, StudentId = _studentId, SubjectId = _subjectId,
+                Status = LearningPathStatus.Active, GeneratedAt = _now, CreatedAt = _now, UpdatedAt = _now, RowVersion = 1
+            });
         await _dbContext.LearningPathSessions.AddAsync(session);
         await _dbContext.SaveChangesAsync();
 
@@ -572,6 +591,13 @@ public sealed class LearningSessionExecutionServiceTests : IDisposable
             UpdatedAt = _now,
             RowVersion = 1ul
         };
+        if (!_dbContext.LearningPaths.Local.Any(p => p.LearningPathId == session.LearningPathId) &&
+            !await _dbContext.LearningPaths.AnyAsync(p => p.LearningPathId == session.LearningPathId))
+            _dbContext.LearningPaths.Add(new LearningPath
+            {
+                LearningPathId = session.LearningPathId, CenterId = _centerId, StudentId = _studentId, SubjectId = _subjectId,
+                Status = LearningPathStatus.Active, GeneratedAt = _now, CreatedAt = _now, UpdatedAt = _now, RowVersion = 1
+            });
         await _dbContext.LearningPathSessions.AddAsync(session);
         await _dbContext.SaveChangesAsync();
 

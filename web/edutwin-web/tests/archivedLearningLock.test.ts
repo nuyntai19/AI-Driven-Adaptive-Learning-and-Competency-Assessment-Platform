@@ -21,11 +21,12 @@ test("adaptive practice does not fetch or submit while the selected learning sco
 });
 test("learning path generation and progress require writable access and keep class context",()=>{
   const page=read("pages/StudentLearningPathPage.tsx");
-  assert.equal((page.match(/enabled: !!effectiveSubjectId && access.writable/g)||[]).length,3);
+  assert.equal((page.match(/enabled: !!subjectId && access.writable/g)||[]).length,2);
   assert.match(page,/if \(access.readOnly\) return <StudentLearningReadOnlyNotice/);
-  assert.match(page,/await startSessionMutation.mutateAsync\(sessionId\)/);
-  assert.match(page,/access.classId, access.history/);assert.match(page,/history: access.history/);
-  assert.match(page,/navigate\(`\/hoc-tap\/luyen-tap\?\$\{p\}`\)/);
+  assert.match(page,/getCapabilityMap\(subjectId, access.classId\)/);
+  assert.match(page,/getLearningAgenda\(subjectId, minutes, access.classId\)/);
+  assert.match(page,/<MissionPlayerModal/);
+  assert.doesNotMatch(page,/navigate\(`\/hoc-tap\/luyen-tap/);
 });
 test("historical assignment navigation is review-only and the notice is not a fake historical path",()=>{
   const page=read("pages/StudentAssignmentDetailPage.tsx");

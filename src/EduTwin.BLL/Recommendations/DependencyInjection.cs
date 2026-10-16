@@ -14,6 +14,9 @@ public static class DependencyInjection
         services.AddScoped<IRecommendationEngine, RecommendationEngine>();
 
         services.AddScoped<ILearningSessionExecutionService, LearningSessionExecutionService>();
+        services.AddScoped<Planning.ILearningPathV4Planner, Planning.LearningPathV4Planner>();
+        services.AddScoped<ILearningPathV4Evaluator, LearningPathV4Evaluator>();
+        services.AddScoped<ILearningActivityExecutionService, LearningActivityExecutionService>();
 
         services.AddScoped<IGetNextQuestionUseCase, GetNextQuestionUseCase>();
         services.AddScoped<IGetActiveRecommendationUseCase, GetActiveRecommendationUseCase>();

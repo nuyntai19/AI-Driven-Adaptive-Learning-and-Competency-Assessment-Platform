@@ -289,7 +289,7 @@ export const StudentDashboardPage: React.FC = () => {
                     </p>
                   </div>
                   <Link
-                    to={`/hoc-tap/luyen-tap?subjectId=${selectedSubjectId}&sessionId=${activeSession.sessionId}`}
+                    to={studentScopeUrl(`/hoc-tap/lo-trinh-hoc-tap?subjectId=${selectedSubjectId}`, searchParams)}
                     className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-xs transition-colors text-center whitespace-nowrap self-start sm:self-auto cursor-pointer"
                   >
                     Tiếp tục học ngay →

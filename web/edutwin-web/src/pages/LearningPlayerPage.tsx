@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { Link, useSearchParams, useParams, useNavigate } from "react-router-dom";
+import { Link, Navigate, useSearchParams, useParams, useNavigate } from "react-router-dom";
 import {
   getLearningPathSession,
   updateLearningPathSession,
@@ -132,6 +132,16 @@ function loadStoredAssignmentAnswers(scope: AssignmentDraftScope | null): Record
 }
 
 export const LearningPlayerPage = () => {
+  const [params] = useSearchParams();
+  if (params.get("sessionId") && !params.get("assignmentId")) {
+    const next = new URLSearchParams(params);
+    next.delete("sessionRunId"); next.delete("sessionId");
+    return <Navigate replace to={`/hoc-tap/lo-trinh-hoc-tap?${next}`} />;
+  }
+  return <PracticePlayerPage />;
+};
+
+const PracticePlayerPage = () => {
   const navigate = useNavigate();
   const { questionId: routeQuestionId } = useParams<{ questionId?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1112,6 +1122,22 @@ export const LearningPlayerPage = () => {
   useEffect(() => { if (pathSessionId && feedbackData) void evaluatePathSession(); }, [pathSessionId, feedbackData, evaluatePathSession]);
 
   // Mode 2: Adaptive Practice Mode Query
+  const isSessionRunFinished =
+    pathSession?.status === "Completed" ||
+    pathSession?.status === "NeedsReview" ||
+    resumeData?.isCompleted ||
+    resumeData?.runStatus === "Completed" ||
+    resumeData?.outcome === "Passed" ||
+    resumeData?.outcome === "NotPassed" ||
+    resumeData?.outcome === "NeedsReview";
+
+  const isSessionRunActive =
+    !isSessionRunFinished &&
+    (pathSession?.status === "InProgress" ||
+      resumeData?.runStatus === "InProgress" ||
+      resumeData?.sessionStatus === "InProgress" ||
+      Boolean(activeSessionRunId));
+
   const {
     data: adaptiveQuestion,
     isLoading: adaptiveLoading,
@@ -1120,7 +1146,7 @@ export const LearningPlayerPage = () => {
   } = useQuery<NextQuestionDataDto>({
     queryKey: ["nextQuestion", currentUser?.centerId, currentUser?.userId, subjectId, learningAccess.classId, pathSessionId],
     queryFn: () => getNextQuestion(subjectId, learningAccess.classId, isHistory, pathSessionId || undefined),
-    enabled: learningAccess.writable && !assignmentId && !!subjectId && (!pathSessionId || pathSession?.status === "InProgress") && !feedbackData && !pollingJobId && !persistedJobId,
+    enabled: learningAccess.writable && !assignmentId && !!subjectId && (!pathSessionId || isSessionRunActive) && !feedbackData && !pollingJobId && !persistedJobId,
   });
 
   // Effective unified question object
@@ -1387,6 +1413,35 @@ export const LearningPlayerPage = () => {
     setDrawingUploadToken(null);
     snapshotUploadsRef.current = {};
     if (refetchAdaptiveQuestion) void refetchAdaptiveQuestion();
+  };
+
+  const [isStartingSession, setIsStartingSession] = useState(false);
+  const handleStartSession = async () => {
+    if (!pathSessionId) return;
+    try {
+      setIsStartingSession(true);
+      setSessionUpdateError(null);
+      const startResult = await startLearningSession(pathSessionId, subjectId, learningAccess.classId || undefined);
+      setSessionOutcomeData(null);
+      setFeedbackData(null);
+      const p = new URLSearchParams(searchParams);
+      if (startResult.sessionRunId) {
+        p.set("sessionRunId", String(startResult.sessionRunId));
+      }
+      setSearchParams(p, { replace: true });
+      await Promise.all([
+        sessionQuery.refetch(),
+        sessionResumeQuery.refetch(),
+        queryClient.invalidateQueries({ queryKey: ["learning-path", subjectId] }),
+        queryClient.invalidateQueries({ queryKey: ["nextQuestion"] }),
+      ]);
+      if (refetchAdaptiveQuestion) void refetchAdaptiveQuestion();
+    } catch (err) {
+      console.error("Start session failed:", err);
+      setSessionUpdateError("Không thể bắt đầu phiên học. Vui lòng thử lại.");
+    } finally {
+      setIsStartingSession(false);
+    }
   };
 
   const handleRetrySessionRun = async () => {
@@ -2240,7 +2295,7 @@ export const LearningPlayerPage = () => {
     return <div className="p-6"><p role={sessionQuery.isError ? "alert" : "status"}>{sessionQuery.isError ? "Không thể tải buổi học trong phạm vi này." : "Đang tải buổi học…"}</p>
       <Link to={studentLearningPathReturnUrl(searchParams, pathSessionId)}>Quay lại lộ trình</Link></div>;
   }
-  if (pathSessionId && pathSession && !feedbackData && (pathSession.status !== "InProgress" || pathSession.recommendedQuestionIds.length === 0)) {
+  if (pathSessionId && pathSession && !feedbackData && (!isSessionRunActive || pathSession.recommendedQuestionIds.length === 0)) {
     return (
       <div className="min-h-screen bg-[#f8fafc] dark:bg-[#090d16] p-6 flex items-center justify-center text-slate-800 dark:text-slate-100">
         <div className="mx-auto max-w-xl rounded-3xl bg-white dark:bg-[#0f172a] p-8 sm:p-10 text-center shadow-xs border border-slate-200/80 dark:border-slate-800 space-y-5">
@@ -2290,6 +2345,16 @@ export const LearningPlayerPage = () => {
           )}
 
           <div className="pt-2 flex flex-wrap justify-center gap-3">
+            {!isSessionRunActive && pathSession.status !== "Completed" && pathSession.status !== "NeedsReview" && pathSession.recommendedQuestionIds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => void handleStartSession()}
+                disabled={isStartingSession}
+                className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs shadow-xs transition-colors cursor-pointer flex items-center gap-2"
+              >
+                {isStartingSession ? "Đang bắt đầu..." : "🚀 Bắt đầu học ngay"}
+              </button>
+            )}
             {(pathSession.status === "Completed" || pathSession.status === "NeedsReview" || resumeData?.isCompleted) && (
               <button
                 type="button"

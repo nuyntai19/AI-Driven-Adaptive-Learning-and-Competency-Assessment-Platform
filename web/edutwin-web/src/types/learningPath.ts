@@ -235,3 +235,250 @@ export interface EvaluateSessionResponse {
     traceId?: string;
   };
 }
+
+// --- V4 Personalized Learning Path Interfaces ---
+export interface LearningGoalDto {
+  goalId: string;
+  studentId: string;
+  subjectId: string;
+  classId?: string | null;
+  goalType: string;
+  title: string;
+  description?: string | null;
+  targetSkillIds: string[];
+  deadlineDate?: string | null;
+  availableMinutesPerDay: number;
+  availableDaysPerWeek: number;
+  preferredPace: string;
+  preferredMode: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateLearningGoalRequest {
+  subjectId: string;
+  classId?: string;
+  goalType?: string;
+  title?: string;
+  description?: string;
+  targetSkillIds?: string[];
+  deadlineDate?: string | null;
+  availableMinutesPerDay?: number;
+  availableDaysPerWeek?: number;
+  preferredPace?: string;
+  preferredMode?: string;
+}
+
+export interface ProposedMissionDto {
+  contentVersionId?: string | null;
+  canStart?: boolean;
+  missionId: string;
+  title: string;
+  purpose: string;
+  skillId: string;
+  estimatedMinutes: number;
+  activityTypes: string[];
+  selectionReason: string;
+}
+
+export interface ProposedMilestoneDto {
+  order: number;
+  title: string;
+  outcomeDescription: string;
+  skillIds: string[];
+  missions: ProposedMissionDto[];
+  hasTransferChallenge: boolean;
+}
+
+export interface PathProposalDto {
+  proposalId: string;
+  goalId: string;
+  subjectId: string;
+  goalTitle: string;
+  startingBaselineSummary: string;
+  confirmedSkills: string[];
+  developingSkills: string[];
+  unknownSkills: string[];
+  milestones: ProposedMilestoneDto[];
+  initialMission?: ProposedMissionDto | null;
+  alternativeOption?: ProposedMissionDto | null;
+  feasibilityStatus: 'Feasible' | 'TightBudget' | 'InsufficientTime' | string;
+  feasibilityMessage?: string | null;
+  estimatedWeeks: number;
+  expiresAt: string;
+  status: string;
+}
+
+export interface GeneratePathProposalRequest {
+  goalId: string;
+  subjectId: string;
+  classId?: string;
+}
+
+export interface AcceptPathProposalResponse {
+  learningPathId: string;
+  version: number;
+  status: string;
+  message: string;
+  firstMission?: ProposedMissionDto | null;
+}
+
+export interface SkillCapabilityStatusDto {
+  skillId: string;
+  skillName: string;
+  topicName: string;
+  description: string;
+  state: 'Unknown' | 'Developing' | 'Demonstrated' | 'Confirmed' | 'ReviewDue' | string;
+  availability: 'Available' | 'PrerequisiteBlocked' | 'ContentUnavailable' | 'OutOfScope' | string;
+  prerequisiteSkillIds: string[];
+  evidenceCount: number;
+  masteryScore?: number | null;
+  requiresProbe: boolean;
+  rationale: string;
+}
+
+export interface CapabilityMapDto {
+  subjectId: string;
+  studentId: string;
+  subjectName: string;
+  overallProgressRate: number;
+  skills: SkillCapabilityStatusDto[];
+  provenCapabilities: string[];
+  areasNeedingSupport: string[];
+  reviewDueSkills: string[];
+  lastUpdatedAt: string;
+}
+
+export interface AgendaItemDto {
+  missionId: string;
+  legacySessionId?: string | null;
+  title: string;
+  objective: string;
+  purpose: string;
+  skillId: string;
+  skillName: string;
+  estimatedDurationMinutes: number;
+  activityTypes: string[];
+  recommendationReason: string;
+  canStart: boolean;
+  status: string;
+  activeRunId?: number | null;
+}
+
+export interface LearningAgendaDto {
+  learningPathId?: string | null;
+  goalTitle?: string | null;
+  missions: AgendaItemDto[];
+  date: string;
+  availableMinutes: number;
+  agendaMessage: string;
+  primaryMission?: AgendaItemDto | null;
+  alternativeOptions: AgendaItemDto[];
+  ongoingRuns: AgendaItemDto[];
+  reviewDueTasks: AgendaItemDto[];
+}
+
+export interface ActivityContentDto {
+  contentVersionId: string;
+  skillId: string;
+  title: string;
+  description?: string | null;
+  activityType: string;
+  estimatedDurationMinutes: number;
+  payload?: any;
+  rubric?: any;
+}
+
+export interface ActivityRunDto {
+  question?: { question: { questionId: string; questionText: string; questionType: string; reasoningRequired: boolean; hasImage?: boolean; options: { optionId: string; label: string; text: string }[] } } | null;
+  activityRunId: number;
+  sessionRunId: number;
+  activityOrder: number;
+  activityType: 'WorkedExample' | 'FindError' | 'IndependentCheck' | 'Explore' | 'TransferChallenge' | string;
+  status: 'NotStarted' | 'InProgress' | 'Completed' | 'NeedsReview' | string;
+  draftPayload?: string | null;
+  draftRevision: number;
+  assistanceRequestedCount: number;
+  assistanceMode: string;
+  score?: number | null;
+  maxScore?: number | null;
+  isMastered?: boolean | null;
+  feedback?: string | null;
+  startedAt: string;
+  completedAt?: string | null;
+  content?: ActivityContentDto | null;
+}
+
+export interface SaveActivityDraftRequest {
+  draftPayload: string;
+  expectedRevision: number;
+}
+
+export interface SaveActivityDraftResponse {
+  activityRunId: number;
+  draftRevision: number;
+  savedAt: string;
+  hasConflict: boolean;
+}
+
+export interface RequestAssistanceRequest {
+  stepIndex: number;
+  studentQuery?: string;
+  questionId?: number;
+}
+
+export interface AssistanceResponseDto {
+  assistanceMode: 'Normal' | 'Blocked' | 'HintOnly' | string;
+  explanation: string;
+  hint?: string | null;
+  fallbackUsed: boolean;
+  isBlocked: boolean;
+  policyNotice: string;
+}
+
+export interface SubmitActivityRequest {
+  clientSubmissionId: string;
+  questionId?: number | string;
+  finalAnswer: string;
+  reasoningText?: string;
+  answerDisplayLatex?: string;
+  timeSpentSeconds?: number;
+  drawingUploadToken?: string;
+  selectedErrorStep?: string;
+  misconceptionReason?: string;
+}
+
+export interface MissionRunDto {
+  sessionRunId: number;
+  sessionId: string;
+  title: string;
+  status: string;
+  activities: ActivityRunDto[];
+}
+
+export interface ActivitySubmissionResponseDto {
+  activityRunId: number;
+  attemptId?: number | null;
+  isCorrect?: boolean | null;
+  awardedScore?: number | null;
+  activityStatus: string;
+  outcomeFeedback: string;
+  nextActivityOrder: number;
+  isRunFinished: boolean;
+}
+
+export interface V4SessionEvaluationResultDto {
+  sessionRunId: number;
+  sessionId: string;
+  outcome: 'Passed' | 'NeedsSupport' | 'NeedsReview' | string;
+  totalActivities: number;
+  completedActivities: number;
+  provenSkills: string[];
+  skillsNeedingSupport: string[];
+  unmeasuredSkills: string[];
+  decisionReasons: string[];
+  nextActions: ProposedMissionDto[];
+  hasPendingReview: boolean;
+  evaluatedAt: string;
+}

@@ -1671,3 +1671,11 @@ Hai bảng chứa dữ liệu nghiệp vụ có query filter theo trung tâm; b�
 ## 54. AI analysis profile provenance — 2026-10-07
 
 Migration `20261007054616_AddAIAnalysisProfileProvenance` thêm `reasoning_analyses.analysis_profile_version` (`varchar(200) NULL`). Các dòng cũ giữ NULL; phân tích mới lưu provider/model/policy/schema và chiến lược microbatch. `model_name` sẵn có được điền từ adapter server. Metadata không được nhận từ JSON của AI hoặc request học sinh. Provider enum bổ sung `Groq` nhưng vẫn lưu dạng chuỗi trong cột `provider` hiện có, không đổi kiểu/cắt dữ liệu. Evidence liên kết analysis như trước; không thêm điểm AI hoặc thay thuật toán Mastery.
+
+## 55. Learning Path V4 — 2026-10-16
+
+Migration `20261015180050_AddLearningPathV4Entities` adds six tables: `learning_goals`, `path_proposals`, `path_decisions`, `learning_content_versions`, `activity_runs`, `issued_items`. Existing Attempts, evidence, Twin and history rows are retained. These tables carry tenant scope and row versions; mutable execution uses student row locks plus draft revision checks.
+
+Accepted V4 paths use `PlanSchemaVersion = 4.0`. PlanJson stores the accepted proposal snapshot; relational Sessions/Runs/ActivityRuns/IssuedItems own execution. Issued question-to-Attempt linking occurs in the canonical submission transaction. Study activities have no synthetic Attempt. PathDecision records acceptance/evaluation reasons with policy `v4-evidence-1`, without writing invented mastery or directly changing append-only Attempt grades.
+
+Content is selected only when Published and matched to a real subject/node. The application content entity defaults to Draft; the inherited migration's SQL status default remains Published, so imports must explicitly set editorial status. No reviewed content library is seeded by the corrective rollout. Shortages are reported instead of duplicating question exposure as independent evidence.

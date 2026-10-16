@@ -35,8 +35,11 @@ test("target gap labels never double sign and distinguish reaching/exceeding goa
   assert.equal(goalGapLabel(8, 6), "Cần thêm 2.0 điểm"); assert.equal(goalGapLabel(8, 8), "Đã đạt mục tiêu");
   assert.equal(questionTypeLabel("ShortAnswer"), "Đáp án ngắn");
 });
-test("questionnaire query and saved topic selection use the selected class context", () => {
+test("personal path goal uses current scoped skills instead of hardcoded pilot math", () => {
   const s = readFileSync(new URL("../src/pages/StudentLearningPathPage.tsx", import.meta.url), "utf8");
-  assert.match(s, /getLearningPathTopics\(effectiveSubjectId, access.classId, access.history\)/);
-  assert.match(s, /filter\(id => allowed.has\(id\)\)/);
+  assert.match(s, /getCapabilityMap\(subjectId, access.classId\)/);
+  assert.match(s, /skills=\{map.data\?\.skills \?\? \[\]\}/);
+  const goal = readFileSync(new URL("../src/components/learningPathV4/GoalAndProposalModal.tsx", import.meta.url), "utf8");
+  assert.match(goal, /targetSkillIds: targets/);
+  assert.doesNotMatch(goal, /MATH-EQ-/);
 });

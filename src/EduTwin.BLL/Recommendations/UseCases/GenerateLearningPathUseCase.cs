@@ -150,11 +150,21 @@ public sealed class GenerateLearningPathUseCase : IGenerateLearningPathUseCase, 
             .ThenByDescending(lp => lp.Version)
             .ThenByDescending(lp => lp.GeneratedAt)
             .FirstOrDefaultAsync(cancellationToken);
-        if (path is null || preference is null) return null;
+        if (path is null) return null;
+        if (path.PlanSchemaVersion == "4.0")
+        {
+            // Legacy dashboard contract: do not deserialize a V4 proposal as the old phases array.
+            return new DetailedLearningPathDto { LearningPathId = path.LearningPathId.ToString(), StudentId = studentId.ToString(),
+                SubjectId = subjectId.ToString(), SubjectName = subject.SubjectName, Version = path.Version, Status = path.Status.ToString(),
+                GeneratedAt = path.GeneratedAt, RecommendationRationale = path.RecommendationRationale ?? "Xem tuyến kỹ năng và nhiệm vụ cá nhân.",
+                GenerationStatus = "Ready", Phases = [] };
+        }
+        if (preference is null) return null;
         if (scope?.TopicIds is not null && path.Items.Any(i => !scope.Includes(i.TopicNodeId))) return null;
         var detailed = await BuildDetailedLearningPathAsync(centerId, studentId, subject, preference, path, cancellationToken);
         if (pathId.HasValue && detailed.Phases.SelectMany(p => p.Weeks).SelectMany(w => w.Sessions)
             .Any(s => s.ClassId.HasValue && s.ClassId != classId)) return null;
+
         // GET remains read-only, including old paths without a stored PlanJson.
         return scope is null || PlanBelongsToScope(detailed, scope) ? detailed : null;
     }

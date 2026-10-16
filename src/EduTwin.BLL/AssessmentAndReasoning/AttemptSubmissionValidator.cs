@@ -156,6 +156,12 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
             {
                 return AttemptSubmissionValidationResult.Failure(ErrorCodes.ForbiddenResource);
             }
+            var isV4 = await _dbContext.LearningPathSessions.AnyAsync(s => s.CenterId == centerId &&
+                s.SessionId == sessionRun.SessionId && s.PolicyVersion == Recommendations.Planning.LearningPathV4Data.Policy, cancellationToken);
+            if (isV4 && (sessionRun.CurrentQuestionId != questionId || !await _dbContext.IssuedItems.AnyAsync(i =>
+                i.CenterId == centerId && i.ActivityRun.SessionRunId == sessionRun.SessionRunId &&
+                i.QuestionId == questionId && i.AttemptId == null && i.SolutionExposedAt == null, cancellationToken)))
+                return AttemptSubmissionValidationResult.Failure(ErrorCodes.ForbiddenResource);
         }
         if (request.AssignmentId.HasValue)
         {

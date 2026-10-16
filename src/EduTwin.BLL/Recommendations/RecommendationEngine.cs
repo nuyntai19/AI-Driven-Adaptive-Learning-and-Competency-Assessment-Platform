@@ -66,6 +66,10 @@ public sealed class RecommendationEngine : IRecommendationEngine
     private async Task<RecommendationGenerationResult> GenerateCoreAsync(Guid centerId, Guid studentId, Guid subjectId,
         ulong? sourceAttemptId, DateTime utcNow, Guid? classId, CancellationToken cancellationToken)
     {
+        // V4 agenda reads new evidence directly. Legacy callbacks must not replace its accepted route.
+        if (await _dbContext.LearningPaths.AsNoTracking().AnyAsync(p => p.CenterId == centerId && p.StudentId == studentId &&
+            p.SubjectId == subjectId && p.Status == LearningPathStatus.Active && p.PlanSchemaVersion == "4.0", cancellationToken))
+            return RecommendationGenerationResult.StaleIgnored("V4 route preserved; new evidence is used when selecting the next mission.");
         // 0. Transaction B Isolation: Assert no uncommitted transaction and clear change tracker
         Debug.Assert(_dbContext.Database.CurrentTransaction is null, "Recommendation Transaction B requires a clean context without an active transaction.");
         if (_dbContext.ChangeTracker.HasChanges())

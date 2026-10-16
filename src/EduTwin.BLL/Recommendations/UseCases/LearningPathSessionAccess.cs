@@ -32,7 +32,7 @@ internal static class LearningPathSessionAccess
         if (sessionId.Length >= 36 && Guid.TryParse(sessionId[..36], out var pathId)) query = query.Where(p => p.LearningPathId == pathId);
         else query = query.Where(p => p.Status == LearningPathStatus.Active);
         var path = await query.OrderByDescending(p => p.GeneratedAt).FirstOrDefaultAsync(ct);
-        if (path?.PlanJson is null) return null;
+        if (path?.PlanJson is null || path.PlanSchemaVersion == "4.0") return null;
         var phases = JsonSerializer.Deserialize<List<LearningPathPhaseDto>>(path.PlanJson.RootElement.GetRawText(), JsonOptions) ?? [];
         var session = phases.SelectMany(p => p.Weeks).SelectMany(w => w.Sessions).SingleOrDefault(s => s.SessionId == sessionId);
         if (session is null || (session.ClassId.HasValue && session.ClassId != classId) ||

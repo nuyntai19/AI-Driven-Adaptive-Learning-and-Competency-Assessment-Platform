@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using EduTwin.Contracts.AssessmentAndReasoning;
+using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.Recommendations;
 using EduTwin.DAL.AssessmentAndReasoning;
 using EduTwin.DAL.Persistence;
@@ -25,12 +26,15 @@ public class LearningSessionExecutionService : ILearningSessionExecutionService
     public LearningSessionExecutionService(
         EduTwinDbContext dbContext,
         ILogger<LearningSessionExecutionService> logger,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        ILearningPathV4Evaluator? v4Evaluator = null)
     {
         _dbContext = dbContext;
         _logger = logger;
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _v4Evaluator = v4Evaluator;
     }
+    private readonly ILearningPathV4Evaluator? _v4Evaluator;
 
     public async Task<IReadOnlyList<MaterializedSessionSummary>> MaterializeSessionsFromPlanAsync(
         Guid centerId,
@@ -364,6 +368,34 @@ public class LearningSessionExecutionService : ILearningSessionExecutionService
         }
         session.UpdatedAt = now;
 
+        var parentPath = await _dbContext.LearningPaths
+            .FirstOrDefaultAsync(p => p.CenterId == centerId && p.LearningPathId == session.LearningPathId, ct);
+        if (parentPath?.PlanJson != null)
+        {
+            try
+            {
+                var rawJson = parentPath.PlanJson.RootElement.GetRawText();
+                var phases = JsonSerializer.Deserialize<List<LearningPathPhaseDto>>(rawJson, JsonOptions);
+                if (phases != null)
+                {
+                    var targetDto = phases.SelectMany(p => p.Weeks).SelectMany(w => w.Sessions)
+                        .FirstOrDefault(s => s.SessionId == session.LegacySessionId || s.SessionId == session.SessionId.ToString());
+                    if (targetDto != null && targetDto.Status != "Completed")
+                    {
+                        targetDto.Status = "InProgress";
+                        targetDto.StartedAtUtc ??= now;
+                        parentPath.PlanJson = JsonDocument.Parse(JsonSerializer.Serialize(phases, JsonOptions));
+                        parentPath.UpdatedAt = now;
+                        parentPath.RowVersion++;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to synchronize PlanJson for LearningPath {LearningPathId}", session.LearningPathId);
+            }
+        }
+
         try
         {
             await _dbContext.LearningPathSessionRuns.AddAsync(newRun, ct);
@@ -563,6 +595,204 @@ public class LearningSessionExecutionService : ILearningSessionExecutionService
             _ => LearningPathSessionStatus.NotStarted
         };
 
+    private async Task EnsureLearningPathPlanJsonAsync(
+        Guid centerId,
+        LearningPath path,
+        CancellationToken ct)
+    {
+        if (path.PlanJson != null) return;
+
+        await _dbContext.Entry(path)
+            .Collection(p => p.Items)
+            .Query()
+            .Where(i => !i.IsDeleted)
+            .OrderBy(i => i.RankOrder)
+            .LoadAsync(ct);
+
+        if (path.Items.Count == 0) return;
+
+        var topicIds = path.Items.Select(i => i.TopicNodeId).Distinct().ToList();
+        var topics = await _dbContext.KnowledgeNodes.AsNoTracking()
+            .Where(n => n.CenterId == centerId && topicIds.Contains(n.NodeId) && n.IsActive && !n.IsDeleted)
+            .ToDictionaryAsync(n => n.NodeId, ct);
+
+        var preference = await _dbContext.StudentLearningPathPreferences.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.CenterId == centerId && p.StudentId == path.StudentId && p.SubjectId == path.SubjectId && !p.IsDeleted, ct);
+
+        var weeks = Math.Clamp(preference?.TargetWeeks ?? 4, 1, 52);
+        var days = Math.Clamp(preference?.DaysPerWeek ?? 5, 1, 7);
+        var minutesPerDay = preference?.MinutesPerDay ?? 30;
+
+        var questions = await _dbContext.Questions.AsNoTracking()
+            .Where(q => q.CenterId == centerId && q.SubjectId == path.SubjectId && topicIds.Contains(q.PrimaryTopicNodeId) &&
+                        q.Status == QuestionStatus.Active && !q.IsDeleted &&
+                        q.QuestionType != QuestionType.Essay &&
+                        q.AnswerEvaluationMode != QuestionAnswerEvaluationMode.Manual)
+            .OrderBy(q => q.Difficulty).ThenBy(q => q.QuestionId)
+            .Select(q => new { q.QuestionId, q.PrimaryTopicNodeId })
+            .ToListAsync(ct);
+
+        var questionsByTopic = questions.GroupBy(q => q.PrimaryTopicNodeId)
+            .ToDictionary(g => g.Key, g => g.Select(q => q.QuestionId.ToString()).ToList());
+
+        var phases = new List<LearningPathPhaseDto>();
+        var phaseCount = Math.Clamp((int)Math.Ceiling(weeks / 4m), 1, 6);
+        var weeksPerPhase = (int)Math.Ceiling(weeks / (decimal)phaseCount);
+        var orderedItems = path.Items.OrderBy(i => i.RankOrder).ToList();
+
+        for (var phaseIndex = 0; phaseIndex < phaseCount; phaseIndex++)
+        {
+            var startWeek = phaseIndex * weeksPerPhase + 1;
+            var endWeek = Math.Min(weeks, startWeek + weeksPerPhase - 1);
+            if (startWeek > weeks) break;
+
+            var phaseWeeks = new List<LearningPathWeekDto>();
+            for (var week = startWeek; week <= endWeek; week++)
+            {
+                var item = orderedItems[Math.Min(orderedItems.Count - 1, (week - 1) * orderedItems.Count / weeks)];
+                topics.TryGetValue(item.TopicNodeId, out var node);
+                var topicName = node?.NodeName ?? $"Chủ đề {item.TopicNodeId}";
+                var questionIds = questionsByTopic.GetValueOrDefault(item.TopicNodeId) ?? [];
+
+                var sessions = new List<LearningPathSessionDto>();
+                for (var day = 1; day <= days; day++)
+                {
+                    var isGuided = (day % 2 != 0);
+                    var type = isGuided ? "GuidedPractice" : "AdaptivePractice";
+                    var capacity = Math.Clamp(minutesPerDay / 4, 1, 12);
+                    var requestedCount = Math.Min(4, capacity);
+                    var count = Math.Min(requestedCount, questionIds.Count);
+                    var offset = questionIds.Count == 0 ? 0 : ((week - 1) * days + day - 1) * requestedCount % questionIds.Count;
+                    var selectedQuestions = Enumerable.Range(0, count).Select(i => questionIds[(offset + i) % questionIds.Count]).ToList();
+
+                    var online = new List<string> { $"Làm {selectedQuestions.Count} câu thật từ Question Bank theo đúng chủ đề." };
+                    sessions.Add(new LearningPathSessionDto
+                    {
+                        SessionId = $"{path.LearningPathId:D}-w{week:D2}-s{day:D2}",
+                        Title = isGuided ? $"Luyện có hướng dẫn: {topicName}" : $"Luyện độc lập: {topicName}",
+                        Type = type,
+                        TopicNodeId = item.TopicNodeId.ToString(),
+                        TopicName = topicName,
+                        Objective = $"Củng cố kỹ năng và nhận diện lỗi thường gặp trong {topicName}.",
+                        EstimatedMinutes = minutesPerDay,
+                        OnlineActivities = online,
+                        OfflineActivities = new List<string> { "Đọc lại lý thuyết và ghi chú các dạng bài đã làm." },
+                        RecommendedQuestionIds = selectedQuestions,
+                        RequiredCorrectRate = 0.70m,
+                        TargetMastery = 80m,
+                        CompletionCriteria = new List<string> { "Hoàn thành các câu hỏi trong phiên", "Đạt tỷ lệ đúng tối thiểu theo quy định" },
+                        Status = "NotStarted"
+                    });
+                }
+
+                phaseWeeks.Add(new LearningPathWeekDto
+                {
+                    WeekNumber = week,
+                    Title = $"Tuần {week} · {topicName}",
+                    Objective = $"Nâng mức thành thạo {topicName}.",
+                    ProgressPercentage = 0,
+                    Sessions = sessions,
+                    Checkpoint = new LearningPathCheckpointDto
+                    {
+                        Type = "Weekly",
+                        CurrentMastery = 0,
+                        TargetMastery = 80m,
+                        RequiredCorrectRate = 0.70m,
+                        CompletedTasks = 0,
+                        WeakTopics = new List<string> { topicName },
+                        Recommendation = "Hoàn thành buổi học để cập nhật hồ sơ năng lực."
+                    }
+                });
+            }
+
+            phases.Add(new LearningPathPhaseDto
+            {
+                PhaseNumber = phaseIndex + 1,
+                PhaseName = $"Giai đoạn {phaseIndex + 1}: Củng cố chuyên đề",
+                Timeframe = startWeek == endWeek ? $"Tuần {startWeek}" : $"Tuần {startWeek} - {endWeek}",
+                Description = "Học theo thứ tự ưu tiên của lộ trình cá nhân hóa.",
+                ProgressPercentage = 0,
+                Weeks = phaseWeeks
+            });
+        }
+
+        path.PlanJson = JsonSerializer.SerializeToDocument(phases, JsonOptions);
+        path.PlanSchemaVersion = "2.0";
+        path.GenerationStatus = "Ready";
+        path.UpdatedAt = _timeProvider.GetUtcNow().UtcDateTime;
+        await _dbContext.SaveChangesAsync(ct);
+    }
+
+    private async Task<LearningPathSession?> ResolveSessionEntityAsync(
+        Guid centerId,
+        Guid studentId,
+        Guid subjectId,
+        string sessionIdOrLegacyId,
+        CancellationToken ct, Guid? classId = null)
+    {
+        if (string.IsNullOrWhiteSpace(sessionIdOrLegacyId)) return null;
+
+        LearningPathSession? session = null;
+        if (Guid.TryParse(sessionIdOrLegacyId, out var sessionGuid))
+        {
+            session = await _dbContext.LearningPathSessions
+                .FirstOrDefaultAsync(s => s.CenterId == centerId && s.SessionId == sessionGuid && s.LearningPath.StudentId == studentId && s.LearningPath.SubjectId == subjectId, ct);
+        }
+
+        session ??= await _dbContext.LearningPathSessions
+            .FirstOrDefaultAsync(s => s.CenterId == centerId && s.LegacySessionId == sessionIdOrLegacyId && s.LearningPath.StudentId == studentId && s.LearningPath.SubjectId == subjectId, ct);
+
+        if (session is null)
+        {
+            LearningPath? path = null;
+            if (sessionIdOrLegacyId.Length >= 36 && Guid.TryParse(sessionIdOrLegacyId[..36], out var targetPathId))
+            {
+                path = await _dbContext.LearningPaths
+                    .Include(p => p.Sessions)
+                    .Include(p => p.Items.Where(i => !i.IsDeleted))
+                    .FirstOrDefaultAsync(p => p.CenterId == centerId && p.LearningPathId == targetPathId && p.StudentId == studentId && p.SubjectId == subjectId && !p.IsDeleted, ct);
+            }
+
+            path ??= await _dbContext.LearningPaths
+                .Include(p => p.Sessions)
+                .Include(p => p.Items.Where(i => !i.IsDeleted))
+                .FirstOrDefaultAsync(p => p.CenterId == centerId &&
+                                         p.StudentId == studentId &&
+                                         p.SubjectId == subjectId &&
+                                         p.Status == LearningPathStatus.Active &&
+                                         !p.IsDeleted, ct);
+
+            if (path is not null)
+            {
+                if (path.PlanJson is null)
+                {
+                    await EnsureLearningPathPlanJsonAsync(centerId, path, ct);
+                }
+
+                if (path.PlanJson is not null)
+                {
+                    await MaterializeSessionsFromPlanAsync(centerId, path.LearningPathId, ct);
+
+                    if (Guid.TryParse(sessionIdOrLegacyId, out sessionGuid))
+                    {
+                        session = await _dbContext.LearningPathSessions
+                            .FirstOrDefaultAsync(s => s.CenterId == centerId && s.SessionId == sessionGuid && s.LearningPath.StudentId == studentId && s.LearningPath.SubjectId == subjectId, ct);
+                    }
+
+                    session ??= await _dbContext.LearningPathSessions
+                        .FirstOrDefaultAsync(s => s.CenterId == centerId && s.LegacySessionId == sessionIdOrLegacyId && s.LearningPath.StudentId == studentId && s.LearningPath.SubjectId == subjectId, ct);
+                }
+            }
+        }
+
+        if (session != null)
+        {
+            var scope = await EduTwin.BLL.Organization.StudentLearningScope.ResolveAsync(_dbContext, centerId, studentId, subjectId, classId ?? session.ClassId, false, ct);
+            if (!scope.Includes(session.TopicNodeId) || (classId.HasValue && session.ClassId != classId) || session.PolicyVersion == Planning.LearningPathV4Data.Policy) return null;
+        }
+        return session;
+    }
+
     public async Task<StartSessionRunResult> StartOrResumeSessionAsync(
         Guid centerId,
         Guid studentId,
@@ -576,41 +806,7 @@ public class LearningSessionExecutionService : ILearningSessionExecutionService
             throw new ArgumentException("Session identifier cannot be null or empty.", nameof(sessionIdOrLegacyId));
         }
 
-        // 1. Try to find session by Guid or LegacySessionId
-        LearningPathSession? session = null;
-        if (Guid.TryParse(sessionIdOrLegacyId, out var sessionGuid))
-        {
-            session = await _dbContext.LearningPathSessions
-                .FirstOrDefaultAsync(s => s.CenterId == centerId && s.SessionId == sessionGuid, ct);
-        }
-
-        session ??= await _dbContext.LearningPathSessions
-            .FirstOrDefaultAsync(s => s.CenterId == centerId && s.LegacySessionId == sessionIdOrLegacyId, ct);
-
-        // 2. If session not found, check if LearningPath needs to be materialized
-        if (session is null)
-        {
-            var path = await _dbContext.LearningPaths
-                .FirstOrDefaultAsync(p => p.CenterId == centerId &&
-                                         p.StudentId == studentId &&
-                                         p.SubjectId == subjectId &&
-                                         p.Status == LearningPathStatus.Active &&
-                                         !p.IsDeleted, ct);
-
-            if (path?.PlanJson != null)
-            {
-                await MaterializeSessionsFromPlanAsync(centerId, path.LearningPathId, ct);
-
-                if (Guid.TryParse(sessionIdOrLegacyId, out sessionGuid))
-                {
-                    session = await _dbContext.LearningPathSessions
-                        .FirstOrDefaultAsync(s => s.CenterId == centerId && s.SessionId == sessionGuid, ct);
-                }
-
-                session ??= await _dbContext.LearningPathSessions
-                    .FirstOrDefaultAsync(s => s.CenterId == centerId && s.LegacySessionId == sessionIdOrLegacyId, ct);
-            }
-        }
+        var session = await ResolveSessionEntityAsync(centerId, studentId, subjectId, sessionIdOrLegacyId, ct, classId);
 
         if (session is null)
         {
@@ -638,39 +834,7 @@ public class LearningSessionExecutionService : ILearningSessionExecutionService
             throw new ArgumentException("Session identifier cannot be null or empty.", nameof(sessionIdOrLegacyId));
         }
 
-        LearningPathSession? session = null;
-        if (Guid.TryParse(sessionIdOrLegacyId, out var sessionGuid))
-        {
-            session = await _dbContext.LearningPathSessions
-                .FirstOrDefaultAsync(s => s.CenterId == centerId && s.SessionId == sessionGuid, ct);
-        }
-
-        session ??= await _dbContext.LearningPathSessions
-            .FirstOrDefaultAsync(s => s.CenterId == centerId && s.LegacySessionId == sessionIdOrLegacyId, ct);
-
-        if (session is null)
-        {
-            var path = await _dbContext.LearningPaths
-                .FirstOrDefaultAsync(p => p.CenterId == centerId &&
-                                         p.StudentId == studentId &&
-                                         p.SubjectId == subjectId &&
-                                         p.Status == LearningPathStatus.Active &&
-                                         !p.IsDeleted, ct);
-
-            if (path?.PlanJson != null)
-            {
-                await MaterializeSessionsFromPlanAsync(centerId, path.LearningPathId, ct);
-
-                if (Guid.TryParse(sessionIdOrLegacyId, out sessionGuid))
-                {
-                    session = await _dbContext.LearningPathSessions
-                        .FirstOrDefaultAsync(s => s.CenterId == centerId && s.SessionId == sessionGuid, ct);
-                }
-
-                session ??= await _dbContext.LearningPathSessions
-                    .FirstOrDefaultAsync(s => s.CenterId == centerId && s.LegacySessionId == sessionIdOrLegacyId, ct);
-            }
-        }
+        var session = await ResolveSessionEntityAsync(centerId, studentId, subjectId, sessionIdOrLegacyId, ct, classId);
 
         if (session is null)
         {
@@ -878,6 +1042,15 @@ public class LearningSessionExecutionService : ILearningSessionExecutionService
         }
 
         var session = run.Session;
+        if (session.PolicyVersion == Planning.LearningPathV4Data.Policy)
+        {
+            var result = await (_v4Evaluator ?? new LearningPathV4Evaluator(_dbContext, _timeProvider))
+                .EvaluateMissionRunAsync(centerId, run.StudentId, sessionRunId, ct);
+            return new EvaluateSessionRunResult(run.SessionRunId, run.SessionId, session.LegacySessionId, session.Title,
+                session.Status, run.RunNumber, run.Status, run.EvaluationStatus, run.Outcome, run.TotalQuestions,
+                run.QuestionsAttempted, 0, 0, null, null, result.HasPendingReview, result.Outcome == "PendingGrading",
+                string.Join(" ", result.DecisionReasons), result.EvaluatedAt, run.Status == SessionRunStatus.Completed);
+        }
         var now = _timeProvider.GetUtcNow().UtcDateTime;
 
         // Idempotent replay: if already completed, return existing evaluation without mutating outcome or counts
@@ -1240,36 +1413,7 @@ public class LearningSessionExecutionService : ILearningSessionExecutionService
         CancellationToken ct = default)
     {
         // 1. Resolve Session
-        LearningPathSession? session = null;
-        if (Guid.TryParse(sessionIdOrLegacyId, out var sessionGuid))
-        {
-            session = await _dbContext.LearningPathSessions
-                .FirstOrDefaultAsync(s => s.CenterId == centerId && s.SessionId == sessionGuid, ct);
-        }
-
-        session ??= await _dbContext.LearningPathSessions
-            .FirstOrDefaultAsync(s => s.CenterId == centerId && s.LegacySessionId == sessionIdOrLegacyId, ct);
-
-        if (session is null)
-        {
-            var path = await _dbContext.LearningPaths
-                .FirstOrDefaultAsync(p => p.CenterId == centerId && p.StudentId == studentId && p.SubjectId == subjectId && p.Status == LearningPathStatus.Active, ct);
-
-            if (path is not null)
-            {
-                await MaterializeSessionsFromPlanAsync(centerId, path.LearningPathId, ct);
-
-                if (Guid.TryParse(sessionIdOrLegacyId, out sessionGuid))
-                {
-                    session = await _dbContext.LearningPathSessions
-                        .FirstOrDefaultAsync(s => s.CenterId == centerId && s.SessionId == sessionGuid, ct);
-                }
-
-                session ??= await _dbContext.LearningPathSessions
-                    .FirstOrDefaultAsync(s => s.CenterId == centerId && s.LegacySessionId == sessionIdOrLegacyId, ct);
-            }
-        }
-
+        var session = await ResolveSessionEntityAsync(centerId, studentId, subjectId, sessionIdOrLegacyId, ct, classId);
         if (session is null)
         {
             throw new KeyNotFoundException($"Session '{sessionIdOrLegacyId}' not found for student in this center.");
