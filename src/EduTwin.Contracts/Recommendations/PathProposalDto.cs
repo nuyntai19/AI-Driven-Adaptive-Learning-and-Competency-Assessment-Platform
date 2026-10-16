@@ -38,6 +38,9 @@ public class ProposedMilestoneDto
 
 public class ProposedMissionDto
 {
+    public byte? DifficultyFloor { get; set; }
+    public uint QuestionCount { get; set; }
+    public DateTime? AvailableFrom { get; set; }
     public Guid? ContentVersionId { get; set; }
     public bool CanStart { get; set; } = true;
     public string MissionId { get; set; } = string.Empty;

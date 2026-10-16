@@ -28,6 +28,7 @@ public static class DependencyInjection
         services.TryAddSingleton<ReasoningMicroBatcher>();
         services.TryAddSingleton<IAIAnalysisResponseParser, StrictAIAnalysisResponseParser>();
         services.TryAddSingleton<IGeminiGenerateContentClient, GoogleGenAIGenerateContentClient>();
+        services.TryAddSingleton<EduTwin.BLL.Recommendations.Services.ILearningTutorFeedbackGenerator, LearningTutorFeedbackGenerator>();
         services.TryAddSingleton<GeminiQuotaCoordinator>();
         services.TryAddSingleton<GeminiPromptBuilder>();
         services.TryAddSingleton<GeminiResponseJsonSchema>();

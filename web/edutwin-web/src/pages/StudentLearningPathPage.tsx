@@ -9,10 +9,11 @@ import { StudentLearningReadOnlyNotice } from "../components/student/StudentLear
 import { GoalAndProposalModal } from "../components/learningPathV4/GoalAndProposalModal";
 import { MissionPlayerModal } from "../components/learningPathV4/MissionPlayerModal";
 import type { AgendaItemDto } from "../types/learningPath";
+import { missionAction } from "../utils/learningMission";
 
 const activityLabels: Record<string, string> = { Study: "Tìm hiểu và ví dụ", Practice: "Luyện có hướng dẫn",
   IndependentCheck: "Tự kiểm tra", WorkedExample: "Ví dụ từng bước", FindError: "Tìm lỗi", Explore: "Khám phá",
-  Explain: "Giải thích", CompleteSolution: "Hoàn thiện lời giải", TransferChallenge: "Vận dụng" };
+  Explain: "Giải thích", CompleteSolution: "Hoàn thiện lời giải", TransferChallenge: "Vận dụng", Review: "Ôn nhớ lại" };
 const stateLabels: Record<string, string> = { Unknown: "Chưa đủ bằng chứng", Developing: "Cần củng cố",
   Demonstrated: "Đã có bằng chứng ban đầu", Confirmed: "Đã xác nhận", ReviewDue: "Cần ôn lại" };
 export function StudentLearningPathPage() {
@@ -25,6 +26,7 @@ export function StudentLearningPathPage() {
   const access = useStudentLearningAccess(subjectId);
   const [minutes, setMinutes] = useState(15);
   const [showGoal, setShowGoal] = useState(false);
+  const [recommended, setRecommended] = useState(false);
   const [mission, setMission] = useState<AgendaItemDto | null>(null);
   const map = useQuery({ queryKey: ["learning-paths", "capability-map", actor?.centerId, actor?.userId, subjectId, access.classId],
     queryFn: () => getCapabilityMap(subjectId, access.classId), enabled: !!subjectId && access.writable });
@@ -45,12 +47,31 @@ export function StudentLearningPathPage() {
         <select id="path-subject" value={subjectId} className="rounded-xl border border-slate-300 bg-white p-2.5 dark:bg-slate-900"
           onChange={e => { const next = new URLSearchParams(params); next.set("subjectId", e.target.value); next.delete("pathId"); next.delete("sessionId"); setParams(next); setMission(null); setShowGoal(false); }}>
           {subjects.data?.data.map(s => <option key={s.subjectId} value={s.subjectId}>{s.subjectName}</option>)}
-        </select><button className={action} onClick={() => setShowGoal(true)} disabled={!map.data?.skills.length}>Thiết lập mục tiêu</button></div>
+        </select><button className={action} onClick={() => { setRecommended(false); setShowGoal(true); }} disabled={!map.data?.skills.length}>Thiết lập mục tiêu</button></div>
     </header>
     {(map.error || agenda.error) && <div role="alert" className="rounded-xl bg-rose-50 p-4 text-rose-800">
       Không thể tải lộ trình. {(map.error ?? agenda.error)?.message}
       <button className="ml-3 underline" onClick={() => { void map.refetch(); void agenda.refetch(); }}>Thử lại</button>
     </div>}
+    {agenda.data?.insights && <section className={`${panel} border-indigo-200`} aria-labelledby="path-insights-title">
+      <div className="flex flex-wrap items-start justify-between gap-5"><div className="max-w-2xl">
+        <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">Từ bài làm của bạn · {agenda.data.insights.windowDays} ngày gần đây</p>
+        <h2 id="path-insights-title" className="mt-2 text-2xl font-semibold">Lộ trình đề xuất cho bạn</h2>
+        <p className="mt-3 text-sm leading-relaxed">{agenda.data.insights.summary}</p></div>
+        <button className={action} disabled={!map.data?.skills.length} onClick={() => { setRecommended(true); setShowGoal(true); }}>Xem tuyến đề xuất</button></div>
+      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">{[
+        [agenda.data.insights.answerCount, "lượt trả lời"], [agenda.data.insights.assignmentCount, "bài tập đã tham gia"],
+        [agenda.data.insights.gradedQuestionCount, "câu khác nhau đã chấm"],
+        [agenda.data.insights.scorePercentage == null ? "—" : `${agenda.data.insights.scorePercentage}%`, "điểm trên các câu gần nhất"],
+      ].map(([value, label]) => <div key={label} className="rounded-xl bg-slate-50 p-4 dark:bg-slate-800"><p className="text-2xl font-bold">{value}</p><p className="mt-1 text-xs text-slate-500">{label}</p></div>)}</div>
+      {agenda.data.insights.pendingCount > 0 && <p className="mt-3 text-xs text-amber-700">{agenda.data.insights.pendingCount} lượt còn chờ phân tích. Điểm chấm ban đầu và nhận xét xác nhận được phân biệt trong từng buổi.</p>}
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">{agenda.data.insights.skills.filter(s => s.questionCount > 0).map(s => <article key={s.skillId} className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+        <div className="flex items-center justify-between gap-3"><h3 className="font-semibold">{s.skillName}</h3><span className={`rounded-full px-3 py-1 text-xs ${s.wrongCount > 0 ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-800"}`}>{s.wrongCount > 0 ? "Nên xem lại" : s.questionCount < 5 ? "Cần thêm bài làm" : "Kết quả gần đây tốt"}</span></div>
+        <p className="mt-2 text-sm text-slate-500">{s.observation}</p>{s.confirmedMisconceptions.map(m => <p key={m} className="mt-2 text-sm">Giáo viên đã xác nhận: {m}</p>)}
+        <details className="mt-3 text-sm"><summary className="cursor-pointer font-medium text-indigo-600">Xem bài làm liên quan</summary>
+          <ul className="mt-3 space-y-3">{s.recentAnswers.map(a => <li className="border-t border-slate-100 pt-3" key={a.attemptId}><p className="whitespace-pre-wrap">{a.questionText}</p><p className="mt-1 text-xs text-slate-500">{a.isCorrect == null ? "Chờ chấm" : a.isCorrect ? "Đúng" : "Cần sửa"} · {new Date(a.submittedAt).toLocaleDateString("vi-VN")}{a.guided ? " · Đã có hướng dẫn" : ""}</p></li>)}</ul>
+        </details></article>)}</div>
+    </section>}
     {agenda.data && <section className={panel}>
       <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-semibold">Hôm nay học gì?</h2>
         {agenda.data.goalTitle && <p className="mt-1 text-sm text-slate-500">Mục tiêu: {agenda.data.goalTitle}</p>}</div>
@@ -65,6 +86,11 @@ export function StudentLearningPathPage() {
       {!agenda.data.learningPathId && <button className={`${action} mt-4`} disabled={!map.data?.skills.length} onClick={() => setShowGoal(true)}>Chọn mục tiêu và xem trước tuyến học</button>}
       {agenda.data.alternativeOptions.length > 0 && <div className="mt-4 flex flex-wrap gap-2">{agenda.data.alternativeOptions.map(m => <button className="rounded-xl border border-slate-300 px-4 py-2 text-sm" key={m.missionId} onClick={() => setMission(m)}>{m.title}</button>)}</div>}
     </section>}
+    {agenda.data && (agenda.data.reviewDueTasks.length > 0 || agenda.data.recentChanges?.length > 0) && <section className={panel}>
+      <h2 className="text-xl font-semibold">Tiến bộ và lịch ôn</h2>
+      {agenda.data.recentChanges?.map((r, i) => <p className="mt-3 text-sm text-slate-500" key={i}>{r}</p>)}
+      {agenda.data.reviewDueTasks.map(r => <div key={r.missionId} className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-indigo-50 p-4 dark:bg-indigo-950/40"><p className="text-sm">{r.title} · {r.availableFrom ? new Date(r.availableFrom).toLocaleDateString("vi-VN") : "Đến lượt ôn"}</p><button disabled={!r.canStart} className={action} onClick={() => setMission(r)}>{r.canStart ? "Ôn ngay" : "Đã hẹn lịch"}</button></div>)}
+    </section>}
     <section className="space-y-4"><div><h2 className="text-xl font-semibold">Các chặng trong tuyến của bạn</h2><p className="mt-1 text-sm text-slate-500">Mỗi chặng gắn với một kỹ năng. Phần đã có bằng chứng sẽ được giảm luyện lặp; nội dung còn thiếu được nêu rõ.</p></div>
       {missions.length === 0 && <p className={panel}>Chưa có tuyến được xác nhận cho phạm vi này. Hãy chọn mục tiêu ở trên; các bài làm và lộ trình trước vẫn được giữ trong lịch sử.</p>}
       {[...new Set(missions.map(m => m.skillId))].map((id, index) => {
@@ -75,8 +101,10 @@ export function StudentLearningPathPage() {
           <div className="mt-5 grid gap-3 sm:grid-cols-3">{group.map(m => <div key={m.missionId} className="flex flex-col rounded-xl border border-slate-200 p-4 dark:border-slate-700">
             <p className="text-xs font-semibold text-indigo-600">{activityLabels[m.purpose] ?? m.purpose}</p><h4 className="mt-2 font-medium">{m.title}</h4>
             <p className="mt-2 flex-1 text-xs leading-relaxed text-slate-500">{m.recommendationReason}</p>
-            <button className={`${action} mt-4`} disabled={!m.canStart && !m.activeRunId && !(m.status === "Completed" && !["Practice", "IndependentCheck"].includes(m.purpose))} onClick={() => setMission(m)}>
-              {m.status === "Completed" ? "Xem lại" : m.activeRunId ? "Tiếp tục / xem kết quả" : m.canStart ? "Bắt đầu" : "Chưa đủ điều kiện"}</button>
+            {m.questionCount > 0 && <p className="mt-2 text-xs font-medium">{m.questionCount} câu · khoảng {m.estimatedDurationMinutes} phút</p>}
+            {m.availableFrom && <p className="mt-2 text-xs text-indigo-600">Hẹn ôn {new Date(m.availableFrom).toLocaleDateString("vi-VN")}</p>}
+            <button className={`${action} mt-4`} disabled={!m.canStart && !m.activeRunId && !m.latestRunId} onClick={() => setMission({ ...m, reviewOnly: missionAction(m).reviewOnly })}>
+              {missionAction(m).label}</button>
           </div>)}</div></article>;
       })}
     </section>
@@ -88,10 +116,13 @@ export function StudentLearningPathPage() {
         {s.availability === "PrerequisiteBlocked" && <p className="mt-2 text-xs text-amber-700">Cần xác nhận kỹ năng nền tảng trước khi kiểm tra độc lập.</p>}
       </div>)}</div>
     </section>
-    {showGoal && <GoalAndProposalModal key={`${subjectId}:${access.classId}`} isOpen onClose={() => setShowGoal(false)}
+    {showGoal && <GoalAndProposalModal key={`${subjectId}:${access.classId}:${recommended}`} isOpen onClose={() => setShowGoal(false)}
+      automatic={recommended} insights={agenda.data?.insights}
+      suggestedSkillIds={recommended ? agenda.data?.insights?.suggestedSkillIds : []} recommendationSummary={recommended ? agenda.data?.insights?.summary : undefined}
       subjectId={subjectId} classId={access.classId} skills={map.data?.skills ?? []} subjectName={subject?.subjectName ?? ""}
       onAccepted={() => { void agenda.refetch(); void map.refetch(); }} />}
     {mission && <MissionPlayerModal key={mission.missionId} isOpen mission={mission} subjectId={subjectId}
+      onResumeMission={setMission}
       onClose={() => { setMission(null); void agenda.refetch(); void map.refetch(); }} />}
   </div>;
 }

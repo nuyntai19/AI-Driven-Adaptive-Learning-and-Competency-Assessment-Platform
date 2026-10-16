@@ -5,6 +5,10 @@ namespace EduTwin.Contracts.Recommendations;
 
 public class ActivityRunDto
 {
+    public LearningTutorFeedbackDto? AiFeedback { get; set; }
+    public string? SubmittedResponse { get; set; }
+    public string Stage { get; set; } = "";
+    public QuestionLearningFeedbackDto? LearningFeedback { get; set; }
     public EduTwin.Contracts.Recommendations.NextQuestionDto? Question { get; set; }
     public ulong ActivityRunId { get; set; }
     public ulong SessionRunId { get; set; }
@@ -27,6 +31,18 @@ public class ActivityRunDto
     public DateTime? CompletedAt { get; set; }
 
     public ActivityContentDto? Content { get; set; }
+}
+
+public class LearningTutorFeedbackDto
+{
+    public string Status { get; set; } = "Unavailable";
+    public string Comment { get; set; } = "";
+    public string AiSolution { get; set; } = "";
+    public string Understanding { get; set; } = "NotEnoughContext";
+    public string Correction { get; set; } = "";
+    public string Provider { get; set; } = "";
+    public string Model { get; set; } = "";
+    public DateTime? GeneratedAt { get; set; }
 }
 
 public class ActivityContentDto
@@ -88,6 +104,7 @@ public class SubmitActivityRequest
 
 public class ActivitySubmissionResponseDto
 {
+    public QuestionLearningFeedbackDto? LearningFeedback { get; set; }
     public ulong ActivityRunId { get; set; }
     public ulong? AttemptId { get; set; }
     public bool? IsCorrect { get; set; }
@@ -96,6 +113,17 @@ public class ActivitySubmissionResponseDto
     public string OutcomeFeedback { get; set; } = string.Empty;
     public uint NextActivityOrder { get; set; }
     public bool IsRunFinished { get; set; }
+}
+
+public class QuestionLearningFeedbackDto
+{
+    public bool? IsCorrect { get; set; }
+    public string Status { get; set; } = "Pending";
+    public string SubmittedAnswer { get; set; } = "";
+    public string CorrectAnswer { get; set; } = "";
+    public string Explanation { get; set; } = "";
+    public string MethodGuide { get; set; } = "";
+    public string NextStep { get; set; } = "";
 }
 
 public class V4SessionEvaluationResultDto
@@ -119,6 +147,7 @@ public class V4SessionEvaluationResultDto
 
 public class MissionRunDto
 {
+    public string Outcome { get; set; } = "None";
     public ulong SessionRunId { get; set; }
     public Guid SessionId { get; set; }
     public string Title { get; set; } = string.Empty;

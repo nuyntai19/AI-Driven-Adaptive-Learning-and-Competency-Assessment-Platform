@@ -1,4 +1,5 @@
 using EduTwin.BLL.Organization;
+using EduTwin.BLL.Recommendations.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.EntityFrameworkCore;
@@ -19,9 +20,15 @@ public sealed class V4LearningExceptionFilterAttribute : ExceptionFilterAttribut
             _ => 0
         };
         if (status == 0) return;
-        context.Result = new ObjectResult(new ProblemDetails { Status = status, Title = "Không thể thực hiện hoạt động học",
+        var problem = new ProblemDetails { Status = status, Title = "Không thể thực hiện hoạt động học",
             Detail = status == 404 ? "Không tìm thấy dữ liệu trong phạm vi của bạn." : context.Exception.Message,
-            Extensions = { ["traceId"] = context.HttpContext.TraceIdentifier } }) { StatusCode = status };
+            Extensions = { ["traceId"] = context.HttpContext.TraceIdentifier } };
+        if (context.Exception is LearningMissionInProgressException ongoing)
+        {
+            problem.Extensions["errorCode"] = "LEARNING_MISSION_IN_PROGRESS";
+            problem.Extensions["ongoingMission"] = new { missionId = ongoing.MissionId, runId = ongoing.RunId, title = ongoing.MissionTitle };
+        }
+        context.Result = new ObjectResult(problem) { StatusCode = status };
         context.ExceptionHandled = true;
     }
 }

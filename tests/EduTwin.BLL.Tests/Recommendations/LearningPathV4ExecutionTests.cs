@@ -7,6 +7,43 @@ namespace EduTwin.BLL.Tests.Recommendations;
 public sealed class LearningPathV4ExecutionTests
 {
     [Fact]
+    public async Task UnfinishedMissionConflict_IdentifiesOwnRun_AndCanResumeWithoutNewRun()
+    {
+        using var f = new LearningPathV4Fixture();
+        var first = await f.Activate("Practice", "101");
+        var run = await f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(first.MissionId));
+        var agenda = await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English);
+        var other = agenda.Missions.First(m => m.Purpose == "Study");
+        var error = await Assert.ThrowsAsync<EduTwin.BLL.Recommendations.Services.LearningMissionInProgressException>(() =>
+            f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(other.MissionId)));
+        Assert.Equal(Guid.Parse(first.MissionId), error.MissionId);
+        Assert.Equal(run.SessionRunId, error.RunId);
+        Assert.Equal(run.Title, error.MissionTitle);
+        Assert.Contains(run.Title, error.Message);
+        var resumed = await f.Execution.StartMissionAsync(f.Center, f.Student, error.MissionId);
+        Assert.Equal(run.SessionRunId, resumed.SessionRunId);
+        Assert.Single(await f.Db.LearningPathSessionRuns.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Review_ReadsSavedOutcomeAndResponses_WithoutEvaluationOrNewRun()
+    {
+        using var f = new LearningPathV4Fixture();
+        var mission = await f.Activate("Study", "101");
+        var run = await f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(mission.MissionId));
+        await f.Execution.SubmitActivityAsync(f.Center, f.Student, run.Activities[0].ActivityRunId,
+            new SubmitActivityRequest { ClientSubmissionId = Guid.NewGuid(), FinalAnswer = "Em hiểu cách dùng thì." });
+        await f.Evaluator.EvaluateMissionRunAsync(f.Center, f.Student, run.SessionRunId);
+        var saved = await f.Db.LearningPathSessionRuns.SingleAsync();
+        var reviewed = await f.Execution.GetMissionRunAsync(f.Center, f.Student, run.SessionId, run.SessionRunId);
+        Assert.Equal(saved.Outcome.ToString(), reviewed.Outcome);
+        Assert.Equal("Completed", reviewed.Status);
+        Assert.Equal("Em hiểu cách dùng thì.", reviewed.Activities[0].SubmittedResponse);
+        Assert.Single(await f.Db.LearningPathSessionRuns.ToListAsync());
+        Assert.Empty(await f.Db.Attempts.ToListAsync());
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => f.Execution.GetMissionRunAsync(f.Center, Guid.NewGuid(), run.SessionId, run.SessionRunId));
+    }
+    [Fact]
     public async Task FiveQuestionBank_ReservesFreshItemsForCheck_InsteadOfExposingThemInStudy()
     {
         using var f = new LearningPathV4Fixture();
@@ -18,7 +55,7 @@ public sealed class LearningPathV4ExecutionTests
             new SubmitActivityRequest { ClientSubmissionId = Guid.NewGuid(), FinalAnswer = "Read the published introduction" });
         await f.Evaluator.EvaluateMissionRunAsync(f.Center, f.Student, run.SessionRunId);
         var agenda = await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English);
-        Assert.False(agenda.Missions.Single(m => m.Purpose == "Practice").CanStart);
+        Assert.True(agenda.Missions.Single(m => m.Purpose == "Practice").CanStart);
         var check = agenda.Missions.Single(m => m.Purpose == "IndependentCheck"); Assert.True(check.CanStart);
         Assert.Equal(5, (await f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(check.MissionId))).Activities.Count);
     }

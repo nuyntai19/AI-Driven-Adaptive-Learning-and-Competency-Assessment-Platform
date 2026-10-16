@@ -271,6 +271,9 @@ export interface CreateLearningGoalRequest {
 }
 
 export interface ProposedMissionDto {
+  difficultyFloor?: number | null;
+  questionCount: number;
+  availableFrom?: string | null;
   contentVersionId?: string | null;
   canStart?: boolean;
   missionId: string;
@@ -351,6 +354,10 @@ export interface CapabilityMapDto {
 }
 
 export interface AgendaItemDto {
+  latestRunId?: number | null;
+  reviewOnly?: boolean;
+  questionCount: number;
+  availableFrom?: string | null;
   missionId: string;
   legacySessionId?: string | null;
   title: string;
@@ -367,6 +374,8 @@ export interface AgendaItemDto {
 }
 
 export interface LearningAgendaDto {
+  insights: LearningInsightsDto;
+  recentChanges: string[];
   learningPathId?: string | null;
   goalTitle?: string | null;
   missions: AgendaItemDto[];
@@ -377,6 +386,19 @@ export interface LearningAgendaDto {
   alternativeOptions: AgendaItemDto[];
   ongoingRuns: AgendaItemDto[];
   reviewDueTasks: AgendaItemDto[];
+}
+
+export interface LearningInsightsDto {
+  windowDays: number; answerCount: number; assignmentCount: number; gradedQuestionCount: number;
+  pendingCount: number; scorePercentage?: number | null; summary: string; suggestedSkillIds: string[];
+  skills: { skillId: string; skillName: string; questionCount: number; correctCount: number; wrongCount: number;
+    observation: string; confirmedMisconceptions: string[];
+    recentAnswers: { attemptId: string; questionText: string; isCorrect?: boolean | null; submittedAt: string; guided: boolean }[] }[];
+}
+
+export interface QuestionLearningFeedbackDto {
+  isCorrect?: boolean | null; status: string; submittedAnswer: string; correctAnswer: string;
+  explanation: string; methodGuide: string; nextStep: string;
 }
 
 export interface ActivityContentDto {
@@ -391,6 +413,10 @@ export interface ActivityContentDto {
 }
 
 export interface ActivityRunDto {
+  aiFeedback?: LearningTutorFeedbackDto | null;
+  submittedResponse?: string | null;
+  stage?: string;
+  learningFeedback?: QuestionLearningFeedbackDto | null;
   question?: { question: { questionId: string; questionText: string; questionType: string; reasoningRequired: boolean; hasImage?: boolean; options: { optionId: string; label: string; text: string }[] } } | null;
   activityRunId: number;
   sessionRunId: number;
@@ -408,6 +434,11 @@ export interface ActivityRunDto {
   startedAt: string;
   completedAt?: string | null;
   content?: ActivityContentDto | null;
+}
+
+export interface LearningTutorFeedbackDto {
+  status: string; comment: string; aiSolution: string; understanding: string; correction: string;
+  provider: string; model: string; generatedAt?: string | null;
 }
 
 export interface SaveActivityDraftRequest {
@@ -450,6 +481,7 @@ export interface SubmitActivityRequest {
 }
 
 export interface MissionRunDto {
+  outcome: string;
   sessionRunId: number;
   sessionId: string;
   title: string;
@@ -458,6 +490,7 @@ export interface MissionRunDto {
 }
 
 export interface ActivitySubmissionResponseDto {
+  learningFeedback?: QuestionLearningFeedbackDto | null;
   activityRunId: number;
   attemptId?: number | null;
   isCorrect?: boolean | null;

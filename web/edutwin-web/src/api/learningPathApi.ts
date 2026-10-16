@@ -172,6 +172,15 @@ export const startLearningMission = async (missionId: string): Promise<import(".
   return response.data;
 };
 
+export const getMissionRun = async (missionId: string, runId: number): Promise<import("../types/learningPath").MissionRunDto> => {
+  const response = await httpClient.get<import("../types/learningPath").MissionRunDto>(`/students/me/missions/${encodeURIComponent(missionId)}/runs/${runId}`);
+  return response.data;
+};
+export const getActivityAiFeedback = async (id: number): Promise<import("../types/learningPath").LearningTutorFeedbackDto> => {
+  const response = await httpClient.post<import("../types/learningPath").LearningTutorFeedbackDto>(`/students/me/activity-runs/${id}/ai-feedback`);
+  return response.data;
+};
+
 export const getActivityRun = async (
   activityRunId: number
 ): Promise<import("../types/learningPath").ActivityRunDto> => {

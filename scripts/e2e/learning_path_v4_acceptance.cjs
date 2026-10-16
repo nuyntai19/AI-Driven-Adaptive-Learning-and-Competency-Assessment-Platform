@@ -86,6 +86,18 @@ async function main() {
     const stale = await ok(secondDevice, `/students/me/activity-runs/${a.activityRunId}/draft`, 'PUT', { expectedRevision: 0, draftPayload: 'overwrite' });
     assert.equal(stale.hasConflict, true);
   });
+  await check('Unfinished conflict names the exact owned mission and resumes it without creating a run', async () => {
+    const otherMission = proposal.milestones.flatMap(m => m.missions).find(m => m.missionId !== studyRun.sessionId && m.canStart);
+    assert.ok(otherMission);
+    const conflict = await request(student, `/students/me/missions/${otherMission.missionId}/start`, 'POST');
+    assert.equal(conflict.status, 409);
+    assert.equal(conflict.data.errorCode, 'LEARNING_MISSION_IN_PROGRESS');
+    assert.equal(conflict.data.ongoingMission.missionId, studyRun.sessionId);
+    assert.equal(conflict.data.ongoingMission.runId, studyRun.sessionRunId);
+    assert.equal(conflict.data.ongoingMission.title, studyRun.title);
+    const resumed = await ok(student, `/students/me/missions/${conflict.data.ongoingMission.missionId}/start`, 'POST');
+    assert.equal(resumed.sessionRunId, studyRun.sessionRunId);
+  });
   await check('Other students and tenants cannot start/read this mission', async () => {
     for (const token of [other, anotherCenter]) {
       assert.ok([403, 404].includes((await request(token, `/students/me/missions/${studyRun.sessionId}/start`, 'POST')).status));
@@ -103,6 +115,12 @@ async function main() {
     const decisions = execSql('SELECT COUNT(*) FROM path_decisions;').trim();
     await ok(student, `/students/me/mission-runs/${studyRun.sessionRunId}/evaluate-v4`, 'POST');
     assert.equal(execSql('SELECT COUNT(*) FROM path_decisions;').trim(), decisions);
+    const runCount = execSql('SELECT COUNT(*) FROM learning_path_session_runs;').trim();
+    const saved = await ok(student, `/students/me/missions/${studyRun.sessionId}/runs/${studyRun.sessionRunId}`);
+    assert.equal(saved.status, 'Completed'); assert.equal(typeof saved.outcome, 'string');
+    assert.equal(saved.activities[0].submittedResponse, body.finalAnswer);
+    assert.equal(execSql('SELECT COUNT(*) FROM path_decisions;').trim(), decisions);
+    assert.equal(execSql('SELECT COUNT(*) FROM learning_path_session_runs;').trim(), runCount);
   });
   await check('Independent check issues real questions, blocks assistance and submits through canonical grading', async () => {
     const agenda = await ok(student, `/students/me/learning-agenda?${scope}&availableMinutes=30`);
@@ -118,6 +136,7 @@ async function main() {
       const body = { clientSubmissionId: crypto.randomUUID(), questionId: String(q.questionId), finalAnswer: q.options?.[0]?.optionId || '__incorrect_fixture_answer__',
         reasoningText: 'Isolated test of the canonical submission and evidence pipeline.', timeSpentSeconds: 30 };
       const response = await ok(student, `/students/me/activity-runs/${a.activityRunId}/submissions`, 'POST', body);
+      if (a === run.activities[0]) assert.equal((await request(student, `/students/me/activity-runs/${a.activityRunId}/ai-feedback`, 'POST')).status, 409, 'AI must not leak independent-check answers before all items are submitted');
       assert.ok(response.attemptId);
       const replay = await ok(student, `/students/me/activity-runs/${a.activityRunId}/submissions`, 'POST', body); assert.equal(replay.attemptId, response.attemptId);
       assert.equal((await request(student, `/students/me/activity-runs/${a.activityRunId}/submissions`, 'POST', { ...body, finalAnswer: 'changed' })).status, 409);
@@ -127,6 +146,41 @@ async function main() {
     if (result.outcome === 'Passed') assert.ok(Number(execSql(`SELECT COUNT(*) FROM issued_items i JOIN activity_runs a ON a.activity_run_id=i.activity_run_id AND a.center_id=i.center_id JOIN evidence_assessments e ON e.attempt_id=i.attempt_id AND e.center_id=i.center_id WHERE a.session_run_id=${Number(run.sessionRunId)} AND e.requires_teacher_review=0;`).trim()) >= 5);
     const active = (await ok(student, `/students/me/learning-agenda?${scope}`)).learningPathId;
     assert.equal(active, accepted.learningPathId, 'Worker must not supersede the V4 route');
+  });
+  await check('Recent answers explain recommendation; practice is a distinct sequence with immediate feedback', async () => {
+    const agenda = await ok(student, `/students/me/learning-agenda?${scope}`);
+    assert.ok(agenda.insights.answerCount >= 5);
+    assert.ok(agenda.insights.suggestedSkillIds.length > 0);
+    const skill = agenda.insights.skills.find(s => s.wrongCount > 0);
+    assert.ok(skill); assert.ok(skill.recentAnswers.length > 0);
+    const practice = agenda.missions.find(m => m.purpose === 'Practice' && m.skillId === skill.skillId && m.canStart);
+    assert.ok(practice);
+    const run = await ok(student, `/students/me/missions/${practice.missionId}/start`, 'POST');
+    assert.ok(run.activities.length >= 5 && run.activities.length <= 8);
+    assert.equal(new Set(run.activities.map(a => String(a.question.question.questionId))).size, run.activities.length);
+    assert.ok(run.activities.every(a => !a.learningFeedback));
+    const a = run.activities[0]; const q = a.question.question;
+    const body = { clientSubmissionId: crypto.randomUUID(), questionId: String(q.questionId), finalAnswer: q.options?.[0]?.optionId || '__incorrect_fixture_answer__', reasoningText: 'Real HTTP practice feedback regression.', timeSpentSeconds: 20 };
+    const submitted = await ok(student, `/students/me/activity-runs/${a.activityRunId}/submissions`, 'POST', body);
+    assert.ok(submitted.learningFeedback);
+    assert.ok(submitted.learningFeedback.correctAnswer); assert.ok(submitted.learningFeedback.explanation);
+    const restored = await ok(student, `/students/me/activity-runs/${a.activityRunId}`);
+    assert.equal(restored.learningFeedback.correctAnswer, submitted.learningFeedback.correctAnswer);
+    const replay = await ok(student, `/students/me/activity-runs/${a.activityRunId}/submissions`, 'POST', body);
+    assert.equal(replay.attemptId, submitted.attemptId);
+  });
+  await check('Completed work can be read without starting a new run; tutor is owner-scoped', async () => {
+    const before=execSql('SELECT COUNT(*) FROM learning_path_session_runs;').trim();
+    const saved=await ok(student,`/students/me/missions/${studyRun.sessionId}/runs/${studyRun.sessionRunId}`);
+    assert.equal(saved.sessionRunId,studyRun.sessionRunId);assert.ok(saved.activities[0].submittedResponse.includes('published introduction'));
+    assert.equal(execSql('SELECT COUNT(*) FROM learning_path_session_runs;').trim(),before);
+    for(const token of [other,anotherCenter]){
+      assert.ok([403,404].includes((await request(token,`/students/me/missions/${studyRun.sessionId}/runs/${studyRun.sessionRunId}`)).status));
+      assert.ok([403,404].includes((await request(token,`/students/me/activity-runs/${studyRun.activities[0].activityRunId}/ai-feedback`,'POST')).status));
+    }
+    const ai=await ok(student,`/students/me/activity-runs/${studyRun.activities[0].activityRunId}/ai-feedback`,'POST');
+    assert.ok(['Generated','Unavailable'].includes(ai.status));
+    if(ai.status==='Unavailable')assert.ok(!ai.aiSolution);
   });
   fs.mkdirSync(path.join(__dirname, '../../scratch'), { recursive: true });
   fs.writeFileSync(path.join(__dirname, '../../scratch/v4-api-acceptance.json'), JSON.stringify({ generatedAt: new Date().toISOString(), results }, null, 2));

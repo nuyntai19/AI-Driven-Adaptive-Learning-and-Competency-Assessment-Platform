@@ -98,6 +98,7 @@ public sealed class LearningPathV4Evaluator(EduTwinDbContext db, TimeProvider cl
                 TriggerType = "MissionEvaluation", DecisionSummary = summary, PolicyVersion = LearningPathV4Data.Policy,
                 ReasonCodes = JsonSerializer.SerializeToDocument(new[] { result.Outcome }), EvidenceReferenceIds = JsonSerializer.SerializeToDocument(latest.Values.Select(e => e.EvidenceAssessmentId)),
                 CreatedAt = now, UpdatedAt = now, RowVersion = 1 });
+            await LearningPathFollowUp.AddAsync(db, run, result.Outcome, now, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
         }
         await tx.CommitAsync(cancellationToken);

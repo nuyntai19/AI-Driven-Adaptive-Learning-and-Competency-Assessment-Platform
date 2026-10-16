@@ -948,6 +948,25 @@ public sealed class RecommendationsController : ControllerBase
         return Ok(result);
     }
 
+    [HttpGet("missions/{missionId:guid}/runs/{sessionRunId:long}")]
+    [Authorize(Policy = "recommendations.student.read_own")]
+    [V4LearningExceptionFilter]
+    public async Task<IActionResult> GetMissionRun([FromRoute] Guid missionId, [FromRoute] ulong sessionRunId, CancellationToken cancellationToken)
+    {
+        if (_activityExecutionService == null || _tenantContext?.IsResolved != true || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue) return Forbid();
+        return Ok(await _activityExecutionService.GetMissionRunAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, missionId, sessionRunId, cancellationToken));
+    }
+
+    [HttpPost("activity-runs/{activityRunId:long}/ai-feedback")]
+    [Authorize(Policy = "recommendations.student.read_own")]
+    [Authorize(Policy = "learning.attempts.submit")]
+    [V4LearningExceptionFilter]
+    public async Task<IActionResult> GetActivityAiFeedback([FromRoute] ulong activityRunId, CancellationToken cancellationToken)
+    {
+        if (_activityExecutionService == null || _tenantContext?.IsResolved != true || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue) return Forbid();
+        return Ok(await _activityExecutionService.GetAiFeedbackAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, activityRunId, cancellationToken));
+    }
+
     [HttpPost("mission-runs/{sessionRunId:long}/evaluate-v4")]
     [Authorize(Policy = "recommendations.student.read_own")]
     [V4LearningExceptionFilter]

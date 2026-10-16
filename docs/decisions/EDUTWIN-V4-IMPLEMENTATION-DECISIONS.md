@@ -7,6 +7,10 @@
 
 ### Hiệu chỉnh sau rà soát — 16/10/2026
 
+### Trải nghiệm học liên kết với bài làm — cùng ngày
+
+Triển khai theo yêu cầu người dùng xác nhận sau rà soát: khung đề xuất từ câu đã làm, mục tiêu điền sẵn có thể chỉnh, chuỗi luyện nhiều câu và phản hồi tức thì từ dữ liệu biên soạn/canonical grader. Không đợi AI mới trả đáp án trong phần luyện. Kết luận kỹ năng vẫn dùng evidence gate; quan sát sai không tự trở thành misconception. Evaluator bổ sung buổi rèn lại hoặc lịch ôn 2/7 ngày có quyết định giải thích, GET không ghi. Chi tiết và bằng chứng: [EDUTWIN-CONNECTED-LEARNING-2026-10-16.md](../verification/EDUTWIN-CONNECTED-LEARNING-2026-10-16.md).
+
 - Planner dùng graph/evidence/nội dung theo đúng môn và lớp; không còn danh mục Toán pilot làm nguồn cho mọi môn. Mỗi chặng là một kỹ năng thật, không phải lịch tuần lặp chủ đề.
 - Start nhiệm vụ lưu Run/Activity/IssuedItem thật. Submit câu hỏi qua pipeline hiện hữu; đọc/ví dụ chỉ hoàn thành hoạt động, không sinh điểm hay Attempt giả.
 - Policy hiện tại `v4-evidence-1`: kiểm tra độc lập cần ít nhất 5 câu khác nhau, chưa làm/chưa lộ lời giải, tối thiểu 80% và evidence không còn chờ review. Không dùng điểm của hoạt động có hướng dẫn để tự xác nhận kỹ năng.
