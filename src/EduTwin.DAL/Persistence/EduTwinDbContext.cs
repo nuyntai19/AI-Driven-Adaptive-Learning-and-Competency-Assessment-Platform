@@ -118,6 +118,11 @@ public class EduTwinDbContext : DbContext
     public DbSet<StudentReviewRequest> StudentReviewRequests => Set<StudentReviewRequest>();
     public DbSet<TeacherReviewHistory> TeacherReviewHistories => Set<TeacherReviewHistory>();
 
+    // Adaptive Practice
+    public DbSet<EduTwin.DAL.AdaptivePractice.AdaptivePracticeSession> AdaptivePracticeSessions => Set<EduTwin.DAL.AdaptivePractice.AdaptivePracticeSession>();
+    public DbSet<EduTwin.DAL.AdaptivePractice.AdaptivePracticeSessionItem> AdaptivePracticeSessionItems => Set<EduTwin.DAL.AdaptivePractice.AdaptivePracticeSessionItem>();
+    public DbSet<EduTwin.DAL.AdaptivePractice.AdaptivePracticeSessionSummary> AdaptivePracticeSessionSummaries => Set<EduTwin.DAL.AdaptivePractice.AdaptivePracticeSessionSummary>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
