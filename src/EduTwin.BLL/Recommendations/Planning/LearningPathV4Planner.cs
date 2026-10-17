@@ -453,15 +453,26 @@ public sealed class LearningPathV4Planner(EduTwinDbContext db, TimeProvider cloc
             p.SubjectId == subjectId && p.PlanSchemaVersion == "4.0" && p.LearningPathId != activePathId)
             .OrderByDescending(p => p.Version).Take(5).ToListAsync(ct);
         if (older.Count == 0) return [];
-        var ids = older.Select(p => p.LearningPathId).ToList();
-        var answered = await db.IssuedItems.AsNoTracking().Where(i => i.CenterId == centerId && i.AttemptId != null &&
-            ids.Contains(i.ActivityRun.SessionRun.Session.LearningPathId)).Select(i => i.ActivityRun.SessionRun.Session.LearningPathId).ToListAsync(ct);
+
+        var counts = await (
+            from p in db.LearningPaths.AsNoTracking()
+            where p.CenterId == centerId && p.StudentId == studentId && p.SubjectId == subjectId &&
+                  p.PlanSchemaVersion == "4.0" && p.LearningPathId != activePathId
+            join s in db.LearningPathSessions.AsNoTracking() on p.LearningPathId equals s.LearningPathId
+            join r in db.LearningPathSessionRuns.AsNoTracking() on s.SessionId equals r.SessionId
+            join a in db.ActivityRuns.AsNoTracking() on r.SessionRunId equals a.SessionRunId
+            join i in db.IssuedItems.AsNoTracking() on a.ActivityRunId equals i.ActivityRunId
+            where i.AttemptId != null
+            group i by p.LearningPathId into g
+            select new { LearningPathId = g.Key, Count = g.Count() }
+        ).ToDictionaryAsync(x => x.LearningPathId, x => (uint)x.Count, ct);
+
         return older.Select(p => new PathHistoryItemDto
         {
             LearningPathId = p.LearningPathId, Version = p.Version, Status = p.Status.ToString(), CreatedAt = p.CreatedAt,
             EndedAt = p.Status == LearningPathStatus.Active ? null : p.UpdatedAt, GoalTitle = GoalTitleOf(p.PlanJson) ?? $"Tuyến phiên bản {p.Version}",
             TotalMissions = (uint)p.Sessions.Count, CompletedMissions = (uint)p.Sessions.Count(s => s.Status == LearningPathSessionStatus.Completed),
-            AnsweredQuestions = (uint)answered.Count(id => id == p.LearningPathId)
+            AnsweredQuestions = counts.GetValueOrDefault(p.LearningPathId, 0u)
         }).ToList();
     }
 

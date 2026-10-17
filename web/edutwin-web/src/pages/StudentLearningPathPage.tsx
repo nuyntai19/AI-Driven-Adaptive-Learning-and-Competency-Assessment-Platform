@@ -74,7 +74,7 @@ export function StudentLearningPathPage() {
         </select><button className={action} onClick={() => { setRecommended(false); setShowGoal(true); }} disabled={!map.data?.skills.length}>Thiết lập mục tiêu</button></div>
     </header>
     {(map.error || agenda.error) && <div role="alert" className="rounded-xl bg-rose-50 p-4 text-rose-800">
-      Không thể tải lộ trình. {(map.error ?? agenda.error)?.message}
+      Không thể tải lộ trình. {((map.error ?? agenda.error) as any)?.response?.data?.detail ?? (map.error ?? agenda.error)?.message}
       <button className="ml-3 underline" onClick={() => { void map.refetch(); void agenda.refetch(); }}>Thử lại</button>
     </div>}
     {agenda.data?.insights && <section className={`${panel} border-indigo-200`} aria-labelledby="path-insights-title">
