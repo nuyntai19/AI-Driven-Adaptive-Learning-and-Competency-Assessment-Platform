@@ -156,6 +156,11 @@ public class V4SessionEvaluationResultDto
 
     public bool HasPendingReview { get; set; }
     public DateTime EvaluatedAt { get; set; }
+    /// <summary>Practice/review score: correct answers (hinted ones count half) over graded answers.</summary>
+    public decimal? PracticeAccuracy { get; set; }
+    /// <summary>Passed, but some evidence still waits for a teacher.</summary>
+    public bool IsProvisional { get; set; }
+    public string? NextStep { get; set; }
 }
 
 public class MissionRunDto

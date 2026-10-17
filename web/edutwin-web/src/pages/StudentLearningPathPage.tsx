@@ -9,7 +9,7 @@ import { StudentLearningReadOnlyNotice } from "../components/student/StudentLear
 import { GoalAndProposalModal } from "../components/learningPathV4/GoalAndProposalModal";
 import { MissionPlayerModal } from "../components/learningPathV4/MissionPlayerModal";
 import { TimeBudgetSlider } from "../components/learningPathV4/TimeBudgetSlider";
-import { formatStudyMinutes } from "../utils/studyTime";
+import { formatStudyMinutes, splitReason } from "../utils/studyTime";
 import type { AgendaItemDto, MissionRunSummaryDto } from "../types/learningPath";
 import { missionAction } from "../utils/learningMission";
 
@@ -27,6 +27,15 @@ function runSummary(r: MissionRunSummaryDto): string {
   if (outcomeLabels[r.outcome]) parts.push(outcomeLabels[r.outcome]);
   if (r.totalQuestions > 0) parts.push(`${r.correctAnswers}/${r.answeredQuestions} câu đúng${r.answeredQuestions < r.totalQuestions ? ` (đã làm ${r.answeredQuestions}/${r.totalQuestions})` : ""}`);
   return parts.join(" · ");
+}
+function sizeLabel(m: AgendaItemDto): string {
+  if (m.purpose !== "Practice" && m.purpose !== "Review") return "";
+  const sets = m.plannedSets ?? 1;
+  return sets > 1 ? `${sets} bộ × ${m.questionCount} câu · ` : `${m.questionCount} câu · `;
+}
+function Reason({ text, className = "" }: { text: string; className?: string }) {
+  const { lead, rest } = splitReason(text);
+  return <div className={className}><p>{lead}</p>{rest && <details className="mt-1"><summary className="cursor-pointer text-indigo-600">Vì sao?</summary><p className="mt-1">{rest}</p></details>}</div>;
 }
 const stateLabels: Record<string, string> = { Unknown: "Chưa đủ bằng chứng", Developing: "Cần củng cố",
   Demonstrated: "Đã có bằng chứng ban đầu", Confirmed: "Đã xác nhận", ReviewDue: "Cần ôn lại" };
@@ -55,7 +64,7 @@ export function StudentLearningPathPage() {
   const todayPlan = agenda.data?.todayPlan ?? (primary ? [primary, ...(agenda.data?.alternativeOptions ?? [])] : []);
   const planSummary = agenda.data?.learningPathId
     ? todayPlan.length === 0 ? "Chưa có nhiệm vụ vừa với thời gian này."
-      : `Kế hoạch: ${todayPlan.length} nhiệm vụ · khoảng ${formatStudyMinutes(agenda.data.plannedMinutes ?? 0)}${agenda.data.plannedQuestionCount ? ` · ≈ ${agenda.data.plannedQuestionCount} câu` : ""}${agenda.isPlaceholderData ? " · đang tính lại…" : ""}`
+      : `Kế hoạch: ${todayPlan.reduce((n, m) => n + (m.purpose === "Practice" || m.purpose === "Review" ? m.plannedSets ?? 1 : 1), 0)} bước · khoảng ${formatStudyMinutes(agenda.data.plannedMinutes ?? 0)}${agenda.data.plannedQuestionCount ? ` · ≈ ${agenda.data.plannedQuestionCount} câu` : ""}${agenda.isPlaceholderData ? " · đang tính lại…" : ""}`
     : undefined;
   const panel = "rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 sm:p-6";
   const action = "rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40 disabled:cursor-not-allowed";
@@ -96,6 +105,22 @@ export function StudentLearningPathPage() {
           <ul className="mt-3 space-y-3">{s.recentAnswers.map(a => <li className="border-t border-slate-100 pt-3" key={a.attemptId}><p className="whitespace-pre-wrap">{a.questionText}</p><p className="mt-1 text-xs text-slate-500">{a.isCorrect == null ? "Chờ chấm" : a.isCorrect ? "Đúng" : "Cần sửa"} · {new Date(a.submittedAt).toLocaleDateString("vi-VN")}{a.guided ? " · Đã có hướng dẫn" : ""}</p></li>)}</ul>
         </details></article>)}</div>
     </section>}
+    {agenda.data?.planOutdated && <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+      <p>Tuyến này được tạo trước khi có vòng luyện theo kết quả. Cập nhật để mỗi kỹ năng được luyện nhiều bộ ngắn tùy mức độ yếu; bài làm cũ vẫn được giữ và dùng để tính.</p>
+      <button className={action} disabled={!map.data?.skills.length} onClick={() => { setRecommended(true); setShowGoal(true); }}>Xem tuyến cập nhật</button>
+    </div>}
+    {agenda.data?.progress && agenda.data.progress.totalSkills > 0 && <section className={panel} aria-label="Tiến độ mục tiêu">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div><p className="text-sm text-slate-500">Tiến độ mục tiêu</p>
+          <p className="mt-1 text-2xl font-semibold">{agenda.data.progress.confirmedSkills}/{agenda.data.progress.totalSkills} kỹ năng đã vững</p>
+          {agenda.data.progress.readyForCheckSkills > 0 && <p className="mt-1 text-sm text-indigo-700 dark:text-indigo-300">{agenda.data.progress.readyForCheckSkills} kỹ năng đã sẵn sàng tự kiểm tra</p>}</div>
+        <div className="text-right text-sm">
+          <p>{agenda.data.progress.streakDays > 0 ? `Chuỗi ${agenda.data.progress.streakDays} ngày học${agenda.data.progress.studiedToday ? "" : " · hôm nay chưa học"}` : "Chưa có chuỗi ngày học"}</p>
+          <p className="mt-1 text-slate-500">{agenda.data.progress.remainingMinutes > 0 ? `Còn khoảng ${formatStudyMinutes(agenda.data.progress.remainingMinutes)}${agenda.data.progress.estimatedFinishDate ? ` · dự kiến xong ${new Date(agenda.data.progress.estimatedFinishDate).toLocaleDateString("vi-VN")}` : ""}` : "Đã xong các phần trong tuyến"}</p>
+        </div>
+      </div>
+      <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"><div className="h-full rounded-full bg-indigo-600" style={{ width: `${100 * agenda.data.progress.confirmedSkills / agenda.data.progress.totalSkills}%` }} /></div>
+    </section>}
     {agenda.data && <section className={panel} aria-labelledby="today-title">
       <div className="grid gap-5 md:grid-cols-[1fr_minmax(0,22rem)] md:items-start">
         <div><h2 id="today-title" className="text-xl font-semibold">Hôm nay học gì?</h2>
@@ -105,12 +130,12 @@ export function StudentLearningPathPage() {
       </div>
       {primary && <div className="mt-5 rounded-xl bg-indigo-50 p-5 dark:bg-indigo-950/40">
         <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">{primary.activeRunId ? "Tiếp tục nhiệm vụ" : "Bắt đầu từ đây"}</p>
-        <h3 className="mt-2 text-xl font-semibold">{primary.title}</h3><p className="mt-2 text-sm">{primary.recommendationReason}</p>
-        <button className={`${action} mt-4`} onClick={() => setMission(primary)}>{primary.activeRunId ? "Tiếp tục đúng tiến độ" : "Mở nhiệm vụ"} · {primary.purpose === "Practice" || primary.purpose === "Review" ? `${primary.questionCount} câu · ` : ""}khoảng {primary.estimatedDurationMinutes} phút</button>
+        <h3 className="mt-2 text-xl font-semibold">{primary.title}</h3><Reason className="mt-2 text-sm" text={primary.recommendationReason} />
+        <button className={`${action} mt-4`} onClick={() => setMission(primary)}>{primary.activeRunId ? "Tiếp tục đúng tiến độ" : "Mở nhiệm vụ"} · {sizeLabel(primary)}khoảng {primary.estimatedDurationMinutes} phút</button>
       </div>}
       {todayPlan.length > 1 && <ol className="mt-4 space-y-2" aria-label="Các bước hôm nay">{todayPlan.slice(1).map((m, i) => <li key={m.missionId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
         <div className="flex items-start gap-3"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold dark:bg-slate-800">{i + 2}</span>
-          <div><p className="text-sm font-medium">{m.title}</p><p className="text-xs text-slate-500">{activityLabels[m.purpose] ?? m.purpose}{m.purpose === "Practice" || m.purpose === "Review" ? ` · ${m.questionCount} câu` : ""} · khoảng {m.estimatedDurationMinutes} phút{m.weaknessLevel === "Weak" ? " · phần yếu" : ""}</p></div></div>
+          <div><p className="text-sm font-medium">{m.title}</p><p className="text-xs text-slate-500">{activityLabels[m.purpose] ?? m.purpose} · {sizeLabel(m)}khoảng {m.estimatedDurationMinutes} phút{m.weaknessLevel === "Weak" ? " · phần yếu" : ""}</p></div></div>
         <button className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm" onClick={() => setMission(m)}>{m.activeRunId ? "Tiếp tục" : "Mở"}</button>
       </li>)}</ol>}
       {agenda.data.pacingNote && <p className="mt-4 rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:bg-slate-800 dark:text-slate-300">{agenda.data.pacingNote}</p>}
@@ -131,8 +156,9 @@ export function StudentLearningPathPage() {
             <p className="mt-2 text-xs font-semibold text-indigo-600">{stateLabels[skill?.state ?? "Unknown"]} · {skill?.evidenceCount ?? 0} câu có bằng chứng hợp lệ</p></div></div>
           <div className="mt-5 grid gap-3 sm:grid-cols-3">{group.map(m => <div key={m.missionId} className="flex flex-col rounded-xl border border-slate-200 p-4 dark:border-slate-700">
             <p className="text-xs font-semibold text-indigo-600">{activityLabels[m.purpose] ?? m.purpose}</p><h4 className="mt-2 font-medium">{m.title}</h4>
-            <p className="mt-2 flex-1 text-xs leading-relaxed text-slate-500">{m.recommendationReason}</p>
-            {m.questionCount > 0 && <p className="mt-2 text-xs font-medium">{m.questionCount} câu · khoảng {m.estimatedDurationMinutes} phút</p>}
+            <Reason className="mt-2 flex-1 text-xs leading-relaxed text-slate-500" text={m.recommendationReason} />
+            {m.questionCount > 0 && <p className="mt-2 text-xs font-medium">{m.setNumber ? `Bộ ${m.setNumber}${m.estimatedSets ? ` (dự kiến ${m.estimatedSets} bộ)` : ""} · ` : ""}{m.questionCount} câu · khoảng {m.questionCount * 2 > 0 && (m.purpose === "Practice" || m.purpose === "Review") ? m.questionCount * 2 : m.estimatedDurationMinutes} phút</p>}
+            {m.advice && <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">{m.advice}</p>}
             {m.availableFrom && <p className="mt-2 text-xs text-indigo-600">Hẹn ôn {new Date(m.availableFrom).toLocaleDateString("vi-VN")}</p>}
             <div className="mt-4 flex flex-wrap gap-2">
               <button className={action} disabled={!m.canStart && !m.activeRunId && !m.latestRunId} onClick={() => setMission({ ...m, reviewOnly: missionAction(m).reviewOnly })}>

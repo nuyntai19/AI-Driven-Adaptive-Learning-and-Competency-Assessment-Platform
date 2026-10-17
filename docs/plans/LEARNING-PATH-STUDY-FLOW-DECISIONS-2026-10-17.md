@@ -63,3 +63,56 @@ Bộ "Rèn lại" sau khi tự kiểm tra chưa đạt có 4 + 2 × số câu sa
 - Backend: toàn bộ 4358 test đạt.
 - Frontend: 760 test đạt (Node 22).
 - `tsc` và `vite build` đạt.
+
+## Bản sửa 2 (17/10/2026 tối): vòng luyện và đánh giá đúng
+
+### Bộ luyện cố định, thời gian quyết định số bộ
+
+- Mỗi bộ luyện cố định 6 câu; riêng "Thử nhanh" 4 câu.
+- Thanh trượt thêm số bộ trong ngày, không kéo dài một bộ. Tối đa 3 bộ cho mỗi kỹ năng mỗi ngày; phần yếu được thêm bộ trước.
+- Bộ đã mở giữ nguyên số câu. Giao diện ghi rõ thời gian mới áp dụng từ bộ tiếp theo.
+- Đã sửa lỗi bộ nhớ đệm khiến số câu không đổi khi mở bài.
+
+### Vòng luyện theo kết quả (`LearningPathFollowUp`)
+
+| Kết quả bộ (câu có gợi ý tính nửa) | Bước tiếp |
+|---|---|
+| ≥ 80% | Bộ khó hơn; đạt 2 bộ liên tiếp thì đề xuất tự kiểm tra |
+| 50–80% | Một bộ cùng mức, ưu tiên câu vừa sai |
+| < 50% | Bộ dễ hơn, nhắc xem lại phần Tìm hiểu |
+
+- Tối đa 8 bộ mỗi kỹ năng. Vượt mức thì đề nghị hỏi giáo viên thay vì luyện tiếp.
+- Tự kiểm tra vẫn làm được bất cứ lúc nào, nhưng chỉ được đưa vào kế hoạch hôm nay khi đã sẵn sàng.
+- Kỹ năng chưa có bài làm: làm "Thử nhanh" 4 câu trước; đạt từ 80% thì bỏ qua phần lý thuyết. Không áp dụng cho mục tiêu Nền tảng và Nâng cao.
+- Xen kẽ: sau 3 bộ của cùng một kỹ năng trong ngày, ưu tiên kỹ năng khác.
+
+### Ôn tập phát hiện việc quên
+
+- Ôn từ 60%: hẹn ôn tiếp sau 7, rồi 14, rồi 28 ngày (tối đa 30).
+- Ôn dưới 60%: kỹ năng quay lại luyện, thêm bộ "Rèn lại", kể cả khi kỹ năng đã từng đạt. Đạt lại 2 bộ liên tiếp thì hẹn ôn.
+
+### Tự kiểm tra công bằng hơn
+
+- Chọn 5 câu chưa gặp, sắp từ dễ đến khó. Nếu ngân hàng có, ít nhất 2 câu từ mức 3/5 trở lên.
+- Không có câu mức vừa hoặc khó thì kết quả ghi rõ chỉ xác nhận mức cơ bản.
+- Phần lớn là trắc nghiệm thì phải đúng hết.
+- Câu do AI chấm còn chờ giáo viên duyệt: kết quả ghi "Tạm đạt · chờ giáo viên xác nhận", lộ trình vẫn đi tiếp. AI có được tạm xác nhận năng lực hay không vẫn cần nhóm thống nhất.
+
+### Khác
+
+- Phân tích điểm yếu tính câu đúng nhờ gợi ý là nửa câu đúng.
+- Phần Tìm hiểu có tối đa 2 ví dụ mẫu, mở từng bước.
+- Gợi ý: câu một từ hoặc trắc nghiệm chỉ có 2 mức; che cả vế phải của đáp án dạng "x = 2".
+- Bài ôn được làm song song với một bộ luyện đang dở.
+- Trang lộ trình:
+  - Tiến độ mục tiêu: kỹ năng đã vững, thời gian còn lại, ngày dự kiến xong, chuỗi ngày học.
+  - Thông báo cập nhật cho tuyến tạo trước khi có vòng luyện.
+  - Lý do rút gọn, có nút "Vì sao?".
+  - Sửa lỗi lặp chữ.
+- Giữ nguyên phần sửa truy vấn lịch sử tuyến của commit 6761e1c.
+
+### Kiểm thử
+
+- Backend: 4364 test đạt, gồm 8 test mới cho vòng luyện, ôn tập, tự kiểm tra và gợi ý.
+- Frontend: 762 test đạt (Node 22).
+- `tsc` và `vite build` đạt.

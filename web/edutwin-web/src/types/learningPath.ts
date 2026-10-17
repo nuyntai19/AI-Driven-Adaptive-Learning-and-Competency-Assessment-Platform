@@ -379,6 +379,20 @@ export interface AgendaItemDto {
   retryLabel?: string | null;
   retryBlockedReason?: string | null;
   runs?: MissionRunSummaryDto[];
+  plannedSets?: number;
+  setNumber?: number;
+  estimatedSets?: number;
+  advice?: string | null;
+}
+
+export interface GoalProgressDto {
+  totalSkills: number;
+  confirmedSkills: number;
+  readyForCheckSkills: number;
+  remainingMinutes: number;
+  estimatedFinishDate?: string | null;
+  streakDays: number;
+  studiedToday: boolean;
 }
 
 export interface MissionRunSummaryDto {
@@ -423,6 +437,8 @@ export interface LearningAgendaDto {
   plannedQuestionCount?: number;
   pacingNote?: string | null;
   pathHistory?: PathHistoryItemDto[];
+  planOutdated?: boolean;
+  progress?: GoalProgressDto | null;
 }
 
 export interface LearningInsightsDto {
@@ -555,4 +571,7 @@ export interface V4SessionEvaluationResultDto {
   nextActions: ProposedMissionDto[];
   hasPendingReview: boolean;
   evaluatedAt: string;
+  practiceAccuracy?: number | null;
+  isProvisional?: boolean;
+  nextStep?: string | null;
 }

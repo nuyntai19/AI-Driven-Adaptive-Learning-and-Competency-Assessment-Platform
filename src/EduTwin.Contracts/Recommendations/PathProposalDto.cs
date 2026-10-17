@@ -5,6 +5,8 @@ namespace EduTwin.Contracts.Recommendations;
 
 public class PathProposalDto
 {
+    /// <summary>2 = practice runs as a loop of fixed 6-question sets. Older routes are flagged for an update.</summary>
+    public int PacingVersion { get; set; }
     public Guid ProposalId { get; set; }
     public Guid GoalId { get; set; }
     public Guid SubjectId { get; set; }
@@ -34,11 +36,22 @@ public class ProposedMilestoneDto
     public List<string> SkillIds { get; set; } = new();
     public List<ProposedMissionDto> Missions { get; set; } = new();
     public bool HasTransferChallenge { get; set; }
+    /// <summary>Set by the practice loop after two consecutive sets at or above 80%.</summary>
+    public bool ReadyForCheck { get; set; }
 }
 
 public class ProposedMissionDto
 {
     public byte? DifficultyFloor { get; set; }
+    /// <summary>Preferred difficulty for a practice set; questions closest to it come first.</summary>
+    public byte? TargetDifficulty { get; set; }
+    public uint SetNumber { get; set; }
+    public uint PassStreak { get; set; }
+    public uint EstimatedSets { get; set; }
+    /// <summary>Repair work created from a failed check or review; shown even when the skill was confirmed earlier.</summary>
+    public bool IsRepair { get; set; }
+    /// <summary>A probe (quick try or starting-point check) may run before practice.</summary>
+    public bool IsProbe { get; set; }
     public uint QuestionCount { get; set; }
     public DateTime? AvailableFrom { get; set; }
     public Guid? ContentVersionId { get; set; }

@@ -1,3 +1,5 @@
+using System.Text.Json;
+using EduTwin.BLL.Recommendations.Planning;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.Recommendations;
@@ -22,8 +24,9 @@ public sealed class LearningPathStudyFlowTests
         foreach (var a in run.Activities)
         {
             var qid = a.Question!.Question!.QuestionId;
+            var answer = (await f.Db.Questions.SingleAsync(q => q.QuestionId == qid)).CorrectAnswer;
             await f.Execution.SubmitActivityAsync(f.Center, f.Student, a.ActivityRunId, new SubmitActivityRequest
-            { ClientSubmissionId = Guid.NewGuid(), QuestionId = qid, FinalAnswer = correct ? $"answer-{qid % 100}" : "wrong" });
+            { ClientSubmissionId = Guid.NewGuid(), QuestionId = qid, FinalAnswer = correct ? answer : "wrong" });
         }
     }
 
@@ -175,23 +178,38 @@ public sealed class LearningPathStudyFlowTests
         Assert.All(retake.Activities, a => Assert.DoesNotContain(a.Question!.Question!.QuestionId, seen));
     }
 
+    private static async Task<AgendaItemDto> NextSet(LearningPathV4Fixture f, string skill)
+        => (await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English, 60)).Missions
+            .Last(m => m.SkillId == skill && m.Purpose == "Practice" && m.Status == "NotStarted" && m.CanStart);
+
+    private static async Task<V4SessionEvaluationResultDto> DoSet(LearningPathV4Fixture f, AgendaItemDto set, bool correct)
+    {
+        var run = await f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(set.MissionId), new StartMissionRequest { QuestionCount = set.QuestionCount });
+        await SubmitAll(f, run, correct);
+        await FinishGrading(f);
+        return await f.Evaluator.EvaluateMissionRunAsync(f.Center, f.Student, run.SessionRunId);
+    }
+
     [Fact]
-    public async Task Planner_GivesWeakSkillsMoreQuestions_SplitIntoTwoSets()
+    public async Task Planner_WeakSkills_GetALongerLoop_StartingEasier_WithFixedSetSize()
     {
         using var f = new LearningPathV4Fixture();
         AddQuestions(f, 101, 20); AddQuestions(f, 102, 20);
         for (ulong i = 1; i <= 4; i++) await f.RecordEvidence(102, i, correct: false);
         var proposal = await f.Proposal("101", "102");
-        int Practice(string skill) => proposal.Milestones.SelectMany(m => m.Missions).Where(m => m.SkillId == skill && m.Purpose == "Practice").Sum(m => (int)m.QuestionCount);
-        var weakSets = proposal.Milestones.SelectMany(m => m.Missions).Count(m => m.SkillId == "102" && m.Purpose == "Practice");
-        var otherSets = proposal.Milestones.SelectMany(m => m.Missions).Count(m => m.SkillId == "101" && m.Purpose == "Practice");
-        Assert.Equal(2, weakSets); Assert.Equal(1, otherSets);
-        Assert.True(Practice("102") > Practice("101"), $"weak {Practice("102")} vs other {Practice("101")}");
+        Assert.Equal(2, proposal.PacingVersion);
+        var all = proposal.Milestones.SelectMany(m => m.Missions).ToList();
+        var weak = all.Single(m => m.SkillId == "102" && m.Purpose == "Practice");
+        var other = all.Single(m => m.SkillId == "101" && m.Purpose == "Practice");
+        Assert.True(weak.EstimatedSets > other.EstimatedSets, $"{weak.EstimatedSets} vs {other.EstimatedSets}");
+        Assert.True(weak.TargetDifficulty < other.TargetDifficulty);
+        Assert.All(all.Where(m => m.Purpose == "Practice"), m => Assert.Equal(LearningPathPacing.SetSize, m.QuestionCount));
+        Assert.Equal(10u, all.Single(m => m.SkillId == "102" && m.Purpose == "Study").EstimatedMinutes);
         Assert.Equal("102", proposal.Milestones.First().SkillIds.Single());
     }
 
     [Fact]
-    public async Task Agenda_MoreTime_PlansMoreQuestions_WithinTheBudget_AndSpareTimeGoesToTheWeakestSkill()
+    public async Task Agenda_MoreTime_AddsMoreSets_NotLongerSets_AndWeakSkillsGetAtLeastAsMany()
     {
         using var f = new LearningPathV4Fixture();
         AddQuestions(f, 101, 30); AddQuestions(f, 102, 30);
@@ -199,17 +217,125 @@ public sealed class LearningPathStudyFlowTests
         await f.Activate("Practice", "101", "102");
         var shortDay = await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English, 15);
         var longDay = await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English, 180);
-        var max = await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English, 999);
-        Assert.Equal(300u, max.AvailableMinutes);
-        Assert.InRange(shortDay.PlannedMinutes, 1u, 15u);
+        Assert.Equal(300u, (await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English, 999)).AvailableMinutes);
         Assert.InRange(longDay.PlannedMinutes, 1u, 180u);
         Assert.True(longDay.PlannedQuestionCount > shortDay.PlannedQuestionCount);
-        Assert.Equal(longDay.TodayPlan.First().MissionId, longDay.PrimaryMission!.MissionId);
-        var weak = longDay.TodayPlan.Where(m => m.SkillId == "102" && m.Purpose == "Practice").Sum(m => (int)m.QuestionCount);
-        var other = longDay.TodayPlan.Where(m => m.SkillId == "101" && m.Purpose == "Practice").Sum(m => (int)m.QuestionCount);
-        Assert.True(weak > other, $"weak {weak} vs other {other}");
-        Assert.All(longDay.TodayPlan.Where(m => m.Purpose == "Practice"), m => Assert.InRange(m.QuestionCount, 2u, 20u));
-        Assert.NotNull(longDay.PacingNote);
+        Assert.All(longDay.TodayPlan.Concat(shortDay.TodayPlan).Where(m => m.Purpose == "Practice"), m =>
+        { Assert.Equal(LearningPathPacing.SetSize, m.QuestionCount); Assert.InRange(m.PlannedSets, 1u, LearningPathPacing.MaxSetsPerSkillPerDay); });
+        var weak = longDay.TodayPlan.Single(m => m.SkillId == "102" && m.Purpose == "Practice").PlannedSets;
+        var other = longDay.TodayPlan.Single(m => m.SkillId == "101" && m.Purpose == "Practice").PlannedSets;
+        Assert.True(weak >= other && weak > 1, $"weak {weak} vs other {other}");
+        // The check is not pushed before two passing sets; it stays on the route with advice.
+        Assert.DoesNotContain(longDay.TodayPlan, m => m.Purpose == "IndependentCheck");
+        Assert.NotNull(longDay.Missions.First(m => m.Purpose == "IndependentCheck").Advice);
+        Assert.Equal(2u, longDay.Progress!.TotalSkills);
+    }
+
+    [Fact]
+    public async Task PracticeLoop_StepsUpAfterAGoodSet_AndRecommendsTheCheckAfterTwo()
+    {
+        using var f = new LearningPathV4Fixture();
+        AddQuestions(f, 101, 20);
+        await f.Activate("Practice", "101");
+        var first = await DoSet(f, await NextSet(f, "101"), correct: true);
+        Assert.Equal(1m, first.PracticeAccuracy);
+        Assert.Contains("khó hơn", first.NextStep);
+        var second = await DoSet(f, await NextSet(f, "101"), correct: true);
+        Assert.Contains("sẵn sàng tự kiểm tra", second.NextStep);
+        var agenda = await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English, 60);
+        Assert.DoesNotContain(agenda.Missions, m => m.Purpose == "Practice" && m.Status == "NotStarted");
+        var check = agenda.Missions.Single(m => m.Purpose == "IndependentCheck");
+        Assert.Null(check.Advice);
+        Assert.Contains(agenda.TodayPlan, m => m.Purpose == "IndependentCheck");
+        Assert.Equal(1u, agenda.Progress!.ReadyForCheckSkills);
+    }
+
+    [Fact]
+    public async Task PracticeLoop_AfterAWeakSet_StepsDown_AndPointsBackToTheLesson()
+    {
+        using var f = new LearningPathV4Fixture();
+        AddQuestions(f, 101, 20);
+        await f.Activate("Practice", "101");
+        var result = await DoSet(f, await NextSet(f, "101"), correct: false);
+        Assert.Equal(0m, result.PracticeAccuracy);
+        Assert.Contains("Học lại", result.NextStep);
+        var next = await NextSet(f, "101");
+        Assert.Contains("bộ 2", next.Title);
+        var plan = JsonSerializer.Deserialize<PathProposalDto>((await f.Db.LearningPaths.SingleAsync(p => p.Status == LearningPathStatus.Active)).PlanJson!.RootElement.GetRawText(), LearningPathV4Data.Json)!;
+        Assert.Equal((byte?)1, plan.Milestones.SelectMany(m => m.Missions).Single(m => m.MissionId == next.MissionId).TargetDifficulty);
+    }
+
+    [Fact]
+    public async Task QuickTry_ForAnUnknownSkill_SkipsTheLessonWhenPassed()
+    {
+        using var f = new LearningPathV4Fixture();
+        AddQuestions(f, 101, 20);
+        var goal = await f.Planner.CreateOrUpdateGoalAsync(f.Center, f.Student, new CreateLearningGoalRequest { SubjectId = f.English, GoalType = "KeepUp",
+            TargetSkillIds = ["101"], AvailableMinutesPerDay = 30, AvailableDaysPerWeek = 5 });
+        var proposal = await f.Planner.GeneratePathProposalAsync(f.Center, f.Student, new GeneratePathProposalRequest { SubjectId = f.English, GoalId = goal.GoalId });
+        var probe = proposal.Milestones.Single().Missions.First();
+        Assert.True(probe.IsProbe); Assert.Equal(LearningPathPacing.ProbeSize, probe.QuestionCount);
+        await f.Planner.AcceptPathProposalAsync(f.Center, f.Student, proposal.ProposalId);
+        var agendaItem = (await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English, 60)).Missions.Single(m => m.MissionId == probe.MissionId);
+        await DoSet(f, agendaItem, correct: true);
+        var agenda = await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English, 60);
+        Assert.Equal("Skipped", agenda.Missions.Single(m => m.Purpose == "Study").Status);
+        Assert.Contains(agenda.Missions, m => m.Purpose == "Practice" && m.Title.Contains("bộ 2"));
+    }
+
+    [Fact]
+    public async Task FailedReview_SendsAConfirmedSkillBackToPractice()
+    {
+        using var f = new LearningPathV4Fixture();
+        var mission = await f.Activate("IndependentCheck", "103");
+        var check = await f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(mission.MissionId));
+        await SubmitAll(f, check, correct: true);
+        await FinishGrading(f);
+        Assert.Equal("Passed", (await f.Evaluator.EvaluateMissionRunAsync(f.Center, f.Student, check.SessionRunId)).Outcome);
+        // Bring the scheduled review forward instead of waiting two days.
+        var path = await f.Db.LearningPaths.SingleAsync(p => p.Status == LearningPathStatus.Active);
+        var plan = JsonSerializer.Deserialize<PathProposalDto>(path.PlanJson!.RootElement.GetRawText(), LearningPathV4Data.Json)!;
+        var review = plan.Milestones.SelectMany(m => m.Missions).Single(m => m.Purpose == "Review");
+        review.AvailableFrom = DateTime.UtcNow.AddMinutes(-1);
+        path.PlanJson = JsonSerializer.SerializeToDocument(plan, LearningPathV4Data.Json); await f.Db.SaveChangesAsync();
+
+        var reviewRun = await f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(review.MissionId));
+        await SubmitAll(f, reviewRun, correct: false);
+        await FinishGrading(f);
+        var result = await f.Evaluator.EvaluateMissionRunAsync(f.Center, f.Student, reviewRun.SessionRunId);
+        Assert.Contains("củng cố lại", result.NextStep);
+        var agenda = await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English, 60);
+        Assert.Contains(agenda.TodayPlan, m => m.Purpose == "Practice" && m.Title.StartsWith("Rèn lại"));
+        Assert.DoesNotContain(agenda.Missions, m => m.Purpose == "Review" && m.Status == "NotStarted");
+    }
+
+    [Fact]
+    public async Task IndependentCheck_MixesDifficulty_WhenTheBankAllows()
+    {
+        using var f = new LearningPathV4Fixture();
+        foreach (var q in await f.Db.Questions.Where(q => q.QuestionId == 10311 || q.QuestionId == 10312).ToListAsync()) q.Difficulty = 4;
+        await f.Db.SaveChangesAsync();
+        var mission = await f.Activate("IndependentCheck", "103");
+        var run = await f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(mission.MissionId));
+        var ids = run.Activities.Select(a => a.Question!.Question!.QuestionId).ToList();
+        Assert.Equal(5, ids.Count);
+        Assert.Contains(10311ul, ids); Assert.Contains(10312ul, ids);
+        Assert.Equal(new ulong[] { 10311, 10312 }, ids.TakeLast(2)); // easy to hard
+    }
+
+    [Fact]
+    public async Task HintedCorrectAnswers_CountHalf()
+    {
+        using var f = new LearningPathV4Fixture();
+        var mission = await f.Activate("Practice", "101");
+        var run = await f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(mission.MissionId), new StartMissionRequest { QuestionCount = 2 });
+        await f.Execution.RequestAssistanceAsync(f.Center, f.Student, run.Activities[0].ActivityRunId, new RequestAssistanceRequest());
+        await SubmitAll(f, run, correct: true);
+        await FinishGrading(f);
+        var result = await f.Evaluator.EvaluateMissionRunAsync(f.Center, f.Student, run.SessionRunId);
+        Assert.Equal(.75m, result.PracticeAccuracy);
+        var insight = (await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English)).Insights.Skills.Single(s => s.SkillId == "101");
+        Assert.Equal(1u, insight.HintedCorrectCount); Assert.Equal(2u, insight.CorrectCount);
     }
 
     [Fact]

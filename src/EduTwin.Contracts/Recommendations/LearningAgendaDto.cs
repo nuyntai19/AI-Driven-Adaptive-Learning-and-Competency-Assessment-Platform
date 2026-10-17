@@ -26,6 +26,20 @@ public class LearningAgendaDto
     public string? PacingNote { get; set; }
     /// <summary>Earlier routes for this subject. Answers are never deleted when a route is replaced.</summary>
     public List<PathHistoryItemDto> PathHistory { get; set; } = new();
+    /// <summary>The active route was built before the practice loop; the student can rebuild it without losing answers.</summary>
+    public bool PlanOutdated { get; set; }
+    public GoalProgressDto? Progress { get; set; }
+}
+
+public class GoalProgressDto
+{
+    public uint TotalSkills { get; set; }
+    public uint ConfirmedSkills { get; set; }
+    public uint ReadyForCheckSkills { get; set; }
+    public uint RemainingMinutes { get; set; }
+    public DateTime? EstimatedFinishDate { get; set; }
+    public uint StreakDays { get; set; }
+    public bool StudiedToday { get; set; }
 }
 
 public class PathHistoryItemDto
@@ -81,6 +95,11 @@ public class AgendaItemDto
     public string? RetryLabel { get; set; }
     public string? RetryBlockedReason { get; set; }
     public List<MissionRunSummaryDto> Runs { get; set; } = new();
+    /// <summary>Practice sets of this kind planned today; each set keeps a fixed size.</summary>
+    public uint PlannedSets { get; set; } = 1;
+    public uint SetNumber { get; set; }
+    public uint EstimatedSets { get; set; }
+    public string? Advice { get; set; }
 }
 
 public class LearningInsightsDto
@@ -103,6 +122,8 @@ public class LearningSkillInsightDto
     public uint QuestionCount { get; set; }
     public uint CorrectCount { get; set; }
     public uint WrongCount { get; set; }
+    /// <summary>Correct answers given after opening a hint; they count as half evidence of strength.</summary>
+    public uint HintedCorrectCount { get; set; }
     public string Observation { get; set; } = "";
     public List<string> ConfirmedMisconceptions { get; set; } = new();
     public List<LearningAnswerReferenceDto> RecentAnswers { get; set; } = new();

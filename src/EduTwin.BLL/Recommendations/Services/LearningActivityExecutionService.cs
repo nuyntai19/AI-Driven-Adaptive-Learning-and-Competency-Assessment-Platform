@@ -51,8 +51,11 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
             return await RunDtoAsync(lastFinished, cancellationToken);
         }
         if (session.LearningPath.Status != LearningPathStatus.Active) throw new InvalidOperationException("Tuyến này đã được thay thế; hãy chọn nhiệm vụ trong tuyến hiện tại.");
-        var ongoing = await db.LearningPathSessionRuns.Where(r => r.CenterId == centerId && r.StudentId == studentId &&
-            r.Session.LearningPath.SubjectId == session.LearningPath.SubjectId && r.SessionId != missionId && r.Status == SessionRunStatus.InProgress)
+        // A short review may run alongside an unfinished set; two unfinished sets of regular work may not.
+        var isReview = session.Objective == "Review";
+        var ongoing = isReview ? null : await db.LearningPathSessionRuns.Where(r => r.CenterId == centerId && r.StudentId == studentId &&
+            r.Session.LearningPath.SubjectId == session.LearningPath.SubjectId && r.SessionId != missionId && r.Status == SessionRunStatus.InProgress &&
+            r.Session.Objective != "Review")
             .OrderByDescending(r => r.LastActivityAt)
             .Select(r => new { r.SessionId, r.SessionRunId, r.Session.Title }).FirstOrDefaultAsync(cancellationToken);
         if (ongoing != null)
@@ -119,9 +122,15 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
         {
             var used = await db.Attempts.Where(a => a.CenterId == centerId && a.StudentId == studentId).Select(a => a.QuestionId).Distinct().ToListAsync(cancellationToken);
             // Reserve five unseen questions for confirmation instead of exposing their solutions during the lesson.
-            var example = pool.FirstOrDefault(q => used.Contains(q.QuestionId) && !string.IsNullOrWhiteSpace(q.Solution))
-                ?? (pool.Count > 5 ? pool.FirstOrDefault(q => !string.IsNullOrWhiteSpace(q.Solution)) : null);
-            Add("Study", questionId: example?.QuestionId);
+            // Up to two worked examples: answered questions first, unseen ones only when the bank still keeps 5 for the check.
+            var withSolution = pool.Where(q => !string.IsNullOrWhiteSpace(q.Solution)).OrderBy(q => q.Difficulty).ThenBy(q => q.QuestionId).ToList();
+            var examples = withSolution.Where(q => used.Contains(q.QuestionId)).Take(2).ToList();
+            var spareUnseen = Math.Max(0, pool.Count(q => !used.Contains(q.QuestionId)) - 5 - 2);
+            examples.AddRange(withSolution.Where(q => !used.Contains(q.QuestionId)).Take(Math.Min(2 - examples.Count, spareUnseen)));
+            Add("Study", questionId: examples.FirstOrDefault()?.QuestionId);
+            foreach (var extra in examples.Skip(1))
+                activities.Last().IssuedItems.Add(new IssuedItem { CenterId = centerId, QuestionId = extra.QuestionId, ItemOrder = 2, ExposureMode = "SolutionExposed",
+                    SolutionExposedAt = Now, IssuedAt = Now, CreatedAt = Now, UpdatedAt = Now, RowVersion = 1 });
         }
         else
         {
@@ -135,13 +144,16 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
                 var wrong = recent.GroupBy(a => a.QuestionId).Where(g => g.First().IsCorrect == false).Select(g => g.Key).ToHashSet();
                 // Prioritize previously missed items, then increase difficulty through the set.
                 // Previously missed items first, then unseen items, then items already answered correctly; easy to hard inside each group.
-                pool = pool.OrderBy(q => wrong.Contains(q.QuestionId) ? 0 : used.Contains(q.QuestionId) ? 2 : 1).ThenBy(q => q.Difficulty).ThenBy(q => q.QuestionId).ToList();
+                // The loop's target difficulty decides the level inside each group (harder after a good set, easier after a weak one).
+                var target = definition.TargetDifficulty;
+                pool = pool.OrderBy(q => wrong.Contains(q.QuestionId) ? 0 : used.Contains(q.QuestionId) ? 2 : 1)
+                    .ThenBy(q => target.HasValue ? Math.Abs(q.Difficulty - target.Value) : q.Difficulty).ThenBy(q => q.Difficulty).ThenBy(q => q.QuestionId).ToList();
             }
             if (pool.Count == 0) throw new InvalidOperationException("Chưa có câu hỏi hợp lệ cho nhiệm vụ này.");
             // Today's plan may resize a practice set to the chosen time; the independent check stays fixed for comparability.
             var requested = request.QuestionCount is > 0 ? request.QuestionCount.Value : definition.QuestionCount;
             var size = requested > 0 ? (int)Math.Clamp(requested, 1u, LearningPathPacing.MaxPracticeQuestions) : 6;
-            foreach (var q in pool.Take(independent ? 5 : size)) Add(independent ? "IndependentCheck" : "Practice", questionId: q.QuestionId);
+            foreach (var q in independent ? MixedCheck(pool) : pool.Take(size)) Add(independent ? "IndependentCheck" : "Practice", questionId: q.QuestionId);
         }
         var assigned = activities.SelectMany(a => a.IssuedItems).Where(i => i.QuestionId.HasValue && i.SolutionExposedAt == null).Select(i => i.QuestionId!.Value).ToList();
         run.QuestionsAssigned = JsonSerializer.SerializeToDocument(assigned);
@@ -152,6 +164,15 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
         session.CurrentRunId = run.SessionRunId; await db.SaveChangesAsync(cancellationToken);
         await tx.CommitAsync(cancellationToken);
         return await RunDtoAsync(run, cancellationToken);
+    }
+
+    /// <summary>Five unseen questions with at least two of medium-or-higher difficulty when the bank has them, ordered easy to hard.</summary>
+    private static List<DAL.CurriculumAndQuestions.Question> MixedCheck(List<DAL.CurriculumAndQuestions.Question> pool)
+    {
+        var ordered = pool.OrderBy(q => q.Difficulty).ThenBy(q => q.QuestionId).ToList();
+        var harder = ordered.Where(q => q.Difficulty >= 3).Take(2).ToList();
+        var pick = harder.Concat(ordered.Where(q => !harder.Contains(q)).Take(5 - harder.Count)).ToList();
+        return pick.OrderBy(q => q.Difficulty).ThenBy(q => q.QuestionId).ToList();
     }
 
     private async Task<ActivityRun> LoadAsync(Guid center, Guid student, ulong id, CancellationToken ct)
@@ -291,6 +312,10 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
                 hints.Add(("Bước đầu tiên", string.Join("\n", steps.Take(Math.Max(1, (steps.Count + 2) / 3))), true));
             if (steps.Count >= 2)
                 hints.Add(("Gần tới đáp án", string.Join("\n", steps) + "\nTự hoàn thành bước cuối và kiểm tra lại kết quả.", true));
+            // One-word answers and multiple choice: a third hint would effectively be the answer, so stop at two.
+            var shortAnswer = question.QuestionType == Contracts.CurriculumAndQuestions.QuestionType.MultipleChoice ||
+                (answer.Length <= 20 && !answer.Any(char.IsDigit) && answer.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length <= 2);
+            if (shortAnswer && hints.Count > 2) hints.RemoveRange(2, hints.Count - 2);
             return hints;
         }
         var content = a.ContentVersion?.Description;
@@ -313,6 +338,15 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
     private static string Mask(string text, string answer)
     {
         if (string.IsNullOrWhiteSpace(answer) || answer.Length > 200) return text;
+        // "x = 2" is also leaked by "2" alone; mask the right-hand side as well.
+        var eq = answer.LastIndexOf('=');
+        if (eq >= 0 && eq < answer.Length - 1) text = MaskOne(text, answer[(eq + 1)..].Trim());
+        return MaskOne(text, answer);
+    }
+
+    private static string MaskOne(string text, string answer)
+    {
+        if (string.IsNullOrWhiteSpace(answer)) return text;
         var escaped = System.Text.RegularExpressions.Regex.Escape(answer);
         var wordLike = System.Text.RegularExpressions.Regex.IsMatch(answer, @"^[\p{L}\p{N}][\p{L}\p{N}\s'-]*$");
         var pattern = wordLike ? $@"(?<![\p{{L}}\p{{N}}]){escaped}(?![\p{{L}}\p{{N}}])" : escaped;
@@ -355,7 +389,8 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
         if (request.ClientSubmissionId == Guid.Empty || request.FinalAnswer.Length > 20000 || request.ReasoningText?.Length > 50000)
             throw new ArgumentException("Thiếu mã lần nộp hoặc nội dung vượt giới hạn.");
         var a = await LoadAsync(centerId, studentId, activityRunId, cancellationToken);
-        var issued = a.IssuedItems.SingleOrDefault();
+        // Study activities may carry two worked examples; only practice/check items hold a single answerable question.
+        var issued = a.ActivityType == "Study" ? a.IssuedItems.OrderBy(i => i.ItemOrder).FirstOrDefault() : a.IssuedItems.SingleOrDefault();
         if (issued?.Attempt != null)
         {
             if (issued.Attempt.ClientSubmissionId != request.ClientSubmissionId || request.QuestionId != issued.QuestionId ||
@@ -475,11 +510,17 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
         else if (a.ActivityType == "Study")
         {
             var node = await db.KnowledgeNodes.AsNoTracking().SingleAsync(n => n.CenterId == a.CenterId && n.NodeId == a.SessionRun.Session.TopicNodeId, ct);
-            var qid = a.IssuedItems.FirstOrDefault()?.QuestionId;
-            var example = qid.HasValue ? await db.Questions.AsNoTracking().SingleOrDefaultAsync(q => q.CenterId == a.CenterId && q.QuestionId == qid && q.Status == Contracts.CurriculumAndQuestions.QuestionStatus.Active, ct) : null;
+            var qids = a.IssuedItems.OrderBy(i => i.ItemOrder).Where(i => i.QuestionId.HasValue).Select(i => i.QuestionId!.Value).ToList();
+            var found = await db.Questions.AsNoTracking().Where(q => q.CenterId == a.CenterId && qids.Contains(q.QuestionId) &&
+                q.Status == Contracts.CurriculumAndQuestions.QuestionStatus.Active).ToListAsync(ct);
+            var ordered = qids.Select(id => found.FirstOrDefault(q => q.QuestionId == id)).Where(q => q != null).Select(q => q!).ToList();
+            var example = ordered.FirstOrDefault();
+            // Worked examples are shown step by step; the student reveals each step before seeing the next.
+            var workedExamples = ordered.Select(q => new { question = q.QuestionText, steps = SplitSteps(q.Solution ?? ""), answer = q.CorrectAnswer }).ToList();
             result.Content = new ActivityContentDto { Title = node.NodeName, SkillId = node.NodeId.ToString(), ActivityType = "Study",
-                Description = node.Description, Payload = new { prompt = "Em rút ra điều gì từ nội dung này?", example = example?.QuestionText,
-                    solution = example?.Solution, notice = example == null ? "Chưa có ví dụ kèm lời giải đã xuất bản cho kỹ năng này." : null } };
+                Description = node.Description, Payload = new { prompt = "Tóm tắt bằng lời của em: quy tắc là gì, khi nào dùng?", example = example?.QuestionText,
+                    solution = example?.Solution, examples = workedExamples,
+                    notice = example == null ? "Chưa có ví dụ kèm lời giải đã xuất bản cho kỹ năng này." : null } };
         }
         else
         {

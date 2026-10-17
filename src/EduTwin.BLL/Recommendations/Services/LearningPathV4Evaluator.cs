@@ -54,7 +54,15 @@ public sealed class LearningPathV4Evaluator(EduTwinDbContext db, TimeProvider cl
         else if (independent.Count == 0)
         {
             result.Outcome = "ActivityOnlyCompleted";
-            reason = "Đã hoàn thành hoạt động học/luyện. Việc này không tự xác nhận đã nắm vững kỹ năng; hãy thực hiện kiểm tra độc lập khi đủ điều kiện.";
+            // Practice and review are scored (hinted answers count half) so the loop can step up, repeat or step down.
+            var graded = activities.Where(a => a.ActivityType is "Practice" or "Review").SelectMany(a => a.IssuedItems.Select(i => (a, i)))
+                .Where(x => x.i.Attempt != null && x.i.SolutionExposedAt == null && !x.i.Attempt.Skipped)
+                .Select(x => (Correct: analyses.FirstOrDefault(r => r.AttemptId == x.i.AttemptId)?.OverrideIsCorrect ?? x.i.Attempt!.IsCorrect, Hinted: x.a.AssistanceRequestedCount > 0))
+                .Where(x => x.Correct.HasValue).ToList();
+            result.PracticeAccuracy = LearningPathPacing.Accuracy(graded.Count, graded.Count(x => x.Correct == true), graded.Count(x => x.Correct == true && x.Hinted));
+            reason = result.PracticeAccuracy.HasValue
+                ? $"Bộ luyện: đúng {graded.Count(x => x.Correct == true)}/{graded.Count} câu ({Math.Round(result.PracticeAccuracy.Value * 100)}%{(graded.Any(x => x.Correct == true && x.Hinted) ? ", câu có gợi ý tính một nửa" : "")}). Luyện tập không tự xác nhận đã nắm vững; bài tự kiểm tra mới xác nhận."
+                : "Đã hoàn thành hoạt động học. Việc này không tự xác nhận đã nắm vững kỹ năng; hãy làm tự kiểm tra khi đủ điều kiện.";
         }
         else
         {
@@ -70,8 +78,18 @@ public sealed class LearningPathV4Evaluator(EduTwinDbContext db, TimeProvider cl
             else
             {
                 var correct = valid.Count(i => analyses.FirstOrDefault(a => a.AttemptId == i.AttemptId)?.OverrideIsCorrect ?? i.Attempt!.IsCorrect ?? false);
-                result.Outcome = correct / (decimal)valid.Count >= .8m ? "Passed" : "NeedsSupport";
-                reason = $"Kiểm tra độc lập: {correct}/{valid.Count} câu đúng; yêu cầu tối thiểu 80% với ít nhất 5 câu qua kiểm duyệt bằng chứng.";
+                var questionIds = valid.Select(i => i.QuestionId!.Value).ToList();
+                var types = await db.Questions.AsNoTracking().Where(q => q.CenterId == centerId && questionIds.Contains(q.QuestionId))
+                    .Select(q => new { q.QuestionType, q.Difficulty }).ToListAsync(cancellationToken);
+                // Multiple choice can be guessed: when most items are multiple choice, every answer must be correct.
+                var guessable = types.Count(t => t.QuestionType == Contracts.CurriculumAndQuestions.QuestionType.MultipleChoice) * 2 > valid.Count;
+                var required = guessable ? valid.Count : (int)Math.Ceiling(valid.Count * .8m);
+                result.Outcome = correct >= required ? "Passed" : "NeedsSupport";
+                reason = $"Tự kiểm tra: đúng {correct}/{valid.Count} câu, cần {required}/{valid.Count}{(guessable ? " vì phần lớn là trắc nghiệm" : "")}.";
+                if (!types.Any(t => t.Difficulty >= 3)) reason += " Bộ này chưa có câu mức vừa/khó nên chỉ xác nhận mức cơ bản.";
+                // Auto-approved AI evidence keeps the route moving, but the result stays provisional until a teacher confirms it.
+                result.IsProvisional = result.Outcome == "Passed" && valid.Any(i => latest[i.Attempt!.AttemptId].RequiresTeacherReview);
+                if (result.IsProvisional) reason += " Tạm đạt: còn câu chờ giáo viên xác nhận, kết quả có thể thay đổi.";
                 if (result.Outcome == "Passed") result.ProvenSkills.Add(run.Session.TopicNodeId.ToString());
                 else result.SkillsNeedingSupport.Add(run.Session.TopicNodeId.ToString());
             }
@@ -98,9 +116,12 @@ public sealed class LearningPathV4Evaluator(EduTwinDbContext db, TimeProvider cl
                 TriggerType = "MissionEvaluation", DecisionSummary = summary, PolicyVersion = LearningPathV4Data.Policy,
                 ReasonCodes = JsonSerializer.SerializeToDocument(new[] { result.Outcome }), EvidenceReferenceIds = JsonSerializer.SerializeToDocument(latest.Values.Select(e => e.EvidenceAssessmentId)),
                 CreatedAt = now, UpdatedAt = now, RowVersion = 1 });
-            await LearningPathFollowUp.AddAsync(db, run, result.Outcome, now, cancellationToken);
+            await LearningPathFollowUp.AddAsync(db, run, result.Outcome, now, cancellationToken, result.PracticeAccuracy);
             await db.SaveChangesAsync(cancellationToken);
         }
+        var followUp = $"FollowUp:{sessionRunId}:";
+        result.NextStep = await db.PathDecisions.AsNoTracking().Where(d => d.CenterId == centerId && d.TriggerType.StartsWith(followUp))
+            .OrderByDescending(d => d.DecisionId).Select(d => d.DecisionSummary).FirstOrDefaultAsync(cancellationToken);
         await tx.CommitAsync(cancellationToken);
         // Next missions come from the real accepted route/agenda. No fabricated math mission and no direct Twin writes.
         return result;
