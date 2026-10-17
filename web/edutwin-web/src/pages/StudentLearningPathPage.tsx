@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { organizationApi } from "../api/organizationApi";
 import { getCapabilityMap, getLearningAgenda } from "../api/learningPathApi";
 import { useStudentLearningAccess } from "../hooks/useStudentLearningAccess";
@@ -8,12 +8,26 @@ import { useAuthStore } from "../stores/authStore";
 import { StudentLearningReadOnlyNotice } from "../components/student/StudentLearningReadOnlyNotice";
 import { GoalAndProposalModal } from "../components/learningPathV4/GoalAndProposalModal";
 import { MissionPlayerModal } from "../components/learningPathV4/MissionPlayerModal";
-import type { AgendaItemDto } from "../types/learningPath";
+import { TimeBudgetSlider } from "../components/learningPathV4/TimeBudgetSlider";
+import { formatStudyMinutes } from "../utils/studyTime";
+import type { AgendaItemDto, MissionRunSummaryDto } from "../types/learningPath";
 import { missionAction } from "../utils/learningMission";
 
 const activityLabels: Record<string, string> = { Study: "Tìm hiểu và ví dụ", Practice: "Luyện có hướng dẫn",
   IndependentCheck: "Tự kiểm tra", WorkedExample: "Ví dụ từng bước", FindError: "Tìm lỗi", Explore: "Khám phá",
   Explain: "Giải thích", CompleteSolution: "Hoàn thiện lời giải", TransferChallenge: "Vận dụng", Review: "Ôn nhớ lại" };
+const weaknessLabels: Record<string, [string, string]> = {
+  Weak: ["Phần yếu · học nhiều hơn", "bg-rose-50 text-rose-800 dark:bg-rose-950/40 dark:text-rose-200"],
+  Developing: ["Cần củng cố", "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200"],
+  Strong: ["Khá vững · luyện ngắn", "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200"] };
+const runStatusLabels: Record<string, string> = { InProgress: "Đang làm", Grading: "Đang chấm", NeedsReview: "Chờ duyệt", Completed: "Đã xong", Abandoned: "Đã hủy" };
+const outcomeLabels: Record<string, string> = { Passed: "đạt", NotPassed: "chưa đạt", InsufficientEvidence: "chưa đủ bằng chứng" };
+function runSummary(r: MissionRunSummaryDto): string {
+  const parts = [`Lượt ${r.runNumber}`, new Date(r.completedAt ?? r.startedAt).toLocaleDateString("vi-VN"), runStatusLabels[r.status] ?? r.status];
+  if (outcomeLabels[r.outcome]) parts.push(outcomeLabels[r.outcome]);
+  if (r.totalQuestions > 0) parts.push(`${r.correctAnswers}/${r.answeredQuestions} câu đúng${r.answeredQuestions < r.totalQuestions ? ` (đã làm ${r.answeredQuestions}/${r.totalQuestions})` : ""}`);
+  return parts.join(" · ");
+}
 const stateLabels: Record<string, string> = { Unknown: "Chưa đủ bằng chứng", Developing: "Cần củng cố",
   Demonstrated: "Đã có bằng chứng ban đầu", Confirmed: "Đã xác nhận", ReviewDue: "Cần ôn lại" };
 export function StudentLearningPathPage() {
@@ -24,7 +38,10 @@ export function StudentLearningPathPage() {
   const subject = subjects.data?.data.find(s => s.subjectId === params.get("subjectId")) ?? subjects.data?.data[0];
   const subjectId = subject?.subjectId ?? "";
   const access = useStudentLearningAccess(subjectId);
+  const [sliderMinutes, setSliderMinutes] = useState(15);
   const [minutes, setMinutes] = useState(15);
+  // The slider updates its readout immediately; the plan is recalculated once dragging pauses.
+  useEffect(() => { const timer = setTimeout(() => setMinutes(sliderMinutes), 350); return () => clearTimeout(timer); }, [sliderMinutes]);
   const [showGoal, setShowGoal] = useState(false);
   const [recommended, setRecommended] = useState(false);
   const [mission, setMission] = useState<AgendaItemDto | null>(null);
@@ -32,9 +49,14 @@ export function StudentLearningPathPage() {
   const map = useQuery({ queryKey: ["learning-paths", "capability-map", actor?.centerId, actor?.userId, subjectId, access.classId],
     queryFn: () => getCapabilityMap(subjectId, access.classId), enabled: !!subjectId && access.writable });
   const agenda = useQuery({ queryKey: ["learning-agenda", actor?.centerId, actor?.userId, subjectId, access.classId, minutes],
-    queryFn: () => getLearningAgenda(subjectId, minutes, access.classId), enabled: !!subjectId && access.writable });
+    queryFn: () => getLearningAgenda(subjectId, minutes, access.classId), enabled: !!subjectId && access.writable, placeholderData: keepPreviousData });
   const missions = agenda.data?.missions ?? [];
   const primary = agenda.data?.primaryMission;
+  const todayPlan = agenda.data?.todayPlan ?? (primary ? [primary, ...(agenda.data?.alternativeOptions ?? [])] : []);
+  const planSummary = agenda.data?.learningPathId
+    ? todayPlan.length === 0 ? "Chưa có nhiệm vụ vừa với thời gian này."
+      : `Kế hoạch: ${todayPlan.length} nhiệm vụ · khoảng ${formatStudyMinutes(agenda.data.plannedMinutes ?? 0)}${agenda.data.plannedQuestionCount ? ` · ≈ ${agenda.data.plannedQuestionCount} câu` : ""}${agenda.isPlaceholderData ? " · đang tính lại…" : ""}`
+    : undefined;
   const panel = "rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 sm:p-6";
   const action = "rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40 disabled:cursor-not-allowed";
   if (access.pending || subjects.isPending) return <p role="status" className="p-6">Đang kiểm tra môn học và giáo trình…</p>;
@@ -74,19 +96,25 @@ export function StudentLearningPathPage() {
           <ul className="mt-3 space-y-3">{s.recentAnswers.map(a => <li className="border-t border-slate-100 pt-3" key={a.attemptId}><p className="whitespace-pre-wrap">{a.questionText}</p><p className="mt-1 text-xs text-slate-500">{a.isCorrect == null ? "Chờ chấm" : a.isCorrect ? "Đúng" : "Cần sửa"} · {new Date(a.submittedAt).toLocaleDateString("vi-VN")}{a.guided ? " · Đã có hướng dẫn" : ""}</p></li>)}</ul>
         </details></article>)}</div>
     </section>}
-    {agenda.data && <section className={panel}>
-      <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-semibold">Hôm nay học gì?</h2>
-        {agenda.data.goalTitle && <p className="mt-1 text-sm text-slate-500">Mục tiêu: {agenda.data.goalTitle}</p>}</div>
-        <div className="flex gap-2" aria-label="Thời gian hôm nay">{[5, 15, 30].map(m => <button key={m} aria-pressed={m === minutes}
-          className={`rounded-lg border px-3 py-2 text-sm ${m === minutes ? "border-indigo-500 bg-indigo-50 text-indigo-800" : "border-slate-300"}`} onClick={() => setMinutes(m)}>{m} phút</button>)}</div></div>
-      <p className="mt-3 text-sm text-slate-500">{agenda.data.agendaMessage}</p>
+    {agenda.data && <section className={panel} aria-labelledby="today-title">
+      <div className="grid gap-5 md:grid-cols-[1fr_minmax(0,22rem)] md:items-start">
+        <div><h2 id="today-title" className="text-xl font-semibold">Hôm nay học gì?</h2>
+          {agenda.data.goalTitle && <p className="mt-1 text-sm text-slate-500">Mục tiêu: {agenda.data.goalTitle}</p>}
+          <p className="mt-3 text-sm text-slate-500">{agenda.data.agendaMessage}</p></div>
+        <TimeBudgetSlider label="Thời gian hôm nay" value={sliderMinutes} onChange={setSliderMinutes} summary={planSummary} />
+      </div>
       {primary && <div className="mt-5 rounded-xl bg-indigo-50 p-5 dark:bg-indigo-950/40">
-        <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">{primary.activeRunId ? "Tiếp tục nhiệm vụ" : "Đề xuất tiếp theo"}</p>
+        <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">{primary.activeRunId ? "Tiếp tục nhiệm vụ" : "Bắt đầu từ đây"}</p>
         <h3 className="mt-2 text-xl font-semibold">{primary.title}</h3><p className="mt-2 text-sm">{primary.recommendationReason}</p>
-        <button className={`${action} mt-4`} onClick={() => setMission(primary)}>{primary.activeRunId ? "Tiếp tục đúng tiến độ" : "Mở nhiệm vụ"} · khoảng {primary.estimatedDurationMinutes} phút</button>
+        <button className={`${action} mt-4`} onClick={() => setMission(primary)}>{primary.activeRunId ? "Tiếp tục đúng tiến độ" : "Mở nhiệm vụ"} · {primary.purpose === "Practice" || primary.purpose === "Review" ? `${primary.questionCount} câu · ` : ""}khoảng {primary.estimatedDurationMinutes} phút</button>
       </div>}
+      {todayPlan.length > 1 && <ol className="mt-4 space-y-2" aria-label="Các bước hôm nay">{todayPlan.slice(1).map((m, i) => <li key={m.missionId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+        <div className="flex items-start gap-3"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold dark:bg-slate-800">{i + 2}</span>
+          <div><p className="text-sm font-medium">{m.title}</p><p className="text-xs text-slate-500">{activityLabels[m.purpose] ?? m.purpose}{m.purpose === "Practice" || m.purpose === "Review" ? ` · ${m.questionCount} câu` : ""} · khoảng {m.estimatedDurationMinutes} phút{m.weaknessLevel === "Weak" ? " · phần yếu" : ""}</p></div></div>
+        <button className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm" onClick={() => setMission(m)}>{m.activeRunId ? "Tiếp tục" : "Mở"}</button>
+      </li>)}</ol>}
+      {agenda.data.pacingNote && <p className="mt-4 rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:bg-slate-800 dark:text-slate-300">{agenda.data.pacingNote}</p>}
       {!agenda.data.learningPathId && <button className={`${action} mt-4`} disabled={!map.data?.skills.length} onClick={() => setShowGoal(true)}>Chọn mục tiêu và xem trước tuyến học</button>}
-      {agenda.data.alternativeOptions.length > 0 && <div className="mt-4 flex flex-wrap gap-2">{agenda.data.alternativeOptions.map(m => <button className="rounded-xl border border-slate-300 px-4 py-2 text-sm" key={m.missionId} onClick={() => setMission(m)}>{m.title}</button>)}</div>}
     </section>}
     {agenda.data && (agenda.data.reviewDueTasks.length > 0 || agenda.data.recentChanges?.length > 0) && <section className={panel}>
       <h2 className="text-xl font-semibold">Tiến bộ và lịch ôn</h2>
@@ -98,15 +126,26 @@ export function StudentLearningPathPage() {
       {[...new Set(missions.map(m => m.skillId))].map((id, index) => {
         const group = missions.filter(m => m.skillId === id); const skill = map.data?.skills.find(s => s.skillId === id);
         return <article className={panel} key={id}><div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-100 font-semibold text-indigo-800">{index + 1}</span>
-          <div><h3 className="text-lg font-semibold">{group[0].skillName}</h3><p className="mt-1 text-sm text-slate-500">{skill?.description || "Học và tự thực hiện các nhiệm vụ thuộc kỹ năng này."}</p>
+          <div><div className="flex flex-wrap items-center gap-2"><h3 className="text-lg font-semibold">{group[0].skillName}</h3>
+            {group[0].weaknessLevel && weaknessLabels[group[0].weaknessLevel] && <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${weaknessLabels[group[0].weaknessLevel][1]}`}>{weaknessLabels[group[0].weaknessLevel][0]}</span>}</div><p className="mt-1 text-sm text-slate-500">{skill?.description || "Học và tự thực hiện các nhiệm vụ thuộc kỹ năng này."}</p>
             <p className="mt-2 text-xs font-semibold text-indigo-600">{stateLabels[skill?.state ?? "Unknown"]} · {skill?.evidenceCount ?? 0} câu có bằng chứng hợp lệ</p></div></div>
           <div className="mt-5 grid gap-3 sm:grid-cols-3">{group.map(m => <div key={m.missionId} className="flex flex-col rounded-xl border border-slate-200 p-4 dark:border-slate-700">
             <p className="text-xs font-semibold text-indigo-600">{activityLabels[m.purpose] ?? m.purpose}</p><h4 className="mt-2 font-medium">{m.title}</h4>
             <p className="mt-2 flex-1 text-xs leading-relaxed text-slate-500">{m.recommendationReason}</p>
             {m.questionCount > 0 && <p className="mt-2 text-xs font-medium">{m.questionCount} câu · khoảng {m.estimatedDurationMinutes} phút</p>}
             {m.availableFrom && <p className="mt-2 text-xs text-indigo-600">Hẹn ôn {new Date(m.availableFrom).toLocaleDateString("vi-VN")}</p>}
-            <button className={`${action} mt-4`} disabled={!m.canStart && !m.activeRunId && !m.latestRunId} onClick={() => setMission({ ...m, reviewOnly: missionAction(m).reviewOnly })}>
-              {missionAction(m).label}</button>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button className={action} disabled={!m.canStart && !m.activeRunId && !m.latestRunId} onClick={() => setMission({ ...m, reviewOnly: missionAction(m).reviewOnly })}>
+                {missionAction(m).label}</button>
+              {!m.activeRunId && m.canRetry && <button className="rounded-xl border border-indigo-300 px-4 py-2.5 text-sm font-semibold text-indigo-700 dark:text-indigo-300"
+                onClick={() => setMission({ ...m, retry: true, reviewOnly: false })}>{m.retryLabel ?? "Làm lại"}</button>}
+            </div>
+            {!m.activeRunId && !m.canRetry && m.retryBlockedReason && <p className="mt-2 text-xs text-slate-500">{m.retryBlockedReason}</p>}
+            {(m.runs?.length ?? 0) > 0 && <details className="mt-3 text-xs"><summary className="cursor-pointer font-medium text-indigo-600">Lịch sử {m.runs!.length} lượt</summary>
+              <ul className="mt-2 space-y-1">{m.runs!.map(r => <li key={r.sessionRunId} className="flex items-center justify-between gap-2">
+                <span className="text-slate-600 dark:text-slate-300">{runSummary(r)}</span>
+                {r.status !== "InProgress" && <button className="shrink-0 underline" onClick={() => setMission({ ...m, latestRunId: r.sessionRunId, reviewOnly: true, retry: false })}>Xem</button>}
+              </li>)}</ul></details>}
           </div>)}</div></article>;
       })}
     </section>
@@ -118,6 +157,14 @@ export function StudentLearningPathPage() {
         {s.availability === "PrerequisiteBlocked" && <p className="mt-2 text-xs text-amber-700">Cần xác nhận kỹ năng nền tảng trước khi kiểm tra độc lập.</p>}
       </div>)}</div>
     </section>
+    {(agenda.data?.pathHistory?.length ?? 0) > 0 && <section className={panel} aria-labelledby="path-history-title">
+      <h2 id="path-history-title" className="text-xl font-semibold">Lịch sử tuyến học</h2>
+      <p className="mt-1 text-sm text-slate-500">Đổi tuyến không xóa bài làm. Mọi câu trả lời của các tuyến trước vẫn được dùng để xác định phần yếu và bỏ qua phần đã vững.</p>
+      <ul className="mt-4 space-y-2">{agenda.data!.pathHistory!.map(h => <li key={h.learningPathId} className="rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-700">
+        <p className="font-medium">Phiên bản {h.version} · {h.goalTitle}</p>
+        <p className="mt-1 text-xs text-slate-500">{new Date(h.createdAt).toLocaleDateString("vi-VN")}{h.endedAt ? ` – ${new Date(h.endedAt).toLocaleDateString("vi-VN")}` : ""} · {h.completedMissions}/{h.totalMissions} nhiệm vụ hoàn thành · {h.answeredQuestions} câu đã trả lời</p>
+      </li>)}</ul>
+    </section>}
     {showGoal && <GoalAndProposalModal key={`${subjectId}:${access.classId}:${recommended}`} isOpen onClose={() => setShowGoal(false)}
       automatic={recommended} insights={agenda.data?.insights}
       suggestedSkillIds={recommended ? agenda.data?.insights?.suggestedSkillIds : []} recommendationSummary={recommended ? agenda.data?.insights?.summary : undefined}
@@ -129,7 +176,7 @@ export function StudentLearningPathPage() {
           missionId: blocked.missionId, title: blocked.title, activeRunId: blocked.runId, latestRunId: blocked.runId, status: "InProgress", reviewOnly: false });
       }}
       onAccepted={res => { setAcceptedNotice(`${res.message} Các nhiệm vụ của tuyến đã được cập nhật.`); void agenda.refetch(); void map.refetch(); }} />}
-    {mission && <MissionPlayerModal key={mission.missionId} isOpen mission={mission} subjectId={subjectId}
+    {mission && <MissionPlayerModal key={`${mission.missionId}:${mission.retry ? "retry" : mission.reviewOnly ? `review-${mission.latestRunId}` : "open"}`} isOpen mission={mission} subjectId={subjectId}
       onResumeMission={setMission}
       onClose={() => { setMission(null); void agenda.refetch(); void map.refetch(); }} />}
   </div>;

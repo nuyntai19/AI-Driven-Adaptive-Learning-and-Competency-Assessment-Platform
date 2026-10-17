@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { startLearningMission, getMissionRun, getActivityAiFeedback, saveActivityDraft, requestActivityAssistance, submitActivity, evaluateMissionRunV4 } from "../../api/learningPathApi";
+import { startLearningMission, abandonMissionRun, getMissionRun, getActivityAiFeedback, saveActivityDraft, requestActivityAssistance, submitActivity, evaluateMissionRunV4 } from "../../api/learningPathApi";
 import { useAuthStore } from "../../stores/authStore";
 import { QuestionImage } from "../QuestionImage";
 import { RichMathText } from "../math/RichMathText";
-import type { ActivityRunDto, AgendaItemDto, MissionRunDto, ActivitySubmissionResponseDto, QuestionLearningFeedbackDto } from "../../types/learningPath";
+import type { ActivityRunDto, AgendaItemDto, MissionRunDto, ActivitySubmissionResponseDto, QuestionLearningFeedbackDto, AssistanceResponseDto } from "../../types/learningPath";
 import { extractProblemDetails } from "../../utils/problemDetails";
 import { ongoingMissionFromError } from "../../utils/learningMission";
 
@@ -19,15 +19,30 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
   const cache = useQueryClient();
   const actor = useAuthStore(s => s.user);
   const [feedbackActivity, setFeedbackActivity] = useState<ActivityRunDto | null>(null);
-  const reviewing = !!mission?.latestRunId && (mission.reviewOnly || mission.status === "Completed");
-  const key = ["mission-run", actor?.centerId, actor?.userId, subjectId, mission?.missionId, reviewing, reviewing ? mission?.latestRunId : null];
-  const run = useQuery({ queryKey: key, queryFn: () => reviewing ? getMissionRun(mission!.missionId, mission!.latestRunId!) : startLearningMission(mission!.missionId), enabled: isOpen && !!mission,
+  const reviewing = !mission?.retry && !!mission?.latestRunId && (mission.reviewOnly || mission.status === "Completed");
+  const key = ["mission-run", actor?.centerId, actor?.userId, subjectId, mission?.missionId, reviewing, reviewing ? mission?.latestRunId : null, !!mission?.retry];
+  const run = useQuery({ queryKey: key, queryFn: () => reviewing ? getMissionRun(mission!.missionId, mission!.latestRunId!)
+    : startLearningMission(mission!.missionId, { retry: mission!.retry, questionCount: mission!.questionCount || undefined }), enabled: isOpen && !!mission,
     staleTime: Infinity, retry: false, refetchOnWindowFocus: false });
   const current = reviewing ? undefined : run.data?.activities.find(a => !done(a));
   const evaluation = useQuery({ queryKey: ["mission-evaluation", actor?.centerId, actor?.userId, run.data?.sessionRunId],
     queryFn: () => evaluateMissionRunV4(run.data!.sessionRunId), enabled: !reviewing && !!run.data && !current && !feedbackActivity && run.data.activities.length > 0 && run.data.activities.every(done),
     retry: false, refetchInterval: query => query.state.data?.outcome === "PendingGrading" ? 3000 : false, refetchIntervalInBackground: true });
   const close = () => { void cache.invalidateQueries({ queryKey: ["learning-agenda"] }); void cache.invalidateQueries({ queryKey: ["learning-paths"] }); onClose(); };
+  const [paused, setPaused] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [activeSeconds, setActiveSeconds] = useState(0);
+  const runActive = !reviewing && run.data?.status === "InProgress";
+  // The clock only counts active study time; it stops while paused or between sets.
+  useEffect(() => {
+    if (paused || !runActive || !current) return;
+    const timer = setInterval(() => setActiveSeconds(v => v + 1), 1000);
+    return () => clearInterval(timer);
+  }, [paused, runActive, current]);
+  const abandon = useMutation({ mutationFn: () => abandonMissionRun(mission!.missionId, run.data!.sessionRunId), onSuccess: () => close() });
+  const submittedCount = run.data?.activities.filter(done).length ?? 0;
+  const independentRun = !!run.data?.activities.some(a => a.activityType === "IndependentCheck" || a.activityType === "TransferChallenge");
+  const cancelBlocked = independentRun && submittedCount > 0;
   if (!isOpen || !mission) return null;
   const ongoing = ongoingMissionFromError(run.error, mission);
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-transparent p-3 sm:p-6">
@@ -35,7 +50,11 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
       <header className="z-10 flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
         <div><p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">{mission.skillName}</p><h2 id="mission-title" className="mt-1 text-xl font-semibold">{mission.title}</h2>
           {run.data && <p className="mt-2 text-xs text-slate-500">{run.data.activities.filter(done).length}/{run.data.activities.length} hoạt động đã nộp · Tiến độ lưu theo tài khoản</p>}</div>
-        <button className="rounded-lg border px-3 py-1" aria-label="Đóng và giữ tiến độ" onClick={close}>×</button>
+        <div className="flex shrink-0 items-center gap-2">
+          {runActive && <span className="font-mono text-sm tabular-nums text-slate-500" title="Thời gian học thực tế (không tính lúc tạm dừng)">{clock(activeSeconds)}</span>}
+          {runActive && !paused && <button className="rounded-lg border px-3 py-1 text-sm" onClick={() => { setPaused(true); setConfirmCancel(false); }}>Tạm dừng</button>}
+          <button className="rounded-lg border px-3 py-1" aria-label="Đóng và giữ tiến độ" title="Đóng · tiến độ và bản nháp được giữ" onClick={close}>×</button>
+        </div>
       </header>
       <div className="min-h-0 space-y-5 overflow-y-auto p-5 sm:p-7">
         {reviewing && <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600">Đang xem lại lượt học đã lưu. Không tạo lượt làm mới.</p>}
@@ -46,16 +65,32 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
             : <button className="mt-3 underline" onClick={() => void run.refetch()}>Thử lại</button>}</div>}
         {run.data && <div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-indigo-600 transition-all" style={{ width: `${100 * run.data.activities.filter(done).length / Math.max(1, run.data.activities.length)}%` }} /></div>
           <div aria-label="Các câu trong buổi" className="mt-3 flex flex-wrap gap-2">{run.data.activities.map(a => <button key={a.activityRunId} disabled={!done(a) || (!a.learningFeedback && !a.content)} onClick={() => setFeedbackActivity(a)} className={`h-9 w-9 rounded-lg border text-sm ${done(a) ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-slate-200"}`} aria-label={`Xem lại câu ${a.activityOrder}`}>{a.activityOrder}</button>)}</div></div>}
-        {feedbackActivity && <div className="space-y-4">{feedbackActivity.question && <RichMathText className="whitespace-pre-wrap text-base" text={feedbackActivity.question.question.questionText} />}
+        {paused && run.data && <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-700 dark:bg-slate-800">
+          <h3 className="text-lg font-semibold">Đang tạm dừng</h3>
+          <p className="text-sm text-slate-600 dark:text-slate-300">Đã học {formatDuration(activeSeconds)} trong lượt này · {submittedCount}/{run.data.activities.length} hoạt động đã nộp. Bản nháp được lưu trên server; đồng hồ không chạy khi tạm dừng. Có thể thoát và quay lại sau, bài sẽ mở đúng chỗ đang làm.</p>
+          <div className="flex flex-wrap gap-3">
+            <button className="rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white" onClick={() => { setPaused(false); setConfirmCancel(false); }}>Tiếp tục học</button>
+            <button className="rounded-xl border px-4 py-3" onClick={close}>Lưu và thoát</button>
+            <button className="rounded-xl border border-rose-300 px-4 py-3 text-rose-700" onClick={() => setConfirmCancel(true)}>Hủy lượt này</button>
+          </div>
+          {confirmCancel && <div role="alertdialog" aria-label="Xác nhận hủy lượt" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
+            {cancelBlocked ? <p>Bài tự kiểm tra đã có câu được nộp nên không hủy giữa chừng, để kết quả phản ánh đúng năng lực. Em có thể thoát và làm tiếp sau; tiến độ vẫn được giữ.</p>
+              : <><p>Hủy lượt này? {submittedCount > 0 ? `${submittedCount} câu đã nộp vẫn được giữ trong lịch sử và hồ sơ năng lực; ` : ""}phần chưa nộp sẽ bị bỏ. Nhiệm vụ có thể bắt đầu lại bất cứ lúc nào{independentRun ? " với bộ câu mới" : ""}.</p>
+                <div className="mt-3 flex flex-wrap gap-3"><button disabled={abandon.isPending} className="rounded-lg bg-rose-600 px-4 py-2 font-semibold text-white disabled:opacity-50" onClick={() => abandon.mutate()}>{abandon.isPending ? "Đang hủy…" : "Xác nhận hủy"}</button>
+                  <button className="rounded-lg border border-rose-300 px-4 py-2" onClick={() => setConfirmCancel(false)}>Giữ lại</button></div></>}
+            {abandon.error && <p className="mt-2">{extractProblemDetails(abandon.error).message}</p>}
+          </div>}
+        </div>}
+        {feedbackActivity && !paused && <div className="space-y-4">{feedbackActivity.question && <RichMathText className="whitespace-pre-wrap text-base" text={feedbackActivity.question.question.questionText} />}
           {feedbackActivity.learningFeedback && <Feedback feedback={feedbackActivity.learningFeedback} />}
           {feedbackActivity.content && <div className="rounded-xl border p-4"><h3 className="font-semibold">Cách hiểu em đã nộp</h3><p className="mt-2 whitespace-pre-wrap text-sm">{feedbackActivity.submittedResponse ?? "Chưa có nội dung để hiển thị."}</p></div>}
           {(feedbackActivity.learningFeedback || feedbackActivity.content) && <TutorFeedback activity={feedbackActivity} automatic />}
           <button className="rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white" onClick={() => setFeedbackActivity(null)}>{current ? "Câu tiếp theo" : "Xem tổng kết buổi học"}</button></div>}
-        {current && !feedbackActivity && <Activity key={current.activityRunId} activity={current} onSubmitted={(res, submittedResponse) => {
+        {current && !feedbackActivity && <div hidden={paused}><Activity key={current.activityRunId} activity={current} paused={paused} onSubmitted={(res, submittedResponse) => {
           const updated = { ...current, status: res.activityStatus, learningFeedback: res.learningFeedback, submittedResponse };
           cache.setQueryData<MissionRunDto>(key, old => old ? { ...old, activities: old.activities.map(a => a.activityRunId === current.activityRunId ? updated : a) } : old);
           if ((current.activityType === "Practice" && res.learningFeedback) || current.content) setFeedbackActivity(updated);
-        }} />}
+        }} /></div>}
         {reviewing && run.data && !feedbackActivity && <div className="rounded-xl bg-indigo-50 p-4 text-indigo-950"><h3 className="font-semibold">{outcomeNames[run.data.outcome] ?? "Bài làm đã lưu"}</h3><p className="mt-2 text-sm">Chọn số câu hoặc mở phần bên dưới để xem lại câu trả lời và lời giải đã lưu.</p></div>}
         {!reviewing && evaluation.isFetching && !evaluation.data && run.data && !current && !feedbackActivity && <p role="status">Đang tổng kết buổi học…</p>}
         {!reviewing && evaluation.error && <div role="alert" className="rounded-xl bg-rose-50 p-4 text-rose-800">Chưa lấy được kết quả. Bài đã nộp vẫn được giữ. {extractProblemDetails(evaluation.error).message}
@@ -109,6 +144,14 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
   </div>;
 }
 
+function clock(seconds: number): string {
+  const h = Math.floor(seconds / 3600), m = Math.floor((seconds % 3600) / 60), sec = seconds % 60;
+  return `${h > 0 ? `${h}:` : ""}${String(m).padStart(h > 0 ? 2 : 1, "0")}:${String(sec).padStart(2, "0")}`;
+}
+function formatDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  return m < 1 ? "chưa tới 1 phút" : m < 60 ? `${m} phút` : `${Math.floor(m / 60)} giờ ${m % 60} phút`;
+}
 function text(value: unknown): string { return typeof value === "string" || typeof value === "number" ? String(value) : ""; }
 function Feedback({ feedback: f }: { feedback: QuestionLearningFeedbackDto }) {
   return <section aria-label="Phản hồi câu trả lời" className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/60 p-5 text-slate-900">
@@ -138,7 +181,7 @@ function TutorFeedback({ activity, automatic = false }: { activity: ActivityRunD
       <p className="text-xs text-slate-500">Nhận xét AI để hỗ trợ học; không thay điểm chấm hoặc xác nhận thành thạo. {value.generatedAt && new Date(value.generatedAt).toLocaleString("vi-VN")}</p></>}
   </section>;
 }
-function Activity({ activity: a, onSubmitted }: { activity: ActivityRunDto; onSubmitted: (res: ActivitySubmissionResponseDto, response: string) => void }) {
+function Activity({ activity: a, onSubmitted, paused }: { activity: ActivityRunDto; paused: boolean; onSubmitted: (res: ActivitySubmissionResponseDto, response: string) => void }) {
   const restored = (() => { try { return JSON.parse(a.draftPayload ?? "{}") as Record<string, unknown>; } catch { return {}; } })();
   const [answer, setAnswer] = useState(text(restored.finalAnswer));
   const [reasoning, setReasoning] = useState(text(restored.reasoningText));
@@ -148,7 +191,14 @@ function Activity({ activity: a, onSubmitted }: { activity: ActivityRunDto; onSu
   const [notice, setNotice] = useState("");
   const [conflict, setConflict] = useState(false);
   const [submissionId] = useState(() => crypto.randomUUID());
-  const [started] = useState(() => Date.now());
+  // Time spent excludes paused periods.
+  const activeMs = useRef(0);
+  const since = useRef<number | null>(Date.now());
+  useEffect(() => {
+    if (paused && since.current != null) { activeMs.current += Date.now() - since.current; since.current = null; }
+    else if (!paused && since.current == null) since.current = Date.now();
+  }, [paused]);
+  const elapsedSeconds = () => Math.floor((activeMs.current + (since.current != null ? Date.now() - since.current : 0)) / 1000);
   const q = a.question?.question;
   const payload = (a.content?.payload ?? {}) as Record<string, unknown>;
   const steps = Array.isArray(payload.steps) ? payload.steps as Record<string, unknown>[] : [];
@@ -159,15 +209,33 @@ function Activity({ activity: a, onSubmitted }: { activity: ActivityRunDto; onSu
     onError: e => setNotice(`Chưa đồng bộ bản nháp: ${e.message}. Nội dung vẫn ở màn hình; hãy lưu lại trước khi đóng.`) });
   const submit = useMutation({ mutationFn: () => submitActivity(a.activityRunId, { clientSubmissionId: submissionId,
     questionId: q ? q.questionId : undefined, finalAnswer: answer, reasoningText: reasoning || undefined,
-    selectedErrorStep: errorStep || undefined, timeSpentSeconds: Math.floor((Date.now() - started) / 1000) }),
+    selectedErrorStep: errorStep || undefined, timeSpentSeconds: elapsedSeconds() }),
     onSuccess: res => onSubmitted(res, answer) });
-  const assist = useMutation({ mutationFn: () => requestActivityAssistance(a.activityRunId, { stepIndex: 0 }), onSuccess: r => setNotice(r.explanation) });
+  const [hints, setHints] = useState<AssistanceResponseDto[]>([]);
+  const addHints = (list: AssistanceResponseDto[]) => setHints(h => [...h, ...list].filter((x, i, all) => all.findIndex(y => y.hintLevel === x.hintLevel) === i)
+    .sort((x, y) => (x.hintLevel ?? 0) - (y.hintLevel ?? 0)));
+  const assist = useMutation({ mutationFn: (step: number) => requestActivityAssistance(a.activityRunId, { stepIndex: step }), onSuccess: r => addHints([r]) });
   useEffect(() => {
     if (conflict || save.isPending || submit.isPending || currentDraft === lastSaved || (!answer && !reasoning && !errorStep)) return;
     const timer = setTimeout(() => save.mutate(currentDraft), 1200);
     return () => clearTimeout(timer);
   }, [currentDraft, lastSaved, answer, reasoning, errorStep, conflict, save.isPending, submit.isPending, save.mutate]);
   const independent = a.activityType === "IndependentCheck" || a.activityType === "TransferChallenge";
+  // Re-open hints already revealed for this activity (e.g. after pausing or reloading); the server does not count them again.
+  const restoredHints = useRef(false);
+  useEffect(() => {
+    if (restoredHints.current || independent || !a.assistanceRequestedCount) return;
+    restoredHints.current = true;
+    void Promise.all(Array.from({ length: a.assistanceRequestedCount }, (_, i) => requestActivityAssistance(a.activityRunId, { stepIndex: i })))
+      .then(addHints).catch(() => undefined);
+  }, [a.activityRunId, a.assistanceRequestedCount, independent]);
+  // Pausing flushes the draft immediately instead of waiting for the autosave delay.
+  useEffect(() => {
+    if (paused && !conflict && currentDraft !== lastSaved && (answer || reasoning || errorStep)) save.mutate(currentDraft);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paused]);
+  const lastHint = hints[hints.length - 1];
+  const moreHints = !lastHint || !!lastHint.hasMoreHints;
   const field = "mt-2 w-full rounded-lg border border-slate-300 bg-white p-3 dark:bg-slate-900";
   return <form className="space-y-5" onSubmit={e => { e.preventDefault(); submit.mutate(); }}>
     <div><p className="text-sm font-semibold text-indigo-600">{a.stage || activityNames[a.activityType] || a.activityType} · Câu / hoạt động {a.activityOrder}</p>
@@ -187,11 +255,17 @@ function Activity({ activity: a, onSubmitted }: { activity: ActivityRunDto; onSu
     {a.activityType === "FindError" && <label className="block text-sm font-medium">Bước nào sai?<input required className={field} value={errorStep} onChange={e => setErrorStep(e.target.value)} placeholder="Số bước" /></label>}
     {!q?.options?.length && <label className="block text-sm font-medium">{q ? "Câu trả lời" : a.activityType === "FindError" ? "Sửa lại bước sai" : "Em hiểu hoặc rút ra điều gì?"}<textarea required rows={3} className={field} value={answer} onChange={e => setAnswer(e.target.value)} /></label>}
     {q && <label className="block text-sm font-medium">Giải thích cách làm{q.reasoningRequired ? " (bắt buộc)" : " (nếu có)"}<textarea required={q.reasoningRequired} rows={3} className={field} value={reasoning} onChange={e => setReasoning(e.target.value)} /></label>}
+    {hints.length > 0 && <section aria-label="Gợi ý" className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-slate-900">
+      {hints.map(h => <div key={h.hintLevel}><p className="text-xs font-semibold uppercase tracking-wider text-amber-700">Gợi ý {h.hintLevel}/{h.totalHints} · {h.hintTitle}</p>
+        <RichMathText className="mt-1 whitespace-pre-wrap text-sm leading-relaxed" text={h.explanation} /></div>)}
+      {lastHint?.policyNotice && <p className="text-xs text-amber-800">{lastHint.policyNotice}</p>}
+    </section>}
     {notice && <p role="status" className="text-sm text-slate-500">{notice}</p>}
     {(submit.error || assist.error) && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{(submit.error ?? assist.error)?.message}</p>}
     <div className="flex flex-wrap gap-3"><button disabled={submit.isPending || save.isPending || conflict} type="submit" className="rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white disabled:opacity-40">{submit.isPending ? "Đang lưu bài…" : q ? "Nộp câu trả lời" : "Hoàn thành hoạt động"}</button>
       <button type="button" disabled={save.isPending || conflict} className="rounded-xl border px-4 py-3" onClick={() => save.mutate(currentDraft)}>Lưu bản nháp</button>
-      {!independent && <button type="button" disabled={assist.isPending} className="rounded-xl border px-4 py-3" onClick={() => assist.mutate()}>Cần hướng dẫn</button>}
+      {!independent && <button type="button" disabled={assist.isPending || !moreHints} className="rounded-xl border border-amber-300 px-4 py-3 text-amber-900 disabled:opacity-50"
+        onClick={() => assist.mutate(hints.length)}>{assist.isPending ? "Đang mở gợi ý…" : hints.length === 0 ? "Gợi ý" : moreHints ? `Gợi ý tiếp (${hints.length + 1}/${lastHint?.totalHints ?? "?"})` : "Đã mở hết gợi ý"}</button>}
     </div>
   </form>;
 }

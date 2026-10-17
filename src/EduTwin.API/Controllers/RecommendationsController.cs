@@ -874,11 +874,25 @@ public sealed class RecommendationsController : ControllerBase
     [Authorize(Policy = "recommendations.student.read_own")]
     [V4LearningExceptionFilter]
     [Authorize(Policy = "learning.attempts.submit")]
-    public async Task<IActionResult> StartMission([FromRoute] Guid missionId, CancellationToken cancellationToken)
+    public async Task<IActionResult> StartMission([FromRoute] Guid missionId, CancellationToken cancellationToken,
+        [FromQuery] bool retry = false, [FromQuery] uint? questionCount = null)
     {
         if (_activityExecutionService == null || _tenantContext?.IsResolved != true || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
             return Forbid();
-        return Ok(await _activityExecutionService.StartMissionAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, missionId, cancellationToken));
+        return Ok(await _activityExecutionService.StartMissionAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, missionId,
+            new StartMissionRequest { Retry = retry, QuestionCount = questionCount }, cancellationToken));
+    }
+
+    [HttpPost("missions/{missionId:guid}/runs/{sessionRunId:long}/abandon")]
+    [Authorize(Policy = "recommendations.student.read_own")]
+    [V4LearningExceptionFilter]
+    [Authorize(Policy = "learning.attempts.submit")]
+    [ProducesResponseType(typeof(MissionRunDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> AbandonMissionRun([FromRoute] Guid missionId, [FromRoute] ulong sessionRunId, CancellationToken cancellationToken)
+    {
+        if (_activityExecutionService == null || _tenantContext?.IsResolved != true || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
+            return Forbid();
+        return Ok(await _activityExecutionService.AbandonMissionRunAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, missionId, sessionRunId, cancellationToken));
     }
 
     [HttpGet("activity-runs/{activityRunId:long}")]

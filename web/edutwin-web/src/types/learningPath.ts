@@ -371,6 +371,38 @@ export interface AgendaItemDto {
   canStart: boolean;
   status: string;
   activeRunId?: number | null;
+  /** Client-only: open a new run of a finished mission instead of reviewing it. */
+  retry?: boolean;
+  defaultQuestionCount?: number;
+  weaknessLevel?: 'Weak' | 'Developing' | 'Strong' | string | null;
+  canRetry?: boolean;
+  retryLabel?: string | null;
+  retryBlockedReason?: string | null;
+  runs?: MissionRunSummaryDto[];
+}
+
+export interface MissionRunSummaryDto {
+  sessionRunId: number;
+  runNumber: number;
+  status: string;
+  outcome: string;
+  startedAt: string;
+  completedAt?: string | null;
+  totalQuestions: number;
+  answeredQuestions: number;
+  correctAnswers: number;
+}
+
+export interface PathHistoryItemDto {
+  learningPathId: string;
+  version: number;
+  goalTitle: string;
+  status: string;
+  createdAt: string;
+  endedAt?: string | null;
+  totalMissions: number;
+  completedMissions: number;
+  answeredQuestions: number;
 }
 
 export interface LearningAgendaDto {
@@ -386,6 +418,11 @@ export interface LearningAgendaDto {
   alternativeOptions: AgendaItemDto[];
   ongoingRuns: AgendaItemDto[];
   reviewDueTasks: AgendaItemDto[];
+  todayPlan?: AgendaItemDto[];
+  plannedMinutes?: number;
+  plannedQuestionCount?: number;
+  pacingNote?: string | null;
+  pathHistory?: PathHistoryItemDto[];
 }
 
 export interface LearningInsightsDto {
@@ -466,6 +503,10 @@ export interface AssistanceResponseDto {
   fallbackUsed: boolean;
   isBlocked: boolean;
   policyNotice: string;
+  hintLevel?: number;
+  totalHints?: number;
+  hasMoreHints?: boolean;
+  hintTitle?: string | null;
 }
 
 export interface SubmitActivityRequest {

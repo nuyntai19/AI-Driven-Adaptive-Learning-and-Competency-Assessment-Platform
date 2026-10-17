@@ -5,6 +5,8 @@ import type { PathProposalDto, AcceptPathProposalResponse, SkillCapabilityStatus
 import { extractProblemDetails } from "../../utils/problemDetails";
 import { recommendLearningGoal } from "../../utils/learningPathRecommendation";
 import { pathChangeBlockersFromError, type BlockingLearningMission } from "../../utils/learningMission";
+import { TimeBudgetSlider } from "./TimeBudgetSlider";
+import { formatStudyMinutes } from "../../utils/studyTime";
 
 interface Props { isOpen: boolean; onClose: () => void; subjectId: string; classId?: string;
   onOpenBlockingMission?: (mission: BlockingLearningMission) => void;
@@ -54,7 +56,8 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
         <label className="block text-sm font-medium">Bạn muốn đạt điều gì?<select className={input} value={goalType} onChange={e => setGoalType(e.target.value)}>
           <option value="Foundation">Học lại nền tảng</option><option value="KeepUp">Theo kịp bài trên lớp</option><option value="Diagnostic">Xác định điểm xuất phát</option><option value="ExamPrep">Chuẩn bị bài kiểm tra</option><option value="Advanced">Học nâng cao</option>
         </select></label>
-        <div className="grid gap-4 sm:grid-cols-3"><label className="text-sm">Phút mỗi ngày<select className={input} value={minutes} onChange={e => setMinutes(Number(e.target.value))}>{[5, 15, 30, 45, 60].map(n => <option key={n}>{n}</option>)}</select></label>
+        <TimeBudgetSlider label="Thời gian học mỗi ngày" value={minutes} onChange={setMinutes} summary="Dùng để ước lượng số tuần. Số câu của từng kỹ năng do mức độ yếu quyết định; mỗi ngày có thể kéo lại thời gian ở trang lộ trình." />
+        <div className="grid gap-4 sm:grid-cols-2">
           <label className="text-sm">Ngày mỗi tuần<select className={input} value={days} onChange={e => setDays(Number(e.target.value))}>{[1, 2, 3, 4, 5, 6, 7].map(n => <option key={n}>{n}</option>)}</select></label>
           <label className="text-sm">Mốc thời gian (nếu có)<input type="date" className={input} value={deadline} onChange={e => setDeadline(e.target.value)} /></label></div>
         <fieldset><legend className="text-sm font-semibold">Kỹ năng trọng tâm</legend><p className="my-2 text-xs text-slate-500">Không chọn nghĩa là xem xét tất cả kỹ năng trong giáo trình. Nền tảng cần thiết sẽ được bổ sung vào tuyến.</p>
@@ -62,8 +65,8 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
             <input type="checkbox" checked={targets.includes(s.skillId)} onChange={e => setTargets(v => e.target.checked ? [...v, s.skillId] : v.filter(id => id !== s.skillId))} /><span>{s.skillName}</span>
           </label>)}</div></fieldset>
         <button type="submit" disabled={generate.isPending || skills.length === 0} className="rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white disabled:opacity-50">{generate.isPending ? "Đang lập tuyến từ dữ liệu học…" : "Xem trước lộ trình"}</button>
-      </form> : proposal && <div className="mt-6 space-y-5"><div className="rounded-xl border border-slate-200 p-4"><h3 className="font-semibold">{title}</h3><p className="mt-2 text-sm">{goalType === "Advanced" ? "Học nâng cao" : goalType === "Diagnostic" ? "Xác định điểm xuất phát" : goalType === "Foundation" ? "Củng cố nền tảng" : goalType === "ExamPrep" ? "Chuẩn bị bài kiểm tra" : "Theo kịp bài trên lớp"} · {minutes} phút/ngày · {days} ngày/tuần</p><p className="mt-2 text-sm text-slate-500">Mốc dự kiến: {deadline ? deadline.split("-").reverse().join("/") : "Theo tiến độ học"}. Đây là ước lượng có thể điều chỉnh.</p></div><p className="rounded-xl bg-indigo-50 p-4 text-sm text-indigo-900">{proposal.startingBaselineSummary}</p>
-        <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Tuyến mới chỉ được kích hoạt khi không còn nhiệm vụ hiện tại đang làm, chờ chấm hoặc chờ giáo viên duyệt. Khi chuyển từ giao diện cũ, các buổi cũ còn dở được kết thúc; bài đã nộp và bằng chứng vẫn được giữ.</p>
+      </form> : proposal && <div className="mt-6 space-y-5"><div className="rounded-xl border border-slate-200 p-4"><h3 className="font-semibold">{title}</h3><p className="mt-2 text-sm">{goalType === "Advanced" ? "Học nâng cao" : goalType === "Diagnostic" ? "Xác định điểm xuất phát" : goalType === "Foundation" ? "Củng cố nền tảng" : goalType === "ExamPrep" ? "Chuẩn bị bài kiểm tra" : "Theo kịp bài trên lớp"} · {formatStudyMinutes(minutes)}/ngày · {days} ngày/tuần</p><p className="mt-2 text-sm text-slate-500">Mốc dự kiến: {deadline ? deadline.split("-").reverse().join("/") : "Theo tiến độ học"}. Đây là ước lượng có thể điều chỉnh.</p></div><p className="rounded-xl bg-indigo-50 p-4 text-sm text-indigo-900">{proposal.startingBaselineSummary}</p>
+        <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Đổi tuyến không xóa gì: mọi câu trả lời trước đây vẫn được giữ và dùng để quyết định kỹ năng nào cần học nhiều hơn, kỹ năng nào được rút gọn. Tuyến cũ chuyển vào “Lịch sử tuyến học”. Nhiệm vụ đang làm dở cần làm xong hoặc hủy lượt trước khi đổi; bài đang chờ chấm sẽ được giữ nguyên.</p>
         <p className="text-sm">{proposal.feasibilityMessage}</p>
         {proposal.milestones.map(m => <article key={m.order} className="rounded-xl border border-slate-200 p-4"><h3 className="font-semibold">{m.order}. {m.title}</h3>
           <p className="mt-1 text-sm text-slate-500">{m.outcomeDescription}</p><ul className="mt-3 space-y-2 text-sm">{m.missions.map(a => <li key={a.missionId}>{a.title} · {a.questionCount > 0 ? `${a.questionCount} câu · ` : ""}khoảng {a.estimatedMinutes} phút<p className="mt-1 text-xs text-slate-500">{a.selectionReason}</p>{a.canStart === false && <span className="ml-2 text-amber-700">Cần bổ sung nội dung</span>}</li>)}</ul></article>)}
@@ -75,7 +78,7 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
           <p className="mt-1">{blockers.length ? "Cần xử lý các buổi dưới đây trước. Tuyến hiện tại và bài làm của bạn vẫn được giữ." : extractProblemDetails(accept.error).message}</p>
           {blockers.length > 0 && <ul className="mt-2 max-h-28 space-y-2 overflow-y-auto">{blockers.map(m => <li key={m.runId}>
             <p><span className="font-semibold">{m.title}</span> · {m.status === "Grading" ? "Đang chờ chấm" : m.status === "NeedsReview" ? "Chờ giáo viên duyệt" : "Đang làm dở"}</p>
-            {m.canResume && onOpenBlockingMission && <button className="mt-1 font-semibold underline" onClick={() => onOpenBlockingMission(m)}>{m.status === "InProgress" ? "Tiếp tục buổi này" : "Xem bài và trạng thái"}</button>}
+            {m.canResume && onOpenBlockingMission && <button className="mt-1 font-semibold underline" onClick={() => onOpenBlockingMission(m)}>{m.status === "InProgress" ? "Mở để làm tiếp hoặc hủy lượt" : "Xem bài và trạng thái"}</button>}
           </li>)}</ul>}
         </div>}
         {accept.isPending && <p role="status" className="text-sm text-indigo-700">Đang lưu tuyến và cập nhật nhiệm vụ của bạn…</p>}

@@ -165,9 +165,22 @@ export const getLearningAgenda = async (
   return response.data;
 };
 
-export const startLearningMission = async (missionId: string): Promise<import("../types/learningPath").MissionRunDto> => {
+export const startLearningMission = async (
+  missionId: string,
+  options: { retry?: boolean; questionCount?: number } = {}
+): Promise<import("../types/learningPath").MissionRunDto> => {
   const response = await httpClient.post<import("../types/learningPath").MissionRunDto>(
-    `/students/me/missions/${encodeURIComponent(missionId)}/start`
+    `/students/me/missions/${encodeURIComponent(missionId)}/start`,
+    undefined,
+    { params: { retry: options.retry || undefined, questionCount: options.questionCount || undefined } }
+  );
+  return response.data;
+};
+
+/** Cancels an unfinished run. Submitted answers are kept; the mission can be started again. */
+export const abandonMissionRun = async (missionId: string, runId: number): Promise<import("../types/learningPath").MissionRunDto> => {
+  const response = await httpClient.post<import("../types/learningPath").MissionRunDto>(
+    `/students/me/missions/${encodeURIComponent(missionId)}/runs/${runId}/abandon`
   );
   return response.data;
 };

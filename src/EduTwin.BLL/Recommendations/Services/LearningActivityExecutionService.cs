@@ -24,19 +24,31 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
         return await RunDtoAsync(run, cancellationToken);
     }
 
-    public async Task<MissionRunDto> StartMissionAsync(Guid centerId, Guid studentId, Guid missionId, CancellationToken cancellationToken = default)
+    public Task<MissionRunDto> StartMissionAsync(Guid centerId, Guid studentId, Guid missionId, CancellationToken cancellationToken = default)
+        => StartMissionAsync(centerId, studentId, missionId, new StartMissionRequest(), cancellationToken);
+
+    public async Task<MissionRunDto> StartMissionAsync(Guid centerId, Guid studentId, Guid missionId, StartMissionRequest request, CancellationToken cancellationToken = default)
     {
         await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
         await StudentLockHelper.AcquireStudentLockAsync(db, centerId, studentId, cancellationToken);
         var session = await LearningPathV4Data.SessionAsync(db, centerId, studentId, missionId, cancellationToken);
         var run = await db.LearningPathSessionRuns.Include(r => r.Session).Where(r => r.CenterId == centerId &&
             r.StudentId == studentId && r.SessionId == missionId).OrderByDescending(r => r.RunNumber).FirstOrDefaultAsync(cancellationToken);
-        if (session.Status == LearningPathSessionStatus.Skipped && run == null)
+        var lastFinished = await db.LearningPathSessionRuns.Include(r => r.Session).Where(r => r.CenterId == centerId &&
+            r.StudentId == studentId && r.SessionId == missionId && r.Status != SessionRunStatus.Abandoned).OrderByDescending(r => r.RunNumber).FirstOrDefaultAsync(cancellationToken);
+        if (session.Status == LearningPathSessionStatus.Skipped && lastFinished == null)
             throw new InvalidOperationException("Nhiệm vụ này đã được điều chỉnh sau kết quả mới. Hãy chọn bước trong tuyến hiện tại.");
-        if (run != null && (run.Status != SessionRunStatus.Completed || session.Status == LearningPathSessionStatus.Completed))
+        // Unfinished work is always resumed, never duplicated.
+        if (run != null && run.Status is SessionRunStatus.InProgress or SessionRunStatus.Grading or SessionRunStatus.NeedsReview)
         {
             await tx.CommitAsync(cancellationToken);
             return await RunDtoAsync(run, cancellationToken);
+        }
+        // A finished mission opens its saved result unless the student explicitly asks for a new run.
+        if (lastFinished != null && (!request.Retry || session.Status == LearningPathSessionStatus.Skipped))
+        {
+            await tx.CommitAsync(cancellationToken);
+            return await RunDtoAsync(lastFinished, cancellationToken);
         }
         if (session.LearningPath.Status != LearningPathStatus.Active) throw new InvalidOperationException("Tuyến này đã được thay thế; hãy chọn nhiệm vụ trong tuyến hiện tại.");
         var ongoing = await db.LearningPathSessionRuns.Where(r => r.CenterId == centerId && r.StudentId == studentId &&
@@ -52,6 +64,16 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
             ?? throw new InvalidOperationException("Nhiệm vụ không có trong bản kế hoạch đã xác nhận.");
         if (!definition.CanStart && definition.Purpose is not ("Practice" or "Review" or "IndependentCheck")) throw new InvalidOperationException(definition.SelectionReason);
         if (definition.AvailableFrom > Now) throw new InvalidOperationException("Chưa tới ngày ôn của nhiệm vụ này. Bạn có thể tiếp tục các phần khác trong tuyến.");
+        if (lastFinished != null && definition.Purpose == "IndependentCheck")
+        {
+            if (lastFinished.Outcome == SessionRunOutcome.Passed || session.Status == LearningPathSessionStatus.Completed)
+                throw new InvalidOperationException("Kỹ năng đã đạt kiểm tra độc lập. Lịch ôn sẽ kiểm tra lại khả năng nhớ; không cần làm lại ngay.");
+            var practiceSessions = await db.LearningPathSessions.Where(s => s.CenterId == centerId && s.LearningPathId == session.LearningPathId &&
+                s.TopicNodeId == session.TopicNodeId && (s.Objective == "Practice" || s.Objective == "Review")).Select(s => s.SessionId).ToListAsync(cancellationToken);
+            var repaired = await db.LearningPathSessionRuns.AnyAsync(r => r.CenterId == centerId && r.StudentId == studentId &&
+                practiceSessions.Contains(r.SessionId) && r.Status == SessionRunStatus.Completed && r.CompletedAt > lastFinished.CompletedAt, cancellationToken);
+            if (!repaired) throw new InvalidOperationException("Hãy hoàn thành một bộ rèn lại của kỹ năng này trước khi kiểm tra lại bằng câu mới.");
+        }
         var pool = await LearningPathV4Data.QuestionsAsync(db, centerId, session.LearningPath.SubjectId, new[] { node.NodeId }, cancellationToken);
         var independent = definition.Purpose == "IndependentCheck";
         if (independent)
@@ -112,10 +134,13 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
                     a.Question.PrimaryTopicNodeId == node.NodeId).OrderByDescending(a => a.CreatedAt).ToListAsync(cancellationToken);
                 var wrong = recent.GroupBy(a => a.QuestionId).Where(g => g.First().IsCorrect == false).Select(g => g.Key).ToHashSet();
                 // Prioritize previously missed items, then increase difficulty through the set.
-                pool = pool.OrderBy(q => wrong.Contains(q.QuestionId) ? 0 : 1).ThenBy(q => q.Difficulty).ThenBy(q => q.QuestionId).ToList();
+                // Previously missed items first, then unseen items, then items already answered correctly; easy to hard inside each group.
+                pool = pool.OrderBy(q => wrong.Contains(q.QuestionId) ? 0 : used.Contains(q.QuestionId) ? 2 : 1).ThenBy(q => q.Difficulty).ThenBy(q => q.QuestionId).ToList();
             }
             if (pool.Count == 0) throw new InvalidOperationException("Chưa có câu hỏi hợp lệ cho nhiệm vụ này.");
-            var size = definition.QuestionCount > 0 ? (int)Math.Clamp(definition.QuestionCount, 1u, 8u) : 6;
+            // Today's plan may resize a practice set to the chosen time; the independent check stays fixed for comparability.
+            var requested = request.QuestionCount is > 0 ? request.QuestionCount.Value : definition.QuestionCount;
+            var size = requested > 0 ? (int)Math.Clamp(requested, 1u, LearningPathPacing.MaxPracticeQuestions) : 6;
             foreach (var q in pool.Take(independent ? 5 : size)) Add(independent ? "IndependentCheck" : "Practice", questionId: q.QuestionId);
         }
         var assigned = activities.SelectMany(a => a.IssuedItems).Where(i => i.QuestionId.HasValue && i.SolutionExposedAt == null).Select(i => i.QuestionId!.Value).ToList();
@@ -207,13 +232,122 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
     {
         var a = await LoadAsync(centerId, studentId, activityRunId, cancellationToken);
         await EnsureEditableAsync(a, cancellationToken);
-        var blocked = a.ActivityType is "IndependentCheck" or "TransferChallenge";
-        a.AssistanceRequestedCount++; a.RowVersion++; a.UpdatedAt = Now;
+        if (a.ActivityType is "IndependentCheck" or "TransferChallenge")
+        {
+            a.AssistanceRequestedCount++; a.RowVersion++; a.UpdatedAt = Now;
+            await db.SaveChangesAsync(cancellationToken);
+            return new AssistanceResponseDto { IsBlocked = true, AssistanceMode = "Blocked", FallbackUsed = true,
+                Explanation = "Phần tự kiểm tra không cung cấp gợi ý hoặc lời giải trước khi nộp.",
+                PolicyNotice = "Trợ giúp bị chặn ở phía server trong kiểm tra độc lập." };
+        }
+        var hints = await HintLadderAsync(a, cancellationToken);
+        var index = (int)Math.Min(request.StepIndex, (uint)(hints.Count - 1));
+        // Only a newly revealed level is counted; re-opening an earlier hint (e.g. after reload) is free.
+        if (index + 1 > a.AssistanceRequestedCount)
+        {
+            a.AssistanceRequestedCount = (uint)index + 1; a.AssistanceMode = "HintOnly"; a.RowVersion++; a.UpdatedAt = Now;
+            try { await db.SaveChangesAsync(cancellationToken); }
+            catch (DbUpdateConcurrencyException) { await db.Entry(a).ReloadAsync(cancellationToken); }
+        }
+        var (title, text, authored) = hints[index];
+        return new AssistanceResponseDto
+        {
+            AssistanceMode = "HintOnly", HintTitle = title, Hint = title, Explanation = text, FallbackUsed = !authored,
+            HintLevel = (uint)index + 1, TotalHints = (uint)hints.Count, HasMoreHints = index + 1 < hints.Count,
+            PolicyNotice = hints.Count == 1 && !authored
+                ? "Câu này chưa có lời giải được biên soạn nên chỉ có gợi ý định hướng. Hệ thống không tự đoán lời giải."
+                : "Gợi ý mở từng bước và không đưa đáp án. Câu có dùng gợi ý vẫn được tính là luyện có hướng dẫn."
+        };
+    }
+
+    /// <summary>
+    /// Progressive hints built only from authored data: approach (expected reasoning / skill notes), then the first part of the
+    /// published solution, then the solution without its conclusion. The correct answer is masked at every level.
+    /// </summary>
+    private async Task<List<(string Title, string Text, bool Authored)>> HintLadderAsync(ActivityRun a, CancellationToken ct)
+    {
+        var node = await db.KnowledgeNodes.AsNoTracking().Where(n => n.CenterId == a.CenterId && n.NodeId == a.SessionRun.Session.TopicNodeId)
+            .Select(n => new { n.NodeName, n.Description }).FirstOrDefaultAsync(ct);
+        var skillName = node?.NodeName ?? "kỹ năng này";
+        var notes = string.IsNullOrWhiteSpace(node?.Description) ? null : Shorten(node!.Description!, 500);
+        var hints = new List<(string, string, bool)>();
+        var questionId = a.IssuedItems.FirstOrDefault(i => i.QuestionId != null)?.QuestionId;
+        var question = questionId == null ? null : await db.Questions.AsNoTracking()
+            .FirstOrDefaultAsync(q => q.CenterId == a.CenterId && q.QuestionId == questionId, ct);
+        if (question != null && a.ActivityType != "Study")
+        {
+            var answer = question.CorrectAnswer?.Trim() ?? "";
+            var approach = !string.IsNullOrWhiteSpace(question.ExpectedReasoning) ? Mask(question.ExpectedReasoning!, answer) : null;
+            hints.Add(("Định hướng", approach != null
+                ? approach
+                : notes != null ? $"Câu này thuộc {skillName}. Nhắc lại kiến thức: {notes}\nHãy xác định câu hỏi yêu cầu gì và quy tắc nào áp dụng trước khi trả lời."
+                : $"Câu này thuộc {skillName}. Gạch chân dữ kiện quan trọng, xác định câu hỏi yêu cầu gì và viết ra quy tắc em định dùng trước khi trả lời.",
+                approach != null || notes != null));
+            var steps = SplitSteps(question.Solution ?? "");
+            // The last step of a multi-step solution usually states the result; it is never shown before submission.
+            if (steps.Count >= 2) steps.RemoveAt(steps.Count - 1);
+            steps = steps.Select(st => Mask(st, answer)).Where(st => !string.IsNullOrWhiteSpace(st)).ToList();
+            if (steps.Count >= 1)
+                hints.Add(("Bước đầu tiên", string.Join("\n", steps.Take(Math.Max(1, (steps.Count + 2) / 3))), true));
+            if (steps.Count >= 2)
+                hints.Add(("Gần tới đáp án", string.Join("\n", steps) + "\nTự hoàn thành bước cuối và kiểm tra lại kết quả.", true));
+            return hints;
+        }
+        var content = a.ContentVersion?.Description;
+        hints.Add(("Định hướng", notes != null ? $"Ý chính của {skillName}: {notes}" : !string.IsNullOrWhiteSpace(content) ? Shorten(content!, 500)
+            : $"Đọc lại phần nội dung và ví dụ của {skillName}; đánh dấu quy tắc được dùng ở từng bước.", notes != null || !string.IsNullOrWhiteSpace(content)));
+        hints.Add(a.ActivityType == "FindError"
+            ? ("Cách tìm lỗi", "Đi lần lượt từng bước: bước này dùng quy tắc nào, quy tắc đó có áp dụng đúng điều kiện không? Bước đầu tiên không thỏa là bước sai.", false)
+            : ("Cách trình bày", "Viết 2–3 câu: (1) quy tắc là gì, (2) khi nào dùng, (3) một ví dụ của riêng em. Không cần chép lại nguyên văn bài học.", false));
+        return hints;
+    }
+
+    private static List<string> SplitSteps(string text)
+    {
+        var lines = text.Replace("\r", "").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        if (lines.Count == 1 && lines[0].Length > 160)
+            lines = System.Text.RegularExpressions.Regex.Split(lines[0], @"(?<=[.!?;])\s+").Where(l => !string.IsNullOrWhiteSpace(l)).Select(l => l.Trim()).ToList();
+        return lines;
+    }
+
+    private static string Mask(string text, string answer)
+    {
+        if (string.IsNullOrWhiteSpace(answer) || answer.Length > 200) return text;
+        var escaped = System.Text.RegularExpressions.Regex.Escape(answer);
+        var wordLike = System.Text.RegularExpressions.Regex.IsMatch(answer, @"^[\p{L}\p{N}][\p{L}\p{N}\s'-]*$");
+        var pattern = wordLike ? $@"(?<![\p{{L}}\p{{N}}]){escaped}(?![\p{{L}}\p{{N}}])" : escaped;
+        // One-character answers (e.g. option "A") are matched case-sensitively so articles like "a" survive.
+        var options = answer.Length <= 1 ? System.Text.RegularExpressions.RegexOptions.None : System.Text.RegularExpressions.RegexOptions.IgnoreCase;
+        return System.Text.RegularExpressions.Regex.Replace(text, pattern, "___", options);
+    }
+
+    private static string Shorten(string text, int max) => text.Length <= max ? text : text[..max].TrimEnd() + "…";
+
+    public async Task<MissionRunDto> AbandonMissionRunAsync(Guid centerId, Guid studentId, Guid missionId, ulong sessionRunId, CancellationToken cancellationToken = default)
+    {
+        await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
+        await StudentLockHelper.AcquireStudentLockAsync(db, centerId, studentId, cancellationToken);
+        await LearningPathV4Data.SessionAsync(db, centerId, studentId, missionId, cancellationToken);
+        var run = await db.LearningPathSessionRuns.Include(r => r.Session).SingleOrDefaultAsync(r => r.CenterId == centerId &&
+            r.StudentId == studentId && r.SessionId == missionId && r.SessionRunId == sessionRunId, cancellationToken)
+            ?? throw new KeyNotFoundException("Không tìm thấy lượt học thuộc nhiệm vụ của bạn.");
+        if (run.Status != SessionRunStatus.InProgress)
+            throw new InvalidOperationException("Chỉ hủy được lượt đang làm. Lượt đang chấm hoặc đã xong được giữ nguyên.");
+        var activities = await db.ActivityRuns.Where(x => x.CenterId == centerId && x.SessionRunId == sessionRunId).ToListAsync(cancellationToken);
+        var submitted = activities.Count(x => x.Status is "Submitted" or "Completed");
+        // A started independent check must be finished: cancelling after weak answers would make the check meaningless.
+        if (submitted > 0 && activities.Any(x => x.ActivityType is "IndependentCheck" or "TransferChallenge"))
+            throw new InvalidOperationException("Bài tự kiểm tra đã có câu được nộp nên không hủy giữa chừng để kết quả công bằng. Em có thể tạm dừng và làm tiếp sau.");
+        run.Status = SessionRunStatus.Abandoned; run.Outcome = SessionRunOutcome.None; run.CompletedAt = Now;
+        run.LastActivityAt = Now; run.UpdatedAt = Now; run.RowVersion++;
+        var previous = await db.LearningPathSessionRuns.Where(r => r.CenterId == centerId && r.StudentId == studentId && r.SessionId == missionId &&
+            r.SessionRunId != sessionRunId && r.Status == SessionRunStatus.Completed).OrderByDescending(r => r.RunNumber).FirstOrDefaultAsync(cancellationToken);
+        run.Session.Status = previous == null ? LearningPathSessionStatus.NotStarted
+            : previous.Outcome == SessionRunOutcome.NotPassed ? LearningPathSessionStatus.NeedsReview : LearningPathSessionStatus.Completed;
+        run.Session.CurrentRunId = previous?.SessionRunId; run.Session.UpdatedAt = Now; run.Session.RowVersion++;
         await db.SaveChangesAsync(cancellationToken);
-        return new AssistanceResponseDto { IsBlocked = blocked, AssistanceMode = blocked ? "Blocked" : "HintOnly", FallbackUsed = true,
-            Explanation = blocked ? "Phần tự kiểm tra không cung cấp gợi ý hoặc lời giải trước khi nộp."
-                : a.ContentVersion?.Description ?? a.SessionRun.Session.Rationale ?? "Hãy xem lại phần kiến thức của kỹ năng này và xác định dữ kiện cần dùng.",
-            PolicyNotice = blocked ? "Trợ giúp bị chặn ở phía server trong kiểm tra độc lập." : "Hướng dẫn theo nội dung đã có; không suy đoán lời giải khi thiếu dữ liệu." };
+        await tx.CommitAsync(cancellationToken);
+        return await RunDtoAsync(run, cancellationToken);
     }
 
     public async Task<ActivitySubmissionResponseDto> SubmitActivityAsync(Guid centerId, Guid studentId, ulong activityRunId, SubmitActivityRequest request, CancellationToken cancellationToken = default)

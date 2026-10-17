@@ -18,6 +18,40 @@ public class LearningAgendaDto
     public List<AgendaItemDto> AlternativeOptions { get; set; } = new();
     public List<AgendaItemDto> OngoingRuns { get; set; } = new();
     public List<AgendaItemDto> ReviewDueTasks { get; set; } = new();
+
+    /// <summary>Ordered steps that fit today's time budget; practice sets are resized to the budget.</summary>
+    public List<AgendaItemDto> TodayPlan { get; set; } = new();
+    public uint PlannedMinutes { get; set; }
+    public uint PlannedQuestionCount { get; set; }
+    public string? PacingNote { get; set; }
+    /// <summary>Earlier routes for this subject. Answers are never deleted when a route is replaced.</summary>
+    public List<PathHistoryItemDto> PathHistory { get; set; } = new();
+}
+
+public class PathHistoryItemDto
+{
+    public Guid LearningPathId { get; set; }
+    public uint Version { get; set; }
+    public string GoalTitle { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+    public DateTime? EndedAt { get; set; }
+    public uint TotalMissions { get; set; }
+    public uint CompletedMissions { get; set; }
+    public uint AnsweredQuestions { get; set; }
+}
+
+public class MissionRunSummaryDto
+{
+    public ulong SessionRunId { get; set; }
+    public uint RunNumber { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public string Outcome { get; set; } = string.Empty;
+    public DateTime StartedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    public uint TotalQuestions { get; set; }
+    public uint AnsweredQuestions { get; set; }
+    public uint CorrectAnswers { get; set; }
 }
 
 public class AgendaItemDto
@@ -39,6 +73,14 @@ public class AgendaItemDto
     public string Status { get; set; } = "NotStarted"; // NotStarted, InProgress, Completed, NeedsReview
     public ulong? ActiveRunId { get; set; }
     public ulong? LatestRunId { get; set; }
+
+    /// <summary>Planned size from the route (weakness based). QuestionCount may be resized for today's budget.</summary>
+    public uint DefaultQuestionCount { get; set; }
+    public string? WeaknessLevel { get; set; } // Weak, Developing, Strong
+    public bool CanRetry { get; set; }
+    public string? RetryLabel { get; set; }
+    public string? RetryBlockedReason { get; set; }
+    public List<MissionRunSummaryDto> Runs { get; set; } = new();
 }
 
 public class LearningInsightsDto

@@ -35,11 +35,15 @@ public static class LearningPathFollowUp
             q.PrimaryTopicNodeId == run.Session.TopicNodeId && q.Status == Contracts.CurriculumAndQuestions.QuestionStatus.Active &&
             q.AnswerEvaluationMode != Contracts.CurriculumAndQuestions.QuestionAnswerEvaluationMode.Manual && q.QuestionType != Contracts.CurriculumAndQuestions.QuestionType.Essay, ct);
         var days = original?.Purpose == "Review" ? 7 : 2;
+        // Repair volume follows the size of the gap: more missed check questions, a longer targeted set.
+        var missed = review ? 0 : await db.IssuedItems.CountAsync(i => i.CenterId == run.CenterId && i.ActivityRun.SessionRunId == run.SessionRunId &&
+            i.Attempt != null && i.Attempt.IsCorrect == false, ct);
+        var size = Math.Min(count, review ? 5 : Math.Clamp(4 + 2 * missed, 6, 12));
         var explanation = review ? $"Đã làm tốt buổi trước; hẹn ôn sau {days} ngày để kiểm tra khả năng nhớ lại. Buổi ôn không tự cấp xác nhận thành thạo."
-            : "Kết quả tự kiểm tra chưa đạt: đã thêm một bộ rèn lại đúng kỹ năng, ưu tiên câu từng sai trước khi tiếp tục.";
+            : $"Kết quả tự kiểm tra chưa đạt ({missed} câu sai): đã thêm bộ rèn lại {size} câu đúng kỹ năng, ưu tiên câu từng sai. Làm xong bộ này sẽ mở lại phần tự kiểm tra bằng câu mới.";
         var mission = new ProposedMissionDto { MissionId = Guid.NewGuid().ToString(), SkillId = run.Session.TopicNodeId.ToString(),
             Purpose = review ? "Review" : "Practice", Title = $"{(review ? "Ôn nhớ lại" : "Rèn lại")}: {milestone.Title}",
-            QuestionCount = (uint)Math.Min(count, 6), EstimatedMinutes = (uint)Math.Max(1, Math.Min(count, 6)) * 2,
+            QuestionCount = (uint)size, EstimatedMinutes = (uint)Math.Max(1, size) * 2,
             AvailableFrom = review ? now.AddDays(days) : null, ActivityTypes = ["Practice"], CanStart = count > 0, SelectionReason = explanation };
         milestone.Missions.Add(mission);
         db.LearningPathSessions.Add(new LearningPathSession { CenterId = run.CenterId, LearningPathId = path.LearningPathId,

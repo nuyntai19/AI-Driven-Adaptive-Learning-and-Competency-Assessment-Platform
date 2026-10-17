@@ -21,6 +21,8 @@ public sealed class LearningPathV4Evaluator(EduTwinDbContext db, TimeProvider cl
         var run = await db.LearningPathSessionRuns.Include(r => r.Session).FirstOrDefaultAsync(r => r.CenterId == centerId &&
             r.StudentId == studentId && r.SessionRunId == sessionRunId, cancellationToken) ?? throw new KeyNotFoundException("Lượt học không thuộc về bạn.");
         await LearningPathV4Data.SessionAsync(db, centerId, studentId, run.SessionId, cancellationToken);
+        if (run.Status == SessionRunStatus.Abandoned)
+            throw new InvalidOperationException("Lượt học này đã được hủy; các câu đã nộp vẫn được giữ trong lịch sử.");
         var activities = await db.ActivityRuns.Include(a => a.IssuedItems).ThenInclude(i => i.Attempt)
             .Where(a => a.CenterId == centerId && a.SessionRunId == sessionRunId).OrderBy(a => a.ActivityOrder).ToListAsync(cancellationToken);
         var items = activities.SelectMany(a => a.IssuedItems).ToList();
