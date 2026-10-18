@@ -64,7 +64,9 @@ public static class LearningPathFollowUp
         {
             // A late teacher correction can invalidate an unstarted review, but never discards work.
             var future = milestone.Missions.Where(m => m.Purpose == "Review" && m.AvailableFrom > now).Select(m => Guid.Parse(m.MissionId)).ToList();
-            foreach (var session in await db.LearningPathSessions.Where(s => s.CenterId == run.CenterId && future.Contains(s.SessionId) && s.Status == LearningPathSessionStatus.NotStarted).ToListAsync(ct))
+            // Filter Guid lists in memory: MySQL (Pomelo) cannot translate Contains over a Guid parameter list.
+            foreach (var session in (await db.LearningPathSessions.Where(s => s.CenterId == run.CenterId && s.LearningPathId == path.LearningPathId &&
+                s.Status == LearningPathSessionStatus.NotStarted).ToListAsync(ct)).Where(s => future.Contains(s.SessionId)))
             { session.Status = LearningPathSessionStatus.Skipped; session.UpdatedAt = now; session.RowVersion++; }
             var missed = await db.IssuedItems.CountAsync(i => i.CenterId == run.CenterId && i.ActivityRun.SessionRunId == run.SessionRunId &&
                 i.Attempt != null && i.Attempt.IsCorrect == false, ct);
@@ -98,7 +100,8 @@ public static class LearningPathFollowUp
             if (original.IsProbe && accuracy >= LearningPathPacing.PassRate)
             {
                 var studyIds = milestone.Missions.Where(m => m.Purpose == "Study").Select(m => Guid.Parse(m.MissionId)).ToList();
-                foreach (var study in await db.LearningPathSessions.Where(s => s.CenterId == run.CenterId && studyIds.Contains(s.SessionId) && s.Status == LearningPathSessionStatus.NotStarted).ToListAsync(ct))
+                foreach (var study in (await db.LearningPathSessions.Where(s => s.CenterId == run.CenterId && s.LearningPathId == path.LearningPathId &&
+                    s.Status == LearningPathSessionStatus.NotStarted).ToListAsync(ct)).Where(s => studyIds.Contains(s.SessionId)))
                 { study.Status = LearningPathSessionStatus.Skipped; study.UpdatedAt = now; study.RowVersion++; notes = " Bỏ qua phần lý thuyết vì đã làm tốt."; }
             }
             if (streak >= LearningPathPacing.ReadyStreak)

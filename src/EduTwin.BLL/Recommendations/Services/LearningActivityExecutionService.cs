@@ -71,10 +71,11 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
         {
             if (lastFinished.Outcome == SessionRunOutcome.Passed || session.Status == LearningPathSessionStatus.Completed)
                 throw new InvalidOperationException("Kỹ năng đã đạt kiểm tra độc lập. Lịch ôn sẽ kiểm tra lại khả năng nhớ; không cần làm lại ngay.");
-            var practiceSessions = await db.LearningPathSessions.Where(s => s.CenterId == centerId && s.LearningPathId == session.LearningPathId &&
-                s.TopicNodeId == session.TopicNodeId && (s.Objective == "Practice" || s.Objective == "Review")).Select(s => s.SessionId).ToListAsync(cancellationToken);
+            // Join through the session instead of a Guid list (not translatable on MySQL).
             var repaired = await db.LearningPathSessionRuns.AnyAsync(r => r.CenterId == centerId && r.StudentId == studentId &&
-                practiceSessions.Contains(r.SessionId) && r.Status == SessionRunStatus.Completed && r.CompletedAt > lastFinished.CompletedAt, cancellationToken);
+                r.Session.LearningPathId == session.LearningPathId && r.Session.TopicNodeId == session.TopicNodeId &&
+                (r.Session.Objective == "Practice" || r.Session.Objective == "Review") &&
+                r.Status == SessionRunStatus.Completed && r.CompletedAt > lastFinished.CompletedAt, cancellationToken);
             if (!repaired) throw new InvalidOperationException("Hãy hoàn thành một bộ rèn lại của kỹ năng này trước khi kiểm tra lại bằng câu mới.");
         }
         var pool = await LearningPathV4Data.QuestionsAsync(db, centerId, session.LearningPath.SubjectId, new[] { node.NodeId }, cancellationToken);

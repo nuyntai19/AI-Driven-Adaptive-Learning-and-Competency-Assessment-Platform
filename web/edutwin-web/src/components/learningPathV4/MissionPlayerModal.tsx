@@ -28,7 +28,8 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
   const evaluation = useQuery({ queryKey: ["mission-evaluation", actor?.centerId, actor?.userId, run.data?.sessionRunId],
     queryFn: () => evaluateMissionRunV4(run.data!.sessionRunId), enabled: !reviewing && !!run.data && !current && !feedbackActivity && run.data.activities.length > 0 && run.data.activities.every(done),
     retry: false, refetchInterval: query => query.state.data?.outcome === "PendingGrading" ? 3000 : false, refetchIntervalInBackground: true });
-  const close = () => { void cache.invalidateQueries({ queryKey: ["learning-agenda"] }); void cache.invalidateQueries({ queryKey: ["learning-paths"] }); onClose(); };
+  // Drop the cached run on close: reopening must read the server state (saved draft, hints, a cancelled or finished run).
+  const close = () => { cache.removeQueries({ queryKey: ["mission-run"] }); void cache.invalidateQueries({ queryKey: ["learning-agenda"] }); void cache.invalidateQueries({ queryKey: ["learning-paths"] }); onClose(); };
   const [paused, setPaused] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [activeSeconds, setActiveSeconds] = useState(0);
