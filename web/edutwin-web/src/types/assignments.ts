@@ -203,6 +203,7 @@ export interface StudentAssignmentListItemDto {
 }
 
 export interface AssignmentProgressItemDto {
+  summary?: AssignmentResultSummaryDto | null;
   studentId: string;
   fullName: string;
   status: ProgressStatus;

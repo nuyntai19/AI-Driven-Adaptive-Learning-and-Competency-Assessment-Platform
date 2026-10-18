@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace EduTwin.BLL.Recommendations.Planning;
 
-public sealed class LearningPathV4Planner(EduTwinDbContext db, TimeProvider clock) : ILearningPathV4Planner
+public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvider clock) : ILearningPathV4Planner
 {
     private DateTime Now => clock.GetUtcNow().UtcDateTime;
 
@@ -187,6 +187,7 @@ public sealed class LearningPathV4Planner(EduTwinDbContext db, TimeProvider cloc
         var candidates = milestones.SelectMany(m => m.Missions).Where(m => m.CanStart).ToList();
         return new PathProposalDto
         {
+            AvailableMinutesPerDay = goal.AvailableMinutesPerDay, AvailableDaysPerWeek = goal.AvailableDaysPerWeek, DeadlineDate = goal.DeadlineDate,
             PacingVersion = 2, ProposalId = Guid.NewGuid(), GoalId = goal.GoalId, SubjectId = goal.SubjectId, GoalTitle = goal.Title,
             StartingBaselineSummary = $"{insights.AnswerCount} lượt trả lời trong 30 ngày. {insights.Summary} {ordered.Count} kỹ năng trong mục tiêu và nền tảng liên quan; {ordered.Count(s => s.State == "Confirmed")} có bằng chứng độc lập.",
             ConfirmedSkills = ordered.Where(s => s.State == "Confirmed").Select(s => s.SkillId).ToList(),
@@ -345,7 +346,7 @@ public sealed class LearningPathV4Planner(EduTwinDbContext db, TimeProvider cloc
                     : LearningPathInsights.PracticePool(subjectQuestions.Where(q => q.PrimaryTopicNodeId.ToString() == m.SkillId).ToList(), usedIds.ToHashSet()).Count;
                 poolSizes[m.MissionId] = pool;
                 // Sets keep a fixed size; routes built before the loop may hold larger sets, which are capped here.
-                item.QuestionCount = (uint)Math.Min(Math.Min(m.QuestionCount == 0 ? LearningPathPacing.SetSize : m.QuestionCount, LearningPathPacing.SetSize), pool);
+                item.QuestionCount = (uint)Math.Min(Math.Min(m.QuestionCount == 0 ? plan.PracticeQuestionsPerSet : m.QuestionCount, plan.PracticeQuestionsPerSet), pool);
                 item.DefaultQuestionCount = item.QuestionCount;
                 item.CanStart = item.QuestionCount > 0 && session.Status != LearningPathSessionStatus.Completed && session.Status != LearningPathSessionStatus.Skipped && (!m.AvailableFrom.HasValue || m.AvailableFrom <= Now);
                 item.EstimatedDurationMinutes = Math.Max(1u, item.QuestionCount) * LearningPathPacing.MinutesPerQuestion;
@@ -447,7 +448,7 @@ public sealed class LearningPathV4Planner(EduTwinDbContext db, TimeProvider cloc
         // Sets the loop is still expected to create, per unconfirmed skill.
         var expected = plan.Milestones.Where(m => m.SkillIds.All(id => map.Skills.FirstOrDefault(s => s.SkillId == id)?.State != "Confirmed") && !m.ReadyForCheck)
             .Sum(m => Math.Max(0, (int)(m.Missions.Where(x => x.Purpose == "Practice").Select(x => x.EstimatedSets).DefaultIfEmpty(0u).Max())
-                - m.Missions.Count(x => x.Purpose == "Practice")) * (int)(LearningPathPacing.SetSize * LearningPathPacing.MinutesPerQuestion));
+                - m.Missions.Count(x => x.Purpose == "Practice")) * (int)(plan.PracticeQuestionsPerSet * LearningPathPacing.MinutesPerQuestion));
         var remaining = (uint)Math.Max(0, open + expected);
         var goal = await db.LearningGoals.AsNoTracking().Where(g => g.CenterId == centerId && g.StudentId == studentId && g.SubjectId == subjectId && g.Status == "Active")
             .OrderByDescending(g => g.CreatedAt).FirstOrDefaultAsync(ct);

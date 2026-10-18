@@ -133,6 +133,16 @@ export const generatePathProposal = async (
   return response.data;
 };
 
+export const customizePathProposal = async (
+  proposalId: string,
+  request: import("../types/learningPath").CustomizePathProposalRequest
+): Promise<import("../types/learningPath").PathProposalDto> => {
+  const response = await httpClient.post<import("../types/learningPath").PathProposalDto>(
+    `/students/me/path-proposals/${encodeURIComponent(proposalId)}/customize`, request
+  );
+  return response.data;
+};
+
 export const acceptPathProposal = async (
   proposalId: string
 ): Promise<import("../types/learningPath").AcceptPathProposalResponse> => {

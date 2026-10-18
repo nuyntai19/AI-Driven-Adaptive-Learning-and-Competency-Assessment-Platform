@@ -105,6 +105,9 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
                 .Where(a => a.CenterId == centerId && attemptIds.Contains(a.AttemptId))
                 .ToDictionaryAsync(a => a.AttemptId, cancellationToken);
 
+        // The start endpoint persists StartedAt before returning this same detail.
+        // Metadata remains available for the overview, but the question body does not.
+        var canReadQuestions = progress.StartedAt.HasValue || attemptsList.Count > 0 || progress.Status == ProgressStatus.Completed;
         var totalQuestionCount = assignmentQuestions.Count;
         var scorePerQuestion = totalQuestionCount > 0 ? 10.0m / totalQuestionCount : 0m;
 
@@ -123,14 +126,14 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
                 QuestionId = aq.QuestionId.ToString(),
                 QuestionType = aq.Question!.QuestionType.ToString(),
                 Difficulty = aq.Question.Difficulty,
-                QuestionText = aq.Question.QuestionText,
-                HasImage = aq.Question.HasImage,
+                QuestionText = canReadQuestions ? aq.Question.QuestionText : string.Empty,
+                HasImage = canReadQuestions && aq.Question.HasImage,
                 EstimatedTimeSeconds = (int)aq.Question.EstimatedTimeSeconds,
                 ReasoningRequired = aq.Question.ReasoningRequired,
                 LanguageCode = aq.Question.LanguageCode,
                 AnswerEvaluationMode = aq.Question.AnswerEvaluationMode.ToString(),
                 Options = questionOptions
-                    .Where(o => o.QuestionId == aq.QuestionId)
+                    .Where(o => canReadQuestions && o.QuestionId == aq.QuestionId)
                     .OrderBy(o => o.OrderIndex)
                     .Select(o => new StudentQuestionOptionDto
                     {

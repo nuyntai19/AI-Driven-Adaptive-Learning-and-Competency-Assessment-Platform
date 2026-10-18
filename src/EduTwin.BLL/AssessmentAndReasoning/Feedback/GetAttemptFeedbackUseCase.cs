@@ -279,7 +279,9 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
                 }
             }
 
-            int? aiReasoningQualityInt = analysis.ReasoningQuality.HasValue
+            var hasReasoningAnalysis = !analysis.IsFallback &&
+                (!string.IsNullOrWhiteSpace(attempt.ReasoningText) || studentSubmissionDto.AttachmentUrl != null);
+            int? aiReasoningQualityInt = hasReasoningAnalysis && analysis.ReasoningQuality.HasValue
                 ? (int)Math.Round(analysis.ReasoningQuality.Value, MidpointRounding.AwayFromZero)
                 : null;
 
@@ -289,7 +291,7 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
                 SchemaVersion = analysis.SchemaVersion,
                 MethodDetected = analysis.MethodDetected,
                 ReasoningQuality = aiReasoningQualityInt,
-                QualityBand = GetQualityBand(analysis.ReasoningQuality),
+                QualityBand = hasReasoningAnalysis ? GetQualityBand(analysis.ReasoningQuality) : null,
                 ErrorType = analysis.ErrorType.ToString(),
                 Misconception = analysis.Misconception,
                 MissingSteps = missingSteps,
@@ -306,7 +308,7 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
                 IsRawAI = analysis.FeedbackOrigin is "Gemini" or "Groq",
                 FeedbackOrigin = analysis.FeedbackOrigin,
                 AnswerAssessment = analysis.AnswerAssessment,
-                ReasoningVerdict = analysis.ReasoningVerdict,
+                ReasoningVerdict = hasReasoningAnalysis ? analysis.ReasoningVerdict : null,
                 Model = analysis.ModelName ?? "Gemini AI",
                 SolutionType = analysis.SolutionType,
                 AiSolution = analysis.AiSolution,

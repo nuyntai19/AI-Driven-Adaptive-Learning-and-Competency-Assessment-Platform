@@ -295,6 +295,10 @@ export interface ProposedMilestoneDto {
 }
 
 export interface PathProposalDto {
+  practiceQuestionsPerSet?: number;
+  availableMinutesPerDay?: number;
+  availableDaysPerWeek?: number;
+  deadlineDate?: string | null;
   proposalId: string;
   goalId: string;
   subjectId: string;
@@ -574,4 +578,12 @@ export interface V4SessionEvaluationResultDto {
   practiceAccuracy?: number | null;
   isProvisional?: boolean;
   nextStep?: string | null;
+}
+
+export interface CustomizePathProposalRequest {
+  availableMinutesPerDay: number;
+  availableDaysPerWeek: number;
+  deadlineDate: string | null;
+  practiceQuestionsPerSet: number;
+  targetSkillIds: string[];
 }

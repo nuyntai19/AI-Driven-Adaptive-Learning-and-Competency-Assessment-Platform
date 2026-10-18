@@ -25,6 +25,10 @@ public interface ILearningPathV4Planner
         GeneratePathProposalRequest request,
         CancellationToken cancellationToken = default);
 
+    Task<PathProposalDto> CustomizePathProposalAsync(
+        Guid centerId, Guid studentId, Guid proposalId, CustomizePathProposalRequest request,
+        CancellationToken cancellationToken = default);
+
     Task<AcceptPathProposalResponse> AcceptPathProposalAsync(
         Guid centerId,
         Guid studentId,

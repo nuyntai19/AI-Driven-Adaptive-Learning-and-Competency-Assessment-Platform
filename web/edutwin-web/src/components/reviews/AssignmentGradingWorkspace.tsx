@@ -1,3 +1,4 @@
+import { getQuestionTypeLabel } from "../../utils/questionDisplay";
 import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -201,13 +202,9 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
     return progressData?.data ?? [];
   }, [progressData]);
 
-  // Filter students who did the assignment
+  // Keep the same roster for the total and the list; status filters narrow it below.
   const filteredStudents = useMemo(() => {
     return studentsProgressList.filter((s) => {
-      // Must have answered at least 1 question or completed/in-progress
-      const hasActivity = s.completedQuestionCount > 0 || s.status === "Completed" || s.status === "InProgress";
-      if (!hasActivity) return false;
-
       if (studentStatusFilter === "pending") {
         return s.teacherFinalReviewStatus !== "Approved";
       }
@@ -1006,7 +1003,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                  Danh sách học sinh đã làm bài ({filteredStudents.length} học sinh)
+                  Danh sách học sinh ({filteredStudents.length} học sinh)
                 </span>
                 <span className="text-xs text-slate-400">Nhấn vào học sinh để xem chi tiết bài làm</span>
               </div>
@@ -1040,7 +1037,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-                                ⏳ Chờ giáo viên duyệt
+                                {student.status === "NotStarted" ? "Chưa bắt đầu" : student.completedQuestionCount === 0 && student.status !== "Completed" ? "Chưa có bài nộp" : "⏳ Chờ giáo viên duyệt"}
                               </span>
                             )}
                           </div>
@@ -1064,7 +1061,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                               : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200 dark:shadow-none"
                           }`}
                         >
-                          {isManager ? "Xem chi tiết bài làm →" : isApproved ? "Xem lại bài chấm →" : "Tiến hành chấm bài →"}
+                          {isManager ? "Xem chi tiết bài làm →" : isApproved ? "Xem lại bài chấm →" : student.completedQuestionCount === 0 && student.status !== "Completed" ? "Xem tiến độ →" : "Tiến hành chấm bài →"}
                         </span>
                       </div>
                     </div>
@@ -1180,7 +1177,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                             {currentQuestion.questionOrderIndex ?? activeQuestionIndex + 1}
                           </span>
                           <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                            Loại: {currentQuestion.questionType || "Trắc nghiệm"}
+                            Loại: {getQuestionTypeLabel(currentQuestion.questionType)}
                           </span>
                         </div>
                         <div className="text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full">
@@ -1786,6 +1783,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
             <p className="text-xs text-slate-600 dark:text-slate-300">
               Bạn đang chốt kết quả bài tập <strong>"{selectedAssignment.title}"</strong> cho học sinh <strong>"{selectedStudent.fullName}"</strong>. Trạng thái sẽ được cập nhật thành Đã duyệt (Approved) và thông báo tới học sinh.
             </p>
+            <p className="text-sm font-bold">Tổng điểm sắp chốt: {selectedStudent.summary?.internalAwardedScore ?? "Chưa xác định"} / {selectedStudent.summary?.internalMaxScore ?? 10}</p>
             <p role="status" className="text-xs text-slate-500">{finalBlockReason ?? "Không còn câu chưa nộp, đang phân tích hoặc cần giáo viên xử lý. Server sẽ kiểm tra lại trước khi chốt."}</p>
             <div>
               <label className="block text-xs font-bold mb-1">Ghi chú tổng kết của giáo viên:</label>

@@ -36,7 +36,7 @@ public static class LearningPathFollowUp
         var checkPassed = checkSessionId.HasValue && await db.LearningPathSessions.AnyAsync(s => s.CenterId == run.CenterId &&
             s.SessionId == checkSessionId.Value && s.Status == LearningPathSessionStatus.Completed, ct);
         var pct = accuracy.HasValue ? (int)Math.Round(accuracy.Value * 100) : 0;
-        var setSize = (uint)Math.Min(LearningPathPacing.SetSize, (uint)Math.Max(0, available));
+        var setSize = (uint)Math.Min(plan.PracticeQuestionsPerSet, (uint)Math.Max(0, available));
 
         ProposedMissionDto? next = null;
         string explanation;

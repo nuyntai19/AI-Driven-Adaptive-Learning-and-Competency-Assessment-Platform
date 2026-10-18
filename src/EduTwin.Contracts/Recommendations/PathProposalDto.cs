@@ -7,6 +7,10 @@ public class PathProposalDto
 {
     /// <summary>2 = practice runs as a loop of fixed 6-question sets. Older routes are flagged for an update.</summary>
     public int PacingVersion { get; set; }
+    public uint PracticeQuestionsPerSet { get; set; } = 6;
+    public uint AvailableMinutesPerDay { get; set; } = 15;
+    public uint AvailableDaysPerWeek { get; set; } = 5;
+    public DateTime? DeadlineDate { get; set; }
     public Guid ProposalId { get; set; }
     public Guid GoalId { get; set; }
     public Guid SubjectId { get; set; }
@@ -79,4 +83,13 @@ public class AcceptPathProposalResponse
     public string Status { get; set; } = "Active";
     public string Message { get; set; } = string.Empty;
     public ProposedMissionDto? FirstMission { get; set; }
+}
+
+public class CustomizePathProposalRequest
+{
+    public uint AvailableMinutesPerDay { get; set; } = 15;
+    public uint AvailableDaysPerWeek { get; set; } = 5;
+    public DateTime? DeadlineDate { get; set; }
+    public uint PracticeQuestionsPerSet { get; set; } = 6;
+    public List<string> TargetSkillIds { get; set; } = new();
 }

@@ -24,6 +24,23 @@ namespace EduTwin.BLL.Tests.Assignments;
 
 public class GetStudentAssignmentUseCaseTests
 {
+    [Fact]
+    public async Task ExecuteAsync_BeforeStart_HidesQuestionBody_ThenRevealsAfterPersistedStart()
+    {
+        var fixture = await CreateTimingFixture(ProgressStatus.NotStarted, 30, startedAt: false);
+        fixture.Clock.Setup(c => c.GetUtcNow()).Returns(new DateTimeOffset(2026, 10, 6, 8, 0, 0, TimeSpan.Zero));
+        await using var context = fixture.Context;
+        var before = await fixture.UseCase.ExecuteAsync(fixture.Progress.AssignmentId, default);
+        Assert.True(before.IsSuccess);
+        Assert.All(before.Data!.Data.Questions, q => { Assert.Empty(q.QuestionText); Assert.Empty(q.Options); Assert.False(q.HasImage); });
+        Assert.Null(fixture.Progress.StartedAt);
+        fixture.Progress.StartedAt = fixture.Clock.Object.GetUtcNow().UtcDateTime;
+        await context.SaveChangesAsync();
+        var after = await fixture.UseCase.ExecuteAsync(fixture.Progress.AssignmentId, default);
+        Assert.All(after.Data!.Data.Questions, q => Assert.NotEmpty(q.QuestionText));
+        Assert.Equal(1800, after.Data.Data.RemainingSeconds);
+    }
+
     [Theory]
     [InlineData(60)]
     [InlineData(null)]
@@ -252,7 +269,8 @@ public class GetStudentAssignmentUseCaseTests
             CenterId = centerId,
             StudentId = studentId,
             AssignmentId = assignment.AssignmentId,
-            Status = ProgressStatus.NotStarted,
+            Status = ProgressStatus.InProgress,
+            StartedAt = DateTime.UtcNow,
             CompletedQuestionCount = 0,
             TotalQuestionCount = 1,
             Assignment = assignment,

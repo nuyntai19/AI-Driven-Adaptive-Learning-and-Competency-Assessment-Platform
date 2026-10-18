@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 import ts from "typescript";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import * as questionDisplay from "../src/utils/questionDisplay.ts";
 import * as helpers from "../src/utils/gradingWorkspaceHelpers.ts";
 import * as feedbackPresentation from "../src/utils/attemptFeedbackPresentation.ts";
 import * as aiTextFormatting from "../src/utils/aiTextFormatting.ts";
@@ -51,6 +52,7 @@ function harness(q: TeacherReviewQueueItemDto | TeacherReviewQueueItemDto[] = qu
       useQuery: ({ queryKey, enabled }: any) => ({ data: { data: enabled === false ? [] : queryKey[0] === "gradingAssignmentsList" ? [{ assignmentId: "assignment", title: "Assignment" }, { assignmentId: "assignment2", title: "Test 2" }] : queryKey[0] === "gradingAssignmentProgress" ? [currentStudent] : queryKey[0] === "gradingStudentQuestions" ? currentQuestions : [] }, refetch: async () => {} }),
       useMutation: (config: any) => { const index = mutations.length; mutations.push(config); return { isPending: false, mutate: (args: any) => { mutationArgs[index] = args; } }; },
       useQueryClient: () => ({ invalidateQueries: () => {} }) };
+    if (name.endsWith("questionDisplay")) return questionDisplay;
     if (name.endsWith("gradingWorkspaceHelpers")) return helpers;
     if (name.endsWith("utils/rubric")) return rubricHelpers;
     if (name.endsWith("RubricGradeView")) return { RubricGradeView: () => null };
@@ -422,4 +424,23 @@ test("actual save action converts the teacher's ten-point input back to the raw 
   await h.mutations[1].mutationFn(h.mutationArgs[1]);
   assert.equal(h.overridePayload().awardedScore, 75);
   assert.equal(h.overridePayload().reasoningQuality, 80);
+});
+
+
+test("final confirmation displays the authoritative assignment total including grades outside the review queue", () => {
+  const h = harness(question({ awardedScore: 10, maxScore: 10 }), student({ summary: { internalAwardedScore: 6.67, internalMaxScore: 10 } }));
+  const open = button(h.render(), "Chốt");
+  assert.ok(open);
+  open.props.onClick();
+  assert.match(h.html(), /Tổng điểm sắp chốt: 6.67 \/ 10/);
+});
+
+test("all-student count and list include a student who has not started", () => {
+  const h = harness(question(), student({ status: "NotStarted", completedQuestionCount: 0 }));
+  h.navigate("assignmentId=assignment");
+  const html = h.html();
+  assert.match(html, /Tất cả \(1\)/);
+  assert.match(html, /Danh sách học sinh \(1 học sinh\)/);
+  assert.match(html, /Chưa bắt đầu/);
+  assert.match(html, /Student/);
 });

@@ -822,6 +822,22 @@ public sealed class RecommendationsController : ControllerBase
         return Ok(result);
     }
 
+    [HttpPost("path-proposals/{proposalId:guid}/customize")]
+    [Authorize(Policy = "recommendations.student.read_own")]
+    [V4LearningExceptionFilter]
+    [ProducesResponseType(typeof(PathProposalDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> CustomizePathProposal([FromRoute] Guid proposalId, [FromBody] CustomizePathProposalRequest request, CancellationToken cancellationToken)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        if (_v4Planner is null || _tenantContext is null || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, CreateProblemDetails(StatusCodes.Status403Forbidden, "https://edutwin.local/problems/forbidden", "Không có quyền", "Tenant not resolved", traceId, ErrorCodes.ForbiddenResource));
+        }
+
+        var result = await _v4Planner.CustomizePathProposalAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, proposalId, request, cancellationToken);
+        return Ok(result);
+    }
+
     [HttpPost("path-proposals/{proposalId:guid}/accept")]
     [Authorize(Policy = "recommendations.student.read_own")]
     [V4LearningExceptionFilter]

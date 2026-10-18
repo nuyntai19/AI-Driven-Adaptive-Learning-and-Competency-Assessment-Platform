@@ -1,3 +1,4 @@
+import { getErrorTypeLabel } from "../../utils/questionDisplay";
 import { useState, useEffect } from "react";
 import type { AttemptFeedbackDataDto } from "../../types/learning";
 import { RichMathText } from "../math/RichMathText";
@@ -189,6 +190,7 @@ export function AttemptFeedbackHierarchy({
   };
 
   const processingNotice = getAIProcessingNotice(feedbackData, scoreAndFeedbackOnly);
+  const hasReasoningAnalysis = Boolean(analysis && !analysis.isFallback && analysis.isRawAI !== false && (studentSubmission?.reasoningText?.trim() || studentSubmission?.attachmentUrl));
   const presentation = getAttemptFeedbackPresentation(grading, analysis, feedbackData.status);
   const reviewNotice = getAttemptReviewNotice(presentation, analysis, practiceMode);
   const displayedMaxScore = normalizeQuestionScore(null, grading.maxScore, assignmentQuestionCount).maxScore;
@@ -231,7 +233,7 @@ export function AttemptFeedbackHierarchy({
       case "Poor":
         return "Chưa đạt";
       default:
-        return band || "Chưa xếp loại";
+        return "Chưa xếp loại";
     }
   };
 
@@ -347,7 +349,7 @@ export function AttemptFeedbackHierarchy({
               {presentation.isAI ? "AI Phân Tích & Chẩn Đoán Tư Duy" : "Phân tích lập luận & Nhận xét"}
             </h3>
           </div>
-          {analysis?.qualityBand && (
+          {hasReasoningAnalysis && analysis?.qualityBand && (
             <span
               className={`rounded-full px-3 py-1 text-xs font-bold ${
                 analysis.qualityBand === "Good"
@@ -377,6 +379,7 @@ export function AttemptFeedbackHierarchy({
           </div>
         )}
 
+        {analysis && !hasReasoningAnalysis && <p role="status" className="text-sm text-slate-600 dark:text-slate-300">{analysis.isFallback ? "Phân tích AI chưa hoàn tất. Chưa có đánh giá chất lượng lập luận từ AI." : "Chưa có nội dung lập luận để đánh giá chất lượng tư duy."}</p>}
         {analysis && (
           <div className="space-y-4">
             {!analysis.isFallback && analysis.suggestedScore != null && <section className="rounded-2xl border border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-950/40 p-4 space-y-2">
@@ -386,13 +389,13 @@ export function AttemptFeedbackHierarchy({
               {analysis.suggestedRubricGrade && <RubricGradeView grade={analysis.suggestedRubricGrade} />}
             </section>}
             {!scoreAndFeedbackOnly && <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {analysis.methodDetected && (
+              {hasReasoningAnalysis && analysis.methodDetected && (
                 <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-4 border border-slate-100 dark:border-slate-700/60">
                   <p className="text-xs font-medium text-slate-400">Phương pháp nhận diện</p>
                   <p className="mt-1 text-sm font-bold text-slate-900 dark:text-white">{analysis.methodDetected}</p>
                 </div>
               )}
-              {analysis.reasoningQuality !== null && analysis.reasoningQuality !== undefined && (
+              {hasReasoningAnalysis && analysis.reasoningQuality != null && (
                 <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-4 border border-slate-100 dark:border-slate-700/60">
                   <p className="text-xs font-medium text-slate-400">Chỉ số chất lượng lập luận (không phải điểm bài)</p>
                   <p className="mt-1 text-sm font-black text-indigo-600 dark:text-indigo-400">
@@ -413,14 +416,14 @@ export function AttemptFeedbackHierarchy({
               </div>
             </div>
 
-            {analysis.reasoningVerdict && (
+            {hasReasoningAnalysis && analysis.reasoningVerdict && (
               <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                 Kết luận về lập luận: {analysis.reasoningVerdict === "Valid" ? "Hợp lệ" : analysis.reasoningVerdict === "Invalid" ? "Có lỗi logic cần kiểm tra" : "Chưa đủ chắc chắn"}
               </p>
             )}
 
             {presentation.hasReasoningConcerns && analysis.errorType && !["None", "NONE", "NoError"].includes(analysis.errorType) && (
-              <p className="text-sm text-rose-800 dark:text-rose-300">Loại vấn đề cần kiểm tra: {analysis.errorType}</p>
+              <p className="text-sm text-rose-800 dark:text-rose-300">Loại vấn đề cần kiểm tra: {getErrorTypeLabel(analysis.errorType)}</p>
             )}
 
             {analysis.missingSteps && analysis.missingSteps.length > 0 && (

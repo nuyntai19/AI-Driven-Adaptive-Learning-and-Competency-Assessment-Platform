@@ -1,3 +1,4 @@
+import { getQuestionTypeLabel } from "../utils/questionDisplay";
 import { useState, useMemo } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -500,7 +501,7 @@ function CenterManagerQuestionBankView() {
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className={`px-2 py-0.5 text-[11px] font-semibold rounded-md border ${typeBadge}`}>
-                          {q.questionType}
+                          {getQuestionTypeLabel(q.questionType)}
                         </span>
                         <span className="px-2 py-0.5 text-[11px] font-semibold rounded-md border border-cyan-500/30 bg-cyan-500/10 text-cyan-300">
                           {q.gradeLevel ? `Khối ${q.gradeLevel}` : "Chưa phân loại"}
@@ -854,7 +855,7 @@ function LegacyQuestionBankPage() {
                           : "bg-indigo-50 text-indigo-700"
                       }`}
                     >
-                      {question.questionType}
+                      {getQuestionTypeLabel(question.questionType)}
                     </span>
                     <span className="px-2 py-1 text-xs font-semibold rounded-md bg-cyan-50 text-cyan-700 border border-cyan-200">
                       {question.gradeLevel ? `Khối ${question.gradeLevel}` : "Chưa phân loại"}

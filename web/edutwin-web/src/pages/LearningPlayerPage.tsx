@@ -45,6 +45,7 @@ import { AttemptScratchpadAttachment } from "../components/student/AttemptScratc
 import { AssignmentReviewReceipt } from "../components/student/AssignmentReviewReceipt";
 import { isAssignmentWorkSubmitted, shouldStartAssignment, getAssignmentReviewTiming, isActiveAssignmentExpired } from "../utils/assignmentReviewTiming";
 import { getAttemptFeedbackPresentation, normalizeQuestionScore, fallbackAssignmentGrade } from "../utils/attemptFeedbackPresentation";
+import { getDifficultyLabel, hasDeterminedGrade } from "../utils/questionDisplay";
 import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
 import { type VisualMathFieldRef } from "../components/math/VisualMathField";
 import { RichMathText } from "../components/math/RichMathText";
@@ -2208,8 +2209,8 @@ const PracticePlayerPage = () => {
       }
 
       const status = q.latestAttempt?.status || q.attemptStatus;
-      const isEvaluated = status === "Completed";
-      const isReview = status === "NeedsTeacherReview";
+      const isEvaluated = hasDeterminedGrade(q);
+      const isReview = status === "NeedsTeacherReview" || status === "AnalysisFailed";
       const isProcessing = status === "PendingAnalysis" || status === "Processing";
 
       if (isEvaluated) evaluatedCount++;
@@ -2228,7 +2229,7 @@ const PracticePlayerPage = () => {
         overallMaxTotal: Math.round(maxScore * 100) / 100,
         correctCount: summary.correctQuestionCount,
         voidedCount: summary.voidedQuestionCount ?? 0,
-        evaluatedCount,
+        evaluatedCount: summary.evaluatedQuestionCount,
         aiAnalyzedCount: summary.aiAnalyzedQuestionCount ?? 0,
         aiProcessingCount,
         teacherReviewCount,
@@ -2240,7 +2241,7 @@ const PracticePlayerPage = () => {
 
     // Fallback when summary not yet populated: maintain consistent score scales
     const fallbackGrade = fallbackAssignmentGrade(assignmentQuestions.map(q => ({
-      isVoided: q.isVoided, score: q.latestAttempt?.awardedScore, maxScore: q.latestAttempt?.maxScore ?? 10,
+      isVoided: q.isVoided, score: q.latestAttempt?.awardedScore ?? ((q.effectiveIsCorrect ?? q.latestAttempt?.isCorrect) == null ? null : (q.effectiveIsCorrect ?? q.latestAttempt?.isCorrect) ? (q.latestAttempt?.maxScore ?? 10) : 0), maxScore: q.latestAttempt?.maxScore ?? 10,
     })));
     let correctCount = 0;
     let voidedCount = 0;
@@ -2271,6 +2272,8 @@ const PracticePlayerPage = () => {
       isFullyEvaluated: evaluatedCount === assignmentQuestions.length && assignmentQuestions.length > 0,
     };
   }, [assignment, isAssignmentSubmitted, assignmentQuestions]);
+
+  const mathToolsEnabled = !/tiếng anh|english|ngoại ngữ|ngữ văn|literature/i.test(assignment?.subjectName ?? "") && question?.languageCode?.toLowerCase() !== "en";
 
   const isReadOnly =
     classReadOnly || (!assignmentId && !learningAccess.writable) ||
@@ -2385,7 +2388,7 @@ const PracticePlayerPage = () => {
       </div>
     );
   }
-  if (questionLoading || (assignmentId && assignment?.assignmentId === assignmentId && !assignmentError && !isAssignmentSubmitted && !isLocallySubmitted && !draftHydrated)) {
+  if (questionLoading || (assignmentId && assignment?.assignmentId === assignmentId && !assignmentError && !isAssignmentSubmitted && !isLocallySubmitted && (!draftHydrated || (!assignment.startedAt && canStartAssignment && !startAssignmentError)))) {
     return (
       <div className="min-h-screen bg-[#f8fafc] dark:bg-[#090d16] p-6 text-slate-800 dark:text-slate-100 flex items-center justify-center">
         <div className="mx-auto max-w-3xl w-full rounded-3xl bg-white dark:bg-[#0f172a] p-8 shadow-xs border border-slate-200/80 dark:border-slate-800 space-y-6">
@@ -2944,11 +2947,7 @@ const PracticePlayerPage = () => {
                   <div className="flex items-center gap-3">
                     <div className="rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800 px-4 py-2.5 text-center">
                       <div className="text-[10px] uppercase font-bold text-indigo-500 dark:text-indigo-400">
-                        {assignmentStats.aiProcessingCount > 0
-                          ? "Điểm đã xác định"
-                          : assignmentStats.teacherReviewCount > 0
-                          ? "Điểm sơ bộ"
-                          : "Tổng điểm"}
+                        {assignment?.summary?.teacherFinalReviewStatus === "Approved" ? "Tổng điểm chính thức" : "Điểm sơ bộ"}
                       </div>
                       <div className="text-xl sm:text-2xl font-black text-indigo-700 dark:text-indigo-300">
                         {assignmentStats.evaluatedCount > 0 ? (
@@ -3024,8 +3023,8 @@ const PracticePlayerPage = () => {
                       {assignmentStats.aiProcessingCount > 0
                         ? "AI đang phân tích..."
                         : assignmentStats.teacherReviewCount > 0
-                        ? "Chờ duyệt tự luận"
-                        : "Đã hoàn thành"}
+                        ? "Chờ giáo viên xem xét"
+                        : assignment?.summary?.teacherFinalReviewStatus === "Approved" ? "Đã chốt kết quả" : "Đã có điểm · Chờ chốt toàn bài"}
                     </div>
                   </div>
                 </div>
@@ -3041,7 +3040,7 @@ const PracticePlayerPage = () => {
                   <div className="rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-900 dark:text-amber-200 flex items-center gap-2">
                     <span>⏳</span>
                     <span>
-                      Bài tập đang có {assignmentStats.teacherReviewCount} câu chờ giáo viên chấm/duyệt lập luận. Điểm số cuối cùng sẽ được cập nhật sau khi giáo viên hoàn tất chấm bài.
+                      Bài tập đang có {assignmentStats.teacherReviewCount} câu cần giáo viên xem xét. Điểm tự động đã có vẫn được hiển thị; Điểm số cuối cùng sẽ được cập nhật sau khi giáo viên hoàn tất chấm bài.
                     </span>
                   </div>
                 ) : null}
@@ -3165,7 +3164,7 @@ const PracticePlayerPage = () => {
                     Câu {currentAssignmentIndex >= 0 ? currentAssignmentIndex + 1 : 1}
                   </span>
                   <span className="rounded-lg bg-amber-50 dark:bg-amber-950/60 border border-amber-200/80 dark:border-amber-800 px-2.5 py-1 text-xs font-bold text-amber-800 dark:text-amber-300">
-                    {question?.difficulty && question.difficulty >= 3 ? "Vận dụng" : "Cơ bản"}
+                    {getDifficultyLabel(question?.difficulty)}
                   </span>
                   <span className="text-xs font-medium text-slate-400">
                     Kỳ vọng: {question?.estimatedTimeSeconds || 90}s
@@ -3202,7 +3201,7 @@ const PracticePlayerPage = () => {
                         : assignmentQuestion?.attemptStatus === "PendingAnalysis" || assignmentQuestion?.attemptStatus === "Processing" || assignmentQuestion?.latestAttempt?.status === "PendingAnalysis" || assignmentQuestion?.latestAttempt?.status === "Processing"
                         ? "Câu hỏi này đã nộp bài thành công. AI đang phân tích bài làm..."
                         : assignmentQuestion?.attemptStatus === "NeedsTeacherReview" || assignmentQuestion?.latestAttempt?.status === "NeedsTeacherReview"
-                        ? "Câu hỏi này đã được nộp bài và đang chờ giáo viên chấm/duyệt."
+                        ? hasDeterminedGrade(assignmentQuestion!) ? "Câu hỏi đã có điểm. Giáo viên sẽ xem xét trước khi chốt kết quả." : "Câu hỏi đã nộp và đang chờ giáo viên chấm."
                         : assignmentQuestion?.attemptStatus === "Completed" || assignmentQuestion?.latestAttempt?.status === "Completed"
                         ? "Câu hỏi này đã hoàn thành đánh giá."
                         : "Câu hỏi này đã nộp bài thành công."}
@@ -3264,7 +3263,7 @@ const PracticePlayerPage = () => {
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                     {/* Button 1: Máy tính Casio fx-580VN */}
-                    <button
+                    {mathToolsEnabled && <button
                       type="button"
                       onClick={() => setActiveSideTool(activeSideTool === "casio" ? null : "casio")}
                       className={`flex items-center gap-2.5 p-3 rounded-xl font-medium text-xs sm:text-sm transition-all border text-left cursor-pointer ${
@@ -3278,7 +3277,7 @@ const PracticePlayerPage = () => {
                         <div className="font-bold text-xs text-stone-900 dark:text-stone-100">Máy tính Casio</div>
                         <div className="text-[10px] text-stone-500 dark:text-stone-400 truncate">fx-580VN X</div>
                       </div>
-                    </button>
+                    </button>}
 
                     {/* Button 2: Bảng nháp vẽ tay */}
                     <button
@@ -3300,7 +3299,7 @@ const PracticePlayerPage = () => {
                     </button>
 
                     {/* Button 3: Khảo sát đồ thị */}
-                    <button
+                    {mathToolsEnabled && <button
                       type="button"
                       onClick={() => setActiveSideTool(activeSideTool === "graph" ? null : "graph")}
                       className={`flex items-center gap-2.5 p-3 rounded-xl font-medium text-xs sm:text-sm transition-all border text-left cursor-pointer ${
@@ -3314,7 +3313,7 @@ const PracticePlayerPage = () => {
                         <div className="font-bold text-xs text-stone-900 dark:text-stone-100">Vẽ đồ thị</div>
                         <div className="text-[10px] text-stone-500 dark:text-stone-400 truncate">Khảo sát hàm Oxy</div>
                       </div>
-                    </button>
+                    </button>}
                   </div>
                 </div>
 
@@ -3384,7 +3383,7 @@ const PracticePlayerPage = () => {
                   </fieldset>
                 ) : (
                   <div>
-                    <ModeAwareAnswerEditor
+                    {!mathToolsEnabled ? <textarea aria-label="Đáp án của bạn" value={finalAnswer} disabled={isReadOnly} onChange={e => handleAnswerChange(e.target.value, "")} placeholder="Nhập câu trả lời..." className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-3 bg-transparent" /> : <ModeAwareAnswerEditor
                       ref={answerEditorRef}
                       profile="answering"
                       variant="student"
@@ -3409,7 +3408,7 @@ const PracticePlayerPage = () => {
                       showPreview={false}
                       showSyntaxHint={false}
                       autoFocus={!isReadOnly}
-                    />
+                    />}
                   </div>
                 )}
               </div>
@@ -3431,7 +3430,7 @@ const PracticePlayerPage = () => {
                   ) : null}
                 </div>
 
-                <RichMathEditor
+                {!mathToolsEnabled ? <textarea aria-label="Lập luận của bạn" value={reasoningText} disabled={isReadOnly} onChange={e => handleReasoningChange(e.target.value)} placeholder="Trình bày lập luận của bạn..." className="w-full min-h-32 rounded-xl border border-slate-300 dark:border-slate-700 p-3 bg-transparent" /> : <RichMathEditor
                   ref={reasoningEditorRef}
                   variant="student"
                   value={reasoningText}
@@ -3447,7 +3446,7 @@ const PracticePlayerPage = () => {
                       : "Trình bày các bước biến đổi, suy luận toán học để AI phân tích chất lượng tư duy... (Gõ $ hoặc Ctrl+M để chèn công thức toán)"
                   }
                   className={isAssignmentSubmitted ? "opacity-90" : ""}
-                />
+                />}
 
                 {/* 6. Attached Scratchpad Snapshot Card (Cố định, không bị ảnh hưởng khi vẽ tiếp hay F5) */}
                 {isCurrentQuestionSubmitted && reviewAttemptId &&
@@ -3640,7 +3639,8 @@ const PracticePlayerPage = () => {
           {activeSideTool && (
             <div className="lg:col-span-4 xl:col-span-4 sticky top-4 max-h-[calc(100vh-2rem)] flex flex-col">
               <SideAssistantWorkspace
-                activeTab={activeSideTool}
+                mathToolsEnabled={mathToolsEnabled}
+                activeTab={mathToolsEnabled ? activeSideTool : "scratchpad"}
                 onChangeTab={(tab) => setActiveSideTool(tab)}
                 onClose={() => setActiveSideTool(null)}
                 onInsertResult={!isReadOnly ? (val) => insertTextAtCursor(val) : undefined}
