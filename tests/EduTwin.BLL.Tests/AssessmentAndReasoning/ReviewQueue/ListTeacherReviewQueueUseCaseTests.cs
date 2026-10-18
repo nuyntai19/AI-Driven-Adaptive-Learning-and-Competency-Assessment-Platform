@@ -387,6 +387,43 @@ public sealed class ListTeacherReviewQueueUseCaseTests
         Assert.Equal(2u, secondQuestion.QuestionOrderIndex);
     }
 
+    [Theory]
+    [InlineData(0u)]
+    [InlineData(1u)]
+    public async Task ExecuteAsync_NormalizesQuestionNumbersForEitherStoredIndexBase(uint firstIndex)
+    {
+        var fixture = await CreateFixtureAsync(UserRole.Teacher, orderedQuestions: true);
+        await using var context = fixture.Context;
+        foreach (var aq in await context.AssignmentQuestions.ToListAsync())
+            aq.OrderIndex = firstIndex + (uint)(aq.QuestionId - 1);
+        await context.SaveChangesAsync();
+        var assignment = await context.Assignments.SingleAsync(a => a.Title == "Owned Assignment");
+        var sut = new ListTeacherReviewQueueUseCase(context, fixture.Tenant, new StubClassOwnershipGuard(OwnershipDecision.Allowed));
+        var result = await sut.ExecuteAsync(new TeacherReviewQueueQuery { AssignmentId = assignment.AssignmentId,
+            StudentId = fixture.StudentId, IncludeAllQuestions = true }, CancellationToken.None);
+        Assert.Equal(new uint?[] { 1, 2 }, result.Data!.Select(q => q.QuestionOrderIndex));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_LegacyFallbackDoesNotExposeSyntheticReasoningQuality()
+    {
+        var fixture = await CreateFixtureAsync(UserRole.Teacher);
+        await using var context = fixture.Context;
+        var analysis = await context.ReasoningAnalyses.SingleAsync(a => a.AnalysisId == 11);
+        analysis.IsFallback = true;
+        analysis.ReasoningQuality = 70;
+        await context.SaveChangesAsync();
+        var sut = new ListTeacherReviewQueueUseCase(context, fixture.Tenant, new StubClassOwnershipGuard(OwnershipDecision.Allowed));
+        var item = Assert.Single((await sut.ExecuteAsync(new TeacherReviewQueueQuery(), CancellationToken.None)).Data!);
+        Assert.Null(item.ReasoningQuality);
+        Assert.Null(item.OriginalReasoningQuality);
+        analysis.OverrideReasoningQuality = 0;
+        await context.SaveChangesAsync();
+        item = Assert.Single((await sut.ExecuteAsync(new TeacherReviewQueueQuery(), CancellationToken.None)).Data!);
+        Assert.Equal(0m, item.ReasoningQuality);
+        Assert.Null(item.OriginalReasoningQuality);
+    }
+
     private static async Task<Fixture> CreateFixtureAsync(UserRole role, bool orderedQuestions = false)
     {
         var centerId = Guid.NewGuid();

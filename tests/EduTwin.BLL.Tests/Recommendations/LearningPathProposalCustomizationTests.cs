@@ -63,6 +63,56 @@ public sealed class LearningPathProposalCustomizationTests
     }
 
     [Fact]
+    public async Task DifferentSectionsKeepDifferentSetSizesInAgendaAndFollowingSets()
+    {
+        using var f = new LearningPathV4Fixture();
+        var source = await f.Proposal("101", "103");
+        var options = Options("101", "103");
+        options.PracticeQuestionsBySkill = new() { ["101"] = 3, ["103"] = 7 };
+        var adjusted = await f.Planner.CustomizePathProposalAsync(f.Center, f.Student, source.ProposalId, options);
+        Assert.Equal(3u, adjusted.Milestones.Single(m => m.SkillIds.Contains("101")).Missions.Single(m => m.Purpose == "Practice" && !m.IsProbe).QuestionCount);
+        Assert.Equal(7u, adjusted.Milestones.Single(m => m.SkillIds.Contains("103")).Missions.Single(m => m.Purpose == "Practice" && !m.IsProbe).QuestionCount);
+        await f.Planner.AcceptPathProposalAsync(f.Center, f.Student, adjusted.ProposalId);
+        var agenda = await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English, 60);
+        Assert.Equal(3u, agenda.Missions.Single(m => m.SkillId == "101" && m.Purpose == "Practice").QuestionCount);
+        Assert.Equal(7u, agenda.Missions.Single(m => m.SkillId == "103" && m.Purpose == "Practice").QuestionCount);
+        var practice = agenda.Missions.Single(m => m.SkillId == "103" && m.Purpose == "Practice");
+        var run = await f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(practice.MissionId));
+        Assert.Equal(7, run.Activities.Count);
+        var savedRun = await f.Db.LearningPathSessionRuns.Include(r => r.Session).SingleAsync(r => r.SessionRunId == run.SessionRunId);
+        await LearningPathFollowUp.AddAsync(f.Db, savedRun, "ActivityOnlyCompleted", DateTime.UtcNow, default, .9m);
+        var path = await f.Db.LearningPaths.SingleAsync(p => p.LearningPathId == savedRun.Session.LearningPathId);
+        var plan = JsonSerializer.Deserialize<PathProposalDto>(path.PlanJson!.RootElement.GetRawText(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+        Assert.Equal(7u, plan.Milestones.Single(m => m.SkillIds.Contains("103")).Missions.Last(m => m.Purpose == "Practice").QuestionCount);
+    }
+
+    [Fact]
+    public async Task QuickProbeKeepsItsOwnSizeAndNextPracticeUsesTheSectionChoice()
+    {
+        using var f = new LearningPathV4Fixture();
+        var goal = await f.Planner.CreateOrUpdateGoalAsync(f.Center, f.Student, new CreateLearningGoalRequest
+        {
+            SubjectId = f.English, GoalType = "Diagnostic", Title = "Xác định điểm xuất phát",
+            TargetSkillIds = ["101"], AvailableMinutesPerDay = 30, AvailableDaysPerWeek = 5
+        });
+        var source = await f.Planner.GeneratePathProposalAsync(f.Center, f.Student,
+            new GeneratePathProposalRequest { GoalId = goal.GoalId, SubjectId = f.English });
+        Assert.Contains(source.Milestones.SelectMany(m => m.Missions), m => m.IsProbe);
+        var options = Options("101"); options.PracticeQuestionsBySkill = new() { ["101"] = 7 };
+        var adjusted = await f.Planner.CustomizePathProposalAsync(f.Center, f.Student, source.ProposalId, options);
+        var probe = adjusted.Milestones.Single().Missions.Single(m => m.IsProbe && m.Purpose == "Practice");
+        Assert.Equal(4u, probe.QuestionCount);
+        await f.Planner.AcceptPathProposalAsync(f.Center, f.Student, adjusted.ProposalId);
+        var run = await f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(probe.MissionId));
+        Assert.Equal(4, run.Activities.Count);
+        var savedRun = await f.Db.LearningPathSessionRuns.Include(r => r.Session).SingleAsync(r => r.SessionRunId == run.SessionRunId);
+        await LearningPathFollowUp.AddAsync(f.Db, savedRun, "ActivityOnlyCompleted", DateTime.UtcNow, default, .9m);
+        var path = await f.Db.LearningPaths.SingleAsync(p => p.LearningPathId == savedRun.Session.LearningPathId);
+        var plan = JsonSerializer.Deserialize<PathProposalDto>(path.PlanJson!.RootElement.GetRawText(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+        Assert.Equal(7u, plan.Milestones.Single().Missions.Single(m => m.Purpose == "Practice" && !m.IsProbe).QuestionCount);
+    }
+
+    [Fact]
     public async Task RequiredFoundationIsKeptWhenItsDependentSectionIsSelected()
     {
         using var f = new LearningPathV4Fixture();
@@ -82,6 +132,10 @@ public sealed class LearningPathProposalCustomizationTests
         await Assert.ThrowsAsync<ArgumentException>(() => f.Planner.CustomizePathProposalAsync(f.Center, f.Student, source.ProposalId, Options("201")));
         await Assert.ThrowsAsync<ArgumentException>(() => f.Planner.CustomizePathProposalAsync(f.Center, f.Student, source.ProposalId, Options()));
         var invalid = Options("101"); invalid.PracticeQuestionsPerSet = 21;
+        await Assert.ThrowsAsync<ArgumentException>(() => f.Planner.CustomizePathProposalAsync(f.Center, f.Student, source.ProposalId, invalid));
+        invalid = Options("101"); invalid.PracticeQuestionsBySkill = new() { ["101"] = 21 };
+        await Assert.ThrowsAsync<ArgumentException>(() => f.Planner.CustomizePathProposalAsync(f.Center, f.Student, source.ProposalId, invalid));
+        invalid = Options("101"); invalid.PracticeQuestionsBySkill = new() { ["201"] = 5 };
         await Assert.ThrowsAsync<ArgumentException>(() => f.Planner.CustomizePathProposalAsync(f.Center, f.Student, source.ProposalId, invalid));
         await f.Planner.AcceptPathProposalAsync(f.Center, f.Student, source.ProposalId);
         await Assert.ThrowsAsync<InvalidOperationException>(() => f.Planner.CustomizePathProposalAsync(f.Center, f.Student, source.ProposalId, Options("101")));

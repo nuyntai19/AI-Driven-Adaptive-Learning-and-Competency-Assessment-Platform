@@ -124,10 +124,9 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
             var used = await db.Attempts.Where(a => a.CenterId == centerId && a.StudentId == studentId).Select(a => a.QuestionId).Distinct().ToListAsync(cancellationToken);
             // Reserve five unseen questions for confirmation instead of exposing their solutions during the lesson.
             // Up to two worked examples: answered questions first, unseen ones only when the bank still keeps 5 for the check.
-            var withSolution = pool.Where(q => !string.IsNullOrWhiteSpace(q.Solution)).OrderBy(q => q.Difficulty).ThenBy(q => q.QuestionId).ToList();
-            var examples = withSolution.Where(q => used.Contains(q.QuestionId)).Take(2).ToList();
-            var spareUnseen = Math.Max(0, pool.Count(q => !used.Contains(q.QuestionId)) - 5 - 2);
-            examples.AddRange(withSolution.Where(q => !used.Contains(q.QuestionId)).Take(Math.Min(2 - examples.Count, spareUnseen)));
+            var examples = StudyMaterial.Examples(pool, used);
+            if (string.IsNullOrWhiteSpace(node.Description) && examples.Count == 0)
+                throw new InvalidOperationException(StudyMaterial.MissingMessage);
             Add("Study", questionId: examples.FirstOrDefault()?.QuestionId);
             foreach (var extra in examples.Skip(1))
                 activities.Last().IssuedItems.Add(new IssuedItem { CenterId = centerId, QuestionId = extra.QuestionId, ItemOrder = 2, ExposureMode = "SolutionExposed",
@@ -321,7 +320,7 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
         }
         var content = a.ContentVersion?.Description;
         hints.Add(("Định hướng", notes != null ? $"Ý chính của {skillName}: {notes}" : !string.IsNullOrWhiteSpace(content) ? Shorten(content!, 500)
-            : $"Đọc lại phần nội dung và ví dụ của {skillName}; đánh dấu quy tắc được dùng ở từng bước.", notes != null || !string.IsNullOrWhiteSpace(content)));
+            : "Chưa có phần lý thuyết hoặc ví dụ để đọc lại. Hãy yêu cầu giáo viên bổ sung học liệu cho kỹ năng này.", notes != null || !string.IsNullOrWhiteSpace(content)));
         hints.Add(a.ActivityType == "FindError"
             ? ("Cách tìm lỗi", "Đi lần lượt từng bước: bước này dùng quy tắc nào, quy tắc đó có áp dụng đúng điều kiện không? Bước đầu tiên không thỏa là bước sai.", false)
             : ("Cách trình bày", "Viết 2–3 câu: (1) quy tắc là gì, (2) khi nào dùng, (3) một ví dụ của riêng em. Không cần chép lại nguyên văn bài học.", false));

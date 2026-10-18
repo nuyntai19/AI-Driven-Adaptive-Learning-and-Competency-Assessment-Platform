@@ -66,11 +66,11 @@ public sealed class KnowledgeTwinUpdater : IKnowledgeTwinUpdater
 
         var input = new MasteryCalculationInput(
             CurrentMastery: twin.MasteryPercentage,
-            ReasoningQuality: analysis.ReasoningQuality,
+            ReasoningQuality: EduTwin.BLL.AssessmentAndReasoning.EffectiveReasoningQuality.Resolve(analysis),
             ReasoningWeight: evidence.ReasoningWeight,
             IsCorrect: attempt.IsCorrect,
             TimeQuality: timeQuality,
-            ConfidenceCalibration: evidence.ReasoningWeight > 0m && analysis.ReasoningQuality.HasValue ? normalizedCalibration : null,
+            ConfidenceCalibration: evidence.ReasoningWeight > 0m && EduTwin.BLL.AssessmentAndReasoning.EffectiveReasoningQuality.Resolve(analysis).HasValue ? normalizedCalibration : null,
             Difficulty: question.Difficulty);
 
         var calculation = MasteryCalculator.Calculate(input);
@@ -79,7 +79,7 @@ public sealed class KnowledgeTwinUpdater : IKnowledgeTwinUpdater
         {
             twin.MasteryPercentage = calculation.NewMastery;
             twin.EvidenceCount += 1;
-            twin.LastReasoningQuality = analysis.ReasoningQuality;
+            twin.LastReasoningQuality = EduTwin.BLL.AssessmentAndReasoning.EffectiveReasoningQuality.Resolve(analysis);
             twin.LastAttemptId = attempt.AttemptId;
             twin.LastEvidenceAt = utcNow;
         }

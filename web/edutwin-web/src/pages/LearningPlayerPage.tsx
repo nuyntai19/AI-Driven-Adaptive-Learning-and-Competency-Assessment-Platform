@@ -1616,7 +1616,8 @@ const PracticePlayerPage = () => {
   // Answer change handlers
   const handleAnswerChange = (plainText: string, latex: string) => {
     if (isReadOnly) return;
-    const nextAnswerChanges = answerChangesRef.current + 1;
+    const changedExistingAnswer = finalAnswer.trim().length > 0 && plainText !== finalAnswer;
+    const nextAnswerChanges = answerChangesRef.current + (changedExistingAnswer ? 1 : 0);
     answerChangesRef.current = nextAnswerChanges;
     setFinalAnswer(plainText);
     setAnswerDisplayLatex(latex);

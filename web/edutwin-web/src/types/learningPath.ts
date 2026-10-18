@@ -272,6 +272,8 @@ export interface CreateLearningGoalRequest {
 
 export interface ProposedMissionDto {
   difficultyFloor?: number | null;
+  isProbe?: boolean;
+  estimatedSets?: number;
   questionCount: number;
   availableFrom?: string | null;
   contentVersionId?: string | null;
@@ -296,6 +298,7 @@ export interface ProposedMilestoneDto {
 
 export interface PathProposalDto {
   practiceQuestionsPerSet?: number;
+  practiceQuestionsBySkill?: Record<string, number>;
   availableMinutesPerDay?: number;
   availableDaysPerWeek?: number;
   deadlineDate?: string | null;
@@ -585,5 +588,6 @@ export interface CustomizePathProposalRequest {
   availableDaysPerWeek: number;
   deadlineDate: string | null;
   practiceQuestionsPerSet: number;
+  practiceQuestionsBySkill: Record<string, number>;
   targetSkillIds: string[];
 }

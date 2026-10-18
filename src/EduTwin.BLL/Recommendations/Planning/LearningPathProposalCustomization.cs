@@ -12,7 +12,9 @@ public sealed partial class LearningPathV4Planner
         CustomizePathProposalRequest request, CancellationToken cancellationToken = default)
     {
         if (request.AvailableMinutesPerDay is < 5 or > 300 || request.AvailableDaysPerWeek is < 1 or > 7 ||
-            request.PracticeQuestionsPerSet is < 3 or > 20 || request.TargetSkillIds is not { Count: > 0 and <= 200 })
+            request.PracticeQuestionsPerSet is < 3 or > 20 || request.TargetSkillIds is not { Count: > 0 and <= 200 } ||
+            request.PracticeQuestionsBySkill is null || request.PracticeQuestionsBySkill.Count > 200 ||
+            request.PracticeQuestionsBySkill.Values.Any(count => count is < 3 or > 20))
             throw new ArgumentException("Chọn ít nhất một phần học, 3–20 câu mỗi bộ và lịch học hợp lệ.");
         var source = await db.PathProposals.AsNoTracking().Include(p => p.Goal).FirstOrDefaultAsync(p =>
             p.CenterId == centerId && p.StudentId == studentId && p.ProposalId == proposalId, cancellationToken)
@@ -24,6 +26,8 @@ public sealed partial class LearningPathV4Planner
         var originalSkills = plan.Milestones.SelectMany(m => m.SkillIds).ToHashSet();
         var selected = request.TargetSkillIds.ToHashSet();
         if (!selected.IsSubsetOf(originalSkills)) throw new ArgumentException("Chỉ tùy chỉnh các phần trong tuyến đang xem.");
+        if (!request.PracticeQuestionsBySkill.Keys.ToHashSet().IsSubsetOf(originalSkills))
+            throw new ArgumentException("Chỉ phân bổ câu hỏi cho các phần trong tuyến đang xem.");
         var map = await GetCapabilityMapAsync(centerId, studentId, source.SubjectId, source.Goal.ClassId, cancellationToken);
         var prerequisites = map.Skills.ToDictionary(s => s.SkillId, s => s.PrerequisiteSkillIds);
         var pending = new Queue<string>(selected);
@@ -48,14 +52,15 @@ public sealed partial class LearningPathV4Planner
                 // Every preview can be accepted separately: never reuse session primary keys.
                 mission.MissionId = Guid.NewGuid().ToString();
                 if (mission.Purpose != "Practice" || mission.IsProbe) continue;
+                var desiredCount = request.PracticeQuestionsBySkill.GetValueOrDefault(mission.SkillId, request.PracticeQuestionsPerSet);
                 var pool = questions.Where(q => q.PrimaryTopicNodeId.ToString() == mission.SkillId).ToList();
                 pool = mission.DifficultyFloor.HasValue ? pool.Where(q => q.Difficulty >= mission.DifficultyFloor).ToList()
                     : LearningPathInsights.PracticePool(pool, used);
-                mission.QuestionCount = Math.Min(request.PracticeQuestionsPerSet, (uint)pool.Count);
+                mission.QuestionCount = Math.Min(desiredCount, (uint)pool.Count);
                 mission.EstimatedMinutes = Math.Max(1u, mission.QuestionCount) * LearningPathPacing.MinutesPerQuestion;
                 mission.CanStart = mission.CanStart && mission.QuestionCount > 0;
-                mission.SelectionReason = Regex.Replace(mission.SelectionReason, @"mỗi bộ \d+ câu", $"mỗi bộ {request.PracticeQuestionsPerSet} câu")
-                    + $" Bạn chọn tối đa {request.PracticeQuestionsPerSet} câu/bộ; hiện có {mission.QuestionCount} câu phù hợp.";
+                mission.SelectionReason = Regex.Replace(mission.SelectionReason, @"mỗi bộ \d+ câu", $"mỗi bộ {desiredCount} câu")
+                    + $" Bạn chọn tối đa {desiredCount} câu/bộ cho phần này; hiện có {mission.QuestionCount} câu phù hợp.";
             }
         }
         var goal = new LearningGoal
@@ -69,6 +74,8 @@ public sealed partial class LearningPathV4Planner
         };
         plan.ProposalId = Guid.NewGuid(); plan.GoalId = goal.GoalId;
         plan.PracticeQuestionsPerSet = request.PracticeQuestionsPerSet;
+        plan.PracticeQuestionsBySkill = plan.Milestones.SelectMany(m => m.SkillIds).Distinct()
+            .ToDictionary(id => id, id => request.PracticeQuestionsBySkill.GetValueOrDefault(id, request.PracticeQuestionsPerSet));
         plan.AvailableMinutesPerDay = goal.AvailableMinutesPerDay; plan.AvailableDaysPerWeek = goal.AvailableDaysPerWeek;
         plan.DeadlineDate = goal.DeadlineDate;
         plan.ConfirmedSkills = plan.ConfirmedSkills.Where(selected.Contains).ToList();
@@ -79,11 +86,12 @@ public sealed partial class LearningPathV4Planner
         var insights = await LearningPathInsights.ReadAsync(db, centerId, studentId, source.SubjectId, goal.ClassId, Now, cancellationToken);
         plan.StartingBaselineSummary = $"{insights.AnswerCount} lượt trả lời trong 30 ngày. {insights.Summary} Tuyến đã tùy chỉnh: {selected.Count} phần học, gồm nền tảng cần thiết; giữ định hướng {goal.Title}.";
         var totalMinutes = plan.Milestones.Sum(m => m.Missions.Sum(a => (int)(a.EstimatedMinutes +
-            (a.Purpose == "Practice" && a.EstimatedSets > 1 ? (a.EstimatedSets - 1) * request.PracticeQuestionsPerSet * LearningPathPacing.MinutesPerQuestion : 0u))));
+            (a.Purpose == "Practice" && a.EstimatedSets > 1 ? (a.EstimatedSets - 1) *
+                plan.PracticeQuestionsBySkill.GetValueOrDefault(a.SkillId, plan.PracticeQuestionsPerSet) * LearningPathPacing.MinutesPerQuestion : 0u))));
         plan.EstimatedWeeks = (uint)Math.Max(1, Math.Ceiling(totalMinutes / (decimal)(goal.AvailableMinutesPerDay * goal.AvailableDaysPerWeek)));
         var budget = goal.DeadlineDate.HasValue ? Math.Max(0, (goal.DeadlineDate.Value - Now).TotalDays / 7) * goal.AvailableMinutesPerDay * goal.AvailableDaysPerWeek : double.MaxValue;
         plan.FeasibilityStatus = budget < totalMinutes ? "InsufficientTime" : "Feasible";
-        plan.FeasibilityMessage = $"Ước lượng khoảng {Math.Max(1, plan.EstimatedWeeks - 1)}–{plan.EstimatedWeeks + 1} tuần với lịch {goal.AvailableMinutesPerDay} phút/ngày, {goal.AvailableDaysPerWeek} ngày/tuần; mỗi bộ luyện tối đa {request.PracticeQuestionsPerSet} câu. Tự kiểm tra vẫn gồm 5 câu độc lập."
+        plan.FeasibilityMessage = $"Ước lượng khoảng {Math.Max(1, plan.EstimatedWeeks - 1)}–{plan.EstimatedWeeks + 1} tuần với tổng quỹ {goal.AvailableMinutesPerDay} phút/ngày, {goal.AvailableDaysPerWeek} ngày/tuần; số câu mỗi bộ theo từng phần học. Tự kiểm tra vẫn gồm 5 câu độc lập."
             + (plan.FeasibilityStatus == "InsufficientTime" ? " Lịch hiện tại chưa đủ trước mốc đã chọn; bạn có thể điều chỉnh thời gian hoặc phần học." : "");
         plan.ExpiresAt = Now.AddDays(1); plan.Status = "Pending";
         db.LearningGoals.Add(goal);

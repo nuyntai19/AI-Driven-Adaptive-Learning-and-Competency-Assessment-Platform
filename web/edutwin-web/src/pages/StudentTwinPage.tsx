@@ -94,6 +94,7 @@ export const StudentTwinPage: React.FC = () => {
   const behavioralInsight = useMemo(() => {
     if (!twinData?.behavior) return "";
     const b = twinData.behavior;
+    if (b.attemptCount === 0) return "Chưa có lượt làm bài để nhận định tốc độ, thói quen hoặc mức độ tự tin.";
     const parts: string[] = [];
 
     if (b.avgTimeSpentSeconds < 30) {
@@ -109,7 +110,7 @@ export const StudentTwinPage: React.FC = () => {
     } else if (b.changeAnswerRate >= 35) {
       parts.push(`tỷ lệ đổi đáp án ở mức ${b.changeAnswerRate.toFixed(0)}% — hãy rèn luyện thêm tính chắc chắn trong lập luận`);
     } else if (b.avgConfidence >= 75) {
-      parts.push(`mức độ tự tin trung bình đạt ${b.avgConfidence.toFixed(0)}% với hiệu chuẩn nhận thức chuẩn xác`);
+      parts.push(`mức độ tự tin trung bình đạt ${b.avgConfidence.toFixed(0)}%`);
     } else {
       parts.push("hãy tiếp tục rèn luyện thêm bài tập để nâng cao độ tự tin");
     }

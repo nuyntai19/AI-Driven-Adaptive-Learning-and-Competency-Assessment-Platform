@@ -104,7 +104,7 @@ public sealed class MathGradingRepair(EduTwinDbContext db)
         {
             var r = analyses.GetValueOrDefault(a.AttemptId);
             var correct = r?.OverrideIsCorrect ?? a.IsCorrect;
-            var quality = r?.OverrideReasoningQuality ?? r?.ReasoningQuality;
+            var quality = EduTwin.BLL.AssessmentAndReasoning.EffectiveReasoningQuality.Resolve(r);
             var weight = evidences.GetValueOrDefault(a.AttemptId)?.ReasoningWeight ?? 0m;
             var rolling = samples.Where(s => s.EffectiveIsCorrect.HasValue && (s.CreatedAt < a.CreatedAt || s.CreatedAt == a.CreatedAt && s.AttemptId <= a.AttemptId))
                 .Select(s => new GradedAttemptSample(s.Confidence, s.EffectiveIsCorrect!.Value));

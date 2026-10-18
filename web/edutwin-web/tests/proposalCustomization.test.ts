@@ -12,7 +12,8 @@ import type { CustomizePathProposalRequest } from "../src/types/learningPath.ts"
 const require = createRequire(import.meta.url);
 const proposal = { proposalId: "original", goalTitle: "Củng cố Tiếng Anh", availableMinutesPerDay: 25, availableDaysPerWeek: 4,
   practiceQuestionsPerSet: 7, deadlineDate: null, startingBaselineSummary: "Dựa trên bài làm", milestones: [
-    { order: 1, title: "Thì", skillIds: ["101"], missions: [] }, { order: 2, title: "Đọc hiểu", skillIds: ["103"], missions: [] }] };
+    { order: 1, title: "Thì", skillIds: ["101"], missions: [{ skillId: "101", purpose: "Practice", isProbe: false, questionCount: 7, estimatedSets: 4 }] },
+    { order: 2, title: "Đọc hiểu", skillIds: ["103"], missions: [{ skillId: "103", purpose: "Practice", isProbe: false, questionCount: 7, estimatedSets: 2 }] }] };
 const CustomForm = () => null;
 
 function load(file: string, dependencies: Record<string, any> = {}) {
@@ -49,16 +50,44 @@ test("customization starts with the proposal values and submits changes to its w
   const form = load("ProposalCustomizationForm"); let submitted: CustomizePathProposalRequest | null = null;
   const props = { proposal, pending: false, onSubmit: (value: CustomizePathProposalRequest) => { submitted = value; }, onCancel: () => {} };
   let tree = form.render(props);
-  const number = nodes(tree).find(node => node.type === "input" && node.props.type === "number");
-  assert.equal(number.props.value, "7");
+  const numbers = nodes(tree).filter(node => node.type === "input" && node.props.type === "number");
+  assert.deepEqual(numbers.map(node => node.props.value), ["7", "7"]);
   assert.equal(nodes(tree).find(node => node.type === "select").props.value, 4);
   assert.equal(nodes(tree).filter(node => node.props.type === "checkbox" && node.props.checked).length, 2);
-  number.props.onChange({ target: { value: "3" } });
+  numbers[0].props.onChange({ target: { value: "3" } });
   nodes(tree).find(node => node.type === "select").props.onChange({ target: { value: "2" } });
   nodes(tree).filter(node => node.props.type === "checkbox")[1].props.onChange({ target: { checked: false } });
   tree = form.render(props); tree.props.onSubmit({ preventDefault() {} });
   assert.deepEqual(JSON.parse(JSON.stringify(submitted)), { availableMinutesPerDay: 25, availableDaysPerWeek: 2,
-    practiceQuestionsPerSet: 3, targetSkillIds: ["101"], deadlineDate: null });
+    practiceQuestionsPerSet: 7, practiceQuestionsBySkill: { "101": 3 }, targetSkillIds: ["101"], deadlineDate: null });
+});
+
+test("each selected section can receive a different practice set size", () => {
+  let submitted: CustomizePathProposalRequest | null = null;
+  const form = load("ProposalCustomizationForm");
+  const props = { proposal, pending: false, onSubmit: (value: CustomizePathProposalRequest) => { submitted = value; }, onCancel() {} };
+  let tree = form.render(props);
+  const numbers = nodes(tree).filter(node => node.props.type === "number");
+  numbers[0].props.onChange({ target: { value: "3" } });
+  numbers[1].props.onChange({ target: { value: "12" } });
+  tree = form.render(props); tree.props.onSubmit({ preventDefault() {} });
+  assert.deepEqual(JSON.parse(JSON.stringify(submitted)).practiceQuestionsBySkill, { "101": 3, "103": 12 });
+  assert.equal(nodes(tree).find(node => typeof node.type === "function" && node.props.label)?.props.label,
+    "Tổng thời gian học mỗi ngày");
+});
+
+test("an initial quick probe still exposes the later per-section practice size", () => {
+  let submitted: CustomizePathProposalRequest | null = null;
+  const form = load("ProposalCustomizationForm");
+  const probing = { ...proposal, milestones: proposal.milestones.map(m => ({ ...m,
+    missions: [{ skillId: m.skillIds[0], purpose: "Practice", isProbe: true, questionCount: 4, estimatedSets: 3 }] })) };
+  const props = { proposal: probing, pending: false, onSubmit: (value: CustomizePathProposalRequest) => { submitted = value; }, onCancel() {} };
+  let tree = form.render(props);
+  assert.equal(nodes(tree).filter(node => node.props.type === "number").length, 2);
+  assert.match(renderToStaticMarkup(tree), /sau thử nhanh/);
+  nodes(tree).filter(node => node.props.type === "number")[0].props.onChange({ target: { value: "10" } });
+  tree = form.render(props); tree.props.onSubmit({ preventDefault() {} });
+  assert.equal(JSON.parse(JSON.stringify(submitted)).practiceQuestionsBySkill["101"], 10);
 });
 
 test("empty scope, invalid count and saving state cannot submit a customized preview", () => {
@@ -108,11 +137,12 @@ test("customizing the existing preview never opens goal editing, and acceptance 
   assert.doesNotMatch(renderToStaticMarkup(tree), /Tên mục tiêu/);
   const form = nodes(tree).find(node => node.type === CustomForm);
   assert.equal(form.props.proposal.proposalId, "original");
-  form.props.onSubmit({ availableMinutesPerDay: 30, availableDaysPerWeek: 3, practiceQuestionsPerSet: 3, targetSkillIds: ["101"], deadlineDate: null });
+  form.props.onSubmit({ availableMinutesPerDay: 30, availableDaysPerWeek: 3, practiceQuestionsPerSet: 7,
+    practiceQuestionsBySkill: { "101": 3 }, targetSkillIds: ["101"], deadlineDate: null });
   // Let the mocked request and mutation success callback settle.
   await new Promise(resolve => setTimeout(resolve, 0));
   assert.equal(h.customized[0].id, "original"); assert.equal(h.accepted.length, 0);
-  assert.match(renderToStaticMarkup(h.render()), /3 câu\/bộ luyện/);
+  assert.match(renderToStaticMarkup(h.render()), /Số câu theo từng phần học/);
   button(h.render(), "Chọn tuyến học này").props.onClick();
   await new Promise(resolve => setTimeout(resolve, 0));
   assert.deepEqual(h.accepted, ["customized"]);

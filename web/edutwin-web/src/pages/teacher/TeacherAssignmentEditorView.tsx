@@ -148,6 +148,11 @@ export function TeacherAssignmentEditorView() {
   const [formError, setFormError] = useState<{ message: string; traceId?: string | null } | null>(null);
   const [concurrencyConflict, setConcurrencyConflict] = useState(false);
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
+  useEffect(() => {
+    if (searchParams.get("publishFailed") === "true") {
+      setFormError({ message: "Đã lưu bản nháp nhưng chưa thể xuất bản. Kiểm tra thông tin và thử xuất bản lại." });
+    }
+  }, [searchParams]);
   const [isQuickViewOpen, setIsQuickViewOpen] = useState(false);
 
   // Question Selector filter & page
@@ -570,7 +575,7 @@ export function TeacherAssignmentEditorView() {
     }
   };
 
-  const handleSaveDraft = (afterSuccess?: (resId?: string) => void) => {
+  const handleSaveDraft = (afterSuccess?: (resId: string, rowVersion: string) => void) => {
     if (isReadOnly) return;
     setFormError(null);
     setConcurrencyConflict(false);
@@ -598,7 +603,7 @@ export function TeacherAssignmentEditorView() {
       createMutation.mutate(createPayload, {
         onSuccess: (res) => {
           if (afterSuccess) {
-            afterSuccess(res.data.assignmentId);
+            afterSuccess(res.data.assignmentId, res.data.rowVersion);
           } else {
             navigate("/giao-vien/bai-tap");
           }
@@ -636,7 +641,7 @@ export function TeacherAssignmentEditorView() {
           onSuccess: (res) => {
             queryClient.setQueryData(["assignments", id], res);
             if (afterSuccess) {
-              afterSuccess(id);
+              afterSuccess(id!, res.data.rowVersion);
             } else {
               navigate("/giao-vien/bai-tap");
             }
@@ -657,8 +662,29 @@ export function TeacherAssignmentEditorView() {
     }
   };
 
+  const publishSavedAssignment = (savedId: string, rowVersion: string) => {
+    publishMutation.mutate(
+      { id: savedId, request: { rowVersion } },
+      {
+        onSuccess: () => {
+          setPublishDialogOpen(false);
+          navigate("/giao-vien/bai-tap");
+        },
+        onError: (err: unknown) => {
+          setPublishDialogOpen(false);
+          // The draft already exists. Keep it addressable so retrying cannot create a duplicate.
+          if (!isEditing) {
+            navigate(`/giao-vien/bai-tap/${savedId}?publishFailed=true`);
+          } else {
+            setFormError({ message: mapSafeOperationalError(err, "Đã lưu bản nháp nhưng chưa thể xuất bản. Vui lòng thử xuất bản lại.") });
+          }
+        },
+      }
+    );
+  };
+
   const handleConfirmPublish = () => {
-    if (!id || !assignment || !canPublish) return;
+    if (!canPublish) return;
     if (targetMode === "SelectedStudents" && studentIds.length === 0) {
       setFormError({
         message:
@@ -669,27 +695,7 @@ export function TeacherAssignmentEditorView() {
     }
     setFormError(null);
 
-    publishMutation.mutate(
-      { id, request: { rowVersion: assignment.rowVersion } },
-      {
-        onSuccess: () => {
-          setPublishDialogOpen(false);
-          navigate("/giao-vien/bai-tap");
-        },
-        onError: (err: any) => {
-          const details = extractProblemDetails(err);
-          setPublishDialogOpen(false);
-          if (isConcurrencyConflictError(err)) {
-            setConcurrencyConflict(true);
-          } else {
-            setFormError({
-              message: mapSafeOperationalError(err, "Không thể xuất bản bài tập."),
-              traceId: details.traceId,
-            });
-          }
-        },
-      }
-    );
+    handleSaveDraft(publishSavedAssignment);
   };
 
   const isPending = createMutation.isPending || updateMutation.isPending || publishMutation.isPending;
@@ -1561,11 +1567,7 @@ export function TeacherAssignmentEditorView() {
                     type="button"
                     onClick={() => {
                       if (!isEditing) {
-                        handleSaveDraft((createdId) => {
-                          if (createdId) {
-                            navigate(`/giao-vien/bai-tap`);
-                          }
-                        });
+                        handleSaveDraft(publishSavedAssignment);
                       } else {
                         setPublishDialogOpen(true);
                       }
@@ -1595,7 +1597,7 @@ export function TeacherAssignmentEditorView() {
         title="Xác nhận xuất bản bài tập"
         description={`Xuất bản bài tập "${title}"? Hệ thống sẽ tạo bài tập và học sinh trong lớp sẽ nhìn thấy bài tập ngay lập tức.`}
         confirmLabel="Xuất bản ngay"
-        isConfirming={publishMutation.isPending}
+        isConfirming={isPending}
         onConfirm={handleConfirmPublish}
         onClose={() => setPublishDialogOpen(false)}
       />

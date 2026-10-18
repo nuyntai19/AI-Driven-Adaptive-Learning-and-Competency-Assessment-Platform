@@ -28,14 +28,7 @@ public static class MasteryCalculator
                 "Correctness is required when evidence has a positive weight.");
         }
 
-        if (input.ReasoningWeight > 0m && input.ReasoningQuality is null)
-        {
-            throw new ArgumentNullException(
-                nameof(input.ReasoningQuality),
-                "Reasoning quality is required when evidence has a positive weight.");
-        }
-
-        if (input.ReasoningWeight > 0m && input.ConfidenceCalibration is null)
+        if (input.ReasoningWeight > 0m && input.ReasoningQuality.HasValue && input.ConfidenceCalibration is null)
         {
             throw new ArgumentNullException(
                 nameof(input.ConfidenceCalibration),
@@ -72,9 +65,9 @@ public static class MasteryCalculator
         var evidenceStrength = input.ReasoningWeight == 0m
             ? 0m
             : 0.65m
-                + 0.20m * normalizedReasoningQuality!.Value
+                + 0.20m * (normalizedReasoningQuality ?? 0m)
                 + 0.10m * input.TimeQuality
-                + 0.05m * effectiveConfidenceCalibration!.Value;
+                + 0.05m * (effectiveConfidenceCalibration ?? 0m);
 
         var unclampedNewMastery = input.CurrentMastery +
             learningRate * difficultyMultiplier * input.ReasoningWeight * evidenceStrength *
@@ -169,6 +162,10 @@ public static class MasteryCalculator
         {
             return commonFacts + " Kết quả tạm thời có trọng số 0.00 và cần giáo viên xem xét trước khi cập nhật năng lực.";
         }
+
+        if (isFallback)
+            return commonFacts + FormattableString.Invariant(
+                $" Chỉ dùng kết quả đúng/sai đã được xác nhận; chưa có đánh giá chất lượng lập luận. Trọng số bằng chứng: {reasoningWeight:0.00}.");
 
         return commonFacts + FormattableString.Invariant(
             $" Chất lượng lập luận hiệu dụng: {reasoningQuality!.Value:0.00}%; trọng số bằng chứng: {reasoningWeight:0.00}.");

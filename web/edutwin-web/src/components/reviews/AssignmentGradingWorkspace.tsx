@@ -332,7 +332,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
   // Override Form State for the active question
   const [awardedScore, setAwardedScore] = useState<number>(10);
   const [isCorrectVal, setIsCorrectVal] = useState<boolean | null>(null);
-  const [reasoningQuality, setReasoningQuality] = useState<number>(80);
+  const [reasoningQuality, setReasoningQuality] = useState<number | null>(null);
   const [errorTypeVal, setErrorTypeVal] = useState<ErrorType>("None");
   const [feedbackVal, setFeedbackVal] = useState<string>("");
   const [overrideReasonVal, setOverrideReasonVal] = useState<string>("");
@@ -352,7 +352,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
   const displayedQuestionGrade = normalizeQuestionScore(currentQuestion?.overrideAwardedScore ?? currentQuestion?.awardedScore, currentQuestion?.maxScore ?? 10);
   const assignmentContribution = questionAssignmentContribution(currentQuestion?.overrideAwardedScore ?? currentQuestion?.awardedScore,
     currentQuestion?.maxScore ?? 10, currentQuestion?.assignmentQuestionCount);
-  const originalReasoningQuality = currentQuestion?.hasTeacherOverride
+  const originalReasoningQuality = currentQuestion?.isFallback ? null : currentQuestion?.hasTeacherOverride
     ? currentQuestion.originalReasoningQuality
     : currentQuestion?.originalReasoningQuality ?? currentQuestion?.reasoningQuality;
   const formDefaults = useMemo(() => resolveQuestionDefaultFormValues(currentQuestion), [currentQuestion]);
@@ -1357,7 +1357,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                           <span className="text-base font-extrabold text-slate-900 dark:text-slate-100">
                             {originalReasoningQuality !== null && originalReasoningQuality !== undefined
                               ? `${Math.round(Number(originalReasoningQuality))}/100`
-                              : "N/A"}
+                              : "Chưa có đánh giá"}
                           </span>
                         </div>
                       </div>
@@ -1568,14 +1568,15 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                                 <label className="text-xs font-bold text-slate-600 dark:text-slate-400">
                                   Chất lượng lập luận
                                 </label>
-                                <span className="text-xs font-bold text-indigo-600">{reasoningQuality}/100 (chỉ số lập luận)</span>
+                                <span className="text-xs font-bold text-indigo-600">{reasoningQuality == null ? "Chưa đánh giá" : `${reasoningQuality}/100 (chỉ số lập luận)`}</span>
                               </div>
                               <input
-                                type="range"
+                                type="number"
+                                placeholder="Chưa đánh giá"
                                 min={0}
                                 max={100}
-                                value={reasoningQuality}
-                                onChange={(e) => setReasoningQuality(Number(e.target.value))}
+                                value={reasoningQuality ?? ""}
+                                onChange={(e) => setReasoningQuality(e.target.value === "" ? null : Number(e.target.value))}
                                 className="w-full accent-indigo-600 cursor-pointer"
                               />
                             </div>

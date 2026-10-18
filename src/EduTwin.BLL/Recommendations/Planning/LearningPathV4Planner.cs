@@ -135,8 +135,9 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                     var probe = missions.Last(); probe.QuestionCount = (uint)probeSize; probe.TargetDifficulty = 2; probe.SetNumber = 1; probe.IsProbe = true; probe.EstimatedSets = estimatedSets;
                 }
                 if (authored.Count == 0 && !(skill.State == "Confirmed" && goal.GoalType == "Advanced") && !skipStudy)
-                    Add("Study", $"Tìm hiểu: {node.NodeName}", level == "Weak" ? 10u : 5u, !string.IsNullOrWhiteSpace(node.Description) || count > 0,
-                        string.IsNullOrWhiteSpace(node.Description) && count == 0 ? "Chưa có bài học hoặc ví dụ đã xuất bản cho kỹ năng này."
+                    Add("Study", $"Tìm hiểu: {node.NodeName}", level == "Weak" ? 10u : 5u,
+                        StudyMaterial.Available(node.Description, questions.Where(q => q.PrimaryTopicNodeId == node.NodeId).ToList(), usedQuestionIds),
+                        !StudyMaterial.Available(node.Description, questions.Where(q => q.PrimaryTopicNodeId == node.NodeId).ToList(), usedQuestionIds) ? StudyMaterial.MissingMessage
                         : probeFirst ? "Ý chính và ví dụ mẫu từng bước. Sẽ được bỏ qua nếu phần thử nhanh đạt từ 80%."
                         : $"{levelLabel}: ý chính và ví dụ mẫu từng bước trước khi luyện.");
                 if (!probeFirst)
@@ -334,6 +335,13 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 }).ToList()
             };
             var fresh = subjectQuestions.Count(q => q.PrimaryTopicNodeId.ToString() == m.SkillId && !usedIds.Contains(q.QuestionId) && !exposedIds.Contains(q.QuestionId));
+            if (m.Purpose == "Study" && !m.ContentVersionId.HasValue && active == null && latest == null)
+            {
+                var node = await db.KnowledgeNodes.AsNoTracking().SingleAsync(n => n.CenterId == centerId && n.NodeId == ulong.Parse(m.SkillId), cancellationToken);
+                item.CanStart = StudyMaterial.Available(node.Description, subjectQuestions.Where(q => q.PrimaryTopicNodeId == node.NodeId).ToList(), usedIds)
+                    && session.Status != LearningPathSessionStatus.Skipped;
+                if (!item.CanStart) item.RecommendationReason = StudyMaterial.MissingMessage;
+            }
             if (m.Purpose == "IndependentCheck" && active == null)
             {
                 item.CanStart = fresh >= 5 && skill.Availability != "PrerequisiteBlocked" && session.Status != LearningPathSessionStatus.Completed && session.Status != LearningPathSessionStatus.Skipped;
@@ -346,7 +354,8 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                     : LearningPathInsights.PracticePool(subjectQuestions.Where(q => q.PrimaryTopicNodeId.ToString() == m.SkillId).ToList(), usedIds.ToHashSet()).Count;
                 poolSizes[m.MissionId] = pool;
                 // Sets keep a fixed size; routes built before the loop may hold larger sets, which are capped here.
-                item.QuestionCount = (uint)Math.Min(Math.Min(m.QuestionCount == 0 ? plan.PracticeQuestionsPerSet : m.QuestionCount, plan.PracticeQuestionsPerSet), pool);
+                var skillSetSize = plan.PracticeQuestionsBySkill.GetValueOrDefault(m.SkillId, plan.PracticeQuestionsPerSet);
+                item.QuestionCount = (uint)Math.Min(Math.Min(m.QuestionCount == 0 ? skillSetSize : m.QuestionCount, skillSetSize), pool);
                 item.DefaultQuestionCount = item.QuestionCount;
                 item.CanStart = item.QuestionCount > 0 && session.Status != LearningPathSessionStatus.Completed && session.Status != LearningPathSessionStatus.Skipped && (!m.AvailableFrom.HasValue || m.AvailableFrom <= Now);
                 item.EstimatedDurationMinutes = Math.Max(1u, item.QuestionCount) * LearningPathPacing.MinutesPerQuestion;
@@ -448,7 +457,8 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         // Sets the loop is still expected to create, per unconfirmed skill.
         var expected = plan.Milestones.Where(m => m.SkillIds.All(id => map.Skills.FirstOrDefault(s => s.SkillId == id)?.State != "Confirmed") && !m.ReadyForCheck)
             .Sum(m => Math.Max(0, (int)(m.Missions.Where(x => x.Purpose == "Practice").Select(x => x.EstimatedSets).DefaultIfEmpty(0u).Max())
-                - m.Missions.Count(x => x.Purpose == "Practice")) * (int)(plan.PracticeQuestionsPerSet * LearningPathPacing.MinutesPerQuestion));
+                - m.Missions.Count(x => x.Purpose == "Practice")) *
+                (int)(plan.PracticeQuestionsBySkill.GetValueOrDefault(m.SkillIds.First(), plan.PracticeQuestionsPerSet) * LearningPathPacing.MinutesPerQuestion));
         var remaining = (uint)Math.Max(0, open + expected);
         var goal = await db.LearningGoals.AsNoTracking().Where(g => g.CenterId == centerId && g.StudentId == studentId && g.SubjectId == subjectId && g.Status == "Active")
             .OrderByDescending(g => g.CreatedAt).FirstOrDefaultAsync(ct);

@@ -8,6 +8,7 @@ public class PathProposalDto
     /// <summary>2 = practice runs as a loop of fixed 6-question sets. Older routes are flagged for an update.</summary>
     public int PacingVersion { get; set; }
     public uint PracticeQuestionsPerSet { get; set; } = 6;
+    public Dictionary<string, uint> PracticeQuestionsBySkill { get; set; } = new();
     public uint AvailableMinutesPerDay { get; set; } = 15;
     public uint AvailableDaysPerWeek { get; set; } = 5;
     public DateTime? DeadlineDate { get; set; }
@@ -91,5 +92,6 @@ public class CustomizePathProposalRequest
     public uint AvailableDaysPerWeek { get; set; } = 5;
     public DateTime? DeadlineDate { get; set; }
     public uint PracticeQuestionsPerSet { get; set; } = 6;
+    public Dictionary<string, uint> PracticeQuestionsBySkill { get; set; } = new();
     public List<string> TargetSkillIds { get; set; } = new();
 }

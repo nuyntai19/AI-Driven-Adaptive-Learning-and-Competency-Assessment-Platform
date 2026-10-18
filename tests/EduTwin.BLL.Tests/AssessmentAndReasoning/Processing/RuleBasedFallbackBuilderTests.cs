@@ -22,7 +22,7 @@ public sealed class RuleBasedFallbackBuilderTests
         Assert.Equal(17ul, result.AttemptId);
         Assert.Equal("ai-analysis-v1", result.SchemaVersion);
         Assert.Null(result.MethodDetected);
-        Assert.Equal(70m, result.ReasoningQuality);
+        Assert.Null(result.ReasoningQuality);
         Assert.Equal(ErrorType.Unknown, result.ErrorType);
         Assert.Null(result.Misconception);
         Assert.Equal(0, result.MissingSteps.RootElement.GetArrayLength());
@@ -65,6 +65,7 @@ public sealed class RuleBasedFallbackBuilderTests
         var first = _sut.Build(input);
         var second = _sut.Build(input);
 
+        Assert.Null(first.ReasoningQuality);
         Assert.False(string.IsNullOrWhiteSpace(first.Feedback));
         Assert.Equal(first.Feedback, second.Feedback);
         Assert.Equal(first.ErrorType, second.ErrorType);

@@ -275,7 +275,19 @@ test("AI quality display remains the original baseline after teacher quality ove
   const h = harness(question({ hasTeacherOverride: true, reasoningQuality: 0, originalReasoningQuality: 82 }));
   assert.match(h.html(), /82\/100/);
   button(h.tree, "Chỉnh sửa đánh giá đã lưu").props.onClick();
-  assert.equal(nodes(h.render()).find(n => n.type === "input" && n.props.type === "range")?.props.value, 0);
+  assert.equal(nodes(h.render()).find(n => n.type === "input" && n.props.placeholder === "Chưa đánh giá")?.props.value, 0);
+});
+
+test("fallback workspace hides legacy 70/100 and leaves manual reasoning unassessed", () => {
+  const h = harness(question({ isFallback: true, reasoningQuality: 70, originalReasoningQuality: 70,
+    hasTeacherOverride: false }));
+  assert.doesNotMatch(h.html(), /70\/100/);
+  assert.match(h.html(), /Chưa có đánh giá/);
+  button(h.tree, "Điều chỉnh điểm").props.onClick();
+  const input = nodes(h.render()).find(n => n.type === "input" && n.props.placeholder === "Chưa đánh giá");
+  assert.equal(input.props.value, "");
+  input.props.onChange({ target: { value: "0" } });
+  assert.equal(nodes(h.render()).find(n => n.type === "input" && n.props.placeholder === "Chưa đánh giá").props.value, 0);
 });
 
 test("one question status icon prioritizes required review over correctness", () => {

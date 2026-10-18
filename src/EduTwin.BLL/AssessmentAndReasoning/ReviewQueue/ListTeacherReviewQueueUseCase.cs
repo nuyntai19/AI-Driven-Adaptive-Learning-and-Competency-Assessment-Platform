@@ -181,7 +181,10 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
         var assignmentQuestions = await WhereIn(_dbContext.AssignmentQuestions.AsNoTracking()
             .Where(aq => aq.CenterId == centerId), aq => aq.AssignmentId, assignmentIds)
             .ToListAsync(cancellationToken);
-        var questionOrder = assignmentQuestions.ToDictionary(aq => (aq.AssignmentId, aq.QuestionId), aq => aq.OrderIndex);
+        var questionOrder = assignmentQuestions.GroupBy(aq => aq.AssignmentId)
+            .SelectMany(g => g.OrderBy(aq => aq.OrderIndex).ThenBy(aq => aq.QuestionId)
+                .Select((aq, index) => new { aq.AssignmentId, aq.QuestionId, Number = (uint)(index + 1) }))
+            .ToDictionary(aq => (aq.AssignmentId, aq.QuestionId), aq => aq.Number);
         var questionCounts = assignmentQuestions.GroupBy(aq => aq.AssignmentId).ToDictionary(g => g.Key, g => g.Count());
         var studentIds = entities.Select(e => e.Attempt.StudentId).Distinct().ToList();
         var progressQuery = _dbContext.StudentAssignmentProgresses
@@ -288,8 +291,8 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
                 AnswerDisplayLatex = resolvedDisplayLatex,
                 ReasoningText = resolvedReasoning,
                 IsFallback = evidence.Analysis!.IsFallback,
-                ReasoningQuality = evidence.Analysis.OverrideReasoningQuality ?? evidence.Analysis.ReasoningQuality,
-                OriginalReasoningQuality = evidence.Analysis.ReasoningQuality,
+                ReasoningQuality = EffectiveReasoningQuality.Resolve(evidence.Analysis),
+                OriginalReasoningQuality = EffectiveReasoningQuality.Original(evidence.Analysis),
                 AnalysisFeedback = AnalysisFeedbackPresentation.Resolve(evidence.Analysis.FeedbackOrigin,
                     evidence.Analysis.Feedback, evidence.Analysis.OverrideIsCorrect ?? evidence.Attempt.IsCorrect),
                 FeedbackOrigin = evidence.Analysis.FeedbackOrigin,

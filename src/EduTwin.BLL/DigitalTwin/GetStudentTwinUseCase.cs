@@ -75,6 +75,14 @@ public sealed class GetStudentTwinUseCase : IGetStudentTwinUseCase
                          !kt.IsDeleted)
             .ToDictionaryAsync(kt => kt.TopicNodeId, cancellationToken);
 
+        // Older fallbacks stored synthetic 70/30 values. Do not expose those
+        // cached values as a measured reasoning score while retaining audit data.
+        var fallbackAttempts = (await _dbContext.ReasoningAnalyses.AsNoTracking()
+            .Where(a => a.CenterId == centerId && a.IsFallback && !a.OverrideReasoningQuality.HasValue &&
+                _dbContext.Attempts.Any(at => at.CenterId == centerId && at.StudentId == studentId &&
+                    at.Question.SubjectId == subjectId && at.AttemptId == a.AttemptId))
+            .Select(a => a.AttemptId).ToListAsync(cancellationToken)).ToHashSet();
+
         var topicDtos = activeTopics.Select(t =>
         {
             twins.TryGetValue(t.NodeId, out var kt);
@@ -84,7 +92,7 @@ public sealed class GetStudentTwinUseCase : IGetStudentTwinUseCase
                 TopicName = t.NodeName,
                 MasteryPercentage = kt?.MasteryPercentage ?? 0m,
                 EvidenceCount = kt?.EvidenceCount ?? 0u,
-                LastReasoningQuality = kt?.LastReasoningQuality,
+                LastReasoningQuality = kt?.LastAttemptId is { } last && fallbackAttempts.Contains(last) ? null : kt?.LastReasoningQuality,
                 LastAttemptId = kt?.LastAttemptId?.ToString(CultureInfo.InvariantCulture)
             };
         }).ToList();
