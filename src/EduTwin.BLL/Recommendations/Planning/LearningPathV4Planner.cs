@@ -340,7 +340,9 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 var node = await db.KnowledgeNodes.AsNoTracking().SingleAsync(n => n.CenterId == centerId && n.NodeId == ulong.Parse(m.SkillId), cancellationToken);
                 item.CanStart = StudyMaterial.Available(node.Description, subjectQuestions.Where(q => q.PrimaryTopicNodeId == node.NodeId).ToList(), usedIds)
                     && session.Status != LearningPathSessionStatus.Skipped;
-                if (!item.CanStart) item.RecommendationReason = StudyMaterial.MissingMessage;
+                item.RecommendationReason = item.CanStart
+                    ? $"Ôn lại nội dung và ví dụ có lời giải của {node.NodeName}; những câu đã làm có thể dùng lại để học mà không lộ câu tự kiểm tra mới."
+                    : StudyMaterial.MissingMessage;
             }
             if (m.Purpose == "IndependentCheck" && active == null)
             {
