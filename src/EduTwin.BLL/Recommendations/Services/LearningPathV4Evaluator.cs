@@ -111,6 +111,8 @@ public sealed class LearningPathV4Evaluator(EduTwinDbContext db, TimeProvider cl
                 result.Outcome == "PendingGrading" ? SessionRunEvaluationStatus.Processing : terminal ? SessionRunEvaluationStatus.Completed : SessionRunEvaluationStatus.NotStarted;
             run.Session.Status = result.Outcome is "Passed" or "ActivityOnlyCompleted" ? LearningPathSessionStatus.Completed :
                 result.Outcome is "NeedsSupport" or "PendingTeacherReview" ? LearningPathSessionStatus.NeedsReview : LearningPathSessionStatus.InProgress;
+            if (terminal && run.Session.LearningPath.PlanJson?.RootElement.TryGetProperty("isPlacement", out var placement) == true && placement.ValueKind == JsonValueKind.True)
+                run.Session.Status = LearningPathSessionStatus.Completed;
             run.Session.UpdatedAt = now; run.Session.RowVersion++;
             db.PathDecisions.Add(new PathDecision { CenterId = centerId, LearningPathId = run.Session.LearningPathId, SessionRunId = sessionRunId,
                 TriggerType = "MissionEvaluation", DecisionSummary = summary, PolicyVersion = LearningPathV4Data.Policy,

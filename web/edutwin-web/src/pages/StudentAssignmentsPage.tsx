@@ -8,6 +8,8 @@ import { getSubjectTheme } from "../components/student/subjectTheme";
 import { StudentBadge } from "../components/student/StudentBadge";
 import type { ProgressStatus, StudentAssignmentListItemDto } from "../types/assignments";
 import { studentScopeUrl } from "../utils/studentAcademicNavigation";
+import { AssignmentKnowledgeScope } from "../components/student/AssignmentKnowledgeScope";
+import { assignmentKnowledgeSearch, assignmentResultLabel } from "../utils/assignmentKnowledge";
 
 const getStudentListError = (error: unknown) => {
   if (isAxiosError(error)) return error.response?.data?.detail || error.message;
@@ -60,7 +62,8 @@ export const StudentAssignmentsPage: React.FC = () => {
       result = result.filter(
         (a) =>
           a.title.toLowerCase().includes(term) ||
-          (a.instructions && a.instructions.toLowerCase().includes(term))
+          (a.instructions && a.instructions.toLowerCase().includes(term)) ||
+          assignmentKnowledgeSearch(a.summary).toLowerCase().includes(term)
       );
     }
 
@@ -132,7 +135,7 @@ export const StudentAssignmentsPage: React.FC = () => {
       if (matched) return matched.subjectName;
     }
     if (currentSubjectName) return currentSubjectName;
-    return "Toán học";
+    return "Môn học";
   };
 
   return (
@@ -230,7 +233,8 @@ export const StudentAssignmentsPage: React.FC = () => {
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Tìm kiếm bài tập..."
+            placeholder="Tìm bài tập hoặc kỹ năng..."
+            aria-label="Tìm bài tập hoặc kỹ năng"
             className="w-full pl-3 pr-7 py-1.5 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-[#151d2f] text-xs sm:text-sm text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-none focus:border-stone-400 dark:focus:border-stone-600 transition-colors"
           />
           {searchTerm && (
@@ -344,10 +348,11 @@ export const StudentAssignmentsPage: React.FC = () => {
                         />
 
                         <div className="min-w-0 space-y-1">
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <span className="text-[11px] font-mono font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
                               {subjectName}
                             </span>
+                            <span className="text-[10px] text-stone-500">Giáo viên giao</span>
                             {isDone ? (
                               <>
                                 <StudentBadge variant="success" size="xs">Đã xong</StudentBadge>
@@ -358,9 +363,6 @@ export const StudentAssignmentsPage: React.FC = () => {
                                     ) : (
                                       <StudentBadge variant="warning" size="xs">GV chưa duyệt</StudentBadge>
                                     )}
-                                    <span className="text-[10px] font-black text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
-                                      {item.summary.correctQuestionCount}/{item.summary.totalQuestionCount} câu đúng
-                                    </span>
                                   </>
                                 )}
                               </>
@@ -376,6 +378,9 @@ export const StudentAssignmentsPage: React.FC = () => {
                             {item.title}
                           </Link>
 
+                          <AssignmentKnowledgeScope summary={item.summary} completed={isDone} />
+                          {isDone && item.summary && <p className="text-xs font-medium text-stone-600 dark:text-stone-300">{assignmentResultLabel(item.summary)}</p>}
+
                           {item.instructions && (
                             <p className="text-xs text-stone-500 dark:text-stone-400 line-clamp-1">
                               {item.instructions}
@@ -387,13 +392,10 @@ export const StudentAssignmentsPage: React.FC = () => {
                       {/* Right: Progress Track & Action Link */}
                       <div className="flex items-center gap-5 sm:gap-6 shrink-0 self-end sm:self-center pl-6 sm:pl-0">
                         {/* Progress Tracker */}
-                        <div className="w-28 sm:w-36 space-y-1 text-right">
+                        <div className="w-36 sm:w-40 space-y-1 text-right" aria-label={`Tiến độ làm bài: ${progress.completedQuestionCount}/${progress.totalQuestionCount} câu`}>
                           <div className="flex items-center justify-between text-[11px]">
                             <span className="text-stone-500 dark:text-stone-400">
-                              {progress.completedQuestionCount}/{progress.totalQuestionCount} câu
-                            </span>
-                            <span className="font-mono font-semibold text-stone-700 dark:text-stone-300">
-                              {percent}%
+                              Đã làm {progress.completedQuestionCount}/{progress.totalQuestionCount} câu
                             </span>
                           </div>
                           <div className="w-full bg-stone-100 dark:bg-stone-800 rounded-full h-1.5 overflow-hidden">

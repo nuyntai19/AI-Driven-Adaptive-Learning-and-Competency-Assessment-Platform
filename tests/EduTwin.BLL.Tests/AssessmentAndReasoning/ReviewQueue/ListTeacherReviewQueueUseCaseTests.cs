@@ -21,6 +21,33 @@ namespace EduTwin.BLL.Tests.AssessmentAndReasoning.ReviewQueue;
 public sealed class ListTeacherReviewQueueUseCaseTests
 {
     [Fact]
+    public async Task ExecuteAsync_NonAnswerDoesNotExposeFabricatedAiReasoningOrOverwriteTeacherQuality()
+    {
+        var fixture = await CreateFixtureAsync(UserRole.Teacher);
+        await using var context = fixture.Context;
+        var attempt = await context.Attempts.SingleAsync(a => a.AttemptId == 1);
+        attempt.ReasoningText = "khum";
+        context.AttemptAttachments.Remove(await context.AttemptAttachments.SingleAsync());
+        var analysis = await context.ReasoningAnalyses.SingleAsync(a => a.AnalysisId == 11);
+        analysis.ReasoningQuality = 100;
+        analysis.OverrideReasoningQuality = 75;
+        analysis.SuggestedScore = 10;
+        await context.SaveChangesAsync();
+
+        var result = await new ListTeacherReviewQueueUseCase(context, fixture.Tenant,
+            new StubClassOwnershipGuard(OwnershipDecision.Allowed)).ExecuteAsync(new TeacherReviewQueueQuery(), default);
+        var item = Assert.Single(result.Data!);
+        Assert.Null(item.MethodDetected);
+        Assert.Null(item.AnalysisConfidence);
+        Assert.Null(item.OriginalReasoningQuality);
+        Assert.Equal(75, item.ReasoningQuality);
+        Assert.Equal(10, item.SuggestedScore);
+        Assert.Equal(EduTwin.BLL.AssessmentAndReasoning.ReasoningEvidencePolicy.MissingFeedback, item.AnalysisFeedback);
+        Assert.Equal("RuleBased", item.FeedbackOrigin);
+        Assert.Equal(100, analysis.ReasoningQuality);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_OwnedStudents_ReturnsOnlyCurrentUnresolvedEvidence()
     {
         var fixture = await CreateFixtureAsync(UserRole.Teacher);

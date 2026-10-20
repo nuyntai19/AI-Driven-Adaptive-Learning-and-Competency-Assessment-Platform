@@ -2415,10 +2415,14 @@ const PracticePlayerPage = () => {
           <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed max-w-md mx-auto">
             {assignmentId
               ? "Không tìm thấy dữ liệu câu hỏi trong bài tập này hoặc bài tập đã đóng."
-              : "Hiện tại bạn đã hoàn thành các câu hỏi đề xuất trong môn học này hoặc hệ thống đang đồng bộ câu hỏi mới."}
+              : "Chưa lấy được câu luyện tập tự do cho phạm vi đang xem. Điều này không có nghĩa là bạn đã hoàn thành mục tiêu học tập. Mở lộ trình để xem nhiệm vụ tìm hiểu, luyện có hướng dẫn và tự kiểm tra đang có."}
           </p>
 
           <div className="pt-4 flex flex-wrap justify-center gap-3">
+            {!assignmentId && <Link
+              to={studentScopeUrl("/hoc-tap/lo-trinh-hoc-tap", searchParams)}
+              className="rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-500 transition-colors"
+            >Mở lộ trình và chọn nhiệm vụ →</Link>}
             <Link
               to={studentScopeUrl("/hoc-tap/bai-tap", searchParams)}
               className="rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-500 transition-colors cursor-pointer"
@@ -2426,7 +2430,7 @@ const PracticePlayerPage = () => {
               📋 Làm bài tập được giao
             </Link>
             <Link
-              to="/hoc-tap/tong-quan"
+              to={studentScopeUrl("/hoc-tap/tong-quan", searchParams)}
               className="rounded-xl bg-slate-100 dark:bg-slate-800 px-5 py-2.5 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
             >
               🏠 Về Dashboard

@@ -5,6 +5,16 @@ namespace EduTwin.Contracts.Recommendations;
 
 public class LearningAgendaDto
 {
+    public List<string> SelfReportedPrerequisiteSkillIds { get; set; } = new();
+    public bool IsPlacement { get; set; }
+    public string GoalType { get; set; } = "Foundation";
+    public DateTime? DeadlineDate { get; set; }
+    public List<string> TargetSkillIds { get; set; } = new();
+    public uint AvailableMinutesPerDay { get; set; } = 15;
+    public uint AvailableDaysPerWeek { get; set; } = 5;
+    public PlacementReportDto? PlacementReport { get; set; }
+    public bool CanAdvance { get; set; }
+    public List<string> NextSkillIds { get; set; } = new();
     public LearningInsightsDto Insights { get; set; } = new();
     public List<string> RecentChanges { get; set; } = new();
     public Guid? LearningPathId { get; set; }
@@ -29,6 +39,30 @@ public class LearningAgendaDto
     /// <summary>The active route was built before the practice loop; the student can rebuild it without losing answers.</summary>
     public bool PlanOutdated { get; set; }
     public GoalProgressDto? Progress { get; set; }
+}
+
+public class PlacementReportDto
+{
+    public uint TotalSkills { get; set; }
+    public uint AssessedSkills { get; set; }
+    public bool IsComplete { get; set; }
+    public decimal? ScoreOutOfTen { get; set; }
+    public List<PlacementSkillResultDto> Skills { get; set; } = new();
+}
+
+public class PlacementSkillResultDto
+{
+    public string SkillId { get; set; } = "";
+    public string SkillName { get; set; } = "";
+    public string TopicName { get; set; } = "";
+    public uint AnsweredQuestions { get; set; }
+    public uint CorrectAnswers { get; set; }
+    public decimal EarnedScore { get; set; }
+    public decimal PossibleScore { get; set; }
+    public decimal? ScoreOutOfTen { get; set; }
+    public string Status { get; set; } = "NotStarted";
+    public string Recommendation { get; set; } = "";
+    public uint EstimatedPracticeSets { get; set; }
 }
 
 public class GoalProgressDto

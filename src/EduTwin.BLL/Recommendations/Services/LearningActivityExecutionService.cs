@@ -69,6 +69,7 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
         if (definition.AvailableFrom > Now) throw new InvalidOperationException("Chưa tới ngày ôn của nhiệm vụ này. Bạn có thể tiếp tục các phần khác trong tuyến.");
         if (lastFinished != null && definition.Purpose == "IndependentCheck")
         {
+            if (plan!.IsPlacement) throw new InvalidOperationException("Phần kiểm tra đầu vào đã hoàn thành. Hãy lập tuyến luyện từ kết quả; bài đã làm được giữ nguyên.");
             if (lastFinished.Outcome == SessionRunOutcome.Passed || session.Status == LearningPathSessionStatus.Completed)
                 throw new InvalidOperationException("Kỹ năng đã đạt kiểm tra độc lập. Lịch ôn sẽ kiểm tra lại khả năng nhớ; không cần làm lại ngay.");
             // Join through the session instead of a Guid list (not translatable on MySQL).
@@ -83,7 +84,7 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
         if (independent)
         {
             var map = await LearningPathV4Data.MapAsync(db, centerId, studentId, session.LearningPath.SubjectId, session.ClassId, Now, cancellationToken);
-            if (map.Skills.Single(s => s.SkillId == node.NodeId.ToString()).Availability == "PrerequisiteBlocked")
+            if (!plan!.IsPlacement && !LearningGoalScope.PrerequisitesSatisfied(map.Skills.Single(s => s.SkillId == node.NodeId.ToString()), map, plan.SelfReportedPrerequisiteSkillIds))
                 throw new InvalidOperationException("Cần kiểm tra các kỹ năng nền tảng trước khi xác nhận kỹ năng này.");
             // Any question already answered or shown as a worked example is unsuitable for a new independent check.
             var answered = await db.Attempts.Where(a => a.CenterId == centerId && a.StudentId == studentId).Select(a => a.QuestionId).Distinct().ToListAsync(cancellationToken);

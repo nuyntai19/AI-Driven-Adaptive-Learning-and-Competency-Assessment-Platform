@@ -45,7 +45,7 @@ export function ProposalCustomizationForm({ proposal, availableMilestones = prop
         <label className="text-sm">Mốc thời gian (nếu có)<input type="date" className={input} value={deadline} onChange={event => setDeadline(event.target.value)} /></label>
       </div>
       <fieldset><legend className="text-sm font-semibold">Phân bổ theo phần học</legend>
-        <p className="my-2 text-xs text-slate-500">Giữ ít nhất một phần. Phần yếu có thể nhận nhiều câu hơn mỗi bộ. Số bộ dự kiến đã dựa vào bài làm và sẽ thay đổi theo kết quả luyện; nền tảng cần thiết vẫn được giữ. Mỗi bộ có thể ít câu hơn nếu ngân hàng chưa đủ. Tự kiểm tra giữ 5 câu độc lập.</p>
+        <p className="my-2 text-xs text-slate-500">Giữ ít nhất một phần. Phần yếu có thể nhận nhiều câu hơn mỗi bộ. Số bộ dự kiến thay đổi theo kết quả luyện. Lựa chọn bỏ qua nền tảng đã tự xác nhận được giữ khi tùy chỉnh; em có thể đổi ở phần mục tiêu học. Mỗi bộ có thể ít câu hơn nếu ngân hàng chưa đủ. Tự kiểm tra giữ 5 câu độc lập.</p>
         <div className="grid gap-3 sm:grid-cols-2">{availableMilestones.map(milestone => {
           const checked = milestone.skillIds.every(id => targets.includes(id));
           const skillId = milestone.skillIds[0];

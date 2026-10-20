@@ -5,6 +5,10 @@ namespace EduTwin.Contracts.Recommendations;
 
 public class PathProposalDto
 {
+    public List<string> SelfReportedPrerequisiteSkillIds { get; set; } = new();
+    public bool IsPlacement { get; set; }
+    public string GoalType { get; set; } = "Foundation";
+    public List<string> RequestedSkillIds { get; set; } = new();
     /// <summary>2 = practice runs as a loop of fixed 6-question sets. Older routes are flagged for an update.</summary>
     public int PacingVersion { get; set; }
     public uint PracticeQuestionsPerSet { get; set; } = 6;

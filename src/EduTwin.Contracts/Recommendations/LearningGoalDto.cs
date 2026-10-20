@@ -5,6 +5,7 @@ namespace EduTwin.Contracts.Recommendations;
 
 public class LearningGoalDto
 {
+    public List<string> SelfReportedPrerequisiteSkillIds { get; set; } = new();
     public Guid GoalId { get; set; }
     public Guid StudentId { get; set; }
     public Guid SubjectId { get; set; }
@@ -30,6 +31,7 @@ public class LearningGoalDto
 
 public class CreateLearningGoalRequest
 {
+    public List<string> SelfReportedPrerequisiteSkillIds { get; set; } = new();
     public Guid SubjectId { get; set; }
     public Guid? ClassId { get; set; }
 

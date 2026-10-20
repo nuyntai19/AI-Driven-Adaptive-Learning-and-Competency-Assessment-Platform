@@ -7,10 +7,12 @@ import ts from "typescript";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import * as recommendation from "../src/utils/learningPathRecommendation.ts";
+import * as learningScope from "../src/utils/learningScope.ts";
 import type { CustomizePathProposalRequest } from "../src/types/learningPath.ts";
 
 const require = createRequire(import.meta.url);
 const proposal = { proposalId: "original", goalTitle: "Củng cố Tiếng Anh", availableMinutesPerDay: 25, availableDaysPerWeek: 4,
+  confirmedSkills: [],
   practiceQuestionsPerSet: 7, deadlineDate: null, startingBaselineSummary: "Dựa trên bài làm", milestones: [
     { order: 1, title: "Thì", skillIds: ["101"], missions: [{ skillId: "101", purpose: "Practice", isProbe: false, questionCount: 7, estimatedSets: 4 }] },
     { order: 2, title: "Đọc hiểu", skillIds: ["103"], missions: [{ skillId: "103", purpose: "Practice", isProbe: false, questionCount: 7, estimatedSets: 2 }] }] };
@@ -123,6 +125,8 @@ function modal() {
     "learningPathRecommendation": recommendation, "learningMission": { pathChangeBlockersFromError: () => [] },
     "problemDetails": { extractProblemDetails: () => ({ message: "Không lưu được" }) },
     "studyTime": { formatStudyMinutes: (value: number) => `${value} phút` },
+    "learningScope": learningScope,
+    "SkillScopeSelector": { SkillScopeSelector: () => null },
     "ProposalCustomizationForm": { ProposalCustomizationForm: CustomForm },
   });
   const props = { isOpen: true, onClose() {}, onAccepted() {}, subjectId: "english", subjectName: "Tiếng Anh", skills: [] };

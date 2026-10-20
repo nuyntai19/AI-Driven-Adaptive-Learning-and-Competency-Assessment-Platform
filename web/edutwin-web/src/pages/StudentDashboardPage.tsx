@@ -3,7 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getStudentDashboard } from "../api/dashboardsApi";
 import { getStudentAssignments } from "../api/assignmentsApi";
-import { getDetailedLearningPath } from "../api/learningPathApi";
+import { getLearningAgenda } from "../api/learningPathApi";
 import type { StudentDashboardDataDto } from "../types/dashboards";
 import { getSubjectTheme } from "../components/student/subjectTheme";
 import { StudentProgressTrack } from "../components/student/StudentProgressTrack";
@@ -41,10 +41,10 @@ export const StudentDashboardPage: React.FC = () => {
     staleTime: 60 * 1000,
   });
 
-  const { data: detailedPathData } = useQuery({
-    queryKey: ["studentLearningPathToday", selectedSubjectId, selectedClassId],
-    queryFn: () => getDetailedLearningPath(selectedSubjectId, selectedClassId || undefined),
-    enabled: !!selectedSubjectId,
+  const { data: agenda, isPending: agendaLoading, isError: agendaError } = useQuery({
+    queryKey: ["learning-agenda", "dashboard", selectedSubjectId, selectedClassId, 15],
+    queryFn: () => getLearningAgenda(selectedSubjectId, 15, selectedClassId || undefined),
+    enabled: !!selectedSubjectId && !isHistory,
     staleTime: 60 * 1000,
   });
 
@@ -59,40 +59,9 @@ export const StudentDashboardPage: React.FC = () => {
     return active[0] || null;
   }, [assignmentsData?.data]);
 
-  const detailedPath = detailedPathData?.data;
-
-  const activeSession = useMemo(() => {
-    if (!detailedPath) return null;
-    for (const phase of detailedPath.phases) {
-      for (const week of phase.weeks) {
-        for (const session of week.sessions) {
-          if (session.status === "InProgress" || session.status === "NeedsReview" || session.status === "Grading") {
-            return session;
-          }
-        }
-      }
-    }
-    return null;
-  }, [detailedPath]);
-
-  const nextEligibleSession = useMemo(() => {
-    if (activeSession) return null;
-    if (detailedPath?.nextSession && detailedPath.nextSession.status !== "Completed") {
-      return detailedPath.nextSession;
-    }
-    if (detailedPath) {
-      for (const phase of detailedPath.phases) {
-        for (const week of phase.weeks) {
-          for (const session of week.sessions) {
-            if (session.status === "NotStarted") {
-              return session;
-            }
-          }
-        }
-      }
-    }
-    return null;
-  }, [detailedPath, activeSession]);
+  // Use the same current agenda as the learning-path page, not the retired path engine.
+  const activeSession = agenda?.ongoingRuns.find(m => m.canStart && m.status === "InProgress") ?? null;
+  const nextEligibleSession = !activeSession && agenda?.primaryMission?.canStart ? agenda.primaryMission : null;
 
   if (isLoading) {
     return (
@@ -128,7 +97,7 @@ export const StudentDashboardPage: React.FC = () => {
     );
   }
 
-  const { student, subject, goal, masteryRadar = [], progressLine = [], action } = data;
+  const { student, subject, goal, masteryRadar = [], progressLine = [] } = data;
   if (data.academicContext?.message && data.academicContext.curriculums.length === 0) return (
     <div className="student-shell w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <h1 className="text-2xl font-bold">Hành trình học tập của {student.fullName}</h1>
@@ -164,16 +133,10 @@ export const StudentDashboardPage: React.FC = () => {
   }));
 
   const goalDiff = goal.hasGoal ? goalGapLabel(goal.targetScore, goal.currentPredictedScore) : "—";
-  const nextTargetTopic = action?.topicName || masteryRadar[0]?.topicName || "Hàm số & Khảo sát hàm";
-  const missionExplanation =
-    action?.explanation ||
-    (goal.hasGoal
-      ? `Dựa trên phân tích năng lực Digital Twin, đây là chặng kiến thức tiếp theo cần củng cố để đạt mốc mục tiêu ${goal.targetScore} điểm.`
-      : "Dựa trên phân tích năng lực Digital Twin, đây là chặng kiến thức tiếp theo bạn nên củng cố.");
-
-  const practiceLink = selectedSubjectId
-    ? `/hoc-tap/luyen-tap?subjectId=${selectedSubjectId}`
-    : `/hoc-tap/luyen-tap`;
+  const pathLink = studentScopeUrl("/hoc-tap/lo-trinh-hoc-tap", searchParams);
+  const practiceLink = urgentAssignment
+    ? studentScopeUrl(`/hoc-tap/bai-tap/${urgentAssignment.assignmentId}`, searchParams)
+    : pathLink;
 
 
 
@@ -207,7 +170,7 @@ export const StudentDashboardPage: React.FC = () => {
             to={practiceLink}
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-stone-200 text-white dark:text-stone-900 font-semibold transition-colors"
           >
-            <span>Luyện tập ngay</span>
+            <span>{urgentAssignment ? "Làm bài tập ngay" : "Học theo lộ trình"}</span>
             <span className="text-[11px]">→</span>
           </Link>
         </div>}
@@ -275,10 +238,10 @@ export const StudentDashboardPage: React.FC = () => {
                   <div className="space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-purple-600 text-white animate-pulse">
-                        2. Phiên AI đang thực hiện
+                        2. Nhiệm vụ đang thực hiện
                       </span>
                       <span className="text-[11px] font-bold text-purple-700 dark:text-purple-300">
-                        ⏱ {activeSession.estimatedMinutes} phút
+                        ⏱ {activeSession.estimatedDurationMinutes} phút
                       </span>
                     </div>
                     <h4 className="text-sm font-bold text-slate-900 dark:text-white">
@@ -289,7 +252,7 @@ export const StudentDashboardPage: React.FC = () => {
                     </p>
                   </div>
                   <Link
-                    to={studentScopeUrl(`/hoc-tap/lo-trinh-hoc-tap?subjectId=${selectedSubjectId}`, searchParams)}
+                    to={pathLink}
                     className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-xs transition-colors text-center whitespace-nowrap self-start sm:self-auto cursor-pointer"
                   >
                     Tiếp tục học ngay →
@@ -303,10 +266,10 @@ export const StudentDashboardPage: React.FC = () => {
                   <div className="space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-indigo-600 text-white">
-                        3. Phiên AI tiếp theo
+                        3. Nhiệm vụ tiếp theo
                       </span>
                       <span className="text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
-                        Mục tiêu: {nextEligibleSession.targetMastery}% mastery
+                        ⏱ {nextEligibleSession.estimatedDurationMinutes} phút
                       </span>
                     </div>
                     <h4 className="text-sm font-bold text-slate-900 dark:text-white">
@@ -317,39 +280,42 @@ export const StudentDashboardPage: React.FC = () => {
                     </p>
                   </div>
                   <Link
-                    to={selectedSubjectId ? `/hoc-tap/lo-trinh-hoc-tap?subjectId=${selectedSubjectId}` : `/hoc-tap/lo-trinh-hoc-tap`}
+                    to={pathLink}
                     className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition-colors text-center whitespace-nowrap self-start sm:self-auto cursor-pointer"
                   >
-                    Bắt đầu phiên →
+                    Mở nhiệm vụ trong lộ trình →
                   </Link>
                 </div>
               )}
 
               {/* Tier 4: Hoạt động tùy chọn / Luyện tập tự do */}
-              <div className="p-4 rounded-xl border border-stone-200 dark:border-stone-800 bg-stone-50/60 dark:bg-stone-900/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+              {!activeSession && !nextEligibleSession && <div className="p-4 rounded-xl border border-stone-200 dark:border-stone-800 bg-stone-50/60 dark:bg-stone-900/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
                 <div className="space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-stone-600 text-white">
-                      4. Hoạt động tùy chọn
+                      Kế hoạch học tập cá nhân
                     </span>
                     <span className="text-[11px] text-stone-500">
-                      Luyện tập tự do theo năng lực
+                      Tìm hiểu, luyện có hướng dẫn và tự kiểm tra
                     </span>
                   </div>
                   <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                    {nextTargetTopic}
+                    {selectedSubjectId ? "Chọn nhiệm vụ phù hợp" : "Chọn môn và nhiệm vụ học tập"}
                   </h4>
                   <p className="text-xs text-stone-500 dark:text-stone-400">
-                    {missionExplanation}
+                    {!selectedSubjectId ? "Mở lộ trình và chọn môn để xem các nhiệm vụ có thể thực hiện."
+                      : agendaLoading ? "Đang kiểm tra kế hoạch hôm nay…"
+                      : agendaError ? "Chưa tải được kế hoạch hôm nay. Mở lộ trình để thử lại."
+                      : agenda?.agendaMessage || "Thiết lập mục tiêu trong lộ trình để nhận nhiệm vụ phù hợp với bạn."}
                   </p>
                 </div>
                 <Link
-                  to={practiceLink}
+                  to={pathLink}
                   className="px-4 py-2 rounded-xl bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-stone-200 text-white dark:text-stone-900 font-bold text-xs shadow-xs transition-colors text-center whitespace-nowrap self-start sm:self-auto cursor-pointer"
                 >
-                  Luyện tự do →
+                  Xem lộ trình học tập →
                 </Link>
-              </div>
+              </div>}
             </div>
           </div>
         </div>}

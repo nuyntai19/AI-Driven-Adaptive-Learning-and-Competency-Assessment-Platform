@@ -21,6 +21,8 @@ public static class LearningPathFollowUp
         var plan = JsonSerializer.Deserialize<PathProposalDto>(path.PlanJson.RootElement.GetRawText(), LearningPathV4Data.Json);
         var milestone = plan?.Milestones.FirstOrDefault(m => m.SkillIds.Contains(run.Session.TopicNodeId.ToString()));
         if (plan == null || milestone == null) return;
+        // Placement gathers a baseline across the chosen scope; remediation starts in the next accepted route.
+        if (plan.IsPlacement) return;
         var original = milestone.Missions.FirstOrDefault(m => m.MissionId == run.SessionId.ToString());
         var purpose = original?.Purpose ?? run.Session.Objective;
         var trigger = $"FollowUp:{run.SessionRunId}:{outcome}";

@@ -4,6 +4,9 @@ namespace EduTwin.Contracts.Assignments;
 
 public sealed class AssignmentResultSummaryDto
 {
+    public System.Collections.Generic.List<AssignmentKnowledgeAreaDto> KnowledgeAreas { get; set; } = new();
+    public int UnclassifiedQuestionCount { get; set; }
+    public int? EstimatedMinutes { get; set; }
     public int TotalQuestionCount { get; set; }
     public int AnsweredQuestionCount { get; set; }
     public int EvaluatedQuestionCount { get; set; }
@@ -21,4 +24,14 @@ public sealed class AssignmentResultSummaryDto
     public string? FinalTeacherNote { get; set; }
     public string? FinalReviewedByName { get; set; }
     public DateTime? FinalReviewedAt { get; set; }
+}
+
+public sealed class AssignmentKnowledgeAreaDto
+{
+    public string SkillId { get; set; } = "";
+    public string SkillName { get; set; } = "";
+    public string TopicName { get; set; } = "";
+    public int QuestionCount { get; set; }
+    public int EvaluatedQuestionCount { get; set; }
+    public int CorrectQuestionCount { get; set; }
 }

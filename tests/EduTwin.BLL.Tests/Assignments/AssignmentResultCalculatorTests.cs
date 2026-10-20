@@ -21,6 +21,43 @@ namespace EduTwin.BLL.Tests.Assignments;
 public class AssignmentResultCalculatorTests
 {
     [Fact]
+    public async Task KnowledgeScope_UsesQuestionTags_SeparatesPendingAndVoided_AndHonorsTeacherCorrections()
+    {
+        var (context, center) = CreateInMemoryContext(); await using var db = context;
+        var assignment = Guid.NewGuid(); var student = Guid.NewGuid(); var subject = Guid.NewGuid(); var now = DateTime.UtcNow;
+        db.Assignments.Add(new Assignment { CenterId = center, AssignmentId = assignment, Title = "sdadas", Status = AssignmentStatus.Published, CreatedAt = now, UpdatedAt = now });
+        db.KnowledgeNodes.Add(new EduTwin.DAL.KnowledgeGraph.KnowledgeNode { CenterId = center, SubjectId = subject, NodeId = 100,
+            NodeName = "Thì", NodeCode = "TENSES", NodeType = EduTwin.Contracts.KnowledgeGraph.NodeType.Topic, CreatedAt = now, UpdatedAt = now });
+        foreach (var id in new[] { 101ul, 102ul }) db.KnowledgeNodes.Add(new EduTwin.DAL.KnowledgeGraph.KnowledgeNode {
+            CenterId = center, SubjectId = subject, NodeId = id, ParentNodeId = 100, NodeName = id == 101 ? "Hiện tại đơn" : "Quá khứ hoàn thành",
+            NodeCode = $"SKILL-{id}", NodeType = EduTwin.Contracts.KnowledgeGraph.NodeType.Skill, CreatedAt = now, UpdatedAt = now });
+        for (ulong i = 1; i <= 4; i++)
+        {
+            db.Questions.Add(new Question { CenterId = center, SubjectId = subject, QuestionId = i, PrimaryTopicNodeId = i == 2 ? 102ul : i == 3 ? 999ul : 101ul,
+                QuestionText = "Question", CorrectAnswer = "Answer", Solution = "Explanation", LanguageCode = "en", MaxScore = 10, EstimatedTimeSeconds = 120,
+                CreatedAt = now, UpdatedAt = now });
+            db.AssignmentQuestions.Add(new AssignmentQuestion { CenterId = center, AssignmentId = assignment, QuestionId = i,
+                OrderIndex = (uint)i, Points = 10, IsVoided = i == 4, CreatedAt = now });
+        }
+        db.Attempts.Add(new Attempt { CenterId = center, StudentId = student, AssignmentId = assignment, QuestionId = 1, AttemptId = 1,
+            FinalAnswer = "Answer", ReasoningLanguage = "vi", IsCorrect = false, AwardedScore = 0, CreatedAt = now, UpdatedAt = now });
+        db.ReasoningAnalyses.Add(new ReasoningAnalysis { CenterId = center, AttemptId = 1, AnalysisId = 1, OverrideIsCorrect = true,
+            OverrideAwardedScore = 10, OverrideVersion = 1, SchemaVersion = "ai-analysis-v1", Feedback = "Đã sửa điểm",
+            MissingSteps = JsonDocument.Parse("[]"), RootCauseNodeIds = JsonDocument.Parse("[]"), CreatedAt = now, UpdatedAt = now });
+        await db.SaveChangesAsync();
+        var result = await new AssignmentResultCalculator(db).CalculateForSingleAssignmentAsync(center, student, assignment, default);
+        Assert.Equal(2, result.KnowledgeAreas.Count);
+        var present = Assert.Single(result.KnowledgeAreas, a => a.SkillId == "101");
+        Assert.Equal("Thì", present.TopicName); Assert.Equal("Hiện tại đơn", present.SkillName);
+        Assert.Equal(1, present.QuestionCount); Assert.Equal(1, present.CorrectQuestionCount);
+        Assert.Equal(0, Assert.Single(result.KnowledgeAreas, a => a.SkillId == "102").EvaluatedQuestionCount);
+        Assert.Equal(1, result.UnclassifiedQuestionCount); Assert.Equal(1, result.VoidedQuestionCount);
+        Assert.Equal(6, result.EstimatedMinutes);
+        var another = await new AssignmentResultCalculator(db).CalculateForSingleAssignmentAsync(center, Guid.NewGuid(), assignment, default);
+        Assert.All(another.KnowledgeAreas, a => Assert.Equal(0, a.EvaluatedQuestionCount));
+    }
+
+    [Fact]
     public async Task AIProposal_IsAnalyzedButNotFinalScore_AndAwaitingApprovalIsNotIncorrect()
     {
         var (context, center) = CreateInMemoryContext(); await using var db = context;

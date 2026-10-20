@@ -238,6 +238,7 @@ export interface EvaluateSessionResponse {
 
 // --- V4 Personalized Learning Path Interfaces ---
 export interface LearningGoalDto {
+  selfReportedPrerequisiteSkillIds?: string[];
   goalId: string;
   studentId: string;
   subjectId: string;
@@ -257,6 +258,7 @@ export interface LearningGoalDto {
 }
 
 export interface CreateLearningGoalRequest {
+  selfReportedPrerequisiteSkillIds?: string[];
   subjectId: string;
   classId?: string;
   goalType?: string;
@@ -297,6 +299,10 @@ export interface ProposedMilestoneDto {
 }
 
 export interface PathProposalDto {
+  selfReportedPrerequisiteSkillIds?: string[];
+  isPlacement?: boolean;
+  goalType?: string;
+  requestedSkillIds?: string[];
   practiceQuestionsPerSet?: number;
   practiceQuestionsBySkill?: Record<string, number>;
   availableMinutesPerDay?: number;
@@ -335,6 +341,7 @@ export interface AcceptPathProposalResponse {
 }
 
 export interface SkillCapabilityStatusDto {
+  topicId?: string | null;
   skillId: string;
   skillName: string;
   topicName: string;
@@ -427,6 +434,16 @@ export interface PathHistoryItemDto {
 }
 
 export interface LearningAgendaDto {
+  selfReportedPrerequisiteSkillIds?: string[];
+  isPlacement?: boolean;
+  goalType?: string;
+  deadlineDate?: string | null;
+  targetSkillIds?: string[];
+  availableMinutesPerDay?: number;
+  availableDaysPerWeek?: number;
+  placementReport?: PlacementReportDto | null;
+  canAdvance?: boolean;
+  nextSkillIds?: string[];
   insights: LearningInsightsDto;
   recentChanges: string[];
   learningPathId?: string | null;
@@ -446,6 +463,19 @@ export interface LearningAgendaDto {
   pathHistory?: PathHistoryItemDto[];
   planOutdated?: boolean;
   progress?: GoalProgressDto | null;
+}
+
+export interface PlacementReportDto {
+  totalSkills: number;
+  assessedSkills: number;
+  isComplete: boolean;
+  scoreOutOfTen?: number | null;
+  skills: {
+    skillId: string; skillName: string; topicName: string;
+    answeredQuestions: number; correctAnswers: number; scoreOutOfTen?: number | null;
+    earnedScore: number; possibleScore: number;
+    status: string; recommendation: string; estimatedPracticeSets: number;
+  }[];
 }
 
 export interface LearningInsightsDto {

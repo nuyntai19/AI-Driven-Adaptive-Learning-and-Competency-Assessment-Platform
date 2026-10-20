@@ -67,28 +67,55 @@ public static class LearningPathV4Data
             t.SubjectId == subject && ids.Contains(t.TopicNodeId)).ToDictionaryAsync(t => t.TopicNodeId, ct);
         var edges = await db.KnowledgeEdges.AsNoTracking().Where(e => e.CenterId == center && e.SubjectId == subject &&
             e.RelationType == RelationType.PrerequisiteOf).ToListAsync(ct);
+        var hierarchy = await db.KnowledgeNodes.AsNoTracking().Where(n => n.CenterId == center && n.SubjectId == subject && n.IsActive)
+            .ToDictionaryAsync(n => n.NodeId, ct);
+        bool Under(ulong leaf, ulong ancestor)
+        {
+            var visited = new HashSet<ulong>();
+            while (visited.Add(leaf) && hierarchy.TryGetValue(leaf, out var current))
+            {
+                if (leaf == ancestor) return true;
+                if (!current.ParentNodeId.HasValue) break;
+                leaf = current.ParentNodeId.Value;
+            }
+            return false;
+        }
         var statuses = new List<SkillCapabilityStatusDto>();
         foreach (var node in nodes)
         {
+            var topic = node;
+            var ancestors = new HashSet<ulong> { node.NodeId };
+            while (topic.ParentNodeId.HasValue && hierarchy.TryGetValue(topic.ParentNodeId.Value, out var parent) &&
+                parent.NodeType != NodeType.Subject && ancestors.Add(parent.NodeId))
+            {
+                topic = parent;
+                if (topic.NodeType == NodeType.Topic) break;
+            }
+            var prerequisites = edges.Where(e => Under(node.NodeId, e.TargetNodeId)).SelectMany(e =>
+                nodes.Where(n => Under(n.NodeId, e.SourceNodeId)).Select(n => n.NodeId.ToString())
+                    .DefaultIfEmpty(e.SourceNodeId.ToString())).Where(id => id != node.NodeId.ToString()).Distinct().ToList();
             var related = attempts.Where(a => a.Question.PrimaryTopicNodeId == node.NodeId).ToList();
             var usable = related.Where(a => !a.IsPostFeedback && a.SolutionExposedAt == null &&
                 a.CreatedAt >= now.AddDays(-30) && latest.TryGetValue(a.AttemptId, out var e) &&
                 !e.RequiresTeacherReview && e.TrustLevel != EvidenceTrustLevel.ReviewOnly)
-                .GroupBy(a => a.QuestionId).Select(g => g.OrderBy(a => a.CreatedAt).First()).ToList();
+                .GroupBy(a => a.QuestionId).Select(g => g.OrderByDescending(a => a.CreatedAt).ThenByDescending(a => a.AttemptId).First())
+                .OrderByDescending(a => a.CreatedAt).ThenByDescending(a => a.AttemptId).Take(5).ToList();
             bool Correct(DAL.AssessmentAndReasoning.Attempt a) => overrides.GetValueOrDefault(a.AttemptId) ?? a.IsCorrect ?? false;
-            var confirmed = usable.Count >= 5 && usable.Count(Correct) >= Math.Ceiling(usable.Count * .8m);
+            // Recent independent evidence can demonstrate recovery; old baseline errors must not permanently dilute a new check.
+            var guessable = usable.Count(a => a.Question.QuestionType == QuestionType.MultipleChoice) * 2 > usable.Count;
+            var confirmed = usable.Count >= 5 && usable.Count(Correct) >= (guessable ? usable.Count : Math.Ceiling(usable.Count * .8m));
             var state = confirmed ? "Confirmed" : usable.Count > 0
                 ? (usable.Count(Correct) < usable.Count ? "Developing" : "Demonstrated") : "Unknown";
             var hasContent = content.Any(c => Matches(c, node)) || questions.Any(q => q.PrimaryTopicNodeId == node.NodeId) ||
                 !string.IsNullOrWhiteSpace(node.Description);
             statuses.Add(new SkillCapabilityStatusDto
             {
-                SkillId = node.NodeId.ToString(), SkillName = node.NodeName, TopicName = node.NodeName,
+                SkillId = node.NodeId.ToString(), SkillName = node.NodeName, TopicName = topic.NodeName, TopicId = topic.NodeId.ToString(),
                 Description = node.Description ?? "", State = state, Availability = hasContent ? "Available" : "ContentUnavailable",
                 EvidenceCount = (uint)usable.Count, RequiresProbe = usable.Count == 0,
                 MasteryScore = twins.TryGetValue(node.NodeId, out var twin) && twin.EvidenceCount > 0 ? twin.MasteryPercentage : null,
-                PrerequisiteSkillIds = edges.Where(e => e.TargetNodeId == node.NodeId).Select(e => e.SourceNodeId.ToString()).Distinct().ToList(),
-                Rationale = confirmed ? $"Có {usable.Count} câu độc lập với bằng chứng hợp lệ trong 30 ngày."
+                PrerequisiteSkillIds = prerequisites,
+                Rationale = confirmed ? $"Đạt trên {usable.Count} câu độc lập có bằng chứng hợp lệ gần nhất trong 30 ngày."
                     : usable.Count > 0 ? $"Có {usable.Count} câu hợp lệ; cần tiếp tục học hoặc kiểm tra để xác nhận."
                     : related.Count > 0 ? "Có bài làm nhưng chưa đủ bằng chứng độc lập đã được xác nhận; không suy ra năng lực từ điểm tổng."
                     : "Chưa có bằng chứng cho kỹ năng này; không coi là năng lực thấp."

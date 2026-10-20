@@ -12,6 +12,7 @@ import { TimeBudgetSlider } from "../components/learningPathV4/TimeBudgetSlider"
 import { formatStudyMinutes, splitReason } from "../utils/studyTime";
 import type { AgendaItemDto, MissionRunSummaryDto } from "../types/learningPath";
 import { missionAction } from "../utils/learningMission";
+import { PlacementReport } from "../components/learningPathV4/PlacementReport";
 
 const activityLabels: Record<string, string> = { Study: "Tìm hiểu và ví dụ", Practice: "Luyện có hướng dẫn",
   IndependentCheck: "Tự kiểm tra", WorkedExample: "Ví dụ từng bước", FindError: "Tìm lỗi", Explore: "Khám phá",
@@ -52,7 +53,11 @@ export function StudentLearningPathPage() {
   // The slider updates its readout immediately; the plan is recalculated once dragging pauses.
   useEffect(() => { const timer = setTimeout(() => setMinutes(sliderMinutes), 350); return () => clearTimeout(timer); }, [sliderMinutes]);
   const [showGoal, setShowGoal] = useState(false);
-  const [recommended, setRecommended] = useState(false);
+  const [entryMode, setEntryMode] = useState<"Placement" | "Foundation" | "Update" | "Next" | undefined>();
+  const [initialScope, setInitialScope] = useState<string[]>([]);
+  const openSetup = (mode?: typeof entryMode, scope: string[] = []) => {
+    setEntryMode(mode); setInitialScope(scope); setShowGoal(true);
+  };
   const [mission, setMission] = useState<AgendaItemDto | null>(null);
   const [acceptedNotice, setAcceptedNotice] = useState("");
   const map = useQuery({ queryKey: ["learning-paths", "capability-map", actor?.centerId, actor?.userId, subjectId, access.classId],
@@ -80,18 +85,39 @@ export function StudentLearningPathPage() {
         <select id="path-subject" value={subjectId} className="rounded-xl border border-slate-300 bg-white p-2.5 dark:bg-slate-900"
           onChange={e => { const next = new URLSearchParams(params); next.set("subjectId", e.target.value); next.delete("pathId"); next.delete("sessionId"); setParams(next); setMission(null); setShowGoal(false); }}>
           {subjects.data?.data.map(s => <option key={s.subjectId} value={s.subjectId}>{s.subjectName}</option>)}
-        </select><button className={action} onClick={() => { setRecommended(false); setShowGoal(true); }} disabled={!map.data?.skills.length}>Thiết lập mục tiêu</button></div>
+        </select><button className={action} onClick={() => openSetup()} disabled={!map.data?.skills.length}>Thiết lập mục tiêu</button>
+        {agenda.data?.learningPathId && !agenda.data.isPlacement && <button className="rounded-xl border px-4 py-2.5 text-sm" onClick={() => openSetup("Placement", agenda.data?.targetSkillIds)} disabled={!map.data?.skills.length}>Kiểm tra đầu vào</button>}</div>
     </header>
     {(map.error || agenda.error) && <div role="alert" className="rounded-xl bg-rose-50 p-4 text-rose-800">
       Không thể tải lộ trình. {((map.error ?? agenda.error) as any)?.response?.data?.detail ?? (map.error ?? agenda.error)?.message}
       <button className="ml-3 underline" onClick={() => { void map.refetch(); void agenda.refetch(); }}>Thử lại</button>
     </div>}
-    {agenda.data?.insights && <section className={`${panel} border-indigo-200`} aria-labelledby="path-insights-title">
+    {agenda.data && !agenda.data.learningPathId && <section className={`${panel} border-indigo-200`} aria-labelledby="starting-point-title">
+      <p className="text-sm font-semibold text-indigo-600">Bắt đầu học cùng EduTwin</p>
+      <h2 id="starting-point-title" className="mt-2 text-2xl font-semibold">Chưa biết bắt đầu từ đâu?</h2>
+      <p className="mt-3 max-w-2xl text-sm text-slate-500">Chọn phần muốn học, EduTwin sẽ kiểm tra kiến thức liên quan và đề xuất việc cần làm tiếp theo. Em có thể bắt đầu từ nền tảng nếu muốn học ngay.</p>
+      <div className="mt-5 flex flex-wrap gap-3"><button className={action} disabled={!map.data?.skills.length} onClick={() => openSetup("Placement")}>Tìm điểm xuất phát · Kiểm tra đầu vào</button>
+        <button className="rounded-xl border px-4 py-2.5 text-sm font-semibold" disabled={!map.data?.skills.length} onClick={() => openSetup("Foundation")}>Học từ nền tảng</button></div>
+      {!map.data?.skills.length && <p className="mt-3 text-sm text-amber-700">Môn học chưa có kỹ năng trong giáo trình. Cần giáo viên bổ sung để bắt đầu.</p>}
+    </section>}
+    {agenda.data?.placementReport && <PlacementReport report={agenda.data.placementReport} pending={agenda.data.ongoingRuns.length > 0}
+      onBuild={() => openSetup("Update", agenda.data?.targetSkillIds)} />}
+    {!!agenda.data?.selfReportedPrerequisiteSkillIds?.length && <section className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-950">
+      <p>Nền tảng em tự xác nhận và chọn bỏ qua: <strong>{agenda.data.selfReportedPrerequisiteSkillIds.map(id => map.data?.skills.find(s => s.skillId === id)?.skillName ?? id).join(", ")}</strong>.</p>
+      <p className="mt-1">Tuyến tập trung vào các phần em đã chọn. Thông tin tự xác nhận chưa thay thế kết quả đánh giá trên web; em có thể cập nhật mục tiêu để ôn thêm bất cứ lúc nào.</p>
+    </section>}
+    {agenda.data?.canAdvance && <section className={`${panel} border-emerald-200`}>
+      <h2 className="text-xl font-semibold">Em đã nắm vững phạm vi của chặng này</h2>
+      <p className="mt-2 text-sm text-slate-500">Các kỹ năng đã có bằng chứng độc lập hợp lệ. Em có thể chọn chặng tiếp theo; lịch sử bài làm tiếp tục được dùng để lập tuyến mới.</p>
+      <button className={`${action} mt-4`} onClick={() => openSetup("Next", agenda.data?.nextSkillIds)}>{agenda.data.nextSkillIds?.length ? "Khám phá và học phần tiếp theo" : "Chọn mục tiêu tiếp theo"}</button>
+    </section>}
+    {agenda.data?.insights && agenda.data.insights.answerCount > 0 && <section className={`${panel} border-indigo-200`} aria-labelledby="path-insights-title">
       <div className="flex flex-wrap items-start justify-between gap-5"><div className="max-w-2xl">
         <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">Từ bài làm của bạn · {agenda.data.insights.windowDays} ngày gần đây</p>
         <h2 id="path-insights-title" className="mt-2 text-2xl font-semibold">Lộ trình đề xuất cho bạn</h2>
         <p className="mt-3 text-sm leading-relaxed">{agenda.data.insights.summary}</p></div>
-        <button className={action} disabled={!map.data?.skills.length} onClick={() => { setRecommended(true); setShowGoal(true); }}>Xem tuyến đề xuất</button></div>
+        <button className={action} disabled={!map.data?.skills.length} onClick={() => agenda.data?.learningPathId
+          ? openSetup("Update", agenda.data.targetSkillIds) : openSetup("Update", agenda.data?.insights?.suggestedSkillIds)}>Cập nhật lộ trình từ bài làm</button></div>
       <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">{[
         [agenda.data.insights.answerCount, "lượt trả lời"], [agenda.data.insights.assignmentCount, "bài tập đã tham gia"],
         [agenda.data.insights.gradedQuestionCount, "câu khác nhau đã chấm"],
@@ -107,9 +133,9 @@ export function StudentLearningPathPage() {
     </section>}
     {agenda.data?.planOutdated && <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
       <p>Tuyến này được tạo trước khi có vòng luyện theo kết quả. Cập nhật để mỗi kỹ năng được luyện nhiều bộ ngắn tùy mức độ yếu; bài làm cũ vẫn được giữ và dùng để tính.</p>
-      <button className={action} disabled={!map.data?.skills.length} onClick={() => { setRecommended(true); setShowGoal(true); }}>Xem tuyến cập nhật</button>
+      <button className={action} disabled={!map.data?.skills.length} onClick={() => openSetup("Update", agenda.data?.targetSkillIds)}>Xem tuyến cập nhật</button>
     </div>}
-    {agenda.data?.progress && agenda.data.progress.totalSkills > 0 && <section className={panel} aria-label="Tiến độ mục tiêu">
+    {!agenda.data?.isPlacement && agenda.data?.progress && agenda.data.progress.totalSkills > 0 && <section className={panel} aria-label="Tiến độ mục tiêu">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div><p className="text-sm text-slate-500">Tiến độ mục tiêu</p>
           <p className="mt-1 text-2xl font-semibold">{agenda.data.progress.confirmedSkills}/{agenda.data.progress.totalSkills} kỹ năng đã vững</p>
@@ -139,15 +165,15 @@ export function StudentLearningPathPage() {
         <button className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm" onClick={() => setMission(m)}>{m.activeRunId ? "Tiếp tục" : "Mở"}</button>
       </li>)}</ol>}
       {agenda.data.pacingNote && <p className="mt-4 rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:bg-slate-800 dark:text-slate-300">{agenda.data.pacingNote}</p>}
-      {!agenda.data.learningPathId && <button className={`${action} mt-4`} disabled={!map.data?.skills.length} onClick={() => setShowGoal(true)}>Chọn mục tiêu và xem trước tuyến học</button>}
+      {!agenda.data.learningPathId && <button className={`${action} mt-4`} disabled={!map.data?.skills.length} onClick={() => openSetup("Placement")}>Chọn phần học và tìm điểm xuất phát</button>}
     </section>}
     {agenda.data && (agenda.data.reviewDueTasks.length > 0 || agenda.data.recentChanges?.length > 0) && <section className={panel}>
       <h2 className="text-xl font-semibold">Tiến bộ và lịch ôn</h2>
       {agenda.data.recentChanges?.map((r, i) => <p className="mt-3 text-sm text-slate-500" key={i}>{r}</p>)}
       {agenda.data.reviewDueTasks.map(r => <div key={r.missionId} className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-indigo-50 p-4 dark:bg-indigo-950/40"><p className="text-sm">{r.title} · {r.availableFrom ? new Date(r.availableFrom).toLocaleDateString("vi-VN") : "Đến lượt ôn"}</p><button disabled={!r.canStart} className={action} onClick={() => setMission(r)}>{r.canStart ? "Ôn ngay" : "Đã hẹn lịch"}</button></div>)}
     </section>}
-    <section className="space-y-4"><div><h2 className="text-xl font-semibold">Các chặng trong tuyến của bạn</h2><p className="mt-1 text-sm text-slate-500">Mỗi chặng gắn với một kỹ năng. Phần đã có bằng chứng sẽ được giảm luyện lặp; nội dung còn thiếu được nêu rõ.</p></div>
-      {missions.length === 0 && <p className={panel}>Chưa có tuyến được xác nhận cho phạm vi này. Hãy chọn mục tiêu ở trên; các bài làm và lộ trình trước vẫn được giữ trong lịch sử.</p>}
+    <section className="space-y-4"><div><h2 className="text-xl font-semibold">{agenda.data?.isPlacement ? "Các phần kiểm tra đầu vào" : "Các chặng trong tuyến của bạn"}</h2><p className="mt-1 text-sm text-slate-500">{agenda.data?.isPlacement ? "Kiểm tra theo từng kỹ năng. Hoàn thành phần đang làm rồi chuyển sang phần tiếp theo; có thể lưu và quay lại sau." : "Mỗi chặng gắn với một kỹ năng. Phần đã có bằng chứng sẽ được giảm luyện lặp; nội dung còn thiếu được nêu rõ."}</p></div>
+      {missions.length === 0 && <p className={panel}>{agenda.data?.isPlacement ? "Các phần đã chọn đã có bằng chứng hợp lệ. Xem đánh giá đầu vào để chọn tuyến học tiếp theo." : "Chọn phần muốn học và tìm điểm xuất phát ở trên để bắt đầu. Các bài làm và tuyến trước được giữ trong lịch sử."}</p>}
       {[...new Set(missions.map(m => m.skillId))].map((id, index) => {
         const group = missions.filter(m => m.skillId === id); const skill = map.data?.skills.find(s => s.skillId === id);
         return <article className={panel} key={id}><div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-100 font-semibold text-indigo-800">{index + 1}</span>
@@ -180,7 +206,7 @@ export function StudentLearningPathPage() {
       <div className="mt-4 grid gap-3 sm:grid-cols-2">{map.data?.skills.map(s => <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-700" key={s.skillId}>
         <h3 className="font-semibold">{s.skillName}</h3><p className="mt-1 text-sm text-indigo-600">{stateLabels[s.state] ?? s.state}</p>
         <p className="mt-2 text-xs text-slate-500">{s.rationale}</p>{s.masteryScore != null && <p className="mt-2 text-xs">Hồ sơ năng lực: {s.masteryScore}%</p>}
-        {s.availability === "PrerequisiteBlocked" && <p className="mt-2 text-xs text-amber-700">Cần xác nhận kỹ năng nền tảng trước khi kiểm tra độc lập.</p>}
+        {s.availability === "PrerequisiteBlocked" && !s.prerequisiteSkillIds.every(id => agenda.data?.selfReportedPrerequisiteSkillIds?.includes(id) || map.data?.skills.some(p => p.skillId === id && p.state === "Confirmed")) && <p className="mt-2 text-xs text-amber-700">{agenda.data?.isPlacement ? "Nền tảng chưa được xác nhận; kiểm tra đầu vào vẫn giúp nhận biết phần đã biết." : "Cần xác nhận kỹ năng nền tảng hoặc cập nhật mục tiêu để tự xác nhận phần đã học ở trường."}</p>}
       </div>)}</div>
     </section>
     {(agenda.data?.pathHistory?.length ?? 0) > 0 && <section className={panel} aria-labelledby="path-history-title">
@@ -191,9 +217,11 @@ export function StudentLearningPathPage() {
         <p className="mt-1 text-xs text-slate-500">{new Date(h.createdAt).toLocaleDateString("vi-VN")}{h.endedAt ? ` – ${new Date(h.endedAt).toLocaleDateString("vi-VN")}` : ""} · {h.completedMissions}/{h.totalMissions} nhiệm vụ hoàn thành · {h.answeredQuestions} câu đã trả lời</p>
       </li>)}</ul>
     </section>}
-    {showGoal && <GoalAndProposalModal key={`${subjectId}:${access.classId}:${recommended}`} isOpen onClose={() => setShowGoal(false)}
-      automatic={recommended} insights={agenda.data?.insights}
-      suggestedSkillIds={recommended ? agenda.data?.insights?.suggestedSkillIds : []} recommendationSummary={recommended ? agenda.data?.insights?.summary : undefined}
+    {showGoal && <GoalAndProposalModal key={`${subjectId}:${access.classId}:${entryMode}`} isOpen onClose={() => setShowGoal(false)}
+      entryMode={entryMode} initialMinutes={agenda.data?.availableMinutesPerDay} initialDays={agenda.data?.availableDaysPerWeek}
+      initialGoalType={agenda.data?.goalType} initialTitle={agenda.data?.goalTitle ?? undefined} initialDeadline={agenda.data?.deadlineDate}
+      initialSelfReportedPrerequisiteSkillIds={entryMode === "Update" ? agenda.data?.selfReportedPrerequisiteSkillIds : undefined}
+      insights={agenda.data?.insights} suggestedSkillIds={initialScope}
       subjectId={subjectId} classId={access.classId} skills={map.data?.skills ?? []} subjectName={subject?.subjectName ?? ""}
       onOpenBlockingMission={blocked => {
         setShowGoal(false);

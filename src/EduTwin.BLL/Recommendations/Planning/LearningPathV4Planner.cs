@@ -16,19 +16,34 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
     {
         var nodes = await LearningPathV4Data.NodesAsync(db, centerId, studentId, request.SubjectId, request.ClassId, cancellationToken);
         if (request.AvailableMinutesPerDay is < 5 or > 300 || request.AvailableDaysPerWeek is < 1 or > 7 ||
-            request.Title.Length > 200 || request.Description?.Length > 2000 || request.TargetSkillIds.Count > 200 ||
-            !new[] { "Foundation", "KeepUp", "Catchup", "ImproveGrade", "ExamPrep", "Advanced", "Diagnostic" }.Contains(request.GoalType))
+            request.Title.Length > 200 || request.Description?.Length > 2000 || request.TargetSkillIds.Count > 200 || request.SelfReportedPrerequisiteSkillIds is null || request.SelfReportedPrerequisiteSkillIds.Count > 200 ||
+            !new[] { "Foundation", "KeepUp", "Catchup", "ImproveGrade", "ExamPrep", "Advanced", "Diagnostic", "Placement" }.Contains(request.GoalType))
             throw new ArgumentException("Mục tiêu, phạm vi hoặc thời lượng học không hợp lệ.");
         var skills = request.TargetSkillIds.Distinct().ToList();
         if (skills.Any(id => nodes.All(n => n.NodeId.ToString() != id)))
             throw new ArgumentException("Kỹ năng đã chọn không thuộc môn và giáo trình đang học.");
         if (nodes.Count == 0) throw new InvalidOperationException("Môn học chưa có kỹ năng trong giáo trình để lập lộ trình.");
+        var scope = new LearningGoalScope { TargetSkillIds = skills.Count > 0 ? skills : nodes.Select(n => n.NodeId.ToString()).ToList(),
+            SelfReportedPrerequisiteSkillIds = request.SelfReportedPrerequisiteSkillIds.Distinct().ToList() };
+        if (scope.SelfReportedPrerequisiteSkillIds.Count > 0)
+        {
+            var map = await GetCapabilityMapAsync(centerId, studentId, request.SubjectId, request.ClassId, cancellationToken);
+            var byId = map.Skills.ToDictionary(s => s.SkillId);
+            var visited = new HashSet<string>(scope.TargetSkillIds);
+            var queue = new Queue<string>(scope.TargetSkillIds);
+            while (queue.TryDequeue(out var id))
+                if (byId.TryGetValue(id, out var skill))
+                    foreach (var prerequisite in skill.PrerequisiteSkillIds)
+                        if (visited.Add(prerequisite)) queue.Enqueue(prerequisite);
+            if (scope.SelfReportedPrerequisiteSkillIds.Any(id => !byId.ContainsKey(id) || !visited.Contains(id) || scope.TargetSkillIds.Contains(id)))
+                throw new ArgumentException("Chỉ tự xác nhận nền tảng liên quan trong giáo trình và ngoài các phần đã chọn học.");
+        }
         var goal = new LearningGoal
         {
             GoalId = Guid.NewGuid(), CenterId = centerId, StudentId = studentId, SubjectId = request.SubjectId,
             ClassId = request.ClassId, GoalType = request.GoalType,
             Title = string.IsNullOrWhiteSpace(request.Title) ? "Kế hoạch học tập cá nhân" : request.Title.Trim(),
-            Description = request.Description, TargetSkillIds = JsonSerializer.SerializeToDocument(skills.Count > 0 ? skills : nodes.Select(n => n.NodeId.ToString()).ToList()),
+            Description = request.Description, TargetSkillIds = scope.Store(),
             DeadlineDate = request.DeadlineDate, AvailableMinutesPerDay = request.AvailableMinutesPerDay,
             AvailableDaysPerWeek = request.AvailableDaysPerWeek, PreferredPace = request.PreferredPace,
             PreferredMode = request.PreferredMode, Status = "Draft", CreatedAt = Now, UpdatedAt = Now, RowVersion = 1
@@ -71,7 +86,8 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         var map = await LearningPathV4Data.MapAsync(db, center, student, goal.SubjectId, goal.ClassId, Now, ct);
         var nodes = await LearningPathV4Data.NodesAsync(db, center, student, goal.SubjectId, goal.ClassId, ct);
         var insights = await LearningPathInsights.ReadAsync(db, center, student, goal.SubjectId, goal.ClassId, Now, ct);
-        var wanted = (JsonSerializer.Deserialize<List<string>>(goal.TargetSkillIds?.RootElement.GetRawText() ?? "[]") ?? []).ToHashSet();
+        var scope = LearningGoalScope.Read(goal.TargetSkillIds);
+        var wanted = scope.TargetSkillIds.ToHashSet();
         // Add prerequisites to the target, without silently expanding outside the permitted curriculum.
         var all = map.Skills.ToDictionary(s => s.SkillId);
         var pending = new Queue<string>(wanted);
@@ -79,7 +95,8 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         {
             var id = pending.Dequeue();
             if (!all.TryGetValue(id, out var skill)) throw new InvalidOperationException("Mục tiêu đã thay đổi phạm vi; hãy chọn lại kỹ năng.");
-            foreach (var p in skill.PrerequisiteSkillIds.Where(all.ContainsKey)) if (wanted.Add(p)) pending.Enqueue(p);
+            foreach (var p in skill.PrerequisiteSkillIds.Where(p => all.ContainsKey(p) && !scope.SelfReportedPrerequisiteSkillIds.Contains(p)))
+                if (wanted.Add(p)) pending.Enqueue(p);
         }
         var selected = map.Skills.Where(s => wanted.Contains(s.SkillId)).ToList();
         var ordered = new List<SkillCapabilityStatusDto>();
@@ -96,6 +113,9 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
             c.SubjectId == goal.SubjectId && c.Status == "Published").OrderByDescending(c => c.Version).ToListAsync(ct);
         var usedQuestionIds = await db.Attempts.AsNoTracking().Where(a => a.CenterId == center && a.StudentId == student &&
             a.Question.SubjectId == goal.SubjectId).Select(a => a.QuestionId).Distinct().ToListAsync(ct);
+        var exposedQuestionIds = await db.IssuedItems.AsNoTracking().Where(i => i.CenterId == center &&
+            i.ActivityRun.SessionRun.StudentId == student && i.SolutionExposedAt != null && i.QuestionId != null)
+            .Select(i => i.QuestionId!.Value).Distinct().ToListAsync(ct);
         var milestones = new List<ProposedMilestoneDto>();
         uint order = 0;
         foreach (var skill in ordered)
@@ -110,7 +130,20 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                     ActivityTypes = [type], EstimatedMinutes = minutes, SelectionReason = reason,
                     CanStart = canStart, ContentVersionId = contentId
                 });
-            if (skill.State != "Confirmed" || goal.GoalType == "Advanced")
+            if (goal.GoalType == "Placement")
+            {
+                if (skill.State != "Confirmed")
+                {
+                    var fresh = questions.Count(q => q.PrimaryTopicNodeId == node.NodeId &&
+                        !usedQuestionIds.Contains(q.QuestionId) && !exposedQuestionIds.Contains(q.QuestionId));
+                    Add("IndependentCheck", $"Kiểm tra đầu vào: {node.NodeName}", 10, fresh >= 5,
+                        fresh >= 5 ? "5 câu mới, từ cơ bản đến vận dụng. Không mở gợi ý hoặc lời giải trước khi nộp cả phần; kết quả dùng để lập tuyến học."
+                            : $"Còn {fresh}/5 câu mới; cần giáo viên bổ sung. Có thể lập tuyến tạm từ các phần đã kiểm tra, phần này vẫn ghi chưa đủ bằng chứng.");
+                    missions.Last().QuestionCount = 5;
+                    missions.Last().IsProbe = true;
+                }
+            }
+            if (goal.GoalType != "Placement" && (skill.State != "Confirmed" || goal.GoalType == "Advanced"))
             {
                 var authored = content.Where(c => LearningPathV4Data.Matches(c, node)).GroupBy(c => c.ActivityType).Select(g => g.First()).ToList();
                 foreach (var lesson in authored.Where(c => (skill.State != "Confirmed" || goal.GoalType != "Advanced") && c.ActivityType is "WorkedExample" or "FindError" or "Explore" or "CompleteSolution" or "Explain"))
@@ -157,13 +190,21 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                         : "Chưa có câu khó mức 4–5/5 phù hợp. Cần giáo viên bổ sung; không đổi tên câu cơ bản thành nâng cao.";
                 }
             }
-            if (!(goal.GoalType == "Advanced" && skill.State == "Confirmed"))
+            if (goal.GoalType != "Placement" && skill.State == "Confirmed" && goal.GoalType != "Advanced")
+            {
+                var reviewCount = Math.Min(5u, (uint)count);
+                Add("Review", $"Ôn nhớ lại: {node.NodeName}", reviewCount * LearningPathPacing.MinutesPerQuestion,
+                    reviewCount > 0, "Đã có bằng chứng hợp lệ; bỏ luyện cơ bản và hẹn ôn để duy trì kiến thức.");
+                missions.Last().QuestionCount = reviewCount;
+                missions.Last().AvailableFrom = Now.AddDays(2);
+            }
+            else if (goal.GoalType != "Placement" && !(goal.GoalType == "Advanced" && skill.State == "Confirmed"))
             {
             Add("IndependentCheck", $"Tự kiểm tra: {node.NodeName}", 15, count >= 5,
                 count < 5 ? $"Hiện có {count}/5 câu hợp lệ; chưa đủ để xác nhận kỹ năng."
                     : "Kiểm tra bằng câu chưa lộ đáp án; cần ít nhất 5 câu độc lập, đạt 80% và qua kiểm duyệt bằng chứng.");
             missions.Last().QuestionCount = 5;
-            if (goal.GoalType is "ExamPrep" or "Diagnostic" or "Advanced" && skill.State != "Confirmed" && skill.Availability != "PrerequisiteBlocked" && missions.Last().CanStart)
+            if (goal.GoalType is "ExamPrep" or "Diagnostic" or "Advanced" && skill.State != "Confirmed" && LearningGoalScope.PrerequisitesSatisfied(skill, map, scope.SelfReportedPrerequisiteSkillIds) && missions.Last().CanStart)
             {
                 var probe = missions.Last(); missions.RemoveAt(missions.Count - 1);
                 probe.Title = $"Kiểm tra điểm xuất phát: {node.NodeName}";
@@ -185,18 +226,23 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         var weeks = (uint)Math.Max(1, Math.Ceiling(minutes / (decimal)(goal.AvailableMinutesPerDay * goal.AvailableDaysPerWeek)));
         var budget = goal.DeadlineDate.HasValue ? Math.Max(0, (goal.DeadlineDate.Value - Now).TotalDays / 7) * goal.AvailableMinutesPerDay * goal.AvailableDaysPerWeek : double.MaxValue;
         var feasible = budget < minutes ? "InsufficientTime" : "Feasible";
-        var candidates = milestones.SelectMany(m => m.Missions).Where(m => m.CanStart).ToList();
+        var candidates = milestones.SelectMany(m => m.Missions).Where(m => m.CanStart && (!m.AvailableFrom.HasValue || m.AvailableFrom <= Now)).ToList();
         return new PathProposalDto
         {
+            IsPlacement = goal.GoalType == "Placement", GoalType = goal.GoalType,
+            RequestedSkillIds = scope.TargetSkillIds, SelfReportedPrerequisiteSkillIds = scope.SelfReportedPrerequisiteSkillIds,
             AvailableMinutesPerDay = goal.AvailableMinutesPerDay, AvailableDaysPerWeek = goal.AvailableDaysPerWeek, DeadlineDate = goal.DeadlineDate,
             PacingVersion = 2, ProposalId = Guid.NewGuid(), GoalId = goal.GoalId, SubjectId = goal.SubjectId, GoalTitle = goal.Title,
-            StartingBaselineSummary = $"{insights.AnswerCount} lượt trả lời trong 30 ngày. {insights.Summary} {ordered.Count} kỹ năng trong mục tiêu và nền tảng liên quan; {ordered.Count(s => s.State == "Confirmed")} có bằng chứng độc lập.",
+            StartingBaselineSummary = $"{insights.AnswerCount} lượt trả lời trong 30 ngày. {insights.Summary} {ordered.Count} kỹ năng trong tuyến; {ordered.Count(s => s.State == "Confirmed")} có bằng chứng độc lập."
+                + (scope.SelfReportedPrerequisiteSkillIds.Count > 0 ? $" Đã bỏ qua {scope.SelfReportedPrerequisiteSkillIds.Count} nền tảng theo tự xác nhận của em; chưa coi đó là bằng chứng nắm vững trên hệ thống." : ""),
             ConfirmedSkills = ordered.Where(s => s.State == "Confirmed").Select(s => s.SkillId).ToList(),
             DevelopingSkills = ordered.Where(s => s.State is "Developing" or "Demonstrated").Select(s => s.SkillId).ToList(),
             UnknownSkills = ordered.Where(s => s.State == "Unknown").Select(s => s.SkillId).ToList(),
             Milestones = milestones, InitialMission = candidates.FirstOrDefault(), AlternativeOption = candidates.Skip(1).FirstOrDefault(),
             EstimatedWeeks = weeks, FeasibilityStatus = feasible,
-            FeasibilityMessage = $"Ước lượng khoảng {Math.Max(1, weeks - 1)}–{weeks + 1} tuần với lịch {goal.AvailableMinutesPerDay} phút/ngày, {goal.AvailableDaysPerWeek} ngày/tuần; chưa gồm bài bắt buộc và nội dung còn thiếu."
+            FeasibilityMessage = goal.GoalType == "Placement"
+                ? $"Kiểm tra theo từng phần, khoảng {minutes} phút tổng cộng; có thể lưu và tiếp tục. Nền tảng được thêm hoặc bỏ qua theo lựa chọn đã xác nhận. Phần đã có bằng chứng hợp lệ được dùng lại; lịch luyện sẽ đề xuất sau kết quả."
+                : $"Ước lượng khoảng {Math.Max(1, weeks - 1)}–{weeks + 1} tuần với lịch {goal.AvailableMinutesPerDay} phút/ngày, {goal.AvailableDaysPerWeek} ngày/tuần; chưa gồm bài bắt buộc và nội dung còn thiếu."
                 + (feasible == "InsufficientTime" ? " Thời gian tới hạn chưa đủ; hãy thu hẹp mục tiêu hoặc điều chỉnh lịch, không hạ tiêu chí đánh giá." : ""),
             ExpiresAt = Now.AddDays(1), Status = "Pending"
         };
@@ -264,7 +310,8 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
             ReasonCodes = JsonSerializer.SerializeToDocument(openRuns.Count > 0 ? new[] { "GOAL_ACCEPTED", "LEGACY_RUNS_CLOSED_ON_ACCEPT" } : new[] { "GOAL_ACCEPTED" }),
             PolicyVersion = LearningPathV4Data.Policy, CreatedAt = Now, UpdatedAt = Now, RowVersion = 1 });
         await db.SaveChangesAsync(cancellationToken); await tx.CommitAsync(cancellationToken);
-        return new AcceptPathProposalResponse { LearningPathId = path.LearningPathId, Version = path.Version, FirstMission = plan.InitialMission, Message = "Đã kích hoạt lộ trình theo các kỹ năng bạn chọn." };
+        return new AcceptPathProposalResponse { LearningPathId = path.LearningPathId, Version = path.Version, FirstMission = plan.InitialMission,
+            Message = plan.IsPlacement ? "Đã lưu phạm vi kiểm tra đầu vào. Em có thể làm lần lượt từng phần." : "Đã kích hoạt lộ trình theo các kỹ năng bạn chọn." };
     }
 
     public Task<CapabilityMapDto> GetCapabilityMapAsync(Guid centerId, Guid studentId, Guid subjectId, Guid? classId = null, CancellationToken cancellationToken = default)
@@ -277,7 +324,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         var path = await db.LearningPaths.AsNoTracking().Include(p => p.Sessions).Where(p => p.CenterId == centerId && p.StudentId == studentId &&
             p.SubjectId == subjectId && p.PlanSchemaVersion == "4.0" && p.Status == LearningPathStatus.Active).OrderByDescending(p => p.Version).FirstOrDefaultAsync(cancellationToken);
         var result = new LearningAgendaDto { Date = Now, AvailableMinutes = LearningPathPacing.ClampMinutes(availableMinutes), LearningPathId = path?.LearningPathId,
-            AgendaMessage = path == null ? "Hãy thiết lập mục tiêu và xác nhận đề xuất để bắt đầu tuyến cá nhân. Lộ trình cũ không bị xóa." : "Kế hoạch hôm nay được xếp theo thời gian bạn chọn: phần yếu được ưu tiên và nhận nhiều câu hơn." };
+            AgendaMessage = path == null ? "Chọn phần muốn học và kiểm tra đầu vào, hoặc bắt đầu từ nền tảng. EduTwin sẽ đề xuất tuyến từ kết quả của em." : "Kế hoạch hôm nay được xếp theo thời gian bạn chọn: phần yếu được ưu tiên và nhận nhiều câu hơn." };
         result.Insights = await LearningPathInsights.ReadAsync(db, centerId, studentId, subjectId, classId, Now, cancellationToken);
         result.PathHistory = await PathHistoryAsync(centerId, studentId, subjectId, path?.LearningPathId, cancellationToken);
         if (path != null) result.RecentChanges = await db.PathDecisions.AsNoTracking().Where(d => d.CenterId == centerId &&
@@ -286,7 +333,18 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         if (path?.PlanJson == null) return result;
         var plan = JsonSerializer.Deserialize<PathProposalDto>(path.PlanJson.RootElement.GetRawText(), LearningPathV4Data.Json);
         if (plan == null) return result;
+        var activeGoal = await db.LearningGoals.AsNoTracking().FirstOrDefaultAsync(g => g.CenterId == centerId &&
+            g.StudentId == studentId && g.GoalId == plan.GoalId, cancellationToken);
         result.GoalTitle = plan.GoalTitle;
+        result.IsPlacement = plan.IsPlacement;
+        result.GoalType = activeGoal?.GoalType ?? plan.GoalType;
+        result.DeadlineDate = activeGoal?.DeadlineDate ?? plan.DeadlineDate;
+        result.SelfReportedPrerequisiteSkillIds = plan.SelfReportedPrerequisiteSkillIds;
+        result.TargetSkillIds = activeGoal?.TargetSkillIds == null
+            ? plan.RequestedSkillIds.Count > 0 ? plan.RequestedSkillIds : plan.Milestones.SelectMany(m => m.SkillIds).Distinct().ToList()
+            : LearningGoalScope.Read(activeGoal.TargetSkillIds).TargetSkillIds;
+        result.AvailableMinutesPerDay = activeGoal?.AvailableMinutesPerDay ?? plan.AvailableMinutesPerDay;
+        result.AvailableDaysPerWeek = activeGoal?.AvailableDaysPerWeek ?? plan.AvailableDaysPerWeek;
         var runs = await db.LearningPathSessionRuns.AsNoTracking().Where(r => r.CenterId == centerId && r.StudentId == studentId &&
             r.Session.LearningPathId == path.LearningPathId).OrderByDescending(r => r.RunNumber).ToListAsync(cancellationToken);
         var runIds = runs.Select(r => r.SessionRunId).ToList();
@@ -324,7 +382,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 Status = session.Status.ToString(), ActiveRunId = active?.SessionRunId,
                 LatestRunId = latest?.SessionRunId, WeaknessLevel = LearningPathPacing.Level(weakness), SetNumber = m.SetNumber, EstimatedSets = m.EstimatedSets,
                 CanStart = m.CanStart && (!m.AvailableFrom.HasValue || m.AvailableFrom <= Now) && session.Status != LearningPathSessionStatus.Completed && session.Status != LearningPathSessionStatus.Skipped &&
-                    (m.Purpose != "IndependentCheck" || skill.Availability != "PrerequisiteBlocked"),
+                    (plan.IsPlacement || m.Purpose != "IndependentCheck" || LearningGoalScope.PrerequisitesSatisfied(skill, map, plan.SelfReportedPrerequisiteSkillIds)),
                 Runs = sessionRuns.OrderBy(r => r.RunNumber).Select(r => new MissionRunSummaryDto
                 {
                     SessionRunId = r.SessionRunId, RunNumber = r.RunNumber, Status = r.Status.ToString(), Outcome = r.Outcome.ToString(),
@@ -346,7 +404,8 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
             }
             if (m.Purpose == "IndependentCheck" && active == null)
             {
-                item.CanStart = fresh >= 5 && skill.Availability != "PrerequisiteBlocked" && session.Status != LearningPathSessionStatus.Completed && session.Status != LearningPathSessionStatus.Skipped;
+                item.CanStart = fresh >= 5 && (plan.IsPlacement || LearningGoalScope.PrerequisitesSatisfied(skill, map, plan.SelfReportedPrerequisiteSkillIds)) && session.Status != LearningPathSessionStatus.Completed && session.Status != LearningPathSessionStatus.Skipped &&
+                    !(plan.IsPlacement && latest?.Status == SessionRunStatus.Completed);
                 if (fresh < 5) { item.CanStart = false; item.RecommendationReason = $"Còn {fresh}/5 câu mới đủ điều kiện kiểm tra; cần giáo viên bổ sung câu, không dùng lại câu đã lộ đáp án."; }
                 else item.RecommendationReason = $"Có {fresh} câu mới đủ điều kiện; sẽ chọn 5 câu để tự kiểm tra. Lời giải và nhận xét chỉ mở sau khi nộp cả bộ.";
             }
@@ -363,10 +422,18 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 item.EstimatedDurationMinutes = Math.Max(1u, item.QuestionCount) * LearningPathPacing.MinutesPerQuestion;
             }
             ApplyRetryRule(item, m, session, latest, active, runs, path, fresh, poolSizes.GetValueOrDefault(m.MissionId));
+            if (plan.IsPlacement)
+            {
+                item.WeaknessLevel = null;
+                item.CanRetry = false;
+                item.RetryLabel = null;
+                item.RetryBlockedReason = null;
+                if (latest?.Status == SessionRunStatus.Completed) item.Status = "Completed";
+            }
             result.Missions.Add(item);
             if (m.Purpose == "Review" && session.Status != LearningPathSessionStatus.Completed && session.Status != LearningPathSessionStatus.Skipped) result.ReviewDueTasks.Add(item);
             if (active != null) { result.OngoingRuns.Add(item); continue; }
-            if (session.Status == LearningPathSessionStatus.Completed || !item.CanStart) continue;
+            if (item.Status == "Completed" || session.Status == LearningPathSessionStatus.Completed || !item.CanStart) continue;
             // New confirmed evidence (including assignments) skips redundant future guided work.
             if (skill.State == "Confirmed" && m.Purpose != "Review" && !m.DifficultyFloor.HasValue && !m.IsRepair) continue;
             // The check is recommended after two passing sets in a row; it stays available on the route for confident students.
@@ -391,11 +458,23 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         BuildTodayPlan(result, options, weaknessBySkill, setsToday);
         result.PlanOutdated = plan.PacingVersion < 2;
         result.Progress = await ProgressAsync(centerId, studentId, subjectId, plan, map, result.Missions, cancellationToken);
+        if (plan.IsPlacement)
+            result.PlacementReport = await PlacementReportAsync(centerId, studentId, path, plan, map, runs, result.Missions, cancellationToken);
+        var scopedSkills = plan.Milestones.SelectMany(m => m.SkillIds).Distinct().ToHashSet();
+        result.CanAdvance = !plan.IsPlacement && scopedSkills.Count > 0 && result.OngoingRuns.Count == 0 &&
+            scopedSkills.All(id => map.Skills.FirstOrDefault(s => s.SkillId == id)?.State == "Confirmed") &&
+            !result.Missions.Any(m => m.Status != "Completed" && m.Status != "Skipped" &&
+                (result.GoalType == "Advanced" || m.Purpose == "Review" && m.AvailableFrom <= Now || m.Title.StartsWith("Rèn lại")));
+        result.NextSkillIds = map.Skills.Where(s => !scopedSkills.Contains(s.SkillId) && !plan.SelfReportedPrerequisiteSkillIds.Contains(s.SkillId) && s.State != "Confirmed" &&
+            s.Availability == "Available").Take(3).Select(s => s.SkillId).ToList();
         result.PrimaryMission = result.TodayPlan.FirstOrDefault();
         result.AlternativeOptions = result.TodayPlan.Where(m => m.MissionId != result.PrimaryMission?.MissionId && m.ActiveRunId == null).Take(2).ToList();
         if (result.PrimaryMission == null) result.AgendaMessage = options.Count > 0
             ? "Chưa có nhiệm vụ đủ ngắn cho thời gian này. Hãy kéo thêm thời gian hoặc chọn một hoạt động trong tuyến; bạn có thể lưu và tiếp tục."
             : "Các hoạt động khả dụng đã hoàn thành hoặc còn thiếu nội dung/bằng chứng. Xem từng chặng để biết phần cần bổ sung hoặc luyện thêm.";
+        if (plan.IsPlacement) result.AgendaMessage = result.PlacementReport!.IsComplete
+            ? "Đã hoàn thành kiểm tra đầu vào. Xem đánh giá từng kỹ năng và lập tuyến học từ kết quả."
+            : "Hoàn thành các phần kiểm tra đầu vào dưới đây. Bài làm được lưu; kết quả cập nhật sau khi chấm xong từng phần.";
         return result;
     }
 
@@ -563,7 +642,8 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
     private static LearningGoalDto GoalDto(LearningGoal g) => new()
     {
         GoalId = g.GoalId, StudentId = g.StudentId, SubjectId = g.SubjectId, ClassId = g.ClassId, Title = g.Title, GoalType = g.GoalType,
-        Description = g.Description, TargetSkillIds = JsonSerializer.Deserialize<List<string>>(g.TargetSkillIds?.RootElement.GetRawText() ?? "[]") ?? [],
+        Description = g.Description, TargetSkillIds = LearningGoalScope.Read(g.TargetSkillIds).TargetSkillIds,
+        SelfReportedPrerequisiteSkillIds = LearningGoalScope.Read(g.TargetSkillIds).SelfReportedPrerequisiteSkillIds,
         DeadlineDate = g.DeadlineDate, AvailableMinutesPerDay = g.AvailableMinutesPerDay, AvailableDaysPerWeek = g.AvailableDaysPerWeek,
         PreferredMode = g.PreferredMode, PreferredPace = g.PreferredPace, Status = g.Status, CreatedAt = g.CreatedAt, UpdatedAt = g.UpdatedAt
     };

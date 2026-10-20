@@ -79,6 +79,9 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
             {
                 aq.AssignmentId,
                 aq.QuestionId,
+                SkillId = aq.Question != null ? aq.Question.PrimaryTopicNodeId : 0,
+                SubjectId = aq.Question != null ? aq.Question.SubjectId : Guid.Empty,
+                EstimatedSeconds = aq.Question != null ? aq.Question.EstimatedTimeSeconds : 0,
                 aq.IsVoided,
                 aq.VoidReason,
                 Status = aq.Question != null ? aq.Question.Status : QuestionStatus.Active,
@@ -91,6 +94,9 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
         var questionsByAssignment = assignmentQuestions
             .GroupBy(aq => aq.AssignmentId)
             .ToDictionary(g => g.Key, g => g.ToList());
+        var nodes = await WhereIn(_dbContext.KnowledgeNodes.AsNoTracking().Where(n => n.CenterId == centerId),
+                n => n.SubjectId, assignmentQuestions.Select(q => q.SubjectId).Distinct())
+            .ToDictionaryAsync(n => n.NodeId, cancellationToken);
 
         // 2. Batch load attempts for these assignments and student
         var attemptsQuery = _dbContext.Attempts
@@ -182,6 +188,8 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
             int voidedQuestionCount = 0;
             int gradedAwaitingReviewCount = 0;
             int aiAnalyzedQuestionCount = 0;
+            var areas = new Dictionary<ulong, AssignmentKnowledgeAreaDto>();
+            int unclassified = 0;
 
             foreach (var q in questions)
             {
@@ -202,6 +210,26 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
                     }
                     continue;
                 }
+
+                AssignmentKnowledgeAreaDto? area = null;
+                if (nodes.TryGetValue(q.SkillId, out var node) && node.SubjectId == q.SubjectId)
+                {
+                    if (!areas.TryGetValue(q.SkillId, out area))
+                    {
+                        var topic = node;
+                        var visited = new HashSet<ulong> { node.NodeId };
+                        while (topic.ParentNodeId.HasValue && nodes.TryGetValue(topic.ParentNodeId.Value, out var parent) &&
+                            parent.SubjectId == node.SubjectId && parent.NodeType != Contracts.KnowledgeGraph.NodeType.Subject && visited.Add(parent.NodeId))
+                        {
+                            topic = parent;
+                            if (topic.NodeType == Contracts.KnowledgeGraph.NodeType.Topic) break;
+                        }
+                        area = new AssignmentKnowledgeAreaDto { SkillId = node.NodeId.ToString(), SkillName = node.NodeName, TopicName = topic.NodeName };
+                        areas[q.SkillId] = area;
+                    }
+                    area.QuestionCount++;
+                }
+                else unclassified++;
 
                 if (!hasAttempt || attempt == null)
                 {
@@ -225,10 +253,12 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
                         : effectiveIsCorrect == true ? 1m : 0m;
                     totalAwardedScore += scorePerQuestion * earnedRatio;
                     evaluatedQuestionCount++;
+                    if (area != null) area.EvaluatedQuestionCount++;
 
                     if (effectiveIsCorrect == true)
                     {
                         correctQuestionCount++;
+                        if (area != null) area.CorrectQuestionCount++;
                     }
                 }
             }
@@ -253,6 +283,10 @@ public sealed class AssignmentResultCalculator : IAssignmentResultCalculator
 
             resultMap[(studentId, assignmentId)] = new AssignmentResultSummaryDto
             {
+                KnowledgeAreas = areas.Values.OrderBy(a => a.TopicName).ThenBy(a => a.SkillName).ToList(),
+                UnclassifiedQuestionCount = unclassified,
+                EstimatedMinutes = questions.Any(q => !q.IsVoided) && questions.Where(q => !q.IsVoided).All(q => q.EstimatedSeconds > 0)
+                    ? (int)Math.Ceiling(questions.Where(q => !q.IsVoided).Sum(q => (double)q.EstimatedSeconds) / 60) : null,
                 TotalQuestionCount = totalQuestionCount,
                 AnsweredQuestionCount = answeredQuestionCount,
                 EvaluatedQuestionCount = evaluatedQuestionCount,

@@ -8,6 +8,9 @@ export type TeacherFinalReviewStatus = 'Pending' | 'Approved';
 export type AssignmentResultStatus = 'Processing' | 'Provisional' | 'Final';
 
 export interface AssignmentResultSummaryDto {
+  knowledgeAreas?: AssignmentKnowledgeAreaDto[];
+  unclassifiedQuestionCount?: number;
+  estimatedMinutes?: number | null;
   totalQuestionCount: number;
   answeredQuestionCount: number;
   evaluatedQuestionCount: number;
@@ -25,6 +28,15 @@ export interface AssignmentResultSummaryDto {
   finalTeacherNote?: string | null;
   finalReviewedByName?: string | null;
   finalReviewedAt?: string | null;
+}
+
+export interface AssignmentKnowledgeAreaDto {
+  skillId: string;
+  skillName: string;
+  topicName: string;
+  questionCount: number;
+  evaluatedQuestionCount: number;
+  correctQuestionCount: number;
 }
 
 export interface AssignmentQuestionDto {

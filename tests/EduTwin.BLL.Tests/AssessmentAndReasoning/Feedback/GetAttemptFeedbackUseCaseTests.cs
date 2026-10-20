@@ -52,6 +52,8 @@ public sealed class GetAttemptFeedbackUseCaseTests : IDisposable
     [Theory]
     [InlineData(true, "Some reasoning", false)]
     [InlineData(false, "", false)]
+    [InlineData(false, "khum", false)]
+    [InlineData(false, "Em không biết!", false)]
     [InlineData(false, "Some reasoning", true)]
     public async Task ExecuteAsync_ReasoningMetricsRequireSuccessfulAnalysisAndEvidence(bool fallback, string reasoning, bool expectedMetrics)
     {
@@ -71,6 +73,14 @@ public sealed class GetAttemptFeedbackUseCaseTests : IDisposable
         Assert.Equal(expectedMetrics, result.Data.Analysis.QualityBand != null);
         Assert.Equal(expectedMetrics ? "Valid" : null, result.Data.Analysis.ReasoningVerdict);
         Assert.Equal(10m, result.Data.Grading.AwardedScore);
+        if (!fallback && !expectedMetrics)
+        {
+            Assert.Equal(EduTwin.BLL.AssessmentAndReasoning.ReasoningEvidencePolicy.MissingFeedback, result.Data.Analysis.Feedback);
+            Assert.Null(result.Data.Analysis.MethodDetected);
+            Assert.Null(result.Data.Analysis.Confidence);
+            Assert.Equal("RuleBased", result.Data.Analysis.FeedbackOrigin);
+            Assert.Equal(70m, (await _dbContext.ReasoningAnalyses.SingleAsync()).ReasoningQuality); // Historical source is retained.
+        }
     }
 
     private void AddActionQuestion(DateTime now) => _dbContext.Questions.Add(new Question
