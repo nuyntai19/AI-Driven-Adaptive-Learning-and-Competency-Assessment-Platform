@@ -384,7 +384,9 @@ export function AttemptFeedbackHierarchy({
           <div className="space-y-4">
             {!analysis.isFallback && analysis.suggestedScore != null && <section className="rounded-2xl border border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-950/40 p-4 space-y-2">
               <p className="font-bold text-indigo-900 dark:text-indigo-200">AI đã chấm · Điểm đề xuất: {normalizeQuestionScore(analysis.suggestedScore, grading.maxScore).awardedScore} / 10</p>
-              <p className="text-sm text-slate-600 dark:text-slate-300">Giáo viên sẽ duyệt hoặc điều chỉnh trước khi chốt điểm cuối cùng. Chất lượng lập luận /100 là chỉ số riêng.</p>
+              <p className="text-sm text-slate-600 dark:text-slate-300">{teacherFinalEvaluation?.isApprovedAsIs || teacherFinalEvaluation?.hasTeacherOverride
+                ? "Giáo viên đã đánh giá câu này. Điểm đề xuất AI được giữ để đối chiếu; xem kết quả giáo viên bên dưới. Chất lượng lập luận /100 là chỉ số riêng."
+                : "Giáo viên sẽ duyệt hoặc điều chỉnh trước khi chốt điểm cuối cùng. Chất lượng lập luận /100 là chỉ số riêng."}</p>
               {analysis.usesAlternativeMethod && <p className="text-sm text-amber-800 dark:text-amber-200">Cách giải khác lời giải tham khảo được ghi nhận; giáo viên sẽ thẩm định, không tự trừ điểm vì khác phương pháp.</p>}
               {analysis.suggestedRubricGrade && <RubricGradeView grade={analysis.suggestedRubricGrade} />}
             </section>}

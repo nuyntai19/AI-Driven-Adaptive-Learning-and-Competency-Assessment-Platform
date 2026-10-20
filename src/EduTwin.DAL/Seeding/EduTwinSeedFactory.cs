@@ -257,6 +257,7 @@ public class EduTwinSeedFactory
                 QuestionId = qId,
                 SubjectId = topic.SubjectId,
                 PrimaryTopicNodeId = topic.NodeId,
+                GradeLevel = t.GradeLevel,
                 CreatedByTeacherId = teacherId,
                 QuestionType = t.QuestionType,
                 AnswerEvaluationMode = t.AnswerEvaluationMode ?? (t.QuestionType switch

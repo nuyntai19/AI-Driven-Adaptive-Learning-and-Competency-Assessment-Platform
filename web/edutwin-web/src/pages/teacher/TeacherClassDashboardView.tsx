@@ -251,7 +251,7 @@ export function TeacherClassDashboardView() {
                     Danh Sách Học Sinh Có Nguy Cơ Tụt Hậu
                   </h2>
                   <p className="text-xs text-[var(--th-text-secondary)]">
-                    Dựa trên phân tích nguy cơ (Risk Score) và khoảng cách tới mục tiêu kỳ thi.
+                    Học sinh có nguy cơ không đạt mục tiêu từ 70% trở lên. Chỉ số này khác với mức độ thành thạo từng chủ đề.
                   </p>
                 </div>
                 <span className="text-xs font-semibold text-[var(--th-text-muted)]">
@@ -280,7 +280,7 @@ export function TeacherClassDashboardView() {
                           <td className="py-3 font-semibold text-[var(--th-text)]">{s.fullName}</td>
                           <td className="py-3">
                             <span className="th-badge th-badge-danger">
-                              Risk {(s.riskScore * 100).toFixed(0)}%
+                              Nguy cơ {s.riskScore.toFixed(0)}%
                             </span>
                           </td>
                           <td className="py-3 text-[var(--th-text-secondary)]">

@@ -2183,7 +2183,7 @@ const PracticePlayerPage = () => {
     }).length;
   }, [assignmentQuestions, question?.questionId, finalAnswer, assignmentAnswers]);
 
-  const unansweredQuestionIndices = useMemo(() => {
+  const incompleteQuestionIndices = useMemo(() => {
     if (!assignmentQuestions.length) return [];
     const missing: number[] = [];
     assignmentQuestions.forEach((q, idx) => {
@@ -2194,6 +2194,14 @@ const PracticePlayerPage = () => {
     });
     return missing;
   }, [assignmentQuestions, checkQuestionCompletion]);
+
+  const unansweredQuestionIndices = useMemo(() => assignmentQuestions.flatMap((q, idx) => {
+    if (q.isVoided || !incompleteQuestionIndices.includes(idx + 1)) return [];
+    const answer = q.latestAttempt?.finalAnswer ?? q.submittedAnswer ??
+      (q.questionId === question?.questionId ? finalAnswer : assignmentAnswers[q.questionId]?.finalAnswer);
+    return !answer?.trim() || answer === "SKIPPED" ? [idx + 1] : [];
+  }), [assignmentQuestions, incompleteQuestionIndices, question?.questionId, finalAnswer, assignmentAnswers]);
+  const missingReasoningIndices = incompleteQuestionIndices.filter(n => !unansweredQuestionIndices.includes(n));
 
   // Assignment-level statistics when submitted
   const assignmentStats = useMemo(() => {
@@ -3034,6 +3042,15 @@ const PracticePlayerPage = () => {
                   </div>
                 </div>
 
+                {assignment?.summary?.teacherFinalReviewStatus === "Approved" && (
+                  <section aria-label="Xác nhận kết quả toàn bài của giáo viên" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
+                    <h3 className="font-bold">Giáo viên đã chốt kết quả toàn bài</h3>
+                    {assignment.summary.finalReviewedByName && <p className="mt-1">Giáo viên: {assignment.summary.finalReviewedByName}</p>}
+                    {assignment.summary.finalReviewedAt && <p className="mt-1">Thời điểm chốt: {new Date(assignment.summary.finalReviewedAt).toLocaleString("vi-VN")}</p>}
+                    {assignment.summary.finalTeacherNote && <div className="mt-2"><p className="font-semibold">Nhận xét tổng kết:</p><RichMathText content={assignment.summary.finalTeacherNote} /></div>}
+                  </section>
+                )}
+
                 {assignmentStats.aiProcessingCount > 0 ? (
                   <div className="rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 p-3 text-xs text-blue-900 dark:text-blue-200 flex items-center gap-2">
                     <span>⏳</span>
@@ -3674,13 +3691,18 @@ const PracticePlayerPage = () => {
               Xác nhận nộp toàn bộ bài tập
             </h3>
             <p className="text-xs text-center text-slate-500 dark:text-slate-400 leading-relaxed">
-              Bạn đã hoàn thành <strong className="text-indigo-600 dark:text-indigo-400">{answeredCount}</strong> / {totalQuestions} câu hỏi.
+              Bạn đã điền đáp án <strong className="text-indigo-600 dark:text-indigo-400">{answeredCount}</strong> / {totalQuestions} câu hỏi.
               {attachedSnapshotDataUrl && (
                 <span className="block mt-1 text-emerald-600 dark:text-emerald-400 font-bold">
                   ✓ Kèm theo 1 bản vẽ nháp đã đính kèm.
                 </span>
               )}
             </p>
+
+            {missingReasoningIndices.length > 0 && <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-3.5 text-xs text-rose-900 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200">
+              <p className="font-bold">Các câu đã có đáp án nhưng thiếu lập luận bắt buộc:</p>
+              <p className="mt-1">{missingReasoningIndices.map(n => `Câu ${n}`).join(", ")}. Chọn Kiểm tra lại để bổ sung lập luận trước khi nộp. Các đáp án này được giữ trong bản nháp.</p>
+            </div>}
 
             {unansweredQuestionIndices.length > 0 && (
               <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-300 space-y-1 text-left">
@@ -3708,6 +3730,7 @@ const PracticePlayerPage = () => {
               <button
                 type="button"
                 onClick={handleFinalSubmit}
+                disabled={missingReasoningIndices.length > 0}
                 className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs shadow-md shadow-indigo-600/30 cursor-pointer"
               >
                 Xác nhận nộp bài

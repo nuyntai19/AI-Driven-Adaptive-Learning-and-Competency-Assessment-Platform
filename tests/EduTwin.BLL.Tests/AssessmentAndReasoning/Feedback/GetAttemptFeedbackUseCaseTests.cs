@@ -91,6 +91,30 @@ public sealed class GetAttemptFeedbackUseCaseTests : IDisposable
     });
 
     [Theory]
+    [InlineData("Approved", true, false)]
+    [InlineData("Adjusted", false, true)]
+    public async Task ExecuteAsync_ExplicitDecisionDistinguishesApprovalFromAdjustmentEvenWithVersion(
+        string decision, bool approved, bool adjusted)
+    {
+        var now = DateTime.UtcNow; AddActionQuestion(now);
+        _dbContext.Attempts.Add(new Attempt { CenterId = _centerId, AttemptId = 20, QuestionId = 10,
+            StudentId = _studentId, Status = AttemptStatus.Completed, FinalAnswer = "2", ReasoningText = "x=2",
+            ReasoningLanguage = "vi", IsCorrect = true, AwardedScore = 10m, CreatedAt = now, UpdatedAt = now });
+        _dbContext.ReasoningAnalyses.Add(new ReasoningAnalysis { CenterId = _centerId, AnalysisId = 30, AttemptId = 20,
+            SchemaVersion = "1.0", Feedback = "Saved", ReviewDecision = decision, OverrideVersion = 2,
+            OverrideIsCorrect = true, OverrideAwardedScore = 9m, TeacherReviewNote = "Reviewed note",
+            MissingSteps = JsonDocument.Parse("[]"), RootCauseNodeIds = JsonDocument.Parse("[]"), CreatedAt = now, UpdatedAt = now });
+        await _dbContext.SaveChangesAsync();
+        var result = await new GetAttemptFeedbackUseCase(_dbContext, _tenantContext, _guardMock.Object).ExecuteAsync(20, default);
+        Assert.True(result.IsSuccess);
+        var evaluation = result.Data!.TeacherFinalEvaluation!;
+        Assert.Equal(approved, evaluation.IsApprovedAsIs);
+        Assert.Equal(adjusted, evaluation.HasTeacherOverride);
+        Assert.Equal(9m, evaluation.TeacherScore);
+        Assert.Equal("Reviewed note", evaluation.TeacherReviewNote);
+    }
+
+    [Theory]
     [InlineData("AI_RESPONSE_SEMANTIC_INVALID", "ResponseInvalid")]
     [InlineData("AI_PROVIDER_DAILY_QUOTA_WAIT", "QuotaWait")]
     [InlineData("AI_PROVIDER_CAPACITY_WAIT", "CapacityWait")]

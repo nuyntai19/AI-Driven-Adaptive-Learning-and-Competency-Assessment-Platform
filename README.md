@@ -159,10 +159,12 @@ Khi có mâu thuẫn, không tự chọn tài liệu thuận tiện hơn. Thực
 - **PowerShell**: Chạy `.\run.ps1` (hỗ trợ các cờ `.\run.ps1 -Mode Docker`, `.\run.ps1 -Mode Local`, `.\run.ps1 -Mode Stop`, `.\run.ps1 -Mode Test`).
 
 Tài khoản demo có sẵn:
-- **Platform Admin**: Trung tâm `PLATFORM` | Tài khoản `platform.admin` | Mật khẩu `PlatformAdmin123!`
-- **Quản lý trung tâm A**: Trung tâm `EDUTWIN_A` | Tài khoản `manager` | Mật khẩu `SeedPassword123!`
-- **Giáo viên Toán/Anh**: Trung tâm `EDUTWIN_A` | Tài khoản `teacher.math` / `teacher.english` | Mật khẩu `SeedPassword123!`
-- **Học sinh**: Trung tâm `EDUTWIN_A` | Tài khoản `student01` .. `student05` | Mật khẩu `SeedPassword123!`
+- **Platform Admin**: Trung tâm `PLATFORM` | Tài khoản `platform.admin` | Mật khẩu lấy từ `PlatformBootstrap__AdminPassword` trong cấu hình local.
+- **Quản lý trung tâm A**: Trung tâm `EDUTWIN_A` | Tài khoản `manager`.
+- **Giáo viên Toán/Anh**: Trung tâm `EDUTWIN_A` | Tài khoản `teacher.math` / `teacher.english`.
+- **Học sinh**: Trung tâm `EDUTWIN_A` | Tài khoản `student01` .. `student05`.
+
+Mật khẩu ban đầu của quản lý, giáo viên và học sinh demo lấy từ `Seed__CenterManagerPassword` trong `.env` lúc seed tài khoản. Không có mật khẩu demo cố định. Đổi biến này sau khi tài khoản đã tồn tại không đặt lại mật khẩu của tài khoản đó.
 
 ## 8. Chuẩn bị môi trường thủ công
 

@@ -30,6 +30,7 @@ public static class SeedExtensions
         services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
         services.AddScoped<IManifestEvaluator, ManifestEvaluator>();
         services.AddScoped<EduTwinRuntimeSeeder>();
+        services.AddScoped<SeedQuestionGradeBackfill>();
         services.AddScoped<AuthorizationBootstrapper>();
         services.AddScoped<DefaultSystemRolePermissionBackfill>();
         services.AddScoped<PlatformAdminProvisioner>();
@@ -63,6 +64,7 @@ public static class SeedExtensions
             throw new InvalidOperationException("Seeding is only allowed in Development environment.");
         }
 
+        await scope.ServiceProvider.GetRequiredService<SeedQuestionGradeBackfill>().EnsureAsync();
         var seeder = scope.ServiceProvider.GetRequiredService<EduTwinRuntimeSeeder>();
         await seeder.SeedAsync();
 

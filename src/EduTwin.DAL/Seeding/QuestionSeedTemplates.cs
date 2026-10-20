@@ -8,6 +8,7 @@ public class QuestionTemplate
     public string LogicalCode { get; set; } = null!;
     public string TopicCode { get; set; } = null!;
     public byte Difficulty { get; set; }
+    public byte GradeLevel { get; set; } = 10;
     public QuestionType QuestionType { get; set; }
     public string LanguageCode { get; set; } = null!;
     public string QuestionText { get; set; } = null!;
@@ -337,6 +338,14 @@ public static class QuestionSeedTemplates
             GradingCriteria = new GradingCriteria { SchemaVersion = "1.0", RequiredIdeas = new List<string> { "Definition: lessen severity", "Valid example sentence" }, CommonErrors = new List<string> { "Define as remove completely", "Incorrect sentence context" }, ScoringNotes = "Deduct 50% if sentence is missing" }
         });
 
+        foreach (var template in templates)
+            template.GradeLevel = template.TopicCode switch
+            {
+                "MATH-EXP-LOG" => 11,
+                "MATH-ANTIDERIVATIVE" => 12,
+                _ when template.LogicalCode == "MATH-FUNC-05" => 12,
+                _ => 10
+            };
         return templates;
     }
 }

@@ -328,7 +328,10 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
         {
             var reviewer = analysis.ReviewedByUser ?? analysis.OverriddenByUser;
             var teacherName = reviewer?.DisplayName ?? reviewer?.Username ?? "Giáo viên";
-            var isApprovedAsIs = string.Equals(analysis.ReviewDecision, "Approved", StringComparison.OrdinalIgnoreCase) && analysis.OverrideVersion == 0;
+            // Approval also advances OverrideVersion when materializing the AI
+            // proposal. The explicit decision, not that version, distinguishes it
+            // from a teacher adjustment.
+            var isApprovedAsIs = string.Equals(analysis.ReviewDecision, "Approved", StringComparison.OrdinalIgnoreCase);
             int? teacherReasoningQualityInt = analysis.OverrideReasoningQuality.HasValue
                 ? (int)Math.Round(analysis.OverrideReasoningQuality.Value, MidpointRounding.AwayFromZero)
                 : null;
@@ -339,7 +342,7 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
                     .Where(h => h.CenterId == centerId && h.AnalysisId == analysis.AnalysisId)
                     .OrderByDescending(h => h.OverrideVersion).ThenByDescending(h => h.HistoryId)
                     .Select(h => h.RubricResultJson).FirstOrDefaultAsync(cancellationToken)),
-                HasTeacherOverride = analysis.OverrideVersion > 0,
+                HasTeacherOverride = !isApprovedAsIs && analysis.OverrideVersion > 0,
                 IsApprovedAsIs = isApprovedAsIs,
                 ReviewDecision = analysis.ReviewDecision,
                 TeacherReviewNote = analysis.TeacherReviewNote,
