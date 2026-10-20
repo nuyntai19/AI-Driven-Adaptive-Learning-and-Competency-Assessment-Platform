@@ -536,7 +536,10 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
     try {
       const html = katex.renderToString(validation.cleanLatex, {
         throwOnError: false,
-        displayMode: false,
+        displayMode: element.dataset.mathDisplay === "true",
+        trust: false,
+        maxExpand: 100,
+        maxSize: 10,
         output: "htmlAndMathml",
       });
       element.innerHTML = `<span class="katex-rendered pointer-events-none">${html}</span>`;
@@ -1037,7 +1040,10 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
                         try {
                           const html = katex.renderToString(clean, {
                             throwOnError: false,
-                            displayMode: false,
+                            displayMode: activeMathNode?.element.dataset.mathDisplay === "true",
+                            trust: false,
+                            maxExpand: 100,
+                            maxSize: 10,
                           });
                           return (
                             <span

@@ -3,7 +3,7 @@ import { cleanFormulaForInsertion } from "../../pages/centerManagerQuestionEdito
 import { tokenizeDelimitedMath } from "../../utils/mathDelimiters.ts";
 
 /**
- * Serializes the contenteditable DOM tree into a canonical string with $...$ formulas.
+ * Serializes formulas with their original inline ($) or display ($$) representation.
  * Normalizes non-breaking spaces (\u00A0) into normal spaces to avoid hidden character accumulation.
  */
 export function serializeEditorDom(container: HTMLElement, singleLine = false): string {
@@ -19,7 +19,8 @@ export function serializeEditorDom(container: HTMLElement, singleLine = false): 
       if (el.classList.contains("inline-math-node")) {
         const latex = cleanFormulaForInsertion(el.dataset.latex || "");
         if (latex) {
-          result += `$${latex}$`;
+          const delimiter = el.dataset.mathDisplay === "true" ? "$$" : "$";
+          result += `${delimiter}${latex}${delimiter}`;
         }
       } else if (el.tagName === "BR") {
         result += "\n";
@@ -54,13 +55,16 @@ export function serializeEditorDom(container: HTMLElement, singleLine = false): 
  */
 export function createMathSpan(
   latex: string,
-  onEdit?: (span: HTMLElement) => void
+  onEdit?: (span: HTMLElement) => void,
+  displayMode = false,
 ): HTMLElement {
   const span = document.createElement("span");
   span.className =
     `inline-math-node inline-flex items-center align-middle mx-1 px-2 py-0.5 rounded-lg border ${onEdit ? "cursor-pointer select-none" : "cursor-text"} transition-all group font-normal text-sm shadow-sm`;
   span.contentEditable = "false";
   span.dataset.latex = latex;
+  span.dataset.mathDisplay = String(displayMode);
+  if (displayMode) { span.style.display = "block"; span.style.overflowX = "auto"; }
   span.title = onEdit ? "Nhấp để chỉnh sửa công thức toán" : "Công thức toán (chỉ đọc)";
 
   const clean = cleanFormulaForInsertion(latex);
@@ -68,12 +72,18 @@ export function createMathSpan(
     try {
       const html = katex.renderToString(clean, {
         throwOnError: false,
-        displayMode: false,
+        displayMode,
+        trust: false,
+        maxExpand: 100,
+        maxSize: 10,
         output: "htmlAndMathml",
       });
       span.innerHTML = `<span class="katex-rendered pointer-events-none">${html}</span>`;
     } catch {
-      span.innerHTML = `<span class="katex-fallback font-mono text-xs text-rose-300 pointer-events-none">${clean}</span>`;
+      const fallback = document.createElement("span");
+      fallback.className = "katex-fallback font-mono text-xs text-rose-300 pointer-events-none";
+      fallback.textContent = clean;
+      span.appendChild(fallback);
     }
   } else {
     span.innerHTML =
@@ -103,10 +113,9 @@ export function hydrateEditorDom(
     return;
   }
 
-  // Keep the existing editor's dollar profile; display math remains a V2 concern.
   for (const token of tokenizeDelimitedMath(raw, ["$", "$$"])) {
     if (token.type === "math") {
-      const mathSpan = createMathSpan(token.latex.trim(), onEdit);
+      const mathSpan = createMathSpan(token.latex.trim(), onEdit, token.displayMode);
       container.appendChild(mathSpan);
     } else {
       const lines = token.raw.split("\n");

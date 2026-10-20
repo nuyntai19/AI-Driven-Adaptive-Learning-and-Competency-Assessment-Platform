@@ -11,6 +11,104 @@ public sealed class QuestionImportFileParserTests
 {
     private static readonly XNamespace Ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
     private static readonly XNamespace Rel = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    private static readonly (string Canonical, string Vietnamese, string Value)[] LocalizedColumns =
+    [
+        ("QuestionKey", "Mã câu hỏi", "Q-VI-001"),
+        ("TopicCode", "Mã chủ đề", "MATH-FRAC"),
+        ("QuestionType", "Loại câu hỏi", "MultipleChoice"),
+        ("GradeLevel", "Khối", "12"),
+        ("Difficulty", "Độ khó", "3"),
+        ("QuestionText", "Nội dung câu hỏi", "Tính $\\frac{1}{2}+\\frac{1}{3}$."),
+        ("OptionA", "Lựa chọn A", "1/6"),
+        ("MisconceptionA", "Quan niệm sai A", "Cộng sai mẫu số."),
+        ("OptionB", "Lựa chọn B", "5/6"),
+        ("MisconceptionB", "Quan niệm sai B", ""),
+        ("OptionC", "Lựa chọn C", "2/5"),
+        ("MisconceptionC", "Quan niệm sai C", "Cộng tử và mẫu trực tiếp."),
+        ("OptionD", "Lựa chọn D", "1"),
+        ("MisconceptionD", "Quan niệm sai D", "Làm tròn trước khi cộng."),
+        ("CorrectAnswer", "Đáp án đúng", "B"),
+        ("Solution", "Lời giải", "Quy đồng: $\\frac{3}{6}+\\frac{2}{6}=\\frac{5}{6}$."),
+        ("ExpectedReasoning", "Lập luận mong đợi", "Tìm mẫu chung rồi cộng tử số."),
+        ("RequiredIdeas", "Ý bắt buộc", "[\"Quy đồng mẫu số\",\"Cộng tử số\"]"),
+        ("CommonErrors", "Lỗi thường gặp", "[\"Cộng mẫu số\"]"),
+        ("ScoringNotes", "Ghi chú chấm", "Giữ riêng ghi chú chấm, không thay bằng lời giải."),
+        ("MaxScore", "Điểm tối đa", "10"),
+        ("EstimatedTimeSeconds", "Thời gian (giây)", "120"),
+        ("ReasoningRequired", "Yêu cầu giải trình", "false"),
+        ("AnswerEvaluationMode", "Chế độ chấm", "TextExact"),
+        ("Visibility", "Phạm vi", "Private"),
+        ("LanguageCode", "Ngôn ngữ", "vi")
+    ];
+
+    [Theory]
+    [InlineData(',', true)]
+    [InlineData(';', true)]
+    [InlineData('\t', true)]
+    [InlineData(',', false)]
+    public async Task Csv_MapsAllLocalizedOrEnglishHeadersToCanonicalFields(char delimiter, bool vietnamese)
+    {
+        var header = string.Join(delimiter, LocalizedColumns.Select(c => QuoteCsv(vietnamese ? c.Vietnamese : c.Canonical)));
+        var values = string.Join(delimiter, LocalizedColumns.Select(c => QuoteCsv(c.Value)));
+        var parsed = await Csv("\uFEFF" + header + "\r\n" + values + "\r\n");
+        AssertLocalizedCanonicalValues(Assert.Single(parsed.Rows));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Workbook_MapsLocalizedHeadersAndGuideMetadataWithoutChangingEnumValues(bool vietnamese)
+    {
+        var questions = Sheet(
+            Row(1, LocalizedColumns.Select((c, i) => Inline(TestColumnName(i) + "1", vietnamese ? c.Vietnamese : c.Canonical)).ToArray()),
+            Row(2, LocalizedColumns.Select((c, i) => Inline(TestColumnName(i) + "2", c.Value)).ToArray()));
+        var guide = Sheet(
+            Row(1, Inline("A1", vietnamese ? "Phiên bản mẫu" : "TemplateVersion"), Inline("B1", "1.0")),
+            Row(2, Inline("A2", vietnamese ? "Mã định danh môn học" : "SubjectId"), Inline("B2", "0904f0c4-2901-4b47-8504-bbe84239cd1f")));
+        using var workbook = Workbook([("Guide", "guide.xml", guide), ("Questions", "questions.xml", questions)]);
+        var parsed = await Parse(workbook);
+        Assert.Equal(Guid.Parse("0904f0c4-2901-4b47-8504-bbe84239cd1f"), parsed.SourceSubjectId);
+        AssertLocalizedCanonicalValues(Assert.Single(parsed.Rows));
+    }
+
+    [Fact]
+    public async Task Workbook_RejectsMixedEnglishAndVietnameseQuestionHeaderDuplicates()
+    {
+        using var workbook = Workbook([("Questions", "questions.xml", Sheet(
+            Row(1, Inline("A1", "Nội dung câu hỏi"), Inline("B1", "EstimatedTimeSeconds"), Inline("C1", "Thời gian (giây)")),
+            Row(2, Inline("A2", "Đề"), Inline("B2", "120"), Inline("C2", "120"))))]);
+        var error = await Assert.ThrowsAsync<QuestionImportFileException>(() => Parse(workbook));
+        Assert.Equal("DUPLICATE_HEADER", error.Code);
+    }
+
+    [Theory]
+    [InlineData("TemplateVersion", "Phiên bản mẫu", "1.0")]
+    [InlineData("SubjectId", "Mã định danh môn học", "0904f0c4-2901-4b47-8504-bbe84239cd1f")]
+    public async Task Workbook_RejectsGuideDuplicatesAcrossMetadataAliases(string english, string vietnamese, string value)
+    {
+        using var workbook = Workbook([
+            ("Guide", "guide.xml", Sheet(Row(1, Inline("A1", english), Inline("B1", value)), Row(2, Inline("A2", vietnamese), Inline("B2", value)))),
+            ("Questions", "questions.xml", Sheet(Row(1, Inline("A1", "Nội dung câu hỏi")), Row(2, Inline("A2", "Đề"))))]);
+        var error = await Assert.ThrowsAsync<QuestionImportFileException>(() => Parse(workbook));
+        Assert.Equal("DUPLICATE_GUIDE_METADATA", error.Code);
+    }
+
+    [Theory]
+    [InlineData("Phiên bản mẫu", "2.0", false, "UNSUPPORTED_TEMPLATE_VERSION")]
+    [InlineData("Phiên bản mẫu", "1.0", true, "INVALID_GUIDE_METADATA")]
+    [InlineData("Mã định danh môn học", "invalid", false, "INVALID_GUIDE_METADATA")]
+    [InlineData("Mã định danh môn học", "00000000-0000-0000-0000-000000000000", false, "INVALID_GUIDE_METADATA")]
+    [InlineData("Mã định danh môn học", "0904f0c4-2901-4b47-8504-bbe84239cd1f", true, "INVALID_GUIDE_METADATA")]
+    public async Task Workbook_AppliesMetadataValidationToLocalizedGuideLabels(string label, string value, bool formula, string expectedCode)
+    {
+        var cell = Inline("B1", value);
+        if (formula) cell.Add(new XElement(Ns + "f", "1+1"));
+        using var workbook = Workbook([
+            ("Guide", "guide.xml", Sheet(Row(1, Inline("A1", label), cell))),
+            ("Questions", "questions.xml", Sheet(Row(1, Inline("A1", "Nội dung câu hỏi")), Row(2, Inline("A2", "Đề"))))]);
+        var error = await Assert.ThrowsAsync<QuestionImportFileException>(() => Parse(workbook));
+        Assert.Equal(expectedCode, error.Code);
+    }
 
     [Fact]
     public async Task Csv_PreservesMathUnicodeQuotesAndPhysicalRecordLocations()
@@ -276,10 +374,12 @@ public sealed class QuestionImportFileParserTests
         Assert.Equal(20_002, result.Rows.Single().RowIndex);
     }
 
-    [Fact]
-    public async Task Workbook_ParsesActualFrontendGeneratedV1TemplateIncludingStyledBlankRows()
+    [Theory]
+    [InlineData("frontend-template-v1.xlsx")]
+    [InlineData("frontend-template-v1-vi.xlsx")]
+    public async Task Workbook_ParsesActualFrontendGeneratedV1TemplateIncludingStyledBlankRows(string fileName)
     {
-        var path = Path.Combine(AppContext.BaseDirectory, "CurriculumAndQuestions", "Fixtures", "Import", "frontend-template-v1.xlsx");
+        var path = Path.Combine(AppContext.BaseDirectory, "CurriculumAndQuestions", "Fixtures", "Import", fileName);
         await using var workbook = File.OpenRead(path);
         var result = await Parse(workbook);
         Assert.Equal(3, result.Rows.Count);
@@ -314,6 +414,17 @@ public sealed class QuestionImportFileParserTests
         QuestionImportFileParser.ParseAsync(new MemoryStream(Encoding.UTF8.GetBytes(content)), "questions.csv", false, CancellationToken.None);
     private static Task<ParsedQuestionImportFile> Parse(Stream stream) =>
         QuestionImportFileParser.ParseAsync(stream, "questions.xlsx", false, CancellationToken.None);
+    private static string QuoteCsv(string value) => "\"" + value.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
+    private static void AssertLocalizedCanonicalValues(RawImportRow row)
+    {
+        Assert.Empty(row.Diagnostics);
+        foreach (var column in LocalizedColumns)
+            Assert.Equal(column.Value, row.Values.GetValueOrDefault(column.Canonical) ?? "");
+        Assert.Equal("MultipleChoice", row.Values["QuestionType"]);
+        Assert.Equal("TextExact", row.Values["AnswerEvaluationMode"]);
+        Assert.Equal("Private", row.Values["Visibility"]);
+        Assert.Equal("false", row.Values["ReasoningRequired"]);
+    }
     private static XElement Sheet(params XElement[] rows) => new(Ns + "worksheet", new XElement(Ns + "sheetData", rows));
     private static XElement Row(int number, params XElement[] cells) => new(Ns + "row", new XAttribute("r", number), cells);
     private static XElement Inline(string reference, string text) => new(Ns + "c", new XAttribute("r", reference), new XAttribute("t", "inlineStr"),
