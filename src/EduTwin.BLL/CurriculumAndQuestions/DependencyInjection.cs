@@ -26,7 +26,11 @@ public static class DependencyInjection
         services.AddScoped<IArchiveQuestionUseCase, ArchiveQuestionUseCase>();
         services.AddScoped<IDeleteQuestionUseCase, DeleteQuestionUseCase>();
         services.AddScoped<IQuestionActivationPolicy, QuestionActivationPolicy>();
-        services.AddScoped<Import.IQuestionImportUseCase, Import.QuestionImportUseCase>();
+        services.AddSingleton<Import.QuestionImportMediaStore>(_ => new Import.QuestionImportMediaStore());
+        services.AddSingleton<Import.QuestionImportImageNormalizer>();
+        services.AddScoped<Import.QuestionImportUseCase>();
+        services.AddScoped<Import.IQuestionImportUseCase>(sp => sp.GetRequiredService<Import.QuestionImportUseCase>());
+        services.AddScoped<Import.IQuestionImportV2UseCase>(sp => sp.GetRequiredService<Import.QuestionImportUseCase>());
         
         return services;
     }

@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
+using EduTwin.Contracts.CurriculumAndQuestions;
 
 namespace EduTwin.BLL.CurriculumAndQuestions.Import;
 
@@ -15,13 +16,21 @@ public sealed record ImportFileDiagnostic(
     string? SheetName = null,
     int? RowIndex = null,
     string? ColumnName = null,
-    string? RawValue = null);
+    string? RawValue = null)
+{
+    public QuestionImportSourceLocationDto? SourceLocation { get; init; }
+}
 
 public sealed record RawImportRow(
     string SheetName,
     int RowIndex,
     Dictionary<string, string> Values,
-    List<ImportFileDiagnostic> Diagnostics);
+    List<ImportFileDiagnostic> Diagnostics)
+{
+    public string CandidateId { get; init; } = string.Empty;
+    public QuestionImportSourceLocationDto? SourceLocation { get; init; }
+    public bool CorrectAnswerContainsNativeMath { get; set; }
+}
 
 public sealed record ParsedQuestionImportFile(
     List<RawImportRow> Rows,
@@ -56,6 +65,13 @@ public static class QuestionImportFileParser
     private static readonly XNamespace Spreadsheet = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
     private static readonly XNamespace OfficeRelationships = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
     private static readonly Dictionary<string, string> HeaderAliases = BuildHeaderAliases();
+    private static readonly Dictionary<string, string> GuideMetadataAliases = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["TemplateVersion"] = "TemplateVersion",
+        ["Phiên bản mẫu"] = "TemplateVersion",
+        ["SubjectId"] = "SubjectId",
+        ["Mã định danh môn học"] = "SubjectId"
+    };
     private static readonly uint[] CrcTable = BuildCrcTable();
     private static readonly HashSet<string> NumericColumns = new(StringComparer.OrdinalIgnoreCase)
         { "GradeLevel", "Difficulty", "MaxScore", "EstimatedTimeSeconds" };
@@ -76,6 +92,13 @@ public static class QuestionImportFileParser
 
     public static async Task<ParsedQuestionImportFile> ParseAsync(
         Stream stream, string fileName, bool legacyMode, CancellationToken cancellationToken)
+        => await ParseCoreAsync(stream, fileName, legacyMode, false, cancellationToken);
+
+    internal static Task<ParsedQuestionImportFile> ParseMediaTabularAsync(Stream stream, string fileName, CancellationToken cancellationToken)
+        => ParseCoreAsync(stream, fileName, false, true, cancellationToken);
+
+    private static async Task<ParsedQuestionImportFile> ParseCoreAsync(
+        Stream stream, string fileName, bool legacyMode, bool mediaProfile, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(stream);
         cancellationToken.ThrowIfCancellationRequested();
@@ -91,11 +114,11 @@ public static class QuestionImportFileParser
             if (extension == ".csv" || (extension == ".txt" && legacyMode))
             {
                 var text = new UTF8Encoding(false, true).GetString(uploaded).TrimStart('\uFEFF');
-                rows = ParseCsv(text, cancellationToken);
+                rows = ParseCsv(text, cancellationToken, mediaProfile);
             }
             else if (extension == ".xlsx")
             {
-                var workbook = await ParseWorkbookAsync(uploaded, legacyMode, cancellationToken);
+                var workbook = await ParseWorkbookAsync(uploaded, legacyMode, cancellationToken, mediaProfile);
                 rows = workbook.Rows;
                 sourceSubjectId = workbook.SourceSubjectId;
             }
@@ -132,7 +155,7 @@ public static class QuestionImportFileParser
         return output.ToArray();
     }
 
-    private static async Task<WorkbookData> ParseWorkbookAsync(byte[] uploaded, bool legacyMode, CancellationToken ct)
+    private static async Task<WorkbookData> ParseWorkbookAsync(byte[] uploaded, bool legacyMode, CancellationToken ct, bool mediaProfile = false)
     {
         using var zipStream = new MemoryStream(uploaded, false);
         using var archive = new ZipArchive(zipStream, ZipArchiveMode.Read, false);
@@ -257,7 +280,7 @@ public static class QuestionImportFileParser
             }
             else if (string.Equals(name, "Guide", StringComparison.OrdinalIgnoreCase))
             {
-                sourceSubjectId = ReadGuideMetadata(ReadSheetRows(document, sharedStrings, textBudget, ct));
+                sourceSubjectId = ReadGuideMetadata(ReadSheetRows(document, sharedStrings, textBudget, ct), mediaProfile);
             }
             else if (!IsInformational(name) && document.Descendants(Spreadsheet + "c").Any(c =>
                 c.Element(Spreadsheet + "f") is not null ||
@@ -267,10 +290,10 @@ public static class QuestionImportFileParser
                 Fail("UNSUPPORTED_SHEET", $"Sheet '{name}' có dữ liệu chưa được profile V1 hỗ trợ. Hãy hoàn thiện rubric/mapping nâng cao trong editor.");
             }
         }
-        return new(BuildRows(questionRows ?? [], questionSheetName, dateStyles, !legacyMode, ct), sourceSubjectId);
+        return new(BuildRows(questionRows ?? [], questionSheetName, dateStyles, !legacyMode, ct, mediaProfile), sourceSubjectId);
     }
 
-    private static XDocument ReadXml(byte[] bytes, CancellationToken ct)
+    internal static XDocument ReadXml(byte[] bytes, CancellationToken ct, int maxNodes = MaxXmlNodesPerPart, Action<int>? chargeNodes = null)
     {
         ct.ThrowIfCancellationRequested();
         using var stream = new CancellationReadStream(bytes, ct);
@@ -288,9 +311,12 @@ public static class QuestionImportFileParser
             while (probe.Read())
             {
                 ct.ThrowIfCancellationRequested();
-                if (++nodes > MaxXmlNodesPerPart || probe.Depth > 64)
-                    Fail("XML_COMPLEXITY_LIMIT", "XML trong workbook vượt giới hạn 200.000 node hoặc độ sâu 64.");
+                nodes += 1 + (chargeNodes is null ? 0 : probe.AttributeCount);
+                if (nodes > maxNodes || probe.Depth > 64)
+                    Fail("XML_COMPLEXITY_LIMIT", "XML vượt giới hạn node của profile hoặc độ sâu 64.");
             }
+            // Aggregate users must reserve their shared object budget before a DOM is allocated.
+            chargeNodes?.Invoke(nodes);
         }
         stream.Position = 0;
         using var reader = XmlReader.Create(stream, settings);
@@ -422,15 +448,16 @@ public static class QuestionImportFileParser
         return result;
     }
 
-    private static Guid? ReadGuideMetadata(List<SourceRow> rows)
+    private static Guid? ReadGuideMetadata(List<SourceRow> rows, bool mediaProfile = false)
     {
         Guid? subjectId = null;
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var row in rows)
         {
             if (!row.Cells.TryGetValue(0, out var key)) continue;
-            var name = key.Value.Trim();
-            if (!name.Equals("TemplateVersion", StringComparison.OrdinalIgnoreCase) && !name.Equals("SubjectId", StringComparison.OrdinalIgnoreCase)) continue;
+            // Normalize explicit localized labels before checking duplicates so a workbook
+            // cannot bypass metadata validation by mixing Vietnamese and English keys.
+            if (!GuideMetadataAliases.TryGetValue(key.Value.Trim(), out var name)) continue;
             if (!seen.Add(name)) Fail("DUPLICATE_GUIDE_METADATA", $"Guide khai báo {name} nhiều lần.");
             var valueCell = row.Cells.GetValueOrDefault(1);
             if (key.HasFormula || valueCell?.HasFormula == true)
@@ -438,7 +465,7 @@ public static class QuestionImportFileParser
             var value = valueCell?.Value.Trim();
             if (name.Equals("TemplateVersion", StringComparison.OrdinalIgnoreCase))
             {
-                if (value is not ("1" or "1.0" or "V1"))
+                if (mediaProfile ? value != "2.0" : value is not ("1" or "1.0" or "V1"))
                     Fail("UNSUPPORTED_TEMPLATE_VERSION", $"TemplateVersion '{value}' chưa được hỗ trợ; hãy tải template V1 mới.");
             }
             else
@@ -455,7 +482,7 @@ public static class QuestionImportFileParser
         name?.Equals("Topics", StringComparison.OrdinalIgnoreCase) == true;
     private static bool IsNonempty(SourceRow row) => row.Cells.Values.Any(c => c.HasFormula || !string.IsNullOrWhiteSpace(c.Value));
 
-    private static List<RawImportRow> BuildRows(List<SourceRow> source, string sheetName, HashSet<int> dateStyles, bool requireFirstRow, CancellationToken ct)
+    private static List<RawImportRow> BuildRows(List<SourceRow> source, string sheetName, HashSet<int> dateStyles, bool requireFirstRow, CancellationToken ct, bool mediaProfile = false)
     {
         var header = source.FirstOrDefault(IsNonempty);
         if (header is null) Fail("MISSING_HEADER", "Sheet câu hỏi thiếu header.");
@@ -469,7 +496,8 @@ public static class QuestionImportFileParser
             if (cell.HasFormula || cell.Type is "e" or "b" or "d") Fail("INVALID_HEADER", "Header phải là văn bản cố định.");
             if (rawHeader.Length == 0) continue;
             if (rawHeader.Length > 256) Fail("INVALID_HEADER", "Header quá dài.");
-            var known = HeaderAliases.TryGetValue(rawHeader, out var canonical);
+            var canonical = CanonicalHeader(rawHeader, mediaProfile);
+            var known = canonical is not null;
             canonical ??= rawHeader;
             if (!uniqueHeaders.Add(canonical)) Fail("DUPLICATE_HEADER", $"Header '{canonical}' bị trùng sau mapping alias.");
             columns.Add(column, canonical);
@@ -523,7 +551,7 @@ public static class QuestionImportFileParser
         return result;
     }
 
-    private static List<RawImportRow> ParseCsv(string text, CancellationToken ct)
+    private static List<RawImportRow> ParseCsv(string text, CancellationToken ct, bool mediaProfile = false)
     {
         var delimiter = DetectDelimiter(text);
         var source = new List<SourceRow>();
@@ -597,7 +625,7 @@ public static class QuestionImportFileParser
         if (quoted) Fail("MALFORMED_CSV", $"Ô CSV bắt đầu ở dòng {startLine} chưa đóng dấu nháy.");
         if (field.Length != 0 || column != 0 || closedQuote) EndRecord();
         var header = source.FirstOrDefault(IsNonempty);
-        var result = BuildRows(source, "CSV", [], false, ct);
+        var result = BuildRows(source, "CSV", [], false, ct, mediaProfile);
         var expectedColumns = header is null ? 0 : rowColumnCounts[header.Index];
         foreach (var row in result)
         {
@@ -630,6 +658,19 @@ public static class QuestionImportFileParser
     }
 
     private static string NormalizeNewlines(string value) => value.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+
+    internal static string? CanonicalHeader(string raw, bool mediaProfile = false)
+    {
+        raw = raw.Trim();
+        if (mediaProfile && (raw.Equals("ImageRef", StringComparison.OrdinalIgnoreCase) || raw.Equals("Mã ảnh đề bài", StringComparison.OrdinalIgnoreCase))) return "ImageRef";
+        return HeaderAliases.GetValueOrDefault(raw);
+    }
+
+    internal static uint UpdateCrc32(uint crc, ReadOnlySpan<byte> bytes)
+    {
+        foreach (var item in bytes) crc = (crc >> 8) ^ CrcTable[(crc ^ item) & 0xff];
+        return crc;
+    }
 
     private static uint[] BuildCrcTable()
     {
@@ -697,7 +738,7 @@ public static class QuestionImportFileParser
         Add("RequiredIdeas", "Ý bắt buộc", "YBatBuoc");
         Add("CommonErrors", "Lỗi thường gặp", "LoiThuongGap");
         Add("MaxScore", "Điểm tối đa", "DiemToiDa", "Score", "Điểm", "Diem");
-        Add("EstimatedTimeSeconds", "Thời gian", "ThoiGian", "Time", "TimeSeconds");
+        Add("EstimatedTimeSeconds", "Thời gian (giây)", "Thời gian", "ThoiGian", "Time", "TimeSeconds");
         Add("ReasoningRequired", "Yêu cầu giải trình", "YeuCauGiaiTrinh", "RequireReasoning");
         Add("AnswerEvaluationMode", "Chế độ chấm", "CheDoCham", "EvaluationMode");
         Add("Visibility", "Phạm vi", "PhamVi");

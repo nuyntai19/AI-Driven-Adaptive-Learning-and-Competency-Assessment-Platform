@@ -7,7 +7,7 @@ using EduTwin.Contracts.IdentityAndTenancy;
 namespace EduTwin.Contracts.CurriculumAndQuestions;
 
 /// <summary>Immutable context bound to the preview token. Multipart form fields use these names.</summary>
-public sealed class QuestionImportPreviewRequest
+public class QuestionImportPreviewRequest
 {
     public Guid SubjectId { get; set; }
     public Guid? TeacherId { get; set; }
@@ -24,8 +24,36 @@ public sealed class QuestionImportPreviewRequest
     public string ShortAnswerEvaluationMode { get; set; } = "Manual";
 }
 
+public sealed class QuestionImportV2PreviewRequest : QuestionImportPreviewRequest
+{
+    public QuestionImportV2PreviewRequest() => TemplateVersion = "2.0";
+    public string SourceProfile { get; set; } = "docx-1.0";
+}
+
+public sealed record QuestionImportSourceLocationDto
+{
+    public string? PartPath { get; init; }
+    public int? QuestionIndex { get; init; }
+    public int? TableIndex { get; init; }
+    public int? TableRowIndex { get; init; }
+    public int? CellIndex { get; init; }
+    public int? ParagraphIndex { get; init; }
+    public string? Field { get; init; }
+    public string? RelationshipId { get; init; }
+}
+
 public sealed class QuestionImportItemDto
 {
+    public string CandidateId { get; set; } = string.Empty;
+    public string SourceFormat { get; set; } = string.Empty;
+    public string SourceProfile { get; set; } = "tabular-1.0";
+    public QuestionImportSourceLocationDto? SourceLocation { get; set; }
+    public bool HasImage { get; set; }
+    public string? ImageAssetId { get; set; }
+    public string? ImageSha256 { get; set; }
+    public int? ImageWidth { get; set; }
+    public int? ImageHeight { get; set; }
+    public long? ImageBytes { get; set; }
     public int RowIndex { get; set; }
     public string SheetName { get; set; } = string.Empty;
     public string QuestionKey { get; set; } = string.Empty;
@@ -54,6 +82,8 @@ public sealed class QuestionImportItemDto
 
 public sealed class QuestionImportRowErrorDto
 {
+    public string CandidateId { get; set; } = string.Empty;
+    public QuestionImportSourceLocationDto? SourceLocation { get; set; }
     public int RowIndex { get; set; }
     public string SheetName { get; set; } = string.Empty;
     public string QuestionKey { get; set; } = string.Empty;
@@ -72,6 +102,8 @@ public sealed class QuestionImportPreviewResponse
 
 public sealed class QuestionImportPreviewDataDto
 {
+    public string SourceFormat { get; set; } = string.Empty;
+    public string SourceProfile { get; set; } = "tabular-1.0";
     public string PreviewToken { get; set; } = string.Empty;
     public int Revision { get; set; } = 1;
     public string SubjectId { get; set; } = string.Empty;

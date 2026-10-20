@@ -18,6 +18,7 @@ using Xunit;
 
 namespace EduTwin.BLL.Tests.CurriculumAndQuestions;
 
+[Collection("Question import use cases")]
 public sealed class QuestionImportUseCaseTests : IDisposable
 {
     private readonly Guid _centerId = Guid.NewGuid();
@@ -330,12 +331,14 @@ public sealed class QuestionImportUseCaseTests : IDisposable
         Assert.Equal(1, preview.Data!.InvalidCount); Assert.Contains(preview.Data.Errors, e => e.ColumnName == "ImageRef");
     }
 
-    [Fact]
-    public async Task SubjectBoundTemplateCannotPreviewInAnotherSubject()
+    [Theory]
+    [InlineData("frontend-template-v1.xlsx")]
+    [InlineData("frontend-template-v1-vi.xlsx")]
+    public async Task SubjectBoundTemplateCannotPreviewInAnotherSubject(string fileName)
     {
-        var path = Path.Combine(AppContext.BaseDirectory, "CurriculumAndQuestions", "Fixtures", "Import", "frontend-template-v1.xlsx");
+        var path = Path.Combine(AppContext.BaseDirectory, "CurriculumAndQuestions", "Fixtures", "Import", fileName);
         await using var file = File.OpenRead(path);
-        var preview = await Sut().PreviewAsync(file, "frontend-template-v1.xlsx", Defaults(), default);
+        var preview = await Sut().PreviewAsync(file, fileName, Defaults(), default);
         Assert.False(preview.IsSuccess); Assert.Equal("TEMPLATE_SUBJECT_MISMATCH", preview.ErrorCode);
         Assert.Empty(await _db.Questions.ToListAsync());
     }

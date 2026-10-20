@@ -26,7 +26,7 @@ using Microsoft.Extensions.Logging;
 namespace EduTwin.BLL.CurriculumAndQuestions.Import;
 
 /// <summary>V1 text/inline math import. Client checks rendering syntax; persistence always creates Drafts.</summary>
-public sealed class QuestionImportUseCase : IQuestionImportUseCase
+public sealed partial class QuestionImportUseCase : IQuestionImportUseCase, IQuestionImportV2UseCase
 {
     private const long MaxNormalizedDataBytes = 10 * 1024 * 1024;
     private const long MaxPreviewCacheBytes = 30 * 1024 * 1024;
@@ -46,10 +46,12 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
         public required string FileHash { get; init; }
         public required string DefaultsHash { get; init; }
         public required string TemplateVersion { get; init; }
+        public string SourceProfile { get; init; } = "tabular-1.0";
         public required long CacheBytes { get; init; }
         public required int TotalRows { get; init; }
         public required int InvalidCount { get; init; }
         public required List<QuestionImportItemDto> Questions { get; init; }
+        public QuestionImportMediaAttempt? Media { get; init; }
         public int Revision { get; init; } = 1;
         private int _status;
         public bool TryBeginProcessing() => Interlocked.CompareExchange(ref _status, 1, 0) == 0;
@@ -62,9 +64,12 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
     private readonly TimeProvider _timeProvider;
     private readonly IQuestionActivationPolicy _activationPolicy;
     private readonly ILogger<QuestionImportUseCase>? _logger;
+    private readonly QuestionImportMediaStore? _mediaStore;
+    private readonly QuestionImportImageNormalizer _imageNormalizer;
     public QuestionImportUseCase(EduTwinDbContext dbContext, ITenantContext tenantContext, TimeProvider? timeProvider = null,
         IMathAnswerNormalizer? mathNormalizer = null, ICoordinateAnswerNormalizer? coordinateNormalizer = null,
-        IQuestionActivationPolicy? activationPolicy = null, ILogger<QuestionImportUseCase>? logger = null)
+        IQuestionActivationPolicy? activationPolicy = null, ILogger<QuestionImportUseCase>? logger = null,
+        QuestionImportMediaStore? mediaStore = null, QuestionImportImageNormalizer? imageNormalizer = null)
     {
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         _tenantContext = tenantContext ?? throw new ArgumentNullException(nameof(tenantContext));
@@ -72,11 +77,13 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
         var math = mathNormalizer ?? new MathAnswerNormalizer();
         _activationPolicy = activationPolicy ?? new QuestionActivationPolicy(math, coordinateNormalizer ?? new CoordinateAnswerNormalizer(math));
         _logger = logger;
+        _mediaStore = mediaStore; _imageNormalizer = imageNormalizer ?? new QuestionImportImageNormalizer();
     }
 
     public async Task<QuestionImportPreviewResult> PreviewAsync(Stream fileStream, string fileName, QuestionImportPreviewRequest request, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (request?.TemplateVersion != "1.0") return QuestionImportPreviewResult.ValidationFailed("Luồng V1 chỉ nhận TemplateVersion 1.0.");
         if (!TryGetActor(out var centerId, out var actorId)) return QuestionImportPreviewResult.Failure("FORBIDDEN_RESOURCE", "Chỉ giáo viên hợp lệ trong trung tâm được nhập câu hỏi.");
         var defaultsError = ValidateDefaults(request);
         if (defaultsError is not null) return QuestionImportPreviewResult.ValidationFailed(defaultsError);
@@ -94,7 +101,8 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
         finally { PreviewSlots.Release(); }
     }
 
-    private async Task<QuestionImportPreviewResult> PreviewCoreAsync(Stream fileStream, string fileName, QuestionImportPreviewRequest request, CancellationToken cancellationToken)
+    private async Task<QuestionImportPreviewResult> PreviewCoreAsync(Stream fileStream, string fileName, QuestionImportPreviewRequest request, CancellationToken cancellationToken,
+        ParsedQuestionImportFile? providedContent = null, QuestionImportMediaAttempt? media = null, string sourceProfile = "tabular-1.0", string sourceFormat = "")
     {
         if (!TryGetActor(out var centerId, out var actorId)) return QuestionImportPreviewResult.Failure("FORBIDDEN_RESOURCE", "Chỉ giáo viên hợp lệ trong trung tâm được nhập câu hỏi.");
         var defaultsError = ValidateDefaults(request);
@@ -105,7 +113,7 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
         var defaultTopic = request.DefaultTopicNodeId.HasValue ? topics.SingleOrDefault(n => n.NodeId == request.DefaultTopicNodeId) : null;
         if (request.DefaultTopicNodeId.HasValue && defaultTopic is null) return QuestionImportPreviewResult.ValidationFailed("Chủ đề mặc định phải là Topic đang hoạt động thuộc môn đã chọn.");
         ParsedQuestionImportFile parsed;
-        try { parsed = await QuestionImportFileParser.ParseAsync(fileStream, fileName, request.LegacyMode, cancellationToken); }
+        try { parsed = providedContent ?? await QuestionImportFileParser.ParseAsync(fileStream, fileName, request.LegacyMode, cancellationToken); }
         catch (OperationCanceledException) { throw; }
         catch (QuestionImportFileException ex) { return QuestionImportPreviewResult.Failure(ex.Code, ex.Message); }
         catch (Exception ex) when (ex is InvalidDataException or IOException or System.Xml.XmlException)
@@ -124,11 +132,11 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
         var errors = new List<QuestionImportRowErrorDto>();
         var warnings = new List<QuestionImportRowErrorDto>();
         var candidates = new List<QuestionImportItemDto>();
-        foreach (var row in parsed.Rows) { cancellationToken.ThrowIfCancellationRequested(); candidates.Add(NormalizeRow(row, request, topics, defaultTopic, errors)); }
+        foreach (var row in parsed.Rows) { cancellationToken.ThrowIfCancellationRequested(); candidates.Add(NormalizeRow(row, request, topics, defaultTopic, errors, media, sourceProfile, sourceFormat)); }
         foreach (var duplicate in candidates.GroupBy(q => q.QuestionKey, StringComparer.Ordinal).Where(g => g.Count() > 1))
             foreach (var item in duplicate) AddError(errors, item, "QuestionKey", "DUPLICATE_QUESTION_KEY", "QuestionKey phải duy nhất trong tệp.", item.QuestionKey);
-        var invalidRows = errors.Select(e => (e.SheetName, e.RowIndex)).ToHashSet();
-        var valid = candidates.Where(q => !invalidRows.Contains((q.SheetName, q.RowIndex))).ToList();
+        var invalidRows = errors.Select(e => CandidateIdentity(e.CandidateId, e.SheetName, e.RowIndex)).ToHashSet(StringComparer.Ordinal);
+        var valid = candidates.Where(q => !invalidRows.Contains(CandidateIdentity(q.CandidateId, q.SheetName, q.RowIndex))).ToList();
         foreach (var duplicate in valid.GroupBy(q => q.QuestionText, StringComparer.Ordinal).Where(g => g.Count() > 1))
             foreach (var item in duplicate) AddError(warnings, item, "QuestionText", "DUPLICATE_CONTENT", "Có câu cùng nội dung trong tệp; import sẽ tạo câu mới.");
         using var serialized = new BoundedPreviewStream(MaxPreviewCacheBytes);
@@ -147,13 +155,14 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
             // Admit while holding the quota lock, before allocating an independent snapshot.
             // Deserialize from the bounded buffer directly, avoiding an additional ToArray copy.
             cancellationToken.ThrowIfCancellationRequested();
+            media?.Seal(valid.Where(q => q.ImageAssetId is not null).Select(q => q.ImageAssetId!).ToHashSet(StringComparer.Ordinal));
             cached = new PreviewCacheEntry
             {
                 CenterId = centerId, ActorId = actorId, TeacherId = actorId, SubjectId = request.SubjectId, ActorRole = _tenantContext.Role!,
                 ExpiresAt = _timeProvider.GetUtcNow().AddMinutes(30), Clock = _timeProvider, FileHash = parsed.FileHash,
-                DefaultsHash = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(request))), TemplateVersion = request.TemplateVersion,
+                DefaultsHash = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(request, request.GetType()))), TemplateVersion = request.TemplateVersion, SourceProfile = sourceProfile,
                 TotalRows = parsed.Rows.Count, InvalidCount = invalidRows.Count,
-                Questions = JsonSerializer.Deserialize<List<QuestionImportItemDto>>(serialized.GetBuffer().AsSpan(0, checked((int)serialized.Length)))!, CacheBytes = serialized.Length
+                Questions = JsonSerializer.Deserialize<List<QuestionImportItemDto>>(serialized.GetBuffer().AsSpan(0, checked((int)serialized.Length)))!, CacheBytes = serialized.Length, Media = media
             };
             PreviewCache[token] = cached;
         }
@@ -161,7 +170,7 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
         {
             PreviewToken = token, Revision = 1, SubjectId = request.SubjectId.ToString(), TemplateVersion = request.TemplateVersion, ExpiresAt = cached.ExpiresAt.UtcDateTime,
             TotalRows = parsed.Rows.Count, ValidCount = valid.Count, InvalidCount = invalidRows.Count, ErrorCount = errors.Count, WarningCount = warnings.Count,
-            ValidQuestions = valid, Errors = errors, Warnings = warnings
+            ValidQuestions = valid, Errors = errors, Warnings = warnings, SourceProfile = sourceProfile, SourceFormat = sourceFormat
         });
     }
 
@@ -216,16 +225,18 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
         }
     }
 
-    public async Task<QuestionImportConfirmResult> ConfirmAsync(QuestionImportConfirmRequest request, CancellationToken cancellationToken)
+    public Task<QuestionImportConfirmResult> ConfirmAsync(QuestionImportConfirmRequest request, CancellationToken cancellationToken) => ConfirmCoreAsync(request, "1.0", cancellationToken);
+
+    private async Task<QuestionImportConfirmResult> ConfirmCoreAsync(QuestionImportConfirmRequest request, string templateVersion, CancellationToken cancellationToken)
     {
         if (!TryGetActor(out var centerId, out var actorId)) return QuestionImportConfirmResult.Failure("FORBIDDEN_RESOURCE", "Chỉ giáo viên hợp lệ trong trung tâm được nhập câu hỏi.");
         if (request is null || string.IsNullOrWhiteSpace(request.PreviewToken) || request.TargetStatus != "Draft" || request.Revision != 1 || (request.ImportMode != "AllValid" && request.ImportMode != "SelectedValid") || request.SelectedQuestionKeys is null)
             return QuestionImportConfirmResult.ValidationFailed("Confirm cần token, revision hợp lệ, ImportMode AllValid/SelectedValid và TargetStatus Draft.");
-        if (!PreviewCache.TryGetValue(request.PreviewToken, out var cached) || cached.CenterId != centerId || cached.ActorId != actorId || cached.ActorRole != _tenantContext.Role || cached.Revision != request.Revision)
+        if (!PreviewCache.TryGetValue(request.PreviewToken, out var cached) || cached.CenterId != centerId || cached.ActorId != actorId || cached.ActorRole != _tenantContext.Role || cached.Revision != request.Revision || cached.TemplateVersion != templateVersion)
             return QuestionImportConfirmResult.ValidationFailed("Phiên xem trước không tồn tại hoặc không thuộc người dùng hiện tại. Vui lòng tải lại tệp.");
         if (cached.ExpiresAt <= _timeProvider.GetUtcNow())
         {
-            if (!cached.IsProcessing) PreviewCache.TryRemove(request.PreviewToken, out _);
+            if (!cached.IsProcessing) RemovePreview(request.PreviewToken);
             return QuestionImportConfirmResult.ValidationFailed("Phiên xem trước đã hết hạn. Vui lòng tải lại tệp.");
         }
         if (!cached.TryBeginProcessing()) return QuestionImportConfirmResult.ValidationFailed("Phiên đang được nhập hoặc đã hoàn tất; không thể xác nhận đồng thời.");
@@ -234,6 +245,8 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
         var commitStarted = false;
         var addedQuestions = new List<Question>();
         var addedOptions = new List<QuestionOption>();
+        var addedImages = new List<QuestionImage>();
+        using var mediaLease = cached.Media?.AcquireLease();
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -254,6 +267,20 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
                 selected = cached.Questions.Where(q => keys.Contains(q.QuestionKey)).ToList();
             }
             if (selected.Count == 0) return QuestionImportConfirmResult.ValidationFailed("Không có câu hợp lệ để nhập.");
+            if (selected.Any(q => q.SourceProfile != cached.SourceProfile)) return QuestionImportConfirmResult.ValidationFailed("Profile của câu hỏi không khớp phiên đã kiểm tra.");
+            var imageData = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+            if (selected.Any(q => q.HasImage))
+            {
+                if (cached.Media is null || mediaLease is null) throw new QuestionImportMediaException("IMPORT_ASSET_CHANGED", "Phiên ảnh không còn khả dụng. Hãy tải lại tệp.");
+                foreach (var item in selected.Where(q => q.HasImage))
+                {
+                    var asset = cached.Media.Assets.Values.SingleOrDefault(a => a.AssetId == item.ImageAssetId && a.Sha256 == item.ImageSha256 && a.Bytes == item.ImageBytes && a.Width == item.ImageWidth && a.Height == item.ImageHeight);
+                    if (asset is null) throw new QuestionImportMediaException("IMPORT_ASSET_CHANGED", "Ảnh không khớp phiên xem trước. Hãy tải lại tệp.");
+                    if (!imageData.ContainsKey(asset.AssetId)) imageData.Add(asset.AssetId, await cached.Media.ReadVerifiedAsync(asset, cancellationToken));
+                }
+                if (selected.Where(q => q.HasImage).Sum(q => q.ImageBytes ?? 0) > 40L * 1024 * 1024)
+                    throw new QuestionImportMediaException("IMPORT_IMAGE_LIMIT", "Lô được chọn vượt 40 MiB ảnh chuẩn hóa.");
+            }
             var topicIds = selected.Select(q => ulong.Parse(q.PrimaryTopicNodeId, CultureInfo.InvariantCulture)).Distinct().ToList();
             var currentTopics = await _dbContext.KnowledgeNodes.AsNoTracking().Where(n => n.CenterId == centerId && n.SubjectId == cached.SubjectId && topicIds.Contains(n.NodeId) && n.IsActive && !n.IsDeleted && n.NodeType == NodeType.Topic).ToListAsync(cancellationToken);
             if (currentTopics.Count != topicIds.Count || selected.Any(q => !currentTopics.Any(n => n.NodeId.ToString(CultureInfo.InvariantCulture) == q.PrimaryTopicNodeId && n.NodeCode == q.TopicCode))) return QuestionImportConfirmResult.NotFound("Chủ đề đã đổi hoặc không còn hoạt động trong môn đã chọn. Vui lòng xem trước lại.");
@@ -266,7 +293,7 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
                 {
                     CenterId = centerId, SubjectId = cached.SubjectId, PrimaryTopicNodeId = ulong.Parse(item.PrimaryTopicNodeId, CultureInfo.InvariantCulture), CreatedByTeacherId = cached.TeacherId,
                     Visibility = Enum.Parse<MaterialVisibility>(item.Visibility), GradeLevel = item.GradeLevel, QuestionType = item.QuestionType, Difficulty = item.Difficulty,
-                    QuestionText = item.QuestionText, CorrectAnswer = item.CorrectAnswer, Solution = item.Solution, ExpectedReasoning = item.ExpectedReasoning, GradingCriteria = CriteriaFor(item),
+                    QuestionText = item.QuestionText, HasImage = item.HasImage, CorrectAnswer = item.CorrectAnswer, Solution = item.Solution, ExpectedReasoning = item.ExpectedReasoning, GradingCriteria = CriteriaFor(item),
                     MaxScore = item.MaxScore, EstimatedTimeSeconds = item.EstimatedTimeSeconds, ReasoningRequired = item.ReasoningRequired, LanguageCode = item.LanguageCode,
                     Status = QuestionStatus.Draft, AnswerEvaluationMode = item.AnswerEvaluationMode, CreatedAt = now, UpdatedAt = now, CreatedBy = actorId, UpdatedBy = actorId
                 };
@@ -280,6 +307,11 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
                 cancellationToken.ThrowIfCancellationRequested();
                 var item = selected[i];
                 var question = addedQuestions[i];
+                if (item.HasImage)
+                {
+                    var image = new QuestionImage { CenterId = centerId, QuestionId = question.QuestionId, Data = imageData[item.ImageAssetId!], Sha256 = item.ImageSha256!, CreatedAt = now, CreatedBy = actorId };
+                    _dbContext.QuestionImages.Add(image); addedImages.Add(image);
+                }
                 foreach (var option in item.Options)
                 {
                     var entity = new QuestionOption { OptionId = checked(question.QuestionId * 1000 + option.OrderIndex), CenterId = centerId, QuestionId = question.QuestionId, OptionLabel = option.OptionLabel,
@@ -290,14 +322,14 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
             await _dbContext.SaveChangesAsync(cancellationToken);
             commitStarted = true;
             await transaction.CommitAsync(cancellationToken);
-            completed = true; cached.Complete(); PreviewCache.TryRemove(request.PreviewToken, out _);
+            completed = true; cached.Complete(); RemovePreview(request.PreviewToken);
             return QuestionImportConfirmResult.Success(new QuestionImportConfirmDataDto { ImportedCount = selected.Count, SkippedCount = cached.TotalRows - selected.Count,
                 QuestionIds = addedQuestions.Select(q => q.QuestionId.ToString(CultureInfo.InvariantCulture)).ToList(), Message = $"Đã nhập {selected.Count} câu hỏi ở trạng thái Draft. Rà soát trong editor trước khi kích hoạt." });
         }
         catch (OperationCanceledException)
         {
             await RollbackAsync(transaction);
-            if (commitStarted) { cached.Complete(); PreviewCache.TryRemove(request.PreviewToken, out _); }
+            if (commitStarted) { cached.Complete(); RemovePreview(request.PreviewToken); }
             throw;
         }
         catch (Exception ex)
@@ -305,8 +337,13 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
             await RollbackAsync(transaction);
             if (commitStarted)
             {
-                cached.Complete(); PreviewCache.TryRemove(request.PreviewToken, out _);
+                cached.Complete(); RemovePreview(request.PreviewToken);
                 return QuestionImportConfirmResult.Failure("IMPORT_COMMIT_UNCERTAIN", "Không xác định được kết quả commit. Kiểm tra kho câu hỏi trước khi tải lại tệp để tránh nhập trùng.");
+            }
+            if (ex is QuestionImportMediaException mediaError)
+            {
+                cached.Complete(); RemovePreview(request.PreviewToken);
+                return QuestionImportConfirmResult.Failure(mediaError.Code, mediaError.Message);
             }
             _logger?.LogError("Question import failed. CenterId={CenterId} SubjectId={SubjectId} ExceptionType={ExceptionType}", centerId, cached.SubjectId, ex.GetType().Name);
             return QuestionImportConfirmResult.Failure("IMPORT_FAILED", "Không thể lưu lô câu hỏi. Toàn bộ lô đã được rollback; có thể thử lại phiên xem trước.");
@@ -320,6 +357,7 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
                 if (!completed)
                 {
                     foreach (var option in addedOptions) _dbContext.Entry(option).State = EntityState.Detached;
+                    foreach (var image in addedImages) _dbContext.Entry(image).State = EntityState.Detached;
                     foreach (var question in addedQuestions) _dbContext.Entry(question).State = EntityState.Detached;
                     cached.Reset();
                 }
@@ -327,14 +365,30 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
         }
     }
 
-    private QuestionImportItemDto NormalizeRow(RawImportRow row, QuestionImportPreviewRequest defaults, List<KnowledgeNode> topics, KnowledgeNode? defaultTopic, List<QuestionImportRowErrorDto> errors)
+    private QuestionImportItemDto NormalizeRow(RawImportRow row, QuestionImportPreviewRequest defaults, List<KnowledgeNode> topics, KnowledgeNode? defaultTopic, List<QuestionImportRowErrorDto> errors,
+        QuestionImportMediaAttempt? media = null, string sourceProfile = "tabular-1.0", string sourceFormat = "")
     {
         string Value(string field) => row.Values.TryGetValue(field, out var value) ? value : string.Empty;
         var item = new QuestionImportItemDto { RowIndex = row.RowIndex, SheetName = row.SheetName, QuestionKey = Value("QuestionKey").Trim(), TopicCode = Value("TopicCode").Trim(),
-            QuestionText = Value("QuestionText"), CorrectAnswer = Value("CorrectAnswer"), Solution = Value("Solution"), ExpectedReasoning = NullIfEmpty(Value("ExpectedReasoning")), ScoringNotes = Value("ScoringNotes") };
+            QuestionText = Value("QuestionText"), CorrectAnswer = Value("CorrectAnswer"), Solution = Value("Solution"), ExpectedReasoning = NullIfEmpty(Value("ExpectedReasoning")), ScoringNotes = Value("ScoringNotes"),
+            SourceProfile = sourceProfile, SourceFormat = sourceFormat, CandidateId = row.CandidateId, SourceLocation = row.SourceLocation };
+        if (media is not null && !string.IsNullOrWhiteSpace(Value("ImageRef")))
+        {
+            if (media.Assets.TryGetValue(Value("ImageRef"), out var asset))
+            {
+                item.HasImage = true; item.ImageAssetId = asset.AssetId; item.ImageSha256 = asset.Sha256;
+                item.ImageWidth = asset.Width; item.ImageHeight = asset.Height; item.ImageBytes = asset.Bytes;
+                if (string.IsNullOrWhiteSpace(item.QuestionText)) item.QuestionText = QuestionImageContent.ImageOnlyText;
+            }
+            else AddError(errors, item, "ImageRef", "IMAGE_REFERENCE_INVALID", "Ảnh tham chiếu bị thiếu hoặc không hợp lệ.", Value("ImageRef"));
+        }
         if (item.QuestionKey.Length == 0) { item.QuestionKey = $"{row.SheetName}:{row.RowIndex}"; item.DefaultedFields.Add("QuestionKey"); }
         if (item.QuestionKey.Length > 64) AddError(errors, item, "QuestionKey", "FIELD_TOO_LONG", "QuestionKey tối đa 64 ký tự.");
-        foreach (var diagnostic in row.Diagnostics) AddError(errors, item, diagnostic.ColumnName ?? "File", diagnostic.Code, diagnostic.Message, diagnostic.RawValue);
+        foreach (var diagnostic in row.Diagnostics)
+        {
+            AddError(errors, item, diagnostic.ColumnName ?? "File", diagnostic.Code, diagnostic.Message, diagnostic.RawValue);
+            if (diagnostic.SourceLocation is not null) errors[^1].SourceLocation = diagnostic.SourceLocation;
+        }
         var type = Value("QuestionType").Trim();
         if (type.Length == 0 && defaults.LegacyMode) { type = "MultipleChoice"; item.DefaultedFields.Add("QuestionType"); }
         if (defaults.LegacyMode) type = LegacyType(type);
@@ -374,6 +428,14 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
         if (defaults.LegacyMode) mode = LegacyMode(mode);
         if (!TryEnum(mode, out QuestionAnswerEvaluationMode evaluationMode)) AddError(errors, item, "AnswerEvaluationMode", "INVALID_ENUM", "Chế độ chấm không hợp lệ.", mode);
         item.AnswerEvaluationMode = evaluationMode;
+        if (row.CorrectAnswerContainsNativeMath && questionType == QuestionType.ShortAnswer && evaluationMode == QuestionAnswerEvaluationMode.TextExact)
+            AddError(errors, item, "CorrectAnswer", "UNSUPPORTED_NATIVE_MATH_ANSWER", "Đáp án Equation trong Word không dùng TextExact. Nhập đáp án văn bản thuần hoặc chọn NumericRational, Coordinate2D, MathEquivalent hay Manual phù hợp.");
+        if (sourceProfile != "tabular-1.0" && evaluationMode is QuestionAnswerEvaluationMode.NumericRational or QuestionAnswerEvaluationMode.Coordinate2D or QuestionAnswerEvaluationMode.MathEquivalent)
+        {
+            var answer = item.CorrectAnswer.Trim();
+            if (answer.StartsWith("$$", StringComparison.Ordinal) && answer.EndsWith("$$", StringComparison.Ordinal) && answer.Length > 4) item.CorrectAnswer = answer[2..^2].Trim();
+            else if (answer.StartsWith('$') && answer.EndsWith('$') && answer.Length > 2) item.CorrectAnswer = answer[1..^1].Trim();
+        }
         foreach (var label in new[] { "A", "B", "C", "D" })
         {
             var text = Value($"Option{label}"); var misconception = Value($"Misconception{label}");
@@ -388,7 +450,7 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
         if (questionType == QuestionType.MultipleChoice && item.Options.Count(o => o.IsCorrect) == 1) item.CorrectAnswer = item.Options.Single(o => o.IsCorrect).OptionLabel;
         item.RequiredIdeas = ParseList(Value("RequiredIdeas"), "RequiredIdeas", item, errors);
         item.CommonErrors = ParseList(Value("CommonErrors"), "CommonErrors", item, errors);
-        if (string.IsNullOrWhiteSpace(item.QuestionText)) AddError(errors, item, "QuestionText", "REQUIRED_FIELD", "QuestionText không được để trống trong import text-only V1.");
+        if (string.IsNullOrWhiteSpace(item.QuestionText) || (item.QuestionText == QuestionImageContent.ImageOnlyText && !item.HasImage)) AddError(errors, item, "QuestionText", "REQUIRED_FIELD", "QuestionText phải có nội dung; đề chỉ ảnh cần ImageRef hợp lệ trong V2.");
         if (string.IsNullOrWhiteSpace(item.CorrectAnswer)) AddError(errors, item, "CorrectAnswer", "REQUIRED_FIELD", "CorrectAnswer không được để trống.");
         if (string.IsNullOrWhiteSpace(item.Solution)) AddError(errors, item, "Solution", "REQUIRED_FIELD", "Solution không được để trống.");
         if (!_activationPolicy.Validate(questionType, evaluationMode, item.CorrectAnswer, item.Options.Select(o => new QuestionOptionValidationItem(o.OptionLabel, o.OptionText, o.IsCorrect)).ToList(), out var policyError))
@@ -422,7 +484,12 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
     private static string? ValidateDefaults(QuestionImportPreviewRequest? request)
     {
         if (request is null || request.SubjectId == Guid.Empty || request.TeacherId.HasValue) return "SubjectId bắt buộc; giáo viên chỉ import cho mình và không được chỉ định TeacherId.";
-        if (request.TemplateVersion != "1.0") return "Chỉ hỗ trợ TemplateVersion 1.0.";
+        if (request is QuestionImportV2PreviewRequest v2)
+        {
+            if (request.TemplateVersion != "2.0" || v2.SourceProfile is not ("docx-1.0" or "media-1.0") || request.LegacyMode || request.DefaultTopicNodeId.HasValue)
+                return "V2 cần TemplateVersion 2.0, SourceProfile docx-1.0/media-1.0 và LegacyMode=false.";
+        }
+        else if (request.TemplateVersion != "1.0") return "Chỉ hỗ trợ TemplateVersion 1.0 trong luồng V1.";
         if (request.GradeLevel.HasValue && request.GradeLevel is < 10 or > 12) return "GradeLevel mặc định phải từ 10 đến 12.";
         if (request.Difficulty is < 1 or > 5 || !QuestionScoreLimits.IsValid(request.MaxScore) || request.EstimatedTimeSeconds == 0) return "Độ khó, điểm tối đa hoặc thời gian mặc định không hợp lệ.";
         if (!TryEnum(request.Visibility, out MaterialVisibility _) || request.LanguageCode is not ("vi" or "en")) return "Visibility hoặc LanguageCode mặc định không hợp lệ.";
@@ -432,8 +499,12 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
     }
     private static void CleanupExpired()
     {
-        foreach (var pair in PreviewCache) if (!pair.Value.IsProcessing && pair.Value.ExpiresAt <= pair.Value.Clock.GetUtcNow()) PreviewCache.TryRemove(pair.Key, out _);
+        foreach (var pair in PreviewCache) if (!pair.Value.IsProcessing && pair.Value.ExpiresAt <= pair.Value.Clock.GetUtcNow()) RemovePreview(pair.Key);
         GC.KeepAlive(CleanupTimer);
+    }
+    private static void RemovePreview(string token)
+    {
+        if (PreviewCache.TryRemove(token, out var entry)) entry.Media?.Dispose();
     }
     private async Task RollbackAsync(IDbContextTransaction? transaction)
     {
@@ -443,6 +514,7 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
     }
     private static bool TryEnum<T>(string? value, out T result) where T : struct, Enum => Enum.TryParse(value, false, out result) && Enum.IsDefined(result) && value == result.ToString();
     private static string? NullIfEmpty(string value) => string.IsNullOrWhiteSpace(value) ? null : value;
+    private static string CandidateIdentity(string candidateId, string sheet, int row) => string.IsNullOrWhiteSpace(candidateId) ? $"{sheet}:{row}" : candidateId;
     private static bool TryBoolean(string value, bool legacy, out bool result)
     {
         result = false;
@@ -478,48 +550,47 @@ public sealed class QuestionImportUseCase : IQuestionImportUseCase
         if (text.Length > 20000 || ((field == "CorrectAnswer" || field.StartsWith("Option", StringComparison.Ordinal)) && Encoding.UTF8.GetByteCount(text) > 65535)) { AddError(errors, item, field, "FIELD_TOO_LONG", "Nội dung vượt giới hạn 20.000 ký tự hoặc 65.535 byte của cột text."); return; }
         // Comparisons such as $a<b>c$ are valid math, not HTML. General tags are checked in prose only.
         var prose = new StringBuilder(text.Length);
-        var inMath = false;
+        var allowDisplay = item.SourceProfile is "docx-1.0" or "media-1.0";
+        var mathStart = -1; var delimiterWidth = 0; var slashes = 0;
         for (var i = 0; i < text.Length; i++)
         {
-            if (text[i] == '$' && !IsEscaped(text, i)) { inMath = !inMath; continue; }
-            if (!inMath) prose.Append(text[i]);
+            var escaped = slashes % 2 == 1;
+            slashes = text[i] == '\\' ? slashes + 1 : 0;
+            if (text[i] == '$' && !escaped)
+            {
+                var width = mathStart >= 0 && delimiterWidth == 1 ? 1 : i + 1 < text.Length && text[i + 1] == '$' ? 2 : 1;
+                if (mathStart < 0) { mathStart = i + width; delimiterWidth = width; }
+                else if (width != delimiterWidth) AddError(errors, item, field, "MISMATCHED_MATH_DELIMITER", "Dấu phân cách công thức không khớp ($ hoặc $$).");
+                else
+                {
+                    var formula = text.AsSpan(mathStart, i - mathStart);
+                    if (formula.IsWhiteSpace() || formula.Length > 2000) AddError(errors, item, field, "INVALID_MATH_LENGTH", "Công thức không được rỗng và không vượt quá 2.000 ký tự.");
+                    if (width == 1 && formula.ContainsAny('\r', '\n')) AddError(errors, item, field, "INLINE_MATH_NEWLINE", "Công thức inline phải nằm trên một dòng.");
+                    var depth = 0; var balanced = true; var formulaSlashes = 0;
+                    foreach (var c in formula)
+                    {
+                        var braceEscaped = formulaSlashes % 2 == 1;
+                        formulaSlashes = c == '\\' ? formulaSlashes + 1 : 0;
+                        if (braceEscaped) continue;
+                        if (c == '{') depth++;
+                        if (c == '}' && --depth < 0) { balanced = false; break; }
+                    }
+                    if (!balanced || depth != 0) AddError(errors, item, field, "UNBALANCED_MATH_BRACES", "Công thức có ngoặc nhọn chưa cân bằng.");
+                    mathStart = -1;
+                }
+                i += width - 1;
+                continue;
+            }
+            if (mathStart < 0) prose.Append(text[i]);
         }
         if (Regex.IsMatch(prose.ToString(), @"<\s*/?\s*[A-Za-z][^>]*>", RegexOptions.CultureInvariant | RegexOptions.NonBacktracking) ||
             Regex.IsMatch(text, @"<\s*/?\s*(?:script|iframe|img|svg|object|embed|style)\b[^>]*>", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase | RegexOptions.NonBacktracking) ||
             Regex.IsMatch(text, @"\\(?:href|url|includegraphics|html\w*|def|gdef|edef|xdef|newcommand|renewcommand|providecommand|let|futurelet|input|include|write|csname)\b", RegexOptions.CultureInvariant | RegexOptions.NonBacktracking))
             AddError(errors, item, field, "UNSAFE_CONTENT", "Không hỗ trợ HTML, URL hoặc macro LaTeX tùy ý trong import.");
-        if (text.Contains("$$", StringComparison.Ordinal) || text.Contains(@"\(", StringComparison.Ordinal) || text.Contains(@"\)", StringComparison.Ordinal) || text.Contains(@"\[", StringComparison.Ordinal) || text.Contains(@"\]", StringComparison.Ordinal)) { AddError(errors, item, field, "UNSUPPORTED_MATH_PROFILE", "Template V1 chỉ hỗ trợ công thức inline $...$; chuyển công thức block rồi xem trước lại."); return; }
-        var start = -1;
-        for (var i = 0; i < text.Length; i++)
-        {
-            if (text[i] != '$' || IsEscaped(text, i)) continue;
-            if (start < 0) { start = i; continue; }
-            var formula = text.Substring(start + 1, i - start - 1);
-            if (formula.Length == 0 || formula.Length > 2000)
-            {
-                AddError(errors, item, field, "INVALID_MATH_LENGTH", "Công thức không được rỗng và không vượt quá 2.000 ký tự.");
-                start = -1;
-                continue;
-            }
-            var depth = 0; var balanced = true;
-            for (var j = 0; j < formula.Length; j++)
-            {
-                // Inspect preceding backslashes only for braces. Scanning backwards
-                // at every backslash would make a long run quadratic.
-                if (formula[j] is not ('{' or '}') || IsEscaped(formula, j)) continue;
-                if (formula[j] == '{') depth++;
-                if (formula[j] == '}' && --depth < 0) { balanced = false; break; }
-            }
-            if (!balanced || depth != 0) AddError(errors, item, field, "UNBALANCED_MATH_BRACES", "Công thức có ngoặc nhọn chưa cân bằng.");
-            start = -1;
-        }
-        if (start >= 0) AddError(errors, item, field, "UNCLOSED_MATH_DELIMITER", "Công thức có dấu $ chưa đóng.");
-    }
-    private static bool IsEscaped(string text, int index)
-    {
-        var count = 0; for (var i = index - 1; i >= 0 && text[i] == '\\'; i--) count++;
-        return count % 2 == 1;
+        if ((!allowDisplay && text.Contains("$$", StringComparison.Ordinal)) || text.Contains(@"\(", StringComparison.Ordinal) || text.Contains(@"\)", StringComparison.Ordinal) || text.Contains(@"\[", StringComparison.Ordinal) || text.Contains(@"\]", StringComparison.Ordinal))
+            AddError(errors, item, field, "UNSUPPORTED_MATH_PROFILE", allowDisplay ? "Dùng $...$ cho công thức cùng dòng hoặc $$...$$ cho công thức khối." : "Template V1 chỉ hỗ trợ công thức inline $...$; chuyển công thức block rồi xem trước lại.");
+        if (mathStart >= 0) AddError(errors, item, field, "UNCLOSED_MATH_DELIMITER", "Công thức có dấu $ hoặc $$ chưa đóng.");
     }
     private static void AddError(List<QuestionImportRowErrorDto> target, QuestionImportItemDto item, string field, string code, string message, string? raw = null) => target.Add(new QuestionImportRowErrorDto
-    { RowIndex = item.RowIndex, SheetName = item.SheetName, QuestionKey = item.QuestionKey, Field = field, ColumnName = field, Code = code, ErrorMessage = message, RawValue = raw is { Length: > 200 } ? raw[..200] : raw });
+    { RowIndex = item.RowIndex, SheetName = item.SheetName, QuestionKey = item.QuestionKey, CandidateId = item.CandidateId, SourceLocation = item.SourceLocation, Field = field, ColumnName = field, Code = code, ErrorMessage = message, RawValue = raw is { Length: > 200 } ? raw[..200] : raw });
 }

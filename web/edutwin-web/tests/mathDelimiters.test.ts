@@ -46,6 +46,7 @@ class MockElement implements MockNode {
   childNodes: MockNode[] = [];
   className = "";
   dataset: Record<string, string> = {};
+  style: Record<string, string> = {};
   title = "";
   contentEditable = "true";
   private html = "";
@@ -76,6 +77,17 @@ test("editor hydrate, edit and serialize retain escaped dollar formulas and surr
     hydrateEditorDom(container as unknown as HTMLElement, literal);
     assert.ok(container.childNodes.every((node) => node.nodeType === 3));
     assert.equal(serializeEditorDom(container as unknown as HTMLElement), literal);
+    const display = "Tính $x+1$: $$\\int_0^1 x^2\\,dx$$\n$$\\begin{matrix}1&2\\\\3&4\\end{matrix}$$";
+    hydrateEditorDom(container as unknown as HTMLElement, display);
+    const blocks = container.childNodes.filter((node): node is MockElement => node instanceof MockElement && node.dataset.mathDisplay === "true");
+    assert.equal(blocks.length, 2);
+    assert.ok(blocks.every((node) => node.style.display === "block" && node.innerHTML.includes("katex-display")));
+    assert.equal(serializeEditorDom(container as unknown as HTMLElement), display);
+    blocks[0].dataset.latex = String.raw`\int_0^2 x^2\,dx`;
+    const editedDisplay = serializeEditorDom(container as unknown as HTMLElement);
+    assert.equal(editedDisplay, display.replace("int_0^1", "int_0^2"));
+    hydrateEditorDom(container as unknown as HTMLElement, editedDisplay);
+    assert.equal(serializeEditorDom(container as unknown as HTMLElement), editedDisplay);
   } finally {
     if (previousDocument) Object.defineProperty(globalThis, "document", previousDocument);
     else Reflect.deleteProperty(globalThis, "document");
