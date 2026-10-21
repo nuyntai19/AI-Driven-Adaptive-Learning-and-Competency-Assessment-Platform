@@ -19,7 +19,7 @@ export function SkillScopeSelector({ skills, selected, onChange, placement = fal
           {group.name}<span className="ml-auto text-xs font-normal text-slate-500">{count}/{ids.length} kỹ năng</span></label>
         {!(group.skills.length === 1 && group.skills[0].skillName === group.name) && <div className="mt-2 grid gap-2 sm:grid-cols-2">{group.skills.map(skill => <label key={skill.skillId} className="flex items-start gap-2 rounded-lg bg-slate-50 p-2 text-sm dark:bg-slate-800">
           <input type="checkbox" checked={selected.includes(skill.skillId)} onChange={e => onChange(e.target.checked ? [...selected, skill.skillId] : selected.filter(id => id !== skill.skillId))} />
-          <span>{skill.skillName}{skill.state === "Confirmed" && <span className="block text-xs text-emerald-700">Đã có bằng chứng · rút gọn luyện cơ bản</span>}</span>
+          <span>{skill.skillName}{skill.state === "Confirmed" && <span className="block text-xs text-emerald-700">{placement ? "Đã có bằng chứng · vẫn kiểm tra lại nếu chọn" : "Đã có bằng chứng · rút gọn luyện cơ bản"}</span>}</span>
         </label>)}</div>}
       </div>;
     })}</div>

@@ -45,8 +45,9 @@ public sealed partial class LearningPathV4Planner
                 AnsweredQuestions = (uint)answers.Count, CorrectAnswers = (uint)correct,
                 EarnedScore = assessed ? earned : 0, PossibleScore = assessed ? possible : 0,
                 ScoreOutOfTen = assessed && possible > 0 ? Math.Round(10m * earned / possible, 1) : null,
-                Status = assessed ? "Assessed" : confirmed ? "Confirmed" : run != null ? "InProgress" :
-                    missions.Any(m => m.SkillId == id && m.CanStart) ? "NotStarted" : "Unavailable"
+                // Earlier evidence only stands in when this placement has no test to take for the skill.
+                Status = assessed ? "Assessed" : run != null ? "InProgress" : missions.Any(m => m.SkillId == id && m.CanStart) ? "NotStarted" :
+                    confirmed ? "Confirmed" : "Unavailable"
             };
             var weakness = answers.Count == 0 ? .5m : Math.Clamp(1m - correct / (decimal)answers.Count, .1m, 1m);
             result.EstimatedPracticeSets = confirmed ? 0 : LearningPathPacing.EstimatedSetsFor(weakness);

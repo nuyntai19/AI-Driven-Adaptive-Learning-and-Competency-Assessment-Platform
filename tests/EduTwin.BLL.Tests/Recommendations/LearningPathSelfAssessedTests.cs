@@ -154,4 +154,19 @@ public sealed class LearningPathSelfAssessedTests
         Assert.Empty(proposal.SelfAssessedSkillIds);
         Assert.DoesNotContain(proposal.Milestones, m => m.IsSelfAssessedCheck);
     }
+
+    [Fact]
+    public async Task Placement_ReusesConfirmedPrerequisite_ButTestsTheChosenPart()
+    {
+        using var f = new LearningPathV4Fixture();
+        f.Db.KnowledgeEdges.Add(new DAL.KnowledgeGraph.KnowledgeEdge { CenterId = f.Center, SubjectId = f.English, SourceNodeId = 101, TargetNodeId = 103,
+            RelationType = Contracts.KnowledgeGraph.RelationType.PrerequisiteOf, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        await f.Db.SaveChangesAsync();
+        for (ulong i = 1; i <= 5; i++) await f.RecordEvidence(101, i);
+        var goal = await f.Planner.CreateOrUpdateGoalAsync(f.Center, f.Student, new CreateLearningGoalRequest {
+            SubjectId = f.English, GoalType = "Placement", TargetSkillIds = ["103"] });
+        var proposal = await f.Planner.GeneratePathProposalAsync(f.Center, f.Student, new GeneratePathProposalRequest { SubjectId = f.English, GoalId = goal.GoalId });
+        Assert.Empty(proposal.Milestones.Single(m => m.SkillIds.Contains("101")).Missions);
+        Assert.Single(proposal.Milestones.Single(m => m.SkillIds.Contains("103")).Missions);
+    }
 }

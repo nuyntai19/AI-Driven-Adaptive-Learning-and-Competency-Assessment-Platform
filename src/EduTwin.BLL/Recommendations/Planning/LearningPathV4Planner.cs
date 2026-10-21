@@ -136,7 +136,10 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 });
             if (goal.GoalType == "Placement")
             {
-                if (skill.State != "Confirmed")
+                // A part the student chose to test is always tested, even with earlier evidence; only
+                // prerequisites added by the planner reuse confirmed evidence instead of a new test.
+                var chosen = scope.TargetSkillIds.Contains(skill.SkillId);
+                if (skill.State != "Confirmed" || chosen)
                 {
                     var fresh = questions.Count(q => q.PrimaryTopicNodeId == node.NodeId &&
                         !usedQuestionIds.Contains(q.QuestionId) && !exposedQuestionIds.Contains(q.QuestionId));
@@ -145,6 +148,8 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                             : $"Còn {fresh}/5 câu mới; cần giáo viên bổ sung. Có thể lập tuyến tạm từ các phần đã kiểm tra, phần này vẫn ghi chưa đủ bằng chứng.");
                     missions.Last().QuestionCount = 5;
                     missions.Last().IsProbe = true;
+                    if (skill.State == "Confirmed" && fresh >= 5)
+                        missions.Last().SelectionReason = "Đã có bằng chứng từ trước; em chọn kiểm tra lại. 5 câu mới để cập nhật điểm xuất phát, không mở gợi ý hoặc lời giải trước khi nộp cả phần.";
                 }
             }
             if (goal.GoalType != "Placement" && (skill.State != "Confirmed" || goal.GoalType == "Advanced"))

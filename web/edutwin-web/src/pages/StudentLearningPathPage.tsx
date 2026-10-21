@@ -61,6 +61,8 @@ export function StudentLearningPathPage() {
   };
   // Placement runs as one test: after each section closes, the next untested section opens automatically.
   const placementFlow = useRef(false);
+  // Whether a section was actually opened in this run of the test; never jump to a route without one.
+  const placementOpened = useRef(false);
   const [placementRunning, setPlacementRunning] = useState(false);
   const setFlow = (on: boolean) => { placementFlow.current = on; setPlacementRunning(on); };
   const [mission, setMission] = useState<AgendaItemDto | null>(null);
@@ -81,8 +83,12 @@ export function StudentLearningPathPage() {
     ? data.missions.find(m => m.canStart && m.status !== "Completed" && !m.activeRunId && !m.latestRunId) : undefined;
   const advancePlacement = (data?: LearningAgendaDto) => {
     const next = nextPlacementSection(data);
-    if (next) { setMission({ ...next, reviewOnly: false }); return; }
+    if (next) { placementOpened.current = true; setMission({ ...next, reviewOnly: false }); return; }
     setFlow(false);
+    if (!placementOpened.current) {
+      setAcceptedNotice("Chưa mở được phần kiểm tra nào: các phần đã chọn chưa đủ câu hỏi mới (cần 5 câu chưa làm cho mỗi phần). Hãy báo giáo viên bổ sung câu hỏi, hoặc chọn phần khác.");
+      return;
+    }
     if (data?.placementReport?.isComplete && data.ongoingRuns.length === 0) openFromPlacement(data);
   };
   const placementSections = agenda.data?.isPlacement ? missions : [];
@@ -129,7 +135,7 @@ export function StudentLearningPathPage() {
       onBuild={() => agenda.data && openFromPlacement(agenda.data)}
       onContinue={!placementRunning && (nextPlacementSection(agenda.data) || agenda.data.ongoingRuns.some(m => m.runs?.some(r => r.sessionRunId === m.activeRunId && r.status === "InProgress")))
         ? () => { const ongoing = agenda.data?.ongoingRuns.find(m => m.runs?.some(r => r.sessionRunId === m.activeRunId && r.status === "InProgress"));
-          setFlow(true); if (ongoing) setMission({ ...ongoing, reviewOnly: false }); else advancePlacement(agenda.data); } : undefined} />}
+          setFlow(true); placementOpened.current = true; if (ongoing) setMission({ ...ongoing, reviewOnly: false }); else advancePlacement(agenda.data); } : undefined} />}
     {!!agenda.data?.selfAssessedSkillIds?.length && <section className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-950">
       <p>Phần em tự đánh giá đã vững (không chọn kiểm tra): <strong>{agenda.data.selfAssessedSkillIds.map(id => map.data?.skills.find(s => s.skillId === id)?.skillName ?? id).join(", ")}</strong>.</p>
       <p className="mt-1">Mỗi phần có một bài ôn ngắn ở cuối lộ trình để xác nhận. Đạt thì giữ lịch ôn; chưa đạt sẽ thêm bộ rèn lại và bài tự kiểm tra.</p>
@@ -257,7 +263,7 @@ export function StudentLearningPathPage() {
       insights={agenda.data?.insights} suggestedSkillIds={initialScope} selfAssessedSkillIds={selfAssessed}
       placementReport={entryMode === "FromPlacement" ? (agenda.data?.placementReport ?? undefined) : undefined}
       initialSelfReportedPrerequisiteSkillIds={entryMode === "Update" || entryMode === "FromPlacement" ? agenda.data?.selfReportedPrerequisiteSkillIds : undefined}
-      onPlacementStarted={async () => { setFlow(true); const fresh = await agenda.refetch(); void map.refetch(); advancePlacement(fresh.data); }}
+      onPlacementStarted={async () => { setFlow(true); placementOpened.current = false; const fresh = await agenda.refetch(); void map.refetch(); advancePlacement(fresh.data); }}
       subjectId={subjectId} classId={access.classId} skills={map.data?.skills ?? []} subjectName={subject?.subjectName ?? ""}
       onOpenBlockingMission={blocked => {
         setShowGoal(false);

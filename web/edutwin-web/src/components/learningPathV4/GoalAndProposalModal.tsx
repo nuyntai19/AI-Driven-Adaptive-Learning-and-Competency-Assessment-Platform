@@ -47,6 +47,7 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
   const [customizing, setCustomizing] = useState(false);
   const [editing, setEditing] = useState(!fromPlacement && (!!entryMode || !automatic));
   const started = useRef(false);
+  const [placementBlocked, setPlacementBlocked] = useState("");
   // From a finished placement check the scope is already decided: keep the self-reported prerequisites and
   // treat every untested part as self-assessed (confirmed by a short review at the end of the route).
   const selfReported = fromPlacement && !editing ? missing.map(s => s.skillId).filter(id => initialSelfReportedPrerequisiteSkillIds.includes(id))
@@ -59,9 +60,16 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
       deadlineDate: deadline ? new Date(`${deadline}T23:59:59`).toISOString() : undefined });
     const value = await generatePathProposal({ subjectId, classId, goalId: goal.goalId });
     // Placement starts right away: the chosen parts open as one test, section after section.
-    const accepted = value.isPlacement ? await acceptPathProposal(value.proposalId) : undefined;
-    return { value, accepted };
-  }, onSuccess: async ({ value, accepted }) => {
+    // Nothing to test (every chosen part lacks fresh questions): keep the current route and say why.
+    const blocked = value.isPlacement && !value.milestones.some(m => m.missions.some(x => x.canStart !== false));
+    const accepted = value.isPlacement && !blocked ? await acceptPathProposal(value.proposalId) : undefined;
+    return { value, accepted, blocked };
+  }, onSuccess: async ({ value, accepted, blocked }) => {
+    if (blocked) {
+      const names = value.milestones.filter(m => m.missions.length > 0).map(m => m.title);
+      setPlacementBlocked(`Chưa đủ câu hỏi mới để kiểm tra ${names.length ? names.join(", ") : "các phần đã chọn"} (cần 5 câu chưa làm cho mỗi phần). Lộ trình hiện tại được giữ nguyên. Hãy chọn phần khác hoặc báo giáo viên bổ sung câu hỏi.`);
+      return;
+    }
     if (accepted) {
       await Promise.all([cache.invalidateQueries({ queryKey: ["learning-agenda"] }), cache.invalidateQueries({ queryKey: ["learning-paths"] })]);
       onAccepted(accepted); onPlacementStarted?.(); onClose(); return;
@@ -91,6 +99,7 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
         <p className="mt-2 text-sm text-slate-500">{placement ? "Chọn phần muốn kiểm tra. Bấm bắt đầu là làm ngay; các phần nối tiếp nhau trong một bài." : fromPlacement && !editing ? "Lộ trình lập từ kết quả kiểm tra đầu vào. Em có thể tùy chỉnh phần học, số câu và lịch học trước khi chọn." : entryMode === "Update" ? "Giữ phạm vi đã chọn và lập tuyến mới từ bài làm hiện có. Em có thể điều chỉnh trước khi xác nhận." : automatic ? "Mục tiêu, nội dung và lịch học đã được đề xuất sẵn. Xem lại hoặc chỉnh sửa, rồi chọn tuyến khi phù hợp." : "Chọn phạm vi của bạn. Xem trước chưa thay tuyến đang học; chỉ kích hoạt khi bạn xác nhận."}</p></div>
         <button onClick={onClose} aria-label="Đóng" className="rounded-lg border px-3 py-1">×</button></header>
       <div ref={contentRef} className="min-h-0 overflow-y-auto pr-1">
+      {placementBlocked && placement && <p role="alert" className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{placementBlocked}</p>}
       {generate.error && <p role="alert" className="mt-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{extractProblemDetails(generate.error).message}</p>}
       {automatic && !entryMode && !customizing && <div className="mt-5 grid gap-3 sm:grid-cols-3">{[["Bài làm cho thấy", recommendation.observation], ["Đề xuất cải thiện", recommendation.improvement], ["Phần nên học", recommendation.focus]].map(([label, value]) => <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-4 text-indigo-950" key={label}><h3 className="text-sm font-semibold">{label}</h3><p className="mt-2 text-sm leading-relaxed">{value}</p></div>)}</div>}
       {!automatic && recommendationSummary && <p className="mt-4 rounded-xl bg-indigo-50 p-4 text-sm text-indigo-900">{recommendationSummary}</p>}
@@ -98,14 +107,14 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
       {automatic && generate.error && !editing && <button className="mt-4 rounded-xl border px-4 py-3" onClick={() => generate.mutate()}>Thử tạo lại tuyến đề xuất</button>}
       {customizing && customize.error && <p role="alert" className="mt-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{extractProblemDetails(customize.error).message}</p>}
       {customizing && proposal ? <ProposalCustomizationForm key={proposal.proposalId} proposal={proposal} availableMilestones={sourceProposal?.milestones} pending={customize.isPending} onSubmit={request => customize.mutate(request)} onCancel={() => { customize.reset(); setCustomizing(false); }} /> : editing ? <form className="mt-6 space-y-5" onSubmit={e => { e.preventDefault(); if (targets.length && !needsAcknowledgement) generate.mutate(); }}>
-        <SkillScopeSelector skills={skills} selected={targets} onChange={setTargets} placement={placement} />
+        <SkillScopeSelector skills={skills} selected={targets} onChange={ids => { setPlacementBlocked(""); setTargets(ids); }} placement={placement} />
         {missing.length > 0 && <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" role="note">
           <p>Các phần đã chọn có nền tảng liên quan chưa có kết quả xác nhận trên web: <strong>{missing.map(s => s.skillName).join(", ")}</strong>. Em có thể đã học những phần này ở trường. Hãy chọn cách phù hợp:</p>
           <label className="flex items-start gap-2"><input type="radio" name="prerequisite-choice" checked={acknowledgedScope === scopeKey && prerequisiteChoice === "Skip"} onChange={() => { setAcknowledgedScope(scopeKey); setPrerequisiteChoice("Skip"); }} />Em đã nắm nền tảng này, bỏ qua và chỉ học các phần đã chọn.</label>
           <label className="flex items-start gap-2"><input type="radio" name="prerequisite-choice" checked={acknowledgedScope === scopeKey && prerequisiteChoice === "Include"} onChange={() => { setAcknowledgedScope(scopeKey); setPrerequisiteChoice("Include"); }} />{placement ? "Thêm các nền tảng này vào kiểm tra đầu vào." : "Thêm các nền tảng này vào lộ trình để ôn lại."}</label>
           <p className="text-xs">Bỏ qua được ghi nhận theo tự xác nhận của em, không tự tính là đã nắm vững qua kiểm tra. Em có thể đổi lựa chọn khi cập nhật lộ trình.</p>
         </div>}
-        {placement && <p className="rounded-xl bg-indigo-50 p-3 text-sm text-indigo-950">Mỗi kỹ năng chưa được xác nhận có 5 câu mới, khoảng 10 phút · tổng khoảng {10 * skills.filter(s => targets.includes(s.skillId) && s.state !== "Confirmed").length} phút. Các phần nối tiếp nhau; em có thể lưu và làm tiếp sau. Làm xong sẽ có kết quả, nhận xét và lộ trình đề xuất.</p>}
+        {placement && <p className="rounded-xl bg-indigo-50 p-3 text-sm text-indigo-950">Mỗi phần đã chọn có 5 câu mới, khoảng 10 phút · tổng khoảng {10 * skills.filter(s => targets.includes(s.skillId)).length} phút. Các phần nối tiếp nhau; em có thể lưu và làm tiếp sau. Làm xong sẽ có kết quả, nhận xét và lộ trình đề xuất.</p>}
         {!placement && <details open={!entryMode}><summary className="cursor-pointer text-sm font-medium text-indigo-600">Điều chỉnh mục tiêu và lịch học · {formatStudyMinutes(minutes)}/ngày, {days} ngày/tuần</summary><div className="mt-4 space-y-4">
         <label className="block text-sm font-medium">Tên mục tiêu<input required maxLength={200} className={input} value={title} onChange={e => setTitle(e.target.value)} /></label>
         <label className="block text-sm font-medium">Bạn muốn đạt điều gì?<select className={input} value={goalType} onChange={e => setGoalType(e.target.value)}>

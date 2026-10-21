@@ -120,23 +120,39 @@ public sealed class LearningPathPlacementTests
     }
 
     [Fact]
-    public async Task ConfirmedEvidenceIsReused_AndNewIndependentEvidenceCanShowRecovery()
+    public async Task ChosenConfirmedSkill_IsStillTested_WithoutFabricatedScoreBeforeTheTest()
     {
         using var f = new LearningPathV4Fixture();
-        for (ulong i = 1; i <= 5; i++) await f.RecordEvidence(101, i, false);
-        for (ulong i = 6; i <= 10; i++) await f.RecordEvidence(101, i);
+        for (ulong i = 1; i <= 5; i++) await f.RecordEvidence(101, i);
         var proposal = await Placement(f, "101");
-        Assert.Empty(proposal.Milestones.Single().Missions);
+        // The student explicitly chose this part: a placement must give a test, not jump to a route.
+        Assert.Equal("IndependentCheck", Assert.Single(proposal.Milestones.Single().Missions).Purpose);
         await f.Planner.AcceptPathProposalAsync(f.Center, f.Student, proposal.ProposalId);
         var agenda = await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English);
-        Assert.Equal("Confirmed", agenda.PlacementReport!.Skills.Single().Status);
-        Assert.True(agenda.PlacementReport.IsComplete);
+        Assert.Equal("NotStarted", agenda.PlacementReport!.Skills.Single().Status);
+        Assert.False(agenda.PlacementReport.IsComplete);
         Assert.Null(agenda.PlacementReport.ScoreOutOfTen); // Historical evidence is not a fabricated new test score.
+        Assert.True(agenda.Missions.Single().CanStart);
         var learning = await f.Proposal("101");
         await f.Planner.AcceptPathProposalAsync(f.Center, f.Student, learning.ProposalId);
         var next = await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English);
         Assert.True(next.CanAdvance);
         Assert.Contains("102", next.NextSkillIds);
+    }
+
+    [Fact]
+    public async Task ChosenConfirmedSkill_WithoutFreshQuestions_ReusesEvidence()
+    {
+        using var f = new LearningPathV4Fixture();
+        for (ulong i = 1; i <= 5; i++) await f.RecordEvidence(101, i, false);
+        for (ulong i = 6; i <= 10; i++) await f.RecordEvidence(101, i);
+        var proposal = await Placement(f, "101");
+        await f.Planner.AcceptPathProposalAsync(f.Center, f.Student, proposal.ProposalId);
+        var agenda = await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English);
+        Assert.False(agenda.Missions.Single().CanStart); // 2 of 12 questions left: not enough for a fair new test.
+        Assert.Equal("Confirmed", agenda.PlacementReport!.Skills.Single().Status);
+        Assert.True(agenda.PlacementReport.IsComplete);
+        Assert.Null(agenda.PlacementReport.ScoreOutOfTen);
     }
 
     [Fact]
