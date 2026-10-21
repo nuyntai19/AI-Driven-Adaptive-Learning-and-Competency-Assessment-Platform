@@ -169,4 +169,45 @@ public sealed class LearningPathSelfAssessedTests
         Assert.Empty(proposal.Milestones.Single(m => m.SkillIds.Contains("101")).Missions);
         Assert.Single(proposal.Milestones.Single(m => m.SkillIds.Contains("103")).Missions);
     }
+
+    [Fact]
+    public async Task ExtendCheck_AddsTestsToTheActiveRoute_WithoutReplacingIt()
+    {
+        using var f = new LearningPathV4Fixture();
+        f.Db.KnowledgeEdges.Add(new DAL.KnowledgeGraph.KnowledgeEdge { CenterId = f.Center, SubjectId = f.English, SourceNodeId = 101, TargetNodeId = 102,
+            RelationType = Contracts.KnowledgeGraph.RelationType.PrerequisiteOf, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        await f.Db.SaveChangesAsync();
+        var proposal = await Proposal(f, ["103"], ["101"]);
+        var accepted = await f.Planner.AcceptPathProposalAsync(f.Center, f.Student, proposal.ProposalId);
+        var result = await f.Planner.ExtendPathWithCheckAsync(f.Center, f.Student, new ExtendPathCheckRequest { SubjectId = f.English, SkillIds = ["101", "102"] });
+        Assert.Equal(2, result.MissionIds.Count);
+        Assert.Empty(result.UnavailableSkillIds);
+        f.Db.ChangeTracker.Clear();
+        var agenda = await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English);
+        Assert.Equal(accepted.LearningPathId, agenda.LearningPathId); // Same route: nothing was replaced.
+        Assert.Contains(agenda.Missions, m => m.SkillId == "103" && m.Purpose == "Practice");
+        Assert.Empty(agenda.SelfAssessedSkillIds);
+        Assert.Equal("Skipped", agenda.Missions.Single(m => m.SkillId == "101" && m.IsSelfAssessedCheck).Status);
+        foreach (var id in result.MissionIds)
+            Assert.True(agenda.Missions.Single(m => m.MissionId == id).CanStart);
+        var goal = (await f.Planner.GetActiveGoalAsync(f.Center, f.Student, f.English))!;
+        Assert.Equal(new[] { "103", "101", "102" }, goal.TargetSkillIds);
+        Assert.Empty(goal.SelfAssessedSkillIds);
+        // 102 needs 101, which is not confirmed yet: an extra check still starts because it measures, not certifies a sequence.
+        var run = await f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(result.MissionIds[1]));
+        Assert.Equal(5, run.Activities.Count);
+    }
+
+    [Fact]
+    public async Task Agenda_ReportsCapacity_SoAnyLargerTimeBudgetAddsNothing()
+    {
+        using var f = new LearningPathV4Fixture();
+        var proposal = await Proposal(f, ["103"], []);
+        await f.Planner.AcceptPathProposalAsync(f.Center, f.Student, proposal.ProposalId);
+        var small = await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English, 10);
+        var large = await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English, 300);
+        Assert.Equal(large.PlannedMinutes, small.AvailableTodayMinutes);
+        Assert.True(small.PlannedMinutes <= small.AvailableTodayMinutes);
+        Assert.False(string.IsNullOrWhiteSpace(small.PrimaryReason));
+    }
 }

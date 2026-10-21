@@ -440,6 +440,8 @@ export interface PathHistoryItemDto {
 }
 
 export interface LearningAgendaDto {
+  availableTodayMinutes?: number;
+  primaryReason?: string | null;
   selfReportedPrerequisiteSkillIds?: string[];
   selfAssessedSkillIds?: string[];
   isPlacement?: boolean;
@@ -628,3 +630,6 @@ export interface CustomizePathProposalRequest {
   practiceQuestionsBySkill: Record<string, number>;
   targetSkillIds: string[];
 }
+
+export interface ExtendPathCheckRequest { subjectId: string; classId?: string; skillIds: string[] }
+export interface ExtendPathCheckResponse { missionIds: string[]; unavailableSkillIds: string[] }

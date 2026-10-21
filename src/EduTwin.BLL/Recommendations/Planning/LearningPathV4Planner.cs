@@ -427,7 +427,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 Status = session.Status.ToString(), ActiveRunId = active?.SessionRunId,
                 LatestRunId = latest?.SessionRunId, IsSelfAssessedCheck = m.IsSelfAssessedCheck, WeaknessLevel = m.IsSelfAssessedCheck ? null : LearningPathPacing.Level(weakness), SetNumber = m.SetNumber, EstimatedSets = m.EstimatedSets,
                 CanStart = m.CanStart && (!m.AvailableFrom.HasValue || m.AvailableFrom <= Now) && session.Status != LearningPathSessionStatus.Completed && session.Status != LearningPathSessionStatus.Skipped &&
-                    (plan.IsPlacement || m.Purpose != "IndependentCheck" || LearningGoalScope.PrerequisitesSatisfied(skill, map, vouched)),
+                    (plan.IsPlacement || m.IsProbe || m.Purpose != "IndependentCheck" || LearningGoalScope.PrerequisitesSatisfied(skill, map, vouched)),
                 Runs = sessionRuns.OrderBy(r => r.RunNumber).Select(r => new MissionRunSummaryDto
                 {
                     SessionRunId = r.SessionRunId, RunNumber = r.RunNumber, Status = r.Status.ToString(), Outcome = r.Outcome.ToString(),
@@ -449,7 +449,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
             }
             if (m.Purpose == "IndependentCheck" && active == null)
             {
-                item.CanStart = fresh >= 5 && (plan.IsPlacement || LearningGoalScope.PrerequisitesSatisfied(skill, map, vouched)) && session.Status != LearningPathSessionStatus.Completed && session.Status != LearningPathSessionStatus.Skipped &&
+                item.CanStart = fresh >= 5 && (plan.IsPlacement || m.IsProbe || LearningGoalScope.PrerequisitesSatisfied(skill, map, vouched)) && session.Status != LearningPathSessionStatus.Completed && session.Status != LearningPathSessionStatus.Skipped &&
                     !(plan.IsPlacement && latest?.Status == SessionRunStatus.Completed);
                 if (fresh < 5) { item.CanStart = false; item.RecommendationReason = $"Còn {fresh}/5 câu mới đủ điều kiện kiểm tra; cần giáo viên bổ sung câu, không dùng lại câu đã lộ đáp án."; }
                 else item.RecommendationReason = $"Có {fresh} câu mới đủ điều kiện; sẽ chọn 5 câu để tự kiểm tra. Lời giải và nhận xét chỉ mở sau khi nộp cả bộ.";
@@ -505,6 +505,17 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         options = options.OrderBy(m => m.Purpose == "Review" || m.Title.StartsWith("Rèn lại") ? 0 : 1)
             .ThenBy(m => m.SkillId == lastSkill && m.Purpose == "Practice" && streakToday >= LearningPathPacing.MaxSetsPerSkillPerDay && options.Any(o => o.SkillId != lastSkill) ? 1 : 0).ToList();
         BuildTodayPlan(result, options, weaknessBySkill, setsToday);
+        // Capacity: what the largest budget would plan today. Sets are created one after another, so more time adds nothing beyond it.
+        var capacity = new LearningAgendaDto { AvailableMinutes = LearningPathPacing.MaxDailyMinutes, OngoingRuns = result.OngoingRuns };
+        BuildTodayPlan(capacity, options, weaknessBySkill, setsToday);
+        result.AvailableTodayMinutes = capacity.PlannedMinutes;
+        var first = result.TodayPlan.FirstOrDefault();
+        if (first != null && !plan.IsPlacement)
+            result.PrimaryReason = first.ActiveRunId != null ? "Đang làm dở: hoàn thành trước để giữ tiến độ."
+                : first.Purpose == "Review" ? "Đến hạn ôn: ôn đúng lúc giúp nhớ lâu hơn."
+                : first.Title.StartsWith("Rèn lại") ? "Bộ rèn lại sau kết quả chưa đạt: ưu tiên trước khi học phần mới."
+                : first.Purpose == "IndependentCheck" && first.Title.StartsWith("Kiểm tra thêm") ? "Phần em vừa chọn kiểm tra thêm."
+                : $"{first.SkillName} đứng trước trong lộ trình (phần nền hoặc phần yếu hơn). Phần này giữ vị trí đầu đến khi đạt {LearningPathPacing.ReadyStreak} bộ liên tiếp từ 80% và tự kiểm tra; sau {LearningPathPacing.MaxSetsPerSkillPerDay} bộ trong ngày, phần khác được đưa lên trước.";
         result.PlanOutdated = plan.PacingVersion < 2;
         result.Progress = await ProgressAsync(centerId, studentId, subjectId, plan, map, result.Missions, cancellationToken);
         if (plan.IsPlacement)

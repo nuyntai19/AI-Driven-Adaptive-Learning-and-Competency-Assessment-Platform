@@ -29,6 +29,9 @@ public interface ILearningPathV4Planner
         Guid centerId, Guid studentId, Guid proposalId, CustomizePathProposalRequest request,
         CancellationToken cancellationToken = default);
 
+    Task<ExtendPathCheckResponse> ExtendPathWithCheckAsync(Guid centerId, Guid studentId, ExtendPathCheckRequest request,
+        CancellationToken cancellationToken = default);
+
     Task<AcceptPathProposalResponse> AcceptPathProposalAsync(
         Guid centerId,
         Guid studentId,

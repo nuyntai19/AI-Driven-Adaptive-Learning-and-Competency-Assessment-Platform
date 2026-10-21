@@ -838,6 +838,23 @@ public sealed class RecommendationsController : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>Adds 5-question checks for more parts to the active route without replacing it.</summary>
+    [HttpPost("learning-paths/extend-check")]
+    [Authorize(Policy = "recommendations.student.read_own")]
+    [V4LearningExceptionFilter]
+    [ProducesResponseType(typeof(ExtendPathCheckResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ExtendPathWithCheck([FromBody] ExtendPathCheckRequest request, CancellationToken cancellationToken)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        if (_v4Planner is null || _tenantContext is null || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, CreateProblemDetails(StatusCodes.Status403Forbidden, "https://edutwin.local/problems/forbidden", "Không có quyền", "Tenant not resolved", traceId, ErrorCodes.ForbiddenResource));
+        }
+
+        var result = await _v4Planner.ExtendPathWithCheckAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, request, cancellationToken);
+        return Ok(result);
+    }
+
     [HttpPost("path-proposals/{proposalId:guid}/accept")]
     [Authorize(Policy = "recommendations.student.read_own")]
     [V4LearningExceptionFilter]

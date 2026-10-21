@@ -104,3 +104,19 @@ public class CustomizePathProposalRequest
     public Dictionary<string, uint> PracticeQuestionsBySkill { get; set; } = new();
     public List<string> TargetSkillIds { get; set; } = new();
 }
+
+/// <summary>Tests more parts inside the active route without replacing it.</summary>
+public class ExtendPathCheckRequest
+{
+    public Guid SubjectId { get; set; }
+    public Guid? ClassId { get; set; }
+    public List<string> SkillIds { get; set; } = new();
+}
+
+public class ExtendPathCheckResponse
+{
+    /// <summary>New check missions, in the order to take them.</summary>
+    public List<string> MissionIds { get; set; } = new();
+    /// <summary>Parts without five fresh questions; nothing was added for them.</summary>
+    public List<string> UnavailableSkillIds { get; set; } = new();
+}

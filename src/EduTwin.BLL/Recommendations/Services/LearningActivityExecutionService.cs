@@ -84,7 +84,8 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
         if (independent)
         {
             var map = await LearningPathV4Data.MapAsync(db, centerId, studentId, session.LearningPath.SubjectId, session.ClassId, Now, cancellationToken);
-            if (!plan!.IsPlacement && !LearningGoalScope.PrerequisitesSatisfied(map.Skills.Single(s => s.SkillId == node.NodeId.ToString()), map, plan.SelfReportedPrerequisiteSkillIds))
+            if (!plan!.IsPlacement && !definition.IsProbe && !LearningGoalScope.PrerequisitesSatisfied(map.Skills.Single(s => s.SkillId == node.NodeId.ToString()), map,
+                LearningGoalScope.Vouched(plan.SelfReportedPrerequisiteSkillIds, plan.SelfAssessedSkillIds)))
                 throw new InvalidOperationException("Cần kiểm tra các kỹ năng nền tảng trước khi xác nhận kỹ năng này.");
             // Any question already answered or shown as a worked example is unsuitable for a new independent check.
             var answered = await db.Attempts.Where(a => a.CenterId == centerId && a.StudentId == studentId).Select(a => a.QuestionId).Distinct().ToListAsync(cancellationToken);

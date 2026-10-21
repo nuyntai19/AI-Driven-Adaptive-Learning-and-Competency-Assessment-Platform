@@ -13,6 +13,7 @@ import { formatStudyMinutes, splitReason } from "../utils/studyTime";
 import type { AgendaItemDto, LearningAgendaDto, MissionRunSummaryDto } from "../types/learningPath";
 import { missionAction } from "../utils/learningMission";
 import { PlacementReport } from "../components/learningPathV4/PlacementReport";
+import { ExtendCheckModal } from "../components/learningPathV4/ExtendCheckModal";
 
 const activityLabels: Record<string, string> = { Study: "Tìm hiểu và ví dụ", Practice: "Luyện có hướng dẫn",
   IndependentCheck: "Tự kiểm tra", WorkedExample: "Ví dụ từng bước", FindError: "Tìm lỗi", Explore: "Khám phá",
@@ -65,6 +66,9 @@ export function StudentLearningPathPage() {
   const placementOpened = useRef(false);
   const [placementRunning, setPlacementRunning] = useState(false);
   const setFlow = (on: boolean) => { placementFlow.current = on; setPlacementRunning(on); };
+  // "Kiểm tra thêm phần khác": checks added to the current route, taken one after another.
+  const [showExtend, setShowExtend] = useState(false);
+  const extraQueue = useRef<string[]>([]);
   const [mission, setMission] = useState<AgendaItemDto | null>(null);
   const [acceptedNotice, setAcceptedNotice] = useState("");
   const map = useQuery({ queryKey: ["learning-paths", "capability-map", actor?.centerId, actor?.userId, subjectId, access.classId],
@@ -92,6 +96,19 @@ export function StudentLearningPathPage() {
     if (data?.placementReport?.isComplete && data.ongoingRuns.length === 0) openFromPlacement(data);
   };
   const placementSections = agenda.data?.isPlacement ? missions : [];
+  // Parts outside the route's learning scope (untested, self-assessed or self-reported) that can still be tested.
+  const routeSkills = new Set(missions.filter(m => !m.isSelfAssessedCheck && !m.title.startsWith("Kiểm tra thêm")).map(m => m.skillId));
+  const extendCandidates = agenda.data?.learningPathId && !agenda.data.isPlacement ? (map.data?.skills ?? [])
+    .filter(s => s.state !== "Confirmed" && !routeSkills.has(s.skillId) && !missions.some(m => m.skillId === s.skillId && m.title.startsWith("Kiểm tra thêm") && m.status !== "Skipped"))
+    .map(s => ({ ...s, note: agenda.data?.selfAssessedSkillIds?.includes(s.skillId) ? "Tự đánh giá đã vững · thay cho bài ôn xác nhận"
+      : agenda.data?.selfReportedPrerequisiteSkillIds?.includes(s.skillId) ? "Nền tảng em đã tự xác nhận bỏ qua" : "Chưa có trong lộ trình" })) : [];
+  const openNextExtra = (data?: LearningAgendaDto) => {
+    while (extraQueue.current.length) {
+      const next = data?.missions.find(m => m.missionId === extraQueue.current[0]);
+      if (next && next.canStart && !next.latestRunId) { setMission({ ...next, reviewOnly: false }); return; }
+      extraQueue.current.shift();
+    }
+  };
   const sectionLabel = (m: AgendaItemDto) => {
     const index = placementSections.findIndex(x => x.missionId === m.missionId);
     return index >= 0 ? `Kiểm tra đầu vào · phần ${index + 1}/${placementSections.length}` : undefined;
@@ -117,7 +134,7 @@ export function StudentLearningPathPage() {
           onChange={e => { const next = new URLSearchParams(params); next.set("subjectId", e.target.value); next.delete("pathId"); next.delete("sessionId"); setParams(next); setMission(null); setShowGoal(false); }}>
           {subjects.data?.data.map(s => <option key={s.subjectId} value={s.subjectId}>{s.subjectName}</option>)}
         </select><button className={action} onClick={() => openSetup()} disabled={!map.data?.skills.length}>Thiết lập mục tiêu</button>
-        {agenda.data?.learningPathId && !agenda.data.isPlacement && <button className="rounded-xl border px-4 py-2.5 text-sm" onClick={() => openSetup("Placement", agenda.data?.targetSkillIds)} disabled={!map.data?.skills.length}>Kiểm tra đầu vào</button>}</div>
+        {extendCandidates.length > 0 && <button className="rounded-xl border px-4 py-2.5 text-sm" onClick={() => setShowExtend(true)}>Kiểm tra thêm phần khác</button>}</div>
     </header>
     {(map.error || agenda.error) && <div role="alert" className="rounded-xl bg-rose-50 p-4 text-rose-800">
       Không thể tải lộ trình. {((map.error ?? agenda.error) as any)?.response?.data?.detail ?? (map.error ?? agenda.error)?.message}
@@ -190,11 +207,11 @@ export function StudentLearningPathPage() {
         <div><h2 id="today-title" className="text-xl font-semibold">Hôm nay học gì?</h2>
           {agenda.data.goalTitle && <p className="mt-1 text-sm text-slate-500">Mục tiêu: {agenda.data.goalTitle}</p>}
           <p className="mt-3 text-sm text-slate-500">{agenda.data.agendaMessage}</p></div>
-        <TimeBudgetSlider label="Thời gian hôm nay" value={sliderMinutes} onChange={setSliderMinutes} summary={planSummary} />
+        <TimeBudgetSlider label="Thời gian hôm nay" value={sliderMinutes} onChange={setSliderMinutes} summary={planSummary} capacity={agenda.data.learningPathId && !agenda.data.isPlacement ? agenda.data.availableTodayMinutes : undefined} />
       </div>
       {primary && <div className="mt-5 rounded-xl bg-indigo-50 p-5 dark:bg-indigo-950/40">
         <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">{primary.activeRunId ? "Tiếp tục nhiệm vụ" : "Bắt đầu từ đây"}</p>
-        <h3 className="mt-2 text-xl font-semibold">{primary.title}</h3><Reason className="mt-2 text-sm" text={primary.recommendationReason} />
+        <h3 className="mt-2 text-xl font-semibold">{primary.title}</h3>{agenda.data.primaryReason && <p className="mt-1 text-xs text-indigo-700 dark:text-indigo-300">Vì sao đứng đầu: {agenda.data.primaryReason}</p>}<Reason className="mt-2 text-sm" text={primary.recommendationReason} />
         <button className={`${action} mt-4`} onClick={() => setMission(primary)}>{primary.activeRunId ? "Tiếp tục đúng tiến độ" : "Mở nhiệm vụ"} · {sizeLabel(primary)}khoảng {primary.estimatedDurationMinutes} phút</button>
       </div>}
       {todayPlan.length > 1 && <ol className="mt-4 space-y-2" aria-label="Các bước hôm nay">{todayPlan.slice(1).map((m, i) => <li key={m.missionId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
@@ -272,13 +289,26 @@ export function StudentLearningPathPage() {
           missionId: blocked.missionId, title: blocked.title, activeRunId: blocked.runId, latestRunId: blocked.runId, status: "InProgress", reviewOnly: false });
       }}
       onAccepted={res => { setAcceptedNotice(`${res.message} Các nhiệm vụ của tuyến đã được cập nhật.`); void agenda.refetch(); void map.refetch(); }} />}
+    {showExtend && <ExtendCheckModal subjectId={subjectId} classId={access.classId} subjectName={subject?.subjectName ?? ""} candidates={extendCandidates}
+      onClose={() => setShowExtend(false)}
+      onStarted={async ids => {
+        setShowExtend(false); extraQueue.current = [...ids];
+        setAcceptedNotice(`Đã thêm ${ids.length} phần kiểm tra vào lộ trình hiện tại. Lộ trình và tiến độ đang có được giữ nguyên.`);
+        const [fresh] = await Promise.all([agenda.refetch(), map.refetch()]); openNextExtra(fresh.data);
+      }} />}
     {mission && <MissionPlayerModal key={`${mission.missionId}:${mission.retry ? "retry" : mission.reviewOnly ? `review-${mission.latestRunId}` : "open"}`} isOpen mission={mission} subjectId={subjectId}
-      contextLabel={placementRunning ? sectionLabel(mission) : undefined}
+      contextLabel={placementRunning ? sectionLabel(mission) : mission.title.startsWith("Kiểm tra thêm") ? "Kiểm tra thêm phần khác · lộ trình hiện tại được giữ" : undefined}
       nextLabel={placementRunning && sectionLabel(mission) ? placementSections.filter(m => m.missionId !== mission.missionId).some(m => m.canStart && m.status !== "Completed" && !m.latestRunId) ? "Sang phần tiếp theo" : "Xem kết quả và lộ trình đề xuất" : undefined}
       onResumeMission={setMission}
       onClose={async () => {
         const closedId = mission.missionId; setMission(null);
         const [fresh] = await Promise.all([agenda.refetch(), map.refetch()]);
+        if (extraQueue.current.length) {
+          const closedExtra = fresh.data?.missions.find(m => m.missionId === closedId);
+          if (closedExtra?.runs?.some(r => r.sessionRunId === closedExtra.activeRunId && r.status === "InProgress")) { extraQueue.current = []; return; }
+          if (extraQueue.current[0] === closedId) extraQueue.current.shift();
+          openNextExtra(fresh.data); return;
+        }
         if (!placementFlow.current) return;
         // Saved and left mid-section: stop here; "Tiếp tục kiểm tra" resumes later.
         const closed = fresh.data?.missions.find(m => m.missionId === closedId);

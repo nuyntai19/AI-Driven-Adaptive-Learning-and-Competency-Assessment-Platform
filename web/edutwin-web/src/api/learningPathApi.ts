@@ -254,3 +254,13 @@ export const evaluateMissionRunV4 = async (
   );
   return response.data;
 };
+
+/** Adds 5-question checks for more parts to the active route without replacing it. */
+export const extendPathWithCheck = async (
+  request: import("../types/learningPath").ExtendPathCheckRequest
+): Promise<import("../types/learningPath").ExtendPathCheckResponse> => {
+  const response = await httpClient.post<import("../types/learningPath").ExtendPathCheckResponse>(
+    `/students/me/learning-paths/extend-check`, request
+  );
+  return response.data;
+};

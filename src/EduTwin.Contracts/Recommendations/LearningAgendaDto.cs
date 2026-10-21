@@ -6,6 +6,10 @@ namespace EduTwin.Contracts.Recommendations;
 public class LearningAgendaDto
 {
     public List<string> SelfReportedPrerequisiteSkillIds { get; set; } = new();
+    /// <summary>Minutes of work available today at the largest time budget; more time adds nothing.</summary>
+    public uint AvailableTodayMinutes { get; set; }
+    /// <summary>Why the first step of today's plan comes first.</summary>
+    public string? PrimaryReason { get; set; }
     /// <summary>Parts the student left out of the placement check (self-assessed as mastered); each gets a short confirmation review at the end of the route.</summary>
     public List<string> SelfAssessedSkillIds { get; set; } = new();
     public bool IsPlacement { get; set; }
